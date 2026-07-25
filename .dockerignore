@@ -1,0 +1,16 @@
+.env
+.env.*
+.git
+.DS_Store
+.next
+.vinext
+.wrangler
+build
+dist
+out
+node_modules
+src-tauri/target
+*.tsbuildinfo
+*.log
+npm-debug.log*
+coverage

@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "incremental": false
+  },
+  "include": [
+    "packages/core/src/**/*.ts",
+    "packages/contracts/src/**/*.ts",
+    "services/api/src/**/*.ts",
+    "tests/*.test.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

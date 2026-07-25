@@ -1,0 +1,18 @@
+services:
+  trace-lens:
+    build:
+      context: .
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:${TRACE_LENS_PORT:-3000}:3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
