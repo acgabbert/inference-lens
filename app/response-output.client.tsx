@@ -6,6 +6,14 @@ import { MarkdownView } from "./markdown-view.client";
 import { PaneTabs } from "./workbench-shell.client";
 import { ToolCallList, type ToolResultDraft } from "./tool-call-list.client";
 
+export type TraceStorageStatus =
+  | { kind: "saving"; location?: string }
+  | { kind: "saved"; location: string }
+  | { kind: "downloaded"; fileName: string }
+  | { kind: "loaded"; fileName: string }
+  | { kind: "unsaved" }
+  | { kind: "error"; message: string };
+
 type ResponseOutputProps = {
   output: string;
   reasoning: string;
@@ -17,20 +25,24 @@ type ResponseOutputProps = {
   outputScrollRef: RefObject<HTMLDivElement | null>;
   completedToolCalls: ToolCall[];
   toolResultDrafts: Record<string, ToolResultDraft>;
+  traceStorage: TraceStorageStatus | null;
   onMarkdownPreviewChange(markdown: boolean): void;
   onOutputScroll(): void;
   onJumpToLatest(): void;
   onToolResultDraftChange(callId: string, text: string): void;
   onContinue(): void;
   onRetry(): void;
+  onSaveTrace(): void;
 };
 
 /** The response pane, excluding the independent trace panel below it. */
 export function ResponseOutput({
   output, reasoning, status, runState, isRequestActive, markdownPreview,
   outputFollowing, outputScrollRef, completedToolCalls, toolResultDrafts,
+  traceStorage,
   onMarkdownPreviewChange, onOutputScroll, onJumpToLatest,
   onToolResultDraftChange, onContinue, onRetry,
+  onSaveTrace,
 }: ResponseOutputProps) {
   const awaitingResults = runState?.status.kind === "awaiting_tool_results";
   const retryableFailure =
@@ -49,6 +61,68 @@ export function ResponseOutput({
           <span className={`status ${status}`}><span aria-hidden="true" />{status}</span>
         </div>
       </div>
+      {traceStorage && (
+        <div
+          className={`trace-storage trace-storage-${traceStorage.kind}`}
+          role={traceStorage.kind === "error" ? "alert" : "status"}
+        >
+          <span className="trace-storage-icon" aria-hidden="true">
+            {traceStorage.kind === "saved" ||
+            traceStorage.kind === "downloaded" ||
+            traceStorage.kind === "loaded"
+              ? "✓"
+              : traceStorage.kind === "error"
+                ? "!"
+                : "·"}
+          </span>
+          <span className="trace-storage-copy">
+            {traceStorage.kind === "saving" ? (
+              <>
+                <strong>Saving run trace…</strong>
+                {traceStorage.location && <code>{traceStorage.location}</code>}
+              </>
+            ) : traceStorage.kind === "saved" ? (
+              <>
+                <strong>Run trace saved</strong>
+                <code>{traceStorage.location}</code>
+              </>
+            ) : traceStorage.kind === "downloaded" ? (
+              <>
+                <strong>Run trace download requested</strong>
+                <span>
+                  {traceStorage.fileName} · your browser controls the download
+                  location
+                </span>
+              </>
+            ) : traceStorage.kind === "loaded" ? (
+              <>
+                <strong>Imported run trace</strong>
+                <code>{traceStorage.fileName}</code>
+              </>
+            ) : traceStorage.kind === "error" ? (
+              <>
+                <strong>Run trace not saved</strong>
+                <span>{traceStorage.message}</span>
+              </>
+            ) : (
+              <>
+                <strong>Run trace not saved</strong>
+                <span>No project folder was open for this run.</span>
+              </>
+            )}
+          </span>
+          {(traceStorage.kind === "unsaved" ||
+            traceStorage.kind === "error") && (
+            <button
+              className="button secondary trace-storage-action"
+              type="button"
+              onClick={onSaveTrace}
+            >
+              Save trace…
+            </button>
+          )}
+        </div>
+      )}
       <div className="output-scroll" ref={outputScrollRef} onScroll={onOutputScroll}>
         <div className="output">
           {output ? (markdownPreview ? <MarkdownView text={output} /> : <p>{output}</p>)

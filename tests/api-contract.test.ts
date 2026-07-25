@@ -230,6 +230,7 @@ test("executes one normalized provider turn outside an HTTP handler", async () =
       "text_delta",
       "frame",
       "completed",
+      "frame",
     ]);
   } finally {
     globalThis.fetch = originalFetch;

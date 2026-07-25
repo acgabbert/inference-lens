@@ -56,6 +56,7 @@ Project persistence follows the same boundary:
 
 ```text
 Project v2 parser/serializer -> ProjectWorkspace -> browser folder or Tauri filesystem
+RunTrace v1 parser/serializer -> ProjectWorkspace -> traces/<runId>.json
 ```
 
 `packages/core/src/project.ts` owns the strict, portable Project v2 document.
@@ -63,3 +64,25 @@ Browser and Tauri adapters own directory selection, permissions,
 external-change detection, and writing. Imported projects contain portable
 connection requirements; the UI requires an explicit mapping to a local
 inference profile before a run can resolve that profile's credential.
+Workspace handles expose a human-readable display location for status text,
+but native filesystem commands continue to accept only the opaque workspace ID.
+
+`packages/core/src/run-trace.ts` owns the versioned diagnostic artifact
+boundary. It validates the file envelope, reconstructs canonical run state from
+the ordered event stream, rejects projections that disagree with those events,
+and serializes deterministically. A terminal run is written once to the
+workspace that owned it when execution began. Trace writes are idempotent but
+never replace different contents for the same run ID. Imported traces restore
+inspectable terminal state; they do not recreate a live coordinator or
+credential capability.
+
+Runs without a writable project workspace are not silently persisted. Their
+terminal UI state is explicitly marked unsaved. Saving one uses a native Save
+As dialog in Tauri or an explicit browser download; the selected native path or
+browser-controlled filename is then shown beside the run.
+
+Raw exchange evidence remains distinct from normalized events. Each attempt
+records the exact serialized request body supplied to the HTTP client, every
+runtime-visible header after redaction, and complete SSE data lines without their
+terminating CR/LF. Normalized deltas refer back to those frames by exchange and
+frame index.

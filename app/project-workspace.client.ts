@@ -6,6 +6,11 @@ import {
   serializeProjectFile,
 } from "../packages/core/src/project";
 import type { ProjectFileV2 } from "../packages/core/src/project";
+import {
+  serializeRunTrace,
+  traceFileName,
+} from "../packages/core/src/run-trace";
+import type { RunTrace } from "../packages/core/src/run-kernel";
 import { isTauriRuntime } from "./tauri-inference-transport.client";
 
 interface FileSystemFileHandleLike {
@@ -22,6 +27,10 @@ interface FileSystemDirectoryHandleLike {
     name: string,
     options?: { create?: boolean },
   ): Promise<FileSystemFileHandleLike>;
+  getDirectoryHandle(
+    name: string,
+    options?: { create?: boolean },
+  ): Promise<FileSystemDirectoryHandleLike>;
 }
 
 interface DirectoryPickerWindow extends Window {
@@ -33,11 +42,14 @@ interface DirectoryPickerWindow extends Window {
 
 interface WorkspaceStorage {
   save(contents: string): Promise<void>;
+  saveTrace(runId: string, fileName: string, contents: string): Promise<void>;
 }
 
 export interface ProjectWorkspaceHandle {
   kind: "browser-directory" | "tauri-directory";
   displayName: string;
+  /** Human-readable only; never passed back to a filesystem command. */
+  displayPath: string;
   storage: WorkspaceStorage;
 }
 
@@ -49,8 +61,14 @@ export interface OpenedProjectWorkspace {
 interface NativeWorkspace {
   workspaceId: string;
   displayName: string;
+  displayPath: string;
   contents: string;
 }
+
+export type RunTraceExportResult =
+  | { kind: "saved"; location: string }
+  | { kind: "downloaded"; fileName: string }
+  | { kind: "cancelled" };
 
 function isPickerCancellation(error: unknown): boolean {
   return (
@@ -107,6 +125,32 @@ function browserStorage(
       await writable.close();
       lastContents = contents;
     },
+    async saveTrace(
+      _runId: string,
+      fileName: string,
+      contents: string,
+    ): Promise<void> {
+      const traces = await directory.getDirectoryHandle("traces", {
+        create: true,
+      });
+      let fileHandle: FileSystemFileHandleLike;
+      try {
+        fileHandle = await traces.getFileHandle(fileName);
+        const existing = await (await fileHandle.getFile()).text();
+        if (existing === contents) return;
+        throw new Error(
+          `${fileName} already exists with different contents. Run traces are immutable.`,
+        );
+      } catch (error) {
+        if (!(error instanceof DOMException) || error.name !== "NotFoundError") {
+          throw error;
+        }
+        fileHandle = await traces.getFileHandle(fileName, { create: true });
+      }
+      const writable = await fileHandle.createWritable();
+      await writable.write(contents);
+      await writable.close();
+    },
   };
 }
 
@@ -128,6 +172,7 @@ async function openBrowserProjectFolder(): Promise<OpenedProjectWorkspace | null
       handle: {
         kind: "browser-directory",
         displayName: directory.name,
+        displayPath: directory.name,
         storage: browserStorage(directory, contents),
       },
     };
@@ -173,6 +218,7 @@ async function createBrowserProjectFolder(
       handle: {
         kind: "browser-directory",
         displayName: directory.name,
+        displayPath: directory.name,
         storage: browserStorage(directory, contents),
       },
     };
@@ -196,10 +242,22 @@ function nativeWorkspaceHandle(
   return {
     kind: "tauri-directory",
     displayName: workspace.displayName,
+    displayPath: workspace.displayPath,
     storage: {
       async save(contents: string): Promise<void> {
         await invokeNative("save_project_workspace", {
           workspaceId: workspace.workspaceId,
+          contents,
+        });
+      },
+      async saveTrace(
+        runId: string,
+        _fileName: string,
+        contents: string,
+      ): Promise<void> {
+        await invokeNative("save_run_trace", {
+          workspaceId: workspace.workspaceId,
+          runId,
           contents,
         });
       },
@@ -251,6 +309,61 @@ export async function saveProjectWorkspace(
   project: ProjectFileV2,
 ): Promise<void> {
   await handle.storage.save(serializeProjectFile(project));
+}
+
+export async function saveRunTraceWorkspace(
+  handle: ProjectWorkspaceHandle,
+  trace: RunTrace,
+): Promise<void> {
+  const contents = serializeRunTrace(trace);
+  await handle.storage.saveTrace(
+    trace.runId,
+    traceFileName(trace.runId),
+    contents,
+  );
+}
+
+export function runTraceWorkspaceLocation(
+  handle: ProjectWorkspaceHandle,
+  trace: RunTrace,
+): string {
+  const separator =
+    handle.kind === "tauri-directory" && handle.displayPath.includes("\\")
+      ? "\\"
+      : "/";
+  return [
+    handle.displayPath.replace(/[\\/]$/, ""),
+    "traces",
+    traceFileName(trace.runId),
+  ].join(separator);
+}
+
+export function downloadRunTrace(trace: RunTrace): void {
+  const blob = new Blob([serializeRunTrace(trace)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = traceFileName(trace.runId);
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+export async function exportRunTraceFile(
+  trace: RunTrace,
+): Promise<RunTraceExportResult> {
+  const contents = serializeRunTrace(trace);
+  const fileName = traceFileName(trace.runId);
+  if (isTauriRuntime()) {
+    const location = await invokeNative<string | null>("export_run_trace", {
+      runId: trace.runId,
+      contents,
+    });
+    return location ? { kind: "saved", location } : { kind: "cancelled" };
+  }
+  downloadRunTrace(trace);
+  return { kind: "downloaded", fileName };
 }
 
 export function downloadProjectFile(project: ProjectFileV2): void {

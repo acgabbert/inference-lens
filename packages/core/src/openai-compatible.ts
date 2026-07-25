@@ -4,7 +4,6 @@ import type {
   ConversationMessage,
   FinishReason,
   JsonObject,
-  JsonValue,
   ProviderExecution,
   ProviderEvent,
   RunTokenUsage,
@@ -121,16 +120,49 @@ export async function discoverOpenAICompatibleModels(
   return parseModelsResponse(await response.json());
 }
 
-function responseHeaders(headers: Headers): Record<string, string> {
+const sensitiveHeaderNames = new Set([
+  "authorization",
+  "cookie",
+  "proxy-authorization",
+  "set-cookie",
+  "access-token",
+  "refresh-token",
+  "password",
+  "secret",
+]);
+
+function sensitiveName(value: string): boolean {
+  const normalized = value.toLowerCase().replaceAll(/[^a-z0-9]/g, "");
+  return (
+    normalized.includes("apikey") ||
+    [...sensitiveHeaderNames].some(
+      (name) => normalized === name.replaceAll(/[^a-z0-9]/g, ""),
+    )
+  );
+}
+
+export function redactedProviderUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    for (const name of [...url.searchParams.keys()]) {
+      if (sensitiveName(name)) url.searchParams.set(name, "••••••••");
+    }
+    if (url.username) url.username = "••••••••";
+    if (url.password) url.password = "••••••••";
+    return url.toString();
+  } catch {
+    return value;
+  }
+}
+
+/** Captures every runtime-visible header while removing credential material. */
+export function redactedProviderHeaders(
+  headers: Iterable<[string, string]>,
+): Record<string, string> {
   const result: Record<string, string> = {};
-  for (const name of [
-    "content-type",
-    "openai-model",
-    "openai-processing-ms",
-    "x-request-id",
-  ]) {
-    const value = headers.get(name);
-    if (value) result[name] = value;
+  for (const [rawName, value] of headers) {
+    const name = rawName.toLowerCase();
+    result[name] = sensitiveName(name) ? "••••••••" : value;
   }
   return result;
 }
@@ -270,6 +302,18 @@ export async function* normalizeOpenAICompatibleStream(
     if (!line.startsWith("data:")) continue;
     const data = line.slice(5).trim();
     if (!data) continue;
+    const currentFrameIndex = frameIndex++;
+    yield {
+      type: "frame",
+      frame: {
+        index: currentFrameIndex,
+        raw: line,
+      },
+    };
+    const source = {
+      exchangeId: execution.exchangeId,
+      frameIndex: currentFrameIndex,
+    };
     if (data === "[DONE]") {
       sawTerminalSignal = true;
       if (!emittedCompletion) {
@@ -277,6 +321,7 @@ export async function* normalizeOpenAICompatibleStream(
         yield {
           type: "completed",
           finishReason: { normalized: "other" },
+          source,
         };
       }
       continue;
@@ -288,19 +333,6 @@ export async function* normalizeOpenAICompatibleStream(
     } catch {
       continue;
     }
-
-    const currentFrameIndex = frameIndex++;
-    yield {
-      type: "frame",
-      frame: {
-        index: currentFrameIndex,
-        data: chunk as JsonValue,
-      },
-    };
-    const source = {
-      exchangeId: execution.exchangeId,
-      frameIndex: currentFrameIndex,
-    };
     const choice = chunk.choices?.[0];
     const text = choice?.delta?.content;
     if (text) yield { type: "text_delta", text, source };
@@ -357,17 +389,18 @@ export async function* streamOpenAICompatibleProvider(
   signal?: AbortSignal,
 ): AsyncGenerator<ProviderEvent> {
   const { url, body } = buildChatCompletionsRequest(execution);
+  const bodyText = JSON.stringify(body);
 
   yield {
     type: "request",
     request: {
-      url,
+      url: redactedProviderUrl(url),
       method: "POST",
       headers: {
         authorization: apiKey ? "Bearer ••••••••" : "(not set)",
         "content-type": "application/json",
       },
-      body,
+      body: bodyText,
     },
   };
 
@@ -379,7 +412,7 @@ export async function* streamOpenAICompatibleProvider(
         ? { authorization: `Bearer ${apiKey}` }
         : {}),
     },
-    body: JSON.stringify(body),
+    body: bodyText,
     signal,
   });
 
@@ -387,7 +420,7 @@ export async function* streamOpenAICompatibleProvider(
     type: "response_started",
     response: {
       status: response.status,
-      headers: responseHeaders(response.headers),
+      headers: redactedProviderHeaders(response.headers),
     },
   };
 

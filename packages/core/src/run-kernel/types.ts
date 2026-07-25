@@ -243,7 +243,12 @@ export interface RedactedProviderRequest {
   url: string;
   method: string;
   headers: Record<string, string>;
-  body?: JsonValue | string;
+  /**
+   * The exact text supplied to the HTTP client after provider serialization.
+   * Keeping text rather than a parsed projection makes the persisted exchange
+   * suitable for byte-level inspection and later replay.
+   */
+  body?: string;
 }
 
 export interface RedactedProviderResponse {
@@ -253,7 +258,8 @@ export interface RedactedProviderResponse {
 
 export interface ProviderFrame {
   index: number;
-  data: JsonValue | string;
+  /** One complete provider SSE data line, without its terminating CR/LF. */
+  raw: string;
 }
 
 export interface EventSource {

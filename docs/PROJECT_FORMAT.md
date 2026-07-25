@@ -59,5 +59,12 @@ Both writable adapters compare the on-disk contents with the last contents
 they read before saving. If an editor or Git operation changed the manifest,
 Trace Lens refuses to overwrite it and asks the user to reopen the project.
 
-Project folders may later contain `traces/` and `attachments/`, but those
-directories are not part of the version 2 manifest contract.
+Completed, cancelled, and explicitly stopped runs are written as immutable
+`traces/<runId>.json` diagnostic artifacts. A repeated byte-identical write is
+allowed; different contents can never replace an existing run ID. These files
+are deliberately outside the Project v2 manifest contract, so adding or
+removing a trace does not dirty authored project state. See
+[the run trace format](RUN_TRACE_FORMAT.md).
+
+`attachments/` remains reserved for a later format and is not part of the
+version 2 manifest contract.

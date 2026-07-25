@@ -23,6 +23,7 @@ const KEYCHAIN_SERVICE: &str = "app.tracelens.desktop";
 struct ActiveRuns(Arc<Mutex<HashMap<String, CancellationToken>>>);
 
 const PROJECT_FILE_NAME: &str = "trace-lens.project.json";
+const TRACES_DIRECTORY_NAME: &str = "traces";
 
 #[derive(Default)]
 struct ProjectWorkspaces(Mutex<HashMap<String, ProjectWorkspaceState>>);
@@ -37,6 +38,7 @@ struct ProjectWorkspaceState {
 struct NativeProjectWorkspace {
     workspace_id: String,
     display_name: String,
+    display_path: String,
     contents: String,
 }
 
@@ -145,6 +147,64 @@ fn write_project_manifest(directory: &Path, contents: &str) -> Result<(), String
     Ok(())
 }
 
+fn trace_file_name(run_id: &str) -> Result<String, String> {
+    if !run_id.starts_with("run_")
+        || run_id.len() <= "run_".len()
+        || run_id.contains("..")
+        || !run_id
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || "._-".contains(character))
+    {
+        return Err(command_error("Run ID cannot be used as a trace filename."));
+    }
+    Ok(format!("{run_id}.json"))
+}
+
+fn write_run_trace(directory: &Path, run_id: &str, contents: &str) -> Result<(), String> {
+    let traces = directory.join(TRACES_DIRECTORY_NAME);
+    fs::create_dir_all(&traces)
+        .map_err(|error| format!("Could not create the traces directory: {error}"))?;
+    let file_name = trace_file_name(run_id)?;
+    let destination = traces.join(&file_name);
+    if destination.exists() {
+        let existing = fs::read_to_string(&destination)
+            .map_err(|error| format!("Could not read the existing run trace: {error}"))?;
+        if existing == contents {
+            return Ok(());
+        }
+        return Err(command_error(format!(
+            "{file_name} already exists with different contents. Run traces are immutable."
+        )));
+    }
+    let temporary = traces.join(format!(".trace-lens-run-{}.tmp", uuid::Uuid::new_v4()));
+    fs::write(&temporary, contents)
+        .map_err(|error| format!("Could not write the run trace: {error}"))?;
+    fs::rename(&temporary, &destination).map_err(|error| {
+        let _ = fs::remove_file(&temporary);
+        format!("Could not finalize the run trace: {error}")
+    })
+}
+
+fn write_exported_trace(path: &Path, contents: &str) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| command_error("The selected trace location has no parent directory."))?;
+    let temporary = parent.join(format!(".trace-lens-export-{}.tmp", uuid::Uuid::new_v4()));
+    fs::write(&temporary, contents)
+        .map_err(|error| format!("Could not save the run trace: {error}"))?;
+    if let Err(rename_error) = fs::rename(&temporary, path) {
+        fs::copy(&temporary, path).map_err(|copy_error| {
+            let _ = fs::remove_file(&temporary);
+            format!(
+                "Could not replace the selected trace file ({rename_error}); fallback failed: {copy_error}"
+            )
+        })?;
+        fs::remove_file(&temporary)
+            .map_err(|error| format!("Could not clean up the trace export: {error}"))?;
+    }
+    Ok(())
+}
+
 fn register_project_workspace(
     workspaces: &ProjectWorkspaces,
     directory: PathBuf,
@@ -156,6 +216,7 @@ fn register_project_workspace(
         .and_then(|name| name.to_str())
         .unwrap_or("Trace Lens project")
         .to_owned();
+    let display_path = directory.to_string_lossy().into_owned();
     workspaces
         .0
         .lock()
@@ -170,6 +231,7 @@ fn register_project_workspace(
     NativeProjectWorkspace {
         workspace_id,
         display_name,
+        display_path,
         contents,
     }
 }
@@ -244,6 +306,47 @@ fn save_project_workspace(
     write_project_manifest(&workspace.directory, &contents)?;
     workspace.last_contents = contents;
     Ok(())
+}
+
+#[tauri::command]
+fn save_run_trace(
+    workspaces: State<'_, ProjectWorkspaces>,
+    workspace_id: String,
+    run_id: String,
+    contents: String,
+) -> Result<(), String> {
+    let workspaces = workspaces
+        .0
+        .lock()
+        .map_err(|_| command_error("Project workspace state is unavailable."))?;
+    let workspace = workspaces
+        .get(&workspace_id)
+        .ok_or_else(|| command_error("This project folder is no longer open."))?;
+    write_run_trace(&workspace.directory, &run_id, &contents)
+}
+
+#[tauri::command]
+async fn export_run_trace(
+    app: AppHandle,
+    run_id: String,
+    contents: String,
+) -> Result<Option<String>, String> {
+    let file_name = trace_file_name(&run_id)?;
+    let Some(selected) = app
+        .dialog()
+        .file()
+        .add_filter("Trace Lens run trace", &["json"])
+        .set_file_name(file_name)
+        .set_title("Save run trace")
+        .blocking_save_file()
+    else {
+        return Ok(None);
+    };
+    let path = selected
+        .into_path()
+        .map_err(|error| format!("Could not use the selected trace location: {error}"))?;
+    write_exported_trace(&path, &contents)?;
+    Ok(Some(path.to_string_lossy().into_owned()))
 }
 
 fn validate_profile_id(profile_id: &str) -> Result<(), String> {
@@ -485,7 +588,7 @@ async fn start_provider_turn(
     request_id: String,
     credential: CredentialSelection,
     endpoint: String,
-    body: Value,
+    body: String,
 ) -> Result<ProviderTurnAccepted, String> {
     if !request_id.starts_with("provider-turn_") {
         return Err(command_error("Provider turn identifiers are invalid."));
@@ -545,7 +648,7 @@ async fn execute_provider_turn(
     active_runs: ActiveRuns,
     request_id: String,
     endpoint: String,
-    body: Value,
+    body: String,
     credential: ResolvedCredential,
     cancellation: CancellationToken,
 ) {
@@ -564,7 +667,7 @@ async fn execute_provider_turn(
 async fn stream_provider_turn(
     events: &ProviderEvents,
     endpoint: &str,
-    body: Value,
+    body: String,
     api_key: Option<&str>,
     cancellation: &CancellationToken,
 ) {
@@ -587,7 +690,10 @@ async fn stream_provider_turn(
             return;
         }
         response = {
-            let request = client.post(&url).json(&body);
+            let request = client
+                .post(&url)
+                .header(reqwest::header::CONTENT_TYPE, "application/json")
+                .body(body);
             let request = match api_key {
                 Some(api_key) => request.bearer_auth(api_key),
                 None => request,
@@ -656,6 +762,11 @@ async fn stream_provider_turn(
             events.emit(&RawStreamEvent::Lines { lines });
         }
     }
+    if !pending.is_empty() {
+        events.emit(&RawStreamEvent::Lines {
+            lines: vec![String::from_utf8_lossy(&pending).into_owned()],
+        });
+    }
     events.emit(&RawStreamEvent::End);
 }
 
@@ -680,17 +791,39 @@ fn drain_complete_lines(pending: &mut Vec<u8>) -> Vec<String> {
 }
 
 fn response_headers(headers: &reqwest::header::HeaderMap) -> Value {
-    let names = [
-        "content-type",
-        "openai-model",
-        "openai-processing-ms",
-        "x-request-id",
+    const SENSITIVE_HEADERS: [&str; 8] = [
+        "authorization",
+        "cookie",
+        "proxy-authorization",
+        "set-cookie",
+        "access-token",
+        "refresh-token",
+        "password",
+        "secret",
     ];
     let mut result = serde_json::Map::new();
-    for name in names {
-        if let Some(value) = headers.get(name).and_then(|value| value.to_str().ok()) {
-            result.insert(name.to_owned(), Value::String(value.to_owned()));
-        }
+    for (name, value) in headers {
+        let name = name.as_str().to_ascii_lowercase();
+        let normalized = name
+            .chars()
+            .filter(|character| character.is_ascii_alphanumeric())
+            .collect::<String>();
+        let sensitive = normalized.contains("apikey")
+            || SENSITIVE_HEADERS.iter().any(|candidate| {
+                candidate
+                    .chars()
+                    .filter(|character| character.is_ascii_alphanumeric())
+                    .eq(normalized.chars())
+            });
+        let value = if sensitive {
+            "••••••••".to_owned()
+        } else {
+            value
+                .to_str()
+                .map(str::to_owned)
+                .unwrap_or_else(|_| "<non-UTF-8>".to_owned())
+        };
+        result.insert(name, Value::String(value));
     }
     Value::Object(result)
 }
@@ -743,6 +876,8 @@ pub fn run() {
             open_project_workspace,
             create_project_workspace,
             save_project_workspace,
+            save_run_trace,
+            export_run_trace,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Trace Lens");
@@ -784,6 +919,60 @@ mod tests {
         assert_eq!(
             fs::read_to_string(project_manifest_path(&directory.0)).expect("read replaced project"),
             "{\"schemaVersion\":2,\"name\":\"Updated\"}\n"
+        );
+    }
+
+    #[test]
+    fn writes_run_traces_once_and_rejects_different_replacements() {
+        let directory = TemporaryProjectDirectory::new();
+        write_run_trace(&directory.0, "run_example-1", "{\"schemaVersion\":1}\n")
+            .expect("write trace");
+        let path = directory
+            .0
+            .join(TRACES_DIRECTORY_NAME)
+            .join("run_example-1.json");
+        assert_eq!(
+            fs::read_to_string(path).expect("read written trace"),
+            "{\"schemaVersion\":1}\n"
+        );
+        write_run_trace(&directory.0, "run_example-1", "{\"schemaVersion\":1}\n")
+            .expect("idempotent trace write");
+        assert!(write_run_trace(
+            &directory.0,
+            "run_example-1",
+            "{\"schemaVersion\":1,\"changed\":true}\n"
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn rejects_run_ids_that_could_escape_the_traces_directory() {
+        assert!(trace_file_name("run_../../secret").is_err());
+        assert!(trace_file_name("other_example").is_err());
+    }
+
+    #[test]
+    fn exports_a_trace_to_an_explicit_file() {
+        let directory = TemporaryProjectDirectory::new();
+        let path = directory.0.join("saved-trace.json");
+        write_exported_trace(&path, "{\"schemaVersion\":1}\n").expect("export trace");
+        assert_eq!(
+            fs::read_to_string(path).expect("read exported trace"),
+            "{\"schemaVersion\":1}\n"
+        );
+    }
+
+    #[test]
+    fn captures_response_headers_and_redacts_sensitive_values() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert("x-request-id", "request-1".parse().expect("header"));
+        headers.insert("set-cookie", "session=secret".parse().expect("header"));
+        assert_eq!(
+            response_headers(&headers),
+            json!({
+                "set-cookie": "••••••••",
+                "x-request-id": "request-1",
+            })
         );
     }
 

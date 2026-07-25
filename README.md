@@ -34,6 +34,14 @@ for external file changes before saving instead of silently overwriting them.
 See [the project format](docs/PROJECT_FORMAT.md) for ownership and compatibility
 details.
 
+Terminal runs from an open project are saved automatically as immutable
+`traces/<runId>.json` files. Ad hoc terminal runs can be exported from the
+Project menu, and saved traces can be imported there for inspection. Trace
+artifacts preserve the redacted serialized request and raw SSE lines separately
+from normalized run events. The response pane shows the saved path or clearly
+marks an ad hoc trace as unsaved with a **Save trace…** action. See
+[the run trace format](docs/RUN_TRACE_FORMAT.md).
+
 ## Tool registry
 
 Reusable, secret-free tool definitions live in a versioned local registry.

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type ChangeEvent,
   useEffect,
   useMemo,
   useRef,
@@ -18,12 +19,18 @@ import {
 import {
   createEntityId,
   createResolvedRunInput,
+  createRunTrace,
   RunCoordinator,
 } from "../packages/core/src/run-kernel";
+import {
+  parseRunTraceJson,
+  runStateFromTrace,
+} from "../packages/core/src/run-trace";
 import type {
   ProviderExecution,
   RunEvent,
   RunState,
+  RunTrace,
   RunTokenUsage,
   ToolDefinition,
   ToolResult,
@@ -45,8 +52,12 @@ import {
 import type { DiagnosticCapture } from "./diagnostics.client";
 import { preserveRunFailure } from "./run-failure.client";
 import {
+  exportRunTraceFile,
   projectFolderAccessAvailable,
+  runTraceWorkspaceLocation,
+  saveRunTraceWorkspace,
 } from "./project-workspace.client";
+import type { ProjectWorkspaceHandle } from "./project-workspace.client";
 import { emptyToolRegistry } from "../packages/core/src/tool-registry";
 import type {
   ToolRegistryV1,
@@ -65,6 +76,7 @@ import { ConnectionDrawer } from "./connection-drawer.client";
 import { Topbar } from "./topbar.client";
 import { ToolsPane } from "./tools-pane.client";
 import { ResponseOutput } from "./response-output.client";
+import type { TraceStorageStatus } from "./response-output.client";
 import type { ToolResultDraft } from "./tool-call-list.client";
 import {
   PaneTabs,
@@ -223,6 +235,7 @@ function HomeContent() {
   });
   const {
     projectFile,
+    projectWorkspace,
     projectDirty,
     projectError,
     projectErrorKind,
@@ -264,13 +277,59 @@ function HomeContent() {
   const coordinatorRef = useRef<RunCoordinator | null>(null);
   const runStateRef = useRef<RunState | null>(null);
   const requestGenerationRef = useRef(0);
+  const runTraceWorkspaceRef = useRef<ProjectWorkspaceHandle | null>(null);
+  const persistedTraceRunIdsRef = useRef(new Set<string>());
   const diagnosticCaptureRef = useRef<DiagnosticCapture | null>(null);
   const outputScrollRef = useRef<HTMLDivElement | null>(null);
   const [hasDiagnosticCapture, setHasDiagnosticCapture] = useState(false);
+  const [traceStorage, setTraceStorage] =
+    useState<TraceStorageStatus | null>(null);
 
   function replaceRunState(next: RunState | null): void {
     runStateRef.current = next;
     setRunState(next);
+    if (!next) {
+      setTraceStorage(null);
+      return;
+    }
+    if (
+      !["completed", "cancelled", "failed"].includes(next.status.kind)
+    ) {
+      return;
+    }
+    const workspace = runTraceWorkspaceRef.current;
+    if (!workspace) {
+      setTraceStorage({ kind: "unsaved" });
+      return;
+    }
+    if (persistedTraceRunIdsRef.current.has(next.runId)) return;
+    let trace: RunTrace;
+    try {
+      trace = createRunTrace(next);
+    } catch {
+      return;
+    }
+    const location = runTraceWorkspaceLocation(workspace, trace);
+    setTraceStorage({ kind: "saving", location });
+    persistedTraceRunIdsRef.current.add(next.runId);
+    void saveRunTraceWorkspace(workspace, trace)
+      .then(() => {
+        if (runStateRef.current?.runId === next.runId) {
+          setTraceStorage({ kind: "saved", location });
+        }
+      })
+      .catch((error) => {
+        persistedTraceRunIdsRef.current.delete(next.runId);
+        if (runStateRef.current?.runId === next.runId) {
+          setTraceStorage({
+            kind: "error",
+            message:
+              error instanceof Error
+                ? error.message
+                : "The project trace could not be saved.",
+          });
+        }
+      });
   }
 
   useEffect(() => {
@@ -553,6 +612,8 @@ function HomeContent() {
     const input = createResolvedRunInput(request, selectedTools);
     input.target.profileId = createEntityId("profile", activeProfile.id);
     const coordinator = new RunCoordinator(input);
+    runTraceWorkspaceRef.current = projectWorkspace;
+    setTraceStorage(null);
     coordinatorRef.current = coordinator;
     const command = coordinator.start();
     replaceRunState(coordinator.state);
@@ -791,6 +852,83 @@ function HomeContent() {
     URL.revokeObjectURL(url);
   }
 
+  function runTraceForState(state: RunState | null): RunTrace | undefined {
+    if (
+      !state ||
+      !["completed", "cancelled", "failed"].includes(state.status.kind)
+    ) {
+      return undefined;
+    }
+    try {
+      return createRunTrace(state);
+    } catch {
+      return undefined;
+    }
+  }
+
+  async function exportRunTrace(): Promise<void> {
+    const trace = runTraceForState(runStateRef.current);
+    if (!trace) return;
+    const previous = traceStorage;
+    const preserveProjectLocation =
+      previous?.kind === "saved" && Boolean(runTraceWorkspaceRef.current);
+    setTraceStorage({ kind: "saving" });
+    try {
+      const result = await exportRunTraceFile(trace);
+      if (result.kind === "saved") {
+        setTraceStorage(
+          preserveProjectLocation
+            ? previous
+            : { kind: "saved", location: result.location },
+        );
+      } else if (result.kind === "downloaded") {
+        setTraceStorage(
+          preserveProjectLocation
+            ? previous
+            : {
+                kind: "downloaded",
+                fileName: result.fileName,
+              },
+        );
+      } else {
+        setTraceStorage(previous ?? { kind: "unsaved" });
+      }
+    } catch (error) {
+      setTraceStorage({
+        kind: "error",
+        message:
+          error instanceof Error ? error.message : "The trace could not be saved.",
+      });
+    }
+  }
+
+  async function importRunTrace(
+    event: ChangeEvent<HTMLInputElement>,
+  ): Promise<void> {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const trace = parseRunTraceJson(await file.text());
+      coordinatorRef.current = null;
+      runTraceWorkspaceRef.current = null;
+      diagnosticCaptureRef.current = null;
+      setHasDiagnosticCapture(false);
+      setToolResultDrafts({});
+      setWorkbenchView("response");
+      setTraceOpen(true);
+      replaceRunState(runStateFromTrace(trace));
+      setTraceStorage({ kind: "loaded", fileName: file.name });
+      project.setError(undefined, { clearKind: true });
+    } catch (error) {
+      project.setError(
+        error instanceof Error ? error.message : "Could not import the run trace.",
+        { clearKind: true },
+      );
+    } finally {
+      event.target.value = "";
+    }
+  }
+
   return (
     <main
       onKeyDown={(event) => {
@@ -827,6 +965,7 @@ function HomeContent() {
         projectDirty={projectDirty}
         folderAccessAvailable={folderAccessAvailable}
         hasDiagnosticCapture={hasDiagnosticCapture}
+        hasRunTrace={Boolean(runTraceForState(runState))}
         isRequestActive={isRequestActive}
         awaitingToolResults={runState?.status.kind === "awaiting_tool_results"}
         retryableFailure={
@@ -843,6 +982,8 @@ function HomeContent() {
         onExportProject={project.exportProject}
         onOpenToolLibrary={() => setToolRegistryOpen(true)}
         onDownloadDiagnostics={downloadDiagnostics}
+        onDownloadRunTrace={() => void exportRunTrace()}
+        onImportRunTrace={(event) => void importRunTrace(event)}
         onStop={stop}
         onRun={() => void run()}
         onContinue={() => void continueRun()}
@@ -1097,6 +1238,7 @@ function HomeContent() {
             outputScrollRef={outputScrollRef}
             completedToolCalls={completedToolCalls}
             toolResultDrafts={toolResultDrafts}
+            traceStorage={traceStorage}
             onMarkdownPreviewChange={setMarkdownPreview}
             onOutputScroll={updateOutputFollowState}
             onJumpToLatest={jumpToLatestOutput}
@@ -1108,6 +1250,7 @@ function HomeContent() {
             }
             onContinue={() => void continueRun()}
             onRetry={() => void retryRun()}
+            onSaveTrace={() => void exportRunTrace()}
           />
 
           <ResizableTracePanel

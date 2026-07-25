@@ -1326,6 +1326,81 @@ textarea:focus {
   background: var(--danger);
 }
 
+.trace-storage {
+  min-height: 44px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-default);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: var(--surface-inset);
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.trace-storage-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--text-faint);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.trace-storage-copy {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.trace-storage-copy strong {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+}
+
+.trace-storage-copy code,
+.trace-storage-copy span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trace-storage-copy code {
+  color: var(--text-muted);
+  font-size: 9px;
+}
+
+.trace-storage-saved .trace-storage-icon,
+.trace-storage-downloaded .trace-storage-icon,
+.trace-storage-loaded .trace-storage-icon {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.trace-storage-error {
+  border-bottom-color: var(--danger-border);
+  background: var(--danger-surface);
+}
+
+.trace-storage-error .trace-storage-icon {
+  border-color: var(--danger-border);
+  color: var(--danger);
+}
+
+.trace-storage-action {
+  margin-left: auto;
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  font-size: 9px;
+}
+
 @keyframes pulse {
   50% {
     opacity: 0.35;

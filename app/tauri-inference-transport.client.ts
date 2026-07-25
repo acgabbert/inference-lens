@@ -15,9 +15,9 @@ import {
   normalizeOpenAICompatibleStream,
   OpenAICompatibleStreamProtocolError,
   parseModelsResponse,
+  redactedProviderUrl,
 } from "../packages/core/src/openai-compatible.ts";
 import type {
-  JsonObject,
   ProviderExecution,
   ProviderTransportEvent,
 } from "../packages/core/src/run-kernel";
@@ -166,7 +166,7 @@ function* terminalTransportEvent(
 async function* toProviderTransportEvents(
   execution: ProviderExecution,
   url: string,
-  body: JsonObject,
+  bodyText: string,
   credential: NativeCredentialSelection,
   queue: AsyncEventQueue<RawStreamEvent>,
   signal: AbortSignal | undefined,
@@ -177,13 +177,13 @@ async function* toProviderTransportEvents(
     yield {
       type: "request",
       request: {
-        url,
+        url: redactedProviderUrl(url),
         method: "POST",
         headers: {
           authorization: credential.kind === "none" ? "(not set)" : "Bearer ••••••••",
           "content-type": "application/json",
         },
-        body,
+        body: bodyText,
       },
     };
 
@@ -253,6 +253,7 @@ export class TauriInferenceTransport implements ProviderTurnTransport {
   ): Promise<ProviderTurnStream> {
     const credential = nativeCredential(request.credential);
     const { url, body } = buildChatCompletionsRequest(request.execution);
+    const bodyText = JSON.stringify(body);
     const requestId = `provider-turn_${crypto.randomUUID()}`;
     const queue = new AsyncEventQueue<RawStreamEvent>();
     const unlisten = await listen<RawStreamEvent>(
@@ -271,7 +272,7 @@ export class TauriInferenceTransport implements ProviderTurnTransport {
         requestId,
         credential,
         endpoint: request.execution.input.target.endpoint,
-        body,
+        body: bodyText,
       });
       return {
         status: accepted.status,
@@ -279,7 +280,7 @@ export class TauriInferenceTransport implements ProviderTurnTransport {
         events: toProviderTransportEvents(
           request.execution,
           url,
-          body,
+          bodyText,
           credential,
           queue,
           signal,

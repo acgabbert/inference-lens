@@ -6,6 +6,8 @@ import {
   normalizeOpenAICompatibleStream,
   OpenAICompatibleStreamProtocolError,
   parseModelsResponse,
+  redactedProviderHeaders,
+  redactedProviderUrl,
   sseLines,
 } from "../packages/core/src/openai-compatible.ts";
 import { OPENAI_COMPATIBLE_CAPABILITIES } from "../packages/core/src/types.ts";
@@ -136,7 +138,7 @@ test("normalizeOpenAICompatibleStream drives the happy path from plain lines", a
   );
   assert.deepEqual(
     events.map(({ type }) => type),
-    ["frame", "text_delta", "frame", "usage", "completed"],
+    ["frame", "text_delta", "frame", "usage", "completed", "frame"],
   );
 });
 
@@ -152,7 +154,28 @@ test("normalizeOpenAICompatibleStream treats [DONE] as completion when no finish
   assert.deepEqual(completion, {
     type: "completed",
     finishReason: { normalized: "other" },
+    source: {
+      exchangeId: providerExecution.exchangeId,
+      frameIndex: 1,
+    },
   });
+});
+
+test("normalizeOpenAICompatibleStream preserves malformed and terminal frames verbatim", async () => {
+  async function* lines() {
+    yield "data: {not-json}";
+    yield "data: [DONE]";
+  }
+  const events = await collect(
+    normalizeOpenAICompatibleStream(providerExecution, lines()),
+  );
+  assert.deepEqual(
+    events.filter((event) => event.type === "frame").map((event) => event.frame),
+    [
+      { index: 0, raw: "data: {not-json}" },
+      { index: 1, raw: "data: [DONE]" },
+    ],
+  );
 });
 
 test("normalizeOpenAICompatibleStream throws when the lines end without a terminal signal", async () => {
@@ -191,4 +214,32 @@ test("parseModelsResponse dedupes and sorts model IDs with localeCompare", () =>
 test("parseModelsResponse throws on an invalid shape", () => {
   assert.throws(() => parseModelsResponse({}), /invalid \/models response/);
   assert.throws(() => parseModelsResponse(null), /invalid \/models response/);
+});
+
+test("captures all visible provider headers while redacting sensitive values", () => {
+  assert.deepEqual(
+    redactedProviderHeaders(
+      new Headers({
+        "x-request-id": "request-1",
+        "set-cookie": "session=secret",
+        "x-api-key": "secret",
+        "x-vendor-api-key": "also-secret",
+      }),
+    ),
+    {
+      "set-cookie": "••••••••",
+      "x-api-key": "••••••••",
+      "x-vendor-api-key": "••••••••",
+      "x-request-id": "request-1",
+    },
+  );
+});
+
+test("redacts credentials embedded in provider URLs", () => {
+  assert.equal(
+    redactedProviderUrl(
+      "https://user:password@example.com/v1/chat/completions?api_key=secret&region=us",
+    ),
+    "https://%E2%80%A2%E2%80%A2%E2%80%A2%E2%80%A2%E2%80%A2%E2%80%A2%E2%80%A2%E2%80%A2:%E2%80%A2%E2%80%A2%E2%80%A2%E2%80%A2%E2%80%A2%E2%80%A2%E2%80%A2%E2%80%A2@example.com/v1/chat/completions?api_key=%E2%80%A2%E2%80%A2%E2%80%A2%E2%80%A2%E2%80%A2%E2%80%A2%E2%80%A2%E2%80%A2&region=us",
+  );
 });

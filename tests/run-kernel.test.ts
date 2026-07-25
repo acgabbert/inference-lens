@@ -112,7 +112,7 @@ test("reduces a complete text run into an immutable trace", () => {
           authorization: "Bearer ••••••••",
           "content-type": "application/json",
         },
-        body: { model: "example-model" },
+        body: '{"model":"example-model"}',
       },
     }),
     nextEvent({
@@ -130,7 +130,7 @@ test("reduces a complete text run into an immutable trace", () => {
       turnId,
       attempt: 1,
       exchangeId,
-      frame: { index: 0, data: { choices: [] } },
+      frame: { index: 0, raw: "data: {\"choices\":[]}" },
     }),
     nextEvent({
       type: "assistant.text_delta",
@@ -272,14 +272,7 @@ test("records trailing exchange frames after assistant completion", () => {
       exchangeId,
       frame: {
         index: 0,
-        data: {
-          choices: [],
-          usage: {
-            prompt_tokens: 4,
-            completion_tokens: 2,
-            total_tokens: 6,
-          },
-        },
+        raw: 'data: {"choices":[],"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6}}',
       },
     }),
     nextEvent({
@@ -711,17 +704,20 @@ test("stamps provider events with ordered run metadata", () => {
 
 test("emits provider events with raw frames and normalized deltas", async () => {
   const originalFetch = globalThis.fetch;
+  let sentBody = "";
   const sse = [
     'data: {"choices":[{"delta":{"content":"Hello"},"finish_reason":null}]}',
     'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":2,"completion_tokens":1,"total_tokens":3}}',
     "data: [DONE]",
     "",
   ].join("\n");
-  globalThis.fetch = async () =>
-    new Response(sse, {
+  globalThis.fetch = async (_input, init) => {
+    sentBody = String(init?.body);
+    return new Response(sse, {
       status: 200,
       headers: { "content-type": "text/event-stream" },
     });
+  };
   try {
     const providerEvents = [];
     for await (const event of streamOpenAICompatibleProvider(
@@ -740,8 +736,14 @@ test("emits provider events with raw frames and normalized deltas", async () => 
         "frame",
         "usage",
         "completed",
+        "frame",
       ],
     );
+    const request = providerEvents.find(({ type }) => type === "request");
+    assert.equal(request?.type, "request");
+    if (request?.type === "request") {
+      assert.equal(request.request.body, sentBody);
+    }
 
   } finally {
     globalThis.fetch = originalFetch;
@@ -866,6 +868,7 @@ test("normalizes streamed provider reasoning separately from answer text", async
         "frame",
         "text_delta",
         "completed",
+        "frame",
       ],
     );
     const reasoning = events.find(({ type }) => type === "reasoning_delta");
@@ -900,12 +903,23 @@ test("treats [DONE] as a completion when no finish reason was sent", async () =>
     }
     assert.deepEqual(
       providerEvents.map(({ type }) => type),
-      ["request", "response_started", "frame", "text_delta", "completed"],
+      [
+        "request",
+        "response_started",
+        "frame",
+        "text_delta",
+        "frame",
+        "completed",
+      ],
     );
     const completion = providerEvents.at(-1);
     assert.deepEqual(completion, {
       type: "completed",
       finishReason: { normalized: "other" },
+      source: {
+        exchangeId: providerExecution.exchangeId,
+        frameIndex: 1,
+      },
     });
   } finally {
     globalThis.fetch = originalFetch;
