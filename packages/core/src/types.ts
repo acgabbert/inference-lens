@@ -104,6 +104,15 @@ export interface InferenceRequest {
 }
 
 /**
+ * The editor and run kernel preserve message identity and tool-call links.
+ * `InferenceRequest` remains the deliberately flat compatibility shape used
+ * by older callers and diagnostic exports.
+ */
+export interface RichInferenceRequest extends Omit<InferenceRequest, "messages"> {
+  messages: import("./run-kernel/types.ts").ConversationMessage[];
+}
+
+/**
  * The short-lived input passed across the application execution boundary.
  * It must never be saved in project files, run traces, or profile metadata.
  */

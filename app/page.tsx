@@ -9,9 +9,8 @@ import {
   useSyncExternalStore,
 } from "react";
 import type {
-  InferenceMessage,
-  InferenceRequest,
   ProviderCapabilities,
+  RichInferenceRequest,
 } from "../packages/core/src/types";
 import {
   createProjectFile,
@@ -32,6 +31,7 @@ import type {
   RunState,
   RunTrace,
   RunTokenUsage,
+  ConversationMessage,
   ToolDefinition,
   ToolResult,
 } from "../packages/core/src/run-kernel";
@@ -130,16 +130,18 @@ const defaultUserPrompts = [
 
 function createInitialMessages(
   userPrompt: string = defaultUserPrompts[0],
-): InferenceMessage[] {
+): ConversationMessage[] {
   return [
-  {
-    role: "system",
-    content: "You are a concise, thoughtful assistant.",
-  },
-  {
-    role: "user",
-    content: userPrompt,
-  },
+    {
+      id: createEntityId("message", crypto.randomUUID()),
+      role: "system",
+      content: [{ type: "text", text: "You are a concise, thoughtful assistant." }],
+    },
+    {
+      id: createEntityId("message", crypto.randomUUID()),
+      role: "user",
+      content: [{ type: "text", text: userPrompt }],
+    },
   ];
 }
 
@@ -440,7 +442,7 @@ function HomeContent() {
     setOutputFollowing(true);
   }
 
-  function currentRequest(): InferenceRequest {
+  function currentRequest(): RichInferenceRequest {
     return {
       provider: "openai-compatible",
       endpoint: activeProfile.endpoint,
@@ -1166,15 +1168,24 @@ function HomeContent() {
             </div>
           </section>
           <div className="message-list">
-            {messages.map((message, index) => (
-              <article className="message-card" key={index}>
+            {messages.map((message, index) => {
+              const roleIsStructural =
+                message.role === "tool" ||
+                (message.role === "assistant" && Boolean(message.toolCalls?.length));
+              const text = message.content
+                .filter((part) => part.type === "text")
+                .map((part) => part.text)
+                .join("");
+              return (
+              <article className="message-card" key={message.id}>
                 <div className="message-toolbar">
                   <select
                     aria-label={`Message ${index + 1} role`}
                     value={message.role}
+                    disabled={roleIsStructural}
                     onChange={(event) =>
-                      updateMessage(index, {
-                        role: event.target.value as InferenceMessage["role"],
+                      updateMessage(message.id, {
+                        role: event.target.value as ConversationMessage["role"],
                       })
                     }
                   >
@@ -1186,22 +1197,44 @@ function HomeContent() {
                   <button
                     aria-label={`Remove message ${index + 1}`}
                     className="remove-button"
-                    disabled={messages.length === 1}
-                    onClick={() => removeMessage(index)}
+                    onClick={() => removeMessage(message.id)}
                   >
                     Remove
                   </button>
                 </div>
                 <textarea
                   aria-label={`Message ${index + 1} content`}
-                  value={message.content}
+                  value={text}
                   onChange={(event) =>
-                    updateMessage(index, { content: event.target.value })
+                    updateMessage(message.id, {
+                      content: [{ type: "text", text: event.target.value }],
+                    })
                   }
                   rows={message.role === "system" ? 4 : 7}
                 />
+                {message.role === "tool" && (
+                  <small className="message-metadata">
+                    Tool result for {message.name ?? "unnamed tool"} ({message.toolCallId})
+                  </small>
+                )}
+                {message.role === "assistant" && message.toolCalls?.map((call) => (
+                  <div className="tool-call-card message-tool-call" key={call.id}>
+                    <div className="tool-call-heading">
+                      <div>
+                        <span className="eyebrow">Tool call</span>
+                        <h3>{call.name}</h3>
+                      </div>
+                      <span className="provider-pill">Read-only</span>
+                    </div>
+                    <label>
+                      Arguments
+                      <pre>{call.arguments.text || "{}"}</pre>
+                    </label>
+                  </div>
+                ))}
               </article>
-            ))}
+              );
+            })}
           </div>
             </>
           ) : (

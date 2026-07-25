@@ -10,6 +10,7 @@ import {
 import { OPENAI_COMPATIBLE_CAPABILITIES } from "../packages/core/src/types.ts";
 import {
   createEntityId,
+  createSingleTurnRunExecution,
   createRunEventFactory,
   createRunState,
   createRunTrace,
@@ -73,6 +74,45 @@ const resolvedInput: ResolvedRunInput = {
   ...turnInput,
   resolvedAt: "2026-07-23T12:00:00.000Z",
 };
+
+test("preserves rich draft message and tool-call IDs in a new run", () => {
+  const messages = [
+    {
+      id: createEntityId("message", "assistant"),
+      role: "assistant" as const,
+      content: [{ type: "text" as const, text: "Calling lookup." }],
+      toolCalls: [
+        {
+          id: createEntityId("tool-call", "lookup"),
+          name: "lookup",
+          arguments: { text: "{}" },
+        },
+      ],
+    },
+    {
+      id: createEntityId("message", "tool"),
+      role: "tool" as const,
+      toolCallId: createEntityId("tool-call", "lookup"),
+      name: "lookup",
+      content: [{ type: "text" as const, text: "result" }],
+    },
+  ];
+  const execution = createSingleTurnRunExecution(
+    {
+      provider: "openai-compatible",
+      endpoint: "https://api.example.com/v1",
+      model: "example-model",
+      messages,
+    },
+    "rich",
+  );
+
+  assert.deepEqual(execution.input.messages, messages);
+  assert.equal(execution.turnInput.messages[1].role, "tool");
+  if (execution.turnInput.messages[1].role === "tool") {
+    assert.equal(execution.turnInput.messages[1].toolCallId, "tool-call_lookup");
+  }
+});
 
 function eventFactory(id: RunId) {
   let sequence = 0;

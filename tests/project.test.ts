@@ -47,7 +47,7 @@ test("creates a strict, portable Project v2 document", () => {
       endpoint: "https://api.example.com/v1",
       capabilityOverrides: request.capabilities,
     },
-    messages: request.messages,
+    messages: project.conversationRevisions[0].messages,
     model: "example-model",
     temperature: 0.4,
     tools: [],
@@ -100,21 +100,81 @@ test("updates the active draft without dropping project-owned collections", () =
   const updated = updateProjectDraft(
     project,
     {
-      messages: [{ role: "user", content: "Updated" }],
+      messages: [
+        {
+          id: "message_updated",
+          role: "user",
+          content: [{ type: "text", text: "Updated" }],
+        },
+      ],
       model: "new-model",
       temperature: 0,
       tools: project.tools,
       toolMocks: project.toolMocks,
       enabledToolIds: project.defaults.enabledToolIds,
     },
-    "update",
   );
 
   assert.equal(updated.tools[0]?.id, "tool_lookup");
   assert.equal(updated.defaults.target.model, "new-model");
   assert.equal(updated.defaults.options.temperature, 0);
   assert.deepEqual(projectDraft(updated).messages, [
-    { role: "user", content: "Updated" },
+    {
+      id: "message_updated",
+      role: "user",
+      content: [{ type: "text", text: "Updated" }],
+    },
+  ]);
+});
+
+test("updates drafts by ID without misattributing tool calls after reordering", () => {
+  const project = createProjectFile({
+    name: "Example",
+    request,
+    idSuffix: "rich",
+    createdAt: "2026-07-24T12:00:00.000Z",
+  });
+  const [system, user] = project.conversationRevisions[0].messages;
+  const assistant = {
+    id: "message_assistant" as const,
+    role: "assistant" as const,
+    content: [{ type: "text" as const, text: "Calling lookup." }],
+    toolCalls: [
+      {
+        id: "tool-call_lookup" as const,
+        name: "lookup",
+        arguments: { text: '{"query":"hello"}' },
+      },
+    ],
+  };
+  const tool = {
+    id: "message_tool" as const,
+    role: "tool" as const,
+    toolCallId: "tool-call_lookup" as const,
+    name: "lookup",
+    content: [{ type: "text" as const, text: "result" }],
+  };
+  const inserted = {
+    id: "message_inserted" as const,
+    role: "user" as const,
+    content: [{ type: "text" as const, text: "Clarification" }],
+  };
+  project.conversationRevisions[0].messages = [system, user, assistant, tool];
+
+  const updated = updateProjectDraft(project, {
+    messages: [system, inserted, tool, assistant],
+    model: project.defaults.target.model,
+    temperature: project.defaults.options.temperature,
+    tools: project.tools,
+    toolMocks: project.toolMocks,
+    enabledToolIds: project.defaults.enabledToolIds,
+  });
+
+  assert.deepEqual(updated.conversationRevisions[0].messages, [
+    system,
+    inserted,
+    tool,
+    assistant,
   ]);
 });
 

@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import type { InferenceMessage } from "../packages/core/src/types.ts";
 import type { ToolMock } from "../packages/core/src/project.ts";
 import { createEntityId } from "../packages/core/src/run-kernel/types.ts";
 import type {
   JsonObject,
+  ConversationMessage,
+  MessageContentPart,
   ToolDefinition,
   ToolId,
 } from "../packages/core/src/run-kernel/types.ts";
@@ -13,7 +14,7 @@ import { snapshotRegistryTool } from "../packages/core/src/tool-registry.ts";
 import type { RegistryTool } from "../packages/core/src/tool-registry.ts";
 
 export interface RequestDraftSnapshot {
-  messages: InferenceMessage[];
+  messages: ConversationMessage[];
   tools: ToolDefinition[];
   toolMocks: ToolMock[];
   enabledToolIds: ToolId[];
@@ -23,10 +24,13 @@ export interface RequestDraftHandle extends RequestDraftSnapshot {
   requestTools: ToolDefinition[];
   serializedTools(): ToolDefinition[];
   resolvedTools(): ToolDefinition[];
-  resetMessages(messages: InferenceMessage[]): void;
+  resetMessages(messages: ConversationMessage[]): void;
   addMessage(): void;
-  removeMessage(index: number): void;
-  updateMessage(index: number, patch: Partial<InferenceMessage>): void;
+  removeMessage(id: ConversationMessage["id"]): void;
+  updateMessage(
+    id: ConversationMessage["id"],
+    patch: { content?: MessageContentPart[]; role?: ConversationMessage["role"] },
+  ): void;
   addTool(): void;
   updateTool(id: ToolId, patch: Partial<ToolDefinition>): void;
   removeTool(id: ToolId): void;
@@ -40,18 +44,54 @@ export interface RequestDraftHandle extends RequestDraftSnapshot {
   replaceProjectDraft(snapshot: RequestDraftSnapshot): void;
 }
 
+/** Removes a message without leaving a tool-result/call link dangling. */
+export function removeDraftMessage(
+  messages: ConversationMessage[],
+  id: ConversationMessage["id"],
+): ConversationMessage[] {
+  const removed = messages.find((message) => message.id === id);
+  if (!removed) return messages;
+  if (removed.role === "assistant" && removed.toolCalls?.length) {
+    const toolCallIds = new Set(removed.toolCalls.map((call) => call.id));
+    return messages.filter(
+      (message) =>
+        message.id !== id &&
+        !(message.role === "tool" && toolCallIds.has(message.toolCallId)),
+    );
+  }
+  if (removed.role === "tool") {
+    return messages
+      .filter((message) => message.id !== id)
+      .map((message) => {
+        if (
+          message.role !== "assistant" ||
+          !message.toolCalls?.some((call) => call.id === removed.toolCallId)
+        ) {
+          return message;
+        }
+        const toolCalls = message.toolCalls.filter(
+          (call) => call.id !== removed.toolCallId,
+        );
+        return toolCalls.length
+          ? { ...message, toolCalls }
+          : { id: message.id, role: "assistant", content: message.content };
+      });
+  }
+  return messages.filter((message) => message.id !== id);
+}
+
 /**
  * Owns the editable request and project-tool draft. Project persistence and
  * error presentation remain with the caller; mutations notify it only when
  * they change data that belongs in a project document.
  */
 export function useRequestDraft(input: {
-  initialMessages: InferenceMessage[];
+  initialMessages: ConversationMessage[];
   onProjectDirty(): void;
   onProjectError(message: string | undefined, options?: { clearKind?: boolean }): void;
 }): RequestDraftHandle {
   const { initialMessages, onProjectDirty, onProjectError } = input;
-  const [messages, setMessages] = useState<InferenceMessage[]>(initialMessages);
+  const [messages, setMessages] = useState<ConversationMessage[]>(initialMessages);
   const [tools, setTools] = useState<ToolDefinition[]>([]);
   const [toolMocks, setToolMocks] = useState<ToolMock[]>([]);
   const [enabledToolIds, setEnabledToolIds] = useState<ToolId[]>([]);
@@ -70,24 +110,43 @@ export function useRequestDraft(input: {
   }
 
   function addMessage(): void {
-    setMessages((current) => [...current, { role: "user", content: "" }]);
+    setMessages((current) => [
+      ...current,
+      {
+        id: createEntityId("message", crypto.randomUUID()),
+        role: "user",
+        content: [{ type: "text", text: "" }],
+      },
+    ]);
     onProjectDirty();
   }
 
-  const resetMessages = useCallback((nextMessages: InferenceMessage[]): void => {
+  const resetMessages = useCallback((nextMessages: ConversationMessage[]): void => {
     setMessages(nextMessages);
   }, []);
 
-  function removeMessage(index: number): void {
-    setMessages((current) => current.filter((_, position) => position !== index));
+  function removeMessage(id: ConversationMessage["id"]): void {
+    setMessages((current) => removeDraftMessage(current, id));
     onProjectDirty();
   }
 
-  function updateMessage(index: number, patch: Partial<InferenceMessage>): void {
+  function updateMessage(
+    id: ConversationMessage["id"],
+    patch: { content?: MessageContentPart[]; role?: ConversationMessage["role"] },
+  ): void {
     setMessages((current) =>
-      current.map((message, position) =>
-        position === index ? { ...message, ...patch } : message,
-      ),
+      current.map((message) => {
+        if (message.id !== id) return message;
+        const content = patch.content ?? message.content;
+        if (message.role === "tool" || (message.role === "assistant" && message.toolCalls?.length)) {
+          return { ...message, content };
+        }
+        return {
+          id: message.id,
+          role: patch.role ?? message.role,
+          content,
+        } as ConversationMessage;
+      }),
     );
     onProjectDirty();
   }

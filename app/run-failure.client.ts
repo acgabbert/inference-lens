@@ -1,6 +1,6 @@
 "use client";
 
-import type { InferenceRequest } from "../packages/core/src/types.ts";
+import type { InferenceRequest, RichInferenceRequest } from "../packages/core/src/types.ts";
 import {
   createEntityId,
   createSingleTurnRunExecution,
@@ -22,7 +22,7 @@ function isTerminal(state: RunState): boolean {
 }
 
 function newFailedRunState(
-  request: InferenceRequest,
+  request: InferenceRequest | RichInferenceRequest,
   message: string,
 ): RunState {
   const execution = createSingleTurnRunExecution(request);

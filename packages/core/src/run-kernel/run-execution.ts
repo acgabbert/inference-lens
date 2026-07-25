@@ -11,7 +11,7 @@ import { createEntityId } from "./types.ts";
 import {
   resolveProviderCapabilities,
 } from "../types.ts";
-import type { InferenceRequest } from "../types.ts";
+import type { InferenceRequest, RichInferenceRequest } from "../types.ts";
 
 export interface SingleTurnRunExecution {
   runId: RunId;
@@ -23,7 +23,7 @@ export interface SingleTurnRunExecution {
 }
 
 export function createSingleTurnRunExecution(
-  request: InferenceRequest,
+  request: InferenceRequest | RichInferenceRequest,
   suffix: string = crypto.randomUUID(),
   resolvedAt: string = new Date().toISOString(),
   tools: ToolDefinition[] = [],
@@ -33,6 +33,7 @@ export function createSingleTurnRunExecution(
   const exchangeId = createEntityId("exchange", `${suffix}-1`);
   const messages: ConversationMessage[] = request.messages.map(
     (message, index) => {
+      if ("id" in message) return message;
       const base = {
         id: createEntityId("message", `${suffix}-${index}`),
         content: [{ type: "text" as const, text: message.content }],
@@ -90,7 +91,7 @@ export function createSingleTurnRunExecution(
 }
 
 export function createResolvedRunInput(
-  request: InferenceRequest,
+  request: InferenceRequest | RichInferenceRequest,
   tools: ToolDefinition[] = [],
   suffix: string = crypto.randomUUID(),
   resolvedAt: string = new Date().toISOString(),

@@ -19,8 +19,8 @@ import type {
 } from "./run-kernel/types.ts";
 import { createEntityId } from "./run-kernel/types.ts";
 import type {
-  InferenceMessage,
   InferenceRequest,
+  RichInferenceRequest,
   ProviderCapabilityOverrides,
 } from "./types.ts";
 
@@ -685,7 +685,7 @@ export function parseProjectJson(text: string): ProjectFileV2 {
 
 export interface ProjectDraft {
   connectionRequirement: ConnectionRequirement;
-  messages: InferenceMessage[];
+  messages: ConversationMessage[];
   model: string;
   temperature?: number;
   tools: ToolDefinition[];
@@ -694,19 +694,12 @@ export interface ProjectDraft {
 }
 
 export interface UpdateProjectDraft {
-  messages: InferenceMessage[];
+  messages: ConversationMessage[];
   model: string;
   temperature?: number;
   tools: ToolDefinition[];
   toolMocks: ToolMock[];
   enabledToolIds: ToolId[];
-}
-
-function messageText(message: ConversationMessage): string {
-  return message.content
-    .filter((part): part is MessageContentPart => part.type === "text")
-    .map(({ text }) => text)
-    .join("");
 }
 
 export function projectDraft(project: ProjectFileV2): ProjectDraft {
@@ -727,10 +720,7 @@ export function projectDraft(project: ProjectFileV2): ProjectDraft {
   }
   return {
     connectionRequirement,
-    messages: revision.messages.map((message) => ({
-      role: message.role,
-      content: messageText(message),
-    })),
+    messages: revision.messages,
     model: project.defaults.target.model,
     temperature: project.defaults.options.temperature,
     tools: project.tools,
@@ -746,48 +736,15 @@ export function projectDraft(project: ProjectFileV2): ProjectDraft {
 export function updateProjectDraft(
   project: ProjectFileV2,
   draft: UpdateProjectDraft,
-  idSuffix: string = crypto.randomUUID(),
 ): ProjectFileV2 {
   const activeRevisionIndex = project.conversationRevisions.findIndex(
     ({ id }) => id === project.defaults.conversationRevisionId,
   );
   if (activeRevisionIndex < 0) return parseProjectFile(project);
   const activeRevision = project.conversationRevisions[activeRevisionIndex];
-  const messages = draft.messages.map((message, index): ConversationMessage => {
-    const existing = activeRevision.messages[index];
-    const base = {
-      id:
-        existing?.id ??
-        createEntityId("message", `${idSuffix}-draft-${index}`),
-      content: [{ type: "text" as const, text: message.content }],
-    };
-    switch (message.role) {
-      case "system":
-        return { ...base, role: "system" };
-      case "user":
-        return { ...base, role: "user" };
-      case "assistant":
-        return {
-          ...base,
-          role: "assistant",
-          ...(existing?.role === "assistant" && existing.toolCalls
-            ? { toolCalls: existing.toolCalls }
-            : {}),
-        };
-      case "tool":
-        return {
-          ...base,
-          role: "tool",
-          toolCallId:
-            existing?.role === "tool"
-              ? existing.toolCallId
-              : createEntityId("tool-call", `${idSuffix}-draft-${index}`),
-          ...(existing?.role === "tool" && existing.name
-            ? { name: existing.name }
-            : {}),
-        };
-    }
-  });
+  // Draft messages own their identity and complete rich payload. Existing and
+  // newly inserted messages are intentionally handled identically by ID.
+  const messages = draft.messages;
   const conversationRevisions = [...project.conversationRevisions];
   conversationRevisions[activeRevisionIndex] = {
     ...activeRevision,
@@ -817,7 +774,7 @@ export function updateProjectDraft(
 
 export interface CreateProjectOptions {
   name: string;
-  request: InferenceRequest;
+  request: InferenceRequest | RichInferenceRequest;
   idSuffix?: string;
   createdAt?: string;
 }
@@ -856,19 +813,23 @@ export function createProjectFile({
       {
         id: revisionId,
         conversationId,
-        messages: request.messages.map((message, index) => ({
-          id: createEntityId("message", `${idSuffix}-${index}`),
-          role: message.role,
-          content: [{ type: "text", text: message.content }],
-          ...(message.role === "tool"
-            ? {
-                toolCallId: createEntityId(
-                  "tool-call",
-                  `${idSuffix}-imported-${index}`,
-                ),
-              }
-            : {}),
-        })) as ConversationMessage[],
+        messages: request.messages.map((message, index) =>
+          "id" in message
+            ? message
+            : {
+                id: createEntityId("message", `${idSuffix}-${index}`),
+                role: message.role,
+                content: [{ type: "text", text: message.content }],
+                ...(message.role === "tool"
+                  ? {
+                      toolCallId: createEntityId(
+                        "tool-call",
+                        `${idSuffix}-imported-${index}`,
+                      ),
+                    }
+                  : {}),
+              },
+        ) as ConversationMessage[],
         createdAt,
       },
     ],

@@ -1,6 +1,6 @@
 "use client";
 
-import type { InferenceRequest } from "../packages/core/src/types.ts";
+import type { InferenceRequest, RichInferenceRequest } from "../packages/core/src/types.ts";
 
 /** Boundaries the client observes while a request is in flight. */
 export type DiagnosticBoundary =
@@ -29,7 +29,7 @@ export type DiagnosticRecord = {
 export type DiagnosticCapture = {
   schemaVersion: 1;
   startedAt: string;
-  request: InferenceRequest;
+  request: InferenceRequest | RichInferenceRequest;
   records: DiagnosticRecord[];
 };
 
@@ -112,12 +112,12 @@ export function redactDiagnosticUrl(value: unknown): unknown {
 }
 
 export function startDiagnosticCapture(
-  request: InferenceRequest,
+  request: InferenceRequest | RichInferenceRequest,
 ): DiagnosticCapture {
   return {
     schemaVersion: 1,
     startedAt: new Date().toISOString(),
-    request: redactDiagnosticValue(request) as InferenceRequest,
+    request: redactDiagnosticValue(request) as InferenceRequest | RichInferenceRequest,
     records: [],
   };
 }
