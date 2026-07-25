@@ -772,6 +772,57 @@ export function updateProjectDraft(
   });
 }
 
+export interface CreateBranchRevisionOptions {
+  conversationId: ConversationId;
+  parentRevisionId: ConversationRevisionId;
+  messages: ConversationMessage[];
+  idSuffix?: string;
+  createdAt?: string;
+}
+
+/**
+ * Appends an immutable conversation revision and makes it the project's
+ * active authored revision. The caller owns persistence of the returned file.
+ */
+export function createBranchRevision(
+  project: ProjectFileV2,
+  {
+    conversationId,
+    parentRevisionId,
+    messages,
+    idSuffix = crypto.randomUUID(),
+    createdAt = new Date().toISOString(),
+  }: CreateBranchRevisionOptions,
+): ProjectFileV2 {
+  const parent = project.conversationRevisions.find(
+    ({ id }) => id === parentRevisionId,
+  );
+  if (!parent || parent.conversationId !== conversationId) {
+    throw new ProjectValidationError([
+      {
+        code: "custom",
+        path: ["conversationRevisions", "parentRevisionId"],
+        message: "Branch parent revision is missing or belongs to another conversation.",
+      },
+    ]);
+  }
+  const revision: ConversationRevision = {
+    id: createEntityId("revision", idSuffix),
+    conversationId,
+    parentRevisionId,
+    messages,
+    createdAt,
+  };
+  return parseProjectFile({
+    ...project,
+    conversationRevisions: [...project.conversationRevisions, revision],
+    defaults: {
+      ...project.defaults,
+      conversationRevisionId: revision.id,
+    },
+  });
+}
+
 export interface CreateProjectOptions {
   name: string;
   request: InferenceRequest | RichInferenceRequest;

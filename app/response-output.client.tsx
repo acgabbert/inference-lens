@@ -1,7 +1,12 @@
 "use client";
 
 import type { RefObject } from "react";
-import type { RunState, ToolCall } from "../packages/core/src/run-kernel";
+import type {
+  ConversationMessage,
+  RunState,
+  RunTrace,
+  ToolCall,
+} from "../packages/core/src/run-kernel";
 import { MarkdownView } from "./markdown-view.client";
 import { PaneTabs } from "./workbench-shell.client";
 import { ToolCallList, type ToolResultDraft } from "./tool-call-list.client";
@@ -26,6 +31,8 @@ type ResponseOutputProps = {
   completedToolCalls: ToolCall[];
   toolResultDrafts: Record<string, ToolResultDraft>;
   traceStorage: TraceStorageStatus | null;
+  transcript: ConversationMessage[];
+  branchedFrom?: RunTrace["branchedFrom"];
   onMarkdownPreviewChange(markdown: boolean): void;
   onOutputScroll(): void;
   onJumpToLatest(): void;
@@ -33,6 +40,7 @@ type ResponseOutputProps = {
   onContinue(): void;
   onRetry(): void;
   onSaveTrace(): void;
+  onEditFromHere(messageId: ConversationMessage["id"]): void;
 };
 
 /** The response pane, excluding the independent trace panel below it. */
@@ -40,9 +48,10 @@ export function ResponseOutput({
   output, reasoning, status, runState, isRequestActive, markdownPreview,
   outputFollowing, outputScrollRef, completedToolCalls, toolResultDrafts,
   traceStorage,
+  transcript, branchedFrom,
   onMarkdownPreviewChange, onOutputScroll, onJumpToLatest,
   onToolResultDraftChange, onContinue, onRetry,
-  onSaveTrace,
+  onSaveTrace, onEditFromHere,
 }: ResponseOutputProps) {
   const awaitingResults = runState?.status.kind === "awaiting_tool_results";
   const retryableFailure =
@@ -50,6 +59,9 @@ export function ResponseOutput({
     runState.status.reason === "attempt_failed"
       ? runState.status
       : undefined;
+  const terminal = Boolean(
+    runState && ["completed", "cancelled", "failed"].includes(runState.status.kind),
+  );
   return (
     <>
       <div className="panel-header result-header">
@@ -123,8 +135,42 @@ export function ResponseOutput({
           )}
         </div>
       )}
+      {terminal && branchedFrom && (
+        <p className="branch-provenance" role="status">
+          Branched from run <code>{branchedFrom.runId}</code>.
+        </p>
+      )}
       <div className="output-scroll" ref={outputScrollRef} onScroll={onOutputScroll}>
-        <div className="output">
+        {terminal ? (
+          <div className="transcript-list" aria-label="Run transcript">
+            {transcript.map((message, index) => (
+              <article className="transcript-message" key={message.id}>
+                <div className="transcript-message-header">
+                  <span className="eyebrow">{message.role}</span>
+                  <span>Message {index + 1}</span>
+                  <button
+                    className="button secondary transcript-edit"
+                    type="button"
+                    onClick={() => onEditFromHere(message.id)}
+                  >
+                    Edit from here
+                  </button>
+                </div>
+                {message.content.map((part, partIndex) => (
+                  <p key={partIndex}>{part.text}</p>
+                ))}
+                {message.role === "assistant" && message.toolCalls?.map((call) => (
+                  <pre className="transcript-tool-call" key={call.id}>
+                    {call.name}({call.arguments.text})
+                  </pre>
+                ))}
+                {message.role === "tool" && (
+                  <span className="transcript-tool-result">Tool result for {message.name ?? message.toolCallId}</span>
+                )}
+              </article>
+            ))}
+          </div>
+        ) : <div className="output">
           {output ? (markdownPreview ? <MarkdownView text={output} /> : <p>{output}</p>)
             : reasoning ? <div className="waiting-for-answer" aria-live="polite"><span className="reasoning-dot" aria-hidden="true" /><div><h3>Thinking…</h3><p>Reasoning is streaming. The final answer will appear here.</p></div></div>
             : isRequestActive ? <div className="waiting-for-answer" role="status"><span className="reasoning-dot" aria-hidden="true" /><div><h3>Waiting for response…</h3><p>Request sent. The response will stream here.</p></div></div>
@@ -135,10 +181,10 @@ export function ResponseOutput({
             : <div className="empty-state"><span className="empty-glyph" aria-hidden="true">↗</span><h3>Ready when you are</h3><p>Add an API key, check your request, then run it to see the streamed response here.</p></div>}
           {reasoning && <details className="reasoning-stream"><summary><span className={status === "running" ? "reasoning-dot" : "reasoning-dot complete"} aria-hidden="true" /><span>{status === "running" ? "Thinking…" : "Reasoning"}</span><span className="reasoning-stream-hint">Show</span></summary><p>{reasoning}</p></details>}
           {(output || reasoning) && retryableFailure && <div className="waiting-for-answer run-failure-state" role="alert"><span className="failure-glyph" aria-hidden="true">!</span><div><h3>Attempt failed</h3><p>{retryableFailure.error.message}</p><button className="button secondary" type="button" onClick={onRetry}>Retry attempt</button></div></div>}
-        </div>
-        <ToolCallList calls={completedToolCalls} toolResultDrafts={toolResultDrafts}
+        </div>}
+        {!terminal && <ToolCallList calls={completedToolCalls} toolResultDrafts={toolResultDrafts}
           suppliedResults={runState?.toolResults ?? []} awaitingResults={awaitingResults}
-          onDraftChange={onToolResultDraftChange} onContinue={onContinue} />
+          onDraftChange={onToolResultDraftChange} onContinue={onContinue} />}
         {!outputFollowing && (output || reasoning) && <button className="jump-to-latest" type="button" onClick={onJumpToLatest}>Jump to latest ↓</button>}
       </div>
     </>

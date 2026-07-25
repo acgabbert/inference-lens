@@ -13,6 +13,7 @@ import type {
   RichInferenceRequest,
 } from "../packages/core/src/types";
 import {
+  createBranchRevision,
   createProjectFile,
 } from "../packages/core/src/project";
 import {
@@ -20,6 +21,7 @@ import {
   createResolvedRunInput,
   createRunTrace,
   RunCoordinator,
+  transcriptFromRunState,
 } from "../packages/core/src/run-kernel";
 import {
   parseRunTraceJson,
@@ -33,6 +35,9 @@ import type {
   RunTokenUsage,
   ConversationMessage,
   ConversationId,
+  ConversationRevisionId,
+  MessageId,
+  RunId,
   RunConversationIdentity,
   ToolDefinition,
   ToolResult,
@@ -90,6 +95,13 @@ import type { WorkbenchView } from "./workbench-shell.client";
 const inferenceTransport = createInferenceTransport();
 
 const MARKDOWN_PREVIEW_STORAGE_KEY = "trace-lens:markdown-preview:v1";
+
+interface BranchContext {
+  parentRunId: RunId;
+  parentConversationRevisionId?: ConversationRevisionId;
+  branchMessageId: MessageId;
+  parentTraceNeedsSaving: boolean;
+}
 
 function subscribeToDesktopRuntime(): () => void {
   return () => {};
@@ -230,6 +242,7 @@ function HomeContent() {
     },
     onApplyDraft(draft) {
       replaceProjectDraft(draft);
+      setBranchContext(null);
       setSessionModel(draft.model);
       setSessionTemperature(draft.temperature ?? 0.7);
       coordinatorRef.current = null;
@@ -289,6 +302,12 @@ function HomeContent() {
   const [hasDiagnosticCapture, setHasDiagnosticCapture] = useState(false);
   const [traceStorage, setTraceStorage] =
     useState<TraceStorageStatus | null>(null);
+  const [branchContext, setBranchContext] = useState<BranchContext | null>(null);
+  const [visibleBranchProvenance, setVisibleBranchProvenance] =
+    useState<RunTrace["branchedFrom"]>();
+  const runBranchProvenanceRef = useRef(
+    new Map<RunId, RunTrace["branchedFrom"]>(),
+  );
 
   function replaceRunState(next: RunState | null): void {
     runStateRef.current = next;
@@ -310,7 +329,9 @@ function HomeContent() {
     if (persistedTraceRunIdsRef.current.has(next.runId)) return;
     let trace: RunTrace;
     try {
-      trace = createRunTrace(next);
+      trace = createRunTrace(next, {
+        branchedFrom: runBranchProvenanceRef.current.get(next.runId),
+      });
     } catch {
       return;
     }
@@ -476,6 +497,24 @@ function HomeContent() {
     };
   }
 
+  function editFromHere(messageId: MessageId): void {
+    if (!runState || !["completed", "cancelled", "failed"].includes(runState.status.kind)) {
+      return;
+    }
+    const transcript = transcriptFromRunState(runState);
+    const index = transcript.findIndex((message) => message.id === messageId);
+    if (index < 0) return;
+    resetMessages(structuredClone(transcript.slice(0, index + 1)));
+    setBranchContext({
+      parentRunId: runState.runId,
+      parentConversationRevisionId: runState.input?.conversationRevisionId,
+      branchMessageId: messageId,
+      parentTraceNeedsSaving:
+        traceStorage?.kind === "unsaved" || traceStorage?.kind === "error",
+    });
+    setWorkbenchView("request");
+  }
+
   function setEditorModel(model: string): void {
     if (projectFile) {
       setSessionModel(model);
@@ -634,10 +673,51 @@ function HomeContent() {
     setOutputFollowing(true);
     setIsRequestActive(true);
     const request = currentRequest();
-    const identity = currentRunIdentity();
+    let identity: RunConversationIdentity;
+    let branchedFrom: RunTrace["branchedFrom"];
+    if (branchContext) {
+      if (projectFile) {
+        if (!branchContext.parentConversationRevisionId) {
+          project.setError("This branch context is missing its parent revision. Start the branch again from its source run.");
+          return;
+        }
+        try {
+          const parent = projectFile.conversationRevisions.find(
+            ({ id }) => id === branchContext.parentConversationRevisionId,
+          );
+          if (!parent) throw new Error("The parent revision is no longer in this project.");
+          const branchedProject = createBranchRevision(projectFile, {
+            conversationId: parent.conversationId,
+            parentRevisionId: parent.id,
+            messages: request.messages,
+          });
+          const revision = branchedProject.conversationRevisions.at(-1)!;
+          project.adoptBranchRevision(branchedProject);
+          identity = {
+            conversationId: revision.conversationId,
+            conversationRevisionId: revision.id,
+          };
+        } catch (error) {
+          project.setError(error instanceof Error ? error.message : "Could not create the branch revision.");
+          return;
+        }
+      } else {
+        identity = currentRunIdentity();
+      }
+      branchedFrom = {
+        runId: branchContext.parentRunId,
+        parentConversationRevisionId: branchContext.parentConversationRevisionId,
+        messageId: branchContext.branchMessageId,
+      };
+      setBranchContext(null);
+    } else {
+      identity = currentRunIdentity();
+    }
     const input = createResolvedRunInput(request, identity, selectedTools);
     input.target.profileId = createEntityId("profile", activeProfile.id);
     const coordinator = new RunCoordinator(input);
+    if (branchedFrom) runBranchProvenanceRef.current.set(input.runId, branchedFrom);
+    setVisibleBranchProvenance(branchedFrom);
     runTraceWorkspaceRef.current = projectWorkspace;
     setTraceStorage(null);
     coordinatorRef.current = coordinator;
@@ -887,7 +967,9 @@ function HomeContent() {
       return undefined;
     }
     try {
-      return createRunTrace(state);
+      return createRunTrace(state, {
+        branchedFrom: runBranchProvenanceRef.current.get(state.runId),
+      });
     } catch {
       return undefined;
     }
@@ -936,11 +1018,16 @@ function HomeContent() {
     if (!file) return;
     try {
       const trace = parseRunTraceJson(await file.text());
+      if (trace.branchedFrom) {
+        runBranchProvenanceRef.current.set(trace.runId, trace.branchedFrom);
+      }
       coordinatorRef.current = null;
       runTraceWorkspaceRef.current = null;
       diagnosticCaptureRef.current = null;
       setHasDiagnosticCapture(false);
       setToolResultDrafts({});
+      setBranchContext(null);
+      setVisibleBranchProvenance(trace.branchedFrom);
       setWorkbenchView("response");
       setTraceOpen(true);
       replaceRunState(runStateFromTrace(trace));
@@ -992,7 +1079,9 @@ function HomeContent() {
         projectDirty={projectDirty}
         folderAccessAvailable={folderAccessAvailable}
         hasDiagnosticCapture={hasDiagnosticCapture}
-        hasRunTrace={Boolean(runTraceForState(runState))}
+        hasRunTrace={Boolean(
+          runState && ["completed", "cancelled", "failed"].includes(runState.status.kind),
+        )}
         isRequestActive={isRequestActive}
         awaitingToolResults={runState?.status.kind === "awaiting_tool_results"}
         retryableFailure={
@@ -1106,6 +1195,15 @@ function HomeContent() {
               </button>
             )}
           </div>
+          {branchContext && (
+            <div className="branch-pending" role="status">
+              Branching from run <code>{branchContext.parentRunId}</code> at message <code>{branchContext.branchMessageId}</code> — the original trace is untouched.
+              {branchContext.parentTraceNeedsSaving && (
+                <button className="button secondary" type="button" onClick={() => void exportRunTrace()}>Save trace…</button>
+              )}
+              <button className="button secondary" type="button" onClick={() => setBranchContext(null)}>Discard branch</button>
+            </div>
+          )}
 
           <div className="pane-scroll request-content">
           {requestTab === "messages" ? (
@@ -1297,6 +1395,8 @@ function HomeContent() {
             completedToolCalls={completedToolCalls}
             toolResultDrafts={toolResultDrafts}
             traceStorage={traceStorage}
+            transcript={runState ? transcriptFromRunState(runState) : []}
+            branchedFrom={visibleBranchProvenance}
             onMarkdownPreviewChange={setMarkdownPreview}
             onOutputScroll={updateOutputFollowState}
             onJumpToLatest={jumpToLatestOutput}
@@ -1309,6 +1409,7 @@ function HomeContent() {
             onContinue={() => void continueRun()}
             onRetry={() => void retryRun()}
             onSaveTrace={() => void exportRunTrace()}
+            onEditFromHere={editFromHere}
           />
 
           <ResizableTracePanel

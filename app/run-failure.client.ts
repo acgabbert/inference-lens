@@ -49,7 +49,7 @@ function newFailedRunState(
  */
 export function preserveRunFailure(
   current: RunState | null,
-  request: InferenceRequest,
+  request: InferenceRequest | RichInferenceRequest,
   identity: RunConversationIdentity,
   message: string,
   occurredAt = new Date().toISOString(),

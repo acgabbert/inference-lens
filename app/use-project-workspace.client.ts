@@ -35,6 +35,7 @@ export interface ProjectWorkspaceHandleState {
   setToolsDisabledError(message: string): void;
   dismissError(): void;
   clearToolsDisabledError(): void;
+  adoptBranchRevision(project: ProjectFileV2): void;
   mapProfile(profileId: string): void;
   mapActiveProfile(): void;
   newProjectFolder(): Promise<void>;
@@ -100,6 +101,12 @@ export function useProjectWorkspace(input: {
 
   function clearToolsDisabledError(): void {
     if (projectErrorKind === "tools-disabled") dismissError();
+  }
+
+  function adoptBranchRevision(project: ProjectFileV2): void {
+    setProjectFile(project);
+    setProjectDirty(true);
+    dismissError();
   }
 
   function mapProfile(profileId: string): void {
@@ -218,6 +225,7 @@ export function useProjectWorkspace(input: {
     setToolsDisabledError,
     dismissError,
     clearToolsDisabledError,
+    adoptBranchRevision,
     mapProfile,
     mapActiveProfile,
     newProjectFolder,

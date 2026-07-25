@@ -1401,6 +1401,45 @@ textarea:focus {
   font-size: 9px;
 }
 
+.branch-pending,
+.branch-provenance {
+  margin: 0.75rem 0;
+  padding: 0.65rem 0.8rem;
+  border-left: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  font-size: 0.88rem;
+}
+
+.branch-pending {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.transcript-list {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+}
+
+.transcript-message {
+  border: 1px solid var(--border-default);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+}
+
+.transcript-message-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.transcript-edit { margin-left: auto; }
+.transcript-tool-call { overflow: auto; }
+.transcript-tool-result { color: var(--text-muted); font-size: 0.85rem; }
+
 @keyframes pulse {
   50% {
     opacity: 0.35;

@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   PROJECT_FILE_NAME,
   ProjectValidationError,
+  createBranchRevision,
   createProjectFile,
   parseProjectFile,
   parseProjectJson,
@@ -176,6 +177,44 @@ test("updates drafts by ID without misattributing tool calls after reordering", 
     tool,
     assistant,
   ]);
+});
+
+test("appends a branch revision with validated lineage and preserves it through export", () => {
+  const project = createProjectFile({
+    name: "Example",
+    request,
+    idSuffix: "branch",
+    createdAt: "2026-07-24T12:00:00.000Z",
+  });
+  const root = project.conversationRevisions[0]!;
+  const child = createBranchRevision(project, {
+    conversationId: root.conversationId,
+    parentRevisionId: root.id,
+    messages: [root.messages[0]!],
+    idSuffix: "child",
+    createdAt: "2026-07-24T12:01:00.000Z",
+  });
+  const grandchild = createBranchRevision(child, {
+    conversationId: root.conversationId,
+    parentRevisionId: "revision_child",
+    messages: root.messages,
+    idSuffix: "grandchild",
+    createdAt: "2026-07-24T12:02:00.000Z",
+  });
+
+  assert.equal(grandchild.defaults.conversationRevisionId, "revision_grandchild");
+  assert.deepEqual(
+    grandchild.conversationRevisions.map(({ id, parentRevisionId }) => ({ id, parentRevisionId })),
+    [
+      { id: root.id, parentRevisionId: undefined },
+      { id: "revision_child", parentRevisionId: root.id },
+      { id: "revision_grandchild", parentRevisionId: "revision_child" },
+    ],
+  );
+  assert.deepEqual(
+    parseProjectJson(serializeProjectFile(grandchild)).conversationRevisions,
+    grandchild.conversationRevisions,
+  );
 });
 
 test("rejects unsupported versions, unknown fields, and dangling references", () => {
