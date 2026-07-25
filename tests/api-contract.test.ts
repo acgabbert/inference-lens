@@ -55,6 +55,24 @@ test("resolves a server-owned credential for one provider turn", () => {
   assert.equal(request.execution.input.target.model, "example-model");
 });
 
+test("accepts a retry attempt at the stateless provider boundary", () => {
+  const retry = {
+    ...execution(),
+    attempt: 2,
+    exchangeId: "exchange_test-2" as const,
+  };
+  const request = resolveProviderTurnRequest(
+    {
+      execution: retry,
+      credential: { kind: "environment-default" },
+    },
+    environmentStore,
+  );
+
+  assert.equal(request.execution.attempt, 2);
+  assert.equal(request.execution.exchangeId, "exchange_test-2");
+});
+
 test("allows a session-only caller-provided credential", () => {
   const request = resolveModelDiscoveryRequest(
     {
@@ -213,6 +231,48 @@ test("executes one normalized provider turn outside an HTTP handler", async () =
       "frame",
       "completed",
     ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("marks transient provider failures as retryable", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response("Temporarily unavailable.", { status: 503 });
+
+  try {
+    const events = [];
+    for await (const event of executeProviderTurn(execution(), "test-key")) {
+      events.push(event);
+    }
+    const failure = events.at(-1);
+    assert.equal(failure?.type, "failed");
+    if (failure?.type === "failed") {
+      assert.equal(failure.error.providerStatus, 503);
+      assert.equal(failure.error.retryable, true);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("keeps authentication failures non-retryable", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response("Invalid API key.", { status: 401 });
+
+  try {
+    const events = [];
+    for await (const event of executeProviderTurn(execution(), "test-key")) {
+      events.push(event);
+    }
+    const failure = events.at(-1);
+    assert.equal(failure?.type, "failed");
+    if (failure?.type === "failed") {
+      assert.equal(failure.error.providerStatus, 401);
+      assert.equal(failure.error.retryable, false);
+    }
   } finally {
     globalThis.fetch = originalFetch;
   }

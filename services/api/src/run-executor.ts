@@ -6,6 +6,9 @@ import type {
   ProviderExecution,
   ProviderTransportEvent,
 } from "../../../packages/core/src/run-kernel/index.ts";
+import {
+  isRetryableRunError,
+} from "../../../packages/core/src/run-kernel/index.ts";
 
 /**
  * Executes exactly one provider turn. Complete-run orchestration belongs to
@@ -33,20 +36,26 @@ export async function* executeProviderTurn(
       typeof error.status === "number"
         ? error.status
         : undefined;
-    yield signal?.aborted
-      ? { type: "cancelled", reason: "Request aborted." }
-      : {
-          type: "failed",
-          error: {
-            code:
-              error instanceof OpenAICompatibleStreamProtocolError
-                ? "protocol_error"
-                : status === undefined
-                  ? "transport_error"
-                  : "provider_error",
-            message,
-            providerStatus: status,
-          },
-        };
+    if (signal?.aborted) {
+      yield { type: "cancelled", reason: "Request aborted." };
+      return;
+    }
+    const failure = {
+      code:
+        error instanceof OpenAICompatibleStreamProtocolError
+          ? "protocol_error" as const
+          : status === undefined
+            ? "transport_error" as const
+            : "provider_error" as const,
+      message,
+      providerStatus: status,
+    };
+    yield {
+      type: "failed",
+      error: {
+        ...failure,
+        retryable: isRetryableRunError(failure),
+      },
+    };
   }
 }

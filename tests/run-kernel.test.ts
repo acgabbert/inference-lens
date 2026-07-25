@@ -13,6 +13,7 @@ import {
   createRunEventFactory,
   createRunState,
   createRunTrace,
+  isRetryableRunError,
   reduceRunEvent,
   RunCoordinator,
   RunInvariantError,
@@ -511,6 +512,118 @@ test("coordinates a tool result into a second provider turn", () => {
       "run.completed",
     ],
   );
+});
+
+test("retries a failed turn with the same input and a new exchange", () => {
+  const coordinator = new RunCoordinator(resolvedInput);
+  const first = coordinator.start();
+
+  coordinator.accept({ type: "text_delta", text: "Partial" });
+  coordinator.accept({
+    type: "failed",
+    error: {
+      code: "provider_error",
+      message: "Temporarily unavailable.",
+      providerStatus: 503,
+      retryable: true,
+    },
+  });
+
+  assert.deepEqual(coordinator.finishTurnStream(), []);
+  assert.equal(coordinator.state.status.kind, "paused");
+  assert.equal(coordinator.state.turns[0]?.attempts[0]?.status, "failed");
+  assert.equal(coordinator.state.turns[0]?.attempts[0]?.text, "Partial");
+
+  const second = coordinator.retry();
+  assert.equal(second.execution.turnId, first.execution.turnId);
+  assert.equal(second.execution.attempt, 2);
+  assert.notEqual(second.execution.exchangeId, first.execution.exchangeId);
+  assert.equal(second.execution.input, first.execution.input);
+
+  coordinator.accept({ type: "text_delta", text: "Recovered" });
+  coordinator.accept({
+    type: "completed",
+    finishReason: { normalized: "stop", raw: "stop" },
+  });
+  coordinator.finishTurnStream();
+
+  assert.equal(coordinator.state.status.kind, "completed");
+  assert.equal(coordinator.state.turns[0]?.attempts.length, 2);
+  assert.equal(coordinator.state.turns[0]?.attempts[0]?.text, "Partial");
+  assert.equal(coordinator.state.turns[0]?.attempts[1]?.text, "Recovered");
+  assert.equal(
+    coordinator.state.exchanges[first.execution.exchangeId].attempt,
+    1,
+  );
+  assert.equal(
+    coordinator.state.exchanges[second.execution.exchangeId].attempt,
+    2,
+  );
+  assert.deepEqual(
+    coordinator.state.events.map(({ type }) => type),
+    [
+      "run.started",
+      "turn.started",
+      "assistant.text_delta",
+      "turn.attempt_failed",
+      "turn.attempt_started",
+      "assistant.text_delta",
+      "assistant.completed",
+      "run.completed",
+    ],
+  );
+});
+
+test("keeps non-retryable turn failures terminal", () => {
+  const coordinator = new RunCoordinator(resolvedInput);
+  coordinator.start();
+  coordinator.accept({
+    type: "failed",
+    error: {
+      code: "provider_error",
+      message: "Invalid API key.",
+      providerStatus: 401,
+      retryable: false,
+    },
+  });
+
+  assert.equal(coordinator.state.status.kind, "failed");
+  assert.throws(() => coordinator.retry(), /no failed attempt/i);
+});
+
+test("can finalize a paused retryable failure without retrying", () => {
+  const coordinator = new RunCoordinator(resolvedInput);
+  coordinator.start();
+  const error = {
+    code: "transport_error" as const,
+    message: "Connection reset.",
+    retryable: true,
+  };
+  coordinator.accept({ type: "failed", error });
+  coordinator.fail(error);
+
+  assert.deepEqual(coordinator.state.status, {
+    kind: "failed",
+    failedAt: coordinator.state.endedAt,
+    error,
+  });
+});
+
+test("classifies only transient provider statuses and transport errors as retryable", () => {
+  for (const providerStatus of [408, 429, 500, 502, 503, 599]) {
+    assert.equal(
+      isRetryableRunError({ code: "provider_error", providerStatus }),
+      true,
+    );
+  }
+  for (const providerStatus of [400, 401, 403, 404, 600]) {
+    assert.equal(
+      isRetryableRunError({ code: "provider_error", providerStatus }),
+      false,
+    );
+  }
+  assert.equal(isRetryableRunError({ code: "transport_error" }), true);
+  assert.equal(isRetryableRunError({ code: "protocol_error" }), false);
 });
 
 test("rejects gaps and events after a terminal event", () => {

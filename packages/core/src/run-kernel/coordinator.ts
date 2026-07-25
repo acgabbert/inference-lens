@@ -120,6 +120,42 @@ export class RunCoordinator {
     return { events: [event], execution };
   }
 
+  retry(): TurnCommand {
+    const status = this.stateValue.status;
+    if (status.kind !== "paused" || status.reason !== "attempt_failed") {
+      throw new Error("This run has no failed attempt to retry.");
+    }
+    const turn = this.stateValue.turns.find(
+      ({ turnId }) => turnId === status.turnId,
+    );
+    const previousAttempt = turn?.attempts.at(-1);
+    if (!previousAttempt || previousAttempt.status !== "failed") {
+      throw new Error("The failed attempt is unavailable.");
+    }
+    const suffix = this.input.runId.slice("run_".length);
+    const attempt = previousAttempt.attempt + 1;
+    const execution: ProviderExecution = {
+      runId: this.input.runId,
+      turnId: status.turnId,
+      attempt,
+      exchangeId: createEntityId(
+        "exchange",
+        `${suffix}-${this.stateValue.turns.length}-${attempt}`,
+      ),
+      input: previousAttempt.input,
+    };
+    this.activeExecution = execution;
+    const event = this.apply(
+      this.eventFactory.create({
+        type: "turn.attempt_started",
+        turnId: execution.turnId,
+        attempt: execution.attempt,
+        exchangeId: execution.exchangeId,
+      }),
+    );
+    return { events: [event], execution };
+  }
+
   start(): TurnCommand {
     if (this.stateValue.status.kind !== "not_started") {
       throw new Error("This run has already started.");
@@ -141,7 +177,19 @@ export class RunCoordinator {
       throw new Error("No provider turn is active.");
     }
     if (event.type === "failed") {
+      const execution = this.activeExecution;
       this.activeExecution = undefined;
+      if (event.error.retryable) {
+        return this.apply(
+          this.eventFactory.create({
+            type: "turn.attempt_failed",
+            turnId: execution.turnId,
+            attempt: execution.attempt,
+            exchangeId: execution.exchangeId,
+            error: event.error,
+          }),
+        );
+      }
       return this.apply(
         this.eventFactory.create({ type: "run.failed", error: event.error }),
       );
@@ -167,6 +215,12 @@ export class RunCoordinator {
   finishTurnStream(): RunEvent[] {
     this.activeExecution = undefined;
     if (terminal(this.stateValue)) return [];
+    if (
+      this.stateValue.status.kind === "paused" &&
+      this.stateValue.status.reason === "attempt_failed"
+    ) {
+      return [];
+    }
     if (this.stateValue.status.kind === "awaiting_tool_results") return [];
     if (this.stateValue.status.kind === "running") {
       const status = this.stateValue.status;

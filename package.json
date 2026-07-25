@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "vinext dev",
     "dev:tauri": "TRACE_LENS_TARGET=tauri vinext dev --port 3003",
+    "dev:flaky-provider": "node scripts/flaky-openai-provider.mjs",
     "build": "vinext build",
     "build:tauri": "TRACE_LENS_TARGET=tauri vinext build",
     "start": "vinext start",

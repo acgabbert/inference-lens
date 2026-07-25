@@ -33,6 +33,9 @@ import {
   createInferenceTransport,
   isTauriRuntime,
 } from "./tauri-inference-transport.client";
+import {
+  InferenceTransportError,
+} from "./http-inference-transport.client";
 import { AppErrorBoundary } from "./app-error-boundary.client";
 import {
   recordDiagnostic,
@@ -145,8 +148,9 @@ function displayStatus(state: RunState | null): DisplayStatus {
     case "completed":
       return "complete";
     case "awaiting_tool_results":
-    case "paused":
       return "waiting";
+    case "paused":
+      return state.status.reason === "attempt_failed" ? "failed" : "waiting";
     case "failed":
     case "cancelled":
       return "failed";
@@ -326,7 +330,10 @@ function HomeContent() {
 
   const { events, output, reasoning, status, usage } = useMemo(() => {
     const attempts =
-      runState?.turns.flatMap((turn) => turn.attempts) ?? [];
+      runState?.turns.flatMap((turn) => {
+        const latest = turn.attempts.at(-1);
+        return latest ? [latest] : [];
+      }) ?? [];
     let latestUsage: RunTokenUsage | undefined;
     for (let index = attempts.length - 1; index >= 0; index -= 1) {
       if (attempts[index]?.usage) {
@@ -453,27 +460,53 @@ function HomeContent() {
   ): Promise<void> {
     const coordinator = coordinatorRef.current;
     if (!coordinator) throw new Error("Run coordinator is unavailable.");
-    const stream = await inferenceTransport.executeTurn(
-      { execution, credential },
-      controller.signal,
-    );
-    recordDiagnostic(diagnosticCapture, "client.response_received", {
-      status: stream.status,
-      headers: Object.fromEntries(stream.headers),
-    });
-    for await (const event of stream.events) {
-      recordDiagnostic(diagnosticCapture, "client.ndjson_record_received", {
-        raw: JSON.stringify(redactDiagnosticValue(event)),
-        event,
+    try {
+      const stream = await inferenceTransport.executeTurn(
+        { execution, credential },
+        controller.signal,
+      );
+      recordDiagnostic(diagnosticCapture, "client.response_received", {
+        status: stream.status,
+        headers: Object.fromEntries(stream.headers),
       });
-      if (requestGenerationRef.current !== requestGeneration) continue;
-      coordinator.accept(event);
+      for await (const event of stream.events) {
+        recordDiagnostic(diagnosticCapture, "client.ndjson_record_received", {
+          raw: JSON.stringify(redactDiagnosticValue(event)),
+          event,
+        });
+        if (requestGenerationRef.current !== requestGeneration) continue;
+        coordinator.accept(event);
+        replaceRunState(coordinator.state);
+      }
+      if (requestGenerationRef.current !== requestGeneration) return;
+      coordinator.finishTurnStream();
+      replaceRunState(coordinator.state);
+      prepareToolResultDrafts(coordinator.state);
+    } catch (error) {
+      if (
+        controller.signal.aborted ||
+        requestGenerationRef.current !== requestGeneration
+      ) {
+        throw error;
+      }
+      const status =
+        error instanceof InferenceTransportError ? error.status : undefined;
+      const retryable =
+        !(error instanceof SyntaxError) &&
+        (status === undefined ||
+          status === 408 ||
+          status === 429 ||
+          (status >= 500 && status <= 599));
+      coordinator.accept({
+        type: "failed",
+        error: {
+          code: error instanceof SyntaxError ? "protocol_error" : "transport_error",
+          message: error instanceof Error ? error.message : "Request failed.",
+          retryable,
+        },
+      });
       replaceRunState(coordinator.state);
     }
-    if (requestGenerationRef.current !== requestGeneration) return;
-    coordinator.finishTurnStream();
-    replaceRunState(coordinator.state);
-    prepareToolResultDrafts(coordinator.state);
   }
 
   async function run() {
@@ -558,7 +591,7 @@ function HomeContent() {
         )
       ) {
         activeCoordinator.fail({
-          code: "transport_error",
+          code: "internal_error",
           message: error instanceof Error ? error.message : "Request failed.",
         });
         replaceRunState(activeCoordinator.state);
@@ -637,7 +670,7 @@ function HomeContent() {
           !["completed", "cancelled", "failed"].includes(active.state.status.kind)
         ) {
           active.fail({
-            code: "transport_error",
+            code: "internal_error",
             message: error instanceof Error ? error.message : "Request failed.",
           });
           replaceRunState(active.state);
@@ -646,6 +679,66 @@ function HomeContent() {
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
       setIsRequestActive(false);
+    }
+  }
+
+  async function retryRun(): Promise<void> {
+    const coordinator = coordinatorRef.current;
+    if (
+      !coordinator ||
+      coordinator.state.status.kind !== "paused" ||
+      coordinator.state.status.reason !== "attempt_failed"
+    ) {
+      return;
+    }
+
+    const requestGeneration = ++requestGenerationRef.current;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setWorkbenchView("response");
+    setOutputFollowing(true);
+    setIsRequestActive(true);
+    setToolResultDrafts({});
+    const command = coordinator.retry();
+    replaceRunState(coordinator.state);
+    const diagnosticCapture =
+      diagnosticCaptureRef.current ?? startDiagnosticCapture(currentRequest());
+    diagnosticCaptureRef.current = diagnosticCapture;
+    setHasDiagnosticCapture(true);
+    recordDiagnostic(diagnosticCapture, "client.retry_started", {
+      turnId: command.execution.turnId,
+      attempt: command.execution.attempt,
+      exchangeId: command.execution.exchangeId,
+    });
+
+    try {
+      const selection = await credential.prepare();
+      await executeProviderTurn(
+        command.execution,
+        selection,
+        controller,
+        requestGeneration,
+        diagnosticCapture,
+      );
+    } catch (error) {
+      if (
+        !controller.signal.aborted &&
+        !["completed", "cancelled", "failed"].includes(
+          coordinator.state.status.kind,
+        )
+      ) {
+        coordinator.fail({
+          code: "internal_error",
+          message: error instanceof Error ? error.message : "Request failed.",
+        });
+        replaceRunState(coordinator.state);
+      }
+    } finally {
+      recordDiagnostic(diagnosticCapture, "client.stream_finished");
+      if (requestGenerationRef.current === requestGeneration) {
+        abortRef.current = null;
+        setIsRequestActive(false);
+      }
     }
   }
 
@@ -665,7 +758,12 @@ function HomeContent() {
         coordinator.state.status.kind,
       )
     ) {
-      coordinator.cancel("Stopped by user.");
+      const status = coordinator.state.status;
+      if (status.kind === "paused" && status.reason === "attempt_failed") {
+        coordinator.fail(status.error);
+      } else {
+        coordinator.cancel("Stopped by user.");
+      }
       replaceRunState(coordinator.state);
     }
   }
@@ -706,11 +804,17 @@ function HomeContent() {
         if (
           (event.metaKey || event.ctrlKey) &&
           event.key === "Enter" &&
-          !isRequestActive &&
-          runState?.status.kind !== "awaiting_tool_results"
+          !isRequestActive
         ) {
           event.preventDefault();
-          void run();
+          if (
+            runState?.status.kind === "paused" &&
+            runState.status.reason === "attempt_failed"
+          ) {
+            void retryRun();
+          } else if (runState?.status.kind !== "awaiting_tool_results") {
+            void run();
+          }
         }
       }}
     >
@@ -725,6 +829,10 @@ function HomeContent() {
         hasDiagnosticCapture={hasDiagnosticCapture}
         isRequestActive={isRequestActive}
         awaitingToolResults={runState?.status.kind === "awaiting_tool_results"}
+        retryableFailure={
+          runState?.status.kind === "paused" &&
+          runState.status.reason === "attempt_failed"
+        }
         runDisabled={Boolean(projectFile && !mappedProfileId)}
         onChooseProfile={chooseProfile}
         onOpenConnections={() => setConnectionDrawerOpen(true)}
@@ -738,6 +846,7 @@ function HomeContent() {
         onStop={stop}
         onRun={() => void run()}
         onContinue={() => void continueRun()}
+        onRetry={() => void retryRun()}
       />
 
       {projectError && (
@@ -998,6 +1107,7 @@ function HomeContent() {
               }))
             }
             onContinue={() => void continueRun()}
+            onRetry={() => void retryRun()}
           />
 
           <ResizableTracePanel

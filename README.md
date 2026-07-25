@@ -6,6 +6,19 @@ In the UI, enter the provider base URL (for example, `https://api.openai.com/v1`
 
 For a no-account, local end-to-end endpoint, see [the llama.cpp testing guide](docs/LLAMA_CPP_E2E.md). It covers a loopback-only server, direct curl checks, and the Trace Lens profile values.
 
+### Test a failed-turn retry locally
+
+Run `npm run dev:flaky-provider` in a second terminal, then configure a profile
+with endpoint `http://127.0.0.1:4010/v1`, no API key, and model
+`flaky-test-model`. The first request returns HTTP 503. Trace Lens preserves
+that attempt and offers **Retry**; the second request succeeds with a streamed
+response. The fixture logs whether the retry body exactly matches the first
+request. Reset it with:
+
+```sh
+curl -X POST http://127.0.0.1:4010/reset
+```
+
 ## Project folders
 
 Trace Lens projects use a strict, credential-free

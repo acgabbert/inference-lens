@@ -14,6 +14,7 @@ interface TopbarProps {
   hasDiagnosticCapture: boolean;
   isRequestActive: boolean;
   awaitingToolResults: boolean;
+  retryableFailure: boolean;
   runDisabled: boolean;
   onChooseProfile(profileId: string): void;
   onOpenConnections(): void;
@@ -27,6 +28,7 @@ interface TopbarProps {
   onStop(): void;
   onRun(): void;
   onContinue(): void;
+  onRetry(): void;
 }
 
 function closeContainingMenu(element: HTMLElement): void {
@@ -37,9 +39,10 @@ function closeContainingMenu(element: HTMLElement): void {
 export function Topbar({
   profiles, activeProfile, activeModel, hasCredential, projectName, projectDirty,
   folderAccessAvailable, hasDiagnosticCapture, isRequestActive, awaitingToolResults,
+  retryableFailure,
   runDisabled, onChooseProfile, onOpenConnections, onNewProject, onOpenProject,
   onSaveProject, onImportProject, onExportProject, onOpenToolLibrary,
-  onDownloadDiagnostics, onStop, onRun, onContinue,
+  onDownloadDiagnostics, onStop, onRun, onContinue, onRetry,
 }: TopbarProps) {
   const profileName = activeProfile.name || "Untitled profile";
   return (
@@ -53,7 +56,7 @@ export function Topbar({
           {folderAccessAvailable && <><button type="button" onClick={(event) => { closeContainingMenu(event.currentTarget); onNewProject(); }}>New project</button><button type="button" onClick={(event) => { closeContainingMenu(event.currentTarget); onOpenProject(); }}>Open folder</button><span className="menu-separator" /></>}
           <button type="button" onClick={(event) => { closeContainingMenu(event.currentTarget); onSaveProject(); }}>Save <kbd>⌘S</kbd></button><label className="menu-file-button">Import…<input type="file" accept="application/json,.json" onChange={onImportProject} /></label><button type="button" onClick={onExportProject}>Export…</button><span className="menu-separator" /><button type="button" onClick={(event) => { onOpenToolLibrary(); closeContainingMenu(event.currentTarget); }}>Local tool library</button><button disabled={!hasDiagnosticCapture} type="button" onClick={onDownloadDiagnostics}>Download diagnostics</button>
         </div></details>
-        {isRequestActive ? <button className="button stop" onClick={onStop}>Stop</button> : awaitingToolResults ? <><button className="button stop" onClick={onStop}>Stop</button><button className="button primary" onClick={onContinue}>Continue run</button></> : <button className="button primary" disabled={runDisabled} onClick={onRun} title={runDisabled ? "Map the project connection to a local profile first." : undefined}>Run request <span className="shortcut">⌘↵</span></button>}
+        {isRequestActive ? <button className="button stop" onClick={onStop}>Stop</button> : awaitingToolResults ? <><button className="button stop" onClick={onStop}>Stop</button><button className="button primary" onClick={onContinue}>Continue run</button></> : retryableFailure ? <><button className="button stop" onClick={onStop}>Stop</button><button className="button primary" onClick={onRetry}>Retry <span className="shortcut">⌘↵</span></button></> : <button className="button primary" disabled={runDisabled} onClick={onRun} title={runDisabled ? "Map the project connection to a local profile first." : undefined}>Run request <span className="shortcut">⌘↵</span></button>}
       </div>
     </header>
   );

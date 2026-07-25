@@ -13,6 +13,11 @@ React UI -> RunCoordinator -> ProviderTurnTransport -> HTTP or Tauri -> provider
 `packages/core` owns the provider-neutral run model, reducer, and client-side
 `RunCoordinator`. The coordinator owns complete-run IDs, ordered `RunEvent`
 creation, tool-result pauses, and construction of subsequent model turns.
+Retryable transport failures and HTTP 408, 429, and 5xx provider failures pause
+the current turn. Retrying reuses that attempt's immutable
+`ProviderTurnInput`, keeps its `turnId`, increments the attempt number, and
+creates a new exchange; the failed attempt and exchange remain inspectable.
+Non-retryable failures terminate the run.
 
 `packages/contracts` owns the browser-to-host request shape. A
 `ProviderTurnTransport` executes exactly one `ProviderExecution` and streams

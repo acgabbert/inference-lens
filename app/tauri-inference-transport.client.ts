@@ -21,6 +21,9 @@ import type {
   ProviderExecution,
   ProviderTransportEvent,
 } from "../packages/core/src/run-kernel";
+import {
+  isRetryableRunError,
+} from "../packages/core/src/run-kernel";
 import { HttpInferenceTransport } from "./http-inference-transport.client";
 
 type NativeCredentialSelection = Extract<
@@ -139,12 +142,16 @@ function* terminalTransportEvent(
   if (!event) return;
   switch (event.type) {
     case "error":
+      const failure = {
+        code: event.kind === "provider" ? "provider_error" as const : "transport_error" as const,
+        message: event.message,
+        providerStatus: event.status,
+      };
       yield {
         type: "failed",
         error: {
-          code: event.kind === "provider" ? "provider_error" : "transport_error",
-          message: event.message,
-          providerStatus: event.status,
+          ...failure,
+          retryable: isRetryableRunError(failure),
         },
       };
       return;

@@ -41,7 +41,9 @@ function parseProviderExecution(value: unknown): ProviderExecution {
     typeof execution.runId !== "string" ||
     typeof execution.turnId !== "string" ||
     typeof execution.exchangeId !== "string" ||
-    execution.attempt !== 1
+    typeof execution.attempt !== "number" ||
+    !Number.isSafeInteger(execution.attempt) ||
+    execution.attempt < 1
   ) {
     throw new Error("Provider execution identifiers are invalid.");
   }

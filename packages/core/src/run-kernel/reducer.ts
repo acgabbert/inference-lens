@@ -275,6 +275,121 @@ export function reduceRunEvent(state: RunState, event: RunEvent): RunState {
       break;
     }
 
+    case "turn.attempt_started": {
+      assertStarted(state);
+      if (
+        state.status.kind !== "paused" ||
+        state.status.reason !== "attempt_failed" ||
+        state.status.turnId !== event.turnId ||
+        state.status.attempt + 1 !== event.attempt
+      ) {
+        throw new RunInvariantError(
+          "A retry can only start from the matching failed attempt.",
+        );
+      }
+      const turn = state.turns.find(({ turnId }) => turnId === event.turnId);
+      const previousAttempt = turn?.attempts.at(-1);
+      if (!turn || !previousAttempt || previousAttempt.status !== "failed") {
+        throw new RunInvariantError(
+          `Turn ${event.turnId} has no failed attempt to retry.`,
+        );
+      }
+      if (event.attempt !== previousAttempt.attempt + 1) {
+        throw new RunInvariantError(
+          `Expected attempt ${previousAttempt.attempt + 1}, received ${event.attempt}.`,
+        );
+      }
+      if (state.exchanges[event.exchangeId]) {
+        throw new RunInvariantError(
+          `Duplicate exchange id ${event.exchangeId}.`,
+        );
+      }
+      next = {
+        ...state,
+        turns: state.turns.map((candidate) =>
+          candidate.turnId === event.turnId
+            ? {
+                ...candidate,
+                attempts: [
+                  ...candidate.attempts,
+                  {
+                    attempt: event.attempt,
+                    exchangeId: event.exchangeId,
+                    input: previousAttempt.input,
+                    status: "streaming",
+                    text: "",
+                    reasoning: "",
+                    toolCalls: [],
+                  },
+                ],
+              }
+            : candidate,
+        ),
+        exchanges: {
+          ...state.exchanges,
+          [event.exchangeId]: {
+            exchangeId: event.exchangeId,
+            turnId: event.turnId,
+            attempt: event.attempt,
+            frames: [],
+          },
+        },
+        status: {
+          kind: "running",
+          turnId: event.turnId,
+          attempt: event.attempt,
+          exchangeId: event.exchangeId,
+        },
+      };
+      break;
+    }
+
+    case "turn.attempt_failed": {
+      assertStarted(state);
+      if (!event.error.retryable) {
+        throw new RunInvariantError(
+          "Only retryable failures may pause a run attempt.",
+        );
+      }
+      const attempt = findAttempt(state, event);
+      const turn = state.turns.find(({ turnId }) => turnId === event.turnId);
+      const isLatestAttempt = turn?.attempts.at(-1) === attempt;
+      const isActiveAttempt =
+        (state.status.kind === "running" &&
+          state.status.turnId === event.turnId &&
+          state.status.attempt === event.attempt &&
+          state.status.exchangeId === event.exchangeId) ||
+        (state.status.kind === "awaiting_tool_results" &&
+          state.status.turnId === event.turnId);
+      if (!isLatestAttempt || !isActiveAttempt) {
+        throw new RunInvariantError(
+          "Only the active turn attempt may fail.",
+        );
+      }
+      if (attempt.status === "failed") {
+        throw new RunInvariantError(
+          `Turn ${event.turnId} attempt ${event.attempt} already failed.`,
+        );
+      }
+      next = {
+        ...state,
+        turns: updateAttempt(state, event, (current) => ({
+          ...current,
+          status: "failed",
+          error: event.error,
+        })),
+        status: {
+          kind: "paused",
+          reason: "attempt_failed",
+          turnId: event.turnId,
+          attempt: event.attempt,
+          exchangeId: event.exchangeId,
+          error: event.error,
+        },
+      };
+      break;
+    }
+
     case "exchange.requested": {
       assertStreamingAttempt(state, event);
       const exchange = state.exchanges[event.exchangeId];

@@ -225,6 +225,20 @@ export interface RunError {
   details?: JsonValue;
 }
 
+/** Whether repeating the same immutable provider-turn input may succeed. */
+export function isRetryableRunError(
+  error: Pick<RunError, "code" | "providerStatus">,
+): boolean {
+  if (error.code === "transport_error") return true;
+  if (error.code !== "provider_error") return false;
+  const status = error.providerStatus;
+  return (
+    status === 408 ||
+    status === 429 ||
+    (status !== undefined && status >= 500 && status <= 599)
+  );
+}
+
 export interface RedactedProviderRequest {
   url: string;
   method: string;
@@ -265,6 +279,11 @@ export type RunEvent = RunEventMetadata &
   (
     | { type: "run.started"; input: ResolvedRunInput }
     | ({ type: "turn.started"; input: ProviderTurnInput } & AttemptEvent)
+    | ({ type: "turn.attempt_started" } & AttemptEvent)
+    | ({
+        type: "turn.attempt_failed";
+        error: RunError;
+      } & AttemptEvent)
     | ({
         type: "exchange.requested";
         request: RedactedProviderRequest;
@@ -336,7 +355,7 @@ export interface ToolCallAccumulator {
   argumentsText: string;
 }
 
-export type AttemptStatus = "streaming" | "completed";
+export type AttemptStatus = "streaming" | "completed" | "failed";
 
 export interface ModelTurnAttemptState {
   attempt: number;
@@ -349,6 +368,7 @@ export interface ModelTurnAttemptState {
   completedToolCalls?: ToolCall[];
   usage?: RunTokenUsage;
   finishReason?: FinishReason;
+  error?: RunError;
 }
 
 export interface ModelTurnState {
@@ -385,6 +405,14 @@ export type RunStatus =
       pendingToolCallIds: ToolCallId[];
     }
   | { kind: "paused"; reason: "tool_results_ready" }
+  | {
+      kind: "paused";
+      reason: "attempt_failed";
+      turnId: TurnId;
+      attempt: number;
+      exchangeId: ExchangeId;
+      error: RunError;
+    }
   | TerminalRunStatus;
 
 export interface RunState {

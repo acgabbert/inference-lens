@@ -5,6 +5,7 @@ import type { InferenceRequest } from "../packages/core/src/types.ts";
 /** Boundaries the client observes while a request is in flight. */
 export type DiagnosticBoundary =
   | "client.request_started"
+  | "client.retry_started"
   | "client.response_received"
   | "client.ndjson_record_received"
   | "client.stream_finished"
