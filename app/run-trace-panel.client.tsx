@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 
 import type { RunEvent, RunState } from "../packages/core/src/run-kernel";
 import { runMetrics } from "../packages/core/src/run-metrics";
+import { runTimeline } from "../packages/core/src/run-timeline";
 import { RunMetricsView } from "./run-metrics-view.client";
 import { PaneTabs, ResizableTracePanel } from "./workbench-shell.client";
 
@@ -60,6 +61,10 @@ export function RunTracePanel({
     () => (runState ? runMetrics(runState) : null),
     [runState],
   );
+  const timeline = useMemo(
+    () => (metrics ? runTimeline(metrics) : null),
+    [metrics],
+  );
 
   return (
     <ResizableTracePanel
@@ -88,7 +93,7 @@ export function RunTracePanel({
     >
       {tab === "metrics" ? (
         <div className="trace">
-          <RunMetricsView metrics={metrics} />
+          <RunMetricsView metrics={metrics} timeline={timeline} />
         </div>
       ) : (
         <div className="trace" aria-live="polite">

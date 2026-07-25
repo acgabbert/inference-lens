@@ -56,6 +56,14 @@
   --focus-ring: 0 0 0 3px light-dark(rgba(23, 107, 77, 0.09), rgba(79, 185, 138, 0.25));
   --overlay-scrim: light-dark(rgba(16, 28, 21, 0.44), rgba(0, 0, 0, 0.66));
 
+  /* Run timeline phases — hues chosen to stay distinct as thin bars, and to
+     keep generation on the brand green so it reads as the productive phase */
+  --timeline-wait: light-dark(#b3bdb7, #46564e);
+  --timeline-prelude: light-dark(#8ab3c4, #47707f);
+  --timeline-reasoning: var(--warning);
+  --timeline-generation: var(--accent-solid);
+  --timeline-gap: light-dark(#c4ccc6, #3b463e);
+
   /* Brand mark: fixed dark chip with bright text, does not invert */
   --brand-mark-bg: light-dark(#17211c, #1f2b25);
   --brand-mark-fg: #9ee7c5;
@@ -1886,6 +1894,196 @@ textarea:focus {
   font-family: var(--font-geist-mono), monospace;
   font-size: 11px;
   font-weight: 600;
+}
+
+/* Run timeline */
+
+.run-timeline {
+  /* Shared by the rows and the axis labels so both align on one grid. */
+  --timeline-label-width: 116px;
+  --timeline-duration-width: 62px;
+  --timeline-column-gap: 10px;
+
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.run-timeline-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+
+.run-timeline-title {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.run-timeline-legend {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 12px;
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+.run-timeline-legend li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.run-timeline-key {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+}
+
+.run-timeline-key.wait {
+  background: var(--timeline-wait);
+}
+
+.run-timeline-key.prelude {
+  background: var(--timeline-prelude);
+}
+
+.run-timeline-key.reasoning {
+  background: var(--timeline-reasoning);
+}
+
+.run-timeline-key.generation {
+  background: var(--timeline-generation);
+}
+
+.run-timeline-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.run-timeline-row {
+  display: grid;
+  grid-template-columns:
+    var(--timeline-label-width) 1fr var(--timeline-duration-width);
+  align-items: center;
+  gap: var(--timeline-column-gap);
+}
+
+.run-timeline-label {
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-timeline-row.gap .run-timeline-label {
+  color: var(--text-faint);
+  font-weight: 500;
+}
+
+.run-timeline-track {
+  position: relative;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--surface-inset);
+  overflow: hidden;
+}
+
+/* A failed attempt keeps its phase colors — the run really did wait and
+   stream. The failure is marked at the point it happened, because outlining
+   the full-width track would imply the attempt spanned the whole run. */
+.run-timeline-row.failed .run-timeline-label {
+  color: var(--danger);
+}
+
+.run-timeline-fail-mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--danger);
+}
+
+.run-timeline-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  /* A sub-millisecond phase beside a long tool pause still has to be visible;
+     the printed duration remains the exact value. */
+  min-width: 2px;
+  border-radius: 3px;
+}
+
+.run-timeline-bar.wait {
+  background: var(--timeline-wait);
+}
+
+.run-timeline-bar.prelude {
+  background: var(--timeline-prelude);
+}
+
+.run-timeline-bar.reasoning {
+  background: var(--timeline-reasoning);
+}
+
+.run-timeline-bar.generation {
+  background: var(--timeline-generation);
+}
+
+/* Still streaming: the right edge is the axis end, not a measured end. */
+.run-timeline-bar.open-ended {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+
+.run-timeline-bar.gap {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--timeline-gap) 0 3px,
+    transparent 3px 7px
+  );
+}
+
+.run-timeline-duration {
+  color: var(--text-primary);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 10px;
+  text-align: right;
+}
+
+.run-timeline-row.gap .run-timeline-duration {
+  color: var(--text-muted);
+}
+
+.run-timeline-row.failed .run-timeline-duration {
+  color: var(--danger);
+}
+
+.run-timeline-axis {
+  margin: 0 calc(var(--timeline-duration-width) + var(--timeline-column-gap)) 0
+    calc(var(--timeline-label-width) + var(--timeline-column-gap));
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-faint);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 9px;
 }
 
 .run-metrics-table-scroll {

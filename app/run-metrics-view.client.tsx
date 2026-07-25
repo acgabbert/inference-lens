@@ -1,44 +1,18 @@
 "use client";
 
-import type {
-  AttemptMetrics,
-  RunMetrics,
-} from "../packages/core/src/run-metrics";
+import type { RunMetrics } from "../packages/core/src/run-metrics";
+import type { RunTimeline } from "../packages/core/src/run-timeline";
+import {
+  attemptLabel,
+  formatDuration,
+  formatRate,
+  formatTokens,
+} from "./run-metrics-format.client";
+import { RunTimelineView } from "./run-timeline-view.client";
 
 interface RunMetricsViewProps {
   metrics: RunMetrics | null;
-}
-
-const ABSENT = "—";
-
-/**
- * Formats a millisecond duration. Absent values render as a dash rather than
- * zero: a run that never reported a timing is not a run that took no time.
- */
-function formatDuration(value?: number): string {
-  if (value === undefined) return ABSENT;
-  if (value < 1000) return `${Math.round(value)} ms`;
-  if (value < 60_000) return `${(value / 1000).toFixed(2)} s`;
-  const minutes = Math.floor(value / 60_000);
-  const seconds = (value % 60_000) / 1000;
-  return `${minutes}m ${seconds.toFixed(1)}s`;
-}
-
-function formatRate(value?: number): string {
-  if (value === undefined) return ABSENT;
-  return `${value.toFixed(1)} tok/s`;
-}
-
-function formatTokens(value?: number): string {
-  if (value === undefined) return ABSENT;
-  return value.toLocaleString();
-}
-
-/** Turn IDs are opaque, so attempts are labelled by position instead. */
-function attemptLabel({ turnIndex, attempt }: AttemptMetrics): string {
-  return attempt === 1
-    ? `Turn ${turnIndex}`
-    : `Turn ${turnIndex} · retry ${attempt - 1}`;
+  timeline: RunTimeline | null;
 }
 
 function SummaryTile({ label, value, hint }: {
@@ -59,7 +33,7 @@ function SummaryTile({ label, value, hint }: {
  * Presents derived run timing and token metrics. Purely presentational: it
  * receives a projection and never derives, fetches, or stores anything.
  */
-export function RunMetricsView({ metrics }: RunMetricsViewProps) {
+export function RunMetricsView({ metrics, timeline }: RunMetricsViewProps) {
   if (!metrics || metrics.attempts.length === 0) {
     return (
       <p className="trace-empty">
@@ -121,6 +95,8 @@ export function RunMetricsView({ metrics }: RunMetricsViewProps) {
           </div>
         )}
       </dl>
+
+      {timeline && <RunTimelineView timeline={timeline} />}
 
       <div className="run-metrics-table-scroll">
         <table className="run-metrics-table">
