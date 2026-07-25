@@ -1,0 +1,119 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  macos:
+    name: macOS bundle
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # The three version fields are maintained by hand. A tag that disagrees
+      # with them would ship a DMG whose in-app version contradicts its release,
+      # so fail before spending a build on it. A prerelease suffix
+      # (v0.1.0-rc.1) is compared against the base version.
+      - name: Check tag matches manifest versions
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          base="${tag%%-*}"
+          package_version="$(node -p "JSON.parse(require('fs').readFileSync('package.json','utf8')).version")"
+          tauri_version="$(node -p "JSON.parse(require('fs').readFileSync('src-tauri/tauri.conf.json','utf8')).version")"
+          cargo_version="$(grep -m1 '^version = ' src-tauri/Cargo.toml | sed 's/^version = "\(.*\)"$/\1/')"
+          echo "tag base:            ${base}"
+          echo "package.json:        ${package_version}"
+          echo "tauri.conf.json:     ${tauri_version}"
+          echo "Cargo.toml:          ${cargo_version}"
+          failed=0
+          for pair in "package.json:${package_version}" "tauri.conf.json:${tauri_version}" "Cargo.toml:${cargo_version}"; do
+            if [ "${pair#*:}" != "${base}" ]; then
+              echo "::error::${pair%%:*} is ${pair#*:}, expected ${base} from tag ${GITHUB_REF_NAME}"
+              failed=1
+            fi
+          done
+          exit "${failed}"
+
+      - name: Resolve release metadata
+        id: meta
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            echo "tag-name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            # A manual run builds the bundle without publishing a release.
+            echo "tag-name=" >> "$GITHUB_OUTPUT"
+          fi
+          case "${GITHUB_REF_NAME}" in
+            *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+          {
+            echo "body<<RELEASE_BODY_EOF"
+            if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
+              echo "Universal macOS build for Apple Silicon and Intel."
+            else
+              echo "Universal macOS build for Apple Silicon and Intel."
+              echo ""
+              echo "**This build is not signed or notarized.** macOS quarantines"
+              echo "downloaded unsigned apps and reports that the app \"is damaged"
+              echo "and can't be opened\" — the download is fine, Gatekeeper is not"
+              echo "willing to vouch for it. To run it anyway:"
+              echo ""
+              echo '```sh'
+              echo 'xattr -dr com.apple.quarantine "/Applications/Trace Lens.app"'
+              echo '```'
+              echo ""
+              echo "If you would rather not do that, the Docker quickstart in the"
+              echo "README needs no install and no bypass."
+            fi
+            echo "RELEASE_BODY_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      # Signing and notarization stay inert while these secrets are unset:
+      # tauri-action produces an unsigned bundle and succeeds. Populating them
+      # turns on signing with no change to this workflow.
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          tagName: ${{ steps.meta.outputs.tag-name }}
+          releaseName: Trace Lens ${{ github.ref_name }}
+          releaseBody: ${{ steps.meta.outputs.body }}
+          releaseDraft: true
+          prerelease: ${{ steps.meta.outputs.prerelease }}
+          args: --target universal-apple-darwin

@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: Web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      - run: npm run typecheck:core
+
+      # `npm test` runs `npm run build` first, so the web build is covered here.
+      - run: npm test
+
+  desktop:
+    name: Desktop host
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      - run: npm run check:rust
+
+      - run: npm run test:rust
+
+      # Credential storage is gated behind `cfg(not(debug_assertions))`, so the
+      # keychain path only exists in a release build. This is the only place it
+      # is compiled and executed.
+      - name: Release-mode host tests (keychain path)
+        run: cargo test --release --manifest-path src-tauri/Cargo.toml
