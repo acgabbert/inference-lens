@@ -133,17 +133,8 @@ during cleanup.
 
 ### Releases
 
-Pushing a `v*` tag runs `.github/workflows/release.yml`, which builds a
-universal (Apple Silicon and Intel) bundle and attaches it to a **draft**
-GitHub release.
-
-Signing and notarization are already wired into that workflow but stay inert
-until the corresponding repository secrets exist: `APPLE_CERTIFICATE`,
-`APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`,
-`APPLE_PASSWORD`, and `APPLE_TEAM_ID`. Without them the workflow produces an
-unsigned bundle, and macOS reports that a downloaded unsigned app "is damaged
-and can't be opened" until the quarantine attribute is removed. Adding the
-secrets turns on signing with no workflow change.
-
-The tag must match the version in `package.json`, `src-tauri/Cargo.toml`, and
-`src-tauri/tauri.conf.json`; the workflow checks this before building.
+Release tags publish the container image independently of the desktop app.
+macOS DMGs are produced only when signing and notarization are configured, and
+only verified DMGs are attached to draft GitHub releases. Maintainers should
+follow the [release guide](docs/RELEASING.md) for versioning, GHCR visibility,
+Apple signing setup, and release verification.
