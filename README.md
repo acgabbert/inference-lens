@@ -19,6 +19,18 @@ request. Reset it with:
 curl -X POST http://127.0.0.1:4010/reset
 ```
 
+### Test run timing locally
+
+Run `npm run dev:paced-provider` in a second terminal and use endpoint
+`http://127.0.0.1:4011/v1` with model `paced-test-model`. It stalls before the
+first byte, streams deltas at a fixed interval, and reports token usage, so the
+metrics the app derives can be checked against known values. Both delays are
+configurable with `TRACE_LENS_PACED_FIRST_BYTE_MS` and
+`TRACE_LENS_PACED_DELTA_MS`.
+
+See [the provider fixture guide](docs/PROVIDER_FIXTURES.md) for writing new
+fixtures and for driving them through the UI in a browser.
+
 ## Project folders
 
 Trace Lens projects use a strict, credential-free
