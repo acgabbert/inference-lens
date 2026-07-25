@@ -1799,6 +1799,158 @@ textarea:focus {
   font-size: 9px;
 }
 
+/* The trace header is uppercase; the tab switcher should still read the same
+   here as it does above the response pane. */
+.trace-header .pane-tabs button {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* Run metrics */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.run-metrics {
+  padding: 16px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.run-metrics-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+  gap: 10px;
+}
+
+.run-metric-tile {
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: var(--surface-panel);
+}
+
+.run-metric-label {
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.run-metric-value {
+  color: var(--text-primary);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.run-metric-hint {
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+.run-metrics-counts {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+}
+
+.run-metrics-counts > div {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.run-metrics-counts dt {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.run-metrics-counts dd {
+  margin: 0;
+  color: var(--text-secondary);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.run-metrics-table-scroll {
+  overflow-x: auto;
+}
+
+.run-metrics-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.run-metrics-table th,
+.run-metrics-table td {
+  padding: 7px 10px 7px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: right;
+}
+
+.run-metrics-table thead th {
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.run-metrics-table tbody th {
+  color: var(--text-secondary);
+  font-weight: 600;
+  text-align: left;
+}
+
+.run-metrics-table thead th:first-child,
+.run-metrics-table tbody td:first-of-type {
+  text-align: left;
+}
+
+.run-metrics-table tbody td {
+  color: var(--text-primary);
+  font-family: var(--font-geist-mono), monospace;
+}
+
+.attempt-status {
+  padding: 2px 7px;
+  border-radius: 999px;
+  display: inline-block;
+  background: var(--surface-strong);
+  color: var(--text-muted);
+  font-family: var(--font-geist-sans), sans-serif;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.attempt-status.completed {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.attempt-status.failed {
+  background: var(--danger-surface);
+  color: var(--danger);
+}
+
 .trace details {
   border-bottom: 1px solid var(--border-subtle);
   background: var(--surface-panel);

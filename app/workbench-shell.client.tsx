@@ -228,6 +228,8 @@ export function PaneTabs({ label, tabs, value, onChange }: PaneTabsProps) {
 type ResizableTracePanelProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Optional view switcher, rendered between the toggle and the meta line. */
+  tabs?: ReactNode;
   meta?: ReactNode;
   children: ReactNode;
 };
@@ -235,6 +237,7 @@ type ResizableTracePanelProps = {
 export function ResizableTracePanel({
   open,
   onOpenChange,
+  tabs,
   meta,
   children,
 }: ResizableTracePanelProps) {
@@ -308,6 +311,7 @@ export function ResizableTracePanel({
           </span>
           Event trace
         </button>
+        {tabs}
         {meta}
       </header>
       {open && <div className="trace-panel-content">{children}</div>}

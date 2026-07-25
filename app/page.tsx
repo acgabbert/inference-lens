@@ -29,10 +29,8 @@ import {
 } from "../packages/core/src/run-trace";
 import type {
   ProviderExecution,
-  RunEvent,
   RunState,
   RunTrace,
-  RunTokenUsage,
   ConversationMessage,
   ConversationId,
   ConversationRevisionId,
@@ -87,10 +85,10 @@ import type { TraceStorageStatus } from "./response-output.client";
 import type { ToolResultDraft } from "./tool-call-list.client";
 import {
   PaneTabs,
-  ResizableTracePanel,
   WorkbenchShell,
 } from "./workbench-shell.client";
 import type { WorkbenchView } from "./workbench-shell.client";
+import { RunTracePanel } from "./run-trace-panel.client";
 
 const inferenceTransport = createInferenceTransport();
 
@@ -163,10 +161,6 @@ function chooseDefaultUserPrompt(): string {
   return defaultUserPrompts[
     Math.floor(Math.random() * defaultUserPrompts.length)
   ];
-}
-
-function formatEvent(event: RunEvent): string {
-  return JSON.stringify(event, null, 2);
 }
 
 type DisplayStatus = "idle" | "running" | "waiting" | "complete" | "failed";
@@ -413,25 +407,16 @@ function HomeContent() {
     prepareCredential: credential.prepare,
   });
 
-  const { events, output, reasoning, status, usage } = useMemo(() => {
+  const { output, reasoning, status } = useMemo(() => {
     const attempts =
       runState?.turns.flatMap((turn) => {
         const latest = turn.attempts.at(-1);
         return latest ? [latest] : [];
       }) ?? [];
-    let latestUsage: RunTokenUsage | undefined;
-    for (let index = attempts.length - 1; index >= 0; index -= 1) {
-      if (attempts[index]?.usage) {
-        latestUsage = attempts[index].usage;
-        break;
-      }
-    }
     return {
-      events: runState?.events ?? [],
       output: attempts.map((attempt) => attempt.text).join(""),
       reasoning: attempts.map((attempt) => attempt.reasoning).join(""),
       status: displayStatus(runState),
-      usage: latestUsage,
     };
   }, [runState]);
 
@@ -1412,41 +1397,11 @@ function HomeContent() {
             onEditFromHere={editFromHere}
           />
 
-          <ResizableTracePanel
+          <RunTracePanel
             open={traceOpen}
+            runState={runState}
             onOpenChange={setTraceOpen}
-            meta={
-              <span>
-                {events.length} {events.length === 1 ? "event" : "events"}
-                {usage ? ` · ${usage.totalTokens ?? "—"} tokens` : ""}
-              </span>
-            }
-          >
-            <div className="trace" aria-live="polite">
-              {events.length === 0 ? (
-                <p className="trace-empty">
-                  Normalized events will appear here.
-                </p>
-              ) : (
-                events.map((event, index) => (
-                  <details
-                    key={event.eventId}
-                    open={
-                      event.type === "run.failed" ||
-                      index === events.length - 1
-                    }
-                  >
-                    <summary>
-                      <span className={`event-dot ${event.type}`} />
-                      <span>{event.type}</span>
-                      <span>#{String(index + 1).padStart(2, "0")}</span>
-                    </summary>
-                    <pre>{formatEvent(event)}</pre>
-                  </details>
-                ))
-              )}
-            </div>
-          </ResizableTracePanel>
+          />
         </section>
         }
       />
