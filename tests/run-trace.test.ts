@@ -22,6 +22,10 @@ function completedTrace(): RunTrace {
       model: "example-model",
       messages: [{ role: "user", content: "Hello" }],
     },
+    {
+      conversationId: "conversation_trace-test",
+      conversationRevisionId: "revision_trace-test",
+    },
     [],
     "trace-test",
     "2026-07-24T12:00:00.000Z",
@@ -76,6 +80,39 @@ test("serializes and parses a deterministic run trace", () => {
   assert.deepEqual(runStateFromTrace(trace).events, trace.events);
   assert.match(serialized, /"raw": "data: \{/);
   assert.match(serialized, /"body": "\{\\"model\\"/);
+  assert.match(serialized, /"schemaVersion": 2/);
+});
+
+test("accepts Version 1 evidence but rejects Version 1 provenance", () => {
+  const v1 = { ...completedTrace(), schemaVersion: 1 as const };
+  assert.equal(parseRunTraceJson(JSON.stringify(v1)).schemaVersion, 1);
+  assert.match(serializeRunTrace(v1), /"schemaVersion": 2/);
+
+  assert.throws(
+    () => parseRunTraceJson(JSON.stringify({
+      ...v1,
+      branchedFrom: { runId: "run_parent", messageId: "message_parent" },
+    })),
+    /Invalid run trace/,
+  );
+});
+
+test("round-trips Version 2 provenance", () => {
+  const trace = createRunTrace(
+    runStateFromTrace(completedTrace()),
+    {
+      branchedFrom: {
+        runId: "run_parent",
+        parentConversationRevisionId: "revision_parent",
+        messageId: "message_parent",
+      },
+    },
+  );
+  assert.deepEqual(parseRunTraceJson(serializeRunTrace(trace)).branchedFrom, {
+    runId: "run_parent",
+    parentConversationRevisionId: "revision_parent",
+    messageId: "message_parent",
+  });
 });
 
 test("rejects a trace whose projection disagrees with its events", () => {

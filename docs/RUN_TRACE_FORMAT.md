@@ -1,9 +1,10 @@
 # Run trace format
 
 Trace Lens run traces are immutable, credential-free diagnostic artifacts.
-Version 1 uses deterministic JSON and is stored as `traces/<runId>.json` when a
+Version 2 uses deterministic JSON and is stored as `traces/<runId>.json` when a
 run belongs to an open project folder. A terminal ad hoc run can be exported
-from the Project menu, and any Version 1 trace can be imported for inspection.
+from the Project menu, and Version 1 and Version 2 traces can be imported for
+inspection.
 
 The response pane always reports trace storage state. Project runs show the
 project display path and relative `traces/<runId>.json` location. Ad hoc runs
@@ -18,7 +19,7 @@ deterministic serialization, and safe filenames. Browser and Tauri workspace
 adapters own filesystem access. The project manifest never contains trace
 paths or trace contents.
 
-Only terminal runs have durable artifacts in Version 1:
+Only terminal runs have durable artifacts:
 
 - completed runs;
 - non-retryable failures;
@@ -50,9 +51,22 @@ when the stored projections disagree.
 
 ## Compatibility and immutability
 
-The root `schemaVersion` is currently `1`. Unknown root fields, unsupported
-versions, invalid identifiers, non-contiguous event sequences, and unsafe run
-IDs are rejected.
+The root `schemaVersion` is currently `2`. Version 1 is accepted with its
+original strict root schema; Version 2 adds the optional `branchedFrom` field:
+
+```ts
+{
+  runId: RunId;
+  parentConversationRevisionId?: ConversationRevisionId;
+  messageId: MessageId;
+}
+```
+
+It records the source run and the last source-transcript message included in a
+branch input. It is trace metadata, not an execution input or event, so a
+parent trace need not be present when it is imported. New serialization always
+writes Version 2. Unknown root fields, unsupported versions, invalid
+identifiers, non-contiguous event sequences, and unsafe run IDs are rejected.
 
 Trace writes are write-once by run ID. Writing identical contents again is
 idempotent; writing different contents to an existing filename fails. Future

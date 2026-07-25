@@ -181,6 +181,12 @@ export interface ResolvedRunInput {
   resolvedAt: string;
 }
 
+/** The authored conversation and revision a run executes. */
+export interface RunConversationIdentity {
+  conversationId: ConversationId;
+  conversationRevisionId: ConversationRevisionId;
+}
+
 /**
  * The exact provider-neutral context for one model request. Subsequent turns
  * contain assistant tool calls and tool results that were not in the initial
@@ -435,7 +441,7 @@ export interface RunState {
 }
 
 export interface RunTrace {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   runId: RunId;
   input: ResolvedRunInput;
   status: TerminalRunStatus;
@@ -445,6 +451,12 @@ export interface RunTrace {
   toolResults: ToolResult[];
   startedAt: string;
   endedAt: string;
+  /** Trace-only provenance; it neither changes execution nor the event stream. */
+  branchedFrom?: {
+    runId: RunId;
+    parentConversationRevisionId?: ConversationRevisionId;
+    messageId: MessageId;
+  };
 }
 
 /**

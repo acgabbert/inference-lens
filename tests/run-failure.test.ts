@@ -17,8 +17,13 @@ const request: InferenceRequest = {
   messages: [{ role: "user", content: "Hello" }],
 };
 
+const identity = {
+  conversationId: "conversation_failure" as const,
+  conversationRevisionId: "revision_failure" as const,
+};
+
 test("preserves accumulated output when recording a client failure", () => {
-  const execution = createSingleTurnRunExecution(request);
+  const execution = createSingleTurnRunExecution(request, identity);
   const factory = createRunEventFactory(execution.runId);
   let state = createRunState(execution.runId);
   for (const event of [
@@ -44,6 +49,7 @@ test("preserves accumulated output when recording a client failure", () => {
   const failed = preserveRunFailure(
     state,
     request,
+    identity,
     "Projection failed.",
     "2026-07-24T13:19:42.678Z",
   );
@@ -56,7 +62,7 @@ test("preserves accumulated output when recording a client failure", () => {
 });
 
 test("keeps an already-terminal run authoritative", () => {
-  const execution = createSingleTurnRunExecution(request);
+  const execution = createSingleTurnRunExecution(request, identity);
   const factory = createRunEventFactory(execution.runId);
   let state = createRunState(execution.runId);
   for (const event of [
@@ -81,7 +87,7 @@ test("keeps an already-terminal run authoritative", () => {
   }
 
   assert.equal(
-    preserveRunFailure(state, request, "Late transport error."),
+    preserveRunFailure(state, request, identity, "Late transport error."),
     state,
   );
 });

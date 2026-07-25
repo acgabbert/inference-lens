@@ -10,6 +10,7 @@ import {
 } from "../packages/core/src/run-kernel/index.ts";
 import type {
   RunEvent,
+  RunConversationIdentity,
   RunState,
 } from "../packages/core/src/run-kernel/index.ts";
 
@@ -23,9 +24,10 @@ function isTerminal(state: RunState): boolean {
 
 function newFailedRunState(
   request: InferenceRequest | RichInferenceRequest,
+  identity: RunConversationIdentity,
   message: string,
 ): RunState {
-  const execution = createSingleTurnRunExecution(request);
+  const execution = createSingleTurnRunExecution(request, identity);
   const factory = createRunEventFactory(execution.runId);
   let state = createRunState(execution.runId);
   state = reduceRunEvent(
@@ -48,10 +50,11 @@ function newFailedRunState(
 export function preserveRunFailure(
   current: RunState | null,
   request: InferenceRequest,
+  identity: RunConversationIdentity,
   message: string,
   occurredAt = new Date().toISOString(),
 ): RunState {
-  if (!current?.input) return newFailedRunState(request, message);
+  if (!current?.input) return newFailedRunState(request, identity, message);
   if (isTerminal(current)) return current;
 
   const lastElapsedMs = current.events.at(-1)?.elapsedMs ?? 0;

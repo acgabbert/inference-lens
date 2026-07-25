@@ -6,7 +6,7 @@ import {
   reduceRunEvents,
 } from "./run-kernel/reducer.ts";
 
-export const RUN_TRACE_SCHEMA_VERSION = 1;
+export const RUN_TRACE_SCHEMA_VERSION = 2;
 export const RUN_TRACE_FILE_SUFFIX = ".json";
 
 /**
@@ -22,9 +22,8 @@ export class RunTraceValidationError extends Error {
   }
 }
 
-const traceEnvelopeSchema = z
+const traceEnvelopeBaseSchema = z
   .object({
-    schemaVersion: z.literal(RUN_TRACE_SCHEMA_VERSION),
     runId: z.string().regex(/^run_.+/),
     input: z.object({ runId: z.string().regex(/^run_.+/) }).passthrough(),
     status: z
@@ -66,8 +65,27 @@ const traceEnvelopeSchema = z
     toolResults: z.array(z.unknown()),
     startedAt: z.string().datetime(),
     endedAt: z.string().datetime(),
+  });
+
+const traceV1EnvelopeSchema = traceEnvelopeBaseSchema
+  .extend({ schemaVersion: z.literal(1) })
+  .strict();
+
+const traceV2EnvelopeSchema = traceEnvelopeBaseSchema
+  .extend({
+    schemaVersion: z.literal(2),
+    branchedFrom: z
+      .object({
+        runId: z.string().regex(/^run_.+/),
+        parentConversationRevisionId: z.string().regex(/^revision_.+/).optional(),
+        messageId: z.string().regex(/^message_.+/),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
+
+const traceEnvelopeSchema = z.union([traceV1EnvelopeSchema, traceV2EnvelopeSchema]);
 
 export function traceFileName(runId: RunId): string {
   if (!/^run_[A-Za-z0-9][A-Za-z0-9._-]*$/.test(runId) || runId.includes("..")) {
@@ -91,7 +109,8 @@ function stableJsonValue(value: unknown): unknown {
 
 export function serializeRunTrace(trace: RunTrace): string {
   const parsed = parseRunTraceFile(trace);
-  return `${JSON.stringify(stableJsonValue(parsed), null, 2)}\n`;
+  const current: RunTrace = { ...parsed, schemaVersion: RUN_TRACE_SCHEMA_VERSION };
+  return `${JSON.stringify(stableJsonValue(current), null, 2)}\n`;
 }
 
 export function parseRunTraceJson(contents: string): RunTrace {

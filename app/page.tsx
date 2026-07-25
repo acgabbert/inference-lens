@@ -32,6 +32,8 @@ import type {
   RunTrace,
   RunTokenUsage,
   ConversationMessage,
+  ConversationId,
+  RunConversationIdentity,
   ToolDefinition,
   ToolResult,
 } from "../packages/core/src/run-kernel";
@@ -279,6 +281,7 @@ function HomeContent() {
   const coordinatorRef = useRef<RunCoordinator | null>(null);
   const runStateRef = useRef<RunState | null>(null);
   const requestGenerationRef = useRef(0);
+  const adHocConversationIdRef = useRef<ConversationId | null>(null);
   const runTraceWorkspaceRef = useRef<ProjectWorkspaceHandle | null>(null);
   const persistedTraceRunIdsRef = useRef(new Set<string>());
   const diagnosticCaptureRef = useRef<DiagnosticCapture | null>(null);
@@ -453,6 +456,26 @@ function HomeContent() {
     };
   }
 
+  function currentRunIdentity(): RunConversationIdentity {
+    const revision = projectFile?.conversationRevisions.find(
+      ({ id }) => id === projectFile.defaults.conversationRevisionId,
+    );
+    if (revision) {
+      return {
+        conversationId: revision.conversationId,
+        conversationRevisionId: revision.id,
+      };
+    }
+    const conversationId =
+      adHocConversationIdRef.current ??
+      createEntityId("conversation", crypto.randomUUID());
+    adHocConversationIdRef.current = conversationId;
+    return {
+      conversationId,
+      conversationRevisionId: createEntityId("revision", crypto.randomUUID()),
+    };
+  }
+
   function setEditorModel(model: string): void {
     if (projectFile) {
       setSessionModel(model);
@@ -611,7 +634,8 @@ function HomeContent() {
     setOutputFollowing(true);
     setIsRequestActive(true);
     const request = currentRequest();
-    const input = createResolvedRunInput(request, selectedTools);
+    const identity = currentRunIdentity();
+    const input = createResolvedRunInput(request, identity, selectedTools);
     input.target.profileId = createEntityId("profile", activeProfile.id);
     const coordinator = new RunCoordinator(input);
     runTraceWorkspaceRef.current = projectWorkspace;
@@ -663,6 +687,7 @@ function HomeContent() {
           preserveRunFailure(
             runStateRef.current,
             request,
+            identity,
             error instanceof Error ? error.message : "Request failed.",
           ),
         );

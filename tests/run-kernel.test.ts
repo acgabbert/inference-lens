@@ -18,7 +18,13 @@ import {
   reduceRunEvent,
   RunCoordinator,
   RunInvariantError,
+  transcriptFromRunState,
 } from "../packages/core/src/run-kernel/index.ts";
+import {
+  parseRunTraceJson,
+  runStateFromTrace,
+  serializeRunTrace,
+} from "../packages/core/src/run-trace.ts";
 import type {
   ProviderTurnInput,
   ResolvedRunInput,
@@ -103,6 +109,10 @@ test("preserves rich draft message and tool-call IDs in a new run", () => {
       endpoint: "https://api.example.com/v1",
       model: "example-model",
       messages,
+    },
+    {
+      conversationId: createEntityId("conversation", "rich"),
+      conversationRevisionId: createEntityId("revision", "rich"),
     },
     "rich",
   );
@@ -545,6 +555,24 @@ test("coordinates a tool result into a second provider turn", () => {
       "run.completed",
     ],
   );
+
+  const transcript = transcriptFromRunState(coordinator.state);
+  assert.deepEqual(transcript.map(({ role }) => role), [
+    "user",
+    "assistant",
+    "tool",
+    "assistant",
+  ]);
+  assert.deepEqual(transcript.map(({ id }) => id), [
+    "message_user",
+    "message_test-t1-assistant",
+    "message_test-t1-r1",
+    "message_test-t2-assistant",
+  ]);
+  const imported = runStateFromTrace(
+    parseRunTraceJson(serializeRunTrace(createRunTrace(coordinator.state))),
+  );
+  assert.deepEqual(transcriptFromRunState(imported), transcript);
 });
 
 test("retries a failed turn with the same input and a new exchange", () => {
@@ -592,6 +620,15 @@ test("retries a failed turn with the same input and a new exchange", () => {
     coordinator.state.exchanges[second.execution.exchangeId].attempt,
     2,
   );
+  const transcript = transcriptFromRunState(coordinator.state);
+  const lastMessage = transcript.at(-1);
+  assert.equal(lastMessage?.role, "assistant");
+  assert.equal(
+    lastMessage?.role === "assistant"
+      ? lastMessage.content[0]?.text
+      : undefined,
+    "Recovered",
+  );
   assert.deepEqual(
     coordinator.state.events.map(({ type }) => type),
     [
@@ -604,6 +641,45 @@ test("retries a failed turn with the same input and a new exchange", () => {
       "assistant.completed",
       "run.completed",
     ],
+  );
+});
+
+test("ends a cancelled transcript at its last completed turn", () => {
+  const coordinator = new RunCoordinator({
+    ...resolvedInput,
+    target: {
+      ...resolvedInput.target,
+      capabilities: { ...OPENAI_COMPATIBLE_CAPABILITIES, tools: true },
+    },
+  });
+  const callId = createEntityId("tool-call", "cancelled-weather");
+  coordinator.start();
+  coordinator.accept({
+    type: "tool_call_delta",
+    toolCallId: callId,
+    index: 0,
+    nameDelta: "get_weather",
+    argumentsDelta: "{}",
+  });
+  coordinator.accept({
+    type: "completed",
+    finishReason: { normalized: "tool_calls", raw: "tool_calls" },
+  });
+  coordinator.finishTurnStream();
+  coordinator.supplyToolResults([{
+    id: createEntityId("tool-result", "cancelled-weather"),
+    toolCallId: callId,
+    content: [{ type: "text", text: "72°F and clear" }],
+    resolution: { kind: "manual" },
+  }]);
+  coordinator.continue();
+  coordinator.accept({ type: "text_delta", text: "Partial second turn" });
+  coordinator.cancel("Stopped by user.");
+
+  assert.equal(coordinator.state.status.kind, "cancelled");
+  assert.deepEqual(
+    transcriptFromRunState(coordinator.state).map(({ role }) => role),
+    ["user", "assistant", "tool"],
   );
 });
 
@@ -684,6 +760,7 @@ test("rejects gaps and events after a terminal event", () => {
     },
   );
   assert.equal(state.status.kind, "cancelled");
+  assert.deepEqual(transcriptFromRunState(state), resolvedInput.messages);
 
   assert.throws(
     () =>

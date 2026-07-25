@@ -678,7 +678,10 @@ export function reduceRunEvents(
   return state;
 }
 
-export function createRunTrace(state: RunState): RunTrace {
+export function createRunTrace(
+  state: RunState,
+  options: Pick<RunTrace, "branchedFrom"> = {},
+): RunTrace {
   assertStarted(state);
   if (!isTerminal(state.status) || !state.endedAt) {
     throw new RunInvariantError(
@@ -686,7 +689,7 @@ export function createRunTrace(state: RunState): RunTrace {
     );
   }
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     runId: state.runId,
     input: state.input,
     status: state.status,
@@ -696,5 +699,6 @@ export function createRunTrace(state: RunState): RunTrace {
     toolResults: state.toolResults,
     startedAt: state.startedAt,
     endedAt: state.endedAt,
+    ...options,
   };
 }

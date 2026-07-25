@@ -3,6 +3,7 @@ import type {
   ExchangeId,
   ProviderTurnInput,
   ResolvedRunInput,
+  RunConversationIdentity,
   RunId,
   ToolDefinition,
   TurnId,
@@ -24,6 +25,7 @@ export interface SingleTurnRunExecution {
 
 export function createSingleTurnRunExecution(
   request: InferenceRequest | RichInferenceRequest,
+  identity: RunConversationIdentity,
   suffix: string = crypto.randomUUID(),
   resolvedAt: string = new Date().toISOString(),
   tools: ToolDefinition[] = [],
@@ -82,8 +84,7 @@ export function createSingleTurnRunExecution(
     turnInput,
     input: {
       runId,
-      conversationId: createEntityId("conversation", suffix),
-      conversationRevisionId: createEntityId("revision", suffix),
+      ...identity,
       ...turnInput,
       resolvedAt,
     },
@@ -92,12 +93,14 @@ export function createSingleTurnRunExecution(
 
 export function createResolvedRunInput(
   request: InferenceRequest | RichInferenceRequest,
+  identity: RunConversationIdentity,
   tools: ToolDefinition[] = [],
   suffix: string = crypto.randomUUID(),
   resolvedAt: string = new Date().toISOString(),
 ): ResolvedRunInput {
   return createSingleTurnRunExecution(
     request,
+    identity,
     suffix,
     resolvedAt,
     tools,
