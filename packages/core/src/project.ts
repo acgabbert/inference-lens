@@ -10,14 +10,21 @@ import type {
   JsonObject,
   JsonValue,
   MessageContentPart,
+  MessageId,
   ProjectId,
   PromptTemplateId,
   PromptTemplateRevisionId,
+  PromptTemplateUseId,
+  ResolvedTemplateUse,
   ToolDefinition,
   ToolId,
   ToolMockId,
 } from "./run-kernel/types.ts";
 import { createEntityId } from "./run-kernel/types.ts";
+import {
+  renderTemplateContent,
+  resolveTemplateValues,
+} from "./template-engine.ts";
 import type {
   InferenceRequest,
   RichInferenceRequest,
@@ -25,7 +32,7 @@ import type {
 } from "./types.ts";
 
 export const PROJECT_FILE_NAME = "trace-lens.project.json";
-export const PROJECT_SCHEMA_VERSION = 2;
+export const PROJECT_SCHEMA_VERSION = 3;
 
 export interface ConnectionRequirement {
   id: ConnectionRequirementId;
@@ -83,6 +90,33 @@ export interface PromptTemplate {
   revisions: PromptTemplateRevision[];
 }
 
+export interface PromptTemplateUse {
+  id: PromptTemplateUseId;
+  templateId: PromptTemplateId;
+  templateRevisionId: PromptTemplateRevisionId;
+  values: Record<string, string>;
+  outputMessageIds: MessageId[];
+  fragmentRole?: "system" | "user" | "assistant";
+}
+
+export type ProjectConversationItem =
+  | {
+      kind: "message";
+      message: ConversationMessage;
+    }
+  | {
+      kind: "template-use";
+      use: PromptTemplateUse;
+    };
+
+export interface ProjectConversationRevision {
+  id: ConversationRevisionId;
+  conversationId: ConversationId;
+  parentRevisionId?: ConversationRevisionId;
+  items: ProjectConversationItem[];
+  createdAt: string;
+}
+
 export interface ProjectDefaults {
   conversationRevisionId: ConversationRevisionId;
   target: {
@@ -109,6 +143,21 @@ export interface ProjectFileV2 {
   promptTemplates: PromptTemplate[];
   defaults: ProjectDefaults;
 }
+
+export interface ProjectFileV3 {
+  schemaVersion: 3;
+  projectId: ProjectId;
+  name: string;
+  connectionRequirements: ConnectionRequirement[];
+  conversations: ProjectConversation[];
+  conversationRevisions: ProjectConversationRevision[];
+  tools: ToolDefinition[];
+  toolMocks: ToolMock[];
+  promptTemplates: PromptTemplate[];
+  defaults: ProjectDefaults;
+}
+
+export type ProjectFile = ProjectFileV3;
 
 const entityId = <Kind extends Parameters<typeof createEntityId>[0]>(
   kind: Kind,
@@ -262,7 +311,7 @@ const projectConversationSchema: z.ZodType<ProjectConversation> = z
   })
   .strict();
 
-const conversationRevisionSchema: z.ZodType<ConversationRevision> = z
+const conversationRevisionV2Schema: z.ZodType<ConversationRevision> = z
   .object({
     id: entityId("revision"),
     conversationId: entityId("conversation"),
@@ -338,12 +387,12 @@ const promptTemplateSchema: z.ZodType<PromptTemplate> = z
 
 const projectFileV2Schema: z.ZodType<ProjectFileV2> = z
   .object({
-    schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
+    schemaVersion: z.literal(2),
     projectId: entityId("project"),
     name: z.string().trim().min(1),
     connectionRequirements: z.array(connectionRequirementSchema).min(1),
     conversations: z.array(projectConversationSchema).min(1),
-    conversationRevisions: z.array(conversationRevisionSchema).min(1),
+    conversationRevisions: z.array(conversationRevisionV2Schema).min(1),
     tools: z.array(toolDefinitionSchema),
     toolMocks: z.array(toolMockSchema),
     promptTemplates: z.array(promptTemplateSchema),
@@ -362,7 +411,76 @@ const projectFileV2Schema: z.ZodType<ProjectFileV2> = z
       .strict(),
   })
   .strict()
-  .superRefine(validateProjectReferences);
+  .superRefine(validateProjectV2References);
+
+const promptTemplateUseSchema: z.ZodType<PromptTemplateUse> = z
+  .object({
+    id: entityId("template-use"),
+    templateId: entityId("template"),
+    templateRevisionId: entityId("template-revision"),
+    values: z.record(
+      z.string().regex(variableName, "Invalid template variable name."),
+      z.string(),
+    ),
+    outputMessageIds: z.array(entityId("message")).min(1),
+    fragmentRole: z.enum(["system", "user", "assistant"]).optional(),
+  })
+  .strict();
+
+const projectConversationItemSchema: z.ZodType<ProjectConversationItem> =
+  z.discriminatedUnion("kind", [
+    z
+      .object({
+        kind: z.literal("message"),
+        message: conversationMessageSchema,
+      })
+      .strict(),
+    z
+      .object({
+        kind: z.literal("template-use"),
+        use: promptTemplateUseSchema,
+      })
+      .strict(),
+  ]);
+
+const projectConversationRevisionSchema: z.ZodType<ProjectConversationRevision> =
+  z
+    .object({
+      id: entityId("revision"),
+      conversationId: entityId("conversation"),
+      parentRevisionId: entityId("revision").optional(),
+      items: z.array(projectConversationItemSchema),
+      createdAt: z.iso.datetime({ offset: true }),
+    })
+    .strict();
+
+const projectFileV3Schema: z.ZodType<ProjectFileV3> = z
+  .object({
+    schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
+    projectId: entityId("project"),
+    name: z.string().trim().min(1),
+    connectionRequirements: z.array(connectionRequirementSchema).min(1),
+    conversations: z.array(projectConversationSchema).min(1),
+    conversationRevisions: z.array(projectConversationRevisionSchema).min(1),
+    tools: z.array(toolDefinitionSchema),
+    toolMocks: z.array(toolMockSchema),
+    promptTemplates: z.array(promptTemplateSchema),
+    defaults: z
+      .object({
+        conversationRevisionId: entityId("revision"),
+        target: z
+          .object({
+            connectionRequirementId: entityId("connection"),
+            model: z.string().trim().min(1),
+          })
+          .strict(),
+        options: inferenceOptionsSchema,
+        enabledToolIds: z.array(entityId("tool")),
+      })
+      .strict(),
+  })
+  .strict()
+  .superRefine(validateProjectV3References);
 
 function addDuplicateIssues(
   values: string[],
@@ -391,7 +509,7 @@ function requireReference(
   if (!exists) context.addIssue({ code: "custom", path, message });
 }
 
-function validateProjectReferences(
+function validateProjectV2References(
   project: ProjectFileV2,
   context: z.RefinementCtx,
 ): void {
@@ -578,6 +696,113 @@ function validateProjectReferences(
   });
 }
 
+function validateProjectV3References(
+  project: ProjectFileV3,
+  context: z.RefinementCtx,
+): void {
+  validateProjectV2References(
+    {
+      ...project,
+      schemaVersion: 2,
+      conversationRevisions: project.conversationRevisions.map(
+        ({ items, ...revision }) => ({
+          ...revision,
+          messages: items.flatMap((item) =>
+            item.kind === "message" ? [item.message] : [],
+          ),
+        }),
+      ),
+    },
+    context,
+  );
+
+  const templates = new Map(
+    project.promptTemplates.map((template) => [template.id, template]),
+  );
+  project.conversationRevisions.forEach((revision, revisionIndex) => {
+    const itemPath = ["conversationRevisions", revisionIndex, "items"];
+    addDuplicateIssues(
+      revision.items.flatMap((item) =>
+        item.kind === "message" ? [] : [item.use.id],
+      ),
+      itemPath,
+      context,
+    );
+    addDuplicateIssues(
+      revision.items.flatMap((item) =>
+        item.kind === "message"
+          ? [item.message.id]
+          : item.use.outputMessageIds,
+      ),
+      itemPath,
+      context,
+    );
+
+    revision.items.forEach((item, itemIndex) => {
+      if (item.kind === "message") return;
+      const path = [...itemPath, itemIndex, "use"];
+      const template = templates.get(item.use.templateId);
+      requireReference(
+        Boolean(template),
+        [...path, "templateId"],
+        `Template use references unknown template "${item.use.templateId}".`,
+        context,
+      );
+      const templateRevision = template?.revisions.find(
+        ({ id }) => id === item.use.templateRevisionId,
+      );
+      requireReference(
+        Boolean(templateRevision),
+        [...path, "templateRevisionId"],
+        "Pinned template revision does not belong to the referenced template.",
+        context,
+      );
+      if (!templateRevision) return;
+
+      const expectedMessageCount =
+        templateRevision.content.kind === "fragment"
+          ? 1
+          : templateRevision.content.messages.length;
+      if (item.use.outputMessageIds.length !== expectedMessageCount) {
+        context.addIssue({
+          code: "custom",
+          path: [...path, "outputMessageIds"],
+          message: `Template use must provide ${expectedMessageCount} output message ID${expectedMessageCount === 1 ? "" : "s"}.`,
+        });
+      }
+      if (
+        templateRevision.content.kind === "fragment" &&
+        !item.use.fragmentRole
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: [...path, "fragmentRole"],
+          message: "Fragment template uses require an explicit message role.",
+        });
+      }
+      if (
+        templateRevision.content.kind === "messages" &&
+        item.use.fragmentRole !== undefined
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: [...path, "fragmentRole"],
+          message: "Message-set template uses cannot specify a fragment role.",
+        });
+      }
+      Object.keys(item.use.values).forEach((name) => {
+        if (sensitiveFieldNames.has(normalizedFieldName(name))) {
+          context.addIssue({
+            code: "custom",
+            path: [...path, "values", name],
+            message: "Secret values cannot be stored on portable template uses.",
+          });
+        }
+      });
+    });
+  });
+}
+
 export class ProjectValidationError extends Error {
   readonly issues: z.core.$ZodIssue[];
 
@@ -592,9 +817,39 @@ export class ProjectValidationError extends Error {
   }
 }
 
-export function parseProjectFile(value: unknown): ProjectFileV2 {
-  const parsed = projectFileV2Schema.safeParse(value);
+function migrateProjectV2(project: ProjectFileV2): ProjectFileV3 {
+  return {
+    ...project,
+    schemaVersion: PROJECT_SCHEMA_VERSION,
+    conversationRevisions: project.conversationRevisions.map(
+      ({ messages, ...revision }) => ({
+        ...revision,
+        items: messages.map((message) => ({
+          kind: "message" as const,
+          message,
+        })),
+      }),
+    ),
+  };
+}
+
+export function parseProjectFile(value: unknown): ProjectFileV3 {
+  const version =
+    value && typeof value === "object" && "schemaVersion" in value
+      ? value.schemaVersion
+      : undefined;
+  const parsed =
+    version === 2
+      ? projectFileV2Schema.safeParse(value)
+      : projectFileV3Schema.safeParse(value);
   if (!parsed.success) throw new ProjectValidationError(parsed.error.issues);
+  if (parsed.data.schemaVersion === 2) {
+    const migrated = projectFileV3Schema.safeParse(migrateProjectV2(parsed.data));
+    if (!migrated.success) {
+      throw new ProjectValidationError(migrated.error.issues);
+    }
+    return migrated.data;
+  }
   return parsed.data;
 }
 
@@ -617,6 +872,10 @@ const preferredFieldOrder = new Map(
     "capabilityOverrides",
     "conversationId",
     "parentRevisionId",
+    "items",
+    "kind",
+    "message",
+    "use",
     "messages",
     "createdAt",
     "role",
@@ -632,6 +891,11 @@ const preferredFieldOrder = new Map(
     "isError",
     "currentRevisionId",
     "revisions",
+    "templateId",
+    "templateRevisionId",
+    "values",
+    "outputMessageIds",
+    "fragmentRole",
     "variableDefaults",
     "conversationRevisionId",
     "target",
@@ -662,12 +926,12 @@ function stableJsonValue(value: unknown): unknown {
   );
 }
 
-export function serializeProjectFile(project: ProjectFileV2): string {
+export function serializeProjectFile(project: ProjectFileV3): string {
   const validated = parseProjectFile(project);
   return `${JSON.stringify(stableJsonValue(validated), null, 2)}\n`;
 }
 
-export function parseProjectJson(text: string): ProjectFileV2 {
+export function parseProjectJson(text: string): ProjectFileV3 {
   let value: unknown;
   try {
     value = JSON.parse(text);
@@ -685,7 +949,9 @@ export function parseProjectJson(text: string): ProjectFileV2 {
 
 export interface ProjectDraft {
   connectionRequirement: ConnectionRequirement;
+  items: ProjectConversationItem[];
   messages: ConversationMessage[];
+  templateResolutions: ResolvedTemplateUse[];
   model: string;
   temperature?: number;
   tools: ToolDefinition[];
@@ -695,6 +961,7 @@ export interface ProjectDraft {
 
 export interface UpdateProjectDraft {
   messages: ConversationMessage[];
+  items?: ProjectConversationItem[];
   model: string;
   temperature?: number;
   tools: ToolDefinition[];
@@ -702,7 +969,122 @@ export interface UpdateProjectDraft {
   enabledToolIds: ToolId[];
 }
 
-export function projectDraft(project: ProjectFileV2): ProjectDraft {
+export type TemplateRunOverrides = Readonly<
+  Partial<Record<PromptTemplateUseId, Readonly<Record<string, string>>>>
+>;
+
+export interface ResolvedProjectRevision {
+  messages: ConversationMessage[];
+  templateResolutions: ResolvedTemplateUse[];
+}
+
+export function resolveProjectRevision(
+  project: ProjectFileV3,
+  revision: ProjectConversationRevision,
+  runOverrides: TemplateRunOverrides = {},
+): ResolvedProjectRevision {
+  const templates = new Map(
+    project.promptTemplates.map((template) => [template.id, template]),
+  );
+  const messages: ConversationMessage[] = [];
+  const templateResolutions: ResolvedTemplateUse[] = [];
+
+  revision.items.forEach((item, itemIndex) => {
+    if (item.kind === "message") {
+      messages.push(item.message);
+      return;
+    }
+    const template = templates.get(item.use.templateId);
+    const templateRevision = template?.revisions.find(
+      ({ id }) => id === item.use.templateRevisionId,
+    );
+    if (!template || !templateRevision) {
+      throw new ProjectValidationError([
+        {
+          code: "custom",
+          path: ["conversationRevisions", revision.id, "items", itemIndex],
+          message: "Template use has an invalid pinned revision.",
+        },
+      ]);
+    }
+    const values = resolveTemplateValues(
+      templateRevision.variableDefaults,
+      item.use.values,
+      runOverrides[item.use.id],
+    );
+    const rendered = renderTemplateContent(templateRevision.content, values);
+    if (!rendered.ok) {
+      throw new ProjectValidationError(
+        rendered.diagnostics.map((diagnostic) => ({
+          code: "custom",
+          path: [
+            "conversationRevisions",
+            revision.id,
+            "items",
+            itemIndex,
+            "use",
+            diagnostic.code === "missing-template-variable"
+              ? diagnostic.name
+              : "templateRevisionId",
+          ],
+          message: `${diagnostic.message} Template use "${item.use.id}", revision "${item.use.templateRevisionId}".`,
+        })),
+      );
+    }
+    if (rendered.content.kind === "fragment") {
+      const role = item.use.fragmentRole;
+      if (!role) throw new Error("Validated fragment use is missing a role.");
+      messages.push({
+        id: item.use.outputMessageIds[0]!,
+        role,
+        content: [{ type: "text", text: rendered.content.text }],
+      });
+      templateResolutions.push({
+        templateUseId: item.use.id,
+        templateId: template.id,
+        templateRevisionId: templateRevision.id,
+        templateName: template.name,
+        content: structuredClone(templateRevision.content),
+        variableDefaults: { ...templateRevision.variableDefaults },
+        values,
+        outputMessageIds: [...item.use.outputMessageIds],
+        fragmentRole: role,
+      });
+      return;
+    }
+    rendered.content.messages.forEach((message, index) => {
+      messages.push({
+        id: item.use.outputMessageIds[index]!,
+        role: message.role,
+        content: [{ type: "text", text: message.content }],
+      });
+    });
+    templateResolutions.push({
+      templateUseId: item.use.id,
+      templateId: template.id,
+      templateRevisionId: templateRevision.id,
+      templateName: template.name,
+      content: structuredClone(templateRevision.content),
+      variableDefaults: { ...templateRevision.variableDefaults },
+      values,
+      outputMessageIds: [...item.use.outputMessageIds],
+    });
+  });
+  return { messages, templateResolutions };
+}
+
+export function resolveProjectRevisionMessages(
+  project: ProjectFileV3,
+  revision: ProjectConversationRevision,
+  runOverrides: TemplateRunOverrides = {},
+): ConversationMessage[] {
+  return resolveProjectRevision(project, revision, runOverrides).messages;
+}
+
+export function projectDraft(
+  project: ProjectFileV3,
+  runOverrides: TemplateRunOverrides = {},
+): ProjectDraft {
   const revision = project.conversationRevisions.find(
     ({ id }) => id === project.defaults.conversationRevisionId,
   );
@@ -718,9 +1100,12 @@ export function projectDraft(project: ProjectFileV2): ProjectDraft {
       },
     ]);
   }
+  const resolved = resolveProjectRevision(project, revision, runOverrides);
   return {
     connectionRequirement,
-    messages: revision.messages,
+    items: revision.items,
+    messages: resolved.messages,
+    templateResolutions: resolved.templateResolutions,
     model: project.defaults.target.model,
     temperature: project.defaults.options.temperature,
     tools: project.tools,
@@ -734,9 +1119,9 @@ export function projectDraft(project: ProjectFileV2): ProjectDraft {
  * mocks, templates, other conversations, or connection requirements.
  */
 export function updateProjectDraft(
-  project: ProjectFileV2,
+  project: ProjectFileV3,
   draft: UpdateProjectDraft,
-): ProjectFileV2 {
+): ProjectFileV3 {
   const activeRevisionIndex = project.conversationRevisions.findIndex(
     ({ id }) => id === project.defaults.conversationRevisionId,
   );
@@ -744,11 +1129,35 @@ export function updateProjectDraft(
   const activeRevision = project.conversationRevisions[activeRevisionIndex];
   // Draft messages own their identity and complete rich payload. Existing and
   // newly inserted messages are intentionally handled identically by ID.
-  const messages = draft.messages;
+  let items = draft.items;
+  if (!items) {
+    const hasTemplateUse = activeRevision.items.some(
+      (item) => item.kind === "template-use",
+    );
+    if (hasTemplateUse) {
+      const resolved = resolveProjectRevisionMessages(project, activeRevision);
+      if (JSON.stringify(resolved) !== JSON.stringify(draft.messages)) {
+        throw new ProjectValidationError([
+          {
+            code: "custom",
+            path: ["conversationRevisions", activeRevision.id, "items"],
+            message:
+              "A template-backed conversation must be edited through its authored items. Detach the template use before editing generated messages.",
+          },
+        ]);
+      }
+      items = activeRevision.items;
+    } else {
+      items = draft.messages.map((message) => ({
+        kind: "message" as const,
+        message,
+      }));
+    }
+  }
   const conversationRevisions = [...project.conversationRevisions];
   conversationRevisions[activeRevisionIndex] = {
     ...activeRevision,
-    messages,
+    items,
   };
   return parseProjectFile({
     ...project,
@@ -776,6 +1185,7 @@ export interface CreateBranchRevisionOptions {
   conversationId: ConversationId;
   parentRevisionId: ConversationRevisionId;
   messages: ConversationMessage[];
+  items?: ProjectConversationItem[];
   idSuffix?: string;
   createdAt?: string;
 }
@@ -785,15 +1195,16 @@ export interface CreateBranchRevisionOptions {
  * active authored revision. The caller owns persistence of the returned file.
  */
 export function createBranchRevision(
-  project: ProjectFileV2,
+  project: ProjectFileV3,
   {
     conversationId,
     parentRevisionId,
     messages,
+    items,
     idSuffix = crypto.randomUUID(),
     createdAt = new Date().toISOString(),
   }: CreateBranchRevisionOptions,
-): ProjectFileV2 {
+): ProjectFileV3 {
   const parent = project.conversationRevisions.find(
     ({ id }) => id === parentRevisionId,
   );
@@ -806,11 +1217,16 @@ export function createBranchRevision(
       },
     ]);
   }
-  const revision: ConversationRevision = {
+  const revision: ProjectConversationRevision = {
     id: createEntityId("revision", idSuffix),
     conversationId,
     parentRevisionId,
-    messages,
+    items:
+      items ??
+      messages.map((message) => ({
+        kind: "message",
+        message,
+      })),
     createdAt,
   };
   return parseProjectFile({
@@ -835,12 +1251,12 @@ export function createProjectFile({
   request,
   idSuffix = crypto.randomUUID(),
   createdAt = new Date().toISOString(),
-}: CreateProjectOptions): ProjectFileV2 {
+}: CreateProjectOptions): ProjectFileV3 {
   const projectId = createEntityId("project", idSuffix);
   const connectionId = createEntityId("connection", `${idSuffix}-default`);
   const conversationId = createEntityId("conversation", `${idSuffix}-default`);
   const revisionId = createEntityId("revision", `${idSuffix}-initial`);
-  const project: ProjectFileV2 = {
+  const project: ProjectFileV3 = {
     schemaVersion: PROJECT_SCHEMA_VERSION,
     projectId,
     name: name.trim() || "Untitled Trace Lens project",
@@ -864,23 +1280,25 @@ export function createProjectFile({
       {
         id: revisionId,
         conversationId,
-        messages: request.messages.map((message, index) =>
-          "id" in message
-            ? message
-            : {
-                id: createEntityId("message", `${idSuffix}-${index}`),
-                role: message.role,
-                content: [{ type: "text", text: message.content }],
-                ...(message.role === "tool"
-                  ? {
-                      toolCallId: createEntityId(
-                        "tool-call",
-                        `${idSuffix}-imported-${index}`,
-                      ),
-                    }
-                  : {}),
-              },
-        ) as ConversationMessage[],
+        items: (
+          request.messages.map((message, index) =>
+            "id" in message
+              ? message
+              : {
+                  id: createEntityId("message", `${idSuffix}-${index}`),
+                  role: message.role,
+                  content: [{ type: "text", text: message.content }],
+                  ...(message.role === "tool"
+                    ? {
+                        toolCallId: createEntityId(
+                          "tool-call",
+                          `${idSuffix}-imported-${index}`,
+                        ),
+                      }
+                    : {}),
+                },
+          ) as ConversationMessage[]
+        ).map((message) => ({ kind: "message", message })),
         createdAt,
       },
     ],

@@ -5,8 +5,9 @@ import {
   createRunTrace,
   reduceRunEvents,
 } from "./run-kernel/reducer.ts";
+import { renderTemplateContent } from "./template-engine.ts";
 
-export const RUN_TRACE_SCHEMA_VERSION = 2;
+export const RUN_TRACE_SCHEMA_VERSION = 3;
 export const RUN_TRACE_FILE_SUFFIX = ".json";
 
 /**
@@ -85,7 +86,25 @@ const traceV2EnvelopeSchema = traceEnvelopeBaseSchema
   })
   .strict();
 
-const traceEnvelopeSchema = z.union([traceV1EnvelopeSchema, traceV2EnvelopeSchema]);
+const traceV3EnvelopeSchema = traceEnvelopeBaseSchema
+  .extend({
+    schemaVersion: z.literal(3),
+    branchedFrom: z
+      .object({
+        runId: z.string().regex(/^run_.+/),
+        parentConversationRevisionId: z.string().regex(/^revision_.+/).optional(),
+        messageId: z.string().regex(/^message_.+/),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+const traceEnvelopeSchema = z.union([
+  traceV1EnvelopeSchema,
+  traceV2EnvelopeSchema,
+  traceV3EnvelopeSchema,
+]);
 
 export function traceFileName(runId: RunId): string {
   if (!/^run_[A-Za-z0-9][A-Za-z0-9._-]*$/.test(runId) || runId.includes("..")) {
@@ -159,7 +178,29 @@ export function parseRunTraceFile(value: unknown): RunTrace {
     );
   }
 
-  const trace = value as RunTrace;
+  const envelope = value as RunTrace;
+  const trace: RunTrace =
+    envelope.schemaVersion < 3
+      ? {
+          ...envelope,
+          schemaVersion: RUN_TRACE_SCHEMA_VERSION,
+          input: {
+            ...envelope.input,
+            templateResolutions: [],
+          },
+          events: envelope.events.map((event) =>
+            event.type === "run.started"
+              ? {
+                  ...event,
+                  input: {
+                    ...event.input,
+                    templateResolutions: [],
+                  },
+                }
+              : event,
+          ),
+        }
+      : envelope;
   if (trace.runId !== trace.input.runId) {
     throw new RunTraceValidationError("Run trace input has a different run ID.");
   }
@@ -187,6 +228,52 @@ export function parseRunTraceFile(value: unknown): RunTrace {
     throw new RunTraceValidationError("Run trace end time does not match its events.");
   }
   traceFileName(trace.runId);
+
+  for (const resolution of trace.input.templateResolutions) {
+    const rendered = renderTemplateContent(
+      resolution.content,
+      resolution.values,
+    );
+    if (!rendered.ok) {
+      throw new RunTraceValidationError(
+        `Template provenance for "${resolution.templateUseId}" cannot be resolved.`,
+      );
+    }
+    const expected =
+      rendered.content.kind === "fragment"
+        ? [
+            {
+              id: resolution.outputMessageIds[0],
+              role: resolution.fragmentRole,
+              text: rendered.content.text,
+            },
+          ]
+        : rendered.content.messages.map((message, index) => ({
+            id: resolution.outputMessageIds[index],
+            role: message.role,
+            text: message.content,
+          }));
+    if (
+      expected.length !== resolution.outputMessageIds.length ||
+      expected.some(({ id, role, text }) => {
+        const message = trace.input.messages.find(
+          (candidate) => candidate.id === id,
+        );
+        return (
+          !message ||
+          message.role !== role ||
+          message.content.length !== 1 ||
+          message.content[0]?.type !== "text" ||
+          message.content[0].text !== text ||
+          (message.role === "assistant" && Boolean(message.toolCalls?.length))
+        );
+      })
+    ) {
+      throw new RunTraceValidationError(
+        `Template provenance for "${resolution.templateUseId}" does not match resolved input messages.`,
+      );
+    }
+  }
 
   let canonical: RunTrace;
   try {

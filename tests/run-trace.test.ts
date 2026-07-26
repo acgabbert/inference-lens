@@ -29,6 +29,7 @@ function completedTrace(): RunTrace {
       conversationRevisionId: "revision_trace-test",
     },
     [],
+    [],
     "trace-test",
     "2026-07-24T12:00:00.000Z",
   );
@@ -82,13 +83,21 @@ test("serializes and parses a deterministic run trace", () => {
   assert.deepEqual(runStateFromTrace(trace).events, trace.events);
   assert.match(serialized, /"raw": "data: \{/);
   assert.match(serialized, /"body": "\{\\"model\\"/);
-  assert.match(serialized, /"schemaVersion": 2/);
+  assert.match(serialized, /"schemaVersion": 3/);
 });
 
-test("accepts Version 1 evidence but rejects Version 1 provenance", () => {
-  const v1 = { ...completedTrace(), schemaVersion: 1 as const };
-  assert.equal(parseRunTraceJson(JSON.stringify(v1)).schemaVersion, 1);
-  assert.match(serializeRunTrace(v1), /"schemaVersion": 2/);
+test("migrates Version 1 evidence but rejects Version 1 branch provenance", () => {
+  const v1 = structuredClone(completedTrace());
+  v1.schemaVersion = 1;
+  delete (v1.input as Partial<typeof v1.input>).templateResolutions;
+  const started = v1.events[0];
+  if (started?.type === "run.started") {
+    delete (started.input as Partial<typeof started.input>).templateResolutions;
+  }
+  const migrated = parseRunTraceJson(JSON.stringify(v1));
+  assert.equal(migrated.schemaVersion, 3);
+  assert.deepEqual(migrated.input.templateResolutions, []);
+  assert.match(serializeRunTrace(v1), /"schemaVersion": 3/);
 
   assert.throws(
     () => parseRunTraceJson(JSON.stringify({
@@ -99,7 +108,7 @@ test("accepts Version 1 evidence but rejects Version 1 provenance", () => {
   );
 });
 
-test("round-trips Version 2 provenance", () => {
+test("round-trips branch provenance", () => {
   const trace = createRunTrace(
     runStateFromTrace(completedTrace()),
     {
@@ -115,6 +124,37 @@ test("round-trips Version 2 provenance", () => {
     parentConversationRevisionId: "revision_parent",
     messageId: "message_parent",
   });
+});
+
+test("accepts self-contained template provenance and rejects mismatched evidence", () => {
+  const trace = structuredClone(completedTrace());
+  const resolution = {
+    templateUseId: "template-use_trace" as const,
+    templateId: "template_trace" as const,
+    templateRevisionId: "template-revision_trace-1" as const,
+    templateName: "Greeting",
+    content: { kind: "fragment" as const, text: "{{greeting}}" },
+    variableDefaults: { greeting: "Hello" },
+    values: { greeting: "Hello" },
+    outputMessageIds: ["message_trace-test-0" as const],
+    fragmentRole: "user" as const,
+  };
+  trace.input.templateResolutions = [resolution];
+  const started = trace.events[0];
+  assert.equal(started?.type, "run.started");
+  if (started?.type !== "run.started") return;
+  started.input.templateResolutions = [resolution];
+
+  assert.deepEqual(
+    parseRunTraceJson(serializeRunTrace(trace)).input.templateResolutions,
+    [resolution],
+  );
+  trace.input.templateResolutions[0]!.values.greeting = "Goodbye";
+  started.input.templateResolutions[0]!.values.greeting = "Goodbye";
+  assert.throws(
+    () => serializeRunTrace(trace),
+    /does not match resolved input messages/,
+  );
 });
 
 test("rejects a trace whose projection disagrees with its events", () => {

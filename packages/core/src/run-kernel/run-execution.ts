@@ -3,6 +3,7 @@ import type {
   ExchangeId,
   ProviderTurnInput,
   ResolvedRunInput,
+  ResolvedTemplateUse,
   RunConversationIdentity,
   RunId,
   ToolDefinition,
@@ -29,6 +30,7 @@ export function createSingleTurnRunExecution(
   suffix: string = crypto.randomUUID(),
   resolvedAt: string = new Date().toISOString(),
   tools: ToolDefinition[] = [],
+  templateResolutions: ResolvedTemplateUse[] = [],
 ): SingleTurnRunExecution {
   const runId = createEntityId("run", suffix);
   const turnId = createEntityId("turn", `${suffix}-1`);
@@ -86,6 +88,7 @@ export function createSingleTurnRunExecution(
       runId,
       ...identity,
       ...turnInput,
+      templateResolutions,
       resolvedAt,
     },
   };
@@ -95,6 +98,7 @@ export function createResolvedRunInput(
   request: InferenceRequest | RichInferenceRequest,
   identity: RunConversationIdentity,
   tools: ToolDefinition[] = [],
+  templateResolutions: ResolvedTemplateUse[] = [],
   suffix: string = crypto.randomUUID(),
   resolvedAt: string = new Date().toISOString(),
 ): ResolvedRunInput {
@@ -104,5 +108,6 @@ export function createResolvedRunInput(
     suffix,
     resolvedAt,
     tools,
+    templateResolutions,
   ).input;
 }

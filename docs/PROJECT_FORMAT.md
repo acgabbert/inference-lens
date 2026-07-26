@@ -1,8 +1,61 @@
 # Project format and workspace storage
 
 Trace Lens projects use one canonical, portable JSON document named
-`trace-lens.project.json`. The current format begins at schema version 2; the
-earlier proof-of-concept request export is intentionally unsupported.
+`trace-lens.project.json`. New saves use schema version 3. Version 2 projects
+remain importable and are migrated in memory; the earlier proof-of-concept
+request export is intentionally unsupported.
+
+## Version 3 authored conversations
+
+Version 3 separates authored conversation items from the ordinary messages
+resolved for provider execution. A conversation revision owns one ordered
+`items` array. Literal messages and pinned template uses occupy the same array,
+so their relative order is explicit:
+
+```json
+{
+  "id": "revision_example",
+  "conversationId": "conversation_example",
+  "items": [
+    {
+      "kind": "message",
+      "message": {
+        "id": "message_system",
+        "role": "system",
+        "content": [{ "type": "text", "text": "Be concise." }]
+      }
+    },
+    {
+      "kind": "template-use",
+      "use": {
+        "id": "template-use_question",
+        "templateId": "template_question",
+        "templateRevisionId": "template-revision_question-1",
+        "values": { "topic": "migration safety" },
+        "outputMessageIds": ["message_question"],
+        "fragmentRole": "user"
+      }
+    }
+  ],
+  "createdAt": "2026-07-26T12:00:00.000Z"
+}
+```
+
+A template use always pins both a project-owned template and one of that
+template's immutable revisions. `values` are owned by the use. Key presence is
+significant: `""` is an intentional empty value, while an absent key has no
+value at that level.
+
+A message-set use has one stable `outputMessageIds` entry per template message.
+A fragment use has exactly one output message ID and a required
+`fragmentRole`. In version 3 a fragment supplies the complete text of one
+generated system, user, or assistant message. Inline prefix/template/suffix
+composition is not part of this format and may later be introduced as a new
+authored-item or content-part variant.
+
+Version 2 migration wraps each existing revision message as
+`{"kind":"message","message":...}` in the same order. It retains template
+definitions but invents no template uses.
 
 ## Ownership boundaries
 

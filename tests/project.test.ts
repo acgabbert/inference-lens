@@ -28,7 +28,7 @@ const request = {
   }),
 };
 
-test("creates a strict, portable Project v2 document", () => {
+test("creates a strict, portable Project v3 document", () => {
   const project = createProjectFile({
     name: "Example",
     request,
@@ -37,8 +37,9 @@ test("creates a strict, portable Project v2 document", () => {
   });
 
   assert.equal(PROJECT_FILE_NAME, "trace-lens.project.json");
-  assert.equal(project.schemaVersion, 2);
+  assert.equal(project.schemaVersion, 3);
   assert.equal(project.projectId, "project_example");
+  const draft = projectDraft(project);
   assert.deepEqual(projectDraft(project), {
     connectionRequirement: {
       id: "connection_example-default",
@@ -48,14 +49,16 @@ test("creates a strict, portable Project v2 document", () => {
       endpoint: "https://api.example.com/v1",
       capabilityOverrides: request.capabilities,
     },
-    messages: project.conversationRevisions[0].messages,
+    items: project.conversationRevisions[0].items,
+    messages: draft.messages,
+    templateResolutions: [],
     model: "example-model",
     temperature: 0.4,
     tools: [],
     toolMocks: [],
     enabledToolIds: [],
   });
-  assert.equal(JSON.parse(serializeProjectFile(project)).schemaVersion, 2);
+  assert.equal(JSON.parse(serializeProjectFile(project)).schemaVersion, 3);
 });
 
 test("serialization is deterministic and ends with a newline", () => {
@@ -83,6 +86,224 @@ test("serialization is deterministic and ends with a newline", () => {
   assert.ok(serialized.endsWith("\n"));
   assert.ok(serialized.indexOf('"schemaVersion"') < serialized.indexOf('"projectId"'));
   assert.ok(serialized.indexOf('"alpha"') < serialized.indexOf('"zeta"'));
+});
+
+test("migrates Project v2 messages to literal v3 authored items", () => {
+  const current = createProjectFile({
+    name: "Legacy",
+    request,
+    idSuffix: "legacy",
+    createdAt: "2026-07-24T12:00:00.000Z",
+  });
+  const legacy = {
+    ...current,
+    schemaVersion: 2,
+    conversationRevisions: current.conversationRevisions.map(
+      ({ items, ...revision }) => ({
+        ...revision,
+        messages: items.map((item) => {
+          assert.equal(item.kind, "message");
+          if (item.kind !== "message") throw new Error("Unexpected template use.");
+          return item.message;
+        }),
+      }),
+    ),
+  };
+
+  const migrated = parseProjectFile(legacy);
+  assert.equal(migrated.schemaVersion, 3);
+  assert.deepEqual(
+    migrated.conversationRevisions[0]?.items,
+    current.conversationRevisions[0]?.items,
+  );
+  assert.equal(JSON.parse(serializeProjectFile(migrated)).schemaVersion, 3);
+});
+
+test("resolves pinned fragment and message-set uses with stable output IDs", () => {
+  const project = createProjectFile({
+    name: "Templates",
+    request,
+    idSuffix: "templates",
+    createdAt: "2026-07-24T12:00:00.000Z",
+  });
+  project.promptTemplates = [
+    {
+      id: "template_prompt",
+      name: "Prompt",
+      currentRevisionId: "template-revision_prompt-1",
+      revisions: [
+        {
+          id: "template-revision_prompt-1",
+          createdAt: "2026-07-24T12:00:00.000Z",
+          content: { kind: "fragment", text: "Explain {{topic}} to {{audience}}." },
+          variableDefaults: { audience: "developers" },
+        },
+      ],
+    },
+    {
+      id: "template_pair",
+      name: "Pair",
+      currentRevisionId: "template-revision_pair-1",
+      revisions: [
+        {
+          id: "template-revision_pair-1",
+          createdAt: "2026-07-24T12:00:00.000Z",
+          content: {
+            kind: "messages",
+            messages: [
+              { role: "system", content: "Voice: {{voice}}" },
+              { role: "user", content: "Question: {{question}}" },
+            ],
+          },
+          variableDefaults: { voice: "clear" },
+        },
+      ],
+    },
+  ];
+  project.conversationRevisions[0]!.items = [
+    {
+      kind: "template-use",
+      use: {
+        id: "template-use_prompt",
+        templateId: "template_prompt",
+        templateRevisionId: "template-revision_prompt-1",
+        values: { topic: "migrations" },
+        outputMessageIds: ["message_prompt"],
+        fragmentRole: "user",
+      },
+    },
+    {
+      kind: "template-use",
+      use: {
+        id: "template-use_pair",
+        templateId: "template_pair",
+        templateRevisionId: "template-revision_pair-1",
+        values: { question: "Why?" },
+        outputMessageIds: ["message_pair-system", "message_pair-user"],
+      },
+    },
+  ];
+
+  const validated = parseProjectFile(project);
+  assert.deepEqual(
+    projectDraft(validated, {
+      "template-use_prompt": { audience: "" },
+    }).messages,
+    [
+      {
+        id: "message_prompt",
+        role: "user",
+        content: [{ type: "text", text: "Explain migrations to ." }],
+      },
+      {
+        id: "message_pair-system",
+        role: "system",
+        content: [{ type: "text", text: "Voice: clear" }],
+      },
+      {
+        id: "message_pair-user",
+        role: "user",
+        content: [{ type: "text", text: "Question: Why?" }],
+      },
+    ],
+  );
+
+  const unchangedDraft = projectDraft(validated);
+  const saved = updateProjectDraft(validated, {
+    messages: unchangedDraft.messages,
+    model: unchangedDraft.model,
+    temperature: unchangedDraft.temperature,
+    tools: unchangedDraft.tools,
+    toolMocks: unchangedDraft.toolMocks,
+    enabledToolIds: unchangedDraft.enabledToolIds,
+  });
+  assert.deepEqual(
+    saved.conversationRevisions[0]?.items,
+    validated.conversationRevisions[0]?.items,
+  );
+  assert.throws(
+    () =>
+      updateProjectDraft(validated, {
+        messages: unchangedDraft.messages.map((message, index) =>
+          index === 0
+            ? {
+                ...message,
+                content: [{ type: "text", text: "Silently drifted" }],
+              }
+            : message,
+        ),
+        model: unchangedDraft.model,
+        temperature: unchangedDraft.temperature,
+        tools: unchangedDraft.tools,
+        toolMocks: unchangedDraft.toolMocks,
+        enabledToolIds: unchangedDraft.enabledToolIds,
+      }),
+    /Detach the template use/,
+  );
+});
+
+test("rejects invalid template-use ownership, output shape, and secret-like values", () => {
+  const project = createProjectFile({
+    name: "Invalid template use",
+    request,
+    idSuffix: "invalid-use",
+    createdAt: "2026-07-24T12:00:00.000Z",
+  });
+  project.promptTemplates = [
+    {
+      id: "template_prompt",
+      name: "Prompt",
+      currentRevisionId: "template-revision_prompt-1",
+      revisions: [
+        {
+          id: "template-revision_prompt-1",
+          createdAt: "2026-07-24T12:00:00.000Z",
+          content: { kind: "fragment", text: "{{input}}" },
+          variableDefaults: {},
+        },
+      ],
+    },
+  ];
+  project.conversationRevisions[0]!.items = [
+    {
+      kind: "template-use",
+      use: {
+        id: "template-use_prompt",
+        templateId: "template_prompt",
+        templateRevisionId: "template-revision_missing",
+        values: { apiKey: "not-allowed" },
+        outputMessageIds: ["message_one", "message_two"],
+      },
+    },
+  ];
+
+  assert.throws(
+    () => parseProjectFile(project),
+    /does not belong to the referenced template/,
+  );
+  project.conversationRevisions[0]!.items[0] = {
+    kind: "template-use",
+    use: {
+      id: "template-use_prompt",
+      templateId: "template_prompt",
+      templateRevisionId: "template-revision_prompt-1",
+      values: { apiKey: "not-allowed" },
+      outputMessageIds: ["message_one", "message_two"],
+    },
+  };
+  assert.throws(() => parseProjectFile(project), /provide 1 output message ID/);
+  project.conversationRevisions[0]!.items[0] = {
+    kind: "template-use",
+    use: {
+      id: "template-use_prompt",
+      templateId: "template_prompt",
+      templateRevisionId: "template-revision_prompt-1",
+      values: { apiKey: "not-allowed" },
+      outputMessageIds: ["message_one"],
+      fragmentRole: "user",
+    },
+  };
+  assert.throws(() => parseProjectFile(project), /Secret values cannot be stored/);
 });
 
 test("updates the active draft without dropping project-owned collections", () => {
@@ -135,7 +356,7 @@ test("updates drafts by ID without misattributing tool calls after reordering", 
     idSuffix: "rich",
     createdAt: "2026-07-24T12:00:00.000Z",
   });
-  const [system, user] = project.conversationRevisions[0].messages;
+  const [system, user] = projectDraft(project).messages;
   const assistant = {
     id: "message_assistant" as const,
     role: "assistant" as const,
@@ -160,7 +381,9 @@ test("updates drafts by ID without misattributing tool calls after reordering", 
     role: "user" as const,
     content: [{ type: "text" as const, text: "Clarification" }],
   };
-  project.conversationRevisions[0].messages = [system, user, assistant, tool];
+  project.conversationRevisions[0].items = [system, user, assistant, tool].map(
+    (message) => ({ kind: "message", message }),
+  );
 
   const updated = updateProjectDraft(project, {
     messages: [system, inserted, tool, assistant],
@@ -171,7 +394,7 @@ test("updates drafts by ID without misattributing tool calls after reordering", 
     enabledToolIds: project.defaults.enabledToolIds,
   });
 
-  assert.deepEqual(updated.conversationRevisions[0].messages, [
+  assert.deepEqual(projectDraft(updated).messages, [
     system,
     inserted,
     tool,
@@ -187,17 +410,18 @@ test("appends a branch revision with validated lineage and preserves it through 
     createdAt: "2026-07-24T12:00:00.000Z",
   });
   const root = project.conversationRevisions[0]!;
+  const rootMessages = projectDraft(project).messages;
   const child = createBranchRevision(project, {
     conversationId: root.conversationId,
     parentRevisionId: root.id,
-    messages: [root.messages[0]!],
+    messages: [rootMessages[0]!],
     idSuffix: "child",
     createdAt: "2026-07-24T12:01:00.000Z",
   });
   const grandchild = createBranchRevision(child, {
     conversationId: root.conversationId,
     parentRevisionId: "revision_child",
-    messages: root.messages,
+    messages: rootMessages,
     idSuffix: "grandchild",
     createdAt: "2026-07-24T12:02:00.000Z",
   });

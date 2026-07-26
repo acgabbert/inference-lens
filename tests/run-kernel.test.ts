@@ -78,6 +78,7 @@ const resolvedInput: ResolvedRunInput = {
   conversationId,
   conversationRevisionId: revisionId,
   ...turnInput,
+  templateResolutions: [],
   resolvedAt: "2026-07-23T12:00:00.000Z",
 };
 

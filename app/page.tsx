@@ -15,6 +15,7 @@ import type {
 import {
   createBranchRevision,
   createProjectFile,
+  projectDraft,
 } from "../packages/core/src/project";
 import {
   createEntityId,
@@ -711,7 +712,19 @@ function HomeContent() {
     } else {
       identity = currentRunIdentity();
     }
-    const input = createResolvedRunInput(request, identity, selectedTools);
+    const templateResolutions =
+      !branchedFrom &&
+      projectFile &&
+      identity.conversationRevisionId ===
+        projectFile.defaults.conversationRevisionId
+        ? projectDraft(projectFile).templateResolutions
+        : [];
+    const input = createResolvedRunInput(
+      request,
+      identity,
+      selectedTools,
+      templateResolutions,
+    );
     input.target.profileId = createEntityId("profile", activeProfile.id);
     const coordinator = new RunCoordinator(input);
     if (branchedFrom) runBranchProvenanceRef.current.set(input.runId, branchedFrom);

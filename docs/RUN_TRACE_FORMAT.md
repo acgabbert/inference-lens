@@ -1,5 +1,21 @@
 # Run trace format
 
+New traces use schema version 3. Versions 1 and 2 remain importable and are
+migrated in memory with an empty `input.templateResolutions` collection.
+
+## Template provenance
+
+When an authored conversation contains pinned template uses, version 3 stores
+a self-contained `templateResolutions` array on `ResolvedRunInput`. Each entry
+contains the use, template, and revision IDs; the template name; pinned content
+and defaults; the final selected non-secret values; stable output message IDs;
+and the fragment role when applicable.
+
+The ordinary resolved `input.messages` remain the provider-neutral execution
+input. On import, Trace Lens renders every provenance entry and rejects the
+trace if its emitted IDs, roles, or text differ from those messages. Older
+traces import with no template provenance.
+
 Trace Lens run traces are immutable, credential-free diagnostic artifacts.
 Version 2 uses deterministic JSON and is stored as `traces/<runId>.json` when a
 run belongs to an open project folder. A terminal ad hoc run can be exported
