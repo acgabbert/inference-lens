@@ -4,14 +4,24 @@ import test from "node:test";
 import {
   PROJECT_FILE_NAME,
   ProjectValidationError,
+  appendPromptTemplateRevision,
   createBranchRevision,
   createProjectFile,
+  createPromptTemplate,
+  detachPromptTemplateUse,
+  findPromptTemplateUsages,
+  insertPromptTemplateUse,
   parseProjectFile,
   parseProjectJson,
   prepareProjectRevisionRun,
   projectDraft,
+  removePromptTemplateRevision,
+  removePromptTemplateUse,
   serializeProjectFile,
+  setPromptTemplateCurrentRevision,
   updateProjectDraft,
+  updatePromptTemplateUseToLatest,
+  updatePromptTemplateUseValues,
 } from "../packages/core/src/project.ts";
 import { resolveProviderCapabilities } from "../packages/core/src/types.ts";
 
@@ -317,6 +327,201 @@ test("keeps authored order when literal messages and template uses interleave", 
   );
 });
 
+test("creates immutable template revisions, finds uses, and rejects unsafe removal", () => {
+  const project = createProjectFile({
+    name: "Template helpers",
+    request,
+    idSuffix: "template-helpers",
+    createdAt: "2026-07-24T12:00:00.000Z",
+  });
+  const created = createPromptTemplate(project, {
+    name: "Question",
+    content: { kind: "fragment", text: "Explain {{topic}}." },
+    variableDefaults: { topic: "branching" },
+    idSuffix: "question",
+    revisionIdSuffix: "question-1",
+    createdAt: "2026-07-24T12:01:00.000Z",
+  });
+  const unchanged = appendPromptTemplateRevision(created, {
+    templateId: "template_question",
+    content: { kind: "fragment", text: "Explain {{topic}}." },
+    variableDefaults: { topic: "branching" },
+    idSuffix: "unused",
+  });
+  assert.equal(unchanged, created);
+
+  const revised = appendPromptTemplateRevision(created, {
+    templateId: "template_question",
+    content: { kind: "fragment", text: "Summarize {{topic}}." },
+    variableDefaults: { topic: "branching" },
+    idSuffix: "question-2",
+    createdAt: "2026-07-24T12:02:00.000Z",
+  });
+  assert.equal(
+    revised.promptTemplates[0]?.currentRevisionId,
+    "template-revision_question-2",
+  );
+  assert.equal(revised.promptTemplates[0]?.revisions.length, 2);
+
+  revised.conversationRevisions[0]!.items.push({
+    kind: "template-use",
+    use: {
+      id: "template-use_question",
+      templateId: "template_question",
+      templateRevisionId: "template-revision_question-1",
+      values: {},
+      outputMessageIds: ["message_question"],
+      fragmentRole: "user",
+    },
+  });
+  const used = parseProjectFile(revised);
+  assert.deepEqual(
+    findPromptTemplateUsages(
+      used,
+      "template_question",
+      "template-revision_question-1",
+    ).map(({ conversationRevisionId, itemIndex, use }) => [
+      conversationRevisionId,
+      itemIndex,
+      use.id,
+    ]),
+    [["revision_template-helpers-initial", 2, "template-use_question"]],
+  );
+  assert.throws(
+    () =>
+      removePromptTemplateRevision(
+        used,
+        "template_question",
+        "template-revision_question-1",
+      ),
+    /referenced template revision cannot be removed/,
+  );
+
+  const resetCurrent = setPromptTemplateCurrentRevision(
+    revised,
+    "template_question",
+    "template-revision_question-1",
+  );
+  const removed = removePromptTemplateRevision(
+    resetCurrent,
+    "template_question",
+    "template-revision_question-2",
+  );
+  assert.deepEqual(
+    removed.promptTemplates[0]?.revisions.map(({ id }) => id),
+    ["template-revision_question-1"],
+  );
+});
+
+test("inserts, updates, detaches, and removes template uses through core helpers", () => {
+  const base = createProjectFile({
+    name: "Template use helpers",
+    request,
+    idSuffix: "template-use-helpers",
+    createdAt: "2026-07-24T12:00:00.000Z",
+  });
+  const created = createPromptTemplate(base, {
+    name: "Reusable",
+    content: {
+      kind: "fragment",
+      text: "{{kept}} {{obsolete}}",
+    },
+    variableDefaults: {},
+    idSuffix: "reusable",
+    revisionIdSuffix: "reusable-1",
+    createdAt: "2026-07-24T12:01:00.000Z",
+  });
+  const conversationRevisionId = created.conversationRevisions[0]!.id;
+  const inserted = insertPromptTemplateUse(created, {
+    conversationRevisionId,
+    templateId: "template_reusable",
+    values: { kept: "Keep", obsolete: "Remove" },
+    fragmentRole: "user",
+    itemIndex: 1,
+    idSuffix: "reusable",
+    outputMessageIdSuffixes: ["reusable-1"],
+  });
+  assert.equal(
+    inserted.conversationRevisions[0]?.items[1]?.kind,
+    "template-use",
+  );
+
+  const valuesUpdated = updatePromptTemplateUseValues(inserted, {
+    conversationRevisionId,
+    templateUseId: "template-use_reusable",
+    values: { kept: "Still", obsolete: "Drop", added: "Now" },
+  });
+  const revised = appendPromptTemplateRevision(valuesUpdated, {
+    templateId: "template_reusable",
+    content: {
+      kind: "messages",
+      messages: [
+        { role: "system", content: "{{kept}}" },
+        { role: "user", content: "{{added}}" },
+      ],
+    },
+    variableDefaults: {},
+    idSuffix: "reusable-2",
+    createdAt: "2026-07-24T12:02:00.000Z",
+  });
+  const latest = updatePromptTemplateUseToLatest(revised, {
+    conversationRevisionId,
+    templateUseId: "template-use_reusable",
+    newOutputMessageIdSuffixes: ["reusable-2"],
+  });
+  const latestUse = findPromptTemplateUsages(
+    latest,
+    "template_reusable",
+  )[0]!.use;
+  assert.equal(
+    latestUse.templateRevisionId,
+    "template-revision_reusable-2",
+  );
+  assert.deepEqual(latestUse.values, { added: "Now", kept: "Still" });
+  assert.deepEqual(latestUse.outputMessageIds, [
+    "message_reusable-1",
+    "message_reusable-2",
+  ]);
+  assert.equal(latestUse.fragmentRole, undefined);
+
+  const detached = detachPromptTemplateUse(latest, {
+    conversationRevisionId,
+    templateUseId: "template-use_reusable",
+  });
+  assert.deepEqual(
+    detached.conversationRevisions[0]?.items.slice(1, 3),
+    [
+      {
+        kind: "message",
+        message: {
+          id: "message_reusable-1",
+          role: "system",
+          content: [{ type: "text", text: "Still" }],
+        },
+      },
+      {
+        kind: "message",
+        message: {
+          id: "message_reusable-2",
+          role: "user",
+          content: [{ type: "text", text: "Now" }],
+        },
+      },
+    ],
+  );
+
+  const removed = removePromptTemplateUse(
+    latest,
+    conversationRevisionId,
+    "template-use_reusable",
+  );
+  assert.equal(findPromptTemplateUsages(removed, "template_reusable").length, 0);
+  assert.deepEqual(
+    removed.conversationRevisions[0]?.items,
+    base.conversationRevisions[0]?.items,
+  );
+});
+
 test("resolves an unfilled variable into a diagnostic instead of a failure", () => {
   const project = createProjectFile({
     name: "Unfilled",
@@ -421,6 +626,20 @@ test("resolves an unfilled variable into a diagnostic instead of a failure", () 
     { type: "text", text: "Explain migrations." },
   ]);
   assert.equal(prepared.templateResolutions[0]?.values.topic, "migrations");
+  assert.throws(
+    () =>
+      prepareProjectRevisionRun(validated, validated.conversationRevisions[0]!, {
+        "template-use_open": { apiKey: "not-portable" },
+      }),
+    /Secret values cannot be supplied as template run overrides/,
+  );
+  assert.throws(
+    () =>
+      prepareProjectRevisionRun(validated, validated.conversationRevisions[0]!, {
+        "template-use_unknown": { topic: "migrations" },
+      }),
+    /unknown template use/,
+  );
 });
 
 test("rejects invalid template-use ownership, output shape, and secret-like values", () => {
@@ -619,6 +838,98 @@ test("appends a branch revision with validated lineage and preserves it through 
   assert.deepEqual(
     parseProjectJson(serializeProjectFile(grandchild)).conversationRevisions,
     grandchild.conversationRevisions,
+  );
+});
+
+test("keeps template uses atomic and authored when creating a branch", () => {
+  const project = createProjectFile({
+    name: "Template branch",
+    request,
+    idSuffix: "template-branch",
+    createdAt: "2026-07-24T12:00:00.000Z",
+  });
+  project.promptTemplates = [
+    {
+      id: "template_pair",
+      name: "Pair",
+      currentRevisionId: "template-revision_pair-1",
+      revisions: [
+        {
+          id: "template-revision_pair-1",
+          createdAt: "2026-07-24T12:00:00.000Z",
+          content: {
+            kind: "messages",
+            messages: [
+              { role: "system", content: "System {{topic}}" },
+              { role: "user", content: "User {{topic}}" },
+            ],
+          },
+          variableDefaults: { topic: "branching" },
+        },
+      ],
+    },
+  ];
+  project.conversationRevisions[0]!.items = [
+    {
+      kind: "template-use",
+      use: {
+        id: "template-use_pair",
+        templateId: "template_pair",
+        templateRevisionId: "template-revision_pair-1",
+        values: {},
+        outputMessageIds: ["message_pair-system", "message_pair-user"],
+      },
+    },
+  ];
+  const validated = parseProjectFile(project);
+  const messages = projectDraft(validated).messages;
+  const assistant = {
+    id: "message_assistant" as const,
+    role: "assistant" as const,
+    content: [{ type: "text" as const, text: "Answer" }],
+  };
+  const branched = createBranchRevision(validated, {
+    conversationId: validated.conversations[0]!.id,
+    parentRevisionId: validated.conversationRevisions[0]!.id,
+    messages: [...messages, assistant],
+    idSuffix: "child",
+    createdAt: "2026-07-24T12:01:00.000Z",
+  });
+  assert.deepEqual(branched.conversationRevisions.at(-1)?.items, [
+    validated.conversationRevisions[0]!.items[0],
+    { kind: "message", message: assistant },
+  ]);
+  const prepared = prepareProjectRevisionRun(
+    branched,
+    branched.conversationRevisions.at(-1)!,
+  );
+  assert.equal(prepared.ok, true);
+  if (!prepared.ok) return;
+  assert.equal(prepared.templateResolutions.length, 1);
+
+  assert.throws(
+    () =>
+      createBranchRevision(validated, {
+        conversationId: validated.conversations[0]!.id,
+        parentRevisionId: validated.conversationRevisions[0]!.id,
+        messages: [messages[0]!],
+      }),
+    /template use is atomic/,
+  );
+  assert.throws(
+    () =>
+      createBranchRevision(validated, {
+        conversationId: validated.conversations[0]!.id,
+        parentRevisionId: validated.conversationRevisions[0]!.id,
+        messages: [
+          {
+            ...messages[0]!,
+            content: [{ type: "text", text: "Edited generated text" }],
+          },
+          messages[1]!,
+        ],
+      }),
+    /generated text cannot be edited/,
   );
 });
 

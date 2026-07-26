@@ -22,6 +22,7 @@ import type {
 } from "./run-kernel/types.ts";
 import { createEntityId } from "./run-kernel/types.ts";
 import {
+  discoverTemplateVariables,
   renderTemplateContent,
   resolveTemplateValues,
 } from "./template-engine.ts";
@@ -212,6 +213,10 @@ const sensitiveFieldNames = new Set([
 
 function normalizedFieldName(value: string): string {
   return value.toLowerCase().replaceAll(/[^a-z0-9]/g, "");
+}
+
+export function isSensitiveTemplateVariableName(value: string): boolean {
+  return sensitiveFieldNames.has(normalizedFieldName(value));
 }
 
 function endpointHasCredentials(value: string): boolean {
@@ -975,6 +980,58 @@ export type TemplateRunOverrides = Readonly<
   Partial<Record<PromptTemplateUseId, Readonly<Record<string, string>>>>
 >;
 
+function validateTemplateRunOverrides(
+  revision: ProjectConversationRevision,
+  runOverrides: TemplateRunOverrides,
+): void {
+  const useIds = new Set<string>(
+    revision.items.flatMap((item) =>
+      item.kind === "template-use" ? [item.use.id] : [],
+    ),
+  );
+  const issues: z.core.$ZodIssue[] = [];
+  Object.entries(runOverrides).forEach(([useId, values]) => {
+    if (!useIds.has(useId)) {
+      issues.push({
+        code: "custom",
+        path: ["runOverrides", useId],
+        message: "Run override references an unknown template use.",
+      });
+    }
+    if (!values || typeof values !== "object" || Array.isArray(values)) {
+      issues.push({
+        code: "custom",
+        path: ["runOverrides", useId],
+        message: "Template run overrides must be string-valued records.",
+      });
+      return;
+    }
+    Object.entries(values).forEach(([name, value]) => {
+      if (!variableName.test(name)) {
+        issues.push({
+          code: "custom",
+          path: ["runOverrides", useId, name],
+          message: "Invalid template variable name.",
+        });
+      } else if (isSensitiveTemplateVariableName(name)) {
+        issues.push({
+          code: "custom",
+          path: ["runOverrides", useId, name],
+          message: "Secret values cannot be supplied as template run overrides.",
+        });
+      }
+      if (typeof value !== "string") {
+        issues.push({
+          code: "custom",
+          path: ["runOverrides", useId, name],
+          message: "Template run override values must be strings.",
+        });
+      }
+    });
+  });
+  if (issues.length > 0) throw new ProjectValidationError(issues);
+}
+
 /**
  * One template diagnostic, located against the authored item that produced it
  * so a caller can point at the offending template use rather than at the
@@ -1015,6 +1072,7 @@ export function resolveProjectRevision(
   revision: ProjectConversationRevision,
   runOverrides: TemplateRunOverrides = {},
 ): ResolvedProjectRevision {
+  validateTemplateRunOverrides(revision, runOverrides);
   const templates = new Map(
     project.promptTemplates.map((template) => [template.id, template]),
   );
@@ -1267,12 +1325,7 @@ export function createBranchRevision(
     id: createEntityId("revision", idSuffix),
     conversationId,
     parentRevisionId,
-    items:
-      items ??
-      messages.map((message) => ({
-        kind: "message",
-        message,
-      })),
+    items: items ?? authoredBranchItems(project, parent, messages),
     createdAt,
   };
   return parseProjectFile({
@@ -1283,6 +1336,649 @@ export function createBranchRevision(
       conversationRevisionId: revision.id,
     },
   });
+}
+
+function authoredBranchItems(
+  project: ProjectFileV3,
+  parent: ProjectConversationRevision,
+  messages: ConversationMessage[],
+): ProjectConversationItem[] {
+  const resolved = resolveProjectRevision(project, parent);
+  const resolvedById = new Map(
+    resolved.messages.map((message) => [message.id, message]),
+  );
+  const templateByOutputId = new Map<
+    MessageId,
+    Extract<ProjectConversationItem, { kind: "template-use" }>
+  >();
+  parent.items.forEach((item) => {
+    if (item.kind !== "template-use") return;
+    item.use.outputMessageIds.forEach((messageId) => {
+      templateByOutputId.set(messageId, item);
+    });
+  });
+
+  const branchItems: ProjectConversationItem[] = [];
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index]!;
+    const templateItem = templateByOutputId.get(message.id);
+    if (templateItem) {
+      const outputIds = templateItem.use.outputMessageIds;
+      if (message.id !== outputIds[0]) {
+        throw new ProjectValidationError([
+          {
+            code: "custom",
+            path: ["conversationRevisions", parent.id, "items"],
+            message:
+              "A branch cannot begin or end inside a message-set template use. Detach the use before branching at that message.",
+          },
+        ]);
+      }
+      const emittedMessages = messages.slice(index, index + outputIds.length);
+      const completeAndUnchanged =
+        emittedMessages.length === outputIds.length &&
+        emittedMessages.every((emitted, emittedIndex) => {
+          const expectedId = outputIds[emittedIndex];
+          return (
+            emitted.id === expectedId &&
+            JSON.stringify(stableJsonValue(emitted)) ===
+              JSON.stringify(stableJsonValue(resolvedById.get(expectedId)))
+          );
+        });
+      if (!completeAndUnchanged) {
+        throw new ProjectValidationError([
+          {
+            code: "custom",
+            path: ["conversationRevisions", parent.id, "items"],
+            message:
+              "A template use is atomic when branching and its generated text cannot be edited. Branch after its final message or detach it first.",
+          },
+        ]);
+      }
+      branchItems.push(structuredClone(templateItem));
+      index += outputIds.length - 1;
+      continue;
+    }
+    branchItems.push({ kind: "message", message: structuredClone(message) });
+  }
+  return branchItems;
+}
+
+export interface PromptTemplateUsage {
+  conversationId: ConversationId;
+  conversationRevisionId: ConversationRevisionId;
+  itemIndex: number;
+  use: PromptTemplateUse;
+}
+
+export function findPromptTemplateUsages(
+  project: ProjectFileV3,
+  templateId: PromptTemplateId,
+  templateRevisionId?: PromptTemplateRevisionId,
+): PromptTemplateUsage[] {
+  return project.conversationRevisions.flatMap((revision) =>
+    revision.items.flatMap((item, itemIndex) =>
+      item.kind === "template-use" &&
+      item.use.templateId === templateId &&
+      (templateRevisionId === undefined ||
+        item.use.templateRevisionId === templateRevisionId)
+        ? [
+            {
+              conversationId: revision.conversationId,
+              conversationRevisionId: revision.id,
+              itemIndex,
+              use: structuredClone(item.use),
+            },
+          ]
+        : [],
+    ),
+  );
+}
+
+function updateConversationRevisionItems(
+  project: ProjectFileV3,
+  conversationRevisionId: ConversationRevisionId,
+  update: (items: ProjectConversationItem[]) => ProjectConversationItem[],
+): ProjectFileV3 {
+  const revisionIndex = project.conversationRevisions.findIndex(
+    ({ id }) => id === conversationRevisionId,
+  );
+  if (revisionIndex < 0) {
+    throw new ProjectValidationError([
+      {
+        code: "custom",
+        path: ["conversationRevisions", conversationRevisionId],
+        message: "Conversation revision does not exist.",
+      },
+    ]);
+  }
+  const conversationRevisions = [...project.conversationRevisions];
+  const revision = conversationRevisions[revisionIndex]!;
+  conversationRevisions[revisionIndex] = {
+    ...revision,
+    items: update(revision.items),
+  };
+  return parseProjectFile({ ...project, conversationRevisions });
+}
+
+function findTemplateUseItem(
+  revision: ProjectConversationRevision,
+  templateUseId: PromptTemplateUseId,
+): {
+  itemIndex: number;
+  item: Extract<ProjectConversationItem, { kind: "template-use" }>;
+} {
+  const itemIndex = revision.items.findIndex(
+    (item) =>
+      item.kind === "template-use" && item.use.id === templateUseId,
+  );
+  const item = revision.items[itemIndex];
+  if (!item || item.kind !== "template-use") {
+    throw new ProjectValidationError([
+      {
+        code: "custom",
+        path: ["conversationRevisions", revision.id, "items", templateUseId],
+        message: "Template use does not exist in this conversation revision.",
+      },
+    ]);
+  }
+  return { itemIndex, item };
+}
+
+export interface InsertPromptTemplateUseOptions {
+  conversationRevisionId: ConversationRevisionId;
+  templateId: PromptTemplateId;
+  templateRevisionId?: PromptTemplateRevisionId;
+  values?: Record<string, string>;
+  fragmentRole?: "system" | "user" | "assistant";
+  itemIndex?: number;
+  idSuffix?: string;
+  outputMessageIdSuffixes?: string[];
+}
+
+export function insertPromptTemplateUse(
+  project: ProjectFileV3,
+  {
+    conversationRevisionId,
+    templateId,
+    templateRevisionId,
+    values = {},
+    fragmentRole,
+    itemIndex,
+    idSuffix = crypto.randomUUID(),
+    outputMessageIdSuffixes,
+  }: InsertPromptTemplateUseOptions,
+): ProjectFileV3 {
+  const template = project.promptTemplates.find(({ id }) => id === templateId);
+  const pinnedRevisionId = templateRevisionId ?? template?.currentRevisionId;
+  const revision = template?.revisions.find(
+    ({ id }) => id === pinnedRevisionId,
+  );
+  if (!template || !revision) {
+    throw new ProjectValidationError([
+      {
+        code: "custom",
+        path: ["promptTemplates", templateId],
+        message: "Template or pinned revision does not exist.",
+      },
+    ]);
+  }
+  const outputCount =
+    revision.content.kind === "fragment"
+      ? 1
+      : revision.content.messages.length;
+  if (
+    outputMessageIdSuffixes &&
+    outputMessageIdSuffixes.length !== outputCount
+  ) {
+    throw new ProjectValidationError([
+      {
+        code: "custom",
+        path: ["outputMessageIdSuffixes"],
+        message: `Template use requires ${outputCount} output message ID suffix${outputCount === 1 ? "" : "es"}.`,
+      },
+    ]);
+  }
+  const use: PromptTemplateUse = {
+    id: createEntityId("template-use", idSuffix),
+    templateId,
+    templateRevisionId: revision.id,
+    values: { ...values },
+    outputMessageIds: Array.from({ length: outputCount }, (_, index) =>
+      createEntityId(
+        "message",
+        outputMessageIdSuffixes?.[index] ?? `${idSuffix}-${index + 1}`,
+      ),
+    ),
+    ...(revision.content.kind === "fragment" ? { fragmentRole } : {}),
+  };
+  return updateConversationRevisionItems(
+    project,
+    conversationRevisionId,
+    (items) => {
+      const insertionIndex = itemIndex ?? items.length;
+      if (insertionIndex < 0 || insertionIndex > items.length) {
+        throw new ProjectValidationError([
+          {
+            code: "custom",
+            path: ["conversationRevisions", conversationRevisionId, "items"],
+            message: "Template use insertion index is outside the revision.",
+          },
+        ]);
+      }
+      return [
+        ...items.slice(0, insertionIndex),
+        { kind: "template-use", use },
+        ...items.slice(insertionIndex),
+      ];
+    },
+  );
+}
+
+export interface UpdatePromptTemplateUseValuesOptions {
+  conversationRevisionId: ConversationRevisionId;
+  templateUseId: PromptTemplateUseId;
+  values: Record<string, string>;
+}
+
+export function updatePromptTemplateUseValues(
+  project: ProjectFileV3,
+  {
+    conversationRevisionId,
+    templateUseId,
+    values,
+  }: UpdatePromptTemplateUseValuesOptions,
+): ProjectFileV3 {
+  const revision = project.conversationRevisions.find(
+    ({ id }) => id === conversationRevisionId,
+  );
+  if (!revision) {
+    throw new ProjectValidationError([
+      {
+        code: "custom",
+        path: ["conversationRevisions", conversationRevisionId],
+        message: "Conversation revision does not exist.",
+      },
+    ]);
+  }
+  findTemplateUseItem(revision, templateUseId);
+  return updateConversationRevisionItems(
+    project,
+    conversationRevisionId,
+    (items) =>
+      items.map((item) =>
+        item.kind === "template-use" && item.use.id === templateUseId
+          ? { ...item, use: { ...item.use, values: { ...values } } }
+          : item,
+      ),
+  );
+}
+
+export interface UpdatePromptTemplateUseToLatestOptions {
+  conversationRevisionId: ConversationRevisionId;
+  templateUseId: PromptTemplateUseId;
+  newOutputMessageIdSuffixes?: string[];
+  fragmentRole?: "system" | "user" | "assistant";
+}
+
+export function updatePromptTemplateUseToLatest(
+  project: ProjectFileV3,
+  {
+    conversationRevisionId,
+    templateUseId,
+    newOutputMessageIdSuffixes = [],
+    fragmentRole,
+  }: UpdatePromptTemplateUseToLatestOptions,
+): ProjectFileV3 {
+  const revision = project.conversationRevisions.find(
+    ({ id }) => id === conversationRevisionId,
+  );
+  if (!revision) {
+    throw new ProjectValidationError([
+      {
+        code: "custom",
+        path: ["conversationRevisions", conversationRevisionId],
+        message: "Conversation revision does not exist.",
+      },
+    ]);
+  }
+  const { item } = findTemplateUseItem(revision, templateUseId);
+  const template = project.promptTemplates.find(
+    ({ id }) => id === item.use.templateId,
+  )!;
+  const latest = template.revisions.find(
+    ({ id }) => id === template.currentRevisionId,
+  )!;
+  if (item.use.templateRevisionId === latest.id) return project;
+  const outputCount =
+    latest.content.kind === "fragment" ? 1 : latest.content.messages.length;
+  const additionalCount = Math.max(
+    0,
+    outputCount - item.use.outputMessageIds.length,
+  );
+  if (newOutputMessageIdSuffixes.length !== additionalCount) {
+    throw new ProjectValidationError([
+      {
+        code: "custom",
+        path: ["newOutputMessageIdSuffixes"],
+        message: `Updating this use requires ${additionalCount} new output message ID suffix${additionalCount === 1 ? "" : "es"}.`,
+      },
+    ]);
+  }
+  const variableNames = new Set(
+    discoverTemplateVariables(latest.content).variables.map(({ name }) => name),
+  );
+  const values = Object.fromEntries(
+    Object.entries(item.use.values).filter(([name]) => variableNames.has(name)),
+  );
+  const outputMessageIds = [
+    ...item.use.outputMessageIds.slice(0, outputCount),
+    ...newOutputMessageIdSuffixes.map((suffix) =>
+      createEntityId("message", suffix),
+    ),
+  ];
+  const nextFragmentRole =
+    latest.content.kind === "fragment"
+      ? fragmentRole ?? item.use.fragmentRole
+      : undefined;
+  if (latest.content.kind === "fragment" && !nextFragmentRole) {
+    throw new ProjectValidationError([
+      {
+        code: "custom",
+        path: ["fragmentRole"],
+        message:
+          "Updating a message-set use to a fragment requires an explicit message role.",
+      },
+    ]);
+  }
+  return updateConversationRevisionItems(
+    project,
+    conversationRevisionId,
+    (items) =>
+      items.map((candidate) => {
+        if (
+          candidate.kind !== "template-use" ||
+          candidate.use.id !== templateUseId
+        ) {
+          return candidate;
+        }
+        const use: PromptTemplateUse = {
+          id: candidate.use.id,
+          templateId: candidate.use.templateId,
+          templateRevisionId: latest.id,
+          values,
+          outputMessageIds,
+          ...(nextFragmentRole ? { fragmentRole: nextFragmentRole } : {}),
+        };
+        return { kind: "template-use", use };
+      }),
+  );
+}
+
+export interface DetachPromptTemplateUseOptions {
+  conversationRevisionId: ConversationRevisionId;
+  templateUseId: PromptTemplateUseId;
+  runOverrides?: TemplateRunOverrides;
+}
+
+export function detachPromptTemplateUse(
+  project: ProjectFileV3,
+  {
+    conversationRevisionId,
+    templateUseId,
+    runOverrides = {},
+  }: DetachPromptTemplateUseOptions,
+): ProjectFileV3 {
+  const revision = project.conversationRevisions.find(
+    ({ id }) => id === conversationRevisionId,
+  );
+  if (!revision) {
+    throw new ProjectValidationError([
+      {
+        code: "custom",
+        path: ["conversationRevisions", conversationRevisionId],
+        message: "Conversation revision does not exist.",
+      },
+    ]);
+  }
+  const { itemIndex, item } = findTemplateUseItem(revision, templateUseId);
+  const resolved = resolveProjectRevision(project, revision, runOverrides);
+  const useDiagnostics = resolved.diagnostics.filter(
+    ({ templateUseId: diagnosticUseId }) =>
+      diagnosticUseId === templateUseId,
+  );
+  if (useDiagnostics.length > 0) {
+    throw new ProjectValidationError(
+      useDiagnostics.map(({ diagnostic }) => ({
+        code: "custom",
+        path: [
+          "conversationRevisions",
+          conversationRevisionId,
+          "items",
+          itemIndex,
+        ],
+        message: `Resolve this template use before detaching it: ${diagnostic.message}`,
+      })),
+    );
+  }
+  const byId = new Map(
+    resolved.messages.map((message) => [message.id, message]),
+  );
+  const replacements = item.use.outputMessageIds.map((messageId) => ({
+    kind: "message" as const,
+    message: structuredClone(byId.get(messageId)!),
+  }));
+  return updateConversationRevisionItems(
+    project,
+    conversationRevisionId,
+    (items) => [
+      ...items.slice(0, itemIndex),
+      ...replacements,
+      ...items.slice(itemIndex + 1),
+    ],
+  );
+}
+
+export function removePromptTemplateUse(
+  project: ProjectFileV3,
+  conversationRevisionId: ConversationRevisionId,
+  templateUseId: PromptTemplateUseId,
+): ProjectFileV3 {
+  const revision = project.conversationRevisions.find(
+    ({ id }) => id === conversationRevisionId,
+  );
+  if (!revision) {
+    throw new ProjectValidationError([
+      {
+        code: "custom",
+        path: ["conversationRevisions", conversationRevisionId],
+        message: "Conversation revision does not exist.",
+      },
+    ]);
+  }
+  const { itemIndex } = findTemplateUseItem(revision, templateUseId);
+  return updateConversationRevisionItems(
+    project,
+    conversationRevisionId,
+    (items) => [
+      ...items.slice(0, itemIndex),
+      ...items.slice(itemIndex + 1),
+    ],
+  );
+}
+
+export interface CreatePromptTemplateOptions {
+  name: string;
+  content: PromptTemplateContent;
+  variableDefaults?: Record<string, string>;
+  idSuffix?: string;
+  revisionIdSuffix?: string;
+  createdAt?: string;
+}
+
+export function createPromptTemplate(
+  project: ProjectFileV3,
+  {
+    name,
+    content,
+    variableDefaults = {},
+    idSuffix = crypto.randomUUID(),
+    revisionIdSuffix = crypto.randomUUID(),
+    createdAt = new Date().toISOString(),
+  }: CreatePromptTemplateOptions,
+): ProjectFileV3 {
+  const revisionId = createEntityId("template-revision", revisionIdSuffix);
+  return parseProjectFile({
+    ...project,
+    promptTemplates: [
+      ...project.promptTemplates,
+      {
+        id: createEntityId("template", idSuffix),
+        name,
+        currentRevisionId: revisionId,
+        revisions: [
+          {
+            id: revisionId,
+            createdAt,
+            content: structuredClone(content),
+            variableDefaults: { ...variableDefaults },
+          },
+        ],
+      },
+    ],
+  });
+}
+
+export interface AppendPromptTemplateRevisionOptions {
+  templateId: PromptTemplateId;
+  content: PromptTemplateContent;
+  variableDefaults?: Record<string, string>;
+  idSuffix?: string;
+  createdAt?: string;
+}
+
+export function appendPromptTemplateRevision(
+  project: ProjectFileV3,
+  {
+    templateId,
+    content,
+    variableDefaults = {},
+    idSuffix = crypto.randomUUID(),
+    createdAt = new Date().toISOString(),
+  }: AppendPromptTemplateRevisionOptions,
+): ProjectFileV3 {
+  const templateIndex = project.promptTemplates.findIndex(
+    ({ id }) => id === templateId,
+  );
+  if (templateIndex < 0) {
+    throw new ProjectValidationError([
+      {
+        code: "custom",
+        path: ["promptTemplates", templateId],
+        message: "Template does not exist.",
+      },
+    ]);
+  }
+  const template = project.promptTemplates[templateIndex]!;
+  const current = template.revisions.find(
+    ({ id }) => id === template.currentRevisionId,
+  )!;
+  if (
+    JSON.stringify(stableJsonValue(current.content)) ===
+      JSON.stringify(stableJsonValue(content)) &&
+    JSON.stringify(stableJsonValue(current.variableDefaults)) ===
+      JSON.stringify(stableJsonValue(variableDefaults))
+  ) {
+    return project;
+  }
+  const revision: PromptTemplateRevision = {
+    id: createEntityId("template-revision", idSuffix),
+    createdAt,
+    content: structuredClone(content),
+    variableDefaults: { ...variableDefaults },
+  };
+  const promptTemplates = [...project.promptTemplates];
+  promptTemplates[templateIndex] = {
+    ...template,
+    currentRevisionId: revision.id,
+    revisions: [...template.revisions, revision],
+  };
+  return parseProjectFile({ ...project, promptTemplates });
+}
+
+export function setPromptTemplateCurrentRevision(
+  project: ProjectFileV3,
+  templateId: PromptTemplateId,
+  templateRevisionId: PromptTemplateRevisionId,
+): ProjectFileV3 {
+  const templateIndex = project.promptTemplates.findIndex(
+    ({ id }) => id === templateId,
+  );
+  const template = project.promptTemplates[templateIndex];
+  if (
+    !template ||
+    !template.revisions.some(({ id }) => id === templateRevisionId)
+  ) {
+    throw new ProjectValidationError([
+      {
+        code: "custom",
+        path: ["promptTemplates", templateId, "currentRevisionId"],
+        message: "Current revision must belong to the selected template.",
+      },
+    ]);
+  }
+  if (template.currentRevisionId === templateRevisionId) return project;
+  const promptTemplates = [...project.promptTemplates];
+  promptTemplates[templateIndex] = {
+    ...template,
+    currentRevisionId: templateRevisionId,
+  };
+  return parseProjectFile({ ...project, promptTemplates });
+}
+
+export function removePromptTemplateRevision(
+  project: ProjectFileV3,
+  templateId: PromptTemplateId,
+  templateRevisionId: PromptTemplateRevisionId,
+): ProjectFileV3 {
+  const templateIndex = project.promptTemplates.findIndex(
+    ({ id }) => id === templateId,
+  );
+  const template = project.promptTemplates[templateIndex];
+  if (
+    !template ||
+    !template.revisions.some(({ id }) => id === templateRevisionId)
+  ) {
+    throw new ProjectValidationError([
+      {
+        code: "custom",
+        path: ["promptTemplates", templateId, "revisions"],
+        message: "Template revision does not exist.",
+      },
+    ]);
+  }
+  if (
+    template.currentRevisionId === templateRevisionId ||
+    template.revisions.length === 1 ||
+    findPromptTemplateUsages(project, templateId, templateRevisionId).length > 0
+  ) {
+    throw new ProjectValidationError([
+      {
+        code: "custom",
+        path: ["promptTemplates", templateId, "revisions", templateRevisionId],
+        message:
+          "The current, last, or referenced template revision cannot be removed.",
+      },
+    ]);
+  }
+  const promptTemplates = [...project.promptTemplates];
+  promptTemplates[templateIndex] = {
+    ...template,
+    revisions: template.revisions.filter(
+      ({ id }) => id !== templateRevisionId,
+    ),
+  };
+  return parseProjectFile({ ...project, promptTemplates });
 }
 
 export interface CreateProjectOptions {

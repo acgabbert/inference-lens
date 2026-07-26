@@ -24,9 +24,9 @@ during verification is tolerant of unresolved variables, so a run made with a
 blank variable still verifies against the `{{name}}` token it actually sent.
 
 Trace Lens run traces are immutable, credential-free diagnostic artifacts.
-Version 2 uses deterministic JSON and is stored as `traces/<runId>.json` when a
+Version 3 uses deterministic JSON and is stored as `traces/<runId>.json` when a
 run belongs to an open project folder. A terminal ad hoc run can be exported
-from the Project menu, and Version 1 and Version 2 traces can be imported for
+from the Project menu, and Versions 1 and 2 traces can be imported for
 inspection.
 
 The response pane always reports trace storage state. Project runs show the
@@ -101,8 +101,9 @@ when the stored projections disagree.
 
 ## Compatibility and immutability
 
-The root `schemaVersion` is currently `2`. Version 1 is accepted with its
-original strict root schema; Version 2 adds the optional `branchedFrom` field:
+The root `schemaVersion` is currently `3`. Version 1 is accepted with its
+original strict root schema; Version 2 adds the optional `branchedFrom` field,
+and Version 3 adds required template provenance:
 
 ```ts
 {
@@ -115,7 +116,7 @@ original strict root schema; Version 2 adds the optional `branchedFrom` field:
 It records the source run and the last source-transcript message included in a
 branch input. It is trace metadata, not an execution input or event, so a
 parent trace need not be present when it is imported. New serialization always
-writes Version 2. Unknown root fields, unsupported versions, invalid
+writes Version 3. Unknown root fields, unsupported versions, invalid
 identifiers, non-contiguous event sequences, and unsafe run IDs are rejected.
 
 Trace writes are write-once by run ID. Writing identical contents again is

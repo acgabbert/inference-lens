@@ -5,6 +5,7 @@ import {
   createRunTrace,
   reduceRunEvents,
 } from "./run-kernel/reducer.ts";
+import { isSensitiveTemplateVariableName } from "./project.ts";
 import { renderTemplateContent } from "./template-engine.ts";
 
 export const RUN_TRACE_SCHEMA_VERSION = 3;
@@ -110,12 +111,31 @@ const resolvedTemplateUseSchema = z
     templateRevisionId: z.string().regex(/^template-revision_.+/),
     templateName: z.string(),
     content: resolvedTemplateContentSchema,
-    variableDefaults: z.record(z.string(), z.string()),
-    values: z.record(z.string(), z.string()),
+    variableDefaults: z.record(
+      z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/),
+      z.string(),
+    ),
+    values: z.record(
+      z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/),
+      z.string(),
+    ),
     outputMessageIds: z.array(z.string().regex(/^message_.+/)).min(1),
     fragmentRole: templateMessageRoleSchema.optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((resolution, context) => {
+    for (const field of ["variableDefaults", "values"] as const) {
+      Object.keys(resolution[field]).forEach((name) => {
+        if (isSensitiveTemplateVariableName(name)) {
+          context.addIssue({
+            code: "custom",
+            path: [field, name],
+            message: "Template provenance cannot contain secret-like variables.",
+          });
+        }
+      });
+    }
+  });
 
 const traceV1EnvelopeSchema = traceEnvelopeBaseSchema
   .extend({ schemaVersion: z.literal(1) })

@@ -329,6 +329,15 @@ function HomeContent() {
   const runBranchProvenanceRef = useRef(
     new Map<RunId, RunTrace["branchedFrom"]>(),
   );
+  const nonBranchableMessageIds = useMemo(
+    () =>
+      new Set(
+        runState?.input?.templateResolutions.flatMap((resolution) =>
+          resolution.outputMessageIds.slice(0, -1),
+        ) ?? [],
+      ),
+    [runState],
+  );
 
   function replaceRunState(next: RunState | null): void {
     runStateRef.current = next;
@@ -680,6 +689,7 @@ function HomeContent() {
       return;
     }
     let request = currentRequest();
+    let projectForRun = projectFile;
     let identity: RunConversationIdentity;
     let branchedFrom: RunTrace["branchedFrom"];
     if (branchContext) {
@@ -700,6 +710,7 @@ function HomeContent() {
           });
           const revision = branchedProject.conversationRevisions.at(-1)!;
           project.adoptBranchRevision(branchedProject);
+          projectForRun = branchedProject;
           identity = {
             conversationId: revision.conversationId,
             conversationRevisionId: revision.id,
@@ -722,19 +733,18 @@ function HomeContent() {
     }
     let templateResolutions: ResolvedTemplateUse[] = [];
     if (
-      !branchedFrom &&
-      projectFile &&
+      projectForRun &&
       identity.conversationRevisionId ===
-        projectFile.defaults.conversationRevisionId
+        projectForRun.defaults.conversationRevisionId
     ) {
-      const revision = projectFile.conversationRevisions.find(
+      const revision = projectForRun.conversationRevisions.find(
         ({ id }) => id === identity.conversationRevisionId,
       );
       if (!revision) {
         project.setError("The active project conversation revision no longer exists.");
         return;
       }
-      const prepared = prepareProjectRevisionRun(projectFile, revision);
+      const prepared = prepareProjectRevisionRun(projectForRun, revision);
       if (!prepared.ok) {
         project.setError(templateRunErrorMessage(prepared.diagnostics));
         return;
@@ -1509,6 +1519,7 @@ function HomeContent() {
             toolResultDrafts={toolResultDrafts}
             traceStorage={traceStorage}
             transcript={runState ? transcriptFromRunState(runState) : []}
+            nonBranchableMessageIds={nonBranchableMessageIds}
             branchedFrom={visibleBranchProvenance}
             onMarkdownPreviewChange={setMarkdownPreview}
             onOutputScroll={updateOutputFollowState}

@@ -64,6 +64,21 @@ generated system, user, or assistant message. Inline prefix/template/suffix
 composition is not part of this format and may later be introduced as a new
 authored-item or content-part variant.
 
+Template revisions are immutable. Saving changed content or defaults appends a
+revision and advances `currentRevisionId`; saving an unchanged revision is a
+no-op. Uses remain pinned until explicitly updated. Core helpers create
+templates, append revisions, change the current pointer, enumerate usages, and
+refuse to remove a revision that is current, last, or referenced. Separate
+authored-use helpers insert a pinned use, replace its complete value map, update
+it to the current revision while dropping obsolete assignments, detach it into
+literal messages, or remove it.
+
+Branching also respects authored-item boundaries. A complete template use is
+copied into the child revision rather than flattened into generated messages.
+A message-set use is atomic: branching after its final emitted message
+preserves it, while branching inside the emitted set requires detaching the use
+first. Literal and provider-produced messages remain literal items in the child.
+
 Version 2 migration wraps each existing revision message as
 `{"kind":"message","message":...}` in the same order. It retains template
 definitions but invents no template uses.
@@ -126,9 +141,9 @@ Trace Lens refuses to overwrite it and asks the user to reopen the project.
 Completed, cancelled, and explicitly stopped runs are written as immutable
 `traces/<runId>.json` diagnostic artifacts. A repeated byte-identical write is
 allowed; different contents can never replace an existing run ID. These files
-are deliberately outside the Project v2 manifest contract, so adding or
+are deliberately outside the Project v3 manifest contract, so adding or
 removing a trace does not dirty authored project state. See
 [the run trace format](RUN_TRACE_FORMAT.md).
 
 `attachments/` remains reserved for a later format and is not part of the
-version 2 manifest contract.
+version 3 manifest contract.

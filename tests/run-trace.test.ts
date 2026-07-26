@@ -241,6 +241,22 @@ test("rejects malformed template provenance as an invalid trace", () => {
         },
       ],
     ],
+    [
+      "a secret-like variable value",
+      [
+        {
+          templateUseId: "template-use_trace",
+          templateId: "template_trace",
+          templateRevisionId: "template-revision_trace-1",
+          templateName: "Greeting",
+          content: { kind: "fragment", text: "{{apiKey}}" },
+          variableDefaults: {},
+          values: { apiKey: "not-portable" },
+          outputMessageIds: ["message_trace-test-0"],
+          fragmentRole: "user",
+        },
+      ],
+    ],
   ];
 
   for (const [label, resolutions] of cases) {

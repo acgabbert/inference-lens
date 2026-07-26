@@ -32,6 +32,7 @@ type ResponseOutputProps = {
   toolResultDrafts: Record<string, ToolResultDraft>;
   traceStorage: TraceStorageStatus | null;
   transcript: ConversationMessage[];
+  nonBranchableMessageIds: ReadonlySet<ConversationMessage["id"]>;
   branchedFrom?: RunTrace["branchedFrom"];
   onMarkdownPreviewChange(markdown: boolean): void;
   onOutputScroll(): void;
@@ -48,7 +49,7 @@ export function ResponseOutput({
   output, reasoning, status, runState, isRequestActive, markdownPreview,
   outputFollowing, outputScrollRef, completedToolCalls, toolResultDrafts,
   traceStorage,
-  transcript, branchedFrom,
+  transcript, nonBranchableMessageIds, branchedFrom,
   onMarkdownPreviewChange, onOutputScroll, onJumpToLatest,
   onToolResultDraftChange, onContinue, onRetry,
   onSaveTrace, onEditFromHere,
@@ -151,6 +152,12 @@ export function ResponseOutput({
                   <button
                     className="button secondary transcript-edit"
                     type="button"
+                    disabled={nonBranchableMessageIds.has(message.id)}
+                    title={
+                      nonBranchableMessageIds.has(message.id)
+                        ? "A message-set template is atomic. Branch after its final message or detach it first."
+                        : undefined
+                    }
                     onClick={() => onEditFromHere(message.id)}
                   >
                     Edit from here
