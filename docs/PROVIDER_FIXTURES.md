@@ -125,6 +125,74 @@ These cost a round trip each to discover:
 - **File imports are hidden inputs inside a label.** There is no dialog to
   intercept; set the file directly:
   `page.locator('.menu-file-button:has-text("Import run trace") input[type=file]').setInputFiles(path)`.
+- **Menus are `<details>`, so they toggle.** Escape does not close one, and a
+  second click on the summary closes it, which is a confusing way to discover
+  that the item you wanted is merely invisible. Set the state instead:
+  `page.evaluate(() => { document.querySelector("details.project-menu").open = true; })`.
+- **Disclosure content is not in `innerText` until it is open.** The skipped
+  artifacts under run history live in a collapsed `<details>`; open it the same
+  way before reading.
+- **CSS uppercasing reaches `innerText`.** Status pills are
+  `text-transform: uppercase`, so match `COMPLETED`, not `completed`.
+
+### Stub the folder picker to drive project-backed features
+
+`showDirectoryPicker` cannot be driven by Playwright: it is a native dialog and
+there is no permission to grant. Features that need an open project folder —
+run history above all — are therefore unreachable in a browser unless the
+picker is replaced.
+
+Replace only the picker. Everything past it, including the workspace adapter,
+takes handles through the `FileSystemDirectoryHandleLike` and
+`FileSystemFileHandleLike` shapes in `app/project-directory.client.ts`, so an
+in-memory object satisfying those runs the real application code:
+
+```js
+await page.addInitScript((contents) => {
+  const file = (name, text) => ({
+    kind: "file",
+    name,
+    getFile: async () => ({ text: async () => text }),
+    createWritable: async () => ({ async write() {}, async close() {} }),
+  });
+  const dir = (name, entries) => ({
+    kind: "directory",
+    name,
+    async *values() { for (const entry of entries) yield entry; },
+    async getFileHandle(requested) {
+      const match = entries.find((e) => e.kind === "file" && e.name === requested);
+      if (!match) throw new DOMException("missing", "NotFoundError");
+      return match;
+    },
+    async getDirectoryHandle(requested) {
+      const match = entries.find((e) => e.kind === "directory" && e.name === requested);
+      if (!match) throw new DOMException("missing", "NotFoundError");
+      return match;
+    },
+  });
+  const project = dir("history-demo", [
+    file("trace-lens.project.json", contents.manifest),
+    dir("traces", [file("run_a.json", contents.traceA)]),
+  ]);
+  window.showDirectoryPicker = async () => project;
+}, contents);
+```
+
+Generate the manifest and the traces with `createProjectFile`,
+`serializeProjectFile`, and `serializeRunTrace` so the page is validating real
+artifacts rather than hand-written JSON that only resembles them. Include a
+deliberately damaged file: the interesting assertion is usually that one bad
+artifact is disclosed without hiding the good ones.
+
+Wrapping a handle's method also lets a driver assert on work that is supposed
+*not* to happen. Counting calls to the traces directory's `values()` is how the
+claim that history loads on demand is checked rather than asserted:
+
+```js
+window.__traceListings = 0;
+const inner = traces.values.bind(traces);
+traces.values = () => (window.__traceListings += 1, inner());
+```
 
 ### Assert on text, not only on screenshots
 

@@ -3115,6 +3115,23 @@ main {
   color: var(--danger);
 }
 
+/* A cancelled run is neither a success nor a fault, so it keeps the neutral
+   pill the base rule sets. It is named here so the omission reads as a
+   decision rather than as a missing case. */
+.run-history-status.cancelled {
+  background: var(--surface-inset);
+  color: var(--text-muted);
+}
+
+.run-history-item[aria-busy="true"] {
+  cursor: progress;
+}
+
+.run-history-item:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
 .run-history-empty {
   padding: 54px 20px;
   color: var(--text-muted);

@@ -15,7 +15,6 @@ interface TopbarProps {
   hasRunTrace: boolean;
   hasProjectWorkspace: boolean;
   runHistoryBlocked: boolean;
-  runHistoryCount: number;
   isRequestActive: boolean;
   awaitingToolResults: boolean;
   retryableFailure: boolean;
@@ -49,7 +48,6 @@ export function Topbar({
   hasRunTrace,
   hasProjectWorkspace,
   runHistoryBlocked,
-  runHistoryCount,
   retryableFailure,
   runDisabled, onChooseProfile, onOpenConnections, onNewProject, onOpenProject,
   onSaveProject, onImportProject, onExportProject, onOpenToolLibrary,
@@ -68,7 +66,7 @@ export function Topbar({
         </details>
         <details className="header-menu project-menu"><summary aria-label="Project menu" className="button secondary">Project <span className="menu-chevron">⌄</span></summary><div className="menu-popover project-popover">
           {folderAccessAvailable && <><button type="button" onClick={(event) => { closeContainingMenu(event.currentTarget); onNewProject(); }}>New project</button><button type="button" onClick={(event) => { closeContainingMenu(event.currentTarget); onOpenProject(); }}>Open folder</button><span className="menu-separator" /></>}
-          <button type="button" onClick={(event) => { closeContainingMenu(event.currentTarget); onSaveProject(); }}>Save <kbd>⌘S</kbd></button><label className="menu-file-button">Import project…<input type="file" accept="application/json,.json" onChange={onImportProject} /></label><button type="button" onClick={onExportProject}>Export project…</button><span className="menu-separator" /><button disabled={!hasProjectWorkspace || runHistoryBlocked} title={runHistoryBlocked ? "Finish or stop the current run before opening history." : undefined} type="button" onClick={(event) => { onOpenRunHistory(); closeContainingMenu(event.currentTarget); }}>Run history{hasProjectWorkspace ? ` (${runHistoryCount})` : ""}</button><label className="menu-file-button">Import run trace…<input type="file" accept="application/json,.json" onChange={onImportRunTrace} /></label><button disabled={!hasRunTrace} type="button" onClick={onDownloadRunTrace}>Export run trace…</button><span className="menu-separator" /><button type="button" onClick={(event) => { onOpenToolLibrary(); closeContainingMenu(event.currentTarget); }}>Local tool library</button><button disabled={!hasDiagnosticCapture} type="button" onClick={onDownloadDiagnostics}>Download diagnostics</button>
+          <button type="button" onClick={(event) => { closeContainingMenu(event.currentTarget); onSaveProject(); }}>Save <kbd>⌘S</kbd></button><label className="menu-file-button">Import project…<input type="file" accept="application/json,.json" onChange={onImportProject} /></label><button type="button" onClick={onExportProject}>Export project…</button><span className="menu-separator" /><button disabled={!hasProjectWorkspace || runHistoryBlocked} title={runHistoryBlocked ? "Finish or stop the current run before opening history." : undefined} type="button" onClick={(event) => { onOpenRunHistory(); closeContainingMenu(event.currentTarget); }}>Run history…</button><label className="menu-file-button">Import run trace…<input type="file" accept="application/json,.json" onChange={onImportRunTrace} /></label><button disabled={!hasRunTrace} type="button" onClick={onDownloadRunTrace}>Export run trace…</button><span className="menu-separator" /><button type="button" onClick={(event) => { onOpenToolLibrary(); closeContainingMenu(event.currentTarget); }}>Local tool library</button><button disabled={!hasDiagnosticCapture} type="button" onClick={onDownloadDiagnostics}>Download diagnostics</button>
         </div></details>
         {isRequestActive ? <button className="button stop" onClick={onStop}>Stop</button> : awaitingToolResults ? <><button className="button stop" onClick={onStop}>Stop</button><button className="button primary" onClick={onContinue}>Continue run</button></> : retryableFailure ? <><button className="button stop" onClick={onStop}>Stop</button><button className="button primary" onClick={onRetry}>Retry <span className="shortcut">⌘↵</span></button></> : <button className="button primary" disabled={runDisabled} onClick={onRun} title={runDisabled ? "Map the project connection to a local profile first." : undefined}>Run request <span className="shortcut">⌘↵</span></button>}
       </div>

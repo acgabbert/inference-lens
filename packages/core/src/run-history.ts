@@ -30,9 +30,16 @@ export interface RunHistorySource {
   contents: string;
 }
 
+/**
+ * A listed entry carries only its summary, not the trace it came from. The
+ * list is built by parsing every artifact in the folder, but retaining those
+ * traces would hold every event and every raw SSE line the project has ever
+ * recorded in memory to render a few lines of text each. The selected trace is
+ * read again from its file, which also means the opened run reflects the
+ * artifact as it is on disk rather than as it was when the list was built.
+ */
 export interface RunHistoryItem {
   fileName: string;
-  trace: RunTrace;
   summary: RunHistorySummary;
 }
 
@@ -74,11 +81,9 @@ export function loadRunHistoryFiles(files: RunHistorySource[]): {
 
   for (const file of files) {
     try {
-      const trace = parseRunTraceJson(file.contents);
       items.push({
         fileName: file.fileName,
-        trace,
-        summary: summarizeRunTrace(trace),
+        summary: summarizeRunTrace(parseRunTraceJson(file.contents)),
       });
     } catch (error) {
       failures.push({
@@ -89,8 +94,22 @@ export function loadRunHistoryFiles(files: RunHistorySource[]): {
     }
   }
 
-  items.sort((left, right) =>
-    right.summary.startedAt.localeCompare(left.summary.startedAt),
-  );
+  items.sort(compareHistoryItems);
   return { items, failures };
+}
+
+/**
+ * Newest first. Runs started within the same millisecond fall back to the file
+ * name so the list has one stable order rather than one that depends on the
+ * order the filesystem happened to enumerate.
+ */
+function compareHistoryItems(
+  left: RunHistoryItem,
+  right: RunHistoryItem,
+): number {
+  if (left.summary.startedAt !== right.summary.startedAt) {
+    return left.summary.startedAt < right.summary.startedAt ? 1 : -1;
+  }
+  if (left.fileName === right.fileName) return 0;
+  return left.fileName < right.fileName ? 1 : -1;
 }

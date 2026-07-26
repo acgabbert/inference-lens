@@ -12,12 +12,32 @@ remain visibly unsaved until the user chooses **Save trace…**. Tauri uses a
 native Save As dialog and reports the chosen path; browsers initiate a download
 and report the filename because the browser controls the final destination.
 
-For an open folder, **Project → Run history** enumerates JSON files under
+## Run history
+
+For an open folder, **Project → Run history** enumerates trace files under
 `traces/`, validates each artifact through this format's canonical parser, and
-derives display summaries from its reconstructed run state. No history index is
-written. Invalid files are reported as skipped without hiding valid traces, and
-selecting an entry opens the same read-only inspection state as an imported
-trace.
+derives display summaries from its reconstructed run state. Invalid files are
+reported as skipped without hiding valid traces, and selecting an entry opens
+the same read-only inspection state as an imported trace.
+
+No history index is written. The list is therefore worth exactly one full parse
+and event reduction per artifact, every time it is built, and that cost is the
+reason the folder is read only while the drawer is open. A run saved while it
+is closed marks the list stale rather than re-reading the folder behind it.
+
+A listed entry retains only its summary. The selected trace is read again from
+its own file, so the opened run reflects the artifact as it is on disk, and the
+history of a long-lived project does not sit in memory as every event and raw
+SSE line it ever recorded.
+
+Entry names are treated as untrusted input on the way back to the filesystem.
+`isTraceEntryName` in `packages/core/src/run-trace.ts` defines the rule — a
+`.json` suffix, no separators, no traversal, no leading dot — and
+`src-tauri/src/lib.rs` mirrors it, because a discovered name is not derived
+from a validated run ID the way a written one is. A name that does not match is
+skipped when listing and refused when reading. An artifact renamed by hand is
+still listed and still opens; it is shown and read under the name it actually
+has rather than one recomputed from its run ID.
 
 ## Ownership and lifecycle
 
