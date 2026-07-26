@@ -999,6 +999,17 @@ export interface ResolvedProjectRevision {
   diagnostics: ProjectTemplateDiagnostic[];
 }
 
+export type PreparedProjectRevisionRun =
+  | {
+      ok: true;
+      messages: ConversationMessage[];
+      templateResolutions: ResolvedTemplateUse[];
+    }
+  | {
+      ok: false;
+      diagnostics: ProjectTemplateDiagnostic[];
+    };
+
 export function resolveProjectRevision(
   project: ProjectFileV3,
   revision: ProjectConversationRevision,
@@ -1082,6 +1093,29 @@ export function resolveProjectRevision(
     });
   });
   return { messages, templateResolutions, diagnostics };
+}
+
+/**
+ * Applies execution policy to the tolerant authored-project resolver.
+ *
+ * Authoring callers use `resolveProjectRevision` so incomplete templates remain
+ * visible and editable. Execution callers use this boundary so no provider can
+ * receive a request while a template diagnostic remains unresolved.
+ */
+export function prepareProjectRevisionRun(
+  project: ProjectFileV3,
+  revision: ProjectConversationRevision,
+  runOverrides: TemplateRunOverrides = {},
+): PreparedProjectRevisionRun {
+  const resolved = resolveProjectRevision(project, revision, runOverrides);
+  if (resolved.diagnostics.length > 0) {
+    return { ok: false, diagnostics: resolved.diagnostics };
+  }
+  return {
+    ok: true,
+    messages: resolved.messages,
+    templateResolutions: resolved.templateResolutions,
+  };
 }
 
 export function resolveProjectRevisionMessages(

@@ -8,6 +8,7 @@ import {
   createProjectFile,
   parseProjectFile,
   parseProjectJson,
+  prepareProjectRevisionRun,
   projectDraft,
   serializeProjectFile,
   updateProjectDraft,
@@ -394,6 +395,32 @@ test("resolves an unfilled variable into a diagnostic instead of a failure", () 
       .messages[0]?.content,
     [{ type: "text", text: "Explain migrations." }],
   );
+
+  const blocked = prepareProjectRevisionRun(
+    validated,
+    validated.conversationRevisions[0]!,
+  );
+  assert.equal(blocked.ok, false);
+  if (blocked.ok) return;
+  assert.deepEqual(
+    blocked.diagnostics.map(({ templateUseId, diagnostic }) => [
+      templateUseId,
+      diagnostic.code,
+    ]),
+    [["template-use_open", "missing-template-variable"]],
+  );
+
+  const prepared = prepareProjectRevisionRun(
+    validated,
+    validated.conversationRevisions[0]!,
+    { "template-use_open": { topic: "migrations" } },
+  );
+  assert.equal(prepared.ok, true);
+  if (!prepared.ok) return;
+  assert.deepEqual(prepared.messages[0]?.content, [
+    { type: "text", text: "Explain migrations." },
+  ]);
+  assert.equal(prepared.templateResolutions[0]?.values.topic, "migrations");
 });
 
 test("rejects invalid template-use ownership, output shape, and secret-like values", () => {

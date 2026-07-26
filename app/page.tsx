@@ -15,7 +15,10 @@ import type {
 import {
   createBranchRevision,
   createProjectFile,
-  projectDraft,
+  prepareProjectRevisionRun,
+} from "../packages/core/src/project";
+import type {
+  ProjectTemplateDiagnostic,
 } from "../packages/core/src/project";
 import {
   createEntityId,
@@ -38,6 +41,7 @@ import type {
   MessageId,
   RunId,
   RunConversationIdentity,
+  ResolvedTemplateUse,
   ToolDefinition,
   ToolResult,
 } from "../packages/core/src/run-kernel";
@@ -184,6 +188,17 @@ function displayStatus(state: RunState | null): DisplayStatus {
     default:
       return "running";
   }
+}
+
+function templateRunErrorMessage(
+  diagnostics: ProjectTemplateDiagnostic[],
+): string {
+  const first = diagnostics[0];
+  if (!first) return "Resolve the template diagnostics before running.";
+  const remaining = diagnostics.length - 1;
+  return `Cannot run template use "${first.templateUseId}": ${first.diagnostic.message}${
+    remaining > 0 ? ` (${remaining} more ${remaining === 1 ? "issue" : "issues"})` : ""
+  }`;
 }
 
 function HomeContent() {
@@ -664,14 +679,7 @@ function HomeContent() {
       project.setError(error instanceof Error ? error.message : "Tools are invalid.");
       return;
     }
-    const requestGeneration = ++requestGenerationRef.current;
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setWorkbenchView("response");
-    setOutputFollowing(true);
-    setIsRequestActive(true);
-    const request = currentRequest();
+    let request = currentRequest();
     let identity: RunConversationIdentity;
     let branchedFrom: RunTrace["branchedFrom"];
     if (branchContext) {
@@ -712,13 +720,42 @@ function HomeContent() {
     } else {
       identity = currentRunIdentity();
     }
-    const templateResolutions =
+    let templateResolutions: ResolvedTemplateUse[] = [];
+    if (
       !branchedFrom &&
       projectFile &&
       identity.conversationRevisionId ===
         projectFile.defaults.conversationRevisionId
-        ? projectDraft(projectFile).templateResolutions
-        : [];
+    ) {
+      const revision = projectFile.conversationRevisions.find(
+        ({ id }) => id === identity.conversationRevisionId,
+      );
+      if (!revision) {
+        project.setError("The active project conversation revision no longer exists.");
+        return;
+      }
+      const prepared = prepareProjectRevisionRun(projectFile, revision);
+      if (!prepared.ok) {
+        project.setError(templateRunErrorMessage(prepared.diagnostics));
+        return;
+      }
+      const hasTemplateUses = revision.items.some(
+        (item) => item.kind === "template-use",
+      );
+      if (
+        hasTemplateUses &&
+        JSON.stringify(request.messages) !== JSON.stringify(prepared.messages)
+      ) {
+        project.setError(
+          "This template-backed conversation differs from its generated messages. Detach the template use before editing generated text.",
+        );
+        return;
+      }
+      if (hasTemplateUses) {
+        request = { ...request, messages: prepared.messages };
+      }
+      templateResolutions = prepared.templateResolutions;
+    }
     const input = createResolvedRunInput(
       request,
       identity,
@@ -729,6 +766,13 @@ function HomeContent() {
     const coordinator = new RunCoordinator(input);
     if (branchedFrom) runBranchProvenanceRef.current.set(input.runId, branchedFrom);
     setVisibleBranchProvenance(branchedFrom);
+    const requestGeneration = ++requestGenerationRef.current;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setWorkbenchView("response");
+    setOutputFollowing(true);
+    setIsRequestActive(true);
     runTraceWorkspaceRef.current = projectWorkspace;
     setTraceStorage(null);
     coordinatorRef.current = coordinator;
