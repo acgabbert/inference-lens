@@ -89,6 +89,9 @@ import {
 } from "./workbench-shell.client";
 import type { WorkbenchView } from "./workbench-shell.client";
 import { RunTracePanel } from "./run-trace-panel.client";
+import { RunHistoryDrawer } from "./run-history-drawer.client";
+import type { ProjectRunHistoryItem } from "./use-project-run-history.client";
+import { useProjectRunHistory } from "./use-project-run-history.client";
 
 const inferenceTransport = createInferenceTransport();
 
@@ -205,6 +208,8 @@ function HomeContent() {
   const [toolRegistryLoaded, setToolRegistryLoaded] = useState(false);
   const [toolRegistryOpen, setToolRegistryOpen] = useState(false);
   const [connectionDrawerOpen, setConnectionDrawerOpen] = useState(false);
+  const [runHistoryOpen, setRunHistoryOpen] = useState(false);
+  const [runHistoryRefreshVersion, setRunHistoryRefreshVersion] = useState(0);
   const [requestTab, setRequestTab] = useState<"messages" | "tools">("messages");
   const [workbenchView, setWorkbenchView] =
     useState<WorkbenchView>("request");
@@ -252,6 +257,10 @@ function HomeContent() {
     projectErrorKind,
     mappedProfileId,
   } = project;
+  const runHistory = useProjectRunHistory(
+    projectWorkspace,
+    runHistoryRefreshVersion,
+  );
   const {
     messages,
     tools,
@@ -337,6 +346,7 @@ function HomeContent() {
         if (runStateRef.current?.runId === next.runId) {
           setTraceStorage({ kind: "saved", location });
         }
+        setRunHistoryRefreshVersion((current) => current + 1);
       })
       .catch((error) => {
         persistedTraceRunIdsRef.current.delete(next.runId);
@@ -1028,6 +1038,31 @@ function HomeContent() {
     }
   }
 
+  function openHistoryTrace(item: ProjectRunHistoryItem): void {
+    const { trace } = item;
+    if (!projectWorkspace) return;
+    if (trace.branchedFrom) {
+      runBranchProvenanceRef.current.set(trace.runId, trace.branchedFrom);
+    }
+    persistedTraceRunIdsRef.current.add(trace.runId);
+    coordinatorRef.current = null;
+    runTraceWorkspaceRef.current = projectWorkspace;
+    diagnosticCaptureRef.current = null;
+    setHasDiagnosticCapture(false);
+    setToolResultDrafts({});
+    setBranchContext(null);
+    setVisibleBranchProvenance(trace.branchedFrom);
+    setWorkbenchView("response");
+    setTraceOpen(true);
+    replaceRunState(runStateFromTrace(trace));
+    setTraceStorage({
+      kind: "saved",
+      location: runTraceWorkspaceLocation(projectWorkspace, trace),
+    });
+    setRunHistoryOpen(false);
+    project.setError(undefined, { clearKind: true });
+  }
+
   return (
     <main
       onKeyDown={(event) => {
@@ -1067,6 +1102,12 @@ function HomeContent() {
         hasRunTrace={Boolean(
           runState && ["completed", "cancelled", "failed"].includes(runState.status.kind),
         )}
+        hasProjectWorkspace={Boolean(projectWorkspace)}
+        runHistoryBlocked={Boolean(
+          runState &&
+            !["completed", "cancelled", "failed"].includes(runState.status.kind),
+        )}
+        runHistoryCount={runHistory.items.length}
         isRequestActive={isRequestActive}
         awaitingToolResults={runState?.status.kind === "awaiting_tool_results"}
         retryableFailure={
@@ -1085,6 +1126,7 @@ function HomeContent() {
         onDownloadDiagnostics={downloadDiagnostics}
         onDownloadRunTrace={() => void exportRunTrace()}
         onImportRunTrace={(event) => void importRunTrace(event)}
+        onOpenRunHistory={() => setRunHistoryOpen(true)}
         onStop={stop}
         onRun={() => void run()}
         onContinue={() => void continueRun()}
@@ -1135,6 +1177,15 @@ function HomeContent() {
         onMapProfile={() => {
           project.mapActiveProfile();
         }}
+      />
+
+      <RunHistoryDrawer
+        open={runHistoryOpen}
+        projectName={projectFile?.name}
+        selectedRunId={runState?.runId}
+        history={runHistory}
+        onClose={() => setRunHistoryOpen(false)}
+        onSelect={openHistoryTrace}
       />
 
       <WorkbenchShell

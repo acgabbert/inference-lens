@@ -12,6 +12,13 @@ remain visibly unsaved until the user chooses **Save trace…**. Tauri uses a
 native Save As dialog and reports the chosen path; browsers initiate a download
 and report the filename because the browser controls the final destination.
 
+For an open folder, **Project → Run history** enumerates JSON files under
+`traces/`, validates each artifact through this format's canonical parser, and
+derives display summaries from its reconstructed run state. No history index is
+written. Invalid files are reported as skipped without hiding valid traces, and
+selecting an entry opens the same read-only inspection state as an imported
+trace.
+
 ## Ownership and lifecycle
 
 `packages/core/src/run-trace.ts` owns parsing, consistency validation,

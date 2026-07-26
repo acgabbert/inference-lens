@@ -14,6 +14,8 @@ import type { RunTrace } from "../packages/core/src/run-kernel";
 import { isTauriRuntime } from "./tauri-inference-transport.client";
 
 interface FileSystemFileHandleLike {
+  readonly kind: "file";
+  readonly name: string;
   getFile(): Promise<File>;
   createWritable(): Promise<{
     write(data: string): Promise<void>;
@@ -22,7 +24,11 @@ interface FileSystemFileHandleLike {
 }
 
 interface FileSystemDirectoryHandleLike {
+  readonly kind: "directory";
   readonly name: string;
+  values(): AsyncIterableIterator<
+    FileSystemFileHandleLike | FileSystemDirectoryHandleLike
+  >;
   getFileHandle(
     name: string,
     options?: { create?: boolean },
@@ -43,6 +49,7 @@ interface DirectoryPickerWindow extends Window {
 interface WorkspaceStorage {
   save(contents: string): Promise<void>;
   saveTrace(runId: string, fileName: string, contents: string): Promise<void>;
+  listTraces(): Promise<StoredRunTraceFile[]>;
 }
 
 export interface ProjectWorkspaceHandle {
@@ -62,6 +69,11 @@ interface NativeWorkspace {
   workspaceId: string;
   displayName: string;
   displayPath: string;
+  contents: string;
+}
+
+export interface StoredRunTraceFile {
+  fileName: string;
   contents: string;
 }
 
@@ -150,6 +162,29 @@ function browserStorage(
       const writable = await fileHandle.createWritable();
       await writable.write(contents);
       await writable.close();
+    },
+    async listTraces(): Promise<StoredRunTraceFile[]> {
+      let traces: FileSystemDirectoryHandleLike;
+      try {
+        traces = await directory.getDirectoryHandle("traces");
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "NotFoundError") {
+          return [];
+        }
+        throw error;
+      }
+
+      const files: StoredRunTraceFile[] = [];
+      for await (const entry of traces.values()) {
+        if (entry.kind !== "file" || !entry.name.endsWith(".json")) continue;
+        files.push({
+          fileName: entry.name,
+          contents: await (await entry.getFile()).text(),
+        });
+      }
+      return files.sort((left, right) =>
+        left.fileName.localeCompare(right.fileName),
+      );
     },
   };
 }
@@ -261,6 +296,11 @@ function nativeWorkspaceHandle(
           contents,
         });
       },
+      async listTraces(): Promise<StoredRunTraceFile[]> {
+        return invokeNative<StoredRunTraceFile[]>("list_run_traces", {
+          workspaceId: workspace.workspaceId,
+        });
+      },
     },
   };
 }
@@ -321,6 +361,12 @@ export async function saveRunTraceWorkspace(
     traceFileName(trace.runId),
     contents,
   );
+}
+
+export async function listRunTraceWorkspace(
+  handle: ProjectWorkspaceHandle,
+): Promise<StoredRunTraceFile[]> {
+  return handle.storage.listTraces();
 }
 
 export function runTraceWorkspaceLocation(

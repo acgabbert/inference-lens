@@ -140,6 +140,7 @@ export function WorkbenchShell({
 
 type SideDrawerProps = {
   open: boolean;
+  eyebrow?: string;
   title: string;
   description?: string;
   onClose: () => void;
@@ -148,6 +149,7 @@ type SideDrawerProps = {
 
 export function SideDrawer({
   open,
+  eyebrow = "Local configuration",
   title,
   description,
   onClose,
@@ -172,7 +174,7 @@ export function SideDrawer({
     >
       <header className="side-drawer-header">
         <div>
-          <span className="eyebrow">Local configuration</span>
+          <span className="eyebrow">{eyebrow}</span>
           <h2>{title}</h2>
           {description && <p>{description}</p>}
         </div>

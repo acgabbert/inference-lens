@@ -54,6 +54,12 @@ from normalized run events. The response pane shows the saved path or clearly
 marks an ad hoc trace as unsaved with a **Save trace…** action. See
 [the run trace format](docs/RUN_TRACE_FORMAT.md).
 
+Use **Project → Run history** to browse an open folder's validated traces.
+History is derived directly from the immutable artifacts, sorted newest first,
+and shows each run's model, status, duration, token count, and turn count.
+Selecting a run restores its transcript, event stream, metrics, and timeline
+without making the historical run resumable.
+
 ## Tool registry
 
 Reusable, secret-free tool definitions live in a versioned local registry.
