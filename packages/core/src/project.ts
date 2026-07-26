@@ -797,6 +797,18 @@ function validateProjectV3References(
         });
       }
       Object.keys(item.use.values).forEach((name) => {
+        const revisionVariables = new Set(
+          discoverTemplateVariables(templateRevision.content).variables.map(
+            ({ name: variableName }) => variableName,
+          ),
+        );
+        if (!revisionVariables.has(name)) {
+          context.addIssue({
+            code: "custom",
+            path: [...path, "values", name],
+            message: `Template use value "${name}" is not used by its pinned revision.`,
+          });
+        }
         if (sensitiveFieldNames.has(normalizedFieldName(name))) {
           context.addIssue({
             code: "custom",

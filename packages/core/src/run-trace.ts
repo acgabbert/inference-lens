@@ -293,14 +293,33 @@ export function parseRunTraceFile(value: unknown): RunTrace {
   }
   traceFileName(trace.runId);
 
+  const templateUseIds = new Set<string>();
+  const templateOutputMessageIds = new Set<string>();
   for (const resolution of trace.input.templateResolutions) {
-    // Rendering is deliberately tolerant here: a run may have been made with an
-    // unresolved variable, and that run's evidence stays verifiable because the
-    // engine reproduces the same text it emitted at run time.
+    if (templateUseIds.has(resolution.templateUseId)) {
+      throw new RunTraceValidationError(
+        `Template provenance repeats use "${resolution.templateUseId}".`,
+      );
+    }
+    templateUseIds.add(resolution.templateUseId);
+    for (const messageId of resolution.outputMessageIds) {
+      if (templateOutputMessageIds.has(messageId)) {
+        throw new RunTraceValidationError(
+          `Template provenance repeats output message "${messageId}".`,
+        );
+      }
+      templateOutputMessageIds.add(messageId);
+    }
+
     const rendered = renderTemplateContent(
       resolution.content,
       resolution.values,
     );
+    if (rendered.diagnostics.length > 0) {
+      throw new RunTraceValidationError(
+        `Template provenance for "${resolution.templateUseId}" is unresolved.`,
+      );
+    }
     const expected =
       rendered.content.kind === "fragment"
         ? [

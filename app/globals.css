@@ -1340,6 +1340,77 @@ output {
   backdrop-filter: blur(4px);
 }
 
+.confirmation-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  padding: 24px;
+  display: grid;
+  place-items: center;
+  background: var(--overlay-scrim);
+  backdrop-filter: blur(4px);
+}
+
+.confirmation-dialog {
+  width: min(560px, 100%);
+  max-height: calc(100vh - 48px);
+  padding: 22px;
+  overflow-y: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-modal);
+}
+
+.confirmation-dialog h2 {
+  margin: 5px 0 0;
+  font-size: 19px;
+}
+
+.confirmation-dialog > p {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.confirmation-details {
+  margin: 16px 0 0;
+  display: grid;
+  gap: 8px;
+}
+
+.confirmation-details > div {
+  padding: 9px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--surface-sunken);
+}
+
+.confirmation-details dt {
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.confirmation-details dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.confirmation-actions {
+  margin-top: 18px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .registry-modal {
   width: min(1180px, 100%);
   height: min(820px, calc(100vh - 48px));
@@ -2525,6 +2596,14 @@ pre {
 
   .registry-backdrop {
     padding: 8px;
+  }
+
+  .confirmation-backdrop {
+    padding: 8px;
+  }
+
+  .confirmation-dialog {
+    max-height: calc(100vh - 16px);
   }
 
   .registry-modal {

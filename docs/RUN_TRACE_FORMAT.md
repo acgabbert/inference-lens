@@ -19,9 +19,12 @@ traces import with no template provenance.
 Because provenance is re-derived rather than trusted, the version 3 envelope
 validates its shape before anything reads it: a missing, malformed, or
 partially written `templateResolutions` array is rejected as an invalid trace
-with the offending path named, not surfaced as an internal error. Rendering
-during verification is tolerant of unresolved variables, so a run made with a
-blank variable still verifies against the `{{name}}` token it actually sent.
+with the offending path named, not surfaced as an internal error. Duplicate
+template-use or output-message identities are also rejected. Version 3
+provenance must resolve without diagnostics: current Trace Lens execution
+blocks missing or invalid variables, so an artifact claiming otherwise is not
+accepted as a valid Trace Lens run. Version 1 and 2 compatibility remains
+unchanged because those formats contain no template provenance.
 
 Trace Lens run traces are immutable, credential-free diagnostic artifacts.
 Version 3 uses deterministic JSON and is stored as `traces/<runId>.json` when a

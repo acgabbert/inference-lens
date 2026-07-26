@@ -14,7 +14,6 @@ import type {
 } from "../packages/core/src/types";
 import {
   appendPromptTemplateRevision,
-  authoredItemsForMessages,
   createBranchRevision,
   createProjectFile,
   createPromptTemplate,
@@ -127,6 +126,15 @@ import {
   ProjectTemplatesPane,
   TemplateUseCard,
 } from "./project-templates-pane.client";
+import {
+  projectTemplateWorkbenchView,
+} from "./project-template-workbench.client";
+import {
+  ConfirmationDialog,
+} from "./confirmation-dialog.client";
+import type {
+  ConfirmationDialogRequest,
+} from "./confirmation-dialog.client";
 
 const inferenceTransport = createInferenceTransport();
 
@@ -253,6 +261,8 @@ function HomeContent() {
   );
   const [toolRegistryLoaded, setToolRegistryLoaded] = useState(false);
   const [toolRegistryOpen, setToolRegistryOpen] = useState(false);
+  const [confirmation, setConfirmation] =
+    useState<ConfirmationDialogRequest>();
   const [connectionDrawerOpen, setConnectionDrawerOpen] = useState(false);
   const [runHistoryOpen, setRunHistoryOpen] = useState(false);
   const [savedRunVersion, setSavedRunVersion] = useState(0);
@@ -482,14 +492,13 @@ function HomeContent() {
   const activeProjectRevision = projectFile?.conversationRevisions.find(
     ({ id }) => id === projectFile.defaults.conversationRevisionId,
   );
-  const activeProjectResolution =
-    projectFile && activeProjectRevision
-      ? resolveProjectRevision(
-          projectFile,
-          activeProjectRevision,
-          templateRunOverrides,
-        )
-      : undefined;
+  const templateWorkbench = projectTemplateWorkbenchView({
+    project: projectFile,
+    messages,
+    runOverrides: templateRunOverrides,
+    branchParentRevisionId: branchContext?.parentConversationRevisionId,
+  });
+  const activeProjectResolution = templateWorkbench.resolution;
   const templateUsageCounts = (() => {
     const counts = new Map<PromptTemplateId, number>();
     projectFile?.promptTemplates.forEach((template) => {
@@ -649,72 +658,94 @@ function HomeContent() {
     const latestVariables = discoverTemplateVariables(latest.content).variables.map(
       ({ name }) => name,
     );
-    const summary = [
-      `Update "${template.name}" from ${pinned.id} to ${latest.id}?`,
-      "",
-      `Variables: ${pinnedVariables.join(", ") || "none"} → ${latestVariables.join(", ") || "none"}`,
-      `Content: ${JSON.stringify(pinned.content)} → ${JSON.stringify(latest.content)}`,
-      "",
-      "Saved assignments for removed variables will be dropped after this review.",
-    ].join("\n");
-    if (!window.confirm(summary)) return;
-    const { project: base, revisionId } = projectForUseMutation();
-    const latestCount =
-      latest.content.kind === "fragment" ? 1 : latest.content.messages.length;
-    const extraIds = Array.from(
-      {
-        length: Math.max(0, latestCount - item.use.outputMessageIds.length),
+    const describeContent = (content: PromptTemplateContent): string =>
+      content.kind === "fragment"
+        ? content.text
+        : content.messages
+            .map(({ role, content: text }) => `${role}: ${text}`)
+            .join("\n");
+    setConfirmation({
+      title: `Update "${template.name}"?`,
+      description:
+        "The use will pin the latest immutable revision. Assignments for removed variables and its run-only overrides will be cleared.",
+      confirmLabel: "Update to latest",
+      details: [
+        { label: "From", value: pinned.id },
+        { label: "To", value: latest.id },
+        {
+          label: "Variables",
+          value: `${pinnedVariables.join(", ") || "none"} → ${latestVariables.join(", ") || "none"}`,
+        },
+        { label: "Current content", value: describeContent(pinned.content) },
+        { label: "Latest content", value: describeContent(latest.content) },
+      ],
+      onConfirm() {
+        const { project: base, revisionId } = projectForUseMutation();
+        const latestCount =
+          latest.content.kind === "fragment" ? 1 : latest.content.messages.length;
+        const extraIds = Array.from(
+          {
+            length: Math.max(0, latestCount - item.use.outputMessageIds.length),
+          },
+          () => crypto.randomUUID(),
+        );
+        const next = updatePromptTemplateUseToLatest(base, {
+          conversationRevisionId: revisionId,
+          templateUseId,
+          newOutputMessageIdSuffixes: extraIds,
+          ...(latest.content.kind === "fragment"
+            ? { fragmentRole: item.use.fragmentRole ?? "user" }
+            : {}),
+        });
+        const overrides = { ...templateRunOverrides };
+        delete overrides[templateUseId];
+        setTemplateRunOverrides(overrides);
+        adoptAuthoredProject(next, overrides);
       },
-      () => crypto.randomUUID(),
-    );
-    const next = updatePromptTemplateUseToLatest(base, {
-      conversationRevisionId: revisionId,
-      templateUseId,
-      newOutputMessageIdSuffixes: extraIds,
-      ...(latest.content.kind === "fragment"
-        ? { fragmentRole: item.use.fragmentRole ?? "user" }
-        : {}),
     });
-    const overrides = { ...templateRunOverrides };
-    delete overrides[templateUseId];
-    setTemplateRunOverrides(overrides);
-    adoptAuthoredProject(next, overrides);
   }
 
   function detachTemplateUseFromProject(
     templateUseId: PromptTemplateUseId,
   ): void {
-    if (
-      !window.confirm(
-        "Detach this template use? Its currently resolved values, including run-only overrides, will become ordinary literal messages.",
-      )
-    ) {
-      return;
-    }
-    const { project: base, revisionId } = projectForUseMutation();
-    const next = detachPromptTemplateUse(base, {
-      conversationRevisionId: revisionId,
-      templateUseId,
-      runOverrides: templateRunOverrides,
+    setConfirmation({
+      title: "Detach this template use?",
+      description:
+        "Its currently resolved values, including run-only overrides, will become ordinary literal messages with the same message IDs.",
+      confirmLabel: "Detach",
+      onConfirm() {
+        const { project: base, revisionId } = projectForUseMutation();
+        const next = detachPromptTemplateUse(base, {
+          conversationRevisionId: revisionId,
+          templateUseId,
+          runOverrides: templateRunOverrides,
+        });
+        const overrides = { ...templateRunOverrides };
+        delete overrides[templateUseId];
+        setTemplateRunOverrides(overrides);
+        adoptAuthoredProject(next, overrides);
+      },
     });
-    const overrides = { ...templateRunOverrides };
-    delete overrides[templateUseId];
-    setTemplateRunOverrides(overrides);
-    adoptAuthoredProject(next, overrides);
   }
 
   function removeTemplateUseFromProject(
     templateUseId: PromptTemplateUseId,
   ): void {
-    if (!window.confirm("Remove this template use and its generated messages?")) {
-      return;
-    }
-    const { project: base, revisionId } = projectForUseMutation();
-    const next = removePromptTemplateUse(base, revisionId, templateUseId);
-    const overrides = { ...templateRunOverrides };
-    delete overrides[templateUseId];
-    setTemplateRunOverrides(overrides);
-    adoptAuthoredProject(next, overrides);
+    setConfirmation({
+      title: "Remove this template use?",
+      description:
+        "The pinned use and all messages it generates will be removed from this conversation revision.",
+      confirmLabel: "Remove use",
+      destructive: true,
+      onConfirm() {
+        const { project: base, revisionId } = projectForUseMutation();
+        const next = removePromptTemplateUse(base, revisionId, templateUseId);
+        const overrides = { ...templateRunOverrides };
+        delete overrides[templateUseId];
+        setTemplateRunOverrides(overrides);
+        adoptAuthoredProject(next, overrides);
+      },
+    });
   }
 
   function mutateAuthoredItems(
@@ -883,9 +914,13 @@ function HomeContent() {
     | { body: unknown; messages: ConversationMessage[] }
     | { error: string }
     | undefined {
-    if (!projectFile || !activeProjectRevision || !activeProjectResolution) {
+    if (!projectFile || !activeProjectRevision) {
       return undefined;
     }
+    if (templateWorkbench.resolutionError) {
+      return { error: templateWorkbench.resolutionError };
+    }
+    if (!activeProjectResolution) return undefined;
     try {
       const request = {
         ...currentRequest(),
@@ -1564,32 +1599,7 @@ function HomeContent() {
       ["completed", "cancelled", "failed"].includes(runState.status.kind),
   );
   const requestPreview = templateRequestPreview();
-  // A pending branch has already truncated the draft messages, and those — not
-  // the parent revision's items — are what a run will send. Render them as the
-  // authored items the branch will create, so template uses still read as uses,
-  // and fall back to literal messages when the branch point is one the core
-  // would refuse.
-  const branchPreviewItems = (): ProjectConversationItem[] | undefined => {
-    if (!branchContext || !projectFile) return undefined;
-    const parent = projectFile.conversationRevisions.find(
-      ({ id }) => id === branchContext.parentConversationRevisionId,
-    );
-    if (!parent) return undefined;
-    try {
-      return authoredItemsForMessages(
-        projectFile,
-        parent,
-        messages,
-        templateRunOverrides,
-      );
-    } catch {
-      return messages.map((message) => ({ kind: "message", message }));
-    }
-  };
-  const composerItems: ProjectConversationItem[] =
-    branchPreviewItems() ??
-    activeProjectRevision?.items ??
-    messages.map((message) => ({ kind: "message", message }));
+  const composerItems = templateWorkbench.composerItems;
 
   return (
     <main
@@ -1638,11 +1648,14 @@ function HomeContent() {
         }
         runDisabled={Boolean(
           (projectFile && !mappedProfileId) ||
+            templateWorkbench.resolutionError ||
             activeProjectResolution?.diagnostics.length,
         )}
         runDisabledReason={
           projectFile && !mappedProfileId
             ? "Map the project connection to a local profile first."
+            : templateWorkbench.resolutionError
+              ? templateWorkbench.resolutionError
             : activeProjectResolution?.diagnostics.length
               ? "Resolve every template diagnostic before running."
               : undefined
@@ -2063,6 +2076,12 @@ function HomeContent() {
           onAttachToProject={attachRegistryToolToProject}
           onAttachToRequest={attachRegistryToolToRequest}
           onClose={() => setToolRegistryOpen(false)}
+        />
+      )}
+      {confirmation && (
+        <ConfirmationDialog
+          request={confirmation}
+          onClose={() => setConfirmation(undefined)}
         />
       )}
     </main>

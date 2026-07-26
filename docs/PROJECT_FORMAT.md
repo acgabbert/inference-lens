@@ -44,7 +44,10 @@ so their relative order is explicit:
 A template use always pins both a project-owned template and one of that
 template's immutable revisions. `values` are owned by the use. Key presence is
 significant: `""` is an intentional empty value, while an absent key has no
-value at that level.
+value at that level. Use values may name only variables that occur in their
+pinned revision. Newly saved revisions drop obsolete defaults instead of
+retaining hidden assignments; Version 2 migration still preserves existing
+template definitions byte-for-byte at the data-model level.
 
 A variable with no value at any level is a normal authoring state, not an
 invalid document. Validation accepts it, and resolution renders the variable as

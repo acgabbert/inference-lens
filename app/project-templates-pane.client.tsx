@@ -195,11 +195,11 @@ export function ProjectTemplatesPane({
                     selectRevision(event.target.value as PromptTemplateRevisionId)
                   }
                 >
-                  {[...selected.revisions].reverse().map((revision, index) => (
+                  {[...selected.revisions].reverse().map((revision) => (
                     <option key={revision.id} value={revision.id}>
                       {revision.id === selected.currentRevisionId
                         ? "Current"
-                        : `Previous ${index}`}
+                        : `Revision ${selected.revisions.indexOf(revision) + 1}`}
                       {" · "}
                       {new Date(revision.createdAt).toLocaleString()}
                     </option>
@@ -219,7 +219,18 @@ export function ProjectTemplatesPane({
                   type="button"
                   onClick={() =>
                     setViewedRevisionId(
-                      onSave(selected.id, name, content, defaults),
+                      onSave(
+                        selected.id,
+                        name,
+                        content,
+                        Object.fromEntries(
+                          discovery.variables.flatMap(({ name }) =>
+                            Object.hasOwn(defaults, name)
+                              ? [[name, defaults[name]!]]
+                              : [],
+                          ),
+                        ),
+                      ),
                     )
                   }
                 >
@@ -576,49 +587,67 @@ export function TemplateUseCard({
                 </div>
               ) : (
                 <>
-              <label>
-                Saved value
-                <input
-                  placeholder={defaulted ? `Default: ${revision.variableDefaults[variable.name]}` : "No saved value"}
-                  value={saved ? use.values[variable.name] : ""}
-                  onChange={(event) =>
-                    onSaveValues(updateRecord(use.values, variable.name, event.target.value))
-                  }
-                />
-              </label>
-              {saved && (
-                <button
-                  className="text-button"
-                  type="button"
-                  onClick={() => onSaveValues(removeRecordKey(use.values, variable.name))}
-                >
-                  Use default
-                </button>
-              )}
-              <label>
-                Run-only override
-                <input
-                  className="run-override-input"
-                  placeholder="No override"
-                  value={overridden ? runOverrides[variable.name] : ""}
-                  onChange={(event) =>
-                    onRunOverridesChange(
-                      updateRecord(runOverrides, variable.name, event.target.value),
-                    )
-                  }
-                />
-              </label>
-              {overridden && (
-                <button
-                  className="text-button"
-                  type="button"
-                  onClick={() =>
-                    onRunOverridesChange(removeRecordKey(runOverrides, variable.name))
-                  }
-                >
-                  Clear override
-                </button>
-              )}
+                  <label>
+                    Saved value
+                    <input
+                      placeholder={
+                        defaulted
+                          ? `Default: ${revision.variableDefaults[variable.name]}`
+                          : "No saved value"
+                      }
+                      value={saved ? use.values[variable.name] : ""}
+                      onChange={(event) =>
+                        onSaveValues(
+                          updateRecord(
+                            use.values,
+                            variable.name,
+                            event.target.value,
+                          ),
+                        )
+                      }
+                    />
+                  </label>
+                  {saved && (
+                    <button
+                      className="text-button"
+                      type="button"
+                      onClick={() =>
+                        onSaveValues(removeRecordKey(use.values, variable.name))
+                      }
+                    >
+                      Use default
+                    </button>
+                  )}
+                  <label>
+                    Run-only override
+                    <input
+                      className="run-override-input"
+                      placeholder="No override"
+                      value={overridden ? runOverrides[variable.name] : ""}
+                      onChange={(event) =>
+                        onRunOverridesChange(
+                          updateRecord(
+                            runOverrides,
+                            variable.name,
+                            event.target.value,
+                          ),
+                        )
+                      }
+                    />
+                  </label>
+                  {overridden && (
+                    <button
+                      className="text-button"
+                      type="button"
+                      onClick={() =>
+                        onRunOverridesChange(
+                          removeRecordKey(runOverrides, variable.name),
+                        )
+                      }
+                    >
+                      Clear override
+                    </button>
+                  )}
                 </>
               )}
               <small>{variable.occurrences.length} location{variable.occurrences.length === 1 ? "" : "s"}</small>

@@ -158,7 +158,7 @@ test("accepts self-contained template provenance and rejects mismatched evidence
   );
 });
 
-test("verifies provenance for a run made with an unresolved variable", () => {
+test("rejects template provenance for a run with an unresolved variable", () => {
   const trace = structuredClone(completedTrace());
   const resolution = {
     templateUseId: "template-use_trace" as const,
@@ -171,8 +171,6 @@ test("verifies provenance for a run made with an unresolved variable", () => {
     outputMessageIds: ["message_trace-test-0" as const],
     fragmentRole: "user" as const,
   };
-  // The run went out with the token unresolved. That evidence still has to
-  // verify, because the engine reproduces exactly what was sent.
   trace.input.messages[0]!.content = [{ type: "text", text: "{{greeting}}" }];
   trace.input.templateResolutions = [resolution];
   const started = trace.events[0];
@@ -181,10 +179,43 @@ test("verifies provenance for a run made with an unresolved variable", () => {
   started.input.messages[0]!.content = [{ type: "text", text: "{{greeting}}" }];
   started.input.templateResolutions = [resolution];
 
-  assert.deepEqual(
-    parseRunTraceJson(serializeRunTrace(trace)).input.templateResolutions,
-    [resolution],
+  assert.throws(
+    () => serializeRunTrace(trace),
+    /is unresolved/,
   );
+});
+
+test("rejects duplicate template-use and output-message provenance", () => {
+  const trace = structuredClone(completedTrace());
+  const resolution = {
+    templateUseId: "template-use_trace" as const,
+    templateId: "template_trace" as const,
+    templateRevisionId: "template-revision_trace-1" as const,
+    templateName: "Greeting",
+    content: { kind: "fragment" as const, text: "Hello" },
+    variableDefaults: {},
+    values: {},
+    outputMessageIds: ["message_trace-test-0" as const],
+    fragmentRole: "user" as const,
+  };
+  trace.input.templateResolutions = [resolution, structuredClone(resolution)];
+  const started = trace.events[0];
+  assert.equal(started?.type, "run.started");
+  if (started?.type !== "run.started") return;
+  started.input.templateResolutions = [
+    resolution,
+    structuredClone(resolution),
+  ];
+
+  assert.throws(() => serializeRunTrace(trace), /repeats use/);
+
+  const second = {
+    ...structuredClone(resolution),
+    templateUseId: "template-use_other" as const,
+  };
+  trace.input.templateResolutions = [resolution, second];
+  started.input.templateResolutions = [resolution, second];
+  assert.throws(() => serializeRunTrace(trace), /repeats output message/);
 });
 
 test("rejects malformed template provenance as an invalid trace", () => {

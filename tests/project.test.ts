@@ -464,7 +464,7 @@ test("inserts, updates, detaches, and removes template uses through core helpers
   const valuesUpdated = updatePromptTemplateUseValues(inserted, {
     conversationRevisionId,
     templateUseId: "template-use_reusable",
-    values: { kept: "Still", obsolete: "Drop", added: "Now" },
+    values: { kept: "Still", obsolete: "Drop" },
   });
   const revised = appendPromptTemplateRevision(valuesUpdated, {
     templateId: "template_reusable",
@@ -484,8 +484,13 @@ test("inserts, updates, detaches, and removes template uses through core helpers
     templateUseId: "template-use_reusable",
     newOutputMessageIdSuffixes: ["reusable-2"],
   });
+  const latestWithValues = updatePromptTemplateUseValues(latest, {
+    conversationRevisionId,
+    templateUseId: "template-use_reusable",
+    values: { kept: "Still", added: "Now" },
+  });
   const latestUse = findPromptTemplateUsages(
-    latest,
+    latestWithValues,
     "template_reusable",
   )[0]!.use;
   assert.equal(
@@ -499,7 +504,7 @@ test("inserts, updates, detaches, and removes template uses through core helpers
   ]);
   assert.equal(latestUse.fragmentRole, undefined);
 
-  const detached = detachPromptTemplateUse(latest, {
+  const detached = detachPromptTemplateUse(latestWithValues, {
     conversationRevisionId,
     templateUseId: "template-use_reusable",
   });
@@ -526,7 +531,7 @@ test("inserts, updates, detaches, and removes template uses through core helpers
   );
 
   const removed = removePromptTemplateUse(
-    latest,
+    latestWithValues,
     conversationRevisionId,
     "template-use_reusable",
   );
@@ -719,6 +724,18 @@ test("rejects invalid template-use ownership, output shape, and secret-like valu
     },
   };
   assert.throws(() => parseProjectFile(project), /Secret values cannot be stored/);
+});
+
+test("rejects use values that are not present in their pinned revision", () => {
+  const project = templateBranchProject();
+  const item = project.conversationRevisions[0]!.items[0]!;
+  assert.equal(item.kind, "template-use");
+  if (item.kind !== "template-use") return;
+  item.use.values.unused = "hidden";
+  assert.throws(
+    () => parseProjectFile(project),
+    /use value "unused" is not used/,
+  );
 });
 
 test("updates the active draft without dropping project-owned collections", () => {
