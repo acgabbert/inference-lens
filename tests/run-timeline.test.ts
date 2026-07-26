@@ -286,6 +286,7 @@ test("surfaces the pause between turns as a tool-result gap", () => {
   ]);
 
   const [gap] = gapRows(timeline);
+  const [toolAttempt] = attemptRows(timeline);
 
   assert.equal(gapRows(timeline).length, 1);
   assert.equal(gap?.reason, "tool_results");
@@ -298,6 +299,86 @@ test("surfaces the pause between turns as a tool-result gap", () => {
     timeline.rows.map((row) => row.kind),
     ["attempt", "gap", "attempt"],
   );
+  assert.deepEqual(phases(toolAttempt!), [
+    ["wait", 100],
+    ["generation", 100],
+    ["tooling", 200],
+  ]);
+});
+
+test("shows tool-only output as tool calling rather than stream prelude", () => {
+  const next = eventStream(runId);
+  const toolCallId = createEntityId("tool-call", "lookup-only");
+  const timeline = timelineOf([
+    next(0, { type: "run.started", input: resolvedInput }),
+    next(0, {
+      type: "turn.started",
+      turnId,
+      attempt: 1,
+      exchangeId,
+      input: turnInput,
+    }),
+    next(100, { type: "exchange.requested", turnId, attempt: 1, exchangeId, request }),
+    next(200, {
+      type: "exchange.response_started",
+      turnId,
+      attempt: 1,
+      exchangeId,
+      response,
+    }),
+    next(300, {
+      type: "assistant.tool_call_delta",
+      turnId,
+      attempt: 1,
+      exchangeId,
+      toolCallId,
+      index: 0,
+      nameDelta: "lookup",
+    }),
+    next(700, {
+      type: "assistant.completed",
+      turnId,
+      attempt: 1,
+      exchangeId,
+      finishReason: { normalized: "tool_calls", raw: "tool_calls" },
+    }),
+  ]);
+
+  assert.deepEqual(phases(attemptRows(timeline)[0]!), [
+    ["wait", 100],
+    ["prelude", 100],
+    ["tooling", 400],
+  ]);
+});
+
+test("terminal failure closes the active timeline row", () => {
+  const next = eventStream(runId);
+  const timeline = timelineOf([
+    next(0, { type: "run.started", input: resolvedInput }),
+    next(0, {
+      type: "turn.started",
+      turnId,
+      attempt: 1,
+      exchangeId,
+      input: turnInput,
+    }),
+    next(100, { type: "exchange.requested", turnId, attempt: 1, exchangeId, request }),
+    next(300, {
+      type: "run.failed",
+      error: {
+        code: "transport_error",
+        message: "Connection closed",
+        retryable: false,
+      },
+    }),
+  ]);
+
+  const [row] = attemptRows(timeline);
+
+  assert.equal(row?.status, "failed");
+  assert.equal(row?.openEnded, false);
+  assert.equal(row?.endMs, 300);
+  assert.equal(row?.durationMs, 200);
 });
 
 test("separates a failed attempt from its retry with a retry gap", () => {

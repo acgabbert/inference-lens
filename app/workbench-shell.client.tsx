@@ -291,7 +291,7 @@ export function ResizableTracePanel({
     >
       {open && (
         <button
-          aria-label="Resize event trace"
+          aria-label="Resize run details"
           className="trace-resize-handle"
           type="button"
           onPointerDown={beginResize}
@@ -309,7 +309,7 @@ export function ResizableTracePanel({
           <span className="trace-chevron" aria-hidden="true">
             {open ? "⌄" : "⌃"}
           </span>
-          Event trace
+          Run details
         </button>
         {tabs}
         {meta}

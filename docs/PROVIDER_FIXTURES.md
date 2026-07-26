@@ -63,11 +63,11 @@ A timing fixture is only useful if you can say in advance what the app should
 report. `paced-openai-provider.mjs` stalls 600 ms before the first byte and then
 emits nine deltas 120 ms apart, so:
 
-- time to first token should land just over 600 ms;
+- time to first output should land just over 600 ms;
 - the generation phase should span roughly 9 × 120 ms; and
 - throughput should land near 9 tokens ÷ that span.
 
-When the UI showed 729 ms TTFT and 9.3 tok/s over a 963 ms generation span,
+When the UI showed 729 ms TTFO and 9.3 tok/s over a 963 ms output span,
 those numbers could be checked against the fixture rather than merely looking
 plausible. Plausible-looking numbers are exactly how a metrics bug survives.
 

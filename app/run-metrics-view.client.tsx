@@ -53,14 +53,14 @@ export function RunMetricsView({ metrics, timeline }: RunMetricsViewProps) {
           hint={metrics.statusKind === "running" ? "still running" : undefined}
         />
         <SummaryTile
-          label="Time to first token"
-          value={formatDuration(metrics.ttftMs)}
+          label="Time to first output"
+          value={formatDuration(metrics.ttfoMs)}
           hint="from request"
         />
         <SummaryTile
           label="Throughput"
           value={formatRate(metrics.outputTokensPerSecond)}
-          hint="generation only"
+          hint="model output only"
         />
         <SummaryTile
           label="Total tokens"
@@ -108,7 +108,7 @@ export function RunMetricsView({ metrics, timeline }: RunMetricsViewProps) {
               <th scope="col">Attempt</th>
               <th scope="col">Status</th>
               <th scope="col">TTFB</th>
-              <th scope="col">TTFT</th>
+              <th scope="col">TTFO</th>
               <th scope="col">Duration</th>
               <th scope="col">Out tokens</th>
               <th scope="col">Rate</th>
@@ -124,7 +124,7 @@ export function RunMetricsView({ metrics, timeline }: RunMetricsViewProps) {
                   </span>
                 </td>
                 <td>{formatDuration(attempt.ttfbMs)}</td>
-                <td>{formatDuration(attempt.ttftMs)}</td>
+                <td>{formatDuration(attempt.ttfoMs)}</td>
                 <td>{formatDuration(attempt.durationMs)}</td>
                 <td>{formatTokens(attempt.usage?.outputTokens)}</td>
                 <td>{formatRate(attempt.outputTokensPerSecond)}</td>

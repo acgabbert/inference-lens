@@ -45,7 +45,7 @@ function EventStream({ events }: { events: RunEvent[] }) {
 }
 
 /**
- * The trace panel below the response pane. It owns the choice between raw
+ * The run-details panel below the response pane. It owns the choice between raw
  * event evidence and derived metrics so the workbench page composes one
  * element rather than the panel's internals.
  */
@@ -73,7 +73,7 @@ export function RunTracePanel({
       tabs={
         open && (
           <PaneTabs
-            label="Trace detail"
+            label="Run details"
             value={tab}
             onChange={(value) => setTab(value as TraceTab)}
             tabs={[
@@ -84,11 +84,9 @@ export function RunTracePanel({
         )
       }
       meta={
-        <span>
-          {events.length} {events.length === 1 ? "event" : "events"}
-          {metrics?.usage.totalTokens !== undefined &&
-            ` · ${metrics.usage.totalTokens.toLocaleString()} tokens`}
-        </span>
+        metrics?.usage.totalTokens !== undefined ? (
+          <span>{metrics.usage.totalTokens.toLocaleString()} tokens</span>
+        ) : undefined
       }
     >
       {tab === "metrics" ? (

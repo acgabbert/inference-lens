@@ -143,11 +143,12 @@ test("derives latency, duration, and throughput for a completed turn", () => {
 
   assert.equal(attempt?.requestedAtMs, 100);
   assert.equal(attempt?.firstByteAtMs, 400);
-  assert.equal(attempt?.firstTokenAtMs, 600);
+  assert.equal(attempt?.firstOutputAtMs, 600);
+  assert.equal(attempt?.firstTextAtMs, 600);
   assert.equal(attempt?.endedAtMs, 1600);
   // Latencies are relative to the request, not to run start.
   assert.equal(attempt?.ttfbMs, 300);
-  assert.equal(attempt?.ttftMs, 500);
+  assert.equal(attempt?.ttfoMs, 500);
   assert.equal(attempt?.durationMs, 1500);
   // 20 output tokens over the 1000 ms generation phase, excluding the wait.
   assert.equal(attempt?.outputTokensPerSecond, 20);
@@ -155,7 +156,7 @@ test("derives latency, duration, and throughput for a completed turn", () => {
 
   assert.equal(metrics.statusKind, "completed");
   assert.equal(metrics.totalDurationMs, 1650);
-  assert.equal(metrics.ttftMs, 500);
+  assert.equal(metrics.ttfoMs, 500);
   assert.equal(metrics.outputTokensPerSecond, 20);
   assert.deepEqual(metrics.usage, {
     inputTokens: 10,
@@ -271,10 +272,13 @@ test("sums usage across the turns of a tool run", () => {
     outputTokens: 12,
     totalTokens: 52,
   });
+  assert.equal(metrics.attempts[0]?.firstToolCallAtMs, 100);
+  assert.equal(metrics.attempts[0]?.ttfoMs, 50);
+  assert.equal(metrics.attempts[0]?.outputTokensPerSecond, 50);
   // The 2.8 s spent waiting on the tool result is not charged to the model.
-  assert.equal(metrics.outputTokensPerSecond, 14);
-  // The first turn emitted no text, so run TTFT comes from the turn that did.
-  assert.equal(metrics.ttftMs, 150);
+  assert.equal(metrics.outputTokensPerSecond, 20);
+  // Tool-call deltas are model output, so the first turn owns run TTFO.
+  assert.equal(metrics.ttfoMs, 50);
 });
 
 test("measures a retried attempt from its own request and keeps its tokens", () => {
@@ -351,10 +355,10 @@ test("measures a retried attempt from its own request and keeps its tokens", () 
   assert.equal(metrics.turnCount, 1);
   assert.equal(metrics.attemptCount, 2);
   assert.equal(metrics.retryCount, 1);
-  // The retry waited 100 ms for its own first token; it does not inherit the
+  // The retry waited 100 ms for its own first output; it does not inherit the
   // 1.1 s that elapsed since run start.
-  assert.equal(metrics.attempts[0]?.ttftMs, 100);
-  assert.equal(metrics.attempts[1]?.ttftMs, 100);
+  assert.equal(metrics.attempts[0]?.ttfoMs, 100);
+  assert.equal(metrics.attempts[1]?.ttfoMs, 100);
   assert.equal(metrics.attempts[0]?.status, "failed");
   assert.equal(metrics.attempts[1]?.status, "completed");
   // Both attempts belong to the same, first turn.
@@ -389,7 +393,7 @@ test("reports partial metrics for a run still streaming", () => {
 
   assert.equal(metrics.statusKind, "running");
   assert.equal(metrics.totalDurationMs, 400);
-  assert.equal(metrics.ttftMs, 300);
+  assert.equal(metrics.ttfoMs, 300);
   assert.equal(attempt?.status, "streaming");
   assert.equal(attempt?.endedAtMs, undefined);
   assert.equal(attempt?.durationMs, undefined);
@@ -401,7 +405,58 @@ test("reports partial metrics for a run still streaming", () => {
   assert.deepEqual(metrics.usage, {});
 });
 
-test("reports no rate when the generation span has no measurable length", () => {
+test("closes an active attempt when the run fails terminally", () => {
+  const next = eventStream(runId);
+  const state = reduceAll([
+    next(0, { type: "run.started", input: resolvedInput }),
+    next(0, {
+      type: "turn.started",
+      turnId,
+      attempt: 1,
+      exchangeId,
+      input: turnInput,
+    }),
+    next(100, { type: "exchange.requested", turnId, attempt: 1, exchangeId, request }),
+    next(300, {
+      type: "run.failed",
+      error: {
+        code: "transport_error",
+        message: "Connection closed",
+        retryable: false,
+      },
+    }),
+  ]);
+
+  const [attempt] = runMetrics(state).attempts;
+
+  assert.equal(attempt?.status, "failed");
+  assert.equal(attempt?.endedAtMs, 300);
+  assert.equal(attempt?.durationMs, 200);
+});
+
+test("closes and labels an active attempt when the run is cancelled", () => {
+  const next = eventStream(runId);
+  const state = reduceAll([
+    next(0, { type: "run.started", input: resolvedInput }),
+    next(0, {
+      type: "turn.started",
+      turnId,
+      attempt: 1,
+      exchangeId,
+      input: turnInput,
+    }),
+    next(100, { type: "exchange.requested", turnId, attempt: 1, exchangeId, request }),
+    next(250, { type: "run.cancelled", reason: "Stopped by user" }),
+  ]);
+
+  const [attempt] = runMetrics(state).attempts;
+
+  assert.equal(attempt?.status, "cancelled");
+  assert.equal(attempt?.endedAtMs, 250);
+  assert.equal(attempt?.durationMs, 150);
+});
+
+test("reports no rate when the output span has no measurable length", () => {
   const next = eventStream(runId);
   const state = reduceAll([
     next(0, { type: "run.started", input: resolvedInput }),

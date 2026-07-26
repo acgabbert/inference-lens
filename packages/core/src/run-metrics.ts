@@ -8,6 +8,8 @@ import type {
   TurnId,
 } from "./run-kernel/types.ts";
 
+export type AttemptMetricStatus = AttemptStatus | "cancelled";
+
 /**
  * Timing and cost projected from a run's event stream. Like the transcript
  * projection, this is derived state: it is never persisted, never part of the
@@ -28,12 +30,14 @@ export interface AttemptMetrics {
   turnIndex: number;
   attempt: number;
   exchangeId: ExchangeId;
-  status: AttemptStatus;
   /** Elapsed stamps, relative to run start. */
   requestedAtMs?: number;
   firstByteAtMs?: number;
-  firstTokenAtMs?: number;
+  /** First model output of any kind: reasoning, visible text, or tool call. */
+  firstOutputAtMs?: number;
+  firstTextAtMs?: number;
   firstReasoningAtMs?: number;
+  firstToolCallAtMs?: number;
   endedAtMs?: number;
   /**
    * Latencies relative to this attempt's own request, not to run start, so a
@@ -41,11 +45,12 @@ export interface AttemptMetrics {
    * spent on the attempt that failed before it.
    */
   ttfbMs?: number;
-  ttftMs?: number;
+  ttfoMs?: number;
   durationMs?: number;
   usage?: RunTokenUsage;
-  /** Generation-phase throughput; excludes the wait before the first token. */
+  /** Output throughput; excludes the wait before the first model output. */
   outputTokensPerSecond?: number;
+  status: AttemptMetricStatus;
 }
 
 export interface RunMetrics {
@@ -53,8 +58,8 @@ export interface RunMetrics {
   statusKind: RunState["status"]["kind"];
   /** Wall time from run start to the most recent event; grows while running. */
   totalDurationMs?: number;
-  /** Latency of the first attempt that produced a token. */
-  ttftMs?: number;
+  /** Latency of the first attempt that produced model output. */
+  ttfoMs?: number;
   /**
    * Summed across every attempt that reported usage, including attempts that
    * later failed and were retried, because those tokens were still billed.
@@ -71,8 +76,10 @@ export interface RunMetrics {
 interface AttemptTimings {
   requestedAtMs?: number;
   firstByteAtMs?: number;
-  firstTokenAtMs?: number;
+  firstOutputAtMs?: number;
+  firstTextAtMs?: number;
   firstReasoningAtMs?: number;
+  firstToolCallAtMs?: number;
   endedAtMs?: number;
 }
 
@@ -124,10 +131,16 @@ function collectTimings(events: RunEvent[]): Map<string, AttemptTimings> {
         entry.firstByteAtMs ??= event.elapsedMs;
         break;
       case "assistant.text_delta":
-        entry.firstTokenAtMs ??= event.elapsedMs;
+        entry.firstTextAtMs ??= event.elapsedMs;
+        entry.firstOutputAtMs ??= event.elapsedMs;
         break;
       case "assistant.reasoning_delta":
         entry.firstReasoningAtMs ??= event.elapsedMs;
+        entry.firstOutputAtMs ??= event.elapsedMs;
+        break;
+      case "assistant.tool_call_delta":
+        entry.firstToolCallAtMs ??= event.elapsedMs;
+        entry.firstOutputAtMs ??= event.elapsedMs;
         break;
       case "assistant.completed":
       case "turn.attempt_failed":
@@ -148,7 +161,7 @@ function delta(from?: number, to?: number): number | undefined {
 }
 
 /**
- * Tokens per second over a generation span. A zero-length span means the
+ * Tokens per second over an output span. A zero-length span means the
  * evidence cannot support a rate, so none is reported: a fabricated rate would
  * be indistinguishable from a measured one.
  */
@@ -180,11 +193,11 @@ function attemptMetrics(
   turnIndex: number,
   attempt: number,
   exchangeId: ExchangeId,
-  status: AttemptStatus,
+  status: AttemptMetricStatus,
   usage: RunTokenUsage | undefined,
   timings: AttemptTimings,
 ): AttemptMetrics {
-  const generationSpanMs = delta(timings.firstTokenAtMs, timings.endedAtMs);
+  const outputSpanMs = delta(timings.firstOutputAtMs, timings.endedAtMs);
 
   return {
     turnId,
@@ -194,10 +207,29 @@ function attemptMetrics(
     status,
     ...timings,
     ttfbMs: delta(timings.requestedAtMs, timings.firstByteAtMs),
-    ttftMs: delta(timings.requestedAtMs, timings.firstTokenAtMs),
+    ttfoMs: delta(timings.requestedAtMs, timings.firstOutputAtMs),
     durationMs: delta(timings.requestedAtMs, timings.endedAtMs),
     usage,
-    outputTokensPerSecond: throughput(usage?.outputTokens, generationSpanMs),
+    outputTokensPerSecond: throughput(usage?.outputTokens, outputSpanMs),
+  };
+}
+
+function terminalAttemptEnd(
+  state: RunState,
+): { atMs: number; status: AttemptMetricStatus } | undefined {
+  if (state.status.kind !== "failed" && state.status.kind !== "cancelled") {
+    return undefined;
+  }
+  const terminal = state.events.at(-1);
+  if (
+    !terminal ||
+    (terminal.type !== "run.failed" && terminal.type !== "run.cancelled")
+  ) {
+    return undefined;
+  }
+  return {
+    atMs: terminal.elapsedMs,
+    status: state.status.kind === "cancelled" ? "cancelled" : "failed",
   };
 }
 
@@ -207,19 +239,29 @@ function attemptMetrics(
  */
 export function runMetrics(state: RunState): RunMetrics {
   const timings = collectTimings(state.events);
+  const terminalEnd = terminalAttemptEnd(state);
+  const activeAttempt = state.turns.at(-1)?.attempts.at(-1);
   const attempts: AttemptMetrics[] = [];
 
   for (const [turnIndex, turn] of state.turns.entries()) {
     for (const attempt of turn.attempts) {
+      const attemptTimings =
+        timings.get(attemptKey(turn.turnId, attempt.attempt)) ?? {};
+      const closesWithRun =
+        attempt.status === "streaming" &&
+        terminalEnd !== undefined &&
+        attempt === activeAttempt;
       attempts.push(
         attemptMetrics(
           turn.turnId,
           turnIndex + 1,
           attempt.attempt,
           attempt.exchangeId,
-          attempt.status,
+          closesWithRun ? terminalEnd.status : attempt.status,
           attempt.usage,
-          timings.get(attemptKey(turn.turnId, attempt.attempt)) ?? {},
+          closesWithRun
+            ? { ...attemptTimings, endedAtMs: terminalEnd.atMs }
+            : attemptTimings,
         ),
       );
     }
@@ -229,17 +271,17 @@ export function runMetrics(state: RunState): RunMetrics {
     attempts.flatMap(({ usage: reported }) => (reported ? [reported] : [])),
   );
 
-  // Run-level throughput sums only the generation spans, so time spent waiting
+  // Run-level throughput sums only the output spans, so time spent waiting
   // on tool results between turns is not charged against the model's rate.
   let generatedTokens: number | undefined;
-  let generationSpanMs: number | undefined;
+  let outputSpanMs: number | undefined;
   for (const attempt of attempts) {
-    const span = delta(attempt.firstTokenAtMs, attempt.endedAtMs);
+    const span = delta(attempt.firstOutputAtMs, attempt.endedAtMs);
     if (span === undefined || span <= 0) continue;
     const outputTokens = attempt.usage?.outputTokens;
     if (typeof outputTokens !== "number") continue;
     generatedTokens = (generatedTokens ?? 0) + outputTokens;
-    generationSpanMs = (generationSpanMs ?? 0) + span;
+    outputSpanMs = (outputSpanMs ?? 0) + span;
   }
 
   const turnCount = state.turns.length;
@@ -249,9 +291,9 @@ export function runMetrics(state: RunState): RunMetrics {
     runId: state.runId,
     statusKind: state.status.kind,
     totalDurationMs: state.events.at(-1)?.elapsedMs,
-    ttftMs: attempts.find(({ ttftMs }) => ttftMs !== undefined)?.ttftMs,
+    ttfoMs: attempts.find(({ ttfoMs }) => ttfoMs !== undefined)?.ttfoMs,
     usage,
-    outputTokensPerSecond: throughput(generatedTokens, generationSpanMs),
+    outputTokensPerSecond: throughput(generatedTokens, outputSpanMs),
     turnCount,
     attemptCount,
     retryCount: Math.max(0, attemptCount - turnCount),

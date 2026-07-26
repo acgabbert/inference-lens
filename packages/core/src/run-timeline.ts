@@ -1,5 +1,9 @@
-import type { AttemptMetrics, RunMetrics } from "./run-metrics.ts";
-import type { AttemptStatus, ExchangeId, RunId, TurnId } from "./run-kernel/types.ts";
+import type {
+  AttemptMetrics,
+  AttemptMetricStatus,
+  RunMetrics,
+} from "./run-metrics.ts";
+import type { ExchangeId, RunId, TurnId } from "./run-kernel/types.ts";
 
 /**
  * A run laid out on a single time axis. Like RunMetrics, this is derived
@@ -12,7 +16,7 @@ import type { AttemptStatus, ExchangeId, RunId, TurnId } from "./run-kernel/type
  * run.
  *
  * The waterfall exists to show the time the metrics deliberately exclude. Run
- * throughput measures generation spans only, so a run that spent forty seconds
+ * throughput measures model-output spans only, so a run that spent forty seconds
  * parked in `awaiting_tool_results` reports a healthy rate; that pause is
  * invisible in the summary and unmissable on an axis.
  */
@@ -27,9 +31,15 @@ import type { AttemptStatus, ExchangeId, RunId, TurnId } from "./run-kernel/type
  *   provider's response headers. A long prelude means the provider held the
  *   stream open while producing nothing.
  * - `reasoning` — reasoning deltas arriving, no visible answer text yet.
+ * - `tooling` — tool-call name or arguments arriving.
  * - `generation` — assistant text arriving.
  */
-export type TimelinePhase = "wait" | "prelude" | "reasoning" | "generation";
+export type TimelinePhase =
+  | "wait"
+  | "prelude"
+  | "reasoning"
+  | "tooling"
+  | "generation";
 
 export interface TimelineSegment {
   phase: TimelinePhase;
@@ -53,7 +63,7 @@ export interface TimelineAttemptRow {
   turnIndex: number;
   attempt: number;
   exchangeId: ExchangeId;
-  status: AttemptStatus;
+  status: AttemptMetricStatus;
   /** Geometry only. Both are 0 when the attempt produced no stamp at all. */
   startMs: number;
   endMs: number;
@@ -91,13 +101,14 @@ export interface RunTimeline {
 
 /**
  * Landmark ordering for ties. Stamps can share a millisecond on a fast local
- * provider, and sorting by time alone would let a first token sort ahead of
+ * provider, and sorting by time alone would let first output sort ahead of
  * the request that produced it.
  */
 const PHASE_ORDER: readonly TimelinePhase[] = [
   "wait",
   "prelude",
   "reasoning",
+  "tooling",
   "generation",
 ];
 
@@ -120,7 +131,8 @@ function landmarks(attempt: AttemptMetrics): Landmark[] {
   add("wait", attempt.requestedAtMs);
   add("prelude", attempt.firstByteAtMs);
   add("reasoning", attempt.firstReasoningAtMs);
-  add("generation", attempt.firstTokenAtMs);
+  add("tooling", attempt.firstToolCallAtMs);
+  add("generation", attempt.firstTextAtMs);
 
   return present.sort(
     (a, b) =>
@@ -217,7 +229,8 @@ export function runTimeline(metrics: RunMetrics): RunTimeline {
         attempt.requestedAtMs ?? 0,
         attempt.firstByteAtMs ?? 0,
         attempt.firstReasoningAtMs ?? 0,
-        attempt.firstTokenAtMs ?? 0,
+        attempt.firstToolCallAtMs ?? 0,
+        attempt.firstTextAtMs ?? 0,
         attempt.endedAtMs ?? 0,
       ),
     metrics.totalDurationMs ?? 0,

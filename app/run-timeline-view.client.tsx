@@ -17,6 +17,7 @@ const PHASE_LABELS: Record<TimelinePhase, string> = {
   wait: "Waiting",
   prelude: "Stream open",
   reasoning: "Reasoning",
+  tooling: "Tool calling",
   generation: "Generating",
 };
 
@@ -30,6 +31,7 @@ const PHASE_ORDER: readonly TimelinePhase[] = [
   "wait",
   "prelude",
   "reasoning",
+  "tooling",
   "generation",
 ];
 

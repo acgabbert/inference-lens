@@ -61,6 +61,7 @@
   --timeline-wait: light-dark(#b3bdb7, #46564e);
   --timeline-prelude: light-dark(#8ab3c4, #47707f);
   --timeline-reasoning: var(--warning);
+  --timeline-tooling: light-dark(#8d78b8, #9b87c7);
   --timeline-generation: var(--accent-solid);
   --timeline-gap: light-dark(#c4ccc6, #3b463e);
 
@@ -1961,6 +1962,10 @@ textarea:focus {
   background: var(--timeline-reasoning);
 }
 
+.run-timeline-key.tooling {
+  background: var(--timeline-tooling);
+}
+
 .run-timeline-key.generation {
   background: var(--timeline-generation);
 }
@@ -2041,6 +2046,10 @@ textarea:focus {
 
 .run-timeline-bar.reasoning {
   background: var(--timeline-reasoning);
+}
+
+.run-timeline-bar.tooling {
+  background: var(--timeline-tooling);
 }
 
 .run-timeline-bar.generation {
@@ -2147,6 +2156,11 @@ textarea:focus {
 .attempt-status.failed {
   background: var(--danger-surface);
   color: var(--danger);
+}
+
+.attempt-status.cancelled {
+  background: var(--warning-surface);
+  color: var(--warning);
 }
 
 .trace details {
