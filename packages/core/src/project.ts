@@ -1906,6 +1906,43 @@ export function appendPromptTemplateRevision(
   return parseProjectFile({ ...project, promptTemplates });
 }
 
+/** Renames a template label without changing revision identity or content. */
+export function renamePromptTemplate(
+  project: ProjectFileV3,
+  templateId: PromptTemplateId,
+  name: string,
+): ProjectFileV3 {
+  const templateIndex = project.promptTemplates.findIndex(
+    ({ id }) => id === templateId,
+  );
+  if (templateIndex < 0) {
+    throw new ProjectValidationError([
+      {
+        code: "custom",
+        path: ["promptTemplates", templateId],
+        message: "Template does not exist.",
+      },
+    ]);
+  }
+  const trimmed = name.trim();
+  if (!trimmed) {
+    throw new ProjectValidationError([
+      {
+        code: "custom",
+        path: ["promptTemplates", templateId, "name"],
+        message: "Template name is required.",
+      },
+    ]);
+  }
+  if (project.promptTemplates[templateIndex]!.name === trimmed) return project;
+  const promptTemplates = [...project.promptTemplates];
+  promptTemplates[templateIndex] = {
+    ...promptTemplates[templateIndex]!,
+    name: trimmed,
+  };
+  return parseProjectFile({ ...project, promptTemplates });
+}
+
 export function setPromptTemplateCurrentRevision(
   project: ProjectFileV3,
   templateId: PromptTemplateId,

@@ -15,6 +15,7 @@ import {
   parseProjectJson,
   prepareProjectRevisionRun,
   projectDraft,
+  renamePromptTemplate,
   removePromptTemplateRevision,
   removePromptTemplateUse,
   serializeProjectFile,
@@ -349,6 +350,17 @@ test("creates immutable template revisions, finds uses, and rejects unsafe remov
     idSuffix: "unused",
   });
   assert.equal(unchanged, created);
+
+  const renamed = renamePromptTemplate(created, "template_question", "Question v2");
+  assert.equal(renamed.promptTemplates[0]?.name, "Question v2");
+  assert.equal(
+    renamed.promptTemplates[0]?.currentRevisionId,
+    created.promptTemplates[0]?.currentRevisionId,
+  );
+  assert.throws(
+    () => renamePromptTemplate(created, "template_question", " "),
+    /Template name is required/,
+  );
 
   const revised = appendPromptTemplateRevision(created, {
     templateId: "template_question",

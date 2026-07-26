@@ -102,6 +102,28 @@ Run traces are separate diagnostic artifacts. Local profile metadata and
 workbench preferences are application state. Credentials remain in the OS
 credential store, an environment variable, or session memory.
 
+## Template authoring session
+
+The live Project v3 document is the canonical owner of template definitions and
+authored conversation items. Opening the Templates workspace from an ad-hoc
+request materializes an untitled in-memory project; it does not create a
+machine-local template registry.
+
+Per-run template overrides are session state keyed by template-use ID. They
+survive reruns in the same project, are visibly distinct from saved use values,
+and are cleared when another project is opened or imported. Detaching a use
+requires confirmation and snapshots its effective resolved text, including any
+active run-only overrides, into ordinary literal messages.
+
+Before its first run, an in-memory active authored revision is an editable
+draft. After that revision has produced a run, the next authored-item change
+creates a child revision before applying the edit. A clean revision loaded from
+or saved to a project is conservatively protected the same way because its
+external trace history may not be loaded. Further edits remain on the new draft
+until it is run or saved. Template definition revisions do not branch the
+conversation because existing uses remain pinned; explicitly updating a use to
+the new revision does.
+
 ## Validation and serialization
 
 `packages/core/src/project.ts` owns the provider-neutral project types, strict

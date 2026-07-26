@@ -36,6 +36,9 @@ export interface ProjectWorkspaceHandleState {
   dismissError(): void;
   clearToolsDisabledError(): void;
   adoptBranchRevision(project: ProjectFile): void;
+  currentProjectDocument(): ProjectFile;
+  materializeProject(): ProjectFile;
+  adoptProjectMutation(project: ProjectFile): void;
   mapProfile(profileId: string): void;
   mapActiveProfile(): void;
   newProjectFolder(): Promise<void>;
@@ -104,6 +107,22 @@ export function useProjectWorkspace(input: {
   }
 
   function adoptBranchRevision(project: ProjectFile): void {
+    setProjectFile(project);
+    setProjectDirty(true);
+    dismissError();
+  }
+
+  function materializeProject(): ProjectFile {
+    const project = currentProjectDocument();
+    setProjectFile(project);
+    setProjectWorkspace(null);
+    setMappedProfileId(activeProfileId);
+    setProjectDirty(true);
+    dismissError();
+    return project;
+  }
+
+  function adoptProjectMutation(project: ProjectFile): void {
     setProjectFile(project);
     setProjectDirty(true);
     dismissError();
@@ -226,6 +245,9 @@ export function useProjectWorkspace(input: {
     dismissError,
     clearToolsDisabledError,
     adoptBranchRevision,
+    currentProjectDocument,
+    materializeProject,
+    adoptProjectMutation,
     mapProfile,
     mapActiveProfile,
     newProjectFolder,

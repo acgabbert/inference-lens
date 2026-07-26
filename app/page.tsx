@@ -13,16 +13,32 @@ import type {
   RichInferenceRequest,
 } from "../packages/core/src/types";
 import {
+  appendPromptTemplateRevision,
   createBranchRevision,
   createProjectFile,
+  createPromptTemplate,
+  detachPromptTemplateUse,
+  findPromptTemplateUsages,
+  insertPromptTemplateUse,
   prepareProjectRevisionRun,
+  projectDraft,
+  removePromptTemplateUse,
+  renamePromptTemplate,
+  resolveProjectRevision,
+  updateProjectDraft,
+  updatePromptTemplateUseToLatest,
+  updatePromptTemplateUseValues,
 } from "../packages/core/src/project";
 import type {
+  ProjectConversationItem,
   ProjectTemplateDiagnostic,
+  PromptTemplateContent,
+  TemplateRunOverrides,
 } from "../packages/core/src/project";
 import {
   createEntityId,
   createResolvedRunInput,
+  createSingleTurnRunExecution,
   createRunTrace,
   RunCoordinator,
   transcriptFromRunState,
@@ -41,10 +57,14 @@ import type {
   MessageId,
   RunId,
   RunConversationIdentity,
+  PromptTemplateId,
+  PromptTemplateUseId,
   ResolvedTemplateUse,
   ToolDefinition,
   ToolResult,
 } from "../packages/core/src/run-kernel";
+import { buildChatCompletionsRequest } from "../packages/core/src/openai-compatible";
+import { discoverTemplateVariables } from "../packages/core/src/template-engine";
 import type { CredentialSelection } from "../packages/contracts/src";
 import {
   createInferenceTransport,
@@ -81,7 +101,10 @@ import { ToolRegistryModal } from "./tool-registry-modal.client";
 import { ModelCombobox } from "./model-combobox.client";
 import { useModelDiscovery } from "./use-model-discovery.client";
 import { useConnectionProfiles } from "./use-connection-profiles.client";
-import { useRequestDraft } from "./use-request-draft.client";
+import {
+  removeDraftMessage,
+  useRequestDraft,
+} from "./use-request-draft.client";
 import { useProjectWorkspace } from "./use-project-workspace.client";
 import { ConnectionDrawer } from "./connection-drawer.client";
 import { Topbar } from "./topbar.client";
@@ -98,6 +121,10 @@ import { RunTracePanel } from "./run-trace-panel.client";
 import { RunHistoryDrawer } from "./run-history-drawer.client";
 import type { ProjectRunHistoryItem } from "./use-project-run-history.client";
 import { useProjectRunHistory } from "./use-project-run-history.client";
+import {
+  ProjectTemplatesPane,
+  TemplateUseCard,
+} from "./project-templates-pane.client";
 
 const inferenceTransport = createInferenceTransport();
 
@@ -227,7 +254,10 @@ function HomeContent() {
   const [connectionDrawerOpen, setConnectionDrawerOpen] = useState(false);
   const [runHistoryOpen, setRunHistoryOpen] = useState(false);
   const [savedRunVersion, setSavedRunVersion] = useState(0);
-  const [requestTab, setRequestTab] = useState<"messages" | "tools">("messages");
+  const [requestTab, setRequestTab] =
+    useState<"messages" | "templates" | "tools">("messages");
+  const [templateRunOverrides, setTemplateRunOverrides] =
+    useState<TemplateRunOverrides>({});
   const [workbenchView, setWorkbenchView] =
     useState<WorkbenchView>("request");
   const [traceOpen, setTraceOpen] = useState(true);
@@ -247,8 +277,12 @@ function HomeContent() {
       });
     },
     currentDraft() {
+      const activeRevision = projectFile?.conversationRevisions.find(
+        ({ id }) => id === projectFile.defaults.conversationRevisionId,
+      );
       return {
         messages,
+        ...(activeRevision ? { items: activeRevision.items } : {}),
         model: activeModel,
         temperature: activeTemperature,
         tools: serializedTools(),
@@ -258,6 +292,7 @@ function HomeContent() {
     },
     onApplyDraft(draft) {
       replaceProjectDraft(draft);
+      setTemplateRunOverrides({});
       setBranchContext(null);
       setSessionModel(draft.model);
       setSessionTemperature(draft.temperature ?? 0.7);
@@ -329,6 +364,14 @@ function HomeContent() {
   const runBranchProvenanceRef = useRef(
     new Map<RunId, RunTrace["branchedFrom"]>(),
   );
+  const executedRevisionIdsRef = useRef(new Set<ConversationRevisionId>());
+  useEffect(() => {
+    if (projectFile && !projectDirty) {
+      executedRevisionIdsRef.current.add(
+        projectFile.defaults.conversationRevisionId,
+      );
+    }
+  }, [projectDirty, projectFile]);
   const nonBranchableMessageIds = useMemo(
     () =>
       new Set(
@@ -434,6 +477,27 @@ function HomeContent() {
     enabledToolIds.includes(id),
   ).length;
   const selectedToolCount = selectedProjectToolCount + requestTools.length;
+  const activeProjectRevision = projectFile?.conversationRevisions.find(
+    ({ id }) => id === projectFile.defaults.conversationRevisionId,
+  );
+  const activeProjectResolution =
+    projectFile && activeProjectRevision
+      ? resolveProjectRevision(
+          projectFile,
+          activeProjectRevision,
+          templateRunOverrides,
+        )
+      : undefined;
+  const templateUsageCounts = (() => {
+    const counts = new Map<PromptTemplateId, number>();
+    projectFile?.promptTemplates.forEach((template) => {
+      counts.set(
+        template.id,
+        findPromptTemplateUsages(projectFile, template.id).length,
+      );
+    });
+    return counts;
+  })();
   const activeConnectionRequirement = projectFile?.connectionRequirements.find(
     ({ id }) => id === projectFile.defaults.target.connectionRequirementId,
   );
@@ -444,6 +508,299 @@ function HomeContent() {
     transport: inferenceTransport,
     prepareCredential: credential.prepare,
   });
+
+  function ensureProjectDocument() {
+    return projectFile
+      ? project.currentProjectDocument()
+      : project.materializeProject();
+  }
+
+  function adoptAuthoredProject(
+    next: ReturnType<typeof ensureProjectDocument>,
+    overrides: TemplateRunOverrides = templateRunOverrides,
+  ): void {
+    project.adoptProjectMutation(next);
+    replaceProjectDraft(projectDraft(next, overrides));
+  }
+
+  function projectForUseMutation(): {
+    project: ReturnType<typeof ensureProjectDocument>;
+    revisionId: ConversationRevisionId;
+  } {
+    let base = ensureProjectDocument();
+    let revision = base.conversationRevisions.find(
+      ({ id }) => id === base.defaults.conversationRevisionId,
+    )!;
+    if (executedRevisionIdsRef.current.has(revision.id)) {
+      base = createBranchRevision(base, {
+        conversationId: revision.conversationId,
+        parentRevisionId: revision.id,
+        messages: resolveProjectRevision(
+          base,
+          revision,
+          templateRunOverrides,
+        ).messages,
+        items: structuredClone(revision.items),
+      });
+      revision = base.conversationRevisions.find(
+        ({ id }) => id === base.defaults.conversationRevisionId,
+      )!;
+    }
+    return { project: base, revisionId: revision.id };
+  }
+
+  function createProjectTemplate(
+    name: string,
+    content: PromptTemplateContent,
+  ): PromptTemplateId {
+    const suffix = crypto.randomUUID();
+    const next = createPromptTemplate(ensureProjectDocument(), {
+      name,
+      content,
+      idSuffix: suffix,
+      revisionIdSuffix: `${suffix}-1`,
+    });
+    adoptAuthoredProject(next);
+    return createEntityId("template", suffix);
+  }
+
+  function saveProjectTemplate(
+    templateId: PromptTemplateId,
+    name: string,
+    content: PromptTemplateContent,
+    defaults: Record<string, string>,
+  ) {
+    let next = renamePromptTemplate(ensureProjectDocument(), templateId, name);
+    next = appendPromptTemplateRevision(next, {
+      templateId,
+      content,
+      variableDefaults: defaults,
+    });
+    adoptAuthoredProject(next);
+    return next.promptTemplates.find(({ id }) => id === templateId)!
+      .currentRevisionId;
+  }
+
+  function insertProjectTemplate(
+    templateId: PromptTemplateId,
+    role: "system" | "user" | "assistant",
+    itemIndex: number,
+  ): void {
+    const { project: base, revisionId } = projectForUseMutation();
+    const next = insertPromptTemplateUse(base, {
+      conversationRevisionId: revisionId,
+      templateId,
+      fragmentRole: role,
+      itemIndex,
+    });
+    adoptAuthoredProject(next);
+    setRequestTab("messages");
+  }
+
+  function updateTemplateUseValues(
+    templateUseId: PromptTemplateUseId,
+    values: Record<string, string>,
+  ): void {
+    const { project: base, revisionId } = projectForUseMutation();
+    const next = updatePromptTemplateUseValues(base, {
+      conversationRevisionId: revisionId,
+      templateUseId,
+      values,
+    });
+    adoptAuthoredProject(next);
+  }
+
+  function updateTemplateUseOverride(
+    templateUseId: PromptTemplateUseId,
+    values: Record<string, string>,
+  ): void {
+    const next = { ...templateRunOverrides, [templateUseId]: values };
+    setTemplateRunOverrides(next);
+    if (projectFile) replaceProjectDraft(projectDraft(projectFile, next));
+  }
+
+  function updateTemplateUseToLatestRevision(
+    templateUseId: PromptTemplateUseId,
+  ): void {
+    const currentProject = ensureProjectDocument();
+    const currentRevision = currentProject.conversationRevisions.find(
+      ({ id }) => id === currentProject.defaults.conversationRevisionId,
+    )!;
+    const item = currentRevision.items.find(
+      (candidate) =>
+        candidate.kind === "template-use" &&
+        candidate.use.id === templateUseId,
+    );
+    if (!item || item.kind !== "template-use") return;
+    const template = currentProject.promptTemplates.find(
+      ({ id }) => id === item.use.templateId,
+    )!;
+    const pinned = template.revisions.find(
+      ({ id }) => id === item.use.templateRevisionId,
+    )!;
+    const latest = template.revisions.find(
+      ({ id }) => id === template.currentRevisionId,
+    )!;
+    const pinnedVariables = discoverTemplateVariables(pinned.content).variables.map(
+      ({ name }) => name,
+    );
+    const latestVariables = discoverTemplateVariables(latest.content).variables.map(
+      ({ name }) => name,
+    );
+    const summary = [
+      `Update "${template.name}" from ${pinned.id} to ${latest.id}?`,
+      "",
+      `Variables: ${pinnedVariables.join(", ") || "none"} → ${latestVariables.join(", ") || "none"}`,
+      `Content: ${JSON.stringify(pinned.content)} → ${JSON.stringify(latest.content)}`,
+      "",
+      "Saved assignments for removed variables will be dropped after this review.",
+    ].join("\n");
+    if (!window.confirm(summary)) return;
+    const { project: base, revisionId } = projectForUseMutation();
+    const latestCount =
+      latest.content.kind === "fragment" ? 1 : latest.content.messages.length;
+    const extraIds = Array.from(
+      {
+        length: Math.max(0, latestCount - item.use.outputMessageIds.length),
+      },
+      () => crypto.randomUUID(),
+    );
+    const next = updatePromptTemplateUseToLatest(base, {
+      conversationRevisionId: revisionId,
+      templateUseId,
+      newOutputMessageIdSuffixes: extraIds,
+      ...(latest.content.kind === "fragment"
+        ? { fragmentRole: item.use.fragmentRole ?? "user" }
+        : {}),
+    });
+    const overrides = { ...templateRunOverrides };
+    delete overrides[templateUseId];
+    setTemplateRunOverrides(overrides);
+    adoptAuthoredProject(next, overrides);
+  }
+
+  function detachTemplateUseFromProject(
+    templateUseId: PromptTemplateUseId,
+  ): void {
+    if (
+      !window.confirm(
+        "Detach this template use? Its currently resolved values, including run-only overrides, will become ordinary literal messages.",
+      )
+    ) {
+      return;
+    }
+    const { project: base, revisionId } = projectForUseMutation();
+    const next = detachPromptTemplateUse(base, {
+      conversationRevisionId: revisionId,
+      templateUseId,
+      runOverrides: templateRunOverrides,
+    });
+    const overrides = { ...templateRunOverrides };
+    delete overrides[templateUseId];
+    setTemplateRunOverrides(overrides);
+    adoptAuthoredProject(next, overrides);
+  }
+
+  function removeTemplateUseFromProject(
+    templateUseId: PromptTemplateUseId,
+  ): void {
+    if (!window.confirm("Remove this template use and its generated messages?")) {
+      return;
+    }
+    const { project: base, revisionId } = projectForUseMutation();
+    const next = removePromptTemplateUse(base, revisionId, templateUseId);
+    const overrides = { ...templateRunOverrides };
+    delete overrides[templateUseId];
+    setTemplateRunOverrides(overrides);
+    adoptAuthoredProject(next, overrides);
+  }
+
+  function mutateAuthoredItems(
+    update: (items: ProjectConversationItem[]) => ProjectConversationItem[],
+  ): void {
+    const { project: base, revisionId } = projectForUseMutation();
+    const revision = base.conversationRevisions.find(
+      ({ id }) => id === revisionId,
+    )!;
+    const next = updateProjectDraft(base, {
+      messages,
+      items: update(structuredClone(revision.items)),
+      model: activeModel,
+      temperature: activeTemperature,
+      tools: serializedTools(),
+      toolMocks,
+      enabledToolIds,
+    });
+    adoptAuthoredProject(next);
+  }
+
+  function addComposerMessage(): void {
+    if (!projectFile) {
+      addMessage();
+      return;
+    }
+    mutateAuthoredItems((items) => [
+      ...items,
+      {
+        kind: "message",
+        message: {
+          id: createEntityId("message", crypto.randomUUID()),
+          role: "user",
+          content: [{ type: "text", text: "" }],
+        },
+      },
+    ]);
+  }
+
+  function updateComposerMessage(
+    id: MessageId,
+    patch: {
+      content?: ConversationMessage["content"];
+      role?: ConversationMessage["role"];
+    },
+  ): void {
+    if (!projectFile) {
+      updateMessage(id, patch);
+      return;
+    }
+    mutateAuthoredItems((items) =>
+      items.map((item) => {
+        if (item.kind !== "message" || item.message.id !== id) return item;
+        const message = item.message;
+        const content = patch.content ?? message.content;
+        if (
+          message.role === "tool" ||
+          (message.role === "assistant" && message.toolCalls?.length)
+        ) {
+          return { kind: "message", message: { ...message, content } };
+        }
+        return {
+          kind: "message",
+          message: {
+            id: message.id,
+            role: patch.role ?? message.role,
+            content,
+          } as ConversationMessage,
+        };
+      }),
+    );
+  }
+
+  function removeComposerMessage(id: MessageId): void {
+    if (!projectFile) {
+      removeMessage(id);
+      return;
+    }
+    const remainingIds = new Set(
+      removeDraftMessage(messages, id).map((message) => message.id),
+    );
+    mutateAuthoredItems((items) =>
+      items.filter(
+        (item) =>
+          item.kind === "template-use" || remainingIds.has(item.message.id),
+      ),
+    );
+  }
 
   const { output, reasoning, status } = useMemo(() => {
     const attempts =
@@ -518,6 +875,47 @@ function HomeContent() {
       conversationId,
       conversationRevisionId: createEntityId("revision", crypto.randomUUID()),
     };
+  }
+
+  function templateRequestPreview():
+    | { body: unknown; messages: ConversationMessage[] }
+    | { error: string }
+    | undefined {
+    if (!projectFile || !activeProjectRevision || !activeProjectResolution) {
+      return undefined;
+    }
+    try {
+      const request = {
+        ...currentRequest(),
+        messages: activeProjectResolution.messages,
+      };
+      const execution = createSingleTurnRunExecution(
+        request,
+        {
+          conversationId: activeProjectRevision.conversationId,
+          conversationRevisionId: activeProjectRevision.id,
+        },
+        "template-preview",
+        "1970-01-01T00:00:00.000Z",
+        [...resolvedTools(), ...requestTools],
+        activeProjectResolution.templateResolutions,
+      );
+      return {
+        messages: activeProjectResolution.messages,
+        body: buildChatCompletionsRequest({
+          runId: execution.runId,
+          turnId: execution.turnId,
+          exchangeId: execution.exchangeId,
+          attempt: execution.attempt,
+          input: execution.turnInput,
+        }).body,
+      };
+    } catch (error) {
+      return {
+        error:
+          error instanceof Error ? error.message : "Could not build request preview.",
+      };
+    }
   }
 
   function editFromHere(messageId: MessageId): void {
@@ -744,7 +1142,11 @@ function HomeContent() {
         project.setError("The active project conversation revision no longer exists.");
         return;
       }
-      const prepared = prepareProjectRevisionRun(projectForRun, revision);
+      const prepared = prepareProjectRevisionRun(
+        projectForRun,
+        revision,
+        templateRunOverrides,
+      );
       if (!prepared.ok) {
         project.setError(templateRunErrorMessage(prepared.diagnostics));
         return;
@@ -772,6 +1174,9 @@ function HomeContent() {
       selectedTools,
       templateResolutions,
     );
+    if (projectForRun) {
+      executedRevisionIdsRef.current.add(identity.conversationRevisionId);
+    }
     input.target.profileId = createEntityId("profile", activeProfile.id);
     const coordinator = new RunCoordinator(input);
     if (branchedFrom) runBranchProvenanceRef.current.set(input.runId, branchedFrom);
@@ -1155,6 +1560,10 @@ function HomeContent() {
     runState &&
       ["completed", "cancelled", "failed"].includes(runState.status.kind),
   );
+  const requestPreview = templateRequestPreview();
+  const composerItems: ProjectConversationItem[] =
+    activeProjectRevision?.items ??
+    messages.map((message) => ({ kind: "message", message }));
 
   return (
     <main
@@ -1201,7 +1610,17 @@ function HomeContent() {
           runState?.status.kind === "paused" &&
           runState.status.reason === "attempt_failed"
         }
-        runDisabled={Boolean(projectFile && !mappedProfileId)}
+        runDisabled={Boolean(
+          (projectFile && !mappedProfileId) ||
+            activeProjectResolution?.diagnostics.length,
+        )}
+        runDisabledReason={
+          projectFile && !mappedProfileId
+            ? "Map the project connection to a local profile first."
+            : activeProjectResolution?.diagnostics.length
+              ? "Resolve every template diagnostic before running."
+              : undefined
+        }
         onChooseProfile={chooseProfile}
         onOpenConnections={() => setConnectionDrawerOpen(true)}
         onNewProject={() => void project.newProjectFolder()}
@@ -1290,10 +1709,15 @@ function HomeContent() {
               label="Request editor"
               value={requestTab}
               onChange={(value) =>
-                setRequestTab(value as "messages" | "tools")
+                setRequestTab(value as "messages" | "templates" | "tools")
               }
               tabs={[
                 { id: "messages", label: "Messages", count: messages.length },
+                {
+                  id: "templates",
+                  label: "Templates",
+                  count: projectFile?.promptTemplates.length ?? 0,
+                },
                 {
                   id: "tools",
                   label: "Tools",
@@ -1304,11 +1728,11 @@ function HomeContent() {
             {requestTab === "messages" ? (
               <button
                 className="text-button header-text-action"
-                onClick={addMessage}
+                onClick={addComposerMessage}
               >
                 + Add message
               </button>
-            ) : (
+            ) : requestTab === "tools" ? (
               <button
                 className="text-button header-text-action"
                 type="button"
@@ -1316,7 +1740,7 @@ function HomeContent() {
               >
                 + Add tool
               </button>
-            )}
+            ) : null}
           </div>
           {branchContext && (
             <div className="branch-pending" role="status">
@@ -1414,7 +1838,38 @@ function HomeContent() {
             </div>
           </section>
           <div className="message-list">
-            {messages.map((message, index) => {
+            {composerItems.map((item, index) => {
+              if (item.kind === "template-use") {
+                const template = projectFile?.promptTemplates.find(
+                  ({ id }) => id === item.use.templateId,
+                );
+                if (!template) return null;
+                return (
+                  <TemplateUseCard
+                    key={item.use.id}
+                    use={item.use}
+                    template={template}
+                    diagnostics={
+                      activeProjectResolution?.diagnostics.filter(
+                        ({ templateUseId }) => templateUseId === item.use.id,
+                      ) ?? []
+                    }
+                    runOverrides={templateRunOverrides[item.use.id] ?? {}}
+                    onSaveValues={(values) =>
+                      updateTemplateUseValues(item.use.id, values)
+                    }
+                    onRunOverridesChange={(values) =>
+                      updateTemplateUseOverride(item.use.id, values)
+                    }
+                    onUpdateLatest={() =>
+                      updateTemplateUseToLatestRevision(item.use.id)
+                    }
+                    onDetach={() => detachTemplateUseFromProject(item.use.id)}
+                    onRemove={() => removeTemplateUseFromProject(item.use.id)}
+                  />
+                );
+              }
+              const message = item.message;
               const roleIsStructural =
                 message.role === "tool" ||
                 (message.role === "assistant" && Boolean(message.toolCalls?.length));
@@ -1430,7 +1885,7 @@ function HomeContent() {
                     value={message.role}
                     disabled={roleIsStructural}
                     onChange={(event) =>
-                      updateMessage(message.id, {
+                      updateComposerMessage(message.id, {
                         role: event.target.value as ConversationMessage["role"],
                       })
                     }
@@ -1443,7 +1898,7 @@ function HomeContent() {
                   <button
                     aria-label={`Remove message ${index + 1}`}
                     className="remove-button"
-                    onClick={() => removeMessage(message.id)}
+                    onClick={() => removeComposerMessage(message.id)}
                   >
                     Remove
                   </button>
@@ -1452,7 +1907,7 @@ function HomeContent() {
                   aria-label={`Message ${index + 1} content`}
                   value={text}
                   onChange={(event) =>
-                    updateMessage(message.id, {
+                    updateComposerMessage(message.id, {
                       content: [{ type: "text", text: event.target.value }],
                     })
                   }
@@ -1482,7 +1937,37 @@ function HomeContent() {
               );
             })}
           </div>
+          {requestPreview && (
+            <details className="request-preview" open>
+              <summary>Resolved request preview</summary>
+              {"error" in requestPreview ? (
+                <div className="template-diagnostic">{requestPreview.error}</div>
+              ) : (
+                <>
+                  {(activeProjectResolution?.diagnostics.length ?? 0) > 0 && (
+                    <div className="template-warning" role="status">
+                      Preview contains unresolved variables. Running is blocked until they have values.
+                    </div>
+                  )}
+                  <h3>Resolved messages</h3>
+                  <pre>{JSON.stringify(requestPreview.messages, null, 2)}</pre>
+                  <h3>OpenAI-compatible request body</h3>
+                  <pre>{JSON.stringify(requestPreview.body, null, 2)}</pre>
+                </>
+              )}
+            </details>
+          )}
             </>
+          ) : requestTab === "templates" ? (
+            <ProjectTemplatesPane
+              key={projectFile?.projectId ?? "unsaved-project"}
+              templates={projectFile?.promptTemplates ?? []}
+              usageCounts={templateUsageCounts}
+              itemCount={activeProjectRevision?.items.length ?? messages.length}
+              onCreate={createProjectTemplate}
+              onSave={saveProjectTemplate}
+              onInsert={insertProjectTemplate}
+            />
           ) : (
             <ToolsPane
               tools={tools}
