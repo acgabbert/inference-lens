@@ -7,31 +7,24 @@ import {
 } from "../packages/core/src/project";
 import type { ProjectFileV2 } from "../packages/core/src/project";
 import {
+  assertTraceEntryName,
   serializeRunTrace,
   traceFileName,
 } from "../packages/core/src/run-trace";
 import type { RunTrace } from "../packages/core/src/run-kernel";
+import {
+  listTracesFromDirectory,
+  readTraceFromDirectory,
+  TRACES_DIRECTORY_NAME,
+} from "./project-directory.client";
+import type {
+  FileSystemDirectoryHandleLike,
+  FileSystemFileHandleLike,
+  StoredRunTraceFile,
+} from "./project-directory.client";
 import { isTauriRuntime } from "./tauri-inference-transport.client";
 
-interface FileSystemFileHandleLike {
-  getFile(): Promise<File>;
-  createWritable(): Promise<{
-    write(data: string): Promise<void>;
-    close(): Promise<void>;
-  }>;
-}
-
-interface FileSystemDirectoryHandleLike {
-  readonly name: string;
-  getFileHandle(
-    name: string,
-    options?: { create?: boolean },
-  ): Promise<FileSystemFileHandleLike>;
-  getDirectoryHandle(
-    name: string,
-    options?: { create?: boolean },
-  ): Promise<FileSystemDirectoryHandleLike>;
-}
+export type { StoredRunTraceFile };
 
 interface DirectoryPickerWindow extends Window {
   showDirectoryPicker?: (options?: {
@@ -40,9 +33,17 @@ interface DirectoryPickerWindow extends Window {
   }) => Promise<FileSystemDirectoryHandleLike>;
 }
 
+/**
+ * Listing and reading are separate operations because they serve different
+ * costs: the drawer lists every artifact once when it opens, but opens exactly
+ * one of them. Reading the selected trace again keeps the parsed history in
+ * memory as compact summaries rather than as every trace the folder holds.
+ */
 interface WorkspaceStorage {
   save(contents: string): Promise<void>;
   saveTrace(runId: string, fileName: string, contents: string): Promise<void>;
+  listTraces(): Promise<StoredRunTraceFile[]>;
+  readTrace(fileName: string): Promise<string>;
 }
 
 export interface ProjectWorkspaceHandle {
@@ -130,7 +131,7 @@ function browserStorage(
       fileName: string,
       contents: string,
     ): Promise<void> {
-      const traces = await directory.getDirectoryHandle("traces", {
+      const traces = await directory.getDirectoryHandle(TRACES_DIRECTORY_NAME, {
         create: true,
       });
       let fileHandle: FileSystemFileHandleLike;
@@ -150,6 +151,12 @@ function browserStorage(
       const writable = await fileHandle.createWritable();
       await writable.write(contents);
       await writable.close();
+    },
+    async listTraces(): Promise<StoredRunTraceFile[]> {
+      return listTracesFromDirectory(directory);
+    },
+    async readTrace(fileName: string): Promise<string> {
+      return readTraceFromDirectory(directory, fileName);
     },
   };
 }
@@ -261,6 +268,17 @@ function nativeWorkspaceHandle(
           contents,
         });
       },
+      async listTraces(): Promise<StoredRunTraceFile[]> {
+        return invokeNative<StoredRunTraceFile[]>("list_run_traces", {
+          workspaceId: workspace.workspaceId,
+        });
+      },
+      async readTrace(fileName: string): Promise<string> {
+        return invokeNative<string>("read_run_trace", {
+          workspaceId: workspace.workspaceId,
+          fileName: assertTraceEntryName(fileName),
+        });
+      },
     },
   };
 }
@@ -323,9 +341,27 @@ export async function saveRunTraceWorkspace(
   );
 }
 
-export function runTraceWorkspaceLocation(
+export async function listRunTraceWorkspace(
   handle: ProjectWorkspaceHandle,
-  trace: RunTrace,
+): Promise<StoredRunTraceFile[]> {
+  return handle.storage.listTraces();
+}
+
+export async function readRunTraceWorkspace(
+  handle: ProjectWorkspaceHandle,
+  fileName: string,
+): Promise<string> {
+  return handle.storage.readTrace(fileName);
+}
+
+/**
+ * Builds the display path for a name that already exists in the folder. A
+ * discovered artifact is shown at the name it actually has, which need not be
+ * the name its run ID would produce.
+ */
+export function runTraceWorkspacePath(
+  handle: ProjectWorkspaceHandle,
+  fileName: string,
 ): string {
   const separator =
     handle.kind === "tauri-directory" && handle.displayPath.includes("\\")
@@ -333,9 +369,16 @@ export function runTraceWorkspaceLocation(
       : "/";
   return [
     handle.displayPath.replace(/[\\/]$/, ""),
-    "traces",
-    traceFileName(trace.runId),
+    TRACES_DIRECTORY_NAME,
+    fileName,
   ].join(separator);
+}
+
+export function runTraceWorkspaceLocation(
+  handle: ProjectWorkspaceHandle,
+  trace: RunTrace,
+): string {
+  return runTraceWorkspacePath(handle, traceFileName(trace.runId));
 }
 
 export function downloadRunTrace(trace: RunTrace): void {

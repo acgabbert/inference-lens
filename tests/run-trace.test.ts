@@ -8,6 +8,8 @@ import { RunCoordinator } from "../packages/core/src/run-kernel/coordinator.ts";
 import { createRunTrace } from "../packages/core/src/run-kernel/reducer.ts";
 import type { RunTrace } from "../packages/core/src/run-kernel/types.ts";
 import {
+  assertTraceEntryName,
+  isTraceEntryName,
   parseRunTraceJson,
   runStateFromTrace,
   serializeRunTrace,
@@ -130,4 +132,40 @@ test("rejects unsafe trace filenames", () => {
     () => traceFileName("run_../../secret" as `run_${string}`),
     /cannot be used as a trace filename/,
   );
+});
+
+test("accepts discovered trace names that stay inside the traces directory", () => {
+  // History entries are found on disk rather than derived from a run ID, so a
+  // hand-renamed artifact is still a legitimate name.
+  for (const accepted of [
+    "run_safe-1.json",
+    "renamed-by-hand.json",
+    "2026-07-25.run.json",
+  ]) {
+    assert.equal(isTraceEntryName(accepted), true, accepted);
+    assert.equal(assertTraceEntryName(accepted), accepted);
+  }
+});
+
+test("rejects discovered trace names that could leave the traces directory", () => {
+  for (const rejected of [
+    "../trace-lens.project.json",
+    "nested/run_a.json",
+    "nested\\run_a.json",
+    "/etc/passwd",
+    "run_a.json/../../secret.json",
+    ".hidden.json",
+    "-leading.json",
+    ".json",
+    "run_a.txt",
+    "run_a",
+    "",
+  ]) {
+    assert.equal(isTraceEntryName(rejected), false, rejected);
+    assert.throws(
+      () => assertTraceEntryName(rejected),
+      /is not a run trace file name/,
+      rejected,
+    );
+  }
 });

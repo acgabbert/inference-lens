@@ -42,6 +42,13 @@ struct NativeProjectWorkspace {
     contents: String,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeRunTraceFile {
+    file_name: String,
+    contents: String,
+}
+
 #[cfg(not(debug_assertions))]
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -185,6 +192,58 @@ fn write_run_trace(directory: &Path, run_id: &str, contents: &str) -> Result<(),
     })
 }
 
+/// Mirrors `isTraceEntryName` in `packages/core/src/run-trace.ts`. A history
+/// entry is discovered rather than derived from a validated run ID, so the name
+/// is re-checked before it is joined onto the traces directory again.
+fn is_trace_entry_name(file_name: &str) -> bool {
+    file_name.ends_with(".json")
+        && file_name.len() > ".json".len()
+        && !file_name.contains("..")
+        && !file_name.starts_with(['.', '-', '_'])
+        && file_name
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || "._-".contains(character))
+}
+
+fn read_run_traces(directory: &Path) -> Result<Vec<NativeRunTraceFile>, String> {
+    let traces = directory.join(TRACES_DIRECTORY_NAME);
+    let entries = match fs::read_dir(&traces) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(format!("Could not read the traces directory: {error}")),
+    };
+    let mut files = entries
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| {
+            let file_name = entry.file_name().into_string().ok()?;
+            if !is_trace_entry_name(&file_name) {
+                return None;
+            }
+            Some((file_name, entry.path()))
+        })
+        .map(|(file_name, path)| {
+            fs::read_to_string(&path)
+                .map(|contents| NativeRunTraceFile {
+                    file_name,
+                    contents,
+                })
+                .map_err(|error| format!("Could not read {}: {error}", path.display()))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    files.sort_by(|left, right| left.file_name.cmp(&right.file_name));
+    Ok(files)
+}
+
+fn read_single_run_trace(directory: &Path, file_name: &str) -> Result<String, String> {
+    if !is_trace_entry_name(file_name) {
+        return Err(command_error(format!(
+            "{file_name} is not a run trace file name."
+        )));
+    }
+    let path = directory.join(TRACES_DIRECTORY_NAME).join(file_name);
+    fs::read_to_string(&path).map_err(|error| format!("Could not read {file_name}: {error}"))
+}
+
 fn write_exported_trace(path: &Path, contents: &str) -> Result<(), String> {
     let parent = path
         .parent()
@@ -323,6 +382,37 @@ fn save_run_trace(
         .get(&workspace_id)
         .ok_or_else(|| command_error("This project folder is no longer open."))?;
     write_run_trace(&workspace.directory, &run_id, &contents)
+}
+
+#[tauri::command]
+fn list_run_traces(
+    workspaces: State<'_, ProjectWorkspaces>,
+    workspace_id: String,
+) -> Result<Vec<NativeRunTraceFile>, String> {
+    let workspaces = workspaces
+        .0
+        .lock()
+        .map_err(|_| command_error("Project workspace state is unavailable."))?;
+    let workspace = workspaces
+        .get(&workspace_id)
+        .ok_or_else(|| command_error("This project folder is no longer open."))?;
+    read_run_traces(&workspace.directory)
+}
+
+#[tauri::command]
+fn read_run_trace(
+    workspaces: State<'_, ProjectWorkspaces>,
+    workspace_id: String,
+    file_name: String,
+) -> Result<String, String> {
+    let workspaces = workspaces
+        .0
+        .lock()
+        .map_err(|_| command_error("Project workspace state is unavailable."))?;
+    let workspace = workspaces
+        .get(&workspace_id)
+        .ok_or_else(|| command_error("This project folder is no longer open."))?;
+    read_single_run_trace(&workspace.directory, &file_name)
 }
 
 #[tauri::command]
@@ -877,6 +967,8 @@ pub fn run() {
             create_project_workspace,
             save_project_workspace,
             save_run_trace,
+            list_run_traces,
+            read_run_trace,
             export_run_trace,
         ])
         .run(tauri::generate_context!())
@@ -943,6 +1035,77 @@ mod tests {
             "{\"schemaVersion\":1,\"changed\":true}\n"
         )
         .is_err());
+    }
+
+    #[test]
+    fn lists_json_run_traces_in_stable_order() {
+        let directory = TemporaryProjectDirectory::new();
+        write_run_trace(&directory.0, "run_second", "second\n").expect("write second trace");
+        write_run_trace(&directory.0, "run_first", "first\n").expect("write first trace");
+        fs::write(
+            directory.0.join(TRACES_DIRECTORY_NAME).join("notes.txt"),
+            "ignore",
+        )
+        .expect("write unrelated file");
+
+        let traces = read_run_traces(&directory.0).expect("list traces");
+        assert_eq!(traces.len(), 2);
+        assert_eq!(traces[0].file_name, "run_first.json");
+        assert_eq!(traces[0].contents, "first\n");
+        assert_eq!(traces[1].file_name, "run_second.json");
+    }
+
+    #[test]
+    fn lists_no_traces_when_the_directory_is_absent() {
+        let directory = TemporaryProjectDirectory::new();
+        assert!(read_run_traces(&directory.0)
+            .expect("list absent traces directory")
+            .is_empty());
+    }
+
+    #[test]
+    fn skips_listed_names_that_are_not_trace_artifacts() {
+        let directory = TemporaryProjectDirectory::new();
+        write_run_trace(&directory.0, "run_kept", "kept\n").expect("write trace");
+        let traces = directory.0.join(TRACES_DIRECTORY_NAME);
+        for ignored in [".hidden.json", "-leading.json", ".json", "notes.txt"] {
+            fs::write(traces.join(ignored), "ignore").expect("write ignored file");
+        }
+
+        let listed = read_run_traces(&directory.0).expect("list traces");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].file_name, "run_kept.json");
+    }
+
+    #[test]
+    fn reads_one_trace_by_its_listed_name() {
+        let directory = TemporaryProjectDirectory::new();
+        write_run_trace(&directory.0, "run_single", "single\n").expect("write trace");
+
+        assert_eq!(
+            read_single_run_trace(&directory.0, "run_single.json").expect("read trace"),
+            "single\n"
+        );
+        assert!(read_single_run_trace(&directory.0, "run_missing.json").is_err());
+    }
+
+    #[test]
+    fn refuses_trace_names_that_could_escape_the_traces_directory() {
+        let directory = TemporaryProjectDirectory::new();
+        fs::write(directory.0.join("secret.json"), "secret").expect("write secret");
+
+        for escaping in [
+            "../secret.json",
+            "..%2Fsecret.json",
+            "nested/run_a.json",
+            "/etc/passwd",
+            "run_a.json/../../secret.json",
+        ] {
+            assert!(
+                read_single_run_trace(&directory.0, escaping).is_err(),
+                "{escaping} should be refused"
+            );
+        }
     }
 
     #[test]

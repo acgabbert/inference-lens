@@ -3020,6 +3020,182 @@ main {
   margin-top: 20px;
 }
 
+/* Project run history */
+
+.run-history {
+  min-height: 100%;
+  padding: 16px;
+}
+
+.run-history-toolbar,
+.run-history-item-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.run-history-toolbar {
+  min-height: 34px;
+  margin-bottom: 10px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.run-history-list {
+  display: grid;
+  gap: 8px;
+}
+
+.run-history-item {
+  width: 100%;
+  padding: 13px 14px;
+  border: 1px solid var(--border-default);
+  border-radius: 9px;
+  display: grid;
+  gap: 5px;
+  background: var(--surface-panel);
+  color: var(--text-muted);
+  cursor: pointer;
+  text-align: left;
+  box-shadow: var(--shadow-control);
+}
+
+.run-history-item:hover {
+  border-color: var(--border-strong);
+}
+
+.run-history-item.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.run-history-item-heading strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-history-item time,
+.run-history-item > span,
+.run-history-item code {
+  font-size: 9px;
+}
+
+.run-history-item code {
+  overflow: hidden;
+  color: var(--text-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-history-status {
+  flex: 0 0 auto;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: var(--surface-inset);
+  color: var(--text-muted);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.run-history-status.completed {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.run-history-status.failed {
+  background: var(--danger-surface);
+  color: var(--danger);
+}
+
+/* A cancelled run is neither a success nor a fault, so it keeps the neutral
+   pill the base rule sets. It is named here so the omission reads as a
+   decision rather than as a missing case. */
+.run-history-status.cancelled {
+  background: var(--surface-inset);
+  color: var(--text-muted);
+}
+
+.run-history-item[aria-busy="true"] {
+  cursor: progress;
+}
+
+.run-history-item:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.run-history-empty {
+  padding: 54px 20px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.run-history-empty > span {
+  color: var(--text-faint);
+  font-size: 28px;
+}
+
+.run-history-empty h3 {
+  margin: 10px 0 4px;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.run-history-empty p {
+  margin: 0 auto;
+  max-width: 250px;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.run-history-notice,
+.run-history-failures {
+  margin-bottom: 10px;
+  padding: 11px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--surface-panel);
+  font-size: 9px;
+}
+
+.run-history-notice {
+  display: grid;
+  gap: 3px;
+}
+
+.run-history-notice.error {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.run-history-failures {
+  margin-top: 12px;
+  color: var(--text-muted);
+}
+
+.run-history-failures summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.run-history-failures p {
+  display: grid;
+  gap: 3px;
+  margin: 10px 0 0;
+}
+
+.run-history-failures code {
+  color: var(--text-primary);
+}
+
 @media (max-width: 1080px) {
   .brand p {
     max-width: 240px;

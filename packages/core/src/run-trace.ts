@@ -94,6 +94,31 @@ export function traceFileName(runId: RunId): string {
   return `${runId}${RUN_TRACE_FILE_SUFFIX}`;
 }
 
+/**
+ * Guards a name that will be joined onto the traces directory. History entries
+ * are discovered rather than derived from a validated run ID, so the name is
+ * treated as untrusted input on the way back to the filesystem. The rule is
+ * deliberately narrower than the platform's: no separators, no traversal, and
+ * no leading dot, so it holds identically in the browser and in Rust.
+ */
+export function isTraceEntryName(fileName: string): boolean {
+  return (
+    fileName.endsWith(RUN_TRACE_FILE_SUFFIX) &&
+    fileName.length > RUN_TRACE_FILE_SUFFIX.length &&
+    /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(fileName) &&
+    !fileName.includes("..")
+  );
+}
+
+export function assertTraceEntryName(fileName: string): string {
+  if (!isTraceEntryName(fileName)) {
+    throw new RunTraceValidationError(
+      `${fileName} is not a run trace file name.`,
+    );
+  }
+  return fileName;
+}
+
 function stableJsonValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stableJsonValue);
   if (value && typeof value === "object") {

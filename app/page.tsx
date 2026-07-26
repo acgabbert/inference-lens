@@ -60,6 +60,7 @@ import {
   exportRunTraceFile,
   projectFolderAccessAvailable,
   runTraceWorkspaceLocation,
+  runTraceWorkspacePath,
   saveRunTraceWorkspace,
 } from "./project-workspace.client";
 import type { ProjectWorkspaceHandle } from "./project-workspace.client";
@@ -89,6 +90,9 @@ import {
 } from "./workbench-shell.client";
 import type { WorkbenchView } from "./workbench-shell.client";
 import { RunTracePanel } from "./run-trace-panel.client";
+import { RunHistoryDrawer } from "./run-history-drawer.client";
+import type { ProjectRunHistoryItem } from "./use-project-run-history.client";
+import { useProjectRunHistory } from "./use-project-run-history.client";
 
 const inferenceTransport = createInferenceTransport();
 
@@ -205,6 +209,8 @@ function HomeContent() {
   const [toolRegistryLoaded, setToolRegistryLoaded] = useState(false);
   const [toolRegistryOpen, setToolRegistryOpen] = useState(false);
   const [connectionDrawerOpen, setConnectionDrawerOpen] = useState(false);
+  const [runHistoryOpen, setRunHistoryOpen] = useState(false);
+  const [savedRunVersion, setSavedRunVersion] = useState(0);
   const [requestTab, setRequestTab] = useState<"messages" | "tools">("messages");
   const [workbenchView, setWorkbenchView] =
     useState<WorkbenchView>("request");
@@ -252,6 +258,11 @@ function HomeContent() {
     projectErrorKind,
     mappedProfileId,
   } = project;
+  const runHistory = useProjectRunHistory(
+    projectWorkspace,
+    runHistoryOpen,
+    savedRunVersion,
+  );
   const {
     messages,
     tools,
@@ -337,6 +348,8 @@ function HomeContent() {
         if (runStateRef.current?.runId === next.runId) {
           setTraceStorage({ kind: "saved", location });
         }
+        // Marks the history stale; the folder is re-read next time it is opened.
+        setSavedRunVersion((current) => current + 1);
       })
       .catch((error) => {
         persistedTraceRunIdsRef.current.delete(next.runId);
@@ -996,28 +1009,58 @@ function HomeContent() {
     }
   }
 
+  /**
+   * Replaces the workbench with a trace the user is inspecting rather than
+   * running. Importing a file and opening a project's saved run differ only in
+   * where the trace came from and how it is stored, so both go through here:
+   * the live coordinator is dropped, drafts and diagnostics from the previous
+   * run are cleared, and the response view is brought forward.
+   *
+   * `origin.workspace` is the folder the trace already lives in, or null for a
+   * trace that has no home on disk. Naming it here is what keeps the autosave
+   * effect from writing an artifact back over the file it was just read from.
+   */
+  function adoptRunTrace(
+    trace: RunTrace,
+    origin:
+      | { workspace: ProjectWorkspaceHandle; fileName: string }
+      | { workspace: null; fileName: string },
+  ): void {
+    if (trace.branchedFrom) {
+      runBranchProvenanceRef.current.set(trace.runId, trace.branchedFrom);
+    }
+    if (origin.workspace) persistedTraceRunIdsRef.current.add(trace.runId);
+    coordinatorRef.current = null;
+    runTraceWorkspaceRef.current = origin.workspace;
+    diagnosticCaptureRef.current = null;
+    setHasDiagnosticCapture(false);
+    setToolResultDrafts({});
+    setBranchContext(null);
+    setVisibleBranchProvenance(trace.branchedFrom);
+    setWorkbenchView("response");
+    setTraceOpen(true);
+    replaceRunState(runStateFromTrace(trace));
+    setTraceStorage(
+      origin.workspace
+        ? {
+            kind: "saved",
+            location: runTraceWorkspacePath(origin.workspace, origin.fileName),
+          }
+        : { kind: "loaded", fileName: origin.fileName },
+    );
+    project.setError(undefined, { clearKind: true });
+  }
+
   async function importRunTrace(
     event: ChangeEvent<HTMLInputElement>,
   ): Promise<void> {
     const file = event.target.files?.[0];
     if (!file) return;
     try {
-      const trace = parseRunTraceJson(await file.text());
-      if (trace.branchedFrom) {
-        runBranchProvenanceRef.current.set(trace.runId, trace.branchedFrom);
-      }
-      coordinatorRef.current = null;
-      runTraceWorkspaceRef.current = null;
-      diagnosticCaptureRef.current = null;
-      setHasDiagnosticCapture(false);
-      setToolResultDrafts({});
-      setBranchContext(null);
-      setVisibleBranchProvenance(trace.branchedFrom);
-      setWorkbenchView("response");
-      setTraceOpen(true);
-      replaceRunState(runStateFromTrace(trace));
-      setTraceStorage({ kind: "loaded", fileName: file.name });
-      project.setError(undefined, { clearKind: true });
+      adoptRunTrace(parseRunTraceJson(await file.text()), {
+        workspace: null,
+        fileName: file.name,
+      });
     } catch (error) {
       project.setError(
         error instanceof Error ? error.message : "Could not import the run trace.",
@@ -1027,6 +1070,24 @@ function HomeContent() {
       event.target.value = "";
     }
   }
+
+  /**
+   * Reads the selected artifact again instead of trusting a copy held from
+   * when the list was built. Errors propagate to the drawer, which keeps the
+   * list on screen so another run can be chosen.
+   */
+  async function openHistoryTrace(item: ProjectRunHistoryItem): Promise<void> {
+    const workspace = projectWorkspace;
+    if (!workspace) throw new Error("The project folder is no longer open.");
+    const trace = await runHistory.readTrace(item.fileName);
+    adoptRunTrace(trace, { workspace, fileName: item.fileName });
+    setRunHistoryOpen(false);
+  }
+
+  const runReachedTerminalStatus = Boolean(
+    runState &&
+      ["completed", "cancelled", "failed"].includes(runState.status.kind),
+  );
 
   return (
     <main
@@ -1064,9 +1125,9 @@ function HomeContent() {
         projectDirty={projectDirty}
         folderAccessAvailable={folderAccessAvailable}
         hasDiagnosticCapture={hasDiagnosticCapture}
-        hasRunTrace={Boolean(
-          runState && ["completed", "cancelled", "failed"].includes(runState.status.kind),
-        )}
+        hasRunTrace={runReachedTerminalStatus}
+        hasProjectWorkspace={Boolean(projectWorkspace)}
+        runHistoryBlocked={Boolean(runState) && !runReachedTerminalStatus}
         isRequestActive={isRequestActive}
         awaitingToolResults={runState?.status.kind === "awaiting_tool_results"}
         retryableFailure={
@@ -1085,6 +1146,7 @@ function HomeContent() {
         onDownloadDiagnostics={downloadDiagnostics}
         onDownloadRunTrace={() => void exportRunTrace()}
         onImportRunTrace={(event) => void importRunTrace(event)}
+        onOpenRunHistory={() => setRunHistoryOpen(true)}
         onStop={stop}
         onRun={() => void run()}
         onContinue={() => void continueRun()}
@@ -1135,6 +1197,15 @@ function HomeContent() {
         onMapProfile={() => {
           project.mapActiveProfile();
         }}
+      />
+
+      <RunHistoryDrawer
+        open={runHistoryOpen}
+        projectName={projectFile?.name}
+        selectedRunId={runState?.runId}
+        history={runHistory}
+        onClose={() => setRunHistoryOpen(false)}
+        onSelect={(item) => openHistoryTrace(item)}
       />
 
       <WorkbenchShell
