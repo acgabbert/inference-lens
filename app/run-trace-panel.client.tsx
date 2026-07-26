@@ -2,13 +2,17 @@
 
 import { useMemo, useState } from "react";
 
-import type { RunEvent, RunState } from "../packages/core/src/run-kernel";
+import type {
+  ResolvedTemplateUse,
+  RunEvent,
+  RunState,
+} from "../packages/core/src/run-kernel";
 import { runMetrics } from "../packages/core/src/run-metrics";
 import { runTimeline } from "../packages/core/src/run-timeline";
 import { RunMetricsView } from "./run-metrics-view.client";
 import { PaneTabs, ResizableTracePanel } from "./workbench-shell.client";
 
-type TraceTab = "events" | "metrics";
+type TraceTab = "events" | "metrics" | "templates";
 
 interface RunTracePanelProps {
   open: boolean;
@@ -44,6 +48,50 @@ function EventStream({ events }: { events: RunEvent[] }) {
   );
 }
 
+export function TemplateProvenance({
+  resolutions,
+}: {
+  resolutions: ResolvedTemplateUse[];
+}) {
+  if (resolutions.length === 0) {
+    return (
+      <p className="trace-empty">
+        This run has no project-template provenance.
+      </p>
+    );
+  }
+
+  return (
+    <>
+      {resolutions.map((resolution) => (
+        <details key={resolution.templateUseId}>
+          <summary>
+            <span className="event-dot run.completed" />
+            <span>{resolution.templateName}</span>
+            <span>{resolution.templateRevisionId}</span>
+          </summary>
+          <pre>
+            {JSON.stringify(
+              {
+                templateUseId: resolution.templateUseId,
+                templateId: resolution.templateId,
+                templateRevisionId: resolution.templateRevisionId,
+                values: resolution.values,
+                variableDefaults: resolution.variableDefaults,
+                outputMessageIds: resolution.outputMessageIds,
+                fragmentRole: resolution.fragmentRole,
+                content: resolution.content,
+              },
+              null,
+              2,
+            )}
+          </pre>
+        </details>
+      ))}
+    </>
+  );
+}
+
 /**
  * The run-details panel below the response pane. It owns the choice between raw
  * event evidence and derived metrics so the workbench page composes one
@@ -57,6 +105,7 @@ export function RunTracePanel({
   const [tab, setTab] = useState<TraceTab>("events");
 
   const events = runState?.events ?? [];
+  const templateResolutions = runState?.input?.templateResolutions ?? [];
   const metrics = useMemo(
     () => (runState ? runMetrics(runState) : null),
     [runState],
@@ -79,6 +128,11 @@ export function RunTracePanel({
             tabs={[
               { id: "events", label: "Events", count: events.length },
               { id: "metrics", label: "Metrics" },
+              {
+                id: "templates",
+                label: "Templates",
+                count: templateResolutions.length,
+              },
             ]}
           />
         )
@@ -92,6 +146,10 @@ export function RunTracePanel({
       {tab === "metrics" ? (
         <div className="trace">
           <RunMetricsView metrics={metrics} timeline={timeline} />
+        </div>
+      ) : tab === "templates" ? (
+        <div className="trace" aria-live="polite">
+          <TemplateProvenance resolutions={templateResolutions} />
         </div>
       ) : (
         <div className="trace" aria-live="polite">

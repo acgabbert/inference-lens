@@ -5,7 +5,7 @@ import {
   parseProjectJson,
   serializeProjectFile,
 } from "../packages/core/src/project";
-import type { ProjectFileV2 } from "../packages/core/src/project";
+import type { ProjectFile } from "../packages/core/src/project";
 import {
   assertTraceEntryName,
   serializeRunTrace,
@@ -55,7 +55,7 @@ export interface ProjectWorkspaceHandle {
 }
 
 export interface OpenedProjectWorkspace {
-  project: ProjectFileV2;
+  project: ProjectFile;
   handle: ProjectWorkspaceHandle;
 }
 
@@ -190,7 +190,7 @@ async function openBrowserProjectFolder(): Promise<OpenedProjectWorkspace | null
 }
 
 async function createBrowserProjectFolder(
-  project: ProjectFileV2,
+  project: ProjectFile,
 ): Promise<OpenedProjectWorkspace | null> {
   const showDirectoryPicker = picker();
   if (!showDirectoryPicker) {
@@ -295,7 +295,7 @@ async function openNativeProjectFolder(): Promise<OpenedProjectWorkspace | null>
 }
 
 async function createNativeProjectFolder(
-  project: ProjectFileV2,
+  project: ProjectFile,
 ): Promise<OpenedProjectWorkspace | null> {
   const workspace = await invokeNative<NativeWorkspace | null>(
     "create_project_workspace",
@@ -315,7 +315,7 @@ export async function openProjectFolder(): Promise<OpenedProjectWorkspace | null
 }
 
 export async function createProjectFolder(
-  project: ProjectFileV2,
+  project: ProjectFile,
 ): Promise<OpenedProjectWorkspace | null> {
   return isTauriRuntime()
     ? createNativeProjectFolder(project)
@@ -324,7 +324,7 @@ export async function createProjectFolder(
 
 export async function saveProjectWorkspace(
   handle: ProjectWorkspaceHandle,
-  project: ProjectFileV2,
+  project: ProjectFile,
 ): Promise<void> {
   await handle.storage.save(serializeProjectFile(project));
 }
@@ -409,7 +409,7 @@ export async function exportRunTraceFile(
   return { kind: "downloaded", fileName };
 }
 
-export function downloadProjectFile(project: ProjectFileV2): void {
+export function downloadProjectFile(project: ProjectFile): void {
   const blob = new Blob([serializeProjectFile(project)], {
     type: "application/json",
   });
