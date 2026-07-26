@@ -178,8 +178,8 @@ export function ProjectTemplatesPane({
           </div>
         ) : (
           <>
-            <div className="template-editor-toolbar">
-              <label>
+            <header className="template-editor-header">
+              <label className="template-name-field">
                 Template name
                 <input
                   disabled={readOnly}
@@ -187,7 +187,7 @@ export function ProjectTemplatesPane({
                   onChange={(event) => setName(event.target.value)}
                 />
               </label>
-              <label>
+              <label className="template-revision-field">
                 Revision
                 <select
                   value={viewedRevision.id}
@@ -237,90 +237,100 @@ export function ProjectTemplatesPane({
                   Save revision
                 </button>
               )}
-            </div>
+            </header>
 
-            {duplicateName && (
-              <div className="template-warning" role="status">
-                Another template has this name. IDs keep the two definitions distinct.
+            {(duplicateName ||
+              discovery.diagnostics.length > 0 ||
+              sensitiveVariables.length > 0) && (
+              <div className="template-notices">
+                {duplicateName && (
+                  <div className="template-warning" role="status">
+                    Another template has this name. IDs keep the two definitions distinct.
+                  </div>
+                )}
+                {discovery.diagnostics.map((diagnostic) => (
+                  <div className="template-diagnostic" key={`${diagnostic.start}-${diagnostic.end}`}>
+                    {diagnostic.message}
+                  </div>
+                ))}
+                {sensitiveVariables.map(({ name }) => (
+                  <div className="template-diagnostic" key={name}>
+                    Secret-like variable <code>{`{{${name}}}`}</code> can never be
+                    given a value: defaults, saved use values, and run-only
+                    overrides all reject it, so a conversation using this template
+                    could not run. Rename it — credentials reach the provider
+                    through the connection profile, not through project templates.
+                  </div>
+                ))}
               </div>
             )}
-            {discovery.diagnostics.map((diagnostic) => (
-              <div className="template-diagnostic" key={`${diagnostic.start}-${diagnostic.end}`}>
-                {diagnostic.message}
-              </div>
-            ))}
-            {sensitiveVariables.map(({ name }) => (
-              <div className="template-diagnostic" key={name}>
-                Secret-like variable <code>{`{{${name}}}`}</code> can never be
-                given a value: defaults, saved use values, and run-only
-                overrides all reject it, so a conversation using this template
-                could not run. Rename it — credentials reach the provider
-                through the connection profile, not through project templates.
-              </div>
-            ))}
 
-            <TemplateContentEditor
-              content={content}
-              disabled={readOnly}
-              onChange={setContent}
-            />
+            <div className="template-editor-body">
+              <TemplateContentEditor
+                content={content}
+                disabled={readOnly}
+                onChange={setContent}
+              />
 
-            <section className="template-variable-editor">
-              <div>
-                <span className="eyebrow">Variables</span>
-                <h3>Revision defaults</h3>
-              </div>
-              {discovery.variables.length === 0 ? (
-                <p className="template-empty">No variables discovered.</p>
-              ) : (
-                discovery.variables.map((variable) => {
-                  const assigned = Object.hasOwn(defaults, variable.name);
-                  return (
-                    <div className="template-variable-row" key={variable.name}>
-                      <label>
-                        <code>{`{{${variable.name}}}`}</code>
-                        <input
-                          disabled={readOnly}
-                          placeholder="No default"
-                          value={assigned ? defaults[variable.name] : ""}
-                          onChange={(event) =>
-                            setDefaults((current) => ({
-                              ...current,
-                              [variable.name]: event.target.value,
-                            }))
-                          }
-                        />
-                      </label>
-                      <small>{variable.occurrences.length} location{variable.occurrences.length === 1 ? "" : "s"}</small>
-                      {assigned && !readOnly && (
-                        <button
-                          className="text-button"
-                          type="button"
-                          onClick={() =>
-                            setDefaults((current) => {
-                              const next = { ...current };
-                              delete next[variable.name];
-                              return next;
-                            })
-                          }
-                        >
-                          Remove default
-                        </button>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </section>
+              <aside className="template-variable-rail">
+                <div className="template-rail-heading">
+                  <span className="eyebrow">Variables</span>
+                  <h3>Revision defaults</h3>
+                </div>
+                {discovery.variables.length === 0 ? (
+                  <p className="template-empty">
+                    No variables discovered. Write <code>{"{{name}}"}</code> in the
+                    content to add one.
+                  </p>
+                ) : (
+                  discovery.variables.map((variable) => {
+                    const assigned = Object.hasOwn(defaults, variable.name);
+                    return (
+                      <div className="template-variable-row" key={variable.name}>
+                        <label>
+                          <code>{`{{${variable.name}}}`}</code>
+                          <input
+                            disabled={readOnly}
+                            placeholder="No default"
+                            value={assigned ? defaults[variable.name] : ""}
+                            onChange={(event) =>
+                              setDefaults((current) => ({
+                                ...current,
+                                [variable.name]: event.target.value,
+                              }))
+                            }
+                          />
+                        </label>
+                        <div className="template-variable-meta">
+                          <small>{variable.occurrences.length} location{variable.occurrences.length === 1 ? "" : "s"}</small>
+                          {assigned && !readOnly && (
+                            <button
+                              className="text-button"
+                              type="button"
+                              onClick={() =>
+                                setDefaults((current) => {
+                                  const next = { ...current };
+                                  delete next[variable.name];
+                                  return next;
+                                })
+                              }
+                            >
+                              Remove default
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </aside>
+            </div>
 
-            <section className="template-insert">
-              <div>
-                <span className="eyebrow">Conversation</span>
-                <h3>Add pinned use</h3>
-              </div>
+            <footer className="template-insert-bar">
+              <span className="template-insert-label">Pin into the conversation</span>
               {viewedRevision.content.kind === "fragment" && (
                 <label>
-                  Message role
+                  Role
                   <select
                     value={fragmentRole}
                     onChange={(event) => setFragmentRole(event.target.value as TemplateRole)}
@@ -357,7 +367,7 @@ export function ProjectTemplatesPane({
               >
                 Add to conversation
               </button>
-            </section>
+            </footer>
           </>
         )}
       </section>
@@ -376,30 +386,33 @@ function TemplateContentEditor({
 }) {
   return (
     <section className="template-content-editor">
-      <label>
-        Template kind
-        <select
-          disabled={disabled}
-          value={content.kind}
-          onChange={(event) =>
-            onChange(
-              event.target.value === "fragment"
-                ? { kind: "fragment", text: "" }
-                : {
-                    kind: "messages",
-                    messages: [{ role: "user", content: "" }],
-                  },
-            )
-          }
-        >
-          <option value="fragment">Prompt</option>
-          <option value="messages">Message set</option>
-        </select>
-      </label>
+      <div className="template-content-heading">
+        <h3>Content</h3>
+        <label className="template-kind-field">
+          Kind
+          <select
+            disabled={disabled}
+            value={content.kind}
+            onChange={(event) =>
+              onChange(
+                event.target.value === "fragment"
+                  ? { kind: "fragment", text: "" }
+                  : {
+                      kind: "messages",
+                      messages: [{ role: "user", content: "" }],
+                    },
+              )
+            }
+          >
+            <option value="fragment">Prompt</option>
+            <option value="messages">Message set</option>
+          </select>
+        </label>
+      </div>
       {content.kind === "fragment" ? (
-        <label>
-          Prompt content
+        <label className="template-fragment-field">
           <textarea
+            aria-label="Prompt content"
             disabled={disabled}
             rows={9}
             value={content.text}
@@ -411,26 +424,42 @@ function TemplateContentEditor({
       ) : (
         <div className="template-message-set">
           {content.messages.map((message, index) => (
-            <article className="template-message-editor" key={index}>
-              <select
-                aria-label={`Template message ${index + 1} role`}
-                disabled={disabled}
-                value={message.role}
-                onChange={(event) =>
-                  onChange({
-                    kind: "messages",
-                    messages: content.messages.map((candidate, candidateIndex) =>
-                      candidateIndex === index
-                        ? { ...candidate, role: event.target.value as TemplateRole }
-                        : candidate,
-                    ),
-                  })
-                }
-              >
-                <option value="system">System</option>
-                <option value="user">User</option>
-                <option value="assistant">Assistant</option>
-              </select>
+            <article className="template-message-editor message-card" key={index}>
+              <div className="message-toolbar">
+                <select
+                  aria-label={`Template message ${index + 1} role`}
+                  disabled={disabled}
+                  value={message.role}
+                  onChange={(event) =>
+                    onChange({
+                      kind: "messages",
+                      messages: content.messages.map((candidate, candidateIndex) =>
+                        candidateIndex === index
+                          ? { ...candidate, role: event.target.value as TemplateRole }
+                          : candidate,
+                      ),
+                    })
+                  }
+                >
+                  <option value="system">System</option>
+                  <option value="user">User</option>
+                  <option value="assistant">Assistant</option>
+                </select>
+                {!disabled && content.messages.length > 1 && (
+                  <button
+                    className="remove-button"
+                    type="button"
+                    onClick={() =>
+                      onChange({
+                        kind: "messages",
+                        messages: content.messages.filter((_, candidateIndex) => candidateIndex !== index),
+                      })
+                    }
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
               <textarea
                 aria-label={`Template message ${index + 1} content`}
                 disabled={disabled}
@@ -447,20 +476,6 @@ function TemplateContentEditor({
                   })
                 }
               />
-              {!disabled && content.messages.length > 1 && (
-                <button
-                  className="remove-button"
-                  type="button"
-                  onClick={() =>
-                    onChange({
-                      kind: "messages",
-                      messages: content.messages.filter((_, candidateIndex) => candidateIndex !== index),
-                    })
-                  }
-                >
-                  Remove
-                </button>
-              )}
             </article>
           ))}
           {!disabled && (
@@ -555,8 +570,12 @@ export function TemplateUseCard({
         </div>
       </header>
 
-      {diagnostics.map(({ diagnostic }, index) => (
-        <div className="template-diagnostic" key={`${diagnostic.code}-${index}`}>
+      {/* Resolution reports a missing variable once per message it appears in.
+          The author fills the value in one place, so it is stated once. */}
+      {[...new Map(
+        diagnostics.map(({ diagnostic }) => [diagnostic.message, diagnostic]),
+      ).values()].map((diagnostic) => (
+        <div className="template-diagnostic" key={diagnostic.message}>
           {diagnostic.message}
         </div>
       ))}

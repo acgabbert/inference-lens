@@ -16,7 +16,7 @@
     "build:tauri": "TRACE_LENS_TARGET=tauri vinext build",
     "start": "vinext start",
     "tauri": "tauri",
-    "test": "npm run build && npm run test:core && node --test tests/rendered-html.test.mjs tests/standalone-runtime.test.mjs tests/run-history-render.test.mjs tests/run-trace-panel-render.test.mjs tests/project-templates-render.test.mjs",
+    "test": "npm run build && npm run test:core && node --test tests/rendered-html.test.mjs tests/standalone-runtime.test.mjs tests/run-history-render.test.mjs tests/run-trace-panel-render.test.mjs tests/project-templates-render.test.mjs tests/request-pane-render.test.mjs",
     "test:core": "node --experimental-strip-types --test tests/*.test.ts",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "format:rust": "cargo fmt --manifest-path src-tauri/Cargo.toml",

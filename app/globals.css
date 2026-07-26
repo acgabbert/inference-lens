@@ -109,7 +109,8 @@ body {
 }
 
 body {
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI",
+    sans-serif;
 }
 
 .app-error {
@@ -489,6 +490,41 @@ input:not([type="range"]) {
   font-size: 10px;
 }
 
+/* Selects were the only control with no rules of their own: they inherited
+   their label's bold 10px and kept the UA's padding, so they sat shorter and
+   heavier than the input beside them in the same row. They now share the
+   input's box. The native arrow is replaced by one drawn from two gradients so
+   it follows the theme tokens — an SVG chevron would have to hardcode a color
+   that could not track light and dark. */
+select {
+  height: 32px;
+  margin-top: 7px;
+  padding: 0 26px 0 10px;
+  appearance: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+  background-position: calc(100% - 15px) center, calc(100% - 11px) center;
+  background-size: 4px 4px;
+  background-repeat: no-repeat;
+}
+
+select:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+select:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
 .credential-status {
   display: block;
   margin-top: 6px;
@@ -630,7 +666,7 @@ output {
 .templates-workspace {
   min-height: 100%;
   display: grid;
-  grid-template-columns: 180px minmax(0, 1fr);
+  grid-template-columns: 158px minmax(0, 1fr);
 }
 
 .template-sidebar {
@@ -683,9 +719,13 @@ output {
   line-height: 1.45;
 }
 
+/* The editor is inside a user-resizable pane, so its own width — not the
+   viewport's — decides whether the variable rail fits beside the content. */
 .template-editor {
   min-width: 0;
-  padding: 18px;
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
 }
 
 .template-empty-state {
@@ -695,8 +735,8 @@ output {
 }
 
 .template-empty-state h3,
-.template-insert h3,
-.template-variable-editor h3 {
+.template-rail-heading h3,
+.template-content-heading h3 {
   margin: 0;
   font-size: 13px;
 }
@@ -706,34 +746,73 @@ output {
   font-size: 10px;
 }
 
-.template-editor-toolbar {
+.template-editor-header {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-default);
   display: grid;
-  grid-template-columns: minmax(140px, 1fr) minmax(150px, 1fr) auto;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto;
   gap: 10px;
   align-items: end;
+  background: var(--surface-panel);
 }
 
-.template-editor-toolbar label,
-.template-insert label,
+.template-editor-header label,
+.template-insert-bar label,
 .template-variable-row label,
-.template-use-variable label {
+.template-use-variable label,
+.template-kind-field {
   margin-bottom: 0;
 }
 
-.template-content-editor,
-.template-variable-editor,
-.template-insert {
-  margin-top: 14px;
-  padding: 14px;
-  border: 1px solid var(--border-default);
-  border-radius: 10px;
-  background: var(--surface-subtle);
+.template-editor-header .provider-pill {
+  margin-bottom: 8px;
 }
 
-.template-content-editor textarea {
-  margin-top: 7px;
+.template-notices {
+  padding: 0 18px;
+}
+
+.template-notices > :first-child {
+  margin-top: 14px;
+}
+
+.template-editor-body {
+  flex: 1;
+  padding: 16px 18px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 196px;
+  gap: 16px;
+  align-items: start;
+}
+
+.template-content-editor {
+  min-width: 0;
+}
+
+.template-content-heading {
+  margin-bottom: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.template-kind-field {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+}
+
+.template-kind-field select {
+  width: auto;
+  min-width: 118px;
+  margin-top: 0;
+}
+
+.template-fragment-field textarea {
+  margin-top: 0;
   border: 1px solid var(--border-default);
-  border-radius: 7px;
+  border-radius: 8px;
   background: var(--surface-panel);
 }
 
@@ -742,28 +821,55 @@ output {
   gap: 10px;
 }
 
-.template-message-editor {
-  display: grid;
-  grid-template-columns: 100px minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: start;
-}
-
 .template-message-editor textarea {
   margin: 0;
 }
 
-.template-variable-editor,
+.template-variable-rail {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+  display: grid;
+  gap: 11px;
+  align-content: start;
+}
+
+.template-rail-heading .eyebrow {
+  margin-bottom: 2px;
+}
+
+.template-variable-rail .template-empty {
+  margin: 0;
+}
+
+.template-variable-rail .template-empty code {
+  font-family: var(--font-geist-mono), monospace;
+}
+
 .template-use-values {
   display: grid;
   gap: 10px;
 }
 
 .template-variable-row {
+  min-width: 0;
   display: grid;
-  grid-template-columns: minmax(150px, 1fr) auto auto;
-  gap: 10px;
-  align-items: end;
+  gap: 4px;
+}
+
+.template-variable-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 9px;
+}
+
+.template-variable-meta .text-button {
+  padding: 0;
 }
 
 .template-variable-row code,
@@ -774,11 +880,55 @@ output {
   font-size: 10px;
 }
 
-.template-insert {
-  display: grid;
-  grid-template-columns: minmax(100px, 1fr) minmax(110px, 1fr) minmax(120px, 1fr) auto;
-  gap: 10px;
+.template-insert-bar {
+  padding: 12px 18px;
+  border-top: 1px solid var(--border-default);
+  display: flex;
+  flex-wrap: wrap;
   align-items: end;
+  gap: 10px;
+  position: sticky;
+  bottom: 0;
+  background: var(--surface-translucent);
+  backdrop-filter: blur(10px);
+}
+
+.template-insert-label {
+  margin-bottom: 9px;
+  flex: 1;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.template-insert-bar label {
+  width: auto;
+}
+
+.template-insert-bar select {
+  width: auto;
+  min-width: 122px;
+}
+
+.template-insert-bar .button {
+  margin-bottom: 1px;
+}
+
+@container (max-width: 545px) {
+  .template-editor-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container (max-width: 430px) {
+  .template-editor-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .template-insert-label {
+    flex: 1 0 100%;
+    margin-bottom: 0;
+  }
 }
 
 .template-use-card {
@@ -962,8 +1112,7 @@ output {
 .registry-editor-actions,
 .schema-tabs,
 .schema-subheading,
-.schema-enum-row,
-.request-tool-chips {
+.schema-enum-row {
   display: flex;
   align-items: center;
 }
@@ -972,133 +1121,126 @@ output {
   gap: 10px;
 }
 
-.request-tool-attachments {
+/* One manifest of what goes on the wire. Project selections and one-shot
+   library snapshots reach a request by different routes but answer the same
+   question, so they share a list instead of a card each. */
+.tool-manifest {
   margin: 16px 20px 0;
-  padding: 13px;
-  border: 1px solid var(--accent-border);
-  border-radius: 10px;
-  background: var(--accent-soft);
-}
-
-.request-tool-attachments strong {
-  display: block;
-  font-size: 11px;
-}
-
-.request-tool-attachments p {
-  margin: 3px 0 10px;
-  color: var(--text-muted);
-  font-size: 9px;
-}
-
-.request-tool-chips {
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.request-tool-chip {
-  padding: 5px 7px;
-  border: 1px solid var(--accent-border);
-  border-radius: 999px;
-  background: var(--surface-raised);
-  color: var(--accent);
-  font-family: var(--font-geist-mono), monospace;
-  font-size: 9px;
-}
-
-.request-tool-chip button {
-  margin-left: 6px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.tool-scope-guide {
-  margin: 16px 20px 0;
-  padding: 12px 14px;
   border: 1px solid var(--border-default);
   border-radius: 10px;
   background: var(--surface-subtle);
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
-  gap: 10px;
 }
 
-.tool-scope-guide > div {
-  min-width: 0;
+.tool-manifest.ready {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+.tool-manifest.blocked {
+  border-color: var(--danger-border);
+  background: var(--danger-surface);
+}
+
+.tool-manifest > header {
+  padding: 12px 13px;
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-}
-
-.tool-scope-guide strong,
-.tool-scope-guide small {
-  display: block;
-}
-
-.tool-scope-guide strong {
-  font-size: 10px;
-}
-
-.tool-scope-guide small {
-  margin-top: 2px;
-  color: var(--text-muted);
-  font-size: 8px;
-  line-height: 1.35;
-}
-
-.tool-scope-number {
-  width: 18px;
-  height: 18px;
-  border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  font-size: 9px;
-  font-weight: 800;
-}
-
-.tool-scope-arrow {
-  color: var(--text-faint);
-  font-size: 13px;
-}
-
-.tool-capability-warning {
-  margin: 12px 20px 0;
-  padding: 11px 12px;
-  border: 1px solid var(--danger-border);
-  border-radius: 9px;
-  background: var(--danger-surface);
-  color: var(--danger-strong);
-  display: flex;
-  align-items: center;
   justify-content: space-between;
   gap: 14px;
 }
 
-.tool-capability-warning strong,
-.tool-capability-warning span {
+.tool-manifest > header > div {
+  min-width: 0;
+}
+
+.tool-manifest > header strong {
   display: block;
+  font-size: 12px;
 }
 
-.tool-capability-warning strong {
-  font-size: 10px;
-}
-
-.tool-capability-warning span {
-  margin-top: 2px;
+.tool-manifest > header p {
+  margin: 3px 0 0;
+  color: var(--text-muted);
   font-size: 9px;
+  line-height: 1.45;
 }
 
-.tool-capability-warning .button {
+.tool-manifest.blocked > header p {
+  color: var(--danger-strong);
+}
+
+.tool-manifest > header .button {
   flex: 0 0 auto;
   border-color: var(--danger-border);
   color: var(--danger-strong);
+}
+
+.tool-manifest-list {
+  margin: 0;
+  padding: 0 13px 11px;
+  list-style: none;
+  display: grid;
+  gap: 5px;
+}
+
+.tool-manifest-list li {
+  padding: 7px 9px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface-panel);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.tool-manifest-name {
+  min-width: 0;
+  flex: 1;
+}
+
+.tool-manifest-name code {
+  display: block;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-manifest-name small {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-origin {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.tool-origin.project {
+  background: var(--surface-strong);
+  color: var(--text-muted);
+}
+
+.tool-origin.once {
+  background: var(--warning-surface);
+  color: var(--warning-strong);
+  cursor: help;
+}
+
+.tool-manifest-list .text-button {
+  flex: 0 0 auto;
 }
 
 .definition-editor {
@@ -1177,7 +1319,9 @@ output {
 
 .schema-node-controls select,
 .schema-property-row select {
-  height: 30px;
+  height: 28px;
+  padding: 0 22px 0 8px;
+  background-position: calc(100% - 13px) center, calc(100% - 9px) center;
 }
 
 .schema-subheading {
@@ -1574,14 +1718,22 @@ output {
 
 .message-toolbar select {
   width: auto;
-  padding: 3px 22px 3px 6px;
+  height: 24px;
+  margin-top: 0;
+  padding: 0 19px 0 6px;
   border: 0;
-  background: transparent;
+  border-radius: 6px;
+  background-color: transparent;
+  background-position: calc(100% - 11px) center, calc(100% - 7px) center;
   color: var(--text-primary);
   font-size: 9px;
   font-weight: 750;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+}
+
+.message-toolbar select:hover:not(:disabled) {
+  background-color: var(--surface-hover);
 }
 
 .remove-button {
@@ -2835,67 +2987,118 @@ main {
   letter-spacing: 0.06em;
 }
 
-.request-tool-summary {
-  margin: 11px 0 13px;
-  padding: 9px 10px;
-  border: 1px solid var(--border-default);
-  border-radius: 8px;
-  background: var(--surface-subtle);
+/* The Tools tab owns the manifest; this is only a pointer to it. */
+.request-tool-line {
+  margin: 9px 0 12px;
   display: flex;
-  align-items: center;
-  gap: 9px;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: 9px;
 }
 
-.request-tool-summary.ready {
-  border-color: var(--accent-border);
-  background: var(--accent-soft);
+.request-tool-line > span {
+  min-width: 0;
 }
 
-.request-tool-summary.blocked {
-  border-color: var(--danger-border);
-  background: var(--danger-surface);
+.request-tool-line.blocked {
   color: var(--danger-strong);
+  font-weight: 650;
 }
 
-.request-tool-summary-icon {
-  width: 18px;
-  height: 18px;
-  border-radius: 999px;
-  background: var(--surface-raised);
+.request-tool-line .text-button {
+  flex: 0 0 auto;
+}
+
+/* A disabled Run button can only carry a native tooltip, so the reason a run
+   is refused is stated in the request pane instead, with its fix attached. */
+.run-readiness {
+  margin: 16px 20px 0;
+  padding: 13px 14px;
+  border: 1px solid var(--danger-border);
+  border-radius: 10px;
+  background: var(--danger-surface);
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+}
+
+.run-readiness.advisory {
+  border-color: var(--warning-border);
+  background: var(--warning-surface);
+}
+
+.run-readiness-glyph {
+  width: 19px;
+  height: 19px;
+  flex: 0 0 auto;
+  border-radius: 50%;
   display: grid;
   place-items: center;
-  flex: 0 0 auto;
-  font-size: 9px;
+  background: var(--surface-raised);
+  color: var(--danger);
+  font-size: 10px;
   font-weight: 800;
 }
 
-.request-tool-summary-copy {
+.run-readiness.advisory .run-readiness-glyph {
+  color: var(--warning);
+}
+
+.run-readiness-copy {
   min-width: 0;
   flex: 1;
 }
 
-.request-tool-summary strong,
-.request-tool-summary small {
+.run-readiness-copy strong {
   display: block;
+  color: var(--text-primary);
+  font-size: 12px;
 }
 
-.request-tool-summary strong {
-  font-size: 9px;
+.run-readiness-copy > p {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 1.5;
 }
 
-.request-tool-summary small {
-  margin-top: 1px;
-  color: var(--text-muted);
-  font-size: 8px;
-  line-height: 1.35;
+.run-readiness-facts {
+  margin: 9px 0 0;
+  display: grid;
+  gap: 3px;
 }
 
-.request-tool-summary.blocked small {
-  color: var(--danger-strong);
+.run-readiness-facts > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
 }
 
-.request-tool-summary .text-button {
+.run-readiness-facts dt {
   flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.run-readiness-facts dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-readiness-actions {
+  margin-top: 11px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
 }
 
 .run-settings-grid {
@@ -3732,14 +3935,8 @@ main {
     grid-template-columns: 140px minmax(0, 1fr);
   }
 
-  .template-editor-toolbar,
-  .template-insert,
   .template-use-variable {
     grid-template-columns: 1fr;
-  }
-
-  .template-message-editor {
-    grid-template-columns: 90px minmax(0, 1fr);
   }
 
   .side-drawer {
@@ -3802,15 +3999,7 @@ main {
     align-items: flex-start;
   }
 
-  .tool-scope-guide {
-    grid-template-columns: 1fr;
-  }
-
-  .tool-scope-arrow {
-    display: none;
-  }
-
-  .tool-capability-warning {
+  .tool-manifest > header {
     align-items: flex-start;
     flex-direction: column;
   }

@@ -21,37 +21,118 @@ interface ToolsPaneProps {
   onRemoveRequestTool(id: ToolId): void;
 }
 
-/** Project-owned definitions and one-shot tool attachments. */
+/**
+ * Project-owned definitions, and one manifest of what actually goes on the
+ * wire. A tool reaches a request through two different routes — a project tool
+ * that is selected, or a one-shot snapshot from the local library — but the
+ * question a user asks is always the same one, so both are answered in a
+ * single list rather than in a separate card per route.
+ */
 export function ToolsPane({
   tools, requestTools, enabledToolIds, activeProfileName, toolsEnabled,
   onOpenLibrary, onOpenConnectionSettings, onAddTool, onRemoveTool, onUpdateTool,
   onSetToolEnabled, mockForTool, onUpdateToolMock, onRemoveRequestTool,
 }: ToolsPaneProps) {
+  const selectedProjectTools = tools.filter(({ id }) =>
+    enabledToolIds.includes(id),
+  );
+  const sentCount = selectedProjectTools.length + requestTools.length;
+  const profileName = activeProfileName.trim() || "Untitled profile";
+  const state = sentCount === 0 ? "empty" : toolsEnabled ? "ready" : "blocked";
+
   return (
     <>
-      <div className="tool-scope-guide" aria-label="How tools reach a request">
-        <div><span className="tool-scope-number">1</span><span><strong>Local tool library</strong><small>Reusable definitions saved locally for this app.</small></span></div>
-        <span className="tool-scope-arrow" aria-hidden="true">→</span>
-        <div><span className="tool-scope-number">2</span><span><strong>Select for a request</strong><small>Expose a project tool or attach a one-shot copy.</small></span></div>
-        <span className="tool-scope-arrow" aria-hidden="true">→</span>
-        <div><span className="tool-scope-number">3</span><span><strong>Active profile</strong><small>Must allow tool calling before anything is sent.</small></span></div>
-      </div>
+      <section
+        aria-label="Tools sent with this request"
+        className={`tool-manifest ${state}`}
+      >
+        <header>
+          <div>
+            <span className="eyebrow">Next request</span>
+            <strong>
+              {sentCount === 0
+                ? "No tools will be sent"
+                : `${sentCount} ${sentCount === 1 ? "tool" : "tools"} will be sent`}
+            </strong>
+            <p>
+              {state === "empty"
+                ? "Select a project tool below, or attach a one-shot copy from the local library."
+                : state === "blocked"
+                  ? `Profile “${profileName}” does not allow tool calling, so none of these reach the model.`
+                  : "Everything listed here is serialized into the request when the run starts."}
+            </p>
+          </div>
+          {state === "blocked" && (
+            <button
+              className="button secondary"
+              type="button"
+              onClick={onOpenConnectionSettings}
+            >
+              Allow tool calling…
+            </button>
+          )}
+        </header>
+        {sentCount > 0 && (
+          <ul className="tool-manifest-list">
+            {selectedProjectTools.map((tool) => (
+              <li key={tool.id}>
+                <span className="tool-manifest-name">
+                  <code>{tool.name.trim() || "Unnamed tool"}</code>
+                  {tool.description && <small>{tool.description}</small>}
+                </span>
+                <span className="tool-origin project">Project</span>
+                <button
+                  aria-label={`Stop sending ${tool.name || "this tool"}`}
+                  className="text-button"
+                  type="button"
+                  onClick={() => onSetToolEnabled(tool.id, false)}
+                >
+                  Don’t send
+                </button>
+              </li>
+            ))}
+            {requestTools.map((tool) => (
+              <li key={tool.id}>
+                <span className="tool-manifest-name">
+                  <code>{tool.name.trim() || "Unnamed tool"}</code>
+                  {tool.description && <small>{tool.description}</small>}
+                </span>
+                <span
+                  className="tool-origin once"
+                  title="A library snapshot held for one run, then cleared from the composer."
+                >
+                  Once
+                </span>
+                <button
+                  aria-label={`Remove ${tool.name || "this tool"} from the next request`}
+                  className="text-button"
+                  type="button"
+                  onClick={() => onRemoveRequestTool(tool.id)}
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
       <div className="tools-tab-toolbar">
-        <div><span className="eyebrow">Project</span><strong>Tool definitions</strong><p>Project tools are stored with this project. Only checked tools are selected for requests.</p></div>
-        <div className="tool-header-actions"><button className="text-button" type="button" onClick={onOpenLibrary}>Browse local library</button><button className="text-button" type="button" onClick={onAddTool}>+ Add project tool</button></div>
+        <div>
+          <span className="eyebrow">Project</span>
+          <strong>Tool definitions</strong>
+          <p>Stored with this project. Only selected definitions are sent.</p>
+        </div>
+        <div className="tool-header-actions">
+          <button className="text-button" type="button" onClick={onOpenLibrary}>Browse local library</button>
+          <button className="text-button" type="button" onClick={onAddTool}>+ Add project tool</button>
+        </div>
       </div>
-      {(enabledToolIds.length > 0 || requestTools.length > 0) && !toolsEnabled && (
-        <div className="tool-capability-warning" role="status"><div><strong>Selected tools will not run with “{activeProfileName || "Untitled profile"}”</strong><span>This profile does not currently allow tool calling.</span></div><button className="button secondary" type="button" onClick={onOpenConnectionSettings}>Open connection settings</button></div>
-      )}
-      {requestTools.length > 0 && (
-        <div className="request-tool-attachments"><div><span className="eyebrow">One-shot attachments</span><strong>Next request</strong><p>These snapshots are sent once, then cleared from the composer.</p></div><div className="request-tool-chips">{requestTools.map((tool) => <span className="request-tool-chip" key={tool.id}>{tool.name}<button aria-label={`Remove ${tool.name} from next request`} type="button" onClick={() => onRemoveRequestTool(tool.id)}>×</button></span>)}</div></div>
-      )}
       <div className="tool-list">
         {tools.length === 0 ? <p className="tool-empty">No project-owned tools. Add one here or copy a snapshot from the local library.</p> : tools.map((tool) => {
           const mock = mockForTool(tool.id);
           const mockText = mock?.result.content.map(({ text }) => text).join("") ?? "";
           return <article className="tool-editor" key={tool.id}>
-            <div className="tool-editor-toolbar"><label className="tool-enabled"><input type="checkbox" checked={enabledToolIds.includes(tool.id)} onChange={(event) => onSetToolEnabled(tool.id, event.target.checked)} />Expose to model</label><button className="remove-button" type="button" onClick={() => onRemoveTool(tool.id)}>Remove</button></div>
+            <div className="tool-editor-toolbar"><label className="tool-enabled"><input type="checkbox" checked={enabledToolIds.includes(tool.id)} onChange={(event) => onSetToolEnabled(tool.id, event.target.checked)} />Send with requests</label><button className="remove-button" type="button" onClick={() => onRemoveTool(tool.id)}>Remove</button></div>
             <ToolDefinitionEditor value={tool} onChange={(value) => onUpdateTool(tool.id, value)} />
             <div className="tool-fields tool-mock-fields"><label className="tool-mock-toggle"><input type="checkbox" checked={mock?.enabled ?? false} onChange={(event) => onUpdateToolMock(tool.id, mockText, event.target.checked)} />Use static mock result</label>{mock?.enabled && <label className="tool-mock-result">Mock result<textarea value={mockText} onChange={(event) => onUpdateToolMock(tool.id, event.target.value, true)} /></label>}</div>
           </article>;
