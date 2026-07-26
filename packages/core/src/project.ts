@@ -25,6 +25,7 @@ import {
   renderTemplateContent,
   resolveTemplateValues,
 } from "./template-engine.ts";
+import type { TemplateDiagnostic } from "./template-engine.ts";
 import type {
   InferenceRequest,
   RichInferenceRequest,
@@ -952,6 +953,7 @@ export interface ProjectDraft {
   items: ProjectConversationItem[];
   messages: ConversationMessage[];
   templateResolutions: ResolvedTemplateUse[];
+  templateDiagnostics: ProjectTemplateDiagnostic[];
   model: string;
   temperature?: number;
   tools: ToolDefinition[];
@@ -973,9 +975,28 @@ export type TemplateRunOverrides = Readonly<
   Partial<Record<PromptTemplateUseId, Readonly<Record<string, string>>>>
 >;
 
+/**
+ * One template diagnostic, located against the authored item that produced it
+ * so a caller can point at the offending template use rather than at the
+ * document as a whole.
+ */
+export interface ProjectTemplateDiagnostic {
+  itemIndex: number;
+  templateUseId: PromptTemplateUseId;
+  diagnostic: TemplateDiagnostic;
+}
+
 export interface ResolvedProjectRevision {
   messages: ConversationMessage[];
   templateResolutions: ResolvedTemplateUse[];
+  /**
+   * A revision that still has unresolved variables is a normal authoring
+   * state, not a corrupt document: values may arrive from a later edit or from
+   * per-run overrides. Resolution always yields messages and reports what is
+   * unresolved so opening and saving a project never depend on it being
+   * finished.
+   */
+  diagnostics: ProjectTemplateDiagnostic[];
 }
 
 export function resolveProjectRevision(
@@ -988,6 +1009,7 @@ export function resolveProjectRevision(
   );
   const messages: ConversationMessage[] = [];
   const templateResolutions: ResolvedTemplateUse[] = [];
+  const diagnostics: ProjectTemplateDiagnostic[] = [];
 
   revision.items.forEach((item, itemIndex) => {
     if (item.kind === "message") {
@@ -1013,24 +1035,13 @@ export function resolveProjectRevision(
       runOverrides[item.use.id],
     );
     const rendered = renderTemplateContent(templateRevision.content, values);
-    if (!rendered.ok) {
-      throw new ProjectValidationError(
-        rendered.diagnostics.map((diagnostic) => ({
-          code: "custom",
-          path: [
-            "conversationRevisions",
-            revision.id,
-            "items",
-            itemIndex,
-            "use",
-            diagnostic.code === "missing-template-variable"
-              ? diagnostic.name
-              : "templateRevisionId",
-          ],
-          message: `${diagnostic.message} Template use "${item.use.id}", revision "${item.use.templateRevisionId}".`,
-        })),
-      );
-    }
+    diagnostics.push(
+      ...rendered.diagnostics.map((diagnostic) => ({
+        itemIndex,
+        templateUseId: item.use.id,
+        diagnostic,
+      })),
+    );
     if (rendered.content.kind === "fragment") {
       const role = item.use.fragmentRole;
       if (!role) throw new Error("Validated fragment use is missing a role.");
@@ -1070,7 +1081,7 @@ export function resolveProjectRevision(
       outputMessageIds: [...item.use.outputMessageIds],
     });
   });
-  return { messages, templateResolutions };
+  return { messages, templateResolutions, diagnostics };
 }
 
 export function resolveProjectRevisionMessages(
@@ -1106,6 +1117,7 @@ export function projectDraft(
     items: revision.items,
     messages: resolved.messages,
     templateResolutions: resolved.templateResolutions,
+    templateDiagnostics: resolved.diagnostics,
     model: project.defaults.target.model,
     temperature: project.defaults.options.temperature,
     tools: project.tools,

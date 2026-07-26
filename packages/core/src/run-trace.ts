@@ -68,6 +68,55 @@ const traceEnvelopeBaseSchema = z
     endedAt: z.string().datetime(),
   });
 
+const branchProvenanceSchema = z
+  .object({
+    runId: z.string().regex(/^run_.+/),
+    parentConversationRevisionId: z.string().regex(/^revision_.+/).optional(),
+    messageId: z.string().regex(/^message_.+/),
+  })
+  .strict();
+
+const templateMessageRoleSchema = z.enum(["system", "user", "assistant"]);
+
+const resolvedTemplateContentSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("fragment"), text: z.string() }).strict(),
+  z
+    .object({
+      kind: z.literal("messages"),
+      messages: z
+        .array(
+          z
+            .object({
+              role: templateMessageRoleSchema,
+              content: z.string(),
+            })
+            .strict(),
+        )
+        .min(1),
+    })
+    .strict(),
+]);
+
+/**
+ * Template provenance is re-derived during parsing, so its shape is checked by
+ * the envelope rather than trusted from the file. An artifact that fails here
+ * is rejected as an invalid trace instead of reaching the renderer and
+ * surfacing as an internal error.
+ */
+const resolvedTemplateUseSchema = z
+  .object({
+    templateUseId: z.string().regex(/^template-use_.+/),
+    templateId: z.string().regex(/^template_.+/),
+    templateRevisionId: z.string().regex(/^template-revision_.+/),
+    templateName: z.string(),
+    content: resolvedTemplateContentSchema,
+    variableDefaults: z.record(z.string(), z.string()),
+    values: z.record(z.string(), z.string()),
+    outputMessageIds: z.array(z.string().regex(/^message_.+/)).min(1),
+    fragmentRole: templateMessageRoleSchema.optional(),
+  })
+  .strict();
+
 const traceV1EnvelopeSchema = traceEnvelopeBaseSchema
   .extend({ schemaVersion: z.literal(1) })
   .strict();
@@ -75,32 +124,27 @@ const traceV1EnvelopeSchema = traceEnvelopeBaseSchema
 const traceV2EnvelopeSchema = traceEnvelopeBaseSchema
   .extend({
     schemaVersion: z.literal(2),
-    branchedFrom: z
-      .object({
-        runId: z.string().regex(/^run_.+/),
-        parentConversationRevisionId: z.string().regex(/^revision_.+/).optional(),
-        messageId: z.string().regex(/^message_.+/),
-      })
-      .strict()
-      .optional(),
+    branchedFrom: branchProvenanceSchema.optional(),
   })
   .strict();
 
 const traceV3EnvelopeSchema = traceEnvelopeBaseSchema
   .extend({
     schemaVersion: z.literal(3),
-    branchedFrom: z
+    input: z
       .object({
         runId: z.string().regex(/^run_.+/),
-        parentConversationRevisionId: z.string().regex(/^revision_.+/).optional(),
-        messageId: z.string().regex(/^message_.+/),
+        templateResolutions: z.array(resolvedTemplateUseSchema),
       })
-      .strict()
-      .optional(),
+      .passthrough(),
+    branchedFrom: branchProvenanceSchema.optional(),
   })
   .strict();
 
-const traceEnvelopeSchema = z.union([
+// Discriminated on the version so a rejection reports the offending field in
+// the matching envelope, rather than collapsing every branch's complaint into
+// one union error.
+const traceEnvelopeSchema = z.discriminatedUnion("schemaVersion", [
   traceV1EnvelopeSchema,
   traceV2EnvelopeSchema,
   traceV3EnvelopeSchema,
@@ -230,15 +274,13 @@ export function parseRunTraceFile(value: unknown): RunTrace {
   traceFileName(trace.runId);
 
   for (const resolution of trace.input.templateResolutions) {
+    // Rendering is deliberately tolerant here: a run may have been made with an
+    // unresolved variable, and that run's evidence stays verifiable because the
+    // engine reproduces the same text it emitted at run time.
     const rendered = renderTemplateContent(
       resolution.content,
       resolution.values,
     );
-    if (!rendered.ok) {
-      throw new RunTraceValidationError(
-        `Template provenance for "${resolution.templateUseId}" cannot be resolved.`,
-      );
-    }
     const expected =
       rendered.content.kind === "fragment"
         ? [

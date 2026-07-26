@@ -52,6 +52,7 @@ test("creates a strict, portable Project v3 document", () => {
     items: project.conversationRevisions[0].items,
     messages: draft.messages,
     templateResolutions: [],
+    templateDiagnostics: [],
     model: "example-model",
     temperature: 0.4,
     tools: [],
@@ -239,6 +240,159 @@ test("resolves pinned fragment and message-set uses with stable output IDs", () 
         enabledToolIds: unchangedDraft.enabledToolIds,
       }),
     /Detach the template use/,
+  );
+});
+
+test("keeps authored order when literal messages and template uses interleave", () => {
+  const project = createProjectFile({
+    name: "Interleaved",
+    request,
+    idSuffix: "interleaved",
+    createdAt: "2026-07-24T12:00:00.000Z",
+  });
+  project.promptTemplates = [
+    {
+      id: "template_middle",
+      name: "Middle",
+      currentRevisionId: "template-revision_middle-1",
+      revisions: [
+        {
+          id: "template-revision_middle-1",
+          createdAt: "2026-07-24T12:00:00.000Z",
+          content: {
+            kind: "messages",
+            messages: [
+              { role: "user", content: "Second" },
+              { role: "assistant", content: "Third" },
+            ],
+          },
+          variableDefaults: {},
+        },
+      ],
+    },
+  ];
+  project.conversationRevisions[0]!.items = [
+    {
+      kind: "message",
+      message: {
+        id: "message_first",
+        role: "system",
+        content: [{ type: "text", text: "First" }],
+      },
+    },
+    {
+      kind: "template-use",
+      use: {
+        id: "template-use_middle",
+        templateId: "template_middle",
+        templateRevisionId: "template-revision_middle-1",
+        values: {},
+        outputMessageIds: ["message_second", "message_third"],
+      },
+    },
+    {
+      kind: "message",
+      message: {
+        id: "message_fourth",
+        role: "user",
+        content: [{ type: "text", text: "Fourth" }],
+      },
+    },
+  ];
+
+  const draft = projectDraft(parseProjectFile(project));
+  assert.deepEqual(
+    draft.messages.map(({ id, role, content }) => [
+      id,
+      role,
+      content[0]?.type === "text" ? content[0].text : null,
+    ]),
+    [
+      ["message_first", "system", "First"],
+      ["message_second", "user", "Second"],
+      ["message_third", "assistant", "Third"],
+      ["message_fourth", "user", "Fourth"],
+    ],
+  );
+});
+
+test("resolves an unfilled variable into a diagnostic instead of a failure", () => {
+  const project = createProjectFile({
+    name: "Unfilled",
+    request,
+    idSuffix: "unfilled",
+    createdAt: "2026-07-24T12:00:00.000Z",
+  });
+  project.promptTemplates = [
+    {
+      id: "template_open",
+      name: "Open",
+      currentRevisionId: "template-revision_open-1",
+      revisions: [
+        {
+          id: "template-revision_open-1",
+          createdAt: "2026-07-24T12:00:00.000Z",
+          content: { kind: "fragment", text: "Explain {{topic}}." },
+          variableDefaults: {},
+        },
+      ],
+    },
+  ];
+  project.conversationRevisions[0]!.items = [
+    {
+      kind: "template-use",
+      use: {
+        id: "template-use_open",
+        templateId: "template_open",
+        templateRevisionId: "template-revision_open-1",
+        values: {},
+        outputMessageIds: ["message_open"],
+        fragmentRole: "user",
+      },
+    },
+  ];
+
+  // A template use whose value arrives later, or per run, is authorable state.
+  const validated = parseProjectFile(project);
+  const draft = projectDraft(validated);
+  assert.deepEqual(draft.messages, [
+    {
+      id: "message_open",
+      role: "user",
+      content: [{ type: "text", text: "Explain {{topic}}." }],
+    },
+  ]);
+  assert.deepEqual(
+    draft.templateDiagnostics.map(({ itemIndex, templateUseId, diagnostic }) => [
+      itemIndex,
+      templateUseId,
+      diagnostic.code,
+      diagnostic.code === "missing-template-variable" ? diagnostic.name : null,
+    ]),
+    [[0, "template-use_open", "missing-template-variable", "topic"]],
+  );
+
+  // An unrelated edit still saves; the unresolved variable does not lock the
+  // whole document.
+  const saved = updateProjectDraft(validated, {
+    messages: draft.messages,
+    model: "another-model",
+    temperature: draft.temperature,
+    tools: draft.tools,
+    toolMocks: draft.toolMocks,
+    enabledToolIds: draft.enabledToolIds,
+  });
+  assert.equal(saved.defaults.target.model, "another-model");
+  assert.deepEqual(
+    saved.conversationRevisions[0]?.items,
+    validated.conversationRevisions[0]?.items,
+  );
+
+  // A run override supplies the value without changing the saved document.
+  assert.deepEqual(
+    projectDraft(validated, { "template-use_open": { topic: "migrations" } })
+      .messages[0]?.content,
+    [{ type: "text", text: "Explain migrations." }],
   );
 });
 

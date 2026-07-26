@@ -49,8 +49,8 @@ test("renders escapes, explicit empty values, and unmatched braces literally", (
       { empty: "", name: "Ada" },
     ),
     {
-      ok: true,
       text: "{{literal}}  Ada {{unmatched",
+      diagnostics: [],
       occurrences: [
         {
           name: "empty",
@@ -81,8 +81,8 @@ test("uses presence-based precedence and does not recursively render values", ()
     inserted: "{{untouched}}",
   });
   assert.deepEqual(renderTemplateText("{{value}}|{{inserted}}", values), {
-    ok: true,
     text: "|{{untouched}}",
+    diagnostics: [],
     occurrences: [
       {
         name: "value",
@@ -105,8 +105,9 @@ test("returns structured diagnostics for invalid and missing variables", () => {
     "{{ valid }} {{person.name}} {{missing}}",
     {},
   );
-  assert.equal(result.ok, false);
-  if (result.ok) return;
+  // Every unresolved token renders as itself, so the text is unchanged and the
+  // caller still learns exactly what is unresolved.
+  assert.equal(result.text, "{{ valid }} {{person.name}} {{missing}}");
   assert.deepEqual(
     result.diagnostics.map((diagnostic) => ({
       code: diagnostic.code,
@@ -128,8 +129,8 @@ test("renders fragments and message sets with the same parser", () => {
       { name: "Lin" },
     ),
     {
-      ok: true,
       content: { kind: "fragment", text: "Hello Lin" },
+      diagnostics: [],
       variables: [
         {
           name: "name",
@@ -156,8 +157,7 @@ test("renders fragments and message sets with the same parser", () => {
     },
     { audience: "engineers", question: "Why?" },
   );
-  assert.equal(messages.ok, true);
-  if (!messages.ok) return;
+  assert.deepEqual(messages.diagnostics, []);
   assert.deepEqual(messages.content, {
     kind: "messages",
     messages: [
@@ -165,4 +165,45 @@ test("renders fragments and message sets with the same parser", () => {
       { role: "user", content: "Question: Why?" },
     ],
   });
+});
+
+test("renders an unresolved variable as its own token in both content kinds", () => {
+  const fragment = renderTemplateContent(
+    { kind: "fragment", text: "Explain {{topic}} to {{audience}}." },
+    { audience: "" },
+  );
+  assert.deepEqual(fragment.content, {
+    kind: "fragment",
+    // "audience" is present and deliberately empty; "topic" was never given a
+    // value, and the two must not look alike.
+    text: "Explain {{topic}} to .",
+  });
+  assert.deepEqual(
+    fragment.diagnostics.map(({ code }) => code),
+    ["missing-template-variable"],
+  );
+
+  const messages = renderTemplateContent(
+    {
+      kind: "messages",
+      messages: [
+        { role: "system", content: "Voice: {{voice}}" },
+        { role: "user", content: "Question: {{question}}" },
+      ],
+    },
+    { voice: "clear" },
+  );
+  assert.deepEqual(messages.content, {
+    kind: "messages",
+    messages: [
+      { role: "system", content: "Voice: clear" },
+      { role: "user", content: "Question: {{question}}" },
+    ],
+  });
+  assert.deepEqual(
+    messages.diagnostics.map((diagnostic) =>
+      diagnostic.code === "missing-template-variable" ? diagnostic.name : null,
+    ),
+    ["question"],
+  );
 });

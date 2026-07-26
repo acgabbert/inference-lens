@@ -11,6 +11,7 @@ import {
   assertTraceEntryName,
   isTraceEntryName,
   parseRunTraceJson,
+  RunTraceValidationError,
   runStateFromTrace,
   serializeRunTrace,
   traceFileName,
@@ -155,6 +156,107 @@ test("accepts self-contained template provenance and rejects mismatched evidence
     () => serializeRunTrace(trace),
     /does not match resolved input messages/,
   );
+});
+
+test("verifies provenance for a run made with an unresolved variable", () => {
+  const trace = structuredClone(completedTrace());
+  const resolution = {
+    templateUseId: "template-use_trace" as const,
+    templateId: "template_trace" as const,
+    templateRevisionId: "template-revision_trace-1" as const,
+    templateName: "Greeting",
+    content: { kind: "fragment" as const, text: "{{greeting}}" },
+    variableDefaults: {},
+    values: {},
+    outputMessageIds: ["message_trace-test-0" as const],
+    fragmentRole: "user" as const,
+  };
+  // The run went out with the token unresolved. That evidence still has to
+  // verify, because the engine reproduces exactly what was sent.
+  trace.input.messages[0]!.content = [{ type: "text", text: "{{greeting}}" }];
+  trace.input.templateResolutions = [resolution];
+  const started = trace.events[0];
+  assert.equal(started?.type, "run.started");
+  if (started?.type !== "run.started") return;
+  started.input.messages[0]!.content = [{ type: "text", text: "{{greeting}}" }];
+  started.input.templateResolutions = [resolution];
+
+  assert.deepEqual(
+    parseRunTraceJson(serializeRunTrace(trace)).input.templateResolutions,
+    [resolution],
+  );
+});
+
+test("rejects malformed template provenance as an invalid trace", () => {
+  const valid = JSON.parse(serializeRunTrace(completedTrace()));
+  const cases: Array<[string, unknown]> = [
+    ["absent", undefined],
+    ["not an array", "template-use_trace"],
+    ["a null entry", [null]],
+    [
+      "a non-string fragment body",
+      [
+        {
+          templateUseId: "template-use_trace",
+          templateId: "template_trace",
+          templateRevisionId: "template-revision_trace-1",
+          templateName: "Greeting",
+          content: { kind: "fragment", text: 42 },
+          variableDefaults: {},
+          values: {},
+          outputMessageIds: ["message_trace-test-0"],
+          fragmentRole: "user",
+        },
+      ],
+    ],
+    [
+      "an unknown content kind",
+      [
+        {
+          templateUseId: "template-use_trace",
+          templateId: "template_trace",
+          templateRevisionId: "template-revision_trace-1",
+          templateName: "Greeting",
+          content: { kind: "bogus" },
+          variableDefaults: {},
+          values: {},
+          outputMessageIds: ["message_trace-test-0"],
+          fragmentRole: "user",
+        },
+      ],
+    ],
+    [
+      "an unparseable output message ID",
+      [
+        {
+          templateUseId: "template-use_trace",
+          templateId: "template_trace",
+          templateRevisionId: "template-revision_trace-1",
+          templateName: "Greeting",
+          content: { kind: "fragment", text: "Hi" },
+          variableDefaults: {},
+          values: {},
+          outputMessageIds: ["not-a-message-id"],
+          fragmentRole: "user",
+        },
+      ],
+    ],
+  ];
+
+  for (const [label, resolutions] of cases) {
+    const json = structuredClone(valid);
+    if (resolutions === undefined) delete json.input.templateResolutions;
+    else json.input.templateResolutions = resolutions;
+    assert.throws(
+      () => parseRunTraceJson(JSON.stringify(json)),
+      // The envelope rejects the artifact; nothing reaches the renderer and
+      // escapes as an internal error.
+      (error: unknown) =>
+        error instanceof RunTraceValidationError &&
+        error.message.startsWith("Invalid run trace at input.templateResolutions"),
+      `expected a validation error for ${label}`,
+    );
+  }
 });
 
 test("rejects a trace whose projection disagrees with its events", () => {

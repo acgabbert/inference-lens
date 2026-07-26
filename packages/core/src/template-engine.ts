@@ -60,25 +60,31 @@ export interface DiscoveredTemplateVariables {
   diagnostics: InvalidTemplateTokenDiagnostic[];
 }
 
-export type RenderTemplateTextResult =
-  | { ok: true; text: string; occurrences: TemplateVariableOccurrence[] }
-  | { ok: false; diagnostics: TemplateDiagnostic[] };
+/**
+ * Rendering always produces text. An unresolved token is not an error the
+ * engine can decide on its own: a project being authored may legitimately hold
+ * a variable that a run supplies later. Callers apply their own policy to the
+ * returned diagnostics instead of choosing between text and a failure.
+ */
+export interface RenderTemplateTextResult {
+  text: string;
+  occurrences: TemplateVariableOccurrence[];
+  diagnostics: TemplateDiagnostic[];
+}
 
-export type RenderTemplateContentResult =
-  | {
-      ok: true;
-      content:
-        | { kind: "fragment"; text: string }
-        | {
-            kind: "messages";
-            messages: Array<{
-              role: "system" | "user" | "assistant";
-              content: string;
-            }>;
-          };
-      variables: TemplateVariable[];
-    }
-  | { ok: false; diagnostics: TemplateDiagnostic[] };
+export interface RenderTemplateContentResult {
+  content:
+    | { kind: "fragment"; text: string }
+    | {
+        kind: "messages";
+        messages: Array<{
+          role: "system" | "user" | "assistant";
+          content: string;
+        }>;
+      };
+  variables: TemplateVariable[];
+  diagnostics: TemplateDiagnostic[];
+}
 
 function appendText(parts: ParsedTemplatePart[], text: string): void {
   if (!text) return;
@@ -184,15 +190,20 @@ export function discoverTemplateVariables(
   };
 }
 
+function hasValue(
+  values: Readonly<Record<string, string>>,
+  name: string,
+): boolean {
+  return Object.prototype.hasOwnProperty.call(values, name);
+}
+
 function renderParsedText(
   parsed: ParsedTemplateText,
   values: Readonly<Record<string, string>>,
 ): RenderTemplateTextResult {
   const diagnostics: TemplateDiagnostic[] = [...parsed.diagnostics];
   const missing = groupVariables(
-    parsed.occurrences.filter(
-      ({ name }) => !Object.prototype.hasOwnProperty.call(values, name),
-    ),
+    parsed.occurrences.filter(({ name }) => !hasValue(values, name)),
   );
   diagnostics.push(
     ...missing.map(
@@ -204,16 +215,19 @@ function renderParsedText(
       }),
     ),
   );
-  if (diagnostics.length > 0) return { ok: false, diagnostics };
-
   return {
-    ok: true,
+    // An unresolved variable renders as its own token so the gap stays visible
+    // in the composer and in the provider request, instead of collapsing to the
+    // empty string that an intentionally blank value already produces.
     text: parsed.parts
-      .map((part) =>
-        part.kind === "text" ? part.text : values[part.occurrence.name]!,
-      )
+      .map((part) => {
+        if (part.kind === "text") return part.text;
+        const { name } = part.occurrence;
+        return hasValue(values, name) ? values[name]! : `{{${name}}}`;
+      })
       .join(""),
     occurrences: parsed.occurrences,
+    diagnostics,
   };
 }
 
@@ -234,31 +248,23 @@ export function renderTemplateContent(
     parsed.flatMap(({ occurrences }) => occurrences),
   );
   const rendered = parsed.map((item) => renderParsedText(item, values));
-  const diagnostics = rendered.flatMap((result) =>
-    result.ok ? [] : result.diagnostics,
-  );
-  if (diagnostics.length > 0) return { ok: false, diagnostics };
-
-  const texts = rendered.map((result) => {
-    if (!result.ok) throw new Error("Unreachable template render result.");
-    return result.text;
-  });
+  const diagnostics = rendered.flatMap(({ diagnostics: item }) => item);
   return content.kind === "fragment"
     ? {
-        ok: true,
-        content: { kind: "fragment", text: texts[0]! },
+        content: { kind: "fragment", text: rendered[0]!.text },
         variables,
+        diagnostics,
       }
     : {
-        ok: true,
         content: {
           kind: "messages",
           messages: content.messages.map((message, index) => ({
             role: message.role,
-            content: texts[index]!,
+            content: rendered[index]!.text,
           })),
         },
         variables,
+        diagnostics,
       };
 }
 

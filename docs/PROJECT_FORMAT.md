@@ -46,6 +46,16 @@ template's immutable revisions. `values` are owned by the use. Key presence is
 significant: `""` is an intentional empty value, while an absent key has no
 value at that level.
 
+A variable with no value at any level is a normal authoring state, not an
+invalid document. Validation accepts it, and resolution renders the variable as
+its own `{{name}}` token and reports a `missing-template-variable` diagnostic
+naming the item and the use. This keeps the gap visible in the composer and in
+the provider request, distinct from the empty string an intentionally blank
+value produces, and it is what lets a variable be left blank in the file and
+supplied per run. Opening and saving a project never depend on every variable
+being filled; deciding whether an unresolved variable should block a run
+belongs to the surface that offers the run.
+
 A message-set use has one stable `outputMessageIds` entry per template message.
 A fragment use has exactly one output message ID and a required
 `fragmentRole`. In version 3 a fragment supplies the complete text of one

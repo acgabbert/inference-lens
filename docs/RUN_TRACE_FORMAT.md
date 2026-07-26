@@ -16,6 +16,13 @@ input. On import, Trace Lens renders every provenance entry and rejects the
 trace if its emitted IDs, roles, or text differ from those messages. Older
 traces import with no template provenance.
 
+Because provenance is re-derived rather than trusted, the version 3 envelope
+validates its shape before anything reads it: a missing, malformed, or
+partially written `templateResolutions` array is rejected as an invalid trace
+with the offending path named, not surfaced as an internal error. Rendering
+during verification is tolerant of unresolved variables, so a run made with a
+blank variable still verifies against the `{{name}}` token it actually sent.
+
 Trace Lens run traces are immutable, credential-free diagnostic artifacts.
 Version 2 uses deterministic JSON and is stored as `traces/<runId>.json` when a
 run belongs to an open project folder. A terminal ad hoc run can be exported
