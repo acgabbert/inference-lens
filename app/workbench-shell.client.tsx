@@ -228,6 +228,8 @@ export function PaneTabs({ label, tabs, value, onChange }: PaneTabsProps) {
 type ResizableTracePanelProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Optional view switcher, rendered between the toggle and the meta line. */
+  tabs?: ReactNode;
   meta?: ReactNode;
   children: ReactNode;
 };
@@ -235,6 +237,7 @@ type ResizableTracePanelProps = {
 export function ResizableTracePanel({
   open,
   onOpenChange,
+  tabs,
   meta,
   children,
 }: ResizableTracePanelProps) {
@@ -288,7 +291,7 @@ export function ResizableTracePanel({
     >
       {open && (
         <button
-          aria-label="Resize event trace"
+          aria-label="Resize run details"
           className="trace-resize-handle"
           type="button"
           onPointerDown={beginResize}
@@ -306,8 +309,9 @@ export function ResizableTracePanel({
           <span className="trace-chevron" aria-hidden="true">
             {open ? "⌄" : "⌃"}
           </span>
-          Event trace
+          Run details
         </button>
+        {tabs}
         {meta}
       </header>
       {open && <div className="trace-panel-content">{children}</div>}

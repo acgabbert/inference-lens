@@ -74,6 +74,6 @@ test("standalone Node server renders the Trace Lens workbench", async (t) => {
   assert.match(html, /Inspect every model run/);
   assert.match(html, /Run request/);
   assert.match(html, /Download diagnostics/);
-  assert.match(html, /Event trace/);
+  assert.match(html, /Run details/);
   assert.doesNotMatch(html, /Your site is taking shape/);
 });
