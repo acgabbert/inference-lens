@@ -93,6 +93,8 @@ test("a profile that cannot call tools says so where the tools are listed", asyn
   }));
 
   assert.match(html, /tool-manifest blocked/);
+  assert.match(html, /1 tool is selected/);
+  assert.doesNotMatch(html, /1 tool will be sent/);
   assert.match(html, /does not allow tool calling/);
   assert.match(html, /Allow tool calling/);
 });

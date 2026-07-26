@@ -36,23 +36,30 @@ export function ToolsPane({
   const selectedProjectTools = tools.filter(({ id }) =>
     enabledToolIds.includes(id),
   );
-  const sentCount = selectedProjectTools.length + requestTools.length;
+  const selectedCount = selectedProjectTools.length + requestTools.length;
   const profileName = activeProfileName.trim() || "Untitled profile";
-  const state = sentCount === 0 ? "empty" : toolsEnabled ? "ready" : "blocked";
+  const state =
+    selectedCount === 0 ? "empty" : toolsEnabled ? "ready" : "blocked";
 
   return (
     <>
       <section
-        aria-label="Tools sent with this request"
+        aria-label="Tool selection for this request"
         className={`tool-manifest ${state}`}
       >
         <header>
           <div>
             <span className="eyebrow">Next request</span>
             <strong>
-              {sentCount === 0
+              {selectedCount === 0
                 ? "No tools will be sent"
-                : `${sentCount} ${sentCount === 1 ? "tool" : "tools"} will be sent`}
+                : state === "blocked"
+                  ? `${selectedCount} ${
+                      selectedCount === 1 ? "tool is" : "tools are"
+                    } selected`
+                  : `${selectedCount} ${
+                      selectedCount === 1 ? "tool" : "tools"
+                    } will be sent`}
             </strong>
             <p>
               {state === "empty"
@@ -72,7 +79,7 @@ export function ToolsPane({
             </button>
           )}
         </header>
-        {sentCount > 0 && (
+        {selectedCount > 0 && (
           <ul className="tool-manifest-list">
             {selectedProjectTools.map((tool) => (
               <li key={tool.id}>

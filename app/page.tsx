@@ -1608,6 +1608,8 @@ function HomeContent() {
     connectionMapped: Boolean(mappedProfileId),
     activeProfileName: activeProfile.name,
     activeProfileEndpoint: activeProfile.endpoint,
+    selectedToolCount,
+    toolsEnabled: activeCapabilities.tools,
     ...(activeConnectionRequirement
       ? { requiredEndpoint: activeConnectionRequirement.endpoint }
       : {}),
@@ -1628,6 +1630,7 @@ function HomeContent() {
   function resolveReadiness(kind: RunReadinessActionKind): void {
     if (kind === "map-profile") project.mapActiveProfile();
     else if (kind === "open-connections") setConnectionDrawerOpen(true);
+    else if (kind === "review-tools") setRequestTab("tools");
     else setRequestTab("messages");
   }
 
@@ -1647,6 +1650,7 @@ function HomeContent() {
           !isRequestActive
         ) {
           event.preventDefault();
+          if (readiness?.blocked) return;
           if (
             runState?.status.kind === "paused" &&
             runState.status.reason === "attempt_failed"

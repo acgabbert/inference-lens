@@ -9,6 +9,8 @@ const ready = {
   activeProfileName: "Local llama",
   activeProfileEndpoint: "http://127.0.0.1:8080/v1",
   requiredEndpoint: "http://127.0.0.1:8080/v1",
+  selectedToolCount: 0,
+  toolsEnabled: true,
   templateIssues: [],
 };
 
@@ -20,6 +22,8 @@ test("a runnable project reports nothing", () => {
       connectionMapped: false,
       activeProfileName: "Local llama",
       activeProfileEndpoint: "http://127.0.0.1:8080/v1",
+      selectedToolCount: 0,
+      toolsEnabled: true,
       templateIssues: [],
     }),
     undefined,
@@ -149,4 +153,31 @@ test("a mapped but mismatched endpoint advises without blocking the run", () => 
     { label: "Project expects", value: "https://api.openai.com/v1" },
     { label: "Requests go to", value: "http://127.0.0.1:8080/v1" },
   ]);
+});
+
+test("selected tools block a profile that cannot send them", () => {
+  const readiness = runReadiness({
+    ...ready,
+    selectedToolCount: 2,
+    toolsEnabled: false,
+  });
+
+  assert.equal(readiness?.blocked, true);
+  assert.equal(readiness?.headline, "2 selected tools cannot be sent");
+  assert.deepEqual(
+    readiness?.actions.map(({ kind }) => kind),
+    ["open-connections", "review-tools"],
+  );
+});
+
+test("tool capability block outranks an endpoint advisory", () => {
+  const readiness = runReadiness({
+    ...ready,
+    requiredEndpoint: "https://api.openai.com/v1",
+    selectedToolCount: 1,
+    toolsEnabled: false,
+  });
+
+  assert.equal(readiness?.headline, "1 selected tool cannot be sent");
+  assert.equal(readiness?.blocked, true);
 });
