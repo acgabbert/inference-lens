@@ -105,7 +105,8 @@ test("a blocked run states its reason and its fix in the request pane", async ()
       readiness: {
         blocked: true,
         headline: "This project is not connected to a local profile yet",
-        detail: "A project never carries a credential.",
+        detail: "Choose the local profile it should run against.",
+        explanation: "A project never carries a credential.",
         summary: "Map this project's connection to a local profile before running.",
         facts: [
           { label: "Project expects", value: "https://api.openai.com/v1" },
@@ -125,6 +126,29 @@ test("a blocked run states its reason and its fix in the request pane", async ()
   assert.match(html, /https:\/\/api\.openai\.com\/v1/);
   assert.match(html, /http:\/\/127\.0\.0\.1:8080\/v1/);
   assert.match(html, /Use &quot;Local llama&quot;/);
+  // The rule behind the block is held in a disclosure, not in the first line.
+  assert.match(html, /<details class="run-readiness-why"/);
+  assert.match(html, /A project never carries a credential\./);
+});
+
+test("a notice without an explanation renders no disclosure", async () => {
+  const html = await render(
+    "/app/run-readiness-notice.client.tsx",
+    "RunReadinessNotice",
+    {
+      readiness: {
+        blocked: false,
+        headline: "Running against a different endpoint",
+        detail: "Requests go elsewhere.",
+        summary: "",
+        facts: [],
+        actions: [],
+      },
+      onAction: () => {},
+    },
+  );
+
+  assert.doesNotMatch(html, /run-readiness-why/);
 });
 
 test("nothing renders when the run is ready", async () => {
@@ -135,4 +159,70 @@ test("nothing renders when the run is ready", async () => {
   );
 
   assert.equal(html, "");
+});
+
+function responseOutput(overrides) {
+  return {
+    output: "",
+    reasoning: "",
+    status: "complete",
+    runState: { status: { kind: "completed" }, turns: [], toolResults: [] },
+    isRequestActive: false,
+    markdownPreview: true,
+    outputFollowing: true,
+    outputScrollRef: { current: null },
+    completedToolCalls: [],
+    toolResultDrafts: {},
+    traceStorage: null,
+    transcript: [],
+    nonBranchableMessageIds: new Set(),
+    onMarkdownPreviewChange: () => {},
+    onOutputScroll: () => {},
+    onJumpToLatest: () => {},
+    onToolResultDraftChange: () => {},
+    onContinue: () => {},
+    onRetry: () => {},
+    onSaveTrace: () => {},
+    onEditFromHere: () => {},
+    ...overrides,
+  };
+}
+
+const finishedTranscript = [
+  {
+    id: "message_user",
+    role: "user",
+    content: [{ type: "text", text: "Explain **caching**." }],
+  },
+  {
+    id: "message_answer",
+    role: "assistant",
+    content: [
+      { type: "text", text: "## Caching\n\nIt stores a `value` for reuse." },
+    ],
+  },
+];
+
+test("a finished turn keeps the rendering the streamed answer had", async () => {
+  const html = await render(
+    "/app/response-output.client.tsx",
+    "ResponseOutput",
+    responseOutput({ transcript: finishedTranscript }),
+  );
+
+  assert.match(html, /<h2>Caching<\/h2>/);
+  assert.match(html, /<code class="markdown-inline-code">value<\/code>/);
+  // Authored text is what was sent, so it is shown verbatim.
+  assert.match(html, /Explain \*\*caching\*\*\./);
+});
+
+test("raw rendering leaves the finished answer verbatim", async () => {
+  const html = await render(
+    "/app/response-output.client.tsx",
+    "ResponseOutput",
+    responseOutput({ transcript: finishedTranscript, markdownPreview: false }),
+  );
+
+  assert.doesNotMatch(html, /<h2>Caching<\/h2>/);
+  assert.match(html, /## Caching/);
 });

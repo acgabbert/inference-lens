@@ -21,7 +21,7 @@ export function RunReadinessNotice({
   onAction,
 }: RunReadinessNoticeProps) {
   if (!readiness) return null;
-  const { blocked, headline, detail, facts, actions } = readiness;
+  const { blocked, headline, detail, explanation, facts, actions } = readiness;
   return (
     <div
       className={blocked ? "run-readiness blocked" : "run-readiness advisory"}
@@ -33,6 +33,19 @@ export function RunReadinessNotice({
       <div className="run-readiness-copy">
         <strong>{headline}</strong>
         <p>{detail}</p>
+        {explanation && (
+          // A disclosure rather than a title attribute: a native tooltip is
+          // invisible on touch and unreachable from the keyboard.
+          <details className="run-readiness-why">
+            <summary>
+              <span className="run-readiness-why-mark" aria-hidden="true">
+                i
+              </span>
+              Why
+            </summary>
+            <p>{explanation}</p>
+          </details>
+        )}
         {facts.length > 0 && (
           <dl className="run-readiness-facts">
             {facts.map((fact) => (

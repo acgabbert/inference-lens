@@ -45,14 +45,17 @@ test("an unmapped project names both endpoints and offers the mapping", () => {
   );
   // The mismatch is the surprising part of this state, so it is said before
   // the user maps a profile, not after the request has gone somewhere else.
-  assert.match(readiness.detail, /does not use the endpoint this project declares/);
+  assert.match(readiness.detail, /calls a different endpoint than this project declares/);
+  // The rule behind it is held back so the line saying what to do stays first.
+  assert.match(readiness.explanation ?? "", /never carries a credential/);
 });
 
 test("an unmapped project with a matching endpoint does not warn about a mismatch", () => {
   const readiness = runReadiness({ ...ready, connectionMapped: false });
 
   assert.ok(readiness?.blocked);
-  assert.doesNotMatch(readiness.detail, /does not use the endpoint/);
+  assert.doesNotMatch(readiness.detail, /different endpoint/);
+  assert.equal(readiness.detail, "Choose the local profile it should run against.");
 });
 
 test("an untitled profile is still named in the offered action", () => {

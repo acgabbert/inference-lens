@@ -1921,6 +1921,24 @@ textarea:focus {
   padding: 0.75rem;
 }
 
+/* Verbatim text keeps the line breaks it was sent with; markdown owns its own
+   block spacing and must not also be pre-wrapped. */
+.transcript-message > p {
+  margin: 0 0 0.6rem;
+  font-size: 13px;
+  line-height: 1.72;
+  white-space: pre-wrap;
+}
+
+.transcript-message > p:last-child,
+.transcript-message > .markdown-body:last-child {
+  margin-bottom: 0;
+}
+
+.transcript-message > .markdown-body {
+  margin-bottom: 0.6rem;
+}
+
 .transcript-message-header {
   display: flex;
   align-items: center;
@@ -2006,10 +2024,25 @@ textarea:focus {
   font-size: 13px;
 }
 
+/* Tailwind's preflight sets `list-style: none` on every list, which left
+   markdown lists indented but unmarked. Restored here, not by weakening
+   preflight, because only these lists are prose. */
 .markdown-body ul,
 .markdown-body ol {
   margin: 0 0 12px;
   padding-left: 22px;
+}
+
+.markdown-body ul {
+  list-style: disc outside;
+}
+
+.markdown-body ol {
+  list-style: decimal outside;
+}
+
+.markdown-body li > ul {
+  list-style: circle outside;
 }
 
 .markdown-body li {
@@ -3060,6 +3093,47 @@ main {
 .run-readiness-copy > p {
   margin: 4px 0 0;
   color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.run-readiness-why {
+  margin-top: 6px;
+}
+
+.run-readiness-why > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
+  cursor: pointer;
+  list-style: none;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.run-readiness-why > summary::-webkit-details-marker {
+  display: none;
+}
+
+.run-readiness-why[open] > summary {
+  color: var(--text-secondary);
+}
+
+.run-readiness-why-mark {
+  width: 13px;
+  height: 13px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.run-readiness-why > p {
+  margin: 5px 0 0;
+  color: var(--text-muted);
   font-size: 10px;
   line-height: 1.5;
 }
