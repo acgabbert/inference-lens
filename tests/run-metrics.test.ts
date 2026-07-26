@@ -59,6 +59,7 @@ const resolvedInput: ResolvedRunInput = {
   conversationId: createEntityId("conversation", "metrics"),
   conversationRevisionId: createEntityId("revision", "metrics"),
   ...turnInput,
+  templateResolutions: [],
   resolvedAt: "2026-07-25T12:00:00.000Z",
 };
 

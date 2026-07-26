@@ -74,6 +74,7 @@ function traceFixture(spec: {
     conversationId: createEntityId("conversation", spec.suffix),
     conversationRevisionId: createEntityId("revision", spec.suffix),
     ...turnInput,
+    templateResolutions: [],
     resolvedAt: startedAt,
   };
 

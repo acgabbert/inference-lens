@@ -23,7 +23,8 @@ export type EntityIdKind =
   | "tool-call"
   | "tool-result"
   | "template"
-  | "template-revision";
+  | "template-revision"
+  | "template-use";
 
 export type EntityId<Kind extends EntityIdKind> = `${Kind}_${string}`;
 
@@ -43,6 +44,7 @@ export type ToolCallId = EntityId<"tool-call">;
 export type ToolResultId = EntityId<"tool-result">;
 export type PromptTemplateId = EntityId<"template">;
 export type PromptTemplateRevisionId = EntityId<"template-revision">;
+export type PromptTemplateUseId = EntityId<"template-use">;
 
 export function createEntityId<Kind extends EntityIdKind>(
   kind: Kind,
@@ -166,6 +168,29 @@ export interface ResolvedProviderTarget {
   capabilities: ProviderCapabilities;
 }
 
+export type ResolvedTemplateContent =
+  | { kind: "fragment"; text: string }
+  | {
+      kind: "messages";
+      messages: Array<{
+        role: "system" | "user" | "assistant";
+        content: string;
+      }>;
+    };
+
+/** Self-contained, secret-free provenance for one pinned authored template use. */
+export interface ResolvedTemplateUse {
+  templateUseId: PromptTemplateUseId;
+  templateId: PromptTemplateId;
+  templateRevisionId: PromptTemplateRevisionId;
+  templateName: string;
+  content: ResolvedTemplateContent;
+  variableDefaults: Record<string, string>;
+  values: Record<string, string>;
+  outputMessageIds: MessageId[];
+  fragmentRole?: "system" | "user" | "assistant";
+}
+
 /**
  * A serializable, secret-free snapshot of the inputs selected when a run
  * starts. Credentials are supplied through ProviderRuntime instead.
@@ -176,6 +201,7 @@ export interface ResolvedRunInput {
   conversationRevisionId: ConversationRevisionId;
   target: ResolvedProviderTarget;
   messages: ConversationMessage[];
+  templateResolutions: ResolvedTemplateUse[];
   options: InferenceOptions;
   tools: ToolDefinition[];
   resolvedAt: string;
@@ -441,7 +467,7 @@ export interface RunState {
 }
 
 export interface RunTrace {
-  schemaVersion: 1 | 2;
+  schemaVersion: 1 | 2 | 3;
   runId: RunId;
   input: ResolvedRunInput;
   status: TerminalRunStatus;
