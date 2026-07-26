@@ -87,9 +87,12 @@ export function ProjectTemplatesPane({
       template.id !== selected?.id &&
       template.name.trim().toLocaleLowerCase() === name.trim().toLocaleLowerCase(),
   );
-  const sensitiveAssignedVariables = discovery.variables.filter(
-    ({ name }) =>
-      isSensitiveTemplateVariableName(name) && Object.hasOwn(defaults, name),
+  // A secret-like name can never receive a value at any level, so a template
+  // that references one is unrunnable however it is saved. Flag it on discovery
+  // rather than only when a default is assigned, or the author only finds out
+  // at the point the run is refused.
+  const sensitiveVariables = discovery.variables.filter(({ name }) =>
+    isSensitiveTemplateVariableName(name),
   );
 
   function selectTemplate(template: PromptTemplate): void {
@@ -211,7 +214,7 @@ export function ProjectTemplatesPane({
                   disabled={
                     !name.trim() ||
                     discovery.diagnostics.length > 0 ||
-                    sensitiveAssignedVariables.length > 0
+                    sensitiveVariables.length > 0
                   }
                   type="button"
                   onClick={() =>
@@ -235,9 +238,13 @@ export function ProjectTemplatesPane({
                 {diagnostic.message}
               </div>
             ))}
-            {sensitiveAssignedVariables.map(({ name }) => (
+            {sensitiveVariables.map(({ name }) => (
               <div className="template-diagnostic" key={name}>
-                Secret-like variable &quot;{name}&quot; cannot have a portable default.
+                Secret-like variable <code>{`{{${name}}}`}</code> can never be
+                given a value: defaults, saved use values, and run-only
+                overrides all reject it, so a conversation using this template
+                could not run. Rename it — credentials reach the provider
+                through the connection profile, not through project templates.
               </div>
             ))}
 
@@ -561,7 +568,11 @@ export function TemplateUseCard({
               </div>
               {sensitive ? (
                 <div className="template-diagnostic">
-                  Secret-like variables cannot receive portable or run-only values.
+                  Secret-like variables cannot receive portable or run-only
+                  values, so this use cannot run. Rename{" "}
+                  <code>{`{{${variable.name}}}`}</code> in the template, or
+                  detach this use and edit the message directly. Credentials
+                  reach the provider through the connection profile.
                 </div>
               ) : (
                 <>

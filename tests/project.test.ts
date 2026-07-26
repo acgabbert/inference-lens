@@ -5,6 +5,7 @@ import {
   PROJECT_FILE_NAME,
   ProjectValidationError,
   appendPromptTemplateRevision,
+  authoredItemsForMessages,
   createBranchRevision,
   createProjectFile,
   createPromptTemplate,
@@ -18,6 +19,8 @@ import {
   renamePromptTemplate,
   removePromptTemplateRevision,
   removePromptTemplateUse,
+  resolveProjectRevision,
+  sameConversationMessages,
   serializeProjectFile,
   setPromptTemplateCurrentRevision,
   updateProjectDraft,
@@ -1028,4 +1031,189 @@ test("rejects mock and template references outside their owners", () => {
     () => parseProjectFile(project),
     /does not belong to this template/,
   );
+});
+
+function templateBranchProject() {
+  const project = createProjectFile({
+    name: "Override branch",
+    request,
+    idSuffix: "override-branch",
+    createdAt: "2026-07-26T12:00:00.000Z",
+  });
+  project.promptTemplates = [
+    {
+      id: "template_pair",
+      name: "Pair",
+      currentRevisionId: "template-revision_pair-1",
+      revisions: [
+        {
+          id: "template-revision_pair-1",
+          createdAt: "2026-07-26T12:00:00.000Z",
+          content: {
+            kind: "messages",
+            messages: [
+              { role: "system", content: "System {{topic}}" },
+              { role: "user", content: "User {{topic}}" },
+            ],
+          },
+          variableDefaults: { topic: "saved" },
+        },
+      ],
+    },
+  ];
+  project.conversationRevisions[0]!.items = [
+    {
+      kind: "template-use",
+      use: {
+        id: "template-use_pair",
+        templateId: "template_pair",
+        templateRevisionId: "template-revision_pair-1",
+        values: {},
+        outputMessageIds: ["message_pair-system", "message_pair-user"],
+      },
+    },
+  ];
+  return parseProjectFile(project);
+}
+
+test("compares conversation messages by value, not by serialized key order", () => {
+  const reordered = {
+    role: "assistant" as const,
+    content: [{ type: "text" as const, text: "Answer" }],
+    id: "message_answer" as const,
+  };
+  const declared = {
+    id: "message_answer" as const,
+    content: [{ type: "text" as const, text: "Answer" }],
+    role: "assistant" as const,
+  };
+  assert.notEqual(JSON.stringify([reordered]), JSON.stringify([declared]));
+  assert.equal(sameConversationMessages([reordered], [declared]), true);
+  assert.equal(
+    sameConversationMessages(
+      [reordered],
+      [{ ...declared, content: [{ type: "text", text: "Different" }] }],
+    ),
+    false,
+  );
+  assert.equal(sameConversationMessages([reordered], []), false);
+});
+
+test("branches a template-backed conversation whose messages came off run state", () => {
+  const validated = templateBranchProject();
+  const resolved = projectDraft(validated).messages;
+  // Run state hands messages back with their own key order; validation rebuilds
+  // them in schema order. The branch must not read that as an edit.
+  const fromRunState = resolved.map((message) => ({
+    role: message.role,
+    content: message.content,
+    id: message.id,
+  })) as typeof resolved;
+  assert.notEqual(JSON.stringify(fromRunState), JSON.stringify(resolved));
+
+  const branched = createBranchRevision(validated, {
+    conversationId: validated.conversations[0]!.id,
+    parentRevisionId: validated.conversationRevisions[0]!.id,
+    messages: fromRunState,
+    idSuffix: "child",
+    createdAt: "2026-07-26T12:01:00.000Z",
+  });
+  assert.deepEqual(branched.conversationRevisions.at(-1)?.items, [
+    validated.conversationRevisions[0]!.items[0],
+  ]);
+
+  // The same comparison the run path applies before sending a request.
+  const child = branched.conversationRevisions.at(-1)!;
+  const prepared = prepareProjectRevisionRun(branched, child);
+  assert.equal(prepared.ok, true);
+  if (!prepared.ok) return;
+  assert.equal(sameConversationMessages(fromRunState, prepared.messages), true);
+});
+
+test("branches with the run overrides the branched messages were produced with", () => {
+  const validated = templateBranchProject();
+  const runOverrides = { "template-use_pair": { topic: "overridden" } };
+  const overridden = projectDraft(validated, runOverrides).messages;
+  assert.equal(
+    overridden[0]?.content[0]?.type === "text" &&
+      overridden[0].content[0].text,
+    "System overridden",
+  );
+
+  // Without the overrides the parent resolves to the saved text and the
+  // transcript reads as edited template output.
+  assert.throws(
+    () =>
+      createBranchRevision(validated, {
+        conversationId: validated.conversations[0]!.id,
+        parentRevisionId: validated.conversationRevisions[0]!.id,
+        messages: overridden,
+      }),
+    /generated text cannot be edited/,
+  );
+
+  const branched = createBranchRevision(validated, {
+    conversationId: validated.conversations[0]!.id,
+    parentRevisionId: validated.conversationRevisions[0]!.id,
+    messages: overridden,
+    runOverrides,
+    idSuffix: "child",
+    createdAt: "2026-07-26T12:01:00.000Z",
+  });
+  assert.deepEqual(branched.conversationRevisions.at(-1)?.items, [
+    validated.conversationRevisions[0]!.items[0],
+  ]);
+});
+
+test("previews a pending branch as authored items", () => {
+  const validated = templateBranchProject();
+  const resolved = projectDraft(validated).messages;
+  const assistant = {
+    id: "message_assistant" as const,
+    role: "assistant" as const,
+    content: [{ type: "text" as const, text: "Answer" }],
+  };
+  const revision = validated.conversationRevisions[0]!;
+
+  assert.deepEqual(
+    authoredItemsForMessages(validated, revision, [...resolved, assistant]),
+    [revision.items[0], { kind: "message", message: assistant }],
+  );
+
+  // Truncating inside the message set is what the composer must not render as
+  // a use; the caller falls back to literal messages when this throws.
+  assert.throws(
+    () => authoredItemsForMessages(validated, revision, [resolved[0]!]),
+    /template use is atomic/,
+  );
+});
+
+test("explains that a secret-like variable can never be filled", () => {
+  let project = createProjectFile({
+    name: "Secret template",
+    request,
+    idSuffix: "secret",
+    createdAt: "2026-07-26T12:00:00.000Z",
+  });
+  project = createPromptTemplate(project, {
+    name: "Leaky",
+    content: { kind: "fragment", text: "Key is {{api_key}}." },
+    idSuffix: "leaky",
+    revisionIdSuffix: "leaky-1",
+    createdAt: "2026-07-26T12:00:01.000Z",
+  });
+  project = insertPromptTemplateUse(project, {
+    conversationRevisionId: project.defaults.conversationRevisionId,
+    templateId: "template_leaky",
+    fragmentRole: "user",
+    idSuffix: "leaky",
+    outputMessageIdSuffixes: ["leaky-out"],
+  });
+  const revision = project.conversationRevisions.find(
+    ({ id }) => id === project.defaults.conversationRevisionId,
+  )!;
+  const [diagnostic] = resolveProjectRevision(project, revision).diagnostics;
+  assert.match(diagnostic!.diagnostic.message, /secret-like/);
+  assert.match(diagnostic!.diagnostic.message, /Rename it/);
+  assert.equal(prepareProjectRevisionRun(project, revision).ok, false);
 });

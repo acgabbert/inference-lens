@@ -14,6 +14,7 @@ import type {
 } from "../packages/core/src/types";
 import {
   appendPromptTemplateRevision,
+  authoredItemsForMessages,
   createBranchRevision,
   createProjectFile,
   createPromptTemplate,
@@ -25,6 +26,7 @@ import {
   removePromptTemplateUse,
   renamePromptTemplate,
   resolveProjectRevision,
+  sameConversationMessages,
   updateProjectDraft,
   updatePromptTemplateUseToLatest,
   updatePromptTemplateUseValues,
@@ -1105,6 +1107,7 @@ function HomeContent() {
             conversationId: parent.conversationId,
             parentRevisionId: parent.id,
             messages: request.messages,
+            runOverrides: templateRunOverrides,
           });
           const revision = branchedProject.conversationRevisions.at(-1)!;
           project.adoptBranchRevision(branchedProject);
@@ -1156,7 +1159,7 @@ function HomeContent() {
       );
       if (
         hasTemplateUses &&
-        JSON.stringify(request.messages) !== JSON.stringify(prepared.messages)
+        !sameConversationMessages(request.messages, prepared.messages)
       ) {
         project.setError(
           "This template-backed conversation differs from its generated messages. Detach the template use before editing generated text.",
@@ -1561,7 +1564,30 @@ function HomeContent() {
       ["completed", "cancelled", "failed"].includes(runState.status.kind),
   );
   const requestPreview = templateRequestPreview();
+  // A pending branch has already truncated the draft messages, and those — not
+  // the parent revision's items — are what a run will send. Render them as the
+  // authored items the branch will create, so template uses still read as uses,
+  // and fall back to literal messages when the branch point is one the core
+  // would refuse.
+  const branchPreviewItems = (): ProjectConversationItem[] | undefined => {
+    if (!branchContext || !projectFile) return undefined;
+    const parent = projectFile.conversationRevisions.find(
+      ({ id }) => id === branchContext.parentConversationRevisionId,
+    );
+    if (!parent) return undefined;
+    try {
+      return authoredItemsForMessages(
+        projectFile,
+        parent,
+        messages,
+        templateRunOverrides,
+      );
+    } catch {
+      return messages.map((message) => ({ kind: "message", message }));
+    }
+  };
   const composerItems: ProjectConversationItem[] =
+    branchPreviewItems() ??
     activeProjectRevision?.items ??
     messages.map((message) => ({ kind: "message", message }));
 

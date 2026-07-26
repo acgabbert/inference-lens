@@ -937,6 +937,25 @@ export function serializeProjectFile(project: ProjectFileV3): string {
   return `${JSON.stringify(stableJsonValue(validated), null, 2)}\n`;
 }
 
+/**
+ * Compares conversation messages by value rather than by serialized shape.
+ *
+ * Validation rebuilds every message through the schema, which emits keys in
+ * declaration order, while messages read back off run state keep the order they
+ * were constructed in. Both describe the same message, so any comparison of the
+ * two must ignore key order — a raw `JSON.stringify` of each side reports a
+ * difference that does not exist.
+ */
+export function sameConversationMessages(
+  left: readonly ConversationMessage[],
+  right: readonly ConversationMessage[],
+): boolean {
+  return (
+    JSON.stringify(stableJsonValue(left)) ===
+    JSON.stringify(stableJsonValue(right))
+  );
+}
+
 export function parseProjectJson(text: string): ProjectFileV3 {
   let value: unknown;
   try {
@@ -1108,7 +1127,17 @@ export function resolveProjectRevision(
       ...rendered.diagnostics.map((diagnostic) => ({
         itemIndex,
         templateUseId: item.use.id,
-        diagnostic,
+        // The engine reports only that a variable is unfilled. For a
+        // secret-like name that is misleading: no level will accept a value, so
+        // the author needs to know the name itself is the blocker.
+        diagnostic:
+          diagnostic.code === "missing-template-variable" &&
+          isSensitiveTemplateVariableName(diagnostic.name)
+            ? {
+                ...diagnostic,
+                message: `Template variable "${diagnostic.name}" is secret-like and can never be given a value. Rename it in the template; credentials are supplied through the connection, not the project.`,
+              }
+            : diagnostic,
       })),
     );
     if (rendered.content.kind === "fragment") {
@@ -1240,7 +1269,7 @@ export function updateProjectDraft(
     );
     if (hasTemplateUse) {
       const resolved = resolveProjectRevisionMessages(project, activeRevision);
-      if (JSON.stringify(resolved) !== JSON.stringify(draft.messages)) {
+      if (!sameConversationMessages(resolved, draft.messages)) {
         throw new ProjectValidationError([
           {
             code: "custom",
@@ -1290,6 +1319,13 @@ export interface CreateBranchRevisionOptions {
   parentRevisionId: ConversationRevisionId;
   messages: ConversationMessage[];
   items?: ProjectConversationItem[];
+  /**
+   * The overrides the branched messages were produced with. Matching a
+   * transcript against the parent requires resolving the parent the same way
+   * the run did; without them an overridden variable reads as edited template
+   * output and the branch is refused.
+   */
+  runOverrides?: TemplateRunOverrides;
   idSuffix?: string;
   createdAt?: string;
 }
@@ -1305,6 +1341,7 @@ export function createBranchRevision(
     parentRevisionId,
     messages,
     items,
+    runOverrides = {},
     idSuffix = crypto.randomUUID(),
     createdAt = new Date().toISOString(),
   }: CreateBranchRevisionOptions,
@@ -1325,7 +1362,7 @@ export function createBranchRevision(
     id: createEntityId("revision", idSuffix),
     conversationId,
     parentRevisionId,
-    items: items ?? authoredBranchItems(project, parent, messages),
+    items: items ?? authoredBranchItems(project, parent, messages, runOverrides),
     createdAt,
   };
   return parseProjectFile({
@@ -1342,8 +1379,9 @@ function authoredBranchItems(
   project: ProjectFileV3,
   parent: ProjectConversationRevision,
   messages: ConversationMessage[],
+  runOverrides: TemplateRunOverrides = {},
 ): ProjectConversationItem[] {
-  const resolved = resolveProjectRevision(project, parent);
+  const resolved = resolveProjectRevision(project, parent, runOverrides);
   const resolvedById = new Map(
     resolved.messages.map((message) => [message.id, message]),
   );
@@ -1378,11 +1416,12 @@ function authoredBranchItems(
       const completeAndUnchanged =
         emittedMessages.length === outputIds.length &&
         emittedMessages.every((emitted, emittedIndex) => {
-          const expectedId = outputIds[emittedIndex];
+          const expectedId = outputIds[emittedIndex]!;
+          const expected = resolvedById.get(expectedId);
           return (
             emitted.id === expectedId &&
-            JSON.stringify(stableJsonValue(emitted)) ===
-              JSON.stringify(stableJsonValue(resolvedById.get(expectedId)))
+            Boolean(expected) &&
+            sameConversationMessages([emitted], [expected!])
           );
         });
       if (!completeAndUnchanged) {
@@ -1402,6 +1441,23 @@ function authoredBranchItems(
     branchItems.push({ kind: "message", message: structuredClone(message) });
   }
   return branchItems;
+}
+
+/**
+ * The authored items a branch from `revision` would produce for `messages`.
+ *
+ * Exposed so a composer can show a pending branch as the authored items it will
+ * become — template uses preserved as uses — instead of guessing. Throws for the
+ * same reasons the branch itself would, so callers that render this
+ * speculatively should be prepared to fall back to literal messages.
+ */
+export function authoredItemsForMessages(
+  project: ProjectFileV3,
+  revision: ProjectConversationRevision,
+  messages: ConversationMessage[],
+  runOverrides: TemplateRunOverrides = {},
+): ProjectConversationItem[] {
+  return authoredBranchItems(project, revision, messages, runOverrides);
 }
 
 export interface PromptTemplateUsage {

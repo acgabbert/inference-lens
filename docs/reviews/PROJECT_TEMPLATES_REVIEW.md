@@ -25,6 +25,14 @@ set up to prevent. Four defects reached the branch; one of them makes branching
 a template-backed conversation impossible, and it would have been caught by the
 first browser run.
 
+## Status
+
+All four defects below are **fixed** on
+`claude/project-templates-review-ooe4od`, with regression tests and a second
+browser pass. See [Resolution](#resolution) for what changed and what was
+re-verified. The separation and testing observations stand — the hook extraction
+was not done.
+
 ---
 
 ## What holds up
@@ -308,19 +316,98 @@ flat from 1 to 31 revisions rather than growing with document size. Some of the
 baseline is the driver's own typing overhead. It is worth knowing, but it is not
 a scaling problem and should not gate this work.
 
-## Suggested order of work
+## Resolution
 
-1. Replace both `JSON.stringify` message comparisons with `stableJsonValue`
-   (`page.tsx:1160`, `project.ts:1243`). Unblocks defect 1.
-2. Thread run overrides through `editFromHere` → `createBranchRevision` →
-   `authoredBranchItems`. Fixes defect 2.
-3. Make the composer render the pending-branch message list rather than the
-   parent revision's items. Fixes defect 3.
-4. Extract `use-project-templates.client.ts` and unit-test the branch-on-edit
+Applied on `claude/project-templates-review-ooe4od`, which merges the template
+branch and fixes on top of it. `npm test` (178 core + 12 render), `npm run
+lint`, and `tsc -p tsconfig.json` are clean.
+
+### Defect 1 — key-order-sensitive comparison
+
+Added `sameConversationMessages` to `project.ts`, which compares through the
+existing `stableJsonValue` normalizer, and used it at all three sites: the run
+guard in `page.tsx`, the draft guard in `updateProjectDraft`, and the per-message
+check inside `authoredBranchItems` (which already normalized, and now shares one
+helper). The doc comment records *why* the two sides disagree, so the next
+comparison written against run state does not reintroduce it.
+
+### Defect 2 — overrides not threaded through branching
+
+`CreateBranchRevisionOptions` gained `runOverrides`, passed down to
+`authoredBranchItems` so the parent is resolved the same way the run resolved
+it. `page.tsx` passes `templateRunOverrides` at the branch call site.
+
+### Defect 3 — composer ignores a pending branch
+
+Exported `authoredItemsForMessages`, and `composerItems` now prefers a
+branch preview built from the truncated draft when a branch is pending, falling
+back to literal messages if the core would refuse that branch point. Template
+uses still render as use cards during a pending branch rather than flattening.
+
+### Defect 4 — secret-like variable dead end
+
+The authoring pane now flags a secret-like variable on discovery rather than
+only when a default is assigned, disables **Save revision**, and states the
+remedy. The use card carries the same remedy. `resolveProjectRevision` rewrites
+the `missing-template-variable` diagnostic for secret-like names, so the message
+surfaced when a run is refused explains that the name is the blocker instead of
+reporting only that the variable is unfilled.
+
+### Regression tests
+
+Five cases added to `tests/project.test.ts`:
+
+- `compares conversation messages by value, not by serialized key order`
+- `branches a template-backed conversation whose messages came off run state`
+- `branches with the run overrides the branched messages were produced with`
+- `previews a pending branch as authored items`
+- `explains that a secret-like variable can never be filled`
+
+The override test asserts the old failure explicitly — branching without passing
+`runOverrides` still throws `/generated text cannot be edited/` — so it fails if
+the parameter is dropped again.
+
+### Re-verified in the browser
+
+Same fixtures, same scenarios that failed the first time:
+
+| Scenario | Before | After |
+| --- | --- | --- |
+| Branch at final message, no override | refused | succeeds |
+| Branch at final message, override active | refused, wrong reason | succeeds |
+| Composer after branching at message 1 | 2 template cards | 1 template card |
+| Branched run payload | n/a | `system="LITERAL-SYSTEM" \| user="TOPIC=[DEFAULT-TOPIC] AUDIENCE=[SAVED-AUDIENCE]"` |
+| Branched run payload, override active | n/a | `… TOPIC=[OVERRIDE-TOPIC] …` |
+| Branched trace | n/a | v3, one `Question` resolution, `branchedFrom` set |
+| `{{api_key}}` at authoring | silent, Save enabled | warning with remedy, Save disabled |
+
+The branched run sends exactly the truncated conversation — the `Pair` message
+set is gone from both the composer and the request — and the override survives
+into the branch.
+
+### Not done
+
+The `use-project-templates.client.ts` extraction. The orchestration in
+`HomeContent` is unchanged in shape, so the testing gap described above is still
+open: the four fixes are covered at the core boundary, not at the hook level
+that does not yet exist.
+
+## Remaining work
+
+Defects 1–4 are done. What is left from the original list:
+
+1. Extract `use-project-templates.client.ts` and unit-test the branch-on-edit
    policy, the override lifecycle, and the composer mutations. Would have caught
-   1 and 3.
-5. Warn on secret-like variable *names* at authoring time, in the pane, with the
-   remedy stated. Fixes defect 4.
+   defects 1 and 3 before they shipped, and is the only structural item still
+   outstanding.
+2. Replace the three `window.confirm` calls with the app's own modal, so the
+   update-to-latest path stops rendering raw JSON in a native alert and becomes
+   testable.
+3. Wrap `activeProjectResolution` so a `ProjectValidationError` during render
+   cannot reach the error boundary.
+4. Fix the "Previous 0" revision label before
+   `setPromptTemplateCurrentRevision` is wired to the UI.
+5. Re-indent the `TemplateUseCard` fragment block.
 
 ## Reproduction
 
