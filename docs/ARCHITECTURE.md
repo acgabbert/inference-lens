@@ -67,6 +67,16 @@ inference profile before a run can resolve that profile's credential.
 Workspace handles expose a human-readable display location for status text,
 but native filesystem commands continue to accept only the opaque workspace ID.
 
+Every condition that refuses a run is derived once, by
+`app/run-readiness.client.ts`, from the open project, its declared endpoint,
+and its template resolution. Both the disabled Run button's tooltip and the
+notice in the request pane read that one value, so a refused run always states
+the same reason in both places, along with the action that clears it. A mapping
+whose endpoint differs from the project's declared one is reported rather than
+refused: moving a project between a hosted provider and a local server is
+ordinary, but sending a request somewhere the document does not describe should
+never be silent.
+
 `packages/core/src/run-trace.ts` owns the versioned diagnostic artifact
 boundary. It validates the file envelope, reconstructs canonical run state from
 the ordered event stream, rejects projections that disagree with those events,

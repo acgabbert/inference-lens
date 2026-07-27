@@ -24,6 +24,7 @@ failure, or an exact payload.
 | `scripts/flaky-openai-provider.mjs` | `dev:flaky-provider` | First request returns HTTP 503, later identical requests stream normally. Drives the retryable-failure and retry path, and logs whether the retry body byte-matches the first attempt. |
 | `scripts/paced-openai-provider.mjs` | `dev:paced-provider` | Streams with a deliberate stall before the first byte and a fixed gap between deltas, then reports usage. Makes time-to-first-token and throughput predictable. |
 | `scripts/echo-openai-provider.mjs` | `dev:echo-provider` | Echoes the exact serialized message roles and text it received. Verifies template resolution, ordering, overrides, and request preview against the real transport. |
+| `scripts/markdown-openai-provider.mjs` | `dev:markdown-provider` | Streams one answer containing every supported markdown block, split so fences, lists, and tables straddle chunk boundaries. Checks incremental parsing while streaming and that the finished transcript renders the same answer the same way. |
 
 Neither is part of `npm test`. They are development endpoints started by hand
 in a second terminal, and they bind to loopback only.

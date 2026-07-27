@@ -163,9 +163,17 @@ export function ResponseOutput({
                     Edit from here
                   </button>
                 </div>
-                {message.content.map((part, partIndex) => (
-                  <p key={partIndex}>{part.text}</p>
-                ))}
+                {/* The rendering toggle governs model output, so it follows
+                    the answer into the finished transcript. Authored and tool
+                    messages stay verbatim: reformatting text the user typed,
+                    or a tool's JSON, would misrepresent what was sent. */}
+                {message.content.map((part, partIndex) =>
+                  markdownPreview && message.role === "assistant" ? (
+                    <MarkdownView key={partIndex} text={part.text} />
+                  ) : (
+                    <p key={partIndex}>{part.text}</p>
+                  ),
+                )}
                 {message.role === "assistant" && message.toolCalls?.map((call) => (
                   <pre className="transcript-tool-call" key={call.id}>
                     {call.name}({call.arguments.text})

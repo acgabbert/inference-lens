@@ -132,6 +132,9 @@ import {
 import {
   ConfirmationDialog,
 } from "./confirmation-dialog.client";
+import { runReadiness } from "./run-readiness.client";
+import type { RunReadinessActionKind } from "./run-readiness.client";
+import { RunReadinessNotice } from "./run-readiness-notice.client";
 import type {
   ConfirmationDialogRequest,
 } from "./confirmation-dialog.client";
@@ -1094,7 +1097,7 @@ function HomeContent() {
     project.clearErrorKind();
     if (projectFile && !mappedProfileId) {
       project.setError(
-        "Map this project's connection requirement to a local profile before running.",
+        "Map this project's connection to a local profile before running.",
       );
       return;
     }
@@ -1600,6 +1603,36 @@ function HomeContent() {
   );
   const requestPreview = templateRequestPreview();
   const composerItems = templateWorkbench.composerItems;
+  const readiness = runReadiness({
+    projectOpen: Boolean(projectFile),
+    connectionMapped: Boolean(mappedProfileId),
+    activeProfileName: activeProfile.name,
+    activeProfileEndpoint: activeProfile.endpoint,
+    selectedToolCount,
+    toolsEnabled: activeCapabilities.tools,
+    ...(activeConnectionRequirement
+      ? { requiredEndpoint: activeConnectionRequirement.endpoint }
+      : {}),
+    ...(templateWorkbench.resolutionError
+      ? { templateResolutionError: templateWorkbench.resolutionError }
+      : {}),
+    templateIssues:
+      activeProjectResolution?.diagnostics.map(
+        ({ templateUseId, diagnostic }) => ({
+          templateUseId,
+          ...(diagnostic.code === "missing-template-variable"
+            ? { variableName: diagnostic.name }
+            : {}),
+        }),
+      ) ?? [],
+  });
+
+  function resolveReadiness(kind: RunReadinessActionKind): void {
+    if (kind === "map-profile") project.mapActiveProfile();
+    else if (kind === "open-connections") setConnectionDrawerOpen(true);
+    else if (kind === "review-tools") setRequestTab("tools");
+    else setRequestTab("messages");
+  }
 
   return (
     <main
@@ -1617,6 +1650,7 @@ function HomeContent() {
           !isRequestActive
         ) {
           event.preventDefault();
+          if (readiness?.blocked) return;
           if (
             runState?.status.kind === "paused" &&
             runState.status.reason === "attempt_failed"
@@ -1646,20 +1680,8 @@ function HomeContent() {
           runState?.status.kind === "paused" &&
           runState.status.reason === "attempt_failed"
         }
-        runDisabled={Boolean(
-          (projectFile && !mappedProfileId) ||
-            templateWorkbench.resolutionError ||
-            activeProjectResolution?.diagnostics.length,
-        )}
-        runDisabledReason={
-          projectFile && !mappedProfileId
-            ? "Map the project connection to a local profile first."
-            : templateWorkbench.resolutionError
-              ? templateWorkbench.resolutionError
-            : activeProjectResolution?.diagnostics.length
-              ? "Resolve every template diagnostic before running."
-              : undefined
-        }
+        runDisabled={Boolean(readiness?.blocked)}
+        runDisabledReason={readiness?.blocked ? readiness.summary : undefined}
         onChooseProfile={chooseProfile}
         onOpenConnections={() => setConnectionDrawerOpen(true)}
         onNewProject={() => void project.newProjectFolder()}
@@ -1757,11 +1779,9 @@ function HomeContent() {
                   label: "Templates",
                   count: projectFile?.promptTemplates.length ?? 0,
                 },
-                {
-                  id: "tools",
-                  label: "Tools",
-                  count: tools.length + requestTools.length,
-                },
+                // The badge counts what will be sent, not what is defined, so
+                // it agrees with the manifest inside the tab.
+                { id: "tools", label: "Tools", count: selectedToolCount },
               ]}
             />
             {requestTab === "messages" ? (
@@ -1781,6 +1801,10 @@ function HomeContent() {
               </button>
             ) : null}
           </div>
+          <RunReadinessNotice
+            {...(readiness ? { readiness } : {})}
+            onAction={resolveReadiness}
+          />
           {branchContext && (
             <div className="branch-pending" role="status">
               Branching from run <code>{branchContext.parentRunId}</code> at message <code>{branchContext.branchMessageId}</code> — the original trace is untouched.
@@ -1810,47 +1834,39 @@ function HomeContent() {
                 Connection settings
               </button>
             </div>
-            <div
+            {/* The Tools tab owns the full manifest; this line only says
+                enough to notice that something needs attention there. */}
+            <p
               className={
-                selectedToolCount === 0
-                  ? "request-tool-summary empty"
-                  : activeCapabilities.tools
-                    ? "request-tool-summary ready"
-                    : "request-tool-summary blocked"
+                selectedToolCount > 0 && !activeCapabilities.tools
+                  ? "request-tool-line blocked"
+                  : "request-tool-line"
               }
               role="status"
             >
-              <span className="request-tool-summary-icon" aria-hidden="true">
+              <span>
                 {selectedToolCount === 0
-                  ? "—"
-                  : activeCapabilities.tools
-                    ? "✓"
-                    : "!"}
-              </span>
-              <span className="request-tool-summary-copy">
-                <strong>Tools for this request</strong>
-                <small>
-                  {selectedToolCount === 0
-                    ? "None will be sent to the model."
-                    : activeCapabilities.tools
+                  ? "No tools sent with this request."
+                  : !activeCapabilities.tools
+                    ? `${selectedToolCount} ${
+                        selectedToolCount === 1 ? "tool is" : "tools are"
+                      } selected, but this profile does not allow tool calling.`
+                    : requestTools.length > 0
                       ? `${selectedToolCount} ${
                           selectedToolCount === 1 ? "tool" : "tools"
-                        } will be sent (${selectedProjectToolCount} project, ${
-                          requestTools.length
-                        } one-shot).`
+                        } sent, ${requestTools.length} only once.`
                       : `${selectedToolCount} ${
-                          selectedToolCount === 1 ? "tool is" : "tools are"
-                        } selected, but none will be sent because this profile does not allow tool calling.`}
-                </small>
+                          selectedToolCount === 1 ? "tool" : "tools"
+                        } sent with this request.`}
               </span>
               <button
                 className="text-button"
                 type="button"
                 onClick={() => setRequestTab("tools")}
               >
-                Review tools
+                {selectedToolCount === 0 ? "Add tools" : "Review"}
               </button>
-            </div>
+            </p>
             <div className="run-settings-grid">
               <ModelCombobox
                 value={activeModel}
