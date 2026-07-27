@@ -474,6 +474,101 @@ Running-app verification:
 **Exit condition:** The page's run-start adapter reads as prepare → apply
 returned application effects → `runSession.start`.
 
+#### Session 04 handoff — 2026-07-27
+
+- Added `prepare-workbench-run.client.ts`. It owns selected-tool validation and
+  the tools-disabled capability check, branch project creation, ordinary and
+  branch identity resolution (including the ad hoc conversation id previously
+  held only in a page ref), template preparation via
+  `prepareProjectRevisionRun`, generated-message equivalence checking, and
+  `createResolvedRunInput` construction. It returns the discriminated
+  `PrepareWorkbenchRunResult` from the plan verbatim, plus `request` (the
+  final, possibly template-resolved request) and `adHocConversationId` so the
+  caller can persist state the module itself never mutates.
+- `page.tsx`'s `run()` now reads as prepare → apply returned effects
+  (`project.adoptBranchRevision`, `adHocConversationIdRef.current`,
+  `templates.markRevisionExecuted`, `setBranchContext(null)`) →
+  `new RunCoordinator(prepared.input)`. `currentRunIdentity` and
+  `templateRunErrorMessage` were deleted from the page; both moved into the
+  new module. `RunCoordinator`, the abort controller, and the generation
+  counter are untouched, per the plan's "do not start or mutate
+  `RunCoordinator`" constraint.
+- One intentional behavior tightening, required by the plan's own invariant
+  ("a failed preparation produces no project, branch, or run-session
+  mutation"): previously `project.adoptBranchRevision(branchedProject)` ran
+  immediately after branch creation, before template-resolution validation
+  could still fail and abort the run. A branch could be silently created even
+  though the run itself was then rejected. The new seam defers
+  `projectMutation` until `prepareWorkbenchRun` returns `ok: true`, so a
+  rejected run — including one that fails only after an internal branch was
+  computed — leaves the caller's project untouched. Covered by the
+  "branch preparation without a resolvable parent revision" and "unresolved
+  template diagnostics" tests below.
+- `app/page.tsx` is now 1,334 lines, with 11 `useState`, 3 `useRef`, and 7
+  `useEffect` calls — unchanged from Session 03, since this session moved
+  validation/derivation logic, not React state.
+
+**Focused tests** (`tests/prepare-workbench-run.test.ts`, 10 tests, all
+Node-safe with no Tauri or React import):
+
+- blank and duplicate tool names;
+- tools selected against a tools-disabled capability (default capability
+  profile already has `tools: false`, matching production defaults);
+- ad hoc identity minted once and reused across a second call;
+- an ordinary project revision resolves its template use into the run input;
+- branch preparation with a valid parent produces a project mutation and the
+  expected branch provenance, leaving the original project object untouched;
+- branch preparation with a missing or unknown parent revision id fails
+  without mutating the project;
+- run-only template overrides survive branch preparation and appear in the
+  resolved run input;
+- unresolved template diagnostics block preparation without a project
+  mutation; and
+- a manually edited template-backed conversation fails preparation instead of
+  running.
+
+Automated verification:
+
+- `npm run lint`: passed.
+- `npx tsc -p tsconfig.json --noEmit`: passed.
+- `npm run typecheck:core`: passed.
+- `npm test`: passed with 208 core tests (198 + 10 new) and 31
+  rendered/standalone tests (239 total).
+
+Running-app verification: this session reached full browser-driven
+verification, unlike Sessions 02 and 03's environment. `npx playwright
+install chromium` succeeded (binaries cached under
+`~/Library/Caches/ms-playwright`, no project dependency added), and a
+Playwright script drove `http://localhost:3000/` against
+`scripts/echo-openai-provider.mjs`. Both `npm run dev:echo-provider` and
+`npm run dev` bound their ports directly, with no `EPERM`. One local
+toolchain quirk: this project's dev server (`vinext dev`, an RSC-streaming
+Vite wrapper) needs `waitUntil: "networkidle"` plus a further ~2s settle
+before client `onClick` handlers are attached — clicking immediately after
+the SSR text becomes visible is a no-op. With that wait:
+
+- an ordinary run (no project open) completed and the transcript showed
+  exactly `Fixture received system="You are a concise, thoughtful
+  assistant." | user="Echo this exact Session 4 request."`, with a
+  `Complete` status and 12 recorded events;
+- clicking "Edit from here" showed the `Branching from run <run id>` notice,
+  editing the truncated conversation and running again completed with
+  `Branched from run <run id>.` provenance visible and the accumulated
+  transcript echoed back exactly; and
+- the rendered document contained no `NaN`, `Infinity`, or `undefined`, and no
+  browser console errors were recorded.
+
+This exercised the ad hoc (no active project) identity and branch-identity
+paths end to end. It did not exercise the project-backed `createBranchRevision`
+path in the browser, since no project was open; that path's invariants
+(project mutation deferred until success, branch provenance, revision count)
+are covered directly by the unit tests above. The Session 06 matrix should
+repeat this check with a materialized project open, ideally in an environment
+with folder access, to close that gap.
+
+Both servers were stopped (`lsof -ti:3000/4012 -sTCP:LISTEN | xargs kill`)
+after verification.
+
 ### Session 05 — Atomic live run-session extraction
 
 **Goal:** Move the interlocked coordinator/transport/trace subsystem to one
