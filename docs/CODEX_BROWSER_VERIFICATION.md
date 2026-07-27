@@ -1,4 +1,4 @@
-# Running-app verification from a sandboxed Codex session
+# Codex Browser verification from a sandboxed session
 
 Use this guide when a change needs verification in the actual Trace Lens UI.
 It complements [the provider fixture guide](PROVIDER_FIXTURES.md): that guide
@@ -59,8 +59,10 @@ The following completed the Session 3 request-composer verification on
    Again, escalate only if binding is denied. Wait for the printed local URL,
    normally `http://localhost:3000/`.
 
-3. Use the bundled Browser skill, rather than a shell-launched browser or an
-   ad hoc Playwright installation. Initialize its browser runtime once, then
+3. In Codex, use the bundled Browser skill. This guide is specific to that
+   runtime; for Playwright in Claude Code, CI, or another environment, use
+   [the Playwright setup guide](PLAYWRIGHT_SETUP.md). Initialize the Browser
+   skill's runtime once, then
    select a browser with `getForUrl("http://localhost:3000/")`. That selection
    lets the browser runtime choose a surface that can reach the local URL.
    Read the selected browser's full documented interaction contract before
@@ -92,7 +94,9 @@ The following completed the Session 3 request-composer verification on
    ```
 
    Follow the installed Browser skill for the current plugin path and any
-   newer API details. Do not substitute another browser-control tool.
+   newer API details. The shared assertion and cleanup expectations live in
+   [the provider fixture guide](PROVIDER_FIXTURES.md), not in a particular
+   browser-control API.
 
 4. Create a new tab, navigate to the printed local URL, wait for DOM content,
    and take a DOM snapshot. The snapshot is the source of truth for locators.

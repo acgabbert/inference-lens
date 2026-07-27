@@ -64,7 +64,7 @@ failure; `npx playwright install --with-deps chromium` also installs those
 
 ### A second, unrelated browser mechanism already in this repo
 
-[`RUNNING_APP_VERIFICATION.md`](RUNNING_APP_VERIFICATION.md) documents a
+[`CODEX_BROWSER_VERIFICATION.md`](CODEX_BROWSER_VERIFICATION.md) documents a
 Codex sandbox session driving the app through Codex's own "Browser skill" —
 a different tool with a different API, not the `playwright` package. If
 you're in that environment, follow that doc instead of this one. The two are

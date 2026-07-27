@@ -75,8 +75,8 @@ plausible. Plausible-looking numbers are exactly how a metrics bug survives.
 
 ## Driving the UI in a browser
 
-When running this from a sandboxed Codex session, first read [the running-app
-verification guide](RUNNING_APP_VERIFICATION.md). In particular, an `EPERM`
+When running this from a sandboxed Codex session, first read [the Codex Browser
+verification guide](CODEX_BROWSER_VERIFICATION.md). In particular, an `EPERM`
 while starting a loopback listener is a sandbox permission failure, not proof
 that the local app is unreachable in the Browser skill.
 
