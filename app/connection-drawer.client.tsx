@@ -25,6 +25,58 @@ interface ConnectionDrawerProps {
 }
 
 /**
+ * The project's declared endpoint beside the one the selected profile will
+ * actually call. A mapping is allowed to point somewhere else — a project
+ * moved between a hosted provider and a local server is the normal case — so
+ * the mismatch is reported rather than refused.
+ */
+function ConnectionMapping({
+  requirement,
+  activeProfile,
+  mapped,
+  onMapProfile,
+}: {
+  requirement: ConnectionRequirement;
+  activeProfile: StoredInferenceProfile;
+  mapped: boolean;
+  onMapProfile(): void;
+}) {
+  const profileName = activeProfile.name.trim() || "the selected profile";
+  const mismatched = activeProfile.endpoint !== requirement.endpoint;
+  return (
+    <div
+      className={
+        mapped && !mismatched
+          ? "connection-mapping mapped"
+          : "connection-mapping"
+      }
+    >
+      <strong>
+        {!mapped
+          ? "Connection mapping required"
+          : mismatched
+            ? "Mapped to a different endpoint"
+            : "Project connection mapped"}
+      </strong>
+      <span>
+        Project expects <code>{requirement.endpoint}</code>
+      </span>
+      {mismatched && (
+        <span>
+          {mapped ? "Requests go to" : "This profile calls"}{" "}
+          <code>{activeProfile.endpoint}</code>
+        </span>
+      )}
+      {!mapped && (
+        <button className="text-button" type="button" onClick={onMapProfile}>
+          Use {profileName} for this project
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
  * Local connection settings: which profiles exist, which one runs, and the
  * credential for it. An imported project's connection requirement is mapped to
  * a profile here, because that mapping is the point where a portable document
@@ -80,31 +132,12 @@ export function ConnectionDrawer({
           </button>
         </div>
         {connectionRequirement && (
-          <div
-            className={
-              mappedProfileId ? "connection-mapping mapped" : "connection-mapping"
-            }
-          >
-            <strong>
-              {mappedProfileId
-                ? "Project connection mapped"
-                : "Connection mapping required"}
-            </strong>
-            <span>Project expects {connectionRequirement.endpoint}.</span>
-            {mappedProfileId ? (
-              activeProfile.endpoint !== connectionRequirement.endpoint && (
-                <span>Selected profile uses {activeProfile.endpoint}.</span>
-              )
-            ) : (
-              <button
-                className="text-button"
-                type="button"
-                onClick={onMapProfile}
-              >
-                Use {activeProfile.name || "selected profile"}
-              </button>
-            )}
-          </div>
+          <ConnectionMapping
+            requirement={connectionRequirement}
+            activeProfile={activeProfile}
+            mapped={Boolean(mappedProfileId)}
+            onMapProfile={onMapProfile}
+          />
         )}
         <label>
           Profile name

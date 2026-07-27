@@ -1,6 +1,6 @@
-# Releasing Trace Lens
+# Releasing Inference Lens
 
-Trace Lens has two independent release paths:
+Inference Lens has two independent release paths:
 
 - `.github/workflows/docker.yml` publishes the web application as a
   multi-architecture image on GHCR.
@@ -12,13 +12,17 @@ do not currently enforce that ancestry or CI requirement themselves.
 
 ## Container image
 
-Pushes to `main` publish `ghcr.io/acgabbert/trace-lens:main`. Tags matching
+The image path is derived from `${{ github.repository }}`, so it follows the
+GitHub repository name. Renaming the repository changes the image path and
+invalidates the quick-start command published in the README, which hardcodes it.
+
+Pushes to `main` publish `ghcr.io/acgabbert/inference-lens:main`. Tags matching
 `v*` publish semantic-version tags, and a stable version tag also updates
 `:latest`. Prerelease tags do not update `:latest`.
 
 GHCR packages are private when first created. After the first successful image
-push, make the `trace-lens` package public in its GitHub package settings so the
-README quick start works without registry authentication. Public package
+push, make the `inference-lens` package public in its GitHub package settings so
+the README quick start works without registry authentication. Public package
 visibility cannot be changed back to private.
 
 ## macOS signing setup

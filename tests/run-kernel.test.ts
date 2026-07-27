@@ -78,6 +78,7 @@ const resolvedInput: ResolvedRunInput = {
   conversationId,
   conversationRevisionId: revisionId,
   ...turnInput,
+  templateResolutions: [],
   resolvedAt: "2026-07-23T12:00:00.000Z",
 };
 
@@ -533,6 +534,7 @@ test("coordinates a tool result into a second provider turn", () => {
     callId,
   );
 
+  coordinator.accept({ type: "reasoning_delta", reasoning: "It's Chicago, 72°F." });
   coordinator.accept({ type: "text_delta", text: "It is 72°F." });
   coordinator.accept({
     type: "completed",
@@ -550,6 +552,7 @@ test("coordinates a tool result into a second provider turn", () => {
       "assistant.completed",
       "tool.result_supplied",
       "turn.started",
+      "assistant.reasoning_delta",
       "assistant.text_delta",
       "assistant.completed",
       "run.completed",
@@ -557,18 +560,24 @@ test("coordinates a tool result into a second provider turn", () => {
   );
 
   const transcript = transcriptFromRunState(coordinator.state);
-  assert.deepEqual(transcript.map(({ role }) => role), [
+  assert.deepEqual(transcript.map(({ message }) => message.role), [
     "user",
     "assistant",
     "tool",
     "assistant",
   ]);
-  assert.deepEqual(transcript.map(({ id }) => id), [
+  assert.deepEqual(transcript.map(({ message }) => message.id), [
     "message_user",
     "message_test-t1-assistant",
     "message_test-t1-r1",
     "message_test-t2-assistant",
   ]);
+  // Reasoning is evidence about the turn, kept off the message itself; it
+  // belongs only to the assistant entry whose attempt produced it.
+  assert.deepEqual(
+    transcript.map((entry) => entry.reasoning),
+    [undefined, undefined, undefined, "It's Chicago, 72°F."],
+  );
   const imported = runStateFromTrace(
     parseRunTraceJson(serializeRunTrace(createRunTrace(coordinator.state))),
   );
@@ -621,7 +630,7 @@ test("retries a failed turn with the same input and a new exchange", () => {
     2,
   );
   const transcript = transcriptFromRunState(coordinator.state);
-  const lastMessage = transcript.at(-1);
+  const lastMessage = transcript.at(-1)?.message;
   assert.equal(lastMessage?.role, "assistant");
   assert.equal(
     lastMessage?.role === "assistant"
@@ -678,7 +687,7 @@ test("ends a cancelled transcript at its last completed turn", () => {
 
   assert.equal(coordinator.state.status.kind, "cancelled");
   assert.deepEqual(
-    transcriptFromRunState(coordinator.state).map(({ role }) => role),
+    transcriptFromRunState(coordinator.state).map(({ message }) => message.role),
     ["user", "assistant", "tool"],
   );
 });
@@ -760,7 +769,10 @@ test("rejects gaps and events after a terminal event", () => {
     },
   );
   assert.equal(state.status.kind, "cancelled");
-  assert.deepEqual(transcriptFromRunState(state), resolvedInput.messages);
+  assert.deepEqual(
+    transcriptFromRunState(state),
+    resolvedInput.messages.map((message) => ({ message })),
+  );
 
   assert.throws(
     () =>

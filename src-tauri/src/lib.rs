@@ -17,12 +17,12 @@ use tokio_util::sync::CancellationToken;
 use url::Url;
 
 #[cfg(not(debug_assertions))]
-const KEYCHAIN_SERVICE: &str = "app.tracelens.desktop";
+const KEYCHAIN_SERVICE: &str = "app.inferencelens.desktop";
 
 #[derive(Clone, Default)]
 struct ActiveRuns(Arc<Mutex<HashMap<String, CancellationToken>>>);
 
-const PROJECT_FILE_NAME: &str = "trace-lens.project.json";
+const PROJECT_FILE_NAME: &str = "inference-lens.project.json";
 const TRACES_DIRECTORY_NAME: &str = "traces";
 
 #[derive(Default)]
@@ -39,6 +39,13 @@ struct NativeProjectWorkspace {
     workspace_id: String,
     display_name: String,
     display_path: String,
+    contents: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeRunTraceFile {
+    file_name: String,
     contents: String,
 }
 
@@ -81,7 +88,7 @@ struct ProviderTurnAccepted {
 }
 
 /// The raw-proxy channel payload emitted on
-/// `trace-lens://provider-turn/{requestId}`. Rust forwards bytes; parsing and
+/// `inference-lens://provider-turn/{requestId}`. Rust forwards bytes; parsing and
 /// normalization into provider-neutral events happens in TypeScript.
 #[derive(Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -129,7 +136,7 @@ fn selected_project_directory(app: &AppHandle) -> Result<Option<PathBuf>, String
 
 fn write_project_manifest(directory: &Path, contents: &str) -> Result<(), String> {
     let manifest = project_manifest_path(directory);
-    let temporary = directory.join(format!(".trace-lens-project-{}.tmp", uuid::Uuid::new_v4()));
+    let temporary = directory.join(format!(".inference-lens-project-{}.tmp", uuid::Uuid::new_v4()));
     fs::write(&temporary, contents)
         .map_err(|error| format!("Could not write the project: {error}"))?;
     if let Err(rename_error) = fs::rename(&temporary, &manifest) {
@@ -176,7 +183,7 @@ fn write_run_trace(directory: &Path, run_id: &str, contents: &str) -> Result<(),
             "{file_name} already exists with different contents. Run traces are immutable."
         )));
     }
-    let temporary = traces.join(format!(".trace-lens-run-{}.tmp", uuid::Uuid::new_v4()));
+    let temporary = traces.join(format!(".inference-lens-run-{}.tmp", uuid::Uuid::new_v4()));
     fs::write(&temporary, contents)
         .map_err(|error| format!("Could not write the run trace: {error}"))?;
     fs::rename(&temporary, &destination).map_err(|error| {
@@ -185,11 +192,63 @@ fn write_run_trace(directory: &Path, run_id: &str, contents: &str) -> Result<(),
     })
 }
 
+/// Mirrors `isTraceEntryName` in `packages/core/src/run-trace.ts`. A history
+/// entry is discovered rather than derived from a validated run ID, so the name
+/// is re-checked before it is joined onto the traces directory again.
+fn is_trace_entry_name(file_name: &str) -> bool {
+    file_name.ends_with(".json")
+        && file_name.len() > ".json".len()
+        && !file_name.contains("..")
+        && !file_name.starts_with(['.', '-', '_'])
+        && file_name
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || "._-".contains(character))
+}
+
+fn read_run_traces(directory: &Path) -> Result<Vec<NativeRunTraceFile>, String> {
+    let traces = directory.join(TRACES_DIRECTORY_NAME);
+    let entries = match fs::read_dir(&traces) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(format!("Could not read the traces directory: {error}")),
+    };
+    let mut files = entries
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| {
+            let file_name = entry.file_name().into_string().ok()?;
+            if !is_trace_entry_name(&file_name) {
+                return None;
+            }
+            Some((file_name, entry.path()))
+        })
+        .map(|(file_name, path)| {
+            fs::read_to_string(&path)
+                .map(|contents| NativeRunTraceFile {
+                    file_name,
+                    contents,
+                })
+                .map_err(|error| format!("Could not read {}: {error}", path.display()))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    files.sort_by(|left, right| left.file_name.cmp(&right.file_name));
+    Ok(files)
+}
+
+fn read_single_run_trace(directory: &Path, file_name: &str) -> Result<String, String> {
+    if !is_trace_entry_name(file_name) {
+        return Err(command_error(format!(
+            "{file_name} is not a run trace file name."
+        )));
+    }
+    let path = directory.join(TRACES_DIRECTORY_NAME).join(file_name);
+    fs::read_to_string(&path).map_err(|error| format!("Could not read {file_name}: {error}"))
+}
+
 fn write_exported_trace(path: &Path, contents: &str) -> Result<(), String> {
     let parent = path
         .parent()
         .ok_or_else(|| command_error("The selected trace location has no parent directory."))?;
-    let temporary = parent.join(format!(".trace-lens-export-{}.tmp", uuid::Uuid::new_v4()));
+    let temporary = parent.join(format!(".inference-lens-export-{}.tmp", uuid::Uuid::new_v4()));
     fs::write(&temporary, contents)
         .map_err(|error| format!("Could not save the run trace: {error}"))?;
     if let Err(rename_error) = fs::rename(&temporary, path) {
@@ -214,7 +273,7 @@ fn register_project_workspace(
     let display_name = directory
         .file_name()
         .and_then(|name| name.to_str())
-        .unwrap_or("Trace Lens project")
+        .unwrap_or("Inference Lens project")
         .to_owned();
     let display_path = directory.to_string_lossy().into_owned();
     workspaces
@@ -300,7 +359,7 @@ fn save_project_workspace(
         .map_err(|error| format!("Could not read the project: {error}"))?;
     if current_contents != workspace.last_contents {
         return Err(command_error(format!(
-            "{PROJECT_FILE_NAME} changed outside Trace Lens. Reopen the project before saving."
+            "{PROJECT_FILE_NAME} changed outside Inference Lens. Reopen the project before saving."
         )));
     }
     write_project_manifest(&workspace.directory, &contents)?;
@@ -326,6 +385,37 @@ fn save_run_trace(
 }
 
 #[tauri::command]
+fn list_run_traces(
+    workspaces: State<'_, ProjectWorkspaces>,
+    workspace_id: String,
+) -> Result<Vec<NativeRunTraceFile>, String> {
+    let workspaces = workspaces
+        .0
+        .lock()
+        .map_err(|_| command_error("Project workspace state is unavailable."))?;
+    let workspace = workspaces
+        .get(&workspace_id)
+        .ok_or_else(|| command_error("This project folder is no longer open."))?;
+    read_run_traces(&workspace.directory)
+}
+
+#[tauri::command]
+fn read_run_trace(
+    workspaces: State<'_, ProjectWorkspaces>,
+    workspace_id: String,
+    file_name: String,
+) -> Result<String, String> {
+    let workspaces = workspaces
+        .0
+        .lock()
+        .map_err(|_| command_error("Project workspace state is unavailable."))?;
+    let workspace = workspaces
+        .get(&workspace_id)
+        .ok_or_else(|| command_error("This project folder is no longer open."))?;
+    read_single_run_trace(&workspace.directory, &file_name)
+}
+
+#[tauri::command]
 async fn export_run_trace(
     app: AppHandle,
     run_id: String,
@@ -335,7 +425,7 @@ async fn export_run_trace(
     let Some(selected) = app
         .dialog()
         .file()
-        .add_filter("Trace Lens run trace", &["json"])
+        .add_filter("Inference Lens run trace", &["json"])
         .set_file_name(file_name)
         .set_title("Save run trace")
         .blocking_save_file()
@@ -634,7 +724,7 @@ impl ProviderEvents {
     fn new(app: AppHandle, request_id: &str) -> Self {
         Self {
             app,
-            event_name: format!("trace-lens://provider-turn/{request_id}"),
+            event_name: format!("inference-lens://provider-turn/{request_id}"),
         }
     }
 
@@ -877,10 +967,12 @@ pub fn run() {
             create_project_workspace,
             save_project_workspace,
             save_run_trace,
+            list_run_traces,
+            read_run_trace,
             export_run_trace,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Trace Lens");
+        .expect("error while running Inference Lens");
 }
 
 #[cfg(test)]
@@ -893,7 +985,7 @@ mod tests {
     impl TemporaryProjectDirectory {
         fn new() -> Self {
             let path =
-                std::env::temp_dir().join(format!("trace-lens-test-{}", uuid::Uuid::new_v4()));
+                std::env::temp_dir().join(format!("inference-lens-test-{}", uuid::Uuid::new_v4()));
             fs::create_dir(&path).expect("create temporary project directory");
             Self(path)
         }
@@ -943,6 +1035,77 @@ mod tests {
             "{\"schemaVersion\":1,\"changed\":true}\n"
         )
         .is_err());
+    }
+
+    #[test]
+    fn lists_json_run_traces_in_stable_order() {
+        let directory = TemporaryProjectDirectory::new();
+        write_run_trace(&directory.0, "run_second", "second\n").expect("write second trace");
+        write_run_trace(&directory.0, "run_first", "first\n").expect("write first trace");
+        fs::write(
+            directory.0.join(TRACES_DIRECTORY_NAME).join("notes.txt"),
+            "ignore",
+        )
+        .expect("write unrelated file");
+
+        let traces = read_run_traces(&directory.0).expect("list traces");
+        assert_eq!(traces.len(), 2);
+        assert_eq!(traces[0].file_name, "run_first.json");
+        assert_eq!(traces[0].contents, "first\n");
+        assert_eq!(traces[1].file_name, "run_second.json");
+    }
+
+    #[test]
+    fn lists_no_traces_when_the_directory_is_absent() {
+        let directory = TemporaryProjectDirectory::new();
+        assert!(read_run_traces(&directory.0)
+            .expect("list absent traces directory")
+            .is_empty());
+    }
+
+    #[test]
+    fn skips_listed_names_that_are_not_trace_artifacts() {
+        let directory = TemporaryProjectDirectory::new();
+        write_run_trace(&directory.0, "run_kept", "kept\n").expect("write trace");
+        let traces = directory.0.join(TRACES_DIRECTORY_NAME);
+        for ignored in [".hidden.json", "-leading.json", ".json", "notes.txt"] {
+            fs::write(traces.join(ignored), "ignore").expect("write ignored file");
+        }
+
+        let listed = read_run_traces(&directory.0).expect("list traces");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].file_name, "run_kept.json");
+    }
+
+    #[test]
+    fn reads_one_trace_by_its_listed_name() {
+        let directory = TemporaryProjectDirectory::new();
+        write_run_trace(&directory.0, "run_single", "single\n").expect("write trace");
+
+        assert_eq!(
+            read_single_run_trace(&directory.0, "run_single.json").expect("read trace"),
+            "single\n"
+        );
+        assert!(read_single_run_trace(&directory.0, "run_missing.json").is_err());
+    }
+
+    #[test]
+    fn refuses_trace_names_that_could_escape_the_traces_directory() {
+        let directory = TemporaryProjectDirectory::new();
+        fs::write(directory.0.join("secret.json"), "secret").expect("write secret");
+
+        for escaping in [
+            "../secret.json",
+            "..%2Fsecret.json",
+            "nested/run_a.json",
+            "/etc/passwd",
+            "run_a.json/../../secret.json",
+        ] {
+            assert!(
+                read_single_run_trace(&directory.0, escaping).is_err(),
+                "{escaping} should be refused"
+            );
+        }
     }
 
     #[test]
@@ -1058,7 +1221,7 @@ mod tests {
     #[cfg(all(target_os = "macos", not(debug_assertions)))]
     #[test]
     fn persists_a_profile_credential_in_macos_keychain() {
-        let profile_id = format!("trace-lens-test-{}", uuid::Uuid::new_v4());
+        let profile_id = format!("inference-lens-test-{}", uuid::Uuid::new_v4());
         let _cleanup = TestKeychainItem {
             profile_id: profile_id.clone(),
         };

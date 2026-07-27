@@ -49,7 +49,7 @@ async function waitForServer(url, child) {
   throw new Error("Standalone server did not become ready.");
 }
 
-test("standalone Node server renders the Trace Lens workbench", async (t) => {
+test("standalone Node server renders the Inference Lens workbench", async (t) => {
   const appPort = await reservePort();
   const app = spawn("node", ["dist/standalone/server.js"], {
     env: { ...process.env, HOST: "127.0.0.1", PORT: String(appPort) },
@@ -70,10 +70,11 @@ test("standalone Node server renders the Trace Lens workbench", async (t) => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
-  assert.match(html, /<title>Trace Lens — Inspect Every Model Run<\/title>/i);
+  assert.match(html, /<title>Inference Lens — Inspect Every Model Run<\/title>/i);
   assert.match(html, /Inspect every model run/);
   assert.match(html, /Run request/);
   assert.match(html, /Download diagnostics/);
-  assert.match(html, /Event trace/);
+  assert.match(html, /Run history/);
+  assert.match(html, /Run details/);
   assert.doesNotMatch(html, /Your site is taking shape/);
 });

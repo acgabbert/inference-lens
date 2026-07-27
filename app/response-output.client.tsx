@@ -1,15 +1,26 @@
 "use client";
 
-import type { RefObject } from "react";
+import { useState, type RefObject } from "react";
 import type {
   ConversationMessage,
   RunState,
   RunTrace,
   ToolCall,
+  TranscriptEntry,
 } from "../packages/core/src/run-kernel";
 import { MarkdownView } from "./markdown-view.client";
 import { PaneTabs } from "./workbench-shell.client";
 import { ToolCallList, type ToolResultDraft } from "./tool-call-list.client";
+
+/** System and user messages are usually re-reads of what was already typed;
+ *  assistant and tool messages carry the outcome being inspected. */
+function startsExpanded(role: ConversationMessage["role"]): boolean {
+  return role !== "system" && role !== "user";
+}
+
+function previewText(message: ConversationMessage): string {
+  return message.content.map((part) => part.text).join(" ");
+}
 
 export type TraceStorageStatus =
   | { kind: "saving"; location?: string }
@@ -31,7 +42,8 @@ type ResponseOutputProps = {
   completedToolCalls: ToolCall[];
   toolResultDrafts: Record<string, ToolResultDraft>;
   traceStorage: TraceStorageStatus | null;
-  transcript: ConversationMessage[];
+  transcript: TranscriptEntry[];
+  nonBranchableMessageIds: ReadonlySet<ConversationMessage["id"]>;
   branchedFrom?: RunTrace["branchedFrom"];
   onMarkdownPreviewChange(markdown: boolean): void;
   onOutputScroll(): void;
@@ -48,11 +60,12 @@ export function ResponseOutput({
   output, reasoning, status, runState, isRequestActive, markdownPreview,
   outputFollowing, outputScrollRef, completedToolCalls, toolResultDrafts,
   traceStorage,
-  transcript, branchedFrom,
+  transcript, nonBranchableMessageIds, branchedFrom,
   onMarkdownPreviewChange, onOutputScroll, onJumpToLatest,
   onToolResultDraftChange, onContinue, onRetry,
   onSaveTrace, onEditFromHere,
 }: ResponseOutputProps) {
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const awaitingResults = runState?.status.kind === "awaiting_tool_results";
   const retryableFailure =
     runState?.status.kind === "paused" &&
@@ -143,32 +156,103 @@ export function ResponseOutput({
       <div className="output-scroll" ref={outputScrollRef} onScroll={onOutputScroll}>
         {terminal ? (
           <div className="transcript-list" aria-label="Run transcript">
-            {transcript.map((message, index) => (
-              <article className="transcript-message" key={message.id}>
-                <div className="transcript-message-header">
-                  <span className="eyebrow">{message.role}</span>
-                  <span>Message {index + 1}</span>
-                  <button
-                    className="button secondary transcript-edit"
-                    type="button"
-                    onClick={() => onEditFromHere(message.id)}
+            {transcript.map(({ message, reasoning: turnReasoning }, index) => {
+              const isOpen = expanded[message.id] ?? startsExpanded(message.role);
+              const bodyId = `${message.id}-body`;
+              const toggle = () =>
+                setExpanded((current) => ({ ...current, [message.id]: !isOpen }));
+              return (
+                <article className="transcript-message" key={message.id}>
+                  {/* The whole row toggles, not just the chevron — a collapsed
+                      message is nothing but this row, and an expanded one keeps
+                      the toggle within reach without hunting for a small icon.
+                      "Edit from here" stops its own click from bubbling here. */}
+                  <div
+                    className={
+                      isOpen
+                        ? "transcript-message-header transcript-message-header-open"
+                        : "transcript-message-header"
+                    }
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={isOpen}
+                    aria-controls={isOpen ? bodyId : undefined}
+                    aria-label={`${isOpen ? "Collapse" : "Expand"} ${message.role} message`}
+                    onClick={toggle}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter" && event.key !== " ") return;
+                      event.preventDefault();
+                      toggle();
+                    }}
                   >
-                    Edit from here
-                  </button>
-                </div>
-                {message.content.map((part, partIndex) => (
-                  <p key={partIndex}>{part.text}</p>
-                ))}
-                {message.role === "assistant" && message.toolCalls?.map((call) => (
-                  <pre className="transcript-tool-call" key={call.id}>
-                    {call.name}({call.arguments.text})
-                  </pre>
-                ))}
-                {message.role === "tool" && (
-                  <span className="transcript-tool-result">Tool result for {message.name ?? message.toolCallId}</span>
-                )}
-              </article>
-            ))}
+                    <span className="transcript-disclosure" aria-hidden="true">
+                      {isOpen ? "▾" : "▸"}
+                    </span>
+                    <span className="eyebrow">{message.role}</span>
+                    <span>Message {index + 1}</span>
+                    {/* Collapsed rows fold their preview into the header itself, so a
+                        collapsed message reads as one compact line, distinct at a
+                        glance from an expanded card's full-size body below. */}
+                    {!isOpen && (
+                      <span className="transcript-preview">{previewText(message)}</span>
+                    )}
+                    <button
+                      className="button secondary transcript-edit"
+                      type="button"
+                      disabled={nonBranchableMessageIds.has(message.id)}
+                      title={
+                        nonBranchableMessageIds.has(message.id)
+                          ? "A message-set template is atomic. Branch after its final message or detach it first."
+                          : undefined
+                      }
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onEditFromHere(message.id);
+                      }}
+                    >
+                      Edit from here
+                    </button>
+                  </div>
+                  {isOpen && (
+                    <div className="transcript-body" id={bodyId}>
+                      {message.role === "assistant" && turnReasoning && (
+                        <details className="reasoning-stream transcript-reasoning">
+                          <summary>
+                            <span className="reasoning-dot complete" aria-hidden="true" />
+                            <span>Reasoning</span>
+                            <span className="reasoning-stream-hint">Show</span>
+                          </summary>
+                          {markdownPreview ? (
+                            <MarkdownView text={turnReasoning} />
+                          ) : (
+                            <p>{turnReasoning}</p>
+                          )}
+                        </details>
+                      )}
+                      {/* The rendering toggle governs model output, so it follows
+                          the answer into the finished transcript. Authored and tool
+                          messages stay verbatim: reformatting text the user typed,
+                          or a tool's JSON, would misrepresent what was sent. */}
+                      {message.content.map((part, partIndex) =>
+                        markdownPreview && message.role === "assistant" ? (
+                          <MarkdownView key={partIndex} text={part.text} />
+                        ) : (
+                          <p key={partIndex}>{part.text}</p>
+                        ),
+                      )}
+                      {message.role === "assistant" && message.toolCalls?.map((call) => (
+                        <pre className="transcript-tool-call" key={call.id}>
+                          {call.name}({call.arguments.text})
+                        </pre>
+                      ))}
+                      {message.role === "tool" && (
+                        <span className="transcript-tool-result">Tool result for {message.name ?? message.toolCallId}</span>
+                      )}
+                    </div>
+                  )}
+                </article>
+              );
+            })}
           </div>
         ) : <div className="output">
           {output ? (markdownPreview ? <MarkdownView text={output} /> : <p>{output}</p>)

@@ -171,7 +171,7 @@ jobs:
         if: steps.policy.outputs.enabled == 'true' && github.ref_type != 'tag'
         uses: actions/upload-artifact@v4
         with:
-          name: trace-lens-macos-universal-signed
+          name: inference-lens-macos-universal-signed
           path: ${{ steps.verify.outputs.dmg-path }}
           if-no-files-found: error
 
@@ -184,14 +184,14 @@ jobs:
           DMG_PATH: ${{ steps.verify.outputs.dmg-path }}
         run: |
           set -euo pipefail
-          notes_file="${RUNNER_TEMP}/trace-lens-release-notes.md"
+          notes_file="${RUNNER_TEMP}/inference-lens-release-notes.md"
           printf '%s\n' "$RELEASE_BODY" > "$notes_file"
           args=(
             release create "$GITHUB_REF_NAME"
             "$DMG_PATH"
             --draft
             --verify-tag
-            --title "Trace Lens ${GITHUB_REF_NAME}"
+            --title "Inference Lens ${GITHUB_REF_NAME}"
             --notes-file "$notes_file"
           )
           if [ "$PRERELEASE" = "true" ]; then

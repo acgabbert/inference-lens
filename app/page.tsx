@@ -13,12 +13,33 @@ import type {
   RichInferenceRequest,
 } from "../packages/core/src/types";
 import {
+  appendPromptTemplateRevision,
   createBranchRevision,
   createProjectFile,
+  createPromptTemplate,
+  detachPromptTemplateUse,
+  findPromptTemplateUsages,
+  insertPromptTemplateUse,
+  prepareProjectRevisionRun,
+  projectDraft,
+  removePromptTemplateUse,
+  renamePromptTemplate,
+  resolveProjectRevision,
+  sameConversationMessages,
+  updateProjectDraft,
+  updatePromptTemplateUseToLatest,
+  updatePromptTemplateUseValues,
+} from "../packages/core/src/project";
+import type {
+  ProjectConversationItem,
+  ProjectTemplateDiagnostic,
+  PromptTemplateContent,
+  TemplateRunOverrides,
 } from "../packages/core/src/project";
 import {
   createEntityId,
   createResolvedRunInput,
+  createSingleTurnRunExecution,
   createRunTrace,
   RunCoordinator,
   transcriptFromRunState,
@@ -29,19 +50,22 @@ import {
 } from "../packages/core/src/run-trace";
 import type {
   ProviderExecution,
-  RunEvent,
   RunState,
   RunTrace,
-  RunTokenUsage,
   ConversationMessage,
   ConversationId,
   ConversationRevisionId,
   MessageId,
   RunId,
   RunConversationIdentity,
+  PromptTemplateId,
+  PromptTemplateUseId,
+  ResolvedTemplateUse,
   ToolDefinition,
   ToolResult,
 } from "../packages/core/src/run-kernel";
+import { buildChatCompletionsRequest } from "../packages/core/src/openai-compatible";
+import { discoverTemplateVariables } from "../packages/core/src/template-engine";
 import type { CredentialSelection } from "../packages/contracts/src";
 import {
   createInferenceTransport,
@@ -62,6 +86,7 @@ import {
   exportRunTraceFile,
   projectFolderAccessAvailable,
   runTraceWorkspaceLocation,
+  runTraceWorkspacePath,
   saveRunTraceWorkspace,
 } from "./project-workspace.client";
 import type { ProjectWorkspaceHandle } from "./project-workspace.client";
@@ -77,7 +102,10 @@ import { ToolRegistryModal } from "./tool-registry-modal.client";
 import { ModelCombobox } from "./model-combobox.client";
 import { useModelDiscovery } from "./use-model-discovery.client";
 import { useConnectionProfiles } from "./use-connection-profiles.client";
-import { useRequestDraft } from "./use-request-draft.client";
+import {
+  removeDraftMessage,
+  useRequestDraft,
+} from "./use-request-draft.client";
 import { useProjectWorkspace } from "./use-project-workspace.client";
 import { ConnectionDrawer } from "./connection-drawer.client";
 import { Topbar } from "./topbar.client";
@@ -87,14 +115,33 @@ import type { TraceStorageStatus } from "./response-output.client";
 import type { ToolResultDraft } from "./tool-call-list.client";
 import {
   PaneTabs,
-  ResizableTracePanel,
   WorkbenchShell,
 } from "./workbench-shell.client";
 import type { WorkbenchView } from "./workbench-shell.client";
+import { RunTracePanel } from "./run-trace-panel.client";
+import { RunHistoryDrawer } from "./run-history-drawer.client";
+import type { ProjectRunHistoryItem } from "./use-project-run-history.client";
+import { useProjectRunHistory } from "./use-project-run-history.client";
+import {
+  ProjectTemplatesPane,
+  TemplateUseCard,
+} from "./project-templates-pane.client";
+import {
+  projectTemplateWorkbenchView,
+} from "./project-template-workbench.client";
+import {
+  ConfirmationDialog,
+} from "./confirmation-dialog.client";
+import { runReadiness } from "./run-readiness.client";
+import type { RunReadinessActionKind } from "./run-readiness.client";
+import { RunReadinessNotice } from "./run-readiness-notice.client";
+import type {
+  ConfirmationDialogRequest,
+} from "./confirmation-dialog.client";
 
 const inferenceTransport = createInferenceTransport();
 
-const MARKDOWN_PREVIEW_STORAGE_KEY = "trace-lens:markdown-preview:v1";
+const MARKDOWN_PREVIEW_STORAGE_KEY = "inference-lens:markdown-preview:v1";
 
 interface BranchContext {
   parentRunId: RunId;
@@ -165,10 +212,6 @@ function chooseDefaultUserPrompt(): string {
   ];
 }
 
-function formatEvent(event: RunEvent): string {
-  return JSON.stringify(event, null, 2);
-}
-
 type DisplayStatus = "idle" | "running" | "waiting" | "complete" | "failed";
 function displayStatus(state: RunState | null): DisplayStatus {
   if (!state) return "idle";
@@ -185,6 +228,17 @@ function displayStatus(state: RunState | null): DisplayStatus {
     default:
       return "running";
   }
+}
+
+function templateRunErrorMessage(
+  diagnostics: ProjectTemplateDiagnostic[],
+): string {
+  const first = diagnostics[0];
+  if (!first) return "Resolve the template diagnostics before running.";
+  const remaining = diagnostics.length - 1;
+  return `Cannot run template use "${first.templateUseId}": ${first.diagnostic.message}${
+    remaining > 0 ? ` (${remaining} more ${remaining === 1 ? "issue" : "issues"})` : ""
+  }`;
 }
 
 function HomeContent() {
@@ -210,8 +264,15 @@ function HomeContent() {
   );
   const [toolRegistryLoaded, setToolRegistryLoaded] = useState(false);
   const [toolRegistryOpen, setToolRegistryOpen] = useState(false);
+  const [confirmation, setConfirmation] =
+    useState<ConfirmationDialogRequest>();
   const [connectionDrawerOpen, setConnectionDrawerOpen] = useState(false);
-  const [requestTab, setRequestTab] = useState<"messages" | "tools">("messages");
+  const [runHistoryOpen, setRunHistoryOpen] = useState(false);
+  const [savedRunVersion, setSavedRunVersion] = useState(0);
+  const [requestTab, setRequestTab] =
+    useState<"messages" | "templates" | "tools">("messages");
+  const [templateRunOverrides, setTemplateRunOverrides] =
+    useState<TemplateRunOverrides>({});
   const [workbenchView, setWorkbenchView] =
     useState<WorkbenchView>("request");
   const [traceOpen, setTraceOpen] = useState(true);
@@ -226,13 +287,17 @@ function HomeContent() {
     folderAccessAvailable,
     createProject() {
       return createProjectFile({
-        name: "Untitled Trace Lens project",
+        name: "Untitled Inference Lens project",
         request: currentRequest(),
       });
     },
     currentDraft() {
+      const activeRevision = projectFile?.conversationRevisions.find(
+        ({ id }) => id === projectFile.defaults.conversationRevisionId,
+      );
       return {
         messages,
+        ...(activeRevision ? { items: activeRevision.items } : {}),
         model: activeModel,
         temperature: activeTemperature,
         tools: serializedTools(),
@@ -242,6 +307,7 @@ function HomeContent() {
     },
     onApplyDraft(draft) {
       replaceProjectDraft(draft);
+      setTemplateRunOverrides({});
       setBranchContext(null);
       setSessionModel(draft.model);
       setSessionTemperature(draft.temperature ?? 0.7);
@@ -258,6 +324,11 @@ function HomeContent() {
     projectErrorKind,
     mappedProfileId,
   } = project;
+  const runHistory = useProjectRunHistory(
+    projectWorkspace,
+    runHistoryOpen,
+    savedRunVersion,
+  );
   const {
     messages,
     tools,
@@ -308,6 +379,27 @@ function HomeContent() {
   const runBranchProvenanceRef = useRef(
     new Map<RunId, RunTrace["branchedFrom"]>(),
   );
+  const executedRevisionIdsRef = useRef(new Set<ConversationRevisionId>());
+  useEffect(() => {
+    if (projectFile && !projectDirty) {
+      executedRevisionIdsRef.current.add(
+        projectFile.defaults.conversationRevisionId,
+      );
+    }
+  }, [projectDirty, projectFile]);
+  const nonBranchableMessageIds = useMemo(
+    () =>
+      new Set(
+        runState?.input?.templateResolutions.flatMap((resolution) =>
+          resolution.outputMessageIds.slice(0, -1),
+        ) ?? [],
+      ),
+    [runState],
+  );
+  const transcript = useMemo(
+    () => (runState ? transcriptFromRunState(runState) : []),
+    [runState],
+  );
 
   function replaceRunState(next: RunState | null): void {
     runStateRef.current = next;
@@ -343,6 +435,8 @@ function HomeContent() {
         if (runStateRef.current?.runId === next.runId) {
           setTraceStorage({ kind: "saved", location });
         }
+        // Marks the history stale; the folder is re-read next time it is opened.
+        setSavedRunVersion((current) => current + 1);
       })
       .catch((error) => {
         persistedTraceRunIdsRef.current.delete(next.runId);
@@ -402,6 +496,26 @@ function HomeContent() {
     enabledToolIds.includes(id),
   ).length;
   const selectedToolCount = selectedProjectToolCount + requestTools.length;
+  const activeProjectRevision = projectFile?.conversationRevisions.find(
+    ({ id }) => id === projectFile.defaults.conversationRevisionId,
+  );
+  const templateWorkbench = projectTemplateWorkbenchView({
+    project: projectFile,
+    messages,
+    runOverrides: templateRunOverrides,
+    branchParentRevisionId: branchContext?.parentConversationRevisionId,
+  });
+  const activeProjectResolution = templateWorkbench.resolution;
+  const templateUsageCounts = (() => {
+    const counts = new Map<PromptTemplateId, number>();
+    projectFile?.promptTemplates.forEach((template) => {
+      counts.set(
+        template.id,
+        findPromptTemplateUsages(projectFile, template.id).length,
+      );
+    });
+    return counts;
+  })();
   const activeConnectionRequirement = projectFile?.connectionRequirements.find(
     ({ id }) => id === projectFile.defaults.target.connectionRequirementId,
   );
@@ -413,25 +527,331 @@ function HomeContent() {
     prepareCredential: credential.prepare,
   });
 
-  const { events, output, reasoning, status, usage } = useMemo(() => {
+  function ensureProjectDocument() {
+    return projectFile
+      ? project.currentProjectDocument()
+      : project.materializeProject();
+  }
+
+  function adoptAuthoredProject(
+    next: ReturnType<typeof ensureProjectDocument>,
+    overrides: TemplateRunOverrides = templateRunOverrides,
+  ): void {
+    project.adoptProjectMutation(next);
+    replaceProjectDraft(projectDraft(next, overrides));
+  }
+
+  function projectForUseMutation(): {
+    project: ReturnType<typeof ensureProjectDocument>;
+    revisionId: ConversationRevisionId;
+  } {
+    let base = ensureProjectDocument();
+    let revision = base.conversationRevisions.find(
+      ({ id }) => id === base.defaults.conversationRevisionId,
+    )!;
+    if (executedRevisionIdsRef.current.has(revision.id)) {
+      base = createBranchRevision(base, {
+        conversationId: revision.conversationId,
+        parentRevisionId: revision.id,
+        messages: resolveProjectRevision(
+          base,
+          revision,
+          templateRunOverrides,
+        ).messages,
+        items: structuredClone(revision.items),
+      });
+      revision = base.conversationRevisions.find(
+        ({ id }) => id === base.defaults.conversationRevisionId,
+      )!;
+    }
+    return { project: base, revisionId: revision.id };
+  }
+
+  function createProjectTemplate(
+    name: string,
+    content: PromptTemplateContent,
+  ): PromptTemplateId {
+    const suffix = crypto.randomUUID();
+    const next = createPromptTemplate(ensureProjectDocument(), {
+      name,
+      content,
+      idSuffix: suffix,
+      revisionIdSuffix: `${suffix}-1`,
+    });
+    adoptAuthoredProject(next);
+    return createEntityId("template", suffix);
+  }
+
+  function saveProjectTemplate(
+    templateId: PromptTemplateId,
+    name: string,
+    content: PromptTemplateContent,
+    defaults: Record<string, string>,
+  ) {
+    let next = renamePromptTemplate(ensureProjectDocument(), templateId, name);
+    next = appendPromptTemplateRevision(next, {
+      templateId,
+      content,
+      variableDefaults: defaults,
+    });
+    adoptAuthoredProject(next);
+    return next.promptTemplates.find(({ id }) => id === templateId)!
+      .currentRevisionId;
+  }
+
+  function insertProjectTemplate(
+    templateId: PromptTemplateId,
+    role: "system" | "user" | "assistant",
+    itemIndex: number,
+  ): void {
+    const { project: base, revisionId } = projectForUseMutation();
+    const next = insertPromptTemplateUse(base, {
+      conversationRevisionId: revisionId,
+      templateId,
+      fragmentRole: role,
+      itemIndex,
+    });
+    adoptAuthoredProject(next);
+    setRequestTab("messages");
+  }
+
+  function updateTemplateUseValues(
+    templateUseId: PromptTemplateUseId,
+    values: Record<string, string>,
+  ): void {
+    const { project: base, revisionId } = projectForUseMutation();
+    const next = updatePromptTemplateUseValues(base, {
+      conversationRevisionId: revisionId,
+      templateUseId,
+      values,
+    });
+    adoptAuthoredProject(next);
+  }
+
+  function updateTemplateUseOverride(
+    templateUseId: PromptTemplateUseId,
+    values: Record<string, string>,
+  ): void {
+    const next = { ...templateRunOverrides, [templateUseId]: values };
+    setTemplateRunOverrides(next);
+    if (projectFile) replaceProjectDraft(projectDraft(projectFile, next));
+  }
+
+  function updateTemplateUseToLatestRevision(
+    templateUseId: PromptTemplateUseId,
+  ): void {
+    const currentProject = ensureProjectDocument();
+    const currentRevision = currentProject.conversationRevisions.find(
+      ({ id }) => id === currentProject.defaults.conversationRevisionId,
+    )!;
+    const item = currentRevision.items.find(
+      (candidate) =>
+        candidate.kind === "template-use" &&
+        candidate.use.id === templateUseId,
+    );
+    if (!item || item.kind !== "template-use") return;
+    const template = currentProject.promptTemplates.find(
+      ({ id }) => id === item.use.templateId,
+    )!;
+    const pinned = template.revisions.find(
+      ({ id }) => id === item.use.templateRevisionId,
+    )!;
+    const latest = template.revisions.find(
+      ({ id }) => id === template.currentRevisionId,
+    )!;
+    const pinnedVariables = discoverTemplateVariables(pinned.content).variables.map(
+      ({ name }) => name,
+    );
+    const latestVariables = discoverTemplateVariables(latest.content).variables.map(
+      ({ name }) => name,
+    );
+    const describeContent = (content: PromptTemplateContent): string =>
+      content.kind === "fragment"
+        ? content.text
+        : content.messages
+            .map(({ role, content: text }) => `${role}: ${text}`)
+            .join("\n");
+    setConfirmation({
+      title: `Update "${template.name}"?`,
+      description:
+        "The use will pin the latest immutable revision. Assignments for removed variables and its run-only overrides will be cleared.",
+      confirmLabel: "Update to latest",
+      details: [
+        { label: "From", value: pinned.id },
+        { label: "To", value: latest.id },
+        {
+          label: "Variables",
+          value: `${pinnedVariables.join(", ") || "none"} → ${latestVariables.join(", ") || "none"}`,
+        },
+        { label: "Current content", value: describeContent(pinned.content) },
+        { label: "Latest content", value: describeContent(latest.content) },
+      ],
+      onConfirm() {
+        const { project: base, revisionId } = projectForUseMutation();
+        const latestCount =
+          latest.content.kind === "fragment" ? 1 : latest.content.messages.length;
+        const extraIds = Array.from(
+          {
+            length: Math.max(0, latestCount - item.use.outputMessageIds.length),
+          },
+          () => crypto.randomUUID(),
+        );
+        const next = updatePromptTemplateUseToLatest(base, {
+          conversationRevisionId: revisionId,
+          templateUseId,
+          newOutputMessageIdSuffixes: extraIds,
+          ...(latest.content.kind === "fragment"
+            ? { fragmentRole: item.use.fragmentRole ?? "user" }
+            : {}),
+        });
+        const overrides = { ...templateRunOverrides };
+        delete overrides[templateUseId];
+        setTemplateRunOverrides(overrides);
+        adoptAuthoredProject(next, overrides);
+      },
+    });
+  }
+
+  function detachTemplateUseFromProject(
+    templateUseId: PromptTemplateUseId,
+  ): void {
+    setConfirmation({
+      title: "Detach this template use?",
+      description:
+        "Its currently resolved values, including run-only overrides, will become ordinary literal messages with the same message IDs.",
+      confirmLabel: "Detach",
+      onConfirm() {
+        const { project: base, revisionId } = projectForUseMutation();
+        const next = detachPromptTemplateUse(base, {
+          conversationRevisionId: revisionId,
+          templateUseId,
+          runOverrides: templateRunOverrides,
+        });
+        const overrides = { ...templateRunOverrides };
+        delete overrides[templateUseId];
+        setTemplateRunOverrides(overrides);
+        adoptAuthoredProject(next, overrides);
+      },
+    });
+  }
+
+  function removeTemplateUseFromProject(
+    templateUseId: PromptTemplateUseId,
+  ): void {
+    setConfirmation({
+      title: "Remove this template use?",
+      description:
+        "The pinned use and all messages it generates will be removed from this conversation revision.",
+      confirmLabel: "Remove use",
+      destructive: true,
+      onConfirm() {
+        const { project: base, revisionId } = projectForUseMutation();
+        const next = removePromptTemplateUse(base, revisionId, templateUseId);
+        const overrides = { ...templateRunOverrides };
+        delete overrides[templateUseId];
+        setTemplateRunOverrides(overrides);
+        adoptAuthoredProject(next, overrides);
+      },
+    });
+  }
+
+  function mutateAuthoredItems(
+    update: (items: ProjectConversationItem[]) => ProjectConversationItem[],
+  ): void {
+    const { project: base, revisionId } = projectForUseMutation();
+    const revision = base.conversationRevisions.find(
+      ({ id }) => id === revisionId,
+    )!;
+    const next = updateProjectDraft(base, {
+      messages,
+      items: update(structuredClone(revision.items)),
+      model: activeModel,
+      temperature: activeTemperature,
+      tools: serializedTools(),
+      toolMocks,
+      enabledToolIds,
+    });
+    adoptAuthoredProject(next);
+  }
+
+  function addComposerMessage(): void {
+    if (!projectFile) {
+      addMessage();
+      return;
+    }
+    mutateAuthoredItems((items) => [
+      ...items,
+      {
+        kind: "message",
+        message: {
+          id: createEntityId("message", crypto.randomUUID()),
+          role: "user",
+          content: [{ type: "text", text: "" }],
+        },
+      },
+    ]);
+  }
+
+  function updateComposerMessage(
+    id: MessageId,
+    patch: {
+      content?: ConversationMessage["content"];
+      role?: ConversationMessage["role"];
+    },
+  ): void {
+    if (!projectFile) {
+      updateMessage(id, patch);
+      return;
+    }
+    mutateAuthoredItems((items) =>
+      items.map((item) => {
+        if (item.kind !== "message" || item.message.id !== id) return item;
+        const message = item.message;
+        const content = patch.content ?? message.content;
+        if (
+          message.role === "tool" ||
+          (message.role === "assistant" && message.toolCalls?.length)
+        ) {
+          return { kind: "message", message: { ...message, content } };
+        }
+        return {
+          kind: "message",
+          message: {
+            id: message.id,
+            role: patch.role ?? message.role,
+            content,
+          } as ConversationMessage,
+        };
+      }),
+    );
+  }
+
+  function removeComposerMessage(id: MessageId): void {
+    if (!projectFile) {
+      removeMessage(id);
+      return;
+    }
+    const remainingIds = new Set(
+      removeDraftMessage(messages, id).map((message) => message.id),
+    );
+    mutateAuthoredItems((items) =>
+      items.filter(
+        (item) =>
+          item.kind === "template-use" || remainingIds.has(item.message.id),
+      ),
+    );
+  }
+
+  const { output, reasoning, status } = useMemo(() => {
     const attempts =
       runState?.turns.flatMap((turn) => {
         const latest = turn.attempts.at(-1);
         return latest ? [latest] : [];
       }) ?? [];
-    let latestUsage: RunTokenUsage | undefined;
-    for (let index = attempts.length - 1; index >= 0; index -= 1) {
-      if (attempts[index]?.usage) {
-        latestUsage = attempts[index].usage;
-        break;
-      }
-    }
     return {
-      events: runState?.events ?? [],
       output: attempts.map((attempt) => attempt.text).join(""),
       reasoning: attempts.map((attempt) => attempt.reasoning).join(""),
       status: displayStatus(runState),
-      usage: latestUsage,
     };
   }, [runState]);
 
@@ -497,14 +917,60 @@ function HomeContent() {
     };
   }
 
+  function templateRequestPreview():
+    | { body: unknown; messages: ConversationMessage[] }
+    | { error: string }
+    | undefined {
+    if (!projectFile || !activeProjectRevision) {
+      return undefined;
+    }
+    if (templateWorkbench.resolutionError) {
+      return { error: templateWorkbench.resolutionError };
+    }
+    if (!activeProjectResolution) return undefined;
+    try {
+      const request = {
+        ...currentRequest(),
+        messages: activeProjectResolution.messages,
+      };
+      const execution = createSingleTurnRunExecution(
+        request,
+        {
+          conversationId: activeProjectRevision.conversationId,
+          conversationRevisionId: activeProjectRevision.id,
+        },
+        "template-preview",
+        "1970-01-01T00:00:00.000Z",
+        [...resolvedTools(), ...requestTools],
+        activeProjectResolution.templateResolutions,
+      );
+      return {
+        messages: activeProjectResolution.messages,
+        body: buildChatCompletionsRequest({
+          runId: execution.runId,
+          turnId: execution.turnId,
+          exchangeId: execution.exchangeId,
+          attempt: execution.attempt,
+          input: execution.turnInput,
+        }).body,
+      };
+    } catch (error) {
+      return {
+        error:
+          error instanceof Error ? error.message : "Could not build request preview.",
+      };
+    }
+  }
+
   function editFromHere(messageId: MessageId): void {
     if (!runState || !["completed", "cancelled", "failed"].includes(runState.status.kind)) {
       return;
     }
-    const transcript = transcriptFromRunState(runState);
-    const index = transcript.findIndex((message) => message.id === messageId);
+    const index = transcript.findIndex(({ message }) => message.id === messageId);
     if (index < 0) return;
-    resetMessages(structuredClone(transcript.slice(0, index + 1)));
+    resetMessages(
+      structuredClone(transcript.slice(0, index + 1).map(({ message }) => message)),
+    );
     setBranchContext({
       parentRunId: runState.runId,
       parentConversationRevisionId: runState.input?.conversationRevisionId,
@@ -636,7 +1102,7 @@ function HomeContent() {
     project.clearErrorKind();
     if (projectFile && !mappedProfileId) {
       project.setError(
-        "Map this project's connection requirement to a local profile before running.",
+        "Map this project's connection to a local profile before running.",
       );
       return;
     }
@@ -665,14 +1131,8 @@ function HomeContent() {
       project.setError(error instanceof Error ? error.message : "Tools are invalid.");
       return;
     }
-    const requestGeneration = ++requestGenerationRef.current;
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setWorkbenchView("response");
-    setOutputFollowing(true);
-    setIsRequestActive(true);
-    const request = currentRequest();
+    let request = currentRequest();
+    let projectForRun = projectFile;
     let identity: RunConversationIdentity;
     let branchedFrom: RunTrace["branchedFrom"];
     if (branchContext) {
@@ -690,9 +1150,11 @@ function HomeContent() {
             conversationId: parent.conversationId,
             parentRevisionId: parent.id,
             messages: request.messages,
+            runOverrides: templateRunOverrides,
           });
           const revision = branchedProject.conversationRevisions.at(-1)!;
           project.adoptBranchRevision(branchedProject);
+          projectForRun = branchedProject;
           identity = {
             conversationId: revision.conversationId,
             conversationRevisionId: revision.id,
@@ -713,11 +1175,65 @@ function HomeContent() {
     } else {
       identity = currentRunIdentity();
     }
-    const input = createResolvedRunInput(request, identity, selectedTools);
+    let templateResolutions: ResolvedTemplateUse[] = [];
+    if (
+      projectForRun &&
+      identity.conversationRevisionId ===
+        projectForRun.defaults.conversationRevisionId
+    ) {
+      const revision = projectForRun.conversationRevisions.find(
+        ({ id }) => id === identity.conversationRevisionId,
+      );
+      if (!revision) {
+        project.setError("The active project conversation revision no longer exists.");
+        return;
+      }
+      const prepared = prepareProjectRevisionRun(
+        projectForRun,
+        revision,
+        templateRunOverrides,
+      );
+      if (!prepared.ok) {
+        project.setError(templateRunErrorMessage(prepared.diagnostics));
+        return;
+      }
+      const hasTemplateUses = revision.items.some(
+        (item) => item.kind === "template-use",
+      );
+      if (
+        hasTemplateUses &&
+        !sameConversationMessages(request.messages, prepared.messages)
+      ) {
+        project.setError(
+          "This template-backed conversation differs from its generated messages. Detach the template use before editing generated text.",
+        );
+        return;
+      }
+      if (hasTemplateUses) {
+        request = { ...request, messages: prepared.messages };
+      }
+      templateResolutions = prepared.templateResolutions;
+    }
+    const input = createResolvedRunInput(
+      request,
+      identity,
+      selectedTools,
+      templateResolutions,
+    );
+    if (projectForRun) {
+      executedRevisionIdsRef.current.add(identity.conversationRevisionId);
+    }
     input.target.profileId = createEntityId("profile", activeProfile.id);
     const coordinator = new RunCoordinator(input);
     if (branchedFrom) runBranchProvenanceRef.current.set(input.runId, branchedFrom);
     setVisibleBranchProvenance(branchedFrom);
+    const requestGeneration = ++requestGenerationRef.current;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setWorkbenchView("response");
+    setOutputFollowing(true);
+    setIsRequestActive(true);
     runTraceWorkspaceRef.current = projectWorkspace;
     setTraceStorage(null);
     coordinatorRef.current = coordinator;
@@ -954,7 +1470,7 @@ function HomeContent() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `trace-lens-diagnostics-${bundle.exportedAt.replaceAll(":", "-")}.json`;
+    link.download = `inference-lens-diagnostics-${bundle.exportedAt.replaceAll(":", "-")}.json`;
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -1011,28 +1527,58 @@ function HomeContent() {
     }
   }
 
+  /**
+   * Replaces the workbench with a trace the user is inspecting rather than
+   * running. Importing a file and opening a project's saved run differ only in
+   * where the trace came from and how it is stored, so both go through here:
+   * the live coordinator is dropped, drafts and diagnostics from the previous
+   * run are cleared, and the response view is brought forward.
+   *
+   * `origin.workspace` is the folder the trace already lives in, or null for a
+   * trace that has no home on disk. Naming it here is what keeps the autosave
+   * effect from writing an artifact back over the file it was just read from.
+   */
+  function adoptRunTrace(
+    trace: RunTrace,
+    origin:
+      | { workspace: ProjectWorkspaceHandle; fileName: string }
+      | { workspace: null; fileName: string },
+  ): void {
+    if (trace.branchedFrom) {
+      runBranchProvenanceRef.current.set(trace.runId, trace.branchedFrom);
+    }
+    if (origin.workspace) persistedTraceRunIdsRef.current.add(trace.runId);
+    coordinatorRef.current = null;
+    runTraceWorkspaceRef.current = origin.workspace;
+    diagnosticCaptureRef.current = null;
+    setHasDiagnosticCapture(false);
+    setToolResultDrafts({});
+    setBranchContext(null);
+    setVisibleBranchProvenance(trace.branchedFrom);
+    setWorkbenchView("response");
+    setTraceOpen(true);
+    replaceRunState(runStateFromTrace(trace));
+    setTraceStorage(
+      origin.workspace
+        ? {
+            kind: "saved",
+            location: runTraceWorkspacePath(origin.workspace, origin.fileName),
+          }
+        : { kind: "loaded", fileName: origin.fileName },
+    );
+    project.setError(undefined, { clearKind: true });
+  }
+
   async function importRunTrace(
     event: ChangeEvent<HTMLInputElement>,
   ): Promise<void> {
     const file = event.target.files?.[0];
     if (!file) return;
     try {
-      const trace = parseRunTraceJson(await file.text());
-      if (trace.branchedFrom) {
-        runBranchProvenanceRef.current.set(trace.runId, trace.branchedFrom);
-      }
-      coordinatorRef.current = null;
-      runTraceWorkspaceRef.current = null;
-      diagnosticCaptureRef.current = null;
-      setHasDiagnosticCapture(false);
-      setToolResultDrafts({});
-      setBranchContext(null);
-      setVisibleBranchProvenance(trace.branchedFrom);
-      setWorkbenchView("response");
-      setTraceOpen(true);
-      replaceRunState(runStateFromTrace(trace));
-      setTraceStorage({ kind: "loaded", fileName: file.name });
-      project.setError(undefined, { clearKind: true });
+      adoptRunTrace(parseRunTraceJson(await file.text()), {
+        workspace: null,
+        fileName: file.name,
+      });
     } catch (error) {
       project.setError(
         error instanceof Error ? error.message : "Could not import the run trace.",
@@ -1041,6 +1587,56 @@ function HomeContent() {
     } finally {
       event.target.value = "";
     }
+  }
+
+  /**
+   * Reads the selected artifact again instead of trusting a copy held from
+   * when the list was built. Errors propagate to the drawer, which keeps the
+   * list on screen so another run can be chosen.
+   */
+  async function openHistoryTrace(item: ProjectRunHistoryItem): Promise<void> {
+    const workspace = projectWorkspace;
+    if (!workspace) throw new Error("The project folder is no longer open.");
+    const trace = await runHistory.readTrace(item.fileName);
+    adoptRunTrace(trace, { workspace, fileName: item.fileName });
+    setRunHistoryOpen(false);
+  }
+
+  const runReachedTerminalStatus = Boolean(
+    runState &&
+      ["completed", "cancelled", "failed"].includes(runState.status.kind),
+  );
+  const requestPreview = templateRequestPreview();
+  const composerItems = templateWorkbench.composerItems;
+  const readiness = runReadiness({
+    projectOpen: Boolean(projectFile),
+    connectionMapped: Boolean(mappedProfileId),
+    activeProfileName: activeProfile.name,
+    activeProfileEndpoint: activeProfile.endpoint,
+    selectedToolCount,
+    toolsEnabled: activeCapabilities.tools,
+    ...(activeConnectionRequirement
+      ? { requiredEndpoint: activeConnectionRequirement.endpoint }
+      : {}),
+    ...(templateWorkbench.resolutionError
+      ? { templateResolutionError: templateWorkbench.resolutionError }
+      : {}),
+    templateIssues:
+      activeProjectResolution?.diagnostics.map(
+        ({ templateUseId, diagnostic }) => ({
+          templateUseId,
+          ...(diagnostic.code === "missing-template-variable"
+            ? { variableName: diagnostic.name }
+            : {}),
+        }),
+      ) ?? [],
+  });
+
+  function resolveReadiness(kind: RunReadinessActionKind): void {
+    if (kind === "map-profile") project.mapActiveProfile();
+    else if (kind === "open-connections") setConnectionDrawerOpen(true);
+    else if (kind === "review-tools") setRequestTab("tools");
+    else setRequestTab("messages");
   }
 
   return (
@@ -1059,6 +1655,7 @@ function HomeContent() {
           !isRequestActive
         ) {
           event.preventDefault();
+          if (readiness?.blocked) return;
           if (
             runState?.status.kind === "paused" &&
             runState.status.reason === "attempt_failed"
@@ -1079,16 +1676,17 @@ function HomeContent() {
         projectDirty={projectDirty}
         folderAccessAvailable={folderAccessAvailable}
         hasDiagnosticCapture={hasDiagnosticCapture}
-        hasRunTrace={Boolean(
-          runState && ["completed", "cancelled", "failed"].includes(runState.status.kind),
-        )}
+        hasRunTrace={runReachedTerminalStatus}
+        hasProjectWorkspace={Boolean(projectWorkspace)}
+        runHistoryBlocked={Boolean(runState) && !runReachedTerminalStatus}
         isRequestActive={isRequestActive}
         awaitingToolResults={runState?.status.kind === "awaiting_tool_results"}
         retryableFailure={
           runState?.status.kind === "paused" &&
           runState.status.reason === "attempt_failed"
         }
-        runDisabled={Boolean(projectFile && !mappedProfileId)}
+        runDisabled={Boolean(readiness?.blocked)}
+        runDisabledReason={readiness?.blocked ? readiness.summary : undefined}
         onChooseProfile={chooseProfile}
         onOpenConnections={() => setConnectionDrawerOpen(true)}
         onNewProject={() => void project.newProjectFolder()}
@@ -1100,6 +1698,7 @@ function HomeContent() {
         onDownloadDiagnostics={downloadDiagnostics}
         onDownloadRunTrace={() => void exportRunTrace()}
         onImportRunTrace={(event) => void importRunTrace(event)}
+        onOpenRunHistory={() => setRunHistoryOpen(true)}
         onStop={stop}
         onRun={() => void run()}
         onContinue={() => void continueRun()}
@@ -1152,6 +1751,15 @@ function HomeContent() {
         }}
       />
 
+      <RunHistoryDrawer
+        open={runHistoryOpen}
+        projectName={projectFile?.name}
+        selectedRunId={runState?.runId}
+        history={runHistory}
+        onClose={() => setRunHistoryOpen(false)}
+        onSelect={(item) => openHistoryTrace(item)}
+      />
+
       <WorkbenchShell
         view={workbenchView}
         onViewChange={setWorkbenchView}
@@ -1167,25 +1775,28 @@ function HomeContent() {
               label="Request editor"
               value={requestTab}
               onChange={(value) =>
-                setRequestTab(value as "messages" | "tools")
+                setRequestTab(value as "messages" | "templates" | "tools")
               }
               tabs={[
                 { id: "messages", label: "Messages", count: messages.length },
                 {
-                  id: "tools",
-                  label: "Tools",
-                  count: tools.length + requestTools.length,
+                  id: "templates",
+                  label: "Templates",
+                  count: projectFile?.promptTemplates.length ?? 0,
                 },
+                // The badge counts what will be sent, not what is defined, so
+                // it agrees with the manifest inside the tab.
+                { id: "tools", label: "Tools", count: selectedToolCount },
               ]}
             />
             {requestTab === "messages" ? (
               <button
                 className="text-button header-text-action"
-                onClick={addMessage}
+                onClick={addComposerMessage}
               >
                 + Add message
               </button>
-            ) : (
+            ) : requestTab === "tools" ? (
               <button
                 className="text-button header-text-action"
                 type="button"
@@ -1193,8 +1804,12 @@ function HomeContent() {
               >
                 + Add tool
               </button>
-            )}
+            ) : null}
           </div>
+          <RunReadinessNotice
+            {...(readiness ? { readiness } : {})}
+            onAction={resolveReadiness}
+          />
           {branchContext && (
             <div className="branch-pending" role="status">
               Branching from run <code>{branchContext.parentRunId}</code> at message <code>{branchContext.branchMessageId}</code> — the original trace is untouched.
@@ -1224,47 +1839,39 @@ function HomeContent() {
                 Connection settings
               </button>
             </div>
-            <div
+            {/* The Tools tab owns the full manifest; this line only says
+                enough to notice that something needs attention there. */}
+            <p
               className={
-                selectedToolCount === 0
-                  ? "request-tool-summary empty"
-                  : activeCapabilities.tools
-                    ? "request-tool-summary ready"
-                    : "request-tool-summary blocked"
+                selectedToolCount > 0 && !activeCapabilities.tools
+                  ? "request-tool-line blocked"
+                  : "request-tool-line"
               }
               role="status"
             >
-              <span className="request-tool-summary-icon" aria-hidden="true">
+              <span>
                 {selectedToolCount === 0
-                  ? "—"
-                  : activeCapabilities.tools
-                    ? "✓"
-                    : "!"}
-              </span>
-              <span className="request-tool-summary-copy">
-                <strong>Tools for this request</strong>
-                <small>
-                  {selectedToolCount === 0
-                    ? "None will be sent to the model."
-                    : activeCapabilities.tools
+                  ? "No tools sent with this request."
+                  : !activeCapabilities.tools
+                    ? `${selectedToolCount} ${
+                        selectedToolCount === 1 ? "tool is" : "tools are"
+                      } selected, but this profile does not allow tool calling.`
+                    : requestTools.length > 0
                       ? `${selectedToolCount} ${
                           selectedToolCount === 1 ? "tool" : "tools"
-                        } will be sent (${selectedProjectToolCount} project, ${
-                          requestTools.length
-                        } one-shot).`
+                        } sent, ${requestTools.length} only once.`
                       : `${selectedToolCount} ${
-                          selectedToolCount === 1 ? "tool is" : "tools are"
-                        } selected, but none will be sent because this profile does not allow tool calling.`}
-                </small>
+                          selectedToolCount === 1 ? "tool" : "tools"
+                        } sent with this request.`}
               </span>
               <button
                 className="text-button"
                 type="button"
                 onClick={() => setRequestTab("tools")}
               >
-                Review tools
+                {selectedToolCount === 0 ? "Add tools" : "Review"}
               </button>
-            </div>
+            </p>
             <div className="run-settings-grid">
               <ModelCombobox
                 value={activeModel}
@@ -1291,7 +1898,38 @@ function HomeContent() {
             </div>
           </section>
           <div className="message-list">
-            {messages.map((message, index) => {
+            {composerItems.map((item, index) => {
+              if (item.kind === "template-use") {
+                const template = projectFile?.promptTemplates.find(
+                  ({ id }) => id === item.use.templateId,
+                );
+                if (!template) return null;
+                return (
+                  <TemplateUseCard
+                    key={item.use.id}
+                    use={item.use}
+                    template={template}
+                    diagnostics={
+                      activeProjectResolution?.diagnostics.filter(
+                        ({ templateUseId }) => templateUseId === item.use.id,
+                      ) ?? []
+                    }
+                    runOverrides={templateRunOverrides[item.use.id] ?? {}}
+                    onSaveValues={(values) =>
+                      updateTemplateUseValues(item.use.id, values)
+                    }
+                    onRunOverridesChange={(values) =>
+                      updateTemplateUseOverride(item.use.id, values)
+                    }
+                    onUpdateLatest={() =>
+                      updateTemplateUseToLatestRevision(item.use.id)
+                    }
+                    onDetach={() => detachTemplateUseFromProject(item.use.id)}
+                    onRemove={() => removeTemplateUseFromProject(item.use.id)}
+                  />
+                );
+              }
+              const message = item.message;
               const roleIsStructural =
                 message.role === "tool" ||
                 (message.role === "assistant" && Boolean(message.toolCalls?.length));
@@ -1307,7 +1945,7 @@ function HomeContent() {
                     value={message.role}
                     disabled={roleIsStructural}
                     onChange={(event) =>
-                      updateMessage(message.id, {
+                      updateComposerMessage(message.id, {
                         role: event.target.value as ConversationMessage["role"],
                       })
                     }
@@ -1320,7 +1958,7 @@ function HomeContent() {
                   <button
                     aria-label={`Remove message ${index + 1}`}
                     className="remove-button"
-                    onClick={() => removeMessage(message.id)}
+                    onClick={() => removeComposerMessage(message.id)}
                   >
                     Remove
                   </button>
@@ -1329,7 +1967,7 @@ function HomeContent() {
                   aria-label={`Message ${index + 1} content`}
                   value={text}
                   onChange={(event) =>
-                    updateMessage(message.id, {
+                    updateComposerMessage(message.id, {
                       content: [{ type: "text", text: event.target.value }],
                     })
                   }
@@ -1359,7 +1997,37 @@ function HomeContent() {
               );
             })}
           </div>
+          {requestPreview && (
+            <details className="request-preview" open>
+              <summary>Resolved request preview</summary>
+              {"error" in requestPreview ? (
+                <div className="template-diagnostic">{requestPreview.error}</div>
+              ) : (
+                <>
+                  {(activeProjectResolution?.diagnostics.length ?? 0) > 0 && (
+                    <div className="template-warning" role="status">
+                      Preview contains unresolved variables. Running is blocked until they have values.
+                    </div>
+                  )}
+                  <h3>Resolved messages</h3>
+                  <pre>{JSON.stringify(requestPreview.messages, null, 2)}</pre>
+                  <h3>OpenAI-compatible request body</h3>
+                  <pre>{JSON.stringify(requestPreview.body, null, 2)}</pre>
+                </>
+              )}
+            </details>
+          )}
             </>
+          ) : requestTab === "templates" ? (
+            <ProjectTemplatesPane
+              key={projectFile?.projectId ?? "unsaved-project"}
+              templates={projectFile?.promptTemplates ?? []}
+              usageCounts={templateUsageCounts}
+              itemCount={activeProjectRevision?.items.length ?? messages.length}
+              onCreate={createProjectTemplate}
+              onSave={saveProjectTemplate}
+              onInsert={insertProjectTemplate}
+            />
           ) : (
             <ToolsPane
               tools={tools}
@@ -1395,7 +2063,8 @@ function HomeContent() {
             completedToolCalls={completedToolCalls}
             toolResultDrafts={toolResultDrafts}
             traceStorage={traceStorage}
-            transcript={runState ? transcriptFromRunState(runState) : []}
+            transcript={transcript}
+            nonBranchableMessageIds={nonBranchableMessageIds}
             branchedFrom={visibleBranchProvenance}
             onMarkdownPreviewChange={setMarkdownPreview}
             onOutputScroll={updateOutputFollowState}
@@ -1412,41 +2081,11 @@ function HomeContent() {
             onEditFromHere={editFromHere}
           />
 
-          <ResizableTracePanel
+          <RunTracePanel
             open={traceOpen}
+            runState={runState}
             onOpenChange={setTraceOpen}
-            meta={
-              <span>
-                {events.length} {events.length === 1 ? "event" : "events"}
-                {usage ? ` · ${usage.totalTokens ?? "—"} tokens` : ""}
-              </span>
-            }
-          >
-            <div className="trace" aria-live="polite">
-              {events.length === 0 ? (
-                <p className="trace-empty">
-                  Normalized events will appear here.
-                </p>
-              ) : (
-                events.map((event, index) => (
-                  <details
-                    key={event.eventId}
-                    open={
-                      event.type === "run.failed" ||
-                      index === events.length - 1
-                    }
-                  >
-                    <summary>
-                      <span className={`event-dot ${event.type}`} />
-                      <span>{event.type}</span>
-                      <span>#{String(index + 1).padStart(2, "0")}</span>
-                    </summary>
-                    <pre>{formatEvent(event)}</pre>
-                  </details>
-                ))
-              )}
-            </div>
-          </ResizableTracePanel>
+          />
         </section>
         }
       />
@@ -1458,6 +2097,12 @@ function HomeContent() {
           onAttachToProject={attachRegistryToolToProject}
           onAttachToRequest={attachRegistryToolToRequest}
           onClose={() => setToolRegistryOpen(false)}
+        />
+      )}
+      {confirmation && (
+        <ConfirmationDialog
+          request={confirmation}
+          onClose={() => setConfirmation(undefined)}
         />
       )}
     </main>

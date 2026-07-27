@@ -19,8 +19,8 @@ type WorkbenchShellProps = {
   responseStatus?: string;
 };
 
-const SPLIT_STORAGE_KEY = "trace-lens:workbench-split:v1";
-const TRACE_HEIGHT_STORAGE_KEY = "trace-lens:trace-height:v1";
+const SPLIT_STORAGE_KEY = "inference-lens:workbench-split:v1";
+const TRACE_HEIGHT_STORAGE_KEY = "inference-lens:trace-height:v1";
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
@@ -140,6 +140,7 @@ export function WorkbenchShell({
 
 type SideDrawerProps = {
   open: boolean;
+  eyebrow?: string;
   title: string;
   description?: string;
   onClose: () => void;
@@ -148,6 +149,7 @@ type SideDrawerProps = {
 
 export function SideDrawer({
   open,
+  eyebrow = "Local configuration",
   title,
   description,
   onClose,
@@ -172,7 +174,7 @@ export function SideDrawer({
     >
       <header className="side-drawer-header">
         <div>
-          <span className="eyebrow">Local configuration</span>
+          <span className="eyebrow">{eyebrow}</span>
           <h2>{title}</h2>
           {description && <p>{description}</p>}
         </div>
@@ -228,6 +230,8 @@ export function PaneTabs({ label, tabs, value, onChange }: PaneTabsProps) {
 type ResizableTracePanelProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Optional view switcher, rendered between the toggle and the meta line. */
+  tabs?: ReactNode;
   meta?: ReactNode;
   children: ReactNode;
 };
@@ -235,6 +239,7 @@ type ResizableTracePanelProps = {
 export function ResizableTracePanel({
   open,
   onOpenChange,
+  tabs,
   meta,
   children,
 }: ResizableTracePanelProps) {
@@ -288,7 +293,7 @@ export function ResizableTracePanel({
     >
       {open && (
         <button
-          aria-label="Resize event trace"
+          aria-label="Resize run details"
           className="trace-resize-handle"
           type="button"
           onPointerDown={beginResize}
@@ -306,8 +311,9 @@ export function ResizableTracePanel({
           <span className="trace-chevron" aria-hidden="true">
             {open ? "⌄" : "⌃"}
           </span>
-          Event trace
+          Run details
         </button>
+        {tabs}
         {meta}
       </header>
       {open && <div className="trace-panel-content">{children}</div>}

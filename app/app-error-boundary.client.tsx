@@ -52,7 +52,7 @@ export class AppErrorBoundary extends Component<
               TL
             </span>
             <p className="eyebrow">Display recovery</p>
-            <h1>Trace Lens needs to reload</h1>
+            <h1>Inference Lens needs to reload</h1>
             <p>
               An unexpected display error interrupted this view. Your saved
               profiles and secure credentials are still available.
@@ -61,7 +61,7 @@ export class AppErrorBoundary extends Component<
               className="button primary"
               onClick={() => window.location.reload()}
             >
-              Reload Trace Lens
+              Reload Inference Lens
             </button>
           </div>
         </main>

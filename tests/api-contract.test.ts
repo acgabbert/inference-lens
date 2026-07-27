@@ -11,8 +11,8 @@ import {
 import { OPENAI_COMPATIBLE_CAPABILITIES } from "../packages/core/src/types.ts";
 
 const environmentStore = new EnvironmentCredentialStore({
-  TRACE_LENS_API_KEY: "environment-key",
-  TRACE_LENS_API_ENDPOINT: "https://api.example.test/v1",
+  INFERENCE_LENS_API_KEY: "environment-key",
+  INFERENCE_LENS_API_ENDPOINT: "https://api.example.test/v1",
 });
 
 function execution(capabilities = OPENAI_COMPATIBLE_CAPABILITIES) {
@@ -124,7 +124,7 @@ test("fails clearly when no environment credential is configured", () => {
         },
         new EnvironmentCredentialStore({}),
       ),
-    /TRACE_LENS_API_KEY/,
+    /INFERENCE_LENS_API_KEY/,
   );
 });
 
@@ -137,10 +137,10 @@ test("requires an endpoint binding for the environment credential", () => {
           credential: { kind: "environment-default" },
         },
         new EnvironmentCredentialStore({
-          TRACE_LENS_API_KEY: "environment-key",
+          INFERENCE_LENS_API_KEY: "environment-key",
         }),
       ),
-    /TRACE_LENS_API_ENDPOINT/,
+    /INFERENCE_LENS_API_ENDPOINT/,
   );
 });
 

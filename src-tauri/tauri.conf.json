@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Trace Lens",
+  "productName": "Inference Lens",
   "version": "0.1.0",
-  "identifier": "app.tracelens.desktop",
+  "identifier": "app.inferencelens.desktop",
   "build": {
     "beforeDevCommand": "npm run dev:tauri",
     "devUrl": "http://localhost:3003",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Trace Lens",
+        "title": "Inference Lens",
         "width": 1280,
         "height": 900,
         "minWidth": 960,

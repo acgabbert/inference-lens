@@ -9,7 +9,7 @@ import {
 } from "../packages/core/src/project.ts";
 import type {
   ProjectDraft,
-  ProjectFileV2,
+  ProjectFile,
   UpdateProjectDraft,
 } from "../packages/core/src/project.ts";
 import {
@@ -23,7 +23,7 @@ import type { ProjectWorkspaceHandle } from "./project-workspace.client.ts";
 export type ProjectErrorKind = "tools-disabled";
 
 export interface ProjectWorkspaceHandleState {
-  projectFile: ProjectFileV2 | null;
+  projectFile: ProjectFile | null;
   projectWorkspace: ProjectWorkspaceHandle | null;
   projectDirty: boolean;
   projectError?: string;
@@ -35,7 +35,10 @@ export interface ProjectWorkspaceHandleState {
   setToolsDisabledError(message: string): void;
   dismissError(): void;
   clearToolsDisabledError(): void;
-  adoptBranchRevision(project: ProjectFileV2): void;
+  adoptBranchRevision(project: ProjectFile): void;
+  currentProjectDocument(): ProjectFile;
+  materializeProject(): ProjectFile;
+  adoptProjectMutation(project: ProjectFile): void;
   mapProfile(profileId: string): void;
   mapActiveProfile(): void;
   newProjectFolder(): Promise<void>;
@@ -54,7 +57,7 @@ export interface ProjectWorkspaceHandleState {
 export function useProjectWorkspace(input: {
   activeProfileId: string;
   folderAccessAvailable: boolean;
-  createProject(): ProjectFileV2;
+  createProject(): ProjectFile;
   currentDraft(): UpdateProjectDraft;
   onApplyDraft(draft: ProjectDraft): void;
 }): ProjectWorkspaceHandleState {
@@ -65,7 +68,7 @@ export function useProjectWorkspace(input: {
     currentDraft,
     onApplyDraft,
   } = input;
-  const [projectFile, setProjectFile] = useState<ProjectFileV2 | null>(null);
+  const [projectFile, setProjectFile] = useState<ProjectFile | null>(null);
   const [projectWorkspace, setProjectWorkspace] =
     useState<ProjectWorkspaceHandle | null>(null);
   const [projectDirty, setProjectDirty] = useState(false);
@@ -103,7 +106,23 @@ export function useProjectWorkspace(input: {
     if (projectErrorKind === "tools-disabled") dismissError();
   }
 
-  function adoptBranchRevision(project: ProjectFileV2): void {
+  function adoptBranchRevision(project: ProjectFile): void {
+    setProjectFile(project);
+    setProjectDirty(true);
+    dismissError();
+  }
+
+  function materializeProject(): ProjectFile {
+    const project = currentProjectDocument();
+    setProjectFile(project);
+    setProjectWorkspace(null);
+    setMappedProfileId(activeProfileId);
+    setProjectDirty(true);
+    dismissError();
+    return project;
+  }
+
+  function adoptProjectMutation(project: ProjectFile): void {
     setProjectFile(project);
     setProjectDirty(true);
     dismissError();
@@ -120,12 +139,12 @@ export function useProjectWorkspace(input: {
     }
   }
 
-  function currentProjectDocument(): ProjectFileV2 {
+  function currentProjectDocument(): ProjectFile {
     return updateProjectDraft(projectFile ?? createProject(), currentDraft());
   }
 
   function applyProjectDocument(
-    project: ProjectFileV2,
+    project: ProjectFile,
     workspace: ProjectWorkspaceHandle | null,
     profileId?: string,
   ): void {
@@ -226,6 +245,9 @@ export function useProjectWorkspace(input: {
     dismissError,
     clearToolsDisabledError,
     adoptBranchRevision,
+    currentProjectDocument,
+    materializeProject,
+    adoptProjectMutation,
     mapProfile,
     mapActiveProfile,
     newProjectFolder,

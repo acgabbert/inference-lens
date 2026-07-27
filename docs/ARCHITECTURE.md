@@ -1,6 +1,6 @@
 # Architecture boundaries
 
-Trace Lens is packaged as both a local web application and a Tauri desktop
+Inference Lens is packaged as both a local web application and a Tauri desktop
 application. Its execution and project contracts are independent of the
 presentation and deployment shell.
 
@@ -32,9 +32,9 @@ complete-run state.
 current `/api/*` URLs and NDJSON parsing details.
 
 The API service resolves credentials through `CredentialStore`. The initial
-`EnvironmentCredentialStore` reads `TRACE_LENS_API_KEY` inside the API process.
+`EnvironmentCredentialStore` reads `INFERENCE_LENS_API_KEY` inside the API process.
 It releases that credential only to the origin configured by
-`TRACE_LENS_API_ENDPOINT`, making it suitable for an individual developer's
+`INFERENCE_LENS_API_ENDPOINT`, making it suitable for an individual developer's
 local container while keeping the secret out of client JavaScript. The HTTP
 routes also require same-origin JSON requests. A `provided` credential is
 session-only input for the local workbench; it is never included in profile
@@ -66,6 +66,16 @@ connection requirements; the UI requires an explicit mapping to a local
 inference profile before a run can resolve that profile's credential.
 Workspace handles expose a human-readable display location for status text,
 but native filesystem commands continue to accept only the opaque workspace ID.
+
+Every condition that refuses a run is derived once, by
+`app/run-readiness.client.ts`, from the open project, its declared endpoint,
+and its template resolution. Both the disabled Run button's tooltip and the
+notice in the request pane read that one value, so a refused run always states
+the same reason in both places, along with the action that clears it. A mapping
+whose endpoint differs from the project's declared one is reported rather than
+refused: moving a project between a hosted provider and a local server is
+ordinary, but sending a request somewhere the document does not describe should
+never be silent.
 
 `packages/core/src/run-trace.ts` owns the versioned diagnostic artifact
 boundary. It validates the file envelope, reconstructs canonical run state from
