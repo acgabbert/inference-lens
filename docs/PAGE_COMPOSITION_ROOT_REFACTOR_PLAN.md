@@ -410,6 +410,41 @@ and verify readiness actions land on the intended tab or drawer.
 **Exit condition:** `WorkbenchShell.request` in `page.tsx` is one
 `RequestComposer` element with explicit props.
 
+#### Session 03 handoff — 2026-07-27
+
+- Added `request-composer.client.tsx`. It owns request-tab state, readiness
+  routing to request tabs, request settings and selected-tool presentation,
+  branch notice controls, message/template-use cards, preview rendering, and
+  `ProjectTemplatesPane`/`ToolsPane` composition. The page supplies explicit
+  snapshots and callbacks, including only the named `ProjectTemplatesHandle`
+  for the template feature.
+- `WorkbenchShell.request` in `app/page.tsx` is now a single
+  `RequestComposer` element. The page is 1,461 lines, with 11 `useState`
+  calls, 3 `useRef` calls, and 7 `useEffect` calls.
+- Extended `tests/request-pane-render.test.mjs` with SSR assertions for the
+  tab counts, tool-disabled readiness action, project/profile run-setting
+  label, structural messages, pending-branch actions, and resolved-preview
+  success, warning, and error states.
+
+Automated verification:
+
+- `npm run lint`: passed.
+- `npx tsc -p tsconfig.json --noEmit`: passed.
+- `npm run typecheck:core`: passed.
+- `npm test`: passed with 198 core tests and 31 rendered/standalone tests
+  (229 total). The sandboxed attempt could not bind the standalone fixture;
+  the permitted localhost rerun passed.
+
+Running-app verification:
+
+- Started `scripts/echo-openai-provider.mjs` and the local development server,
+  then stopped both after the check.
+- Switched each request tab, edited a user message, opened and closed the
+  connection drawer, and ran with the keyboard shortcut using the echo fixture.
+  The completed response exactly echoed `Echo this exact Session 3 request.`
+- The rendered application contained no `NaN`, `Infinity`, or `undefined`, and
+  the browser reported no console errors.
+
 ### Session 04 — Pure workbench-run preparation
 
 **Goal:** Separate project/template/tool validation from live transport state.

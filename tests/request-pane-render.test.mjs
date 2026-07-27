@@ -163,6 +163,181 @@ test("nothing renders when the run is ready", async () => {
   assert.equal(html, "");
 });
 
+const composerMessage = {
+  id: "message_question",
+  role: "user",
+  content: [{ type: "text", text: "What changed?" }],
+};
+
+function requestComposer(overrides) {
+  return {
+    messages: [composerMessage],
+    promptTemplates: [],
+    hasProject: false,
+    templates: {
+      runOverrides: {},
+      usageCounts: new Map(),
+      composerItems: [{ kind: "message", message: composerMessage }],
+      addComposerMessage: () => {},
+      updateComposerMessage: () => {},
+      removeComposerMessage: () => {},
+      createProjectTemplate: () => "template_new",
+      saveProjectTemplate: () => "template-revision_new-1",
+      insertProjectTemplate: () => {},
+      updateTemplateUseValues: () => {},
+      updateTemplateUseOverride: () => {},
+      updateTemplateUseToLatestRevision: () => {},
+      detachTemplateUseFromProject: () => {},
+      removeTemplateUseFromProject: () => {},
+    },
+    activeModel: "gpt-test",
+    activeModelDiscovery: null,
+    activeTemperature: 0.7,
+    selectedToolCount: 0,
+    requestToolCount: 0,
+    toolsEnabled: true,
+    activeProfileName: "Local llama",
+    tools: [],
+    requestTools: [],
+    enabledToolIds: [],
+    onMapActiveProfile: () => {},
+    onOpenConnectionSettings: () => {},
+    onLoadModels: () => {},
+    onModelChange: () => {},
+    onTemperatureChange: () => {},
+    onSavePendingBranchTrace: () => {},
+    onDiscardPendingBranch: () => {},
+    onOpenToolLibrary: () => {},
+    onAddTool: () => {},
+    onRemoveTool: () => {},
+    onUpdateTool: () => {},
+    onSetToolEnabled: () => {},
+    mockForTool: () => undefined,
+    onUpdateToolMock: () => {},
+    onRemoveRequestTool: () => {},
+    ...overrides,
+  };
+}
+
+async function renderRequestComposer(overrides) {
+  return render(
+    "/app/request-composer.client.tsx",
+    "RequestComposer",
+    requestComposer(overrides),
+  );
+}
+
+test("the request composer renders all tabs and the active tab counts", async () => {
+  const html = await renderRequestComposer({
+    messages: [composerMessage, { ...composerMessage, id: "message_follow-up" }],
+    promptTemplates: [{ id: "template_summary", name: "Summary" }],
+    selectedToolCount: 3,
+  });
+
+  assert.match(html, /Messages<span[^>]*>2<\/span>/);
+  assert.match(html, /Templates<span[^>]*>1<\/span>/);
+  assert.match(html, /Tools<span[^>]*>3<\/span>/);
+});
+
+test("the request composer explains disabled tools and offers the readiness action", async () => {
+  const html = await renderRequestComposer({
+    selectedToolCount: 1,
+    toolsEnabled: false,
+    readiness: {
+      blocked: true,
+      headline: "1 selected tool cannot be sent",
+      detail: "Allow tool calling before running.",
+      summary: "Allow tool calling before running.",
+      facts: [],
+      actions: [{ kind: "open-connections", label: "Allow tool calling", primary: true }],
+    },
+  });
+
+  assert.match(html, /request-tool-line blocked/);
+  assert.match(html, /1 tool is selected, but this profile does not allow tool calling/);
+  assert.match(html, /Allow tool calling/);
+});
+
+test("the request composer labels project and profile run settings", async () => {
+  const profileHtml = await renderRequestComposer({});
+  const projectHtml = await renderRequestComposer({ hasProject: true });
+
+  assert.match(profileHtml, /Profile default/);
+  assert.match(projectHtml, /Project override/);
+});
+
+test("the request composer preserves structural tool and assistant messages", async () => {
+  const toolMessage = {
+    id: "message_tool",
+    role: "tool",
+    name: "lookup_order",
+    toolCallId: "call_lookup",
+    content: [{ type: "text", text: "Order found" }],
+  };
+  const assistantMessage = {
+    id: "message_assistant",
+    role: "assistant",
+    content: [{ type: "text", text: "I will look that up." }],
+    toolCalls: [{ id: "call_lookup", name: "lookup_order", arguments: { text: '{"id":"42"}' } }],
+  };
+  const html = await renderRequestComposer({
+    messages: [toolMessage, assistantMessage],
+    templates: {
+      ...requestComposer({}).templates,
+      composerItems: [
+        { kind: "message", message: toolMessage },
+        { kind: "message", message: assistantMessage },
+      ],
+    },
+  });
+
+  assert.match(html, /Message 1 role[^>]*disabled/);
+  assert.match(html, /Tool result for lookup_order \(call_lookup\)/);
+  assert.match(html, /Tool call/);
+  assert.match(html, /lookup_order/);
+  assert.match(html, /Read-only/);
+});
+
+test("the request composer renders pending branch controls", async () => {
+  const html = await renderRequestComposer({
+    pendingBranch: {
+      parentRunId: "run_parent",
+      branchMessageId: "message_branch",
+      parentTraceNeedsSaving: true,
+    },
+  });
+
+  assert.match(html, /branch-pending/);
+  assert.match(html, /run_parent/);
+  assert.match(html, /message_branch/);
+  assert.match(html, /Save trace…/);
+  assert.match(html, /Discard branch/);
+});
+
+test("the request composer renders resolved preview success, warning, and error", async () => {
+  const successHtml = await renderRequestComposer({
+    templates: {
+      ...requestComposer({}).templates,
+      activeProjectResolution: { diagnostics: [{}] },
+      requestPreview: {
+        messages: [composerMessage],
+        body: { model: "gpt-test", messages: [{ role: "user", content: "What changed?" }] },
+      },
+    },
+  });
+  const errorHtml = await renderRequestComposer({
+    templates: {
+      ...requestComposer({}).templates,
+      requestPreview: { error: "Template use is invalid." },
+    },
+  });
+
+  assert.match(successHtml, /Resolved messages/);
+  assert.match(successHtml, /OpenAI-compatible request body/);
+  assert.match(successHtml, /Preview contains unresolved variables/);
+  assert.match(errorHtml, /Template use is invalid/);
+});
+
 function responseOutput(overrides) {
   return {
     output: "",

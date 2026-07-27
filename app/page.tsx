@@ -79,37 +79,27 @@ import {
   writeToolRegistry,
 } from "./tool-registry-store.client";
 import { ToolRegistryModal } from "./tool-registry-modal.client";
-import { ModelCombobox } from "./model-combobox.client";
 import { useModelDiscovery } from "./use-model-discovery.client";
 import { useConnectionProfiles } from "./use-connection-profiles.client";
 import { useRequestDraft } from "./use-request-draft.client";
 import { useProjectWorkspace } from "./use-project-workspace.client";
 import { ConnectionDrawer } from "./connection-drawer.client";
 import { Topbar } from "./topbar.client";
-import { ToolsPane } from "./tools-pane.client";
 import { ResponseOutput } from "./response-output.client";
 import type { TraceStorageStatus } from "./response-output.client";
 import type { ToolResultDraft } from "./tool-call-list.client";
-import {
-  PaneTabs,
-  WorkbenchShell,
-} from "./workbench-shell.client";
+import { WorkbenchShell } from "./workbench-shell.client";
 import type { WorkbenchView } from "./workbench-shell.client";
 import { RunTracePanel } from "./run-trace-panel.client";
 import { RunHistoryDrawer } from "./run-history-drawer.client";
 import type { ProjectRunHistoryItem } from "./use-project-run-history.client";
 import { useProjectRunHistory } from "./use-project-run-history.client";
 import {
-  ProjectTemplatesPane,
-  TemplateUseCard,
-} from "./project-templates-pane.client";
-import {
   ConfirmationDialog,
 } from "./confirmation-dialog.client";
 import { runReadiness } from "./run-readiness.client";
-import type { RunReadinessActionKind } from "./run-readiness.client";
-import { RunReadinessNotice } from "./run-readiness-notice.client";
 import { useProjectTemplates } from "./use-project-templates.client";
+import { RequestComposer } from "./request-composer.client";
 
 const inferenceTransport = createInferenceTransport();
 
@@ -239,8 +229,6 @@ function HomeContent() {
   const [connectionDrawerOpen, setConnectionDrawerOpen] = useState(false);
   const [runHistoryOpen, setRunHistoryOpen] = useState(false);
   const [savedRunVersion, setSavedRunVersion] = useState(0);
-  const [requestTab, setRequestTab] =
-    useState<"messages" | "templates" | "tools">("messages");
   const [workbenchView, setWorkbenchView] =
     useState<WorkbenchView>("request");
   const [traceOpen, setTraceOpen] = useState(true);
@@ -1219,8 +1207,6 @@ function HomeContent() {
     runState &&
       ["completed", "cancelled", "failed"].includes(runState.status.kind),
   );
-  const requestPreview = templates.requestPreview;
-  const composerItems = templates.composerItems;
   const readiness = runReadiness({
     projectOpen: Boolean(projectFile),
     connectionMapped: Boolean(mappedProfileId),
@@ -1244,13 +1230,6 @@ function HomeContent() {
         }),
       ) ?? [],
   });
-
-  function resolveReadiness(kind: RunReadinessActionKind): void {
-    if (kind === "map-profile") project.mapActiveProfile();
-    else if (kind === "open-connections") setConnectionDrawerOpen(true);
-    else if (kind === "review-tools") setRequestTab("tools");
-    else setRequestTab("messages");
-  }
 
   return (
     <main
@@ -1378,292 +1357,40 @@ function HomeContent() {
         onViewChange={setWorkbenchView}
         responseStatus={status}
         request={
-        <section className="composer">
-          <div className="panel-header request-header">
-            <div>
-              <span className="eyebrow">Request</span>
-              <h2>Composer</h2>
-            </div>
-            <PaneTabs
-              label="Request editor"
-              value={requestTab}
-              onChange={(value) =>
-                setRequestTab(value as "messages" | "templates" | "tools")
-              }
-              tabs={[
-                { id: "messages", label: "Messages", count: messages.length },
-                {
-                  id: "templates",
-                  label: "Templates",
-                  count: projectFile?.promptTemplates.length ?? 0,
-                },
-                // The badge counts what will be sent, not what is defined, so
-                // it agrees with the manifest inside the tab.
-                { id: "tools", label: "Tools", count: selectedToolCount },
-              ]}
-            />
-            {requestTab === "messages" ? (
-              <button
-                className="text-button header-text-action"
-                onClick={templates.addComposerMessage}
-              >
-                + Add message
-              </button>
-            ) : requestTab === "tools" ? (
-              <button
-                className="text-button header-text-action"
-                type="button"
-                onClick={addTool}
-              >
-                + Add tool
-              </button>
-            ) : null}
-          </div>
-          <RunReadinessNotice
+          <RequestComposer
+            messages={messages}
+            projectId={projectFile?.projectId}
+            promptTemplates={projectFile?.promptTemplates ?? []}
+            hasProject={Boolean(projectFile)}
+            templates={templates}
             {...(readiness ? { readiness } : {})}
-            onAction={resolveReadiness}
+            pendingBranch={branchContext ?? undefined}
+            activeModel={activeModel}
+            activeModelDiscovery={activeModelDiscovery}
+            activeTemperature={activeTemperature}
+            selectedToolCount={selectedToolCount}
+            requestToolCount={requestTools.length}
+            toolsEnabled={activeCapabilities.tools}
+            activeProfileName={activeProfile.name}
+            tools={tools}
+            requestTools={requestTools}
+            enabledToolIds={enabledToolIds}
+            onMapActiveProfile={project.mapActiveProfile}
+            onOpenConnectionSettings={() => setConnectionDrawerOpen(true)}
+            onLoadModels={(force) => void loadModels(force)}
+            onModelChange={setEditorModel}
+            onTemperatureChange={setEditorTemperature}
+            onSavePendingBranchTrace={() => void exportRunTrace()}
+            onDiscardPendingBranch={() => setBranchContext(null)}
+            onOpenToolLibrary={() => setToolRegistryOpen(true)}
+            onAddTool={addTool}
+            onRemoveTool={removeTool}
+            onUpdateTool={updateTool}
+            onSetToolEnabled={setToolEnabled}
+            mockForTool={mockForTool}
+            onUpdateToolMock={updateToolMock}
+            onRemoveRequestTool={removeRequestTool}
           />
-          {branchContext && (
-            <div className="branch-pending" role="status">
-              Branching from run <code>{branchContext.parentRunId}</code> at message <code>{branchContext.branchMessageId}</code> — the original trace is untouched.
-              {branchContext.parentTraceNeedsSaving && (
-                <button className="button secondary" type="button" onClick={() => void exportRunTrace()}>Save trace…</button>
-              )}
-              <button className="button secondary" type="button" onClick={() => setBranchContext(null)}>Discard branch</button>
-            </div>
-          )}
-
-          <div className="pane-scroll request-content">
-          {requestTab === "messages" ? (
-            <>
-          <section className="run-settings" aria-label="Run settings">
-            <div className="run-settings-heading">
-              <span>
-                <strong>Run settings</strong>
-                <small>
-                  {projectFile ? "Project override" : "Profile default"}
-                </small>
-              </span>
-              <button
-                className="text-button"
-                type="button"
-                onClick={() => setConnectionDrawerOpen(true)}
-              >
-                Connection settings
-              </button>
-            </div>
-            {/* The Tools tab owns the full manifest; this line only says
-                enough to notice that something needs attention there. */}
-            <p
-              className={
-                selectedToolCount > 0 && !activeCapabilities.tools
-                  ? "request-tool-line blocked"
-                  : "request-tool-line"
-              }
-              role="status"
-            >
-              <span>
-                {selectedToolCount === 0
-                  ? "No tools sent with this request."
-                  : !activeCapabilities.tools
-                    ? `${selectedToolCount} ${
-                        selectedToolCount === 1 ? "tool is" : "tools are"
-                      } selected, but this profile does not allow tool calling.`
-                    : requestTools.length > 0
-                      ? `${selectedToolCount} ${
-                          selectedToolCount === 1 ? "tool" : "tools"
-                        } sent, ${requestTools.length} only once.`
-                      : `${selectedToolCount} ${
-                          selectedToolCount === 1 ? "tool" : "tools"
-                        } sent with this request.`}
-              </span>
-              <button
-                className="text-button"
-                type="button"
-                onClick={() => setRequestTab("tools")}
-              >
-                {selectedToolCount === 0 ? "Add tools" : "Review"}
-              </button>
-            </p>
-            <div className="run-settings-grid">
-              <ModelCombobox
-                value={activeModel}
-                onChange={setEditorModel}
-                discovery={activeModelDiscovery}
-                onLoadModels={(force) => void loadModels(force)}
-              />
-              <label className="temperature-control">
-                Temperature
-                <div className="range-row">
-                  <input
-                    type="range"
-                    min="0"
-                    max="2"
-                    step="0.1"
-                    value={activeTemperature}
-                    onChange={(event) =>
-                      setEditorTemperature(Number(event.target.value))
-                    }
-                  />
-                  <output>{activeTemperature.toFixed(1)}</output>
-                </div>
-              </label>
-            </div>
-          </section>
-          <div className="message-list">
-            {composerItems.map((item, index) => {
-              if (item.kind === "template-use") {
-                const template = projectFile?.promptTemplates.find(
-                  ({ id }) => id === item.use.templateId,
-                );
-                if (!template) return null;
-                return (
-                  <TemplateUseCard
-                    key={item.use.id}
-                    use={item.use}
-                    template={template}
-                    diagnostics={
-                      templates.activeProjectResolution?.diagnostics.filter(
-                        ({ templateUseId }) => templateUseId === item.use.id,
-                      ) ?? []
-                    }
-                    runOverrides={templates.runOverrides[item.use.id] ?? {}}
-                    onSaveValues={(values) =>
-                      templates.updateTemplateUseValues(item.use.id, values)
-                    }
-                    onRunOverridesChange={(values) =>
-                      templates.updateTemplateUseOverride(item.use.id, values)
-                    }
-                    onUpdateLatest={() =>
-                      templates.updateTemplateUseToLatestRevision(item.use.id)
-                    }
-                    onDetach={() => templates.detachTemplateUseFromProject(item.use.id)}
-                    onRemove={() => templates.removeTemplateUseFromProject(item.use.id)}
-                  />
-                );
-              }
-              const message = item.message;
-              const roleIsStructural =
-                message.role === "tool" ||
-                (message.role === "assistant" && Boolean(message.toolCalls?.length));
-              const text = message.content
-                .filter((part) => part.type === "text")
-                .map((part) => part.text)
-                .join("");
-              return (
-              <article className="message-card" key={message.id}>
-                <div className="message-toolbar">
-                  <select
-                    aria-label={`Message ${index + 1} role`}
-                    value={message.role}
-                    disabled={roleIsStructural}
-                    onChange={(event) =>
-                      templates.updateComposerMessage(message.id, {
-                        role: event.target.value as ConversationMessage["role"],
-                      })
-                    }
-                  >
-                    <option value="system">System</option>
-                    <option value="user">User</option>
-                    <option value="assistant">Assistant</option>
-                    <option value="tool">Tool</option>
-                  </select>
-                  <button
-                    aria-label={`Remove message ${index + 1}`}
-                    className="remove-button"
-                    onClick={() => templates.removeComposerMessage(message.id)}
-                  >
-                    Remove
-                  </button>
-                </div>
-                <textarea
-                  aria-label={`Message ${index + 1} content`}
-                  value={text}
-                  onChange={(event) =>
-                    templates.updateComposerMessage(message.id, {
-                      content: [{ type: "text", text: event.target.value }],
-                    })
-                  }
-                  rows={message.role === "system" ? 4 : 7}
-                />
-                {message.role === "tool" && (
-                  <small className="message-metadata">
-                    Tool result for {message.name ?? "unnamed tool"} ({message.toolCallId})
-                  </small>
-                )}
-                {message.role === "assistant" && message.toolCalls?.map((call) => (
-                  <div className="tool-call-card message-tool-call" key={call.id}>
-                    <div className="tool-call-heading">
-                      <div>
-                        <span className="eyebrow">Tool call</span>
-                        <h3>{call.name}</h3>
-                      </div>
-                      <span className="provider-pill">Read-only</span>
-                    </div>
-                    <label>
-                      Arguments
-                      <pre>{call.arguments.text || "{}"}</pre>
-                    </label>
-                  </div>
-                ))}
-              </article>
-              );
-            })}
-          </div>
-          {requestPreview && (
-            <details className="request-preview" open>
-              <summary>Resolved request preview</summary>
-              {"error" in requestPreview ? (
-                <div className="template-diagnostic">{requestPreview.error}</div>
-              ) : (
-                <>
-                  {(templates.activeProjectResolution?.diagnostics.length ?? 0) > 0 && (
-                    <div className="template-warning" role="status">
-                      Preview contains unresolved variables. Running is blocked until they have values.
-                    </div>
-                  )}
-                  <h3>Resolved messages</h3>
-                  <pre>{JSON.stringify(requestPreview.messages, null, 2)}</pre>
-                  <h3>OpenAI-compatible request body</h3>
-                  <pre>{JSON.stringify(requestPreview.body, null, 2)}</pre>
-                </>
-              )}
-            </details>
-          )}
-            </>
-          ) : requestTab === "templates" ? (
-            <ProjectTemplatesPane
-              key={projectFile?.projectId ?? "unsaved-project"}
-              templates={projectFile?.promptTemplates ?? []}
-              usageCounts={templates.usageCounts}
-              itemCount={templates.activeProjectRevision?.items.length ?? messages.length}
-              onCreate={templates.createProjectTemplate}
-              onSave={templates.saveProjectTemplate}
-              onInsert={(templateId, role, itemIndex) => {
-                templates.insertProjectTemplate(templateId, role, itemIndex);
-                setRequestTab("messages");
-              }}
-            />
-          ) : (
-            <ToolsPane
-              tools={tools}
-              requestTools={requestTools}
-              enabledToolIds={enabledToolIds}
-              activeProfileName={activeProfile.name}
-              toolsEnabled={activeCapabilities.tools}
-              onOpenLibrary={() => setToolRegistryOpen(true)}
-              onOpenConnectionSettings={() => setConnectionDrawerOpen(true)}
-              onAddTool={addTool}
-              onRemoveTool={removeTool}
-              onUpdateTool={updateTool}
-              onSetToolEnabled={setToolEnabled}
-              mockForTool={mockForTool}
-              onUpdateToolMock={updateToolMock}
-              onRemoveRequestTool={removeRequestTool}
-            />
-          )}
-          </div>
-        </section>
         }
         response={
         <section className="result">
