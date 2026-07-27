@@ -88,7 +88,21 @@ reachable from other machines on the network; map a different local port with
 ### Server-side default credential
 
 To avoid re-entering a key each session, set it on the service instead and
-leave the UI key field empty:
+leave the UI key field empty. This takes two variables, not one: the key, and
+the provider endpoint it is bound to. Setting only the key fails every request
+with `The default credential is not bound to a provider.`
+
+The quick start involves no clone, so there is no `.env.example` to copy. Write
+the file directly:
+
+```sh
+cat > .env <<'EOF'
+INFERENCE_LENS_API_KEY=sk-your-key-here
+INFERENCE_LENS_API_ENDPOINT=https://api.openai.com/v1
+EOF
+```
+
+Then pass it to the container:
 
 ```sh
 docker run --rm -p 127.0.0.1:3000:3000 \
@@ -96,11 +110,18 @@ docker run --rm -p 127.0.0.1:3000:3000 \
   ghcr.io/acgabbert/inference-lens:latest
 ```
 
+Separate `-e INFERENCE_LENS_API_KEY=...` flags work too, but a key given that
+way is recorded in shell history and readable from `docker inspect` on the
+host. `--env-file` keeps it out of both.
+
 `INFERENCE_LENS_API_KEY` is a server-only default credential: never use a
 `NEXT_PUBLIC_` prefix and do not commit the populated `.env` file. It is
-excluded from the Docker build context and read by the Node API routes when a
-model request is made. The service sends it only when the selected endpoint has
-the same scheme, hostname, and port as `INFERENCE_LENS_API_ENDPOINT`.
+excluded from the Docker build context, so it is never baked into an image, and
+is read from the container's environment when a model request is made. The
+service releases it only when the selected endpoint has the same scheme,
+hostname, and port as `INFERENCE_LENS_API_ENDPOINT`, and refuses any other
+endpoint. A key entered in the UI takes precedence and leaves both variables
+unread.
 
 ### Running from source with Compose
 

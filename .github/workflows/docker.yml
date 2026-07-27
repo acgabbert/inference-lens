@@ -2,12 +2,15 @@ name: Container image
 
 # The image is the zero-install quickstart, so it tracks main as well as tags:
 # `:main` is the current state of the branch, `:latest` the newest stable tag.
+# Pull requests build the same platforms without pushing, so a broken Dockerfile
+# fails review instead of after the merge that publishes `:main`.
 on:
   push:
     branches:
       - main
     tags:
       - "v*"
+  pull_request:
 
 concurrency:
   group: image-${{ github.ref }}
@@ -15,7 +18,7 @@ concurrency:
 
 jobs:
   publish:
-    name: Build and push
+    name: Build image
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -23,13 +26,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # arm64 is emulated here, which is slow, but the audience skews to Apple
-      # Silicon and an emulated amd64 Node server is slower still at runtime.
+      # arm64 is emulated on this amd64 runner. The build is short enough that
+      # the penalty is minor, and the audience skews to Apple Silicon, where an
+      # emulated amd64 Node server would be slower still at runtime.
       - uses: docker/setup-qemu-action@v3
 
       - uses: docker/setup-buildx-action@v3
 
+      # Skipped for pull requests: nothing is pushed, and a fork's read-only
+      # token cannot authenticate here anyway.
       - uses: docker/login-action@v3
+        if: github.event_name != 'pull_request'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -44,13 +51,16 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ github.ref_type == 'tag' && !contains(github.ref_name, '-') }}
+            type=ref,event=pr
 
       - uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: true
+          push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Only published refs seed the shared cache, so a pull request cannot
+          # evict what `main` builds from.
+          cache-to: ${{ github.event_name != 'pull_request' && 'type=gha,mode=max' || '' }}
