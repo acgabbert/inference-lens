@@ -61,7 +61,7 @@ jobs:
           fi
           echo "enabled=true" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: steps.policy.outputs.enabled == 'true'
 
       # The three version fields are maintained by hand. A tag that disagrees
@@ -105,7 +105,7 @@ jobs:
             echo "RELEASE_BODY_EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: steps.policy.outputs.enabled == 'true'
         with:
           node-version: 22
@@ -169,7 +169,7 @@ jobs:
 
       - name: Upload signed manual-build artifact
         if: steps.policy.outputs.enabled == 'true' && github.ref_type != 'tag'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: inference-lens-macos-universal-signed
           path: ${{ steps.verify.outputs.dmg-path }}
