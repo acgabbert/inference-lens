@@ -25,6 +25,7 @@ import {
   isRetryableRunError,
 } from "../packages/core/src/run-kernel";
 import { HttpInferenceTransport } from "./http-inference-transport.client";
+import { randomUUID } from "../packages/core/src/random-id.ts";
 
 type NativeCredentialSelection = Extract<
   CredentialSelection,
@@ -254,7 +255,7 @@ export class TauriInferenceTransport implements ProviderTurnTransport {
     const credential = nativeCredential(request.credential);
     const { url, body } = buildChatCompletionsRequest(request.execution);
     const bodyText = JSON.stringify(body);
-    const requestId = `provider-turn_${crypto.randomUUID()}`;
+    const requestId = `provider-turn_${randomUUID()}`;
     const queue = new AsyncEventQueue<RawStreamEvent>();
     const unlisten = await listen<RawStreamEvent>(
       `inference-lens://provider-turn/${requestId}`,

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CredentialSelection } from "../packages/contracts/src/index.ts";
 import type { ProviderCapabilities } from "../packages/core/src/types.ts";
 import { resolveProviderCapabilities } from "../packages/core/src/types.ts";
+import { randomUUID } from "../packages/core/src/random-id.ts";
 import {
   createDefaultProfile,
   createProfile,
@@ -14,12 +15,67 @@ import {
 import type { StoredInferenceProfile } from "./profile-store.client.ts";
 import { desktopCredentialStore } from "./tauri-inference-transport.client.ts";
 import type { CredentialStatus } from "./tauri-inference-transport.client.ts";
+import {
+  resolveWebCredentialSelection,
+  webCredentialIsAvailable,
+} from "./web-credential-mode.ts";
+import type { WebCredentialMode } from "./web-credential-mode.ts";
 
 const unknownCredentialStatus: CredentialStatus = {
   canPersist: false,
   isStored: false,
   isApprovedForEndpoint: false,
 };
+
+const WEB_CREDENTIAL_MODES_STORAGE_KEY =
+  "inference-lens:web-credential-modes:v1";
+const SERVER_DEFAULT_CREDENTIAL_REF = "environment-default";
+const SERVER_DEFAULT_PROFILE_ID = "server-default";
+const SERVER_DEFAULT_PROFILE_NAME = "Server default";
+
+/** Non-secret shape of `GET /api/runtime-status`. */
+interface RuntimeStatus {
+  containerized: boolean;
+  configured: boolean;
+  endpoint?: string;
+  model?: string;
+}
+
+/**
+ * What the service running this UI reports about itself. Drives the
+ * server-default profile, which authentication modes are offered, and the
+ * wording of container-specific advice.
+ */
+export interface ServerDefaultStatus {
+  /** False until the probe answers; suppresses advice that would be a guess. */
+  loaded: boolean;
+  /** The API service is running in a container. */
+  containerized: boolean;
+  /** A server-held key is available and bound to `endpoint`. */
+  configured: boolean;
+  /** Present whenever the server declares a provider, key or no key. */
+  endpoint?: string;
+}
+
+const unknownServerDefault: ServerDefaultStatus = {
+  loaded: false,
+  containerized: false,
+  configured: false,
+};
+
+function parseRuntimeStatus(body: unknown): RuntimeStatus {
+  const value = (body ?? {}) as Record<string, unknown>;
+  const text = (key: string): string | undefined =>
+    typeof value[key] === "string" && value[key].trim()
+      ? (value[key] as string).trim()
+      : undefined;
+  return {
+    containerized: value.containerized === true,
+    configured: value.serverDefaultCredentialConfigured === true,
+    endpoint: text("endpoint"),
+    model: text("model"),
+  };
+}
 
 export interface ProfileCredentialHandle {
   /** Session-only input for the active profile; never persisted by the UI. */
@@ -28,7 +84,10 @@ export interface ProfileCredentialHandle {
   error?: string;
   /** A run started now would carry a credential rather than an empty one. */
   hasCredential: boolean;
+  /** Web-only selection; Tauri continues to resolve session and Keychain keys. */
+  webMode: WebCredentialMode;
   setDraft(value: string): void;
+  setWebMode(mode: WebCredentialMode): void;
   /** Surfaces failures inline; use `prepare` when the caller needs the result. */
   commit(): void;
   prepare(): Promise<CredentialSelection>;
@@ -47,6 +106,12 @@ export interface ConnectionProfilesHandle {
     key: keyof ProviderCapabilities,
     enabled: boolean,
   ): void;
+  /** What the hosting service reports about itself; see ServerDefaultStatus. */
+  serverDefault: ServerDefaultStatus;
+  /** Set once, when a server-configured profile is added beside existing ones. */
+  serverDefaultProfileNotice?: { profileId: string };
+  adoptServerDefaultProfile(): void;
+  dismissServerDefaultProfileNotice(): void;
   credential: ProfileCredentialHandle;
 }
 
@@ -77,6 +142,24 @@ export function useConnectionProfiles(input: {
   );
   const [credentialError, setCredentialError] = useState<string>();
   const sessionCredentialsRef = useRef(new Map<string, string>());
+  const webCredentialModesRef = useRef(new Map<string, WebCredentialMode>());
+  const serverDefaultProvisionedRef = useRef(false);
+  // Whether this device had stored profiles at all. Adopting the server's
+  // configuration outright is right when there is nothing to displace, and a
+  // surprise the moment the user has profiles of their own.
+  const firstRunRef = useRef(false);
+  const [webCredentialModeOverride, setWebCredentialModeOverride] =
+    useState<WebCredentialMode>();
+  const [serverDefault, setServerDefault] =
+    useState<ServerDefaultStatus>(unknownServerDefault);
+  const [serverDefaultProfileNotice, setServerDefaultProfileNotice] =
+    useState<{ profileId: string }>();
+
+  // Lets the one-shot provisioning effect read the restored profiles without
+  // taking a dependency on them, which would re-arm an effect that must run
+  // exactly once per mount.
+  const profilesRef = useRef(profiles);
+  profilesRef.current = profiles;
 
   const activeProfile =
     profiles.find((profile) => profile.id === activeProfileId) ?? profiles[0];
@@ -90,12 +173,63 @@ export function useConnectionProfiles(input: {
   useEffect(() => {
     const restoreId = window.setTimeout(() => {
       const snapshot = readProfiles();
+      try {
+        const stored = JSON.parse(
+          window.localStorage.getItem(WEB_CREDENTIAL_MODES_STORAGE_KEY) ?? "{}",
+        ) as Record<string, unknown>;
+        for (const [profileId, mode] of Object.entries(stored)) {
+          if (
+            mode === "environment-default" ||
+            mode === "session" ||
+            mode === "none"
+          ) {
+            webCredentialModesRef.current.set(profileId, mode);
+          }
+        }
+      } catch {
+        // A malformed local preference is equivalent to no preference.
+      }
+      firstRunRef.current = !snapshot.restored;
       setProfiles(snapshot.profiles);
       setActiveProfileId(snapshot.activeProfileId);
+      setWebCredentialModeOverride(
+        webCredentialModesRef.current.get(snapshot.activeProfileId),
+      );
       setProfilesLoaded(true);
     }, 0);
     return () => window.clearTimeout(restoreId);
   }, []);
+
+  // Held in a ref so the one-shot effect below can reach the current closure
+  // without listing it as a dependency, which would re-arm it on every render.
+  const reconcileRef = useRef(reconcileServerDefaultProfile);
+  reconcileRef.current = reconcileServerDefaultProfile;
+
+  // Runs once per mount, after profiles are restored, and is deliberately not
+  // cancelled: the result is idempotent, and aborting it on a Strict Mode
+  // remount would leave the ref latched with nothing ever adopted.
+  useEffect(() => {
+    if (isDesktopRuntime || !profilesLoaded) return;
+    if (serverDefaultProvisionedRef.current) return;
+    serverDefaultProvisionedRef.current = true;
+    void (async () => {
+      let status: RuntimeStatus | undefined;
+      try {
+        const response = await fetch("/api/runtime-status");
+        if (response.ok) status = parseRuntimeStatus(await response.json());
+      } catch {
+        // An unreachable status route means only that there is no server
+        // configuration to adopt; the UI stays fully usable without one.
+      }
+      setServerDefault({
+        loaded: true,
+        containerized: status?.containerized ?? false,
+        configured: status?.configured ?? false,
+        ...(status?.endpoint ? { endpoint: status.endpoint } : {}),
+      });
+      reconcileRef.current(status);
+    })();
+  }, [isDesktopRuntime, profilesLoaded]);
 
   useEffect(() => {
     if (!profilesLoaded) return;
@@ -107,6 +241,9 @@ export function useConnectionProfiles(input: {
   useEffect(() => {
     setCredentialDraft(
       sessionCredentialsRef.current.get(credentialProfileId) ?? "",
+    );
+    setWebCredentialModeOverride(
+      webCredentialModesRef.current.get(credentialProfileId),
     );
     setCredentialError(undefined);
     if (!isDesktopRuntime) return;
@@ -123,6 +260,109 @@ export function useConnectionProfiles(input: {
       cancelled = true;
     };
   }, [credentialProfileEndpoint, credentialProfileId, isDesktopRuntime]);
+
+  const webCredentialMode =
+    webCredentialModeOverride ??
+    (serverDefault.configured &&
+    activeProfile.credentialRef === SERVER_DEFAULT_CREDENTIAL_REF
+      ? "environment-default"
+      : "none");
+
+  function persistWebCredentialModes(): void {
+    window.localStorage.setItem(
+      WEB_CREDENTIAL_MODES_STORAGE_KEY,
+      JSON.stringify(Object.fromEntries(webCredentialModesRef.current)),
+    );
+  }
+
+  /**
+   * Brings the local profile list in line with what the server now reports.
+   *
+   * Both directions matter. A newly configured server should produce a profile
+   * that is ready to run, and a server whose variables were removed must not
+   * leave behind a profile that is permanently endpoint-locked and fails every
+   * request against a credential that no longer exists.
+   */
+  function reconcileServerDefaultProfile(status: RuntimeStatus | undefined): void {
+    const current = profilesRef.current;
+    const existing = current.find(
+      ({ credentialRef }) => credentialRef === SERVER_DEFAULT_CREDENTIAL_REF,
+    );
+
+    // Any stored preference for a credential the server no longer holds would
+    // fail on every run, so it is downgraded rather than left to break.
+    if (!status?.configured) {
+      let changed = false;
+      for (const [profileId, mode] of webCredentialModesRef.current) {
+        if (mode !== "environment-default") continue;
+        webCredentialModesRef.current.set(profileId, "none");
+        if (profileId === activeProfileId) setWebCredentialModeOverride("none");
+        changed = true;
+      }
+      if (changed) persistWebCredentialModes();
+    }
+
+    if (!status?.endpoint) {
+      // Release a profile provisioned by a configuration that is now gone,
+      // unlocking its endpoint. The profile itself is kept: the user may have
+      // chosen a model on it.
+      if (!existing) return;
+      setProfiles(
+        current.map((profile) =>
+          profile.credentialRef === SERVER_DEFAULT_CREDENTIAL_REF
+            ? { ...profile, credentialRef: undefined }
+            : profile,
+        ),
+      );
+      return;
+    }
+
+    if (existing) {
+      const next: StoredInferenceProfile = {
+        ...existing,
+        // The endpoint is the server's to own: the credential is released only
+        // to the origin it names, so a profile pointing anywhere else is dead
+        // weight. The model is not — the user may have picked one from
+        // discovery, and INFERENCE_LENS_MODEL is a starting point rather than
+        // a lock. It is filled in only while the profile has no model at all.
+        endpoint: status.endpoint,
+        ...(status.model && !existing.model ? { model: status.model } : {}),
+      };
+      if (existing.endpoint === next.endpoint && existing.model === next.model) {
+        return;
+      }
+      setProfiles(
+        current.map((profile) => (profile.id === existing.id ? next : profile)),
+      );
+      return;
+    }
+
+    const added: StoredInferenceProfile = {
+      ...createDefaultProfile(),
+      id: current.some(({ id }) => id === SERVER_DEFAULT_PROFILE_ID)
+        ? `${SERVER_DEFAULT_PROFILE_ID}-${randomUUID()}`
+        : SERVER_DEFAULT_PROFILE_ID,
+      name: SERVER_DEFAULT_PROFILE_NAME,
+      endpoint: status.endpoint,
+      // Empty rather than the hosted-OpenAI default the starting profile
+      // carries: the server named a provider but not a model, and a local
+      // llama.cpp server has never heard of `gpt-4.1-mini`. An empty model
+      // blocks the run with a notice that points at the model picker, which
+      // is true, instead of failing at the provider with a name the user
+      // never chose.
+      model: status.model ?? "",
+      credentialRef: SERVER_DEFAULT_CREDENTIAL_REF,
+    };
+    setProfiles([...current, added]);
+    // Configuring the server is explicit intent, so a device that has never
+    // stored a profile adopts it outright. Once the user has profiles of their
+    // own, switching under them would be a surprise — offer it instead.
+    if (firstRunRef.current) {
+      setActiveProfileId(added.id);
+    } else {
+      setServerDefaultProfileNotice({ profileId: added.id });
+    }
+  }
 
   function updateActiveProfile(patch: Partial<StoredInferenceProfile>): void {
     setProfiles((current) =>
@@ -152,6 +392,14 @@ export function useConnectionProfiles(input: {
     sessionCredentialsRef.current.set(activeProfile.id, value);
     setCredentialDraft(value);
     setCredentialError(undefined);
+    if (!isDesktopRuntime && value.trim()) setWebCredentialModeForActiveProfile("session");
+  }
+
+  function setWebCredentialModeForActiveProfile(mode: WebCredentialMode): void {
+    if (isDesktopRuntime) return;
+    webCredentialModesRef.current.set(activeProfile.id, mode);
+    setWebCredentialModeOverride(mode);
+    persistWebCredentialModes();
   }
 
   /**
@@ -162,9 +410,7 @@ export function useConnectionProfiles(input: {
    */
   async function prepareCredential(): Promise<CredentialSelection> {
     if (!isDesktopRuntime) {
-      return credentialDraft.trim()
-        ? { kind: "provided" as const, apiKey: credentialDraft }
-        : { kind: "none" as const };
+      return resolveWebCredentialSelection(webCredentialMode, credentialDraft);
     }
     const status = await desktopCredentialStore.status(
       activeProfile.id,
@@ -217,14 +463,28 @@ export function useConnectionProfiles(input: {
     addProfile,
     updateActiveProfile,
     setCapabilityOverride,
+    serverDefault,
+    serverDefaultProfileNotice,
+    adoptServerDefaultProfile: () => {
+      if (serverDefaultProfileNotice) {
+        setActiveProfileId(serverDefaultProfileNotice.profileId);
+      }
+      setServerDefaultProfileNotice(undefined);
+    },
+    dismissServerDefaultProfileNotice: () =>
+      setServerDefaultProfileNotice(undefined),
     credential: {
       draft: credentialDraft,
       status: credentialStatus,
       error: credentialError,
       hasCredential:
-        credentialDraft.trim().length > 0 ||
-        credentialStatus.isApprovedForEndpoint,
+        isDesktopRuntime
+          ? credentialDraft.trim().length > 0 ||
+            credentialStatus.isApprovedForEndpoint
+          : webCredentialIsAvailable(webCredentialMode, credentialDraft),
+      webMode: webCredentialMode,
       setDraft: setCredentialDraftForActiveProfile,
+      setWebMode: setWebCredentialModeForActiveProfile,
       commit: commitCredential,
       prepare: prepareCredential,
     },

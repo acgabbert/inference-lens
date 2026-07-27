@@ -3,8 +3,45 @@
 import type { ConnectionRequirement } from "../packages/core/src/project";
 import type { ProviderCapabilities } from "../packages/core/src/types";
 import type { StoredInferenceProfile } from "./profile-store.client";
-import type { ProfileCredentialHandle } from "./use-connection-profiles.client";
+import type {
+  ProfileCredentialHandle,
+  ServerDefaultStatus,
+} from "./use-connection-profiles.client";
 import { SideDrawer } from "./workbench-shell.client";
+
+/**
+ * Whether the server would release its credential to this profile. The service
+ * refuses any endpoint outside the origin it configured, so a mismatch is
+ * reported where the mode is chosen rather than when a run fails.
+ */
+function matchesServerOrigin(endpoint: string, configured?: string): boolean {
+  if (!configured) return false;
+  try {
+    return new URL(endpoint).origin === new URL(configured).origin;
+  } catch {
+    return false;
+  }
+}
+
+function configuredServerOrigin(endpoint?: string): string | undefined {
+  if (!endpoint) return undefined;
+  try {
+    return new URL(endpoint).origin;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Names the variables to set, in the one place the absence is felt. */
+function ServerCredentialHint() {
+  return (
+    <span className="credential-status">
+      Entering a key every session? Set <code>INFERENCE_LENS_API_KEY</code> and{" "}
+      <code>INFERENCE_LENS_API_ENDPOINT</code> on the server and this profile
+      connects on its own — see the Docker guide.
+    </span>
+  );
+}
 
 interface ConnectionDrawerProps {
   open: boolean;
@@ -13,6 +50,7 @@ interface ConnectionDrawerProps {
   activeProfile: StoredInferenceProfile;
   capabilities: ProviderCapabilities;
   credential: ProfileCredentialHandle;
+  serverDefault: ServerDefaultStatus;
   isDesktopRuntime: boolean;
   onSelectProfile(profileId: string): void;
   onAddProfile(): void;
@@ -89,6 +127,7 @@ export function ConnectionDrawer({
   activeProfile,
   capabilities,
   credential,
+  serverDefault,
   isDesktopRuntime,
   onSelectProfile,
   onAddProfile,
@@ -99,6 +138,21 @@ export function ConnectionDrawer({
   onMapProfile,
 }: ConnectionDrawerProps) {
   const keychainActive = isDesktopRuntime && credential.status.canPersist;
+  const serverDefaultActive =
+    !isDesktopRuntime && activeProfile.credentialRef === "environment-default";
+  const usingServerDefault = credential.webMode === "environment-default";
+  // Withheld until the probe answers, so an unconfigured server and an
+  // unanswered one are never presented as the same thing. Containers only: a
+  // `npm run dev` user has .env.example open beside them already.
+  const offerServerCredentialHint =
+    !isDesktopRuntime &&
+    serverDefault.loaded &&
+    serverDefault.containerized &&
+    !serverDefault.configured;
+  const serverOriginMismatch =
+    usingServerDefault &&
+    !matchesServerOrigin(activeProfile.endpoint, serverDefault.endpoint);
+  const serverOrigin = configuredServerOrigin(serverDefault.endpoint);
 
   return (
     <SideDrawer
@@ -155,8 +209,57 @@ export function ConnectionDrawer({
               onUpdateProfile({ endpoint: event.target.value })
             }
             spellCheck={false}
+            disabled={serverDefaultActive}
           />
+          {serverDefaultActive && (
+            <span className="credential-status">
+              This endpoint is set by the server configuration. Create a new
+              profile to use another provider.
+            </span>
+          )}
         </label>
+        {!isDesktopRuntime && (
+          <label>
+            Authentication
+            <select
+              value={credential.webMode}
+              onChange={(event) =>
+                credential.setWebMode(
+                  event.target.value as typeof credential.webMode,
+                )
+              }
+            >
+              <option value="none">No authentication</option>
+              {/* Kept visible but unselectable when unconfigured: an option
+                  that explains why it is unavailable teaches the feature,
+                  where a hidden one leaves the user to find it in the docs. */}
+              <option
+                value="environment-default"
+                disabled={serverDefault.loaded && !serverDefault.configured}
+              >
+                Server default (.env)
+                {serverDefault.loaded && !serverDefault.configured
+                  ? " — not configured"
+                  : ""}
+              </option>
+              <option value="session">Session key</option>
+            </select>
+            {usingServerDefault && !serverOriginMismatch && (
+              <span className="credential-status">
+                The server reads its configured credential at request time. It
+                is sent only when this endpoint has the configured origin.
+              </span>
+            )}
+            {serverOriginMismatch && (
+              <span className="credential-status credential-status-error">
+                {serverOrigin
+                  ? `The server's credential is bound to ${serverOrigin} and will not be sent to this endpoint. Choose another authentication mode, or point this profile at the configured provider.`
+                  : "This server holds no default credential to send. Choose another authentication mode."}
+              </span>
+            )}
+            {offerServerCredentialHint && <ServerCredentialHint />}
+          </label>
+        )}
         <label>
           API key {keychainActive ? "(macOS Keychain)" : "(session only)"}
           <input
@@ -164,10 +267,13 @@ export function ConnectionDrawer({
             value={credential.draft}
             onChange={(event) => credential.setDraft(event.target.value)}
             onBlur={credential.commit}
+            disabled={!isDesktopRuntime && usingServerDefault}
             placeholder={
               keychainActive && credential.status.isApprovedForEndpoint
                 ? "Stored securely — enter a replacement"
-                : "Enter a key for this endpoint"
+                : !isDesktopRuntime && usingServerDefault
+                  ? "Server default selected"
+                  : "Enter a key for this endpoint"
             }
             autoComplete="off"
           />

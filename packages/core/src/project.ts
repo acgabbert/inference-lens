@@ -21,6 +21,7 @@ import type {
   ToolMockId,
 } from "./run-kernel/types.ts";
 import { createEntityId } from "./run-kernel/types.ts";
+import { randomUUID } from "./random-id.ts";
 import {
   discoverTemplateVariables,
   renderTemplateContent,
@@ -1354,7 +1355,7 @@ export function createBranchRevision(
     messages,
     items,
     runOverrides = {},
-    idSuffix = crypto.randomUUID(),
+    idSuffix = randomUUID(),
     createdAt = new Date().toISOString(),
   }: CreateBranchRevisionOptions,
 ): ProjectFileV3 {
@@ -1573,7 +1574,7 @@ export function insertPromptTemplateUse(
     values = {},
     fragmentRole,
     itemIndex,
-    idSuffix = crypto.randomUUID(),
+    idSuffix = randomUUID(),
     outputMessageIdSuffixes,
   }: InsertPromptTemplateUseOptions,
 ): ProjectFileV3 {
@@ -1890,8 +1891,8 @@ export function createPromptTemplate(
     name,
     content,
     variableDefaults = {},
-    idSuffix = crypto.randomUUID(),
-    revisionIdSuffix = crypto.randomUUID(),
+    idSuffix = randomUUID(),
+    revisionIdSuffix = randomUUID(),
     createdAt = new Date().toISOString(),
   }: CreatePromptTemplateOptions,
 ): ProjectFileV3 {
@@ -1931,7 +1932,7 @@ export function appendPromptTemplateRevision(
     templateId,
     content,
     variableDefaults = {},
-    idSuffix = crypto.randomUUID(),
+    idSuffix = randomUUID(),
     createdAt = new Date().toISOString(),
   }: AppendPromptTemplateRevisionOptions,
 ): ProjectFileV3 {
@@ -2096,7 +2097,7 @@ export interface CreateProjectOptions {
 export function createProjectFile({
   name,
   request,
-  idSuffix = crypto.randomUUID(),
+  idSuffix = randomUUID(),
   createdAt = new Date().toISOString(),
 }: CreateProjectOptions): ProjectFileV3 {
   const projectId = createEntityId("project", idSuffix);

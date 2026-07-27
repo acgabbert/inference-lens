@@ -4,7 +4,11 @@ import {
   validateWorkbenchRequest,
   WorkbenchRequestError,
 } from "../../../services/api/src";
-import { runtimeCredentialStore } from "../credential-store";
+import {
+  isContainerizedRuntime,
+  runtimeCredentialStore,
+  runtimeRequestPolicy,
+} from "../credential-store";
 
 // Compose runs the standalone Node server, where credentials are read from the
 // container environment when each request is handled.
@@ -13,7 +17,7 @@ export const runtime = "nodejs";
 export async function POST(incoming: Request): Promise<Response> {
   let request;
   try {
-    validateWorkbenchRequest(incoming);
+    validateWorkbenchRequest(incoming, runtimeRequestPolicy());
     request = resolveProviderTurnRequest(
       await incoming.json(),
       runtimeCredentialStore(),
@@ -33,6 +37,7 @@ export async function POST(incoming: Request): Promise<Response> {
           request.execution,
           request.apiKey,
           incoming.signal,
+          { containerized: isContainerizedRuntime() },
         )) {
           controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
         }

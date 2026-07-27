@@ -7,6 +7,7 @@ import type {
   TurnId,
   ExchangeId,
 } from "./types.ts";
+import { randomUUID } from "../random-id.ts";
 
 export type RunEventPayload = RunEvent extends infer Event
   ? Event extends RunEvent
@@ -36,7 +37,7 @@ export interface RunEventFactory {
 }
 
 function defaultEventId(sequence: number): EventId {
-  return `event_${crypto.randomUUID()}-${sequence}`;
+  return `event_${randomUUID()}-${sequence}`;
 }
 
 function providerEventPayload(

@@ -14,6 +14,7 @@ import {
   resolveProviderCapabilities,
 } from "../types.ts";
 import type { InferenceRequest, RichInferenceRequest } from "../types.ts";
+import { randomUUID } from "../random-id.ts";
 
 export interface SingleTurnRunExecution {
   runId: RunId;
@@ -27,7 +28,7 @@ export interface SingleTurnRunExecution {
 export function createSingleTurnRunExecution(
   request: InferenceRequest | RichInferenceRequest,
   identity: RunConversationIdentity,
-  suffix: string = crypto.randomUUID(),
+  suffix: string = randomUUID(),
   resolvedAt: string = new Date().toISOString(),
   tools: ToolDefinition[] = [],
   templateResolutions: ResolvedTemplateUse[] = [],
@@ -99,7 +100,7 @@ export function createResolvedRunInput(
   identity: RunConversationIdentity,
   tools: ToolDefinition[] = [],
   templateResolutions: ResolvedTemplateUse[] = [],
-  suffix: string = crypto.randomUUID(),
+  suffix: string = randomUUID(),
   resolvedAt: string = new Date().toISOString(),
 ): ResolvedRunInput {
   return createSingleTurnRunExecution(

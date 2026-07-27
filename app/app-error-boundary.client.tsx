@@ -33,6 +33,10 @@ export class AppErrorBoundary extends Component<
     return { hasError: true };
   }
 
+  componentDidCatch(error: unknown): void {
+    console.error("Inference Lens display error:", error);
+  }
+
   private readonly reloadWithShortcut = (event: KeyboardEvent): void => {
     if (
       (event.metaKey || event.ctrlKey) &&
@@ -49,7 +53,7 @@ export class AppErrorBoundary extends Component<
         <main className="app-error" role="alert">
           <div className="app-error-card">
             <span className="app-error-mark" aria-hidden="true">
-              TL
+              IL
             </span>
             <p className="eyebrow">Display recovery</p>
             <h1>Inference Lens needs to reload</h1>

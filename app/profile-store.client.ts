@@ -9,6 +9,7 @@ import {
   isProviderCapabilityOverrides,
   resolveProviderCapabilities,
 } from "../packages/core/src/types.ts";
+import { randomUUID } from "../packages/core/src/random-id.ts";
 
 const STORAGE_KEY = "inference-lens:inference-profiles:v1";
 
@@ -22,10 +23,17 @@ export type StoredInferenceProfile = InferenceProfile;
 export interface ProfileSnapshot {
   profiles: StoredInferenceProfile[];
   activeProfileId: string;
+  /**
+   * False when nothing usable was in storage and the snapshot is the built-in
+   * starting profile. The exact signal for "this device has never configured
+   * a connection" — checking the profile's fields against the current defaults
+   * instead would quietly stop matching the moment a release changes them.
+   */
+  restored: boolean;
 }
 
 function profileId(): string {
-  return `profile-${crypto.randomUUID()}`;
+  return `profile-${randomUUID()}`;
 }
 
 export function createDefaultProfile(): StoredInferenceProfile {
@@ -105,9 +113,12 @@ function sanitizeProfile(profile: StoredInferenceProfile): StoredInferenceProfil
 
 export function readProfiles(): ProfileSnapshot {
   const fallback = createDefaultProfile();
-  if (typeof window === "undefined") {
-    return { profiles: [fallback], activeProfileId: fallback.id };
-  }
+  const firstRun: ProfileSnapshot = {
+    profiles: [fallback],
+    activeProfileId: fallback.id,
+    restored: false,
+  };
+  if (typeof window === "undefined") return firstRun;
 
   try {
     const value = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null") as {
@@ -117,20 +128,24 @@ export function readProfiles(): ProfileSnapshot {
     const profiles = Array.isArray(value?.profiles)
       ? value.profiles.filter(isStoredProfile).map(sanitizeProfile)
       : [];
-    if (profiles.length === 0) {
-      return { profiles: [fallback], activeProfileId: fallback.id };
-    }
+    if (profiles.length === 0) return firstRun;
     const activeProfileId =
       typeof value?.activeProfileId === "string" &&
       profiles.some((profile) => profile.id === value.activeProfileId)
         ? value.activeProfileId
         : profiles[0].id;
-    return { profiles, activeProfileId };
+    return { profiles, activeProfileId, restored: true };
   } catch {
-    return { profiles: [fallback], activeProfileId: fallback.id };
+    return firstRun;
   }
 }
 
-export function writeProfiles(snapshot: ProfileSnapshot): void {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+export function writeProfiles(
+  snapshot: Pick<ProfileSnapshot, "profiles" | "activeProfileId">,
+): void {
+  const { profiles, activeProfileId } = snapshot;
+  window.localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify({ profiles, activeProfileId }),
+  );
 }

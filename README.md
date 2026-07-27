@@ -76,52 +76,15 @@ semantics.
 No clone, no build, no configuration:
 
 ```sh
-docker run --rm -p 127.0.0.1:3000:3000 ghcr.io/acgabbert/inference-lens:latest
+docker run --rm -p 127.0.0.1:3000:3000 \
+  --add-host=host.docker.internal:host-gateway \
+  ghcr.io/acgabbert/inference-lens:latest
 ```
 
 Open http://localhost:3000, then enter the provider base URL, API key, and
 model in the UI. A key entered this way remains only in the current browser
-session. The published port is bound to `127.0.0.1`, so the workbench is not
-reachable from other machines on the network; map a different local port with
-`-p 127.0.0.1:8080:3000`.
-
-### Server-side default credential
-
-To avoid re-entering a key each session, set it on the service instead and
-leave the UI key field empty. This takes two variables, not one: the key, and
-the provider endpoint it is bound to. Setting only the key fails every request
-with `The default credential is not bound to a provider.`
-
-The quick start involves no clone, so there is no `.env.example` to copy. Write
-the file directly:
-
-```sh
-cat > .env <<'EOF'
-INFERENCE_LENS_API_KEY=sk-your-key-here
-INFERENCE_LENS_API_ENDPOINT=https://api.openai.com/v1
-EOF
-```
-
-Then pass it to the container:
-
-```sh
-docker run --rm -p 127.0.0.1:3000:3000 \
-  --env-file .env \
-  ghcr.io/acgabbert/inference-lens:latest
-```
-
-Separate `-e INFERENCE_LENS_API_KEY=...` flags work too, but a key given that
-way is recorded in shell history and readable from `docker inspect` on the
-host. `--env-file` keeps it out of both.
-
-`INFERENCE_LENS_API_KEY` is a server-only default credential: never use a
-`NEXT_PUBLIC_` prefix and do not commit the populated `.env` file. It is
-excluded from the Docker build context, so it is never baked into an image, and
-is read from the container's environment when a model request is made. The
-service releases it only when the selected endpoint has the same scheme,
-hostname, and port as `INFERENCE_LENS_API_ENDPOINT`, and refuses any other
-endpoint. A key entered in the UI takes precedence and leaves both variables
-unread.
+session. For provider networking, server-side credentials, Compose, and
+troubleshooting, see the [Docker guide](docs/DOCKER.md).
 
 ### Running from source with Compose
 

@@ -3,8 +3,10 @@ import test from "node:test";
 import {
   EnvironmentCredentialStore,
   executeProviderTurn,
+  parseAllowedHosts,
   resolveModelDiscoveryRequest,
   resolveProviderTurnRequest,
+  validateSameOrigin,
   validateWorkbenchRequest,
   WorkbenchRequestError,
 } from "../services/api/src/index.ts";
@@ -53,6 +55,154 @@ test("resolves a server-owned credential for one provider turn", () => {
 
   assert.equal(request.apiKey, "environment-key");
   assert.equal(request.execution.input.target.model, "example-model");
+});
+
+test("reports only whether a server-owned credential is configured", () => {
+  assert.equal(environmentStore.isConfigured(), true);
+  assert.equal(new EnvironmentCredentialStore({}).isConfigured(), false);
+  assert.equal(
+    new EnvironmentCredentialStore({
+      INFERENCE_LENS_API_KEY: "environment-key",
+    }).isConfigured(),
+    false,
+  );
+});
+
+test("exposes sanitized non-secret server connection metadata", () => {
+  const store = new EnvironmentCredentialStore({
+    INFERENCE_LENS_API_KEY: "environment-key",
+    INFERENCE_LENS_API_ENDPOINT: "https://name:secret@example.test/v1?key=secret",
+    INFERENCE_LENS_MODEL: "configured-model",
+  });
+  assert.deepEqual(store.connectionConfiguration(), {
+    endpoint: "https://example.test/v1",
+    model: "configured-model",
+  });
+});
+
+test("does not expose or advertise an invalid server endpoint", () => {
+  const malformed = new EnvironmentCredentialStore({
+    INFERENCE_LENS_API_KEY: "environment-key",
+    INFERENCE_LENS_API_ENDPOINT: "not a url?api_key=must-not-leak",
+  });
+  assert.equal(malformed.isConfigured(), false);
+  assert.equal(malformed.connectionConfiguration(), undefined);
+
+  const unsupported = new EnvironmentCredentialStore({
+    INFERENCE_LENS_API_KEY: "environment-key",
+    INFERENCE_LENS_API_ENDPOINT: "file:///tmp/provider?api_key=must-not-leak",
+  });
+  assert.equal(unsupported.isConfigured(), false);
+  assert.equal(unsupported.connectionConfiguration(), undefined);
+});
+
+test("prefills a keyless local provider from its endpoint alone", () => {
+  // A llama.cpp server needs no credential, so the endpoint is worth adopting
+  // on its own; the missing key is reported separately rather than suppressing
+  // the whole configuration.
+  const store = new EnvironmentCredentialStore({
+    INFERENCE_LENS_API_ENDPOINT: "http://host.docker.internal:8080/v1",
+  });
+  assert.equal(store.isConfigured(), false);
+  assert.deepEqual(store.connectionConfiguration(), {
+    endpoint: "http://host.docker.internal:8080/v1",
+  });
+});
+
+test("reports no connection when the server declares no endpoint", () => {
+  assert.equal(
+    new EnvironmentCredentialStore({
+      INFERENCE_LENS_API_KEY: "environment-key",
+    }).connectionConfiguration(),
+    undefined,
+  );
+  assert.equal(
+    new EnvironmentCredentialStore({}).connectionConfiguration(),
+    undefined,
+  );
+});
+
+test("reads the model from the injected variable name", () => {
+  const store = new EnvironmentCredentialStore(
+    { API_ENDPOINT: "https://example.test/v1", MODEL: "renamed-model" },
+    "API_KEY",
+    "API_ENDPOINT",
+    "MODEL",
+  );
+  assert.deepEqual(store.connectionConfiguration(), {
+    endpoint: "https://example.test/v1",
+    model: "renamed-model",
+  });
+});
+
+test("refuses a cross-origin caller on a route with no request body", () => {
+  const sameOrigin = new Request("http://localhost:3000/api/runtime-status", {
+    headers: { origin: "http://localhost:3000" },
+  });
+  assert.doesNotThrow(() => validateSameOrigin(sameOrigin));
+
+  // A direct navigation or curl sends no Origin at all and stays allowed.
+  assert.doesNotThrow(() =>
+    validateSameOrigin(new Request("http://localhost:3000/api/runtime-status")),
+  );
+
+  const crossOrigin = new Request("http://localhost:3000/api/runtime-status", {
+    headers: { origin: "https://attacker.test" },
+  });
+  assert.throws(() => validateSameOrigin(crossOrigin), (error: unknown) => {
+    assert.ok(error instanceof WorkbenchRequestError);
+    assert.equal(error.status, 403);
+    return true;
+  });
+});
+
+test("refuses a Host a rebound DNS name could have produced", () => {
+  // The whole point: under DNS rebinding the browser believes this request is
+  // same-origin, so Origin agrees with the URL the server reconstructs from
+  // this very header. Only the name itself gives the attack away.
+  const rebound = new Request("http://evil.test:3000/api/inference", {
+    headers: { host: "evil.test:3000", origin: "http://evil.test:3000" },
+  });
+  assert.throws(() => validateSameOrigin(rebound), (error: unknown) => {
+    assert.ok(error instanceof WorkbenchRequestError);
+    assert.equal(error.status, 403);
+    assert.match(error.message, /INFERENCE_LENS_ALLOWED_HOSTS/);
+    return true;
+  });
+
+  // An operator who put the service behind a name says so, and it is served.
+  assert.doesNotThrow(() =>
+    validateSameOrigin(rebound, { allowedHosts: ["evil.test"] }),
+  );
+});
+
+test("serves every address literal a local workbench is opened on", () => {
+  for (const host of [
+    "localhost:3000",
+    "127.0.0.1:3000",
+    "0.0.0.0:3000",
+    "[::1]:3000",
+    "192.168.1.10:3000",
+    "lens.localhost:3000",
+  ]) {
+    assert.doesNotThrow(
+      () =>
+        validateSameOrigin(
+          new Request("http://placeholder.invalid/api/runtime-status", {
+            headers: { host },
+          }),
+        ),
+      host,
+    );
+  }
+});
+
+test("parses an operator's allowlist from either separator", () => {
+  assert.deepEqual(
+    parseAllowedHosts("lens.example.com, workbench.internal:8443\nother.test"),
+    ["lens.example.com", "workbench.internal", "other.test"],
+  );
+  assert.deepEqual(parseAllowedHosts(undefined), []);
 });
 
 test("accepts a retry attempt at the stateless provider boundary", () => {

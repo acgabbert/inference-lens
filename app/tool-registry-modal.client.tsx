@@ -11,6 +11,7 @@ import type {
   ToolRegistryV1,
 } from "../packages/core/src/tool-registry";
 import { ToolDefinitionEditor } from "./tool-definition-editor.client";
+import { randomUUID } from "../packages/core/src/random-id";
 
 interface ToolRegistryModalProps {
   open: boolean;
@@ -69,7 +70,7 @@ export function ToolRegistryModal({
   function addTool(): void {
     const now = new Date().toISOString();
     const tool = createRegistryTool(
-      `registry-tool_${crypto.randomUUID()}`,
+      `registry-tool_${randomUUID()}`,
       now,
       registry.tools.length,
     );
