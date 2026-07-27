@@ -55,6 +55,7 @@ export interface RunReadinessInput {
   connectionMapped: boolean;
   activeProfileName: string;
   activeProfileEndpoint: string;
+  activeProfileModel: string;
   selectedToolCount: number;
   toolsEnabled: boolean;
   /** Endpoint the open project declares, when it declares one. */
@@ -104,6 +105,7 @@ export function runReadiness(
     connectionMapped,
     activeProfileName,
     activeProfileEndpoint,
+    activeProfileModel,
     selectedToolCount,
     toolsEnabled,
     requiredEndpoint,
@@ -134,6 +136,21 @@ export function runReadiness(
       actions: [
         { kind: "map-profile", label: `Use "${profile}"`, primary: true },
         { kind: "open-connections", label: "Choose another profile" },
+      ],
+    };
+  }
+
+  if (!activeProfileModel.trim()) {
+    return {
+      blocked: true,
+      headline: `"${profile}" has no model selected`,
+      detail: "Choose one in Connections — the picker lists what this provider serves.",
+      explanation:
+        "A profile prefilled from a server's configuration names the provider but not always a model, and guessing one would send a name the provider has probably never heard of.",
+      summary: "Choose a model for this profile before running.",
+      facts: [{ label: `Profile "${profile}"`, value: activeProfileEndpoint }],
+      actions: [
+        { kind: "open-connections", label: "Choose a model", primary: true },
       ],
     };
   }

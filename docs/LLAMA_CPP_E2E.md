@@ -88,6 +88,10 @@ profile with these values:
 | Model | `local-test-model` |
 | Temperature | `0.2` for repeatable smoke tests |
 
+If Inference Lens runs in Docker while llama.cpp runs natively on the host, use
+`http://host.docker.internal:8080/v1` instead. See the
+[Docker guide](DOCKER.md#connect-to-a-provider) for container networking.
+
 Inference Lens adds `/chat/completions` to this base URL. It sends no
 `Authorization` header when the key is empty. If a client library or future
 configuration requires a non-empty value, `local-no-key` is a safe dummy value

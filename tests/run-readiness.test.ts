@@ -8,6 +8,7 @@ const ready = {
   connectionMapped: true,
   activeProfileName: "Local llama",
   activeProfileEndpoint: "http://127.0.0.1:8080/v1",
+  activeProfileModel: "qwen3-8b",
   requiredEndpoint: "http://127.0.0.1:8080/v1",
   selectedToolCount: 0,
   toolsEnabled: true,
@@ -22,6 +23,7 @@ test("a runnable project reports nothing", () => {
       connectionMapped: false,
       activeProfileName: "Local llama",
       activeProfileEndpoint: "http://127.0.0.1:8080/v1",
+      activeProfileModel: "qwen3-8b",
       selectedToolCount: 0,
       toolsEnabled: true,
       templateIssues: [],
@@ -29,6 +31,27 @@ test("a runnable project reports nothing", () => {
     undefined,
     "an ad hoc session has no connection requirement to satisfy",
   );
+});
+
+test("a profile with no model sends the user to the picker", () => {
+  const readiness = runReadiness({ ...ready, activeProfileModel: "  " });
+  assert.equal(readiness?.blocked, true);
+  assert.match(readiness?.headline ?? "", /no model selected/);
+  assert.deepEqual(
+    readiness?.actions.map(({ kind }) => kind),
+    ["open-connections"],
+  );
+});
+
+test("an unmapped project outranks a missing model", () => {
+  // Both are true of a freshly prefilled server-default profile, and only one
+  // of them is the first thing to do about it.
+  const readiness = runReadiness({
+    ...ready,
+    connectionMapped: false,
+    activeProfileModel: "",
+  });
+  assert.match(readiness?.headline ?? "", /not connected to a local profile/);
 });
 
 test("an unmapped project names both endpoints and offers the mapping", () => {

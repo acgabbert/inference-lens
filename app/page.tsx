@@ -75,6 +75,7 @@ import {
   InferenceTransportError,
 } from "./http-inference-transport.client";
 import { AppErrorBoundary } from "./app-error-boundary.client";
+import { useInsecureOriginNotice } from "./use-insecure-origin.client";
 import { randomUUID } from "../packages/core/src/random-id.ts";
 import {
   recordDiagnostic,
@@ -258,8 +259,13 @@ function HomeContent() {
     addProfile,
     updateActiveProfile,
     setCapabilityOverride,
+    serverDefault,
+    serverDefaultProfileNotice,
+    adoptServerDefaultProfile,
+    dismissServerDefaultProfileNotice,
     credential,
   } = useConnectionProfiles({ isDesktopRuntime });
+  const originNotice = useInsecureOriginNotice(serverDefault.containerized);
   const [toolRegistry, setToolRegistry] = useState<ToolRegistryV1>(
     emptyToolRegistry(),
   );
@@ -1614,6 +1620,7 @@ function HomeContent() {
     connectionMapped: Boolean(mappedProfileId),
     activeProfileName: activeProfile.name,
     activeProfileEndpoint: activeProfile.endpoint,
+    activeProfileModel: activeProfile.model,
     selectedToolCount,
     toolsEnabled: activeCapabilities.tools,
     ...(activeConnectionRequirement
@@ -1729,6 +1736,73 @@ function HomeContent() {
           </div>
         </div>
       )}
+      {(serverDefaultProfileNotice || originNotice.notice) && (
+        <div className="workbench-notices">
+          {serverDefaultProfileNotice && (
+            <div className="workbench-notice" role="status">
+              <div className="workbench-notice-copy">
+                <strong>Server default connection available</strong>
+                <span>
+                  A profile using this server&apos;s configured endpoint was
+                  added to Connections.
+                </span>
+              </div>
+              <div className="workbench-notice-actions">
+                <button
+                  className="button primary"
+                  type="button"
+                  onClick={adoptServerDefaultProfile}
+                >
+                  Use it
+                </button>
+                <button
+                  className="button"
+                  type="button"
+                  onClick={() => {
+                    dismissServerDefaultProfileNotice();
+                    setConnectionDrawerOpen(true);
+                  }}
+                >
+                  Review
+                </button>
+                <button
+                  className="button"
+                  type="button"
+                  onClick={dismissServerDefaultProfileNotice}
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
+          {originNotice.notice && (
+            <div className="workbench-notice" role="status">
+              <div className="workbench-notice-copy">
+                <strong>{originNotice.notice.headline}</strong>
+                <span>{originNotice.notice.detail}</span>
+              </div>
+              <div className="workbench-notice-actions">
+                {originNotice.notice.suggestedUrl && (
+                  <a
+                    className="button primary"
+                    href={originNotice.notice.suggestedUrl}
+                    onClick={originNotice.dismiss}
+                  >
+                    Open it
+                  </a>
+                )}
+                <button
+                  className="button"
+                  type="button"
+                  onClick={originNotice.dismiss}
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <ConnectionDrawer
         open={connectionDrawerOpen}
@@ -1737,6 +1811,7 @@ function HomeContent() {
         activeProfile={activeProfile}
         capabilities={activeCapabilities}
         credential={credential}
+        serverDefault={serverDefault}
         isDesktopRuntime={isDesktopRuntime}
         onSelectProfile={chooseProfile}
         onAddProfile={() => {

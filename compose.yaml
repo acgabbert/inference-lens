@@ -6,13 +6,16 @@ services:
       - .env
     ports:
       - "127.0.0.1:${INFERENCE_LENS_PORT:-3000}:3000"
-    healthcheck:
-      test:
-        - CMD
-        - node
-        - -e
-        - "fetch('http://127.0.0.1:3000/').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
-      interval: 5s
-      timeout: 3s
-      retries: 10
-      start_period: 5s
+    # Docker Desktop resolves host.docker.internal on its own; plain Linux
+    # Docker Engine does not, and a provider running natively on the host is
+    # then unreachable by the name the app tells users to try.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true

@@ -537,6 +537,55 @@ select:disabled {
   color: var(--danger);
 }
 
+/* Advisories about the environment rather than the request: stacked out of the
+   way, never blocking, and dismissible. */
+.workbench-notices {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: min(460px, calc(100vw - 32px));
+}
+
+.workbench-notice {
+  padding: 14px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-float);
+}
+
+.workbench-notice-copy strong,
+.workbench-notice-copy span {
+  display: block;
+}
+
+.workbench-notice-copy strong {
+  font-size: 12px;
+}
+
+.workbench-notice-copy span {
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.workbench-notice-actions {
+  margin-top: 11px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+a.button {
+  display: inline-block;
+  text-decoration: none;
+}
+
 input:focus,
 select:focus,
 textarea:focus {
