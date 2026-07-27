@@ -14,3 +14,7 @@ src-tauri/target
 *.log
 npm-debug.log*
 coverage
+
+# Gitignored locally, so CI never sees it, but a maintainer's `notes` symlink
+# would otherwise enter the context and bake its target path into a layer.
+notes

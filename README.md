@@ -1,6 +1,6 @@
 # Inference Lens
 
-Inference Lens is a local web workbench for sending streaming chat-completion requests to an OpenAI-compatible API and inspecting normalized run events. **Inspect every model run.** Install Node.js 22.13 or newer, then run `npm ci` followed by `npm run dev` from the repository root and open the local URL printed in the terminal.
+Inference Lens is a local web workbench for sending streaming chat-completion requests to an OpenAI-compatible API and inspecting normalized run events. **Inspect every model run.** The fastest way to try it is the [Docker quick start](#quick-start) — one command, nothing to install. To run from source instead, install Node.js 22.13 or newer, then run `npm ci` followed by `npm run dev` from the repository root and open the local URL printed in the terminal.
 
 In the UI, enter the provider base URL (for example, `https://api.openai.com/v1`), API key, model, and messages, then select **Run request**; unless the endpoint already ends with `/chat/completions`, the app appends that path. The key is used for the live request but excluded from exported project files and displayed diagnostics. Run `npm test` for the web build and TypeScript/runtime test suite, or use `npm run build` and `npm start` to run a production build locally.
 
@@ -71,28 +71,71 @@ JSON Schema object, so unsupported keywords are preserved. See
 [the tool registry design](docs/TOOL_REGISTRY.md) for snapshot and persistence
 semantics.
 
-## Local Docker Compose
+## Quick start
 
-Copy `.env.example` to `.env`, set `INFERENCE_LENS_API_KEY`, and set
-`INFERENCE_LENS_API_ENDPOINT` to the matching provider base URL. Then start the
-local workbench:
+No clone, no build, no configuration:
+
+```sh
+docker run --rm -p 127.0.0.1:3000:3000 ghcr.io/acgabbert/inference-lens:latest
+```
+
+Open http://localhost:3000, then enter the provider base URL, API key, and
+model in the UI. A key entered this way remains only in the current browser
+session. The published port is bound to `127.0.0.1`, so the workbench is not
+reachable from other machines on the network; map a different local port with
+`-p 127.0.0.1:8080:3000`.
+
+### Server-side default credential
+
+To avoid re-entering a key each session, set it on the service instead and
+leave the UI key field empty. This takes two variables, not one: the key, and
+the provider endpoint it is bound to. Setting only the key fails every request
+with `The default credential is not bound to a provider.`
+
+The quick start involves no clone, so there is no `.env.example` to copy. Write
+the file directly:
+
+```sh
+cat > .env <<'EOF'
+INFERENCE_LENS_API_KEY=sk-your-key-here
+INFERENCE_LENS_API_ENDPOINT=https://api.openai.com/v1
+EOF
+```
+
+Then pass it to the container:
+
+```sh
+docker run --rm -p 127.0.0.1:3000:3000 \
+  --env-file .env \
+  ghcr.io/acgabbert/inference-lens:latest
+```
+
+Separate `-e INFERENCE_LENS_API_KEY=...` flags work too, but a key given that
+way is recorded in shell history and readable from `docker inspect` on the
+host. `--env-file` keeps it out of both.
+
+`INFERENCE_LENS_API_KEY` is a server-only default credential: never use a
+`NEXT_PUBLIC_` prefix and do not commit the populated `.env` file. It is
+excluded from the Docker build context, so it is never baked into an image, and
+is read from the container's environment when a model request is made. The
+service releases it only when the selected endpoint has the same scheme,
+hostname, and port as `INFERENCE_LENS_API_ENDPOINT`, and refuses any other
+endpoint. A key entered in the UI takes precedence and leaves both variables
+unread.
+
+### Running from source with Compose
+
+Compose builds the image locally, which is the right choice when working on
+Inference Lens itself. It requires a `.env` file:
 
 ```sh
 cp .env.example .env
 docker compose up --build
 ```
 
-Open http://localhost:3000. The only published port is bound to `127.0.0.1`,
-so it is not reachable from other machines on the network. To use another
-local port, set `INFERENCE_LENS_PORT` in `.env`.
-
-`INFERENCE_LENS_API_KEY` is a server-only default credential: never use a
-`NEXT_PUBLIC_` prefix and do not commit the populated `.env` file. It is
-excluded from the Docker build context and read by the Node API routes when a
-model request is made. The service sends it only when the selected endpoint has
-the same scheme, hostname, and port as `INFERENCE_LENS_API_ENDPOINT`. Leave the UI
-key field empty to use it. In the web workbench, a user-entered key remains only
-in the current browser session.
+Set `INFERENCE_LENS_API_KEY` and point `INFERENCE_LENS_API_ENDPOINT` at the
+matching provider base URL, or leave both empty and enter a key in the UI. To
+use another local port, set `INFERENCE_LENS_PORT` in `.env`.
 
 ## macOS app (Tauri)
 
@@ -129,5 +172,10 @@ Run `npm run test:rust` for the debug host tests. On macOS,
 exercises a real Keychain round-trip with a temporary item that is removed
 during cleanup.
 
-Before distributing the app, configure platform signing and notarization in
-the release workflow.
+### Releases
+
+Release tags publish the container image independently of the desktop app.
+macOS DMGs are produced only when signing and notarization are configured, and
+only verified DMGs are attached to draft GitHub releases. Maintainers should
+follow the [release guide](docs/RELEASING.md) for versioning, GHCR visibility,
+Apple signing setup, and release verification.

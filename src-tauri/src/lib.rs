@@ -136,7 +136,10 @@ fn selected_project_directory(app: &AppHandle) -> Result<Option<PathBuf>, String
 
 fn write_project_manifest(directory: &Path, contents: &str) -> Result<(), String> {
     let manifest = project_manifest_path(directory);
-    let temporary = directory.join(format!(".inference-lens-project-{}.tmp", uuid::Uuid::new_v4()));
+    let temporary = directory.join(format!(
+        ".inference-lens-project-{}.tmp",
+        uuid::Uuid::new_v4()
+    ));
     fs::write(&temporary, contents)
         .map_err(|error| format!("Could not write the project: {error}"))?;
     if let Err(rename_error) = fs::rename(&temporary, &manifest) {
@@ -248,7 +251,10 @@ fn write_exported_trace(path: &Path, contents: &str) -> Result<(), String> {
     let parent = path
         .parent()
         .ok_or_else(|| command_error("The selected trace location has no parent directory."))?;
-    let temporary = parent.join(format!(".inference-lens-export-{}.tmp", uuid::Uuid::new_v4()));
+    let temporary = parent.join(format!(
+        ".inference-lens-export-{}.tmp",
+        uuid::Uuid::new_v4()
+    ));
     fs::write(&temporary, contents)
         .map_err(|error| format!("Could not save the run trace: {error}"))?;
     if let Err(rename_error) = fs::rename(&temporary, path) {
