@@ -85,10 +85,12 @@ screen in a readable form. The run-metrics work shipped a per-attempt label that
 passed every test and rendered a raw turn UUID in the browser. Only opening the
 page caught it.
 
-Playwright is **not** a repository dependency, and there is no committed browser
-suite. The workflow below is an ad hoc driver script run from a scratch
-directory with `playwright-core` installed there. Keep it that way unless a
-committed browser suite is deliberately designed.
+`playwright` is a `devDependency` of this repo (see [the setup
+guide](PLAYWRIGHT_SETUP.md) for the one-time browser-binary install and how it
+differs between a Claude Code cloud session and a local machine), but there is
+no committed browser suite. The workflow below is an ad hoc driver script,
+written for the change under review and discarded afterward. Keep it that way
+unless a committed browser suite is deliberately designed.
 
 ### Seed the profile instead of clicking through settings
 
