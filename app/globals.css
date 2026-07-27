@@ -1922,6 +1922,12 @@ textarea:focus {
 }
 
 .transcript-message {
+  /* A grid item's implicit min-width is auto (its content's min-content
+     size), which lets an unbreakable preview line force this whole grid
+     track — and the panel with it — wider than the container instead of
+     letting .transcript-preview's ellipsis truncate it. Overriding to 0
+     hands sizing back to the ellipsis. */
+  min-width: 0;
   border: 1px solid var(--border-default);
   border-radius: 0.5rem;
   padding: 0.75rem;
@@ -1929,28 +1935,78 @@ textarea:focus {
 
 /* Verbatim text keeps the line breaks it was sent with; markdown owns its own
    block spacing and must not also be pre-wrapped. */
-.transcript-message > p {
+.transcript-body > p {
   margin: 0 0 0.6rem;
   font-size: 13px;
   line-height: 1.72;
   white-space: pre-wrap;
 }
 
-.transcript-message > p:last-child,
-.transcript-message > .markdown-body:last-child {
+.transcript-body > p:last-child,
+.transcript-body > .markdown-body:last-child {
   margin-bottom: 0;
 }
 
-.transcript-message > .markdown-body {
+.transcript-body > .markdown-body {
   margin-bottom: 0.6rem;
 }
 
+/* The row itself is the disclosure control (role="button"), not just its
+   chevron — a collapsed message is nothing but this row, and "Edit from here"
+   stops its own click from bubbling up to it. Not a <summary>, since a
+   <summary> cannot contain another interactive control.
+   It bleeds out to the card's own edges on all sides (negative margin
+   matching .transcript-message's padding, restored as this element's own
+   padding) so its hover/focus highlight fills the whole card, not an inset
+   box — the default here is the collapsed case, where this row is the
+   entire card. */
 .transcript-message-header {
   display: flex;
   align-items: center;
   gap: 0.6rem;
+  margin: -0.75rem;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
   color: var(--text-muted);
   font-size: 0.8rem;
+  cursor: pointer;
+}
+
+/* An expanded message has a body below it sharing the card's bottom edge, so
+   this row stops bleeding into the bottom padding and only rounds the top,
+   leaving the card's own bottom corners to the body. */
+.transcript-message-header-open {
+  margin-bottom: 0;
+  border-radius: 0.5rem 0.5rem 0 0;
+}
+
+.transcript-message-header:hover {
+  background: var(--surface-hover);
+}
+
+.transcript-message-header:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.transcript-disclosure {
+  color: inherit;
+}
+
+/* Sits inline in the header row itself — a collapsed message is one line of
+   small, muted metadata, deliberately unlike an expanded card's full-size
+   body text below, so the two states read as different at a glance. */
+.transcript-preview {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-style: italic;
+}
+
+.transcript-reasoning {
+  margin: 0 0 0.6rem;
 }
 
 .transcript-edit { margin-left: auto; }
@@ -2220,7 +2276,10 @@ textarea:focus {
   font-size: 9px;
 }
 
-.reasoning-stream p {
+/* Direct child only: this must not also match a <p> nested inside the
+   markdown-rendered .markdown-body sibling below, or its monospace raw-text
+   styling bleeds into rendered markdown paragraphs. */
+.reasoning-stream > p {
   max-height: 210px;
   margin: 0;
   padding: 0 12px 12px 28px;
@@ -2230,6 +2289,16 @@ textarea:focus {
   font-size: 10px;
   line-height: 1.6;
   white-space: pre-wrap;
+}
+
+/* Same inset and scroll behavior as the raw <p> above, for rendered markdown. */
+.reasoning-stream > .markdown-body {
+  max-height: 210px;
+  margin: 0;
+  padding: 0 12px 12px 28px;
+  overflow: auto;
+  color: var(--text-secondary);
+  font-size: 11px;
 }
 
 .tool-call-list {

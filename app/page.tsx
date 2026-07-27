@@ -396,6 +396,10 @@ function HomeContent() {
       ),
     [runState],
   );
+  const transcript = useMemo(
+    () => (runState ? transcriptFromRunState(runState) : []),
+    [runState],
+  );
 
   function replaceRunState(next: RunState | null): void {
     runStateRef.current = next;
@@ -962,10 +966,11 @@ function HomeContent() {
     if (!runState || !["completed", "cancelled", "failed"].includes(runState.status.kind)) {
       return;
     }
-    const transcript = transcriptFromRunState(runState);
-    const index = transcript.findIndex((message) => message.id === messageId);
+    const index = transcript.findIndex(({ message }) => message.id === messageId);
     if (index < 0) return;
-    resetMessages(structuredClone(transcript.slice(0, index + 1)));
+    resetMessages(
+      structuredClone(transcript.slice(0, index + 1).map(({ message }) => message)),
+    );
     setBranchContext({
       parentRunId: runState.runId,
       parentConversationRevisionId: runState.input?.conversationRevisionId,
@@ -2058,7 +2063,7 @@ function HomeContent() {
             completedToolCalls={completedToolCalls}
             toolResultDrafts={toolResultDrafts}
             traceStorage={traceStorage}
-            transcript={runState ? transcriptFromRunState(runState) : []}
+            transcript={transcript}
             nonBranchableMessageIds={nonBranchableMessageIds}
             branchedFrom={visibleBranchProvenance}
             onMarkdownPreviewChange={setMarkdownPreview}

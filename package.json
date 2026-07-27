@@ -13,6 +13,7 @@
     "dev:paced-provider": "node scripts/paced-openai-provider.mjs",
     "dev:echo-provider": "node scripts/echo-openai-provider.mjs",
     "dev:markdown-provider": "node scripts/markdown-openai-provider.mjs",
+    "dev:reasoning-provider": "node scripts/reasoning-openai-provider.mjs",
     "build": "vinext build",
     "build:tauri": "TRACE_LENS_TARGET=tauri vinext build",
     "start": "vinext start",
