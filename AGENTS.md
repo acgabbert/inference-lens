@@ -39,3 +39,21 @@ For anything a user reads or a provider drives, run it:
 
 Report what was actually run. If a check was skipped or a fixture could not
 reproduce the situation, say so rather than implying broader coverage.
+
+## Keep route components as composition roots
+
+Route and page components should primarily compose feature owners. When a
+feature adds cohesive state, effects, refs, or mutation workflows, define a
+feature hook or component boundary as part of that feature. Keep only genuinely
+cross-feature adapters in the route.
+
+Before materially expanding a route component, identify the intended owner for
+the new responsibility. If the route must own it, record why it cannot belong
+to an existing or new feature boundary. Treat a substantial increase in
+route-local state or orchestration as a design decision, not a default
+implementation detail.
+
+Prefer ownership and cohesive contracts over arbitrary file-size limits.
+Extract presentational JSX for local readability, but do not create global
+state or generic abstractions without a durable ownership, compatibility, or
+reuse reason.

@@ -294,6 +294,34 @@ the executor unless explicitly requested.
 **Exit condition:** Documentation-only diff, with the existing application
 baseline verified.
 
+#### Session 01 handoff — 2026-07-26
+
+`app/page.tsx` baseline: 2,118 lines; 22 `useState` calls; 11 `useRef` calls;
+7 `useEffect` calls; and 46 import declarations.
+
+Main `HomeContent` ranges at this baseline:
+
+- Lines 244–508: feature-hook composition, route-local state, and terminal
+  run-state/trace autosave adapter.
+- Lines 509–964: project-template workbench derivation and template mutation
+  workflows.
+- Lines 965–1,016: project-aware request-setting and authored-message
+  mutations.
+- Lines 1,017–1,596: live run coordination, diagnostics, retry/continuation,
+  trace persistence, import/export, and trace adoption.
+- Lines 1,597–1,640: project run-history adapter and readiness routing.
+- Lines 1,641–2,110: workbench, drawer, and dialog composition/rendering.
+
+Automated baseline results:
+
+- `npm run lint`: passed.
+- `npx tsc -p tsconfig.json --noEmit`: passed.
+- `npm run typecheck:core`: passed.
+- `npm test`: passed after the suite was permitted to bind its localhost
+  standalone-runtime fixture. The initial sandboxed attempt could not bind the
+  fixture and failed with `EPERM`; the elevated rerun passed 195 core tests and
+  25 rendered/standalone tests (220 total).
+
 ### Session 02 — Project-template owner
 
 **Goal:** Remove template state and mutation workflows from `HomeContent`.
