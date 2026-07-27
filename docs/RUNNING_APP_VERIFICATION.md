@@ -66,6 +66,13 @@ The following completed the Session 3 request-composer verification on
    Read the selected browser's full documented interaction contract before
    controlling a tab.
 
+   Keep the two local origins distinct: use the workbench's printed
+   `http://localhost:3000/` URL when selecting the browser, and configure the
+   echo provider separately as `http://127.0.0.1:4012/v1` in the connection
+   drawer. Do not substitute the fixture's `127.0.0.1` URL when selecting a
+   browser for the workbench; the browser runtime uses that selection to choose
+   its compatible surface.
+
    The Browser skill's setup code uses the absolute plugin path and the
    persistent Node JavaScript tool. In outline:
 
@@ -93,6 +100,11 @@ The following completed the Session 3 request-composer verification on
    from that snapshot and confirm it resolves to exactly one element. Take a
    fresh snapshot after an interaction when the next action depends on the new
    UI state.
+
+   If the initial navigation produces a browser error page, do not keep
+   navigating that failed tab. Confirm the listener is still running, create a
+   fresh tab from the selected browser, then navigate to the exact printed app
+   URL. Reselect a browser only if its binding is unsuitable or disconnected.
 
 5. Configure the fixture through the real connection drawer when that drawer is
    part of the behavior under test. A fixture needs no real credential; if the
@@ -129,6 +141,11 @@ If navigation still fails after a successful listener and correct browser
 selection, report that precise state. It is a genuine environment limitation;
 do not claim that a shell `curl` result proves the UI worked, and do not claim
 that an initial `EPERM` proves browser verification is impossible.
+
+A successful `curl` after startup is still useful as a server-liveness check:
+it shows that the shell can reach the app or fixture and that the process did
+not exit. It is not a UI check. Do not mark browser verification complete until
+the browser has produced a DOM snapshot and the intended visible assertion.
 
 ## Minimum report in a handoff
 
