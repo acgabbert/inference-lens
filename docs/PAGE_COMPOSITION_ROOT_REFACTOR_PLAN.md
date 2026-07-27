@@ -357,6 +357,33 @@ the authored conversation, and verify a single new revision is created.
 **Exit condition:** No project-template mutation function, override state, or
 executed-revision ref remains in `page.tsx`.
 
+#### Session 02 handoff — 2026-07-26
+
+- Added `project-template-actions.client.ts` for Node-safe template mutation
+  policy and request-preview construction, with direct coverage in
+  `tests/project-template-actions.test.ts`.
+- Added `use-project-templates.client.ts`, which owns run-only overrides,
+  executed revisions, template workbench derivation, usage counts,
+  confirmations, request preview, and all template/authored-composer
+  mutations. `page.tsx` supplies explicit project and request-draft
+  operations and consumes its named handle.
+- `app/page.tsx` is now 1,734 lines. It contains no template override state,
+  executed-revision ref, or project-template mutation workflow.
+
+Automated verification:
+
+- `npx tsc -p tsconfig.json --noEmit`: passed.
+- `npm run typecheck:core`: passed.
+- `npm run lint`: passed.
+- `npm test`: passed with 198 core tests and 25 rendered/standalone tests.
+
+Running-app note: the echo fixture and development server both started and
+were reachable from the workspace. The in-app browser is network-isolated from
+that host and refused both `127.0.0.1:3000` and `localhost:3000`, so the
+interactive template/branch sequence could not be performed in this
+environment. Both servers were stopped. The Session 06 matrix should repeat
+this check from a browser with access to the local host.
+
 ### Session 03 — Request composer presentation
 
 **Goal:** Remove the large request JSX subtree without moving domain ownership.
