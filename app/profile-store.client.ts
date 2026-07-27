@@ -14,6 +14,12 @@ import { randomUUID } from "../packages/core/src/random-id.ts";
 const STORAGE_KEY = "inference-lens:inference-profiles:v1";
 
 /**
+ * Marks a profile as provisioned from the hosting service's configuration. The
+ * credential itself lives on the server; the profile only names the intent.
+ */
+export const SERVER_DEFAULT_CREDENTIAL_REF = "environment-default";
+
+/**
  * Connection metadata is persisted locally, but credentials never are. The
  * release desktop host stores them in the OS credential store under this ID;
  * debug hosts keep credentials only in the current UI session.
@@ -74,6 +80,52 @@ export function nextCapabilityOverrides(
     overrides[key] = enabled;
   }
   return Object.keys(overrides).length === 0 ? undefined : overrides;
+}
+
+/**
+ * Why this profile cannot be deleted, phrased for the user, or undefined when it
+ * can be. The list must never empty out — the active profile is resolved by
+ * falling back to the first one — and a profile the server provisioned would be
+ * recreated on the next load, so refusing it is more honest than removing
+ * something that comes back.
+ */
+export function profileDeletionRefusal(
+  profiles: StoredInferenceProfile[],
+  profile: StoredInferenceProfile,
+  serverDefaultConfigured: boolean,
+): string | undefined {
+  if (profiles.length <= 1) {
+    return "At least one connection profile is required.";
+  }
+  if (
+    profile.credentialRef === SERVER_DEFAULT_CREDENTIAL_REF &&
+    serverDefaultConfigured
+  ) {
+    return "This profile comes from the server configuration and would be added back. Unset INFERENCE_LENS_API_KEY to remove it.";
+  }
+  return undefined;
+}
+
+/**
+ * The snapshot with `profileId` gone, or undefined when the removal is refused:
+ * an unknown id, or the last remaining profile. A removed active profile hands
+ * selection to whichever profile takes its place in the list, and to the new
+ * last profile when it was at the end.
+ */
+export function removeProfile(
+  snapshot: Pick<ProfileSnapshot, "profiles" | "activeProfileId">,
+  profileId: string,
+): Pick<ProfileSnapshot, "profiles" | "activeProfileId"> | undefined {
+  const index = snapshot.profiles.findIndex(({ id }) => id === profileId);
+  if (index < 0 || snapshot.profiles.length <= 1) return undefined;
+  const profiles = snapshot.profiles.filter(({ id }) => id !== profileId);
+  return {
+    profiles,
+    activeProfileId:
+      snapshot.activeProfileId === profileId
+        ? profiles[Math.min(index, profiles.length - 1)].id
+        : snapshot.activeProfileId,
+  };
 }
 
 function isStoredProfile(value: unknown): value is StoredInferenceProfile {

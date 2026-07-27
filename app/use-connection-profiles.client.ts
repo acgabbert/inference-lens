@@ -6,10 +6,13 @@ import type { ProviderCapabilities } from "../packages/core/src/types.ts";
 import { resolveProviderCapabilities } from "../packages/core/src/types.ts";
 import { randomUUID } from "../packages/core/src/random-id.ts";
 import {
+  SERVER_DEFAULT_CREDENTIAL_REF,
   createDefaultProfile,
   createProfile,
   nextCapabilityOverrides,
+  profileDeletionRefusal,
   readProfiles,
+  removeProfile,
   writeProfiles,
 } from "./profile-store.client.ts";
 import type { StoredInferenceProfile } from "./profile-store.client.ts";
@@ -29,7 +32,6 @@ const unknownCredentialStatus: CredentialStatus = {
 
 const WEB_CREDENTIAL_MODES_STORAGE_KEY =
   "inference-lens:web-credential-modes:v1";
-const SERVER_DEFAULT_CREDENTIAL_REF = "environment-default";
 const SERVER_DEFAULT_PROFILE_ID = "server-default";
 const SERVER_DEFAULT_PROFILE_NAME = "Server default";
 
@@ -102,6 +104,13 @@ export interface ConnectionProfilesHandle {
   /** Returns the new profile's id, which is also made active. */
   addProfile(): string;
   updateActiveProfile(patch: Partial<StoredInferenceProfile>): void;
+  /** Absent when the active profile can be deleted; otherwise why it cannot. */
+  activeProfileDeletionRefusal?: string;
+  /**
+   * Removes the active profile along with every credential held for it, and
+   * selects another. A no-op while `activeProfileDeletionRefusal` is present.
+   */
+  removeActiveProfile(): void;
   setCapabilityOverride(
     key: keyof ProviderCapabilities,
     enabled: boolean,
@@ -169,6 +178,13 @@ export function useConnectionProfiles(input: {
   );
   const credentialProfileId = activeProfile.id;
   const credentialProfileEndpoint = activeProfile.endpoint;
+  // Shared by the control that offers deletion and the function that performs
+  // it, so a refused profile cannot be removed through some other path.
+  const activeProfileDeletionRefusal = profileDeletionRefusal(
+    profiles,
+    activeProfile,
+    serverDefault.configured,
+  );
 
   useEffect(() => {
     const restoreId = window.setTimeout(() => {
@@ -177,15 +193,27 @@ export function useConnectionProfiles(input: {
         const stored = JSON.parse(
           window.localStorage.getItem(WEB_CREDENTIAL_MODES_STORAGE_KEY) ?? "{}",
         ) as Record<string, unknown>;
+        // Preferences for profiles that no longer exist are dropped on the way
+        // in, healing a record that drifted — a profile deleted in another tab,
+        // or one `readProfiles` rejected as malformed. Left in place they would
+        // be inherited by the next profile to take the same id, and the two
+        // fixed ids make that reachable rather than theoretical.
+        let pruned = false;
         for (const [profileId, mode] of Object.entries(stored)) {
           if (
-            mode === "environment-default" ||
-            mode === "session" ||
-            mode === "none"
+            mode !== "environment-default" &&
+            mode !== "session" &&
+            mode !== "none"
           ) {
+            continue;
+          }
+          if (snapshot.profiles.some(({ id }) => id === profileId)) {
             webCredentialModesRef.current.set(profileId, mode);
+          } else {
+            pruned = true;
           }
         }
+        if (pruned) persistWebCredentialModes();
       } catch {
         // A malformed local preference is equivalent to no preference.
       }
@@ -379,6 +407,42 @@ export function useConnectionProfiles(input: {
     return profile.id;
   }
 
+  /**
+   * Deleting a profile has to take its credentials with it. A profile id can be
+   * reused — the starting profile and the server-provisioned one both have fixed
+   * ids — so a mode preference, a session key, or a keychain entry left behind
+   * would be silently adopted by whatever is created under that id next.
+   */
+  function removeActiveProfile(): void {
+    if (activeProfileDeletionRefusal) return;
+    const removed = activeProfile;
+    const next = removeProfile({ profiles, activeProfileId }, removed.id);
+    if (!next) return;
+
+    sessionCredentialsRef.current.delete(removed.id);
+    if (webCredentialModesRef.current.delete(removed.id)) {
+      persistWebCredentialModes();
+    }
+    if (isDesktopRuntime) {
+      // An empty key is the host's delete path, and it tolerates a secret that
+      // was never stored. Failures are ignored on purpose: debug builds hold no
+      // keychain at all, and a host that will not forget the secret must still
+      // not keep the profile alive.
+      void desktopCredentialStore
+        .save(removed.id, removed.endpoint, "")
+        .catch(() => {});
+    }
+
+    setProfiles(next.profiles);
+    setActiveProfileId(next.activeProfileId);
+    // The credential effect swaps in the newly active profile's draft, mode and
+    // keychain status on its own; only the notice pointing at a profile that no
+    // longer exists has to be cleared here.
+    if (serverDefaultProfileNotice?.profileId === removed.id) {
+      setServerDefaultProfileNotice(undefined);
+    }
+  }
+
   function setCapabilityOverride(
     key: keyof ProviderCapabilities,
     enabled: boolean,
@@ -462,6 +526,8 @@ export function useConnectionProfiles(input: {
     selectProfile: setActiveProfileId,
     addProfile,
     updateActiveProfile,
+    ...(activeProfileDeletionRefusal ? { activeProfileDeletionRefusal } : {}),
+    removeActiveProfile,
     setCapabilityOverride,
     serverDefault,
     serverDefaultProfileNotice,

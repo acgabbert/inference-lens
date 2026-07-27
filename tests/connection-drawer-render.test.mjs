@@ -69,6 +69,7 @@ function drawer(overrides) {
     isDesktopRuntime: false,
     onSelectProfile: () => {},
     onAddProfile: () => {},
+    onDeleteProfile: () => {},
     onUpdateProfile: () => {},
     onCapabilityChange: () => {},
     onMapProfile: () => {},
@@ -171,6 +172,25 @@ test("malformed server metadata cannot crash the connection drawer", async () =>
 
   assert.match(html, /holds no default credential to send/);
   assert.doesNotMatch(html, /must-not-render/);
+});
+
+test("a deletable profile offers deletion", async () => {
+  const html = await render(DRAWER, "ConnectionDrawer", drawer({}));
+
+  assert.match(html, /<button class="text-button danger" type="button">Delete<\/button>/);
+});
+
+test("a profile that cannot be deleted says so on the control itself", async () => {
+  const html = await render(
+    DRAWER,
+    "ConnectionDrawer",
+    drawer({ deleteProfileRefusal: "At least one connection profile is required." }),
+  );
+
+  assert.match(
+    html,
+    /<button class="text-button danger" type="button" disabled="" title="At least one connection profile is required\.">Delete<\/button>/,
+  );
 });
 
 test("a server-provisioned profile locks its endpoint and says why", async () => {

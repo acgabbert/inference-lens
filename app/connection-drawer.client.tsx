@@ -54,6 +54,9 @@ interface ConnectionDrawerProps {
   isDesktopRuntime: boolean;
   onSelectProfile(profileId: string): void;
   onAddProfile(): void;
+  onDeleteProfile(): void;
+  /** Absent when the active profile can be deleted; otherwise why it cannot. */
+  deleteProfileRefusal?: string;
   onUpdateProfile(patch: Partial<StoredInferenceProfile>): void;
   onCapabilityChange(key: keyof ProviderCapabilities, enabled: boolean): void;
   /** Present only while a project declares a connection to satisfy. */
@@ -131,6 +134,8 @@ export function ConnectionDrawer({
   isDesktopRuntime,
   onSelectProfile,
   onAddProfile,
+  onDeleteProfile,
+  deleteProfileRefusal,
   onUpdateProfile,
   onCapabilityChange,
   connectionRequirement,
@@ -183,6 +188,17 @@ export function ConnectionDrawer({
           </label>
           <button className="text-button" type="button" onClick={onAddProfile}>
             + New
+          </button>
+          {/* The refusal is carried as the title so the reason is readable on
+              the control that is refused, rather than only after a click. */}
+          <button
+            className="text-button danger"
+            type="button"
+            disabled={Boolean(deleteProfileRefusal)}
+            title={deleteProfileRefusal}
+            onClick={onDeleteProfile}
+          >
+            Delete
           </button>
         </div>
         {connectionRequirement && (

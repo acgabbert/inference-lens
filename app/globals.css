@@ -340,7 +340,7 @@ label.file-button {
 
 .profile-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: end;
   gap: 8px;
 }
@@ -704,6 +704,15 @@ output {
   font-size: 10px;
   font-weight: 700;
   cursor: pointer;
+}
+
+.text-button.danger {
+  color: var(--danger);
+}
+
+.text-button:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
 }
 
 .message-list {
