@@ -75,6 +75,11 @@ plausible. Plausible-looking numbers are exactly how a metrics bug survives.
 
 ## Driving the UI in a browser
 
+When running this from a sandboxed Codex session, first read [the running-app
+verification guide](RUNNING_APP_VERIFICATION.md). In particular, an `EPERM`
+while starting a loopback listener is a sandbox permission failure, not proof
+that the local app is unreachable in the Browser skill.
+
 Unit tests cover derivations; they do not cover whether a value reaches the
 screen in a readable form. The run-metrics work shipped a per-attempt label that
 passed every test and rendered a raw turn UUID in the browser. Only opening the
