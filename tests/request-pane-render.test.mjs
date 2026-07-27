@@ -192,16 +192,28 @@ function responseOutput(overrides) {
 
 const finishedTranscript = [
   {
-    id: "message_user",
-    role: "user",
-    content: [{ type: "text", text: "Explain **caching**." }],
+    message: {
+      id: "message_system",
+      role: "system",
+      content: [{ type: "text", text: "You are a terse assistant." }],
+    },
   },
   {
-    id: "message_answer",
-    role: "assistant",
-    content: [
-      { type: "text", text: "## Caching\n\nIt stores a `value` for reuse." },
-    ],
+    message: {
+      id: "message_user",
+      role: "user",
+      content: [{ type: "text", text: "Explain **caching**." }],
+    },
+  },
+  {
+    message: {
+      id: "message_answer",
+      role: "assistant",
+      content: [
+        { type: "text", text: "## Caching\n\nIt stores a `value` for reuse." },
+      ],
+    },
+    reasoning: "The user wants a **short** definition of caching.",
   },
 ];
 
@@ -227,4 +239,59 @@ test("raw rendering leaves the finished answer verbatim", async () => {
 
   assert.doesNotMatch(html, /<h2>Caching<\/h2>/);
   assert.match(html, /## Caching/);
+});
+
+test("system and user messages collapse by default, the answer stays open", async () => {
+  const html = await render(
+    "/app/response-output.client.tsx",
+    "ResponseOutput",
+    responseOutput({ transcript: finishedTranscript }),
+  );
+
+  // Collapsed messages show only a one-line preview, not their full body wrapper.
+  assert.match(html, /class="transcript-preview"[^>]*>You are a terse assistant\./);
+  assert.match(html, /class="transcript-preview"[^>]*>Explain \*\*caching\*\*\./);
+  assert.doesNotMatch(html, /class="transcript-body" id="message_system-body"/);
+  assert.doesNotMatch(html, /class="transcript-body" id="message_user-body"/);
+  // The assistant answer starts expanded.
+  assert.match(html, /<h2>Caching<\/h2>/);
+  assert.match(html, /class="transcript-body" id="message_answer-body"/);
+
+  // The whole header row is the disclosure control (role="button"), with its
+  // accessible name and expanded state on the same element. Collapsed rows
+  // control nothing that exists in the DOM, so aria-controls is only present
+  // once a message is open (see message_answer below).
+  function headerTag(label) {
+    const labelIndex = html.indexOf(`aria-label="${label}"`);
+    const tagStart = html.lastIndexOf('<div class="transcript-message-header"', labelIndex);
+    return html.slice(tagStart, html.indexOf(">", labelIndex));
+  }
+  assert.match(headerTag("Expand system message"), /aria-expanded="false"/);
+  assert.match(headerTag("Expand user message"), /aria-expanded="false"/);
+  assert.match(headerTag("Collapse assistant message"), /aria-expanded="true"/);
+  assert.match(headerTag("Collapse assistant message"), /aria-controls="message_answer-body"/);
+  assert.doesNotMatch(headerTag("Expand system message"), /aria-controls=/);
+  assert.doesNotMatch(headerTag("Expand user message"), /aria-controls=/);
+});
+
+test("a finished assistant message carries its turn's reasoning in a closed disclosure", async () => {
+  const html = await render(
+    "/app/response-output.client.tsx",
+    "ResponseOutput",
+    responseOutput({ transcript: finishedTranscript }),
+  );
+
+  assert.match(html, /<details class="reasoning-stream transcript-reasoning">/);
+  // Reasoning renders as markdown under the Markdown tab, same as the answer.
+  assert.match(html, /reasoning-stream transcript-reasoning">[\s\S]*?<strong>short<\/strong>/);
+});
+
+test("raw rendering shows the finished reasoning verbatim", async () => {
+  const html = await render(
+    "/app/response-output.client.tsx",
+    "ResponseOutput",
+    responseOutput({ transcript: finishedTranscript, markdownPreview: false }),
+  );
+
+  assert.match(html, /The user wants a \*\*short\*\* definition of caching\./);
 });
