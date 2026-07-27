@@ -338,7 +338,7 @@ test("accepts discovered trace names that stay inside the traces directory", () 
 
 test("rejects discovered trace names that could leave the traces directory", () => {
   for (const rejected of [
-    "../trace-lens.project.json",
+    "../inference-lens.project.json",
     "nested/run_a.json",
     "nested\\run_a.json",
     "/etc/passwd",

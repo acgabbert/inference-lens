@@ -51,7 +51,7 @@ test("creates a strict, portable Project v3 document", () => {
     createdAt: "2026-07-24T12:00:00.000Z",
   });
 
-  assert.equal(PROJECT_FILE_NAME, "trace-lens.project.json");
+  assert.equal(PROJECT_FILE_NAME, "inference-lens.project.json");
   assert.equal(project.schemaVersion, 3);
   assert.equal(project.projectId, "project_example");
   const draft = projectDraft(project);

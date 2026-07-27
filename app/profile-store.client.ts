@@ -10,7 +10,7 @@ import {
   resolveProviderCapabilities,
 } from "../packages/core/src/types.ts";
 
-const STORAGE_KEY = "trace-lens:inference-profiles:v1";
+const STORAGE_KEY = "inference-lens:inference-profiles:v1";
 
 /**
  * Connection metadata is persisted locally, but credentials never are. The

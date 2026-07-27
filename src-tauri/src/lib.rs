@@ -17,12 +17,12 @@ use tokio_util::sync::CancellationToken;
 use url::Url;
 
 #[cfg(not(debug_assertions))]
-const KEYCHAIN_SERVICE: &str = "app.tracelens.desktop";
+const KEYCHAIN_SERVICE: &str = "app.inferencelens.desktop";
 
 #[derive(Clone, Default)]
 struct ActiveRuns(Arc<Mutex<HashMap<String, CancellationToken>>>);
 
-const PROJECT_FILE_NAME: &str = "trace-lens.project.json";
+const PROJECT_FILE_NAME: &str = "inference-lens.project.json";
 const TRACES_DIRECTORY_NAME: &str = "traces";
 
 #[derive(Default)]
@@ -88,7 +88,7 @@ struct ProviderTurnAccepted {
 }
 
 /// The raw-proxy channel payload emitted on
-/// `trace-lens://provider-turn/{requestId}`. Rust forwards bytes; parsing and
+/// `inference-lens://provider-turn/{requestId}`. Rust forwards bytes; parsing and
 /// normalization into provider-neutral events happens in TypeScript.
 #[derive(Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -136,7 +136,7 @@ fn selected_project_directory(app: &AppHandle) -> Result<Option<PathBuf>, String
 
 fn write_project_manifest(directory: &Path, contents: &str) -> Result<(), String> {
     let manifest = project_manifest_path(directory);
-    let temporary = directory.join(format!(".trace-lens-project-{}.tmp", uuid::Uuid::new_v4()));
+    let temporary = directory.join(format!(".inference-lens-project-{}.tmp", uuid::Uuid::new_v4()));
     fs::write(&temporary, contents)
         .map_err(|error| format!("Could not write the project: {error}"))?;
     if let Err(rename_error) = fs::rename(&temporary, &manifest) {
@@ -183,7 +183,7 @@ fn write_run_trace(directory: &Path, run_id: &str, contents: &str) -> Result<(),
             "{file_name} already exists with different contents. Run traces are immutable."
         )));
     }
-    let temporary = traces.join(format!(".trace-lens-run-{}.tmp", uuid::Uuid::new_v4()));
+    let temporary = traces.join(format!(".inference-lens-run-{}.tmp", uuid::Uuid::new_v4()));
     fs::write(&temporary, contents)
         .map_err(|error| format!("Could not write the run trace: {error}"))?;
     fs::rename(&temporary, &destination).map_err(|error| {
@@ -248,7 +248,7 @@ fn write_exported_trace(path: &Path, contents: &str) -> Result<(), String> {
     let parent = path
         .parent()
         .ok_or_else(|| command_error("The selected trace location has no parent directory."))?;
-    let temporary = parent.join(format!(".trace-lens-export-{}.tmp", uuid::Uuid::new_v4()));
+    let temporary = parent.join(format!(".inference-lens-export-{}.tmp", uuid::Uuid::new_v4()));
     fs::write(&temporary, contents)
         .map_err(|error| format!("Could not save the run trace: {error}"))?;
     if let Err(rename_error) = fs::rename(&temporary, path) {
@@ -273,7 +273,7 @@ fn register_project_workspace(
     let display_name = directory
         .file_name()
         .and_then(|name| name.to_str())
-        .unwrap_or("Trace Lens project")
+        .unwrap_or("Inference Lens project")
         .to_owned();
     let display_path = directory.to_string_lossy().into_owned();
     workspaces
@@ -359,7 +359,7 @@ fn save_project_workspace(
         .map_err(|error| format!("Could not read the project: {error}"))?;
     if current_contents != workspace.last_contents {
         return Err(command_error(format!(
-            "{PROJECT_FILE_NAME} changed outside Trace Lens. Reopen the project before saving."
+            "{PROJECT_FILE_NAME} changed outside Inference Lens. Reopen the project before saving."
         )));
     }
     write_project_manifest(&workspace.directory, &contents)?;
@@ -425,7 +425,7 @@ async fn export_run_trace(
     let Some(selected) = app
         .dialog()
         .file()
-        .add_filter("Trace Lens run trace", &["json"])
+        .add_filter("Inference Lens run trace", &["json"])
         .set_file_name(file_name)
         .set_title("Save run trace")
         .blocking_save_file()
@@ -724,7 +724,7 @@ impl ProviderEvents {
     fn new(app: AppHandle, request_id: &str) -> Self {
         Self {
             app,
-            event_name: format!("trace-lens://provider-turn/{request_id}"),
+            event_name: format!("inference-lens://provider-turn/{request_id}"),
         }
     }
 
@@ -972,7 +972,7 @@ pub fn run() {
             export_run_trace,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Trace Lens");
+        .expect("error while running Inference Lens");
 }
 
 #[cfg(test)]
@@ -985,7 +985,7 @@ mod tests {
     impl TemporaryProjectDirectory {
         fn new() -> Self {
             let path =
-                std::env::temp_dir().join(format!("trace-lens-test-{}", uuid::Uuid::new_v4()));
+                std::env::temp_dir().join(format!("inference-lens-test-{}", uuid::Uuid::new_v4()));
             fs::create_dir(&path).expect("create temporary project directory");
             Self(path)
         }
@@ -1221,7 +1221,7 @@ mod tests {
     #[cfg(all(target_os = "macos", not(debug_assertions)))]
     #[test]
     fn persists_a_profile_credential_in_macos_keychain() {
-        let profile_id = format!("trace-lens-test-{}", uuid::Uuid::new_v4());
+        let profile_id = format!("inference-lens-test-{}", uuid::Uuid::new_v4());
         let _cleanup = TestKeychainItem {
             profile_id: profile_id.clone(),
         };

@@ -1524,6 +1524,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "inference-lens"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "futures-util",
+ "keyring",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tokio",
+ "tokio-util",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "ipnet"
 version = "2.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3872,25 +3891,6 @@ name = "tower-service"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8df9b6e13f2d32c91b9bd719c00d1958837bc7dec474d94952798cc8e69eeec3"
-
-[[package]]
-name = "trace-lens"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "futures-util",
- "keyring",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tokio",
- "tokio-util",
- "url",
- "uuid",
-]
 
 [[package]]
 name = "tracing"

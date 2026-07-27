@@ -1,12 +1,12 @@
 [package]
-name = "trace-lens"
+name = "inference-lens"
 version = "0.1.0"
 description = "A local workbench for inspecting model runs."
-authors = ["Trace Lens contributors"]
+authors = ["Inference Lens contributors"]
 edition = "2021"
 
 [lib]
-name = "trace_lens_lib"
+name = "inference_lens_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

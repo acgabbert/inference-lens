@@ -33,7 +33,7 @@ import type {
   ProviderCapabilityOverrides,
 } from "./types.ts";
 
-export const PROJECT_FILE_NAME = "trace-lens.project.json";
+export const PROJECT_FILE_NAME = "inference-lens.project.json";
 export const PROJECT_SCHEMA_VERSION = 3;
 
 export interface ConnectionRequirement {
@@ -829,7 +829,7 @@ export class ProjectValidationError extends Error {
       .slice(0, 3)
       .map(({ path, message }) => `${path.join(".") || "project"}: ${message}`)
       .join("; ");
-    super(`Invalid Trace Lens project. ${summary}`);
+    super(`Invalid Inference Lens project. ${summary}`);
     this.name = "ProjectValidationError";
     this.issues = issues;
   }
@@ -2106,7 +2106,7 @@ export function createProjectFile({
   const project: ProjectFileV3 = {
     schemaVersion: PROJECT_SCHEMA_VERSION,
     projectId,
-    name: name.trim() || "Untitled Trace Lens project",
+    name: name.trim() || "Untitled Inference Lens project",
     connectionRequirements: [
       {
         id: connectionId,

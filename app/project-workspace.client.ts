@@ -118,7 +118,7 @@ function browserStorage(
       const currentContents = await (await fileHandle.getFile()).text();
       if (currentContents !== lastContents) {
         throw new Error(
-          `${PROJECT_FILE_NAME} changed outside Trace Lens. Reopen the project before saving.`,
+          `${PROJECT_FILE_NAME} changed outside Inference Lens. Reopen the project before saving.`,
         );
       }
       const writable = await fileHandle.createWritable();
@@ -170,7 +170,7 @@ async function openBrowserProjectFolder(): Promise<OpenedProjectWorkspace | null
   }
   try {
     const directory = await showDirectoryPicker({
-      id: "trace-lens-project",
+      id: "inference-lens-project",
       mode: "readwrite",
     });
     const contents = await readBrowserManifest(directory);
@@ -200,7 +200,7 @@ async function createBrowserProjectFolder(
   }
   try {
     const directory = await showDirectoryPicker({
-      id: "trace-lens-project",
+      id: "inference-lens-project",
       mode: "readwrite",
     });
     try {

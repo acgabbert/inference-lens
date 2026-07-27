@@ -1,7 +1,7 @@
 export type MessageRole = "system" | "user" | "assistant" | "tool";
 
 /**
- * Feature support declared for a connection before Trace Lens constructs a
+ * Feature support declared for a connection before Inference Lens constructs a
  * provider request. These are transport/protocol capabilities, not claims
  * about a model's quality or reliability.
  */

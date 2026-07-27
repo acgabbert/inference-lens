@@ -141,7 +141,7 @@ import type {
 
 const inferenceTransport = createInferenceTransport();
 
-const MARKDOWN_PREVIEW_STORAGE_KEY = "trace-lens:markdown-preview:v1";
+const MARKDOWN_PREVIEW_STORAGE_KEY = "inference-lens:markdown-preview:v1";
 
 interface BranchContext {
   parentRunId: RunId;
@@ -287,7 +287,7 @@ function HomeContent() {
     folderAccessAvailable,
     createProject() {
       return createProjectFile({
-        name: "Untitled Trace Lens project",
+        name: "Untitled Inference Lens project",
         request: currentRequest(),
       });
     },
@@ -1470,7 +1470,7 @@ function HomeContent() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `trace-lens-diagnostics-${bundle.exportedAt.replaceAll(":", "-")}.json`;
+    link.download = `inference-lens-diagnostics-${bundle.exportedAt.replaceAll(":", "-")}.json`;
     link.click();
     URL.revokeObjectURL(url);
   }

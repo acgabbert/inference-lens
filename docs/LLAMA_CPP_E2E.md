@@ -1,7 +1,7 @@
 # Local llama.cpp endpoint for end-to-end testing
 
 `llama.cpp` provides a small, local OpenAI-compatible server that is useful
-for exercising Trace Lens without a hosted-provider account. Treat it as a
+for exercising Inference Lens without a hosted-provider account. Treat it as a
 development endpoint, not as a claim that every OpenAI-compatible service has
 the same behavior.
 
@@ -39,7 +39,7 @@ for a fast smoke test but is expected to produce imperfect structured output.
 > working setup recipe. Update this guide if the local installation process
 > reveals a version-specific change.
 
-## 2. Prove the server works before involving Trace Lens
+## 2. Prove the server works before involving Inference Lens
 
 Run this from a second terminal:
 
@@ -57,7 +57,7 @@ curl http://127.0.0.1:8080/v1/chat/completions \
   }'
 ```
 
-Then verify streaming, which is the Trace Lens request path:
+Then verify streaming, which is the Inference Lens request path:
 
 ```sh
 curl -N http://127.0.0.1:8080/v1/chat/completions \
@@ -72,12 +72,12 @@ curl -N http://127.0.0.1:8080/v1/chat/completions \
 ```
 
 The streaming response should arrive as Server-Sent Events and terminate with
-`[DONE]` or a `finish_reason`. Trace Lens deliberately treats a stream that
+`[DONE]` or a `finish_reason`. Inference Lens deliberately treats a stream that
 ends without either terminal signal as a protocol error.
 
-## 3. Connect Trace Lens
+## 3. Connect Inference Lens
 
-Start Trace Lens with `npm run dev` (or `npm run tauri dev`) and create a new
+Start Inference Lens with `npm run dev` (or `npm run tauri dev`) and create a new
 profile with these values:
 
 | Field | Value |
@@ -88,7 +88,7 @@ profile with these values:
 | Model | `local-test-model` |
 | Temperature | `0.2` for repeatable smoke tests |
 
-Trace Lens adds `/chat/completions` to this base URL. It sends no
+Inference Lens adds `/chat/completions` to this base URL. It sends no
 `Authorization` header when the key is empty. If a client library or future
 configuration requires a non-empty value, `local-no-key` is a safe dummy value
 when the server is started without `--api-key`; it is not a secret.
@@ -97,7 +97,7 @@ Use the model field as a manual value first. The model picker can also call
 `GET /v1/models`, but model discovery is optional and a failed or incomplete
 list must not prevent entering an ID manually.
 
-In the browser/web app, Trace Lens calls its own local API route, which then
+In the browser/web app, Inference Lens calls its own local API route, which then
 contacts llama.cpp; it does not depend on browser CORS permissions from the
 model server. The Tauri app's native host contacts the endpoint directly.
 
@@ -115,7 +115,7 @@ Use this endpoint to cover the real transport and event pipeline:
 - Try a tool definition or constrained/JSON output once the relevant Trace
   Lens UI exists: request shape and defensive parsing, not semantic quality.
 
-The complete request and raw streamed frames recorded by Trace Lens are the
+The complete request and raw streamed frames recorded by Inference Lens are the
 evidence for these tests. Never use an endpoint bound to `0.0.0.0` without
 adding authentication and appropriate network controls.
 
@@ -127,7 +127,7 @@ chat-completions streaming path, but it is not the compatibility oracle for
 the OpenAI Responses API, Anthropic, Gemini, or a hosted OpenAI-compatible
 gateway.
 
-Trace Lens therefore needs declared capabilities at the protocol/provider
+Inference Lens therefore needs declared capabilities at the protocol/provider
 boundary. Features such as model discovery, usage reporting, tools, parallel
 tool calls, structured output, vision, embeddings, and a particular API shape
 must be enabled only when the selected connection supports them. A capability

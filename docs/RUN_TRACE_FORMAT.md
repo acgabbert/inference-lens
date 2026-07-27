@@ -12,7 +12,7 @@ and defaults; the final selected non-secret values; stable output message IDs;
 and the fragment role when applicable.
 
 The ordinary resolved `input.messages` remain the provider-neutral execution
-input. On import, Trace Lens renders every provenance entry and rejects the
+input. On import, Inference Lens renders every provenance entry and rejects the
 trace if its emitted IDs, roles, or text differ from those messages. Older
 traces import with no template provenance.
 
@@ -21,12 +21,12 @@ validates its shape before anything reads it: a missing, malformed, or
 partially written `templateResolutions` array is rejected as an invalid trace
 with the offending path named, not surfaced as an internal error. Duplicate
 template-use or output-message identities are also rejected. Version 3
-provenance must resolve without diagnostics: current Trace Lens execution
+provenance must resolve without diagnostics: current Inference Lens execution
 blocks missing or invalid variables, so an artifact claiming otherwise is not
-accepted as a valid Trace Lens run. Version 1 and 2 compatibility remains
+accepted as a valid Inference Lens run. Version 1 and 2 compatibility remains
 unchanged because those formats contain no template provenance.
 
-Trace Lens run traces are immutable, credential-free diagnostic artifacts.
+Inference Lens run traces are immutable, credential-free diagnostic artifacts.
 Version 3 uses deterministic JSON and is stored as `traces/<runId>.json` when a
 run belongs to an open project folder. A terminal ad hoc run can be exported
 from the Project menu, and Versions 1 and 2 traces can be imported for
