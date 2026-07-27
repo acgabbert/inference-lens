@@ -6,7 +6,7 @@ import {
 } from "../packages/core/src/tool-registry";
 import type { ToolRegistryV1 } from "../packages/core/src/tool-registry";
 
-const STORAGE_KEY = "trace-lens:tool-registry:v1";
+const STORAGE_KEY = "inference-lens:tool-registry:v1";
 
 export function readToolRegistry(): ToolRegistryV1 {
   if (typeof window === "undefined") return emptyToolRegistry();

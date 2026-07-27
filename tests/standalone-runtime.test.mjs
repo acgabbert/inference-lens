@@ -49,7 +49,7 @@ async function waitForServer(url, child) {
   throw new Error("Standalone server did not become ready.");
 }
 
-test("standalone Node server reads TRACE_LENS_API_KEY at runtime", async (t) => {
+test("standalone Node server reads INFERENCE_LENS_API_KEY at runtime", async (t) => {
   const expectedKey = "runtime-only-test-key";
   let authorization;
   const provider = createServer((request, response) => {
@@ -64,8 +64,8 @@ test("standalone Node server reads TRACE_LENS_API_KEY at runtime", async (t) => 
   const app = spawn("node", ["dist/standalone/server.js"], {
     env: {
       ...process.env,
-      TRACE_LENS_API_KEY: expectedKey,
-      TRACE_LENS_API_ENDPOINT: `http://127.0.0.1:${providerPort}/v1`,
+      INFERENCE_LENS_API_KEY: expectedKey,
+      INFERENCE_LENS_API_ENDPOINT: `http://127.0.0.1:${providerPort}/v1`,
       HOST: "127.0.0.1",
       PORT: String(appPort),
     },
@@ -101,8 +101,8 @@ test("standalone Node server rejects cross-origin credential redirection", async
   const app = spawn("node", ["dist/standalone/server.js"], {
     env: {
       ...process.env,
-      TRACE_LENS_API_KEY: "runtime-only-test-key",
-      TRACE_LENS_API_ENDPOINT: "https://api.example.test/v1",
+      INFERENCE_LENS_API_KEY: "runtime-only-test-key",
+      INFERENCE_LENS_API_ENDPOINT: "https://api.example.test/v1",
       HOST: "127.0.0.1",
       PORT: String(appPort),
     },

@@ -19,8 +19,8 @@ type WorkbenchShellProps = {
   responseStatus?: string;
 };
 
-const SPLIT_STORAGE_KEY = "trace-lens:workbench-split:v1";
-const TRACE_HEIGHT_STORAGE_KEY = "trace-lens:trace-height:v1";
+const SPLIT_STORAGE_KEY = "inference-lens:workbench-split:v1";
+const TRACE_HEIGHT_STORAGE_KEY = "inference-lens:trace-height:v1";
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));

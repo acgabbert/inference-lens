@@ -127,7 +127,7 @@ test("refuses names that could escape the traces directory", async () => {
   const directory = projectWith([fileHandle("run_a.json", "a")]);
 
   for (const escaping of [
-    "../trace-lens.project.json",
+    "../inference-lens.project.json",
     "nested/run_a.json",
     "/etc/passwd",
     "run_a.json/../../secret.json",

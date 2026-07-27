@@ -41,7 +41,7 @@ type ProviderTurnAccepted = { status: number };
 
 /**
  * The raw-proxy channel payload emitted on
- * `trace-lens://provider-turn/{requestId}`. Rust forwards bytes; parsing and
+ * `inference-lens://provider-turn/{requestId}`. Rust forwards bytes; parsing and
  * normalizing them into ProviderEvents happens here, on the TypeScript side,
  * using the same core adapter the web transport uses.
  */
@@ -257,7 +257,7 @@ export class TauriInferenceTransport implements ProviderTurnTransport {
     const requestId = `provider-turn_${crypto.randomUUID()}`;
     const queue = new AsyncEventQueue<RawStreamEvent>();
     const unlisten = await listen<RawStreamEvent>(
-      `trace-lens://provider-turn/${requestId}`,
+      `inference-lens://provider-turn/${requestId}`,
       ({ payload }) => {
         queue.push(payload);
         if (isTerminalStreamEvent(payload)) queue.close();
@@ -276,7 +276,7 @@ export class TauriInferenceTransport implements ProviderTurnTransport {
       });
       return {
         status: accepted.status,
-        headers: new Headers({ "x-trace-lens-transport": "tauri" }),
+        headers: new Headers({ "x-inference-lens-transport": "tauri" }),
         events: toProviderTransportEvents(
           request.execution,
           url,

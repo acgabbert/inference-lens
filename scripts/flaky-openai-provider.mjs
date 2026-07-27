@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 
 const host = "127.0.0.1";
-const port = Number.parseInt(process.env.TRACE_LENS_FLAKY_PORT ?? "4010", 10);
+const port = Number.parseInt(process.env.INFERENCE_LENS_FLAKY_PORT ?? "4010", 10);
 let chatRequestCount = 0;
 let firstRequestBody;
 

@@ -1,11 +1,11 @@
 services:
-  trace-lens:
+  inference-lens:
     build:
       context: .
     env_file:
       - .env
     ports:
-      - "127.0.0.1:${TRACE_LENS_PORT:-3000}:3000"
+      - "127.0.0.1:${INFERENCE_LENS_PORT:-3000}:3000"
     healthcheck:
       test:
         - CMD

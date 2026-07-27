@@ -1,7 +1,7 @@
 # Project format and workspace storage
 
-Trace Lens projects use one canonical, portable JSON document named
-`trace-lens.project.json`. New saves use schema version 3. Version 2 projects
+Inference Lens projects use one canonical, portable JSON document named
+`inference-lens.project.json`. New saves use schema version 3. Version 2 projects
 remain importable and are migrated in memory; the earlier proof-of-concept
 request export is intentionally unsupported.
 
@@ -161,7 +161,7 @@ The schema and serializer do not know about paths or platform handles.
 
 Both writable adapters compare the on-disk contents with the last contents
 they read before saving. If an editor or Git operation changed the manifest,
-Trace Lens refuses to overwrite it and asks the user to reopen the project.
+Inference Lens refuses to overwrite it and asks the user to reopen the project.
 
 Completed, cancelled, and explicitly stopped runs are written as immutable
 `traces/<runId>.json` diagnostic artifacts. A repeated byte-identical write is

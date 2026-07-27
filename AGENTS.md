@@ -1,4 +1,4 @@
-# Trace Lens Agent Guidelines
+# Inference Lens Agent Guidelines
 
 ## Design before implementation
 

@@ -8,13 +8,13 @@ import { createServer } from "node:http";
  * provider happened to do.
  */
 const host = "127.0.0.1";
-const port = Number.parseInt(process.env.TRACE_LENS_PACED_PORT ?? "4011", 10);
+const port = Number.parseInt(process.env.INFERENCE_LENS_PACED_PORT ?? "4011", 10);
 const firstByteDelayMs = Number.parseInt(
-  process.env.TRACE_LENS_PACED_FIRST_BYTE_MS ?? "600",
+  process.env.INFERENCE_LENS_PACED_FIRST_BYTE_MS ?? "600",
   10,
 );
 const deltaIntervalMs = Number.parseInt(
-  process.env.TRACE_LENS_PACED_DELTA_MS ?? "120",
+  process.env.INFERENCE_LENS_PACED_DELTA_MS ?? "120",
   10,
 );
 

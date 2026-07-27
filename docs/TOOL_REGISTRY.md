@@ -1,6 +1,6 @@
 # Local tool registry
 
-Trace Lens keeps reusable tool definitions in a versioned, local registry.
+Inference Lens keeps reusable tool definitions in a versioned, local registry.
 Registry data is separate from portable Project v2 files and never contains
 credentials or executor configuration.
 
@@ -23,6 +23,6 @@ any object-shaped schema and prevents save or attachment while the text is
 invalid.
 
 The web and desktop frontends currently persist independent registry snapshots
-under the versioned local-storage key `trace-lens:tool-registry:v1`. Moving the
+under the versioned local-storage key `inference-lens:tool-registry:v1`. Moving the
 registry workspace from its modal shell to a future route does not require a
 storage or editor contract change.

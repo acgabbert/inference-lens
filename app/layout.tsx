@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Trace Lens — Inspect Every Model Run",
+  title: "Inference Lens — Inspect Every Model Run",
   description:
     "Compose, stream, inspect, save, and replay model requests.",
   icons: {

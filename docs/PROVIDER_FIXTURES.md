@@ -1,6 +1,6 @@
 # Local provider fixtures and browser verification
 
-Some Trace Lens behavior can only be checked against a provider that misbehaves
+Some Inference Lens behavior can only be checked against a provider that misbehaves
 on purpose. A run that fails once and then succeeds, a stream that stalls before
 its first byte, a response that reports token usage in a trailing chunk — these
 are ordinary provider behaviors, but they cannot be requested from a hosted
@@ -39,17 +39,17 @@ A fixture needs three routes at most:
 - Anything else — return 404. Do not silently accept unexpected paths; a fixture
   that answers everything hides routing bugs.
 
-The response contract that matters to Trace Lens:
+The response contract that matters to Inference Lens:
 
 - Content type `text/event-stream`, with each chunk written as
   `data: <json>\n\n`.
 - Content arrives as `choices[0].delta.content`.
-- The stream must end with a `finish_reason` **or** `data: [DONE]`. Trace Lens
+- The stream must end with a `finish_reason` **or** `data: [DONE]`. Inference Lens
   treats a stream that ends with neither as a protocol error, which is correct
   behavior and easy to trigger accidentally while writing a fixture.
 - Usage, when reported, arrives in its own trailing chunk with an empty
   `choices` array — the shape providers use for
-  `stream_options.include_usage`, which Trace Lens always requests.
+  `stream_options.include_usage`, which Inference Lens always requests.
 
 Drain the request body before responding, even when the fixture ignores it.
 Leaving it unread can stall the client on larger requests.
@@ -88,7 +88,7 @@ committed browser suite is deliberately designed.
 ### Seed the profile instead of clicking through settings
 
 Connection profiles are metadata in local storage under
-`trace-lens:inference-profiles:v1` (see `app/profile-store.client.ts`).
+`inference-lens:inference-profiles:v1` (see `app/profile-store.client.ts`).
 Credentials are never persisted there, and a fixture needs no key, so a profile
 can be seeded directly:
 
@@ -96,7 +96,7 @@ can be seeded directly:
 await page.goto("http://localhost:3000");
 await page.evaluate(() => {
   localStorage.setItem(
-    "trace-lens:inference-profiles:v1",
+    "inference-lens:inference-profiles:v1",
     JSON.stringify({
       profiles: [{
         id: "paced",
@@ -173,7 +173,7 @@ await page.addInitScript((contents) => {
     },
   });
   const project = dir("history-demo", [
-    file("trace-lens.project.json", contents.manifest),
+    file("inference-lens.project.json", contents.manifest),
     dir("traces", [file("run_a.json", contents.traceA)]),
   ]);
   window.showDirectoryPicker = async () => project;

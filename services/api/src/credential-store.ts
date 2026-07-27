@@ -17,8 +17,8 @@ export class EnvironmentCredentialStore implements CredentialStore {
 
   constructor(
     environment: Record<string, string | undefined>,
-    credentialVariableName = "TRACE_LENS_API_KEY",
-    endpointVariableName = "TRACE_LENS_API_ENDPOINT",
+    credentialVariableName = "INFERENCE_LENS_API_KEY",
+    endpointVariableName = "INFERENCE_LENS_API_ENDPOINT",
   ) {
     this.environment = environment;
     this.credentialVariableName = credentialVariableName;

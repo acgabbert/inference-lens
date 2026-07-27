@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 
 const host = "127.0.0.1";
-const port = Number.parseInt(process.env.TRACE_LENS_ECHO_PORT ?? "4012", 10);
+const port = Number.parseInt(process.env.INFERENCE_LENS_ECHO_PORT ?? "4012", 10);
 
 async function readJson(request) {
   const chunks = [];
@@ -77,4 +77,3 @@ server.listen(port, host, () => {
     `Template echo provider listening at http://${host}:${port}/v1`,
   );
 });
-

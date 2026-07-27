@@ -1,9 +1,9 @@
 import { createServer } from "node:http";
 
 const host = "127.0.0.1";
-const port = Number.parseInt(process.env.TRACE_LENS_REASONING_PORT ?? "4014", 10);
+const port = Number.parseInt(process.env.INFERENCE_LENS_REASONING_PORT ?? "4014", 10);
 const deltaMs = Number.parseInt(
-  process.env.TRACE_LENS_REASONING_DELTA_MS ?? "90",
+  process.env.INFERENCE_LENS_REASONING_DELTA_MS ?? "90",
   10,
 );
 

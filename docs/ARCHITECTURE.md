@@ -1,6 +1,6 @@
 # Architecture boundaries
 
-Trace Lens is packaged as both a local web application and a Tauri desktop
+Inference Lens is packaged as both a local web application and a Tauri desktop
 application. Its execution and project contracts are independent of the
 presentation and deployment shell.
 
@@ -32,9 +32,9 @@ complete-run state.
 current `/api/*` URLs and NDJSON parsing details.
 
 The API service resolves credentials through `CredentialStore`. The initial
-`EnvironmentCredentialStore` reads `TRACE_LENS_API_KEY` inside the API process.
+`EnvironmentCredentialStore` reads `INFERENCE_LENS_API_KEY` inside the API process.
 It releases that credential only to the origin configured by
-`TRACE_LENS_API_ENDPOINT`, making it suitable for an individual developer's
+`INFERENCE_LENS_API_ENDPOINT`, making it suitable for an individual developer's
 local container while keeping the secret out of client JavaScript. The HTTP
 routes also require same-origin JSON requests. A `provided` credential is
 session-only input for the local workbench; it is never included in profile
