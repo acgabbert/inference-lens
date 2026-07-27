@@ -3,22 +3,22 @@ import {
   projectDraft,
   resolveProjectRevision,
   updateProjectDraft,
-} from "../packages/core/src/project.ts";
+} from "../../../packages/core/src/project.ts";
 import type {
   ProjectConversationItem,
   ProjectFile,
   ResolvedProjectRevision,
   TemplateRunOverrides,
   UpdateProjectDraft,
-} from "../packages/core/src/project.ts";
-import { buildChatCompletionsRequest } from "../packages/core/src/openai-compatible.ts";
-import type { RichInferenceRequest } from "../packages/core/src/types.ts";
+} from "../../../packages/core/src/project.ts";
+import { buildChatCompletionsRequest } from "../../../packages/core/src/openai-compatible.ts";
+import type { RichInferenceRequest } from "../../../packages/core/src/types.ts";
 import type {
   ConversationRevisionId,
   PromptTemplateUseId,
   ToolDefinition,
-} from "../packages/core/src/run-kernel/index.ts";
-import { createSingleTurnRunExecution } from "../packages/core/src/run-kernel/index.ts";
+} from "../../../packages/core/src/run-kernel/index.ts";
+import { createSingleTurnRunExecution } from "../../../packages/core/src/run-kernel/index.ts";
 
 export interface ProjectTemplateMutationTarget {
   project: ProjectFile;

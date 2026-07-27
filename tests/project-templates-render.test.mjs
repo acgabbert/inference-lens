@@ -15,7 +15,7 @@ async function render(component, props) {
   try {
     const [{ [component]: Component }, { renderToStaticMarkup }, { createElement }] =
       await Promise.all([
-        server.ssrLoadModule("/app/project-templates-pane.client.tsx"),
+        server.ssrLoadModule("/app/features/project-templates/project-templates-pane.client.tsx"),
         import("react-dom/server"),
         import("react"),
       ]);

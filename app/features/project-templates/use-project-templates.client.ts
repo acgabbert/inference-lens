@@ -11,15 +11,15 @@ import {
   renamePromptTemplate,
   updatePromptTemplateUseToLatest,
   updatePromptTemplateUseValues,
-} from "../packages/core/src/project.ts";
+} from "../../../packages/core/src/project.ts";
 import type {
   ProjectConversationItem,
   ProjectFile,
   PromptTemplateContent,
   TemplateRunOverrides,
   ToolMock,
-} from "../packages/core/src/project.ts";
-import { createEntityId } from "../packages/core/src/run-kernel/types.ts";
+} from "../../../packages/core/src/project.ts";
+import { createEntityId } from "../../../packages/core/src/run-kernel/types.ts";
 import type {
   ConversationMessage,
   ConversationRevisionId,
@@ -29,10 +29,10 @@ import type {
   PromptTemplateUseId,
   ToolId,
   ToolDefinition,
-} from "../packages/core/src/run-kernel/types.ts";
-import { discoverTemplateVariables } from "../packages/core/src/template-engine.ts";
-import type { RichInferenceRequest } from "../packages/core/src/types.ts";
-import type { ConfirmationDialogRequest } from "./confirmation-dialog.client";
+} from "../../../packages/core/src/run-kernel/types.ts";
+import { discoverTemplateVariables } from "../../../packages/core/src/template-engine.ts";
+import type { RichInferenceRequest } from "../../../packages/core/src/types.ts";
+import type { ConfirmationDialogRequest } from "../../confirmation-dialog.client";
 import {
   nextTemplateRunOverrides,
   projectDraft,
@@ -43,7 +43,7 @@ import {
 import {
   projectTemplateWorkbenchView,
 } from "./project-template-workbench.client";
-import { removeDraftMessage } from "./use-request-draft.client";
+import { removeDraftMessage } from "../../use-request-draft.client";
 
 type TemplateRole = "system" | "user" | "assistant";
 

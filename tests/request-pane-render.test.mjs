@@ -221,7 +221,7 @@ function requestComposer(overrides) {
 
 async function renderRequestComposer(overrides) {
   return render(
-    "/app/request-composer.client.tsx",
+    "/app/features/request-composer/request-composer.client.tsx",
     "RequestComposer",
     requestComposer(overrides),
   );

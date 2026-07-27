@@ -1,10 +1,10 @@
-import { createEntityId } from "../packages/core/src/run-kernel/index.ts";
+import { createEntityId } from "../../../packages/core/src/run-kernel/index.ts";
 import type {
   RunState,
   ToolCall,
   ToolResult,
-} from "../packages/core/src/run-kernel/index.ts";
-import type { ToolResultDraft } from "./tool-call-list.client";
+} from "../../../packages/core/src/run-kernel/index.ts";
+import type { ToolResultDraft } from "../../tool-call-list.client";
 
 export function isTerminalRunState(state: RunState | null): boolean {
   return Boolean(

@@ -8,7 +8,7 @@ import {
   parseProjectFile,
   projectDraft,
 } from "../packages/core/src/project.ts";
-import { projectTemplateWorkbenchView } from "../app/project-template-workbench.client.ts";
+import { projectTemplateWorkbenchView } from "../app/features/project-templates/project-template-workbench.client.ts";
 
 const request = {
   provider: "openai-compatible" as const,

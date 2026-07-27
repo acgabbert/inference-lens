@@ -13,7 +13,7 @@ import {
   projectTemplateMutationTarget,
   resolvedTemplateRequestPreview,
   updateAuthoredProjectItems,
-} from "../app/project-template-actions.client.ts";
+} from "../app/features/project-templates/project-template-actions.client.ts";
 
 const request = {
   provider: "openai-compatible" as const,

@@ -1,25 +1,25 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import type { CredentialSelection, ProviderTurnTransport } from "../packages/contracts/src";
-import { createRunTrace, RunCoordinator } from "../packages/core/src/run-kernel";
+import type { CredentialSelection, ProviderTurnTransport } from "../../../packages/contracts/src";
+import { createRunTrace, RunCoordinator } from "../../../packages/core/src/run-kernel";
 import type {
   ProviderExecution,
   ResolvedRunInput,
   RunState,
   RunTrace,
   ToolCall,
-} from "../packages/core/src/run-kernel";
-import { runStateFromTrace } from "../packages/core/src/run-trace";
-import type { RichInferenceRequest } from "../packages/core/src/types";
-import { recordDiagnostic, redactDiagnosticValue, startDiagnosticCapture } from "./diagnostics.client";
-import type { DiagnosticCapture } from "./diagnostics.client";
-import { InferenceTransportError } from "./http-inference-transport.client";
+} from "../../../packages/core/src/run-kernel";
+import { runStateFromTrace } from "../../../packages/core/src/run-trace";
+import type { RichInferenceRequest } from "../../../packages/core/src/types";
+import { recordDiagnostic, redactDiagnosticValue, startDiagnosticCapture } from "../../diagnostics.client";
+import type { DiagnosticCapture } from "../../diagnostics.client";
+import { InferenceTransportError } from "../../http-inference-transport.client";
 import { preserveRunFailure } from "./run-failure.client";
-import { exportRunTraceFile, runTraceWorkspaceLocation, runTraceWorkspacePath, saveRunTraceWorkspace } from "./project-workspace.client";
-import type { ProjectWorkspaceHandle } from "./project-workspace.client";
-import type { TraceStorageStatus } from "./response-output.client";
-import type { ToolResultDraft } from "./tool-call-list.client";
+import { exportRunTraceFile, runTraceWorkspaceLocation, runTraceWorkspacePath, saveRunTraceWorkspace } from "../../project-workspace.client";
+import type { ProjectWorkspaceHandle } from "../../project-workspace.client";
+import type { TraceStorageStatus } from "../../response-output.client";
+import type { ToolResultDraft } from "../../tool-call-list.client";
 import { isRetryableTransportFailure, isTerminalRunState, pendingToolResultDrafts, toolResultsFromDrafts } from "./run-session-state.client";
 
 type TraceOrigin =
@@ -161,7 +161,7 @@ export function useRunSession({
   const runTraceForState = useCallback((state: RunState | null) => { if (!state || !isTerminalRunState(state)) return undefined; try { return createRunTrace(state, { branchedFrom: provenanceRef.current.get(state.runId) }); } catch { return undefined; } }, []);
   const exportRunTrace = useCallback(async () => { const trace = runTraceForState(runStateRef.current); if (!trace) return; const previous = traceStorage; const preserve = previous?.kind === "saved" && Boolean(runTraceWorkspaceRef.current); setTraceStorage({ kind: "saving" }); try { const result = await exportRunTraceFile(trace); if (result.kind === "saved") setTraceStorage(preserve ? previous : { kind: "saved", location: result.location }); else if (result.kind === "downloaded") setTraceStorage(preserve ? previous : { kind: "downloaded", fileName: result.fileName }); else setTraceStorage(previous ?? { kind: "unsaved" }); } catch (error) { setTraceStorage({ kind: "error", message: error instanceof Error ? error.message : "The trace could not be saved." }); } }, [runTraceForState, traceStorage]);
   const adoptTrace = useCallback((trace: RunTrace, origin: TraceOrigin) => { if (trace.branchedFrom) provenanceRef.current.set(trace.runId, trace.branchedFrom); if (origin.workspace) persistedTraceRunIdsRef.current.add(trace.runId); coordinatorRef.current = null; runTraceWorkspaceRef.current = origin.workspace; diagnosticCaptureRef.current = null; setHasDiagnosticCapture(false); setToolResultDrafts({}); setBranchedFrom(trace.branchedFrom); replaceRunState(runStateFromTrace(trace)); setTraceStorage(origin.workspace ? { kind: "saved", location: runTraceWorkspacePath(origin.workspace, origin.fileName) } : { kind: "loaded", fileName: origin.fileName }); }, [replaceRunState]);
-  const importRunTrace = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => { const file = event.target.files?.[0]; if (!file) return; try { const { parseRunTraceJson } = await import("../packages/core/src/run-trace"); adoptTrace(parseRunTraceJson(await file.text()), { workspace: null, fileName: file.name }); } finally { event.target.value = ""; } }, [adoptTrace]);
+  const importRunTrace = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => { const file = event.target.files?.[0]; if (!file) return; try { const { parseRunTraceJson } = await import("../../../packages/core/src/run-trace"); adoptTrace(parseRunTraceJson(await file.text()), { workspace: null, fileName: file.name }); } finally { event.target.value = ""; } }, [adoptTrace]);
   const downloadDiagnostics = useCallback(() => { const capture = diagnosticCaptureRef.current; if (!capture) return; const bundle = { schemaVersion: 1, exportedAt: new Date().toISOString(), privacy: { credentials: "redacted", messageBodies: "included" }, capture }; const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = `trace-lens-diagnostics-${bundle.exportedAt.replaceAll(":", "-")}.json`; link.click(); URL.revokeObjectURL(url); }, []);
   return useMemo(() => ({ runState, isRequestActive, toolResultDrafts, traceStorage, hasDiagnosticCapture, branchedFrom, start, continueRun, retryRun, stop, reset, updateToolResultDraft, downloadDiagnostics, exportRunTrace, importRunTrace, adoptTrace }), [adoptTrace, branchedFrom, continueRun, downloadDiagnostics, exportRunTrace, hasDiagnosticCapture, importRunTrace, isRequestActive, reset, retryRun, runState, start, stop, toolResultDrafts, traceStorage, updateToolResultDraft]);
 }

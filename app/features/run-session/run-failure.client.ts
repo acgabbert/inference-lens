@@ -1,18 +1,18 @@
 "use client";
 
-import type { InferenceRequest, RichInferenceRequest } from "../packages/core/src/types.ts";
+import type { InferenceRequest, RichInferenceRequest } from "../../../packages/core/src/types.ts";
 import {
   createEntityId,
   createSingleTurnRunExecution,
   createRunEventFactory,
   createRunState,
   reduceRunEvent,
-} from "../packages/core/src/run-kernel/index.ts";
+} from "../../../packages/core/src/run-kernel/index.ts";
 import type {
   RunEvent,
   RunConversationIdentity,
   RunState,
-} from "../packages/core/src/run-kernel/index.ts";
+} from "../../../packages/core/src/run-kernel/index.ts";
 
 function isTerminal(state: RunState): boolean {
   return (

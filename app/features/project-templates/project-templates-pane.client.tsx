@@ -7,16 +7,16 @@ import type {
   PromptTemplate,
   PromptTemplateContent,
   PromptTemplateUse,
-} from "../packages/core/src/project";
-import { isSensitiveTemplateVariableName } from "../packages/core/src/project";
+} from "../../../packages/core/src/project";
+import { isSensitiveTemplateVariableName } from "../../../packages/core/src/project";
 import type {
   PromptTemplateId,
   PromptTemplateRevisionId,
-} from "../packages/core/src/run-kernel";
+} from "../../../packages/core/src/run-kernel";
 import {
   discoverTemplateVariables,
   resolveTemplateValues,
-} from "../packages/core/src/template-engine";
+} from "../../../packages/core/src/template-engine";
 
 type TemplateRole = "system" | "user" | "assistant";
 

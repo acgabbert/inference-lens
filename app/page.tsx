@@ -55,10 +55,10 @@ import {
   ConfirmationDialog,
 } from "./confirmation-dialog.client";
 import { runReadiness } from "./run-readiness.client";
-import { useProjectTemplates } from "./use-project-templates.client";
-import { RequestComposer } from "./request-composer.client";
+import { useProjectTemplates } from "./features/project-templates/use-project-templates.client";
+import { RequestComposer } from "./features/request-composer/request-composer.client";
 import { prepareWorkbenchRun } from "./prepare-workbench-run.client";
-import { useRunSession } from "./use-run-session.client";
+import { useRunSession } from "./features/run-session/use-run-session.client";
 
 const inferenceTransport = createInferenceTransport();
 

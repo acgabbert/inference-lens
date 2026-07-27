@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { preserveRunFailure } from "../app/run-failure.client.ts";
+import { preserveRunFailure } from "../app/features/run-session/run-failure.client.ts";
 import type { InferenceRequest } from "../packages/core/src/types.ts";
 import {
   createSingleTurnRunExecution,

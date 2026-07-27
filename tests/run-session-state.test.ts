@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   isRetryableTransportFailure,
   isTerminalRunState,
-} from "../app/run-session-state.client.ts";
+} from "../app/features/run-session/run-session-state.client.ts";
 import type { RunState } from "../packages/core/src/run-kernel/index.ts";
 
 test("classifies protocol, transient HTTP, and permanent HTTP failures", () => {
