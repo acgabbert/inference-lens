@@ -627,6 +627,46 @@ into `node --test`.
 request-generation counter, diagnostic capture ref, persisted-run set,
 trace-workspace ref, or provider-turn loop.
 
+#### Session 05 handoff — 2026-07-27
+
+- Added `app/run-session-state.client.ts` for Node-safe terminal-state,
+  retryability, pending-draft, and tool-result policy, with direct coverage in
+  `tests/run-session-state.test.ts`.
+- Added `app/use-run-session.client.ts`. It atomically owns `RunCoordinator`,
+  abort/generation guards, provider-turn execution, retry/continue/stop,
+  tool-result drafts, diagnostics, trace autosave/export/import, trace
+  adoption, persisted-trace IDs, workspace snapshots, and branch provenance.
+  Its explicit inputs are a provider-neutral transport, credential preparer,
+  diagnostic request snapshot, default draft resolver, and history-invalidating
+  callback. Starting accepts an already-prepared `ResolvedRunInput` plus the
+  current workspace/provenance; it does not prepare projects or templates.
+- `page.tsx` is now 779 lines. It has 14 `useState` calls, 3 refs, and 7
+  effects. It contains no coordinator, abort controller, generation counter,
+  diagnostic/trace persistence refs, or provider-turn loop. History opening
+  remains a narrow page adapter which reads through `useProjectRunHistory` and
+  calls `runSession.adoptTrace`.
+
+Automated verification:
+
+- `npm run lint`: passed.
+- `npx tsc -p tsconfig.json --noEmit`: passed.
+- `npm run typecheck:core`: passed.
+- `npm test`: passed with 210 core tests and 31 rendered/standalone tests
+  (241 total). The suite was permitted to bind its localhost fixture.
+
+Running-app verification:
+
+- Started `scripts/echo-openai-provider.mjs` and the local development server,
+  configured a session-only fixture credential, and ran the exact user message
+  `Echo Session 05 extraction exactly.` The completed transcript contained the
+  exact fixture echo, reported `Complete`, and showed 12 events.
+- The rendered document contained no `NaN`, `Infinity`, or `undefined`. Both
+  local servers were stopped after the check.
+- This check covers the extracted start/stream/terminal-trace path. The
+  Session 06 matrix should still exercise flaky retry, paced cancellation,
+  manual/mock tool continuation, diagnostics export, trace import/export, and
+  project-backed autosave/history reopening.
+
 ### Session 06 — Composition cleanup and end-to-end verification
 
 **Goal:** Finish with a coherent route rather than a mechanically smaller one.

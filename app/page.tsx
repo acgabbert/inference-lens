@@ -1,9 +1,7 @@
 "use client";
 
 import {
-  type ChangeEvent,
   useEffect,
-  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -15,18 +13,8 @@ import type {
 import {
   createProjectFile,
 } from "../packages/core/src/project";
-import {
-  createEntityId,
-  createRunTrace,
-  RunCoordinator,
-  transcriptFromRunState,
-} from "../packages/core/src/run-kernel";
-import {
-  parseRunTraceJson,
-  runStateFromTrace,
-} from "../packages/core/src/run-trace";
+import { createEntityId, transcriptFromRunState } from "../packages/core/src/run-kernel";
 import type {
-  ProviderExecution,
   RunState,
   RunTrace,
   ConversationMessage,
@@ -34,33 +22,13 @@ import type {
   ConversationRevisionId,
   MessageId,
   RunId,
-  RunConversationIdentity,
-  ToolResult,
 } from "../packages/core/src/run-kernel";
-import type { CredentialSelection } from "../packages/contracts/src";
 import {
   createInferenceTransport,
   isTauriRuntime,
 } from "./tauri-inference-transport.client";
-import {
-  InferenceTransportError,
-} from "./http-inference-transport.client";
 import { AppErrorBoundary } from "./app-error-boundary.client";
-import {
-  recordDiagnostic,
-  redactDiagnosticValue,
-  startDiagnosticCapture,
-} from "./diagnostics.client";
-import type { DiagnosticCapture } from "./diagnostics.client";
-import { preserveRunFailure } from "./run-failure.client";
-import {
-  exportRunTraceFile,
-  projectFolderAccessAvailable,
-  runTraceWorkspaceLocation,
-  runTraceWorkspacePath,
-  saveRunTraceWorkspace,
-} from "./project-workspace.client";
-import type { ProjectWorkspaceHandle } from "./project-workspace.client";
+import { projectFolderAccessAvailable } from "./project-workspace.client";
 import { emptyToolRegistry } from "../packages/core/src/tool-registry";
 import type {
   ToolRegistryV1,
@@ -77,8 +45,6 @@ import { useProjectWorkspace } from "./use-project-workspace.client";
 import { ConnectionDrawer } from "./connection-drawer.client";
 import { Topbar } from "./topbar.client";
 import { ResponseOutput } from "./response-output.client";
-import type { TraceStorageStatus } from "./response-output.client";
-import type { ToolResultDraft } from "./tool-call-list.client";
 import { WorkbenchShell } from "./workbench-shell.client";
 import type { WorkbenchView } from "./workbench-shell.client";
 import { RunTracePanel } from "./run-trace-panel.client";
@@ -92,6 +58,7 @@ import { runReadiness } from "./run-readiness.client";
 import { useProjectTemplates } from "./use-project-templates.client";
 import { RequestComposer } from "./request-composer.client";
 import { prepareWorkbenchRun } from "./prepare-workbench-run.client";
+import { useRunSession } from "./use-run-session.client";
 
 const inferenceTransport = createInferenceTransport();
 
@@ -216,9 +183,6 @@ function HomeContent() {
   const [outputFollowing, setOutputFollowing] = useState(true);
   const [markdownPreview, setMarkdownPreview] = useState(true);
   const [markdownPreviewLoaded, setMarkdownPreviewLoaded] = useState(false);
-  const [toolResultDrafts, setToolResultDrafts] = useState<
-    Record<string, ToolResultDraft>
-  >({});
   const templateSessionRef = useRef<{ resetRunOverrides(): void } | null>(null);
   const project = useProjectWorkspace({
     activeProfileId: activeProfile.id,
@@ -249,9 +213,7 @@ function HomeContent() {
       setBranchContext(null);
       setSessionModel(draft.model);
       setSessionTemperature(draft.temperature ?? 0.7);
-      coordinatorRef.current = null;
-      setToolResultDrafts({});
-      replaceRunState(null);
+      runSession.reset();
     },
   });
   const {
@@ -297,90 +259,29 @@ function HomeContent() {
   });
   const [sessionModel, setSessionModel] = useState<string>();
   const [sessionTemperature, setSessionTemperature] = useState<number>();
-  const [runState, setRunState] = useState<RunState | null>(null);
-  const [isRequestActive, setIsRequestActive] = useState(false);
-  const abortRef = useRef<AbortController | null>(null);
-  const coordinatorRef = useRef<RunCoordinator | null>(null);
-  const runStateRef = useRef<RunState | null>(null);
-  const requestGenerationRef = useRef(0);
   const adHocConversationIdRef = useRef<ConversationId | null>(null);
-  const runTraceWorkspaceRef = useRef<ProjectWorkspaceHandle | null>(null);
-  const persistedTraceRunIdsRef = useRef(new Set<string>());
-  const diagnosticCaptureRef = useRef<DiagnosticCapture | null>(null);
   const outputScrollRef = useRef<HTMLDivElement | null>(null);
-  const [hasDiagnosticCapture, setHasDiagnosticCapture] = useState(false);
-  const [traceStorage, setTraceStorage] =
-    useState<TraceStorageStatus | null>(null);
   const [branchContext, setBranchContext] = useState<BranchContext | null>(null);
-  const [visibleBranchProvenance, setVisibleBranchProvenance] =
-    useState<RunTrace["branchedFrom"]>();
-  const runBranchProvenanceRef = useRef(
-    new Map<RunId, RunTrace["branchedFrom"]>(),
+  const runSession = useRunSession({
+    transport: inferenceTransport,
+    prepareCredential: credential.prepare,
+    currentDiagnosticRequest: currentRequest,
+    resolveToolResultDraft(call) {
+      const definition = tools.find((tool) => tool.name === call.name);
+      const mock = definition ? mockForTool(definition.id) : undefined;
+      return mock?.enabled
+        ? { text: mock.result.content.map(({ text }) => text).join(""), resolution: { kind: "mock", ruleId: mock.id } }
+        : undefined;
+    },
+    onTraceSaved() { setSavedRunVersion((current) => current + 1); },
+  });
+  const { runState, isRequestActive, toolResultDrafts, traceStorage, hasDiagnosticCapture } = runSession;
+  const nonBranchableMessageIds = new Set(
+    runState?.input?.templateResolutions.flatMap((resolution) =>
+      resolution.outputMessageIds.slice(0, -1),
+    ) ?? [],
   );
-  const nonBranchableMessageIds = useMemo(
-    () =>
-      new Set(
-        runState?.input?.templateResolutions.flatMap((resolution) =>
-          resolution.outputMessageIds.slice(0, -1),
-        ) ?? [],
-      ),
-    [runState],
-  );
-  const transcript = useMemo(
-    () => (runState ? transcriptFromRunState(runState) : []),
-    [runState],
-  );
-
-  function replaceRunState(next: RunState | null): void {
-    runStateRef.current = next;
-    setRunState(next);
-    if (!next) {
-      setTraceStorage(null);
-      return;
-    }
-    if (
-      !["completed", "cancelled", "failed"].includes(next.status.kind)
-    ) {
-      return;
-    }
-    const workspace = runTraceWorkspaceRef.current;
-    if (!workspace) {
-      setTraceStorage({ kind: "unsaved" });
-      return;
-    }
-    if (persistedTraceRunIdsRef.current.has(next.runId)) return;
-    let trace: RunTrace;
-    try {
-      trace = createRunTrace(next, {
-        branchedFrom: runBranchProvenanceRef.current.get(next.runId),
-      });
-    } catch {
-      return;
-    }
-    const location = runTraceWorkspaceLocation(workspace, trace);
-    setTraceStorage({ kind: "saving", location });
-    persistedTraceRunIdsRef.current.add(next.runId);
-    void saveRunTraceWorkspace(workspace, trace)
-      .then(() => {
-        if (runStateRef.current?.runId === next.runId) {
-          setTraceStorage({ kind: "saved", location });
-        }
-        // Marks the history stale; the folder is re-read next time it is opened.
-        setSavedRunVersion((current) => current + 1);
-      })
-      .catch((error) => {
-        persistedTraceRunIdsRef.current.delete(next.runId);
-        if (runStateRef.current?.runId === next.runId) {
-          setTraceStorage({
-            kind: "error",
-            message:
-              error instanceof Error
-                ? error.message
-                : "The project trace could not be saved.",
-          });
-        }
-      });
-  }
+  const transcript = runState ? transcriptFromRunState(runState) : [];
 
   useEffect(() => {
     const promptId = window.setTimeout(() => {
@@ -437,7 +338,7 @@ function HomeContent() {
     prepareCredential: credential.prepare,
   });
 
-  const { output, reasoning, status } = useMemo(() => {
+  const { output, reasoning, status } = (() => {
     const attempts =
       runState?.turns.flatMap((turn) => {
         const latest = turn.attempts.at(-1);
@@ -448,15 +349,11 @@ function HomeContent() {
       reasoning: attempts.map((attempt) => attempt.reasoning).join(""),
       status: displayStatus(runState),
     };
-  }, [runState]);
+  })();
 
-  const completedToolCalls = useMemo(
-    () =>
-      runState?.turns.flatMap(
-        (turn) => turn.attempts.at(-1)?.completedToolCalls ?? [],
-      ) ?? [],
-    [runState],
-  );
+  const completedToolCalls = runState?.turns.flatMap(
+    (turn) => turn.attempts.at(-1)?.completedToolCalls ?? [],
+  ) ?? [];
 
   useEffect(() => {
     if (!outputFollowing) return;
@@ -576,90 +473,6 @@ function HomeContent() {
     if (key === "tools" && enabled) project.clearToolsDisabledError();
   }
 
-  function prepareToolResultDrafts(state: RunState): void {
-    if (state.status.kind !== "awaiting_tool_results") {
-      setToolResultDrafts({});
-      return;
-    }
-    const status = state.status;
-    const pending = new Set(status.pendingToolCallIds);
-    const calls =
-      state.turns
-        .find(({ turnId }) => turnId === status.turnId)
-        ?.attempts.at(-1)?.completedToolCalls ?? [];
-    const drafts: Record<string, ToolResultDraft> = {};
-    for (const call of calls) {
-      if (!pending.has(call.id)) continue;
-      const definition = tools.find((tool) => tool.name === call.name);
-      const mock = definition ? mockForTool(definition.id) : undefined;
-      drafts[call.id] = mock?.enabled
-        ? {
-            text: mock.result.content.map(({ text }) => text).join(""),
-            resolution: { kind: "mock", ruleId: mock.id },
-          }
-        : { text: "", resolution: { kind: "manual" } };
-    }
-    setToolResultDrafts(drafts);
-  }
-
-  async function executeProviderTurn(
-    execution: ProviderExecution,
-    credential: CredentialSelection,
-    controller: AbortController,
-    requestGeneration: number,
-    diagnosticCapture: DiagnosticCapture,
-  ): Promise<void> {
-    const coordinator = coordinatorRef.current;
-    if (!coordinator) throw new Error("Run coordinator is unavailable.");
-    try {
-      const stream = await inferenceTransport.executeTurn(
-        { execution, credential },
-        controller.signal,
-      );
-      recordDiagnostic(diagnosticCapture, "client.response_received", {
-        status: stream.status,
-        headers: Object.fromEntries(stream.headers),
-      });
-      for await (const event of stream.events) {
-        recordDiagnostic(diagnosticCapture, "client.ndjson_record_received", {
-          raw: JSON.stringify(redactDiagnosticValue(event)),
-          event,
-        });
-        if (requestGenerationRef.current !== requestGeneration) continue;
-        coordinator.accept(event);
-        replaceRunState(coordinator.state);
-      }
-      if (requestGenerationRef.current !== requestGeneration) return;
-      coordinator.finishTurnStream();
-      replaceRunState(coordinator.state);
-      prepareToolResultDrafts(coordinator.state);
-    } catch (error) {
-      if (
-        controller.signal.aborted ||
-        requestGenerationRef.current !== requestGeneration
-      ) {
-        throw error;
-      }
-      const status =
-        error instanceof InferenceTransportError ? error.status : undefined;
-      const retryable =
-        !(error instanceof SyntaxError) &&
-        (status === undefined ||
-          status === 408 ||
-          status === 429 ||
-          (status >= 500 && status <= 599));
-      coordinator.accept({
-        type: "failed",
-        error: {
-          code: error instanceof SyntaxError ? "protocol_error" : "transport_error",
-          message: error instanceof Error ? error.message : "Request failed.",
-          retryable,
-        },
-      });
-      replaceRunState(coordinator.state);
-    }
-  }
-
   async function run() {
     project.clearErrorKind();
     const prepared = prepareWorkbenchRun({
@@ -691,383 +504,20 @@ function HomeContent() {
     }
     if (prepared.consumesPendingBranch) setBranchContext(null);
 
-    const request = prepared.request;
-    const identity: RunConversationIdentity = {
-      conversationId: prepared.input.conversationId,
-      conversationRevisionId: prepared.input.conversationRevisionId,
-    };
-    const input = prepared.input;
-    const branchedFrom = prepared.branchedFrom;
-    const coordinator = new RunCoordinator(input);
-    if (branchedFrom) runBranchProvenanceRef.current.set(input.runId, branchedFrom);
-    setVisibleBranchProvenance(branchedFrom);
-    const requestGeneration = ++requestGenerationRef.current;
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
     setWorkbenchView("response");
     setOutputFollowing(true);
-    setIsRequestActive(true);
-    runTraceWorkspaceRef.current = projectWorkspace;
-    setTraceStorage(null);
-    coordinatorRef.current = coordinator;
-    const command = coordinator.start();
-    replaceRunState(coordinator.state);
     clearRequestTools();
-    setToolResultDrafts({});
-    const diagnosticCapture = startDiagnosticCapture(request);
-    diagnosticCaptureRef.current = diagnosticCapture;
-    setHasDiagnosticCapture(true);
-    recordDiagnostic(diagnosticCapture, "client.request_started", { request });
-
-    try {
-      const selection = await credential.prepare();
-      await executeProviderTurn(
-        command.execution,
-        selection,
-        controller,
-        requestGeneration,
-        diagnosticCapture,
-      );
-    } catch (error) {
-      if (
-        controller.signal.aborted ||
-        requestGenerationRef.current !== requestGeneration
-      ) {
-        recordDiagnostic(diagnosticCapture, "client.request_aborted");
-        return;
-      }
-      recordDiagnostic(diagnosticCapture, "client.request_failed", {
-        message: error instanceof Error ? error.message : "Request failed.",
-      });
-      const activeCoordinator = coordinatorRef.current;
-      if (
-        activeCoordinator &&
-        !["completed", "cancelled", "failed"].includes(
-          activeCoordinator.state.status.kind,
-        )
-      ) {
-        activeCoordinator.fail({
-          code: "internal_error",
-          message: error instanceof Error ? error.message : "Request failed.",
-        });
-        replaceRunState(activeCoordinator.state);
-      } else {
-        replaceRunState(
-          preserveRunFailure(
-            runStateRef.current,
-            request,
-            identity,
-            error instanceof Error ? error.message : "Request failed.",
-          ),
-        );
-      }
-    } finally {
-      recordDiagnostic(diagnosticCapture, "client.stream_finished");
-      if (requestGenerationRef.current === requestGeneration) {
-        abortRef.current = null;
-        setIsRequestActive(false);
-      }
-    }
-  }
-
-  async function continueRun(): Promise<void> {
-    const coordinator = coordinatorRef.current;
-    if (
-      !coordinator ||
-      coordinator.state.status.kind !== "awaiting_tool_results"
-    ) {
-      return;
-    }
-    const waiting = coordinator.state.status;
-    const calls =
-      coordinator.state.turns
-        .find(({ turnId }) => turnId === waiting.turnId)
-        ?.attempts.at(-1)?.completedToolCalls ?? [];
-    const byId = new Map(calls.map((call) => [call.id, call]));
-    const results: ToolResult[] = waiting.pendingToolCallIds.map((toolCallId) => {
-      const draft = toolResultDrafts[toolCallId];
-      if (!draft) throw new Error(`Tool call ${toolCallId} has no result.`);
-      return {
-        id: createEntityId("tool-result", crypto.randomUUID()),
-        toolCallId,
-        content: [{ type: "text", text: draft.text }],
-        resolution: draft.resolution,
-        ...(byId.has(toolCallId) ? {} : { isError: true }),
-      };
+    await runSession.start(prepared.input, {
+      request: prepared.request,
+      workspace: projectWorkspace,
+      ...(prepared.branchedFrom ? { branchedFrom: prepared.branchedFrom } : {}),
     });
-
-    let controller: AbortController | undefined;
-    try {
-      coordinator.supplyToolResults(results);
-      const command = coordinator.continue();
-      replaceRunState(coordinator.state);
-      setToolResultDrafts({});
-      const requestGeneration = ++requestGenerationRef.current;
-      controller = new AbortController();
-      abortRef.current = controller;
-      setWorkbenchView("response");
-      setOutputFollowing(true);
-      setIsRequestActive(true);
-      const selection = await credential.prepare();
-      const diagnosticCapture =
-        diagnosticCaptureRef.current ?? startDiagnosticCapture(currentRequest());
-      diagnosticCaptureRef.current = diagnosticCapture;
-      await executeProviderTurn(
-        command.execution,
-        selection,
-        controller,
-        requestGeneration,
-        diagnosticCapture,
-      );
-    } catch (error) {
-      if (!controller?.signal.aborted) {
-        const active = coordinatorRef.current;
-        if (
-          active &&
-          !["completed", "cancelled", "failed"].includes(active.state.status.kind)
-        ) {
-          active.fail({
-            code: "internal_error",
-            message: error instanceof Error ? error.message : "Request failed.",
-          });
-          replaceRunState(active.state);
-        }
-      }
-    } finally {
-      if (abortRef.current === controller) abortRef.current = null;
-      setIsRequestActive(false);
-    }
   }
 
-  async function retryRun(): Promise<void> {
-    const coordinator = coordinatorRef.current;
-    if (
-      !coordinator ||
-      coordinator.state.status.kind !== "paused" ||
-      coordinator.state.status.reason !== "attempt_failed"
-    ) {
-      return;
-    }
-
-    const requestGeneration = ++requestGenerationRef.current;
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setWorkbenchView("response");
-    setOutputFollowing(true);
-    setIsRequestActive(true);
-    setToolResultDrafts({});
-    const command = coordinator.retry();
-    replaceRunState(coordinator.state);
-    const diagnosticCapture =
-      diagnosticCaptureRef.current ?? startDiagnosticCapture(currentRequest());
-    diagnosticCaptureRef.current = diagnosticCapture;
-    setHasDiagnosticCapture(true);
-    recordDiagnostic(diagnosticCapture, "client.retry_started", {
-      turnId: command.execution.turnId,
-      attempt: command.execution.attempt,
-      exchangeId: command.execution.exchangeId,
-    });
-
-    try {
-      const selection = await credential.prepare();
-      await executeProviderTurn(
-        command.execution,
-        selection,
-        controller,
-        requestGeneration,
-        diagnosticCapture,
-      );
-    } catch (error) {
-      if (
-        !controller.signal.aborted &&
-        !["completed", "cancelled", "failed"].includes(
-          coordinator.state.status.kind,
-        )
-      ) {
-        coordinator.fail({
-          code: "internal_error",
-          message: error instanceof Error ? error.message : "Request failed.",
-        });
-        replaceRunState(coordinator.state);
-      }
-    } finally {
-      recordDiagnostic(diagnosticCapture, "client.stream_finished");
-      if (requestGenerationRef.current === requestGeneration) {
-        abortRef.current = null;
-        setIsRequestActive(false);
-      }
-    }
-  }
-
-  function stop() {
-    const controller = abortRef.current;
-    requestGenerationRef.current += 1;
-    if (diagnosticCaptureRef.current) {
-      recordDiagnostic(diagnosticCaptureRef.current, "client.stop_requested");
-    }
-    abortRef.current = null;
-    controller?.abort();
-    setIsRequestActive(false);
-    const coordinator = coordinatorRef.current;
-    if (
-      coordinator &&
-      !["completed", "cancelled", "failed"].includes(
-        coordinator.state.status.kind,
-      )
-    ) {
-      const status = coordinator.state.status;
-      if (status.kind === "paused" && status.reason === "attempt_failed") {
-        coordinator.fail(status.error);
-      } else {
-        coordinator.cancel("Stopped by user.");
-      }
-      replaceRunState(coordinator.state);
-    }
-  }
-
-  function downloadDiagnostics() {
-    const capture = diagnosticCaptureRef.current;
-    if (!capture) return;
-    const bundle = {
-      schemaVersion: 1,
-      exportedAt: new Date().toISOString(),
-      privacy: {
-        credentials: "redacted",
-        messageBodies: "included",
-      },
-      capture,
-    };
-    const blob = new Blob([JSON.stringify(bundle, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `trace-lens-diagnostics-${bundle.exportedAt.replaceAll(":", "-")}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-  }
-
-  function runTraceForState(state: RunState | null): RunTrace | undefined {
-    if (
-      !state ||
-      !["completed", "cancelled", "failed"].includes(state.status.kind)
-    ) {
-      return undefined;
-    }
-    try {
-      return createRunTrace(state, {
-        branchedFrom: runBranchProvenanceRef.current.get(state.runId),
-      });
-    } catch {
-      return undefined;
-    }
-  }
-
-  async function exportRunTrace(): Promise<void> {
-    const trace = runTraceForState(runStateRef.current);
-    if (!trace) return;
-    const previous = traceStorage;
-    const preserveProjectLocation =
-      previous?.kind === "saved" && Boolean(runTraceWorkspaceRef.current);
-    setTraceStorage({ kind: "saving" });
-    try {
-      const result = await exportRunTraceFile(trace);
-      if (result.kind === "saved") {
-        setTraceStorage(
-          preserveProjectLocation
-            ? previous
-            : { kind: "saved", location: result.location },
-        );
-      } else if (result.kind === "downloaded") {
-        setTraceStorage(
-          preserveProjectLocation
-            ? previous
-            : {
-                kind: "downloaded",
-                fileName: result.fileName,
-              },
-        );
-      } else {
-        setTraceStorage(previous ?? { kind: "unsaved" });
-      }
-    } catch (error) {
-      setTraceStorage({
-        kind: "error",
-        message:
-          error instanceof Error ? error.message : "The trace could not be saved.",
-      });
-    }
-  }
-
-  /**
-   * Replaces the workbench with a trace the user is inspecting rather than
-   * running. Importing a file and opening a project's saved run differ only in
-   * where the trace came from and how it is stored, so both go through here:
-   * the live coordinator is dropped, drafts and diagnostics from the previous
-   * run are cleared, and the response view is brought forward.
-   *
-   * `origin.workspace` is the folder the trace already lives in, or null for a
-   * trace that has no home on disk. Naming it here is what keeps the autosave
-   * effect from writing an artifact back over the file it was just read from.
-   */
-  function adoptRunTrace(
-    trace: RunTrace,
-    origin:
-      | { workspace: ProjectWorkspaceHandle; fileName: string }
-      | { workspace: null; fileName: string },
-  ): void {
-    if (trace.branchedFrom) {
-      runBranchProvenanceRef.current.set(trace.runId, trace.branchedFrom);
-    }
-    if (origin.workspace) persistedTraceRunIdsRef.current.add(trace.runId);
-    coordinatorRef.current = null;
-    runTraceWorkspaceRef.current = origin.workspace;
-    diagnosticCaptureRef.current = null;
-    setHasDiagnosticCapture(false);
-    setToolResultDrafts({});
-    setBranchContext(null);
-    setVisibleBranchProvenance(trace.branchedFrom);
-    setWorkbenchView("response");
-    setTraceOpen(true);
-    replaceRunState(runStateFromTrace(trace));
-    setTraceStorage(
-      origin.workspace
-        ? {
-            kind: "saved",
-            location: runTraceWorkspacePath(origin.workspace, origin.fileName),
-          }
-        : { kind: "loaded", fileName: origin.fileName },
-    );
-    project.setError(undefined, { clearKind: true });
-  }
-
-  async function importRunTrace(
-    event: ChangeEvent<HTMLInputElement>,
-  ): Promise<void> {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    try {
-      adoptRunTrace(parseRunTraceJson(await file.text()), {
-        workspace: null,
-        fileName: file.name,
-      });
-    } catch (error) {
-      project.setError(
-        error instanceof Error ? error.message : "Could not import the run trace.",
-        { clearKind: true },
-      );
-    } finally {
-      event.target.value = "";
-    }
-  }
-
-  /**
-   * Reads the selected artifact again instead of trusting a copy held from
-   * when the list was built. Errors propagate to the drawer, which keeps the
-   * list on screen so another run can be chosen.
-   */
+  async function continueRun(): Promise<void> { setWorkbenchView("response"); setOutputFollowing(true); await runSession.continueRun(); }
+  async function retryRun(): Promise<void> { setWorkbenchView("response"); setOutputFollowing(true); await runSession.retryRun(); }
+  function adoptRunTrace(trace: RunTrace, origin: { workspace: NonNullable<typeof projectWorkspace>; fileName: string } | { workspace: null; fileName: string }): void { setBranchContext(null); setWorkbenchView("response"); setTraceOpen(true); runSession.adoptTrace(trace, origin); project.setError(undefined, { clearKind: true }); }
+  async function importRunTrace(event: React.ChangeEvent<HTMLInputElement>): Promise<void> { try { await runSession.importRunTrace(event); setBranchContext(null); setWorkbenchView("response"); setTraceOpen(true); project.setError(undefined, { clearKind: true }); } catch (error) { project.setError(error instanceof Error ? error.message : "Could not import the run trace.", { clearKind: true }); } }
   async function openHistoryTrace(item: ProjectRunHistoryItem): Promise<void> {
     const workspace = projectWorkspace;
     if (!workspace) throw new Error("The project folder is no longer open.");
@@ -1160,11 +610,11 @@ function HomeContent() {
         onImportProject={(event) => void project.importProject(event)}
         onExportProject={project.exportProject}
         onOpenToolLibrary={() => setToolRegistryOpen(true)}
-        onDownloadDiagnostics={downloadDiagnostics}
-        onDownloadRunTrace={() => void exportRunTrace()}
+        onDownloadDiagnostics={runSession.downloadDiagnostics}
+        onDownloadRunTrace={() => void runSession.exportRunTrace()}
         onImportRunTrace={(event) => void importRunTrace(event)}
         onOpenRunHistory={() => setRunHistoryOpen(true)}
-        onStop={stop}
+        onStop={runSession.stop}
         onRun={() => void run()}
         onContinue={() => void continueRun()}
         onRetry={() => void retryRun()}
@@ -1253,7 +703,7 @@ function HomeContent() {
             onLoadModels={(force) => void loadModels(force)}
             onModelChange={setEditorModel}
             onTemperatureChange={setEditorTemperature}
-            onSavePendingBranchTrace={() => void exportRunTrace()}
+            onSavePendingBranchTrace={() => void runSession.exportRunTrace()}
             onDiscardPendingBranch={() => setBranchContext(null)}
             onOpenToolLibrary={() => setToolRegistryOpen(true)}
             onAddTool={addTool}
@@ -1281,19 +731,14 @@ function HomeContent() {
             traceStorage={traceStorage}
             transcript={transcript}
             nonBranchableMessageIds={nonBranchableMessageIds}
-            branchedFrom={visibleBranchProvenance}
+            branchedFrom={runSession.branchedFrom}
             onMarkdownPreviewChange={setMarkdownPreview}
             onOutputScroll={updateOutputFollowState}
             onJumpToLatest={jumpToLatestOutput}
-            onToolResultDraftChange={(callId, text) =>
-              setToolResultDrafts((current) => ({
-                ...current,
-                [callId]: { ...current[callId]!, text },
-              }))
-            }
+            onToolResultDraftChange={runSession.updateToolResultDraft}
             onContinue={() => void continueRun()}
             onRetry={() => void retryRun()}
-            onSaveTrace={() => void exportRunTrace()}
+            onSaveTrace={() => void runSession.exportRunTrace()}
             onEditFromHere={editFromHere}
           />
 
