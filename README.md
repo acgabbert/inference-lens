@@ -85,6 +85,11 @@ session. The published port is bound to `127.0.0.1`, so the workbench is not
 reachable from other machines on the network; map a different local port with
 `-p 127.0.0.1:8080:3000`.
 
+Vinext logs `http://0.0.0.0:3000` when it starts. That is the address the
+server listens on *inside* the container, not the URL to open in a browser.
+Use `http://localhost:3000` (or `http://127.0.0.1:3000`) instead. Those local
+origins are treated as trustworthy by browsers even over HTTP.
+
 ### Server-side default credential
 
 To avoid re-entering a key each session, set it on the service instead and

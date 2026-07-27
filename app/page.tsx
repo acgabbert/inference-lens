@@ -75,6 +75,7 @@ import {
   InferenceTransportError,
 } from "./http-inference-transport.client";
 import { AppErrorBoundary } from "./app-error-boundary.client";
+import { randomUUID } from "../packages/core/src/random-id.ts";
 import {
   recordDiagnostic,
   redactDiagnosticValue,
@@ -194,12 +195,12 @@ function createInitialMessages(
 ): ConversationMessage[] {
   return [
     {
-      id: createEntityId("message", crypto.randomUUID()),
+      id: createEntityId("message", randomUUID()),
       role: "system",
       content: [{ type: "text", text: "You are a concise, thoughtful assistant." }],
     },
     {
-      id: createEntityId("message", crypto.randomUUID()),
+      id: createEntityId("message", randomUUID()),
       role: "user",
       content: [{ type: "text", text: userPrompt }],
     },
@@ -571,7 +572,7 @@ function HomeContent() {
     name: string,
     content: PromptTemplateContent,
   ): PromptTemplateId {
-    const suffix = crypto.randomUUID();
+    const suffix = randomUUID();
     const next = createPromptTemplate(ensureProjectDocument(), {
       name,
       content,
@@ -694,7 +695,7 @@ function HomeContent() {
           {
             length: Math.max(0, latestCount - item.use.outputMessageIds.length),
           },
-          () => crypto.randomUUID(),
+          () => randomUUID(),
         );
         const next = updatePromptTemplateUseToLatest(base, {
           conversationRevisionId: revisionId,
@@ -784,7 +785,7 @@ function HomeContent() {
       {
         kind: "message",
         message: {
-          id: createEntityId("message", crypto.randomUUID()),
+          id: createEntityId("message", randomUUID()),
           role: "user",
           content: [{ type: "text", text: "" }],
         },
@@ -909,11 +910,11 @@ function HomeContent() {
     }
     const conversationId =
       adHocConversationIdRef.current ??
-      createEntityId("conversation", crypto.randomUUID());
+      createEntityId("conversation", randomUUID());
     adHocConversationIdRef.current = conversationId;
     return {
       conversationId,
-      conversationRevisionId: createEntityId("revision", crypto.randomUUID()),
+      conversationRevisionId: createEntityId("revision", randomUUID()),
     };
   }
 
@@ -1315,7 +1316,7 @@ function HomeContent() {
       const draft = toolResultDrafts[toolCallId];
       if (!draft) throw new Error(`Tool call ${toolCallId} has no result.`);
       return {
-        id: createEntityId("tool-result", crypto.randomUUID()),
+        id: createEntityId("tool-result", randomUUID()),
         toolCallId,
         content: [{ type: "text", text: draft.text }],
         resolution: draft.resolution,

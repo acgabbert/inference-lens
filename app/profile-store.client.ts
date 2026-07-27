@@ -9,6 +9,7 @@ import {
   isProviderCapabilityOverrides,
   resolveProviderCapabilities,
 } from "../packages/core/src/types.ts";
+import { randomUUID } from "../packages/core/src/random-id.ts";
 
 const STORAGE_KEY = "inference-lens:inference-profiles:v1";
 
@@ -25,7 +26,7 @@ export interface ProfileSnapshot {
 }
 
 function profileId(): string {
-  return `profile-${crypto.randomUUID()}`;
+  return `profile-${randomUUID()}`;
 }
 
 export function createDefaultProfile(): StoredInferenceProfile {

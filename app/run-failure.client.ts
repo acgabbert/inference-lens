@@ -13,6 +13,7 @@ import type {
   RunConversationIdentity,
   RunState,
 } from "../packages/core/src/run-kernel/index.ts";
+import { randomUUID } from "../packages/core/src/random-id.ts";
 
 function isTerminal(state: RunState): boolean {
   return (
@@ -67,7 +68,7 @@ export function preserveRunFailure(
   const failure: RunEvent = {
     eventId: createEntityId(
       "event",
-      `client-failure-${crypto.randomUUID()}`,
+      `client-failure-${randomUUID()}`,
     ),
     runId: current.runId,
     sequence: current.lastSequence + 1,

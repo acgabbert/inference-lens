@@ -12,6 +12,7 @@ import type {
 } from "../packages/core/src/run-kernel/types.ts";
 import { snapshotRegistryTool } from "../packages/core/src/tool-registry.ts";
 import type { RegistryTool } from "../packages/core/src/tool-registry.ts";
+import { randomUUID } from "../packages/core/src/random-id.ts";
 
 export interface RequestDraftSnapshot {
   messages: ConversationMessage[];
@@ -113,7 +114,7 @@ export function useRequestDraft(input: {
     setMessages((current) => [
       ...current,
       {
-        id: createEntityId("message", crypto.randomUUID()),
+        id: createEntityId("message", randomUUID()),
         role: "user",
         content: [{ type: "text", text: "" }],
       },
@@ -152,7 +153,7 @@ export function useRequestDraft(input: {
   }
 
   function addTool(): void {
-    const id = createEntityId("tool", crypto.randomUUID());
+    const id = createEntityId("tool", randomUUID());
     const inputSchema: JsonObject = {
       type: "object",
       properties: {},
@@ -188,7 +189,7 @@ export function useRequestDraft(input: {
   }
 
   function toolSnapshot(source: RegistryTool): ToolDefinition {
-    return snapshotRegistryTool(source, createEntityId("tool", crypto.randomUUID()));
+    return snapshotRegistryTool(source, createEntityId("tool", randomUUID()));
   }
 
   function attachRegistryToolToProject(source: RegistryTool): string | undefined {
@@ -229,7 +230,7 @@ export function useRequestDraft(input: {
   function updateToolMock(toolId: ToolId, text: string, enabled: boolean): void {
     const existing = mockForTool(toolId);
     const next: ToolMock = {
-      id: existing?.id ?? createEntityId("tool-mock", crypto.randomUUID()),
+      id: existing?.id ?? createEntityId("tool-mock", randomUUID()),
       toolId,
       name: existing?.name ?? "Static response",
       enabled,
