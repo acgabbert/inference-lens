@@ -694,6 +694,42 @@ Running-app verification:
 **Exit condition:** The acceptance criteria below are met and the final handoff
 states exactly what was run, what was skipped, and why.
 
+#### Session 06 handoff — 2026-07-27
+
+- Reviewed the remaining `page.tsx` state and adapters against the
+  composition-root rule. The page is now 779 lines, with 14 `useState` calls,
+  3 refs, 7 effects, and 31 imports. Its remaining responsibilities are
+  top-level view/drawer state, local persistence adapters, request/run
+  composition, keyboard shortcuts, and the intentional history-to-run-session
+  adapter. No remaining cluster justified another feature owner.
+- Confirmed the new boundaries remain narrow: template policy and run
+  preparation are Node-safe pure modules; `useRunSession` accepts provider-
+  neutral input and does not mutate projects or templates; the page owns the
+  explicit application of preparation effects. No project, trace, provider, or
+  credential serialization contract changed in this refactor.
+- Ran `npm run lint`, `npx tsc -p tsconfig.json --noEmit`,
+  `npm run typecheck:core`, and `npm test`; all passed. The test suite reported
+  210 core tests and 31 rendered/standalone tests (241 total). Its initial
+  sandboxed run could not bind localhost, and the permitted rerun passed.
+- Attempted `npm run check:rust`. `cargo clippy` could not resolve
+  `index.crates.io` after repeated retries in this environment, so the command
+  was stopped; Rust formatting/clippy is the only automated check not
+  completed.
+- Browser verification used the actual local workbench with deterministic
+  fixtures. A 503 first attempt rendered as retryable; retry completed with
+  `Recovered on retry.`, and the flaky fixture confirmed the retry body exactly
+  matched attempt one. A paced fixture with a 30-second first-byte delay was
+  stopped before output; the rendered trace ended at `run.cancelled`, with no
+  later provider frames or output. The rendered document contained no `NaN`,
+  `Infinity`, or `undefined`, and the browser reported no console errors.
+- Prior session browser checks remain the coverage for template resolution,
+  request-pane navigation, branching, and basic trace creation. Manual/mock
+  tool continuation, diagnostics download, trace import/export, and
+  project-backed autosave/history reopening remain un-repeated in Session 06;
+  the existing fixture set has no deterministic tool-call endpoint and this
+  environment has no native folder-picker access. No fixture or dev server was
+  left running.
+
 ## Acceptance criteria
 
 - `page.tsx` visibly reads as composition plus narrow cross-feature adapters.
