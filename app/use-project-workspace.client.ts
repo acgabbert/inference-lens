@@ -41,6 +41,7 @@ export interface ProjectWorkspaceHandleState {
   adoptProjectMutation(project: ProjectFile): void;
   mapProfile(profileId: string): void;
   mapActiveProfile(): void;
+  unmapProfile(profileId: string): void;
   newProjectFolder(): Promise<void>;
   openProjectWorkspace(): Promise<void>;
   saveProject(): Promise<void>;
@@ -137,6 +138,17 @@ export function useProjectWorkspace(input: {
       setMappedProfileId(activeProfileId);
       setProjectError(undefined);
     }
+  }
+
+  /**
+   * Releases the mapping when the profile it names goes away. The project is
+   * left unmapped rather than pointed at a replacement: which connection runs a
+   * project is the user's choice, and asking again is better than guessing.
+   */
+  function unmapProfile(profileId: string): void {
+    setMappedProfileId((current) =>
+      current === profileId ? undefined : current,
+    );
   }
 
   function currentProjectDocument(): ProjectFile {
@@ -250,6 +262,7 @@ export function useProjectWorkspace(input: {
     adoptProjectMutation,
     mapProfile,
     mapActiveProfile,
+    unmapProfile,
     newProjectFolder,
     openProjectWorkspace,
     saveProject,

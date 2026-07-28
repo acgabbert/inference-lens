@@ -258,6 +258,8 @@ function HomeContent() {
     selectProfile,
     addProfile,
     updateActiveProfile,
+    activeProfileDeletionRefusal,
+    removeActiveProfile,
     setCapabilityOverride,
     serverDefault,
     serverDefaultProfileNotice,
@@ -1010,6 +1012,32 @@ function HomeContent() {
   function chooseProfile(profileId: string): void {
     selectProfile(profileId);
     project.mapProfile(profileId);
+  }
+
+  /**
+   * Deletion is confirmed rather than undoable: the profile's credential is
+   * destroyed with it, and nothing in the UI could put a keychain secret back.
+   */
+  function confirmDeleteActiveProfile(): void {
+    const profileId = activeProfile.id;
+    setConfirmation({
+      title: `Delete "${activeProfile.name || "Untitled profile"}"?`,
+      description:
+        "This connection and any credential stored for it on this device are removed. Saved run traces keep the connection they recorded.",
+      confirmLabel: "Delete profile",
+      destructive: true,
+      details: [
+        { label: "Endpoint", value: activeProfile.endpoint },
+        { label: "Model", value: activeProfile.model || "none" },
+      ],
+      onConfirm() {
+        removeActiveProfile();
+        // A project mapped to this profile is left unmapped, which restores the
+        // prompt to choose one instead of running against a connection the user
+        // never picked.
+        project.unmapProfile(profileId);
+      },
+    });
   }
 
   function changeCapability(
@@ -1818,6 +1846,8 @@ function HomeContent() {
           const profileId = addProfile();
           project.mapProfile(profileId);
         }}
+        onDeleteProfile={confirmDeleteActiveProfile}
+        deleteProfileRefusal={activeProfileDeletionRefusal}
         onUpdateProfile={updateActiveProfile}
         onCapabilityChange={changeCapability}
         connectionRequirement={activeConnectionRequirement}
