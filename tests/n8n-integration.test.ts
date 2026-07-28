@@ -198,7 +198,7 @@ test("lists execution summaries without requesting or returning execution data",
   assert.doesNotMatch(text, /forbidden|n8n-secret|n8n\.example\.test/);
 });
 
-test("fetches selected execution detail lazily but returns only safe metadata", async () => {
+test("fetches selected execution detail lazily but returns only its safe normalized projection", async () => {
   const requests: string[] = [];
   const fetchImplementation: typeof fetch = async (input) => {
     requests.push(input.toString());
@@ -244,6 +244,7 @@ test("fetches selected execution detail lazily but returns only safe metadata", 
       stoppedAt: "2026-07-28T12:00:01.000Z",
     },
     detailAvailable: true,
+    extractions: [],
   });
   assert.deepEqual(requests, [
     "https://n8n.example.test/automation/api/v1/executions/execution_1?includeData=true",
@@ -285,15 +286,89 @@ test("accepts the redacted Phase 0 workflow and execution detail fixtures", asyn
   assert.ok(executionDetail.data);
 });
 
-test("reports unavailable retained data and rejects a workflow mismatch", async () => {
+test("the execution-detail route returns normalized candidates without raw execution or provider response data", async () => {
+  const fixtureRoot = path.resolve(
+    import.meta.dirname,
+    "fixtures/n8n/captures/2.32.5/basic-llm-chain-success",
+  );
+  const execution = JSON.parse(
+    await readFile(path.join(fixtureRoot, "execution-success.json"), "utf8"),
+  ) as {
+    data: {
+      resultData: {
+        runData: Record<string, unknown>;
+      };
+    };
+  };
+  const runData = execution.data.resultData.runData;
+  const parentRuns = runData["Compound prompt cases"] as Array<{
+    data: { main: unknown[][] };
+  }>;
+  parentRuns[0]!.data.main[0] = parentRuns[0]!.data.main[0]!.slice(0, 1);
+  runData["Fixture OpenAI Chat Model"] = (
+    runData["Fixture OpenAI Chat Model"] as unknown[]
+  ).slice(0, 1);
+
+  const response = await handleN8nExecutionDetailRequest(
+    sameOriginRequest("/api/integrations/n8n/execution-detail", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        workflowId: "workflow_fixture",
+        executionId: "execution_fixture_001",
+      }),
+    }),
+    configuredEnvironment,
+    undefined,
+    async () => jsonResponse(execution),
+  );
+  const text = await response.text();
+  const body = JSON.parse(text) as {
+    extractions: Array<{
+      status: string;
+      candidate?: {
+        invocation: { name: string };
+        fidelity: string;
+        resolved?: { messages: Array<{ content: string }> };
+      };
+    }>;
+  };
+  assert.equal(response.status, 200);
+  const compound = body.extractions.find(
+    (result) =>
+      result.candidate?.invocation.name === "Compound prompt cases",
+  );
+  assert.equal(compound?.status, "candidate");
+  assert.equal(compound?.candidate?.fidelity, "execution-reconstructed");
+  assert.match(
+    compound?.candidate?.resolved?.messages[0]?.content ?? "",
+    /IL_P0_TOPIC_ALPHA/,
+  );
+  assert.doesNotMatch(text, /generations|tokenUsage|Fixture received user=/);
+  assert.doesNotMatch(text, new RegExp(apiKey));
+  assert.equal(response.headers.get("cache-control"), "no-store");
+});
+
+test("reports unavailable retained data with current authored workflow fallback and rejects a workflow mismatch", async () => {
   let workflowId = "workflow_1";
-  const fetchImplementation: typeof fetch = async () =>
-    jsonResponse({
+  const fetchImplementation: typeof fetch = async (input) => {
+    const pathname = new URL(input.toString()).pathname;
+    if (pathname.endsWith("/workflows/workflow_1")) {
+      return jsonResponse({
+        id: "workflow_1",
+        name: "Current workflow",
+        active: false,
+        nodes: [],
+        connections: {},
+      });
+    }
+    return jsonResponse({
       id: "execution_1",
       workflowId,
       status: "error",
       data: null,
     });
+  };
   const request = () =>
     sameOriginRequest("/api/integrations/n8n/execution-detail", {
       method: "POST",
@@ -317,6 +392,7 @@ test("reports unavailable retained data and rejects a workflow mismatch", async 
       status: "error",
     },
     detailAvailable: false,
+    extractions: [],
   });
 
   workflowId = "workflow_2";

@@ -6,6 +6,8 @@ import {
   WorkbenchRequestError,
 } from "./request-security.ts";
 import type { WorkbenchRequestPolicy } from "./request-security.ts";
+import { extractN8nPromptCandidates } from "./n8n-prompt-extractors.ts";
+import type { N8nPromptExtraction } from "./n8n-prompt-extractors.ts";
 
 export const N8N_BASE_URL_VARIABLE = "INFERENCE_LENS_N8N_BASE_URL";
 export const N8N_API_KEY_VARIABLE = "INFERENCE_LENS_N8N_API_KEY";
@@ -543,6 +545,7 @@ export class N8nClient {
 export interface N8nSelectedExecution {
   execution: N8nExecutionSummary;
   detailAvailable: boolean;
+  extractions: N8nPromptExtraction[];
 }
 
 export async function loadN8nSelectedExecution(
@@ -559,9 +562,20 @@ export async function loadN8nSelectedExecution(
       "The selected execution does not belong to the selected workflow.",
     );
   }
+  const detailAvailable = detail.data !== undefined && detail.data !== null;
+  const data = detail.data;
+  const hasExecutionWorkflowSnapshot =
+    data !== null &&
+    typeof data === "object" &&
+    !Array.isArray(data) &&
+    "workflowData" in data;
+  const currentWorkflow = hasExecutionWorkflowSnapshot
+    ? undefined
+    : await client.getWorkflow(safeWorkflowId, signal);
   return {
     execution: executionSummary(detail),
-    detailAvailable: detail.data !== undefined && detail.data !== null,
+    detailAvailable,
+    extractions: await extractN8nPromptCandidates(detail, currentWorkflow),
   };
 }
 
