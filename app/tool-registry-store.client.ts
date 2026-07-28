@@ -128,6 +128,14 @@ export async function loadToolRegistrySession(fetcher: Fetcher = fetch): Promise
   }
 }
 
+/** Tauri has no Node /data host, so its registry remains browser-local. */
+export function loadLocalToolRegistrySession(): { session: ToolRegistrySession; status: ToolRegistrySyncStatus } {
+  const cache = readCache();
+  const session = { source: "local" as const, base: null, registry: cache.registry, pending: false };
+  cacheSession(session);
+  return { session, status: { kind: "local" } };
+}
+
 export async function saveToolRegistrySession(session: ToolRegistrySession, registry: ToolRegistryV1, fetcher: Fetcher = fetch): Promise<{ session: ToolRegistrySession; status: ToolRegistrySyncStatus }> {
   const desired = parseToolRegistryFile(registry);
   if (session.source === "local") {

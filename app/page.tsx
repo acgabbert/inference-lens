@@ -98,6 +98,7 @@ import type {
 } from "../packages/core/src/tool-registry";
 import {
   loadToolRegistrySession,
+  loadLocalToolRegistrySession,
   overwriteServerToolRegistry,
   saveToolRegistrySession,
   restoreServerToolRegistry,
@@ -477,7 +478,10 @@ function HomeContent() {
 
   useEffect(() => {
     let cancelled = false;
-    void loadToolRegistrySession().then(({ session, status }) => {
+    const loaded = isDesktopRuntime
+      ? Promise.resolve(loadLocalToolRegistrySession())
+      : loadToolRegistrySession();
+    void loaded.then(({ session, status }) => {
       if (cancelled) return;
       toolRegistrySessionRef.current = session;
       setToolRegistry(session.registry);
@@ -485,7 +489,7 @@ function HomeContent() {
       setToolRegistryLoaded(true);
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [isDesktopRuntime]);
 
   useEffect(() => {
     const previewId = window.setTimeout(() => {
