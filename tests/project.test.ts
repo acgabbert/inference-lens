@@ -43,7 +43,7 @@ const request = {
   }),
 };
 
-test("creates a strict, portable Project v3 document", () => {
+test("creates a strict, portable Project v4 document", () => {
   const project = createProjectFile({
     name: "Example",
     request,
@@ -52,7 +52,7 @@ test("creates a strict, portable Project v3 document", () => {
   });
 
   assert.equal(PROJECT_FILE_NAME, "inference-lens.project.json");
-  assert.equal(project.schemaVersion, 3);
+  assert.equal(project.schemaVersion, 4);
   assert.equal(project.projectId, "project_example");
   const draft = projectDraft(project);
   assert.deepEqual(projectDraft(project), {
@@ -74,7 +74,8 @@ test("creates a strict, portable Project v3 document", () => {
     toolMocks: [],
     enabledToolIds: [],
   });
-  assert.equal(JSON.parse(serializeProjectFile(project)).schemaVersion, 3);
+  assert.deepEqual(project.externalImports, []);
+  assert.equal(JSON.parse(serializeProjectFile(project)).schemaVersion, 4);
 });
 
 test("serialization is deterministic and ends with a newline", () => {
@@ -104,7 +105,7 @@ test("serialization is deterministic and ends with a newline", () => {
   assert.ok(serialized.indexOf('"alpha"') < serialized.indexOf('"zeta"'));
 });
 
-test("migrates Project v2 messages to literal v3 authored items", () => {
+test("rejects pre-v4 projects while migration is intentionally deferred", () => {
   const current = createProjectFile({
     name: "Legacy",
     request,
@@ -113,26 +114,14 @@ test("migrates Project v2 messages to literal v3 authored items", () => {
   });
   const legacy = {
     ...current,
-    schemaVersion: 2,
-    conversationRevisions: current.conversationRevisions.map(
-      ({ items, ...revision }) => ({
-        ...revision,
-        messages: items.map((item) => {
-          assert.equal(item.kind, "message");
-          if (item.kind !== "message") throw new Error("Unexpected template use.");
-          return item.message;
-        }),
-      }),
-    ),
+    schemaVersion: 3,
+    externalImports: undefined,
   };
 
-  const migrated = parseProjectFile(legacy);
-  assert.equal(migrated.schemaVersion, 3);
-  assert.deepEqual(
-    migrated.conversationRevisions[0]?.items,
-    current.conversationRevisions[0]?.items,
+  assert.throws(
+    () => parseProjectFile(legacy),
+    /Invalid Inference Lens project/,
   );
-  assert.equal(JSON.parse(serializeProjectFile(migrated)).schemaVersion, 3);
 });
 
 test("resolves pinned fragment and message-set uses with stable output IDs", () => {

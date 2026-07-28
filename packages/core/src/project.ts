@@ -1,11 +1,27 @@
 import { z } from "zod";
 
+import {
+  authoredPromptFieldSchema,
+  expressionBindingSchema,
+  externalInvocationRefSchema,
+  externalPromptSourceSchema,
+  importWarningSchema,
+  validateAuthoredPromptBindings,
+} from "./external-prompt-import.ts";
+import type {
+  AuthoredPromptField,
+  ExpressionBinding,
+  ExternalInvocationRef,
+  ExternalPromptSource,
+  ImportFidelity,
+  ImportWarning,
+} from "./external-prompt-import.ts";
 import type {
   ConnectionRequirementId,
   ConversationId,
   ConversationMessage,
-  ConversationRevision,
   ConversationRevisionId,
+  ExternalImportId,
   InferenceOptions,
   JsonObject,
   JsonValue,
@@ -35,7 +51,7 @@ import type {
 } from "./types.ts";
 
 export const PROJECT_FILE_NAME = "inference-lens.project.json";
-export const PROJECT_SCHEMA_VERSION = 3;
+export const PROJECT_SCHEMA_VERSION = 4;
 
 export interface ConnectionRequirement {
   id: ConnectionRequirementId;
@@ -106,6 +122,7 @@ export type ProjectConversationItem =
   | {
       kind: "message";
       message: ConversationMessage;
+      externalImportId?: ExternalImportId;
     }
   | {
       kind: "template-use";
@@ -131,24 +148,47 @@ export interface ProjectDefaults {
 }
 
 /**
+ * Minimal durable provenance for imported literal messages. The selected
+ * authored fields are retained for review; remote payloads, connection
+ * details, credentials, and unrelated execution data are deliberately absent.
+ */
+export interface ExternalImportReceipt {
+  id: ExternalImportId;
+  source: ExternalPromptSource;
+  invocation: ExternalInvocationRef;
+  authored: AuthoredPromptField[];
+  bindings: ExpressionBinding[];
+  importedAt: string;
+  importerVersion: number;
+  sourceDigest: string;
+  fidelity: ImportFidelity;
+  warnings: ImportWarning[];
+}
+
+/**
  * Portable, credential-free project definition. Run traces and shell-local
  * selections deliberately live outside this document.
  */
-export interface ProjectFileV2 {
-  schemaVersion: 2;
+interface ProjectReferenceValidationShape {
   projectId: ProjectId;
   name: string;
   connectionRequirements: ConnectionRequirement[];
   conversations: ProjectConversation[];
-  conversationRevisions: ConversationRevision[];
+  conversationRevisions: Array<{
+    id: ConversationRevisionId;
+    conversationId: ConversationId;
+    parentRevisionId?: ConversationRevisionId;
+    messages: ConversationMessage[];
+    createdAt: string;
+  }>;
   tools: ToolDefinition[];
   toolMocks: ToolMock[];
   promptTemplates: PromptTemplate[];
   defaults: ProjectDefaults;
 }
 
-export interface ProjectFileV3 {
-  schemaVersion: 3;
+export interface ProjectFileV4 {
+  schemaVersion: 4;
   projectId: ProjectId;
   name: string;
   connectionRequirements: ConnectionRequirement[];
@@ -157,10 +197,12 @@ export interface ProjectFileV3 {
   tools: ToolDefinition[];
   toolMocks: ToolMock[];
   promptTemplates: PromptTemplate[];
+  externalImports: ExternalImportReceipt[];
   defaults: ProjectDefaults;
 }
 
-export type ProjectFile = ProjectFileV3;
+export type ProjectFile = ProjectFileV4;
+type ProjectFileV3 = ProjectFileV4;
 
 const entityId = <Kind extends Parameters<typeof createEntityId>[0]>(
   kind: Kind,
@@ -318,16 +360,6 @@ const projectConversationSchema: z.ZodType<ProjectConversation> = z
   })
   .strict();
 
-const conversationRevisionV2Schema: z.ZodType<ConversationRevision> = z
-  .object({
-    id: entityId("revision"),
-    conversationId: entityId("conversation"),
-    parentRevisionId: entityId("revision").optional(),
-    messages: z.array(conversationMessageSchema),
-    createdAt: z.iso.datetime({ offset: true }),
-  })
-  .strict();
-
 const toolDefinitionSchema: z.ZodType<ToolDefinition> = z
   .object({
     id: entityId("tool"),
@@ -392,34 +424,6 @@ const promptTemplateSchema: z.ZodType<PromptTemplate> = z
   })
   .strict();
 
-const projectFileV2Schema: z.ZodType<ProjectFileV2> = z
-  .object({
-    schemaVersion: z.literal(2),
-    projectId: entityId("project"),
-    name: z.string().trim().min(1),
-    connectionRequirements: z.array(connectionRequirementSchema).min(1),
-    conversations: z.array(projectConversationSchema).min(1),
-    conversationRevisions: z.array(conversationRevisionV2Schema).min(1),
-    tools: z.array(toolDefinitionSchema),
-    toolMocks: z.array(toolMockSchema),
-    promptTemplates: z.array(promptTemplateSchema),
-    defaults: z
-      .object({
-        conversationRevisionId: entityId("revision"),
-        target: z
-          .object({
-            connectionRequirementId: entityId("connection"),
-            model: z.string().trim().min(1),
-          })
-          .strict(),
-        options: inferenceOptionsSchema,
-        enabledToolIds: z.array(entityId("tool")),
-      })
-      .strict(),
-  })
-  .strict()
-  .superRefine(validateProjectV2References);
-
 const promptTemplateUseSchema: z.ZodType<PromptTemplateUse> = z
   .object({
     id: entityId("template-use"),
@@ -440,6 +444,7 @@ const projectConversationItemSchema: z.ZodType<ProjectConversationItem> =
       .object({
         kind: z.literal("message"),
         message: conversationMessageSchema,
+        externalImportId: entityId("external-import").optional(),
       })
       .strict(),
     z
@@ -461,7 +466,29 @@ const projectConversationRevisionSchema: z.ZodType<ProjectConversationRevision> 
     })
     .strict();
 
-const projectFileV3Schema: z.ZodType<ProjectFileV3> = z
+const externalImportReceiptSchema: z.ZodType<ExternalImportReceipt> = z
+  .object({
+    id: entityId("external-import"),
+    source: externalPromptSourceSchema,
+    invocation: externalInvocationRefSchema,
+    authored: z.array(authoredPromptFieldSchema).min(1),
+    bindings: z.array(expressionBindingSchema),
+    importedAt: z.iso.datetime({ offset: true }),
+    importerVersion: z.number().int().positive(),
+    sourceDigest: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/, "Expected a lowercase SHA-256 digest."),
+    fidelity: z.enum([
+      "provider-evidence",
+      "execution-reconstructed",
+      "authored-only",
+    ]),
+    warnings: z.array(importWarningSchema),
+  })
+  .strict()
+  .superRefine(validateAuthoredPromptBindings);
+
+const projectFileV4Schema: z.ZodType<ProjectFileV4> = z
   .object({
     schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
     projectId: entityId("project"),
@@ -472,6 +499,7 @@ const projectFileV3Schema: z.ZodType<ProjectFileV3> = z
     tools: z.array(toolDefinitionSchema),
     toolMocks: z.array(toolMockSchema),
     promptTemplates: z.array(promptTemplateSchema),
+    externalImports: z.array(externalImportReceiptSchema),
     defaults: z
       .object({
         conversationRevisionId: entityId("revision"),
@@ -487,7 +515,7 @@ const projectFileV3Schema: z.ZodType<ProjectFileV3> = z
       .strict(),
   })
   .strict()
-  .superRefine(validateProjectV3References);
+  .superRefine(validateProjectV4References);
 
 function addDuplicateIssues(
   values: string[],
@@ -516,8 +544,8 @@ function requireReference(
   if (!exists) context.addIssue({ code: "custom", path, message });
 }
 
-function validateProjectV2References(
-  project: ProjectFileV2,
+function validateSharedProjectReferences(
+  project: ProjectReferenceValidationShape,
   context: z.RefinementCtx,
 ): void {
   addDuplicateIssues(
@@ -703,14 +731,13 @@ function validateProjectV2References(
   });
 }
 
-function validateProjectV3References(
+function validateProjectV4References(
   project: ProjectFileV3,
   context: z.RefinementCtx,
 ): void {
-  validateProjectV2References(
+  validateSharedProjectReferences(
     {
       ...project,
-      schemaVersion: 2,
       conversationRevisions: project.conversationRevisions.map(
         ({ items, ...revision }) => ({
           ...revision,
@@ -726,6 +753,16 @@ function validateProjectV3References(
   const templates = new Map(
     project.promptTemplates.map((template) => [template.id, template]),
   );
+  addDuplicateIssues(
+    project.externalImports.map(({ id }) => id),
+    ["externalImports"],
+    context,
+  );
+  const externalImportIds = new Set(
+    project.externalImports.map(({ id }) => id),
+  );
+  const referencedExternalImportIds = new Set<ExternalImportId>();
+
   project.conversationRevisions.forEach((revision, revisionIndex) => {
     const itemPath = ["conversationRevisions", revisionIndex, "items"];
     addDuplicateIssues(
@@ -746,7 +783,18 @@ function validateProjectV3References(
     );
 
     revision.items.forEach((item, itemIndex) => {
-      if (item.kind === "message") return;
+      if (item.kind === "message") {
+        if (item.externalImportId) {
+          referencedExternalImportIds.add(item.externalImportId);
+          requireReference(
+            externalImportIds.has(item.externalImportId),
+            [...itemPath, itemIndex, "externalImportId"],
+            `Message references unknown external import "${item.externalImportId}".`,
+            context,
+          );
+        }
+        return;
+      }
       const path = [...itemPath, itemIndex, "use"];
       const template = templates.get(item.use.templateId);
       requireReference(
@@ -820,6 +868,16 @@ function validateProjectV3References(
       });
     });
   });
+
+  project.externalImports.forEach((receipt, receiptIndex) => {
+    if (!referencedExternalImportIds.has(receipt.id)) {
+      context.addIssue({
+        code: "custom",
+        path: ["externalImports", receiptIndex, "id"],
+        message: "External import receipts must be referenced by a message item.",
+      });
+    }
+  });
 }
 
 export class ProjectValidationError extends Error {
@@ -836,39 +894,9 @@ export class ProjectValidationError extends Error {
   }
 }
 
-function migrateProjectV2(project: ProjectFileV2): ProjectFileV3 {
-  return {
-    ...project,
-    schemaVersion: PROJECT_SCHEMA_VERSION,
-    conversationRevisions: project.conversationRevisions.map(
-      ({ messages, ...revision }) => ({
-        ...revision,
-        items: messages.map((message) => ({
-          kind: "message" as const,
-          message,
-        })),
-      }),
-    ),
-  };
-}
-
 export function parseProjectFile(value: unknown): ProjectFileV3 {
-  const version =
-    value && typeof value === "object" && "schemaVersion" in value
-      ? value.schemaVersion
-      : undefined;
-  const parsed =
-    version === 2
-      ? projectFileV2Schema.safeParse(value)
-      : projectFileV3Schema.safeParse(value);
+  const parsed = projectFileV4Schema.safeParse(value);
   if (!parsed.success) throw new ProjectValidationError(parsed.error.issues);
-  if (parsed.data.schemaVersion === 2) {
-    const migrated = projectFileV3Schema.safeParse(migrateProjectV2(parsed.data));
-    if (!migrated.success) {
-      throw new ProjectValidationError(migrated.error.issues);
-    }
-    return migrated.data;
-  }
   return parsed.data;
 }
 
@@ -883,6 +911,7 @@ const preferredFieldOrder = new Map(
     "tools",
     "toolMocks",
     "promptTemplates",
+    "externalImports",
     "defaults",
     "id",
     "provider",
@@ -894,6 +923,7 @@ const preferredFieldOrder = new Map(
     "items",
     "kind",
     "message",
+    "externalImportId",
     "use",
     "messages",
     "createdAt",
@@ -916,6 +946,18 @@ const preferredFieldOrder = new Map(
     "outputMessageIds",
     "fragmentRole",
     "variableDefaults",
+    "adapter",
+    "resource",
+    "execution",
+    "version",
+    "invocation",
+    "authored",
+    "bindings",
+    "importedAt",
+    "importerVersion",
+    "sourceDigest",
+    "fidelity",
+    "warnings",
     "conversationRevisionId",
     "target",
     "connectionRequirementId",
@@ -1294,10 +1336,21 @@ export function updateProjectDraft(
       }
       items = activeRevision.items;
     } else {
-      items = draft.messages.map((message) => ({
-        kind: "message" as const,
-        message,
-      }));
+      const externalImportByMessageId = new Map(
+        activeRevision.items.flatMap((item) =>
+          item.kind === "message" && item.externalImportId
+            ? [[item.message.id, item.externalImportId] as const]
+            : [],
+        ),
+      );
+      items = draft.messages.map((message) => {
+        const externalImportId = externalImportByMessageId.get(message.id);
+        return {
+          kind: "message" as const,
+          message,
+          ...(externalImportId ? { externalImportId } : {}),
+        };
+      });
     }
   }
   const conversationRevisions = [...project.conversationRevisions];
@@ -1305,11 +1358,23 @@ export function updateProjectDraft(
     ...activeRevision,
     items,
   };
+  const referencedExternalImportIds = new Set(
+    conversationRevisions.flatMap((revision) =>
+      revision.items.flatMap((item) =>
+        item.kind === "message" && item.externalImportId
+          ? [item.externalImportId]
+          : [],
+      ),
+    ),
+  );
   return parseProjectFile({
     ...project,
     tools: draft.tools,
     toolMocks: draft.toolMocks,
     conversationRevisions,
+    externalImports: project.externalImports.filter(({ id }) =>
+      referencedExternalImportIds.has(id),
+    ),
     defaults: {
       ...project.defaults,
       target: {
@@ -2153,6 +2218,7 @@ export function createProjectFile({
     tools: [],
     toolMocks: [],
     promptTemplates: [],
+    externalImports: [],
     defaults: {
       conversationRevisionId: revisionId,
       target: {

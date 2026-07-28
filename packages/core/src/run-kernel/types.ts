@@ -24,7 +24,8 @@ export type EntityIdKind =
   | "tool-result"
   | "template"
   | "template-revision"
-  | "template-use";
+  | "template-use"
+  | "external-import";
 
 export type EntityId<Kind extends EntityIdKind> = `${Kind}_${string}`;
 
@@ -45,6 +46,7 @@ export type ToolResultId = EntityId<"tool-result">;
 export type PromptTemplateId = EntityId<"template">;
 export type PromptTemplateRevisionId = EntityId<"template-revision">;
 export type PromptTemplateUseId = EntityId<"template-use">;
+export type ExternalImportId = EntityId<"external-import">;
 
 export function createEntityId<Kind extends EntityIdKind>(
   kind: Kind,
