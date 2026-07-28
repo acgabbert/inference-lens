@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 import type {
+  ExternalImportReceipt,
   ProjectTemplateDiagnostic,
   PromptTemplate,
   PromptTemplateContent,
@@ -503,6 +504,7 @@ interface TemplateUseCardProps {
   template: PromptTemplate;
   diagnostics: ProjectTemplateDiagnostic[];
   runOverrides: Readonly<Record<string, string>>;
+  importedFrom?: ExternalImportReceipt;
   onSaveValues(values: Record<string, string>): void;
   onRunOverridesChange(values: Record<string, string>): void;
   onUpdateLatest(): void;
@@ -510,17 +512,78 @@ interface TemplateUseCardProps {
   onRemove(): void;
 }
 
+function effectiveValueLabel(value: string): string {
+  return value.length ? value : "(empty)";
+}
+
+function importProvenanceLabel(receipt: ExternalImportReceipt): string {
+  const source = receipt.source.adapter.toLowerCase().includes("n8n")
+    ? "n8n"
+    : receipt.source.adapter;
+  const executionDate = new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(receipt.source.execution.executedAt));
+  return `Imported from ${source} · execution ${executionDate}`;
+}
+
+function TemplateContentPreview({
+  content,
+  values,
+  view,
+}: {
+  content: PromptTemplateContent;
+  values: Readonly<Record<string, string>>;
+  view: "template" | "resolved";
+}) {
+  const messages =
+    content.kind === "fragment"
+      ? [{ role: "user", content: content.text }]
+      : content.messages;
+  return (
+    <div className="template-content-preview" aria-label={`${view} template preview`}>
+      {messages.map((message, messageIndex) => (
+        <div className="template-preview-message" key={`${message.role}-${messageIndex}`}>
+          <span className="eyebrow">{message.role}</span>
+          <div className="template-preview-content">
+            {message.content.split(/(\{\{\s*[A-Za-z_][A-Za-z0-9_]*\s*\}\})/g).map((part, index) => {
+              const match = /^\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}$/.exec(part);
+              if (!match) return <span key={index}>{part}</span>;
+              const name = match[1]!;
+              const value = values[name];
+              const missing = value === undefined;
+              return (
+                <span
+                  className={`template-variable-chip${missing ? " missing" : ""}`}
+                  key={index}
+                  title={missing ? `${name} needs a value` : value}
+                >
+                  {view === "template" ? `{{${name}}}` : missing ? `{{${name}}}` : effectiveValueLabel(value)}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function TemplateUseCard({
   use,
   template,
   diagnostics,
   runOverrides,
+  importedFrom,
   onSaveValues,
   onRunOverridesChange,
   onUpdateLatest,
   onDetach,
   onRemove,
 }: TemplateUseCardProps) {
+  const [previewView, setPreviewView] = useState<"template" | "resolved">("template");
   const revision = template.revisions.find(({ id }) => id === use.templateRevisionId)!;
   const discovery = discoverTemplateVariables(revision.content);
   const effectiveValues = resolveTemplateValues(
@@ -553,7 +616,9 @@ export function TemplateUseCard({
         <div>
           <span className="eyebrow">Pinned template</span>
           <h3>{template.name}</h3>
-          <small>{revision.id}</small>
+          {importedFrom && (
+            <small>{importProvenanceLabel(importedFrom)}</small>
+          )}
         </div>
         <div className="template-use-actions">
           {newerRevision && (
@@ -580,6 +645,35 @@ export function TemplateUseCard({
         </div>
       ))}
 
+      <section className="template-use-preview">
+        <div className="template-preview-heading">
+          <span>Prompt preview</span>
+          <div className="template-preview-toggle" aria-label="Prompt preview mode">
+            <button
+              aria-pressed={previewView === "template"}
+              className={previewView === "template" ? "active" : ""}
+              onClick={() => setPreviewView("template")}
+              type="button"
+            >
+              Template
+            </button>
+            <button
+              aria-pressed={previewView === "resolved"}
+              className={previewView === "resolved" ? "active" : ""}
+              onClick={() => setPreviewView("resolved")}
+              type="button"
+            >
+              Resolved
+            </button>
+          </div>
+        </div>
+        <TemplateContentPreview
+          content={revision.content}
+          values={effectiveValues}
+          view={previewView}
+        />
+      </section>
+
       <div className="template-use-values">
         {discovery.variables.map((variable) => {
           const sensitive = isSensitiveTemplateVariableName(variable.name);
@@ -592,7 +686,7 @@ export function TemplateUseCard({
                 <code>{`{{${variable.name}}}`}</code>
                 <small>
                   Effective: {Object.hasOwn(effectiveValues, variable.name)
-                    ? JSON.stringify(effectiveValues[variable.name])
+                    ? effectiveValueLabel(effectiveValues[variable.name]!)
                     : "missing"}
                 </small>
               </div>

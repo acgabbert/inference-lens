@@ -432,7 +432,7 @@ test("projects authored expressions into deterministic native variables", async 
 
   assert.equal(canImportExternalPromptAsTemplate(candidate), true);
   assert.deepEqual(projectExternalPromptTemplate(candidate), {
-    name: "Fixture prompt",
+    name: "Fixture workflow — Fixture prompt",
     content: {
       kind: "fragment",
       text:
@@ -544,6 +544,31 @@ test("projects authored expressions into deterministic native variables", async 
     imported.templateRevisionId,
   );
   assert.equal(removedImportedRevision.externalImports.length, 0);
+});
+
+test("uses the last expression path segment when naming native variables", async () => {
+  const text = "Classify {{ $('Webhook').item.json.customer.email }}";
+  const expression = "{{ $('Webhook').item.json.customer.email }}";
+  const candidate = await createExternalPromptCandidate(
+    candidateEvidence({
+      authored: [{
+        path: "parameters.text",
+        role: "user",
+        syntax: "external-expression",
+        text,
+      }],
+      resolved: undefined,
+      fidelity: "authored-only",
+      bindings: [{
+        authoredPath: "parameters.text",
+        expression,
+        source: expressionSpan(text, expression),
+        status: "missing",
+      }],
+    }),
+  );
+
+  assert.equal(projectExternalPromptTemplate(candidate).variables[0]?.variableName, "email");
 });
 
 test("uses a captured string only when one complete expression is attributable", async () => {

@@ -156,7 +156,14 @@ function inferredVariableName(expression: string): string | undefined {
   const dot = /^\$json\.([A-Za-z_][A-Za-z0-9_]*)$/.exec(body)?.[1];
   const bracket =
     /^\$json\[\s*["']([A-Za-z_][A-Za-z0-9_]*)["']\s*\]$/.exec(body)?.[1];
-  const inferred = dot ?? bracket;
+  // n8n expressions often reach a value through another node or a nested
+  // object. The final property is still a useful, readable native variable
+  // name even when the complete expression cannot be represented natively.
+  const terminalProperty =
+    /(?:\.|\[\s*["'])([A-Za-z_][A-Za-z0-9_]*)["']?\s*\]?\s*$/.exec(
+      body,
+    )?.[1];
+  const inferred = dot ?? bracket ?? terminalProperty;
   return inferred && !isSensitiveTemplateVariableName(inferred)
     ? inferred
     : undefined;
@@ -293,7 +300,9 @@ export function projectExternalPromptTemplate(
   }
 
   return {
-    name: candidate.invocation.name,
+    name: candidate.source.resource.name
+      ? `${candidate.source.resource.name} — ${candidate.invocation.name}`
+      : candidate.invocation.name,
     content:
       messages.length === 1
         ? { kind: "fragment", text: messages[0]!.content }

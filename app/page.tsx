@@ -73,6 +73,7 @@ import type {
 } from "../packages/core/src/run-kernel";
 import { buildChatCompletionsRequest } from "../packages/core/src/openai-compatible";
 import { discoverTemplateVariables } from "../packages/core/src/template-engine";
+import { conversationMessageText } from "./conversation-display";
 import type { CredentialSelection } from "../packages/contracts/src";
 import {
   createInferenceTransport,
@@ -289,6 +290,11 @@ function HomeContent() {
   const [savedRunVersion, setSavedRunVersion] = useState(0);
   const [requestTab, setRequestTab] =
     useState<"messages" | "templates" | "tools">("messages");
+  const [importNotice, setImportNotice] = useState<{
+    name: string;
+    variableCount: number;
+    template: boolean;
+  }>();
   const [templateRunOverrides, setTemplateRunOverrides] =
     useState<TemplateRunOverrides>({});
   const [workbenchView, setWorkbenchView] =
@@ -580,6 +586,18 @@ function HomeContent() {
     setToolResultDrafts({});
     setRequestTab("messages");
     setWorkbenchView("request");
+    const receipt = imported.project.externalImports.find(
+      ({ id }) => id === imported.externalImportId,
+    );
+    const variableCount =
+      receipt?.projection.kind === "prompt-template"
+        ? receipt.projection.variables.length
+        : 0;
+    setImportNotice({
+      name: candidate.invocation.name,
+      variableCount,
+      template: mode === "reusable-template",
+    });
     setN8nImportOpen(false);
   }
 
@@ -1805,8 +1823,43 @@ function HomeContent() {
           </div>
         </div>
       )}
-      {(serverDefaultProfileNotice || originNotice.notice) && (
+      {(serverDefaultProfileNotice || originNotice.notice || importNotice) && (
         <div className="workbench-notices">
+          {importNotice && (
+            <div className="workbench-notice" role="status">
+              <div className="workbench-notice-copy">
+                <strong>
+                  Imported &ldquo;{importNotice.name}&rdquo;{importNotice.template ? " as a reusable template" : ""}
+                </strong>
+                <span>
+                  {importNotice.template
+                    ? `${importNotice.variableCount} ${importNotice.variableCount === 1 ? "variable was" : "variables were"} carried over from the saved execution.`
+                    : "The saved execution messages are now in the composer."}
+                </span>
+              </div>
+              <div className="workbench-notice-actions">
+                {importNotice.template && (
+                  <button
+                    className="button primary"
+                    type="button"
+                    onClick={() => {
+                      setRequestTab("templates");
+                      setImportNotice(undefined);
+                    }}
+                  >
+                    View template
+                  </button>
+                )}
+                <button
+                  className="button"
+                  type="button"
+                  onClick={() => setImportNotice(undefined)}
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
           {serverDefaultProfileNotice && (
             <div className="workbench-notice" role="status">
               <div className="workbench-notice-copy">
@@ -2062,6 +2115,11 @@ function HomeContent() {
                       ) ?? []
                     }
                     runOverrides={templateRunOverrides[item.use.id] ?? {}}
+                    importedFrom={projectFile?.externalImports.find(
+                      (receipt) =>
+                        receipt.projection.kind === "prompt-template" &&
+                        receipt.projection.templateRevisionId === item.use.templateRevisionId,
+                    )}
                     onSaveValues={(values) =>
                       updateTemplateUseValues(item.use.id, values)
                     }
@@ -2160,7 +2218,7 @@ function HomeContent() {
             })}
           </div>
           {requestPreview && (
-            <details className="request-preview" open>
+            <details className="request-preview">
               <summary>Resolved request preview</summary>
               {"error" in requestPreview ? (
                 <div className="template-diagnostic">{requestPreview.error}</div>
@@ -2172,9 +2230,18 @@ function HomeContent() {
                     </div>
                   )}
                   <h3>Resolved messages</h3>
-                  <pre>{JSON.stringify(requestPreview.messages, null, 2)}</pre>
-                  <h3>OpenAI-compatible request body</h3>
-                  <pre>{JSON.stringify(requestPreview.body, null, 2)}</pre>
+                  <div className="request-preview-messages">
+                    {requestPreview.messages.map((message, index) => (
+                      <article className="request-preview-message" key={`${message.role}-${index}`}>
+                        <span className="eyebrow">{message.role}</span>
+                        <pre>{conversationMessageText(message)}</pre>
+                      </article>
+                    ))}
+                  </div>
+                  <details className="request-preview-raw">
+                    <summary>Raw OpenAI-compatible request body</summary>
+                    <pre>{JSON.stringify(requestPreview.body, null, 2)}</pre>
+                  </details>
                 </>
               )}
             </details>

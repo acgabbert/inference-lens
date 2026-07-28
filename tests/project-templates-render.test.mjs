@@ -99,7 +99,9 @@ test("renders saved and run-only template use values distinctly", async () => {
 
   assert.match(html, /Saved value/);
   assert.match(html, /Run-only override/);
-  assert.match(html, /Effective: &quot;temporary&quot;/);
+  assert.match(html, /Effective: temporary/);
+  assert.match(html, /Prompt preview/);
+  assert.match(html, /template-variable-chip/);
   assert.match(html, /Clear override/);
 });
 
