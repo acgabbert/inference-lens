@@ -10,6 +10,9 @@ docker run --rm -p 127.0.0.1:3000:3000 \
   ghcr.io/acgabbert/inference-lens:latest
 ```
 
+Without a `/data` volume this is intentionally browser-local: reusable tool
+definitions are not persisted by the container.
+
 Open <http://localhost:3000> (or <http://127.0.0.1:3000>) in a browser. The
 published port is bound to `127.0.0.1`, so the workbench is not reachable from
 other machines on the network. Map another local port with
@@ -172,12 +175,21 @@ Compose builds the image locally. It requires a `.env` file:
 
 ```sh
 cp .env.example .env
+mkdir -p ./data
 docker compose up --build
 ```
 
 Set `INFERENCE_LENS_API_KEY` and point `INFERENCE_LENS_API_ENDPOINT` at the
 matching provider base URL, or leave both empty and enter a key in the UI. To
 use another local port, set `INFERENCE_LENS_PORT` in `.env`.
+
+Compose bind-mounts `./data` at `/data`, where the shared tool registry is
+stored as `tool-registry.json`. Compose will not create this host directory:
+the explicit `mkdir` above avoids a root-owned directory that the image's
+UID/GID 1000 process cannot write. To store it elsewhere, set
+`INFERENCE_LENS_DATA_DIR=/absolute/or/relative/path` before `docker compose up`.
+If the container reports that `/data` is unwritable, make that directory owned
+or writable by UID/GID 1000 (for example `sudo chown -R 1000:1000 ./data`).
 
 The Compose service is locked down beyond what `docker run` gives you: it runs
 as the non-root `node` user on a read-only filesystem (`/tmp` is a tmpfs) with
@@ -218,6 +230,13 @@ The service was reached under a DNS name rather than an address. See
 
 The service holds no key. Set both `INFERENCE_LENS_API_KEY` and
 `INFERENCE_LENS_API_ENDPOINT` and restart the container.
+
+**Shared tool library cannot save**
+
+Confirm that the configured data directory already exists and is writable by
+UID/GID 1000. A missing `/data` selects normal browser-local mode; a present
+but unwritable mount is shown in the library as a degraded shared-storage
+error.
 
 **The credential is bound to a different origin**
 

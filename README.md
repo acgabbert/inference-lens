@@ -71,6 +71,10 @@ JSON Schema object, so unsupported keywords are preserved. See
 [the tool registry design](docs/TOOL_REGISTRY.md) for snapshot and persistence
 semantics.
 
+In Compose, the registry is shared and persisted in `./data/tool-registry.json`.
+Create that directory before starting Compose; a plain `docker run` or source
+development server remains browser-local.
+
 ## Quick start
 
 No clone, no build, no configuration:
@@ -93,6 +97,7 @@ Inference Lens itself. It requires a `.env` file:
 
 ```sh
 cp .env.example .env
+mkdir -p ./data
 docker compose up --build
 ```
 

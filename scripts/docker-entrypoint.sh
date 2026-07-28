@@ -9,6 +9,17 @@ set -e
 
 PORT="${PORT:-3000}"
 
+if [ -d /data ] && [ ! -w /data ]; then
+  cat >&2 <<'BANNER'
+────────────────────────────────────────────────────────────────
+ Shared tool registry is mounted at /data but is not writable.
+ Make the host directory writable by container UID/GID 1000 (for example,
+ `sudo chown -R 1000:1000 ./data`) and restart when convenient.
+ The server will still start, but shared registry saves will fail.
+────────────────────────────────────────────────────────────────
+BANNER
+fi
+
 cat <<BANNER
 ────────────────────────────────────────────────────────────────
  Inference Lens

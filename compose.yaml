@@ -19,3 +19,9 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    volumes:
+      - type: bind
+        source: ${INFERENCE_LENS_DATA_DIR:-./data}
+        target: /data
+        bind:
+          create_host_path: false

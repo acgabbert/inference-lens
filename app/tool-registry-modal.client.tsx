@@ -10,13 +10,18 @@ import type {
   RegistryToolId,
   ToolRegistryV1,
 } from "../packages/core/src/tool-registry";
+import type { ToolRegistrySyncStatus } from "./tool-registry-store.client";
 import { ToolDefinitionEditor } from "./tool-definition-editor.client";
 import { randomUUID } from "../packages/core/src/random-id";
 
 interface ToolRegistryModalProps {
   open: boolean;
   registry: ToolRegistryV1;
+  syncStatus: ToolRegistrySyncStatus;
   onChange(registry: ToolRegistryV1): void;
+  onRetry(): void;
+  onUseServer(): void;
+  onOverwriteServer(): void;
   onAttachToProject(tool: RegistryTool): string | undefined;
   onAttachToRequest(tool: RegistryTool): string | undefined;
   onClose(): void;
@@ -25,7 +30,11 @@ interface ToolRegistryModalProps {
 export function ToolRegistryModal({
   open,
   registry,
+  syncStatus,
   onChange,
+  onRetry,
+  onUseServer,
+  onOverwriteServer,
   onAttachToProject,
   onAttachToRequest,
   onClose,
@@ -108,7 +117,7 @@ export function ToolRegistryModal({
 
   function removeSelected(): void {
     if (!selected) return;
-    if (!window.confirm(`Delete "${selected.name}" from the local tool library?`)) {
+    if (!window.confirm(`Delete "${selected.name}" from the tool library?`)) {
       return;
     }
     const tools = registry.tools.filter(({ id }) => id !== selected.id);
@@ -148,17 +157,33 @@ export function ToolRegistryModal({
       >
         <header className="registry-header">
           <div>
-            <span className="eyebrow">Local library</span>
-            <h2 id="tool-registry-title">Local tool library</h2>
+            <span className="eyebrow">Tool library</span>
+            <h2 id="tool-registry-title">Reusable tool library</h2>
             <p>
-              Saved locally for this app and reusable across projects. Nothing
-              is sent to a model until you copy or attach it.
+              {syncStatus.kind === "server" || syncStatus.kind === "saving"
+                ? "Shared through this Docker deployment and reusable across projects."
+                : "Saved in this browser and reusable across local projects."} Nothing is sent to a model until you copy or attach it.
             </p>
           </div>
           <button className="button secondary" type="button" onClick={onClose}>
             Close
           </button>
         </header>
+        {syncStatus.kind === "saving" && <div className="registry-notice">Saving shared library…</div>}
+        {syncStatus.kind === "degraded" && (
+          <div className="registry-error">
+            Shared library unavailable: {syncStatus.message}
+            <button className="button secondary" type="button" onClick={onRetry}>Retry</button>
+          </div>
+        )}
+        {syncStatus.kind === "conflict" && (
+          <div className="registry-error">
+            {syncStatus.message}
+            {syncStatus.toolIds.length > 0 && <span> Affected: {syncStatus.toolIds.join(", ")}.</span>}
+            <button className="button secondary" type="button" onClick={onUseServer}>Use server version</button>
+            <button className="button secondary" type="button" onClick={onOverwriteServer}>Overwrite server</button>
+          </div>
+        )}
         <div className="registry-workspace">
           <aside className="registry-sidebar">
             <button className="button primary" type="button" onClick={addTool}>

@@ -55,6 +55,10 @@ export interface ToolRegistryStore {
   ): Promise<ToolRegistrySnapshot>;
 }
 
+export type ToolRegistryMergeResult =
+  | { kind: "merged"; registry: ToolRegistryV1 }
+  | { kind: "conflict"; toolIds: RegistryToolId[] };
+
 const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
   z.union([
     z.null(),
@@ -248,6 +252,59 @@ function stableJsonValue(value: unknown): unknown {
 export function serializeToolRegistry(registry: ToolRegistryV1): string {
   const validated = parseToolRegistryFile(registry);
   return `${JSON.stringify(stableJsonValue(validated), null, 2)}\n`;
+}
+
+function structurallyEqual(left: unknown, right: unknown): boolean {
+  return JSON.stringify(stableJsonValue(left)) === JSON.stringify(stableJsonValue(right));
+}
+
+/**
+ * Merges registry edits without assigning meaning to a provider or persistence
+ * implementation. Remote ordering is retained; local-only additions follow it.
+ */
+export function mergeToolRegistries(
+  base: ToolRegistryV1,
+  local: ToolRegistryV1,
+  remote: ToolRegistryV1,
+): ToolRegistryMergeResult {
+  const validatedBase = parseToolRegistryFile(base);
+  const validatedLocal = parseToolRegistryFile(local);
+  const validatedRemote = parseToolRegistryFile(remote);
+  const baseById = new Map(validatedBase.tools.map((tool) => [tool.id, tool]));
+  const localById = new Map(validatedLocal.tools.map((tool) => [tool.id, tool]));
+  const remoteById = new Map(validatedRemote.tools.map((tool) => [tool.id, tool]));
+  const ids = new Set<RegistryToolId>([
+    ...baseById.keys(),
+    ...localById.keys(),
+    ...remoteById.keys(),
+  ]);
+  const chosen = new Map<RegistryToolId, RegistryTool | undefined>();
+  const conflicts: RegistryToolId[] = [];
+
+  for (const id of ids) {
+    const baseTool = baseById.get(id);
+    const localTool = localById.get(id);
+    const remoteTool = remoteById.get(id);
+    const localChanged = !structurallyEqual(baseTool, localTool);
+    const remoteChanged = !structurallyEqual(baseTool, remoteTool);
+
+    if (!localChanged) {
+      chosen.set(id, remoteTool);
+    } else if (!remoteChanged || structurallyEqual(localTool, remoteTool)) {
+      chosen.set(id, localTool);
+    } else {
+      conflicts.push(id);
+    }
+  }
+
+  if (conflicts.length) return { kind: "conflict", toolIds: conflicts };
+  const tools = validatedRemote.tools
+    .map((tool) => chosen.get(tool.id))
+    .filter((tool): tool is RegistryTool => tool !== undefined);
+  validatedLocal.tools.forEach((tool) => {
+    if (!remoteById.has(tool.id) && !baseById.has(tool.id)) tools.push(tool);
+  });
+  return { kind: "merged", registry: { schemaVersion: 1, tools } };
 }
 
 export function createRegistryTool(

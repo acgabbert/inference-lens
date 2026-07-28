@@ -97,9 +97,12 @@ import type {
   ToolRegistryV1,
 } from "../packages/core/src/tool-registry";
 import {
-  readToolRegistry,
-  writeToolRegistry,
+  loadToolRegistrySession,
+  overwriteServerToolRegistry,
+  saveToolRegistrySession,
+  restoreServerToolRegistry,
 } from "./tool-registry-store.client";
+import type { ToolRegistrySession, ToolRegistrySyncStatus } from "./tool-registry-store.client";
 import { ToolRegistryModal } from "./tool-registry-modal.client";
 import { ModelCombobox } from "./model-combobox.client";
 import { useModelDiscovery } from "./use-model-discovery.client";
@@ -272,6 +275,8 @@ function HomeContent() {
     emptyToolRegistry(),
   );
   const [toolRegistryLoaded, setToolRegistryLoaded] = useState(false);
+  const [toolRegistryStatus, setToolRegistryStatus] =
+    useState<ToolRegistrySyncStatus>({ kind: "local" });
   const [toolRegistryOpen, setToolRegistryOpen] = useState(false);
   const [confirmation, setConfirmation] =
     useState<ConfirmationDialogRequest>();
@@ -371,6 +376,8 @@ function HomeContent() {
   const [runState, setRunState] = useState<RunState | null>(null);
   const [isRequestActive, setIsRequestActive] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const toolRegistrySessionRef = useRef<ToolRegistrySession | null>(null);
+  const toolRegistrySaveChainRef = useRef<Promise<void>>(Promise.resolve());
   const coordinatorRef = useRef<RunCoordinator | null>(null);
   const runStateRef = useRef<RunState | null>(null);
   const requestGenerationRef = useRef(0);
@@ -469,11 +476,15 @@ function HomeContent() {
   }, [resetMessages]);
 
   useEffect(() => {
-    const registryId = window.setTimeout(() => {
-      setToolRegistry(readToolRegistry());
+    let cancelled = false;
+    void loadToolRegistrySession().then(({ session, status }) => {
+      if (cancelled) return;
+      toolRegistrySessionRef.current = session;
+      setToolRegistry(session.registry);
+      setToolRegistryStatus(status);
       setToolRegistryLoaded(true);
-    }, 0);
-    return () => window.clearTimeout(registryId);
+    });
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -493,10 +504,54 @@ function HomeContent() {
     );
   }, [markdownPreview, markdownPreviewLoaded]);
 
-  useEffect(() => {
-    if (!toolRegistryLoaded) return;
-    writeToolRegistry(toolRegistry);
-  }, [toolRegistry, toolRegistryLoaded]);
+  function saveToolRegistry(registry: ToolRegistryV1): void {
+    setToolRegistry(registry);
+    if (!toolRegistryLoaded || !toolRegistrySessionRef.current) return;
+    setToolRegistryStatus({ kind: "saving" });
+    toolRegistrySaveChainRef.current = toolRegistrySaveChainRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        const current = toolRegistrySessionRef.current;
+        if (!current) return;
+        const result = await saveToolRegistrySession(current, registry);
+        toolRegistrySessionRef.current = result.session;
+        setToolRegistry(result.session.registry);
+        setToolRegistryStatus(result.status);
+      });
+  }
+
+  function retryToolRegistry(): void {
+    const current = toolRegistrySessionRef.current;
+    if (!current) return;
+    setToolRegistryStatus({ kind: "saving" });
+    toolRegistrySaveChainRef.current = toolRegistrySaveChainRef.current.catch(() => undefined).then(async () => {
+      const result = await saveToolRegistrySession(current, current.registry);
+      toolRegistrySessionRef.current = result.session;
+      setToolRegistry(result.session.registry);
+      setToolRegistryStatus(result.status);
+    });
+  }
+
+  function useServerRegistry(): void {
+    const current = toolRegistrySessionRef.current;
+    if (!current) return;
+    void restoreServerToolRegistry(current).then((result) => {
+      toolRegistrySessionRef.current = result.session;
+      setToolRegistry(result.session.registry);
+      setToolRegistryStatus(result.status);
+    }).catch((error) => setToolRegistryStatus({ kind: "degraded", message: error instanceof Error ? error.message : "The shared library could not be loaded." }));
+  }
+
+  function overwriteServerRegistry(): void {
+    const current = toolRegistrySessionRef.current;
+    if (!current) return;
+    setToolRegistryStatus({ kind: "saving" });
+    void overwriteServerToolRegistry(current).then((result) => {
+      toolRegistrySessionRef.current = result.session;
+      setToolRegistry(result.session.registry);
+      setToolRegistryStatus(result.status);
+    }).catch((error) => setToolRegistryStatus({ kind: "degraded", message: error instanceof Error ? error.message : "The shared library could not be saved." }));
+  }
 
   const activeModel = sessionModel ?? activeProfile.model;
   const activeTemperature =
@@ -2199,7 +2254,11 @@ function HomeContent() {
         <ToolRegistryModal
           open
           registry={toolRegistry}
-          onChange={setToolRegistry}
+          syncStatus={toolRegistryStatus}
+          onChange={saveToolRegistry}
+          onRetry={retryToolRegistry}
+          onUseServer={useServerRegistry}
+          onOverwriteServer={overwriteServerRegistry}
           onAttachToProject={attachRegistryToolToProject}
           onAttachToRequest={attachRegistryToolToRequest}
           onClose={() => setToolRegistryOpen(false)}

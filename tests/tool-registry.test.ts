@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   createRegistryTool,
   emptyToolRegistry,
+  mergeToolRegistries,
   parseToolRegistry,
   parseToolRegistryFile,
   parseToolRegistryJson,
@@ -18,6 +19,22 @@ const createdAt = "2026-07-24T12:00:00.000Z";
 
 test("creates an empty versioned registry", () => {
   assert.deepEqual(emptyToolRegistry(), { schemaVersion: 1, tools: [] });
+});
+
+test("three-way registry merge preserves independent edits and reports same-tool conflicts", () => {
+  const first = createRegistryTool("registry-tool_first", createdAt, 0);
+  const second = createRegistryTool("registry-tool_second", createdAt, 1);
+  const base = { schemaVersion: 1 as const, tools: [first, second] };
+  const local = { schemaVersion: 1 as const, tools: [{ ...first, name: "local" }, second] };
+  const remote = { schemaVersion: 1 as const, tools: [first, { ...second, description: "remote" }] };
+  const merged = mergeToolRegistries(base, local, remote);
+  assert.deepEqual(merged, {
+    kind: "merged",
+    registry: { schemaVersion: 1, tools: [{ ...first, name: "local" }, { ...second, description: "remote" }] },
+  });
+
+  const conflict = mergeToolRegistries(base, { schemaVersion: 1, tools: [{ ...first, name: "local" }] }, { schemaVersion: 1, tools: [{ ...first, name: "remote" }] });
+  assert.deepEqual(conflict, { kind: "conflict", toolIds: ["registry-tool_first"] });
 });
 
 test("parses valid registry tools and rejects an invalid registry atomically", () => {
