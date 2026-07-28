@@ -483,7 +483,9 @@ function canonicalJsonValue(value: unknown): unknown {
   if (!value || typeof value !== "object") return value;
   return Object.fromEntries(
     Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
+      // Digests cross runtimes and machines, so ordering must not depend on
+      // locale or the ICU data bundled with the current JavaScript engine.
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
       .map(([key, item]) => [key, canonicalJsonValue(item)]),
   );
 }

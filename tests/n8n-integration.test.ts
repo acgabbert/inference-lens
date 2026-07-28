@@ -202,6 +202,14 @@ test("fetches selected execution detail lazily but returns only its safe normali
   const requests: string[] = [];
   const fetchImplementation: typeof fetch = async (input) => {
     requests.push(input.toString());
+    if (input.toString().includes("/workflows/workflow_1")) {
+      return jsonResponse({
+        id: "workflow_1",
+        name: "Current workflow",
+        nodes: [],
+        connections: {},
+      });
+    }
     return jsonResponse({
       id: "execution_1",
       workflowId: "workflow_1",
@@ -244,12 +252,65 @@ test("fetches selected execution detail lazily but returns only its safe normali
       stoppedAt: "2026-07-28T12:00:01.000Z",
     },
     detailAvailable: true,
+    discovery: {
+      status: "no-supported-invocations",
+      message:
+        "This workflow contains no AI invocation supported by this importer.",
+    },
     extractions: [],
   });
   assert.deepEqual(requests, [
     "https://n8n.example.test/automation/api/v1/executions/execution_1?includeData=true",
+    "https://n8n.example.test/automation/api/v1/workflows/workflow_1",
   ]);
   assert.doesNotMatch(text, /private prompt|credentials|n8n-secret/);
+});
+
+test("reports incompatible saved and current workflow snapshots explicitly", async () => {
+  const fetchImplementation: typeof fetch = async (input) => {
+    if (input.toString().includes("/workflows/workflow_1")) {
+      return jsonResponse({
+        id: "workflow_1",
+        name: "Changed workflow",
+        nodes: [{}],
+        connections: {},
+      });
+    }
+    return jsonResponse({
+      id: "execution_1",
+      workflowId: "workflow_1",
+      status: "success",
+      data: { workflowData: { nodes: "changed shape" } },
+    });
+  };
+  const response = await handleN8nExecutionDetailRequest(
+    sameOriginRequest("/api/integrations/n8n/execution-detail", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        workflowId: "workflow_1",
+        executionId: "execution_1",
+      }),
+    }),
+    configuredEnvironment,
+    undefined,
+    fetchImplementation,
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    execution: {
+      id: "execution_1",
+      workflowId: "workflow_1",
+      status: "success",
+    },
+    detailAvailable: true,
+    discovery: {
+      status: "workflow-incompatible",
+      message:
+        "The saved and current workflow snapshots are not compatible with this importer.",
+    },
+    extractions: [],
+  });
 });
 
 test("accepts the redacted Phase 0 workflow and execution detail fixtures", async () => {
@@ -392,6 +453,11 @@ test("reports unavailable retained data with current authored workflow fallback 
       status: "error",
     },
     detailAvailable: false,
+    discovery: {
+      status: "no-supported-invocations",
+      message:
+        "This workflow contains no AI invocation supported by this importer.",
+    },
     extractions: [],
   });
 

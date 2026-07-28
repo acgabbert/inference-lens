@@ -6,7 +6,10 @@ import {
   WorkbenchRequestError,
 } from "./request-security.ts";
 import type { WorkbenchRequestPolicy } from "./request-security.ts";
-import { extractN8nPromptCandidates } from "./n8n-prompt-extractors.ts";
+import {
+  extractN8nPromptCandidates,
+  parseN8nWorkflowSnapshot,
+} from "./n8n-prompt-extractors.ts";
 import type { N8nPromptExtraction } from "./n8n-prompt-extractors.ts";
 
 export const N8N_BASE_URL_VARIABLE = "INFERENCE_LENS_N8N_BASE_URL";
@@ -545,6 +548,12 @@ export class N8nClient {
 export interface N8nSelectedExecution {
   execution: N8nExecutionSummary;
   detailAvailable: boolean;
+  discovery:
+    | { status: "ready" }
+    | {
+        status: "no-supported-invocations" | "workflow-incompatible";
+        message: string;
+      };
   extractions: N8nPromptExtraction[];
 }
 
@@ -564,18 +573,42 @@ export async function loadN8nSelectedExecution(
   }
   const detailAvailable = detail.data !== undefined && detail.data !== null;
   const data = detail.data;
-  const hasExecutionWorkflowSnapshot =
+  const executionWorkflowSnapshot =
     data !== null &&
     typeof data === "object" &&
     !Array.isArray(data) &&
-    "workflowData" in data;
-  const currentWorkflow = hasExecutionWorkflowSnapshot
+    "workflowData" in data
+      ? parseN8nWorkflowSnapshot(data.workflowData)
+      : undefined;
+  const currentWorkflow = executionWorkflowSnapshot
     ? undefined
     : await client.getWorkflow(safeWorkflowId, signal);
+  const currentWorkflowSnapshot = currentWorkflow
+    ? parseN8nWorkflowSnapshot(currentWorkflow)
+    : undefined;
+  const extractions = await extractN8nPromptCandidates(
+    detail,
+    currentWorkflow,
+  );
+  const discovery: N8nSelectedExecution["discovery"] =
+    !executionWorkflowSnapshot && !currentWorkflowSnapshot
+      ? {
+          status: "workflow-incompatible",
+          message:
+            "The saved and current workflow snapshots are not compatible with this importer.",
+        }
+      : extractions.length === 0
+        ? {
+            status: "no-supported-invocations",
+            message:
+              "This workflow contains no AI invocation supported by this importer.",
+          }
+        : { status: "ready" };
   return {
     execution: executionSummary(detail),
     detailAvailable,
-    extractions: await extractN8nPromptCandidates(detail, currentWorkflow),
+    discovery,
+    extractions,
   };
 }
 

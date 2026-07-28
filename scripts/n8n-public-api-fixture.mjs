@@ -19,6 +19,22 @@ const [workflow, execution] = await Promise.all(
   ),
 );
 
+// The committed capture deliberately contains two parent items whose model
+// sub-runs cannot be associated safely. Keep that fail-closed evidence intact,
+// but serve one deterministic item from the development API fixture so the
+// import review UI also has an execution-backed happy path to verify.
+const runData = execution?.data?.resultData?.runData;
+const compoundRuns = runData?.["Compound prompt cases"];
+const modelRuns = runData?.["Fixture OpenAI Chat Model"];
+if (
+  Array.isArray(compoundRuns) &&
+  Array.isArray(compoundRuns[0]?.data?.main?.[0]) &&
+  Array.isArray(modelRuns)
+) {
+  compoundRuns[0].data.main[0] = compoundRuns[0].data.main[0].slice(0, 1);
+  runData["Fixture OpenAI Chat Model"] = modelRuns.slice(0, 1);
+}
+
 function sendJson(response, status, value) {
   const body = JSON.stringify(value);
   response.writeHead(status, {

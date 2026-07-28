@@ -97,7 +97,9 @@ function parseNode(value: unknown): N8nNodeSnapshot | undefined {
   };
 }
 
-function parseWorkflowSnapshot(value: unknown): N8nWorkflowSnapshot | undefined {
+export function parseN8nWorkflowSnapshot(
+  value: unknown,
+): N8nWorkflowSnapshot | undefined {
   if (!isRecord(value)) return undefined;
   if (
     typeof value.id !== "string" ||
@@ -121,13 +123,13 @@ function executionWorkflowSnapshot(
   execution: N8nExecutionDetail,
 ): N8nWorkflowSnapshot | undefined {
   if (!isRecord(execution.data)) return undefined;
-  return parseWorkflowSnapshot(execution.data.workflowData);
+  return parseN8nWorkflowSnapshot(execution.data.workflowData);
 }
 
 function currentWorkflowSnapshot(
   workflow: N8nWorkflowDetail,
 ): N8nWorkflowSnapshot | undefined {
-  return parseWorkflowSnapshot(workflow);
+  return parseN8nWorkflowSnapshot(workflow);
 }
 
 function invocationFor(

@@ -48,6 +48,12 @@ import {
   parseRunTraceJson,
   runStateFromTrace,
 } from "../packages/core/src/run-trace";
+import {
+  importExternalPromptCandidate,
+} from "../packages/core/src/external-prompt-project.ts";
+import type {
+  ExternalPromptCandidate,
+} from "../packages/core/src/external-prompt-import.ts";
 import type {
   ProviderExecution,
   RunState,
@@ -101,6 +107,7 @@ import {
   writeToolRegistry,
 } from "./tool-registry-store.client";
 import { ToolRegistryModal } from "./tool-registry-modal.client";
+import { N8nImportModal } from "./n8n-import-modal.client";
 import { ModelCombobox } from "./model-combobox.client";
 import { useModelDiscovery } from "./use-model-discovery.client";
 import { useConnectionProfiles } from "./use-connection-profiles.client";
@@ -273,6 +280,7 @@ function HomeContent() {
   );
   const [toolRegistryLoaded, setToolRegistryLoaded] = useState(false);
   const [toolRegistryOpen, setToolRegistryOpen] = useState(false);
+  const [n8nImportOpen, setN8nImportOpen] = useState(false);
   const [confirmation, setConfirmation] =
     useState<ConfirmationDialogRequest>();
   const [connectionDrawerOpen, setConnectionDrawerOpen] = useState(false);
@@ -550,6 +558,23 @@ function HomeContent() {
     replaceProjectDraft(projectDraft(next, overrides));
   }
 
+  async function importN8nPrompt(
+    candidate: ExternalPromptCandidate,
+  ): Promise<void> {
+    const imported = await importExternalPromptCandidate(
+      ensureProjectDocument(),
+      candidate,
+    );
+    project.adoptProjectMutation(imported.project);
+    replaceProjectDraft(projectDraft(imported.project));
+    setTemplateRunOverrides({});
+    setBranchContext(null);
+    setToolResultDrafts({});
+    setRequestTab("messages");
+    setWorkbenchView("request");
+    setN8nImportOpen(false);
+  }
+
   function projectForUseMutation(): {
     project: ReturnType<typeof ensureProjectDocument>;
     revisionId: ConversationRevisionId;
@@ -821,10 +846,10 @@ function HomeContent() {
           message.role === "tool" ||
           (message.role === "assistant" && message.toolCalls?.length)
         ) {
-          return { kind: "message", message: { ...message, content } };
+          return { ...item, message: { ...message, content } };
         }
         return {
-          kind: "message",
+          ...item,
           message: {
             id: message.id,
             role: patch.role ?? message.role,
@@ -1715,6 +1740,13 @@ function HomeContent() {
         hasRunTrace={runReachedTerminalStatus}
         hasProjectWorkspace={Boolean(projectWorkspace)}
         runHistoryBlocked={Boolean(runState) && !runReachedTerminalStatus}
+        n8nImportDisabledReason={
+          branchContext
+            ? "Finish or discard the pending branch before importing a prompt."
+            : Boolean(runState) && !runReachedTerminalStatus
+              ? "Finish or stop the current run before importing a prompt."
+              : undefined
+        }
         isRequestActive={isRequestActive}
         awaitingToolResults={runState?.status.kind === "awaiting_tool_results"}
         retryableFailure={
@@ -1729,6 +1761,7 @@ function HomeContent() {
         onOpenProject={() => void project.openProjectWorkspace()}
         onSaveProject={() => void project.saveProject()}
         onImportProject={(event) => void project.importProject(event)}
+        onOpenN8nImport={() => setN8nImportOpen(true)}
         onExportProject={project.exportProject}
         onOpenToolLibrary={() => setToolRegistryOpen(true)}
         onDownloadDiagnostics={downloadDiagnostics}
@@ -2036,6 +2069,11 @@ function HomeContent() {
                 );
               }
               const message = item.message;
+              const importReceipt = item.externalImportId
+                ? projectFile?.externalImports.find(
+                    ({ id }) => id === item.externalImportId,
+                  )
+                : undefined;
               const roleIsStructural =
                 message.role === "tool" ||
                 (message.role === "assistant" && Boolean(message.toolCalls?.length));
@@ -2061,6 +2099,16 @@ function HomeContent() {
                     <option value="assistant">Assistant</option>
                     <option value="tool">Tool</option>
                   </select>
+                  {importReceipt && (
+                    <span
+                      className="message-import-provenance"
+                      title={`Imported from ${importReceipt.source.adapter} execution ${importReceipt.source.execution?.id ?? "unavailable"} with ${importReceipt.fidelity.replaceAll("-", " ")} fidelity.`}
+                    >
+                      Imported from {importReceipt.source.adapter}
+                      {" · "}
+                      {importReceipt.fidelity.replaceAll("-", " ")}
+                    </span>
+                  )}
                   <button
                     aria-label={`Remove message ${index + 1}`}
                     className="remove-button"
@@ -2203,6 +2251,13 @@ function HomeContent() {
           onAttachToProject={attachRegistryToolToProject}
           onAttachToRequest={attachRegistryToolToRequest}
           onClose={() => setToolRegistryOpen(false)}
+        />
+      )}
+      {n8nImportOpen && (
+        <N8nImportModal
+          open
+          onClose={() => setN8nImportOpen(false)}
+          onImport={importN8nPrompt}
         />
       )}
       {confirmation && (
