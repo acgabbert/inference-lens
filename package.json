@@ -12,6 +12,7 @@
     "dev:flaky-provider": "node scripts/flaky-openai-provider.mjs",
     "dev:paced-provider": "node scripts/paced-openai-provider.mjs",
     "dev:echo-provider": "node scripts/echo-openai-provider.mjs",
+    "dev:n8n-api-fixture": "node scripts/n8n-public-api-fixture.mjs",
     "dev:n8n-echo-provider": "node scripts/n8n-echo-provider.mjs",
     "dev:markdown-provider": "node scripts/markdown-openai-provider.mjs",
     "dev:reasoning-provider": "node scripts/reasoning-openai-provider.mjs",
