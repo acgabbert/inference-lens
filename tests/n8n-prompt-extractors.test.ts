@@ -5,7 +5,11 @@ import test from "node:test";
 
 import { parseExternalPromptCandidate } from "../packages/core/src/external-prompt-import.ts";
 import {
+  projectExternalPromptTemplate,
+} from "../packages/core/src/external-prompt-project.ts";
+import {
   extractN8nPromptCandidates,
+  scanN8nExpressionRegions,
   type N8nExecutionDetail,
   type N8nWorkflowDetail,
 } from "../services/api/src/index.ts";
@@ -66,6 +70,20 @@ test("the fixture-proven multi-item Basic LLM Chain fails closed with authored p
     "multiple-input-items",
   );
   assert.doesNotThrow(() => parseExternalPromptCandidate(compound.candidate));
+  const projection = projectExternalPromptTemplate(compound.candidate);
+  assert.equal(projection.content.kind, "fragment");
+  assert.equal(
+    projection.content.kind === "fragment"
+      ? projection.content.text
+      : undefined,
+    "IL_P0_LITERAL\n" +
+      "simple={{topic}}\n" +
+      "two={{first}}|{{second}}\n" +
+      "compound={{expression_1}}\n" +
+      "nested={{expression_2}}\n" +
+      "repeated={{first}}|{{repeat}}",
+  );
+  assert.deepEqual(projection.values, {});
 });
 
 test("a single-item Basic LLM Chain produces a validated reconstructed user message", async () => {
@@ -106,24 +124,67 @@ test("a single-item Basic LLM Chain produces a validated reconstructed user mess
     model: "template-echo-model",
     options: { temperature: 0 },
   });
-  assert.deepEqual(compound.candidate.bindings, [
-    {
-      authoredPath: "parameters.text",
-      expression: compound.candidate.authored[0]!.text,
-      source: { kind: "whole-field" },
-      resolvedValue: compound.candidate.resolved?.messages[0]?.content,
-      status: "resolved",
-      valueEvidence: {
-        kind: "saved-parameter-value",
-        path:
-          'data.resultData.runData["Fixture OpenAI Chat Model"]' +
-          "[0].inputOverride.ai_languageModel[0][0].json.messages[0]",
+  assert.deepEqual(
+    compound.candidate.bindings.map(({ expression, status }) => ({
+      expression,
+      status,
+    })),
+    [
+      { expression: "{{ $json.topic }}", status: "missing" },
+      { expression: "{{ $json.first }}", status: "missing" },
+      { expression: "{{ $json.second }}", status: "missing" },
+      {
+        expression:
+          "{{\n" +
+          "  [$json.topic, $json.second]\n" +
+          "    .map((value) => `${value}`)\n" +
+          '    .join("::")\n' +
+          "}}",
+        status: "missing",
       },
-    },
-  ]);
+      {
+        expression:
+          "{{ `value:${JSON.stringify({ inner: $json.topic })}` }}",
+        status: "missing",
+      },
+      { expression: "{{ $json.first }}", status: "missing" },
+      { expression: "{{ $json.repeat }}", status: "missing" },
+    ],
+  );
   assert.equal(compound.candidate.invocation.runIndex, 0);
   assert.equal(compound.candidate.invocation.itemIndex, 0);
   assert.doesNotThrow(() => parseExternalPromptCandidate(compound.candidate));
+});
+
+test("scans fixture-backed n8n expression regions without evaluating JavaScript", async () => {
+  const fixture = JSON.parse(
+    await readFile(
+      path.resolve(
+        import.meta.dirname,
+        "fixtures/n8n/parser-cases/expression-regions.json",
+      ),
+      "utf8",
+    ),
+  ) as {
+    cases: Array<{
+      authored: string;
+      expressions: string[];
+      invalid?: boolean;
+    }>;
+  };
+  for (const parserCase of fixture.cases) {
+    const scan = scanN8nExpressionRegions({
+      path: "parameters.text",
+      role: "user",
+      syntax: "external-expression",
+      text: parserCase.authored,
+    });
+    assert.equal(scan.invalid, parserCase.invalid ?? false);
+    assert.deepEqual(
+      scan.bindings.map(({ expression }) => expression),
+      parserCase.expressions,
+    );
+  }
 });
 
 test("missing model evidence degrades to authored-only instead of inferring from parent output", async () => {

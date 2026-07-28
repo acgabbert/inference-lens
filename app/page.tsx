@@ -50,6 +50,7 @@ import {
 } from "../packages/core/src/run-trace";
 import {
   importExternalPromptCandidate,
+  importExternalPromptTemplateCandidate,
 } from "../packages/core/src/external-prompt-project.ts";
 import type {
   ExternalPromptCandidate,
@@ -560,11 +561,18 @@ function HomeContent() {
 
   async function importN8nPrompt(
     candidate: ExternalPromptCandidate,
+    mode: "resolved-snapshot" | "reusable-template",
   ): Promise<void> {
-    const imported = await importExternalPromptCandidate(
-      ensureProjectDocument(),
-      candidate,
-    );
+    const imported =
+      mode === "reusable-template"
+        ? await importExternalPromptTemplateCandidate(
+            ensureProjectDocument(),
+            candidate,
+          )
+        : await importExternalPromptCandidate(
+            ensureProjectDocument(),
+            candidate,
+          );
     project.adoptProjectMutation(imported.project);
     replaceProjectDraft(projectDraft(imported.project));
     setTemplateRunOverrides({});

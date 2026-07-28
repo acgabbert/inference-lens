@@ -46,6 +46,15 @@ export interface AuthoredPromptField {
   role?: "system" | "user" | "assistant";
   syntax: "literal" | "external-expression";
   text: string;
+  /**
+   * The UTF-16 source range that represents the authored value projected into
+   * a provider-neutral template. Adapter syntax outside this range remains
+   * durable evidence but is not copied into native template content.
+   */
+  contentSpan?: {
+    startOffset: number;
+    endOffset: number;
+  };
 }
 
 export type BindingValueEvidence =
@@ -212,8 +221,28 @@ export const authoredPromptFieldSchema: z.ZodType<AuthoredPromptField> = z
     role: z.enum(["system", "user", "assistant"]).optional(),
     syntax: z.enum(["literal", "external-expression"]),
     text: z.string(),
+    contentSpan: z
+      .object({
+        startOffset: z.number().int().nonnegative(),
+        endOffset: z.number().int().nonnegative(),
+      })
+      .strict()
+      .optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((field, context) => {
+    if (
+      field.contentSpan &&
+      (field.contentSpan.endOffset < field.contentSpan.startOffset ||
+        field.contentSpan.endOffset > field.text.length)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["contentSpan"],
+        message: "Authored content span is outside the source field.",
+      });
+    }
+  });
 
 export const expressionBindingSchema: z.ZodType<ExpressionBinding> = z
   .object({
@@ -367,6 +396,15 @@ export function validateAuthoredPromptBindings(
         code: "custom",
         path: ["bindings", index, "expression"],
         message: "Expression text does not match its UTF-16 authored span.",
+      });
+    }
+    const contentStart = field.contentSpan?.startOffset ?? 0;
+    const contentEnd = field.contentSpan?.endOffset ?? field.text.length;
+    if (startOffset < contentStart || endOffset > contentEnd) {
+      context.addIssue({
+        code: "custom",
+        path: ["bindings", index, "source"],
+        message: "Expression span is outside the authored content span.",
       });
     }
     const spans = spansByPath.get(binding.authoredPath) ?? [];

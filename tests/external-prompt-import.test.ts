@@ -10,13 +10,19 @@ import type {
   ExternalPromptCandidateEvidence,
 } from "../packages/core/src/external-prompt-import.ts";
 import {
+  canImportExternalPromptAsTemplate,
   importExternalPromptCandidate,
+  importExternalPromptTemplateCandidate,
+  projectExternalPromptTemplate,
 } from "../packages/core/src/external-prompt-project.ts";
 import {
+  appendPromptTemplateRevision,
   createProjectFile,
   parseProjectFile,
   parseProjectJson,
   projectDraft,
+  removePromptTemplateRevision,
+  removePromptTemplateUse,
   serializeProjectFile,
   updateProjectDraft,
 } from "../packages/core/src/project.ts";
@@ -219,6 +225,9 @@ test("projects resolved snapshots into literal messages with durable receipts", 
     imported.project.externalImports[0]?.authored[0]?.text,
     "={{ customer_prompt }}",
   );
+  assert.deepEqual(imported.project.externalImports[0]?.projection, {
+    kind: "literal-messages",
+  });
   const revision = imported.project.conversationRevisions.at(-1);
   assert.equal(revision?.parentRevisionId, originalRevisionId);
   assert.equal(revision?.items[0]?.kind, "message");
@@ -357,6 +366,221 @@ test("rejects tampered candidates and dangling or orphaned receipts", async () =
           }),
         ),
       }),
-    /must be referenced by a message item/,
+    /must be referenced by imported project content/,
   );
+});
+
+function expressionSpan(text: string, expression: string, from = 0) {
+  const startOffset = text.indexOf(expression, from);
+  assert.notEqual(startOffset, -1);
+  return {
+    kind: "expression-span" as const,
+    startOffset,
+    endOffset: startOffset + expression.length,
+  };
+}
+
+test("projects authored expressions into deterministic native variables", async () => {
+  const text =
+    "=Explain {{ $json.topic }} / {{ $json.topic }} / " +
+    "{{ $json['topic'] }} / {{ [$json.first].join(',') }}";
+  const first = "{{ $json.topic }}";
+  const repeatedStart = text.indexOf(first) + first.length;
+  const bracket = "{{ $json['topic'] }}";
+  const compound = "{{ [$json.first].join(',') }}";
+  const candidate = await createExternalPromptCandidate(
+    candidateEvidence({
+      authored: [
+        {
+          path: "parameters.text",
+          role: "user",
+          syntax: "external-expression",
+          text,
+          contentSpan: { startOffset: 1, endOffset: text.length },
+        },
+      ],
+      resolved: undefined,
+      fidelity: "authored-only",
+      bindings: [
+        {
+          authoredPath: "parameters.text",
+          expression: first,
+          source: expressionSpan(text, first),
+          status: "missing",
+        },
+        {
+          authoredPath: "parameters.text",
+          expression: first,
+          source: expressionSpan(text, first, repeatedStart),
+          status: "missing",
+        },
+        {
+          authoredPath: "parameters.text",
+          expression: bracket,
+          source: expressionSpan(text, bracket),
+          status: "missing",
+        },
+        {
+          authoredPath: "parameters.text",
+          expression: compound,
+          source: expressionSpan(text, compound),
+          status: "missing",
+        },
+      ],
+    }),
+  );
+
+  assert.equal(canImportExternalPromptAsTemplate(candidate), true);
+  assert.deepEqual(projectExternalPromptTemplate(candidate), {
+    name: "Fixture prompt",
+    content: {
+      kind: "fragment",
+      text:
+        "Explain {{topic}} / {{topic}} / {{topic_2}} / {{expression_1}}",
+    },
+    values: {},
+    variables: [
+      {
+        bindingIndex: 0,
+        authoredPath: "parameters.text",
+        expression: first,
+        variableName: "topic",
+      },
+      {
+        bindingIndex: 1,
+        authoredPath: "parameters.text",
+        expression: first,
+        variableName: "topic",
+      },
+      {
+        bindingIndex: 2,
+        authoredPath: "parameters.text",
+        expression: bracket,
+        variableName: "topic_2",
+      },
+      {
+        bindingIndex: 3,
+        authoredPath: "parameters.text",
+        expression: compound,
+        variableName: "expression_1",
+      },
+    ],
+  });
+
+  const imported = await importExternalPromptTemplateCandidate(
+    project(),
+    candidate,
+    { importedAt },
+  );
+  const template = imported.project.promptTemplates.at(-1)!;
+  const revision = template.revisions[0]!;
+  assert.equal(revision.externalImportId, imported.externalImportId);
+  assert.equal(revision.content.kind, "fragment");
+  assert.deepEqual(
+    imported.project.externalImports.at(-1)?.projection,
+    {
+      kind: "prompt-template",
+      templateId: imported.templateId,
+      templateRevisionId: imported.templateRevisionId,
+      variables: projectExternalPromptTemplate(candidate).variables,
+    },
+  );
+  assert.equal(
+    imported.project.conversationRevisions.at(-1)?.items[0]?.kind,
+    "template-use",
+  );
+  assert.throws(
+    () =>
+      parseProjectFile({
+        ...imported.project,
+        promptTemplates: imported.project.promptTemplates.map((item) =>
+          item.id === imported.templateId
+            ? {
+                ...item,
+                revisions: item.revisions.map((itemRevision) =>
+                  itemRevision.id === imported.templateRevisionId
+                    ? {
+                        ...itemRevision,
+                        content: {
+                          kind: "fragment" as const,
+                          text: "Tampered {{topic}}",
+                        },
+                      }
+                    : itemRevision,
+                ),
+              }
+            : item,
+        ),
+      }),
+    /does not reproduce its anchored revision/,
+  );
+  assert.deepEqual(projectDraft(imported.project).templateDiagnostics.map(
+    ({ diagnostic }) => diagnostic.code,
+  ), [
+    "missing-template-variable",
+    "missing-template-variable",
+    "missing-template-variable",
+  ]);
+
+  const withoutUse = removePromptTemplateUse(
+    imported.project,
+    imported.conversationRevisionId,
+    imported.templateUseId,
+  );
+  assert.equal(withoutUse.externalImports.length, 1);
+  const revised = appendPromptTemplateRevision(withoutUse, {
+    templateId: imported.templateId,
+    content: { kind: "fragment", text: "Edited {{topic}}" },
+    idSuffix: "edited-import",
+    createdAt: "2026-07-28T18:10:00.000Z",
+  });
+  assert.equal(
+    revised.promptTemplates.at(-1)?.revisions.at(-1)?.externalImportId,
+    undefined,
+  );
+  const removedImportedRevision = removePromptTemplateRevision(
+    revised,
+    imported.templateId,
+    imported.templateRevisionId,
+  );
+  assert.equal(removedImportedRevision.externalImports.length, 0);
+});
+
+test("uses a captured string only when one complete expression is attributable", async () => {
+  const candidate = await createExternalPromptCandidate(
+    candidateEvidence({
+      authored: [
+        {
+          path: "parameters.text",
+          role: "user",
+          syntax: "external-expression",
+          text: "={{ $json.topic }}",
+          contentSpan: { startOffset: 1, endOffset: 18 },
+        },
+      ],
+      bindings: [
+        {
+          authoredPath: "parameters.text",
+          expression: "{{ $json.topic }}",
+          source: {
+            kind: "expression-span",
+            startOffset: 1,
+            endOffset: 18,
+          },
+          resolvedValue: "Captured topic",
+          status: "resolved",
+          valueEvidence: {
+            kind: "saved-parameter-value",
+            path: "execution.prompt",
+          },
+        },
+      ],
+    }),
+  );
+  const projection = projectExternalPromptTemplate(candidate);
+  assert.deepEqual(projection.content, {
+    kind: "fragment",
+    text: "{{topic}}",
+  });
+  assert.deepEqual(projection.values, { topic: "Captured topic" });
 });

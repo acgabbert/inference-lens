@@ -35,6 +35,7 @@ test("renders a focused and safe n8n import workspace shell", async () => {
   const html = await renderImportModal();
   assert.match(html, /role="dialog"/);
   assert.match(html, /Import from n8n/);
+  assert.match(html, /resolved snapshot or a reusable native template/);
   assert.match(html, /Checking n8n integration/);
   assert.doesNotMatch(html, /undefined|NaN|Infinity/);
   assert.doesNotMatch(html, /api.?key.?[:=].+fixture/i);

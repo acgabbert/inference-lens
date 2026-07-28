@@ -152,12 +152,169 @@ function invocationFor(
 function authoredField(node: N8nNodeSnapshot): AuthoredPromptField | undefined {
   const text = node.parameters.text;
   if (typeof text !== "string") return undefined;
+  const externalExpression = text.startsWith("=");
   return {
     path: AUTHORED_TEXT_PATH,
     role: "user",
-    syntax: text.startsWith("=") ? "external-expression" : "literal",
+    syntax: externalExpression ? "external-expression" : "literal",
     text,
+    ...(externalExpression
+      ? {
+          contentSpan: {
+            startOffset: 1,
+            endOffset: text.length,
+          },
+        }
+      : {}),
   };
+}
+
+type ExpressionScanMode =
+  | { kind: "code"; braceDepth: number; templateExpression: boolean }
+  | { kind: "single-quote" | "double-quote" | "template" }
+  | { kind: "line-comment" | "block-comment" };
+
+export interface N8nExpressionRegionScan {
+  bindings: ExpressionBinding[];
+  invalid: boolean;
+}
+
+/**
+ * Finds n8n expression regions without evaluating JavaScript. The scanner
+ * understands strings, template literals, comments, and nested object braces;
+ * malformed input fails closed instead of inventing a partial projection.
+ */
+export function scanN8nExpressionRegions(
+  authored: AuthoredPromptField,
+): N8nExpressionRegionScan {
+  if (authored.syntax !== "external-expression") {
+    return { bindings: [], invalid: false };
+  }
+  const contentStart = authored.contentSpan?.startOffset ?? 0;
+  const contentEnd = authored.contentSpan?.endOffset ?? authored.text.length;
+  const bindings: ExpressionBinding[] = [];
+  let cursor = contentStart;
+
+  while (cursor < contentEnd) {
+    const startOffset = authored.text.indexOf("{{", cursor);
+    if (startOffset < 0 || startOffset >= contentEnd) break;
+    const modes: ExpressionScanMode[] = [
+      { kind: "code", braceDepth: 0, templateExpression: false },
+    ];
+    let index = startOffset + 2;
+    let endOffset: number | undefined;
+
+    while (index < contentEnd) {
+      const mode = modes.at(-1)!;
+      const character = authored.text[index]!;
+      const next = authored.text[index + 1];
+
+      if (mode.kind === "single-quote" || mode.kind === "double-quote") {
+        const quote = mode.kind === "single-quote" ? "'" : '"';
+        if (character === "\\") {
+          index += 2;
+        } else if (character === quote) {
+          modes.pop();
+          index += 1;
+        } else {
+          index += 1;
+        }
+        continue;
+      }
+
+      if (mode.kind === "template") {
+        if (character === "\\") {
+          index += 2;
+        } else if (character === "`") {
+          modes.pop();
+          index += 1;
+        } else if (character === "$" && next === "{") {
+          modes.push({
+            kind: "code",
+            braceDepth: 0,
+            templateExpression: true,
+          });
+          index += 2;
+        } else {
+          index += 1;
+        }
+        continue;
+      }
+
+      if (mode.kind === "line-comment") {
+        if (character === "\n" || character === "\r") modes.pop();
+        index += 1;
+        continue;
+      }
+
+      if (mode.kind === "block-comment") {
+        if (character === "*" && next === "/") {
+          modes.pop();
+          index += 2;
+        } else {
+          index += 1;
+        }
+        continue;
+      }
+
+      if (mode.kind !== "code") {
+        throw new Error("Unreachable n8n expression scanner mode.");
+      }
+      if (
+        !mode.templateExpression &&
+        mode.braceDepth === 0 &&
+        character === "}" &&
+        next === "}"
+      ) {
+        endOffset = index + 2;
+        break;
+      }
+      if (character === "'") {
+        modes.push({ kind: "single-quote" });
+        index += 1;
+      } else if (character === '"') {
+        modes.push({ kind: "double-quote" });
+        index += 1;
+      } else if (character === "`") {
+        modes.push({ kind: "template" });
+        index += 1;
+      } else if (character === "/" && next === "/") {
+        modes.push({ kind: "line-comment" });
+        index += 2;
+      } else if (character === "/" && next === "*") {
+        modes.push({ kind: "block-comment" });
+        index += 2;
+      } else if (character === "{") {
+        mode.braceDepth += 1;
+        index += 1;
+      } else if (character === "}") {
+        if (mode.braceDepth > 0) {
+          mode.braceDepth -= 1;
+          index += 1;
+        } else if (mode.templateExpression) {
+          modes.pop();
+          index += 1;
+        } else {
+          index += 1;
+        }
+      } else {
+        index += 1;
+      }
+    }
+
+    if (endOffset === undefined) {
+      return { bindings: [], invalid: true };
+    }
+    bindings.push({
+      authoredPath: authored.path,
+      expression: authored.text.slice(startOffset, endOffset),
+      source: { kind: "expression-span", startOffset, endOffset },
+      status: "missing",
+    });
+    cursor = endOffset;
+  }
+
+  return { bindings, invalid: false };
 }
 
 function sourceEvidence(
@@ -169,12 +326,12 @@ function sourceEvidence(
     runIndex,
     itemIndex,
     resolved,
-    binding,
+    bindings = [],
   }: {
     runIndex?: number;
     itemIndex?: number;
     resolved?: ResolvedPromptSnapshot;
-    binding?: ExpressionBinding;
+    bindings?: ExpressionBinding[];
   } = {},
 ): ExternalPromptCandidateEvidence {
   return {
@@ -195,7 +352,7 @@ function sourceEvidence(
     invocation: invocationFor(node, runIndex, itemIndex),
     authored: [authored],
     ...(resolved ? { resolved } : {}),
-    bindings: binding ? [binding] : [],
+    bindings,
     fidelity: resolved ? "execution-reconstructed" : "authored-only",
     warnings,
   };
@@ -226,21 +383,21 @@ async function authoredOnlyCandidate(
       ),
     );
   }
-  const binding: ExpressionBinding | undefined =
-    authored.syntax === "external-expression"
-      ? {
-          authoredPath: authored.path,
-          expression: authored.text,
-          source: { kind: "whole-field" },
-          status: "missing",
-        }
-      : undefined;
+  const expressionScan = scanN8nExpressionRegions(authored);
+  if (expressionScan.invalid) {
+    warnings.push(
+      warning(
+        "invalid-expression-regions",
+        "The authored n8n expression regions could not be parsed safely, so reusable template import is unavailable.",
+      ),
+    );
+  }
   return {
     status: "candidate",
     candidate: await createExternalPromptCandidate(
       sourceEvidence(context, node, authored, warnings, {
         ...(runIndex === undefined ? {} : { runIndex }),
-        ...(binding ? { binding } : {}),
+        bindings: expressionScan.bindings,
       }),
     ),
   };
@@ -495,20 +652,29 @@ const basicLlmChainExtractor: N8nPromptExtractor = {
         ? {}
         : { options: { temperature: effective.temperature } }),
     };
-    const binding: ExpressionBinding | undefined =
-      authored.syntax === "external-expression"
-        ? {
-            authoredPath: authored.path,
-            expression: authored.text,
-            source: { kind: "whole-field" },
-            resolvedValue: effective.content,
-            status: "resolved",
-            valueEvidence: {
-              kind: "saved-parameter-value",
-              path: effective.evidencePath,
+    const expressionScan = scanN8nExpressionRegions(authored);
+    const semanticText = authored.text.slice(
+      authored.contentSpan?.startOffset ?? 0,
+      authored.contentSpan?.endOffset ?? authored.text.length,
+    );
+    const soleExpression = expressionScan.bindings[0];
+    const bindings =
+      !expressionScan.invalid &&
+      expressionScan.bindings.length === 1 &&
+      soleExpression &&
+      semanticText.trim() === soleExpression.expression
+        ? [
+            {
+              ...soleExpression,
+              resolvedValue: effective.content,
+              status: "resolved" as const,
+              valueEvidence: {
+                kind: "saved-parameter-value" as const,
+                path: effective.evidencePath,
+              },
             },
-          }
-        : undefined;
+          ]
+        : expressionScan.bindings;
     const warnings: ImportWarning[] = [
       warning(
         "provider-request-unavailable",
@@ -516,12 +682,23 @@ const basicLlmChainExtractor: N8nPromptExtractor = {
         "info",
       ),
     ];
-    if (authored.syntax === "external-expression") {
+    if (
+      authored.syntax === "external-expression" &&
+      bindings.some(({ status }) => status !== "resolved")
+    ) {
       warnings.push(
         warning(
-          "whole-field-binding",
-          "Individual n8n expression results are not attributable in the saved execution; the complete evaluated field is preserved as one opaque value.",
+          "expression-values-unavailable",
+          "Individual n8n expression results are not attributable in the saved execution; unresolved regions will become native template variables without saved values.",
           "info",
+        ),
+      );
+    }
+    if (expressionScan.invalid) {
+      warnings.push(
+        warning(
+          "invalid-expression-regions",
+          "The authored n8n expression regions could not be parsed safely, so reusable template import is unavailable.",
         ),
       );
     }
@@ -533,7 +710,7 @@ const basicLlmChainExtractor: N8nPromptExtractor = {
             runIndex: parentRunIndex,
             itemIndex: 0,
             resolved,
-            ...(binding ? { binding } : {}),
+            bindings,
           }),
         ),
       },

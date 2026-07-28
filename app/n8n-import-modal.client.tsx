@@ -7,6 +7,9 @@ import type {
   ImportFidelity,
 } from "../packages/core/src/external-prompt-import.ts";
 import {
+  canImportExternalPromptAsTemplate,
+} from "../packages/core/src/external-prompt-project.ts";
+import {
   loadN8nExecutionDetail,
   loadN8nExecutions,
   loadN8nImportStatus,
@@ -26,7 +29,10 @@ type ReviewTab = "resolved" | "authored" | "bindings" | "warnings";
 interface N8nImportModalProps {
   open: boolean;
   onClose(): void;
-  onImport(candidate: ExternalPromptCandidate): Promise<void>;
+  onImport(
+    candidate: ExternalPromptCandidate,
+    mode: "resolved-snapshot" | "reusable-template",
+  ): Promise<void>;
 }
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -133,9 +139,10 @@ export function N8nImportModal({
       ? undefined
       : detail?.extractions[selectedExtractionIndex];
   const candidate = candidateFor(detail, selectedExtractionIndex);
-  const executable = Boolean(
+  const resolvedImportable = Boolean(
     candidate?.resolved && candidate.fidelity !== "authored-only",
   );
+  const templateImportable = canImportExternalPromptAsTemplate(candidate);
 
   useEffect(() => {
     if (!open) return;
@@ -291,7 +298,17 @@ export function N8nImportModal({
         controller.signal,
       );
       setDetail(next);
-      setSelectedExtractionIndex(defaultExtractionIndex(next.extractions));
+      const extractionIndex = defaultExtractionIndex(next.extractions);
+      setSelectedExtractionIndex(extractionIndex);
+      const extraction =
+        extractionIndex === undefined
+          ? undefined
+          : next.extractions[extractionIndex];
+      setReviewTab(
+        extraction?.status === "candidate" && !extraction.candidate.resolved
+          ? "authored"
+          : "resolved",
+      );
       setDetailState("ready");
     } catch (caught) {
       const message = errorMessage(caught, "Could not inspect this execution.");
@@ -301,13 +318,22 @@ export function N8nImportModal({
     }
   }
 
-  async function importCandidate(): Promise<void> {
-    if (!candidate || !executable || importing) return;
+  async function importCandidate(
+    mode: "resolved-snapshot" | "reusable-template",
+  ): Promise<void> {
+    if (
+      !candidate ||
+      importing ||
+      (mode === "resolved-snapshot" && !resolvedImportable) ||
+      (mode === "reusable-template" && !templateImportable)
+    ) {
+      return;
+    }
     importingRef.current = true;
     setImporting(true);
     setError(undefined);
     try {
-      await onImport(candidate);
+      await onImport(candidate, mode);
     } catch (caught) {
       setError(errorMessage(caught, "Could not import this prompt."));
       importingRef.current = false;
@@ -373,8 +399,8 @@ export function N8nImportModal({
             <span className="eyebrow">External prompt</span>
             <h2 id="n8n-import-title">Import from n8n</h2>
             <p>
-              Select a saved execution, inspect its evidence, then import literal
-              messages into a new project revision.
+              Select a saved execution, inspect its evidence, then import a
+              resolved snapshot or a reusable native template.
             </p>
           </div>
           <button
@@ -748,9 +774,13 @@ export function N8nImportModal({
             <footer className="n8n-import-footer">
               <p>
                 {candidate
-                  ? executable
-                    ? "Import creates a child revision and preserves the current composer revision."
-                    : "This authored-only candidate cannot be imported as an executable prompt."
+                  ? templateImportable && resolvedImportable
+                    ? "Choose a reusable native template or the exact resolved execution snapshot."
+                    : templateImportable
+                      ? "Import creates a reusable native template; unresolved values must be filled before running."
+                      : resolvedImportable
+                        ? "Import creates a child revision from the resolved execution snapshot."
+                        : "This candidate has no safely importable prompt projection."
                   : "Choose a supported execution-backed invocation to continue."}
               </p>
               <button
@@ -761,14 +791,28 @@ export function N8nImportModal({
               >
                 Cancel
               </button>
-              <button
-                className="button primary"
-                disabled={!executable || importing}
-                type="button"
-                onClick={() => void importCandidate()}
-              >
-                {importing ? "Importing…" : "Import into project"}
-              </button>
+              {templateImportable && (
+                <button
+                  className="button primary"
+                  disabled={importing}
+                  type="button"
+                  onClick={() => void importCandidate("reusable-template")}
+                >
+                  {importing ? "Importing…" : "Import reusable template"}
+                </button>
+              )}
+              {resolvedImportable && (
+                <button
+                  className={
+                    templateImportable ? "button secondary" : "button primary"
+                  }
+                  disabled={importing}
+                  type="button"
+                  onClick={() => void importCandidate("resolved-snapshot")}
+                >
+                  {importing ? "Importing…" : "Import resolved snapshot"}
+                </button>
+              )}
             </footer>
           </>
         ) : (

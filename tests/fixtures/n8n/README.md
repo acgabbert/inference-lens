@@ -12,7 +12,7 @@ Import these separately so each execution has one unambiguous purpose:
 | Workflow | Expected import result |
 | --- | --- |
 | `phase-5-single-item-success.json` | `execution-reconstructed`; executable import |
-| `phase-5-multiple-items.json` | `authored-only`; warning `multiple-input-items`; import disabled |
+| `phase-5-multiple-items.json` | `authored-only`; warning `multiple-input-items`; reusable-template import enabled |
 | `phase-5-unsupported-chain-1.8.json` | unsupported invocation; code `unsupported-node-version`; import disabled |
 
 The supported success fixture uses Basic LLM Chain `1.9` and OpenAI Chat Model
@@ -80,9 +80,10 @@ JSON-escaped form of the exact text above.
 - **Missing/pruned execution data:** use an execution whose detailed data has
   actually been pruned while the workflow still exists. It must fall back to
   current authored text, show `execution-detail-unavailable` and
-  `current-workflow-snapshot`, and keep import disabled. Disabling storage for
-  manual executions is not equivalent: it can remove the execution from the
-  selectable list entirely.
+  `current-workflow-snapshot`, disable resolved-snapshot import, and allow a
+  reusable-template import only when the current authored expression regions
+  parse safely. Disabling storage for manual executions is not equivalent: it
+  can remove the execution from the selectable list entirely.
 
 Restart the app after changing its n8n environment variables. Stop the echo
 provider, app server, and any temporary tunnel when the checks finish.

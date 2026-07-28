@@ -100,6 +100,7 @@ export interface PromptTemplateRevision {
   createdAt: string;
   content: PromptTemplateContent;
   variableDefaults: Record<string, string>;
+  externalImportId?: ExternalImportId;
 }
 
 export interface PromptTemplate {
@@ -152,6 +153,22 @@ export interface ProjectDefaults {
  * authored fields are retained for review; remote payloads, connection
  * details, credentials, and unrelated execution data are deliberately absent.
  */
+export type ExternalImportProjection =
+  | {
+      kind: "literal-messages";
+    }
+  | {
+      kind: "prompt-template";
+      templateId: PromptTemplateId;
+      templateRevisionId: PromptTemplateRevisionId;
+      variables: Array<{
+        bindingIndex: number;
+        authoredPath: string;
+        expression: string;
+        variableName: string;
+      }>;
+    };
+
 export interface ExternalImportReceipt {
   id: ExternalImportId;
   source: ExternalPromptSource;
@@ -163,6 +180,7 @@ export interface ExternalImportReceipt {
   sourceDigest: string;
   fidelity: ImportFidelity;
   warnings: ImportWarning[];
+  projection: ExternalImportProjection;
 }
 
 /**
@@ -412,6 +430,7 @@ const promptTemplateRevisionSchema: z.ZodType<PromptTemplateRevision> = z
       z.string().regex(variableName, "Invalid template variable name."),
       z.string(),
     ),
+    externalImportId: entityId("external-import").optional(),
   })
   .strict();
 
@@ -484,9 +503,64 @@ const externalImportReceiptSchema: z.ZodType<ExternalImportReceipt> = z
       "authored-only",
     ]),
     warnings: z.array(importWarningSchema),
+    projection: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("literal-messages") }).strict(),
+      z
+        .object({
+          kind: z.literal("prompt-template"),
+          templateId: entityId("template"),
+          templateRevisionId: entityId("template-revision"),
+          variables: z.array(
+            z
+              .object({
+                bindingIndex: z.number().int().nonnegative(),
+                authoredPath: z.string().trim().min(1),
+                expression: z.string(),
+                variableName: z.string().regex(variableName),
+              })
+              .strict(),
+          ),
+        })
+        .strict(),
+    ]),
   })
   .strict()
-  .superRefine(validateAuthoredPromptBindings);
+  .superRefine((receipt, context) => {
+    validateAuthoredPromptBindings(receipt, context);
+    if (receipt.projection.kind !== "prompt-template") return;
+    if (receipt.projection.variables.length !== receipt.bindings.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["projection", "variables"],
+        message:
+          "Template projection must map every external expression binding.",
+      });
+    }
+    const seenBindingIndexes = new Set<number>();
+    receipt.projection.variables.forEach((variable, index) => {
+      const binding = receipt.bindings[variable.bindingIndex];
+      if (seenBindingIndexes.has(variable.bindingIndex)) {
+        context.addIssue({
+          code: "custom",
+          path: ["projection", "variables", index, "bindingIndex"],
+          message: "Template projection binding indexes must be unique.",
+        });
+      }
+      seenBindingIndexes.add(variable.bindingIndex);
+      if (
+        !binding ||
+        binding.authoredPath !== variable.authoredPath ||
+        binding.expression !== variable.expression
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["projection", "variables", index],
+          message:
+            "Template projection variable does not match its external binding.",
+        });
+      }
+    });
+  });
 
 const projectFileV4Schema: z.ZodType<ProjectFileV4> = z
   .object({
@@ -762,6 +836,41 @@ function validateProjectV4References(
     project.externalImports.map(({ id }) => id),
   );
   const referencedExternalImportIds = new Set<ExternalImportId>();
+  const externalImportProjectionKinds = new Map(
+    project.externalImports.map(({ id, projection }) => [id, projection.kind]),
+  );
+
+  project.promptTemplates.forEach((template, templateIndex) => {
+    template.revisions.forEach((revision, revisionIndex) => {
+      if (!revision.externalImportId) return;
+      referencedExternalImportIds.add(revision.externalImportId);
+      requireReference(
+        externalImportIds.has(revision.externalImportId),
+        [
+          "promptTemplates",
+          templateIndex,
+          "revisions",
+          revisionIndex,
+          "externalImportId",
+        ],
+        `Template revision references unknown external import "${revision.externalImportId}".`,
+        context,
+      );
+      requireReference(
+        externalImportProjectionKinds.get(revision.externalImportId) ===
+          "prompt-template",
+        [
+          "promptTemplates",
+          templateIndex,
+          "revisions",
+          revisionIndex,
+          "externalImportId",
+        ],
+        "Template revisions must reference a prompt-template import receipt.",
+        context,
+      );
+    });
+  });
 
   project.conversationRevisions.forEach((revision, revisionIndex) => {
     const itemPath = ["conversationRevisions", revisionIndex, "items"];
@@ -790,6 +899,13 @@ function validateProjectV4References(
             externalImportIds.has(item.externalImportId),
             [...itemPath, itemIndex, "externalImportId"],
             `Message references unknown external import "${item.externalImportId}".`,
+            context,
+          );
+          requireReference(
+            externalImportProjectionKinds.get(item.externalImportId) ===
+              "literal-messages",
+            [...itemPath, itemIndex, "externalImportId"],
+            "Messages must reference a literal-messages import receipt.",
             context,
           );
         }
@@ -874,9 +990,99 @@ function validateProjectV4References(
       context.addIssue({
         code: "custom",
         path: ["externalImports", receiptIndex, "id"],
-        message: "External import receipts must be referenced by a message item.",
+        message:
+          "External import receipts must be referenced by imported project content.",
       });
     }
+    if (receipt.projection.kind !== "prompt-template") return;
+    const projection = receipt.projection;
+    const template = templates.get(projection.templateId);
+    const revision = template?.revisions.find(
+      ({ id }) => id === projection.templateRevisionId,
+    );
+    requireReference(
+      Boolean(revision),
+      ["externalImports", receiptIndex, "projection"],
+      "Template import receipt references an unknown template revision.",
+      context,
+    );
+    requireReference(
+      revision?.externalImportId === receipt.id,
+      ["externalImports", receiptIndex, "projection"],
+      "Template import receipt does not match the revision provenance anchor.",
+      context,
+    );
+    if (!revision) return;
+    const variableByBindingIndex = new Map(
+      projection.variables.map(({ bindingIndex, variableName }) => [
+        bindingIndex,
+        variableName,
+      ]),
+    );
+    const messages = receipt.authored.map((field) => {
+      if (!field.role) return undefined;
+      const contentStart = field.contentSpan?.startOffset ?? 0;
+      const contentEnd = field.contentSpan?.endOffset ?? field.text.length;
+      const indexedBindings = receipt.bindings
+        .map((binding, bindingIndex) => ({ binding, bindingIndex }))
+        .filter(({ binding }) => binding.authoredPath === field.path);
+      const wholeField = indexedBindings.find(
+        ({ binding }) => binding.source.kind === "whole-field",
+      );
+      if (wholeField) {
+        return {
+          role: field.role,
+          content: `{{${variableByBindingIndex.get(wholeField.bindingIndex) ?? ""}}}`,
+        };
+      }
+      const ordered = indexedBindings.sort((left, right) => {
+        const leftStart =
+          left.binding.source.kind === "expression-span"
+            ? left.binding.source.startOffset
+            : 0;
+        const rightStart =
+          right.binding.source.kind === "expression-span"
+            ? right.binding.source.startOffset
+            : 0;
+        return leftStart - rightStart;
+      });
+      let cursor = contentStart;
+      const parts: string[] = [];
+      ordered.forEach(({ binding, bindingIndex }) => {
+        if (binding.source.kind !== "expression-span") return;
+        parts.push(field.text.slice(cursor, binding.source.startOffset));
+        parts.push(`{{${variableByBindingIndex.get(bindingIndex) ?? ""}}}`);
+        cursor = binding.source.endOffset;
+      });
+      parts.push(field.text.slice(cursor, contentEnd));
+      return { role: field.role, content: parts.join("") };
+    });
+    if (messages.some((message) => !message)) {
+      context.addIssue({
+        code: "custom",
+        path: ["externalImports", receiptIndex, "authored"],
+        message:
+          "Template import receipt fields require explicit message roles.",
+      });
+      return;
+    }
+    const expectedContent: PromptTemplateContent =
+      messages.length === 1
+        ? { kind: "fragment", text: messages[0]!.content }
+        : {
+            kind: "messages",
+            messages: messages as Array<{
+              role: "system" | "user" | "assistant";
+              content: string;
+            }>,
+          };
+    requireReference(
+      JSON.stringify(stableJsonValue(revision.content)) ===
+        JSON.stringify(stableJsonValue(expectedContent)),
+      ["externalImports", receiptIndex, "projection"],
+      "Template import projection does not reproduce its anchored revision.",
+      context,
+    );
   });
 }
 
@@ -946,6 +1152,11 @@ const preferredFieldOrder = new Map(
     "outputMessageIds",
     "fragmentRole",
     "variableDefaults",
+    "projection",
+    "bindingIndex",
+    "authoredPath",
+    "expression",
+    "variableName",
     "adapter",
     "resource",
     "execution",
@@ -1359,13 +1570,20 @@ export function updateProjectDraft(
     items,
   };
   const referencedExternalImportIds = new Set(
-    conversationRevisions.flatMap((revision) =>
-      revision.items.flatMap((item) =>
-        item.kind === "message" && item.externalImportId
-          ? [item.externalImportId]
-          : [],
+    [
+      ...conversationRevisions.flatMap((revision) =>
+        revision.items.flatMap((item) =>
+          item.kind === "message" && item.externalImportId
+            ? [item.externalImportId]
+            : [],
+        ),
       ),
-    ),
+      ...project.promptTemplates.flatMap((template) =>
+        template.revisions.flatMap(({ externalImportId }) =>
+          externalImportId ? [externalImportId] : [],
+        ),
+      ),
+    ],
   );
   return parseProjectFile({
     ...project,
@@ -2149,7 +2367,15 @@ export function removePromptTemplateRevision(
       ({ id }) => id !== templateRevisionId,
     ),
   };
-  return parseProjectFile({ ...project, promptTemplates });
+  const removedRevision = template.revisions.find(
+    ({ id }) => id === templateRevisionId,
+  );
+  const externalImports = removedRevision?.externalImportId
+    ? project.externalImports.filter(
+        ({ id }) => id !== removedRevision.externalImportId,
+      )
+    : project.externalImports;
+  return parseProjectFile({ ...project, promptTemplates, externalImports });
 }
 
 export interface CreateProjectOptions {
