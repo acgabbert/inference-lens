@@ -1,0 +1,93 @@
+{
+  "name": "[Inference Lens Phase 5] Unsupported Chain 1.8",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "52000000-0000-4000-8000-000000000001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-640, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    case: \"unsupported-chain-version\",\n    topic: \"PHASE5_TOPIC_VERSION_1_8\"\n  }\n}];"
+      },
+      "id": "52000000-0000-4000-8000-000000000002",
+      "name": "Predictable version item",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-400, 0]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=PHASE5_UNSUPPORTED_CHAIN\ncase={{ $json.case }}\ntopic={{ $json.topic }}",
+        "batching": {}
+      },
+      "id": "52000000-0000-4000-8000-000000000003",
+      "name": "Phase 5 unsupported prompt",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.8,
+      "position": [-120, 0]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "template-echo-model",
+          "mode": "id"
+        },
+        "options": {
+          "temperature": 0
+        }
+      },
+      "id": "52000000-0000-4000-8000-000000000004",
+      "name": "Phase 5 OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [-40, 240]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Predictable version item",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Predictable version item": {
+      "main": [
+        [
+          {
+            "node": "Phase 5 unsupported prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Phase 5 OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Phase 5 unsupported prompt",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "tags": []
+}

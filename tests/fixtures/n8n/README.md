@@ -1,7 +1,91 @@
 # n8n contract fixtures
 
-These files support the Phase 0 public-API contract spike. They are not product
-import fixtures yet.
+The capture files support the Phase 0 public-API contract spike. The
+`phase-5-*.json` workflows are product import fixtures for running-app
+verification. All workflows are inactive, manual-only, and contain no
+credentials or instance metadata.
+
+## Phase 5 running-app workflows
+
+Import these separately so each execution has one unambiguous purpose:
+
+| Workflow | Expected import result |
+| --- | --- |
+| `phase-5-single-item-success.json` | `execution-reconstructed`; executable import |
+| `phase-5-multiple-items.json` | `authored-only`; warning `multiple-input-items`; import disabled |
+| `phase-5-unsupported-chain-1.8.json` | unsupported invocation; code `unsupported-node-version`; import disabled |
+
+The supported success fixture uses Basic LLM Chain `1.9` and OpenAI Chat Model
+`1.2`, the exact versions captured against n8n `2.32.5`. The unsupported
+fixture deliberately serializes Basic LLM Chain `1.8`. After import, do not
+upgrade that node. If the installed n8n version automatically migrates it,
+record the migrated version and do not count that run as an unsupported-version
+check.
+
+### Start the controlled provider
+
+The workflows require an OpenAI-compatible credential because n8n must save a
+real model sub-run. The repository fixture accepts any API key value and returns
+a deterministic echo:
+
+```sh
+npm run dev:n8n-echo-provider
+```
+
+That binds to `127.0.0.1:4013`. Use
+`http://127.0.0.1:4013/v1` as the credential base URL when n8n runs directly on
+the same host.
+
+For n8n in Docker Desktop, expose the fixture on the host:
+
+```sh
+INFERENCE_LENS_N8N_ECHO_HOST=0.0.0.0 npm run dev:n8n-echo-provider
+```
+
+Then use `http://host.docker.internal:4013/v1` in the n8n credential. Keep the
+Inference Lens connection pointed at `http://127.0.0.1:4013/v1`. If n8n runs on
+another machine, use a test-safe reachable address or tunnel and stop it after
+verification.
+
+For each imported workflow:
+
+1. Attach that credential to `Phase 5 OpenAI Chat Model`.
+2. Keep the model ID `template-echo-model`.
+3. Run the workflow once with the Manual Trigger.
+4. Record the execution ID; do not edit the workflow before importing that
+   execution into Inference Lens.
+
+For the success workflow, the resolved user message must be exactly:
+
+```text
+PHASE5_SINGLE_ITEM
+case=single-item
+topic=PHASE5_TOPIC_ALPHA
+compound=PHASE5_TOPIC_ALPHA::PHASE5_SECOND_ALPHA
+repeated=PHASE5_REPEAT|PHASE5_REPEAT
+```
+
+After importing, run it through Inference Lens with the same fixture provider.
+The assistant response must begin `Fixture received user=` and contain the
+JSON-escaped form of the exact text above.
+
+### Phase 5 cases that are not workflow-driven
+
+- **Bad key:** restart Inference Lens with the correct n8n base URL and a
+  deliberately invalid `INFERENCE_LENS_N8N_API_KEY`. Opening the importer must
+  show the normalized authentication failure and no remote response body.
+- **n8n downtime:** stop n8n (or point the configured base URL at a known closed
+  loopback port), restart Inference Lens, and verify the retryable unavailable
+  state.
+- **Missing/pruned execution data:** use an execution whose detailed data has
+  actually been pruned while the workflow still exists. It must fall back to
+  current authored text, show `execution-detail-unavailable` and
+  `current-workflow-snapshot`, and keep import disabled. Disabling storage for
+  manual executions is not equivalent: it can remove the execution from the
+  selectable list entirely.
+
+Restart the app after changing its n8n environment variables. Stop the echo
+provider, app server, and any temporary tunnel when the checks finish.
 
 ## Install the workflow
 

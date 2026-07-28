@@ -1,0 +1,93 @@
+{
+  "name": "[Inference Lens Phase 5] Multiple items",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "51000000-0000-4000-8000-000000000001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-640, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [\n  {\n    json: {\n      case: \"alpha\",\n      topic: \"PHASE5_TOPIC_ALPHA\"\n    }\n  },\n  {\n    json: {\n      case: \"beta\",\n      topic: \"PHASE5_TOPIC_BETA\"\n    }\n  }\n];"
+      },
+      "id": "51000000-0000-4000-8000-000000000002",
+      "name": "Two predictable items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-400, 0]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=PHASE5_MULTIPLE_ITEMS\ncase={{ $json.case }}\ntopic={{ $json.topic }}",
+        "batching": {}
+      },
+      "id": "51000000-0000-4000-8000-000000000003",
+      "name": "Phase 5 multi-item prompt",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [-120, 0]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "template-echo-model",
+          "mode": "id"
+        },
+        "options": {
+          "temperature": 0
+        }
+      },
+      "id": "51000000-0000-4000-8000-000000000004",
+      "name": "Phase 5 OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [-40, 240]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Two predictable items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Two predictable items": {
+      "main": [
+        [
+          {
+            "node": "Phase 5 multi-item prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Phase 5 OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Phase 5 multi-item prompt",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "tags": []
+}
