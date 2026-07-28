@@ -8,8 +8,14 @@ import type {
 } from "./run-kernel/types.ts";
 
 export const TOOL_REGISTRY_SCHEMA_VERSION = 1;
+export const TOOL_REGISTRY_FILE_NAME = "tool-registry.json";
 
 export type RegistryToolId = `registry-tool_${string}`;
+/**
+ * Host-issued compare-and-swap token. Consumers must preserve and return this
+ * value without deriving meaning from its contents.
+ */
+export type ToolRegistryRevision = string;
 
 export interface RegistryTool {
   id: RegistryToolId;
@@ -24,6 +30,29 @@ export interface RegistryTool {
 export interface ToolRegistryV1 {
   schemaVersion: 1;
   tools: RegistryTool[];
+}
+
+/**
+ * A null revision represents a registry that does not exist yet. This is
+ * intentionally distinct from an existing, empty registry so legacy clients
+ * can migrate with create-only compare-and-swap semantics.
+ */
+export interface ToolRegistrySnapshot {
+  registry: ToolRegistryV1;
+  revision: ToolRegistryRevision | null;
+}
+
+/**
+ * Provider-neutral persistence boundary implemented by the web and native
+ * hosts. `replace` must be atomic and refuse the write when `expectedRevision`
+ * no longer matches the host's current revision.
+ */
+export interface ToolRegistryStore {
+  load(): Promise<ToolRegistrySnapshot>;
+  replace(
+    registry: ToolRegistryV1,
+    expectedRevision: ToolRegistryRevision | null,
+  ): Promise<ToolRegistrySnapshot>;
 }
 
 const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
@@ -113,13 +142,112 @@ const toolRegistrySchema: z.ZodType<ToolRegistryV1> = z
     });
   });
 
+export class ToolRegistryValidationError extends Error {
+  readonly issues: z.core.$ZodIssue[];
+
+  constructor(issues: z.core.$ZodIssue[]) {
+    const summary = issues
+      .slice(0, 3)
+      .map(({ path, message }) => `${path.join(".") || "registry"}: ${message}`)
+      .join("; ");
+    super(`Invalid Inference Lens tool registry. ${summary}`);
+    this.name = "ToolRegistryValidationError";
+    this.issues = issues;
+  }
+}
+
+export class ToolRegistryConflictError extends Error {
+  readonly expectedRevision: ToolRegistryRevision | null;
+  readonly actualRevision: ToolRegistryRevision | null;
+
+  constructor(
+    expectedRevision: ToolRegistryRevision | null,
+    actualRevision: ToolRegistryRevision | null,
+  ) {
+    super(
+      "The tool registry changed after it was loaded. Reload it before saving.",
+    );
+    this.name = "ToolRegistryConflictError";
+    this.expectedRevision = expectedRevision;
+    this.actualRevision = actualRevision;
+  }
+}
+
 export function emptyToolRegistry(): ToolRegistryV1 {
   return { schemaVersion: TOOL_REGISTRY_SCHEMA_VERSION, tools: [] };
 }
 
+/**
+ * Best-effort parser retained for the legacy browser-local registry. New host
+ * persistence must use `parseToolRegistryFile` or `parseToolRegistryJson` so a
+ * corrupt file is surfaced instead of silently replaced with an empty value.
+ */
 export function parseToolRegistry(value: unknown): ToolRegistryV1 {
   const parsed = toolRegistrySchema.safeParse(value);
   return parsed.success ? parsed.data : emptyToolRegistry();
+}
+
+export function parseToolRegistryFile(value: unknown): ToolRegistryV1 {
+  const parsed = toolRegistrySchema.safeParse(value);
+  if (!parsed.success) {
+    throw new ToolRegistryValidationError(parsed.error.issues);
+  }
+  return parsed.data;
+}
+
+export function parseToolRegistryJson(contents: string): ToolRegistryV1 {
+  let value: unknown;
+  try {
+    value = JSON.parse(contents);
+  } catch {
+    throw new ToolRegistryValidationError([
+      {
+        code: "custom",
+        path: [],
+        message: "File is not valid JSON.",
+      },
+    ]);
+  }
+  return parseToolRegistryFile(value);
+}
+
+const preferredFieldOrder = new Map(
+  [
+    "schemaVersion",
+    "tools",
+    "id",
+    "name",
+    "description",
+    "inputSchema",
+    "providerOptions",
+    "createdAt",
+    "updatedAt",
+  ].map((field, index) => [field, index]),
+);
+
+function stableJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableJsonValue);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .sort(([left], [right]) => {
+        const leftOrder = preferredFieldOrder.get(left);
+        const rightOrder = preferredFieldOrder.get(right);
+        if (leftOrder !== undefined || rightOrder !== undefined) {
+          return (
+            (leftOrder ?? Number.MAX_SAFE_INTEGER) -
+            (rightOrder ?? Number.MAX_SAFE_INTEGER)
+          );
+        }
+        return left.localeCompare(right);
+      })
+      .map(([key, item]) => [key, stableJsonValue(item)]),
+  );
+}
+
+export function serializeToolRegistry(registry: ToolRegistryV1): string {
+  const validated = parseToolRegistryFile(registry);
+  return `${JSON.stringify(stableJsonValue(validated), null, 2)}\n`;
 }
 
 export function createRegistryTool(
