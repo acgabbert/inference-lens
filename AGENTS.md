@@ -39,3 +39,17 @@ For anything a user reads or a provider drives, run it:
 
 Report what was actually run. If a check was skipped or a fixture could not
 reproduce the situation, say so rather than implying broader coverage.
+
+## Keep n8n work API-first and collaborative
+
+Browser-driven n8n UI work is unusually expensive. For n8n investigation,
+fixture capture, and verification:
+
+- Prefer the documented public API and the repository's read-only n8n probe
+  scripts whenever they can answer the question.
+- Do not use browser automation or the browser skill for n8n.
+- When an action requires the n8n UI, give the user the exact value or steps to
+  enter. Let the user perform the action, then continue from the execution ID,
+  output, screenshot, or other result they provide.
+- Never expose the n8n API key or private instance topology in chat, logs, or
+  committed fixtures. Continue using ignored environment and staging files.

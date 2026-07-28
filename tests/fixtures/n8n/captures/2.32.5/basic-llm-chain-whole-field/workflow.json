@@ -1,0 +1,130 @@
+{
+  "id": "workflow_fixture",
+  "name": "[Inference Lens fixture] Basic LLM Chain",
+  "active": false,
+  "nodes": [
+    {
+      "id": "node_fixture_001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        128
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "node_fixture_002",
+      "name": "Fixture input items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        128
+      ],
+      "parameters": {
+        "jsCode": "return [\n  {\n    json: {\n      case: \"alpha\",\n      itemNumber: 0,\n      topic: \"IL_P0_TOPIC_ALPHA\",\n      first: \"IL_P0_REPEAT\",\n      repeat: \"IL_P0_REPEAT\",\n      second: \"IL_P0_SECOND_ALPHA\",\n      wholeField: \"IL_P0_WHOLE_ALPHA\"\n    }\n  },\n  {\n    json: {\n      case: \"beta\",\n      itemNumber: 1,\n      topic: \"IL_P0_TOPIC_BETA\",\n      first: \"IL_P0_REPEAT\",\n      repeat: \"IL_P0_REPEAT\",\n      second: \"IL_P0_SECOND_BETA\",\n      wholeField: \"IL_P0_WHOLE_BETA\"\n    }\n  }\n];"
+      }
+    },
+    {
+      "id": "node_fixture_003",
+      "name": "Compound prompt cases",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=IL_P0_LITERAL\nsimple={{ $json.topic }}\ntwo={{ $json.first }}|{{ $json.second }}\ncompound={{\n  [$json.topic, $json.second]\n    .map((value) => `${value}`)\n    .join(\"::\")\n}}\nnested={{ `value:${JSON.stringify({ inner: $json.topic })}` }}\nrepeated={{ $json.first }}|{{ $json.repeat }}",
+        "batching": {}
+      },
+      "disabled": true
+    },
+    {
+      "id": "node_fixture_004",
+      "name": "Whole-field prompt case",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        0,
+        240
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.wholeField }}",
+        "batching": {}
+      }
+    },
+    {
+      "id": "node_fixture_005",
+      "name": "Fixture OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        80,
+        448
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "template-echo-model",
+          "mode": "id"
+        },
+        "options": {
+          "temperature": "={{ $json.itemNumber === 0 ? 0 : 0.1 }}"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fixture input items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fixture input items": {
+      "main": [
+        [
+          {
+            "node": "Compound prompt cases",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Whole-field prompt case",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fixture OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Compound prompt cases",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Whole-field prompt case",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
