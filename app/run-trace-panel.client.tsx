@@ -5,18 +5,38 @@ import { useMemo, useState } from "react";
 import type {
   ResolvedTemplateUse,
   RunEvent,
+  RunId,
   RunState,
+  RunTrace,
 } from "../packages/core/src/run-kernel";
+import {
+  diffAttempts,
+  diffCandidates,
+} from "../packages/core/src/run-diff";
 import { runMetrics } from "../packages/core/src/run-metrics";
 import { runTimeline } from "../packages/core/src/run-timeline";
+import { runStateFromTrace } from "../packages/core/src/run-trace";
+import {
+  diffCandidateKey,
+  RunDiffView,
+} from "./run-diff-view.client";
 import { RunMetricsView } from "./run-metrics-view.client";
 import { PaneTabs, ResizableTracePanel } from "./workbench-shell.client";
 
-type TraceTab = "events" | "metrics" | "templates";
+type TraceTab = "events" | "metrics" | "templates" | "compare";
+
+export interface ParentTraceState {
+  status: "idle" | "loading" | "ready" | "error";
+  trace?: RunTrace;
+  error?: string;
+}
 
 interface RunTracePanelProps {
   open: boolean;
   runState: RunState | null;
+  branchedFrom?: RunTrace["branchedFrom"];
+  parentTrace: ParentTraceState;
+  onLoadParentTrace(): void;
   onOpenChange(open: boolean): void;
 }
 
@@ -100,9 +120,17 @@ export function TemplateProvenance({
 export function RunTracePanel({
   open,
   runState,
+  branchedFrom,
+  parentTrace,
+  onLoadParentTrace,
   onOpenChange,
 }: RunTracePanelProps) {
   const [tab, setTab] = useState<TraceTab>("events");
+  const [selection, setSelection] = useState<{
+    runId?: RunId;
+    left?: string | null;
+    right?: string | null;
+  }>({});
 
   const events = runState?.events ?? [];
   const templateResolutions = runState?.input?.templateResolutions ?? [];
@@ -114,6 +142,55 @@ export function RunTracePanel({
     () => (metrics ? runTimeline(metrics) : null),
     [metrics],
   );
+  const parentState = useMemo(
+    () =>
+      parentTrace.status === "ready" && parentTrace.trace
+        ? runStateFromTrace(parentTrace.trace)
+        : null,
+    [parentTrace],
+  );
+  const currentCandidates = useMemo(
+    () => (runState ? diffCandidates(runState, "This run") : []),
+    [runState],
+  );
+  const parentCandidates = useMemo(
+    () => (parentState ? diffCandidates(parentState, "Parent run") : []),
+    [parentState],
+  );
+  const candidates = useMemo(
+    () => [...currentCandidates, ...parentCandidates],
+    [currentCandidates, parentCandidates],
+  );
+  const selectionApplies = selection.runId === runState?.runId;
+  const defaultLeft =
+    currentCandidates.at(-2) ?? parentCandidates.at(-1);
+  const defaultRight = currentCandidates.at(-1);
+  const leftKey = selectionApplies
+    ? selection.left === null
+      ? undefined
+      : selection.left ?? (defaultLeft && diffCandidateKey(defaultLeft))
+    : defaultLeft && diffCandidateKey(defaultLeft);
+  const rightKey = selectionApplies
+    ? selection.right === null
+      ? undefined
+      : selection.right ?? (defaultRight && diffCandidateKey(defaultRight))
+    : defaultRight && diffCandidateKey(defaultRight);
+
+  const diff = useMemo(() => {
+    if (!leftKey || !rightKey || !runState) return null;
+    const findSelection = (key: string) => {
+      const candidate = candidates.find(
+        (item) => diffCandidateKey(item) === key,
+      );
+      if (!candidate) return undefined;
+      const state =
+        candidate.runId === runState.runId ? runState : parentState ?? undefined;
+      return state ? { state, candidate } : undefined;
+    };
+    const left = findSelection(leftKey);
+    const right = findSelection(rightKey);
+    return left && right ? diffAttempts(left, right) : null;
+  }, [candidates, leftKey, parentState, rightKey, runState]);
 
   return (
     <ResizableTracePanel
@@ -133,6 +210,7 @@ export function RunTracePanel({
                 label: "Templates",
                 count: templateResolutions.length,
               },
+              { id: "compare", label: "Compare" },
             ]}
           />
         )
@@ -143,7 +221,30 @@ export function RunTracePanel({
         ) : undefined
       }
     >
-      {tab === "metrics" ? (
+      {tab === "compare" ? (
+        <div className="trace" aria-live="polite">
+          <RunDiffView
+            diff={diff}
+            candidates={candidates}
+            leftKey={leftKey}
+            rightKey={rightKey}
+            onSelect={(side, key) => {
+              setSelection((current) => ({
+                ...(current.runId === runState?.runId ? current : {}),
+                runId: runState?.runId,
+                [side]: key || null,
+              }));
+            }}
+            parent={{
+              available: Boolean(branchedFrom),
+              runId: branchedFrom?.runId as RunId | undefined,
+              status: parentTrace.status,
+              error: parentTrace.error,
+            }}
+            onLoadParent={onLoadParentTrace}
+          />
+        </div>
+      ) : tab === "metrics" ? (
         <div className="trace">
           <RunMetricsView metrics={metrics} timeline={timeline} />
         </div>

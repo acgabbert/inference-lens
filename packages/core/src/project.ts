@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { stableJsonValue } from "./stable-json.ts";
 
 import {
   authoredPromptFieldSchema,
@@ -1257,29 +1258,13 @@ const preferredFieldOrder = new Map(
   ].map((field, index) => [field, index]),
 );
 
-function stableJsonValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(stableJsonValue);
-  if (!value || typeof value !== "object") return value;
-  return Object.fromEntries(
-    Object.entries(value)
-      .sort(([left], [right]) => {
-        const leftOrder = preferredFieldOrder.get(left);
-        const rightOrder = preferredFieldOrder.get(right);
-        if (leftOrder !== undefined || rightOrder !== undefined) {
-          return (
-            (leftOrder ?? Number.MAX_SAFE_INTEGER) -
-            (rightOrder ?? Number.MAX_SAFE_INTEGER)
-          );
-        }
-        return left.localeCompare(right);
-      })
-      .map(([key, item]) => [key, stableJsonValue(item)]),
-  );
-}
-
 export function serializeProjectFile(project: ProjectFile): string {
   const validated = parseProjectFile(project);
-  return `${JSON.stringify(stableJsonValue(validated), null, 2)}\n`;
+  return `${JSON.stringify(
+    stableJsonValue(validated, { preferredKeyOrder: preferredFieldOrder }),
+    null,
+    2,
+  )}\n`;
 }
 
 /**

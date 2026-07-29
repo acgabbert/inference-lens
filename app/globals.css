@@ -65,6 +65,13 @@
   --timeline-generation: var(--accent-solid);
   --timeline-gap: light-dark(#c4ccc6, #3b463e);
 
+  /* Unified diffs */
+  --diff-added-surface: var(--accent-soft);
+  --diff-added-text: var(--accent);
+  --diff-removed-surface: var(--danger-surface);
+  --diff-removed-text: var(--danger);
+  --diff-changed-surface: var(--warning-surface);
+
   /* Brand mark: fixed dark chip with bright text, does not invert */
   --brand-mark-bg: light-dark(#17211c, #1f2b25);
   --brand-mark-fg: #9ee7c5;
@@ -3561,6 +3568,165 @@ textarea:focus {
   color: var(--warning);
 }
 
+/* Attempt comparison */
+
+.run-diff {
+  padding: 16px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.diff-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(130px, 1fr)) auto;
+  align-items: end;
+  gap: 10px;
+}
+
+.diff-picker {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.diff-picker select {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid var(--border-default);
+  border-radius: 7px;
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  font-size: 10px;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.diff-load-parent {
+  min-height: 31px;
+  white-space: nowrap;
+}
+
+.diff-parent-error,
+.diff-note,
+.diff-prompt,
+.diff-warning,
+.diff-absent {
+  margin: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 7px;
+  background: var(--surface-subtle);
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.diff-parent-error {
+  border-color: var(--danger-border);
+  background: var(--danger-surface);
+  color: var(--danger);
+}
+
+.diff-warning {
+  border-color: var(--warning-border);
+  background: var(--warning-surface);
+  color: var(--warning-strong);
+}
+
+.diff-scalars tr[data-changed="true"] {
+  background: var(--diff-changed-surface);
+}
+
+.diff-scalars th,
+.diff-scalars td {
+  padding-left: 8px;
+}
+
+.diff-sections {
+  border: 1px solid var(--border-subtle);
+  border-radius: 9px;
+  overflow: hidden;
+}
+
+.trace .diff-section:last-child {
+  border-bottom: 0;
+}
+
+.trace .diff-section summary {
+  padding: 10px 12px;
+}
+
+.diff-status {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+.diff-status.changed,
+.diff-status.left-only {
+  background: var(--danger);
+}
+
+.diff-status.right-only {
+  background: var(--accent-solid);
+}
+
+.diff-status.identical {
+  background: var(--accent);
+}
+
+.diff-normalized {
+  margin-left: 5px;
+  color: var(--text-faint);
+  font-family: var(--font-geist-sans), sans-serif;
+  font-size: 8px;
+}
+
+.diff-section-meta {
+  color: var(--text-faint);
+}
+
+.diff-code {
+  padding: 10px 0 12px;
+  white-space: pre;
+}
+
+.diff-line {
+  min-height: 1.6em;
+  padding: 0 12px;
+  display: block;
+}
+
+.diff-line.added {
+  background: var(--diff-added-surface);
+  color: var(--diff-added-text);
+}
+
+.diff-line.removed {
+  background: var(--diff-removed-surface);
+  color: var(--diff-removed-text);
+}
+
+.diff-gutter {
+  width: 18px;
+  display: inline-block;
+  user-select: none;
+}
+
+.diff-absent,
+.diff-warning {
+  margin: 10px 12px;
+}
+
 .trace details {
   border-bottom: 1px solid var(--border-subtle);
   background: var(--surface-panel);
@@ -3613,6 +3779,12 @@ pre {
   font-size: 8.5px;
   line-height: 1.6;
   white-space: pre-wrap;
+}
+
+@media (max-width: 700px) {
+  .diff-controls {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 1050px) {

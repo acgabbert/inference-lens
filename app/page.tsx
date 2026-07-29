@@ -49,6 +49,7 @@ import {
 import {
   parseRunTraceJson,
   runStateFromTrace,
+  traceFileName,
 } from "../packages/core/src/run-trace";
 import {
   importExternalPromptCandidate,
@@ -132,7 +133,10 @@ import {
   WorkbenchShell,
 } from "./workbench-shell.client";
 import type { WorkbenchView } from "./workbench-shell.client";
-import { RunTracePanel } from "./run-trace-panel.client";
+import {
+  RunTracePanel,
+  type ParentTraceState,
+} from "./run-trace-panel.client";
 import { RunHistoryDrawer } from "./run-history-drawer.client";
 import type { ProjectRunHistoryItem } from "./use-project-run-history.client";
 import { useProjectRunHistory } from "./use-project-run-history.client";
@@ -411,6 +415,10 @@ function HomeContent() {
   const [branchContext, setBranchContext] = useState<BranchContext | null>(null);
   const [visibleBranchProvenance, setVisibleBranchProvenance] =
     useState<RunTrace["branchedFrom"]>();
+  const [parentTrace, setParentTrace] = useState<ParentTraceState>({
+    status: "idle",
+  });
+  const parentTraceGenerationRef = useRef(0);
   const runBranchProvenanceRef = useRef(
     new Map<RunId, RunTrace["branchedFrom"]>(),
   );
@@ -1400,6 +1408,8 @@ function HomeContent() {
     }
     input.target.profileId = createEntityId("profile", activeProfile.id);
     const coordinator = new RunCoordinator(input);
+    parentTraceGenerationRef.current += 1;
+    setParentTrace({ status: "idle" });
     if (branchedFrom) runBranchProvenanceRef.current.set(input.runId, branchedFrom);
     setVisibleBranchProvenance(branchedFrom);
     const requestGeneration = ++requestGenerationRef.current;
@@ -1729,6 +1739,8 @@ function HomeContent() {
     setHasDiagnosticCapture(false);
     setToolResultDrafts({});
     setBranchContext(null);
+    parentTraceGenerationRef.current += 1;
+    setParentTrace({ status: "idle" });
     setVisibleBranchProvenance(trace.branchedFrom);
     setWorkbenchView("response");
     setTraceOpen(true);
@@ -1775,6 +1787,38 @@ function HomeContent() {
     const trace = await runHistory.readTrace(item.fileName);
     adoptRunTrace(trace, { workspace, fileName: item.fileName });
     setRunHistoryOpen(false);
+  }
+
+  async function loadParentTrace(): Promise<void> {
+    const provenance = visibleBranchProvenance;
+    const generation = ++parentTraceGenerationRef.current;
+    if (!provenance) return;
+    if (!projectWorkspace) {
+      setParentTrace({
+        status: "error",
+        error:
+          "Open the project folder that contains the parent run, then load it again. If the parent was never saved, save that run first.",
+      });
+      return;
+    }
+
+    setParentTrace({ status: "loading" });
+    try {
+      const trace = await runHistory.readTrace(traceFileName(provenance.runId));
+      if (generation !== parentTraceGenerationRef.current) return;
+      if (trace.runId !== provenance.runId) {
+        throw new Error("The parent trace file contains a different run.");
+      }
+      setParentTrace({ status: "ready", trace });
+    } catch (error) {
+      if (generation !== parentTraceGenerationRef.current) return;
+      setParentTrace({
+        status: "error",
+        error: `The parent run could not be loaded. Save run ${provenance.runId} in this project folder, then try again. ${
+          error instanceof Error ? error.message : "The trace could not be read."
+        }`,
+      });
+    }
   }
 
   const runReachedTerminalStatus = Boolean(
@@ -2483,6 +2527,9 @@ function HomeContent() {
           <RunTracePanel
             open={traceOpen}
             runState={runState}
+            branchedFrom={visibleBranchProvenance}
+            parentTrace={parentTrace}
+            onLoadParentTrace={() => void loadParentTrace()}
             onOpenChange={setTraceOpen}
           />
         </section>

@@ -6,6 +6,7 @@ import {
   reduceRunEvents,
 } from "./run-kernel/reducer.ts";
 import { isSensitiveTemplateVariableName } from "./project.ts";
+import { stableJsonValue } from "./stable-json.ts";
 import { renderTemplateContent } from "./template-engine.ts";
 
 export const RUN_TRACE_SCHEMA_VERSION = 4;
@@ -215,19 +216,6 @@ export function assertTraceEntryName(fileName: string): string {
     );
   }
   return fileName;
-}
-
-function stableJsonValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(stableJsonValue);
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value)
-        .filter(([, candidate]) => candidate !== undefined)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, candidate]) => [key, stableJsonValue(candidate)]),
-    );
-  }
-  return value;
 }
 
 export function serializeRunTrace(trace: RunTrace): string {
