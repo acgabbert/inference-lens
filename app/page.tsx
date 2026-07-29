@@ -42,11 +42,7 @@ import {
   RunCoordinator,
   transcriptFromRunState,
 } from "../packages/core/src/run-kernel";
-import {
-  parseRunTraceJson,
-  runStateFromTrace,
-  traceFileName,
-} from "../packages/core/src/run-trace";
+import { parseRunTraceJson, runStateFromTrace, traceFileName } from "../packages/core/src/run-trace";
 import {
   importExternalPromptCandidate,
   importExternalPromptTemplateCandidate,
@@ -81,20 +77,10 @@ import {
 import { AppErrorBoundary } from "./app-error-boundary.client";
 import { useInsecureOriginNotice } from "./use-insecure-origin.client";
 import { randomUUID } from "../packages/core/src/random-id.ts";
-import {
-  recordDiagnostic,
-  redactDiagnosticValue,
-  startDiagnosticCapture,
-} from "./diagnostics.client";
+import { recordDiagnostic, redactDiagnosticValue, startDiagnosticCapture } from "./diagnostics.client";
 import type { DiagnosticCapture } from "./diagnostics.client";
 import { preserveRunFailure } from "./run-failure.client";
-import {
-  exportRunTraceFile,
-  projectFolderAccessAvailable,
-  runTraceWorkspaceLocation,
-  runTraceWorkspacePath,
-  saveRunTraceWorkspace,
-} from "./project-workspace.client";
+import { exportRunTraceFile, projectFolderAccessAvailable, runTraceWorkspaceLocation, runTraceWorkspacePath, saveRunTraceWorkspace } from "./project-workspace.client";
 import type { ProjectWorkspaceHandle } from "./project-workspace.client";
 import { emptyToolRegistry } from "../packages/core/src/tool-registry";
 import type {
@@ -119,11 +105,6 @@ import { ConnectionDrawer } from "./connection-drawer.client";
 import { Topbar } from "./topbar.client";
 import { ToolsPane } from "./tools-pane.client";
 import { ResponseOutput } from "./response-output.client";
-import type { TraceStorageStatus } from "./response-output.client";
-import type { ToolResultDraft } from "./tool-call-list.client";
-import {
-  toolResultDraftsForState,
-} from "./run-session-state.client";
 import {
   PaneTabs,
   WorkbenchShell,
@@ -157,6 +138,10 @@ import {
   prepareWorkbenchRun,
   type WorkbenchBranchContext,
 } from "./prepare-workbench-run.client";
+import { useRunSession } from "./use-run-session.client";
+import type { TraceStorageStatus } from "./response-output.client";
+import type { ToolResultDraft } from "./tool-call-list.client";
+import { toolResultDraftsForState } from "./run-session-state.client";
 
 const inferenceTransport = createInferenceTransport();
 
@@ -304,9 +289,6 @@ function HomeContent() {
   const [streamingPreferred, setStreamingPreferred] = useState(true);
   const [streamingPreferenceLoaded, setStreamingPreferenceLoaded] =
     useState(false);
-  const [toolResultDrafts, setToolResultDrafts] = useState<
-    Record<string, ToolResultDraft>
-  >({});
   const project = useProjectWorkspace({
     activeProfileId: activeProfile.id,
     folderAccessAvailable,
@@ -336,9 +318,7 @@ function HomeContent() {
       setBranchContext(null);
       setSessionModel(draft.model);
       setSessionTemperature(draft.temperature ?? 0.7);
-      coordinatorRef.current = null;
-      setToolResultDrafts({});
-      replaceRunState(null);
+      runSession.reset();
     },
   });
   const {
@@ -382,32 +362,46 @@ function HomeContent() {
     onProjectDirty: project.markDirty,
     onProjectError: project.setError,
   });
-  const [sessionModel, setSessionModel] = useState<string>();
-  const [sessionTemperature, setSessionTemperature] = useState<number>();
-  const [runState, setRunState] = useState<RunState | null>(null);
-  const [isRequestActive, setIsRequestActive] = useState(false);
+  const runSession = useRunSession({
+    transport: inferenceTransport,
+    prepareCredential: credential.prepare,
+    tools,
+    mockForTool,
+    readTrace: runHistory.readTrace,
+    onShowResponse() {
+      setWorkbenchView("response");
+      setOutputFollowing(true);
+    },
+    onTraceSaved() { setSavedRunVersion((current) => current + 1); },
+    onResetBranch() { setBranchContext(null); },
+    onError(message) { project.setError(message, { clearKind: true }); },
+    onClearError() { project.setError(undefined, { clearKind: true }); },
+  });
+  const { runState, isRequestActive, toolResultDrafts, traceStorage,
+    hasDiagnosticCapture, visibleBranchProvenance, parentTrace, transcript } = runSession;
+  // Temporary compatibility storage for the now-unreachable legacy commands
+  // below; PR 2 removes that body in the follow-up cleanup.
+  const [, setLegacyRunState] = useState<RunState | null>(null);
+  const [, setIsRequestActive] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const coordinatorRef = useRef<RunCoordinator | null>(null);
   const runStateRef = useRef<RunState | null>(null);
   const requestGenerationRef = useRef(0);
-  const adHocConversationIdRef = useRef<ConversationId | null>(null);
   const runTraceWorkspaceRef = useRef<ProjectWorkspaceHandle | null>(null);
   const persistedTraceRunIdsRef = useRef(new Set<string>());
   const diagnosticCaptureRef = useRef<DiagnosticCapture | null>(null);
-  const outputScrollRef = useRef<HTMLDivElement | null>(null);
-  const [hasDiagnosticCapture, setHasDiagnosticCapture] = useState(false);
-  const [traceStorage, setTraceStorage] =
-    useState<TraceStorageStatus | null>(null);
-  const [branchContext, setBranchContext] = useState<BranchContext | null>(null);
-  const [visibleBranchProvenance, setVisibleBranchProvenance] =
-    useState<RunTrace["branchedFrom"]>();
-  const [parentTrace, setParentTrace] = useState<ParentTraceState>({
-    status: "idle",
-  });
+  const [, setToolResultDrafts] = useState<Record<string, ToolResultDraft>>({});
+  const [, setHasDiagnosticCapture] = useState(false);
+  const [, setTraceStorage] = useState<TraceStorageStatus | null>(null);
+  const [, setVisibleBranchProvenance] = useState<RunTrace["branchedFrom"]>();
+  const [, setParentTrace] = useState<ParentTraceState>({ status: "idle" });
   const parentTraceGenerationRef = useRef(0);
-  const runBranchProvenanceRef = useRef(
-    new Map<RunId, RunTrace["branchedFrom"]>(),
-  );
+  const runBranchProvenanceRef = useRef(new Map<RunId, RunTrace["branchedFrom"]>());
+  const [sessionModel, setSessionModel] = useState<string>();
+  const [sessionTemperature, setSessionTemperature] = useState<number>();
+  const adHocConversationIdRef = useRef<ConversationId | null>(null);
+  const outputScrollRef = useRef<HTMLDivElement | null>(null);
+  const [branchContext, setBranchContext] = useState<BranchContext | null>(null);
   const executedRevisionIdsRef = useRef(new Set<ConversationRevisionId>());
   useEffect(() => {
     if (projectFile && !projectDirty) {
@@ -416,69 +410,14 @@ function HomeContent() {
       );
     }
   }, [projectDirty, projectFile]);
-  const nonBranchableMessageIds = useMemo(
-    () =>
-      new Set(
-        runState?.input?.templateResolutions.flatMap((resolution) =>
-          resolution.outputMessageIds.slice(0, -1),
-        ) ?? [],
-      ),
-    [runState],
+  const nonBranchableMessageIds = new Set(
+    runState?.input?.templateResolutions.flatMap((resolution) =>
+      resolution.outputMessageIds.slice(0, -1),
+    ) ?? [],
   );
-  const transcript = useMemo(
-    () => (runState ? transcriptFromRunState(runState) : []),
-    [runState],
-  );
-
   function replaceRunState(next: RunState | null): void {
-    runStateRef.current = next;
-    setRunState(next);
-    if (!next) {
-      setTraceStorage(null);
-      return;
-    }
-    if (
-      !["completed", "cancelled", "failed"].includes(next.status.kind)
-    ) {
-      return;
-    }
-    const workspace = runTraceWorkspaceRef.current;
-    if (!workspace) {
-      setTraceStorage({ kind: "unsaved" });
-      return;
-    }
-    if (persistedTraceRunIdsRef.current.has(next.runId)) return;
-    let trace: RunTrace;
-    try {
-      trace = createRunTrace(next, {
-        branchedFrom: runBranchProvenanceRef.current.get(next.runId),
-      });
-    } catch {
-      return;
-    }
-    const location = runTraceWorkspaceLocation(workspace, trace);
-    setTraceStorage({ kind: "saving", location });
-    persistedTraceRunIdsRef.current.add(next.runId);
-    void saveRunTraceWorkspace(workspace, trace)
-      .then(() => {
-        if (runStateRef.current?.runId === next.runId) {
-          setTraceStorage({ kind: "saved", location });
-        }
-        // Marks the history stale; the folder is re-read next time it is opened.
-        setSavedRunVersion((current) => current + 1);
-      })
-      .catch((error) => {
-        persistedTraceRunIdsRef.current.delete(next.runId);
-        if (runStateRef.current?.runId === next.runId) {
-          setTraceStorage({
-            kind: "error",
-            message:
-              error instanceof Error
-                ? error.message
-                : "The project trace could not be saved.",
-          });
-        }
-      });
+    // Kept only while the unreachable legacy extraction body is removed.
+    void next;
   }
 
   useEffect(() => {
@@ -984,7 +923,7 @@ function HomeContent() {
     );
   }
 
-  const { output, reasoning, status } = useMemo(() => {
+  const { output, reasoning, status } = (() => {
     const attempts =
       runState?.turns.flatMap((turn) => {
         const latest = turn.attempts.at(-1);
@@ -995,15 +934,11 @@ function HomeContent() {
       reasoning: attempts.map((attempt) => attempt.reasoning).join(""),
       status: displayStatus(runState),
     };
-  }, [runState]);
+  })();
 
-  const completedToolCalls = useMemo(
-    () =>
-      runState?.turns.flatMap(
-        (turn) => turn.attempts.at(-1)?.completedToolCalls ?? [],
-      ) ?? [],
-    [runState],
-  );
+  const completedToolCalls = runState?.turns.flatMap(
+    (turn) => turn.attempts.at(-1)?.completedToolCalls ?? [],
+  ) ?? [];
 
   useEffect(() => {
     if (!outputFollowing) return;
@@ -1262,6 +1197,7 @@ function HomeContent() {
     }
     if (prepared.consumesPendingBranch) setBranchContext(null);
     const input = prepared.input;
+    const branchedFrom = prepared.branchedFrom;
     const identity = {
       conversationId: input.conversationId,
       conversationRevisionId: input.conversationRevisionId,
@@ -1271,6 +1207,14 @@ function HomeContent() {
       messages: input.messages,
     };
     input.target.profileId = createEntityId("profile", activeProfile.id);
+    await runSession.start(input, {
+      request,
+      workspace: projectWorkspace,
+      ...(branchedFrom ? { branchedFrom } : {}),
+    });
+    clearRequestTools();
+    return;
+    /* Legacy implementation retained in git history during extraction.
     const coordinator = new RunCoordinator(input);
     parentTraceGenerationRef.current += 1;
     setParentTrace({ status: "idle" });
@@ -1344,9 +1288,12 @@ function HomeContent() {
         setIsRequestActive(false);
       }
     }
+  */
   }
 
   async function continueRun(): Promise<void> {
+    return runSession.continueRun();
+    /*
     const coordinator = coordinatorRef.current;
     if (
       !coordinator ||
@@ -1413,9 +1360,12 @@ function HomeContent() {
       if (abortRef.current === controller) abortRef.current = null;
       setIsRequestActive(false);
     }
+  */
   }
 
   async function retryRun(): Promise<void> {
+    return runSession.retry();
+    /*
     const coordinator = coordinatorRef.current;
     if (
       !coordinator ||
@@ -1473,9 +1423,13 @@ function HomeContent() {
         setIsRequestActive(false);
       }
     }
+  */
   }
 
   function stop() {
+    runSession.stop();
+    return;
+    /*
     const controller = abortRef.current;
     requestGenerationRef.current += 1;
     if (diagnosticCaptureRef.current) {
@@ -1499,9 +1453,13 @@ function HomeContent() {
       }
       replaceRunState(coordinator.state);
     }
+  */
   }
 
   function downloadDiagnostics() {
+    runSession.downloadDiagnostics();
+    return;
+    /*
     const capture = diagnosticCaptureRef.current;
     if (!capture) return;
     const bundle = {
@@ -1576,7 +1534,7 @@ function HomeContent() {
     }
   }
 
-  /**
+  // Legacy trace adoption implementation.
    * Replaces the workbench with a trace the user is inspecting rather than
    * running. Importing a file and opening a project's saved run differ only in
    * where the trace came from and how it is stored, so both go through here:
@@ -1586,7 +1544,6 @@ function HomeContent() {
    * `origin.workspace` is the folder the trace already lives in, or null for a
    * trace that has no home on disk. Naming it here is what keeps the autosave
    * effect from writing an artifact back over the file it was just read from.
-   */
   function adoptRunTrace(
     trace: RunTrace,
     origin:
@@ -1640,15 +1597,17 @@ function HomeContent() {
     }
   }
 
-  /**
+  // Legacy history trace opener.
    * Reads the selected artifact again instead of trusting a copy held from
    * when the list was built. Errors propagate to the drawer, which keeps the
    * list on screen so another run can be chosen.
-   */
   async function openHistoryTrace(item: ProjectRunHistoryItem): Promise<void> {
     const workspace = projectWorkspace;
     if (!workspace) throw new Error("The project folder is no longer open.");
     const trace = await runHistory.readTrace(item.fileName);
+    runSession.adoptTrace(trace, { workspace, fileName: item.fileName });
+    setRunHistoryOpen(false);
+    return;
     adoptRunTrace(trace, { workspace, fileName: item.fileName });
     setRunHistoryOpen(false);
   }
@@ -1685,6 +1644,17 @@ function HomeContent() {
     }
   }
 
+  */
+  }
+  async function openHistoryTrace(item: ProjectRunHistoryItem): Promise<void> {
+    const workspace = projectWorkspace;
+    if (!workspace) throw new Error("The project folder is no longer open.");
+    runSession.adoptTrace(await runHistory.readTrace(item.fileName), {
+      workspace,
+      fileName: item.fileName,
+    });
+    setRunHistoryOpen(false);
+  }
   const runReachedTerminalStatus = Boolean(
     runState &&
       ["completed", "cancelled", "failed"].includes(runState.status.kind),
@@ -1820,9 +1790,9 @@ function HomeContent() {
         onOpenN8nImport={() => setN8nImportOpen(true)}
         onExportProject={project.exportProject}
         onOpenToolLibrary={() => setToolRegistryOpen(true)}
-        onDownloadDiagnostics={downloadDiagnostics}
-        onDownloadRunTrace={() => void exportRunTrace()}
-        onImportRunTrace={(event) => void importRunTrace(event)}
+        onDownloadDiagnostics={runSession.downloadDiagnostics}
+        onDownloadRunTrace={() => void runSession.exportTrace()}
+        onImportRunTrace={(event) => { const file = event.target.files?.[0]; if (file) void runSession.importTrace(file); event.target.value = ""; }}
         onOpenRunHistory={() => setRunHistoryOpen(true)}
         onStop={stop}
         onRun={() => void run()}
@@ -2052,7 +2022,7 @@ function HomeContent() {
             <div className="branch-pending" role="status">
               Branching from run <code>{branchContext.parentRunId}</code> at message <code>{branchContext.branchMessageId}</code> — the original trace is untouched.
               {branchContext.parentTraceNeedsSaving && (
-                <button className="button secondary" type="button" onClick={() => void exportRunTrace()}>Save trace…</button>
+                <button className="button secondary" type="button" onClick={() => void runSession.exportTrace()}>Save trace…</button>
               )}
               <button className="button secondary" type="button" onClick={() => setBranchContext(null)}>Discard branch</button>
             </div>
@@ -2376,15 +2346,10 @@ function HomeContent() {
             onMarkdownPreviewChange={setMarkdownPreview}
             onOutputScroll={updateOutputFollowState}
             onJumpToLatest={jumpToLatestOutput}
-            onToolResultDraftChange={(callId, text) =>
-              setToolResultDrafts((current) => ({
-                ...current,
-                [callId]: { ...current[callId]!, text },
-              }))
-            }
+            onToolResultDraftChange={runSession.updateToolResultDraft}
             onContinue={() => void continueRun()}
             onRetry={() => void retryRun()}
-            onSaveTrace={() => void exportRunTrace()}
+            onSaveTrace={() => void runSession.exportTrace()}
             onEditFromHere={editFromHere}
           />
 
@@ -2393,7 +2358,7 @@ function HomeContent() {
             runState={runState}
             branchedFrom={visibleBranchProvenance}
             parentTrace={parentTrace}
-            onLoadParentTrace={() => void loadParentTrace()}
+            onLoadParentTrace={() => void runSession.loadParentTrace()}
             onOpenChange={setTraceOpen}
           />
         </section>
