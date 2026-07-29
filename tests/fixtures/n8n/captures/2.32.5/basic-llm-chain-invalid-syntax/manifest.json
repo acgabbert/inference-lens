@@ -1,0 +1,86 @@
+{
+  "fixtureSchemaVersion": 1,
+  "n8nVersion": "2.32.5",
+  "versionSource": "instance owner and authenticated n8n UI",
+  "scenario": "failed prompt expression syntax",
+  "capturedAt": "2026-07-28T11:13:47.729Z",
+  "projectedAt": "2026-07-28T11:25:58.882Z",
+  "workflowId": "workflow_fixture",
+  "nodeTypes": [
+    {
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1
+    },
+    {
+      "name": "Fixture input items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "name": "Compound prompt cases",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9
+    },
+    {
+      "name": "Whole-field prompt case",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9
+    },
+    {
+      "name": "Fixture OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2
+    }
+  ],
+  "workflowSettings": {
+    "executionOrder": "v1"
+  },
+  "executions": [
+    {
+      "id": "execution_fixture_001",
+      "mode": "manual",
+      "status": "error",
+      "runItemCounts": {
+        "Manual Trigger": [
+          1
+        ],
+        "Fixture input items": [
+          2
+        ],
+        "Compound prompt cases": [
+          null
+        ]
+      }
+    }
+  ],
+  "endpointShapes": [
+    "GET /api/v1/workflows/{workflowId}",
+    "GET /api/v1/executions/{executionId}?includeData=true"
+  ],
+  "removedFields": [
+    "credentials"
+  ],
+  "warnings": [
+    "Projection requires manual review before commit.",
+    "Failure occurred before any model sub-run or effective message was saved.",
+    "The quoted closing delimiter case is source-invalid in n8n 2.32.5."
+  ],
+  "expectedEvidence": {
+    "level": "authored-only",
+    "authoredTextPath": "data.workflowData.nodes[name=Compound prompt cases].parameters.text",
+    "inputItemsPath": "data.resultData.runData[Fixture input items][0].data.main[0]",
+    "effectiveMessagesPath": null,
+    "modelOptionsPath": null,
+    "parentOutputPath": null,
+    "providerRequestBodyPath": null
+  },
+  "files": {
+    "workflow.json": {
+      "sha256": "0cdb462b35562a9e1da6358b59c2b79be68892bdc47614507e6ff7c33ac24faf"
+    },
+    "execution-error.json": {
+      "sha256": "892a5bac39c560b387f3399288a568bf2f728fb2b89f9a005ff49950d97c64ef"
+    }
+  }
+}

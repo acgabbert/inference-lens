@@ -70,6 +70,37 @@ authentication in front of it. Plain HTTP browser origins do not expose every
 browser security API, and Inference Lens does not provide user accounts of its
 own.
 
+## Connect the read-only n8n integration
+
+Configure the n8n instance root and public API key together:
+
+```sh
+INFERENCE_LENS_N8N_BASE_URL=https://n8n.example.com/automation
+INFERENCE_LENS_N8N_API_KEY=your-public-api-key
+```
+
+The base URL includes an installation subpath such as `/automation`, but
+excludes `/api/v1`; Inference Lens appends that prefix itself. Both values are
+server-only. The browser receives configuration state and bounded
+workflow/execution summaries, never the API key, base URL, or raw execution
+payload.
+
+Use HTTPS outside a trusted local network. Where the installed n8n edition
+offers scoped keys, choose its workflow-read and execution-read scopes. Some
+editions cannot narrow public API keys, so protect the container environment
+accordingly and do not commit a populated `.env`.
+
+Container addressing follows the provider rules above:
+
+- n8n on a Docker Desktop host is commonly
+  `http://host.docker.internal:5678`;
+- on Linux, use the configured host-gateway address, a shared Docker network,
+  or a resolvable service name; and
+- n8n in the same Compose network should be addressed by its service name.
+
+The integration issues only public API `GET` requests, refuses redirects, and
+does not run, edit, activate, retry, or delete workflows.
+
 ## Set a server-side default credential
 
 To avoid entering a key each session, set it on the service and leave the UI

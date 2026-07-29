@@ -99,8 +99,53 @@ test("renders saved and run-only template use values distinctly", async () => {
 
   assert.match(html, /Saved value/);
   assert.match(html, /Run-only override/);
-  assert.match(html, /Effective: &quot;temporary&quot;/);
+  assert.match(html, /Effective: temporary/);
+  assert.match(html, /Prompt preview/);
+  assert.match(html, /template-variable-chip/);
   assert.match(html, /Clear override/);
+});
+
+test("summarizes unresolved template values without repeating diagnostic rows", async () => {
+  const unresolvedTemplate = {
+    ...template,
+    revisions: template.revisions.map((revision) => ({
+      ...revision,
+      variableDefaults: {},
+    })),
+  };
+  const diagnostic = {
+    itemIndex: 0,
+    templateUseId: "template-use_question",
+    diagnostic: {
+      code: "missing-template-variable",
+      name: "topic",
+      occurrences: [],
+      message: 'Template variable "topic" has no value.',
+    },
+  };
+  const html = await render("TemplateUseCard", {
+    template: unresolvedTemplate,
+    use: {
+      id: "template-use_question",
+      templateId: template.id,
+      templateRevisionId: template.currentRevisionId,
+      values: {},
+      outputMessageIds: ["message_question"],
+      fragmentRole: "user",
+    },
+    diagnostics: [diagnostic, diagnostic],
+    runOverrides: {},
+    onSaveValues: () => {},
+    onRunOverridesChange: () => {},
+    onUpdateLatest: () => {},
+    onDetach: () => {},
+    onRemove: () => {},
+  });
+
+  assert.match(html, />1 missing</);
+  assert.doesNotMatch(html, /Template variable &quot;topic&quot; has no value\./);
+  assert.match(html, /template-variable-chip missing/);
+  assert.match(html, /Effective: missing/);
 });
 
 test("labels non-current revisions without a Previous 0 state", async () => {

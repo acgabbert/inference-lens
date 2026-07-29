@@ -48,6 +48,13 @@ import {
   parseRunTraceJson,
   runStateFromTrace,
 } from "../packages/core/src/run-trace";
+import {
+  importExternalPromptCandidate,
+  importExternalPromptTemplateCandidate,
+} from "../packages/core/src/external-prompt-project.ts";
+import type {
+  ExternalPromptCandidate,
+} from "../packages/core/src/external-prompt-import.ts";
 import type {
   ProviderExecution,
   RunState,
@@ -66,6 +73,7 @@ import type {
 } from "../packages/core/src/run-kernel";
 import { buildChatCompletionsRequest } from "../packages/core/src/openai-compatible";
 import { discoverTemplateVariables } from "../packages/core/src/template-engine";
+import { conversationMessageText } from "./conversation-display";
 import type { CredentialSelection } from "../packages/contracts/src";
 import {
   createInferenceTransport,
@@ -101,6 +109,7 @@ import {
   writeToolRegistry,
 } from "./tool-registry-store.client";
 import { ToolRegistryModal } from "./tool-registry-modal.client";
+import { N8nImportModal } from "./n8n-import-modal.client";
 import { ModelCombobox } from "./model-combobox.client";
 import { useModelDiscovery } from "./use-model-discovery.client";
 import { useConnectionProfiles } from "./use-connection-profiles.client";
@@ -273,6 +282,7 @@ function HomeContent() {
   );
   const [toolRegistryLoaded, setToolRegistryLoaded] = useState(false);
   const [toolRegistryOpen, setToolRegistryOpen] = useState(false);
+  const [n8nImportOpen, setN8nImportOpen] = useState(false);
   const [confirmation, setConfirmation] =
     useState<ConfirmationDialogRequest>();
   const [connectionDrawerOpen, setConnectionDrawerOpen] = useState(false);
@@ -280,6 +290,11 @@ function HomeContent() {
   const [savedRunVersion, setSavedRunVersion] = useState(0);
   const [requestTab, setRequestTab] =
     useState<"messages" | "templates" | "tools">("messages");
+  const [importNotice, setImportNotice] = useState<{
+    name: string;
+    variableCount: number;
+    template: boolean;
+  }>();
   const [templateRunOverrides, setTemplateRunOverrides] =
     useState<TemplateRunOverrides>({});
   const [workbenchView, setWorkbenchView] =
@@ -548,6 +563,42 @@ function HomeContent() {
   ): void {
     project.adoptProjectMutation(next);
     replaceProjectDraft(projectDraft(next, overrides));
+  }
+
+  async function importN8nPrompt(
+    candidate: ExternalPromptCandidate,
+    mode: "resolved-snapshot" | "reusable-template",
+  ): Promise<void> {
+    const imported =
+      mode === "reusable-template"
+        ? await importExternalPromptTemplateCandidate(
+            ensureProjectDocument(),
+            candidate,
+          )
+        : await importExternalPromptCandidate(
+            ensureProjectDocument(),
+            candidate,
+          );
+    project.adoptProjectMutation(imported.project);
+    replaceProjectDraft(projectDraft(imported.project));
+    setTemplateRunOverrides({});
+    setBranchContext(null);
+    setToolResultDrafts({});
+    setRequestTab("messages");
+    setWorkbenchView("request");
+    const receipt = imported.project.externalImports.find(
+      ({ id }) => id === imported.externalImportId,
+    );
+    const variableCount =
+      receipt?.projection.kind === "prompt-template"
+        ? receipt.projection.variables.length
+        : 0;
+    setImportNotice({
+      name: candidate.invocation.name,
+      variableCount,
+      template: mode === "reusable-template",
+    });
+    setN8nImportOpen(false);
   }
 
   function projectForUseMutation(): {
@@ -821,10 +872,10 @@ function HomeContent() {
           message.role === "tool" ||
           (message.role === "assistant" && message.toolCalls?.length)
         ) {
-          return { kind: "message", message: { ...message, content } };
+          return { ...item, message: { ...message, content } };
         }
         return {
-          kind: "message",
+          ...item,
           message: {
             id: message.id,
             role: patch.role ?? message.role,
@@ -1715,6 +1766,13 @@ function HomeContent() {
         hasRunTrace={runReachedTerminalStatus}
         hasProjectWorkspace={Boolean(projectWorkspace)}
         runHistoryBlocked={Boolean(runState) && !runReachedTerminalStatus}
+        n8nImportDisabledReason={
+          branchContext
+            ? "Finish or discard the pending branch before importing a prompt."
+            : Boolean(runState) && !runReachedTerminalStatus
+              ? "Finish or stop the current run before importing a prompt."
+              : undefined
+        }
         isRequestActive={isRequestActive}
         awaitingToolResults={runState?.status.kind === "awaiting_tool_results"}
         retryableFailure={
@@ -1729,6 +1787,7 @@ function HomeContent() {
         onOpenProject={() => void project.openProjectWorkspace()}
         onSaveProject={() => void project.saveProject()}
         onImportProject={(event) => void project.importProject(event)}
+        onOpenN8nImport={() => setN8nImportOpen(true)}
         onExportProject={project.exportProject}
         onOpenToolLibrary={() => setToolRegistryOpen(true)}
         onDownloadDiagnostics={downloadDiagnostics}
@@ -1764,8 +1823,43 @@ function HomeContent() {
           </div>
         </div>
       )}
-      {(serverDefaultProfileNotice || originNotice.notice) && (
+      {(serverDefaultProfileNotice || originNotice.notice || importNotice) && (
         <div className="workbench-notices">
+          {importNotice && (
+            <div className="workbench-notice" role="status">
+              <div className="workbench-notice-copy">
+                <strong>
+                  Imported &ldquo;{importNotice.name}&rdquo;{importNotice.template ? " as a reusable template" : ""}
+                </strong>
+                <span>
+                  {importNotice.template
+                    ? `${importNotice.variableCount} ${importNotice.variableCount === 1 ? "variable was" : "variables were"} carried over from the saved execution.`
+                    : "The saved execution messages are now in the composer."}
+                </span>
+              </div>
+              <div className="workbench-notice-actions">
+                {importNotice.template && (
+                  <button
+                    className="button primary"
+                    type="button"
+                    onClick={() => {
+                      setRequestTab("templates");
+                      setImportNotice(undefined);
+                    }}
+                  >
+                    View template
+                  </button>
+                )}
+                <button
+                  className="button"
+                  type="button"
+                  onClick={() => setImportNotice(undefined)}
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
           {serverDefaultProfileNotice && (
             <div className="workbench-notice" role="status">
               <div className="workbench-notice-copy">
@@ -2021,6 +2115,11 @@ function HomeContent() {
                       ) ?? []
                     }
                     runOverrides={templateRunOverrides[item.use.id] ?? {}}
+                    importedFrom={projectFile?.externalImports.find(
+                      (receipt) =>
+                        receipt.projection.kind === "prompt-template" &&
+                        receipt.projection.templateRevisionId === item.use.templateRevisionId,
+                    )}
                     onSaveValues={(values) =>
                       updateTemplateUseValues(item.use.id, values)
                     }
@@ -2036,6 +2135,11 @@ function HomeContent() {
                 );
               }
               const message = item.message;
+              const importReceipt = item.externalImportId
+                ? projectFile?.externalImports.find(
+                    ({ id }) => id === item.externalImportId,
+                  )
+                : undefined;
               const roleIsStructural =
                 message.role === "tool" ||
                 (message.role === "assistant" && Boolean(message.toolCalls?.length));
@@ -2061,6 +2165,16 @@ function HomeContent() {
                     <option value="assistant">Assistant</option>
                     <option value="tool">Tool</option>
                   </select>
+                  {importReceipt && (
+                    <span
+                      className="message-import-provenance"
+                      title={`Imported from ${importReceipt.source.adapter} execution ${importReceipt.source.execution?.id ?? "unavailable"} with ${importReceipt.fidelity.replaceAll("-", " ")} fidelity.`}
+                    >
+                      Imported from {importReceipt.source.adapter}
+                      {" · "}
+                      {importReceipt.fidelity.replaceAll("-", " ")}
+                    </span>
+                  )}
                   <button
                     aria-label={`Remove message ${index + 1}`}
                     className="remove-button"
@@ -2104,7 +2218,7 @@ function HomeContent() {
             })}
           </div>
           {requestPreview && (
-            <details className="request-preview" open>
+            <details className="request-preview">
               <summary>Resolved request preview</summary>
               {"error" in requestPreview ? (
                 <div className="template-diagnostic">{requestPreview.error}</div>
@@ -2116,9 +2230,18 @@ function HomeContent() {
                     </div>
                   )}
                   <h3>Resolved messages</h3>
-                  <pre>{JSON.stringify(requestPreview.messages, null, 2)}</pre>
-                  <h3>OpenAI-compatible request body</h3>
-                  <pre>{JSON.stringify(requestPreview.body, null, 2)}</pre>
+                  <div className="request-preview-messages">
+                    {requestPreview.messages.map((message, index) => (
+                      <article className="request-preview-message" key={`${message.role}-${index}`}>
+                        <span className="eyebrow">{message.role}</span>
+                        <pre>{conversationMessageText(message)}</pre>
+                      </article>
+                    ))}
+                  </div>
+                  <details className="request-preview-raw">
+                    <summary>Raw OpenAI-compatible request body</summary>
+                    <pre>{JSON.stringify(requestPreview.body, null, 2)}</pre>
+                  </details>
                 </>
               )}
             </details>
@@ -2203,6 +2326,13 @@ function HomeContent() {
           onAttachToProject={attachRegistryToolToProject}
           onAttachToRequest={attachRegistryToolToRequest}
           onClose={() => setToolRegistryOpen(false)}
+        />
+      )}
+      {n8nImportOpen && (
+        <N8nImportModal
+          open
+          onClose={() => setN8nImportOpen(false)}
+          onImport={importN8nPrompt}
         />
       )}
       {confirmation && (

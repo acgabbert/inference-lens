@@ -1,0 +1,42 @@
+{
+  "fixtureSchemaVersion": 1,
+  "offsetEncoding": "UTF-16",
+  "cases": [
+    {
+      "name": "simple property",
+      "authored": "before {{ $json.topic }} after",
+      "expressions": ["{{ $json.topic }}"]
+    },
+    {
+      "name": "two embedded expressions",
+      "authored": "{{ $json.first }}|{{ $json.second }}",
+      "expressions": ["{{ $json.first }}", "{{ $json.second }}"]
+    },
+    {
+      "name": "multiline compound JavaScript",
+      "authored": "{{\n  [$json.topic, $json.second]\n    .map((value) => `${value}`)\n    .join(\"::\")\n}}",
+      "expressions": ["{{\n  [$json.topic, $json.second]\n    .map((value) => `${value}`)\n    .join(\"::\")\n}}"]
+    },
+    {
+      "name": "nested braces and template literal",
+      "authored": "nested={{ `value:${JSON.stringify({ inner: $json.topic })}` }}",
+      "expressions": ["{{ `value:${JSON.stringify({ inner: $json.topic })}` }}"]
+    },
+    {
+      "name": "closing delimiter text inside string",
+      "authored": "delimiter={{ \"literal }} text\" }}",
+      "expressions": ["{{ \"literal }} text\" }}"]
+    },
+    {
+      "name": "whole field",
+      "authored": "={{ $json.wholeField }}",
+      "expressions": ["{{ $json.wholeField }}"]
+    },
+    {
+      "name": "unterminated expression fails closed",
+      "authored": "before {{ $json.topic",
+      "expressions": [],
+      "invalid": true
+    }
+  ]
+}

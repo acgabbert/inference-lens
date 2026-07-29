@@ -1,0 +1,510 @@
+{
+  "id": "execution_fixture_001",
+  "workflowId": "workflow_fixture",
+  "mode": "manual",
+  "status": "success",
+  "finished": true,
+  "startedAt": "2026-07-28T11:21:23.019Z",
+  "stoppedAt": "2026-07-28T11:21:23.094Z",
+  "data": {
+    "startData": {},
+    "resultData": {
+      "runData": {
+        "Manual Trigger": [
+          {
+            "startTime": 1785237683039,
+            "executionIndex": 0,
+            "source": [],
+            "hints": [],
+            "executionTime": 2,
+            "executionStatus": "success",
+            "data": {
+              "main": [
+                [
+                  {
+                    "json": {},
+                    "pairedItem": {
+                      "item": 0
+                    }
+                  }
+                ]
+              ]
+            }
+          }
+        ],
+        "Fixture input items": [
+          {
+            "startTime": 1785237683042,
+            "executionIndex": 1,
+            "source": [
+              {
+                "previousNode": "Manual Trigger",
+                "previousNodeOutput": 0,
+                "previousNodeRun": 0
+              }
+            ],
+            "hints": [],
+            "executionTime": 7,
+            "executionStatus": "success",
+            "data": {
+              "main": [
+                [
+                  {
+                    "json": {
+                      "case": "alpha",
+                      "itemNumber": 0,
+                      "topic": "IL_P0_TOPIC_ALPHA",
+                      "first": "IL_P0_REPEAT",
+                      "repeat": "IL_P0_REPEAT",
+                      "second": "IL_P0_SECOND_ALPHA",
+                      "wholeField": "IL_P0_WHOLE_ALPHA"
+                    },
+                    "pairedItem": {
+                      "item": 0
+                    }
+                  },
+                  {
+                    "json": {
+                      "case": "beta",
+                      "itemNumber": 1,
+                      "topic": "IL_P0_TOPIC_BETA",
+                      "first": "IL_P0_REPEAT",
+                      "repeat": "IL_P0_REPEAT",
+                      "second": "IL_P0_SECOND_BETA",
+                      "wholeField": "IL_P0_WHOLE_BETA"
+                    },
+                    "pairedItem": {
+                      "item": 0
+                    }
+                  }
+                ]
+              ]
+            }
+          }
+        ],
+        "Compound prompt cases": [
+          {
+            "startTime": 1785237683050,
+            "executionIndex": 2,
+            "source": [
+              {
+                "previousNode": "Fixture input items",
+                "previousNodeOutput": 0,
+                "previousNodeRun": 0
+              }
+            ],
+            "hints": [],
+            "executionTime": 1,
+            "executionStatus": "success",
+            "data": {
+              "main": [
+                [
+                  {
+                    "json": {
+                      "case": "alpha",
+                      "itemNumber": 0,
+                      "topic": "IL_P0_TOPIC_ALPHA",
+                      "first": "IL_P0_REPEAT",
+                      "repeat": "IL_P0_REPEAT",
+                      "second": "IL_P0_SECOND_ALPHA",
+                      "wholeField": "IL_P0_WHOLE_ALPHA"
+                    },
+                    "pairedItem": {
+                      "item": 0
+                    }
+                  },
+                  {
+                    "json": {
+                      "case": "beta",
+                      "itemNumber": 1,
+                      "topic": "IL_P0_TOPIC_BETA",
+                      "first": "IL_P0_REPEAT",
+                      "repeat": "IL_P0_REPEAT",
+                      "second": "IL_P0_SECOND_BETA",
+                      "wholeField": "IL_P0_WHOLE_BETA"
+                    },
+                    "pairedItem": {
+                      "item": 1
+                    }
+                  }
+                ]
+              ]
+            }
+          }
+        ],
+        "Fixture OpenAI Chat Model": [
+          {
+            "startTime": 1785237683074,
+            "executionTime": 15,
+            "executionIndex": 4,
+            "executionStatus": "success",
+            "source": [
+              {
+                "previousNode": "Whole-field prompt case",
+                "previousNodeRun": 0
+              }
+            ],
+            "data": {
+              "ai_languageModel": [
+                [
+                  {
+                    "json": {
+                      "response": {
+                        "generations": [
+                          [
+                            {
+                              "text": "Fixture received user=\"IL_P0_WHOLE_BETA\"",
+                              "generationInfo": {
+                                "finish_reason": "stop"
+                              }
+                            }
+                          ]
+                        ]
+                      },
+                      "tokenUsage": {
+                        "completionTokens": 3,
+                        "promptTokens": 1,
+                        "totalTokens": 4
+                      }
+                    }
+                  }
+                ]
+              ]
+            },
+            "inputOverride": {
+              "ai_languageModel": [
+                [
+                  {
+                    "json": {
+                      "messages": [
+                        "Human: IL_P0_WHOLE_BETA"
+                      ],
+                      "estimatedTokens": 10,
+                      "options": {
+                        "model": "template-echo-model",
+                        "temperature": 0,
+                        "max_retries": 2,
+                        "configuration": {},
+                        "model_kwargs": {},
+                        "supports_strict_tool_calling": false
+                      }
+                    }
+                  }
+                ]
+              ]
+            },
+            "metadata": {
+              "subRun": [
+                {
+                  "node": "Fixture OpenAI Chat Model",
+                  "runIndex": 0
+                }
+              ]
+            }
+          },
+          {
+            "startTime": 1785237683082,
+            "executionTime": 10,
+            "executionIndex": 5,
+            "executionStatus": "success",
+            "source": [
+              {
+                "previousNode": "Whole-field prompt case",
+                "previousNodeRun": 0
+              }
+            ],
+            "data": {
+              "ai_languageModel": [
+                [
+                  {
+                    "json": {
+                      "response": {
+                        "generations": [
+                          [
+                            {
+                              "text": "Fixture received user=\"IL_P0_WHOLE_ALPHA\"",
+                              "generationInfo": {
+                                "finish_reason": "stop"
+                              }
+                            }
+                          ]
+                        ]
+                      },
+                      "tokenUsage": {
+                        "completionTokens": 3,
+                        "promptTokens": 1,
+                        "totalTokens": 4
+                      }
+                    }
+                  }
+                ]
+              ]
+            },
+            "inputOverride": {
+              "ai_languageModel": [
+                [
+                  {
+                    "json": {
+                      "messages": [
+                        "Human: IL_P0_WHOLE_ALPHA"
+                      ],
+                      "estimatedTokens": 9,
+                      "options": {
+                        "model": "template-echo-model",
+                        "temperature": 0,
+                        "max_retries": 2,
+                        "configuration": {},
+                        "model_kwargs": {},
+                        "supports_strict_tool_calling": false
+                      }
+                    }
+                  }
+                ]
+              ]
+            },
+            "metadata": {
+              "subRun": [
+                {
+                  "node": "Fixture OpenAI Chat Model",
+                  "runIndex": 1
+                }
+              ]
+            }
+          }
+        ],
+        "Whole-field prompt case": [
+          {
+            "startTime": 1785237683052,
+            "executionIndex": 3,
+            "source": [
+              {
+                "previousNode": "Fixture input items",
+                "previousNodeOutput": 0,
+                "previousNodeRun": 0
+              }
+            ],
+            "hints": [],
+            "executionTime": 41,
+            "metadata": {
+              "tracing": {
+                "llm.tokens.in": 1,
+                "llm.tokens.out": 3,
+                "llm.tokens.total": 4,
+                "llm.tokens.estimated": false
+              }
+            },
+            "executionStatus": "success",
+            "data": {
+              "main": [
+                [
+                  {
+                    "json": {
+                      "text": "Fixture received user=\"IL_P0_WHOLE_ALPHA\""
+                    },
+                    "pairedItem": {
+                      "item": 0
+                    }
+                  },
+                  {
+                    "json": {
+                      "text": "Fixture received user=\"IL_P0_WHOLE_BETA\""
+                    },
+                    "pairedItem": {
+                      "item": 1
+                    }
+                  }
+                ]
+              ]
+            }
+          }
+        ]
+      },
+      "pinData": {},
+      "lastNodeExecuted": "Whole-field prompt case"
+    },
+    "executionData": {
+      "contextData": {},
+      "nodeExecutionStack": [],
+      "metadata": {
+        "Fixture OpenAI Chat Model": [
+          {
+            "subRun": [
+              {
+                "node": "Fixture OpenAI Chat Model",
+                "runIndex": 0
+              }
+            ]
+          },
+          {
+            "subRun": [
+              {
+                "node": "Fixture OpenAI Chat Model",
+                "runIndex": 1
+              }
+            ]
+          }
+        ]
+      },
+      "waitingExecution": {},
+      "waitingExecutionSource": {},
+      "runtimeData": {
+        "version": 1,
+        "establishedAt": 1785237683031,
+        "source": "manual",
+        "triggerNode": {
+          "name": "Manual Trigger",
+          "type": "n8n-nodes-base.manualTrigger"
+        },
+        "redaction": {
+          "version": 2,
+          "production": false,
+          "manual": false,
+          "source": "workflow"
+        }
+      }
+    },
+    "workflowData": {
+      "id": "workflow_fixture",
+      "name": "[Inference Lens fixture] Basic LLM Chain",
+      "nodes": [
+        {
+          "id": "node_fixture_001",
+          "name": "Manual Trigger",
+          "type": "n8n-nodes-base.manualTrigger",
+          "typeVersion": 1,
+          "position": [
+            -560,
+            128
+          ],
+          "parameters": {
+            "notice": ""
+          }
+        },
+        {
+          "id": "node_fixture_002",
+          "name": "Fixture input items",
+          "type": "n8n-nodes-base.code",
+          "typeVersion": 2,
+          "position": [
+            -320,
+            128
+          ],
+          "parameters": {
+            "mode": "runOnceForAllItems",
+            "language": "javaScript",
+            "jsCode": "return [\n  {\n    json: {\n      case: \"alpha\",\n      itemNumber: 0,\n      topic: \"IL_P0_TOPIC_ALPHA\",\n      first: \"IL_P0_REPEAT\",\n      repeat: \"IL_P0_REPEAT\",\n      second: \"IL_P0_SECOND_ALPHA\",\n      wholeField: \"IL_P0_WHOLE_ALPHA\"\n    }\n  },\n  {\n    json: {\n      case: \"beta\",\n      itemNumber: 1,\n      topic: \"IL_P0_TOPIC_BETA\",\n      first: \"IL_P0_REPEAT\",\n      repeat: \"IL_P0_REPEAT\",\n      second: \"IL_P0_SECOND_BETA\",\n      wholeField: \"IL_P0_WHOLE_BETA\"\n    }\n  }\n];",
+            "notice": ""
+          }
+        },
+        {
+          "id": "node_fixture_003",
+          "name": "Compound prompt cases",
+          "type": "@n8n/n8n-nodes-langchain.chainLlm",
+          "typeVersion": 1.9,
+          "position": [
+            0,
+            0
+          ],
+          "parameters": {
+            "notice": "",
+            "promptType": "define",
+            "text": "=IL_P0_LITERAL\nsimple={{ $json.topic }}\ntwo={{ $json.first }}|{{ $json.second }}\ncompound={{\n  [$json.topic, $json.second]\n    .map((value) => `${value}`)\n    .join(\"::\")\n}}\nnested={{ `value:${JSON.stringify({ inner: $json.topic })}` }}\nrepeated={{ $json.first }}|{{ $json.repeat }}",
+            "hasOutputParser": false,
+            "needsFallback": false,
+            "messages": {},
+            "batching": {}
+          },
+          "disabled": true
+        },
+        {
+          "id": "node_fixture_004",
+          "name": "Whole-field prompt case",
+          "type": "@n8n/n8n-nodes-langchain.chainLlm",
+          "typeVersion": 1.9,
+          "position": [
+            0,
+            240
+          ],
+          "parameters": {
+            "notice": "",
+            "promptType": "define",
+            "text": "={{ $json.wholeField }}",
+            "hasOutputParser": false,
+            "needsFallback": false,
+            "messages": {},
+            "batching": {}
+          }
+        },
+        {
+          "id": "node_fixture_005",
+          "name": "Fixture OpenAI Chat Model",
+          "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+          "typeVersion": 1.2,
+          "position": [
+            80,
+            448
+          ],
+          "parameters": {
+            "notice": "",
+            "model": {
+              "__rl": true,
+              "value": "template-echo-model",
+              "mode": "id"
+            },
+            "options": {
+              "temperature": "={{ $json.itemNumber === 0 ? 0 : 0.1 }}"
+            }
+          }
+        }
+      ],
+      "connections": {
+        "Manual Trigger": {
+          "main": [
+            [
+              {
+                "node": "Fixture input items",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "Fixture input items": {
+          "main": [
+            [
+              {
+                "node": "Compound prompt cases",
+                "type": "main",
+                "index": 0
+              },
+              {
+                "node": "Whole-field prompt case",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "Fixture OpenAI Chat Model": {
+          "ai_languageModel": [
+            [
+              {
+                "node": "Compound prompt cases",
+                "type": "ai_languageModel",
+                "index": 0
+              },
+              {
+                "node": "Whole-field prompt case",
+                "type": "ai_languageModel",
+                "index": 0
+              }
+            ]
+          ]
+        }
+      },
+      "settings": {
+        "executionOrder": "v1"
+      }
+    }
+  }
+}

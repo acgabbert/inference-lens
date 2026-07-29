@@ -1,0 +1,97 @@
+{
+  "fixtureSchemaVersion": 1,
+  "n8nVersion": "2.32.5",
+  "versionSource": "instance owner and authenticated n8n UI",
+  "scenario": "successful whole-field prompt with two input items",
+  "capturedAt": "2026-07-28T11:22:48.105Z",
+  "projectedAt": "2026-07-28T11:25:58.886Z",
+  "workflowId": "workflow_fixture",
+  "nodeTypes": [
+    {
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1
+    },
+    {
+      "name": "Fixture input items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "name": "Compound prompt cases",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9
+    },
+    {
+      "name": "Whole-field prompt case",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9
+    },
+    {
+      "name": "Fixture OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2
+    }
+  ],
+  "workflowSettings": {
+    "executionOrder": "v1"
+  },
+  "executions": [
+    {
+      "id": "execution_fixture_001",
+      "mode": "manual",
+      "status": "success",
+      "runItemCounts": {
+        "Manual Trigger": [
+          1
+        ],
+        "Fixture input items": [
+          2
+        ],
+        "Compound prompt cases": [
+          2
+        ],
+        "Fixture OpenAI Chat Model": [
+          null,
+          null
+        ],
+        "Whole-field prompt case": [
+          2
+        ]
+      }
+    }
+  ],
+  "endpointShapes": [
+    "GET /api/v1/workflows/{workflowId}",
+    "GET /api/v1/executions/{executionId}?includeData=true"
+  ],
+  "removedFields": [
+    "baseURL",
+    "credentials",
+    "defaultHeaders",
+    "fetchOptions",
+    "openai_api_key"
+  ],
+  "warnings": [
+    "Projection requires manual review before commit.",
+    "Model sub-runs completed in Beta, Alpha order while parent output remained Alpha, Beta.",
+    "Model sub-run array position therefore cannot identify a parent item."
+  ],
+  "expectedEvidence": {
+    "level": "execution-reconstructed",
+    "authoredTextPath": "data.workflowData.nodes[name=Whole-field prompt case].parameters.text",
+    "inputItemsPath": "data.resultData.runData[Fixture input items][0].data.main[0]",
+    "effectiveMessagesPath": "data.resultData.runData[Fixture OpenAI Chat Model][*].inputOverride.ai_languageModel[0][0].json.messages",
+    "modelOptionsPath": "data.resultData.runData[Fixture OpenAI Chat Model][*].inputOverride.ai_languageModel[0][0].json.options",
+    "parentOutputPath": "data.resultData.runData[Whole-field prompt case][0].data.main[0]",
+    "providerRequestBodyPath": null
+  },
+  "files": {
+    "workflow.json": {
+      "sha256": "147a84627dcbdecb6caf2d3539bd5a413a418ee49f25a21b59ca7e0d4dba3190"
+    },
+    "execution-success.json": {
+      "sha256": "3cd42f6fec1b67d4adf1acfc9de46ca68fc13b5b2b591c67d8aedf7327231e3d"
+    }
+  }
+}

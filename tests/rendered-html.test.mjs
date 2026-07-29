@@ -75,6 +75,7 @@ test("standalone Node server renders the Inference Lens workbench", async (t) =>
   assert.match(html, /Run request/);
   assert.match(html, /Download diagnostics/);
   assert.match(html, /Run history/);
+  assert.match(html, /Import prompt from n8n/);
   assert.match(html, /Run details/);
   assert.doesNotMatch(html, /Your site is taking shape/);
 });

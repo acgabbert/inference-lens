@@ -1,0 +1,463 @@
+{
+  "id": "execution_fixture_001",
+  "workflowId": "workflow_fixture",
+  "mode": "manual",
+  "status": "error",
+  "finished": false,
+  "startedAt": "2026-07-28T11:09:49.622Z",
+  "stoppedAt": "2026-07-28T11:09:49.691Z",
+  "data": {
+    "startData": {},
+    "resultData": {
+      "error": {
+        "level": "warning",
+        "shouldReport": true,
+        "tags": {},
+        "timestamp": 1785236989676,
+        "context": {},
+        "functionality": "regular",
+        "name": "NodeOperationError",
+        "node": {
+          "parameters": {
+            "notice": "",
+            "promptType": "define",
+            "text": "=IL_P0_LITERAL\nsimple={{ $json.topic }}\ntwo={{ $json.first }}|{{ $json.second }}\ncompound={{\n  [$json.topic, $json.second]\n    .map((value) => `${value}`)\n    .join(\"::\")\n}}\nnested={{ `{$${\"\"}}`.replace(\"$\", $json.topic) }}\ndelimiter={{ \"literal }} text\" }}\nrepeated={{ $json.first }}|{{ $json.repeat }}",
+            "hasOutputParser": false,
+            "needsFallback": false,
+            "messages": {},
+            "batching": {}
+          },
+          "id": "node_fixture_003",
+          "name": "Compound prompt cases",
+          "type": "@n8n/n8n-nodes-langchain.chainLlm",
+          "typeVersion": 1.9,
+          "position": [
+            0,
+            0
+          ]
+        },
+        "messages": [],
+        "message": "invalid syntax",
+        "stack": "NodeOperationError: invalid syntax\n    at /usr/local/lib/node_modules/n8n/node_modules/.pnpm/@n8n+n8n-nodes-langchain@file+packages+@n8n+nodes-langchain_7affdbda0d4c0b309797e41d42357915/node_modules/@n8n/n8n-nodes-langchain/nodes/chains/ChainLLM/ChainLlm.node.ts:115:13\n    at Array.forEach (<anonymous>)\n    at ExecuteContext.execute (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/@n8n+n8n-nodes-langchain@file+packages+@n8n+nodes-langchain_7affdbda0d4c0b309797e41d42357915/node_modules/@n8n/n8n-nodes-langchain/nodes/chains/ChainLLM/ChainLlm.node.ts:93:18)\n    at WorkflowExecute.executeNode (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file+packages+core_@opentelemetry+api@1.9.0_@opentelemetry+exporter-trace-otlp_56f5a5be5f9a76dfbcdc404d6ec4dea5/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:1082:8)\n    at WorkflowExecute.runNode (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file+packages+core_@opentelemetry+api@1.9.0_@opentelemetry+exporter-trace-otlp_56f5a5be5f9a76dfbcdc404d6ec4dea5/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:1382:11)\n    at /usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file+packages+core_@opentelemetry+api@1.9.0_@opentelemetry+exporter-trace-otlp_56f5a5be5f9a76dfbcdc404d6ec4dea5/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:1855:27\n    at /usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file+packages+core_@opentelemetry+api@1.9.0_@opentelemetry+exporter-trace-otlp_56f5a5be5f9a76dfbcdc404d6ec4dea5/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:2549:11"
+      },
+      "runData": {
+        "Manual Trigger": [
+          {
+            "startTime": 1785236989641,
+            "executionIndex": 0,
+            "source": [],
+            "hints": [],
+            "executionTime": 1,
+            "executionStatus": "success",
+            "data": {
+              "main": [
+                [
+                  {
+                    "json": {},
+                    "pairedItem": {
+                      "item": 0
+                    }
+                  }
+                ]
+              ]
+            }
+          }
+        ],
+        "Fixture input items": [
+          {
+            "startTime": 1785236989644,
+            "executionIndex": 1,
+            "source": [
+              {
+                "previousNode": "Manual Trigger",
+                "previousNodeOutput": 0,
+                "previousNodeRun": 0
+              }
+            ],
+            "hints": [],
+            "executionTime": 6,
+            "executionStatus": "success",
+            "data": {
+              "main": [
+                [
+                  {
+                    "json": {
+                      "case": "alpha",
+                      "itemNumber": 0,
+                      "topic": "IL_P0_TOPIC_ALPHA",
+                      "first": "IL_P0_REPEAT",
+                      "repeat": "IL_P0_REPEAT",
+                      "second": "IL_P0_SECOND_ALPHA",
+                      "wholeField": "IL_P0_WHOLE_ALPHA"
+                    },
+                    "pairedItem": {
+                      "item": 0
+                    }
+                  },
+                  {
+                    "json": {
+                      "case": "beta",
+                      "itemNumber": 1,
+                      "topic": "IL_P0_TOPIC_BETA",
+                      "first": "IL_P0_REPEAT",
+                      "repeat": "IL_P0_REPEAT",
+                      "second": "IL_P0_SECOND_BETA",
+                      "wholeField": "IL_P0_WHOLE_BETA"
+                    },
+                    "pairedItem": {
+                      "item": 0
+                    }
+                  }
+                ]
+              ]
+            }
+          }
+        ],
+        "Compound prompt cases": [
+          {
+            "startTime": 1785236989651,
+            "executionIndex": 2,
+            "source": [
+              {
+                "previousNode": "Fixture input items",
+                "previousNodeOutput": 0,
+                "previousNodeRun": 0
+              }
+            ],
+            "hints": [],
+            "executionTime": 38,
+            "executionStatus": "error",
+            "error": {
+              "level": "warning",
+              "shouldReport": true,
+              "tags": {},
+              "timestamp": 1785236989676,
+              "context": {},
+              "functionality": "regular",
+              "name": "NodeOperationError",
+              "node": {
+                "parameters": {
+                  "notice": "",
+                  "promptType": "define",
+                  "text": "=IL_P0_LITERAL\nsimple={{ $json.topic }}\ntwo={{ $json.first }}|{{ $json.second }}\ncompound={{\n  [$json.topic, $json.second]\n    .map((value) => `${value}`)\n    .join(\"::\")\n}}\nnested={{ `{$${\"\"}}`.replace(\"$\", $json.topic) }}\ndelimiter={{ \"literal }} text\" }}\nrepeated={{ $json.first }}|{{ $json.repeat }}",
+                  "hasOutputParser": false,
+                  "needsFallback": false,
+                  "messages": {},
+                  "batching": {}
+                },
+                "id": "node_fixture_003",
+                "name": "Compound prompt cases",
+                "type": "@n8n/n8n-nodes-langchain.chainLlm",
+                "typeVersion": 1.9,
+                "position": [
+                  0,
+                  0
+                ]
+              },
+              "messages": [],
+              "message": "invalid syntax",
+              "stack": "NodeOperationError: invalid syntax\n    at /usr/local/lib/node_modules/n8n/node_modules/.pnpm/@n8n+n8n-nodes-langchain@file+packages+@n8n+nodes-langchain_7affdbda0d4c0b309797e41d42357915/node_modules/@n8n/n8n-nodes-langchain/nodes/chains/ChainLLM/ChainLlm.node.ts:115:13\n    at Array.forEach (<anonymous>)\n    at ExecuteContext.execute (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/@n8n+n8n-nodes-langchain@file+packages+@n8n+nodes-langchain_7affdbda0d4c0b309797e41d42357915/node_modules/@n8n/n8n-nodes-langchain/nodes/chains/ChainLLM/ChainLlm.node.ts:93:18)\n    at WorkflowExecute.executeNode (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file+packages+core_@opentelemetry+api@1.9.0_@opentelemetry+exporter-trace-otlp_56f5a5be5f9a76dfbcdc404d6ec4dea5/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:1082:8)\n    at WorkflowExecute.runNode (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file+packages+core_@opentelemetry+api@1.9.0_@opentelemetry+exporter-trace-otlp_56f5a5be5f9a76dfbcdc404d6ec4dea5/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:1382:11)\n    at /usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file+packages+core_@opentelemetry+api@1.9.0_@opentelemetry+exporter-trace-otlp_56f5a5be5f9a76dfbcdc404d6ec4dea5/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:1855:27\n    at /usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file+packages+core_@opentelemetry+api@1.9.0_@opentelemetry+exporter-trace-otlp_56f5a5be5f9a76dfbcdc404d6ec4dea5/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:2549:11"
+            }
+          }
+        ]
+      },
+      "pinData": {},
+      "lastNodeExecuted": "Compound prompt cases"
+    },
+    "executionData": {
+      "contextData": {},
+      "nodeExecutionStack": [
+        {
+          "node": {
+            "parameters": {
+              "notice": "",
+              "promptType": "define",
+              "text": "=IL_P0_LITERAL\nsimple={{ $json.topic }}\ntwo={{ $json.first }}|{{ $json.second }}\ncompound={{\n  [$json.topic, $json.second]\n    .map((value) => `${value}`)\n    .join(\"::\")\n}}\nnested={{ `{$${\"\"}}`.replace(\"$\", $json.topic) }}\ndelimiter={{ \"literal }} text\" }}\nrepeated={{ $json.first }}|{{ $json.repeat }}",
+              "hasOutputParser": false,
+              "needsFallback": false,
+              "messages": {},
+              "batching": {}
+            },
+            "id": "node_fixture_003",
+            "name": "Compound prompt cases",
+            "type": "@n8n/n8n-nodes-langchain.chainLlm",
+            "typeVersion": 1.9,
+            "position": [
+              0,
+              0
+            ]
+          },
+          "data": {
+            "main": [
+              [
+                {
+                  "json": {
+                    "case": "alpha",
+                    "itemNumber": 0,
+                    "topic": "IL_P0_TOPIC_ALPHA",
+                    "first": "IL_P0_REPEAT",
+                    "repeat": "IL_P0_REPEAT",
+                    "second": "IL_P0_SECOND_ALPHA",
+                    "wholeField": "IL_P0_WHOLE_ALPHA"
+                  },
+                  "pairedItem": {
+                    "item": 0
+                  }
+                },
+                {
+                  "json": {
+                    "case": "beta",
+                    "itemNumber": 1,
+                    "topic": "IL_P0_TOPIC_BETA",
+                    "first": "IL_P0_REPEAT",
+                    "repeat": "IL_P0_REPEAT",
+                    "second": "IL_P0_SECOND_BETA",
+                    "wholeField": "IL_P0_WHOLE_BETA"
+                  },
+                  "pairedItem": {
+                    "item": 1
+                  }
+                }
+              ]
+            ]
+          },
+          "source": {
+            "main": [
+              {
+                "previousNode": "Fixture input items",
+                "previousNodeOutput": 0,
+                "previousNodeRun": 0
+              }
+            ]
+          }
+        },
+        {
+          "node": {
+            "parameters": {
+              "notice": "",
+              "promptType": "define",
+              "text": "={{ $json.wholeField }}",
+              "hasOutputParser": false,
+              "needsFallback": false,
+              "messages": {},
+              "batching": {}
+            },
+            "id": "node_fixture_004",
+            "name": "Whole-field prompt case",
+            "type": "@n8n/n8n-nodes-langchain.chainLlm",
+            "typeVersion": 1.9,
+            "position": [
+              0,
+              240
+            ],
+            "disabled": true
+          },
+          "data": {
+            "main": [
+              [
+                {
+                  "json": {
+                    "case": "alpha",
+                    "itemNumber": 0,
+                    "topic": "IL_P0_TOPIC_ALPHA",
+                    "first": "IL_P0_REPEAT",
+                    "repeat": "IL_P0_REPEAT",
+                    "second": "IL_P0_SECOND_ALPHA",
+                    "wholeField": "IL_P0_WHOLE_ALPHA"
+                  },
+                  "pairedItem": {
+                    "item": 0
+                  }
+                },
+                {
+                  "json": {
+                    "case": "beta",
+                    "itemNumber": 1,
+                    "topic": "IL_P0_TOPIC_BETA",
+                    "first": "IL_P0_REPEAT",
+                    "repeat": "IL_P0_REPEAT",
+                    "second": "IL_P0_SECOND_BETA",
+                    "wholeField": "IL_P0_WHOLE_BETA"
+                  },
+                  "pairedItem": {
+                    "item": 0
+                  }
+                }
+              ]
+            ]
+          },
+          "source": {
+            "main": [
+              {
+                "previousNode": "Fixture input items",
+                "previousNodeOutput": 0,
+                "previousNodeRun": 0
+              }
+            ]
+          }
+        }
+      ],
+      "metadata": {},
+      "waitingExecution": {},
+      "waitingExecutionSource": {},
+      "runtimeData": {
+        "version": 1,
+        "establishedAt": 1785236989634,
+        "source": "manual",
+        "triggerNode": {
+          "name": "Manual Trigger",
+          "type": "n8n-nodes-base.manualTrigger"
+        },
+        "redaction": {
+          "version": 2,
+          "production": false,
+          "manual": false,
+          "source": "workflow"
+        }
+      }
+    },
+    "workflowData": {
+      "id": "workflow_fixture",
+      "name": "[Inference Lens fixture] Basic LLM Chain",
+      "nodes": [
+        {
+          "id": "node_fixture_001",
+          "name": "Manual Trigger",
+          "type": "n8n-nodes-base.manualTrigger",
+          "typeVersion": 1,
+          "position": [
+            -560,
+            128
+          ],
+          "parameters": {
+            "notice": ""
+          }
+        },
+        {
+          "id": "node_fixture_002",
+          "name": "Fixture input items",
+          "type": "n8n-nodes-base.code",
+          "typeVersion": 2,
+          "position": [
+            -320,
+            128
+          ],
+          "parameters": {
+            "mode": "runOnceForAllItems",
+            "language": "javaScript",
+            "jsCode": "return [\n  {\n    json: {\n      case: \"alpha\",\n      itemNumber: 0,\n      topic: \"IL_P0_TOPIC_ALPHA\",\n      first: \"IL_P0_REPEAT\",\n      repeat: \"IL_P0_REPEAT\",\n      second: \"IL_P0_SECOND_ALPHA\",\n      wholeField: \"IL_P0_WHOLE_ALPHA\"\n    }\n  },\n  {\n    json: {\n      case: \"beta\",\n      itemNumber: 1,\n      topic: \"IL_P0_TOPIC_BETA\",\n      first: \"IL_P0_REPEAT\",\n      repeat: \"IL_P0_REPEAT\",\n      second: \"IL_P0_SECOND_BETA\",\n      wholeField: \"IL_P0_WHOLE_BETA\"\n    }\n  }\n];",
+            "notice": ""
+          }
+        },
+        {
+          "id": "node_fixture_003",
+          "name": "Compound prompt cases",
+          "type": "@n8n/n8n-nodes-langchain.chainLlm",
+          "typeVersion": 1.9,
+          "position": [
+            0,
+            0
+          ],
+          "parameters": {
+            "notice": "",
+            "promptType": "define",
+            "text": "=IL_P0_LITERAL\nsimple={{ $json.topic }}\ntwo={{ $json.first }}|{{ $json.second }}\ncompound={{\n  [$json.topic, $json.second]\n    .map((value) => `${value}`)\n    .join(\"::\")\n}}\nnested={{ `{$${\"\"}}`.replace(\"$\", $json.topic) }}\ndelimiter={{ \"literal }} text\" }}\nrepeated={{ $json.first }}|{{ $json.repeat }}",
+            "hasOutputParser": false,
+            "needsFallback": false,
+            "messages": {},
+            "batching": {}
+          }
+        },
+        {
+          "id": "node_fixture_004",
+          "name": "Whole-field prompt case",
+          "type": "@n8n/n8n-nodes-langchain.chainLlm",
+          "typeVersion": 1.9,
+          "position": [
+            0,
+            240
+          ],
+          "parameters": {
+            "notice": "",
+            "promptType": "define",
+            "text": "={{ $json.wholeField }}",
+            "hasOutputParser": false,
+            "needsFallback": false,
+            "messages": {},
+            "batching": {}
+          },
+          "disabled": true
+        },
+        {
+          "id": "node_fixture_005",
+          "name": "Fixture OpenAI Chat Model",
+          "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+          "typeVersion": 1.2,
+          "position": [
+            80,
+            448
+          ],
+          "parameters": {
+            "notice": "",
+            "model": {
+              "__rl": true,
+              "value": "template-echo-model",
+              "mode": "id"
+            },
+            "options": {
+              "temperature": "={{ $json.itemNumber === 0 ? 0 : 0.1 }}"
+            }
+          }
+        }
+      ],
+      "connections": {
+        "Manual Trigger": {
+          "main": [
+            [
+              {
+                "node": "Fixture input items",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "Fixture input items": {
+          "main": [
+            [
+              {
+                "node": "Compound prompt cases",
+                "type": "main",
+                "index": 0
+              },
+              {
+                "node": "Whole-field prompt case",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "Fixture OpenAI Chat Model": {
+          "ai_languageModel": [
+            [
+              {
+                "node": "Compound prompt cases",
+                "type": "ai_languageModel",
+                "index": 0
+              },
+              {
+                "node": "Whole-field prompt case",
+                "type": "ai_languageModel",
+                "index": 0
+              }
+            ]
+          ]
+        }
+      },
+      "settings": {
+        "executionOrder": "v1"
+      }
+    }
+  }
+}

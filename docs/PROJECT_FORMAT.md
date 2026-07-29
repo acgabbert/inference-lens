@@ -97,6 +97,16 @@ Project documents contain authored, shareable definitions:
 - the default conversation revision, model target, inference options, and
   enabled tools
 
+External prompt imports retain a secret-free receipt containing source
+identity, authored fields, expression evidence, warnings, and the deterministic
+projection that was applied. Resolved-snapshot receipts are anchored by the
+literal messages they created. Reusable-template receipts are anchored by the
+immutable imported template revision through `externalImportId`; their
+expression-to-variable mapping records how external syntax became native IL
+variables. Removing an initial template use does not remove this provenance.
+An edited template creates a new revision without direct-import provenance, and
+the receipt is pruned only when its imported revision is removed.
+
 They do not contain API keys, cookies, authorization headers, local profile
 IDs, active editor selections, raw run traces, or browser/native filesystem
 handles.

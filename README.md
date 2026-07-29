@@ -2,6 +2,20 @@
 
 Inference Lens is a local web workbench for sending streaming chat-completion requests to an OpenAI-compatible API and inspecting normalized run events. **Inspect every model run.** The fastest way to try it is the [Docker quick start](#quick-start) — one command, nothing to install. To run from source instead, install Node.js 22.13 or newer, then run `npm ci` followed by `npm run dev` from the repository root and open the local URL printed in the terminal.
 
+`npm run dev` reads the same server configuration as Compose from a `.env` file
+in the repository root. To configure a server-default connection for local
+development:
+
+```sh
+cp .env.example .env
+npm run dev
+```
+
+Set `INFERENCE_LENS_API_ENDPOINT`, `INFERENCE_LENS_API_KEY`, and optionally
+`INFERENCE_LENS_MODEL` in `.env`. These values remain server-only; shell
+environment variables take precedence. Restart the development server after
+changing `.env`.
+
 In the UI, enter the provider base URL (for example, `https://api.openai.com/v1`), API key, model, and messages, then select **Run request**; unless the endpoint already ends with `/chat/completions`, the app appends that path. The key is used for the live request but excluded from exported project files and displayed diagnostics. Run `npm test` for the web build and TypeScript/runtime test suite, or use `npm run build` and `npm start` to run a production build locally.
 
 For a no-account, local end-to-end endpoint, see [the llama.cpp testing guide](docs/LLAMA_CPP_E2E.md). It covers a loopback-only server, direct curl checks, and the Inference Lens profile values.

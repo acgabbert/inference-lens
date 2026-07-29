@@ -1,0 +1,93 @@
+{
+  "name": "[Inference Lens Phase 5] Single item success",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "50000000-0000-4000-8000-000000000001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-640, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    case: \"single-item\",\n    topic: \"PHASE5_TOPIC_ALPHA\",\n    first: \"PHASE5_REPEAT\",\n    repeat: \"PHASE5_REPEAT\",\n    second: \"PHASE5_SECOND_ALPHA\"\n  }\n}];"
+      },
+      "id": "50000000-0000-4000-8000-000000000002",
+      "name": "Predictable single item",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-400, 0]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=PHASE5_SINGLE_ITEM\ncase={{ $json.case }}\ntopic={{ $json.topic }}\ncompound={{ [$json.topic, $json.second].join(\"::\") }}\nrepeated={{ $json.first }}|{{ $json.repeat }}",
+        "batching": {}
+      },
+      "id": "50000000-0000-4000-8000-000000000003",
+      "name": "Phase 5 prompt",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [-120, 0]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "template-echo-model",
+          "mode": "id"
+        },
+        "options": {
+          "temperature": 0
+        }
+      },
+      "id": "50000000-0000-4000-8000-000000000004",
+      "name": "Phase 5 OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [-40, 240]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Predictable single item",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Predictable single item": {
+      "main": [
+        [
+          {
+            "node": "Phase 5 prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Phase 5 OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Phase 5 prompt",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "tags": []
+}
