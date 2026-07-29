@@ -122,6 +122,9 @@ import { ResponseOutput } from "./response-output.client";
 import type { TraceStorageStatus } from "./response-output.client";
 import type { ToolResultDraft } from "./tool-call-list.client";
 import {
+  toolResultDraftsForState,
+} from "./run-session-state.client";
+import {
   PaneTabs,
   WorkbenchShell,
 } from "./workbench-shell.client";
@@ -1161,29 +1164,7 @@ function HomeContent() {
   }
 
   function prepareToolResultDrafts(state: RunState): void {
-    if (state.status.kind !== "awaiting_tool_results") {
-      setToolResultDrafts({});
-      return;
-    }
-    const status = state.status;
-    const pending = new Set(status.pendingToolCallIds);
-    const calls =
-      state.turns
-        .find(({ turnId }) => turnId === status.turnId)
-        ?.attempts.at(-1)?.completedToolCalls ?? [];
-    const drafts: Record<string, ToolResultDraft> = {};
-    for (const call of calls) {
-      if (!pending.has(call.id)) continue;
-      const definition = tools.find((tool) => tool.name === call.name);
-      const mock = definition ? mockForTool(definition.id) : undefined;
-      drafts[call.id] = mock?.enabled
-        ? {
-            text: mock.result.content.map(({ text }) => text).join(""),
-            resolution: { kind: "mock", ruleId: mock.id },
-          }
-        : { text: "", resolution: { kind: "manual" } };
-    }
-    setToolResultDrafts(drafts);
+    setToolResultDrafts(toolResultDraftsForState(state, tools, mockForTool));
   }
 
   async function executeProviderTurn(
