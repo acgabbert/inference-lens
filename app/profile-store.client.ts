@@ -42,13 +42,18 @@ function profileId(): string {
   return `profile-${randomUUID()}`;
 }
 
+/**
+ * The starting profile ships with no endpoint or model rather than a real
+ * provider's, so a first run can never leave for somewhere the user never
+ * chose. `run-readiness.client.ts` blocks a run until both are filled in.
+ */
 export function createDefaultProfile(): StoredInferenceProfile {
   return {
     id: "openai-compatible",
     name: "OpenAI compatible",
     provider: "openai-compatible",
-    endpoint: "https://api.openai.com/v1",
-    model: "gpt-4.1-mini",
+    endpoint: "",
+    model: "",
     temperature: 0.7,
   };
 }
