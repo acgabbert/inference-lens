@@ -54,6 +54,9 @@ function directoryHandle(
       if (!match) throw new DOMException("missing", "NotFoundError");
       return match as FileSystemDirectoryHandleLike;
     },
+    async removeEntry() {
+      throw new Error("not used");
+    },
   };
   return handle;
 }

@@ -2,27 +2,30 @@
 
 import {
   PROJECT_FILE_NAME,
+  PROJECT_GITIGNORE_CONTENTS,
   parseProjectJson,
+  projectDirectoryName,
+  projectExportFileName,
   serializeProjectFile,
-} from "../packages/core/src/project";
-import type { ProjectFile } from "../packages/core/src/project";
+} from "../packages/core/src/project.ts";
+import type { ProjectFile } from "../packages/core/src/project.ts";
 import {
   assertTraceEntryName,
   serializeRunTrace,
   traceFileName,
-} from "../packages/core/src/run-trace";
-import type { RunTrace } from "../packages/core/src/run-kernel";
+} from "../packages/core/src/run-trace.ts";
+import type { RunTrace } from "../packages/core/src/run-kernel/index.ts";
 import {
   listTracesFromDirectory,
   readTraceFromDirectory,
   TRACES_DIRECTORY_NAME,
-} from "./project-directory.client";
+} from "./project-directory.client.ts";
 import type {
   FileSystemDirectoryHandleLike,
   FileSystemFileHandleLike,
   StoredRunTraceFile,
-} from "./project-directory.client";
-import { isTauriRuntime } from "./tauri-inference-transport.client";
+} from "./project-directory.client.ts";
+import { isTauriRuntime } from "./runtime.client.ts";
 
 export type { StoredRunTraceFile };
 
@@ -57,6 +60,11 @@ export interface ProjectWorkspaceHandle {
 export interface OpenedProjectWorkspace {
   project: ProjectFile;
   handle: ProjectWorkspaceHandle;
+}
+
+export interface ProjectCreationOptions {
+  name: string;
+  protectFromGit: boolean;
 }
 
 interface NativeWorkspace {
@@ -191,6 +199,7 @@ async function openBrowserProjectFolder(): Promise<OpenedProjectWorkspace | null
 
 async function createBrowserProjectFolder(
   project: ProjectFile,
+  options: ProjectCreationOptions,
 ): Promise<OpenedProjectWorkspace | null> {
   const showDirectoryPicker = picker();
   if (!showDirectoryPicker) {
@@ -199,36 +208,56 @@ async function createBrowserProjectFolder(
     );
   }
   try {
-    const directory = await showDirectoryPicker({
+    const parent = await showDirectoryPicker({
       id: "inference-lens-project",
       mode: "readwrite",
     });
+    const bundleName = projectDirectoryName(options.name);
     try {
-      await directory.getFileHandle(PROJECT_FILE_NAME);
+      await parent.getDirectoryHandle(bundleName);
       throw new Error(
-        `The selected folder already contains ${PROJECT_FILE_NAME}. Open it instead.`,
+        `${bundleName} already exists in the selected folder. Open it instead or choose another name.`,
       );
     } catch (error) {
       if (!(error instanceof DOMException) || error.name !== "NotFoundError") {
         throw error;
       }
     }
-    const contents = serializeProjectFile(project);
-    const fileHandle = await directory.getFileHandle(PROJECT_FILE_NAME, {
-      create: true,
-    });
-    const writable = await fileHandle.createWritable();
-    await writable.write(contents);
-    await writable.close();
-    return {
-      project,
-      handle: {
-        kind: "browser-directory",
-        displayName: directory.name,
-        displayPath: directory.name,
-        storage: browserStorage(directory, contents),
-      },
-    };
+    const directory = await parent.getDirectoryHandle(bundleName, { create: true });
+    try {
+      if (options.protectFromGit) {
+        const ignoreFile = await directory.getFileHandle(".gitignore", {
+          create: true,
+        });
+        const ignoreWritable = await ignoreFile.createWritable();
+        await ignoreWritable.write(PROJECT_GITIGNORE_CONTENTS);
+        await ignoreWritable.close();
+      }
+      const contents = serializeProjectFile(project);
+      const fileHandle = await directory.getFileHandle(PROJECT_FILE_NAME, {
+        create: true,
+      });
+      const writable = await fileHandle.createWritable();
+      await writable.write(contents);
+      await writable.close();
+      return {
+        project,
+        handle: {
+          kind: "browser-directory",
+          displayName: directory.name,
+          displayPath: directory.name,
+          storage: browserStorage(directory, contents),
+        },
+      };
+    } catch (error) {
+      try {
+        await parent.removeEntry(bundleName, { recursive: true });
+      } catch {
+        // Preserve the creation error. A failed best-effort rollback should not
+        // disguise the operation that left the bundle incomplete.
+      }
+      throw error;
+    }
   } catch (error) {
     if (isPickerCancellation(error)) return null;
     throw error;
@@ -296,10 +325,15 @@ async function openNativeProjectFolder(): Promise<OpenedProjectWorkspace | null>
 
 async function createNativeProjectFolder(
   project: ProjectFile,
+  options: ProjectCreationOptions,
 ): Promise<OpenedProjectWorkspace | null> {
   const workspace = await invokeNative<NativeWorkspace | null>(
     "create_project_workspace",
-    { contents: serializeProjectFile(project) },
+    {
+      contents: serializeProjectFile(project),
+      bundleName: projectDirectoryName(options.name),
+      protectFromGit: options.protectFromGit,
+    },
   );
   if (!workspace) return null;
   return {
@@ -316,10 +350,11 @@ export async function openProjectFolder(): Promise<OpenedProjectWorkspace | null
 
 export async function createProjectFolder(
   project: ProjectFile,
+  options: ProjectCreationOptions,
 ): Promise<OpenedProjectWorkspace | null> {
   return isTauriRuntime()
-    ? createNativeProjectFolder(project)
-    : createBrowserProjectFolder(project);
+    ? createNativeProjectFolder(project, options)
+    : createBrowserProjectFolder(project, options);
 }
 
 export async function saveProjectWorkspace(
@@ -416,7 +451,7 @@ export function downloadProjectFile(project: ProjectFile): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = PROJECT_FILE_NAME;
+  link.download = projectExportFileName(project.name);
   link.click();
   URL.revokeObjectURL(url);
 }

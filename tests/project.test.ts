@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  PROJECT_DIRECTORY_SUFFIX,
   PROJECT_FILE_NAME,
+  PROJECT_GITIGNORE_CONTENTS,
   ProjectValidationError,
   appendPromptTemplateRevision,
   authoredItemsForMessages,
@@ -15,6 +17,8 @@ import {
   parseProjectFile,
   parseProjectJson,
   prepareProjectRevisionRun,
+  projectDirectoryName,
+  projectExportFileName,
   projectDraft,
   renamePromptTemplate,
   removePromptTemplateRevision,
@@ -52,7 +56,25 @@ test("creates a strict, portable Project v5 document", () => {
     createdAt: "2026-07-24T12:00:00.000Z",
   });
 
-  assert.equal(PROJECT_FILE_NAME, "inference-lens.project.json");
+  assert.equal(PROJECT_DIRECTORY_SUFFIX, ".inference-lens");
+  assert.equal(PROJECT_FILE_NAME, "project.json");
+  assert.equal(PROJECT_GITIGNORE_CONTENTS, "*\n");
+  assert.equal(
+    projectDirectoryName("Customer prompt lab"),
+    "Customer prompt lab.inference-lens",
+  );
+  assert.equal(
+    projectDirectoryName("Draft / Windows: test.inference-lens"),
+    "Draft - Windows- test.inference-lens",
+  );
+  assert.equal(projectDirectoryName("CON"), "CON-project.inference-lens");
+  assert.equal(
+    projectDirectoryName("COM1.archive"),
+    "COM1-project.archive.inference-lens",
+  );
+  assert.equal(projectDirectoryName("   "), "Untitled.inference-lens");
+  assert.equal(projectExportFileName("Prompt Lab"), "Prompt Lab.project.json");
+  assert.equal(projectExportFileName("CON"), "CON-project.project.json");
   assert.equal(project.schemaVersion, 5);
   assert.equal(project.projectId, "project_example");
   const draft = projectDraft(project);

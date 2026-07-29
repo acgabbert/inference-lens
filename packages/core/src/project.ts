@@ -50,8 +50,46 @@ import type {
   ProviderCapabilityOverrides,
 } from "./types.ts";
 
-export const PROJECT_FILE_NAME = "inference-lens.project.json";
+export const PROJECT_DIRECTORY_SUFFIX = ".inference-lens";
+export const PROJECT_FILE_NAME = "project.json";
+export const PROJECT_EXPORT_FILE_SUFFIX = ".project.json";
+export const PROJECT_GITIGNORE_CONTENTS = "*\n";
 export const PROJECT_SCHEMA_VERSION = 5;
+
+/**
+ * Turns the portable project display name into one safe, visible directory
+ * component. The suffix identifies a project bundle without hiding it in
+ * Finder or requiring platform-specific package registration.
+ */
+export function projectDirectoryName(name: string): string {
+  const withoutSuffix = name
+    .trim()
+    .replace(new RegExp(`${PROJECT_DIRECTORY_SUFFIX.replace(".", "\\.")}$`, "i"), "")
+    .trim();
+  const sanitized = withoutSuffix
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-")
+    .replace(/\s+/g, " ")
+    .replace(/[. ]+$/g, "")
+    .slice(0, 180)
+    .replace(/[. ]+$/g, "");
+  const base = sanitized || "Untitled";
+  const reservedStem = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?=\.|$)/i.exec(
+    base,
+  )?.[1];
+  const portableBase = reservedStem
+    ? `${reservedStem}-project${base.slice(reservedStem.length)}`
+    : base;
+  return `${portableBase}${PROJECT_DIRECTORY_SUFFIX}`;
+}
+
+/**
+ * Gives standalone downloads the same recognizable, portable base name as a
+ * project bundle while keeping the bundle's internal manifest name stable.
+ */
+export function projectExportFileName(name: string): string {
+  const directoryName = projectDirectoryName(name);
+  return `${directoryName.slice(0, -PROJECT_DIRECTORY_SUFFIX.length)}${PROJECT_EXPORT_FILE_SUFFIX}`;
+}
 
 export interface ConnectionRequirement {
   id: ConnectionRequirementId;

@@ -112,6 +112,7 @@ import {
 } from "./tool-registry-store.client";
 import { ToolRegistryModal } from "./tool-registry-modal.client";
 import { N8nImportModal } from "./n8n-import-modal.client";
+import { ProjectCreationDialog } from "./project-creation-dialog.client";
 import { ModelCombobox } from "./model-combobox.client";
 import { useModelDiscovery } from "./use-model-discovery.client";
 import { useConnectionProfiles } from "./use-connection-profiles.client";
@@ -289,6 +290,8 @@ function HomeContent() {
   const [n8nImportOpen, setN8nImportOpen] = useState(false);
   const [confirmation, setConfirmation] =
     useState<ConfirmationDialogRequest>();
+  const [projectCreationMode, setProjectCreationMode] =
+    useState<"new" | "save">();
   const [connectionDrawerOpen, setConnectionDrawerOpen] = useState(false);
   const [runHistoryOpen, setRunHistoryOpen] = useState(false);
   const [savedRunVersion, setSavedRunVersion] = useState(0);
@@ -1809,6 +1812,14 @@ function HomeContent() {
     else setRequestTab("messages");
   }
 
+  function saveOrChooseProjectLocation(): void {
+    if (projectWorkspace || !folderAccessAvailable) {
+      void project.saveProject();
+      return;
+    }
+    setProjectCreationMode("save");
+  }
+
   return (
     <main
       onKeyDown={(event) => {
@@ -1817,7 +1828,7 @@ function HomeContent() {
           event.key.toLowerCase() === "s"
         ) {
           event.preventDefault();
-          void project.saveProject();
+          saveOrChooseProjectLocation();
         }
         if (
           (event.metaKey || event.ctrlKey) &&
@@ -1866,9 +1877,9 @@ function HomeContent() {
         runDisabledReason={readiness?.blocked ? readiness.summary : undefined}
         onChooseProfile={chooseProfile}
         onOpenConnections={() => setConnectionDrawerOpen(true)}
-        onNewProject={() => void project.newProjectFolder()}
+        onNewProject={() => setProjectCreationMode("new")}
         onOpenProject={() => void project.openProjectWorkspace()}
-        onSaveProject={() => void project.saveProject()}
+        onSaveProject={saveOrChooseProjectLocation}
         onImportProject={(event) => void project.importProject(event)}
         onOpenN8nImport={() => setN8nImportOpen(true)}
         onExportProject={project.exportProject}
@@ -2462,6 +2473,19 @@ function HomeContent() {
             projectModel: activeModel,
           }}
           onImport={importN8nPrompt}
+        />
+      )}
+      {projectCreationMode && (
+        <ProjectCreationDialog
+          initialName={projectFile?.name ?? "Untitled Inference Lens project"}
+          onClose={() => setProjectCreationMode(undefined)}
+          onCreate={(options) => {
+            if (projectCreationMode === "new") {
+              void project.newProjectFolder(options);
+            } else {
+              void project.saveProject(options);
+            }
+          }}
         />
       )}
       {confirmation && (

@@ -1,10 +1,17 @@
 # Project format and workspace storage
 
-Inference Lens projects use one canonical, portable JSON document named
-`inference-lens.project.json`. New saves use schema version 5. Earlier project
-formats and the proof-of-concept request export are intentionally unsupported:
-every schema is strict, so a reader rejects a document it does not fully
-understand rather than guessing.
+Inference Lens projects use a visible `<name>.inference-lens/` directory bundle
+containing one canonical, portable JSON document named `project.json`. New
+saves use schema version 5. Earlier project formats and the proof-of-concept
+request export are intentionally unsupported: every schema is strict, so a
+reader rejects a document it does not fully understand rather than guessing.
+
+New bundles contain an internal `.gitignore` with `*` by default. This makes the
+entire working project—including authored prompts, fixtures, and run
+traces—private from ordinary Git staging even when it lives inside a code
+repository. The creation dialog can omit the ignore file for projects intended
+for version control. The ignore file is workspace metadata and is not part of
+the portable project document.
 
 ## Authored conversations
 

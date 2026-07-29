@@ -2278,6 +2278,43 @@ output {
   line-height: 1.5;
 }
 
+.project-creation-name {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 1.25rem;
+}
+
+.project-creation-name > span {
+  font-weight: 650;
+}
+
+.project-creation-name input {
+  width: 100%;
+}
+
+.project-creation-name small,
+.project-creation-protection small {
+  color: var(--text-muted);
+}
+
+.project-creation-protection {
+  align-items: flex-start;
+  display: flex;
+  gap: 0.7rem;
+  margin-top: 1.25rem;
+}
+
+.project-creation-protection input {
+  flex: 0 0 auto;
+  margin-top: 0.2rem;
+  width: auto;
+}
+
+.project-creation-protection > span {
+  display: grid;
+  gap: 0.2rem;
+}
+
 .confirmation-details {
   margin: 16px 0 0;
   display: grid;
