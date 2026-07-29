@@ -8,7 +8,10 @@ import {
   parseProjectFile,
   projectDraft,
 } from "../packages/core/src/project.ts";
-import { projectTemplateWorkbenchView } from "../app/project-template-workbench.client.ts";
+import {
+  pendingBranchMessagesAfterItemUpdate,
+  projectTemplateWorkbenchView,
+} from "../app/project-template-workbench.client.ts";
 
 const request = {
   provider: "openai-compatible" as const,
@@ -72,6 +75,40 @@ test("derives a pending branch composer and preview from the same authored items
     ...parent.items,
     { kind: "message", message: assistant },
   ]);
+});
+
+test("adds a message to a pending branch without dropping its assistant response", () => {
+  const project = templateProject();
+  const parent = project.conversationRevisions[0]!;
+  const overrides = {
+    "template-use_prompt": { topic: "override" },
+  };
+  const resolved = projectDraft(project, overrides).messages;
+  const assistant = {
+    id: "message_assistant" as const,
+    role: "assistant" as const,
+    content: [{ type: "text" as const, text: "Answer" }],
+  };
+  const followUp = {
+    id: "message_follow-up" as const,
+    role: "user" as const,
+    content: [{ type: "text" as const, text: "" }],
+  };
+
+  const messages = pendingBranchMessagesAfterItemUpdate({
+    project,
+    messages: [...resolved, assistant],
+    runOverrides: overrides,
+    parentRevisionId: parent.id,
+    update: (items) => [
+      ...items,
+      { kind: "message", message: followUp },
+    ],
+  });
+
+  assert.deepEqual(messages, [...resolved, assistant, followUp]);
+  assert.equal(project.conversationRevisions.length, 1);
+  assert.deepEqual(projectDraft(project, overrides).messages, resolved);
 });
 
 test("contains project resolution failures instead of throwing during render", () => {

@@ -20,6 +20,38 @@ export interface ProjectTemplateWorkbenchView {
 }
 
 /**
+ * Applies an authored-item edit to a pending branch without changing the
+ * project's active revision. The returned messages remain the branch's local
+ * draft until the caller commits them by creating the branch revision.
+ */
+export function pendingBranchMessagesAfterItemUpdate(input: {
+  project: ProjectFile;
+  messages: ConversationMessage[];
+  runOverrides: TemplateRunOverrides;
+  parentRevisionId: ConversationRevisionId;
+  update(items: ProjectConversationItem[]): ProjectConversationItem[];
+}): ConversationMessage[] {
+  const parent = input.project.conversationRevisions.find(
+    ({ id }) => id === input.parentRevisionId,
+  );
+  if (!parent) {
+    throw new Error("The pending branch parent no longer exists.");
+  }
+  const currentItems = authoredItemsForMessages(
+    input.project,
+    parent,
+    input.messages,
+    input.runOverrides,
+  );
+  const items = input.update(structuredClone(currentItems));
+  return resolveProjectRevision(
+    input.project,
+    { ...parent, items },
+    input.runOverrides,
+  ).messages;
+}
+
+/**
  * Derives the template-backed composer and request projection together.
  *
  * A pending branch is not yet part of the project document, so both surfaces

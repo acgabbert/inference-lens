@@ -141,6 +141,7 @@ import {
   TemplateUseCard,
 } from "./project-templates-pane.client";
 import {
+  pendingBranchMessagesAfterItemUpdate,
   projectTemplateWorkbenchView,
 } from "./project-template-workbench.client";
 import {
@@ -878,6 +879,33 @@ function HomeContent() {
   function mutateAuthoredItems(
     update: (items: ProjectConversationItem[]) => ProjectConversationItem[],
   ): void {
+    if (branchContext) {
+      if (!projectFile || !branchContext.parentConversationRevisionId) {
+        project.setError(
+          "This branch context is missing its parent revision. Start the branch again from its source run.",
+        );
+        return;
+      }
+      try {
+        resetMessages(
+          pendingBranchMessagesAfterItemUpdate({
+            project: projectFile,
+            messages,
+            runOverrides: templateRunOverrides,
+            parentRevisionId: branchContext.parentConversationRevisionId,
+            update,
+          }),
+        );
+        project.setError(undefined);
+      } catch (error) {
+        project.setError(
+          error instanceof Error
+            ? error.message
+            : "Could not update the pending branch.",
+        );
+      }
+      return;
+    }
     const { project: base, revisionId } = projectForUseMutation();
     const revision = base.conversationRevisions.find(
       ({ id }) => id === revisionId,
