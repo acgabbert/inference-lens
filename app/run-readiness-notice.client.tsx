@@ -31,8 +31,10 @@ export function RunReadinessNotice({
         {blocked ? "!" : "i"}
       </span>
       <div className="run-readiness-copy">
-        <strong>{headline}</strong>
-        <p>{detail}</p>
+        <div className="run-readiness-summary">
+          <strong>{headline}</strong>
+          <p>{detail}</p>
+        </div>
         {explanation && (
           // A disclosure rather than a title attribute: a native tooltip is
           // invisible on touch and unreachable from the keyboard.
@@ -56,6 +58,8 @@ export function RunReadinessNotice({
             ))}
           </dl>
         )}
+      </div>
+      {actions.length > 0 && (
         <div className="run-readiness-actions">
           {actions.map((action) => (
             <button
@@ -68,7 +72,7 @@ export function RunReadinessNotice({
             </button>
           ))}
         </div>
-      </div>
+      )}
     </div>
   );
 }

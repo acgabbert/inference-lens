@@ -592,6 +592,16 @@ export function TemplateUseCard({
     runOverrides,
   );
   const newerRevision = template.currentRevisionId !== revision.id;
+  // Resolution can report the same missing variable once per message. The
+  // value is authored once, so the card should summarize it once as well.
+  const uniqueDiagnostics = [
+    ...new Map(
+      diagnostics.map(({ diagnostic }) => [diagnostic.message, diagnostic]),
+    ).values(),
+  ];
+  const missingDiagnosticCount = uniqueDiagnostics.filter(
+    ({ code }) => code === "missing-template-variable",
+  ).length;
 
   function updateRecord(
     current: Readonly<Record<string, string>>,
@@ -614,7 +624,18 @@ export function TemplateUseCard({
     <article className={diagnostics.length ? "template-use-card unresolved" : "template-use-card"}>
       <header>
         <div>
-          <span className="eyebrow">Pinned template</span>
+          <div className="template-use-kicker">
+            <span className="eyebrow">Pinned template</span>
+            {uniqueDiagnostics.length > 0 && (
+              <span className="template-issue-count" role="status">
+                {missingDiagnosticCount === uniqueDiagnostics.length
+                  ? `${missingDiagnosticCount} missing`
+                  : `${uniqueDiagnostics.length} ${
+                      uniqueDiagnostics.length === 1 ? "issue" : "issues"
+                    }`}
+              </span>
+            )}
+          </div>
           <h3>{template.name}</h3>
           {importedFrom && (
             <small>{importProvenanceLabel(importedFrom)}</small>
@@ -634,16 +655,6 @@ export function TemplateUseCard({
           </button>
         </div>
       </header>
-
-      {/* Resolution reports a missing variable once per message it appears in.
-          The author fills the value in one place, so it is stated once. */}
-      {[...new Map(
-        diagnostics.map(({ diagnostic }) => [diagnostic.message, diagnostic]),
-      ).values()].map((diagnostic) => (
-        <div className="template-diagnostic" key={diagnostic.message}>
-          {diagnostic.message}
-        </div>
-      ))}
 
       <section className="template-use-preview">
         <div className="template-preview-heading">
