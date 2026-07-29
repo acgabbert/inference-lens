@@ -1,0 +1,97 @@
+{
+  "name": "[Inference Lens contract] AI Agent 2.2",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a2200000-0000-4000-8000-000000000001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-640, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    case: \"ai-agent-2.2\",\n    topic: \"IL_AGENT_2_2_TOPIC_ALPHA\",\n    first: \"IL_AGENT_2_2_REPEAT\",\n    repeat: \"IL_AGENT_2_2_REPEAT\",\n    second: \"IL_AGENT_2_2_SECOND_ALPHA\"\n  }\n}];"
+      },
+      "id": "a2200000-0000-4000-8000-000000000002",
+      "name": "Predictable AI Agent 2.2 input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-400, 0]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=IL_AGENT_2_2_USER\ncase={{ $json.case }}\ntopic={{ $json.topic }}\ncompound={{ [$json.topic, $json.second].join(\"::\") }}\nrepeated={{ $json.first }}|{{ $json.repeat }}",
+        "hasOutputParser": false,
+        "options": {
+          "systemMessage": "=IL_AGENT_2_2_SYSTEM\ntopic={{ $json.topic }}",
+          "enableStreaming": false
+        }
+      },
+      "id": "a2200000-0000-4000-8000-000000000003",
+      "name": "AI Agent 2.2 contract",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [-120, 0]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "template-echo-model",
+          "mode": "id"
+        },
+        "options": {
+          "temperature": 0
+        }
+      },
+      "id": "a2200000-0000-4000-8000-000000000004",
+      "name": "AI Agent 2.2 OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [-40, 240]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Predictable AI Agent 2.2 input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Predictable AI Agent 2.2 input": {
+      "main": [
+        [
+          {
+            "node": "AI Agent 2.2 contract",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent 2.2 OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent 2.2 contract",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "tags": []
+}

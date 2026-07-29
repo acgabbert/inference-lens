@@ -16,6 +16,10 @@ import type {
 
 const BASIC_LLM_CHAIN_TYPE = "@n8n/n8n-nodes-langchain.chainLlm";
 const BASIC_LLM_CHAIN_VERSION = 1.9;
+const AI_AGENT_TYPE = "@n8n/n8n-nodes-langchain.agent";
+const AI_AGENT_VERSIONS = [2.2, 3, 3.1] as const;
+const MESSAGE_A_MODEL_TYPE = "@n8n/n8n-nodes-langchain.openAi";
+const MESSAGE_A_MODEL_VERSIONS = [1.2, 1.3] as const;
 const OPENAI_CHAT_MODEL_TYPE = "@n8n/n8n-nodes-langchain.lmChatOpenAi";
 const OPENAI_CHAT_MODEL_VERSION = 1.2;
 const AUTHORED_TEXT_PATH = "parameters.text";
@@ -178,8 +182,10 @@ export function parseN8nWorkflowSnapshot(
 function executionWorkflowSnapshot(
   execution: N8nExecutionDetail,
 ): N8nWorkflowSnapshot | undefined {
-  if (!isRecord(execution.data)) return undefined;
-  return parseN8nWorkflowSnapshot(execution.data.workflowData);
+  const nested = isRecord(execution.data)
+    ? parseN8nWorkflowSnapshot(execution.data.workflowData)
+    : undefined;
+  return nested ?? parseN8nWorkflowSnapshot(execution.workflowData);
 }
 
 function currentWorkflowSnapshot(
@@ -206,12 +212,24 @@ function invocationFor(
 }
 
 function authoredField(node: N8nNodeSnapshot): AuthoredPromptField | undefined {
-  const text = node.parameters.text;
+  return authoredTextField(
+    AUTHORED_TEXT_PATH,
+    "user",
+    node.parameters.text,
+  );
+}
+
+function authoredTextField(
+  path: string,
+  role: AuthoredPromptField["role"],
+  value: unknown,
+): AuthoredPromptField | undefined {
+  const text = value;
   if (typeof text !== "string") return undefined;
   const externalExpression = text.startsWith("=");
   return {
-    path: AUTHORED_TEXT_PATH,
-    role: "user",
+    path,
+    role,
     syntax: externalExpression ? "external-expression" : "literal",
     text,
     ...(externalExpression
@@ -376,7 +394,7 @@ export function scanN8nExpressionRegions(
 function sourceEvidence(
   context: N8nExtractionContext,
   node: N8nNodeSnapshot,
-  authored: AuthoredPromptField,
+  authored: AuthoredPromptField | AuthoredPromptField[],
   warnings: ImportWarning[],
   {
     runIndex,
@@ -406,7 +424,7 @@ function sourceEvidence(
       },
     },
     invocation: invocationFor(node, runIndex, itemIndex),
-    authored: [authored],
+    authored: Array.isArray(authored) ? authored : [authored],
     ...(resolved ? { resolved } : {}),
     bindings,
     fidelity: resolved ? "execution-reconstructed" : "authored-only",
@@ -425,7 +443,7 @@ function warning(
 async function authoredOnlyCandidate(
   context: N8nExtractionContext,
   node: N8nNodeSnapshot,
-  authored: AuthoredPromptField,
+  authored: AuthoredPromptField | AuthoredPromptField[],
   code: string,
   message: string,
   runIndex?: number,
@@ -439,8 +457,9 @@ async function authoredOnlyCandidate(
       ),
     );
   }
-  const expressionScan = scanN8nExpressionRegions(authored);
-  if (expressionScan.invalid) {
+  const authoredFields = Array.isArray(authored) ? authored : [authored];
+  const expressionScans = authoredFields.map(scanN8nExpressionRegions);
+  if (expressionScans.some(({ invalid }) => invalid)) {
     warnings.push(
       warning(
         "invalid-expression-regions",
@@ -453,7 +472,7 @@ async function authoredOnlyCandidate(
     candidate: await createExternalPromptCandidate(
       sourceEvidence(context, node, authored, warnings, {
         ...(runIndex === undefined ? {} : { runIndex }),
-        bindings: expressionScan.bindings,
+        bindings: expressionScans.flatMap(({ bindings }) => bindings),
       }),
     ),
   };
@@ -526,11 +545,18 @@ interface EffectiveModelInput {
   temperature?: number;
 }
 
-function effectiveModelInput(
+interface SavedModelInput {
+  messages: string[];
+  evidencePath: string;
+  model?: string;
+  temperature?: number;
+}
+
+function savedModelInput(
   run: unknown,
   modelName: string,
   modelRunIndex: number,
-): EffectiveModelInput | undefined {
+): SavedModelInput | undefined {
   if (!isRecord(run) || !isRecord(run.inputOverride)) return undefined;
   const languageModel = run.inputOverride.ai_languageModel;
   if (
@@ -544,22 +570,44 @@ function effectiveModelInput(
   const payload = languageModel[0][0].json;
   if (
     !Array.isArray(payload.messages) ||
-    payload.messages.length !== 1 ||
-    typeof payload.messages[0] !== "string" ||
-    !payload.messages[0].startsWith("Human: ")
+    payload.messages.length === 0 ||
+    !payload.messages.every((message) => typeof message === "string")
   ) {
     return undefined;
   }
   const options = isRecord(payload.options) ? payload.options : undefined;
   return {
-    content: payload.messages[0].slice("Human: ".length),
+    messages: payload.messages,
     evidencePath:
       `data.resultData.runData[${JSON.stringify(modelName)}]` +
-      `[${modelRunIndex}].inputOverride.ai_languageModel[0][0].json.messages[0]`,
+      `[${modelRunIndex}].inputOverride.ai_languageModel[0][0].json.messages`,
     ...(typeof options?.model === "string" ? { model: options.model } : {}),
     ...(typeof options?.temperature === "number"
       ? { temperature: options.temperature }
       : {}),
+  };
+}
+
+function effectiveModelInput(
+  run: unknown,
+  modelName: string,
+  modelRunIndex: number,
+): EffectiveModelInput | undefined {
+  const saved = savedModelInput(run, modelName, modelRunIndex);
+  if (
+    !saved ||
+    saved.messages.length !== 1 ||
+    !saved.messages[0]!.startsWith("Human: ")
+  ) {
+    return undefined;
+  }
+  return {
+    content: saved.messages[0]!.slice("Human: ".length),
+    evidencePath: `${saved.evidencePath}[0]`,
+    ...(saved.model ? { model: saved.model } : {}),
+    ...(saved.temperature === undefined
+      ? {}
+      : { temperature: saved.temperature }),
   };
 }
 
@@ -774,8 +822,411 @@ const basicLlmChainExtractor: N8nPromptExtractor = {
   },
 };
 
+function expressionEvidence(
+  authoredFields: AuthoredPromptField[],
+  resolvedMessages: ResolvedPromptSnapshot["messages"],
+  evidencePath: string,
+): {
+  bindings: ExpressionBinding[];
+  invalid: boolean;
+} {
+  const scans = authoredFields.map(scanN8nExpressionRegions);
+  const bindings = scans.flatMap((scan, fieldIndex) => {
+    const authored = authoredFields[fieldIndex]!;
+    const resolvedForRole = resolvedMessages.filter(
+      ({ role }) => role === authored.role,
+    );
+    const resolved =
+      resolvedForRole.length === 1 ? resolvedForRole[0] : undefined;
+    const semanticText = authored.text.slice(
+      authored.contentSpan?.startOffset ?? 0,
+      authored.contentSpan?.endOffset ?? authored.text.length,
+    );
+    const soleExpression = scan.bindings[0];
+    if (
+      resolved &&
+      !scan.invalid &&
+      scan.bindings.length === 1 &&
+      soleExpression &&
+      semanticText.trim() === soleExpression.expression
+    ) {
+      return [
+        {
+          ...soleExpression,
+          resolvedValue: resolved.content,
+          status: "resolved" as const,
+          valueEvidence: {
+            kind: "saved-parameter-value" as const,
+            path: evidencePath,
+          },
+        },
+      ];
+    }
+    return scan.bindings;
+  });
+  return {
+    bindings,
+    invalid: scans.some(({ invalid }) => invalid),
+  };
+}
+
+function parseAgentSavedMessages(
+  messages: string[],
+): ResolvedPromptSnapshot["messages"] | undefined {
+  if (messages.length !== 1) return undefined;
+  const serialized = messages[0]!;
+  if (serialized.startsWith("Human: ")) {
+    return [{ role: "user", content: serialized.slice("Human: ".length) }];
+  }
+  if (!serialized.startsWith("System: ")) return undefined;
+
+  const delimiter = "\nHuman: ";
+  const boundary = serialized.indexOf(delimiter);
+  if (boundary < 0 || boundary !== serialized.lastIndexOf(delimiter)) {
+    return undefined;
+  }
+  return [
+    {
+      role: "system",
+      content: serialized.slice("System: ".length, boundary),
+    },
+    {
+      role: "user",
+      content: serialized.slice(boundary + delimiter.length),
+    },
+  ];
+}
+
+function agentAuthoredFields(
+  node: N8nNodeSnapshot,
+): AuthoredPromptField[] | undefined {
+  const user = authoredField(node);
+  if (!user || node.parameters.promptType !== "define") return undefined;
+  const options = isRecord(node.parameters.options)
+    ? node.parameters.options
+    : {};
+  const system = authoredTextField(
+    "parameters.options.systemMessage",
+    "system",
+    options.systemMessage,
+  );
+  return system ? [system, user] : [user];
+}
+
+function messageAuthoredFields(
+  node: N8nNodeSnapshot,
+): AuthoredPromptField[] | undefined {
+  if (
+    (node.parameters.resource !== undefined &&
+      node.parameters.resource !== "text") ||
+    (node.parameters.operation !== undefined &&
+      node.parameters.operation !== "message")
+  ) {
+    return undefined;
+  }
+  const messages = node.parameters.messages;
+  if (!isRecord(messages) || !Array.isArray(messages.values)) return undefined;
+
+  const authored: AuthoredPromptField[] = [];
+  for (const [index, value] of messages.values.entries()) {
+    if (!isRecord(value)) return undefined;
+    const role = value.role ?? "user";
+    if (!["system", "user", "assistant"].includes(String(role))) {
+      return undefined;
+    }
+    const field = authoredTextField(
+      `parameters.messages.values[${index}].content`,
+      role as AuthoredPromptField["role"],
+      value.content,
+    );
+    if (!field) return undefined;
+    authored.push(field);
+  }
+  return authored.length > 0 ? authored : undefined;
+}
+
+function createAiAgentExtractor(version: number): N8nPromptExtractor {
+  return {
+    id: `ai-agent-${String(version).replace(".", "-")}`,
+
+    recognizes(node) {
+      return node.type === AI_AGENT_TYPE;
+    },
+
+    supports(node) {
+      return node.typeVersion === version;
+    },
+
+    async extract(context, node) {
+      const authored = agentAuthoredFields(node);
+      if (!authored) {
+        return [
+          {
+            status: "unsupported",
+            invocation: invocationFor(node),
+            code: "unsupported-node-configuration",
+            message:
+              'AI Agent import currently requires promptType "define" and a text parameter.',
+          },
+        ];
+      }
+
+      const allRunData = runData(context.execution);
+      const parentRuns = allRunData?.[node.name];
+      if (!Array.isArray(parentRuns) || parentRuns.length === 0) {
+        return [
+          await authoredOnlyCandidate(
+            context,
+            node,
+            authored,
+            "execution-detail-unavailable",
+            "No saved run data was available for this AI Agent, so only its authored messages can be reviewed.",
+          ),
+        ];
+      }
+      if (parentRuns.length !== 1) {
+        return [
+          await authoredOnlyCandidate(
+            context,
+            node,
+            authored,
+            "multiple-node-runs",
+            `This AI Agent ran ${parentRuns.length} times. The importer cannot safely associate repeated runs with model evidence.`,
+          ),
+        ];
+      }
+
+      const parentRunIndex = 0;
+      const items = parentItemCount(parentRuns[parentRunIndex]);
+      if (items !== 1) {
+        return [
+          await authoredOnlyCandidate(
+            context,
+            node,
+            authored,
+            items === undefined
+              ? "execution-detail-unavailable"
+              : "multiple-input-items",
+            items === undefined
+              ? "The saved AI Agent run did not contain a supported item shape, so only its authored messages can be reviewed."
+              : `This AI Agent produced ${items} items. The importer will not guess how model sub-runs map to them.`,
+            parentRunIndex,
+          ),
+        ];
+      }
+
+      const connectedModels = connectedModelNodes(context.workflow, node);
+      if (connectedModels.length !== 1) {
+        return [
+          await authoredOnlyCandidate(
+            context,
+            node,
+            authored,
+            "model-connection-ambiguous",
+            `Expected one connected chat model but found ${connectedModels.length}.`,
+            parentRunIndex,
+          ),
+        ];
+      }
+      const modelNode = connectedModels[0]!;
+      if (
+        modelNode.type !== OPENAI_CHAT_MODEL_TYPE ||
+        modelNode.typeVersion !== OPENAI_CHAT_MODEL_VERSION
+      ) {
+        return [
+          await authoredOnlyCandidate(
+            context,
+            node,
+            authored,
+            "unsupported-model-node",
+            `The initial AI Agent importer supports only ${OPENAI_CHAT_MODEL_TYPE}@${OPENAI_CHAT_MODEL_VERSION}.`,
+            parentRunIndex,
+          ),
+        ];
+      }
+
+      const allModelRuns = Array.isArray(allRunData?.[modelNode.name])
+        ? allRunData![modelNode.name] as unknown[]
+        : [];
+      const matchingRuns = modelRunsForParent(
+        allModelRuns,
+        node.name,
+        parentRunIndex,
+      );
+      if (matchingRuns.length !== 1) {
+        return [
+          await authoredOnlyCandidate(
+            context,
+            node,
+            authored,
+            "model-evidence-ambiguous",
+            `Expected one attributable saved model sub-run but found ${matchingRuns.length}.`,
+            parentRunIndex,
+          ),
+        ];
+      }
+
+      const modelRunIndex = allModelRuns.indexOf(matchingRuns[0]);
+      const saved = savedModelInput(
+        matchingRuns[0],
+        modelNode.name,
+        modelRunIndex,
+      );
+      const resolvedMessages = saved
+        ? parseAgentSavedMessages(saved.messages)
+        : undefined;
+      if (!saved || !resolvedMessages) {
+        return [
+          await authoredOnlyCandidate(
+            context,
+            node,
+            authored,
+            "model-evidence-incompatible",
+            "The saved model sub-run did not contain an unambiguous System/Human message shape.",
+            parentRunIndex,
+          ),
+        ];
+      }
+
+      const resolved: ResolvedPromptSnapshot = {
+        messages: resolvedMessages,
+        ...(saved.model ? { model: saved.model } : {}),
+        ...(saved.temperature === undefined
+          ? {}
+          : { options: { temperature: saved.temperature } }),
+      };
+      const expression = expressionEvidence(
+        authored,
+        resolvedMessages,
+        `${saved.evidencePath}[0]`,
+      );
+      const warnings: ImportWarning[] = [
+        warning(
+          "provider-request-unavailable",
+          "n8n saved the effective agent messages but not a raw provider request, so this prompt is reconstructed from execution evidence.",
+          "info",
+        ),
+      ];
+      if (context.workflowSnapshotSource === "current-workflow") {
+        warnings.push(
+          warning(
+            "current-workflow-snapshot",
+            "The saved execution did not contain a workflow snapshot, so the authored fields come from the current workflow and may differ from what ran.",
+          ),
+        );
+      }
+      if (
+        authored.some(({ syntax }) => syntax === "external-expression") &&
+        expression.bindings.some(({ status }) => status !== "resolved")
+      ) {
+        warnings.push(
+          warning(
+            "expression-values-unavailable",
+            "Individual n8n expression results are not attributable in the saved execution; unresolved regions will become native template variables without saved values.",
+            "info",
+          ),
+        );
+      }
+      if (expression.invalid) {
+        warnings.push(
+          warning(
+            "invalid-expression-regions",
+            "The authored n8n expression regions could not be parsed safely, so reusable template import is unavailable.",
+          ),
+        );
+      }
+      return [
+        {
+          status: "candidate",
+          candidate: await createExternalPromptCandidate(
+            sourceEvidence(context, node, authored, warnings, {
+              runIndex: parentRunIndex,
+              itemIndex: 0,
+              resolved,
+              bindings: expression.bindings,
+            }),
+          ),
+        },
+      ];
+    },
+  };
+}
+
+function createMessageAModelExtractor(version: number): N8nPromptExtractor {
+  return {
+    id: `message-a-model-${String(version).replace(".", "-")}`,
+
+    recognizes(node) {
+      return node.type === MESSAGE_A_MODEL_TYPE;
+    },
+
+    supports(node) {
+      return node.typeVersion === version;
+    },
+
+    async extract(context, node) {
+      const authored = messageAuthoredFields(node);
+      if (!authored) {
+        return [
+          {
+            status: "unsupported",
+            invocation: invocationFor(node),
+            code: "unsupported-node-configuration",
+            message:
+              "Message a Model import currently requires the Text / Message a Model operation with string message content.",
+          },
+        ];
+      }
+
+      const parentRuns = runData(context.execution)?.[node.name];
+      if (Array.isArray(parentRuns) && parentRuns.length > 1) {
+        return [
+          await authoredOnlyCandidate(
+            context,
+            node,
+            authored,
+            "multiple-node-runs",
+            `This Message a Model node ran ${parentRuns.length} times. Only its authored messages can be reviewed.`,
+          ),
+        ];
+      }
+      const singleRun =
+        Array.isArray(parentRuns) && parentRuns.length === 1
+          ? parentRuns[0]
+          : undefined;
+      const runIndex = singleRun === undefined ? undefined : 0;
+      const items =
+        singleRun === undefined ? undefined : parentItemCount(singleRun);
+      if (items !== undefined && items !== 1) {
+        return [
+          await authoredOnlyCandidate(
+            context,
+            node,
+            authored,
+            "multiple-input-items",
+            `This Message a Model node produced ${items} items. Only its authored messages can be reviewed.`,
+            runIndex,
+          ),
+        ];
+      }
+      return [
+        await authoredOnlyCandidate(
+          context,
+          node,
+          authored,
+          "provider-request-unavailable",
+          "n8n did not retain the effective provider request for this Message a Model execution, so only its authored messages can be reviewed.",
+          runIndex,
+        ),
+      ];
+    },
+  };
+}
+
 export const defaultN8nPromptExtractors: readonly N8nPromptExtractor[] = [
   basicLlmChainExtractor,
+  ...AI_AGENT_VERSIONS.map(createAiAgentExtractor),
+  ...MESSAGE_A_MODEL_VERSIONS.map(createMessageAModelExtractor),
 ];
 
 export async function extractN8nPromptCandidates(

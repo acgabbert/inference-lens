@@ -441,6 +441,67 @@ test("the execution-detail route returns normalized candidates without raw execu
   assert.equal(response.headers.get("cache-control"), "no-store");
 });
 
+test("uses a top-level execution workflow snapshot without fetching the current workflow", async () => {
+  const fixtureRoot = path.resolve(
+    import.meta.dirname,
+    "fixtures/n8n/captures/2.32.5/ai-agent-3-1",
+  );
+  const execution = JSON.parse(
+    await readFile(path.join(fixtureRoot, "execution-success.json"), "utf8"),
+  ) as {
+    workflowData?: unknown;
+    data: {
+      workflowData?: unknown;
+    };
+  };
+  execution.workflowData = execution.data.workflowData;
+  delete execution.data.workflowData;
+  let workflowRequests = 0;
+
+  const response = await handleN8nExecutionDetailRequest(
+    sameOriginRequest("/api/integrations/n8n/execution-detail", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        workflowId: "workflow_fixture",
+        executionId: "execution_fixture_001",
+      }),
+    }),
+    configuredEnvironment,
+    undefined,
+    async (input) => {
+      if (new URL(input.toString()).pathname.includes("/workflows/")) {
+        workflowRequests += 1;
+        return jsonResponse({ message: "current workflow must not be fetched" }, 500);
+      }
+      return jsonResponse(execution);
+    },
+  );
+  const body = await response.json() as {
+    extractions: Array<{
+      status: string;
+      candidate?: {
+        fidelity: string;
+        warnings: Array<{ code: string }>;
+      };
+    }>;
+  };
+
+  assert.equal(response.status, 200);
+  assert.equal(workflowRequests, 0);
+  assert.equal(body.extractions[0]?.status, "candidate");
+  assert.equal(
+    body.extractions[0]?.candidate?.fidelity,
+    "execution-reconstructed",
+  );
+  assert.equal(
+    body.extractions[0]?.candidate?.warnings.some(
+      ({ code }) => code === "current-workflow-snapshot",
+    ),
+    false,
+  );
+});
+
 test("reports unavailable retained data with current authored workflow fallback and rejects a workflow mismatch", async () => {
   let workflowId = "workflow_1";
   const fetchImplementation: typeof fetch = async (input) => {
