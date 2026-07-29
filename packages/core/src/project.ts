@@ -51,7 +51,7 @@ import type {
 } from "./types.ts";
 
 export const PROJECT_FILE_NAME = "inference-lens.project.json";
-export const PROJECT_SCHEMA_VERSION = 4;
+export const PROJECT_SCHEMA_VERSION = 5;
 
 export interface ConnectionRequirement {
   id: ConnectionRequirementId;
@@ -95,6 +95,21 @@ export type PromptTemplateContent =
       }>;
     };
 
+/**
+ * A portable recommendation for the target a template was authored or verified
+ * against. It never overrides the project/run target: one request may contain
+ * several templates, while the provider accepts only one model.
+ *
+ * It belongs to the template rather than to a revision. Revisions are immutable
+ * and uses pin them, so recording it per revision would make "I verified this
+ * against another model" append a content-identical revision and unpin every
+ * existing use.
+ */
+export interface PromptTemplateRecommendedTarget {
+  connectionRequirementId: ConnectionRequirementId;
+  model: string;
+}
+
 export interface PromptTemplateRevision {
   id: PromptTemplateRevisionId;
   createdAt: string;
@@ -107,6 +122,7 @@ export interface PromptTemplate {
   id: PromptTemplateId;
   name: string;
   currentRevisionId: PromptTemplateRevisionId;
+  recommendedTarget?: PromptTemplateRecommendedTarget;
   revisions: PromptTemplateRevision[];
 }
 
@@ -205,8 +221,8 @@ interface ProjectReferenceValidationShape {
   defaults: ProjectDefaults;
 }
 
-export interface ProjectFileV4 {
-  schemaVersion: 4;
+export interface ProjectFileV5 {
+  schemaVersion: 5;
   projectId: ProjectId;
   name: string;
   connectionRequirements: ConnectionRequirement[];
@@ -219,8 +235,7 @@ export interface ProjectFileV4 {
   defaults: ProjectDefaults;
 }
 
-export type ProjectFile = ProjectFileV4;
-type ProjectFileV3 = ProjectFileV4;
+export type ProjectFile = ProjectFileV5;
 
 const entityId = <Kind extends Parameters<typeof createEntityId>[0]>(
   kind: Kind,
@@ -406,6 +421,14 @@ const toolMockSchema: z.ZodType<ToolMock> = z
 
 const variableName = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
+const promptTemplateRecommendedTargetSchema: z.ZodType<PromptTemplateRecommendedTarget> =
+  z
+    .object({
+      connectionRequirementId: entityId("connection"),
+      model: z.string().trim().min(1),
+    })
+    .strict();
+
 const promptTemplateRevisionSchema: z.ZodType<PromptTemplateRevision> = z
   .object({
     id: entityId("template-revision"),
@@ -439,6 +462,7 @@ const promptTemplateSchema: z.ZodType<PromptTemplate> = z
     id: entityId("template"),
     name: z.string().trim().min(1),
     currentRevisionId: entityId("template-revision"),
+    recommendedTarget: promptTemplateRecommendedTargetSchema.optional(),
     revisions: z.array(promptTemplateRevisionSchema).min(1),
   })
   .strict();
@@ -562,7 +586,7 @@ const externalImportReceiptSchema: z.ZodType<ExternalImportReceipt> = z
     });
   });
 
-const projectFileV4Schema: z.ZodType<ProjectFileV4> = z
+const projectFileV5Schema: z.ZodType<ProjectFileV5> = z
   .object({
     schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
     projectId: entityId("project"),
@@ -589,7 +613,7 @@ const projectFileV4Schema: z.ZodType<ProjectFileV4> = z
       .strict(),
   })
   .strict()
-  .superRefine(validateProjectV4References);
+  .superRefine(validateProjectReferences);
 
 function addDuplicateIssues(
   values: string[],
@@ -805,8 +829,8 @@ function validateSharedProjectReferences(
   });
 }
 
-function validateProjectV4References(
-  project: ProjectFileV3,
+function validateProjectReferences(
+  project: ProjectFileV5,
   context: z.RefinementCtx,
 ): void {
   validateSharedProjectReferences(
@@ -841,6 +865,22 @@ function validateProjectV4References(
   );
 
   project.promptTemplates.forEach((template, templateIndex) => {
+    const { recommendedTarget } = template;
+    if (recommendedTarget) {
+      requireReference(
+        project.connectionRequirements.some(
+          ({ id }) => id === recommendedTarget.connectionRequirementId,
+        ),
+        [
+          "promptTemplates",
+          templateIndex,
+          "recommendedTarget",
+          "connectionRequirementId",
+        ],
+        "Template recommendation references an unknown connection requirement.",
+        context,
+      );
+    }
     template.revisions.forEach((revision, revisionIndex) => {
       if (!revision.externalImportId) return;
       referencedExternalImportIds.add(revision.externalImportId);
@@ -1100,8 +1140,8 @@ export class ProjectValidationError extends Error {
   }
 }
 
-export function parseProjectFile(value: unknown): ProjectFileV3 {
-  const parsed = projectFileV4Schema.safeParse(value);
+export function parseProjectFile(value: unknown): ProjectFile {
+  const parsed = projectFileV5Schema.safeParse(value);
   if (!parsed.success) throw new ProjectValidationError(parsed.error.issues);
   return parsed.data;
 }
@@ -1145,6 +1185,7 @@ const preferredFieldOrder = new Map(
     "result",
     "isError",
     "currentRevisionId",
+    "recommendedTarget",
     "revisions",
     "templateId",
     "templateRevisionId",
@@ -1198,7 +1239,7 @@ function stableJsonValue(value: unknown): unknown {
   );
 }
 
-export function serializeProjectFile(project: ProjectFileV3): string {
+export function serializeProjectFile(project: ProjectFile): string {
   const validated = parseProjectFile(project);
   return `${JSON.stringify(stableJsonValue(validated), null, 2)}\n`;
 }
@@ -1222,7 +1263,7 @@ export function sameConversationMessages(
   );
 }
 
-export function parseProjectJson(text: string): ProjectFileV3 {
+export function parseProjectJson(text: string): ProjectFile {
   let value: unknown;
   try {
     value = JSON.parse(text);
@@ -1353,7 +1394,7 @@ export type PreparedProjectRevisionRun =
     };
 
 export function resolveProjectRevision(
-  project: ProjectFileV3,
+  project: ProjectFile,
   revision: ProjectConversationRevision,
   runOverrides: TemplateRunOverrides = {},
 ): ResolvedProjectRevision {
@@ -1456,7 +1497,7 @@ export function resolveProjectRevision(
  * receive a request while a template diagnostic remains unresolved.
  */
 export function prepareProjectRevisionRun(
-  project: ProjectFileV3,
+  project: ProjectFile,
   revision: ProjectConversationRevision,
   runOverrides: TemplateRunOverrides = {},
 ): PreparedProjectRevisionRun {
@@ -1472,7 +1513,7 @@ export function prepareProjectRevisionRun(
 }
 
 export function resolveProjectRevisionMessages(
-  project: ProjectFileV3,
+  project: ProjectFile,
   revision: ProjectConversationRevision,
   runOverrides: TemplateRunOverrides = {},
 ): ConversationMessage[] {
@@ -1480,7 +1521,7 @@ export function resolveProjectRevisionMessages(
 }
 
 export function projectDraft(
-  project: ProjectFileV3,
+  project: ProjectFile,
   runOverrides: TemplateRunOverrides = {},
 ): ProjectDraft {
   const revision = project.conversationRevisions.find(
@@ -1518,9 +1559,9 @@ export function projectDraft(
  * mocks, templates, other conversations, or connection requirements.
  */
 export function updateProjectDraft(
-  project: ProjectFileV3,
+  project: ProjectFile,
   draft: UpdateProjectDraft,
-): ProjectFileV3 {
+): ProjectFile {
   const activeRevisionIndex = project.conversationRevisions.findIndex(
     ({ id }) => id === project.defaults.conversationRevisionId,
   );
@@ -1631,7 +1672,7 @@ export interface CreateBranchRevisionOptions {
  * active authored revision. The caller owns persistence of the returned file.
  */
 export function createBranchRevision(
-  project: ProjectFileV3,
+  project: ProjectFile,
   {
     conversationId,
     parentRevisionId,
@@ -1641,7 +1682,7 @@ export function createBranchRevision(
     idSuffix = randomUUID(),
     createdAt = new Date().toISOString(),
   }: CreateBranchRevisionOptions,
-): ProjectFileV3 {
+): ProjectFile {
   const parent = project.conversationRevisions.find(
     ({ id }) => id === parentRevisionId,
   );
@@ -1672,7 +1713,7 @@ export function createBranchRevision(
 }
 
 function authoredBranchItems(
-  project: ProjectFileV3,
+  project: ProjectFile,
   parent: ProjectConversationRevision,
   messages: ConversationMessage[],
   runOverrides: TemplateRunOverrides = {},
@@ -1748,7 +1789,7 @@ function authoredBranchItems(
  * speculatively should be prepared to fall back to literal messages.
  */
 export function authoredItemsForMessages(
-  project: ProjectFileV3,
+  project: ProjectFile,
   revision: ProjectConversationRevision,
   messages: ConversationMessage[],
   runOverrides: TemplateRunOverrides = {},
@@ -1764,7 +1805,7 @@ export interface PromptTemplateUsage {
 }
 
 export function findPromptTemplateUsages(
-  project: ProjectFileV3,
+  project: ProjectFile,
   templateId: PromptTemplateId,
   templateRevisionId?: PromptTemplateRevisionId,
 ): PromptTemplateUsage[] {
@@ -1788,10 +1829,10 @@ export function findPromptTemplateUsages(
 }
 
 function updateConversationRevisionItems(
-  project: ProjectFileV3,
+  project: ProjectFile,
   conversationRevisionId: ConversationRevisionId,
   update: (items: ProjectConversationItem[]) => ProjectConversationItem[],
-): ProjectFileV3 {
+): ProjectFile {
   const revisionIndex = project.conversationRevisions.findIndex(
     ({ id }) => id === conversationRevisionId,
   );
@@ -1849,7 +1890,7 @@ export interface InsertPromptTemplateUseOptions {
 }
 
 export function insertPromptTemplateUse(
-  project: ProjectFileV3,
+  project: ProjectFile,
   {
     conversationRevisionId,
     templateId,
@@ -1860,7 +1901,7 @@ export function insertPromptTemplateUse(
     idSuffix = randomUUID(),
     outputMessageIdSuffixes,
   }: InsertPromptTemplateUseOptions,
-): ProjectFileV3 {
+): ProjectFile {
   const template = project.promptTemplates.find(({ id }) => id === templateId);
   const pinnedRevisionId = templateRevisionId ?? template?.currentRevisionId;
   const revision = template?.revisions.find(
@@ -1934,13 +1975,13 @@ export interface UpdatePromptTemplateUseValuesOptions {
 }
 
 export function updatePromptTemplateUseValues(
-  project: ProjectFileV3,
+  project: ProjectFile,
   {
     conversationRevisionId,
     templateUseId,
     values,
   }: UpdatePromptTemplateUseValuesOptions,
-): ProjectFileV3 {
+): ProjectFile {
   const revision = project.conversationRevisions.find(
     ({ id }) => id === conversationRevisionId,
   );
@@ -1974,14 +2015,14 @@ export interface UpdatePromptTemplateUseToLatestOptions {
 }
 
 export function updatePromptTemplateUseToLatest(
-  project: ProjectFileV3,
+  project: ProjectFile,
   {
     conversationRevisionId,
     templateUseId,
     newOutputMessageIdSuffixes = [],
     fragmentRole,
   }: UpdatePromptTemplateUseToLatestOptions,
-): ProjectFileV3 {
+): ProjectFile {
   const revision = project.conversationRevisions.find(
     ({ id }) => id === conversationRevisionId,
   );
@@ -2074,13 +2115,13 @@ export interface DetachPromptTemplateUseOptions {
 }
 
 export function detachPromptTemplateUse(
-  project: ProjectFileV3,
+  project: ProjectFile,
   {
     conversationRevisionId,
     templateUseId,
     runOverrides = {},
   }: DetachPromptTemplateUseOptions,
-): ProjectFileV3 {
+): ProjectFile {
   const revision = project.conversationRevisions.find(
     ({ id }) => id === conversationRevisionId,
   );
@@ -2132,10 +2173,10 @@ export function detachPromptTemplateUse(
 }
 
 export function removePromptTemplateUse(
-  project: ProjectFileV3,
+  project: ProjectFile,
   conversationRevisionId: ConversationRevisionId,
   templateUseId: PromptTemplateUseId,
-): ProjectFileV3 {
+): ProjectFile {
   const revision = project.conversationRevisions.find(
     ({ id }) => id === conversationRevisionId,
   );
@@ -2163,22 +2204,24 @@ export interface CreatePromptTemplateOptions {
   name: string;
   content: PromptTemplateContent;
   variableDefaults?: Record<string, string>;
+  recommendedTarget?: PromptTemplateRecommendedTarget;
   idSuffix?: string;
   revisionIdSuffix?: string;
   createdAt?: string;
 }
 
 export function createPromptTemplate(
-  project: ProjectFileV3,
+  project: ProjectFile,
   {
     name,
     content,
     variableDefaults = {},
+    recommendedTarget,
     idSuffix = randomUUID(),
     revisionIdSuffix = randomUUID(),
     createdAt = new Date().toISOString(),
   }: CreatePromptTemplateOptions,
-): ProjectFileV3 {
+): ProjectFile {
   const revisionId = createEntityId("template-revision", revisionIdSuffix);
   return parseProjectFile({
     ...project,
@@ -2188,6 +2231,9 @@ export function createPromptTemplate(
         id: createEntityId("template", idSuffix),
         name,
         currentRevisionId: revisionId,
+        ...(recommendedTarget
+          ? { recommendedTarget: { ...recommendedTarget } }
+          : {}),
         revisions: [
           {
             id: revisionId,
@@ -2210,7 +2256,7 @@ export interface AppendPromptTemplateRevisionOptions {
 }
 
 export function appendPromptTemplateRevision(
-  project: ProjectFileV3,
+  project: ProjectFile,
   {
     templateId,
     content,
@@ -2218,7 +2264,7 @@ export function appendPromptTemplateRevision(
     idSuffix = randomUUID(),
     createdAt = new Date().toISOString(),
   }: AppendPromptTemplateRevisionOptions,
-): ProjectFileV3 {
+): ProjectFile {
   const templateIndex = project.promptTemplates.findIndex(
     ({ id }) => id === templateId,
   );
@@ -2258,12 +2304,54 @@ export function appendPromptTemplateRevision(
   return parseProjectFile({ ...project, promptTemplates });
 }
 
+/**
+ * Records, replaces, or clears the model a template is recommended for.
+ *
+ * This is template metadata, not authored content: it deliberately leaves
+ * `currentRevisionId` and every revision untouched, so recording a
+ * recommendation never unpins an existing use. Passing an unchanged value is a
+ * no-op, matching `appendPromptTemplateRevision`.
+ */
+export function setPromptTemplateRecommendedTarget(
+  project: ProjectFile,
+  templateId: PromptTemplateId,
+  recommendedTarget: PromptTemplateRecommendedTarget | undefined,
+): ProjectFile {
+  const templateIndex = project.promptTemplates.findIndex(
+    ({ id }) => id === templateId,
+  );
+  if (templateIndex < 0) {
+    throw new ProjectValidationError([
+      {
+        code: "custom",
+        path: ["promptTemplates", templateId],
+        message: "Template does not exist.",
+      },
+    ]);
+  }
+  const template = project.promptTemplates[templateIndex]!;
+  if (
+    JSON.stringify(stableJsonValue(template.recommendedTarget)) ===
+    JSON.stringify(stableJsonValue(recommendedTarget))
+  ) {
+    return project;
+  }
+  // Clearing drops the key rather than storing undefined, so a cleared
+  // recommendation serializes identically to one that was never set.
+  const next: PromptTemplate = { ...template };
+  if (recommendedTarget) next.recommendedTarget = { ...recommendedTarget };
+  else delete next.recommendedTarget;
+  const promptTemplates = [...project.promptTemplates];
+  promptTemplates[templateIndex] = next;
+  return parseProjectFile({ ...project, promptTemplates });
+}
+
 /** Renames a template label without changing revision identity or content. */
 export function renamePromptTemplate(
-  project: ProjectFileV3,
+  project: ProjectFile,
   templateId: PromptTemplateId,
   name: string,
-): ProjectFileV3 {
+): ProjectFile {
   const templateIndex = project.promptTemplates.findIndex(
     ({ id }) => id === templateId,
   );
@@ -2296,10 +2384,10 @@ export function renamePromptTemplate(
 }
 
 export function setPromptTemplateCurrentRevision(
-  project: ProjectFileV3,
+  project: ProjectFile,
   templateId: PromptTemplateId,
   templateRevisionId: PromptTemplateRevisionId,
-): ProjectFileV3 {
+): ProjectFile {
   const templateIndex = project.promptTemplates.findIndex(
     ({ id }) => id === templateId,
   );
@@ -2326,10 +2414,10 @@ export function setPromptTemplateCurrentRevision(
 }
 
 export function removePromptTemplateRevision(
-  project: ProjectFileV3,
+  project: ProjectFile,
   templateId: PromptTemplateId,
   templateRevisionId: PromptTemplateRevisionId,
-): ProjectFileV3 {
+): ProjectFile {
   const templateIndex = project.promptTemplates.findIndex(
     ({ id }) => id === templateId,
   );
@@ -2390,12 +2478,12 @@ export function createProjectFile({
   request,
   idSuffix = randomUUID(),
   createdAt = new Date().toISOString(),
-}: CreateProjectOptions): ProjectFileV3 {
+}: CreateProjectOptions): ProjectFile {
   const projectId = createEntityId("project", idSuffix);
   const connectionId = createEntityId("connection", `${idSuffix}-default`);
   const conversationId = createEntityId("conversation", `${idSuffix}-default`);
   const revisionId = createEntityId("revision", `${idSuffix}-initial`);
-  const project: ProjectFileV3 = {
+  const project: ProjectFile = {
     schemaVersion: PROJECT_SCHEMA_VERSION,
     projectId,
     name: name.trim() || "Untitled Inference Lens project",

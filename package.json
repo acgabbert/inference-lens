@@ -17,8 +17,8 @@
     "dev:n8n-echo-provider": "node scripts/n8n-echo-provider.mjs",
     "dev:markdown-provider": "node scripts/markdown-openai-provider.mjs",
     "dev:reasoning-provider": "node scripts/reasoning-openai-provider.mjs",
-    "build": "vinext build",
-    "build:tauri": "INFERENCE_LENS_TARGET=tauri vinext build",
+    "build": "npm run typecheck && vinext build",
+    "build:tauri": "npm run typecheck && INFERENCE_LENS_TARGET=tauri vinext build",
     "start": "vinext start",
     "tauri": "tauri",
     "test": "npm run build && npm run test:core && npm run test:n8n-contract && node --test tests/rendered-html.test.mjs tests/standalone-runtime.test.mjs tests/run-history-render.test.mjs tests/run-trace-panel-render.test.mjs tests/project-templates-render.test.mjs tests/request-pane-render.test.mjs tests/connection-drawer-render.test.mjs tests/n8n-import-render.test.mjs",
@@ -27,6 +27,7 @@
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "format:rust": "cargo fmt --manifest-path src-tauri/Cargo.toml",
     "check:rust": "cargo fmt --manifest-path src-tauri/Cargo.toml -- --check && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
+    "typecheck": "tsc -p tsconfig.json",
     "typecheck:core": "tsc -p tsconfig.core.json",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
   },

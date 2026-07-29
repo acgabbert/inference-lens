@@ -58,11 +58,19 @@ const template = {
       variableDefaults: { topic: "branching" },
     },
   ],
+  recommendedTarget: {
+    connectionRequirementId: "connection_default",
+    model: "fixture-model",
+  },
 };
 
 test("renders the project template library and revision defaults", async () => {
   const html = await render("ProjectTemplatesPane", {
     templates: [template],
+    connectionRequirements: [
+      { id: "connection_default", name: "Default connection" },
+    ],
+    defaultConnectionRequirementId: "connection_default",
     usageCounts: new Map([["template_question", 2]]),
     itemCount: 3,
     onCreate: () => "template_new",
@@ -73,6 +81,8 @@ test("renders the project template library and revision defaults", async () => {
   assert.match(html, /Question/);
   assert.match(html, /2 uses/);
   assert.match(html, /Revision defaults/);
+  assert.match(html, /Recommended target/);
+  assert.match(html, /fixture-model/);
   assert.match(html, /\{\{topic\}\}/);
   assert.match(html, /Add to conversation/);
 });
@@ -90,6 +100,27 @@ test("renders a multiline run value with save and reset actions", async () => {
     },
     diagnostics: [],
     runOverrides: { topic: "temporary\nsecond line" },
+    importedFrom: {
+      id: "external-import_question",
+      source: {
+        adapter: "synthetic-fixture",
+        resource: { kind: "workflow", id: "workflow-1" },
+        execution: { id: "execution-23" },
+      },
+      invocation: {
+        id: "node-1",
+        name: "Fixture prompt",
+        type: "fixture.prompt",
+      },
+      authored: [],
+      bindings: [],
+      importedAt: "2026-07-26T12:00:00.000Z",
+      importerVersion: 1,
+      sourceDigest: "a".repeat(64),
+      fidelity: "authored-only",
+      warnings: [],
+      projection: { kind: "literal-messages" },
+    },
     onSaveValues: () => {},
     onSaveRunValue: () => {},
     onRunOverridesChange: () => {},
@@ -99,6 +130,10 @@ test("renders a multiline run value with save and reset actions", async () => {
   });
 
   assert.match(html, /Value for run/);
+  assert.match(
+    html,
+    /Imported from synthetic-fixture · execution execution-23/,
+  );
   assert.match(html, /<textarea[^>]*>temporary\nsecond line<\/textarea>/);
   assert.match(html, /Session override/);
   assert.match(html, /Prompt preview/);

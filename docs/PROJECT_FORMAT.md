@@ -1,13 +1,14 @@
 # Project format and workspace storage
 
 Inference Lens projects use one canonical, portable JSON document named
-`inference-lens.project.json`. New saves use schema version 3. Version 2 projects
-remain importable and are migrated in memory; the earlier proof-of-concept
-request export is intentionally unsupported.
+`inference-lens.project.json`. New saves use schema version 5. Earlier project
+formats and the proof-of-concept request export are intentionally unsupported:
+every schema is strict, so a reader rejects a document it does not fully
+understand rather than guessing.
 
-## Version 3 authored conversations
+## Authored conversations
 
-Version 3 separates authored conversation items from the ordinary messages
+The format separates authored conversation items from the ordinary messages
 resolved for provider execution. A conversation revision owns one ordered
 `items` array. Literal messages and pinned template uses occupy the same array,
 so their relative order is explicit:
@@ -46,8 +47,7 @@ template's immutable revisions. `values` are owned by the use. Key presence is
 significant: `""` is an intentional empty value, while an absent key has no
 value at that level. Use values may name only variables that occur in their
 pinned revision. Newly saved revisions drop obsolete defaults instead of
-retaining hidden assignments; Version 2 migration still preserves existing
-template definitions byte-for-byte at the data-model level.
+retaining hidden assignments.
 
 A variable with no value at any level is a normal authoring state, not an
 invalid document. Validation accepts it, and resolution renders the variable as
@@ -62,7 +62,7 @@ executable messages and provenance until every diagnostic is resolved.
 
 A message-set use has one stable `outputMessageIds` entry per template message.
 A fragment use has exactly one output message ID and a required
-`fragmentRole`. In version 3 a fragment supplies the complete text of one
+`fragmentRole`. A fragment supplies the complete text of one
 generated system, user, or assistant message. Inline prefix/template/suffix
 composition is not part of this format and may later be introduced as a new
 authored-item or content-part variant.
@@ -82,9 +82,30 @@ A message-set use is atomic: branching after its final emitted message
 preserves it, while branching inside the emitted set requires detaching the use
 first. Literal and provider-produced messages remain literal items in the child.
 
-Version 2 migration wraps each existing revision message as
-`{"kind":"message","message":...}` in the same order. It retains template
-definitions but invents no template uses.
+## Recommended targets
+
+A template may carry one optional `recommendedTarget`, pairing a project-owned
+connection requirement with a provider model ID. It records the target the
+template was authored or verified against, and never overrides the explicit
+project/run target.
+
+It belongs to the template, not to a revision. Revisions are immutable and uses
+pin them, so recording it per revision would make "I verified this against
+another model" append a content-identical revision and unpin every existing
+use. Changing a recommendation is metadata: `currentRevisionId` and every
+revision are left untouched.
+
+Because a recommendation is advisory, the app surfaces disagreement rather than
+resolving it. A recommendation differing from the run target is reported before
+the run, and so is a request whose templates recommend different targets —
+several templates may contribute to one request while that request can name
+only one model. Neither case blocks the run.
+
+External imports do not record a recommendation unless the caller opts in. The
+source model comes from the external execution's own provider while the
+connection requirement is one this project already owns, so the pairing is an
+assertion the importer cannot verify; the n8n import surfaces it as a checkbox
+that states the exact pair being written.
 
 ## Ownership boundaries
 
@@ -117,7 +138,7 @@ credential store, an environment variable, or session memory.
 
 ## Template authoring session
 
-The live Project v3 document is the canonical owner of template definitions and
+The live Project v5 document is the canonical owner of template definitions and
 authored conversation items. Opening the Templates workspace from an ad-hoc
 request materializes an untitled in-memory project; it does not create a
 machine-local template registry.

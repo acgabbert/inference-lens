@@ -1981,6 +1981,36 @@ output {
   padding: 0 20px 14px;
 }
 
+.n8n-recommendation-option {
+  margin: 0 20px 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+}
+
+.n8n-recommendation-option label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.n8n-recommendation-option input[type="checkbox"] {
+  margin-top: 1px;
+  flex: 0 0 auto;
+}
+
+.n8n-recommendation-detail {
+  margin: 6px 0 0 22px;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
 .n8n-review-tabs {
   padding: 0 20px;
   border-bottom: 1px solid var(--border-default);

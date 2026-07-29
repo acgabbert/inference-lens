@@ -33,6 +33,20 @@ export interface ImportExternalPromptOptions {
   importerVersion?: number;
 }
 
+export interface ImportExternalPromptTemplateOptions
+  extends ImportExternalPromptOptions {
+  /**
+   * Records the source execution's model as the new template's recommended
+   * target, paired with the project's default connection requirement.
+   *
+   * Opt-in, and false by default, because the pairing is an assertion the
+   * importer cannot verify: the model comes from the external execution's own
+   * provider, while the connection is one this project already owns. Callers
+   * that offer it should show the exact pair being recorded.
+   */
+  recommendModel?: boolean;
+}
+
 export interface ImportedExternalPrompt {
   project: ProjectFile;
   externalImportId: ExternalImportId;
@@ -445,7 +459,8 @@ export async function importExternalPromptTemplateCandidate(
   {
     importedAt = new Date().toISOString(),
     importerVersion = EXTERNAL_PROMPT_IMPORTER_VERSION,
-  }: ImportExternalPromptOptions = {},
+    recommendModel = false,
+  }: ImportExternalPromptTemplateOptions = {},
 ): Promise<ImportedExternalPromptTemplate> {
   const project = parseProjectFile(projectValue);
   const candidate = parseExternalPromptCandidate(candidateValue);
@@ -512,6 +527,15 @@ export async function importExternalPromptTemplateCandidate(
         id: templateId,
         name: projection.name,
         currentRevisionId: templateRevisionId,
+        ...(recommendModel && candidate.resolved?.model
+          ? {
+              recommendedTarget: {
+                connectionRequirementId:
+                  project.defaults.target.connectionRequirementId,
+                model: candidate.resolved.model,
+              },
+            }
+          : {}),
         revisions: [
           {
             id: templateRevisionId,

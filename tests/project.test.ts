@@ -23,6 +23,7 @@ import {
   sameConversationMessages,
   serializeProjectFile,
   setPromptTemplateCurrentRevision,
+  setPromptTemplateRecommendedTarget,
   updateProjectDraft,
   updatePromptTemplateUseToLatest,
   updatePromptTemplateUseValues,
@@ -43,7 +44,7 @@ const request = {
   }),
 };
 
-test("creates a strict, portable Project v4 document", () => {
+test("creates a strict, portable Project v5 document", () => {
   const project = createProjectFile({
     name: "Example",
     request,
@@ -52,7 +53,7 @@ test("creates a strict, portable Project v4 document", () => {
   });
 
   assert.equal(PROJECT_FILE_NAME, "inference-lens.project.json");
-  assert.equal(project.schemaVersion, 4);
+  assert.equal(project.schemaVersion, 5);
   assert.equal(project.projectId, "project_example");
   const draft = projectDraft(project);
   assert.deepEqual(projectDraft(project), {
@@ -75,7 +76,7 @@ test("creates a strict, portable Project v4 document", () => {
     enabledToolIds: [],
   });
   assert.deepEqual(project.externalImports, []);
-  assert.equal(JSON.parse(serializeProjectFile(project)).schemaVersion, 4);
+  assert.equal(JSON.parse(serializeProjectFile(project)).schemaVersion, 5);
 });
 
 test("serialization is deterministic and ends with a newline", () => {
@@ -105,23 +106,21 @@ test("serialization is deterministic and ends with a newline", () => {
   assert.ok(serialized.indexOf('"alpha"') < serialized.indexOf('"zeta"'));
 });
 
-test("rejects pre-v4 projects while migration is intentionally deferred", () => {
+test("rejects pre-v5 projects while migration is intentionally deferred", () => {
   const current = createProjectFile({
     name: "Legacy",
     request,
     idSuffix: "legacy",
     createdAt: "2026-07-24T12:00:00.000Z",
   });
-  const legacy = {
-    ...current,
-    schemaVersion: 3,
-    externalImports: undefined,
-  };
 
-  assert.throws(
-    () => parseProjectFile(legacy),
-    /Invalid Inference Lens project/,
-  );
+  for (const schemaVersion of [2, 3, 4]) {
+    assert.throws(
+      () => parseProjectFile({ ...current, schemaVersion }),
+      /Invalid Inference Lens project/,
+      `schema version ${schemaVersion} should be rejected`,
+    );
+  }
 });
 
 test("resolves pinned fragment and message-set uses with stable output IDs", () => {
@@ -727,6 +726,87 @@ test("rejects use values that are not present in their pinned revision", () => {
   );
 });
 
+test("records a recommended target without appending a revision or unpinning uses", () => {
+  const base = createProjectFile({
+    name: "Recommendations",
+    request,
+    idSuffix: "recommendations",
+    createdAt: "2026-07-24T12:00:00.000Z",
+  });
+  const created = createPromptTemplate(base, {
+    name: "Question",
+    content: { kind: "fragment", text: "Explain {{topic}}." },
+    variableDefaults: { topic: "branching" },
+    idSuffix: "question",
+    revisionIdSuffix: "question-1",
+    createdAt: "2026-07-24T12:01:00.000Z",
+  });
+  const inserted = insertPromptTemplateUse(created, {
+    conversationRevisionId: created.conversationRevisions[0]!.id,
+    templateId: "template_question",
+    itemIndex: 0,
+    values: {},
+    fragmentRole: "user",
+    idSuffix: "question-use",
+    outputMessageIdSuffixes: ["question-use-1"],
+  });
+  const pinnedUse = inserted.conversationRevisions
+    .at(-1)!
+    .items.find((item) => item.kind === "template-use")!;
+  assert.equal(pinnedUse.kind, "template-use");
+  if (pinnedUse.kind !== "template-use") return;
+
+  const target = {
+    connectionRequirementId: base.connectionRequirements[0]!.id,
+    model: "model-authored-for-question",
+  };
+  const recommended = setPromptTemplateRecommendedTarget(
+    inserted,
+    "template_question",
+    target,
+  );
+  const template = recommended.promptTemplates[0]!;
+  assert.deepEqual(template.recommendedTarget, target);
+  // The point of template-level ownership: authored content is untouched, so
+  // every existing use stays pinned to the revision it already named.
+  assert.equal(template.revisions.length, 1);
+  assert.deepEqual(template.revisions, inserted.promptTemplates[0]!.revisions);
+  assert.equal(
+    template.currentRevisionId,
+    inserted.promptTemplates[0]!.currentRevisionId,
+  );
+  const stillPinned = recommended.conversationRevisions
+    .at(-1)!
+    .items.find((item) => item.kind === "template-use")!;
+  assert.equal(stillPinned.kind, "template-use");
+  if (stillPinned.kind !== "template-use") return;
+  assert.equal(
+    stillPinned.use.templateRevisionId,
+    pinnedUse.use.templateRevisionId,
+  );
+
+  assert.equal(
+    setPromptTemplateRecommendedTarget(recommended, "template_question", {
+      ...target,
+    }),
+    recommended,
+  );
+  const cleared = setPromptTemplateRecommendedTarget(
+    recommended,
+    "template_question",
+    undefined,
+  );
+  assert.equal(cleared.promptTemplates[0]?.recommendedTarget, undefined);
+  assert.ok(
+    !Object.hasOwn(cleared.promptTemplates[0]!, "recommendedTarget"),
+    "clearing should drop the key rather than store undefined",
+  );
+  assert.throws(
+    () => setPromptTemplateRecommendedTarget(base, "template_missing", target),
+    /Template does not exist/,
+  );
+});
+
 test("updates the active draft without dropping project-owned collections", () => {
   const project = createProjectFile({
     name: "Example",
@@ -980,6 +1060,32 @@ test("rejects unsupported versions, unknown fields, and dangling references", ()
         },
       }),
     /does not exist/,
+  );
+  assert.throws(
+    () =>
+      parseProjectFile({
+        ...project,
+        promptTemplates: [
+          {
+            id: "template_invalid-target",
+            name: "Invalid target",
+            currentRevisionId: "template-revision_invalid-target-1",
+            recommendedTarget: {
+              connectionRequirementId: "connection_missing",
+              model: "example-model",
+            },
+            revisions: [
+              {
+                id: "template-revision_invalid-target-1",
+                createdAt: "2026-07-24T12:00:01.000Z",
+                content: { kind: "fragment", text: "Hello" },
+                variableDefaults: {},
+              },
+            ],
+          },
+        ],
+      }),
+    /unknown connection requirement/,
   );
 });
 

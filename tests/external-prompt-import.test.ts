@@ -215,7 +215,7 @@ test("projects resolved snapshots into literal messages with durable receipts", 
   });
 
   assert.equal(base.externalImports.length, 0);
-  assert.equal(imported.project.schemaVersion, 4);
+  assert.equal(imported.project.schemaVersion, 5);
   assert.equal(imported.project.externalImports.length, 1);
   assert.equal(
     imported.project.externalImports[0]?.sourceDigest,
@@ -475,6 +475,7 @@ test("projects authored expressions into deterministic native variables", async 
   const template = imported.project.promptTemplates.at(-1)!;
   const revision = template.revisions[0]!;
   assert.equal(revision.externalImportId, imported.externalImportId);
+  assert.equal(template.recommendedTarget, undefined);
   assert.equal(revision.content.kind, "fragment");
   assert.deepEqual(
     imported.project.externalImports.at(-1)?.projection,
@@ -670,4 +671,25 @@ test("names carrying incidental whitespace still import", async () => {
     { importedAt },
   );
   assert.equal(asTemplate.project.promptTemplates.length, 1);
+  // The source model pairs an external provider's model with a connection this
+  // project owns, so the importer never asserts it unless asked.
+  assert.equal(
+    asTemplate.project.promptTemplates[0]?.recommendedTarget,
+    undefined,
+  );
+
+  const recommended = await importExternalPromptTemplateCandidate(
+    project(),
+    candidate,
+    { importedAt, recommendModel: true },
+  );
+  assert.deepEqual(recommended.project.promptTemplates[0]?.recommendedTarget, {
+    connectionRequirementId:
+      recommended.project.defaults.target.connectionRequirementId,
+    model: "fixture-model",
+  });
+  assert.deepEqual(
+    recommended.project.promptTemplates[0]?.revisions,
+    asTemplate.project.promptTemplates[0]?.revisions,
+  );
 });

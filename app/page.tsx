@@ -26,6 +26,7 @@ import {
   renamePromptTemplate,
   resolveProjectRevision,
   sameConversationMessages,
+  setPromptTemplateRecommendedTarget,
   updateProjectDraft,
   updatePromptTemplateUseToLatest,
   updatePromptTemplateUseValues,
@@ -34,6 +35,7 @@ import type {
   ProjectConversationItem,
   ProjectTemplateDiagnostic,
   PromptTemplateContent,
+  PromptTemplateRecommendedTarget,
   TemplateRunOverrides,
 } from "../packages/core/src/project";
 import {
@@ -596,12 +598,14 @@ function HomeContent() {
   async function importN8nPrompt(
     candidate: ExternalPromptCandidate,
     mode: "resolved-snapshot" | "reusable-template",
+    { recommendModel }: { recommendModel: boolean },
   ): Promise<void> {
     const imported =
       mode === "reusable-template"
         ? await importExternalPromptTemplateCandidate(
             ensureProjectDocument(),
             candidate,
+            { recommendModel },
           )
         : await importExternalPromptCandidate(
             ensureProjectDocument(),
@@ -675,8 +679,12 @@ function HomeContent() {
     name: string,
     content: PromptTemplateContent,
     defaults: Record<string, string>,
+    recommendedTarget?: PromptTemplateRecommendedTarget,
   ) {
     let next = renamePromptTemplate(ensureProjectDocument(), templateId, name);
+    // Template metadata first, then authored content: only the latter can
+    // append a revision, so a recommendation-only edit keeps uses pinned.
+    next = setPromptTemplateRecommendedTarget(next, templateId, recommendedTarget);
     next = appendPromptTemplateRevision(next, {
       templateId,
       content,
@@ -1749,11 +1757,14 @@ function HomeContent() {
     connectionMapped: Boolean(mappedProfileId),
     activeProfileName: activeProfile.name,
     activeProfileEndpoint: activeProfile.endpoint,
-    activeProfileModel: activeProfile.model,
+    activeProfileModel: activeModel,
     selectedToolCount,
     toolsEnabled: activeCapabilities.tools,
     ...(activeConnectionRequirement
-      ? { requiredEndpoint: activeConnectionRequirement.endpoint }
+      ? {
+          requiredEndpoint: activeConnectionRequirement.endpoint,
+          activeConnectionRequirementId: activeConnectionRequirement.id,
+        }
       : {}),
     ...(templateWorkbench.resolutionError
       ? { templateResolutionError: templateWorkbench.resolutionError }
@@ -1767,12 +1778,34 @@ function HomeContent() {
             : {}),
         }),
       ) ?? [],
+    templateTargets:
+      composerItems.flatMap((item) => {
+        if (item.kind !== "template-use") return [];
+        const template = projectFile?.promptTemplates.find(
+          ({ id }) => id === item.use.templateId,
+        );
+        const target = template?.recommendedTarget;
+        if (!template || !target) return [];
+        const requirement = projectFile?.connectionRequirements.find(
+          ({ id }) => id === target.connectionRequirementId,
+        );
+        return [
+          {
+            templateName: template.name,
+            connectionRequirementId: target.connectionRequirementId,
+            connectionRequirementName:
+              requirement?.name ?? target.connectionRequirementId,
+            model: target.model,
+          },
+        ];
+      }) ?? [],
   });
 
   function resolveReadiness(kind: RunReadinessActionKind): void {
     if (kind === "map-profile") project.mapActiveProfile();
     else if (kind === "open-connections") setConnectionDrawerOpen(true);
     else if (kind === "review-tools") setRequestTab("tools");
+    else if (kind === "edit-template") setRequestTab("templates");
     else setRequestTab("messages");
   }
 
@@ -2337,6 +2370,10 @@ function HomeContent() {
             <ProjectTemplatesPane
               key={projectFile?.projectId ?? "unsaved-project"}
               templates={projectFile?.promptTemplates ?? []}
+              connectionRequirements={projectFile?.connectionRequirements ?? []}
+              defaultConnectionRequirementId={
+                projectFile?.defaults.target.connectionRequirementId
+              }
               usageCounts={templateUsageCounts}
               itemCount={activeProjectRevision?.items.length ?? messages.length}
               onCreate={createProjectTemplate}
@@ -2418,6 +2455,12 @@ function HomeContent() {
         <N8nImportModal
           open
           onClose={() => setN8nImportOpen(false)}
+          recommendation={{
+            ...(activeConnectionRequirement
+              ? { connectionRequirementName: activeConnectionRequirement.name }
+              : {}),
+            projectModel: activeModel,
+          }}
           onImport={importN8nPrompt}
         />
       )}

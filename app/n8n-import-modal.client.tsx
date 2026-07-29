@@ -27,12 +27,22 @@ import type {
 type LoadState = "idle" | "loading" | "ready" | "error";
 type ReviewTab = "resolved" | "authored" | "bindings" | "warnings";
 
+/** The pair a template recommendation would be recorded against, plus the
+ * model the project currently runs, so the modal can state both. The
+ * connection name is absent until a project exists to own one. */
+export interface N8nRecommendationContext {
+  connectionRequirementName?: string;
+  projectModel: string;
+}
+
 interface N8nImportModalProps {
   open: boolean;
   onClose(): void;
+  recommendation?: N8nRecommendationContext;
   onImport(
     candidate: ExternalPromptCandidate,
     mode: "resolved-snapshot" | "reusable-template",
+    options: { recommendModel: boolean },
   ): Promise<void>;
 }
 
@@ -157,6 +167,7 @@ function mergeWorkflows(
 export function N8nImportModal({
   open,
   onClose,
+  recommendation,
   onImport,
 }: N8nImportModalProps) {
   const [statusState, setStatusState] = useState<LoadState>("loading");
@@ -177,6 +188,7 @@ export function N8nImportModal({
   const [selectedExtractionIndex, setSelectedExtractionIndex] =
     useState<number>();
   const [reviewTab, setReviewTab] = useState<ReviewTab>("resolved");
+  const [recommendSourceModel, setRecommendSourceModel] = useState(true);
   const [error, setError] = useState<string>();
   const [importing, setImporting] = useState(false);
   const importingRef = useRef(false);
@@ -447,11 +459,14 @@ export function N8nImportModal({
     ) {
       return;
     }
+    const recommendModel =
+      mode === "reusable-template" && Boolean(candidate.resolved?.model) &&
+      recommendSourceModel;
     importingRef.current = true;
     setImporting(true);
     setError(undefined);
     try {
-      await onImport(candidate, mode);
+      await onImport(candidate, mode, { recommendModel });
     } catch (caught) {
       setError(errorMessage(caught, "Could not import this prompt."));
       importingRef.current = false;
@@ -760,6 +775,35 @@ export function N8nImportModal({
                         : ""}
                       {" The active Inference Lens connection and model will not change."}
                     </p>
+                    {templateImportable && candidate.resolved?.model && (
+                      <div className="n8n-recommendation-option">
+                        <label>
+                          <input
+                            checked={recommendSourceModel}
+                            disabled={importing}
+                            type="checkbox"
+                            onChange={(event) =>
+                              setRecommendSourceModel(event.target.checked)
+                            }
+                          />
+                          Record the source model as this template&rsquo;s
+                          recommended target
+                        </label>
+                        {recommendSourceModel && (
+                          <p className="n8n-recommendation-detail">
+                            {recommendation?.connectionRequirementName
+                              ? `Recorded as ${recommendation.connectionRequirementName} · ${candidate.resolved.model}.`
+                              : `Recorded as ${candidate.resolved.model}, against the connection this project uses.`}
+                            {" The model comes from n8n while the connection is this project's own, so the pair is a note to yourself rather than a verified combination."}
+                            {recommendation &&
+                            recommendation.projectModel !==
+                              candidate.resolved.model
+                              ? ` This project runs ${recommendation.projectModel}, so a run using this template will report the difference until you change one of them.`
+                              : ""}
+                          </p>
+                        )}
+                      </div>
+                    )}
                     <nav
                       aria-label="Import evidence"
                       className="n8n-review-tabs"
