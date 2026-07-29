@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  type ChangeEvent,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type {
   ProviderCapabilities,
   RichInferenceRequest,
@@ -38,11 +31,7 @@ import type {
 import {
   createEntityId,
   createSingleTurnRunExecution,
-  createRunTrace,
-  RunCoordinator,
-  transcriptFromRunState,
 } from "../packages/core/src/run-kernel";
-import { parseRunTraceJson, runStateFromTrace, traceFileName } from "../packages/core/src/run-trace";
 import {
   importExternalPromptCandidate,
   importExternalPromptTemplateCandidate,
@@ -51,37 +40,25 @@ import type {
   ExternalPromptCandidate,
 } from "../packages/core/src/external-prompt-import.ts";
 import type {
-  ProviderExecution,
   RunState,
-  RunTrace,
   ConversationMessage,
   ConversationId,
   ConversationRevisionId,
   MessageId,
-  RunId,
   PromptTemplateId,
   PromptTemplateUseId,
-  ToolResult,
 } from "../packages/core/src/run-kernel";
 import { buildChatCompletionsRequest } from "../packages/core/src/openai-compatible";
 import { discoverTemplateVariables } from "../packages/core/src/template-engine";
 import { conversationMessageText } from "./conversation-display";
-import type { CredentialSelection } from "../packages/contracts/src";
 import {
   createInferenceTransport,
   isTauriRuntime,
 } from "./tauri-inference-transport.client";
-import {
-  InferenceTransportError,
-} from "./http-inference-transport.client";
 import { AppErrorBoundary } from "./app-error-boundary.client";
 import { useInsecureOriginNotice } from "./use-insecure-origin.client";
 import { randomUUID } from "../packages/core/src/random-id.ts";
-import { recordDiagnostic, redactDiagnosticValue, startDiagnosticCapture } from "./diagnostics.client";
-import type { DiagnosticCapture } from "./diagnostics.client";
-import { preserveRunFailure } from "./run-failure.client";
-import { exportRunTraceFile, projectFolderAccessAvailable, runTraceWorkspaceLocation, runTraceWorkspacePath, saveRunTraceWorkspace } from "./project-workspace.client";
-import type { ProjectWorkspaceHandle } from "./project-workspace.client";
+import { projectFolderAccessAvailable } from "./project-workspace.client";
 import { emptyToolRegistry } from "../packages/core/src/tool-registry";
 import type {
   ToolRegistryV1,
@@ -110,10 +87,7 @@ import {
   WorkbenchShell,
 } from "./workbench-shell.client";
 import type { WorkbenchView } from "./workbench-shell.client";
-import {
-  RunTracePanel,
-  type ParentTraceState,
-} from "./run-trace-panel.client";
+import { RunTracePanel } from "./run-trace-panel.client";
 import { RunHistoryDrawer } from "./run-history-drawer.client";
 import type { ProjectRunHistoryItem } from "./use-project-run-history.client";
 import { useProjectRunHistory } from "./use-project-run-history.client";
@@ -139,9 +113,6 @@ import {
   type WorkbenchBranchContext,
 } from "./prepare-workbench-run.client";
 import { useRunSession } from "./use-run-session.client";
-import type { TraceStorageStatus } from "./response-output.client";
-import type { ToolResultDraft } from "./tool-call-list.client";
-import { toolResultDraftsForState } from "./run-session-state.client";
 
 const inferenceTransport = createInferenceTransport();
 
@@ -379,24 +350,6 @@ function HomeContent() {
   });
   const { runState, isRequestActive, toolResultDrafts, traceStorage,
     hasDiagnosticCapture, visibleBranchProvenance, parentTrace, transcript } = runSession;
-  // Temporary compatibility storage for the now-unreachable legacy commands
-  // below; PR 2 removes that body in the follow-up cleanup.
-  const [, setLegacyRunState] = useState<RunState | null>(null);
-  const [, setIsRequestActive] = useState(false);
-  const abortRef = useRef<AbortController | null>(null);
-  const coordinatorRef = useRef<RunCoordinator | null>(null);
-  const runStateRef = useRef<RunState | null>(null);
-  const requestGenerationRef = useRef(0);
-  const runTraceWorkspaceRef = useRef<ProjectWorkspaceHandle | null>(null);
-  const persistedTraceRunIdsRef = useRef(new Set<string>());
-  const diagnosticCaptureRef = useRef<DiagnosticCapture | null>(null);
-  const [, setToolResultDrafts] = useState<Record<string, ToolResultDraft>>({});
-  const [, setHasDiagnosticCapture] = useState(false);
-  const [, setTraceStorage] = useState<TraceStorageStatus | null>(null);
-  const [, setVisibleBranchProvenance] = useState<RunTrace["branchedFrom"]>();
-  const [, setParentTrace] = useState<ParentTraceState>({ status: "idle" });
-  const parentTraceGenerationRef = useRef(0);
-  const runBranchProvenanceRef = useRef(new Map<RunId, RunTrace["branchedFrom"]>());
   const [sessionModel, setSessionModel] = useState<string>();
   const [sessionTemperature, setSessionTemperature] = useState<number>();
   const adHocConversationIdRef = useRef<ConversationId | null>(null);
@@ -415,10 +368,6 @@ function HomeContent() {
       resolution.outputMessageIds.slice(0, -1),
     ) ?? [],
   );
-  function replaceRunState(next: RunState | null): void {
-    // Kept only while the unreachable legacy extraction body is removed.
-    void next;
-  }
 
   useEffect(() => {
     const promptId = window.setTimeout(() => {
@@ -552,7 +501,6 @@ function HomeContent() {
     replaceProjectDraft(projectDraft(imported.project));
     setTemplateRunOverrides({});
     setBranchContext(null);
-    setToolResultDrafts({});
     setRequestTab("messages");
     setWorkbenchView("request");
     const receipt = imported.project.externalImports.find(
@@ -1098,68 +1046,6 @@ function HomeContent() {
     if (key === "tools" && enabled) project.clearToolsDisabledError();
   }
 
-  function prepareToolResultDrafts(state: RunState): void {
-    setToolResultDrafts(toolResultDraftsForState(state, tools, mockForTool));
-  }
-
-  async function executeProviderTurn(
-    execution: ProviderExecution,
-    credential: CredentialSelection,
-    controller: AbortController,
-    requestGeneration: number,
-    diagnosticCapture: DiagnosticCapture,
-  ): Promise<void> {
-    const coordinator = coordinatorRef.current;
-    if (!coordinator) throw new Error("Run coordinator is unavailable.");
-    try {
-      const stream = await inferenceTransport.executeTurn(
-        { execution, credential },
-        controller.signal,
-      );
-      recordDiagnostic(diagnosticCapture, "client.response_received", {
-        status: stream.status,
-        headers: Object.fromEntries(stream.headers),
-      });
-      for await (const event of stream.events) {
-        recordDiagnostic(diagnosticCapture, "client.ndjson_record_received", {
-          raw: JSON.stringify(redactDiagnosticValue(event)),
-          event,
-        });
-        if (requestGenerationRef.current !== requestGeneration) continue;
-        coordinator.accept(event);
-        replaceRunState(coordinator.state);
-      }
-      if (requestGenerationRef.current !== requestGeneration) return;
-      coordinator.finishTurnStream();
-      replaceRunState(coordinator.state);
-      prepareToolResultDrafts(coordinator.state);
-    } catch (error) {
-      if (
-        controller.signal.aborted ||
-        requestGenerationRef.current !== requestGeneration
-      ) {
-        throw error;
-      }
-      const status =
-        error instanceof InferenceTransportError ? error.status : undefined;
-      const retryable =
-        !(error instanceof SyntaxError) &&
-        (status === undefined ||
-          status === 408 ||
-          status === 429 ||
-          (status >= 500 && status <= 599));
-      coordinator.accept({
-        type: "failed",
-        error: {
-          code: error instanceof SyntaxError ? "protocol_error" : "transport_error",
-          message: error instanceof Error ? error.message : "Request failed.",
-          retryable,
-        },
-      });
-      replaceRunState(coordinator.state);
-    }
-  }
-
   async function run() {
     project.clearErrorKind();
     if (projectFile && !mappedProfileId) {
@@ -1198,21 +1084,18 @@ function HomeContent() {
     if (prepared.consumesPendingBranch) setBranchContext(null);
     const input = prepared.input;
     const branchedFrom = prepared.branchedFrom;
-    const identity = {
-      conversationId: input.conversationId,
-      conversationRevisionId: input.conversationRevisionId,
-    };
     const request = {
       ...requestSnapshot,
       messages: input.messages,
     };
     input.target.profileId = createEntityId("profile", activeProfile.id);
-    await runSession.start(input, {
+    const sessionStart = runSession.start(input, {
       request,
       workspace: projectWorkspace,
       ...(branchedFrom ? { branchedFrom } : {}),
     });
     clearRequestTools();
+    await sessionStart;
     return;
     /* Legacy implementation retained in git history during extraction.
     const coordinator = new RunCoordinator(input);
@@ -1653,6 +1536,7 @@ function HomeContent() {
       workspace,
       fileName: item.fileName,
     });
+    setTraceOpen(true);
     setRunHistoryOpen(false);
   }
   const runReachedTerminalStatus = Boolean(
@@ -1790,9 +1674,16 @@ function HomeContent() {
         onOpenN8nImport={() => setN8nImportOpen(true)}
         onExportProject={project.exportProject}
         onOpenToolLibrary={() => setToolRegistryOpen(true)}
-        onDownloadDiagnostics={runSession.downloadDiagnostics}
+        onDownloadDiagnostics={downloadDiagnostics}
         onDownloadRunTrace={() => void runSession.exportTrace()}
-        onImportRunTrace={(event) => { const file = event.target.files?.[0]; if (file) void runSession.importTrace(file); event.target.value = ""; }}
+        onImportRunTrace={(event) => {
+          const file = event.target.files?.[0];
+          if (file) {
+            setTraceOpen(true);
+            void runSession.importTrace(file);
+          }
+          event.target.value = "";
+        }}
         onOpenRunHistory={() => setRunHistoryOpen(true)}
         onStop={stop}
         onRun={() => void run()}

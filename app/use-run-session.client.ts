@@ -10,7 +10,6 @@ import { randomUUID } from "../packages/core/src/random-id";
 import { InferenceTransportError } from "./http-inference-transport.client";
 import { recordDiagnostic, redactDiagnosticValue, startDiagnosticCapture } from "./diagnostics.client";
 import type { DiagnosticCapture } from "./diagnostics.client";
-import { preserveRunFailure } from "./run-failure.client";
 import { exportRunTraceFile, runTraceWorkspaceLocation, runTraceWorkspacePath, saveRunTraceWorkspace } from "./project-workspace.client";
 import type { ProjectWorkspaceHandle } from "./project-workspace.client";
 import type { TraceStorageStatus } from "./response-output.client";
@@ -156,13 +155,51 @@ export function useRunSession(options: UseRunSessionOptions) {
     finally { recordDiagnostic(capture, "client.stream_finished"); if (requestGenerationRef.current === generation) { abortRef.current = null; setIsRequestActive(false); } }
   }
 
-  function stop(): void { const controller = abortRef.current; requestGenerationRef.current += 1; diagnosticRef.current && recordDiagnostic(diagnosticRef.current, "client.stop_requested"); abortRef.current = null; controller?.abort(); setIsRequestActive(false); const coordinator = coordinatorRef.current; if (coordinator && !isTerminalRunState(coordinator.state)) { const status = coordinator.state.status; status.kind === "paused" && status.reason === "attempt_failed" ? coordinator.fail(status.error) : coordinator.cancel("Stopped by user."); replaceState(coordinator.state); } }
+  function stop(): void {
+    const controller = abortRef.current;
+    requestGenerationRef.current += 1;
+    if (diagnosticRef.current) {
+      recordDiagnostic(diagnosticRef.current, "client.stop_requested");
+    }
+    abortRef.current = null;
+    controller?.abort();
+    setIsRequestActive(false);
+    const coordinator = coordinatorRef.current;
+    if (coordinator && !isTerminalRunState(coordinator.state)) {
+      const status = coordinator.state.status;
+      if (status.kind === "paused" && status.reason === "attempt_failed") {
+        coordinator.fail(status.error);
+      } else {
+        coordinator.cancel("Stopped by user.");
+      }
+      replaceState(coordinator.state);
+    }
+  }
   function updateToolResultDraft(callId: string, text: string): void { setToolResultDrafts((current) => ({ ...current, [callId]: { ...current[callId]!, text } })); }
   function reset(): void { stop(); coordinatorRef.current = null; setToolResultDrafts({}); diagnosticRef.current = null; setHasDiagnosticCapture(false); parentGenerationRef.current += 1; setParentTrace({ status: "idle" }); replaceState(null); }
   function downloadDiagnostics(): void { const capture = diagnosticRef.current; if (!capture) return; const exportedAt = new Date().toISOString(); const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([JSON.stringify({ schemaVersion: 1, exportedAt, privacy: { credentials: "redacted", messageBodies: "included" }, capture }, null, 2)], { type: "application/json" })); link.download = `inference-lens-diagnostics-${exportedAt.replaceAll(":", "-")}.json`; link.click(); URL.revokeObjectURL(link.href); }
   function traceForState(): RunTrace | undefined { const state = runStateRef.current; if (!state || !isTerminalRunState(state)) return; try { return createRunTrace(state, { branchedFrom: provenanceRef.current.get(state.runId) }); } catch { return; } }
   async function exportTrace(): Promise<void> { const trace = traceForState(); if (!trace) return; const previous = traceStorage; const preserve = previous?.kind === "saved" && Boolean(workspaceRef.current); setTraceStorage({ kind: "saving" }); try { const result = await exportRunTraceFile(trace); setTraceStorage(result.kind === "saved" ? (preserve ? previous! : { kind: "saved", location: result.location }) : result.kind === "downloaded" ? (preserve ? previous! : { kind: "downloaded", fileName: result.fileName }) : previous ?? { kind: "unsaved" }); } catch (error) { setTraceStorage({ kind: "error", message: error instanceof Error ? error.message : "The trace could not be saved." }); } }
-  function adoptTrace(trace: RunTrace, origin: TraceOrigin): void { stop(); if (trace.branchedFrom) provenanceRef.current.set(trace.runId, trace.branchedFrom); if (origin.workspace) persistedRunIdsRef.current.add(trace.runId); coordinatorRef.current = null; workspaceRef.current = origin.workspace; diagnosticRef.current = null; setHasDiagnosticCapture(false); setToolResultDrafts({}); options.onResetBranch(); parentGenerationRef.current += 1; setParentTrace({ status: "idle" }); setVisibleBranchProvenance(trace.branchedFrom); options.onShowResponse(); replaceState(runStateFromTrace(trace)); setTraceStorage(origin.workspace ? { kind: "saved", location: runTraceWorkspacePath(origin.workspace, origin.fileName) } : { kind: "loaded", fileName: origin.fileName }); options.onClearError(); }
+  function adoptTrace(trace: RunTrace, origin: TraceOrigin): void {
+    stop();
+    if (trace.branchedFrom) provenanceRef.current.set(trace.runId, trace.branchedFrom);
+    if (origin.workspace) persistedRunIdsRef.current.add(trace.runId);
+    coordinatorRef.current = null;
+    workspaceRef.current = origin.workspace;
+    diagnosticRef.current = null;
+    setHasDiagnosticCapture(false);
+    setToolResultDrafts({});
+    options.onResetBranch();
+    parentGenerationRef.current += 1;
+    setParentTrace({ status: "idle" });
+    setVisibleBranchProvenance(trace.branchedFrom);
+    options.onShowResponse();
+    replaceState(runStateFromTrace(trace));
+    setTraceStorage(origin.workspace
+      ? { kind: "saved", location: runTraceWorkspacePath(origin.workspace, origin.fileName) }
+      : { kind: "loaded", fileName: origin.fileName });
+    options.onClearError();
+  }
   async function importTrace(file: File): Promise<void> { try { adoptTrace(parseRunTraceJson(await file.text()), { workspace: null, fileName: file.name }); } catch (error) { options.onError(error instanceof Error ? error.message : "Could not import the run trace."); } }
   async function loadParentTrace(): Promise<void> { const provenance = visibleBranchProvenance; const generation = ++parentGenerationRef.current; if (!provenance) return; if (!workspaceRef.current) { setParentTrace({ status: "error", error: "Open the project folder that contains the parent run, then load it again. If the parent was never saved, save that run first." }); return; } setParentTrace({ status: "loading" }); try { const trace = await options.readTrace(traceFileName(provenance.runId)); if (generation !== parentGenerationRef.current) return; if (trace.runId !== provenance.runId) throw new Error("The parent trace file contains a different run."); setParentTrace({ status: "ready", trace }); } catch (error) { if (generation !== parentGenerationRef.current) return; setParentTrace({ status: "error", error: `The parent run could not be loaded. Save run ${provenance.runId} in this project folder, then try again. ${error instanceof Error ? error.message : "The trace could not be read."}` }); } }
   const transcript = useMemo(() => runState ? transcriptFromRunState(runState) : [], [runState]);

@@ -100,7 +100,7 @@ constraints, stop that PR and design the behavior change separately.
 | PR | Scope | Status | Depends on |
 | --- | --- | --- | --- |
 | 1 | Pure workbench-run preparation | Merged (`7618104`) | None |
-| 2 | Atomic live run session | In progress | PR 1 |
+| 2 | Atomic live run session | Complete | PR 1 |
 | 3 | Project-template workbench owner | Blocked on PR 2 | PR 2 |
 | 4 | Request composer | Blocked on PR 3 | PR 3 |
 | 5 | Feature organization and composition-root guardrail | Blocked on PR 4 | PR 4 |
@@ -444,6 +444,19 @@ Scan the response and trace regions for invalid numeric or undefined text.
 - Streaming, buffered, retry, cancellation, continuation, autosave, import,
   history, and diff scenarios are reported.
 - No compatibility constraint changed.
+
+### Verification completed
+
+- `npm run lint`, `npm run typecheck`, `npm run typecheck:core`, and `npm test`
+  passed. The full gate was run outside the filesystem sandbox because the n8n
+  contract suite binds deterministic localhost fixtures.
+- In the running app, the buffered provider fixture returned the exact visible
+  text `Buffered fixture response: 2 + 2 = 4.` with `4 in · 7 out` and `11`
+  total tokens. The rendered response and trace regions contained no `NaN`,
+  `Infinity`, or `undefined` text.
+- The broader streaming, retry, cancellation, tool-continuation, autosave,
+  import/export, and branch-diff scenarios remain covered by the existing
+  deterministic provider and rendered-HTML suites in the shared gate.
 
 ---
 
