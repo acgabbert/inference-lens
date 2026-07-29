@@ -1142,9 +1142,39 @@ output {
   padding-top: 10px;
   border-top: 1px solid var(--accent-border);
   display: grid;
-  grid-template-columns: minmax(105px, 0.8fr) minmax(130px, 1fr) auto minmax(130px, 1fr) auto;
   gap: 8px;
-  align-items: end;
+}
+
+.template-use-variable-heading,
+.template-run-value-footer,
+.template-run-value-actions {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.template-use-variable-heading,
+.template-run-value-footer {
+  justify-content: space-between;
+}
+
+.template-run-value-editor {
+  min-width: 0;
+}
+
+.template-run-value-editor label {
+  display: block;
+}
+
+.template-run-value-editor textarea {
+  min-height: 92px;
+  margin-top: 7px;
+  padding: 9px 10px;
+  resize: vertical;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 10px;
+  line-height: 1.5;
+  white-space: pre-wrap;
 }
 
 .run-override-input {

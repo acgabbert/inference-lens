@@ -506,6 +506,10 @@ interface TemplateUseCardProps {
   runOverrides: Readonly<Record<string, string>>;
   importedFrom?: ExternalImportReceipt;
   onSaveValues(values: Record<string, string>): void;
+  onSaveRunValue(
+    values: Record<string, string>,
+    runOverrides: Record<string, string>,
+  ): void;
   onRunOverridesChange(values: Record<string, string>): void;
   onUpdateLatest(): void;
   onDetach(): void;
@@ -578,6 +582,7 @@ export function TemplateUseCard({
   runOverrides,
   importedFrom,
   onSaveValues,
+  onSaveRunValue,
   onRunOverridesChange,
   onUpdateLatest,
   onDetach,
@@ -691,14 +696,21 @@ export function TemplateUseCard({
           const saved = Object.hasOwn(use.values, variable.name);
           const overridden = Object.hasOwn(runOverrides, variable.name);
           const defaulted = Object.hasOwn(revision.variableDefaults, variable.name);
+          const effective = effectiveValues[variable.name];
+          const valueSource = overridden
+            ? "Session override"
+            : saved
+              ? "Saved in project"
+              : defaulted
+                ? "Template default"
+                : "Needs a value";
           return (
             <div className="template-use-variable" key={variable.name}>
-              <div>
+              <div className="template-use-variable-heading">
                 <code>{`{{${variable.name}}}`}</code>
                 <small>
-                  Effective: {Object.hasOwn(effectiveValues, variable.name)
-                    ? effectiveValueLabel(effectiveValues[variable.name]!)
-                    : "missing"}
+                  {variable.occurrences.length} location
+                  {variable.occurrences.length === 1 ? "" : "s"}
                 </small>
               </div>
               {sensitive ? (
@@ -710,44 +722,14 @@ export function TemplateUseCard({
                   reach the provider through the connection profile.
                 </div>
               ) : (
-                <>
+                <div className="template-run-value-editor">
                   <label>
-                    Saved value
-                    <input
-                      placeholder={
-                        defaulted
-                          ? `Default: ${revision.variableDefaults[variable.name]}`
-                          : "No saved value"
-                      }
-                      value={saved ? use.values[variable.name] : ""}
-                      onChange={(event) =>
-                        onSaveValues(
-                          updateRecord(
-                            use.values,
-                            variable.name,
-                            event.target.value,
-                          ),
-                        )
-                      }
-                    />
-                  </label>
-                  {saved && (
-                    <button
-                      className="text-button"
-                      type="button"
-                      onClick={() =>
-                        onSaveValues(removeRecordKey(use.values, variable.name))
-                      }
-                    >
-                      Use default
-                    </button>
-                  )}
-                  <label>
-                    Run-only override
-                    <input
-                      className="run-override-input"
-                      placeholder="No override"
-                      value={overridden ? runOverrides[variable.name] : ""}
+                    Value for run
+                    <textarea
+                      className={overridden ? "run-override-input" : ""}
+                      placeholder="Enter a value"
+                      rows={4}
+                      value={effective ?? ""}
                       onChange={(event) =>
                         onRunOverridesChange(
                           updateRecord(
@@ -759,22 +741,57 @@ export function TemplateUseCard({
                       }
                     />
                   </label>
-                  {overridden && (
-                    <button
-                      className="text-button"
-                      type="button"
-                      onClick={() =>
-                        onRunOverridesChange(
-                          removeRecordKey(runOverrides, variable.name),
-                        )
-                      }
-                    >
-                      Clear override
-                    </button>
-                  )}
-                </>
+                  <div className="template-run-value-footer">
+                    <small>{valueSource}</small>
+                    <div className="template-run-value-actions">
+                      {overridden && (
+                        <>
+                          <button
+                            className="text-button"
+                            type="button"
+                            onClick={() =>
+                              onSaveRunValue(
+                                updateRecord(
+                                  use.values,
+                                  variable.name,
+                                  effective!,
+                                ),
+                                removeRecordKey(runOverrides, variable.name),
+                              )
+                            }
+                          >
+                            Save to project
+                          </button>
+                          <button
+                            className="text-button"
+                            type="button"
+                            onClick={() =>
+                              onRunOverridesChange(
+                                removeRecordKey(runOverrides, variable.name),
+                              )
+                            }
+                          >
+                            Reset
+                          </button>
+                        </>
+                      )}
+                      {saved && !overridden && (
+                        <button
+                          className="text-button"
+                          type="button"
+                          onClick={() =>
+                            onSaveValues(
+                              removeRecordKey(use.values, variable.name),
+                            )
+                          }
+                        >
+                          Use default
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
               )}
-              <small>{variable.occurrences.length} location{variable.occurrences.length === 1 ? "" : "s"}</small>
             </div>
           );
         })}
