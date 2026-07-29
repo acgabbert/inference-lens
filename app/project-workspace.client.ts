@@ -26,6 +26,26 @@ import type {
   StoredRunTraceFile,
 } from "./project-directory.client.ts";
 import { isTauriRuntime } from "./runtime.client.ts";
+import {
+  clearStoredWorkspace,
+  queryWorkspacePermission,
+  readStoredWorkspace,
+  requestWorkspacePermission,
+  writeStoredWorkspace,
+} from "./workspace-handle-store.client.ts";
+import {
+  classifyPickerError,
+  classifyWorkspaceReadError,
+  pickerNotAllowedMessage,
+  resolveStoredWorkspaceAccess,
+  resolveStoredWorkspaceLoad,
+} from "./workspace-resume.client.ts";
+import type {
+  ResumeMode,
+  StoredWorkspaceAccess,
+  StoredWorkspaceRecord,
+  WorkspaceReadResult,
+} from "./workspace-resume.client.ts";
 
 export type { StoredRunTraceFile };
 
@@ -62,6 +82,12 @@ export interface OpenedProjectWorkspace {
   handle: ProjectWorkspaceHandle;
 }
 
+export type WorkspaceResumeOutcome =
+  | { kind: "resumed"; project: ProjectFile; handle: ProjectWorkspaceHandle }
+  | { kind: "reconnect-required"; message: string }
+  | { kind: "forgotten"; message: string }
+  | { kind: "none" };
+
 export interface ProjectCreationOptions {
   name: string;
   protectFromGit: boolean;
@@ -79,13 +105,6 @@ export type RunTraceExportResult =
   | { kind: "downloaded"; fileName: string }
   | { kind: "cancelled" };
 
-function isPickerCancellation(error: unknown): boolean {
-  return (
-    error instanceof DOMException &&
-    (error.name === "AbortError" || error.name === "NotAllowedError")
-  );
-}
-
 function picker(): DirectoryPickerWindow["showDirectoryPicker"] {
   return (window as DirectoryPickerWindow).showDirectoryPicker;
 }
@@ -101,17 +120,8 @@ export function projectFolderAccessAvailable(): boolean {
 async function readBrowserManifest(
   directory: FileSystemDirectoryHandleLike,
 ): Promise<string> {
-  let fileHandle: FileSystemFileHandleLike;
-  try {
-    fileHandle = await directory.getFileHandle(PROJECT_FILE_NAME);
-  } catch (error) {
-    if (error instanceof DOMException && error.name === "NotFoundError") {
-      throw new Error(
-        `The selected folder does not contain ${PROJECT_FILE_NAME}.`,
-      );
-    }
-    throw error;
-  }
+  const fileHandle: FileSystemFileHandleLike =
+    await directory.getFileHandle(PROJECT_FILE_NAME);
   return (await fileHandle.getFile()).text();
 }
 
@@ -169,6 +179,33 @@ function browserStorage(
   };
 }
 
+function browserWorkspace(
+  directory: FileSystemDirectoryHandleLike,
+  contents: string,
+): ProjectWorkspaceHandle {
+  return {
+    kind: "browser-directory",
+    displayName: directory.name,
+    displayPath: directory.name,
+    storage: browserStorage(directory, contents),
+  };
+}
+
+async function rememberBrowserWorkspace(
+  directory: FileSystemDirectoryHandleLike,
+  project: ProjectFile,
+): Promise<void> {
+  await writeStoredWorkspace({
+    version: 1,
+    recordId: crypto.randomUUID(),
+    kind: "browser-directory",
+    displayName: directory.name,
+    projectName: project.name,
+    handle: directory,
+    savedAt: Date.now(),
+  });
+}
+
 async function openBrowserProjectFolder(): Promise<OpenedProjectWorkspace | null> {
   const showDirectoryPicker = picker();
   if (!showDirectoryPicker) {
@@ -181,18 +218,32 @@ async function openBrowserProjectFolder(): Promise<OpenedProjectWorkspace | null
       id: "inference-lens-project",
       mode: "readwrite",
     });
-    const contents = await readBrowserManifest(directory);
+    let contents: string;
+    try {
+      contents = await readBrowserManifest(directory);
+    } catch (error) {
+      if (
+        error instanceof DOMException &&
+        error.name === "NotFoundError"
+      ) {
+        throw new Error(
+          `The selected folder does not contain ${PROJECT_FILE_NAME}.`,
+        );
+      }
+      throw error;
+    }
+    const project = parseProjectJson(contents);
+    await rememberBrowserWorkspace(directory, project);
     return {
-      project: parseProjectJson(contents),
-      handle: {
-        kind: "browser-directory",
-        displayName: directory.name,
-        displayPath: directory.name,
-        storage: browserStorage(directory, contents),
-      },
+      project,
+      handle: browserWorkspace(directory, contents),
     };
   } catch (error) {
-    if (isPickerCancellation(error)) return null;
+    const failure = classifyPickerError(error);
+    if (failure === "cancelled") return null;
+    if (failure === "not-allowed") {
+      throw new Error(pickerNotAllowedMessage());
+    }
     throw error;
   }
 }
@@ -240,14 +291,10 @@ async function createBrowserProjectFolder(
       const writable = await fileHandle.createWritable();
       await writable.write(contents);
       await writable.close();
+      await rememberBrowserWorkspace(directory, project);
       return {
         project,
-        handle: {
-          kind: "browser-directory",
-          displayName: directory.name,
-          displayPath: directory.name,
-          storage: browserStorage(directory, contents),
-        },
+        handle: browserWorkspace(directory, contents),
       };
     } catch (error) {
       try {
@@ -259,9 +306,94 @@ async function createBrowserProjectFolder(
       throw error;
     }
   } catch (error) {
-    if (isPickerCancellation(error)) return null;
+    const failure = classifyPickerError(error);
+    if (failure === "cancelled") return null;
+    if (failure === "not-allowed") {
+      throw new Error(pickerNotAllowedMessage());
+    }
     throw error;
   }
+}
+
+async function forgetStoredWorkspace(
+  record: StoredWorkspaceRecord,
+  message: string,
+): Promise<WorkspaceResumeOutcome> {
+  await clearStoredWorkspace(record.recordId);
+  return { kind: "forgotten", message };
+}
+
+async function resumeStoredWorkspace(
+  mode: ResumeMode,
+): Promise<WorkspaceResumeOutcome> {
+  if (isTauriRuntime() || !browserFolderAccessAvailable()) {
+    return { kind: "none" };
+  }
+  const record = await readStoredWorkspace();
+  if (!record) return { kind: "none" };
+
+  let access: StoredWorkspaceAccess = resolveStoredWorkspaceAccess({
+    record,
+    permission: await queryWorkspacePermission(record),
+    mode,
+  });
+  if (access.kind === "request-permission") {
+    access = resolveStoredWorkspaceAccess({
+      record,
+      permission: await requestWorkspacePermission(record),
+      mode,
+    });
+  }
+  if (access.kind === "none") return { kind: "none" };
+  if (access.kind === "offer-reconnect") {
+    return { kind: "reconnect-required", message: access.message };
+  }
+  if (access.kind === "forget") {
+    return forgetStoredWorkspace(record, access.message);
+  }
+  if (access.kind === "request-permission") {
+    return {
+      kind: "reconnect-required",
+      message: `Reconnect ${record.displayName} to continue working with your last project.`,
+    };
+  }
+
+  let read: WorkspaceReadResult;
+  try {
+    const contents = await readBrowserManifest(record.handle);
+    parseProjectJson(contents);
+    read = { kind: "ok", contents };
+  } catch (error) {
+    read = {
+      kind: "failed",
+      failure: classifyWorkspaceReadError(error),
+      ...(error instanceof Error ? { message: error.message } : {}),
+    };
+  }
+  const load = resolveStoredWorkspaceLoad({
+    displayName: record.displayName,
+    mode,
+    read,
+  });
+  if (load.kind === "offer-reconnect") {
+    return { kind: "reconnect-required", message: load.message };
+  }
+  if (load.kind === "forget") {
+    return forgetStoredWorkspace(record, load.message);
+  }
+  return {
+    kind: "resumed",
+    project: parseProjectJson(load.contents),
+    handle: browserWorkspace(record.handle, load.contents),
+  };
+}
+
+export function restoreProjectWorkspace(): Promise<WorkspaceResumeOutcome> {
+  return resumeStoredWorkspace("silent");
+}
+
+export function reconnectProjectWorkspace(): Promise<WorkspaceResumeOutcome> {
+  return resumeStoredWorkspace("interactive");
 }
 
 async function invokeNative<T>(

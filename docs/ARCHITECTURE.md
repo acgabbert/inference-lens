@@ -65,6 +65,9 @@ Browser and Tauri adapters own directory selection, permissions,
 external-change detection, and writing. Imported projects contain portable
 connection requirements; the UI requires an explicit mapping to a local
 inference profile before a run can resolve that profile's credential.
+The browser adapter also owns persistence of the directory grant, never the
+project contents, and keeps the raw handle internal so `ProjectWorkspaceHandle`
+stays opaque on both hosts.
 Workspace handles expose a human-readable display location for status text,
 but native filesystem commands continue to accept only the opaque workspace ID.
 
