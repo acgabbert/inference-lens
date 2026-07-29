@@ -19,7 +19,8 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 const LIST_RESPONSE_LIMIT_BYTES = 1024 * 1024;
 const DETAIL_RESPONSE_LIMIT_BYTES = 8 * 1024 * 1024;
 const REQUEST_BODY_LIMIT_BYTES = 4 * 1024;
-const PAGE_SIZE = 50;
+const WORKFLOW_PAGE_SIZE = 10;
+const EXECUTION_PAGE_SIZE = 25;
 
 export type N8nIntegrationErrorCode =
   | "configuration-unavailable"
@@ -545,7 +546,7 @@ export class N8nClient {
     signal?: AbortSignal,
   ): Promise<N8nPage<N8nWorkflowSummary>> {
     const query = new URLSearchParams({
-      limit: String(PAGE_SIZE),
+      limit: String(WORKFLOW_PAGE_SIZE),
       excludePinnedData: "true",
     });
     const safeCursor = validateCursor(cursor);
@@ -572,7 +573,7 @@ export class N8nClient {
     const query = new URLSearchParams({
       workflowId: safeWorkflowId,
       includeData: "false",
-      limit: String(PAGE_SIZE),
+      limit: String(EXECUTION_PAGE_SIZE),
     });
     const safeCursor = validateCursor(cursor);
     if (safeCursor) query.set("cursor", safeCursor);

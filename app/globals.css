@@ -1833,6 +1833,14 @@ output {
   font-size: 10px;
 }
 
+.n8n-loaded-count {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 8px;
+  font-weight: 500;
+}
+
 .n8n-step {
   width: 18px;
   height: 18px;
@@ -1871,6 +1879,24 @@ output {
 .n8n-selector-list {
   display: grid;
   gap: 5px;
+}
+
+.n8n-selector-list-frame {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.n8n-selector-list-frame.workflows {
+  max-height: 210px;
+}
+
+.n8n-selector-list-frame.executions {
+  max-height: 190px;
+}
+
+.n8n-selector-list-frame.invocations {
+  max-height: 170px;
 }
 
 .n8n-selector-list > p,
@@ -1923,8 +1949,27 @@ output {
 }
 
 .n8n-load-more {
-  margin: 7px 4px 0;
+  margin: 0;
   padding: 0;
+}
+
+.n8n-list-pagination {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin-top: 5px;
+  padding: 8px 4px 3px;
+  border-top: 1px solid var(--border-default);
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--surface-sunken) 90%, transparent),
+    var(--surface-sunken) 35%
+  );
+}
+
+.n8n-import-selector .n8n-selector-scope {
+  margin: 6px 4px 0;
+  font-size: 8px;
 }
 
 .n8n-import-review {
@@ -1990,17 +2035,27 @@ output {
 }
 
 .n8n-recommendation-option label {
+  min-width: 0;
+  margin: 0;
   display: flex;
   align-items: flex-start;
   gap: 8px;
   color: var(--text-secondary);
   font-size: 11px;
   font-weight: 600;
+  letter-spacing: 0;
   line-height: 1.4;
 }
 
+.n8n-recommendation-option label span {
+  min-width: 0;
+}
+
 .n8n-recommendation-option input[type="checkbox"] {
-  margin-top: 1px;
+  width: 14px;
+  height: 14px;
+  margin: 1px 0 0;
+  padding: 0;
   flex: 0 0 auto;
 }
 
