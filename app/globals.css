@@ -1170,11 +1170,30 @@ output {
   min-height: 92px;
   margin-top: 7px;
   padding: 9px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface-inset);
+  box-shadow: var(--shadow-field-inset);
   resize: vertical;
   font-family: var(--font-geist-mono), monospace;
   font-size: 10px;
   line-height: 1.5;
   white-space: pre-wrap;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.template-run-value-editor textarea:hover {
+  border-color: var(--accent-border);
+  background: var(--surface-subtle);
+}
+
+.template-run-value-editor textarea:focus {
+  border-color: var(--accent-focus);
+  background: var(--surface-panel);
+  box-shadow: var(--focus-ring), var(--shadow-field-inset);
 }
 
 .run-override-input {
