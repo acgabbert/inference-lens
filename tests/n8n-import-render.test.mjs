@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import react from "@vitejs/plugin-react";
+import { readFile } from "node:fs/promises";
+
 import { createServer } from "vite";
 
 async function renderImportModal() {
@@ -79,4 +81,19 @@ test("renders the pasted execution-link selector", async () => {
   assert.match(html, /aria-label="n8n execution link"/);
   assert.match(html, />Review</);
   assert.doesNotMatch(html, /undefined|NaN|Infinity/);
+});
+
+test("keeps the model recommendation checkbox from consuming the label width", async () => {
+  const stylesheet = await readFile(
+    new URL("../app/globals.css", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    stylesheet,
+    /\.n8n-recommendation-option label\s*\{[^}]*margin:\s*0;/s,
+  );
+  assert.match(
+    stylesheet,
+    /\.n8n-recommendation-option input\[type="checkbox"\]\s*\{[^}]*width:\s*14px;[^}]*margin:\s*1px 0 0;/s,
+  );
 });

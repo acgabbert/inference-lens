@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import react from "@vitejs/plugin-react";
@@ -184,6 +185,21 @@ test("summarizes unresolved template values without repeating diagnostic rows", 
   assert.doesNotMatch(html, /Template variable &quot;topic&quot; has no value\./);
   assert.match(html, /template-variable-chip missing/);
   assert.match(html, /Needs a value/);
+});
+
+test("keeps run-value textareas distinct from the composer surface", async () => {
+  const stylesheet = await readFile(
+    new URL("../app/globals.css", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    stylesheet,
+    /\.template-run-value-editor textarea\s*\{[^}]*border:\s*1px solid var\(--border-strong\);[^}]*background:\s*var\(--surface-inset\);[^}]*box-shadow:\s*var\(--shadow-field-inset\);/s,
+  );
+  assert.match(
+    stylesheet,
+    /\.template-run-value-editor textarea:focus\s*\{[^}]*border-color:\s*var\(--accent-focus\);[^}]*background:\s*var\(--surface-panel\);[^}]*box-shadow:\s*var\(--focus-ring\), var\(--shadow-field-inset\);/s,
+  );
 });
 
 test("labels non-current revisions without a Previous 0 state", async () => {

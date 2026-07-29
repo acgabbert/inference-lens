@@ -167,7 +167,7 @@ test("lists workflow summaries through the installation subpath and drops unknow
     {
       url:
         "https://n8n.example.test/automation/api/v1/workflows?" +
-        "limit=50&excludePinnedData=true",
+        "limit=10&excludePinnedData=true",
       method: "GET",
       apiKey,
       redirect: "manual",
@@ -222,7 +222,7 @@ test("lists execution summaries without requesting or returning execution data",
   assert.equal(requestUrl.pathname, "/automation/api/v1/executions");
   assert.equal(requestUrl.searchParams.get("workflowId"), "workflow_1");
   assert.equal(requestUrl.searchParams.get("includeData"), "false");
-  assert.equal(requestUrl.searchParams.get("limit"), "50");
+  assert.equal(requestUrl.searchParams.get("limit"), "25");
   assert.equal(requestUrl.searchParams.get("cursor"), "opaque+/=");
   assert.doesNotMatch(text, /forbidden|n8n-secret|n8n\.example\.test/);
 });

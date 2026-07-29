@@ -590,56 +590,76 @@ export function N8nImportModal({
                   <div className="n8n-selector-heading">
                     <span className="n8n-step">1</span>
                     <strong>Workflow</strong>
+                    <span className="n8n-loaded-count">
+                      {workflows.length} loaded
+                    </span>
                   </div>
                   <input
                     aria-label="Filter loaded workflows"
-                    placeholder="Filter loaded workflows"
+                    placeholder={`Filter ${workflows.length} loaded workflows`}
                     value={workflowQuery}
                     onChange={(event) => setWorkflowQuery(event.target.value)}
                   />
-                  <div className="n8n-selector-list">
-                    {workflowState === "loading" && workflows.length === 0 ? (
-                      <p role="status">Loading workflows…</p>
-                    ) : filteredWorkflows.length === 0 ? (
-                      <p>No matching loaded workflows.</p>
-                    ) : (
-                      filteredWorkflows.map((workflow) => (
+                  <div className="n8n-selector-list-frame workflows">
+                    <div className="n8n-selector-list">
+                      {workflowState === "loading" && workflows.length === 0 ? (
+                        <p role="status">Loading workflows…</p>
+                      ) : filteredWorkflows.length === 0 ? (
+                        <p>No matching loaded workflows.</p>
+                      ) : (
+                        filteredWorkflows.map((workflow) => (
+                          <button
+                            aria-current={selectedWorkflow?.id === workflow.id}
+                            className={
+                              selectedWorkflow?.id === workflow.id
+                                ? "n8n-selector-item selected"
+                                : "n8n-selector-item"
+                            }
+                            key={workflow.id}
+                            type="button"
+                            onClick={() => void selectWorkflow(workflow)}
+                          >
+                            <strong>{workflow.name || "Untitled workflow"}</strong>
+                            <span>
+                              {workflow.active ? "Active" : "Inactive"} ·{" "}
+                              {workflow.id}
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                    {workflowCursor && (
+                      <div className="n8n-list-pagination">
                         <button
-                          aria-current={selectedWorkflow?.id === workflow.id}
-                          className={
-                            selectedWorkflow?.id === workflow.id
-                              ? "n8n-selector-item selected"
-                              : "n8n-selector-item"
-                          }
-                          key={workflow.id}
+                          className="text-button n8n-load-more"
+                          disabled={workflowState === "loading"}
                           type="button"
-                          onClick={() => void selectWorkflow(workflow)}
+                          onClick={() => void loadMoreWorkflows()}
                         >
-                          <strong>{workflow.name || "Untitled workflow"}</strong>
-                          <span>
-                            {workflow.active ? "Active" : "Inactive"} ·{" "}
-                            {workflow.id}
-                          </span>
+                          {workflowState === "loading"
+                            ? "Loading…"
+                            : "Load more workflows"}
                         </button>
-                      ))
+                      </div>
                     )}
                   </div>
-                  {workflowCursor && (
-                    <button
-                      className="text-button n8n-load-more"
-                      disabled={workflowState === "loading"}
-                      type="button"
-                      onClick={() => void loadMoreWorkflows()}
-                    >
-                      Load more workflows
-                    </button>
-                  )}
+                  <p className="n8n-selector-scope">
+                    {workflowQuery.trim()
+                      ? `${filteredWorkflows.length} matching · `
+                      : ""}
+                    Filter searches loaded workflows only.
+                  </p>
                 </section>
 
                 <section>
                   <div className="n8n-selector-heading">
                     <span className="n8n-step">2</span>
                     <strong>Saved execution</strong>
+                    {selectedWorkflow && (
+                      <span className="n8n-loaded-count">
+                        {executions.length} loaded
+                      </span>
+                    )}
                   </div>
                   {!selectedWorkflow ? (
                     <p>Choose a workflow first.</p>
@@ -649,38 +669,44 @@ export function N8nImportModal({
                   ) : executions.length === 0 ? (
                     <p>No saved executions were returned.</p>
                   ) : (
-                    <div className="n8n-selector-list">
-                      {executions.map((execution) => (
-                        <button
-                          aria-current={selectedExecution?.id === execution.id}
-                          className={
-                            selectedExecution?.id === execution.id
-                              ? "n8n-selector-item selected"
-                              : "n8n-selector-item"
-                          }
-                          key={execution.id}
-                          type="button"
-                          onClick={() => void selectExecution(execution)}
-                        >
-                          <strong>
-                            {execution.status ?? "Unknown status"}
-                          </strong>
-                          <span>
-                            {readableDate(execution.startedAt)} · {execution.id}
-                          </span>
-                        </button>
-                      ))}
+                    <div className="n8n-selector-list-frame executions">
+                      <div className="n8n-selector-list">
+                        {executions.map((execution) => (
+                          <button
+                            aria-current={selectedExecution?.id === execution.id}
+                            className={
+                              selectedExecution?.id === execution.id
+                                ? "n8n-selector-item selected"
+                                : "n8n-selector-item"
+                            }
+                            key={execution.id}
+                            type="button"
+                            onClick={() => void selectExecution(execution)}
+                          >
+                            <strong>
+                              {execution.status ?? "Unknown status"}
+                            </strong>
+                            <span>
+                              {readableDate(execution.startedAt)} · {execution.id}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                      {executionCursor && (
+                        <div className="n8n-list-pagination">
+                          <button
+                            className="text-button n8n-load-more"
+                            disabled={executionState === "loading"}
+                            type="button"
+                            onClick={() => void loadMoreExecutions()}
+                          >
+                            {executionState === "loading"
+                              ? "Loading…"
+                              : "Load more executions"}
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  )}
-                  {executionCursor && (
-                    <button
-                      className="text-button n8n-load-more"
-                      disabled={executionState === "loading"}
-                      type="button"
-                      onClick={() => void loadMoreExecutions()}
-                    >
-                      Load more executions
-                    </button>
                   )}
                 </section>
 
@@ -696,30 +722,32 @@ export function N8nImportModal({
                   ) : detail?.discovery.status !== "ready" ? (
                     <p>{detail?.discovery.message ?? "No invocation selected."}</p>
                   ) : (
-                    <div className="n8n-selector-list">
-                      {detail.extractions.map((extraction, index) => (
-                        <button
-                          aria-current={selectedExtractionIndex === index}
-                          className={
-                            selectedExtractionIndex === index
-                              ? "n8n-selector-item selected"
-                              : "n8n-selector-item"
-                          }
-                          key={`${invocationLabel(extraction)}-${index}`}
-                          type="button"
-                          onClick={() => {
-                            setSelectedExtractionIndex(index);
-                            setReviewTab("resolved");
-                          }}
-                        >
-                          <strong>{invocationLabel(extraction)}</strong>
-                          <span>
-                            {extraction.status === "unsupported"
-                              ? "Unsupported"
-                              : extraction.candidate.fidelity.replaceAll("-", " ")}
-                          </span>
-                        </button>
-                      ))}
+                    <div className="n8n-selector-list-frame invocations">
+                      <div className="n8n-selector-list">
+                        {detail.extractions.map((extraction, index) => (
+                          <button
+                            aria-current={selectedExtractionIndex === index}
+                            className={
+                              selectedExtractionIndex === index
+                                ? "n8n-selector-item selected"
+                                : "n8n-selector-item"
+                            }
+                            key={`${invocationLabel(extraction)}-${index}`}
+                            type="button"
+                            onClick={() => {
+                              setSelectedExtractionIndex(index);
+                              setReviewTab("resolved");
+                            }}
+                          >
+                            <strong>{invocationLabel(extraction)}</strong>
+                            <span>
+                              {extraction.status === "unsupported"
+                                ? "Unsupported"
+                                : extraction.candidate.fidelity.replaceAll("-", " ")}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </section>
@@ -786,8 +814,10 @@ export function N8nImportModal({
                               setRecommendSourceModel(event.target.checked)
                             }
                           />
-                          Record the source model as this template&rsquo;s
-                          recommended target
+                          <span>
+                            Record the source model as this template&rsquo;s
+                            recommended target
+                          </span>
                         </label>
                         {recommendSourceModel && (
                           <p className="n8n-recommendation-detail">
