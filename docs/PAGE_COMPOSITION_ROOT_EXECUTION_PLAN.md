@@ -100,8 +100,8 @@ constraints, stop that PR and design the behavior change separately.
 | PR | Scope | Status | Depends on |
 | --- | --- | --- | --- |
 | 1 | Pure workbench-run preparation | Merged (`7618104`) | None |
-| 2 | Atomic live run session | Complete | PR 1 |
-| 3 | Project-template workbench owner | Blocked on PR 2 | PR 2 |
+| 2 | Atomic live run session | Merged (`eb675a0`) | PR 1 |
+| 3 | Project-template workbench owner | In progress | PR 2 |
 | 4 | Request composer | Blocked on PR 3 | PR 3 |
 | 5 | Feature organization and composition-root guardrail | Blocked on PR 4 | PR 4 |
 
