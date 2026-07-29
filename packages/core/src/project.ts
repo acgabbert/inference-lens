@@ -50,8 +50,33 @@ import type {
   ProviderCapabilityOverrides,
 } from "./types.ts";
 
-export const PROJECT_FILE_NAME = "inference-lens.project.json";
+export const PROJECT_DIRECTORY_SUFFIX = ".inference-lens";
+export const PROJECT_FILE_NAME = "project.json";
+export const PROJECT_GITIGNORE_CONTENTS = "*\n";
 export const PROJECT_SCHEMA_VERSION = 5;
+
+/**
+ * Turns the portable project display name into one safe, visible directory
+ * component. The suffix identifies a project bundle without hiding it in
+ * Finder or requiring platform-specific package registration.
+ */
+export function projectDirectoryName(name: string): string {
+  const withoutSuffix = name
+    .trim()
+    .replace(new RegExp(`${PROJECT_DIRECTORY_SUFFIX.replace(".", "\\.")}$`, "i"), "")
+    .trim();
+  const sanitized = withoutSuffix
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-")
+    .replace(/\s+/g, " ")
+    .replace(/[. ]+$/g, "")
+    .slice(0, 180)
+    .replace(/[. ]+$/g, "");
+  const base = sanitized || "Untitled";
+  const windowsReserved = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(
+    base,
+  );
+  return `${windowsReserved ? `${base}-project` : base}${PROJECT_DIRECTORY_SUFFIX}`;
+}
 
 export interface ConnectionRequirement {
   id: ConnectionRequirementId;

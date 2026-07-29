@@ -179,8 +179,8 @@ await page.addInitScript((contents) => {
       return match;
     },
   });
-  const project = dir("history-demo", [
-    file("inference-lens.project.json", contents.manifest),
+  const project = dir("history-demo.inference-lens", [
+    file("project.json", contents.manifest),
     dir("traces", [file("run_a.json", contents.traceA)]),
   ]);
   window.showDirectoryPicker = async () => project;

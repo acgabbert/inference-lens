@@ -27,6 +27,9 @@ import {
 } from "../packages/core/src/run-kernel";
 import { HttpInferenceTransport } from "./http-inference-transport.client";
 import { randomUUID } from "../packages/core/src/random-id.ts";
+import { isTauriRuntime } from "./runtime.client.ts";
+
+export { isTauriRuntime } from "./runtime.client.ts";
 
 type NativeCredentialSelection = Extract<
   CredentialSelection,
@@ -59,13 +62,6 @@ type RawStreamEvent =
       status?: number;
     }
   | { type: "cancelled" };
-
-export function isTauriRuntime(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    "__TAURI_INTERNALS__" in window
-  );
-}
 
 function nativeCredential(
   credential: CredentialSelection,

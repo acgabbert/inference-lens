@@ -18,7 +18,10 @@ import {
   openProjectFolder,
   saveProjectWorkspace,
 } from "./project-workspace.client.ts";
-import type { ProjectWorkspaceHandle } from "./project-workspace.client.ts";
+import type {
+  ProjectCreationOptions,
+  ProjectWorkspaceHandle,
+} from "./project-workspace.client.ts";
 
 export type ProjectErrorKind = "tools-disabled";
 
@@ -42,9 +45,9 @@ export interface ProjectWorkspaceHandleState {
   mapProfile(profileId: string): void;
   mapActiveProfile(): void;
   unmapProfile(profileId: string): void;
-  newProjectFolder(): Promise<void>;
+  newProjectFolder(options: ProjectCreationOptions): Promise<void>;
   openProjectWorkspace(): Promise<void>;
-  saveProject(): Promise<void>;
+  saveProject(options?: ProjectCreationOptions): Promise<void>;
   exportProject(): void;
   importProject(event: ChangeEvent<HTMLInputElement>): Promise<void>;
 }
@@ -174,9 +177,17 @@ export function useProjectWorkspace(input: {
     setProjectError(error instanceof Error ? error.message : fallback);
   }
 
-  async function newProjectFolder(): Promise<void> {
+  function namedProject(options: ProjectCreationOptions): ProjectFile {
+    return {
+      ...currentProjectDocument(),
+      name: options.name.trim() || "Untitled Inference Lens project",
+    };
+  }
+
+  async function newProjectFolder(options: ProjectCreationOptions): Promise<void> {
     try {
-      const opened = await createProjectFolder(currentProjectDocument());
+      const project = namedProject(options);
+      const opened = await createProjectFolder(project, options);
       if (opened) applyProjectDocument(opened.project, opened.handle, activeProfileId);
     } catch (error) {
       projectFailure(error, "Could not create the project folder.");
@@ -192,7 +203,7 @@ export function useProjectWorkspace(input: {
     }
   }
 
-  async function saveProject(): Promise<void> {
+  async function saveProject(options?: ProjectCreationOptions): Promise<void> {
     try {
       const project = currentProjectDocument();
       if (projectWorkspace) {
@@ -203,7 +214,11 @@ export function useProjectWorkspace(input: {
         return;
       }
       if (folderAccessAvailable) {
-        const opened = await createProjectFolder(project);
+        if (!options) {
+          throw new Error("Choose a project name and location before saving.");
+        }
+        const named = { ...project, name: options.name.trim() || project.name };
+        const opened = await createProjectFolder(named, options);
         if (opened) {
           applyProjectDocument(
             opened.project,

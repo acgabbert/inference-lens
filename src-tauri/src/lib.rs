@@ -22,7 +22,9 @@ const KEYCHAIN_SERVICE: &str = "app.inferencelens.desktop";
 #[derive(Clone, Default)]
 struct ActiveRuns(Arc<Mutex<HashMap<String, CancellationToken>>>);
 
-const PROJECT_FILE_NAME: &str = "inference-lens.project.json";
+const PROJECT_DIRECTORY_SUFFIX: &str = ".inference-lens";
+const PROJECT_FILE_NAME: &str = "project.json";
+const PROJECT_GITIGNORE_CONTENTS: &str = "*\n";
 const TRACES_DIRECTORY_NAME: &str = "traces";
 
 #[derive(Default)]
@@ -121,6 +123,50 @@ fn command_error(message: impl Into<String>) -> String {
 
 fn project_manifest_path(directory: &Path) -> PathBuf {
     directory.join(PROJECT_FILE_NAME)
+}
+
+fn validate_project_bundle_name(name: &str) -> Result<(), String> {
+    if name.is_empty()
+        || name == "."
+        || name == ".."
+        || name.contains(['/', '\\'])
+        || name.chars().any(char::is_control)
+        || !name.ends_with(PROJECT_DIRECTORY_SUFFIX)
+    {
+        return Err(command_error("The project bundle name is invalid."));
+    }
+    Ok(())
+}
+
+fn create_project_bundle(
+    parent: &Path,
+    bundle_name: &str,
+    contents: &str,
+    protect_from_git: bool,
+) -> Result<PathBuf, String> {
+    validate_project_bundle_name(bundle_name)?;
+    let directory = parent.join(bundle_name);
+    if directory.exists() {
+        return Err(command_error(format!(
+            "{bundle_name} already exists in the selected folder. Open it instead or choose another name."
+        )));
+    }
+    fs::create_dir(&directory)
+        .map_err(|error| format!("Could not create the project bundle: {error}"))?;
+    if protect_from_git {
+        if let Err(error) = fs::write(directory.join(".gitignore"), PROJECT_GITIGNORE_CONTENTS) {
+            let _ = fs::remove_dir(&directory);
+            return Err(format!("Could not protect the project from Git: {error}"));
+        }
+    }
+    if let Err(error) = write_project_manifest(&directory, contents) {
+        if protect_from_git {
+            let _ = fs::remove_file(directory.join(".gitignore"));
+        }
+        let _ = fs::remove_dir(&directory);
+        return Err(error);
+    }
+    Ok(directory)
 }
 
 fn selected_project_directory(app: &AppHandle) -> Result<Option<PathBuf>, String> {
@@ -333,17 +379,13 @@ async fn create_project_workspace(
     app: AppHandle,
     workspaces: State<'_, ProjectWorkspaces>,
     contents: String,
+    bundle_name: String,
+    protect_from_git: bool,
 ) -> Result<Option<NativeProjectWorkspace>, String> {
-    let Some(directory) = selected_project_directory(&app)? else {
+    let Some(parent) = selected_project_directory(&app)? else {
         return Ok(None);
     };
-    let manifest = project_manifest_path(&directory);
-    if manifest.exists() {
-        return Err(command_error(format!(
-            "The selected folder already contains {PROJECT_FILE_NAME}. Open it instead."
-        )));
-    }
-    write_project_manifest(&directory, &contents)?;
+    let directory = create_project_bundle(&parent, &bundle_name, &contents, protect_from_git)?;
     Ok(Some(register_project_workspace(
         &workspaces,
         directory,
@@ -1056,6 +1098,51 @@ mod tests {
             fs::read_to_string(project_manifest_path(&directory.0)).expect("read replaced project"),
             "{\"schemaVersion\":2,\"name\":\"Updated\"}\n"
         );
+    }
+
+    #[test]
+    fn creates_visible_git_protected_project_bundles() {
+        let parent = TemporaryProjectDirectory::new();
+        let bundle = create_project_bundle(
+            &parent.0,
+            "Prompt Lab.inference-lens",
+            "{\"schemaVersion\":5}\n",
+            true,
+        )
+        .expect("create protected bundle");
+        assert_eq!(
+            fs::read_to_string(bundle.join(".gitignore")).expect("read ignore file"),
+            "*\n"
+        );
+        assert_eq!(
+            fs::read_to_string(bundle.join(PROJECT_FILE_NAME)).expect("read manifest"),
+            "{\"schemaVersion\":5}\n"
+        );
+    }
+
+    #[test]
+    fn project_bundle_git_protection_can_be_disabled() {
+        let parent = TemporaryProjectDirectory::new();
+        let bundle = create_project_bundle(
+            &parent.0,
+            "Shared.inference-lens",
+            "{\"schemaVersion\":5}\n",
+            false,
+        )
+        .expect("create unprotected bundle");
+        assert!(!bundle.join(".gitignore").exists());
+        assert!(bundle.join(PROJECT_FILE_NAME).exists());
+    }
+
+    #[test]
+    fn rejects_unsafe_or_existing_project_bundle_names() {
+        let parent = TemporaryProjectDirectory::new();
+        assert!(
+            create_project_bundle(&parent.0, "../escape.inference-lens", "{}\n", true).is_err()
+        );
+        create_project_bundle(&parent.0, "Taken.inference-lens", "{}\n", true)
+            .expect("create first bundle");
+        assert!(create_project_bundle(&parent.0, "Taken.inference-lens", "{}\n", true).is_err());
     }
 
     #[test]

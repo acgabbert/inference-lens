@@ -45,18 +45,23 @@ configurable with `INFERENCE_LENS_PACED_FIRST_BYTE_MS` and
 See [the provider fixture guide](docs/PROVIDER_FIXTURES.md) for writing new
 fixtures and for driving them through the UI in a browser.
 
-## Project folders
+## Project bundles
 
-Inference Lens projects use a strict, credential-free
-`inference-lens.project.json` manifest. In browsers that support directory access,
-**New project** and **Open folder** use the browser's native host-folder picker.
-Other browsers can use **Import** and **Export** with the same Project v2 JSON
-format.
+Inference Lens projects are visible, self-contained
+`<name>.inference-lens/` bundles with a strict, credential-free `project.json`
+manifest. New projects are protected from Git by default through an internal
+`.gitignore`; the creation dialog can disable that protection when a project is
+intended for version control. In browsers that support directory access,
+**New project** selects the bundle's parent folder and **Open project** selects
+an existing bundle. Other browsers can use **Import** and **Export** with the
+same Project v5 JSON format.
 
 The Docker container does not need a project volume: the browser reads and
 writes only the host folder the user explicitly selects. Tauri uses a native
-folder picker and performs project I/O in Rust. In both cases, Inference Lens checks
-for external file changes before saving instead of silently overwriting them.
+folder picker and performs project I/O in Rust. Once either adapter has an open
+workspace, project edits are saved automatically after a short debounce. In
+both cases, Inference Lens checks for external file changes before saving
+instead of silently overwriting them.
 See [the project format](docs/PROJECT_FORMAT.md) for ownership and compatibility
 details.
 
@@ -79,7 +84,7 @@ history costs nothing until its history is asked for.
 ## Tool registry
 
 Reusable, secret-free tool definitions live in a versioned local registry.
-Definitions can be copied into an open Project v2 file or attached only to the
+Definitions can be copied into an open Project v5 file or attached only to the
 next run. The GUI schema builder and Advanced JSON mode share one canonical
 JSON Schema object, so unsupported keywords are preserved. See
 [the tool registry design](docs/TOOL_REGISTRY.md) for snapshot and persistence
