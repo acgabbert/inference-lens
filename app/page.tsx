@@ -26,6 +26,7 @@ import {
   renamePromptTemplate,
   resolveProjectRevision,
   sameConversationMessages,
+  setPromptTemplateRecommendedTarget,
   updateProjectDraft,
   updatePromptTemplateUseToLatest,
   updatePromptTemplateUseValues,
@@ -597,12 +598,14 @@ function HomeContent() {
   async function importN8nPrompt(
     candidate: ExternalPromptCandidate,
     mode: "resolved-snapshot" | "reusable-template",
+    { recommendModel }: { recommendModel: boolean },
   ): Promise<void> {
     const imported =
       mode === "reusable-template"
         ? await importExternalPromptTemplateCandidate(
             ensureProjectDocument(),
             candidate,
+            { recommendModel },
           )
         : await importExternalPromptCandidate(
             ensureProjectDocument(),
@@ -679,11 +682,13 @@ function HomeContent() {
     recommendedTarget?: PromptTemplateRecommendedTarget,
   ) {
     let next = renamePromptTemplate(ensureProjectDocument(), templateId, name);
+    // Template metadata first, then authored content: only the latter can
+    // append a revision, so a recommendation-only edit keeps uses pinned.
+    next = setPromptTemplateRecommendedTarget(next, templateId, recommendedTarget);
     next = appendPromptTemplateRevision(next, {
       templateId,
       content,
       variableDefaults: defaults,
-      recommendedTarget,
     });
     adoptAuthoredProject(next);
     return next.promptTemplates.find(({ id }) => id === templateId)!
@@ -1779,10 +1784,7 @@ function HomeContent() {
         const template = projectFile?.promptTemplates.find(
           ({ id }) => id === item.use.templateId,
         );
-        const templateRevision = template?.revisions.find(
-          ({ id }) => id === item.use.templateRevisionId,
-        );
-        const target = templateRevision?.recommendedTarget;
+        const target = template?.recommendedTarget;
         if (!template || !target) return [];
         const requirement = projectFile?.connectionRequirements.find(
           ({ id }) => id === target.connectionRequirementId,
@@ -2453,6 +2455,12 @@ function HomeContent() {
         <N8nImportModal
           open
           onClose={() => setN8nImportOpen(false)}
+          recommendation={{
+            ...(activeConnectionRequirement
+              ? { connectionRequirementName: activeConnectionRequirement.name }
+              : {}),
+            projectModel: activeModel,
+          }}
           onImport={importN8nPrompt}
         />
       )}

@@ -1,13 +1,14 @@
 # Project format and workspace storage
 
 Inference Lens projects use one canonical, portable JSON document named
-`inference-lens.project.json`. New saves use schema version 5. Version 4 projects
-remain importable and are migrated in memory; earlier project formats and the
-proof-of-concept request export are intentionally unsupported.
+`inference-lens.project.json`. New saves use schema version 5. Earlier project
+formats and the proof-of-concept request export are intentionally unsupported:
+every schema is strict, so a reader rejects a document it does not fully
+understand rather than guessing.
 
-## Version 5 authored conversations
+## Authored conversations
 
-Version 3 separates authored conversation items from the ordinary messages
+The format separates authored conversation items from the ordinary messages
 resolved for provider execution. A conversation revision owns one ordered
 `items` array. Literal messages and pinned template uses occupy the same array,
 so their relative order is explicit:
@@ -66,15 +67,9 @@ generated system, user, or assistant message. Inline prefix/template/suffix
 composition is not part of this format and may later be introduced as a new
 authored-item or content-part variant.
 
-Template revisions are immutable. Saving changed content, defaults, or the
-optional recommended target appends a revision and advances
-`currentRevisionId`; saving an unchanged revision is a no-op. A recommendation
-pairs a project-owned connection requirement with a provider model ID. It
-records where that prompt revision was authored or verified, but never
-overrides the explicit project/run target. Conflicting recommendations are
-shown before a run because several templates may contribute to one request
-while that request can name only one model. Uses remain pinned until explicitly
-updated. Core helpers create
+Template revisions are immutable. Saving changed content or defaults appends a
+revision and advances `currentRevisionId`; saving an unchanged revision is a
+no-op. Uses remain pinned until explicitly updated. Core helpers create
 templates, append revisions, change the current pointer, enumerate usages, and
 refuse to remove a revision that is current, last, or referenced. Separate
 authored-use helpers insert a pinned use, replace its complete value map, update
@@ -87,8 +82,30 @@ A message-set use is atomic: branching after its final emitted message
 preserves it, while branching inside the emitted set requires detaching the use
 first. Literal and provider-produced messages remain literal items in the child.
 
-Version 4 migration changes only the root schema version. Existing template
-revisions have no recommended target, preserving their prior behavior.
+## Recommended targets
+
+A template may carry one optional `recommendedTarget`, pairing a project-owned
+connection requirement with a provider model ID. It records the target the
+template was authored or verified against, and never overrides the explicit
+project/run target.
+
+It belongs to the template, not to a revision. Revisions are immutable and uses
+pin them, so recording it per revision would make "I verified this against
+another model" append a content-identical revision and unpin every existing
+use. Changing a recommendation is metadata: `currentRevisionId` and every
+revision are left untouched.
+
+Because a recommendation is advisory, the app surfaces disagreement rather than
+resolving it. A recommendation differing from the run target is reported before
+the run, and so is a request whose templates recommend different targets —
+several templates may contribute to one request while that request can name
+only one model. Neither case blocks the run.
+
+External imports do not record a recommendation unless the caller opts in. The
+source model comes from the external execution's own provider while the
+connection requirement is one this project already owns, so the pairing is an
+assertion the importer cannot verify; the n8n import surfaces it as a checkbox
+that states the exact pair being written.
 
 ## Ownership boundaries
 

@@ -78,13 +78,15 @@ export function ProjectTemplatesPane({
     initialRevision ? { ...initialRevision.variableDefaults } : {},
   );
   const [recommendedModel, setRecommendedModel] = useState(
-    initialRevision?.recommendedTarget?.model ?? "",
+    selected?.recommendedTarget?.model ?? "",
   );
-  const [recommendedConnectionRequirementId, setRecommendedConnectionRequirementId] =
-    useState<ConnectionRequirement["id"] | undefined>(
-      initialRevision?.recommendedTarget?.connectionRequirementId ??
-        defaultConnectionRequirementId,
-    );
+  const [
+    recommendedConnectionRequirementId,
+    setRecommendedConnectionRequirementId,
+  ] = useState<ConnectionRequirement["id"] | undefined>(
+    selected?.recommendedTarget?.connectionRequirementId ??
+      defaultConnectionRequirementId,
+  );
   const [fragmentRole, setFragmentRole] = useState<TemplateRole>("user");
   const [insertionIndex, setInsertionIndex] = useState(itemCount);
 
@@ -118,9 +120,9 @@ export function ProjectTemplatesPane({
     setName(template.name);
     setContent(structuredClone(revision.content));
     setDefaults({ ...revision.variableDefaults });
-    setRecommendedModel(revision.recommendedTarget?.model ?? "");
+    setRecommendedModel(template.recommendedTarget?.model ?? "");
     setRecommendedConnectionRequirementId(
-      revision.recommendedTarget?.connectionRequirementId ??
+      template.recommendedTarget?.connectionRequirementId ??
         defaultConnectionRequirementId,
     );
   }
@@ -132,11 +134,6 @@ export function ProjectTemplatesPane({
     setViewedRevisionId(revision.id);
     setContent(structuredClone(revision.content));
     setDefaults({ ...revision.variableDefaults });
-    setRecommendedModel(revision.recommendedTarget?.model ?? "");
-    setRecommendedConnectionRequirementId(
-      revision.recommendedTarget?.connectionRequirementId ??
-        defaultConnectionRequirementId,
-    );
   }
 
   function addTemplate(kind: PromptTemplateContent["kind"]): void {
@@ -270,7 +267,7 @@ export function ProjectTemplatesPane({
                     )
                   }
                 >
-                  Save revision
+                  Save template
                 </button>
               )}
             </header>
@@ -314,8 +311,9 @@ export function ProjectTemplatesPane({
                   <h3>Recommended target</h3>
                 </div>
                 <p className="template-empty">
-                  Optional. A recommendation is shown when this template and the
-                  run target differ; it never switches the run silently.
+                  Optional. Owned by the template, so changing it never appends a
+                  revision. Shown before a run when it differs from the run
+                  target; it never switches the run silently.
                 </p>
                 <label>
                   Connection

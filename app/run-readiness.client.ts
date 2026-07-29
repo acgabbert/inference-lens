@@ -289,9 +289,9 @@ export function runReadiness(
     return {
       blocked: false,
       headline: `"${templateTarget.templateName}" recommends another model`,
-      detail: `This run will use ${activeProfileModel}; the pinned template revision recommends ${templateTarget.model}.`,
+      detail: `This run will use ${activeProfileModel}; the template recommends ${templateTarget.model}.`,
       explanation:
-        "A template recommendation records where that revision was authored or verified, but it never overrides the explicit project/run target.",
+        "A template recommendation records where that template was authored or verified, but it never overrides the explicit project/run target.",
       summary: "A template recommends a different model.",
       facts: [
         {

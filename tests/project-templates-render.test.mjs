@@ -56,12 +56,12 @@ const template = {
       createdAt: "2026-07-26T12:00:00.000Z",
       content: { kind: "fragment", text: "Explain {{topic}}." },
       variableDefaults: { topic: "branching" },
-      recommendedTarget: {
-        connectionRequirementId: "connection_default",
-        model: "fixture-model",
-      },
     },
   ],
+  recommendedTarget: {
+    connectionRequirementId: "connection_default",
+    model: "fixture-model",
+  },
 };
 
 test("renders the project template library and revision defaults", async () => {
