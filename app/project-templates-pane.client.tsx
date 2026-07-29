@@ -593,12 +593,17 @@ function importProvenanceLabel(receipt: ExternalImportReceipt): string {
   const source = receipt.source.adapter.toLowerCase().includes("n8n")
     ? "n8n"
     : receipt.source.adapter;
+  const execution = receipt.source.execution;
+  if (!execution) return `Imported from ${source}`;
+  if (!execution.executedAt) {
+    return `Imported from ${source} · execution ${execution.id}`;
+  }
   const executionDate = new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
     timeZone: "UTC",
-  }).format(new Date(receipt.source.execution.executedAt));
+  }).format(new Date(execution.executedAt));
   return `Imported from ${source} · execution ${executionDate}`;
 }
 
