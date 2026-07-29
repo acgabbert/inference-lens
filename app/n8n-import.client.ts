@@ -237,3 +237,18 @@ export function loadN8nExecutionDetail(
     },
   );
 }
+
+export function loadN8nExecutionLink(
+  executionUrl: string,
+  signal?: AbortSignal,
+): Promise<N8nSelectedExecution> {
+  return requestJson(
+    `${N8N_API_ROOT}/execution-detail`,
+    selectedExecutionSchema,
+    {
+      method: "POST",
+      body: JSON.stringify({ executionUrl }),
+      signal,
+    },
+  );
+}

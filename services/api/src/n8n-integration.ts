@@ -55,6 +55,11 @@ export interface N8nConnection {
   apiKey: string;
 }
 
+export interface N8nExecutionLinkSelection {
+  workflowId: string;
+  executionId: string;
+}
+
 export type N8nConfiguration =
   | { state: "unavailable" }
   | { state: "misconfigured"; message: string }
@@ -267,6 +272,72 @@ function validateOpaqueId(value: string, label: string): string {
     );
   }
   return parsed.data;
+}
+
+export function parseN8nExecutionLink(
+  configuredBaseUrl: URL,
+  value: string,
+): N8nExecutionLinkSelection {
+  let parsed: URL;
+  try {
+    parsed = new URL(value.trim());
+  } catch {
+    throw new N8nIntegrationError(
+      "request-invalid",
+      "Execution link must be a valid absolute URL.",
+    );
+  }
+  if (
+    (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+    parsed.username ||
+    parsed.password
+  ) {
+    throw new N8nIntegrationError(
+      "request-invalid",
+      "Execution link must be an HTTP or HTTPS URL without credentials.",
+    );
+  }
+
+  const basePath = configuredBaseUrl.pathname.replace(/\/+$/, "");
+  if (
+    parsed.origin !== configuredBaseUrl.origin ||
+    (basePath &&
+      parsed.pathname !== basePath &&
+      !parsed.pathname.startsWith(`${basePath}/`))
+  ) {
+    throw new N8nIntegrationError(
+      "request-invalid",
+      "Execution link does not belong to the configured n8n instance.",
+    );
+  }
+
+  const relativePath = parsed.pathname.slice(basePath.length);
+  const match = relativePath.match(
+    /^\/workflow\/([^/]+)\/executions\/([^/]+)\/?$/,
+  );
+  if (!match) {
+    throw new N8nIntegrationError(
+      "request-invalid",
+      "Execution link must point to a saved n8n workflow execution.",
+    );
+  }
+
+  let workflowId: string;
+  let executionId: string;
+  try {
+    workflowId = decodeURIComponent(match[1] ?? "");
+    executionId = decodeURIComponent(match[2] ?? "");
+  } catch (error) {
+    throw new N8nIntegrationError(
+      "request-invalid",
+      "Execution link contains an invalid encoded ID.",
+      { cause: error },
+    );
+  }
+  return {
+    workflowId: validateOpaqueId(workflowId, "Workflow ID"),
+    executionId: validateOpaqueId(executionId, "Execution ID"),
+  };
 }
 
 function validateCursor(value: string | undefined): string | undefined {
@@ -789,24 +860,38 @@ export async function handleN8nExecutionDetailRequest(
         { cause: error },
       );
     }
-    const selection = z
+    const idSelectionSchema = z
       .object({
         workflowId: opaqueIdSchema,
         executionId: opaqueIdSchema,
       })
-      .strict()
+      .strict();
+    const linkSelectionSchema = z
+      .object({
+        executionUrl: z.string().min(1).max(2048),
+      })
+      .strict();
+    const selection = z
+      .union([idSelectionSchema, linkSelectionSchema])
       .safeParse(body);
     if (!selection.success) {
       throw new N8nIntegrationError(
         "request-invalid",
-        "Request must contain valid workflowId and executionId values.",
+        "Request must contain either valid workflowId and executionId values or an executionUrl.",
         { cause: selection.error },
       );
     }
+    const connection = new EnvironmentN8nCredentialSource(
+      environment,
+    ).resolve();
+    const identifiers =
+      "executionUrl" in selection.data
+        ? parseN8nExecutionLink(connection.baseUrl, selection.data.executionUrl)
+        : selection.data;
     const selected = await loadN8nSelectedExecution(
-      clientFromEnvironment(environment, fetchImplementation),
-      selection.data.workflowId,
-      selection.data.executionId,
+      new N8nClient(connection, { fetchImplementation }),
+      identifiers.workflowId,
+      identifiers.executionId,
       incoming.signal,
     );
     return noStoreJson(selected);

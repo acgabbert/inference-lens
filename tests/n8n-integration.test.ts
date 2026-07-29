@@ -12,6 +12,7 @@ import {
   N8nClient,
   N8nIntegrationError,
   parseN8nConfiguration,
+  parseN8nExecutionLink,
 } from "../services/api/src/index.ts";
 
 const baseUrl = "https://n8n.example.test/automation";
@@ -86,6 +87,34 @@ test("rejects invalid base URLs without reflecting their credential-like parts",
   assert.equal(response.status, 200);
   assert.match(text, /must not contain credentials, a query, or a fragment/);
   assert.doesNotMatch(text, /password|apiKey=hidden|n8n-secret/);
+});
+
+test("parses execution links only within the configured n8n base URL", () => {
+  const configuredBaseUrl = new URL(baseUrl);
+  assert.deepEqual(
+    parseN8nExecutionLink(
+      configuredBaseUrl,
+      `${baseUrl}/workflow/workflow_1/executions/execution-2/?source=copy#node`,
+    ),
+    {
+      workflowId: "workflow_1",
+      executionId: "execution-2",
+    },
+  );
+
+  for (const value of [
+    "https://attacker.test/automation/workflow/workflow_1/executions/execution_1",
+    "https://n8n.example.test/workflow/workflow_1/executions/execution_1",
+    `${baseUrl}/workflow/workflow_1`,
+    `${baseUrl}/workflow/../executions/execution_1`,
+  ]) {
+    assert.throws(
+      () => parseN8nExecutionLink(configuredBaseUrl, value),
+      (error: unknown) =>
+        error instanceof N8nIntegrationError &&
+        error.code === "request-invalid",
+    );
+  }
 });
 
 test("lists workflow summaries through the installation subpath and drops unknown data", async () => {

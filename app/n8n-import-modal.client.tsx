@@ -11,6 +11,7 @@ import {
 } from "../packages/core/src/external-prompt-project.ts";
 import {
   loadN8nExecutionDetail,
+  loadN8nExecutionLink,
   loadN8nExecutions,
   loadN8nImportStatus,
   loadN8nWorkflows,
@@ -33,6 +34,51 @@ interface N8nImportModalProps {
     candidate: ExternalPromptCandidate,
     mode: "resolved-snapshot" | "reusable-template",
   ): Promise<void>;
+}
+
+interface N8nExecutionLinkSelectorProps {
+  value: string;
+  loading: boolean;
+  onChange(value: string): void;
+  onSubmit(): void;
+}
+
+export function N8nExecutionLinkSelector({
+  value,
+  loading,
+  onChange,
+  onSubmit,
+}: N8nExecutionLinkSelectorProps) {
+  return (
+    <section>
+      <div className="n8n-selector-heading">
+        <strong>Paste execution link</strong>
+      </div>
+      <form
+        className="n8n-link-selector"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit();
+        }}
+      >
+        <input
+          aria-label="n8n execution link"
+          disabled={loading}
+          placeholder="https://n8n.example/workflow/…/executions/…"
+          type="url"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        <button
+          className="button secondary"
+          disabled={!value.trim() || loading}
+          type="submit"
+        >
+          {loading ? "Loading…" : "Review"}
+        </button>
+      </form>
+    </section>
+  );
 }
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -97,6 +143,17 @@ function defaultExtractionIndex(
   return extractions.length > 0 ? 0 : undefined;
 }
 
+function mergeWorkflows(
+  current: N8nWorkflow[],
+  incoming: N8nWorkflow[],
+): N8nWorkflow[] {
+  const incomingIds = new Set(incoming.map(({ id }) => id));
+  return [
+    ...incoming,
+    ...current.filter(({ id }) => !incomingIds.has(id)),
+  ];
+}
+
 export function N8nImportModal({
   open,
   onClose,
@@ -108,6 +165,8 @@ export function N8nImportModal({
   const [workflowState, setWorkflowState] = useState<LoadState>("idle");
   const [workflowCursor, setWorkflowCursor] = useState<string>();
   const [workflowQuery, setWorkflowQuery] = useState("");
+  const [executionLink, setExecutionLink] = useState("");
+  const [linkState, setLinkState] = useState<LoadState>("idle");
   const [selectedWorkflow, setSelectedWorkflow] = useState<N8nWorkflow>();
   const [executions, setExecutions] = useState<N8nExecution[]>([]);
   const [executionState, setExecutionState] = useState<LoadState>("idle");
@@ -157,7 +216,7 @@ export function N8nImportModal({
         if (next.state !== "configured") return;
         setWorkflowState("loading");
         return loadN8nWorkflows(undefined, controller.signal).then((page) => {
-          setWorkflows(page.workflows);
+          setWorkflows((current) => mergeWorkflows(current, page.workflows));
           setWorkflowCursor(page.nextCursor);
           setWorkflowState("ready");
         });
@@ -228,6 +287,7 @@ export function N8nImportModal({
     setExecutionState("loading");
     setDetailState("idle");
     setError(undefined);
+    setLinkState("idle");
     try {
       const page = await loadN8nExecutions(
         workflow.id,
@@ -291,6 +351,7 @@ export function N8nImportModal({
     setDetailState("loading");
     setReviewTab("resolved");
     setError(undefined);
+    setLinkState("idle");
     try {
       const next = await loadN8nExecutionDetail(
         selectedWorkflow.id,
@@ -318,6 +379,63 @@ export function N8nImportModal({
     }
   }
 
+  async function loadLinkedExecution(): Promise<void> {
+    const value = executionLink.trim();
+    if (!value || linkState === "loading") return;
+    executionAbortRef.current?.abort();
+    detailAbortRef.current?.abort();
+    const controller = new AbortController();
+    detailAbortRef.current = controller;
+    setSelectedWorkflow(undefined);
+    setSelectedExecution(undefined);
+    setDetail(undefined);
+    setSelectedExtractionIndex(undefined);
+    setDetailState("idle");
+    setLinkState("loading");
+    setReviewTab("resolved");
+    setError(undefined);
+    try {
+      const next = await loadN8nExecutionLink(value, controller.signal);
+      const extractionIndex = defaultExtractionIndex(next.extractions);
+      const extraction =
+        extractionIndex === undefined
+          ? undefined
+          : next.extractions[extractionIndex];
+      const candidate =
+        extraction?.status === "candidate" ? extraction.candidate : undefined;
+      const workflow: N8nWorkflow = {
+        id: next.execution.workflowId,
+        name:
+          candidate?.source.resource.name ??
+          `Workflow ${next.execution.workflowId}`,
+      };
+      setWorkflows((current) => [
+        workflow,
+        ...current.filter(({ id }) => id !== workflow.id),
+      ]);
+      setExecutions([next.execution]);
+      setExecutionCursor(undefined);
+      setSelectedWorkflow(workflow);
+      setSelectedExecution(next.execution);
+      setDetail(next);
+      setSelectedExtractionIndex(extractionIndex);
+      setReviewTab(
+        candidate && !candidate.resolved ? "authored" : "resolved",
+      );
+      setExecutionState("ready");
+      setDetailState("ready");
+      setLinkState("ready");
+    } catch (caught) {
+      const message = errorMessage(
+        caught,
+        "Could not load the linked execution.",
+      );
+      if (!message) return;
+      setError(message);
+      setLinkState("error");
+    }
+  }
+
   async function importCandidate(
     mode: "resolved-snapshot" | "reusable-template",
   ): Promise<void> {
@@ -342,7 +460,9 @@ export function N8nImportModal({
   }
 
   function retryCurrent(): void {
-    if (detailState === "error" && selectedExecution) {
+    if (linkState === "error") {
+      void loadLinkedExecution();
+    } else if (detailState === "error" && selectedExecution) {
       void selectExecution(selectedExecution);
     } else if (executionState === "error" && selectedWorkflow) {
       void selectWorkflow(selectedWorkflow);
@@ -354,7 +474,7 @@ export function N8nImportModal({
       setError(undefined);
       void loadN8nWorkflows()
         .then((page) => {
-          setWorkflows(page.workflows);
+          setWorkflows((current) => mergeWorkflows(current, page.workflows));
           setWorkflowCursor(page.nextCursor);
           setWorkflowState("ready");
           setStatusState("ready");
@@ -373,7 +493,7 @@ export function N8nImportModal({
           if (next.state !== "configured") return;
           setWorkflowState("loading");
           return loadN8nWorkflows().then((page) => {
-            setWorkflows(page.workflows);
+            setWorkflows((current) => mergeWorkflows(current, page.workflows));
             setWorkflowCursor(page.nextCursor);
             setWorkflowState("ready");
           });
@@ -444,6 +564,13 @@ export function N8nImportModal({
           <>
             <div className="n8n-import-workspace">
               <aside className="n8n-import-selector">
+                <N8nExecutionLinkSelector
+                  loading={linkState === "loading"}
+                  value={executionLink}
+                  onChange={setExecutionLink}
+                  onSubmit={() => void loadLinkedExecution()}
+                />
+
                 <section>
                   <div className="n8n-selector-heading">
                     <span className="n8n-step">1</span>

@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   loadN8nExecutionDetail,
+  loadN8nExecutionLink,
   loadN8nImportStatus,
   loadN8nWorkflows,
   N8nImportClientError,
@@ -107,4 +108,40 @@ test("preserves safe retry metadata from integration errors", async () => {
       );
     },
   );
+});
+
+test("submits pasted execution links to the selected-execution endpoint", async () => {
+  let request: { url: string; method?: string; body?: BodyInit | null } | undefined;
+  await withFetch(
+    async (input, init) => {
+      request = {
+        url: input.toString(),
+        method: init?.method,
+        body: init?.body,
+      };
+      return Response.json({
+        execution: {
+          id: "execution_1",
+          workflowId: "workflow_1",
+          status: "success",
+        },
+        detailAvailable: true,
+        discovery: { status: "no-supported-invocations", message: "None." },
+        extractions: [],
+      });
+    },
+    async () => {
+      await loadN8nExecutionLink(
+        "https://n8n.example.test/workflow/workflow_1/executions/execution_1",
+      );
+    },
+  );
+  assert.deepEqual(request, {
+    url: "/api/integrations/n8n/execution-detail",
+    method: "POST",
+    body: JSON.stringify({
+      executionUrl:
+        "https://n8n.example.test/workflow/workflow_1/executions/execution_1",
+    }),
+  });
 });

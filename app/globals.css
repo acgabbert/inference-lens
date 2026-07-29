@@ -1802,6 +1802,22 @@ output {
   background: var(--surface-panel);
 }
 
+.n8n-link-selector {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+}
+
+.n8n-link-selector input {
+  min-width: 0;
+  margin: 0;
+}
+
+.n8n-link-selector .button {
+  min-height: 30px;
+  padding-inline: 10px;
+}
+
 .n8n-selector-list {
   display: grid;
   gap: 5px;
