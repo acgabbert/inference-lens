@@ -33,6 +33,25 @@ test("a runnable project reports nothing", () => {
   );
 });
 
+test("a profile with no endpoint sends the user to enter one", () => {
+  const readiness = runReadiness({ ...ready, activeProfileEndpoint: "  " });
+  assert.equal(readiness?.blocked, true);
+  assert.match(readiness?.headline ?? "", /no endpoint configured/);
+  assert.deepEqual(
+    readiness?.actions.map(({ kind }) => kind),
+    ["open-connections"],
+  );
+});
+
+test("a missing endpoint outranks a missing model", () => {
+  const readiness = runReadiness({
+    ...ready,
+    activeProfileEndpoint: "",
+    activeProfileModel: "",
+  });
+  assert.match(readiness?.headline ?? "", /no endpoint configured/);
+});
+
 test("a profile with no model sends the user to the picker", () => {
   const readiness = runReadiness({ ...ready, activeProfileModel: "  " });
   assert.equal(readiness?.blocked, true);

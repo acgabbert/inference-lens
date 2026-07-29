@@ -16,6 +16,12 @@ function profile(
   return { ...createDefaultProfile(), capabilityOverrides: overrides };
 }
 
+test("the starting profile carries no endpoint or model", () => {
+  const starter = createDefaultProfile();
+  assert.equal(starter.endpoint, "");
+  assert.equal(starter.model, "");
+});
+
 test("records only capabilities that differ from the provider baseline", () => {
   assert.deepEqual(nextCapabilityOverrides(profile(), "tools", true), {
     tools: true,

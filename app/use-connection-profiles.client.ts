@@ -372,22 +372,25 @@ export function useConnectionProfiles(input: {
         : SERVER_DEFAULT_PROFILE_ID,
       name: SERVER_DEFAULT_PROFILE_NAME,
       endpoint: status.endpoint,
-      // Empty rather than the hosted-OpenAI default the starting profile
-      // carries: the server named a provider but not a model, and a local
-      // llama.cpp server has never heard of `gpt-4.1-mini`. An empty model
+      // The server named a provider but not always a model. An empty model
       // blocks the run with a notice that points at the model picker, which
       // is true, instead of failing at the provider with a name the user
       // never chose.
       model: status.model ?? "",
       credentialRef: SERVER_DEFAULT_CREDENTIAL_REF,
     };
-    setProfiles([...current, added]);
     // Configuring the server is explicit intent, so a device that has never
-    // stored a profile adopts it outright. Once the user has profiles of their
-    // own, switching under them would be a surprise — offer it instead.
+    // stored a profile adopts it outright. `current` here is just the unused
+    // starting profile — replacing it rather than keeping both means a first
+    // run never leaves an unconfigured profile sitting in the list beside the
+    // one the server actually provisioned. Once the user has profiles of
+    // their own, the starting profile may be one of them, so it is kept and
+    // the server profile is offered instead of assumed.
     if (firstRunRef.current) {
+      setProfiles([added]);
       setActiveProfileId(added.id);
     } else {
+      setProfiles([...current, added]);
       setServerDefaultProfileNotice({ profileId: added.id });
     }
   }

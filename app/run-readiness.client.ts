@@ -140,6 +140,21 @@ export function runReadiness(
     };
   }
 
+  if (!activeProfileEndpoint.trim()) {
+    return {
+      blocked: true,
+      headline: `"${profile}" has no endpoint configured`,
+      detail: "Enter a base URL in Connections before running.",
+      explanation:
+        "A starting profile ships with no endpoint rather than a real provider's, so a run can never leave for somewhere the user never chose.",
+      summary: "Enter an endpoint for this profile before running.",
+      facts: [],
+      actions: [
+        { kind: "open-connections", label: "Enter an endpoint", primary: true },
+      ],
+    };
+  }
+
   if (!activeProfileModel.trim()) {
     return {
       blocked: true,
