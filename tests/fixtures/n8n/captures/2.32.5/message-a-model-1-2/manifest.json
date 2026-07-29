@@ -1,0 +1,64 @@
+{
+  "fixtureSchemaVersion": 1,
+  "n8nVersion": "2.32.5",
+  "capturedAt": "2026-07-29T16:23:33.844Z",
+  "projectedAt": "2026-07-29T16:26:47.504Z",
+  "workflowId": "workflow_fixture",
+  "nodeTypes": [
+    {
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1
+    },
+    {
+      "name": "Predictable Message a Model 1.2 input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "name": "Message a Model 1.2 contract",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.2
+    }
+  ],
+  "workflowSettings": {
+    "executionOrder": "v1"
+  },
+  "executions": [
+    {
+      "id": "execution_fixture_001",
+      "mode": "manual",
+      "status": "success",
+      "runItemCounts": {
+        "Manual Trigger": [
+          1
+        ],
+        "Predictable Message a Model 1.2 input": [
+          1
+        ],
+        "Message a Model 1.2 contract": [
+          1
+        ]
+      }
+    }
+  ],
+  "endpointShapes": [
+    "GET /api/v1/workflows/{workflowId}",
+    "GET /api/v1/executions/{executionId}?includeData=true"
+  ],
+  "removedFields": [
+    "credentials"
+  ],
+  "warnings": [
+    "Projection requires manual review before commit.",
+    "Evidence paths and save settings have not been classified automatically."
+  ],
+  "files": {
+    "workflow.json": {
+      "sha256": "1f81d058782bf7e495d4c6e197d8dd629bfd5478add395e54eef92feeb94b78a"
+    },
+    "execution-success.json": {
+      "sha256": "657e80abe67ef231bbfb8b3244710262db991c3be1ae3e90e3804e0c16279b58"
+    }
+  }
+}

@@ -1,0 +1,340 @@
+{
+  "id": "execution_fixture_001",
+  "workflowId": "workflow_fixture",
+  "mode": "manual",
+  "status": "success",
+  "finished": true,
+  "startedAt": "2026-07-29T16:19:32.134Z",
+  "stoppedAt": "2026-07-29T16:19:32.222Z",
+  "data": {
+    "startData": {},
+    "resultData": {
+      "runData": {
+        "Manual Trigger": [
+          {
+            "startTime": 1785341972149,
+            "executionIndex": 0,
+            "source": [],
+            "hints": [],
+            "executionTime": 0,
+            "executionStatus": "success",
+            "data": {
+              "main": [
+                [
+                  {
+                    "json": {},
+                    "pairedItem": {
+                      "item": 0
+                    }
+                  }
+                ]
+              ]
+            }
+          }
+        ],
+        "Predictable AI Agent 3 input": [
+          {
+            "startTime": 1785341972150,
+            "executionIndex": 1,
+            "source": [
+              {
+                "previousNode": "Manual Trigger",
+                "previousNodeOutput": 0,
+                "previousNodeRun": 0
+              }
+            ],
+            "hints": [],
+            "executionTime": 3,
+            "executionStatus": "success",
+            "data": {
+              "main": [
+                [
+                  {
+                    "json": {
+                      "case": "ai-agent-3",
+                      "topic": "IL_AGENT_3_TOPIC_ALPHA",
+                      "first": "IL_AGENT_3_REPEAT",
+                      "repeat": "IL_AGENT_3_REPEAT",
+                      "second": "IL_AGENT_3_SECOND_ALPHA"
+                    },
+                    "pairedItem": {
+                      "item": 0
+                    }
+                  }
+                ]
+              ]
+            }
+          }
+        ],
+        "AI Agent 3 OpenAI Chat Model": [
+          {
+            "startTime": 1785341972202,
+            "executionTime": 16,
+            "executionIndex": 3,
+            "executionStatus": "success",
+            "source": [
+              {
+                "previousNode": "AI Agent 3 contract",
+                "previousNodeRun": 0
+              }
+            ],
+            "data": {
+              "ai_languageModel": [
+                [
+                  {
+                    "json": {
+                      "response": {
+                        "generations": [
+                          [
+                            {
+                              "text": "Fixture received system=\"IL_AGENT_3_SYSTEM\\ntopic=IL_AGENT_3_TOPIC_ALPHA\" | user=\"IL_AGENT_3_USER\\ncase=ai-agent-3\\ntopic=IL_AGENT_3_TOPIC_ALPHA\\ncompound=IL_AGENT_3_TOPIC_ALPHA::IL_AGENT_3_SECOND_ALPHA\\nrepeated=IL_AGENT_3_REPEAT|IL_AGENT_3_REPEAT\"",
+                              "generationInfo": {
+                                "finish_reason": "stop"
+                              }
+                            }
+                          ]
+                        ]
+                      },
+                      "tokenUsage": {
+                        "completionTokens": 5,
+                        "promptTokens": 2,
+                        "totalTokens": 7
+                      }
+                    }
+                  }
+                ]
+              ]
+            },
+            "inputOverride": {
+              "ai_languageModel": [
+                [
+                  {
+                    "json": {
+                      "messages": [
+                        "System: IL_AGENT_3_SYSTEM\ntopic=IL_AGENT_3_TOPIC_ALPHA\nHuman: IL_AGENT_3_USER\ncase=ai-agent-3\ntopic=IL_AGENT_3_TOPIC_ALPHA\ncompound=IL_AGENT_3_TOPIC_ALPHA::IL_AGENT_3_SECOND_ALPHA\nrepeated=IL_AGENT_3_REPEAT|IL_AGENT_3_REPEAT"
+                      ],
+                      "estimatedTokens": 71,
+                      "options": {
+                        "model": "template-echo-model",
+                        "temperature": 0,
+                        "max_retries": 2,
+                        "configuration": {},
+                        "model_kwargs": {},
+                        "supports_strict_tool_calling": false
+                      }
+                    }
+                  }
+                ]
+              ]
+            },
+            "metadata": {
+              "subRun": [
+                {
+                  "node": "AI Agent 3 OpenAI Chat Model",
+                  "runIndex": 0
+                }
+              ]
+            }
+          }
+        ],
+        "AI Agent 3 contract": [
+          {
+            "startTime": 1785341972154,
+            "executionIndex": 2,
+            "source": [
+              {
+                "previousNode": "Predictable AI Agent 3 input",
+                "previousNodeOutput": 0,
+                "previousNodeRun": 0
+              }
+            ],
+            "hints": [],
+            "executionTime": 68,
+            "metadata": {
+              "tracing": {
+                "ai.agent.version": "v3",
+                "ai.agent.streaming.enabled": false,
+                "ai.agent.items.total": 1,
+                "ai.agent.items.failed": 0,
+                "ai.agent.tool_calls.requested": 0,
+                "ai.agent.tool_calls.completed": 0,
+                "ai.agent.iteration.count": 0,
+                "ai.agent.memory.loads": 0,
+                "ai.agent.memory.saves": 0,
+                "ai.agent.execution.succeeded": true
+              }
+            },
+            "executionStatus": "success",
+            "data": {
+              "main": [
+                [
+                  {
+                    "json": {
+                      "output": "Fixture received system=\"IL_AGENT_3_SYSTEM\\ntopic=IL_AGENT_3_TOPIC_ALPHA\" | user=\"IL_AGENT_3_USER\\ncase=ai-agent-3\\ntopic=IL_AGENT_3_TOPIC_ALPHA\\ncompound=IL_AGENT_3_TOPIC_ALPHA::IL_AGENT_3_SECOND_ALPHA\\nrepeated=IL_AGENT_3_REPEAT|IL_AGENT_3_REPEAT\""
+                    },
+                    "pairedItem": {
+                      "item": 0
+                    }
+                  }
+                ]
+              ]
+            }
+          }
+        ]
+      },
+      "pinData": {},
+      "lastNodeExecuted": "AI Agent 3 contract",
+      "metadata": {
+        "response_ai_agent_3_contract": "Fixture received system=\"IL_AGENT_3_SYSTEM\\ntopic=IL_AGENT_3_TOPIC_ALPHA\" | user=\"IL_AGENT_3_USER\\ncase=ai-agent-3\\ntopic=IL_AGENT_3_TOPIC_ALPHA\\ncompound=IL_AGENT_3_TOPIC_ALPHA::IL_AGENT_3_SECOND_ALPHA\\nrepeated=IL_AGENT_3_REPEAT|IL_AGENT_3_REPEAT\""
+      }
+    },
+    "executionData": {
+      "contextData": {},
+      "nodeExecutionStack": [],
+      "metadata": {
+        "AI Agent 3 OpenAI Chat Model": [
+          {
+            "subRun": [
+              {
+                "node": "AI Agent 3 OpenAI Chat Model",
+                "runIndex": 0
+              }
+            ]
+          }
+        ]
+      },
+      "waitingExecution": {},
+      "waitingExecutionSource": {},
+      "runtimeData": {
+        "version": 1,
+        "establishedAt": 1785341972143,
+        "source": "manual",
+        "triggerNode": {
+          "name": "Manual Trigger",
+          "type": "n8n-nodes-base.manualTrigger"
+        },
+        "redaction": {
+          "version": 2,
+          "production": false,
+          "manual": false,
+          "source": "workflow"
+        }
+      }
+    },
+    "workflowData": {
+      "id": "workflow_fixture",
+      "name": "[Inference Lens contract] AI Agent 3",
+      "nodes": [
+        {
+          "id": "node_fixture_001",
+          "name": "Manual Trigger",
+          "type": "n8n-nodes-base.manualTrigger",
+          "typeVersion": 1,
+          "position": [
+            0,
+            0
+          ],
+          "parameters": {
+            "notice": ""
+          }
+        },
+        {
+          "id": "node_fixture_002",
+          "name": "Predictable AI Agent 3 input",
+          "type": "n8n-nodes-base.code",
+          "typeVersion": 2,
+          "position": [
+            240,
+            0
+          ],
+          "parameters": {
+            "mode": "runOnceForAllItems",
+            "language": "javaScript",
+            "jsCode": "return [{\n  json: {\n    case: \"ai-agent-3\",\n    topic: \"IL_AGENT_3_TOPIC_ALPHA\",\n    first: \"IL_AGENT_3_REPEAT\",\n    repeat: \"IL_AGENT_3_REPEAT\",\n    second: \"IL_AGENT_3_SECOND_ALPHA\"\n  }\n}];",
+            "notice": ""
+          }
+        },
+        {
+          "id": "node_fixture_003",
+          "name": "AI Agent 3 contract",
+          "type": "@n8n/n8n-nodes-langchain.agent",
+          "typeVersion": 3,
+          "position": [
+            528,
+            0
+          ],
+          "parameters": {
+            "aiAgentStarterCallout": "",
+            "promptType": "define",
+            "text": "=IL_AGENT_3_USER\ncase={{ $json.case }}\ntopic={{ $json.topic }}\ncompound={{ [$json.topic, $json.second].join(\"::\") }}\nrepeated={{ $json.first }}|{{ $json.repeat }}",
+            "hasOutputParser": false,
+            "needsFallback": false,
+            "options": {
+              "systemMessage": "=IL_AGENT_3_SYSTEM\ntopic={{ $json.topic }}",
+              "enableStreaming": false
+            }
+          }
+        },
+        {
+          "id": "node_fixture_004",
+          "name": "AI Agent 3 OpenAI Chat Model",
+          "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+          "typeVersion": 1.2,
+          "position": [
+            608,
+            240
+          ],
+          "parameters": {
+            "notice": "",
+            "model": {
+              "__rl": true,
+              "value": "template-echo-model",
+              "mode": "id"
+            },
+            "options": {
+              "temperature": 0
+            }
+          }
+        }
+      ],
+      "connections": {
+        "Manual Trigger": {
+          "main": [
+            [
+              {
+                "node": "Predictable AI Agent 3 input",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "Predictable AI Agent 3 input": {
+          "main": [
+            [
+              {
+                "node": "AI Agent 3 contract",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "AI Agent 3 OpenAI Chat Model": {
+          "ai_languageModel": [
+            [
+              {
+                "node": "AI Agent 3 contract",
+                "type": "ai_languageModel",
+                "index": 0
+              }
+            ]
+          ]
+        }
+      },
+      "settings": {
+        "executionOrder": "v1"
+      }
+    }
+  }
+}

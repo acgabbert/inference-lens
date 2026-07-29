@@ -1,0 +1,76 @@
+{
+  "fixtureSchemaVersion": 1,
+  "n8nVersion": "2.32.5",
+  "capturedAt": "2026-07-29T16:22:58.721Z",
+  "projectedAt": "2026-07-29T16:26:47.447Z",
+  "workflowId": "workflow_fixture",
+  "nodeTypes": [
+    {
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1
+    },
+    {
+      "name": "Predictable AI Agent 3 input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "name": "AI Agent 3 contract",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3
+    },
+    {
+      "name": "AI Agent 3 OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2
+    }
+  ],
+  "workflowSettings": {
+    "executionOrder": "v1"
+  },
+  "executions": [
+    {
+      "id": "execution_fixture_001",
+      "mode": "manual",
+      "status": "success",
+      "runItemCounts": {
+        "Manual Trigger": [
+          1
+        ],
+        "Predictable AI Agent 3 input": [
+          1
+        ],
+        "AI Agent 3 OpenAI Chat Model": [
+          null
+        ],
+        "AI Agent 3 contract": [
+          1
+        ]
+      }
+    }
+  ],
+  "endpointShapes": [
+    "GET /api/v1/workflows/{workflowId}",
+    "GET /api/v1/executions/{executionId}?includeData=true"
+  ],
+  "removedFields": [
+    "baseURL",
+    "credentials",
+    "defaultHeaders",
+    "fetchOptions",
+    "openai_api_key"
+  ],
+  "warnings": [
+    "Projection requires manual review before commit.",
+    "Evidence paths and save settings have not been classified automatically."
+  ],
+  "files": {
+    "workflow.json": {
+      "sha256": "366d636810893a02f5b7bb802ac6768d29cf8931f9d62c0ae48219945ad73bd3"
+    },
+    "execution-success.json": {
+      "sha256": "774f26e2ac20d35e1e5d49050153dc9850f781f4b764a9c619dd003fdfc7baae"
+    }
+  }
+}

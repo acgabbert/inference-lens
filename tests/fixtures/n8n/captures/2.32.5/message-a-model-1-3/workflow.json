@@ -1,0 +1,94 @@
+{
+  "id": "workflow_fixture",
+  "name": "[Inference Lens contract] Message a Model 1.3",
+  "active": false,
+  "nodes": [
+    {
+      "id": "node_fixture_001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "node_fixture_002",
+      "name": "Predictable Message a Model 1.3 input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    case: \"message-a-model-1.3\",\n    topic: \"IL_MESSAGE_1_3_TOPIC_ALPHA\",\n    first: \"IL_MESSAGE_1_3_REPEAT\",\n    repeat: \"IL_MESSAGE_1_3_REPEAT\",\n    second: \"IL_MESSAGE_1_3_SECOND_ALPHA\",\n    prior: \"IL_MESSAGE_1_3_PRIOR_ALPHA\"\n  }\n}];"
+      }
+    },
+    {
+      "id": "node_fixture_003",
+      "name": "Message a Model 1.3 contract",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.3,
+      "position": [
+        528,
+        0
+      ],
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "template-echo-model",
+          "mode": "id"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=IL_MESSAGE_1_3_SYSTEM\ntopic={{ $json.topic }}",
+              "role": "system"
+            },
+            {
+              "content": "=IL_MESSAGE_1_3_ASSISTANT_CONTEXT\nprior={{ $json.prior }}",
+              "role": "assistant"
+            },
+            {
+              "content": "=IL_MESSAGE_1_3_USER\ncase={{ $json.case }}\ntopic={{ $json.topic }}\ncompound={{ [$json.topic, $json.second].join(\"::\") }}\nrepeated={{ $json.first }}|{{ $json.repeat }}"
+            }
+          ]
+        },
+        "options": {
+          "maxTokens": 64,
+          "temperature": 0
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Predictable Message a Model 1.3 input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Predictable Message a Model 1.3 input": {
+      "main": [
+        [
+          {
+            "node": "Message a Model 1.3 contract",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

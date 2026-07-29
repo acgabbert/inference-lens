@@ -1,0 +1,241 @@
+{
+  "id": "execution_fixture_001",
+  "workflowId": "workflow_fixture",
+  "mode": "manual",
+  "status": "success",
+  "finished": true,
+  "startedAt": "2026-07-29T16:19:25.185Z",
+  "stoppedAt": "2026-07-29T16:19:25.285Z",
+  "data": {
+    "startData": {},
+    "resultData": {
+      "runData": {
+        "Manual Trigger": [
+          {
+            "startTime": 1785341965211,
+            "executionIndex": 0,
+            "source": [],
+            "hints": [],
+            "executionTime": 2,
+            "executionStatus": "success",
+            "data": {
+              "main": [
+                [
+                  {
+                    "json": {},
+                    "pairedItem": {
+                      "item": 0
+                    }
+                  }
+                ]
+              ]
+            }
+          }
+        ],
+        "Predictable Message a Model 1.3 input": [
+          {
+            "startTime": 1785341965214,
+            "executionIndex": 1,
+            "source": [
+              {
+                "previousNode": "Manual Trigger",
+                "previousNodeOutput": 0,
+                "previousNodeRun": 0
+              }
+            ],
+            "hints": [],
+            "executionTime": 7,
+            "executionStatus": "success",
+            "data": {
+              "main": [
+                [
+                  {
+                    "json": {
+                      "case": "message-a-model-1.3",
+                      "topic": "IL_MESSAGE_1_3_TOPIC_ALPHA",
+                      "first": "IL_MESSAGE_1_3_REPEAT",
+                      "repeat": "IL_MESSAGE_1_3_REPEAT",
+                      "second": "IL_MESSAGE_1_3_SECOND_ALPHA",
+                      "prior": "IL_MESSAGE_1_3_PRIOR_ALPHA"
+                    },
+                    "pairedItem": {
+                      "item": 0
+                    }
+                  }
+                ]
+              ]
+            }
+          }
+        ],
+        "Message a Model 1.3 contract": [
+          {
+            "startTime": 1785341965222,
+            "executionIndex": 2,
+            "source": [
+              {
+                "previousNode": "Predictable Message a Model 1.3 input",
+                "previousNodeOutput": 0,
+                "previousNodeRun": 0
+              }
+            ],
+            "hints": [],
+            "executionTime": 62,
+            "metadata": {
+              "tokenUsage": {
+                "inputTokens": 3,
+                "outputTokens": 7
+              }
+            },
+            "executionStatus": "success",
+            "data": {
+              "main": [
+                [
+                  {
+                    "json": {
+                      "index": 0,
+                      "message": {
+                        "role": "assistant",
+                        "content": "Fixture received system=\"IL_MESSAGE_1_3_SYSTEM\\ntopic=IL_MESSAGE_1_3_TOPIC_ALPHA\" | assistant=\"IL_MESSAGE_1_3_ASSISTANT_CONTEXT\\nprior=IL_MESSAGE_1_3_PRIOR_ALPHA\" | user=\"IL_MESSAGE_1_3_USER\\ncase=message-a-model-1.3\\ntopic=IL_MESSAGE_1_3_TOPIC_ALPHA\\ncompound=IL_MESSAGE_1_3_TOPIC_ALPHA::IL_MESSAGE_1_3_SECOND_ALPHA\\nrepeated=IL_MESSAGE_1_3_REPEAT|IL_MESSAGE_1_3_REPEAT\""
+                      },
+                      "finish_reason": "stop"
+                    },
+                    "pairedItem": {
+                      "item": 0
+                    }
+                  }
+                ]
+              ]
+            }
+          }
+        ]
+      },
+      "pinData": {},
+      "lastNodeExecuted": "Message a Model 1.3 contract"
+    },
+    "executionData": {
+      "contextData": {},
+      "nodeExecutionStack": [],
+      "metadata": {},
+      "waitingExecution": {},
+      "waitingExecutionSource": {},
+      "runtimeData": {
+        "version": 1,
+        "establishedAt": 1785341965204,
+        "source": "manual",
+        "triggerNode": {
+          "name": "Manual Trigger",
+          "type": "n8n-nodes-base.manualTrigger"
+        },
+        "redaction": {
+          "version": 2,
+          "production": false,
+          "manual": false,
+          "source": "workflow"
+        }
+      }
+    },
+    "workflowData": {
+      "id": "workflow_fixture",
+      "name": "[Inference Lens contract] Message a Model 1.3",
+      "nodes": [
+        {
+          "id": "node_fixture_001",
+          "name": "Manual Trigger",
+          "type": "n8n-nodes-base.manualTrigger",
+          "typeVersion": 1,
+          "position": [
+            0,
+            0
+          ],
+          "parameters": {
+            "notice": ""
+          }
+        },
+        {
+          "id": "node_fixture_002",
+          "name": "Predictable Message a Model 1.3 input",
+          "type": "n8n-nodes-base.code",
+          "typeVersion": 2,
+          "position": [
+            240,
+            0
+          ],
+          "parameters": {
+            "mode": "runOnceForAllItems",
+            "language": "javaScript",
+            "jsCode": "return [{\n  json: {\n    case: \"message-a-model-1.3\",\n    topic: \"IL_MESSAGE_1_3_TOPIC_ALPHA\",\n    first: \"IL_MESSAGE_1_3_REPEAT\",\n    repeat: \"IL_MESSAGE_1_3_REPEAT\",\n    second: \"IL_MESSAGE_1_3_SECOND_ALPHA\",\n    prior: \"IL_MESSAGE_1_3_PRIOR_ALPHA\"\n  }\n}];",
+            "notice": ""
+          }
+        },
+        {
+          "id": "node_fixture_003",
+          "name": "Message a Model 1.3 contract",
+          "type": "@n8n/n8n-nodes-langchain.openAi",
+          "typeVersion": 1.3,
+          "position": [
+            528,
+            0
+          ],
+          "parameters": {
+            "resource": "text",
+            "operation": "message",
+            "modelId": {
+              "__rl": true,
+              "value": "template-echo-model",
+              "mode": "id"
+            },
+            "messages": {
+              "values": [
+                {
+                  "content": "=IL_MESSAGE_1_3_SYSTEM\ntopic={{ $json.topic }}",
+                  "role": "system"
+                },
+                {
+                  "content": "=IL_MESSAGE_1_3_ASSISTANT_CONTEXT\nprior={{ $json.prior }}",
+                  "role": "assistant"
+                },
+                {
+                  "content": "=IL_MESSAGE_1_3_USER\ncase={{ $json.case }}\ntopic={{ $json.topic }}\ncompound={{ [$json.topic, $json.second].join(\"::\") }}\nrepeated={{ $json.first }}|{{ $json.repeat }}",
+                  "role": "user"
+                }
+              ]
+            },
+            "simplify": true,
+            "jsonOutput": false,
+            "options": {
+              "maxTokens": 64,
+              "temperature": 0
+            }
+          }
+        }
+      ],
+      "connections": {
+        "Manual Trigger": {
+          "main": [
+            [
+              {
+                "node": "Predictable Message a Model 1.3 input",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "Predictable Message a Model 1.3 input": {
+          "main": [
+            [
+              {
+                "node": "Message a Model 1.3 contract",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        }
+      },
+      "settings": {
+        "executionOrder": "v1"
+      }
+    }
+  }
+}

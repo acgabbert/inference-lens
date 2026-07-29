@@ -5,6 +5,118 @@ The capture files support the Phase 0 public-API contract spike. The
 verification. All workflows are inactive, manual-only, and contain no
 credentials or instance metadata.
 
+## AI Agent and Message a Model contract capture
+
+The following importable workflows isolate the node versions under
+investigation. Keep them as separate workflows: one execution should prove one
+node/version contract.
+
+| Workflow | Target node |
+| --- | --- |
+| `workflows/ai-agent-2.2.contract.json` | AI Agent `2.2` |
+| `workflows/ai-agent-3.contract.json` | AI Agent `3` |
+| `workflows/ai-agent-3.1.contract.json` | AI Agent `3.1` |
+| `workflows/message-a-model-1.2.contract.json` | Message a Model `1.2` |
+| `workflows/message-a-model-1.3.contract.json` | Message a Model `1.3` |
+
+The initial contract is deliberately prompt-first:
+
+- one input item and one target-node run;
+- authored system, assistant, and user roles where the node supports them;
+- literal, simple-expression, compound-expression, and repeated-value cases;
+- one OpenAI-compatible model with temperature `0`;
+- no agent tools, memory, fallback model, or output parser; and
+- no workflow credentials, instance IDs, webhooks, or project metadata.
+
+The agent fixtures use OpenAI Chat Model `1.2` so only the AI Agent version
+changes between captures. Message a Model is itself the credentialed provider
+node and therefore has no language-model sub-node.
+
+### Import and run
+
+Start the controlled provider as described in
+[Start the controlled provider](#start-the-controlled-provider). Import all five
+workflow files into a disposable or test-safe n8n project.
+
+For each workflow:
+
+1. Inspect the target node and confirm its displayed version still exactly
+   matches the filename. Do not upgrade it. If n8n migrated the version during
+   import, record the observed version and stop that case.
+2. For an AI Agent workflow, attach the test credential to its OpenAI Chat
+   Model sub-node. For a Message a Model workflow, attach it directly to the
+   Message a Model node.
+3. Keep the model ID `template-echo-model`, temperature `0`, and all fixture
+   expressions unchanged.
+4. Run the whole workflow once from Manual Trigger.
+5. Record the workflow ID and execution ID before making any edits.
+
+Every successful provider request must contain the version-specific sentinel
+family shown below. The resolved topic, compound value, and repeated values are
+predictable:
+
+| Case | Required provider-visible evidence |
+| --- | --- |
+| AI Agent `2.2` | `IL_AGENT_2_2_SYSTEM`, `IL_AGENT_2_2_USER`, `IL_AGENT_2_2_TOPIC_ALPHA::IL_AGENT_2_2_SECOND_ALPHA`, and `IL_AGENT_2_2_REPEAT` twice |
+| AI Agent `3` | `IL_AGENT_3_SYSTEM`, `IL_AGENT_3_USER`, `IL_AGENT_3_TOPIC_ALPHA::IL_AGENT_3_SECOND_ALPHA`, and `IL_AGENT_3_REPEAT` twice |
+| AI Agent `3.1` | `IL_AGENT_3_1_SYSTEM`, `IL_AGENT_3_1_USER`, `IL_AGENT_3_1_TOPIC_ALPHA::IL_AGENT_3_1_SECOND_ALPHA`, and `IL_AGENT_3_1_REPEAT` twice |
+| Message a Model `1.2` | ordered `IL_MESSAGE_1_2_SYSTEM`, `IL_MESSAGE_1_2_ASSISTANT_CONTEXT`, and `IL_MESSAGE_1_2_USER`, plus the compound and repeated values |
+| Message a Model `1.3` | ordered `IL_MESSAGE_1_3_SYSTEM`, `IL_MESSAGE_1_3_ASSISTANT_CONTEXT`, and `IL_MESSAGE_1_3_USER`, plus the compound and repeated values |
+
+The echo response is useful for checking that n8n sent the expected messages,
+but it is not production import evidence. The importer may use only authored
+workflow fields or request/message data retained in the execution itself.
+
+### Capture through the read-only API
+
+Capture each workflow independently after its successful run:
+
+```sh
+INFERENCE_LENS_N8N_BASE_URL=... \
+INFERENCE_LENS_N8N_API_KEY=... \
+node scripts/n8n-contract-probe.mjs \
+  --workflow-id WORKFLOW_ID \
+  --execution-id EXECUTION_ID \
+  --capture-name ai-agent-2-2
+```
+
+Use these capture names for the five cases:
+
+- `ai-agent-2-2`
+- `ai-agent-3`
+- `ai-agent-3-1`
+- `message-a-model-1-2`
+- `message-a-model-1-3`
+
+Before redaction, inspect each staged execution to answer:
+
+- Does the saved target run retain effective, resolved prompt messages?
+- For agents, does the model sub-run identify its parent and retain the complete
+  system/user request?
+- Does Message a Model retain its direct provider request, or only authored
+  parameters and provider output?
+- Are run and item indexes attributable without relying on completion order?
+- Did either version add default messages or transform message content?
+
+Do not implement execution reconstruction from the fixture's echoed output. If
+effective request evidence is absent, that node/version must initially produce
+an `authored-only` candidate.
+
+### Observed n8n 2.32.5 contract
+
+The five committed captures establish:
+
+- AI Agent `2.2`, `3`, and `3.1` each save one attributable OpenAI Chat Model
+  sub-run. Its `inputOverride` retains one serialized `System`/`Human` message,
+  model ID, and temperature. The importer can reconstruct the resolved system
+  and user messages when the role boundary is unambiguous.
+- Message a Model `1.2` and `1.3` save provider output and token metadata but no
+  effective provider request or `inputOverride`. Their echoed fixture output is
+  not request evidence, so these versions import as `authored-only`.
+- The detailed execution response includes an execution-time `workflowData`
+  snapshot at the response top level. The redactor normalizes it into
+  `data.workflowData`, preserving the exact authored fields that ran.
+
 ## Phase 5 running-app workflows
 
 Import these separately so each execution has one unambiguous purpose:

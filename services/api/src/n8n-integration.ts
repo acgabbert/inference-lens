@@ -207,6 +207,9 @@ const executionDetailSchema = looseObject({
   startedAt: dateTimeSchema.optional(),
   stoppedAt: dateTimeSchema.nullable().optional(),
   data: z.unknown().optional(),
+  // n8n 2.32.5 may return the execution-time workflow snapshot beside `data`
+  // even when older captures placed it at `data.workflowData`.
+  workflowData: z.unknown().optional(),
 });
 
 export interface N8nWorkflowSummary {
@@ -644,13 +647,16 @@ export async function loadN8nSelectedExecution(
   }
   const detailAvailable = detail.data !== undefined && detail.data !== null;
   const data = detail.data;
-  const executionWorkflowSnapshot =
+  const nestedWorkflowSnapshot =
     data !== null &&
     typeof data === "object" &&
     !Array.isArray(data) &&
     "workflowData" in data
       ? parseN8nWorkflowSnapshot(data.workflowData)
       : undefined;
+  const executionWorkflowSnapshot =
+    nestedWorkflowSnapshot ??
+    parseN8nWorkflowSnapshot(detail.workflowData);
   const currentWorkflow = executionWorkflowSnapshot
     ? undefined
     : await client.getWorkflow(safeWorkflowId, signal);

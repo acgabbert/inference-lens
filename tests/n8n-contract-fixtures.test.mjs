@@ -16,9 +16,14 @@ async function readJson(...segments) {
 
 test("validates every committed n8n capture and its digests offline", async () => {
   for (const captureName of [
+    "ai-agent-2-2",
+    "ai-agent-3",
+    "ai-agent-3-1",
     "basic-llm-chain-invalid-syntax",
     "basic-llm-chain-success",
     "basic-llm-chain-whole-field",
+    "message-a-model-1-2",
+    "message-a-model-1-3",
   ]) {
     const manifest = await validateRedactedCapture({
       directory: path.join(fixtureRoot, captureName),
@@ -122,4 +127,57 @@ test("keeps parser cases as UTF-16 source fixtures without evaluating them", asy
     ),
   );
   assert.ok(fixture.cases.some((entry) => entry.invalid === true));
+});
+
+test("AI Agent captures retain attributable resolved model input", async () => {
+  for (const captureName of ["ai-agent-2-2", "ai-agent-3", "ai-agent-3-1"]) {
+    const execution = await readJson(
+      fixtureRoot,
+      captureName,
+      "execution-success.json",
+    );
+    const runData = execution.data.resultData.runData;
+    const modelName = Object.keys(runData).find((name) =>
+      name.endsWith("OpenAI Chat Model"),
+    );
+    assert.ok(modelName);
+    const modelRuns = runData[modelName];
+    assert.equal(modelRuns.length, 1);
+    assert.equal(modelRuns[0].source.length, 1);
+    assert.match(modelRuns[0].source[0].previousNode, /AI Agent/);
+    assert.equal(modelRuns[0].source[0].previousNodeRun, 0);
+
+    const savedInput =
+      modelRuns[0].inputOverride.ai_languageModel[0][0].json;
+    assert.equal(savedInput.messages.length, 1);
+    assert.match(savedInput.messages[0], /^System: IL_AGENT_/);
+    assert.match(savedInput.messages[0], /\nHuman: IL_AGENT_/);
+    assert.equal(savedInput.options.model, "template-echo-model");
+    assert.equal(savedInput.options.temperature, 0);
+  }
+});
+
+test("Message a Model captures retain output but no effective request", async () => {
+  for (const captureName of [
+    "message-a-model-1-2",
+    "message-a-model-1-3",
+  ]) {
+    const execution = await readJson(
+      fixtureRoot,
+      captureName,
+      "execution-success.json",
+    );
+    const runData = execution.data.resultData.runData;
+    const targetName = Object.keys(runData).find((name) =>
+      name.startsWith("Message a Model"),
+    );
+    assert.ok(targetName);
+    const targetRuns = runData[targetName];
+    assert.equal(targetRuns.length, 1);
+    assert.equal(targetRuns[0].inputOverride, undefined);
+    assert.match(
+      targetRuns[0].data.main[0][0].json.message.content,
+      /^Fixture received /,
+    );
+  }
 });

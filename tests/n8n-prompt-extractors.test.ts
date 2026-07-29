@@ -159,6 +159,179 @@ test("a single-item Basic LLM Chain produces a validated reconstructed user mess
   assert.doesNotThrow(() => parseExternalPromptCandidate(compound.candidate));
 });
 
+test("fixture-verified AI Agent versions reconstruct attributable system and user messages", async () => {
+  for (const fixture of [
+    {
+      directory: "ai-agent-2-2",
+      version: "2.2",
+      prefix: "IL_AGENT_2_2",
+      caseValue: "ai-agent-2.2",
+    },
+    {
+      directory: "ai-agent-3",
+      version: "3",
+      prefix: "IL_AGENT_3",
+      caseValue: "ai-agent-3",
+    },
+    {
+      directory: "ai-agent-3-1",
+      version: "3.1",
+      prefix: "IL_AGENT_3_1",
+      caseValue: "ai-agent-3.1",
+    },
+  ]) {
+    const execution = await executionFixture(
+      fixture.directory,
+      "execution-success.json",
+    );
+    const workflow = await workflowFixture(fixture.directory);
+    const results = await extractN8nPromptCandidates(execution, workflow);
+
+    assert.equal(results.length, 1);
+    const result = results[0];
+    assert.ok(result?.status === "candidate");
+    const candidate = result.candidate;
+    assert.equal(candidate.invocation.version, fixture.version);
+    assert.equal(candidate.invocation.runIndex, 0);
+    assert.equal(candidate.invocation.itemIndex, 0);
+    assert.equal(candidate.fidelity, "execution-reconstructed");
+    assert.deepEqual(
+      candidate.authored.map(({ path, role }) => ({ path, role })),
+      [
+        { path: "parameters.options.systemMessage", role: "system" },
+        { path: "parameters.text", role: "user" },
+      ],
+    );
+    assert.deepEqual(candidate.resolved, {
+      messages: [
+        {
+          role: "system",
+          content: `${fixture.prefix}_SYSTEM\ntopic=${fixture.prefix}_TOPIC_ALPHA`,
+        },
+        {
+          role: "user",
+          content:
+            `${fixture.prefix}_USER\n` +
+            `case=${fixture.caseValue}\n` +
+            `topic=${fixture.prefix}_TOPIC_ALPHA\n` +
+            `compound=${fixture.prefix}_TOPIC_ALPHA::${fixture.prefix}_SECOND_ALPHA\n` +
+            `repeated=${fixture.prefix}_REPEAT|${fixture.prefix}_REPEAT`,
+        },
+      ],
+      model: "template-echo-model",
+      options: { temperature: 0 },
+    });
+    assert.ok(candidate.bindings.length > 0);
+    assert.ok(candidate.bindings.every(({ status }) => status === "missing"));
+    assert.deepEqual(
+      candidate.warnings.map(({ code }) => code),
+      [
+        "provider-request-unavailable",
+        "expression-values-unavailable",
+      ],
+    );
+    assert.doesNotThrow(() => parseExternalPromptCandidate(candidate));
+  }
+});
+
+test("AI Agent reconstruction fails closed when serialized role boundaries are ambiguous", async () => {
+  const execution = await executionFixture(
+    "ai-agent-3-1",
+    "execution-success.json",
+  );
+  const workflow = await workflowFixture("ai-agent-3-1");
+  const runData = runDataRecord(execution);
+  const modelRun = (
+    runData["AI Agent 3.1 OpenAI Chat Model"] as Array<{
+      inputOverride: {
+        ai_languageModel: Array<Array<{ json: { messages: string[] } }>>;
+      };
+    }>
+  )[0]!;
+  modelRun.inputOverride.ai_languageModel[0]![0]!.json.messages[0] =
+    "System: ambiguous\nHuman: embedded\nHuman: actual";
+
+  const results = await extractN8nPromptCandidates(execution, workflow);
+  assert.equal(results.length, 1);
+  const result = results[0];
+  assert.ok(result?.status === "candidate");
+  assert.equal(result.candidate.fidelity, "authored-only");
+  assert.equal(result.candidate.resolved, undefined);
+  assert.deepEqual(
+    result.candidate.warnings.map(({ code }) => code),
+    ["model-evidence-incompatible"],
+  );
+});
+
+test("Message a Model 1.2 and 1.3 retain ordered authored roles without trusting echoed output", async () => {
+  for (const fixture of [
+    { directory: "message-a-model-1-2", version: "1.2" },
+    { directory: "message-a-model-1-3", version: "1.3" },
+  ]) {
+    const execution = await executionFixture(
+      fixture.directory,
+      "execution-success.json",
+    );
+    const workflow = await workflowFixture(fixture.directory);
+    const runData = runDataRecord(execution);
+    const targetName = `Message a Model ${fixture.version} contract`;
+    const targetRun = (
+      runData[targetName] as Array<{
+        data: { main: Array<Array<{ json: Record<string, unknown> }>> };
+      }>
+    )[0]!;
+    targetRun.data.main[0]![0]!.json = {
+      message: {
+        role: "assistant",
+        content: "This output is not request evidence.",
+      },
+    };
+
+    const results = await extractN8nPromptCandidates(execution, workflow);
+    assert.equal(results.length, 1);
+    const result = results[0];
+    assert.ok(result?.status === "candidate");
+    const candidate = result.candidate;
+    assert.equal(candidate.invocation.version, fixture.version);
+    assert.equal(candidate.invocation.runIndex, 0);
+    assert.equal(candidate.fidelity, "authored-only");
+    assert.equal(candidate.resolved, undefined);
+    assert.deepEqual(
+      candidate.authored.map(({ path, role }) => ({ path, role })),
+      [
+        {
+          path: "parameters.messages.values[0].content",
+          role: "system",
+        },
+        {
+          path: "parameters.messages.values[1].content",
+          role: "assistant",
+        },
+        {
+          path: "parameters.messages.values[2].content",
+          role: "user",
+        },
+      ],
+    );
+    assert.deepEqual(
+      candidate.warnings.map(({ code }) => code),
+      ["provider-request-unavailable"],
+    );
+    assert.ok(candidate.bindings.length > 0);
+    assert.ok(candidate.bindings.every(({ status }) => status === "missing"));
+    assert.doesNotThrow(() => parseExternalPromptCandidate(candidate));
+
+    const projection = projectExternalPromptTemplate(candidate);
+    assert.equal(projection.content.kind, "messages");
+    assert.deepEqual(
+      projection.content.kind === "messages"
+        ? projection.content.messages.map(({ role }) => role)
+        : [],
+      ["system", "assistant", "user"],
+    );
+  }
+});
+
 test("scans fixture-backed n8n expression regions without evaluating JavaScript", async () => {
   const fixture = JSON.parse(
     await readFile(
@@ -268,6 +441,38 @@ test("recognized future Basic LLM Chain versions are explicit unsupported result
     message:
       "@n8n/n8n-nodes-langchain.chainLlm@2 is recognized, but this importer supports only a fixture-verified node version.",
   });
+});
+
+test("recognized future AI Agent and Message a Model versions remain unsupported", async () => {
+  for (const fixture of [
+    {
+      directory: "ai-agent-3-1",
+      type: "@n8n/n8n-nodes-langchain.agent",
+      nextVersion: 3.2,
+    },
+    {
+      directory: "message-a-model-1-3",
+      type: "@n8n/n8n-nodes-langchain.openAi",
+      nextVersion: 1.4,
+    },
+  ]) {
+    const execution = await executionFixture(
+      fixture.directory,
+      "execution-success.json",
+    );
+    const workflowData = dataRecord(execution).workflowData as {
+      nodes: Array<{ type: string; typeVersion: number }>;
+    };
+    workflowData.nodes.find(({ type }) => type === fixture.type)!.typeVersion =
+      fixture.nextVersion;
+
+    const results = await extractN8nPromptCandidates(execution);
+    assert.equal(results.length, 1);
+    const result = results[0];
+    assert.ok(result?.status === "unsupported");
+    assert.equal(result.code, "unsupported-node-version");
+    assert.equal(result.invocation.version, String(fixture.nextVersion));
+  }
 });
 
 test("a sibling extractor supporting a newer node version is not shadowed", async () => {
