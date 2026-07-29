@@ -50,6 +50,7 @@ const turnInput: ProviderTurnInput = {
       content: [{ type: "text", text: "Hello" }],
     },
   ],
+  responseMode: "streaming",
   options: {},
   tools: [],
 };

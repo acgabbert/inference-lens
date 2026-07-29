@@ -1,7 +1,9 @@
 # Run trace format
 
-New traces use schema version 3. Versions 1 and 2 remain importable and are
-migrated in memory with an empty `input.templateResolutions` collection.
+New traces use schema version 4. Versions 1 through 3 remain importable.
+Versions 1 and 2 gain an empty `input.templateResolutions` collection during
+migration; Versions 1 through 3 gain `responseMode: "streaming"` on the run,
+turn events, and attempt projections.
 
 ## Template provenance
 
@@ -27,9 +29,9 @@ accepted as a valid Inference Lens run. Version 1 and 2 compatibility remains
 unchanged because those formats contain no template provenance.
 
 Inference Lens run traces are immutable, credential-free diagnostic artifacts.
-Version 3 uses deterministic JSON and is stored as `traces/<runId>.json` when a
+Version 4 uses deterministic JSON and is stored as `traces/<runId>.json` when a
 run belongs to an open project folder. A terminal ad hoc run can be exported
-from the Project menu, and Versions 1 and 2 traces can be imported for
+from the Project menu, and older traces can be imported for
 inspection.
 
 The response pane always reports trace storage state. Project runs show the
@@ -91,7 +93,8 @@ Each attempt owns one `ExchangeTrace` containing:
 - runtime-visible request headers with secrets replaced;
 - the exact serialized request body supplied to the HTTP client;
 - response status and runtime-visible redacted headers; and
-- complete provider SSE data lines, indexed in arrival order.
+- complete provider SSE data lines, indexed in arrival order, or the complete
+  JSON body for a buffered response.
 
 Normalized run events are stored separately and refer to their source exchange
 and frame index. This keeps provider-native evidence available without making
@@ -104,22 +107,18 @@ when the stored projections disagree.
 
 ## Compatibility and immutability
 
-The root `schemaVersion` is currently `3`. Version 1 is accepted with its
+The root `schemaVersion` is currently `4`. Version 1 is accepted with its
 original strict root schema; Version 2 adds the optional `branchedFrom` field,
-and Version 3 adds required template provenance:
+Version 3 adds required template provenance, and Version 4 adds the required
+run-level response mode:
 
 ```ts
-{
-  runId: RunId;
-  parentConversationRevisionId?: ConversationRevisionId;
-  messageId: MessageId;
-}
+"streaming" | "buffered"
 ```
 
-It records the source run and the last source-transcript message included in a
-branch input. It is trace metadata, not an execution input or event, so a
-parent trace need not be present when it is imported. New serialization always
-writes Version 3. Unknown root fields, unsupported versions, invalid
+The mode is copied into each provider-turn input, so retries and tool-driven
+continuation turns preserve how the run was executed. New serialization always
+writes Version 4. Unknown root fields, unsupported versions, invalid
 identifiers, non-contiguous event sequences, and unsafe run IDs are rejected.
 
 Trace writes are write-once by run ID. Writing identical contents again is

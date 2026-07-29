@@ -35,6 +35,26 @@ type OpenAIChunk = {
   };
 };
 
+type OpenAIResponse = {
+  choices?: Array<{
+    message?: {
+      content?: string | null;
+      reasoning?: string | null;
+      reasoning_content?: string | null;
+      reasoning_details?: Array<{
+        type?: string;
+        text?: string | null;
+      }>;
+      tool_calls?: Array<{
+        id?: string;
+        function?: { name?: string; arguments?: string };
+      }>;
+    };
+    finish_reason?: string | null;
+  }>;
+  usage?: OpenAIChunk["usage"];
+};
+
 type OpenAIModelsResponse = {
   data?: Array<{ id?: unknown }>;
 };
@@ -43,7 +63,14 @@ type OpenAIModelsResponse = {
  * The provider closed an SSE response without the terminal signal required by
  * the OpenAI-compatible chat-completions protocol.
  */
-export class OpenAICompatibleStreamProtocolError extends Error {
+export class OpenAICompatibleProtocolError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "OpenAICompatibleProtocolError";
+  }
+}
+
+export class OpenAICompatibleStreamProtocolError extends OpenAICompatibleProtocolError {
   constructor(message: string) {
     super(message);
     this.name = "OpenAICompatibleStreamProtocolError";
@@ -167,7 +194,9 @@ export function redactedProviderHeaders(
   return result;
 }
 
-function normalizedUsage(chunk: OpenAIChunk): RunTokenUsage | undefined {
+function normalizedUsage(
+  chunk: Pick<OpenAIChunk, "usage">,
+): RunTokenUsage | undefined {
   if (!chunk.usage) return undefined;
   return {
     inputTokens: chunk.usage.prompt_tokens,
@@ -217,7 +246,10 @@ export function buildChatCompletionsRequest(
   if (!target.capabilities.chatCompletions) {
     throw new Error("Chat completions are not supported by this profile.");
   }
-  if (!target.capabilities.streaming) {
+  if (
+    input.responseMode === "streaming" &&
+    !target.capabilities.streaming
+  ) {
     throw new Error("Streaming is not supported by this profile.");
   }
   if (input.tools.length > 0 && !target.capabilities.tools) {
@@ -228,11 +260,12 @@ export function buildChatCompletionsRequest(
   const messages = input.messages.map((message) =>
     openAIMessage(message, providerCallIds),
   );
+  const providerOptions = { ...(input.options.providerOptions ?? {}) };
+  delete providerOptions.stream;
+  delete providerOptions.stream_options;
   const body: JsonObject = {
     model: target.model,
     messages,
-    stream: true,
-    stream_options: { include_usage: true },
     ...(input.options.temperature === undefined
       ? {}
       : { temperature: input.options.temperature }),
@@ -256,9 +289,85 @@ export function buildChatCompletionsRequest(
             },
           })),
         }),
-    ...(input.options.providerOptions ?? {}),
+    ...providerOptions,
+    // Delivery mode is application-owned and cannot be contradicted by raw
+    // provider options.
+    stream: input.responseMode === "streaming",
+    ...(input.responseMode === "streaming"
+      ? { stream_options: { include_usage: true } }
+      : {}),
   };
   return { url, body };
+}
+
+function completeReasoning(response: OpenAIResponse): string | undefined {
+  const message = response.choices?.[0]?.message;
+  if (!message) return undefined;
+  if (message.reasoning) return message.reasoning;
+  if (message.reasoning_content) return message.reasoning_content;
+  const detailText = message.reasoning_details
+    ?.filter((detail) => detail.type === "reasoning.text")
+    .map((detail) => detail.text ?? "")
+    .join("");
+  return detailText || undefined;
+}
+
+/**
+ * Normalizes a completed chat-completions JSON response into the event
+ * vocabulary used by streaming responses. Complete values become one delta
+ * apiece, so reducers and projections stay independent of delivery mode.
+ */
+export async function* normalizeOpenAICompatibleResponse(
+  execution: ProviderExecution,
+  raw: string,
+): AsyncGenerator<ProviderEvent> {
+  const source = { exchangeId: execution.exchangeId, frameIndex: 0 };
+  yield { type: "frame", frame: { index: 0, raw } };
+
+  let response: OpenAIResponse;
+  try {
+    response = JSON.parse(raw) as OpenAIResponse;
+  } catch {
+    throw new OpenAICompatibleProtocolError(
+      "Provider returned invalid JSON for a buffered response.",
+    );
+  }
+  const choice = response.choices?.[0];
+  if (!choice?.message || typeof choice.message !== "object") {
+    throw new OpenAICompatibleProtocolError(
+      "Provider buffered response did not include choices[0].message.",
+    );
+  }
+
+  const reasoning = completeReasoning(response);
+  if (reasoning) yield { type: "reasoning_delta", reasoning, source };
+  if (choice.message.content) {
+    yield { type: "text_delta", text: choice.message.content, source };
+  }
+  for (const [index, toolCall] of (choice.message.tool_calls ?? []).entries()) {
+    yield {
+      type: "tool_call_delta",
+      toolCallId: createEntityId(
+        "tool-call",
+        `${execution.exchangeId}-${index}`,
+      ),
+      index,
+      providerCallId: toolCall.id,
+      nameDelta: toolCall.function?.name,
+      argumentsDelta: toolCall.function?.arguments,
+      source,
+    };
+  }
+  const usage = normalizedUsage(response);
+  if (usage) yield { type: "usage", usage, source };
+  yield {
+    type: "completed",
+    finishReason:
+      typeof choice.finish_reason === "string"
+        ? normalizedFinishReason(choice.finish_reason)
+        : { normalized: "other" },
+    source,
+  };
 }
 
 /**
@@ -432,8 +541,11 @@ export async function* streamOpenAICompatibleProvider(
     );
   }
 
+  if (execution.input.responseMode === "buffered") {
+    yield* normalizeOpenAICompatibleResponse(execution, await response.text());
+    return;
+  }
   if (!response.body) throw new Error("Provider returned an empty response.");
-
   yield* normalizeOpenAICompatibleStream(execution, sseLines(response.body));
 }
 

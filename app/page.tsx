@@ -153,6 +153,8 @@ import type {
 const inferenceTransport = createInferenceTransport();
 
 const MARKDOWN_PREVIEW_STORAGE_KEY = "inference-lens:markdown-preview:v1";
+const STREAMING_PREFERENCE_STORAGE_KEY =
+  "inference-lens:streaming-preference:v1";
 
 interface BranchContext {
   parentRunId: RunId;
@@ -303,6 +305,9 @@ function HomeContent() {
   const [outputFollowing, setOutputFollowing] = useState(true);
   const [markdownPreview, setMarkdownPreview] = useState(true);
   const [markdownPreviewLoaded, setMarkdownPreviewLoaded] = useState(false);
+  const [streamingPreferred, setStreamingPreferred] = useState(true);
+  const [streamingPreferenceLoaded, setStreamingPreferenceLoaded] =
+    useState(false);
   const [toolResultDrafts, setToolResultDrafts] = useState<
     Record<string, ToolResultDraft>
   >({});
@@ -501,12 +506,31 @@ function HomeContent() {
   }, []);
 
   useEffect(() => {
+    const preferenceId = window.setTimeout(() => {
+      const saved = window.localStorage.getItem(
+        STREAMING_PREFERENCE_STORAGE_KEY,
+      );
+      if (saved === "buffered") setStreamingPreferred(false);
+      setStreamingPreferenceLoaded(true);
+    }, 0);
+    return () => window.clearTimeout(preferenceId);
+  }, []);
+
+  useEffect(() => {
     if (!markdownPreviewLoaded) return;
     window.localStorage.setItem(
       MARKDOWN_PREVIEW_STORAGE_KEY,
       markdownPreview ? "markdown" : "raw",
     );
   }, [markdownPreview, markdownPreviewLoaded]);
+
+  useEffect(() => {
+    if (!streamingPreferenceLoaded) return;
+    window.localStorage.setItem(
+      STREAMING_PREFERENCE_STORAGE_KEY,
+      streamingPreferred ? "streaming" : "buffered",
+    );
+  }, [streamingPreferred, streamingPreferenceLoaded]);
 
   useEffect(() => {
     if (!toolRegistryLoaded) return;
@@ -516,6 +540,10 @@ function HomeContent() {
   const activeModel = sessionModel ?? activeProfile.model;
   const activeTemperature =
     sessionTemperature ?? activeProfile.temperature ?? 0.7;
+  const activeResponseMode =
+    streamingPreferred && activeCapabilities.streaming
+      ? "streaming"
+      : "buffered";
   const selectedProjectToolCount = tools.filter(({ id }) =>
     enabledToolIds.includes(id),
   ).length;
@@ -974,6 +1002,7 @@ function HomeContent() {
       model: activeModel,
       messages,
       temperature: activeTemperature,
+      responseMode: activeResponseMode,
       capabilities: activeCapabilities,
     };
   }
@@ -2115,6 +2144,35 @@ function HomeContent() {
                   />
                   <output>{activeTemperature.toFixed(1)}</output>
                 </div>
+              </label>
+              <label
+                className={
+                  activeCapabilities.streaming
+                    ? "streaming-control"
+                    : "streaming-control disabled"
+                }
+                title={
+                  activeCapabilities.streaming
+                    ? undefined
+                    : "This profile does not support streaming responses."
+                }
+              >
+                <input
+                  type="checkbox"
+                  checked={activeResponseMode === "streaming"}
+                  disabled={!activeCapabilities.streaming}
+                  onChange={(event) =>
+                    setStreamingPreferred(event.target.checked)
+                  }
+                />
+                <span>
+                  Stream response
+                  <small>
+                    {activeCapabilities.streaming
+                      ? "Show output as the provider sends it."
+                      : "Unavailable for this profile; responses are buffered."}
+                  </small>
+                </span>
               </label>
             </div>
           </section>

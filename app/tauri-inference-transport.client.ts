@@ -12,8 +12,9 @@ import type {
 } from "../packages/contracts/src";
 import {
   buildChatCompletionsRequest,
+  normalizeOpenAICompatibleResponse,
   normalizeOpenAICompatibleStream,
-  OpenAICompatibleStreamProtocolError,
+  OpenAICompatibleProtocolError,
   parseModelsResponse,
   redactedProviderUrl,
 } from "../packages/core/src/openai-compatible.ts";
@@ -49,6 +50,7 @@ type ProviderTurnAccepted = { status: number };
 type RawStreamEvent =
   | { type: "response"; status: number; headers: Record<string, string> }
   | { type: "lines"; lines: string[] }
+  | { type: "body"; body: string }
   | { type: "end" }
   | {
       type: "error";
@@ -137,6 +139,25 @@ async function* linesFromQueue(
   }
 }
 
+async function bodyFromQueue(
+  queue: AsyncEventQueue<RawStreamEvent>,
+  onTerminal: (event: RawStreamEvent) => void,
+): Promise<string> {
+  let body = "";
+  while (true) {
+    const next = await queue.next();
+    if (next.done) return body;
+    const event = next.value;
+    if (event.type === "body") {
+      body += event.body;
+      continue;
+    }
+    onTerminal(event);
+    if (event.type === "end") return body;
+    throw new TerminalStreamSignal();
+  }
+}
+
 function* terminalTransportEvent(
   event: RawStreamEvent | undefined,
 ): Generator<ProviderTransportEvent> {
@@ -203,14 +224,21 @@ async function* toProviderTransportEvents(
 
     let terminal: RawStreamEvent | undefined;
     try {
-      yield* normalizeOpenAICompatibleStream(
-        execution,
-        linesFromQueue(queue, (event) => {
+      if (execution.input.responseMode === "buffered") {
+        const raw = await bodyFromQueue(queue, (event) => {
           terminal = event;
-        }),
-      );
+        });
+        yield* normalizeOpenAICompatibleResponse(execution, raw);
+      } else {
+        yield* normalizeOpenAICompatibleStream(
+          execution,
+          linesFromQueue(queue, (event) => {
+            terminal = event;
+          }),
+        );
+      }
     } catch (error) {
-      if (error instanceof OpenAICompatibleStreamProtocolError) {
+      if (error instanceof OpenAICompatibleProtocolError) {
         yield {
           type: "failed",
           error: { code: "protocol_error", message: error.message },
@@ -274,6 +302,7 @@ export class TauriInferenceTransport implements ProviderTurnTransport {
         credential,
         endpoint: request.execution.input.target.endpoint,
         body: bodyText,
+        streaming: request.execution.input.responseMode === "streaming",
       });
       return {
         status: accepted.status,

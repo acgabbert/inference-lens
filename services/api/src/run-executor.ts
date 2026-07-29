@@ -1,5 +1,5 @@
 import {
-  OpenAICompatibleStreamProtocolError,
+  OpenAICompatibleProtocolError,
   streamOpenAICompatibleProvider,
 } from "../../../packages/core/src/openai-compatible.ts";
 import type {
@@ -48,7 +48,7 @@ export async function* executeProviderTurn(
       return;
     }
     const code =
-      error instanceof OpenAICompatibleStreamProtocolError
+      error instanceof OpenAICompatibleProtocolError
         ? "protocol_error" as const
         : status === undefined
           ? "transport_error" as const

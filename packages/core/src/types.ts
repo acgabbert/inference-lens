@@ -99,6 +99,8 @@ export interface InferenceRequest {
   model: string;
   messages: InferenceMessage[];
   temperature?: number;
+  /** Defaults to streaming for compatibility with callers created before it existed. */
+  responseMode?: import("./run-kernel/types.ts").ResponseMode;
   /** Resolved at request creation and serialized with portable projects. */
   capabilities?: ProviderCapabilities;
 }

@@ -61,6 +61,7 @@ const turnInput: ProviderTurnInput = {
     capabilities: OPENAI_COMPATIBLE_CAPABILITIES,
   },
   messages: [initialMessage],
+  responseMode: "streaming",
   options: { temperature: 0.2 },
   tools: [],
 };

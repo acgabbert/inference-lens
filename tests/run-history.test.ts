@@ -66,6 +66,7 @@ function traceFixture(spec: {
   const turnInput: ProviderTurnInput = {
     target,
     messages,
+    responseMode: "streaming",
     options: {},
     tools: [],
   };

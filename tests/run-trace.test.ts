@@ -84,21 +84,35 @@ test("serializes and parses a deterministic run trace", () => {
   assert.deepEqual(runStateFromTrace(trace).events, trace.events);
   assert.match(serialized, /"raw": "data: \{/);
   assert.match(serialized, /"body": "\{\\"model\\"/);
-  assert.match(serialized, /"schemaVersion": 3/);
+  assert.match(serialized, /"schemaVersion": 4/);
 });
 
 test("migrates Version 1 evidence but rejects Version 1 branch provenance", () => {
   const v1 = structuredClone(completedTrace());
   v1.schemaVersion = 1;
   delete (v1.input as Partial<typeof v1.input>).templateResolutions;
+  delete (v1.input as Partial<typeof v1.input>).responseMode;
   const started = v1.events[0];
   if (started?.type === "run.started") {
     delete (started.input as Partial<typeof started.input>).templateResolutions;
+    delete (started.input as Partial<typeof started.input>).responseMode;
+  }
+  for (const event of v1.events) {
+    if (event.type === "turn.started") {
+      delete (event.input as Partial<typeof event.input>).responseMode;
+    }
+  }
+  for (const turn of v1.turns) {
+    for (const attempt of turn.attempts) {
+      delete (attempt.input as Partial<typeof attempt.input>).responseMode;
+    }
   }
   const migrated = parseRunTraceJson(JSON.stringify(v1));
-  assert.equal(migrated.schemaVersion, 3);
+  assert.equal(migrated.schemaVersion, 4);
   assert.deepEqual(migrated.input.templateResolutions, []);
-  assert.match(serializeRunTrace(v1), /"schemaVersion": 3/);
+  assert.equal(migrated.input.responseMode, "streaming");
+  assert.equal(migrated.turns[0]?.attempts[0]?.input.responseMode, "streaming");
+  assert.match(serializeRunTrace(v1), /"schemaVersion": 4/);
 
   assert.throws(
     () => parseRunTraceJson(JSON.stringify({

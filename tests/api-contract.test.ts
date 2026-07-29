@@ -17,7 +17,10 @@ const environmentStore = new EnvironmentCredentialStore({
   INFERENCE_LENS_API_ENDPOINT: "https://api.example.test/v1",
 });
 
-function execution(capabilities = OPENAI_COMPATIBLE_CAPABILITIES) {
+function execution(
+  capabilities = OPENAI_COMPATIBLE_CAPABILITIES,
+  responseMode: "streaming" | "buffered" = "streaming",
+) {
   return {
     runId: "run_test" as const,
     turnId: "turn_test" as const,
@@ -38,6 +41,7 @@ function execution(capabilities = OPENAI_COMPATIBLE_CAPABILITIES) {
           content: [{ type: "text" as const, text: "Hello" }],
         },
       ],
+      responseMode,
       options: {},
       tools: [],
     },
@@ -381,6 +385,44 @@ test("executes one normalized provider turn outside an HTTP handler", async () =
       "frame",
       "completed",
       "frame",
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("executes a buffered provider turn through the shared service boundary", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    assert.equal(body.stream, false);
+    assert.equal("stream_options" in body, false);
+    return Response.json({
+      choices: [{
+        message: { role: "assistant", content: "Buffered hello" },
+        finish_reason: "stop",
+      }],
+      usage: {
+        prompt_tokens: 2,
+        completion_tokens: 2,
+        total_tokens: 4,
+      },
+    });
+  };
+
+  try {
+    const buffered = execution(OPENAI_COMPATIBLE_CAPABILITIES, "buffered");
+    const events = [];
+    for await (const event of executeProviderTurn(buffered, "secret")) {
+      events.push(event);
+    }
+    assert.deepEqual(events.map(({ type }) => type), [
+      "request",
+      "response_started",
+      "frame",
+      "text_delta",
+      "usage",
+      "completed",
     ]);
   } finally {
     globalThis.fetch = originalFetch;

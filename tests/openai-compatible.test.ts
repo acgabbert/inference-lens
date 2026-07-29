@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   buildChatCompletionsRequest,
+  normalizeOpenAICompatibleResponse,
   normalizeOpenAICompatibleStream,
   OpenAICompatibleStreamProtocolError,
   parseModelsResponse,
@@ -37,6 +38,7 @@ const turnInput: ProviderTurnInput = {
       content: [{ type: "text", text: "Hello" }],
     },
   ],
+  responseMode: "streaming",
   options: { temperature: 0.2 },
   tools: [],
 };
@@ -70,6 +72,31 @@ test("buildChatCompletionsRequest derives the URL and body without a network cal
   assert.equal(body.model, "example-model");
   assert.equal(body.stream, true);
   assert.equal(body.temperature, 0.2);
+});
+
+test("buildChatCompletionsRequest owns buffered delivery fields", () => {
+  const { body } = buildChatCompletionsRequest({
+    ...providerExecution,
+    input: {
+      ...turnInput,
+      responseMode: "buffered",
+      options: {
+        providerOptions: {
+          stream: true,
+          stream_options: { include_usage: true },
+        },
+      },
+      target: {
+        ...turnInput.target,
+        capabilities: {
+          ...OPENAI_COMPATIBLE_CAPABILITIES,
+          streaming: false,
+        },
+      },
+    },
+  });
+  assert.equal(body.stream, false);
+  assert.equal("stream_options" in body, false);
 });
 
 test("buildChatCompletionsRequest rejects tools the profile does not support", () => {
@@ -140,6 +167,47 @@ test("normalizeOpenAICompatibleStream drives the happy path from plain lines", a
     events.map(({ type }) => type),
     ["frame", "text_delta", "frame", "usage", "completed", "frame"],
   );
+});
+
+test("normalizeOpenAICompatibleResponse emits one raw frame and shared normalized events", async () => {
+  const raw = JSON.stringify({
+    choices: [{
+      message: {
+        content: "Hello",
+        reasoning_content: "Brief thought",
+        tool_calls: [{
+          id: "call_weather",
+          function: { name: "weather", arguments: '{"city":"Austin"}' },
+        }],
+      },
+      finish_reason: "tool_calls",
+    }],
+    usage: {
+      prompt_tokens: 2,
+      completion_tokens: 4,
+      total_tokens: 6,
+    },
+  });
+  const events = await collect(
+    normalizeOpenAICompatibleResponse(
+      { ...providerExecution, input: { ...turnInput, responseMode: "buffered" } },
+      raw,
+    ),
+  );
+  assert.deepEqual(events.map(({ type }) => type), [
+    "frame",
+    "reasoning_delta",
+    "text_delta",
+    "tool_call_delta",
+    "usage",
+    "completed",
+  ]);
+  assert.deepEqual(events[0], { type: "frame", frame: { index: 0, raw } });
+  assert.deepEqual(events.at(-1), {
+    type: "completed",
+    finishReason: { normalized: "tool_calls", raw: "tool_calls" },
+    source: { exchangeId, frameIndex: 0 },
+  });
 });
 
 test("normalizeOpenAICompatibleStream treats [DONE] as completion when no finish_reason arrives", async () => {
