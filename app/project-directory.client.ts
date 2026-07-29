@@ -7,6 +7,8 @@ import {
 
 export const TRACES_DIRECTORY_NAME = "traces";
 
+export type WorkspacePermissionState = "granted" | "denied" | "prompt";
+
 export interface FileSystemFileHandleLike {
   readonly kind: "file";
   readonly name: string;
@@ -20,6 +22,12 @@ export interface FileSystemFileHandleLike {
 export interface FileSystemDirectoryHandleLike {
   readonly kind: "directory";
   readonly name: string;
+  queryPermission?(descriptor?: {
+    mode?: "read" | "readwrite";
+  }): Promise<WorkspacePermissionState>;
+  requestPermission?(descriptor?: {
+    mode?: "read" | "readwrite";
+  }): Promise<WorkspacePermissionState>;
   values(): AsyncIterableIterator<
     FileSystemFileHandleLike | FileSystemDirectoryHandleLike
   >;

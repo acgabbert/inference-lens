@@ -197,6 +197,15 @@ The schema and serializer do not know about paths or platform handles.
 - Tauri opens a native directory picker and keeps authorized paths in Rust.
   The webview receives an opaque workspace ID, never a writable path.
 
+The browser adapter remembers the granted directory handle for the most
+recently opened project in IndexedDB (`inference-lens` /
+`workspace-handles` / `last-project`). The record contains the handle, folder
+name, and a display copy of the project name, never an absolute path or
+manifest contents. On load the adapter re-verifies permission before touching
+the folder and always re-reads `project.json`, so a remembered project follows
+the same external-change rule as an explicitly opened one. Denied permission
+or a missing project discards that remembered handle.
+
 Both writable adapters compare the on-disk contents with the last contents
 they read before saving. If an editor or Git operation changed the manifest,
 Inference Lens refuses to overwrite it and asks the user to reopen the project.

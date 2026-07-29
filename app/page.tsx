@@ -1898,6 +1898,14 @@ function HomeContent() {
         <div className="project-error" role="alert">
           <span>{projectError}</span>
           <div className="project-error-actions">
+            {projectErrorKind === "workspace-reconnect" && (
+              <button
+                type="button"
+                onClick={() => void project.reconnectProjectWorkspace()}
+              >
+                Reconnect
+              </button>
+            )}
             {projectErrorKind === "tools-disabled" && (
               <button
                 type="button"

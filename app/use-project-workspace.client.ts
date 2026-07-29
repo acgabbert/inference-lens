@@ -16,14 +16,20 @@ import {
   createProjectFolder,
   downloadProjectFile,
   openProjectFolder,
+  reconnectProjectWorkspace as reconnectStoredProjectWorkspace,
+  restoreProjectWorkspace,
   saveProjectWorkspace,
 } from "./project-workspace.client.ts";
 import type {
   ProjectCreationOptions,
   ProjectWorkspaceHandle,
+  WorkspaceResumeOutcome,
 } from "./project-workspace.client.ts";
 
-export type ProjectErrorKind = "auto-save" | "tools-disabled";
+export type ProjectErrorKind =
+  | "auto-save"
+  | "tools-disabled"
+  | "workspace-reconnect";
 
 const PROJECT_AUTO_SAVE_DELAY_MS = 800;
 const PROJECT_AUTO_SAVE_MAX_WAIT_MS = 5_000;
@@ -52,6 +58,7 @@ export interface ProjectWorkspaceHandleState {
   unmapProfile(profileId: string): void;
   newProjectFolder(options: ProjectCreationOptions): Promise<void>;
   openProjectWorkspace(): Promise<void>;
+  reconnectProjectWorkspace(): Promise<void>;
   saveProject(options?: ProjectCreationOptions): Promise<void>;
   exportProject(): void;
   importProject(event: ChangeEvent<HTMLInputElement>): Promise<void>;
@@ -92,6 +99,8 @@ export function useProjectWorkspace(input: {
   const autoSaveWindowStartedAtRef = useRef<number | null>(null);
   const autoSaveFailureCountRef = useRef(0);
   const autoSaveRetryNotBeforeRef = useRef(0);
+  const hasProjectRef = useRef(false);
+  const restoredRef = useRef(false);
 
   function advanceProjectChangeVersion(): number {
     autoSaveWindowStartedAtRef.current ??= Date.now();
@@ -160,6 +169,11 @@ export function useProjectWorkspace(input: {
     setProjectError(message);
   }
 
+  function setReconnectError(message: string): void {
+    updateProjectErrorKind("workspace-reconnect");
+    setProjectError(message);
+  }
+
   function clearToolsDisabledError(): void {
     if (projectErrorKind === "tools-disabled") dismissError();
   }
@@ -221,6 +235,7 @@ export function useProjectWorkspace(input: {
     profileId?: string,
   ): void {
     const draft = projectDraft(project);
+    hasProjectRef.current = true;
     advanceProjectChangeVersion();
     setProjectFile(project);
     setCurrentWorkspace(workspace);
@@ -229,6 +244,51 @@ export function useProjectWorkspace(input: {
     setProjectDirty(false);
     dismissError();
   }
+
+  function applyResumeOutcome(outcome: WorkspaceResumeOutcome): void {
+    if (hasProjectRef.current) return;
+    switch (outcome.kind) {
+      case "none":
+        return;
+      case "resumed":
+        if (hasProjectRef.current) return;
+        applyProjectDocument(outcome.project, outcome.handle);
+        return;
+      case "reconnect-required":
+        setReconnectError(outcome.message);
+        return;
+      case "forgotten":
+        projectFailure(
+          new Error(outcome.message),
+          "Could not restore the remembered project.",
+        );
+    }
+  }
+
+  useEffect(() => {
+    if (restoredRef.current) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      if (restoredRef.current) return;
+      restoredRef.current = true;
+      void restoreProjectWorkspace()
+        .then((outcome) => {
+          if (!cancelled) applyResumeOutcome(outcome);
+        })
+        .catch((error: unknown) => {
+          if (!cancelled && !hasProjectRef.current) {
+            projectFailure(error, "Could not restore the remembered project.");
+          }
+        });
+    }, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+    // Restoration runs once after hydration. Its state adoption uses the same
+    // mutation funnel as an explicit open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!projectWorkspace || !projectFile || !projectDirty) return;
@@ -325,6 +385,19 @@ export function useProjectWorkspace(input: {
     }
   }
 
+  async function reconnectProjectWorkspace(): Promise<void> {
+    if (hasProjectRef.current) return;
+    try {
+      const outcome = await reconnectStoredProjectWorkspace();
+      if (hasProjectRef.current) return;
+      applyResumeOutcome(outcome);
+    } catch (error) {
+      if (!hasProjectRef.current) {
+        projectFailure(error, "Could not reconnect the remembered project.");
+      }
+    }
+  }
+
   async function saveProject(options?: ProjectCreationOptions): Promise<void> {
     try {
       const project = currentProjectDocument();
@@ -413,6 +486,7 @@ export function useProjectWorkspace(input: {
     unmapProfile,
     newProjectFolder,
     openProjectWorkspace,
+    reconnectProjectWorkspace,
     saveProject,
     exportProject,
     importProject,
