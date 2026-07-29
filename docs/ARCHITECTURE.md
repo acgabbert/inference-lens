@@ -100,3 +100,10 @@ records the exact serialized request body supplied to the HTTP client, every
 runtime-visible header after redaction, and complete SSE data lines without their
 terminating CR/LF. Normalized deltas refer back to those frames by exchange and
 frame index.
+
+Run metrics, timelines, and attempt diffs are derived projections over
+`RunState`. They are never persisted and are not part of the `RunTrace`
+envelope. Attempt comparison canonicalizes captured JSON for display, but the
+underlying exact request text remains unchanged in exchange evidence. Adding
+the comparison view therefore does not change the trace schema or its
+compatibility boundary.

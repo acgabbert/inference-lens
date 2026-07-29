@@ -21,7 +21,7 @@
     "build:tauri": "npm run typecheck && INFERENCE_LENS_TARGET=tauri vinext build",
     "start": "vinext start",
     "tauri": "tauri",
-    "test": "npm run build && npm run test:core && npm run test:n8n-contract && node --test tests/rendered-html.test.mjs tests/standalone-runtime.test.mjs tests/run-history-render.test.mjs tests/run-trace-panel-render.test.mjs tests/project-templates-render.test.mjs tests/project-creation-render.test.mjs tests/request-pane-render.test.mjs tests/connection-drawer-render.test.mjs tests/n8n-import-render.test.mjs",
+    "test": "npm run build && npm run test:core && npm run test:n8n-contract && node --test tests/rendered-html.test.mjs tests/standalone-runtime.test.mjs tests/run-history-render.test.mjs tests/run-trace-panel-render.test.mjs tests/run-diff-render.test.mjs tests/project-templates-render.test.mjs tests/project-creation-render.test.mjs tests/request-pane-render.test.mjs tests/connection-drawer-render.test.mjs tests/n8n-import-render.test.mjs",
     "test:core": "node --experimental-strip-types --test tests/*.test.ts",
     "test:n8n-contract": "node --test tests/n8n-contract-*.test.mjs",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
