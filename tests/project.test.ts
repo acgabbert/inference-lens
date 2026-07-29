@@ -18,6 +18,7 @@ import {
   parseProjectJson,
   prepareProjectRevisionRun,
   projectDirectoryName,
+  projectExportFileName,
   projectDraft,
   renamePromptTemplate,
   removePromptTemplateRevision,
@@ -67,7 +68,13 @@ test("creates a strict, portable Project v5 document", () => {
     "Draft - Windows- test.inference-lens",
   );
   assert.equal(projectDirectoryName("CON"), "CON-project.inference-lens");
+  assert.equal(
+    projectDirectoryName("COM1.archive"),
+    "COM1-project.archive.inference-lens",
+  );
   assert.equal(projectDirectoryName("   "), "Untitled.inference-lens");
+  assert.equal(projectExportFileName("Prompt Lab"), "Prompt Lab.project.json");
+  assert.equal(projectExportFileName("CON"), "CON-project.project.json");
   assert.equal(project.schemaVersion, 5);
   assert.equal(project.projectId, "project_example");
   const draft = projectDraft(project);

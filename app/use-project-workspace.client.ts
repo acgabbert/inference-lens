@@ -26,6 +26,9 @@ import type {
 export type ProjectErrorKind = "auto-save" | "tools-disabled";
 
 const PROJECT_AUTO_SAVE_DELAY_MS = 800;
+const PROJECT_AUTO_SAVE_MAX_WAIT_MS = 5_000;
+const PROJECT_AUTO_SAVE_RETRY_BASE_MS = 2_000;
+const PROJECT_AUTO_SAVE_RETRY_MAX_MS = 30_000;
 
 export interface ProjectWorkspaceHandleState {
   projectFile: ProjectFile | null;
@@ -86,8 +89,12 @@ export function useProjectWorkspace(input: {
   const projectChangeVersionRef = useRef(0);
   const projectWorkspaceRef = useRef<ProjectWorkspaceHandle | null>(null);
   const workspaceSaveTailRef = useRef<Promise<void>>(Promise.resolve());
+  const autoSaveWindowStartedAtRef = useRef<number | null>(null);
+  const autoSaveFailureCountRef = useRef(0);
+  const autoSaveRetryNotBeforeRef = useRef(0);
 
   function advanceProjectChangeVersion(): number {
+    autoSaveWindowStartedAtRef.current ??= Date.now();
     projectChangeVersionRef.current += 1;
     setProjectChangeVersion(projectChangeVersionRef.current);
     return projectChangeVersionRef.current;
@@ -99,6 +106,11 @@ export function useProjectWorkspace(input: {
   }
 
   function setCurrentWorkspace(workspace: ProjectWorkspaceHandle | null): void {
+    if (projectWorkspaceRef.current !== workspace) {
+      autoSaveWindowStartedAtRef.current = null;
+      autoSaveFailureCountRef.current = 0;
+      autoSaveRetryNotBeforeRef.current = 0;
+    }
     projectWorkspaceRef.current = workspace;
     setProjectWorkspace(workspace);
   }
@@ -223,11 +235,28 @@ export function useProjectWorkspace(input: {
 
     const workspace = projectWorkspace;
     const version = projectChangeVersion;
+    const now = Date.now();
+    autoSaveWindowStartedAtRef.current ??= now;
+    const maxWaitAt =
+      autoSaveWindowStartedAtRef.current + PROJECT_AUTO_SAVE_MAX_WAIT_MS;
+    const debounceDelay = Math.min(
+      PROJECT_AUTO_SAVE_DELAY_MS,
+      Math.max(0, maxWaitAt - now),
+    );
+    const retryDelay = Math.max(0, autoSaveRetryNotBeforeRef.current - now);
+    const saveDelay = Math.max(debounceDelay, retryDelay);
     const timer = window.setTimeout(() => {
+      // Start a fresh max-wait window when this snapshot is queued. Otherwise,
+      // edits arriving after the first deadline would each queue another save.
+      autoSaveWindowStartedAtRef.current = Date.now();
       const project = currentProjectDocument();
 
       void writeProjectWorkspace(workspace, project)
         .then(() => {
+          autoSaveFailureCountRef.current = 0;
+          autoSaveRetryNotBeforeRef.current = 0;
+          autoSaveWindowStartedAtRef.current =
+            projectChangeVersionRef.current === version ? null : Date.now();
           if (
             projectWorkspaceRef.current !== workspace ||
             projectChangeVersionRef.current !== version
@@ -243,6 +272,13 @@ export function useProjectWorkspace(input: {
         })
         .catch((error: unknown) => {
           if (projectWorkspaceRef.current !== workspace) return;
+          autoSaveFailureCountRef.current += 1;
+          const retryDelay = Math.min(
+            PROJECT_AUTO_SAVE_RETRY_BASE_MS *
+              2 ** (autoSaveFailureCountRef.current - 1),
+            PROJECT_AUTO_SAVE_RETRY_MAX_MS,
+          );
+          autoSaveRetryNotBeforeRef.current = Date.now() + retryDelay;
           updateProjectErrorKind("auto-save");
           setProjectError(
             error instanceof Error
@@ -250,7 +286,7 @@ export function useProjectWorkspace(input: {
               : "Could not auto-save the project.",
           );
         });
-    }, PROJECT_AUTO_SAVE_DELAY_MS);
+    }, saveDelay);
 
     return () => window.clearTimeout(timer);
     // Each dirtying mutation advances the version. Depending on the render-local
@@ -300,6 +336,9 @@ export function useProjectWorkspace(input: {
           projectWorkspaceRef.current === workspace &&
           projectChangeVersionRef.current === version
         ) {
+          autoSaveWindowStartedAtRef.current = null;
+          autoSaveFailureCountRef.current = 0;
+          autoSaveRetryNotBeforeRef.current = 0;
           setProjectFile(project);
           setProjectDirty(false);
           setProjectError(undefined);

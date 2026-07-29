@@ -126,12 +126,64 @@ fn project_manifest_path(directory: &Path) -> PathBuf {
 }
 
 fn validate_project_bundle_name(name: &str) -> Result<(), String> {
-    if name.is_empty()
-        || name == "."
-        || name == ".."
-        || name.contains(['/', '\\'])
-        || name.chars().any(char::is_control)
-        || !name.ends_with(PROJECT_DIRECTORY_SUFFIX)
+    let Some(base) = name.strip_suffix(PROJECT_DIRECTORY_SUFFIX) else {
+        return Err(command_error("The project bundle name is invalid."));
+    };
+    let invalid_character = |character: char| {
+        character.is_control()
+            || matches!(
+                character,
+                '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'
+            )
+    };
+    let reserved_windows_name = {
+        let stem = base.split('.').next().unwrap_or_default();
+        let lower = stem.to_ascii_lowercase();
+        matches!(lower.as_str(), "con" | "prn" | "aux" | "nul")
+            || (lower.len() == 4
+                && (lower.starts_with("com") || lower.starts_with("lpt"))
+                && matches!(lower.as_bytes()[3], b'1'..=b'9'))
+    };
+    let sanitized_reserved_name = {
+        let stem = base.split('.').next().unwrap_or_default();
+        let lower = stem.to_ascii_lowercase();
+        matches!(
+            lower.as_str(),
+            "con-project"
+                | "prn-project"
+                | "aux-project"
+                | "nul-project"
+                | "com1-project"
+                | "com2-project"
+                | "com3-project"
+                | "com4-project"
+                | "com5-project"
+                | "com6-project"
+                | "com7-project"
+                | "com8-project"
+                | "com9-project"
+                | "lpt1-project"
+                | "lpt2-project"
+                | "lpt3-project"
+                | "lpt4-project"
+                | "lpt5-project"
+                | "lpt6-project"
+                | "lpt7-project"
+                | "lpt8-project"
+                | "lpt9-project"
+        )
+    };
+    let max_base_length = if sanitized_reserved_name { 188 } else { 180 };
+    if base.is_empty()
+        || base.chars().count() > max_base_length
+        || base.trim() != base
+        || base.ends_with(['.', ' '])
+        || base.chars().any(invalid_character)
+        || base
+            .chars()
+            .any(|character| character.is_whitespace() && character != ' ')
+        || base.contains("  ")
+        || reserved_windows_name
     {
         return Err(command_error("The project bundle name is invalid."));
     }
@@ -1137,9 +1189,28 @@ mod tests {
     #[test]
     fn rejects_unsafe_or_existing_project_bundle_names() {
         let parent = TemporaryProjectDirectory::new();
-        assert!(
-            create_project_bundle(&parent.0, "../escape.inference-lens", "{}\n", true).is_err()
-        );
+        for invalid in [
+            "../escape.inference-lens",
+            "CON.inference-lens",
+            "COM1.archive.inference-lens",
+            "bad<name.inference-lens",
+            "bad:name.inference-lens",
+            "trailing..inference-lens",
+            "trailing .inference-lens",
+            "double  space.inference-lens",
+        ] {
+            assert!(
+                create_project_bundle(&parent.0, invalid, "{}\n", true).is_err(),
+                "accepted invalid bundle name: {invalid}"
+            );
+        }
+        create_project_bundle(
+            &parent.0,
+            "COM1-project.archive.inference-lens",
+            "{}\n",
+            true,
+        )
+        .expect("accept frontend-sanitized Windows device name");
         create_project_bundle(&parent.0, "Taken.inference-lens", "{}\n", true)
             .expect("create first bundle");
         assert!(create_project_bundle(&parent.0, "Taken.inference-lens", "{}\n", true).is_err());

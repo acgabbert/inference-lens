@@ -5,6 +5,7 @@ import {
   PROJECT_GITIGNORE_CONTENTS,
   parseProjectJson,
   projectDirectoryName,
+  projectExportFileName,
   serializeProjectFile,
 } from "../packages/core/src/project.ts";
 import type { ProjectFile } from "../packages/core/src/project.ts";
@@ -222,33 +223,41 @@ async function createBrowserProjectFolder(
         throw error;
       }
     }
-    const directory = await parent.getDirectoryHandle(bundleName, {
-      create: true,
-    });
-    if (options.protectFromGit) {
-      const ignoreFile = await directory.getFileHandle(".gitignore", {
+    const directory = await parent.getDirectoryHandle(bundleName, { create: true });
+    try {
+      if (options.protectFromGit) {
+        const ignoreFile = await directory.getFileHandle(".gitignore", {
+          create: true,
+        });
+        const ignoreWritable = await ignoreFile.createWritable();
+        await ignoreWritable.write(PROJECT_GITIGNORE_CONTENTS);
+        await ignoreWritable.close();
+      }
+      const contents = serializeProjectFile(project);
+      const fileHandle = await directory.getFileHandle(PROJECT_FILE_NAME, {
         create: true,
       });
-      const ignoreWritable = await ignoreFile.createWritable();
-      await ignoreWritable.write(PROJECT_GITIGNORE_CONTENTS);
-      await ignoreWritable.close();
+      const writable = await fileHandle.createWritable();
+      await writable.write(contents);
+      await writable.close();
+      return {
+        project,
+        handle: {
+          kind: "browser-directory",
+          displayName: directory.name,
+          displayPath: directory.name,
+          storage: browserStorage(directory, contents),
+        },
+      };
+    } catch (error) {
+      try {
+        await parent.removeEntry(bundleName, { recursive: true });
+      } catch {
+        // Preserve the creation error. A failed best-effort rollback should not
+        // disguise the operation that left the bundle incomplete.
+      }
+      throw error;
     }
-    const contents = serializeProjectFile(project);
-    const fileHandle = await directory.getFileHandle(PROJECT_FILE_NAME, {
-      create: true,
-    });
-    const writable = await fileHandle.createWritable();
-    await writable.write(contents);
-    await writable.close();
-    return {
-      project,
-      handle: {
-        kind: "browser-directory",
-        displayName: directory.name,
-        displayPath: directory.name,
-        storage: browserStorage(directory, contents),
-      },
-    };
   } catch (error) {
     if (isPickerCancellation(error)) return null;
     throw error;
@@ -442,7 +451,7 @@ export function downloadProjectFile(project: ProjectFile): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = PROJECT_FILE_NAME;
+  link.download = projectExportFileName(project.name);
   link.click();
   URL.revokeObjectURL(url);
 }

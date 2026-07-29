@@ -52,6 +52,7 @@ import type {
 
 export const PROJECT_DIRECTORY_SUFFIX = ".inference-lens";
 export const PROJECT_FILE_NAME = "project.json";
+export const PROJECT_EXPORT_FILE_SUFFIX = ".project.json";
 export const PROJECT_GITIGNORE_CONTENTS = "*\n";
 export const PROJECT_SCHEMA_VERSION = 5;
 
@@ -72,10 +73,22 @@ export function projectDirectoryName(name: string): string {
     .slice(0, 180)
     .replace(/[. ]+$/g, "");
   const base = sanitized || "Untitled";
-  const windowsReserved = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(
+  const reservedStem = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?=\.|$)/i.exec(
     base,
-  );
-  return `${windowsReserved ? `${base}-project` : base}${PROJECT_DIRECTORY_SUFFIX}`;
+  )?.[1];
+  const portableBase = reservedStem
+    ? `${reservedStem}-project${base.slice(reservedStem.length)}`
+    : base;
+  return `${portableBase}${PROJECT_DIRECTORY_SUFFIX}`;
+}
+
+/**
+ * Gives standalone downloads the same recognizable, portable base name as a
+ * project bundle while keeping the bundle's internal manifest name stable.
+ */
+export function projectExportFileName(name: string): string {
+  const directoryName = projectDirectoryName(name);
+  return `${directoryName.slice(0, -PROJECT_DIRECTORY_SUFFIX.length)}${PROJECT_EXPORT_FILE_SUFFIX}`;
 }
 
 export interface ConnectionRequirement {

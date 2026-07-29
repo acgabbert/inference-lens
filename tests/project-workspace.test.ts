@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   createProjectFolder,
+  downloadProjectFile,
 } from "../app/project-workspace.client.ts";
 import type {
   FileSystemDirectoryHandleLike,
@@ -18,10 +19,12 @@ class MemoryFile implements FileSystemFileHandleLike {
   readonly name: string;
   contents = "";
   private readonly writes: string[];
+  private readonly failingWrites: Set<string>;
 
-  constructor(name: string, writes: string[]) {
+  constructor(name: string, writes: string[], failingWrites: Set<string>) {
     this.name = name;
     this.writes = writes;
+    this.failingWrites = failingWrites;
   }
 
   async getFile(): Promise<File> {
@@ -31,6 +34,9 @@ class MemoryFile implements FileSystemFileHandleLike {
   async createWritable() {
     return {
       write: async (data: string) => {
+        if (this.failingWrites.delete(this.name)) {
+          throw new Error(`Could not write ${this.name}`);
+        }
         this.writes.push(this.name);
         this.contents = data;
       },
@@ -44,10 +50,16 @@ class MemoryDirectory implements FileSystemDirectoryHandleLike {
   readonly name: string;
   readonly entries = new Map<string, MemoryFile | MemoryDirectory>();
   private readonly writes: string[];
+  private readonly failingWrites: Set<string>;
 
-  constructor(name: string, writes: string[]) {
+  constructor(
+    name: string,
+    writes: string[],
+    failingWrites = new Set<string>(),
+  ) {
     this.name = name;
     this.writes = writes;
+    this.failingWrites = failingWrites;
   }
 
   async *values() {
@@ -60,7 +72,7 @@ class MemoryDirectory implements FileSystemDirectoryHandleLike {
     if (existing || !options?.create) {
       throw new DOMException("missing", "NotFoundError");
     }
-    const created = new MemoryFile(name, this.writes);
+    const created = new MemoryFile(name, this.writes, this.failingWrites);
     this.entries.set(name, created);
     return created;
   }
@@ -71,9 +83,19 @@ class MemoryDirectory implements FileSystemDirectoryHandleLike {
     if (existing || !options?.create) {
       throw new DOMException("missing", "NotFoundError");
     }
-    const created = new MemoryDirectory(name, this.writes);
+    const created = new MemoryDirectory(
+      name,
+      this.writes,
+      this.failingWrites,
+    );
     this.entries.set(name, created);
     return created;
+  }
+
+  async removeEntry(name: string) {
+    if (!this.entries.delete(name)) {
+      throw new DOMException("missing", "NotFoundError");
+    }
   }
 }
 
@@ -174,4 +196,78 @@ test("browser creation refuses to reuse an existing bundle", async () => {
     /already exists/,
   );
   assert.deepEqual(writes, []);
+});
+
+test("browser creation removes a partial bundle so creation can be retried", async () => {
+  const writes: string[] = [];
+  const parent = new MemoryDirectory(
+    "code-repository",
+    writes,
+    new Set(["project.json"]),
+  );
+
+  await assert.rejects(
+    () =>
+      withDirectoryPicker(parent, () =>
+        createProjectFolder(project(), {
+          name: "Prompt Lab",
+          protectFromGit: true,
+        }),
+      ),
+    /Could not write project\.json/,
+  );
+  assert.equal(parent.entries.has("Prompt Lab.inference-lens"), false);
+
+  const opened = await withDirectoryPicker(parent, () =>
+    createProjectFolder(project(), {
+      name: "Prompt Lab",
+      protectFromGit: true,
+    }),
+  );
+  assert.ok(opened);
+});
+
+test("project downloads use the sanitized project name", () => {
+  const originalDocument = globalThis.document;
+  const originalCreateObjectURL = URL.createObjectURL;
+  const originalRevokeObjectURL = URL.revokeObjectURL;
+  const link = {
+    href: "",
+    download: "",
+    clicked: false,
+    click() {
+      this.clicked = true;
+    },
+  };
+  Object.defineProperty(globalThis, "document", {
+    configurable: true,
+    value: { createElement: () => link },
+  });
+  Object.defineProperty(URL, "createObjectURL", {
+    configurable: true,
+    value: () => "blob:project",
+  });
+  Object.defineProperty(URL, "revokeObjectURL", {
+    configurable: true,
+    value: () => undefined,
+  });
+
+  try {
+    downloadProjectFile(project());
+    assert.equal(link.download, "Prompt Lab.project.json");
+    assert.equal(link.clicked, true);
+  } finally {
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: originalDocument,
+    });
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: originalCreateObjectURL,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: originalRevokeObjectURL,
+    });
+  }
 });

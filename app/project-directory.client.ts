@@ -31,6 +31,7 @@ export interface FileSystemDirectoryHandleLike {
     name: string,
     options?: { create?: boolean },
   ): Promise<FileSystemDirectoryHandleLike>;
+  removeEntry(name: string, options?: { recursive?: boolean }): Promise<void>;
 }
 
 export interface StoredRunTraceFile {
