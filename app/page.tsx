@@ -6,50 +6,20 @@ import type {
   RichInferenceRequest,
 } from "../packages/core/src/types";
 import {
-  appendPromptTemplateRevision,
-  createBranchRevision,
   createProjectFile,
-  createPromptTemplate,
-  detachPromptTemplateUse,
-  findPromptTemplateUsages,
-  insertPromptTemplateUse,
-  projectDraft,
-  removePromptTemplateUse,
-  renamePromptTemplate,
-  resolveProjectRevision,
-  setPromptTemplateRecommendedTarget,
-  updateProjectDraft,
-  updatePromptTemplateUseToLatest,
-  updatePromptTemplateUseValues,
-} from "../packages/core/src/project";
-import type {
-  ProjectConversationItem,
-  PromptTemplateContent,
-  PromptTemplateRecommendedTarget,
-  TemplateRunOverrides,
 } from "../packages/core/src/project";
 import {
   createEntityId,
   createSingleTurnRunExecution,
 } from "../packages/core/src/run-kernel";
-import {
-  importExternalPromptCandidate,
-  importExternalPromptTemplateCandidate,
-} from "../packages/core/src/external-prompt-project.ts";
-import type {
-  ExternalPromptCandidate,
-} from "../packages/core/src/external-prompt-import.ts";
 import type {
   RunState,
   ConversationMessage,
   ConversationId,
   ConversationRevisionId,
   MessageId,
-  PromptTemplateId,
-  PromptTemplateUseId,
 } from "../packages/core/src/run-kernel";
 import { buildChatCompletionsRequest } from "../packages/core/src/openai-compatible";
-import { discoverTemplateVariables } from "../packages/core/src/template-engine";
 import { conversationMessageText } from "./conversation-display";
 import {
   createInferenceTransport,
@@ -73,10 +43,7 @@ import { ProjectCreationDialog } from "./project-creation-dialog.client";
 import { ModelCombobox } from "./model-combobox.client";
 import { useModelDiscovery } from "./use-model-discovery.client";
 import { useConnectionProfiles } from "./use-connection-profiles.client";
-import {
-  removeDraftMessage,
-  useRequestDraft,
-} from "./use-request-draft.client";
+import { useRequestDraft } from "./use-request-draft.client";
 import { useProjectWorkspace } from "./use-project-workspace.client";
 import { ConnectionDrawer } from "./connection-drawer.client";
 import { Topbar } from "./topbar.client";
@@ -95,10 +62,6 @@ import {
   ProjectTemplatesPane,
   TemplateUseCard,
 } from "./project-templates-pane.client";
-import {
-  pendingBranchMessagesAfterItemUpdate,
-  projectTemplateWorkbenchView,
-} from "./project-template-workbench.client";
 import {
   ConfirmationDialog,
 } from "./confirmation-dialog.client";
@@ -245,13 +208,6 @@ function HomeContent() {
   const [savedRunVersion, setSavedRunVersion] = useState(0);
   const [requestTab, setRequestTab] =
     useState<"messages" | "templates" | "tools">("messages");
-  const [importNotice, setImportNotice] = useState<{
-    name: string;
-    variableCount: number;
-    template: boolean;
-  }>();
-  const [templateRunOverrides, setTemplateRunOverrides] =
-    useState<TemplateRunOverrides>({});
   const clearTemplateOverridesRef = useRef<() => void>(() => {});
   const [workbenchView, setWorkbenchView] =
     useState<WorkbenchView>("request");
@@ -438,7 +394,8 @@ function HomeContent() {
     enabledToolIds.includes(id),
   ).length;
   const selectedToolCount = selectedProjectToolCount + requestTools.length;
-  const activeProjectRevision = projectFile?.conversationRevisions.find(
+  /* Legacy template owner, retained in history by Git. */
+  /* const activeProjectRevision = projectFile?.conversationRevisions.find(
     ({ id }) => id === projectFile.defaults.conversationRevisionId,
   );
   const templateWorkbench = projectTemplateWorkbenchView({
@@ -901,7 +858,51 @@ function HomeContent() {
           item.kind === "template-use" || remainingIds.has(item.message.id),
       ),
     );
+  } */
+
+  const { discovery: activeModelDiscovery, loadModels } = useModelDiscovery({
+    profileId: activeProfile.id,
+    endpoint: activeProfile.endpoint,
+    capabilities: activeCapabilities,
+    transport: inferenceTransport,
+    prepareCredential: credential.prepare,
+  });
+
+  function ensureProjectDocument() {
+    return projectFile
+      ? project.currentProjectDocument()
+      : project.materializeProject();
   }
+
+  const projectTemplates = useProjectTemplates({
+    projectFile,
+    projectDirty,
+    messages,
+    model: activeModel,
+    temperature: activeTemperature,
+    serializedTools,
+    toolMocks,
+    enabledToolIds,
+    branchParentRevisionId: branchContext?.parentConversationRevisionId,
+    ensureProjectDocument,
+    adoptProjectMutation: project.adoptProjectMutation,
+    replaceProjectDraft,
+    markProjectError: project.setError,
+    resetMessages,
+    addDraftMessage: addMessage,
+    updateDraftMessage: updateMessage,
+    removeDraftMessage: removeMessage,
+    clearPendingBranch: () => setBranchContext(null),
+    requestConfirmation: setConfirmation,
+    onImportApplied() {
+      setRequestTab("messages");
+      setWorkbenchView("request");
+      setN8nImportOpen(false);
+    },
+  });
+  useEffect(() => {
+    clearTemplateOverridesRef.current = projectTemplates.clearTransientOverrides;
+  }, [projectTemplates.clearTransientOverrides]);
 
   const { output, reasoning, status } = (() => {
     const attempts =
