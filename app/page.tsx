@@ -20,12 +20,10 @@ import {
   detachPromptTemplateUse,
   findPromptTemplateUsages,
   insertPromptTemplateUse,
-  prepareProjectRevisionRun,
   projectDraft,
   removePromptTemplateUse,
   renamePromptTemplate,
   resolveProjectRevision,
-  sameConversationMessages,
   setPromptTemplateRecommendedTarget,
   updateProjectDraft,
   updatePromptTemplateUseToLatest,
@@ -33,14 +31,12 @@ import {
 } from "../packages/core/src/project";
 import type {
   ProjectConversationItem,
-  ProjectTemplateDiagnostic,
   PromptTemplateContent,
   PromptTemplateRecommendedTarget,
   TemplateRunOverrides,
 } from "../packages/core/src/project";
 import {
   createEntityId,
-  createResolvedRunInput,
   createSingleTurnRunExecution,
   createRunTrace,
   RunCoordinator,
@@ -67,11 +63,8 @@ import type {
   ConversationRevisionId,
   MessageId,
   RunId,
-  RunConversationIdentity,
   PromptTemplateId,
   PromptTemplateUseId,
-  ResolvedTemplateUse,
-  ToolDefinition,
   ToolResult,
 } from "../packages/core/src/run-kernel";
 import { buildChatCompletionsRequest } from "../packages/core/src/openai-compatible";
@@ -157,6 +150,10 @@ import { RunReadinessNotice } from "./run-readiness-notice.client";
 import type {
   ConfirmationDialogRequest,
 } from "./confirmation-dialog.client";
+import {
+  prepareWorkbenchRun,
+  type WorkbenchBranchContext,
+} from "./prepare-workbench-run.client";
 
 const inferenceTransport = createInferenceTransport();
 
@@ -164,10 +161,7 @@ const MARKDOWN_PREVIEW_STORAGE_KEY = "inference-lens:markdown-preview:v1";
 const STREAMING_PREFERENCE_STORAGE_KEY =
   "inference-lens:streaming-preference:v1";
 
-interface BranchContext {
-  parentRunId: RunId;
-  parentConversationRevisionId?: ConversationRevisionId;
-  branchMessageId: MessageId;
+interface BranchContext extends WorkbenchBranchContext {
   parentTraceNeedsSaving: boolean;
 }
 
@@ -249,17 +243,6 @@ function displayStatus(state: RunState | null): DisplayStatus {
     default:
       return "running";
   }
-}
-
-function templateRunErrorMessage(
-  diagnostics: ProjectTemplateDiagnostic[],
-): string {
-  const first = diagnostics[0];
-  if (!first) return "Resolve the template diagnostics before running.";
-  const remaining = diagnostics.length - 1;
-  return `Cannot run template use "${first.templateUseId}": ${first.diagnostic.message}${
-    remaining > 0 ? ` (${remaining} more ${remaining === 1 ? "issue" : "issues"})` : ""
-  }`;
 }
 
 function HomeContent() {
@@ -1054,26 +1037,6 @@ function HomeContent() {
     };
   }
 
-  function currentRunIdentity(): RunConversationIdentity {
-    const revision = projectFile?.conversationRevisions.find(
-      ({ id }) => id === projectFile.defaults.conversationRevisionId,
-    );
-    if (revision) {
-      return {
-        conversationId: revision.conversationId,
-        conversationRevisionId: revision.id,
-      };
-    }
-    const conversationId =
-      adHocConversationIdRef.current ??
-      createEntityId("conversation", randomUUID());
-    adHocConversationIdRef.current = conversationId;
-    return {
-      conversationId,
-      conversationRevisionId: createEntityId("revision", randomUUID()),
-    };
-  }
-
   function templateRequestPreview():
     | { body: unknown; messages: ConversationMessage[] }
     | { error: string }
@@ -1289,129 +1252,49 @@ function HomeContent() {
       );
       return;
     }
-    let selectedTools: ToolDefinition[];
-    try {
-      selectedTools = [...resolvedTools(), ...requestTools];
-      const names = new Set<string>();
-      selectedTools.forEach((tool) => {
-        if (!tool.name.trim()) {
-          throw new Error("Every attached tool needs a name.");
-        }
-        if (names.has(tool.name)) {
-          throw new Error(`More than one attached tool is named "${tool.name}".`);
-        }
-        names.add(tool.name);
-      });
-      if (selectedTools.length > 0 && !activeCapabilities.tools) {
-        project.setToolsDisabledError(
-          `This request includes ${selectedTools.length} selected ${
-            selectedTools.length === 1 ? "tool" : "tools"
-          }, but profile "${activeProfile.name || "Untitled profile"}" does not allow tool calling.`,
-        );
-        return;
+    const requestSnapshot = currentRequest();
+    const prepared = prepareWorkbenchRun({
+      request: requestSnapshot,
+      project: projectFile ?? undefined,
+      projectTools: resolvedTools(),
+      requestTools,
+      capabilities: activeCapabilities,
+      profileName: activeProfile.name,
+      branchContext: branchContext ?? undefined,
+      templateRunOverrides,
+      adHocConversationId: adHocConversationIdRef.current ?? undefined,
+    });
+    if (!prepared.ok) {
+      if (prepared.errorKind === "tools-disabled") {
+        project.setToolsDisabledError(prepared.message);
+      } else {
+        project.setError(prepared.message);
       }
-    } catch (error) {
-      project.setError(error instanceof Error ? error.message : "Tools are invalid.");
       return;
     }
-    let request = currentRequest();
-    let projectForRun = projectFile;
-    let identity: RunConversationIdentity;
-    let branchedFrom: RunTrace["branchedFrom"];
-    if (branchContext) {
-      if (projectFile) {
-        if (!branchContext.parentConversationRevisionId) {
-          project.setError("This branch context is missing its parent revision. Start the branch again from its source run.");
-          return;
-        }
-        try {
-          const parent = projectFile.conversationRevisions.find(
-            ({ id }) => id === branchContext.parentConversationRevisionId,
-          );
-          if (!parent) throw new Error("The parent revision is no longer in this project.");
-          const branchedProject = createBranchRevision(projectFile, {
-            conversationId: parent.conversationId,
-            parentRevisionId: parent.id,
-            messages: request.messages,
-            runOverrides: templateRunOverrides,
-          });
-          const revision = branchedProject.conversationRevisions.at(-1)!;
-          project.adoptBranchRevision(branchedProject);
-          projectForRun = branchedProject;
-          identity = {
-            conversationId: revision.conversationId,
-            conversationRevisionId: revision.id,
-          };
-        } catch (error) {
-          project.setError(error instanceof Error ? error.message : "Could not create the branch revision.");
-          return;
-        }
-      } else {
-        identity = currentRunIdentity();
-      }
-      branchedFrom = {
-        runId: branchContext.parentRunId,
-        parentConversationRevisionId: branchContext.parentConversationRevisionId,
-        messageId: branchContext.branchMessageId,
-      };
-      setBranchContext(null);
-    } else {
-      identity = currentRunIdentity();
+    if (prepared.projectMutation) project.adoptBranchRevision(prepared.projectMutation);
+    if (prepared.executedRevisionId) {
+      executedRevisionIdsRef.current.add(prepared.executedRevisionId);
     }
-    let templateResolutions: ResolvedTemplateUse[] = [];
-    if (
-      projectForRun &&
-      identity.conversationRevisionId ===
-        projectForRun.defaults.conversationRevisionId
-    ) {
-      const revision = projectForRun.conversationRevisions.find(
-        ({ id }) => id === identity.conversationRevisionId,
-      );
-      if (!revision) {
-        project.setError("The active project conversation revision no longer exists.");
-        return;
-      }
-      const prepared = prepareProjectRevisionRun(
-        projectForRun,
-        revision,
-        templateRunOverrides,
-      );
-      if (!prepared.ok) {
-        project.setError(templateRunErrorMessage(prepared.diagnostics));
-        return;
-      }
-      const hasTemplateUses = revision.items.some(
-        (item) => item.kind === "template-use",
-      );
-      if (
-        hasTemplateUses &&
-        !sameConversationMessages(request.messages, prepared.messages)
-      ) {
-        project.setError(
-          "This template-backed conversation differs from its generated messages. Detach the template use before editing generated text.",
-        );
-        return;
-      }
-      if (hasTemplateUses) {
-        request = { ...request, messages: prepared.messages };
-      }
-      templateResolutions = prepared.templateResolutions;
+    if (prepared.adHocConversationId) {
+      adHocConversationIdRef.current = prepared.adHocConversationId;
     }
-    const input = createResolvedRunInput(
-      request,
-      identity,
-      selectedTools,
-      templateResolutions,
-    );
-    if (projectForRun) {
-      executedRevisionIdsRef.current.add(identity.conversationRevisionId);
-    }
+    if (prepared.consumesPendingBranch) setBranchContext(null);
+    const input = prepared.input;
+    const identity = {
+      conversationId: input.conversationId,
+      conversationRevisionId: input.conversationRevisionId,
+    };
+    const request = {
+      ...requestSnapshot,
+      messages: input.messages,
+    };
     input.target.profileId = createEntityId("profile", activeProfile.id);
     const coordinator = new RunCoordinator(input);
     parentTraceGenerationRef.current += 1;
     setParentTrace({ status: "idle" });
-    if (branchedFrom) runBranchProvenanceRef.current.set(input.runId, branchedFrom);
-    setVisibleBranchProvenance(branchedFrom);
+    if (prepared.branchedFrom) runBranchProvenanceRef.current.set(input.runId, prepared.branchedFrom);
+    setVisibleBranchProvenance(prepared.branchedFrom);
     const requestGeneration = ++requestGenerationRef.current;
     abortRef.current?.abort();
     const controller = new AbortController();
