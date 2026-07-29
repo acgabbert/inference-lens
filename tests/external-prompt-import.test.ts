@@ -609,3 +609,65 @@ test("uses a captured string only when one complete expression is attributable",
   });
   assert.deepEqual(projection.values, { topic: "Captured topic" });
 });
+
+test("the digest is stable across a parse round trip", async () => {
+  // Several field schemas trim their input, so a digest taken over raw evidence
+  // would not survive the parse every import path performs before verifying it.
+  const evidence = candidateEvidence({
+    source: {
+      adapter: "synthetic-fixture",
+      resource: {
+        kind: "workflow",
+        id: "workflow-17",
+        name: "Fixture workflow ",
+      },
+      execution: { id: "execution-23" },
+    },
+    invocation: {
+      id: "node-5",
+      name: " Fixture prompt",
+      type: "fixture.prompt",
+    },
+  });
+
+  const candidate = await createExternalPromptCandidate(evidence);
+  assert.equal(candidate.source.resource.name, "Fixture workflow");
+  assert.equal(candidate.invocation.name, "Fixture prompt");
+  assert.equal(
+    await computeExternalPromptSourceDigest(
+      parseExternalPromptCandidate(candidate),
+    ),
+    candidate.sourceDigest,
+  );
+});
+
+test("names carrying incidental whitespace still import", async () => {
+  const candidate = await createExternalPromptCandidate(
+    candidateEvidence({
+      source: {
+        adapter: "synthetic-fixture",
+        resource: {
+          kind: "workflow",
+          id: "workflow-17",
+          name: "Fixture workflow ",
+        },
+        execution: { id: "execution-23" },
+      },
+    }),
+  );
+
+  const imported = await importExternalPromptCandidate(project(), candidate, {
+    importedAt,
+  });
+  assert.equal(
+    imported.project.externalImports.at(-1)?.source.resource.name,
+    "Fixture workflow",
+  );
+
+  const asTemplate = await importExternalPromptTemplateCandidate(
+    project(),
+    candidate,
+    { importedAt },
+  );
+  assert.equal(asTemplate.project.promptTemplates.length, 1);
+});

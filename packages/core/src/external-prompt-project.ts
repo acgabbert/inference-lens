@@ -183,6 +183,19 @@ function uniqueVariableName(preferred: string, used: Set<string>): string {
   }
 }
 
+/**
+ * Groups bindings that should share one native template variable.
+ *
+ * Identical expression text is treated as one variable. This is a deliberate
+ * approximation, not an equivalence proof: the same n8n expression evaluated at
+ * two points in a run can legitimately yield different values, so collapsing
+ * them loses that distinction. It is accepted because a reusable template is
+ * more useful with one named variable than with several identical-looking ones,
+ * and because the loss is bounded — {@link projectExternalPromptTemplate} only
+ * carries a captured value across when every binding mapped to the variable
+ * resolved to the same string, and the authored expressions remain verbatim in
+ * the import receipt either way.
+ */
 function bindingKey(binding: ExpressionBinding): string {
   return binding.expression;
 }

@@ -516,6 +516,20 @@ export function parseExternalPromptCandidate(
   return parsed.data;
 }
 
+/**
+ * The subset of candidate evidence the digest covers. Warnings and fidelity are
+ * excluded: they describe how the evidence was obtained, not what it says.
+ */
+const digestEvidenceSchema = z
+  .object({
+    source: externalPromptSourceSchema,
+    invocation: externalInvocationRefSchema,
+    authored: z.array(authoredPromptFieldSchema).min(1),
+    resolved: resolvedPromptSnapshotSchema.optional(),
+    bindings: z.array(expressionBindingSchema),
+  })
+  .strict();
+
 function canonicalJsonValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalJsonValue);
   if (!value || typeof value !== "object") return value;
@@ -528,16 +542,29 @@ function canonicalJsonValue(value: unknown): unknown {
   );
 }
 
+/**
+ * Normalizes evidence through the same schema the stored candidate is parsed
+ * with, so the digest is taken over post-validation values. Several field
+ * schemas trim their input; digesting raw evidence would produce a digest that
+ * no longer matches the candidate once it has been parsed, and every import
+ * path re-derives the digest from a parsed candidate to detect tampering.
+ */
 function candidateDigestEvidence(
   candidate: ExternalPromptCandidateEvidence,
 ): unknown {
-  return {
+  const parsed = digestEvidenceSchema.safeParse({
     source: candidate.source,
     invocation: candidate.invocation,
     authored: candidate.authored,
-    resolved: candidate.resolved,
+    ...(candidate.resolved === undefined
+      ? {}
+      : { resolved: candidate.resolved }),
     bindings: candidate.bindings,
-  };
+  });
+  if (!parsed.success) {
+    throw new ExternalPromptCandidateValidationError(parsed.error.issues);
+  }
+  return parsed.data;
 }
 
 export async function computeExternalPromptSourceDigest(

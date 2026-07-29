@@ -28,10 +28,26 @@ export interface N8nNodeSnapshot {
   parameters: Record<string, unknown>;
 }
 
+/**
+ * A node that could not be read as a full snapshot but still carries enough
+ * identity to be reported to the user.
+ */
+export interface N8nUnparsedNode {
+  id: string;
+  name: string;
+  type: string;
+}
+
 export interface N8nWorkflowSnapshot {
   id: string;
   name: string;
   nodes: N8nNodeSnapshot[];
+  /**
+   * Nodes skipped by {@link parseN8nWorkflowSnapshot}. A workflow may legally
+   * contain nodes this importer cannot read; those must not make the rest of
+   * the workflow unimportable.
+   */
+  unparsedNodes: N8nUnparsedNode[];
   connections: Record<string, unknown>;
 }
 
@@ -58,7 +74,16 @@ export type N8nPromptExtraction =
 
 export interface N8nPromptExtractor {
   readonly id: string;
+  /**
+   * Whether this extractor handles the node's kind at all. Implementations must
+   * depend only on `node.type`, so recognition can also be tested against a
+   * node whose parameters could not be read.
+   */
   recognizes(node: N8nNodeSnapshot): boolean;
+  /**
+   * Whether this extractor handles the node's specific `typeVersion`. Several
+   * extractors may recognize one type while each supports a different version.
+   */
   supports(node: N8nNodeSnapshot): boolean;
   extract(
     context: N8nExtractionContext,
@@ -97,6 +122,27 @@ function parseNode(value: unknown): N8nNodeSnapshot | undefined {
   };
 }
 
+function parseUnparsedNode(value: unknown): N8nUnparsedNode | undefined {
+  if (!isRecord(value)) return undefined;
+  if (
+    typeof value.id !== "string" ||
+    typeof value.name !== "string" ||
+    typeof value.type !== "string" ||
+    !value.id ||
+    !value.name ||
+    !value.type
+  ) {
+    return undefined;
+  }
+  return { id: value.id, name: value.name, type: value.type };
+}
+
+/**
+ * Reads the workflow envelope. An unreadable envelope is a genuine
+ * incompatibility, but an individual unreadable node is not: workflows mix node
+ * types freely and only the ones an extractor recognizes are ever inspected.
+ * Unreadable nodes are therefore collected rather than failing the workflow.
+ */
 export function parseN8nWorkflowSnapshot(
   value: unknown,
 ): N8nWorkflowSnapshot | undefined {
@@ -109,12 +155,22 @@ export function parseN8nWorkflowSnapshot(
   ) {
     return undefined;
   }
-  const nodes = value.nodes.map(parseNode);
-  if (nodes.some((node) => !node)) return undefined;
+  const nodes: N8nNodeSnapshot[] = [];
+  const unparsedNodes: N8nUnparsedNode[] = [];
+  for (const entry of value.nodes) {
+    const node = parseNode(entry);
+    if (node) {
+      nodes.push(node);
+      continue;
+    }
+    const identity = parseUnparsedNode(entry);
+    if (identity) unparsedNodes.push(identity);
+  }
   return {
     id: value.id,
     name: value.name,
-    nodes: nodes as N8nNodeSnapshot[],
+    nodes,
+    unparsedNodes,
     connections: value.connections,
   };
 }
@@ -747,11 +803,14 @@ export async function extractN8nPromptCandidates(
   };
   const results: N8nPromptExtraction[] = [];
   for (const node of workflow.nodes) {
-    const extractor = extractors.find((candidate) =>
+    const recognized = extractors.filter((candidate) =>
       candidate.recognizes(node),
     );
-    if (!extractor) continue;
-    if (!extractor.supports(node)) {
+    if (recognized.length === 0) continue;
+    // Extractors are registered per node version, so recognition of the type
+    // must not shadow a sibling extractor that supports this exact version.
+    const extractor = recognized.find((candidate) => candidate.supports(node));
+    if (!extractor) {
       results.push({
         status: "unsupported",
         invocation: invocationFor(node),
@@ -761,6 +820,18 @@ export async function extractN8nPromptCandidates(
       continue;
     }
     results.push(...(await extractor.extract(context, node)));
+  }
+  for (const node of workflow.unparsedNodes) {
+    // Only surface unreadable nodes an extractor would have inspected;
+    // reporting every unreadable node in the workflow would be noise.
+    const probe: N8nNodeSnapshot = { ...node, parameters: {} };
+    if (!extractors.some((candidate) => candidate.recognizes(probe))) continue;
+    results.push({
+      status: "unsupported",
+      invocation: { id: node.id, name: node.name, type: node.type },
+      code: "incompatible-node-snapshot",
+      message: `${node.type} could not be read from the saved workflow snapshot, so its prompt cannot be reviewed.`,
+    });
   }
   return results;
 }

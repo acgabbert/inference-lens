@@ -8,9 +8,12 @@ import {
   projectExternalPromptTemplate,
 } from "../packages/core/src/external-prompt-project.ts";
 import {
+  defaultN8nPromptExtractors,
   extractN8nPromptCandidates,
+  parseN8nWorkflowSnapshot,
   scanN8nExpressionRegions,
   type N8nExecutionDetail,
+  type N8nPromptExtractor,
   type N8nWorkflowDetail,
 } from "../services/api/src/index.ts";
 
@@ -265,4 +268,160 @@ test("recognized future Basic LLM Chain versions are explicit unsupported result
     message:
       "@n8n/n8n-nodes-langchain.chainLlm@2 is recognized, but this importer supports only a fixture-verified node version.",
   });
+});
+
+test("a sibling extractor supporting a newer node version is not shadowed", async () => {
+  const execution = clone(
+    await executionFixture(
+      "basic-llm-chain-success",
+      "execution-success.json",
+    ),
+  );
+  const workflowData = dataRecord(execution).workflowData as Record<
+    string,
+    unknown
+  >;
+  for (const node of workflowData.nodes as Array<Record<string, unknown>>) {
+    if (node.type === "@n8n/n8n-nodes-langchain.chainLlm") {
+      node.typeVersion = 1.11;
+    }
+  }
+
+  // Extractors are registered one per supported node version. Registering a
+  // newer one alongside the fixture-verified extractor must reach it.
+  const nextVersionExtractor: N8nPromptExtractor = {
+    id: "basic-llm-chain-1-11",
+    recognizes: (node) => node.type === "@n8n/n8n-nodes-langchain.chainLlm",
+    supports: (node) => node.typeVersion === 1.11,
+    extract: async (_context, node) => [
+      {
+        status: "unsupported",
+        invocation: { id: node.id, name: node.name, type: node.type },
+        code: "unsupported-node-configuration",
+        message: "handled by the 1.11 extractor",
+      },
+    ],
+  };
+
+  const results = await extractN8nPromptCandidates(execution, undefined, [
+    ...defaultN8nPromptExtractors,
+    nextVersionExtractor,
+  ]);
+  assert.ok(
+    results.length > 0 &&
+      results.every(
+        (result) =>
+          result.status === "unsupported" &&
+          result.message === "handled by the 1.11 extractor",
+      ),
+    "every recognized node should reach the extractor supporting its version",
+  );
+
+  // Without a sibling that supports the version, the unsupported result stands.
+  const withoutSibling = await extractN8nPromptCandidates(execution, undefined, [
+    ...defaultN8nPromptExtractors,
+  ]);
+  assert.ok(
+    withoutSibling.every(
+      (result) =>
+        result.status === "unsupported" &&
+        result.code === "unsupported-node-version",
+    ),
+  );
+});
+
+test("an unreadable node is skipped instead of failing the whole workflow", async () => {
+  const execution = clone(
+    await executionFixture(
+      "basic-llm-chain-success",
+      "execution-success.json",
+    ),
+  );
+  const runData = runDataRecord(execution);
+  const parentRuns = runData["Compound prompt cases"] as Array<{
+    data: { main: unknown[][] };
+  }>;
+  parentRuns[0]!.data.main[0] = parentRuns[0]!.data.main[0]!.slice(0, 1);
+  runData["Fixture OpenAI Chat Model"] = (
+    runData["Fixture OpenAI Chat Model"] as unknown[]
+  ).slice(0, 1);
+
+  const workflowData = dataRecord(execution).workflowData as Record<
+    string,
+    unknown
+  >;
+  const nodes = workflowData.nodes as Array<Record<string, unknown>>;
+  // An unrelated node this importer cannot read must not block the import, and
+  // must not be reported: no extractor would have inspected it.
+  nodes.push({ id: "node_opaque", name: "Opaque node", type: "unknown.node" });
+  // A recognized node that cannot be read is reported instead of vanishing.
+  nodes.push({
+    id: "node_broken",
+    name: "Broken chain",
+    type: "@n8n/n8n-nodes-langchain.chainLlm",
+  });
+
+  const results = await extractN8nPromptCandidates(execution);
+  const compound = results.find(
+    (result) =>
+      result.status === "candidate" &&
+      result.candidate.invocation.name === "Compound prompt cases",
+  );
+  assert.ok(compound?.status === "candidate");
+  assert.equal(compound.candidate.fidelity, "execution-reconstructed");
+
+  assert.deepEqual(
+    results.find(
+      (result) =>
+        result.status === "unsupported" && result.invocation.id === "node_broken",
+    ),
+    {
+      status: "unsupported",
+      invocation: {
+        id: "node_broken",
+        name: "Broken chain",
+        type: "@n8n/n8n-nodes-langchain.chainLlm",
+      },
+      code: "incompatible-node-snapshot",
+      message:
+        "@n8n/n8n-nodes-langchain.chainLlm could not be read from the saved workflow snapshot, so its prompt cannot be reviewed.",
+    },
+  );
+  assert.equal(
+    results.some(
+      (result) =>
+        result.status === "unsupported" && result.invocation.id === "node_opaque",
+    ),
+    false,
+  );
+});
+
+test("an unreadable workflow envelope is still rejected", () => {
+  for (const envelope of [
+    undefined,
+    null,
+    "workflow",
+    [],
+    { name: "no id", nodes: [], connections: {} },
+    { id: "w", nodes: [], connections: {} },
+    { id: "w", name: "no nodes", connections: {} },
+    { id: "w", name: "bad nodes", nodes: "changed shape", connections: {} },
+    { id: "w", name: "no connections", nodes: [] },
+  ]) {
+    assert.equal(
+      parseN8nWorkflowSnapshot(envelope),
+      undefined,
+      `expected ${JSON.stringify(envelope)} to be unreadable`,
+    );
+  }
+
+  assert.deepEqual(
+    parseN8nWorkflowSnapshot({
+      id: "w",
+      name: "Readable",
+      nodes: [{}],
+      connections: {},
+    }),
+    { id: "w", name: "Readable", nodes: [], unparsedNodes: [], connections: {} },
+  );
 });

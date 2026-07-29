@@ -295,12 +295,14 @@ test("fetches selected execution detail lazily but returns only its safe normali
   assert.doesNotMatch(text, /private prompt|credentials|n8n-secret/);
 });
 
-test("reports incompatible saved and current workflow snapshots explicitly", async () => {
+test("an unreadable node falls back to the current workflow without failing it", async () => {
   const fetchImplementation: typeof fetch = async (input) => {
     if (input.toString().includes("/workflows/workflow_1")) {
       return jsonResponse({
         id: "workflow_1",
         name: "Changed workflow",
+        // A node this importer cannot read. The workflow envelope is still
+        // sound, so the workflow itself must remain importable.
         nodes: [{}],
         connections: {},
       });
@@ -334,9 +336,9 @@ test("reports incompatible saved and current workflow snapshots explicitly", asy
     },
     detailAvailable: true,
     discovery: {
-      status: "workflow-incompatible",
+      status: "no-supported-invocations",
       message:
-        "The saved and current workflow snapshots are not compatible with this importer.",
+        "This workflow contains no AI invocation supported by this importer.",
     },
     extractions: [],
   });

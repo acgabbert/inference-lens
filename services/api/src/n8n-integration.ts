@@ -661,6 +661,9 @@ export async function loadN8nSelectedExecution(
     detail,
     currentWorkflow,
   );
+  // Defensive: a current workflow that satisfies workflowDetailSchema also
+  // satisfies the snapshot envelope check today, so this branch is reachable
+  // only if those two definitions drift apart.
   const discovery: N8nSelectedExecution["discovery"] =
     !executionWorkflowSnapshot && !currentWorkflowSnapshot
       ? {
