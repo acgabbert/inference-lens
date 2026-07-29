@@ -697,6 +697,27 @@ function HomeContent() {
     if (projectFile) replaceProjectDraft(projectDraft(projectFile, next));
   }
 
+  function saveTemplateUseRunValue(
+    templateUseId: PromptTemplateUseId,
+    values: Record<string, string>,
+    useOverrides: Record<string, string>,
+  ): void {
+    const { project: base, revisionId } = projectForUseMutation();
+    const nextProject = updatePromptTemplateUseValues(base, {
+      conversationRevisionId: revisionId,
+      templateUseId,
+      values,
+    });
+    const nextOverrides = { ...templateRunOverrides };
+    if (Object.keys(useOverrides).length > 0) {
+      nextOverrides[templateUseId] = useOverrides;
+    } else {
+      delete nextOverrides[templateUseId];
+    }
+    setTemplateRunOverrides(nextOverrides);
+    adoptAuthoredProject(nextProject, nextOverrides);
+  }
+
   function updateTemplateUseToLatestRevision(
     templateUseId: PromptTemplateUseId,
   ): void {
@@ -2122,6 +2143,13 @@ function HomeContent() {
                     )}
                     onSaveValues={(values) =>
                       updateTemplateUseValues(item.use.id, values)
+                    }
+                    onSaveRunValue={(values, runOverrides) =>
+                      saveTemplateUseRunValue(
+                        item.use.id,
+                        values,
+                        runOverrides,
+                      )
                     }
                     onRunOverridesChange={(values) =>
                       updateTemplateUseOverride(item.use.id, values)

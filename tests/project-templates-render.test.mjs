@@ -77,7 +77,7 @@ test("renders the project template library and revision defaults", async () => {
   assert.match(html, /Add to conversation/);
 });
 
-test("renders saved and run-only template use values distinctly", async () => {
+test("renders a multiline run value with save and reset actions", async () => {
   const html = await render("TemplateUseCard", {
     template,
     use: {
@@ -89,20 +89,22 @@ test("renders saved and run-only template use values distinctly", async () => {
       fragmentRole: "user",
     },
     diagnostics: [],
-    runOverrides: { topic: "temporary" },
+    runOverrides: { topic: "temporary\nsecond line" },
     onSaveValues: () => {},
+    onSaveRunValue: () => {},
     onRunOverridesChange: () => {},
     onUpdateLatest: () => {},
     onDetach: () => {},
     onRemove: () => {},
   });
 
-  assert.match(html, /Saved value/);
-  assert.match(html, /Run-only override/);
-  assert.match(html, /Effective: temporary/);
+  assert.match(html, /Value for run/);
+  assert.match(html, /<textarea[^>]*>temporary\nsecond line<\/textarea>/);
+  assert.match(html, /Session override/);
   assert.match(html, /Prompt preview/);
   assert.match(html, /template-variable-chip/);
-  assert.match(html, /Clear override/);
+  assert.match(html, /Save to project/);
+  assert.match(html, /Reset/);
 });
 
 test("summarizes unresolved template values without repeating diagnostic rows", async () => {
@@ -136,6 +138,7 @@ test("summarizes unresolved template values without repeating diagnostic rows", 
     diagnostics: [diagnostic, diagnostic],
     runOverrides: {},
     onSaveValues: () => {},
+    onSaveRunValue: () => {},
     onRunOverridesChange: () => {},
     onUpdateLatest: () => {},
     onDetach: () => {},
@@ -145,7 +148,7 @@ test("summarizes unresolved template values without repeating diagnostic rows", 
   assert.match(html, />1 missing</);
   assert.doesNotMatch(html, /Template variable &quot;topic&quot; has no value\./);
   assert.match(html, /template-variable-chip missing/);
-  assert.match(html, /Effective: missing/);
+  assert.match(html, /Needs a value/);
 });
 
 test("labels non-current revisions without a Previous 0 state", async () => {
