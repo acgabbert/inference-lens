@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import {
   parseProjectJson,
@@ -23,7 +23,9 @@ import type {
   ProjectWorkspaceHandle,
 } from "./project-workspace.client.ts";
 
-export type ProjectErrorKind = "tools-disabled";
+export type ProjectErrorKind = "auto-save" | "tools-disabled";
+
+const PROJECT_AUTO_SAVE_DELAY_MS = 800;
 
 export interface ProjectWorkspaceHandleState {
   projectFile: ProjectFile | null;
@@ -78,31 +80,71 @@ export function useProjectWorkspace(input: {
   const [projectDirty, setProjectDirty] = useState(false);
   const [projectError, setProjectError] = useState<string>();
   const [projectErrorKind, setProjectErrorKind] = useState<ProjectErrorKind>();
+  const projectErrorKindRef = useRef<ProjectErrorKind | undefined>(undefined);
   const [mappedProfileId, setMappedProfileId] = useState<string>();
+  const [projectChangeVersion, setProjectChangeVersion] = useState(0);
+  const projectChangeVersionRef = useRef(0);
+  const projectWorkspaceRef = useRef<ProjectWorkspaceHandle | null>(null);
+  const workspaceSaveTailRef = useRef<Promise<void>>(Promise.resolve());
+
+  function advanceProjectChangeVersion(): number {
+    projectChangeVersionRef.current += 1;
+    setProjectChangeVersion(projectChangeVersionRef.current);
+    return projectChangeVersionRef.current;
+  }
+
+  function updateProjectErrorKind(kind: ProjectErrorKind | undefined): void {
+    projectErrorKindRef.current = kind;
+    setProjectErrorKind(kind);
+  }
+
+  function setCurrentWorkspace(workspace: ProjectWorkspaceHandle | null): void {
+    projectWorkspaceRef.current = workspace;
+    setProjectWorkspace(workspace);
+  }
+
+  /**
+   * All writes share one queue. Browser file handles and native workspaces both
+   * permit asynchronous writes, so allowing a manual save and an auto-save to
+   * overlap could let the older document finish last.
+   */
+  function writeProjectWorkspace(
+    workspace: ProjectWorkspaceHandle,
+    project: ProjectFile,
+  ): Promise<void> {
+    const write = workspaceSaveTailRef.current
+      .catch(() => undefined)
+      .then(() => saveProjectWorkspace(workspace, project));
+    workspaceSaveTailRef.current = write;
+    return write;
+  }
 
   function markDirty(): void {
-    if (projectFile) setProjectDirty(true);
+    if (projectFile) {
+      advanceProjectChangeVersion();
+      setProjectDirty(true);
+    }
   }
 
   function setError(
     message: string | undefined,
     options?: { clearKind?: boolean },
   ): void {
-    if (options?.clearKind) setProjectErrorKind(undefined);
+    if (options?.clearKind) updateProjectErrorKind(undefined);
     setProjectError(message);
   }
 
   function dismissError(): void {
     setProjectError(undefined);
-    setProjectErrorKind(undefined);
+    updateProjectErrorKind(undefined);
   }
 
   function clearErrorKind(): void {
-    setProjectErrorKind(undefined);
+    updateProjectErrorKind(undefined);
   }
 
   function setToolsDisabledError(message: string): void {
-    setProjectErrorKind("tools-disabled");
+    updateProjectErrorKind("tools-disabled");
     setProjectError(message);
   }
 
@@ -111,6 +153,7 @@ export function useProjectWorkspace(input: {
   }
 
   function adoptBranchRevision(project: ProjectFile): void {
+    advanceProjectChangeVersion();
     setProjectFile(project);
     setProjectDirty(true);
     dismissError();
@@ -118,8 +161,9 @@ export function useProjectWorkspace(input: {
 
   function materializeProject(): ProjectFile {
     const project = currentProjectDocument();
+    advanceProjectChangeVersion();
     setProjectFile(project);
-    setProjectWorkspace(null);
+    setCurrentWorkspace(null);
     setMappedProfileId(activeProfileId);
     setProjectDirty(true);
     dismissError();
@@ -127,6 +171,7 @@ export function useProjectWorkspace(input: {
   }
 
   function adoptProjectMutation(project: ProjectFile): void {
+    advanceProjectChangeVersion();
     setProjectFile(project);
     setProjectDirty(true);
     dismissError();
@@ -164,16 +209,57 @@ export function useProjectWorkspace(input: {
     profileId?: string,
   ): void {
     const draft = projectDraft(project);
+    advanceProjectChangeVersion();
     setProjectFile(project);
-    setProjectWorkspace(workspace);
+    setCurrentWorkspace(workspace);
     onApplyDraft(draft);
     setMappedProfileId(profileId);
     setProjectDirty(false);
     dismissError();
   }
 
+  useEffect(() => {
+    if (!projectWorkspace || !projectFile || !projectDirty) return;
+
+    const workspace = projectWorkspace;
+    const version = projectChangeVersion;
+    const timer = window.setTimeout(() => {
+      const project = currentProjectDocument();
+
+      void writeProjectWorkspace(workspace, project)
+        .then(() => {
+          if (
+            projectWorkspaceRef.current !== workspace ||
+            projectChangeVersionRef.current !== version
+          ) {
+            return;
+          }
+          setProjectFile(project);
+          setProjectDirty(false);
+          if (projectErrorKindRef.current === "auto-save") {
+            setProjectError(undefined);
+            updateProjectErrorKind(undefined);
+          }
+        })
+        .catch((error: unknown) => {
+          if (projectWorkspaceRef.current !== workspace) return;
+          updateProjectErrorKind("auto-save");
+          setProjectError(
+            error instanceof Error
+              ? error.message
+              : "Could not auto-save the project.",
+          );
+        });
+    }, PROJECT_AUTO_SAVE_DELAY_MS);
+
+    return () => window.clearTimeout(timer);
+    // Each dirtying mutation advances the version. Depending on the render-local
+    // function would restart the debounce for unrelated parent renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectChangeVersion, projectDirty, projectFile, projectWorkspace]);
+
   function projectFailure(error: unknown, fallback: string): void {
-    setProjectErrorKind(undefined);
+    updateProjectErrorKind(undefined);
     setProjectError(error instanceof Error ? error.message : fallback);
   }
 
@@ -207,10 +293,18 @@ export function useProjectWorkspace(input: {
     try {
       const project = currentProjectDocument();
       if (projectWorkspace) {
-        await saveProjectWorkspace(projectWorkspace, project);
-        setProjectFile(project);
-        setProjectDirty(false);
-        setProjectError(undefined);
+        const workspace = projectWorkspace;
+        const version = projectChangeVersionRef.current;
+        await writeProjectWorkspace(workspace, project);
+        if (
+          projectWorkspaceRef.current === workspace &&
+          projectChangeVersionRef.current === version
+        ) {
+          setProjectFile(project);
+          setProjectDirty(false);
+          setProjectError(undefined);
+          updateProjectErrorKind(undefined);
+        }
         return;
       }
       if (folderAccessAvailable) {
