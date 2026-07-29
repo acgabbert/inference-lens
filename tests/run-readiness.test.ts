@@ -10,6 +10,7 @@ const ready = {
   activeProfileEndpoint: "http://127.0.0.1:8080/v1",
   activeProfileModel: "qwen3-8b",
   requiredEndpoint: "http://127.0.0.1:8080/v1",
+  activeConnectionRequirementId: "connection_local",
   selectedToolCount: 0,
   toolsEnabled: true,
   templateIssues: [],
@@ -210,6 +211,56 @@ test("selected tools block a profile that cannot send them", () => {
     readiness?.actions.map(({ kind }) => kind),
     ["open-connections", "review-tools"],
   );
+});
+
+test("a differing template model is advisory and keeps the run target authoritative", () => {
+  const readiness = runReadiness({
+    ...ready,
+    templateTargets: [
+      {
+        templateName: "Classifier",
+        connectionRequirementId: "connection_local",
+        connectionRequirementName: "Local",
+        model: "qwen3-14b",
+      },
+    ],
+  });
+
+  assert.equal(readiness?.blocked, false);
+  assert.match(readiness?.headline ?? "", /recommends another model/);
+  assert.match(readiness?.detail ?? "", /run will use qwen3-8b/i);
+  assert.deepEqual(
+    readiness?.actions.map(({ kind }) => kind),
+    ["open-connections", "edit-template"],
+  );
+});
+
+test("conflicting template recommendations are visible without guessing a winner", () => {
+  const readiness = runReadiness({
+    ...ready,
+    templateTargets: [
+      {
+        templateName: "Planner",
+        connectionRequirementId: "connection_local",
+        connectionRequirementName: "Local",
+        model: "qwen3-14b",
+      },
+      {
+        templateName: "Writer",
+        connectionRequirementId: "connection_local",
+        connectionRequirementName: "Local",
+        model: "llama-4",
+      },
+    ],
+  });
+
+  assert.equal(readiness?.blocked, false);
+  assert.match(readiness?.headline ?? "", /different run targets/);
+  assert.deepEqual(
+    readiness?.facts.map(({ value }) => value),
+    ["Local · qwen3-14b", "Local · llama-4"],
+  );
+  assert.equal(readiness?.actions[0]?.kind, "edit-template");
 });
 
 test("tool capability block outranks an endpoint advisory", () => {

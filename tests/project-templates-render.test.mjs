@@ -56,6 +56,10 @@ const template = {
       createdAt: "2026-07-26T12:00:00.000Z",
       content: { kind: "fragment", text: "Explain {{topic}}." },
       variableDefaults: { topic: "branching" },
+      recommendedTarget: {
+        connectionRequirementId: "connection_default",
+        model: "fixture-model",
+      },
     },
   ],
 };
@@ -63,6 +67,10 @@ const template = {
 test("renders the project template library and revision defaults", async () => {
   const html = await render("ProjectTemplatesPane", {
     templates: [template],
+    connectionRequirements: [
+      { id: "connection_default", name: "Default connection" },
+    ],
+    defaultConnectionRequirementId: "connection_default",
     usageCounts: new Map([["template_question", 2]]),
     itemCount: 3,
     onCreate: () => "template_new",
@@ -73,6 +81,8 @@ test("renders the project template library and revision defaults", async () => {
   assert.match(html, /Question/);
   assert.match(html, /2 uses/);
   assert.match(html, /Revision defaults/);
+  assert.match(html, /Recommended target/);
+  assert.match(html, /fixture-model/);
   assert.match(html, /\{\{topic\}\}/);
   assert.match(html, /Add to conversation/);
 });

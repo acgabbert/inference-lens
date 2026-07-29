@@ -6,6 +6,7 @@
 export type RunReadinessActionKind =
   | "map-profile"
   | "open-connections"
+  | "edit-template"
   | "review-templates"
   | "review-tools";
 
@@ -50,6 +51,13 @@ export interface RunReadinessTemplateIssue {
   variableName?: string;
 }
 
+export interface RunReadinessTemplateTarget {
+  templateName: string;
+  connectionRequirementId: string;
+  connectionRequirementName: string;
+  model: string;
+}
+
 export interface RunReadinessInput {
   projectOpen: boolean;
   connectionMapped: boolean;
@@ -60,8 +68,10 @@ export interface RunReadinessInput {
   toolsEnabled: boolean;
   /** Endpoint the open project declares, when it declares one. */
   requiredEndpoint?: string;
+  activeConnectionRequirementId?: string;
   templateResolutionError?: string;
   templateIssues: RunReadinessTemplateIssue[];
+  templateTargets?: RunReadinessTemplateTarget[];
 }
 
 function profileLabel(name: string): string {
@@ -109,8 +119,10 @@ export function runReadiness(
     selectedToolCount,
     toolsEnabled,
     requiredEndpoint,
+    activeConnectionRequirementId,
     templateResolutionError,
     templateIssues,
+    templateTargets = [],
   } = input;
   const profile = profileLabel(activeProfileName);
 
@@ -238,6 +250,59 @@ export function runReadiness(
           primary: true,
         },
         { kind: "review-tools", label: "Review tools" },
+      ],
+    };
+  }
+
+  const distinctTemplateTargets = new Map(
+    templateTargets.map((target) => [
+      `${target.connectionRequirementId}\u0000${target.model}`,
+      target,
+    ]),
+  );
+  if (distinctTemplateTargets.size > 1) {
+    return {
+      blocked: false,
+      headline: "Templates recommend different run targets",
+      detail:
+        "This request still uses the model selected for the project. Review the recommendations before relying on them.",
+      explanation:
+        "Several templates can contribute messages to one request, but a provider request can name only one model.",
+      summary: "Attached templates recommend different models.",
+      facts: [...distinctTemplateTargets.values()].map((target) => ({
+        label: target.templateName,
+        value: `${target.connectionRequirementName} · ${target.model}`,
+      })),
+      actions: [
+        { kind: "edit-template", label: "Review templates", primary: true },
+        { kind: "open-connections", label: "Choose run model" },
+      ],
+    };
+  }
+
+  const [templateTarget] = distinctTemplateTargets.values();
+  if (
+    templateTarget &&
+    (templateTarget.connectionRequirementId !== activeConnectionRequirementId ||
+      templateTarget.model !== activeProfileModel)
+  ) {
+    return {
+      blocked: false,
+      headline: `"${templateTarget.templateName}" recommends another model`,
+      detail: `This run will use ${activeProfileModel}; the pinned template revision recommends ${templateTarget.model}.`,
+      explanation:
+        "A template recommendation records where that revision was authored or verified, but it never overrides the explicit project/run target.",
+      summary: "A template recommends a different model.",
+      facts: [
+        {
+          label: "Template recommends",
+          value: `${templateTarget.connectionRequirementName} · ${templateTarget.model}`,
+        },
+        { label: "Run uses", value: activeProfileModel },
+      ],
+      actions: [
+        { kind: "open-connections", label: "Choose run model", primary: true },
+        { kind: "edit-template", label: "Review template" },
       ],
     };
   }

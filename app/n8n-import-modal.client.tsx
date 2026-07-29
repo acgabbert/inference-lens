@@ -759,6 +759,9 @@ export function N8nImportModal({
                         ? ` Source model: ${candidate.resolved.model}.`
                         : ""}
                       {" The active Inference Lens connection and model will not change."}
+                      {candidate.resolved?.model
+                        ? " Reusable template imports keep the source model as a recommendation."
+                        : ""}
                     </p>
                     <nav
                       aria-label="Import evidence"

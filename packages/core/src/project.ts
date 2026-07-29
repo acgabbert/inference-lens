@@ -51,7 +51,7 @@ import type {
 } from "./types.ts";
 
 export const PROJECT_FILE_NAME = "inference-lens.project.json";
-export const PROJECT_SCHEMA_VERSION = 4;
+export const PROJECT_SCHEMA_VERSION = 5;
 
 export interface ConnectionRequirement {
   id: ConnectionRequirementId;
@@ -95,11 +95,22 @@ export type PromptTemplateContent =
       }>;
     };
 
+/**
+ * A portable recommendation for the target a template revision was authored
+ * or verified against. It never overrides the project/run target: one request
+ * may contain several templates, while the provider accepts only one model.
+ */
+export interface PromptTemplateRecommendedTarget {
+  connectionRequirementId: ConnectionRequirementId;
+  model: string;
+}
+
 export interface PromptTemplateRevision {
   id: PromptTemplateRevisionId;
   createdAt: string;
   content: PromptTemplateContent;
   variableDefaults: Record<string, string>;
+  recommendedTarget?: PromptTemplateRecommendedTarget;
   externalImportId?: ExternalImportId;
 }
 
@@ -205,8 +216,8 @@ interface ProjectReferenceValidationShape {
   defaults: ProjectDefaults;
 }
 
-export interface ProjectFileV4 {
-  schemaVersion: 4;
+export interface ProjectFileV5 {
+  schemaVersion: 5;
   projectId: ProjectId;
   name: string;
   connectionRequirements: ConnectionRequirement[];
@@ -219,8 +230,24 @@ export interface ProjectFileV4 {
   defaults: ProjectDefaults;
 }
 
-export type ProjectFile = ProjectFileV4;
-type ProjectFileV3 = ProjectFileV4;
+export type ProjectFile = ProjectFileV5;
+
+type PromptTemplateRevisionV4 = Omit<
+  PromptTemplateRevision,
+  "recommendedTarget"
+>;
+
+interface PromptTemplateV4 extends Omit<PromptTemplate, "revisions"> {
+  revisions: PromptTemplateRevisionV4[];
+}
+
+interface ProjectFileV4
+  extends Omit<ProjectFileV5, "schemaVersion" | "promptTemplates"> {
+  schemaVersion: 4;
+  promptTemplates: PromptTemplateV4[];
+}
+
+type ProjectFileV3 = ProjectFileV5;
 
 const entityId = <Kind extends Parameters<typeof createEntityId>[0]>(
   kind: Kind,
@@ -406,7 +433,44 @@ const toolMockSchema: z.ZodType<ToolMock> = z
 
 const variableName = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
+const promptTemplateRecommendedTargetSchema: z.ZodType<PromptTemplateRecommendedTarget> =
+  z
+    .object({
+      connectionRequirementId: entityId("connection"),
+      model: z.string().trim().min(1),
+    })
+    .strict();
+
 const promptTemplateRevisionSchema: z.ZodType<PromptTemplateRevision> = z
+  .object({
+    id: entityId("template-revision"),
+    createdAt: z.iso.datetime({ offset: true }),
+    content: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("fragment"), text: z.string() }).strict(),
+      z
+        .object({
+          kind: z.literal("messages"),
+          messages: z.array(
+            z
+              .object({
+                role: z.enum(["system", "user", "assistant"]),
+                content: z.string(),
+              })
+              .strict(),
+          ),
+        })
+        .strict(),
+    ]),
+    variableDefaults: z.record(
+      z.string().regex(variableName, "Invalid template variable name."),
+      z.string(),
+    ),
+    recommendedTarget: promptTemplateRecommendedTargetSchema.optional(),
+    externalImportId: entityId("external-import").optional(),
+  })
+  .strict();
+
+const promptTemplateRevisionV4Schema: z.ZodType<PromptTemplateRevisionV4> = z
   .object({
     id: entityId("template-revision"),
     createdAt: z.iso.datetime({ offset: true }),
@@ -440,6 +504,15 @@ const promptTemplateSchema: z.ZodType<PromptTemplate> = z
     name: z.string().trim().min(1),
     currentRevisionId: entityId("template-revision"),
     revisions: z.array(promptTemplateRevisionSchema).min(1),
+  })
+  .strict();
+
+const promptTemplateV4Schema: z.ZodType<PromptTemplateV4> = z
+  .object({
+    id: entityId("template"),
+    name: z.string().trim().min(1),
+    currentRevisionId: entityId("template-revision"),
+    revisions: z.array(promptTemplateRevisionV4Schema).min(1),
   })
   .strict();
 
@@ -562,7 +635,7 @@ const externalImportReceiptSchema: z.ZodType<ExternalImportReceipt> = z
     });
   });
 
-const projectFileV4Schema: z.ZodType<ProjectFileV4> = z
+const projectFileV5Schema: z.ZodType<ProjectFileV5> = z
   .object({
     schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
     projectId: entityId("project"),
@@ -573,6 +646,35 @@ const projectFileV4Schema: z.ZodType<ProjectFileV4> = z
     tools: z.array(toolDefinitionSchema),
     toolMocks: z.array(toolMockSchema),
     promptTemplates: z.array(promptTemplateSchema),
+    externalImports: z.array(externalImportReceiptSchema),
+    defaults: z
+      .object({
+        conversationRevisionId: entityId("revision"),
+        target: z
+          .object({
+            connectionRequirementId: entityId("connection"),
+            model: z.string().trim().min(1),
+          })
+          .strict(),
+        options: inferenceOptionsSchema,
+        enabledToolIds: z.array(entityId("tool")),
+      })
+      .strict(),
+  })
+  .strict()
+  .superRefine(validateProjectV4References);
+
+const projectFileV4Schema: z.ZodType<ProjectFileV4> = z
+  .object({
+    schemaVersion: z.literal(4),
+    projectId: entityId("project"),
+    name: z.string().trim().min(1),
+    connectionRequirements: z.array(connectionRequirementSchema).min(1),
+    conversations: z.array(projectConversationSchema).min(1),
+    conversationRevisions: z.array(projectConversationRevisionSchema).min(1),
+    tools: z.array(toolDefinitionSchema),
+    toolMocks: z.array(toolMockSchema),
+    promptTemplates: z.array(promptTemplateV4Schema),
     externalImports: z.array(externalImportReceiptSchema),
     defaults: z
       .object({
@@ -806,7 +908,7 @@ function validateSharedProjectReferences(
 }
 
 function validateProjectV4References(
-  project: ProjectFileV3,
+  project: ProjectFileV5 | ProjectFileV4,
   context: z.RefinementCtx,
 ): void {
   validateSharedProjectReferences(
@@ -842,6 +944,29 @@ function validateProjectV4References(
 
   project.promptTemplates.forEach((template, templateIndex) => {
     template.revisions.forEach((revision, revisionIndex) => {
+      const recommendedTarget =
+        "recommendedTarget" in revision
+          ? revision.recommendedTarget as
+              | PromptTemplateRecommendedTarget
+              | undefined
+          : undefined;
+      if (recommendedTarget) {
+        requireReference(
+          project.connectionRequirements.some(
+            ({ id }) => id === recommendedTarget.connectionRequirementId,
+          ),
+          [
+            "promptTemplates",
+            templateIndex,
+            "revisions",
+            revisionIndex,
+            "recommendedTarget",
+            "connectionRequirementId",
+          ],
+          "Template recommendation references an unknown connection requirement.",
+          context,
+        );
+      }
       if (!revision.externalImportId) return;
       referencedExternalImportIds.add(revision.externalImportId);
       requireReference(
@@ -1101,7 +1226,22 @@ export class ProjectValidationError extends Error {
 }
 
 export function parseProjectFile(value: unknown): ProjectFileV3 {
-  const parsed = projectFileV4Schema.safeParse(value);
+  if (
+    value &&
+    typeof value === "object" &&
+    "schemaVersion" in value &&
+    value.schemaVersion === 4
+  ) {
+    const legacy = projectFileV4Schema.safeParse(value);
+    if (!legacy.success) {
+      throw new ProjectValidationError(legacy.error.issues);
+    }
+    value = {
+      ...legacy.data,
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+    };
+  }
+  const parsed = projectFileV5Schema.safeParse(value);
   if (!parsed.success) throw new ProjectValidationError(parsed.error.issues);
   return parsed.data;
 }
@@ -1152,6 +1292,7 @@ const preferredFieldOrder = new Map(
     "outputMessageIds",
     "fragmentRole",
     "variableDefaults",
+    "recommendedTarget",
     "projection",
     "bindingIndex",
     "authoredPath",
@@ -2163,6 +2304,7 @@ export interface CreatePromptTemplateOptions {
   name: string;
   content: PromptTemplateContent;
   variableDefaults?: Record<string, string>;
+  recommendedTarget?: PromptTemplateRecommendedTarget;
   idSuffix?: string;
   revisionIdSuffix?: string;
   createdAt?: string;
@@ -2174,6 +2316,7 @@ export function createPromptTemplate(
     name,
     content,
     variableDefaults = {},
+    recommendedTarget,
     idSuffix = randomUUID(),
     revisionIdSuffix = randomUUID(),
     createdAt = new Date().toISOString(),
@@ -2194,6 +2337,9 @@ export function createPromptTemplate(
             createdAt,
             content: structuredClone(content),
             variableDefaults: { ...variableDefaults },
+            ...(recommendedTarget
+              ? { recommendedTarget: { ...recommendedTarget } }
+              : {}),
           },
         ],
       },
@@ -2205,6 +2351,7 @@ export interface AppendPromptTemplateRevisionOptions {
   templateId: PromptTemplateId;
   content: PromptTemplateContent;
   variableDefaults?: Record<string, string>;
+  recommendedTarget?: PromptTemplateRecommendedTarget;
   idSuffix?: string;
   createdAt?: string;
 }
@@ -2215,6 +2362,7 @@ export function appendPromptTemplateRevision(
     templateId,
     content,
     variableDefaults = {},
+    recommendedTarget,
     idSuffix = randomUUID(),
     createdAt = new Date().toISOString(),
   }: AppendPromptTemplateRevisionOptions,
@@ -2239,7 +2387,9 @@ export function appendPromptTemplateRevision(
     JSON.stringify(stableJsonValue(current.content)) ===
       JSON.stringify(stableJsonValue(content)) &&
     JSON.stringify(stableJsonValue(current.variableDefaults)) ===
-      JSON.stringify(stableJsonValue(variableDefaults))
+      JSON.stringify(stableJsonValue(variableDefaults)) &&
+    JSON.stringify(stableJsonValue(current.recommendedTarget)) ===
+      JSON.stringify(stableJsonValue(recommendedTarget))
   ) {
     return project;
   }
@@ -2248,6 +2398,9 @@ export function appendPromptTemplateRevision(
     createdAt,
     content: structuredClone(content),
     variableDefaults: { ...variableDefaults },
+    ...(recommendedTarget
+      ? { recommendedTarget: { ...recommendedTarget } }
+      : {}),
   };
   const promptTemplates = [...project.promptTemplates];
   promptTemplates[templateIndex] = {

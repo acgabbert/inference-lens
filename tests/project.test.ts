@@ -43,7 +43,7 @@ const request = {
   }),
 };
 
-test("creates a strict, portable Project v4 document", () => {
+test("creates a strict, portable Project v5 document", () => {
   const project = createProjectFile({
     name: "Example",
     request,
@@ -52,7 +52,7 @@ test("creates a strict, portable Project v4 document", () => {
   });
 
   assert.equal(PROJECT_FILE_NAME, "inference-lens.project.json");
-  assert.equal(project.schemaVersion, 4);
+  assert.equal(project.schemaVersion, 5);
   assert.equal(project.projectId, "project_example");
   const draft = projectDraft(project);
   assert.deepEqual(projectDraft(project), {
@@ -75,7 +75,7 @@ test("creates a strict, portable Project v4 document", () => {
     enabledToolIds: [],
   });
   assert.deepEqual(project.externalImports, []);
-  assert.equal(JSON.parse(serializeProjectFile(project)).schemaVersion, 4);
+  assert.equal(JSON.parse(serializeProjectFile(project)).schemaVersion, 5);
 });
 
 test("serialization is deterministic and ends with a newline", () => {
@@ -105,21 +105,23 @@ test("serialization is deterministic and ends with a newline", () => {
   assert.ok(serialized.indexOf('"alpha"') < serialized.indexOf('"zeta"'));
 });
 
-test("rejects pre-v4 projects while migration is intentionally deferred", () => {
+test("migrates v4 projects and still rejects pre-v4 projects", () => {
   const current = createProjectFile({
     name: "Legacy",
     request,
     idSuffix: "legacy",
     createdAt: "2026-07-24T12:00:00.000Z",
   });
-  const legacy = {
+  const v4 = {
     ...current,
-    schemaVersion: 3,
-    externalImports: undefined,
+    schemaVersion: 4,
   };
+  const migrated = parseProjectFile(v4);
+  assert.equal(migrated.schemaVersion, 5);
+  assert.deepEqual(migrated.promptTemplates, current.promptTemplates);
 
   assert.throws(
-    () => parseProjectFile(legacy),
+    () => parseProjectFile({ ...v4, schemaVersion: 3 }),
     /Invalid Inference Lens project/,
   );
 });
@@ -342,6 +344,23 @@ test("creates immutable template revisions, finds uses, and rejects unsafe remov
     idSuffix: "unused",
   });
   assert.equal(unchanged, created);
+
+  const recommended = appendPromptTemplateRevision(created, {
+    templateId: "template_question",
+    content: { kind: "fragment", text: "Explain {{topic}}." },
+    variableDefaults: { topic: "branching" },
+    recommendedTarget: {
+      connectionRequirementId: created.connectionRequirements[0]!.id,
+      model: "model-authored-for-question",
+    },
+    idSuffix: "question-model",
+    createdAt: "2026-07-24T12:01:30.000Z",
+  });
+  assert.equal(recommended.promptTemplates[0]?.revisions.length, 2);
+  assert.equal(
+    recommended.promptTemplates[0]?.revisions.at(-1)?.recommendedTarget?.model,
+    "model-authored-for-question",
+  );
 
   const renamed = renamePromptTemplate(created, "template_question", "Question v2");
   assert.equal(renamed.promptTemplates[0]?.name, "Question v2");
@@ -980,6 +999,32 @@ test("rejects unsupported versions, unknown fields, and dangling references", ()
         },
       }),
     /does not exist/,
+  );
+  assert.throws(
+    () =>
+      parseProjectFile({
+        ...project,
+        promptTemplates: [
+          {
+            id: "template_invalid-target",
+            name: "Invalid target",
+            currentRevisionId: "template-revision_invalid-target-1",
+            revisions: [
+              {
+                id: "template-revision_invalid-target-1",
+                createdAt: "2026-07-24T12:00:01.000Z",
+                content: { kind: "fragment", text: "Hello" },
+                variableDefaults: {},
+                recommendedTarget: {
+                  connectionRequirementId: "connection_missing",
+                  model: "example-model",
+                },
+              },
+            ],
+          },
+        ],
+      }),
+    /unknown connection requirement/,
   );
 });
 

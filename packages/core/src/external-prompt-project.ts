@@ -518,6 +518,15 @@ export async function importExternalPromptTemplateCandidate(
             createdAt: importedAt,
             content: structuredClone(projection.content),
             variableDefaults: {},
+            ...(candidate.resolved?.model
+              ? {
+                  recommendedTarget: {
+                    connectionRequirementId:
+                      project.defaults.target.connectionRequirementId,
+                    model: candidate.resolved.model,
+                  },
+                }
+              : {}),
             externalImportId,
           },
         ],

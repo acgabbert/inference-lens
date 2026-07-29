@@ -3,10 +3,12 @@
 import { useMemo, useState } from "react";
 
 import type {
+  ConnectionRequirement,
   ExternalImportReceipt,
   ProjectTemplateDiagnostic,
   PromptTemplate,
   PromptTemplateContent,
+  PromptTemplateRecommendedTarget,
   PromptTemplateUse,
 } from "../packages/core/src/project";
 import { isSensitiveTemplateVariableName } from "../packages/core/src/project";
@@ -23,6 +25,8 @@ type TemplateRole = "system" | "user" | "assistant";
 
 interface ProjectTemplatesPaneProps {
   templates: PromptTemplate[];
+  connectionRequirements: ConnectionRequirement[];
+  defaultConnectionRequirementId?: ConnectionRequirement["id"];
   usageCounts: ReadonlyMap<PromptTemplateId, number>;
   itemCount: number;
   onCreate(name: string, content: PromptTemplateContent): PromptTemplateId;
@@ -31,6 +35,7 @@ interface ProjectTemplatesPaneProps {
     name: string,
     content: PromptTemplateContent,
     defaults: Record<string, string>,
+    recommendedTarget?: PromptTemplateRecommendedTarget,
   ): PromptTemplateRevisionId;
   onInsert(
     templateId: PromptTemplateId,
@@ -49,6 +54,8 @@ function currentRevision(template: PromptTemplate) {
 
 export function ProjectTemplatesPane({
   templates,
+  connectionRequirements = [],
+  defaultConnectionRequirementId,
   usageCounts,
   itemCount,
   onCreate,
@@ -70,6 +77,14 @@ export function ProjectTemplatesPane({
   const [defaults, setDefaults] = useState<Record<string, string>>(
     initialRevision ? { ...initialRevision.variableDefaults } : {},
   );
+  const [recommendedModel, setRecommendedModel] = useState(
+    initialRevision?.recommendedTarget?.model ?? "",
+  );
+  const [recommendedConnectionRequirementId, setRecommendedConnectionRequirementId] =
+    useState<ConnectionRequirement["id"] | undefined>(
+      initialRevision?.recommendedTarget?.connectionRequirementId ??
+        defaultConnectionRequirementId,
+    );
   const [fragmentRole, setFragmentRole] = useState<TemplateRole>("user");
   const [insertionIndex, setInsertionIndex] = useState(itemCount);
 
@@ -103,6 +118,11 @@ export function ProjectTemplatesPane({
     setName(template.name);
     setContent(structuredClone(revision.content));
     setDefaults({ ...revision.variableDefaults });
+    setRecommendedModel(revision.recommendedTarget?.model ?? "");
+    setRecommendedConnectionRequirementId(
+      revision.recommendedTarget?.connectionRequirementId ??
+        defaultConnectionRequirementId,
+    );
   }
 
   function selectRevision(revisionId: PromptTemplateRevisionId): void {
@@ -112,6 +132,11 @@ export function ProjectTemplatesPane({
     setViewedRevisionId(revision.id);
     setContent(structuredClone(revision.content));
     setDefaults({ ...revision.variableDefaults });
+    setRecommendedModel(revision.recommendedTarget?.model ?? "");
+    setRecommendedConnectionRequirementId(
+      revision.recommendedTarget?.connectionRequirementId ??
+        defaultConnectionRequirementId,
+    );
   }
 
   function addTemplate(kind: PromptTemplateContent["kind"]): void {
@@ -134,6 +159,8 @@ export function ProjectTemplatesPane({
     setName(kind === "fragment" ? "Untitled prompt" : "Untitled message set");
     setContent(structuredClone(content));
     setDefaults({});
+    setRecommendedModel("");
+    setRecommendedConnectionRequirementId(defaultConnectionRequirementId);
   }
 
   return (
@@ -231,6 +258,14 @@ export function ProjectTemplatesPane({
                               : [],
                           ),
                         ),
+                        recommendedModel.trim() &&
+                          recommendedConnectionRequirementId
+                          ? {
+                              connectionRequirementId:
+                                recommendedConnectionRequirementId,
+                              model: recommendedModel.trim(),
+                            }
+                          : undefined,
                       ),
                     )
                   }
@@ -274,6 +309,42 @@ export function ProjectTemplatesPane({
               />
 
               <aside className="template-variable-rail">
+                <div className="template-rail-heading">
+                  <span className="eyebrow">Model</span>
+                  <h3>Recommended target</h3>
+                </div>
+                <p className="template-empty">
+                  Optional. A recommendation is shown when this template and the
+                  run target differ; it never switches the run silently.
+                </p>
+                <label>
+                  Connection
+                  <select
+                    disabled={readOnly || connectionRequirements.length === 0}
+                    value={recommendedConnectionRequirementId ?? ""}
+                    onChange={(event) =>
+                      setRecommendedConnectionRequirementId(
+                        event.target.value as ConnectionRequirement["id"],
+                      )
+                    }
+                  >
+                    {connectionRequirements.map((requirement) => (
+                      <option key={requirement.id} value={requirement.id}>
+                        {requirement.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Model ID
+                  <input
+                    aria-label="Recommended model ID"
+                    disabled={readOnly}
+                    placeholder="No recommendation"
+                    value={recommendedModel}
+                    onChange={(event) => setRecommendedModel(event.target.value)}
+                  />
+                </label>
                 <div className="template-rail-heading">
                   <span className="eyebrow">Variables</span>
                   <h3>Revision defaults</h3>

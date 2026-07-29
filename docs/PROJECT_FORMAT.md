@@ -1,11 +1,11 @@
 # Project format and workspace storage
 
 Inference Lens projects use one canonical, portable JSON document named
-`inference-lens.project.json`. New saves use schema version 3. Version 2 projects
-remain importable and are migrated in memory; the earlier proof-of-concept
-request export is intentionally unsupported.
+`inference-lens.project.json`. New saves use schema version 5. Version 4 projects
+remain importable and are migrated in memory; earlier project formats and the
+proof-of-concept request export are intentionally unsupported.
 
-## Version 3 authored conversations
+## Version 5 authored conversations
 
 Version 3 separates authored conversation items from the ordinary messages
 resolved for provider execution. A conversation revision owns one ordered
@@ -46,8 +46,7 @@ template's immutable revisions. `values` are owned by the use. Key presence is
 significant: `""` is an intentional empty value, while an absent key has no
 value at that level. Use values may name only variables that occur in their
 pinned revision. Newly saved revisions drop obsolete defaults instead of
-retaining hidden assignments; Version 2 migration still preserves existing
-template definitions byte-for-byte at the data-model level.
+retaining hidden assignments.
 
 A variable with no value at any level is a normal authoring state, not an
 invalid document. Validation accepts it, and resolution renders the variable as
@@ -62,14 +61,20 @@ executable messages and provenance until every diagnostic is resolved.
 
 A message-set use has one stable `outputMessageIds` entry per template message.
 A fragment use has exactly one output message ID and a required
-`fragmentRole`. In version 3 a fragment supplies the complete text of one
+`fragmentRole`. A fragment supplies the complete text of one
 generated system, user, or assistant message. Inline prefix/template/suffix
 composition is not part of this format and may later be introduced as a new
 authored-item or content-part variant.
 
-Template revisions are immutable. Saving changed content or defaults appends a
-revision and advances `currentRevisionId`; saving an unchanged revision is a
-no-op. Uses remain pinned until explicitly updated. Core helpers create
+Template revisions are immutable. Saving changed content, defaults, or the
+optional recommended target appends a revision and advances
+`currentRevisionId`; saving an unchanged revision is a no-op. A recommendation
+pairs a project-owned connection requirement with a provider model ID. It
+records where that prompt revision was authored or verified, but never
+overrides the explicit project/run target. Conflicting recommendations are
+shown before a run because several templates may contribute to one request
+while that request can name only one model. Uses remain pinned until explicitly
+updated. Core helpers create
 templates, append revisions, change the current pointer, enumerate usages, and
 refuse to remove a revision that is current, last, or referenced. Separate
 authored-use helpers insert a pinned use, replace its complete value map, update
@@ -82,9 +87,8 @@ A message-set use is atomic: branching after its final emitted message
 preserves it, while branching inside the emitted set requires detaching the use
 first. Literal and provider-produced messages remain literal items in the child.
 
-Version 2 migration wraps each existing revision message as
-`{"kind":"message","message":...}` in the same order. It retains template
-definitions but invents no template uses.
+Version 4 migration changes only the root schema version. Existing template
+revisions have no recommended target, preserving their prior behavior.
 
 ## Ownership boundaries
 
@@ -117,7 +121,7 @@ credential store, an environment variable, or session memory.
 
 ## Template authoring session
 
-The live Project v3 document is the canonical owner of template definitions and
+The live Project v5 document is the canonical owner of template definitions and
 authored conversation items. Opening the Templates workspace from an ad-hoc
 request materializes an untitled in-memory project; it does not create a
 machine-local template registry.
