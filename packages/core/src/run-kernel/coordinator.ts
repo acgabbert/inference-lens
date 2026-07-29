@@ -61,6 +61,7 @@ function nextTurnInput(state: RunState): ProviderTurnInput {
   return {
     target: previousAttempt.input.target,
     messages: [...previousAttempt.input.messages, assistant, ...toolMessages],
+    responseMode: previousAttempt.input.responseMode,
     options: previousAttempt.input.options,
     tools: previousAttempt.input.tools,
   };
@@ -166,6 +167,7 @@ export class RunCoordinator {
     const turn = this.beginTurn({
       target: this.input.target,
       messages: this.input.messages,
+      responseMode: this.input.responseMode,
       options: this.input.options,
       tools: this.input.tools,
     });

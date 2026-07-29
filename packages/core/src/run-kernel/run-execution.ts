@@ -72,6 +72,7 @@ export function createSingleTurnRunExecution(
         request.capabilities ?? resolveProviderCapabilities(request.provider),
     },
     messages,
+    responseMode: request.responseMode ?? "streaming",
     options:
       request.temperature === undefined
         ? {}

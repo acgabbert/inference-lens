@@ -24,6 +24,7 @@ failure, or an exact payload.
 | `scripts/flaky-openai-provider.mjs` | `dev:flaky-provider` | First request returns HTTP 503, later identical requests stream normally. Drives the retryable-failure and retry path, and logs whether the retry body byte-matches the first attempt. |
 | `scripts/paced-openai-provider.mjs` | `dev:paced-provider` | Streams with a deliberate stall before the first byte and a fixed gap between deltas, then reports usage. Makes time-to-first-token and throughput predictable. |
 | `scripts/echo-openai-provider.mjs` | `dev:echo-provider` | Echoes the exact serialized message roles and text it received. Verifies template resolution, ordering, overrides, and request preview against the real transport. |
+| `scripts/buffered-openai-provider.mjs` | `dev:buffered-provider` | Accepts only `stream: false` requests with no `stream_options`, then returns one predictable JSON completion with 4 input, 7 output, and 11 total tokens. Verifies the remembered streaming toggle, buffered normalization, and rendered usage. |
 | `scripts/n8n-public-api-fixture.mjs` | `dev:n8n-api-fixture` | Serves the committed n8n 2.32.5 workflow and execution captures through a loopback, GET-only public API. Verifies workflow/execution browsing without a live n8n instance. |
 | `scripts/markdown-openai-provider.mjs` | `dev:markdown-provider` | Streams one answer containing every supported markdown block, split so fences, lists, and tables straddle chunk boundaries. Checks incremental parsing while streaming and that the finished transcript renders the same answer the same way. |
 
@@ -40,7 +41,7 @@ A fixture needs three routes at most:
 - Anything else — return 404. Do not silently accept unexpected paths; a fixture
   that answers everything hides routing bugs.
 
-The response contract that matters to Inference Lens:
+The streaming response contract that matters to Inference Lens:
 
 - Content type `text/event-stream`, with each chunk written as
   `data: <json>\n\n`.
@@ -51,6 +52,11 @@ The response contract that matters to Inference Lens:
 - Usage, when reported, arrives in its own trailing chunk with an empty
   `choices` array — the shape providers use for
   `stream_options.include_usage`, which Inference Lens always requests.
+
+For a buffered fixture, require `stream: false`, reject `stream_options`, and
+return one `application/json` chat completion. Content comes from
+`choices[0].message.content`; usage and `finish_reason` use their ordinary
+non-streaming fields.
 
 Drain the request body before responding, even when the fixture ignores it.
 Leaving it unread can stall the client on larger requests.

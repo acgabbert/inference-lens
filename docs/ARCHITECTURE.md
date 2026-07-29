@@ -41,7 +41,7 @@ session-only input for the local workbench; it is never included in profile
 metadata, projects, diagnostics, or browser persistence.
 
 Tauri implements `ProviderTurnTransport` with IPC rather than HTTP. Rust is an
-origin-pinned streaming proxy: `app/tauri-inference-transport.client.ts` builds
+origin-pinned response proxy: `app/tauri-inference-transport.client.ts` builds
 the request body with the shared core adapter and derives the credential's
 approved origin, but the request URL is always derived in Rust from the same
 endpoint the credential was resolved against — never accepted pre-built from

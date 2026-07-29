@@ -84,6 +84,9 @@ function parseProviderExecution(value: unknown): ProviderExecution {
   if (!input.options || typeof input.options !== "object") {
     throw new Error("Provider options must be an object.");
   }
+  if (!["streaming", "buffered"].includes(input.responseMode ?? "")) {
+    throw new Error("Response mode must be streaming or buffered.");
+  }
   if (
     input.options.temperature !== undefined &&
     (typeof input.options.temperature !== "number" ||

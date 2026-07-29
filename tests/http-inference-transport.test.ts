@@ -24,6 +24,7 @@ const request = {
           content: [{ type: "text" as const, text: "Hello" }],
         },
       ],
+      responseMode: "streaming" as const,
       options: {},
       tools: [],
     },

@@ -689,7 +689,7 @@ export function createRunTrace(
     );
   }
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     runId: state.runId,
     input: state.input,
     status: state.status,

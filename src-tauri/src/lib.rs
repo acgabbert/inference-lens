@@ -101,6 +101,10 @@ enum RawStreamEvent {
     Lines {
         lines: Vec<String>,
     },
+    /// One complete non-streaming JSON response body.
+    Body {
+        body: String,
+    },
     End,
     Error {
         kind: &'static str,
@@ -685,6 +689,7 @@ async fn start_provider_turn(
     credential: CredentialSelection,
     endpoint: String,
     body: String,
+    streaming: bool,
 ) -> Result<ProviderTurnAccepted, String> {
     if !request_id.starts_with("provider-turn_") {
         return Err(command_error("Provider turn identifiers are invalid."));
@@ -702,8 +707,11 @@ async fn start_provider_turn(
             app,
             state,
             request_id,
-            endpoint,
-            body,
+            OutboundProviderRequest {
+                endpoint,
+                body,
+                streaming,
+            },
             credential,
             cancellation,
         )
@@ -739,20 +747,26 @@ impl ProviderEvents {
     }
 }
 
+struct OutboundProviderRequest {
+    endpoint: String,
+    body: String,
+    streaming: bool,
+}
+
 async fn execute_provider_turn(
     app: AppHandle,
     active_runs: ActiveRuns,
     request_id: String,
-    endpoint: String,
-    body: String,
+    request: OutboundProviderRequest,
     credential: ResolvedCredential,
     cancellation: CancellationToken,
 ) {
     let events = ProviderEvents::new(app, &request_id);
     stream_provider_turn(
         &events,
-        &endpoint,
-        body,
+        &request.endpoint,
+        request.body,
+        request.streaming,
         credential.api_key.as_deref(),
         &cancellation,
     )
@@ -764,6 +778,7 @@ async fn stream_provider_turn(
     events: &ProviderEvents,
     endpoint: &str,
     body: String,
+    streaming: bool,
     api_key: Option<&str>,
     cancellation: &CancellationToken,
 ) {
@@ -827,6 +842,29 @@ async fn stream_provider_turn(
             message,
             status: Some(status.as_u16()),
         });
+        return;
+    }
+
+    if !streaming {
+        let body = tokio::select! {
+            _ = cancellation.cancelled() => {
+                events.emit(&RawStreamEvent::Cancelled);
+                return;
+            }
+            body = response.text() => body,
+        };
+        match body {
+            Ok(body) => events.emit(&RawStreamEvent::Body { body }),
+            Err(error) => {
+                events.emit(&RawStreamEvent::Error {
+                    kind: "transport",
+                    message: format!("Could not read provider response: {error}"),
+                    status: None,
+                });
+                return;
+            }
+        }
+        events.emit(&RawStreamEvent::End);
         return;
     }
 

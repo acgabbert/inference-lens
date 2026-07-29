@@ -105,6 +105,12 @@ export type ProviderProtocol =
   | "openai-compatible-chat-completions"
   | "mock";
 
+/**
+ * How a provider response is delivered for every turn in one immutable run.
+ * This is execution policy, not a model sampling option or connection setting.
+ */
+export type ResponseMode = "streaming" | "buffered";
+
 export interface InferenceOptions {
   temperature?: number;
   maxOutputTokens?: number;
@@ -204,6 +210,7 @@ export interface ResolvedRunInput {
   target: ResolvedProviderTarget;
   messages: ConversationMessage[];
   templateResolutions: ResolvedTemplateUse[];
+  responseMode: ResponseMode;
   options: InferenceOptions;
   tools: ToolDefinition[];
   resolvedAt: string;
@@ -223,6 +230,7 @@ export interface RunConversationIdentity {
 export interface ProviderTurnInput {
   target: ResolvedProviderTarget;
   messages: ConversationMessage[];
+  responseMode: ResponseMode;
   options: InferenceOptions;
   tools: ToolDefinition[];
 }
@@ -469,7 +477,7 @@ export interface RunState {
 }
 
 export interface RunTrace {
-  schemaVersion: 1 | 2 | 3;
+  schemaVersion: 1 | 2 | 3 | 4;
   runId: RunId;
   input: ResolvedRunInput;
   status: TerminalRunStatus;

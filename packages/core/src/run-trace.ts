@@ -8,7 +8,7 @@ import {
 import { isSensitiveTemplateVariableName } from "./project.ts";
 import { renderTemplateContent } from "./template-engine.ts";
 
-export const RUN_TRACE_SCHEMA_VERSION = 3;
+export const RUN_TRACE_SCHEMA_VERSION = 4;
 export const RUN_TRACE_FILE_SUFFIX = ".json";
 
 /**
@@ -161,6 +161,20 @@ const traceV3EnvelopeSchema = traceEnvelopeBaseSchema
   })
   .strict();
 
+const traceV4EnvelopeSchema = traceEnvelopeBaseSchema
+  .extend({
+    schemaVersion: z.literal(4),
+    input: z
+      .object({
+        runId: z.string().regex(/^run_.+/),
+        templateResolutions: z.array(resolvedTemplateUseSchema),
+        responseMode: z.enum(["streaming", "buffered"]),
+      })
+      .passthrough(),
+    branchedFrom: branchProvenanceSchema.optional(),
+  })
+  .strict();
+
 // Discriminated on the version so a rejection reports the offending field in
 // the matching envelope, rather than collapsing every branch's complaint into
 // one union error.
@@ -168,6 +182,7 @@ const traceEnvelopeSchema = z.discriminatedUnion("schemaVersion", [
   traceV1EnvelopeSchema,
   traceV2EnvelopeSchema,
   traceV3EnvelopeSchema,
+  traceV4EnvelopeSchema,
 ]);
 
 export function traceFileName(runId: RunId): string {
@@ -243,28 +258,57 @@ export function parseRunTraceFile(value: unknown): RunTrace {
   }
 
   const envelope = value as RunTrace;
-  const trace: RunTrace =
-    envelope.schemaVersion < 3
-      ? {
-          ...envelope,
-          schemaVersion: RUN_TRACE_SCHEMA_VERSION,
-          input: {
-            ...envelope.input,
-            templateResolutions: [],
-          },
-          events: envelope.events.map((event) =>
-            event.type === "run.started"
-              ? {
-                  ...event,
-                  input: {
-                    ...event.input,
-                    templateResolutions: [],
-                  },
-                }
-              : event,
-          ),
+  let trace = envelope;
+  if (trace.schemaVersion < 3) {
+    trace = {
+      ...trace,
+      schemaVersion: RUN_TRACE_SCHEMA_VERSION,
+      input: {
+        ...trace.input,
+        templateResolutions: [],
+      },
+      events: trace.events.map((event) =>
+        event.type === "run.started"
+          ? {
+              ...event,
+              input: {
+                ...event.input,
+                templateResolutions: [],
+              },
+            }
+          : event,
+      ),
+    };
+  }
+  if (envelope.schemaVersion < 4) {
+    trace = {
+      ...trace,
+      schemaVersion: RUN_TRACE_SCHEMA_VERSION,
+      input: { ...trace.input, responseMode: "streaming" },
+      events: trace.events.map((event) => {
+        if (event.type === "run.started") {
+          return {
+            ...event,
+            input: { ...event.input, responseMode: "streaming" as const },
+          };
         }
-      : envelope;
+        if (event.type === "turn.started") {
+          return {
+            ...event,
+            input: { ...event.input, responseMode: "streaming" as const },
+          };
+        }
+        return event;
+      }),
+      turns: trace.turns.map((turn) => ({
+        ...turn,
+        attempts: turn.attempts.map((attempt) => ({
+          ...attempt,
+          input: { ...attempt.input, responseMode: "streaming" as const },
+        })),
+      })),
+    };
+  }
   if (trace.runId !== trace.input.runId) {
     throw new RunTraceValidationError("Run trace input has a different run ID.");
   }

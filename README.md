@@ -1,6 +1,6 @@
 # Inference Lens
 
-Inference Lens is a local web workbench for sending streaming chat-completion requests to an OpenAI-compatible API and inspecting normalized run events. **Inspect every model run.** The fastest way to try it is the [Docker quick start](#quick-start) — one command, nothing to install. To run from source instead, install Node.js 22.13 or newer, then run `npm ci` followed by `npm run dev` from the repository root and open the local URL printed in the terminal.
+Inference Lens is a local web workbench for sending streaming or buffered chat-completion requests to an OpenAI-compatible API and inspecting normalized run events. **Inspect every model run.** The fastest way to try it is the [Docker quick start](#quick-start) — one command, nothing to install. To run from source instead, install Node.js 22.13 or newer, then run `npm ci` followed by `npm run dev` from the repository root and open the local URL printed in the terminal.
 
 `npm run dev` reads the same server configuration as Compose from a `.env` file
 in the repository root. To configure a server-default connection for local
@@ -119,7 +119,8 @@ use another local port, set `INFERENCE_LENS_PORT` in `.env`.
 Inference Lens can also run as a self-contained macOS desktop app. The React UI is
 bundled as static assets; TypeScript constructs provider requests and
 normalizes streamed events, while a small Rust host resolves credentials and
-performs the streaming HTTP requests. No Node server is shipped with the app.
+performs the provider HTTP requests and forwards streamed or buffered response
+evidence. No Node server is shipped with the app.
 
 Install the prerequisites once (Rust and Xcode Command Line Tools), then run:
 
