@@ -801,7 +801,7 @@ export function N8nImportModal({
                       {candidate.resolved?.model
                         ? ` Source model: ${candidate.resolved.model}.`
                         : ""}
-                      {" The active Inference Lens connection and model will not change."}
+                      {" Your current connection and model will not change."}
                     </p>
                     {templateImportable && candidate.resolved?.model && (
                       <div className="n8n-recommendation-option">
@@ -822,13 +822,13 @@ export function N8nImportModal({
                         {recommendSourceModel && (
                           <p className="n8n-recommendation-detail">
                             {recommendation?.connectionRequirementName
-                              ? `Recorded as ${recommendation.connectionRequirementName} · ${candidate.resolved.model}.`
-                              : `Recorded as ${candidate.resolved.model}, against the connection this project uses.`}
-                            {" The model comes from n8n while the connection is this project's own, so the pair is a note to yourself rather than a verified combination."}
+                              ? `Saved as ${recommendation.connectionRequirementName} · ${candidate.resolved.model}.`
+                              : `Saved as ${candidate.resolved.model} for this project’s connection.`}
+                            {" This is a reminder, not a verified pairing: n8n supplies the model; this project supplies the connection."}
                             {recommendation &&
                             recommendation.projectModel !==
                               candidate.resolved.model
-                              ? ` This project runs ${recommendation.projectModel}, so a run using this template will report the difference until you change one of them.`
+                              ? ` This project uses ${recommendation.projectModel}; runs will flag the difference.`
                               : ""}
                           </p>
                         )}

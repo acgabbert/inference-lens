@@ -47,8 +47,7 @@ export function ProjectCreationDialog({
         <span className="eyebrow">New project</span>
         <h2 id="project-creation-title">Create an Inference Lens project</h2>
         <p>
-          Choose a name, then select the parent folder where the project bundle
-          should be created.
+          Name the project, then choose its parent folder.
         </p>
         <label className="project-creation-name">
           <span>Project name</span>
@@ -68,8 +67,7 @@ export function ProjectCreationDialog({
           <span>
             <strong>Keep this project out of Git</strong>
             <small>
-              Adds an internal .gitignore protecting authored prompts, traces,
-              and future project data.
+              Adds .gitignore rules for prompts, traces, and future project data.
             </small>
           </span>
         </label>

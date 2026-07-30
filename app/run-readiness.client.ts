@@ -358,9 +358,9 @@ export function runReadiness(
       blocked: false,
       headline: "Templates recommend different run targets",
       detail:
-        "This request still uses the model selected for the project. Review the recommendations before relying on them.",
+        "This request uses the project’s selected model. Review the recommendations before relying on them.",
       explanation:
-        "Several templates can contribute messages to one request, but a provider request can name only one model.",
+        "One provider request can use only one model.",
       summary: "Attached templates recommend different models.",
       facts: [...distinctTemplateTargets.values()].map((target) => ({
         label: target.templateName,
@@ -393,7 +393,7 @@ export function runReadiness(
       headline: `"${templateTarget.templateName}" recommends another model`,
       detail: `This run will use ${activeProfileModel}; the template recommends ${templateTarget.model}.`,
       explanation:
-        "A template recommendation records where that template was authored or verified, but it never overrides the explicit project/run target.",
+        "A recommendation records a template’s source target; it never changes the run target.",
       summary: "A template recommends a different model.",
       facts: [
         {

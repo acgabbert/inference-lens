@@ -38,9 +38,9 @@ function configuredServerOrigin(endpoint?: string): string | undefined {
 function ServerCredentialHint() {
   return (
     <span className="credential-status">
-      Entering a key every session? Set <code>INFERENCE_LENS_API_KEY</code> and{" "}
-      <code>INFERENCE_LENS_API_ENDPOINT</code> on the server and this profile
-      connects on its own — see the Docker guide.
+      Set <code>INFERENCE_LENS_API_KEY</code> and{" "}
+      <code>INFERENCE_LENS_API_ENDPOINT</code> on the server to connect
+      automatically. See the Docker guide.
     </span>
   );
 }
@@ -189,7 +189,7 @@ export function ConnectionDrawer({
     <SideDrawer
       open={open}
       title="Connections"
-      description="Profiles stay on this device. Credentials are never written to portable projects."
+      description="Profiles stay on this device; credentials never enter portable projects."
       onClose={onClose}
     >
       <div className="configuration">
@@ -260,8 +260,7 @@ export function ConnectionDrawer({
           />
           {serverDefaultActive && (
             <span className="credential-status">
-              This endpoint is set by the server configuration. Create a new
-              profile to use another provider.
+              Managed by server configuration. Create a profile for another provider.
             </span>
           )}
         </label>
@@ -293,8 +292,7 @@ export function ConnectionDrawer({
             </select>
             {usingServerDefault && !serverOriginMismatch && (
               <span className="credential-status">
-                The server reads its configured credential at request time. It
-                is sent only when this endpoint has the configured origin.
+                The server sends its credential only to its configured origin.
               </span>
             )}
             {serverOriginMismatch && (
@@ -363,8 +361,7 @@ export function ConnectionDrawer({
           <span>
             Allow tool calling
             <small>
-              Permit requests using this profile to send their selected tool
-              definitions.
+              Send selected tool definitions with requests from this profile.
             </small>
           </span>
         </label>
@@ -372,18 +369,17 @@ export function ConnectionDrawer({
           <span aria-hidden="true">●</span>
           {keychainActive ? (
             <>
-              <strong>Desktop privacy:</strong> credentials are stored in macOS
-              Keychain, never in profiles, project files, or diagnostic traces.
-              Each key is bound to this endpoint origin.
+              <strong>Desktop privacy:</strong> credentials stay in macOS Keychain,
+              not profiles, project files, or diagnostic traces. Each key is
+              limited to this endpoint origin.
             </>
           ) : (
             <>
               <strong>
                 {isDesktopRuntime ? "Development privacy:" : "Web privacy:"}
               </strong>{" "}
-              this key is held only for the current session. It is not saved to
-              localStorage, project files, diagnostic traces, or an OS
-              credential store.
+              this key lasts only for this session—never localStorage, project
+              files, diagnostic traces, or an OS credential store.
             </>
           )}
         </div>

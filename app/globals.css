@@ -977,6 +977,12 @@ output {
   gap: 7px;
 }
 
+/* The prompt library sidebar is intentionally narrow; this preserves a
+   one-line n8n import label without making the control visually distinct. */
+.template-import-action {
+  padding-inline: 8px;
+}
+
 .template-list {
   margin-top: 12px;
   display: grid;
@@ -4789,6 +4795,14 @@ main {
   padding: 5px;
 }
 
+.menu-group-heading {
+  padding: 7px 9px 5px;
+  color: var(--text-muted);
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .project-popover button,
 .menu-file-button {
   width: 100%;
@@ -5168,24 +5182,28 @@ main {
     display: none;
   }
 
-  .project-menu > summary {
+  .project-menu > summary,
+  .run-data-menu > summary {
     width: 38px;
     padding-inline: 10px;
   }
 
-  .project-menu-label {
+  .project-menu-label,
+  .run-data-menu-label {
     position: absolute;
     visibility: hidden;
   }
 
-  .project-menu > summary::before {
+  .project-menu > summary::before,
+  .run-data-menu > summary::before {
     content: "•••";
     visibility: visible;
     color: var(--text-primary);
     letter-spacing: 0.08em;
   }
 
-  .project-menu > summary .menu-chevron {
+  .project-menu > summary .menu-chevron,
+  .run-data-menu > summary .menu-chevron {
     display: none;
   }
 
@@ -5355,7 +5373,8 @@ main {
     width: min(310px, calc(100vw - 20px));
   }
 
-  .project-popover {
+  .project-popover,
+  .run-data-popover {
     position: fixed;
     top: 58px;
     right: 10px;

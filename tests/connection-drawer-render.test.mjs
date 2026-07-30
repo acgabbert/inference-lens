@@ -133,7 +133,7 @@ test("a configured server default explains what it sends and when", async () => 
     }),
   );
 
-  assert.match(html, /reads its configured credential at request time/);
+  assert.match(html, /sends its credential only to its configured origin/);
   assert.doesNotMatch(html, /will not be sent to this endpoint/);
   assert.doesNotMatch(html, /not configured/);
 });
@@ -207,6 +207,6 @@ test("a server-provisioned profile locks its endpoint and says why", async () =>
     }),
   );
 
-  assert.match(html, /set by the server configuration/);
-  assert.match(html, /Create a new\s+profile to use another provider/);
+  assert.match(html, /Managed by server configuration/);
+  assert.match(html, /Create a profile for another provider/);
 });

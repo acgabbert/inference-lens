@@ -74,6 +74,7 @@ test("renders the project template library and revision defaults", async () => {
     defaultConnectionRequirementId: "connection_default",
     usageCounts: new Map([["template_question", 2]]),
     itemCount: 3,
+    onOpenN8nImport: () => {},
     onCreate: () => "template_new",
     onSave: () => "template-revision_question-1",
     onInsert: () => {},
@@ -86,6 +87,7 @@ test("renders the project template library and revision defaults", async () => {
   assert.match(html, /fixture-model/);
   assert.match(html, /\{\{topic\}\}/);
   assert.match(html, /Add to conversation/);
+  assert.match(html, /Import from n8n…/);
 });
 
 test("renders a multiline run value with save and reset actions", async () => {
@@ -220,6 +222,8 @@ test("labels non-current revisions without a Previous 0 state", async () => {
     templates: [olderCurrent],
     usageCounts: new Map(),
     itemCount: 0,
+    n8nImportDisabledReason: "Finish the current run.",
+    onOpenN8nImport: () => {},
     onCreate: () => "template_new",
     onSave: () => "template-revision_question-1",
     onInsert: () => {},
@@ -227,6 +231,10 @@ test("labels non-current revisions without a Previous 0 state", async () => {
 
   assert.doesNotMatch(html, /Previous 0/);
   assert.match(html, /Revision 2/);
+  assert.match(
+    html,
+    /disabled="" title="Finish the current run."[^>]*>Import from n8n…/,
+  );
 });
 
 test("renders a structured, testable confirmation dialog", async () => {

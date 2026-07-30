@@ -67,7 +67,9 @@ export interface RequestComposerProps {
     parentTraceNeedsSaving: boolean;
   };
   requestPreview?: RequestPreview;
+  n8nImportDisabledReason?: string;
   onOpenConnectionSettings(): void;
+  onOpenN8nImport(): void;
   onOpenToolLibrary(): void;
   onSaveParentTrace(): void;
   onDiscardPendingBranch(): void;
@@ -85,7 +87,9 @@ export function RequestComposer({
   activeProfile,
   pendingBranch,
   requestPreview,
+  n8nImportDisabledReason,
   onOpenConnectionSettings,
+  onOpenN8nImport,
   onOpenToolLibrary,
   onSaveParentTrace,
   onDiscardPendingBranch,
@@ -152,7 +156,7 @@ export function RequestComposer({
           onChange={(value) => setTab(value as RequestTab)}
           tabs={[
             { id: "messages", label: "Messages", count: requestDraft.messages.length },
-            { id: "templates", label: "Templates", count: project?.promptTemplates.length ?? 0 },
+            { id: "templates", label: "Prompt library", count: project?.promptTemplates.length ?? 0 },
             { id: "tools", label: "Tools", count: selectedToolCount },
           ]}
         />
@@ -175,8 +179,8 @@ export function RequestComposer({
             </strong>
             <span>
               {templates.importNotice.template
-                ? `${templates.importNotice.variableCount} ${templates.importNotice.variableCount === 1 ? "variable was" : "variables were"} carried over from the saved execution.`
-                : "The saved execution messages are now in the composer."}
+                ? `${templates.importNotice.variableCount} ${templates.importNotice.variableCount === 1 ? "variable" : "variables"} imported from the saved execution.`
+                : "Execution messages imported into the composer."}
             </span>
           </div>
           <div className="workbench-notice-actions">
@@ -191,7 +195,7 @@ export function RequestComposer({
       )}
       {pendingBranch && (
         <div className="branch-pending" role="status">
-          Branching from run <code>{pendingBranch.parentRunId}</code> at message <code>{pendingBranch.branchMessageId}</code> — the original trace is untouched.
+          Branching from run <code>{pendingBranch.parentRunId}</code> at message <code>{pendingBranch.branchMessageId}</code>. Original trace unchanged.
           {pendingBranch.parentTraceNeedsSaving && (
             <button className="button secondary" type="button" onClick={onSaveParentTrace}>Save trace…</button>
           )}
@@ -276,7 +280,7 @@ export function RequestComposer({
             {requestPreview && <details className="request-preview"><summary>Resolved request preview</summary>{"error" in requestPreview ? <div className="template-diagnostic">{requestPreview.error}</div> : <><>{(templates.templateWorkbench.resolution?.diagnostics.length ?? 0) > 0 && <div className="template-warning" role="status">Preview contains unresolved variables. Running is blocked until they have values.</div>}</><h3>Resolved messages</h3><div className="request-preview-messages">{requestPreview.messages.map((message, index) => <article className="request-preview-message" key={`${message.role}-${index}`}><span className="eyebrow">{message.role}</span><pre>{conversationMessageText(message)}</pre></article>)}</div><details className="request-preview-raw"><summary>Raw OpenAI-compatible request body</summary><pre>{JSON.stringify(requestPreview.body, null, 2)}</pre></details></>}</details>}
           </>
         ) : activeTab === "templates" ? (
-          <ProjectTemplatesPane key={project?.projectId ?? "unsaved-project"} templates={project?.promptTemplates ?? []} connectionRequirements={project?.connectionRequirements ?? []} defaultConnectionRequirementId={project?.defaults.target.connectionRequirementId} usageCounts={templates.templateUsageCounts} itemCount={templates.activeProjectRevision?.items.length ?? requestDraft.messages.length} onCreate={templates.createProjectTemplate} onSave={templates.saveProjectTemplate} onInsert={(...args) => { templates.insertProjectTemplate(...args); setTab("messages"); }} />
+          <ProjectTemplatesPane key={project?.projectId ?? "unsaved-project"} templates={project?.promptTemplates ?? []} connectionRequirements={project?.connectionRequirements ?? []} defaultConnectionRequirementId={project?.defaults.target.connectionRequirementId} usageCounts={templates.templateUsageCounts} itemCount={templates.activeProjectRevision?.items.length ?? requestDraft.messages.length} n8nImportDisabledReason={n8nImportDisabledReason} onOpenN8nImport={onOpenN8nImport} onCreate={templates.createProjectTemplate} onSave={templates.saveProjectTemplate} onInsert={(...args) => { templates.insertProjectTemplate(...args); setTab("messages"); }} />
         ) : (
           <ToolsPane tools={requestDraft.tools} requestTools={requestDraft.requestTools} enabledToolIds={requestDraft.enabledToolIds} activeProfileName={activeProfile.name} toolsEnabled={settings.toolsEnabled} onOpenLibrary={onOpenToolLibrary} onOpenConnectionSettings={onOpenConnectionSettings} onAddTool={requestDraft.addTool} onRemoveTool={requestDraft.removeTool} onUpdateTool={requestDraft.updateTool} onSetToolEnabled={requestDraft.setToolEnabled} mockForTool={requestDraft.mockForTool} onUpdateToolMock={requestDraft.updateToolMock} onRemoveRequestTool={requestDraft.removeRequestTool} />
         )}

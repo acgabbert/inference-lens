@@ -29,6 +29,8 @@ interface ProjectTemplatesPaneProps {
   defaultConnectionRequirementId?: ConnectionRequirement["id"];
   usageCounts: ReadonlyMap<PromptTemplateId, number>;
   itemCount: number;
+  n8nImportDisabledReason?: string;
+  onOpenN8nImport(): void;
   onCreate(name: string, content: PromptTemplateContent): PromptTemplateId;
   onSave(
     templateId: PromptTemplateId,
@@ -58,6 +60,8 @@ export function ProjectTemplatesPane({
   defaultConnectionRequirementId,
   usageCounts,
   itemCount,
+  n8nImportDisabledReason,
+  onOpenN8nImport,
   onCreate,
   onSave,
   onInsert,
@@ -169,6 +173,15 @@ export function ProjectTemplatesPane({
           </button>
           <button className="button secondary" type="button" onClick={() => addTemplate("messages")}>
             + Message set
+          </button>
+          <button
+            className="button secondary template-import-action"
+            disabled={Boolean(n8nImportDisabledReason)}
+            title={n8nImportDisabledReason}
+            type="button"
+            onClick={onOpenN8nImport}
+          >
+            Import from n8n…
           </button>
         </div>
         <div className="template-list">
@@ -311,9 +324,8 @@ export function ProjectTemplatesPane({
                   <h3>Recommended target</h3>
                 </div>
                 <p className="template-empty">
-                  Optional. Owned by the template, so changing it never appends a
-                  revision. Shown before a run when it differs from the run
-                  target; it never switches the run silently.
+                  Optional. It does not create a revision or change a run. Shown
+                  when it differs from the selected run target.
                 </p>
                 <label>
                   Connection
