@@ -116,3 +116,64 @@ test("disclosure preserves the selected tab and tabs support arrow keys", async 
     await server.close();
   }
 });
+
+test("clearing the run retires the disclosure so the next run stays collapsed", async () => {
+  const server = await createServer({
+    configFile: false,
+    root: process.cwd(),
+    plugins: [react()],
+    server: { middlewareMode: true, hmr: false },
+    logLevel: "warn",
+  });
+  const [
+    { RunTracePanel },
+    { createElement },
+    { createRoot },
+    { act },
+  ] = await Promise.all([
+    server.ssrLoadModule("/app/run-trace-panel.client.tsx"),
+    import("react"),
+    import("react-dom/client"),
+    import("react"),
+  ]);
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  let open = true;
+  let state = runState;
+
+  const render = () =>
+    root.render(
+      createElement(RunTracePanel, {
+        open,
+        runState: state,
+        parentTrace: { status: "idle" },
+        onLoadParentTrace() {},
+        onOpenChange(next) {
+          open = next;
+          render();
+        },
+      }),
+    );
+
+  try {
+    await act(async () => render());
+    assert.match(container.innerHTML, /run-details-events-panel/);
+
+    // Resetting the session clears the run state out from under an open panel.
+    state = null;
+    await act(async () => render());
+    assert.equal(open, false);
+    assert.equal(container.querySelector('[role="tabpanel"]'), null);
+
+    // A later run must not inherit the disclosure the reset invalidated.
+    state = runState;
+    await act(async () => render());
+    assert.equal(open, false);
+    assert.equal(container.querySelector('[role="tabpanel"]'), null);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    await server.close();
+  }
+});

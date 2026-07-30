@@ -286,6 +286,8 @@ export function PaneTabs({
   );
 }
 
+const TRACE_TOGGLE_HINT = "Run details become available once a run starts.";
+
 type ResizableTracePanelProps = {
   open: boolean;
   canOpen?: boolean;
@@ -366,8 +368,14 @@ export function ResizableTracePanel({
           <span />
         </button>
       )}
-      <header className="trace-header">
+      <header
+        className="trace-header"
+        // A disabled button does not reliably surface its own tooltip, so the
+        // pointer hint lives on the header while the description serves AT.
+        title={canOpen ? undefined : TRACE_TOGGLE_HINT}
+      >
         <button
+          aria-describedby={canOpen ? undefined : "trace-toggle-hint"}
           aria-expanded={open}
           className="trace-toggle"
           disabled={!canOpen}
@@ -379,12 +387,15 @@ export function ResizableTracePanel({
           </span>
           Run details
         </button>
+        {!canOpen && (
+          <span className="visually-hidden" id="trace-toggle-hint">
+            {TRACE_TOGGLE_HINT}
+          </span>
+        )}
         {tabs}
       </header>
       {summary && (
-        <div className="trace-summary-row" aria-live="polite">
-          {summary}
-        </div>
+        <div className="trace-summary-row">{summary}</div>
       )}
       {open && <div className="trace-panel-content">{children}</div>}
     </section>
