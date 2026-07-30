@@ -1,6 +1,6 @@
 # `app/page.tsx` composition-root execution plan
 
-**Status:** PR 3 complete
+**Status:** PR 4 complete
 
 **Observed baseline:** `main` at `e59785c` on 2026-07-29
 
@@ -102,8 +102,8 @@ constraints, stop that PR and design the behavior change separately.
 | 1 | Pure workbench-run preparation | Merged (`7618104`) | None |
 | 2 | Atomic live run session | Merged (`eb675a0`) | PR 1 |
 | 3 | Project-template workbench owner | Complete | PR 2 |
-| 4 | Request composer | Blocked on PR 3 | PR 3 |
-| 5 | Feature organization and composition-root guardrail | Blocked on PR 4 | PR 4 |
+| 4 | Request composer | Complete | PR 3 |
+| 5 | Feature organization and composition-root guardrail | Ready | PR 4 |
 
 ---
 
@@ -757,6 +757,20 @@ Check both light and dark themes and scan the request pane for invalid text.
 - Existing request-pane class names and behavior remain stable.
 - Rendered-text and running-app checks are reported.
 - No compatibility constraint changed.
+
+### Verification completed
+
+- `npm run lint`, `npm run typecheck`, `npm run typecheck:core`, and `npm test`
+  passed.
+- The extracted composer has direct SSR coverage for an ad hoc request and for
+  pending-branch/template-error presentation. The existing rendered suites
+  continue to cover project templates, tool selection, connection controls,
+  n8n import, and request-pane text.
+- In the running app, the local echo fixture rendered exactly
+  `Fixture received system="You are a concise, thoughtful assistant." | user="Explain the tradeoff between a cache and a database index to a new engineer in two sentences."`.
+  Messages, Templates, and Tools navigation all rendered their expected
+  surfaces. The request pane contained no `NaN`, `Infinity`, or `undefined`
+  text.
 
 ---
 
