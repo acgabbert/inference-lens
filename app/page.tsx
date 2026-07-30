@@ -6,50 +6,19 @@ import type {
   RichInferenceRequest,
 } from "../packages/core/src/types";
 import {
-  appendPromptTemplateRevision,
-  createBranchRevision,
   createProjectFile,
-  createPromptTemplate,
-  detachPromptTemplateUse,
-  findPromptTemplateUsages,
-  insertPromptTemplateUse,
-  projectDraft,
-  removePromptTemplateUse,
-  renamePromptTemplate,
-  resolveProjectRevision,
-  setPromptTemplateRecommendedTarget,
-  updateProjectDraft,
-  updatePromptTemplateUseToLatest,
-  updatePromptTemplateUseValues,
-} from "../packages/core/src/project";
-import type {
-  ProjectConversationItem,
-  PromptTemplateContent,
-  PromptTemplateRecommendedTarget,
-  TemplateRunOverrides,
 } from "../packages/core/src/project";
 import {
   createEntityId,
   createSingleTurnRunExecution,
 } from "../packages/core/src/run-kernel";
-import {
-  importExternalPromptCandidate,
-  importExternalPromptTemplateCandidate,
-} from "../packages/core/src/external-prompt-project.ts";
-import type {
-  ExternalPromptCandidate,
-} from "../packages/core/src/external-prompt-import.ts";
 import type {
   RunState,
   ConversationMessage,
   ConversationId,
-  ConversationRevisionId,
   MessageId,
-  PromptTemplateId,
-  PromptTemplateUseId,
 } from "../packages/core/src/run-kernel";
 import { buildChatCompletionsRequest } from "../packages/core/src/openai-compatible";
-import { discoverTemplateVariables } from "../packages/core/src/template-engine";
 import { conversationMessageText } from "./conversation-display";
 import {
   createInferenceTransport,
@@ -73,10 +42,7 @@ import { ProjectCreationDialog } from "./project-creation-dialog.client";
 import { ModelCombobox } from "./model-combobox.client";
 import { useModelDiscovery } from "./use-model-discovery.client";
 import { useConnectionProfiles } from "./use-connection-profiles.client";
-import {
-  removeDraftMessage,
-  useRequestDraft,
-} from "./use-request-draft.client";
+import { useRequestDraft } from "./use-request-draft.client";
 import { useProjectWorkspace } from "./use-project-workspace.client";
 import { ConnectionDrawer } from "./connection-drawer.client";
 import { Topbar } from "./topbar.client";
@@ -96,10 +62,6 @@ import {
   TemplateUseCard,
 } from "./project-templates-pane.client";
 import {
-  pendingBranchMessagesAfterItemUpdate,
-  projectTemplateWorkbenchView,
-} from "./project-template-workbench.client";
-import {
   ConfirmationDialog,
 } from "./confirmation-dialog.client";
 import { runReadiness } from "./run-readiness.client";
@@ -113,6 +75,7 @@ import {
   type WorkbenchBranchContext,
 } from "./prepare-workbench-run.client";
 import { useRunSession } from "./use-run-session.client";
+import { useProjectTemplates } from "./use-project-templates.client";
 
 const inferenceTransport = createInferenceTransport();
 
@@ -244,13 +207,7 @@ function HomeContent() {
   const [savedRunVersion, setSavedRunVersion] = useState(0);
   const [requestTab, setRequestTab] =
     useState<"messages" | "templates" | "tools">("messages");
-  const [importNotice, setImportNotice] = useState<{
-    name: string;
-    variableCount: number;
-    template: boolean;
-  }>();
-  const [templateRunOverrides, setTemplateRunOverrides] =
-    useState<TemplateRunOverrides>({});
+  const clearTemplateOverridesRef = useRef<() => void>(() => {});
   const [workbenchView, setWorkbenchView] =
     useState<WorkbenchView>("request");
   const [traceOpen, setTraceOpen] = useState(true);
@@ -285,7 +242,7 @@ function HomeContent() {
     },
     onApplyDraft(draft) {
       replaceProjectDraft(draft);
-      setTemplateRunOverrides({});
+      clearTemplateOverridesRef.current();
       setBranchContext(null);
       setSessionModel(draft.model);
       setSessionTemperature(draft.temperature ?? 0.7);
@@ -355,14 +312,6 @@ function HomeContent() {
   const adHocConversationIdRef = useRef<ConversationId | null>(null);
   const outputScrollRef = useRef<HTMLDivElement | null>(null);
   const [branchContext, setBranchContext] = useState<BranchContext | null>(null);
-  const executedRevisionIdsRef = useRef(new Set<ConversationRevisionId>());
-  useEffect(() => {
-    if (projectFile && !projectDirty) {
-      executedRevisionIdsRef.current.add(
-        projectFile.defaults.conversationRevisionId,
-      );
-    }
-  }, [projectDirty, projectFile]);
   const nonBranchableMessageIds = new Set(
     runState?.input?.templateResolutions.flatMap((resolution) =>
       resolution.outputMessageIds.slice(0, -1),
@@ -436,29 +385,6 @@ function HomeContent() {
     enabledToolIds.includes(id),
   ).length;
   const selectedToolCount = selectedProjectToolCount + requestTools.length;
-  const activeProjectRevision = projectFile?.conversationRevisions.find(
-    ({ id }) => id === projectFile.defaults.conversationRevisionId,
-  );
-  const templateWorkbench = projectTemplateWorkbenchView({
-    project: projectFile,
-    messages,
-    runOverrides: templateRunOverrides,
-    branchParentRevisionId: branchContext?.parentConversationRevisionId,
-  });
-  const activeProjectResolution = templateWorkbench.resolution;
-  const templateUsageCounts = (() => {
-    const counts = new Map<PromptTemplateId, number>();
-    projectFile?.promptTemplates.forEach((template) => {
-      counts.set(
-        template.id,
-        findPromptTemplateUsages(projectFile, template.id).length,
-      );
-    });
-    return counts;
-  })();
-  const activeConnectionRequirement = projectFile?.connectionRequirements.find(
-    ({ id }) => id === projectFile.defaults.target.connectionRequirementId,
-  );
   const { discovery: activeModelDiscovery, loadModels } = useModelDiscovery({
     profileId: activeProfile.id,
     endpoint: activeProfile.endpoint,
@@ -473,403 +399,35 @@ function HomeContent() {
       : project.materializeProject();
   }
 
-  function adoptAuthoredProject(
-    next: ReturnType<typeof ensureProjectDocument>,
-    overrides: TemplateRunOverrides = templateRunOverrides,
-  ): void {
-    project.adoptProjectMutation(next);
-    replaceProjectDraft(projectDraft(next, overrides));
-  }
-
-  async function importN8nPrompt(
-    candidate: ExternalPromptCandidate,
-    mode: "resolved-snapshot" | "reusable-template",
-    { recommendModel }: { recommendModel: boolean },
-  ): Promise<void> {
-    const imported =
-      mode === "reusable-template"
-        ? await importExternalPromptTemplateCandidate(
-            ensureProjectDocument(),
-            candidate,
-            { recommendModel },
-          )
-        : await importExternalPromptCandidate(
-            ensureProjectDocument(),
-            candidate,
-          );
-    project.adoptProjectMutation(imported.project);
-    replaceProjectDraft(projectDraft(imported.project));
-    setTemplateRunOverrides({});
-    setBranchContext(null);
-    setRequestTab("messages");
-    setWorkbenchView("request");
-    const receipt = imported.project.externalImports.find(
-      ({ id }) => id === imported.externalImportId,
-    );
-    const variableCount =
-      receipt?.projection.kind === "prompt-template"
-        ? receipt.projection.variables.length
-        : 0;
-    setImportNotice({
-      name: candidate.invocation.name,
-      variableCount,
-      template: mode === "reusable-template",
-    });
-    setN8nImportOpen(false);
-  }
-
-  function projectForUseMutation(): {
-    project: ReturnType<typeof ensureProjectDocument>;
-    revisionId: ConversationRevisionId;
-  } {
-    let base = ensureProjectDocument();
-    let revision = base.conversationRevisions.find(
-      ({ id }) => id === base.defaults.conversationRevisionId,
-    )!;
-    if (executedRevisionIdsRef.current.has(revision.id)) {
-      base = createBranchRevision(base, {
-        conversationId: revision.conversationId,
-        parentRevisionId: revision.id,
-        messages: resolveProjectRevision(
-          base,
-          revision,
-          templateRunOverrides,
-        ).messages,
-        items: structuredClone(revision.items),
-      });
-      revision = base.conversationRevisions.find(
-        ({ id }) => id === base.defaults.conversationRevisionId,
-      )!;
-    }
-    return { project: base, revisionId: revision.id };
-  }
-
-  function createProjectTemplate(
-    name: string,
-    content: PromptTemplateContent,
-  ): PromptTemplateId {
-    const suffix = randomUUID();
-    const next = createPromptTemplate(ensureProjectDocument(), {
-      name,
-      content,
-      idSuffix: suffix,
-      revisionIdSuffix: `${suffix}-1`,
-    });
-    adoptAuthoredProject(next);
-    return createEntityId("template", suffix);
-  }
-
-  function saveProjectTemplate(
-    templateId: PromptTemplateId,
-    name: string,
-    content: PromptTemplateContent,
-    defaults: Record<string, string>,
-    recommendedTarget?: PromptTemplateRecommendedTarget,
-  ) {
-    let next = renamePromptTemplate(ensureProjectDocument(), templateId, name);
-    // Template metadata first, then authored content: only the latter can
-    // append a revision, so a recommendation-only edit keeps uses pinned.
-    next = setPromptTemplateRecommendedTarget(next, templateId, recommendedTarget);
-    next = appendPromptTemplateRevision(next, {
-      templateId,
-      content,
-      variableDefaults: defaults,
-    });
-    adoptAuthoredProject(next);
-    return next.promptTemplates.find(({ id }) => id === templateId)!
-      .currentRevisionId;
-  }
-
-  function insertProjectTemplate(
-    templateId: PromptTemplateId,
-    role: "system" | "user" | "assistant",
-    itemIndex: number,
-  ): void {
-    const { project: base, revisionId } = projectForUseMutation();
-    const next = insertPromptTemplateUse(base, {
-      conversationRevisionId: revisionId,
-      templateId,
-      fragmentRole: role,
-      itemIndex,
-    });
-    adoptAuthoredProject(next);
-    setRequestTab("messages");
-  }
-
-  function updateTemplateUseValues(
-    templateUseId: PromptTemplateUseId,
-    values: Record<string, string>,
-  ): void {
-    const { project: base, revisionId } = projectForUseMutation();
-    const next = updatePromptTemplateUseValues(base, {
-      conversationRevisionId: revisionId,
-      templateUseId,
-      values,
-    });
-    adoptAuthoredProject(next);
-  }
-
-  function updateTemplateUseOverride(
-    templateUseId: PromptTemplateUseId,
-    values: Record<string, string>,
-  ): void {
-    const next = { ...templateRunOverrides, [templateUseId]: values };
-    setTemplateRunOverrides(next);
-    if (projectFile) replaceProjectDraft(projectDraft(projectFile, next));
-  }
-
-  function saveTemplateUseRunValue(
-    templateUseId: PromptTemplateUseId,
-    values: Record<string, string>,
-    useOverrides: Record<string, string>,
-  ): void {
-    const { project: base, revisionId } = projectForUseMutation();
-    const nextProject = updatePromptTemplateUseValues(base, {
-      conversationRevisionId: revisionId,
-      templateUseId,
-      values,
-    });
-    const nextOverrides = { ...templateRunOverrides };
-    if (Object.keys(useOverrides).length > 0) {
-      nextOverrides[templateUseId] = useOverrides;
-    } else {
-      delete nextOverrides[templateUseId];
-    }
-    setTemplateRunOverrides(nextOverrides);
-    adoptAuthoredProject(nextProject, nextOverrides);
-  }
-
-  function updateTemplateUseToLatestRevision(
-    templateUseId: PromptTemplateUseId,
-  ): void {
-    const currentProject = ensureProjectDocument();
-    const currentRevision = currentProject.conversationRevisions.find(
-      ({ id }) => id === currentProject.defaults.conversationRevisionId,
-    )!;
-    const item = currentRevision.items.find(
-      (candidate) =>
-        candidate.kind === "template-use" &&
-        candidate.use.id === templateUseId,
-    );
-    if (!item || item.kind !== "template-use") return;
-    const template = currentProject.promptTemplates.find(
-      ({ id }) => id === item.use.templateId,
-    )!;
-    const pinned = template.revisions.find(
-      ({ id }) => id === item.use.templateRevisionId,
-    )!;
-    const latest = template.revisions.find(
-      ({ id }) => id === template.currentRevisionId,
-    )!;
-    const pinnedVariables = discoverTemplateVariables(pinned.content).variables.map(
-      ({ name }) => name,
-    );
-    const latestVariables = discoverTemplateVariables(latest.content).variables.map(
-      ({ name }) => name,
-    );
-    const describeContent = (content: PromptTemplateContent): string =>
-      content.kind === "fragment"
-        ? content.text
-        : content.messages
-            .map(({ role, content: text }) => `${role}: ${text}`)
-            .join("\n");
-    setConfirmation({
-      title: `Update "${template.name}"?`,
-      description:
-        "The use will pin the latest immutable revision. Assignments for removed variables and its run-only overrides will be cleared.",
-      confirmLabel: "Update to latest",
-      details: [
-        { label: "From", value: pinned.id },
-        { label: "To", value: latest.id },
-        {
-          label: "Variables",
-          value: `${pinnedVariables.join(", ") || "none"} → ${latestVariables.join(", ") || "none"}`,
-        },
-        { label: "Current content", value: describeContent(pinned.content) },
-        { label: "Latest content", value: describeContent(latest.content) },
-      ],
-      onConfirm() {
-        const { project: base, revisionId } = projectForUseMutation();
-        const latestCount =
-          latest.content.kind === "fragment" ? 1 : latest.content.messages.length;
-        const extraIds = Array.from(
-          {
-            length: Math.max(0, latestCount - item.use.outputMessageIds.length),
-          },
-          () => randomUUID(),
-        );
-        const next = updatePromptTemplateUseToLatest(base, {
-          conversationRevisionId: revisionId,
-          templateUseId,
-          newOutputMessageIdSuffixes: extraIds,
-          ...(latest.content.kind === "fragment"
-            ? { fragmentRole: item.use.fragmentRole ?? "user" }
-            : {}),
-        });
-        const overrides = { ...templateRunOverrides };
-        delete overrides[templateUseId];
-        setTemplateRunOverrides(overrides);
-        adoptAuthoredProject(next, overrides);
-      },
-    });
-  }
-
-  function detachTemplateUseFromProject(
-    templateUseId: PromptTemplateUseId,
-  ): void {
-    setConfirmation({
-      title: "Detach this template use?",
-      description:
-        "Its currently resolved values, including run-only overrides, will become ordinary literal messages with the same message IDs.",
-      confirmLabel: "Detach",
-      onConfirm() {
-        const { project: base, revisionId } = projectForUseMutation();
-        const next = detachPromptTemplateUse(base, {
-          conversationRevisionId: revisionId,
-          templateUseId,
-          runOverrides: templateRunOverrides,
-        });
-        const overrides = { ...templateRunOverrides };
-        delete overrides[templateUseId];
-        setTemplateRunOverrides(overrides);
-        adoptAuthoredProject(next, overrides);
-      },
-    });
-  }
-
-  function removeTemplateUseFromProject(
-    templateUseId: PromptTemplateUseId,
-  ): void {
-    setConfirmation({
-      title: "Remove this template use?",
-      description:
-        "The pinned use and all messages it generates will be removed from this conversation revision.",
-      confirmLabel: "Remove use",
-      destructive: true,
-      onConfirm() {
-        const { project: base, revisionId } = projectForUseMutation();
-        const next = removePromptTemplateUse(base, revisionId, templateUseId);
-        const overrides = { ...templateRunOverrides };
-        delete overrides[templateUseId];
-        setTemplateRunOverrides(overrides);
-        adoptAuthoredProject(next, overrides);
-      },
-    });
-  }
-
-  function mutateAuthoredItems(
-    update: (items: ProjectConversationItem[]) => ProjectConversationItem[],
-  ): void {
-    if (branchContext) {
-      if (!projectFile || !branchContext.parentConversationRevisionId) {
-        project.setError(
-          "This branch context is missing its parent revision. Start the branch again from its source run.",
-        );
-        return;
-      }
-      try {
-        resetMessages(
-          pendingBranchMessagesAfterItemUpdate({
-            project: projectFile,
-            messages,
-            runOverrides: templateRunOverrides,
-            parentRevisionId: branchContext.parentConversationRevisionId,
-            update,
-          }),
-        );
-        project.setError(undefined);
-      } catch (error) {
-        project.setError(
-          error instanceof Error
-            ? error.message
-            : "Could not update the pending branch.",
-        );
-      }
-      return;
-    }
-    const { project: base, revisionId } = projectForUseMutation();
-    const revision = base.conversationRevisions.find(
-      ({ id }) => id === revisionId,
-    )!;
-    const next = updateProjectDraft(base, {
-      messages,
-      items: update(structuredClone(revision.items)),
-      model: activeModel,
-      temperature: activeTemperature,
-      tools: serializedTools(),
-      toolMocks,
-      enabledToolIds,
-    });
-    adoptAuthoredProject(next);
-  }
-
-  function addComposerMessage(): void {
-    if (!projectFile) {
-      addMessage();
-      return;
-    }
-    mutateAuthoredItems((items) => [
-      ...items,
-      {
-        kind: "message",
-        message: {
-          id: createEntityId("message", randomUUID()),
-          role: "user",
-          content: [{ type: "text", text: "" }],
-        },
-      },
-    ]);
-  }
-
-  function updateComposerMessage(
-    id: MessageId,
-    patch: {
-      content?: ConversationMessage["content"];
-      role?: ConversationMessage["role"];
+  const projectTemplates = useProjectTemplates({
+    projectFile,
+    projectDirty,
+    messages,
+    model: activeModel,
+    temperature: activeTemperature,
+    serializedTools,
+    toolMocks,
+    enabledToolIds,
+    branchParentRevisionId: branchContext?.parentConversationRevisionId,
+    ensureProjectDocument,
+    adoptProjectMutation: project.adoptProjectMutation,
+    replaceProjectDraft,
+    markProjectError: project.setError,
+    resetMessages,
+    addDraftMessage: addMessage,
+    updateDraftMessage: updateMessage,
+    removeDraftMessage: removeMessage,
+    clearPendingBranch: () => setBranchContext(null),
+    requestConfirmation: setConfirmation,
+    onImportApplied() {
+      setRequestTab("messages");
+      setWorkbenchView("request");
+      setN8nImportOpen(false);
     },
-  ): void {
-    if (!projectFile) {
-      updateMessage(id, patch);
-      return;
-    }
-    mutateAuthoredItems((items) =>
-      items.map((item) => {
-        if (item.kind !== "message" || item.message.id !== id) return item;
-        const message = item.message;
-        const content = patch.content ?? message.content;
-        if (
-          message.role === "tool" ||
-          (message.role === "assistant" && message.toolCalls?.length)
-        ) {
-          return { ...item, message: { ...message, content } };
-        }
-        return {
-          ...item,
-          message: {
-            id: message.id,
-            role: patch.role ?? message.role,
-            content,
-          } as ConversationMessage,
-        };
-      }),
-    );
-  }
-
-  function removeComposerMessage(id: MessageId): void {
-    if (!projectFile) {
-      removeMessage(id);
-      return;
-    }
-    const remainingIds = new Set(
-      removeDraftMessage(messages, id).map((message) => message.id),
-    );
-    mutateAuthoredItems((items) =>
-      items.filter(
-        (item) =>
-          item.kind === "template-use" || remainingIds.has(item.message.id),
-      ),
-    );
-  }
+  });
+  useEffect(() => {
+    clearTemplateOverridesRef.current = projectTemplates.clearTransientOverrides;
+  }, [projectTemplates.clearTransientOverrides]);
 
   const { output, reasoning, status } = (() => {
     const attempts =
@@ -927,31 +485,32 @@ function HomeContent() {
     | { body: unknown; messages: ConversationMessage[] }
     | { error: string }
     | undefined {
-    if (!projectFile || !activeProjectRevision) {
+    if (!projectFile || !projectTemplates.activeProjectRevision) {
       return undefined;
     }
-    if (templateWorkbench.resolutionError) {
-      return { error: templateWorkbench.resolutionError };
+    if (projectTemplates.templateWorkbench.resolutionError) {
+      return { error: projectTemplates.templateWorkbench.resolutionError };
     }
-    if (!activeProjectResolution) return undefined;
+    const resolution = projectTemplates.templateWorkbench.resolution;
+    if (!resolution) return undefined;
     try {
       const request = {
         ...currentRequest(),
-        messages: activeProjectResolution.messages,
+        messages: resolution.messages,
       };
       const execution = createSingleTurnRunExecution(
         request,
         {
-          conversationId: activeProjectRevision.conversationId,
-          conversationRevisionId: activeProjectRevision.id,
+          conversationId: projectTemplates.activeProjectRevision.conversationId,
+          conversationRevisionId: projectTemplates.activeProjectRevision.id,
         },
         "template-preview",
         "1970-01-01T00:00:00.000Z",
         [...resolvedTools(), ...requestTools],
-        activeProjectResolution.templateResolutions,
+        resolution.templateResolutions,
       );
       return {
-        messages: activeProjectResolution.messages,
+        messages: resolution.messages,
         body: buildChatCompletionsRequest({
           runId: execution.runId,
           turnId: execution.turnId,
@@ -1063,7 +622,7 @@ function HomeContent() {
       capabilities: activeCapabilities,
       profileName: activeProfile.name,
       branchContext: branchContext ?? undefined,
-      templateRunOverrides,
+      templateRunOverrides: projectTemplates.templateRunOverrides,
       adHocConversationId: adHocConversationIdRef.current ?? undefined,
     });
     if (!prepared.ok) {
@@ -1076,7 +635,7 @@ function HomeContent() {
     }
     if (prepared.projectMutation) project.adoptBranchRevision(prepared.projectMutation);
     if (prepared.executedRevisionId) {
-      executedRevisionIdsRef.current.add(prepared.executedRevisionId);
+      projectTemplates.markExecutedRevision(prepared.executedRevisionId);
     }
     if (prepared.adHocConversationId) {
       adHocConversationIdRef.current = prepared.adHocConversationId;
@@ -1544,7 +1103,7 @@ function HomeContent() {
       ["completed", "cancelled", "failed"].includes(runState.status.kind),
   );
   const requestPreview = templateRequestPreview();
-  const composerItems = templateWorkbench.composerItems;
+  const composerItems = projectTemplates.templateWorkbench.composerItems;
   const readiness = runReadiness({
     projectOpen: Boolean(projectFile),
     connectionMapped: Boolean(mappedProfileId),
@@ -1553,17 +1112,17 @@ function HomeContent() {
     activeProfileModel: activeModel,
     selectedToolCount,
     toolsEnabled: activeCapabilities.tools,
-    ...(activeConnectionRequirement
+    ...(projectTemplates.activeConnectionRequirement
       ? {
-          requiredEndpoint: activeConnectionRequirement.endpoint,
-          activeConnectionRequirementId: activeConnectionRequirement.id,
+          requiredEndpoint: projectTemplates.activeConnectionRequirement.endpoint,
+          activeConnectionRequirementId: projectTemplates.activeConnectionRequirement.id,
         }
       : {}),
-    ...(templateWorkbench.resolutionError
-      ? { templateResolutionError: templateWorkbench.resolutionError }
+    ...(projectTemplates.templateWorkbench.resolutionError
+      ? { templateResolutionError: projectTemplates.templateWorkbench.resolutionError }
       : {}),
     templateIssues:
-      activeProjectResolution?.diagnostics.map(
+      projectTemplates.templateWorkbench.resolution?.diagnostics.map(
         ({ templateUseId, diagnostic }) => ({
           templateUseId,
           ...(diagnostic.code === "missing-template-variable"
@@ -1722,28 +1281,28 @@ function HomeContent() {
           </div>
         </div>
       )}
-      {(serverDefaultProfileNotice || originNotice.notice || importNotice) && (
+      {(serverDefaultProfileNotice || originNotice.notice || projectTemplates.importNotice) && (
         <div className="workbench-notices">
-          {importNotice && (
+          {projectTemplates.importNotice && (
             <div className="workbench-notice" role="status">
               <div className="workbench-notice-copy">
                 <strong>
-                  Imported &ldquo;{importNotice.name}&rdquo;{importNotice.template ? " as a reusable template" : ""}
+                  Imported &ldquo;{projectTemplates.importNotice.name}&rdquo;{projectTemplates.importNotice.template ? " as a reusable template" : ""}
                 </strong>
                 <span>
-                  {importNotice.template
-                    ? `${importNotice.variableCount} ${importNotice.variableCount === 1 ? "variable was" : "variables were"} carried over from the saved execution.`
+                  {projectTemplates.importNotice.template
+                    ? `${projectTemplates.importNotice.variableCount} ${projectTemplates.importNotice.variableCount === 1 ? "variable was" : "variables were"} carried over from the saved execution.`
                     : "The saved execution messages are now in the composer."}
                 </span>
               </div>
               <div className="workbench-notice-actions">
-                {importNotice.template && (
+                {projectTemplates.importNotice.template && (
                   <button
                     className="button primary"
                     type="button"
                     onClick={() => {
                       setRequestTab("templates");
-                      setImportNotice(undefined);
+                      projectTemplates.clearImportNotice();
                     }}
                   >
                     View template
@@ -1752,7 +1311,7 @@ function HomeContent() {
                 <button
                   className="button"
                   type="button"
-                  onClick={() => setImportNotice(undefined)}
+                  onClick={projectTemplates.clearImportNotice}
                 >
                   Dismiss
                 </button>
@@ -1843,7 +1402,7 @@ function HomeContent() {
         deleteProfileRefusal={activeProfileDeletionRefusal}
         onUpdateProfile={updateActiveProfile}
         onCapabilityChange={changeCapability}
-        connectionRequirement={activeConnectionRequirement}
+        connectionRequirement={projectTemplates.activeConnectionRequirement}
         mappedProfileId={mappedProfileId}
         onMapProfile={() => {
           project.mapActiveProfile();
@@ -1891,7 +1450,7 @@ function HomeContent() {
             {requestTab === "messages" ? (
               <button
                 className="text-button header-text-action"
-                onClick={addComposerMessage}
+                onClick={projectTemplates.addComposerMessage}
               >
                 + Add message
               </button>
@@ -2038,34 +1597,34 @@ function HomeContent() {
                     use={item.use}
                     template={template}
                     diagnostics={
-                      activeProjectResolution?.diagnostics.filter(
+                      projectTemplates.templateWorkbench.resolution?.diagnostics.filter(
                         ({ templateUseId }) => templateUseId === item.use.id,
                       ) ?? []
                     }
-                    runOverrides={templateRunOverrides[item.use.id] ?? {}}
+                    runOverrides={projectTemplates.templateRunOverrides[item.use.id] ?? {}}
                     importedFrom={projectFile?.externalImports.find(
                       (receipt) =>
                         receipt.projection.kind === "prompt-template" &&
                         receipt.projection.templateRevisionId === item.use.templateRevisionId,
                     )}
                     onSaveValues={(values) =>
-                      updateTemplateUseValues(item.use.id, values)
+                      projectTemplates.updateTemplateUseValues(item.use.id, values)
                     }
                     onSaveRunValue={(values, runOverrides) =>
-                      saveTemplateUseRunValue(
+                      projectTemplates.saveTemplateUseRunValue(
                         item.use.id,
                         values,
                         runOverrides,
                       )
                     }
                     onRunOverridesChange={(values) =>
-                      updateTemplateUseOverride(item.use.id, values)
+                      projectTemplates.updateTemplateUseOverride(item.use.id, values)
                     }
                     onUpdateLatest={() =>
-                      updateTemplateUseToLatestRevision(item.use.id)
+                      projectTemplates.updateTemplateUseToLatestRevision(item.use.id)
                     }
-                    onDetach={() => detachTemplateUseFromProject(item.use.id)}
-                    onRemove={() => removeTemplateUseFromProject(item.use.id)}
+                    onDetach={() => projectTemplates.detachTemplateUse(item.use.id)}
+                    onRemove={() => projectTemplates.removeTemplateUse(item.use.id)}
                   />
                 );
               }
@@ -2090,7 +1649,7 @@ function HomeContent() {
                     value={message.role}
                     disabled={roleIsStructural}
                     onChange={(event) =>
-                      updateComposerMessage(message.id, {
+                      projectTemplates.updateComposerMessage(message.id, {
                         role: event.target.value as ConversationMessage["role"],
                       })
                     }
@@ -2113,7 +1672,7 @@ function HomeContent() {
                   <button
                     aria-label={`Remove message ${index + 1}`}
                     className="remove-button"
-                    onClick={() => removeComposerMessage(message.id)}
+                    onClick={() => projectTemplates.removeComposerMessage(message.id)}
                   >
                     Remove
                   </button>
@@ -2122,7 +1681,7 @@ function HomeContent() {
                   aria-label={`Message ${index + 1} content`}
                   value={text}
                   onChange={(event) =>
-                    updateComposerMessage(message.id, {
+                    projectTemplates.updateComposerMessage(message.id, {
                       content: [{ type: "text", text: event.target.value }],
                     })
                   }
@@ -2159,7 +1718,7 @@ function HomeContent() {
                 <div className="template-diagnostic">{requestPreview.error}</div>
               ) : (
                 <>
-                  {(activeProjectResolution?.diagnostics.length ?? 0) > 0 && (
+                  {(projectTemplates.templateWorkbench.resolution?.diagnostics.length ?? 0) > 0 && (
                     <div className="template-warning" role="status">
                       Preview contains unresolved variables. Running is blocked until they have values.
                     </div>
@@ -2190,11 +1749,11 @@ function HomeContent() {
               defaultConnectionRequirementId={
                 projectFile?.defaults.target.connectionRequirementId
               }
-              usageCounts={templateUsageCounts}
-              itemCount={activeProjectRevision?.items.length ?? messages.length}
-              onCreate={createProjectTemplate}
-              onSave={saveProjectTemplate}
-              onInsert={insertProjectTemplate}
+              usageCounts={projectTemplates.templateUsageCounts}
+              itemCount={projectTemplates.activeProjectRevision?.items.length ?? messages.length}
+              onCreate={projectTemplates.createProjectTemplate}
+              onSave={projectTemplates.saveProjectTemplate}
+              onInsert={(...args) => { projectTemplates.insertProjectTemplate(...args); setRequestTab("messages"); }}
             />
           ) : (
             <ToolsPane
@@ -2270,12 +1829,12 @@ function HomeContent() {
           open
           onClose={() => setN8nImportOpen(false)}
           recommendation={{
-            ...(activeConnectionRequirement
-              ? { connectionRequirementName: activeConnectionRequirement.name }
+            ...(projectTemplates.activeConnectionRequirement
+              ? { connectionRequirementName: projectTemplates.activeConnectionRequirement.name }
               : {}),
             projectModel: activeModel,
           }}
-          onImport={importN8nPrompt}
+          onImport={projectTemplates.importN8nPrompt}
         />
       )}
       {projectCreationMode && (
