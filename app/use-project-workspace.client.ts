@@ -25,7 +25,6 @@ import type {
   ProjectWorkspaceHandle,
   WorkspaceResumeOutcome,
 } from "./project-workspace.client.ts";
-import { readProfiles } from "./profile-store.client.ts";
 import {
   prunedProjectProfileMap,
   readProjectProfileMap,
@@ -34,6 +33,7 @@ import {
   withoutMappedProfile,
   writeProjectProfileMap,
 } from "./project-profile-map.client.ts";
+import type { ProfileIdentity } from "./project-profile-map.client.ts";
 
 export type ProjectErrorKind =
   | "auto-save"
@@ -62,7 +62,7 @@ export interface ProjectWorkspaceHandleState {
   currentProjectDocument(): ProjectFile;
   materializeProject(): ProjectFile;
   adoptProjectMutation(project: ProjectFile): void;
-  mapProfile(profileId: string): void;
+  mapProfile(profile: ProfileIdentity): void;
   mapActiveProfile(): void;
   unmapProfile(profileId: string): void;
   newProjectFolder(options: ProjectCreationOptions): Promise<void>;
@@ -80,17 +80,23 @@ export interface ProjectWorkspaceHandleState {
  * this persistence boundary.
  */
 export function useProjectWorkspace(input: {
-  activeProfileId: string;
-  /** Every profile this device currently has, for validating stored mappings. */
-  profileIds: readonly string[];
+  activeProfile: ProfileIdentity;
+  /** Every restored profile this device currently has. */
+  profiles: readonly ProfileIdentity[];
+  /** Automatic workspace adoption waits for authoritative profile identities. */
+  profilesLoaded: boolean;
+  /** Selects a resolved local mapping as part of project adoption. */
+  onActivateProfile(profileId: string): void;
   folderAccessAvailable: boolean;
   createProject(): ProjectFile;
   currentDraft(): UpdateProjectDraft;
   onApplyDraft(draft: ProjectDraft): void;
 }): ProjectWorkspaceHandleState {
   const {
-    activeProfileId,
-    profileIds,
+    activeProfile,
+    profiles,
+    profilesLoaded,
+    onActivateProfile,
     folderAccessAvailable,
     createProject,
     currentDraft,
@@ -115,11 +121,11 @@ export function useProjectWorkspace(input: {
   const restoredRef = useRef(false);
   // Read inside asynchronous adoption paths, which must see the profiles the
   // device has now rather than the ones it had when the operation started.
-  const profileIdsRef = useRef(profileIds);
+  const profilesRef = useRef(profiles);
 
   useEffect(() => {
-    profileIdsRef.current = profileIds;
-  }, [profileIds]);
+    profilesRef.current = profiles;
+  }, [profiles]);
 
   function advanceProjectChangeVersion(): number {
     autoSaveWindowStartedAtRef.current ??= Date.now();
@@ -209,8 +215,8 @@ export function useProjectWorkspace(input: {
     advanceProjectChangeVersion();
     setProjectFile(project);
     setCurrentWorkspace(null);
-    setMappedProfileId(activeProfileId);
-    rememberMappedProfile(project.projectId, activeProfileId);
+    setMappedProfileId(activeProfile.id);
+    rememberMappedProfile(project.projectId, activeProfile);
     setProjectDirty(true);
     dismissError();
     return project;
@@ -228,46 +234,41 @@ export function useProjectWorkspace(input: {
    * for a connection the user already picked. Nothing about the profile enters
    * the portable project file.
    */
-  function rememberMappedProfile(projectId: string, profileId: string): void {
+  function rememberMappedProfile(
+    projectId: string,
+    profile: ProfileIdentity,
+  ): void {
     writeProjectProfileMap(
       withMappedProfile(
-        prunedProjectProfileMap(readProjectProfileMap(), knownProfileIds()),
+        prunedProjectProfileMap(readProjectProfileMap(), profilesRef.current),
         projectId,
-        profileId,
+        profile,
       ),
     );
   }
 
-  /**
-   * Every profile id this device can be said to have: the ones rendered, plus
-   * the ones still in storage. Both hooks restore from storage in a task of
-   * their own, so a project can be adopted before the profile list has been
-   * rendered. Validating against the rendered list alone would then read as
-   * "that profile is gone" and discard a mapping the user did make.
-   */
-  function knownProfileIds(): string[] {
-    const stored = readProfiles().profiles.map(({ id }) => id);
-    return [...new Set([...profileIdsRef.current, ...stored])];
+  function profileIdentity(profileId: string): ProfileIdentity | undefined {
+    return profilesRef.current.find(({ id }) => id === profileId);
   }
 
   function storedMappedProfile(project: ProjectFile): string | undefined {
     return resolveMappedProfile(
       readProjectProfileMap(),
       project.projectId,
-      knownProfileIds(),
+      profilesRef.current,
     );
   }
 
-  function mapProfile(profileId: string): void {
+  function mapProfile(profile: ProfileIdentity): void {
     if (!projectFile) return;
-    setMappedProfileId(profileId);
-    rememberMappedProfile(projectFile.projectId, profileId);
+    setMappedProfileId(profile.id);
+    rememberMappedProfile(projectFile.projectId, profile);
   }
 
   function mapActiveProfile(): void {
     if (!projectFile) return;
-    setMappedProfileId(activeProfileId);
-    rememberMappedProfile(projectFile.projectId, activeProfileId);
+    setMappedProfileId(activeProfile.id);
+    rememberMappedProfile(projectFile.projectId, activeProfile);
     setProjectError(undefined);
   }
 
@@ -304,13 +305,22 @@ export function useProjectWorkspace(input: {
     profileId?: string,
   ): void {
     const draft = projectDraft(project);
+    const resolvedProfileId = profileId ?? storedMappedProfile(project);
+    const resolvedProfile = resolvedProfileId
+      ? profileIdentity(resolvedProfileId)
+      : undefined;
+    // Profile selection is part of adopting the project, not a later effect.
+    // React batches the two state owners into the same committed render.
+    if (resolvedProfile) onActivateProfile(resolvedProfile.id);
     hasProjectRef.current = true;
     advanceProjectChangeVersion();
     setProjectFile(project);
     setCurrentWorkspace(workspace);
     onApplyDraft(draft);
-    if (profileId) rememberMappedProfile(project.projectId, profileId);
-    setMappedProfileId(profileId ?? storedMappedProfile(project));
+    if (profileId && resolvedProfile) {
+      rememberMappedProfile(project.projectId, resolvedProfile);
+    }
+    setMappedProfileId(resolvedProfile?.id);
     setProjectDirty(false);
     dismissError();
   }
@@ -336,7 +346,7 @@ export function useProjectWorkspace(input: {
   }
 
   useEffect(() => {
-    if (restoredRef.current) return;
+    if (!profilesLoaded || restoredRef.current) return;
     let cancelled = false;
     const timer = window.setTimeout(() => {
       if (restoredRef.current) return;
@@ -358,7 +368,7 @@ export function useProjectWorkspace(input: {
     // Restoration runs once after hydration. Its state adoption uses the same
     // mutation funnel as an explicit open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [profilesLoaded]);
 
   useEffect(() => {
     if (!projectWorkspace || !projectFile || !projectDirty) return;
@@ -440,7 +450,9 @@ export function useProjectWorkspace(input: {
     try {
       const project = namedProject(options);
       const opened = await createProjectFolder(project, options);
-      if (opened) applyProjectDocument(opened.project, opened.handle, activeProfileId);
+      if (opened) {
+        applyProjectDocument(opened.project, opened.handle, activeProfile.id);
+      }
     } catch (error) {
       projectFailure(error, "Could not create the project folder.");
     }
@@ -499,7 +511,7 @@ export function useProjectWorkspace(input: {
           applyProjectDocument(
             opened.project,
             opened.handle,
-            mappedProfileId ?? activeProfileId,
+            mappedProfileId ?? activeProfile.id,
           );
         }
         return;

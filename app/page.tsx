@@ -2,7 +2,6 @@
 
 import {
   useEffect,
-  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -174,6 +173,7 @@ function HomeContent() {
   // during render.
   const {
     profiles,
+    profilesLoaded,
     activeProfile,
     capabilities: activeCapabilities,
     selectProfile,
@@ -214,10 +214,11 @@ function HomeContent() {
   const [streamingPreferred, setStreamingPreferred] = useState(true);
   const [streamingPreferenceLoaded, setStreamingPreferenceLoaded] =
     useState(false);
-  const profileIds = useMemo(() => profiles.map(({ id }) => id), [profiles]);
   const project = useProjectWorkspace({
-    activeProfileId: activeProfile.id,
-    profileIds,
+    activeProfile,
+    profiles,
+    profilesLoaded,
+    onActivateProfile: selectProfile,
     folderAccessAvailable,
     createProject() {
       return createProjectFile({
@@ -568,8 +569,10 @@ function HomeContent() {
 
   /** Selecting a profile also satisfies an open project's connection mapping. */
   function chooseProfile(profileId: string): void {
+    const profile = profiles.find(({ id }) => id === profileId);
+    if (!profile) return;
     selectProfile(profileId);
-    project.mapProfile(profileId);
+    project.mapProfile(profile);
   }
 
   /**
@@ -648,9 +651,11 @@ function HomeContent() {
 
   async function run() {
     project.clearErrorKind();
-    if (projectFile && !mappedProfileId) {
+    if (projectFile && mappedProfileId !== activeProfile.id) {
       project.setError(
-        "Map this project's connection to a local profile before running.",
+        mappedProfileId
+          ? "Activate this project's mapped connection before running."
+          : "Map this project's connection to a local profile before running.",
       );
       return;
     }
@@ -730,7 +735,7 @@ function HomeContent() {
   const composerItems = projectTemplates.templateWorkbench.composerItems;
   const readiness = runReadiness({
     projectOpen: Boolean(projectFile),
-    connectionMapped: Boolean(mappedProfileId),
+    connectionMapped: mappedProfileId === activeProfile.id,
     activeProfileName: activeProfile.name,
     activeProfileEndpoint: activeProfile.endpoint,
     activeProfileModel: activeModel,
@@ -976,8 +981,8 @@ function HomeContent() {
         isDesktopRuntime={isDesktopRuntime}
         onSelectProfile={chooseProfile}
         onAddProfile={() => {
-          const profileId = addProfile();
-          project.mapProfile(profileId);
+          const profile = addProfile();
+          project.mapProfile(profile);
         }}
         onDeleteProfile={confirmDeleteActiveProfile}
         deleteProfileRefusal={activeProfileDeletionRefusal}

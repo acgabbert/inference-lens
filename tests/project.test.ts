@@ -1124,6 +1124,21 @@ test("rejects credentials at portable project boundaries", () => {
     "https://api.example.com/v1?api_key=secret";
   assert.throws(() => parseProjectFile(project), /must not contain credentials/);
 
+  for (const endpoint of [
+    "https://api.example.com/v1?x-api-key=secret",
+    "https://api.example.com/v1?token=secret",
+    "https://api.example.com/v1?X-Amz-Credential=scope&X-Amz-Signature=signed",
+    "https://api.example.com/v1?sig=signed",
+    "https://api.example.com/v1#access_token=secret",
+  ]) {
+    project.connectionRequirements[0].endpoint = endpoint;
+    assert.throws(
+      () => parseProjectFile(project),
+      /query parameters, or fragments/,
+      endpoint,
+    );
+  }
+
   project.connectionRequirements[0].endpoint = "https://api.example.com/v1";
   project.defaults.options.providerOptions = {
     authorization: "Bearer secret",

@@ -339,9 +339,8 @@ function endpointHasCredentials(value: string): boolean {
     const endpoint = new URL(value);
     return (
       Boolean(endpoint.username || endpoint.password) ||
-      [...endpoint.searchParams.keys()].some((key) =>
-        sensitiveFieldNames.has(normalizedFieldName(key)),
-      )
+      Boolean(endpoint.search) ||
+      Boolean(endpoint.hash)
     );
   } catch {
     return false;
@@ -419,7 +418,7 @@ const connectionRequirementSchema: z.ZodType<ConnectionRequirement> = z
       )
       .refine(
         (value) => !endpointHasCredentials(value),
-        "Endpoint must not contain credentials or secret query parameters.",
+        "Endpoint must not contain credentials, query parameters, or fragments.",
       ),
     capabilityOverrides: capabilityOverridesSchema.optional(),
   })
@@ -1687,8 +1686,8 @@ export function updateProjectDraft(
  * needs rather than what a device's profile happens to support, and copying
  * one onto the other would assert something much larger than a move.
  *
- * The full file is re-validated on the way out, so an endpoint carrying a key
- * in its query string is refused here exactly as it would be on load.
+ * The full file is re-validated on the way out, so an endpoint carrying a
+ * query string or fragment is refused here exactly as it would be on load.
  */
 export function updateConnectionRequirementEndpoint(
   project: ProjectFile,

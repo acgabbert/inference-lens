@@ -4,7 +4,10 @@ import { useEffect, useRef, type RefObject } from "react";
 import type { ConnectionRequirement } from "../packages/core/src/project";
 import { sameChatCompletionsTarget } from "../packages/core/src/openai-compatible";
 import type { ProviderCapabilities } from "../packages/core/src/types";
-import type { StoredInferenceProfile } from "./profile-store.client";
+import type {
+  StoredInferenceProfile,
+  StoredInferenceProfilePatch,
+} from "./profile-store.client";
 import type {
   ProfileCredentialHandle,
   ServerDefaultStatus,
@@ -60,10 +63,16 @@ interface ConnectionDrawerProps {
   onDeleteProfile(): void;
   /** Absent when the active profile can be deleted; otherwise why it cannot. */
   deleteProfileRefusal?: string;
-  onUpdateProfile(patch: Partial<StoredInferenceProfile>): void;
+  onUpdateProfile(patch: StoredInferenceProfilePatch): void;
   onCapabilityChange(key: keyof ProviderCapabilities, enabled: boolean): void;
   /** Present only while a project declares a connection to satisfy. */
   connectionRequirement?: ConnectionRequirement;
+  /**
+   * The profile this device runs the open project against, which is not always
+   * the active one — a profile can become active without being mapped. The
+   * mapping reads as satisfied only when the two agree, the same condition the
+   * run path enforces, so the control that resolves a divergence stays offered.
+   */
   mappedProfileId?: string;
   onMapProfile(): void;
   /** Re-points the project's declared connection at the mapped profile. */
@@ -260,7 +269,7 @@ export function ConnectionDrawer({
           <ConnectionMapping
             requirement={connectionRequirement}
             activeProfile={activeProfile}
-            mapped={Boolean(mappedProfileId)}
+            mapped={mappedProfileId === activeProfile.id}
             onMapProfile={onMapProfile}
             onUpdateProjectEndpoint={onUpdateProjectEndpoint}
             mapButtonRef={mapButtonRef}

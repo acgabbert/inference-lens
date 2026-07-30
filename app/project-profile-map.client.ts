@@ -1,6 +1,6 @@
 "use client";
 
-const STORAGE_KEY = "inference-lens:project-profile-map:v1";
+const STORAGE_KEY = "inference-lens:project-profile-map:v2";
 
 /**
  * Which local connection profile this device runs a given project against.
@@ -13,6 +13,12 @@ const STORAGE_KEY = "inference-lens:project-profile-map:v1";
  */
 export interface ProjectProfileMapping {
   profileId: string;
+  profileInstanceId: string;
+}
+
+export interface ProfileIdentity {
+  id: string;
+  instanceId: string;
 }
 
 /** Keyed by the project file's `projectId`, which travels inside the file. */
@@ -20,39 +26,58 @@ export type ProjectProfileMap = Record<string, ProjectProfileMapping>;
 
 function isMapping(value: unknown): value is ProjectProfileMapping {
   if (!value || typeof value !== "object") return false;
-  return typeof (value as Partial<ProjectProfileMapping>).profileId === "string";
+  const mapping = value as Partial<ProjectProfileMapping>;
+  return (
+    typeof mapping.profileId === "string" &&
+    typeof mapping.profileInstanceId === "string"
+  );
 }
 
 export function parseProjectProfileMap(value: unknown): ProjectProfileMap {
   if (!value || typeof value !== "object") return {};
   const map: ProjectProfileMap = {};
   for (const [projectId, mapping] of Object.entries(value)) {
-    if (isMapping(mapping)) map[projectId] = { profileId: mapping.profileId };
+    if (isMapping(mapping)) {
+      map[projectId] = {
+        profileId: mapping.profileId,
+        profileInstanceId: mapping.profileInstanceId,
+      };
+    }
   }
   return map;
 }
 
 /**
  * The mapped profile, or undefined when the project has never been mapped on
- * this device or names a profile that no longer exists. Validating on read
- * rather than deleting when a profile goes away is what makes a stale entry
- * harmless: profiles can be removed in another tab, and an id is never reused.
+ * this device or names a different instance of a reused profile id.
  */
 export function resolveMappedProfile(
   map: ProjectProfileMap,
   projectId: string,
-  profileIds: readonly string[],
+  profiles: readonly ProfileIdentity[],
 ): string | undefined {
-  const mapped = map[projectId]?.profileId;
-  return mapped && profileIds.includes(mapped) ? mapped : undefined;
+  const mapped = map[projectId];
+  return mapped &&
+      profiles.some(
+        ({ id, instanceId }) =>
+          id === mapped.profileId && instanceId === mapped.profileInstanceId,
+      )
+    ? mapped.profileId
+    : undefined;
 }
 
 export function withMappedProfile(
   map: ProjectProfileMap,
   projectId: string,
-  profileId: string,
+  profile: ProfileIdentity,
 ): ProjectProfileMap {
-  return { ...map, [projectId]: { profileId } };
+  return {
+    ...map,
+    [projectId]: {
+      profileId: profile.id,
+      profileInstanceId: profile.instanceId,
+    },
+  };
 }
 
 /**
@@ -76,14 +101,18 @@ export function withoutMappedProfile(
  */
 export function prunedProjectProfileMap(
   map: ProjectProfileMap,
-  profileIds: readonly string[],
+  profiles: readonly ProfileIdentity[],
 ): ProjectProfileMap {
   // An empty profile list means the caller has none to check against, not that
   // every mapping is stale. Wiping the map on it would lose real choices.
-  if (profileIds.length === 0) return map;
+  if (profiles.length === 0) return map;
   return Object.fromEntries(
     Object.entries(map).filter(([, mapping]) =>
-      profileIds.includes(mapping.profileId),
+      profiles.some(
+        ({ id, instanceId }) =>
+          id === mapping.profileId &&
+          instanceId === mapping.profileInstanceId,
+      ),
     ),
   );
 }

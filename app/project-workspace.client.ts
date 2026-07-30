@@ -585,5 +585,6 @@ export function downloadProjectFile(project: ProjectFile): void {
   link.href = url;
   link.download = projectExportFileName(project.name);
   link.click();
-  URL.revokeObjectURL(url);
+  const revokeObjectURL = URL.revokeObjectURL.bind(URL);
+  globalThis.setTimeout(() => revokeObjectURL(url), 0);
 }

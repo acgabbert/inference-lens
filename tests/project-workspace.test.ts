@@ -227,7 +227,7 @@ test("browser creation removes a partial bundle so creation can be retried", asy
   assert.ok(opened);
 });
 
-test("project downloads use the sanitized project name", () => {
+test("project downloads use the sanitized name and defer URL revocation", async () => {
   const originalDocument = globalThis.document;
   const originalCreateObjectURL = URL.createObjectURL;
   const originalRevokeObjectURL = URL.revokeObjectURL;
@@ -239,6 +239,7 @@ test("project downloads use the sanitized project name", () => {
       this.clicked = true;
     },
   };
+  const revoked: string[] = [];
   Object.defineProperty(globalThis, "document", {
     configurable: true,
     value: { createElement: () => link },
@@ -249,13 +250,16 @@ test("project downloads use the sanitized project name", () => {
   });
   Object.defineProperty(URL, "revokeObjectURL", {
     configurable: true,
-    value: () => undefined,
+    value: (url: string) => revoked.push(url),
   });
 
   try {
     downloadProjectFile(project());
     assert.equal(link.download, "Prompt Lab.project.json");
     assert.equal(link.clicked, true);
+    assert.deepEqual(revoked, []);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.deepEqual(revoked, ["blob:project"]);
   } finally {
     Object.defineProperty(globalThis, "document", {
       configurable: true,

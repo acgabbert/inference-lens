@@ -249,6 +249,23 @@ test("an unmapped project cannot move its declaration yet", async () => {
   assert.doesNotMatch(html, /to expect this endpoint/);
 });
 
+test("a project mapped to a profile that is not active still offers the mapping", async () => {
+  // The run path refuses a mapping the active profile does not satisfy, so the
+  // control that resolves it has to stay offered rather than reading as done.
+  const html = await render(
+    DRAWER,
+    "ConnectionDrawer",
+    drawer({
+      connectionRequirement: requirement,
+      mappedProfileId: "profile-elsewhere",
+    }),
+  );
+
+  assert.match(html, /Connection mapping required/);
+  assert.match(html, /data-readiness-control="project-mapping"/);
+  assert.doesNotMatch(html, /Project connection mapped/);
+});
+
 test("a mapped project already dialing its declared endpoint says nothing to fix", async () => {
   const html = await render(
     DRAWER,
