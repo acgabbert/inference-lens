@@ -4301,6 +4301,10 @@ main {
   display: block;
 }
 
+.streaming-control > span {
+  font-size: var(--type-control);
+}
+
 .streaming-control small {
   margin-top: 3px;
   color: var(--text-muted);
@@ -4473,7 +4477,7 @@ main {
 .target-control {
   width: min(235px, 24vw);
   min-width: 170px;
-  height: 42px;
+  height: 46px;
   padding: 6px 9px;
   border: 1px solid var(--border-default);
   border-radius: 9px;
