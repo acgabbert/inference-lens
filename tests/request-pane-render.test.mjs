@@ -59,6 +59,111 @@ const oneShotTool = {
   inputSchema: { type: "object", properties: {} },
 };
 
+function requestComposer(overrides = {}) {
+  const noop = () => {};
+  return {
+    requestDraft: {
+      messages: [{
+        id: "message_1",
+        role: "user",
+        content: [{ type: "text", text: "Composer fixture message" }],
+      }],
+      tools: [],
+      requestTools: [],
+      enabledToolIds: [],
+      addTool: noop,
+      removeTool: noop,
+      updateTool: noop,
+      setToolEnabled: noop,
+      mockForTool: () => undefined,
+      updateToolMock: noop,
+      removeRequestTool: noop,
+    },
+    templates: {
+      templateWorkbench: { composerItems: [{ kind: "message", message: {
+        id: "message_1", role: "user", content: [{ type: "text", text: "Composer fixture message" }],
+      } }] },
+      templateRunOverrides: {},
+      templateUsageCounts: new Map(),
+      activeProjectRevision: undefined,
+      addComposerMessage: noop,
+      updateComposerMessage: noop,
+      removeComposerMessage: noop,
+      updateTemplateUseValues: noop,
+      saveTemplateUseRunValue: noop,
+      updateTemplateUseOverride: noop,
+      updateTemplateUseToLatestRevision: noop,
+      detachTemplateUse: noop,
+      removeTemplateUse: noop,
+      createProjectTemplate: noop,
+      saveProjectTemplate: noop,
+      insertProjectTemplate: noop,
+      clearImportNotice: noop,
+    },
+    project: null,
+    settings: {
+      model: "fixture-model",
+      temperature: 0.7,
+      responseMode: "buffered",
+      streamingAvailable: true,
+      toolsEnabled: true,
+      modelDiscovery: null,
+      onModelChange: noop,
+      onTemperatureChange: noop,
+      onStreamingPreferenceChange: noop,
+      onLoadModels: noop,
+    },
+    onReadinessAction: noop,
+    activeProfile: { name: "Fixture profile" },
+    onOpenConnectionSettings: noop,
+    onOpenToolLibrary: noop,
+    onSaveParentTrace: noop,
+    onDiscardPendingBranch: noop,
+    ...overrides,
+  };
+}
+
+test("the extracted composer renders request snapshots without a project", async () => {
+  const html = await render(
+    "/app/request-composer.client.tsx",
+    "RequestComposer",
+    requestComposer(),
+  );
+
+  assert.match(html, /Request editor/);
+  assert.match(html, /Profile default/);
+  assert.match(html, /Composer fixture message/);
+  assert.match(html, /Stream response/);
+});
+
+test("the extracted composer keeps pending-branch and template-error text in the request pane", async () => {
+  const html = await render(
+    "/app/request-composer.client.tsx",
+    "RequestComposer",
+    requestComposer({
+      readiness: {
+        blocked: true,
+        headline: "Template needs a value",
+        detail: "Enter topic before running.",
+        summary: "Enter topic.",
+        facts: [],
+        actions: [{ kind: "edit-template", label: "Edit template", primary: true }],
+      },
+      pendingBranch: {
+        parentRunId: "run_parent",
+        branchMessageId: "message_1",
+        parentTraceNeedsSaving: true,
+      },
+      requestPreview: { error: "The template variable topic is missing." },
+    }),
+  );
+
+  assert.match(html, /Template needs a value/);
+  assert.match(html, /Branching from run/);
+  assert.match(html, /Save trace/);
+  assert.match(html, /The template variable topic is missing/);
+});
+
 test("the tool manifest lists both routes to a request in one place", async () => {
   const html = await render("/app/tools-pane.client.tsx", "ToolsPane", toolsPane({
     tools: [projectTool],
