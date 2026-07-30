@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { filterModels } from "./use-model-discovery.client";
 import type { ModelDiscoveryState } from "./use-model-discovery.client";
 
@@ -13,6 +13,7 @@ type ModelComboboxProps = {
   onChange: (model: string) => void;
   discovery: ModelDiscoveryState | null;
   onLoadModels: (force?: boolean) => void;
+  inputRef?: RefObject<HTMLInputElement | null>;
 };
 
 /**
@@ -25,6 +26,7 @@ export function ModelCombobox({
   onChange,
   discovery,
   onLoadModels,
+  inputRef,
 }: ModelComboboxProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [filter, setFilter] = useState("");
@@ -53,6 +55,8 @@ export function ModelCombobox({
       Model
       <div className="combobox-control">
         <input
+          ref={inputRef}
+          data-readiness-control="model"
           role="combobox"
           aria-autocomplete="list"
           aria-controls="model-options"

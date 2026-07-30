@@ -2,7 +2,7 @@
 
 import type {
   RunReadiness,
-  RunReadinessActionKind,
+  RunReadinessAction,
 } from "./run-readiness.client.ts";
 
 /**
@@ -13,7 +13,7 @@ import type {
  */
 interface RunReadinessNoticeProps {
   readiness?: RunReadiness;
-  onAction(kind: RunReadinessActionKind): void;
+  onAction(action: RunReadinessAction): void;
 }
 
 export function RunReadinessNotice({
@@ -66,7 +66,7 @@ export function RunReadinessNotice({
               className={action.primary ? "button primary" : "button secondary"}
               key={action.kind}
               type="button"
-              onClick={() => onAction(action.kind)}
+              onClick={() => onAction(action)}
             >
               {action.label}
             </button>

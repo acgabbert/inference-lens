@@ -161,7 +161,7 @@ export function ProjectTemplatesPane({
   }
 
   return (
-    <div className="templates-workspace">
+    <div className="templates-workspace" data-readiness-target="prompt-library" tabIndex={-1}>
       <aside className="template-sidebar">
         <div className="template-create-actions">
           <button className="button secondary" type="button" onClick={() => addTemplate("fragment")}>
@@ -700,7 +700,11 @@ export function TemplateUseCard({
   }
 
   return (
-    <article className={diagnostics.length ? "template-use-card unresolved" : "template-use-card"}>
+    <article
+      className={diagnostics.length ? "template-use-card unresolved" : "template-use-card"}
+      data-template-use-id={use.id}
+      tabIndex={-1}
+    >
       <header>
         <div>
           <div className="template-use-kicker">
@@ -800,6 +804,7 @@ export function TemplateUseCard({
                   <label>
                     Value for run
                     <textarea
+                      data-template-variable={variable.name}
                       className={overridden ? "run-override-input" : ""}
                       placeholder="Enter a value"
                       rows={4}

@@ -54,8 +54,8 @@ import { useProjectRunHistory } from "./use-project-run-history.client";
 import {
   ConfirmationDialog,
 } from "./confirmation-dialog.client";
-import { runReadiness } from "./run-readiness.client";
-import type { RunReadinessActionKind } from "./run-readiness.client";
+import { runEmptyStatePresentation, runReadiness } from "./run-readiness.client";
+import type { ReadinessDestination } from "./run-readiness.client";
 import type {
   ConfirmationDialogRequest,
 } from "./confirmation-dialog.client";
@@ -193,6 +193,8 @@ function HomeContent() {
   const [projectCreationMode, setProjectCreationMode] =
     useState<"new" | "save">();
   const [connectionDrawerOpen, setConnectionDrawerOpen] = useState(false);
+  const [pendingReadinessDestination, setPendingReadinessDestination] =
+    useState<ReadinessDestination>();
   const [runHistoryOpen, setRunHistoryOpen] = useState(false);
   const [savedRunVersion, setSavedRunVersion] = useState(0);
   const clearTemplateOverridesRef = useRef<() => void>(() => {});
@@ -724,10 +726,15 @@ function HomeContent() {
       }) ?? [],
   });
 
-  function resolveReadiness(kind: RunReadinessActionKind): void {
-    if (kind === "map-profile") project.mapActiveProfile();
-    else if (kind === "open-connections") setConnectionDrawerOpen(true);
+  function resolveReadiness(destination: ReadinessDestination): void {
+    setPendingReadinessDestination(destination);
+    if (destination.surface === "connections") {
+      setConnectionDrawerOpen(true);
+    } else {
+      setWorkbenchView("request");
+    }
   }
+  const responseEmptyState = runEmptyStatePresentation(readiness);
 
   function saveOrChooseProjectLocation(): void {
     if (projectWorkspace || !folderAccessAvailable) {
@@ -940,6 +947,8 @@ function HomeContent() {
         onMapProfile={() => {
           project.mapActiveProfile();
         }}
+        pendingDestination={pendingReadinessDestination}
+        onDestinationHandled={() => setPendingReadinessDestination(undefined)}
       />
 
       <RunHistoryDrawer
@@ -976,7 +985,9 @@ function HomeContent() {
             onLoadModels: (force) => void loadModels(force),
           }}
           {...(readiness ? { readiness } : {})}
+          pendingDestination={pendingReadinessDestination}
           onReadinessAction={resolveReadiness}
+          onDestinationHandled={() => setPendingReadinessDestination(undefined)}
           activeProfile={activeProfile}
           {...(branchContext ? { pendingBranch: branchContext } : {})}
           {...(requestPreview ? { requestPreview } : {})}
@@ -1003,6 +1014,7 @@ function HomeContent() {
             transcript={transcript}
             nonBranchableMessageIds={nonBranchableMessageIds}
             branchedFrom={visibleBranchProvenance}
+            emptyState={responseEmptyState}
             onMarkdownPreviewChange={setMarkdownPreview}
             onOutputScroll={updateOutputFollowState}
             onJumpToLatest={jumpToLatestOutput}
@@ -1011,6 +1023,11 @@ function HomeContent() {
             onRetry={() => void retryRun()}
             onSaveTrace={() => void runSession.exportTrace()}
             onEditFromHere={editFromHere}
+            onEmptyStateAction={() => {
+              if (responseEmptyState.action) {
+                resolveReadiness(responseEmptyState.action.destination);
+              }
+            }}
           />
 
           <RunTracePanel

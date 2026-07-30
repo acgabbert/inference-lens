@@ -10,9 +10,24 @@ export type RunReadinessActionKind =
   | "review-templates"
   | "review-tools";
 
+/** A serializable UI command; policy names a target but never drives the DOM. */
+export type ReadinessDestination =
+  | {
+      surface: "connections";
+      control: "project-mapping" | "profile" | "endpoint" | "tools-capability";
+    }
+  | {
+      surface: "request";
+      tab: "messages" | "templates" | "tools";
+      control: "model" | "template-use" | "template-variable" | "tool-manifest" | "prompt-library";
+      entityId?: string;
+      fieldName?: string;
+    };
+
 export interface RunReadinessAction {
   kind: RunReadinessActionKind;
   label: string;
+  destination: ReadinessDestination;
   /** The action that resolves the notice, rendered ahead of the others. */
   primary?: boolean;
 }
@@ -38,6 +53,44 @@ export interface RunReadiness {
   summary: string;
   facts: RunReadinessFact[];
   actions: RunReadinessAction[];
+}
+
+export interface RunEmptyStatePresentation {
+  headline: string;
+  detail: string;
+  action?: RunReadinessAction;
+}
+
+/** The idle response repeats the first readiness policy, never a second guess. */
+export function runEmptyStatePresentation(
+  readiness: RunReadiness | undefined,
+): RunEmptyStatePresentation {
+  if (!readiness?.blocked) {
+    return {
+      headline: "Ready when you are",
+      detail: "Run the request to see its response here.",
+    };
+  }
+  const action = readiness.actions.find(({ primary }) => primary) ?? readiness.actions[0];
+  const headline =
+    action?.destination.surface === "connections" &&
+    action.destination.control === "project-mapping"
+      ? "Connect this project to a local profile"
+      : action?.destination.surface === "connections" &&
+          action.destination.control === "endpoint"
+        ? "Enter the profile endpoint"
+        : action?.destination.surface === "request" &&
+            action.destination.control === "model"
+          ? "Choose a model"
+          : action?.destination.surface === "request" &&
+              (action.destination.control === "template-use" ||
+                action.destination.control === "template-variable")
+            ? "Complete the named template inputs"
+            : action?.destination.surface === "connections" &&
+                action.destination.control === "tools-capability"
+              ? "Allow tool calling or review selected tools"
+              : readiness.headline;
+  return { headline, detail: readiness.detail, ...(action ? { action } : {}) };
 }
 
 /**
@@ -146,8 +199,17 @@ export function runReadiness(
         { label: `Profile "${profile}"`, value: activeProfileEndpoint },
       ],
       actions: [
-        { kind: "map-profile", label: `Use "${profile}"`, primary: true },
-        { kind: "open-connections", label: "Choose another profile" },
+        {
+          kind: "map-profile",
+          label: `Map "${profile}"`,
+          destination: { surface: "connections", control: "project-mapping" },
+          primary: true,
+        },
+        {
+          kind: "open-connections",
+          label: "Choose another profile",
+          destination: { surface: "connections", control: "profile" },
+        },
       ],
     };
   }
@@ -162,7 +224,12 @@ export function runReadiness(
       summary: "Enter an endpoint for this profile before running.",
       facts: [],
       actions: [
-        { kind: "open-connections", label: "Enter an endpoint", primary: true },
+        {
+          kind: "open-connections",
+          label: "Enter an endpoint",
+          destination: { surface: "connections", control: "endpoint" },
+          primary: true,
+        },
       ],
     };
   }
@@ -177,7 +244,12 @@ export function runReadiness(
       summary: "Choose a model for this profile before running.",
       facts: [{ label: `Profile "${profile}"`, value: activeProfileEndpoint }],
       actions: [
-        { kind: "open-connections", label: "Choose a model", primary: true },
+        {
+          kind: "open-connections",
+          label: "Choose a model",
+          destination: { surface: "request", tab: "messages", control: "model" },
+          primary: true,
+        },
       ],
     };
   }
@@ -193,6 +265,11 @@ export function runReadiness(
         {
           kind: "review-templates",
           label: "Review the conversation",
+          destination: {
+            surface: "request",
+            tab: "messages",
+            control: "template-use",
+          },
           primary: true,
         },
       ],
@@ -221,6 +298,17 @@ export function runReadiness(
         {
           kind: "review-templates",
           label: "Review the conversation",
+          destination: {
+            surface: "request",
+            tab: "messages",
+            control: templateIssues[0]?.variableName
+              ? "template-variable"
+              : "template-use",
+            entityId: templateIssues[0]?.templateUseId,
+            ...(templateIssues[0]?.variableName
+              ? { fieldName: templateIssues[0].variableName }
+              : {}),
+          },
           primary: true,
         },
       ],
@@ -247,9 +335,14 @@ export function runReadiness(
         {
           kind: "open-connections",
           label: "Allow tool calling",
+          destination: { surface: "connections", control: "tools-capability" },
           primary: true,
         },
-        { kind: "review-tools", label: "Review tools" },
+        {
+          kind: "review-tools",
+          label: "Review tools",
+          destination: { surface: "request", tab: "tools", control: "tool-manifest" },
+        },
       ],
     };
   }
@@ -274,8 +367,17 @@ export function runReadiness(
         value: `${target.connectionRequirementName} · ${target.model}`,
       })),
       actions: [
-        { kind: "edit-template", label: "Review templates", primary: true },
-        { kind: "open-connections", label: "Choose run model" },
+        {
+          kind: "edit-template",
+          label: "Review templates",
+          destination: { surface: "request", tab: "templates", control: "prompt-library" },
+          primary: true,
+        },
+        {
+          kind: "open-connections",
+          label: "Choose run model",
+          destination: { surface: "request", tab: "messages", control: "model" },
+        },
       ],
     };
   }
@@ -301,8 +403,17 @@ export function runReadiness(
         { label: "Run uses", value: activeProfileModel },
       ],
       actions: [
-        { kind: "open-connections", label: "Choose run model", primary: true },
-        { kind: "edit-template", label: "Review template" },
+        {
+          kind: "open-connections",
+          label: "Choose run model",
+          destination: { surface: "request", tab: "messages", control: "model" },
+          primary: true,
+        },
+        {
+          kind: "edit-template",
+          label: "Review template",
+          destination: { surface: "request", tab: "templates", control: "prompt-library" },
+        },
       ],
     };
   }
@@ -325,7 +436,11 @@ export function runReadiness(
         { label: "Project expects", value: requiredEndpoint },
         { label: "Requests go to", value: activeProfileEndpoint },
       ],
-      actions: [{ kind: "open-connections", label: "Open connection settings" }],
+      actions: [{
+        kind: "open-connections",
+        label: "Open connection settings",
+        destination: { surface: "connections", control: "endpoint" },
+      }],
     };
   }
 
