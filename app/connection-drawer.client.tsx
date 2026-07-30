@@ -337,8 +337,6 @@ export function ConnectionDrawer({
         </label>
         <label className="capability-toggle">
           <input
-            ref={toolsCapabilityRef}
-            data-readiness-control="tools-capability"
             type="checkbox"
             checked={capabilities.modelDiscovery}
             onChange={(event) =>
@@ -354,6 +352,8 @@ export function ConnectionDrawer({
         </label>
         <label className="capability-toggle">
           <input
+            ref={toolsCapabilityRef}
+            data-readiness-control="tools-capability"
             type="checkbox"
             checked={capabilities.tools}
             onChange={(event) =>

@@ -146,7 +146,9 @@ test("the connection owner focuses the tools capability control", async () => {
     pendingDestination: { surface: "connections", control: "tools-capability" },
   });
   try {
-    assert.equal(document.activeElement?.getAttribute("data-readiness-control"), "tools-capability");
+    const focusedControl = document.activeElement;
+    assert.equal(focusedControl?.getAttribute("data-readiness-control"), "tools-capability");
+    assert.match(focusedControl?.closest("label")?.textContent ?? "", /Allow tool calling/);
     assert.equal(acknowledgements, 1);
   } finally {
     await view.close();
