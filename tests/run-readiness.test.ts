@@ -309,3 +309,50 @@ test("tool capability block outranks an endpoint advisory", () => {
   assert.equal(readiness?.headline, "1 selected tool cannot be sent");
   assert.equal(readiness?.blocked, true);
 });
+
+test("a mapped project running elsewhere offers to update the declaration", () => {
+  const readiness = runReadiness({
+    ...ready,
+    requiredEndpoint: "http://127.0.0.1:8080/v1",
+    activeProfileEndpoint: "https://openrouter.ai/api/v1",
+  });
+
+  assert.equal(readiness?.blocked, false);
+  assert.match(readiness?.headline ?? "", /different endpoint than this project declares/);
+  assert.deepEqual(readiness?.facts, [
+    { label: "Project expects", value: "http://127.0.0.1:8080/v1" },
+    { label: "Requests go to", value: "https://openrouter.ai/api/v1" },
+  ]);
+  // Changing the profile comes first: a detour is the common case, and the
+  // other action edits a file the user may have shared.
+  assert.deepEqual(
+    readiness?.actions.map(({ kind }) => kind),
+    ["open-connections", "update-project-endpoint"],
+  );
+  assert.deepEqual(readiness?.actions[1]?.destination, {
+    surface: "connections",
+    control: "project-endpoint",
+  });
+});
+
+test("endpoints that dial the same URL are not reported as a mismatch", () => {
+  // The profile holds the full request URL and the project the base it is
+  // built from. Every request goes exactly where the project declares, so
+  // there is nothing to report and nothing the user could do about it.
+  assert.equal(
+    runReadiness({
+      ...ready,
+      requiredEndpoint: "https://openrouter.ai/api/v1",
+      activeProfileEndpoint: "https://openrouter.ai/api/v1/chat/completions",
+    }),
+    undefined,
+  );
+  const unmapped = runReadiness({
+    ...ready,
+    connectionMapped: false,
+    requiredEndpoint: "https://openrouter.ai/api/v1",
+    activeProfileEndpoint: "https://openrouter.ai/api/v1/chat/completions",
+  });
+  assert.ok(unmapped?.blocked);
+  assert.doesNotMatch(unmapped.detail, /different endpoint/);
+});

@@ -24,7 +24,19 @@ export const SERVER_DEFAULT_CREDENTIAL_REF = "environment-default";
  * release desktop host stores them in the OS credential store under this ID;
  * debug hosts keep credentials only in the current UI session.
  */
-export type StoredInferenceProfile = InferenceProfile;
+export interface StoredInferenceProfile extends InferenceProfile {
+  /**
+   * Non-reused identity for this particular local profile record. Unlike
+   * `id`, this changes when storage is reset or a fixed-id profile is recreated,
+   * so device-local references cannot attach to a different profile instance.
+   */
+  instanceId: string;
+}
+
+/** Editable metadata; both forms of local identity are immutable. */
+export type StoredInferenceProfilePatch = Partial<
+  Omit<StoredInferenceProfile, "id" | "instanceId">
+>;
 
 export interface ProfileSnapshot {
   profiles: StoredInferenceProfile[];
@@ -42,6 +54,10 @@ function profileId(): string {
   return `profile-${randomUUID()}`;
 }
 
+function profileInstanceId(): string {
+  return `profile-instance-${randomUUID()}`;
+}
+
 /**
  * The starting profile ships with no endpoint or model rather than a real
  * provider's, so a first run can never leave for somewhere the user never
@@ -50,6 +66,7 @@ function profileId(): string {
 export function createDefaultProfile(): StoredInferenceProfile {
   return {
     id: "openai-compatible",
+    instanceId: profileInstanceId(),
     name: "OpenAI compatible",
     provider: "openai-compatible",
     endpoint: "",
@@ -133,11 +150,15 @@ export function removeProfile(
   };
 }
 
-function isStoredProfile(value: unknown): value is StoredInferenceProfile {
+type PersistedInferenceProfile = InferenceProfile & { instanceId?: string };
+
+function isStoredProfile(value: unknown): value is PersistedInferenceProfile {
   if (!value || typeof value !== "object") return false;
-  const profile = value as Partial<StoredInferenceProfile>;
+  const profile = value as Partial<PersistedInferenceProfile>;
   return (
     typeof profile.id === "string" &&
+    (profile.instanceId === undefined ||
+      typeof profile.instanceId === "string") &&
     typeof profile.name === "string" &&
     profile.provider === "openai-compatible" &&
     typeof profile.endpoint === "string" &&
@@ -149,9 +170,12 @@ function isStoredProfile(value: unknown): value is StoredInferenceProfile {
 }
 
 /** Profiles are metadata only; credentials never enter browser persistence. */
-function sanitizeProfile(profile: StoredInferenceProfile): StoredInferenceProfile {
+function sanitizeProfile(
+  profile: PersistedInferenceProfile,
+): StoredInferenceProfile {
   return {
     id: profile.id,
+    instanceId: profile.instanceId?.trim() || profileInstanceId(),
     name: profile.name,
     provider: profile.provider,
     endpoint: profile.endpoint,

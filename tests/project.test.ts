@@ -28,6 +28,7 @@ import {
   serializeProjectFile,
   setPromptTemplateCurrentRevision,
   setPromptTemplateRecommendedTarget,
+  updateConnectionRequirementEndpoint,
   updateProjectDraft,
   updatePromptTemplateUseToLatest,
   updatePromptTemplateUseValues,
@@ -1123,6 +1124,21 @@ test("rejects credentials at portable project boundaries", () => {
     "https://api.example.com/v1?api_key=secret";
   assert.throws(() => parseProjectFile(project), /must not contain credentials/);
 
+  for (const endpoint of [
+    "https://api.example.com/v1?x-api-key=secret",
+    "https://api.example.com/v1?token=secret",
+    "https://api.example.com/v1?X-Amz-Credential=scope&X-Amz-Signature=signed",
+    "https://api.example.com/v1?sig=signed",
+    "https://api.example.com/v1#access_token=secret",
+  ]) {
+    project.connectionRequirements[0].endpoint = endpoint;
+    assert.throws(
+      () => parseProjectFile(project),
+      /query parameters, or fragments/,
+      endpoint,
+    );
+  }
+
   project.connectionRequirements[0].endpoint = "https://api.example.com/v1";
   project.defaults.options.providerOptions = {
     authorization: "Bearer secret",
@@ -1350,4 +1366,107 @@ test("explains that a secret-like variable can never be filled", () => {
   assert.match(diagnostic!.diagnostic.message, /secret-like/);
   assert.match(diagnostic!.diagnostic.message, /Rename it/);
   assert.equal(prepareProjectRevisionRun(project, revision).ok, false);
+});
+
+test("re-points a declared connection at a new endpoint", () => {
+  const project = createProjectFile({
+    name: "Moved project",
+    request,
+    idSuffix: "moved",
+    createdAt: "2026-07-30T12:00:00.000Z",
+  });
+  const requirement = project.connectionRequirements[0]!;
+  assert.equal(requirement.endpoint, "https://api.example.com/v1");
+
+  const updated = updateConnectionRequirementEndpoint(
+    project,
+    requirement.id,
+    "  http://127.0.0.1:8080/v1  ",
+  );
+
+  assert.equal(updated.connectionRequirements[0]!.endpoint, "http://127.0.0.1:8080/v1");
+  // Nothing else about the declaration moves with the endpoint.
+  assert.equal(updated.connectionRequirements[0]!.name, requirement.name);
+  assert.deepEqual(
+    updated.connectionRequirements[0]!.capabilityOverrides,
+    requirement.capabilityOverrides,
+  );
+  assert.equal(updated.projectId, project.projectId);
+  // The original is untouched, and the result survives a round trip.
+  assert.equal(project.connectionRequirements[0]!.endpoint, "https://api.example.com/v1");
+  assert.deepEqual(parseProjectJson(serializeProjectFile(updated)), updated);
+});
+
+test("re-pointing to the endpoint already declared changes nothing", () => {
+  const project = createProjectFile({
+    name: "Unmoved project",
+    request,
+    idSuffix: "unmoved",
+    createdAt: "2026-07-30T12:00:00.000Z",
+  });
+  assert.equal(
+    updateConnectionRequirementEndpoint(
+      project,
+      project.connectionRequirements[0]!.id,
+      "https://api.example.com/v1",
+    ),
+    project,
+  );
+});
+
+test("re-pointing refuses an endpoint the project could never carry", () => {
+  const project = createProjectFile({
+    name: "Refused project",
+    request,
+    idSuffix: "refused",
+    createdAt: "2026-07-30T12:00:00.000Z",
+  });
+  const requirementId = project.connectionRequirements[0]!.id;
+
+  // The value arrives from a profile field the user typed into, so the rules
+  // that guard a project on load have to hold on the way in too.
+  assert.throws(
+    () =>
+      updateConnectionRequirementEndpoint(
+        project,
+        requirementId,
+        "https://example.com/v1?api_key=secret",
+      ),
+    ProjectValidationError,
+  );
+  assert.throws(
+    () =>
+      updateConnectionRequirementEndpoint(
+        project,
+        requirementId,
+        "https://user:pass@example.com/v1",
+      ),
+    ProjectValidationError,
+  );
+  assert.throws(
+    () => updateConnectionRequirementEndpoint(project, requirementId, "ftp://example.com/v1"),
+    ProjectValidationError,
+  );
+  assert.throws(
+    () => updateConnectionRequirementEndpoint(project, requirementId, "not a url"),
+    ProjectValidationError,
+  );
+});
+
+test("re-pointing an unknown connection is refused rather than ignored", () => {
+  const project = createProjectFile({
+    name: "Unknown connection",
+    request,
+    idSuffix: "unknown",
+    createdAt: "2026-07-30T12:00:00.000Z",
+  });
+  assert.throws(
+    () =>
+      updateConnectionRequirementEndpoint(
+        project,
+        "connection_missing",
+        "http://127.0.0.1:8080/v1",
+      ),
+    ProjectValidationError,
+  );
 });

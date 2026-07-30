@@ -15,7 +15,10 @@ import {
   removeProfile,
   writeProfiles,
 } from "./profile-store.client.ts";
-import type { StoredInferenceProfile } from "./profile-store.client.ts";
+import type {
+  StoredInferenceProfile,
+  StoredInferenceProfilePatch,
+} from "./profile-store.client.ts";
 import { desktopCredentialStore } from "./tauri-inference-transport.client.ts";
 import type { CredentialStatus } from "./tauri-inference-transport.client.ts";
 import {
@@ -97,13 +100,15 @@ export interface ProfileCredentialHandle {
 
 export interface ConnectionProfilesHandle {
   profiles: StoredInferenceProfile[];
+  /** True once local profile storage has been read and migrated. */
+  profilesLoaded: boolean;
   activeProfile: StoredInferenceProfile;
   /** Resolved for the active profile, including its overrides. */
   capabilities: ProviderCapabilities;
   selectProfile(profileId: string): void;
-  /** Returns the new profile's id, which is also made active. */
-  addProfile(): string;
-  updateActiveProfile(patch: Partial<StoredInferenceProfile>): void;
+  /** Returns the new profile, which is also made active. */
+  addProfile(): StoredInferenceProfile;
+  updateActiveProfile(patch: StoredInferenceProfilePatch): void;
   /** Absent when the active profile can be deleted; otherwise why it cannot. */
   activeProfileDeletionRefusal?: string;
   /**
@@ -395,7 +400,7 @@ export function useConnectionProfiles(input: {
     }
   }
 
-  function updateActiveProfile(patch: Partial<StoredInferenceProfile>): void {
+  function updateActiveProfile(patch: StoredInferenceProfilePatch): void {
     setProfiles((current) =>
       current.map((profile) =>
         profile.id === activeProfile.id ? { ...profile, ...patch } : profile,
@@ -403,11 +408,11 @@ export function useConnectionProfiles(input: {
     );
   }
 
-  function addProfile(): string {
+  function addProfile(): StoredInferenceProfile {
     const profile = createProfile();
     setProfiles((current) => [...current, profile]);
     setActiveProfileId(profile.id);
-    return profile.id;
+    return profile;
   }
 
   /**
@@ -524,6 +529,7 @@ export function useConnectionProfiles(input: {
 
   return {
     profiles,
+    profilesLoaded,
     activeProfile,
     capabilities,
     selectProfile: setActiveProfileId,

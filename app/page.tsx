@@ -1,12 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type {
   ProviderCapabilities,
   RichInferenceRequest,
 } from "../packages/core/src/types";
 import {
   createProjectFile,
+  updateConnectionRequirementEndpoint,
 } from "../packages/core/src/project";
 import {
   createEntityId,
@@ -167,6 +173,7 @@ function HomeContent() {
   // during render.
   const {
     profiles,
+    profilesLoaded,
     activeProfile,
     capabilities: activeCapabilities,
     selectProfile,
@@ -208,7 +215,10 @@ function HomeContent() {
   const [streamingPreferenceLoaded, setStreamingPreferenceLoaded] =
     useState(false);
   const project = useProjectWorkspace({
-    activeProfileId: activeProfile.id,
+    activeProfile,
+    profiles,
+    profilesLoaded,
+    onActivateProfile: selectProfile,
     folderAccessAvailable,
     createProject() {
       return createProjectFile({
@@ -559,8 +569,10 @@ function HomeContent() {
 
   /** Selecting a profile also satisfies an open project's connection mapping. */
   function chooseProfile(profileId: string): void {
+    const profile = profiles.find(({ id }) => id === profileId);
+    if (!profile) return;
     selectProfile(profileId);
-    project.mapProfile(profileId);
+    project.mapProfile(profile);
   }
 
   /**
@@ -589,6 +601,45 @@ function HomeContent() {
     });
   }
 
+  /**
+   * Re-points the project's declared connection at the mapped profile, after
+   * showing what is being replaced. The declaration travels in the shared
+   * project file and the previous value is not recoverable from the UI, so the
+   * old and new endpoints are put side by side before the write.
+   */
+  function confirmUpdateProjectEndpoint(): void {
+    const requirement = projectTemplates.activeConnectionRequirement;
+    if (!requirement) return;
+    const endpoint = activeProfile.endpoint;
+    setConfirmation({
+      title: "Update the project's declared endpoint?",
+      description:
+        "The project file records the new endpoint. Anyone you share it with sees this connection instead. Credentials are never written to the project.",
+      confirmLabel: "Update project",
+      details: [
+        { label: "Currently declares", value: requirement.endpoint },
+        { label: "Change to", value: endpoint },
+      ],
+      onConfirm() {
+        try {
+          project.adoptProjectMutation(
+            updateConnectionRequirementEndpoint(
+              project.currentProjectDocument(),
+              requirement.id,
+              endpoint,
+            ),
+          );
+        } catch (error) {
+          project.setError(
+            error instanceof Error
+              ? error.message
+              : "Could not update the project's declared endpoint.",
+          );
+        }
+      },
+    });
+  }
+
   function changeCapability(
     key: keyof ProviderCapabilities,
     enabled: boolean,
@@ -600,9 +651,11 @@ function HomeContent() {
 
   async function run() {
     project.clearErrorKind();
-    if (projectFile && !mappedProfileId) {
+    if (projectFile && mappedProfileId !== activeProfile.id) {
       project.setError(
-        "Map this project's connection to a local profile before running.",
+        mappedProfileId
+          ? "Activate this project's mapped connection before running."
+          : "Map this project's connection to a local profile before running.",
       );
       return;
     }
@@ -682,7 +735,7 @@ function HomeContent() {
   const composerItems = projectTemplates.templateWorkbench.composerItems;
   const readiness = runReadiness({
     projectOpen: Boolean(projectFile),
-    connectionMapped: Boolean(mappedProfileId),
+    connectionMapped: mappedProfileId === activeProfile.id,
     activeProfileName: activeProfile.name,
     activeProfileEndpoint: activeProfile.endpoint,
     activeProfileModel: activeModel,
@@ -928,8 +981,8 @@ function HomeContent() {
         isDesktopRuntime={isDesktopRuntime}
         onSelectProfile={chooseProfile}
         onAddProfile={() => {
-          const profileId = addProfile();
-          project.mapProfile(profileId);
+          const profile = addProfile();
+          project.mapProfile(profile);
         }}
         onDeleteProfile={confirmDeleteActiveProfile}
         deleteProfileRefusal={activeProfileDeletionRefusal}
@@ -940,6 +993,7 @@ function HomeContent() {
         onMapProfile={() => {
           project.mapActiveProfile();
         }}
+        onUpdateProjectEndpoint={confirmUpdateProjectEndpoint}
         pendingDestination={pendingReadinessDestination}
         onDestinationHandled={() => setPendingReadinessDestination(undefined)}
       />

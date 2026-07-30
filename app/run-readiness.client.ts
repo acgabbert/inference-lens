@@ -3,9 +3,12 @@
  * button's tooltip cannot disagree about it.
  */
 
+import { sameChatCompletionsTarget } from "../packages/core/src/openai-compatible.ts";
+
 export type RunReadinessActionKind =
   | "map-profile"
   | "open-connections"
+  | "update-project-endpoint"
   | "edit-template"
   | "review-templates"
   | "review-tools";
@@ -14,7 +17,12 @@ export type RunReadinessActionKind =
 export type ReadinessDestination =
   | {
       surface: "connections";
-      control: "project-mapping" | "profile" | "endpoint" | "tools-capability";
+      control:
+        | "project-mapping"
+        | "project-endpoint"
+        | "profile"
+        | "endpoint"
+        | "tools-capability";
     }
   | {
       surface: "request";
@@ -181,7 +189,8 @@ export function runReadiness(
 
   if (projectOpen && !connectionMapped) {
     const mismatched = Boolean(
-      requiredEndpoint && requiredEndpoint !== activeProfileEndpoint,
+      requiredEndpoint &&
+        !sameChatCompletionsTarget(requiredEndpoint, activeProfileEndpoint),
     );
     return {
       blocked: true,
@@ -425,7 +434,7 @@ export function runReadiness(
     projectOpen &&
     connectionMapped &&
     requiredEndpoint &&
-    requiredEndpoint !== activeProfileEndpoint
+    !sameChatCompletionsTarget(requiredEndpoint, activeProfileEndpoint)
   ) {
     return {
       blocked: false,
@@ -436,11 +445,21 @@ export function runReadiness(
         { label: "Project expects", value: requiredEndpoint },
         { label: "Requests go to", value: activeProfileEndpoint },
       ],
-      actions: [{
-        kind: "open-connections",
-        label: "Open connection settings",
-        destination: { surface: "connections", control: "endpoint" },
-      }],
+      // A detour and a move look identical from here, so both answers are
+      // offered. Changing the declaration is the one that ends the notice, but
+      // it edits the shared project file, so it does not lead.
+      actions: [
+        {
+          kind: "open-connections",
+          label: "Open connection settings",
+          destination: { surface: "connections", control: "endpoint" },
+        },
+        {
+          kind: "update-project-endpoint",
+          label: "Update what the project expects",
+          destination: { surface: "connections", control: "project-endpoint" },
+        },
+      ],
     };
   }
 

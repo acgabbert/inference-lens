@@ -5,7 +5,9 @@ import {
   createDefaultProfile,
   nextCapabilityOverrides,
   profileDeletionRefusal,
+  readProfiles,
   removeProfile,
+  writeProfiles,
 } from "../app/profile-store.client.ts";
 import type { StoredInferenceProfile } from "../app/profile-store.client.ts";
 
@@ -20,6 +22,59 @@ test("the starting profile carries no endpoint or model", () => {
   const starter = createDefaultProfile();
   assert.equal(starter.endpoint, "");
   assert.equal(starter.model, "");
+});
+
+test("fixed profile ids still receive non-reused instance identities", () => {
+  const first = createDefaultProfile();
+  const second = createDefaultProfile();
+
+  assert.equal(first.id, second.id);
+  assert.notEqual(first.instanceId, second.instanceId);
+});
+
+test("legacy stored profiles gain an instance identity that is persisted", () => {
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  let stored = JSON.stringify({
+    profiles: [
+      {
+        id: "openai-compatible",
+        name: "Legacy profile",
+        provider: "openai-compatible",
+        endpoint: "https://api.example.com/v1",
+        model: "example-model",
+      },
+    ],
+    activeProfileId: "openai-compatible",
+  });
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      localStorage: {
+        getItem: () => stored,
+        setItem: (_key: string, value: string) => {
+          stored = value;
+        },
+      },
+    },
+  });
+
+  try {
+    const snapshot = readProfiles();
+    assert.equal(snapshot.restored, true);
+    assert.match(snapshot.profiles[0]!.instanceId, /^profile-instance-/);
+
+    writeProfiles(snapshot);
+    assert.equal(
+      JSON.parse(stored).profiles[0].instanceId,
+      snapshot.profiles[0]!.instanceId,
+    );
+  } finally {
+    if (originalWindow) {
+      Object.defineProperty(globalThis, "window", originalWindow);
+    } else {
+      delete (globalThis as { window?: unknown }).window;
+    }
+  }
 });
 
 test("records only capabilities that differ from the provider baseline", () => {

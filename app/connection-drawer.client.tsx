@@ -2,8 +2,12 @@
 
 import { useEffect, useRef, type RefObject } from "react";
 import type { ConnectionRequirement } from "../packages/core/src/project";
+import { sameChatCompletionsTarget } from "../packages/core/src/openai-compatible";
 import type { ProviderCapabilities } from "../packages/core/src/types";
-import type { StoredInferenceProfile } from "./profile-store.client";
+import type {
+  StoredInferenceProfile,
+  StoredInferenceProfilePatch,
+} from "./profile-store.client";
 import type {
   ProfileCredentialHandle,
   ServerDefaultStatus,
@@ -59,12 +63,20 @@ interface ConnectionDrawerProps {
   onDeleteProfile(): void;
   /** Absent when the active profile can be deleted; otherwise why it cannot. */
   deleteProfileRefusal?: string;
-  onUpdateProfile(patch: Partial<StoredInferenceProfile>): void;
+  onUpdateProfile(patch: StoredInferenceProfilePatch): void;
   onCapabilityChange(key: keyof ProviderCapabilities, enabled: boolean): void;
   /** Present only while a project declares a connection to satisfy. */
   connectionRequirement?: ConnectionRequirement;
+  /**
+   * The profile this device runs the open project against, which is not always
+   * the active one — a profile can become active without being mapped. The
+   * mapping reads as satisfied only when the two agree, the same condition the
+   * run path enforces, so the control that resolves a divergence stays offered.
+   */
   mappedProfileId?: string;
   onMapProfile(): void;
+  /** Re-points the project's declared connection at the mapped profile. */
+  onUpdateProjectEndpoint(): void;
   pendingDestination?: ReadinessDestination;
   onDestinationHandled(): void;
 }
@@ -80,16 +92,23 @@ function ConnectionMapping({
   activeProfile,
   mapped,
   onMapProfile,
+  onUpdateProjectEndpoint,
   mapButtonRef,
+  projectEndpointButtonRef,
 }: {
   requirement: ConnectionRequirement;
   activeProfile: StoredInferenceProfile;
   mapped: boolean;
   onMapProfile(): void;
+  onUpdateProjectEndpoint(): void;
   mapButtonRef: RefObject<HTMLButtonElement | null>;
+  projectEndpointButtonRef: RefObject<HTMLButtonElement | null>;
 }) {
   const profileName = activeProfile.name.trim() || "the selected profile";
-  const mismatched = activeProfile.endpoint !== requirement.endpoint;
+  const mismatched = !sameChatCompletionsTarget(
+    activeProfile.endpoint,
+    requirement.endpoint,
+  );
   return (
     <div
       className={
@@ -117,6 +136,20 @@ function ConnectionMapping({
       {!mapped && (
         <button ref={mapButtonRef} className="text-button" data-readiness-control="project-mapping" type="button" onClick={onMapProfile}>
           Use {profileName} for this project
+        </button>
+      )}
+      {/* Offered only once a profile is mapped and still disagrees. Before
+          that the mismatch may just be the wrong profile selected, and
+          rewriting the shared project file would be the wrong answer. */}
+      {mapped && mismatched && (
+        <button
+          ref={projectEndpointButtonRef}
+          className="text-button"
+          data-readiness-control="project-endpoint"
+          type="button"
+          onClick={onUpdateProjectEndpoint}
+        >
+          Update &ldquo;{requirement.name}&rdquo; to expect this endpoint
         </button>
       )}
     </div>
@@ -147,6 +180,7 @@ export function ConnectionDrawer({
   connectionRequirement,
   mappedProfileId,
   onMapProfile,
+  onUpdateProjectEndpoint,
   pendingDestination,
   onDestinationHandled,
 }: ConnectionDrawerProps) {
@@ -154,6 +188,7 @@ export function ConnectionDrawer({
   const endpointRef = useRef<HTMLInputElement>(null);
   const toolsCapabilityRef = useRef<HTMLInputElement>(null);
   const mapButtonRef = useRef<HTMLButtonElement>(null);
+  const projectEndpointButtonRef = useRef<HTMLButtonElement>(null);
   const keychainActive = isDesktopRuntime && credential.status.canPersist;
   const serverDefaultActive =
     !isDesktopRuntime && activeProfile.credentialRef === "environment-default";
@@ -178,6 +213,7 @@ export function ConnectionDrawer({
       endpoint: endpointRef.current,
       "tools-capability": toolsCapabilityRef.current,
       "project-mapping": mapButtonRef.current,
+      "project-endpoint": projectEndpointButtonRef.current,
     }[pendingDestination.control];
     if (!target) return;
     target.scrollIntoView?.({ block: "center" });
@@ -233,9 +269,11 @@ export function ConnectionDrawer({
           <ConnectionMapping
             requirement={connectionRequirement}
             activeProfile={activeProfile}
-            mapped={Boolean(mappedProfileId)}
+            mapped={mappedProfileId === activeProfile.id}
             onMapProfile={onMapProfile}
+            onUpdateProjectEndpoint={onUpdateProjectEndpoint}
             mapButtonRef={mapButtonRef}
+            projectEndpointButtonRef={projectEndpointButtonRef}
           />
         )}
         <label>
