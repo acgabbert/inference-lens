@@ -13,6 +13,7 @@ import type {
 } from "../packages/core/src/types";
 import {
   createProjectFile,
+  updateConnectionRequirementEndpoint,
 } from "../packages/core/src/project";
 import {
   createEntityId,
@@ -597,6 +598,45 @@ function HomeContent() {
     });
   }
 
+  /**
+   * Re-points the project's declared connection at the mapped profile, after
+   * showing what is being replaced. The declaration travels in the shared
+   * project file and the previous value is not recoverable from the UI, so the
+   * old and new endpoints are put side by side before the write.
+   */
+  function confirmUpdateProjectEndpoint(): void {
+    const requirement = projectTemplates.activeConnectionRequirement;
+    if (!requirement) return;
+    const endpoint = activeProfile.endpoint;
+    setConfirmation({
+      title: "Update the project's declared endpoint?",
+      description:
+        "The project file records the new endpoint. Anyone you share it with sees this connection instead. Credentials are never written to the project.",
+      confirmLabel: "Update project",
+      details: [
+        { label: "Currently declares", value: requirement.endpoint },
+        { label: "Change to", value: endpoint },
+      ],
+      onConfirm() {
+        try {
+          project.adoptProjectMutation(
+            updateConnectionRequirementEndpoint(
+              project.currentProjectDocument(),
+              requirement.id,
+              endpoint,
+            ),
+          );
+        } catch (error) {
+          project.setError(
+            error instanceof Error
+              ? error.message
+              : "Could not update the project's declared endpoint.",
+          );
+        }
+      },
+    });
+  }
+
   function changeCapability(
     key: keyof ProviderCapabilities,
     enabled: boolean,
@@ -948,6 +988,7 @@ function HomeContent() {
         onMapProfile={() => {
           project.mapActiveProfile();
         }}
+        onUpdateProjectEndpoint={confirmUpdateProjectEndpoint}
         pendingDestination={pendingReadinessDestination}
         onDestinationHandled={() => setPendingReadinessDestination(undefined)}
       />

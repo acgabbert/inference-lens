@@ -73,6 +73,7 @@ function drawer(overrides) {
     onUpdateProfile: () => {},
     onCapabilityChange: () => {},
     onMapProfile: () => {},
+    onUpdateProjectEndpoint: () => {},
     ...overrides,
     activeProfile,
     credential: credential(overrides.credential),
@@ -209,4 +210,60 @@ test("a server-provisioned profile locks its endpoint and says why", async () =>
 
   assert.match(html, /Managed by server configuration/);
   assert.match(html, /Create a profile for another provider/);
+});
+
+const requirement = {
+  id: "connection_local",
+  name: "Default connection",
+  provider: "openai-compatible",
+  protocol: "openai-compatible-chat-completions",
+  endpoint: "http://127.0.0.1:8080/v1",
+};
+
+test("a mapped project running elsewhere offers to move its declaration", async () => {
+  const html = await render(
+    DRAWER,
+    "ConnectionDrawer",
+    drawer({
+      connectionRequirement: requirement,
+      mappedProfileId: "openai-compatible",
+    }),
+  );
+
+  assert.match(html, /Mapped to a different endpoint/);
+  assert.match(html, /Update “Default connection” to expect this endpoint/);
+  assert.match(html, /data-readiness-control="project-endpoint"/);
+});
+
+test("an unmapped project cannot move its declaration yet", async () => {
+  const html = await render(
+    DRAWER,
+    "ConnectionDrawer",
+    drawer({ connectionRequirement: requirement }),
+  );
+
+  // The mismatch may simply be the wrong profile selected, so the answer
+  // offered is the mapping, not a rewrite of the shared project file.
+  assert.match(html, /Connection mapping required/);
+  assert.match(html, /data-readiness-control="project-mapping"/);
+  assert.doesNotMatch(html, /to expect this endpoint/);
+});
+
+test("a mapped project already dialing its declared endpoint says nothing to fix", async () => {
+  const html = await render(
+    DRAWER,
+    "ConnectionDrawer",
+    drawer({
+      connectionRequirement: {
+        ...requirement,
+        endpoint: "https://api.openai.com/v1",
+      },
+      mappedProfileId: "openai-compatible",
+      activeProfile: { endpoint: "https://api.openai.com/v1/chat/completions" },
+    }),
+  );
+
+  assert.match(html, /Project connection mapped/);
+  assert.doesNotMatch(html, /Mapped to a different endpoint/);
+  assert.doesNotMatch(html, /to expect this endpoint/);
 });

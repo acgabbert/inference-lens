@@ -9,6 +9,7 @@ import {
   parseModelsResponse,
   redactedProviderHeaders,
   redactedProviderUrl,
+  sameChatCompletionsTarget,
   sseLines,
 } from "../packages/core/src/openai-compatible.ts";
 import { OPENAI_COMPATIBLE_CAPABILITIES } from "../packages/core/src/types.ts";
@@ -282,6 +283,66 @@ test("parseModelsResponse dedupes and sorts model IDs with localeCompare", () =>
 test("parseModelsResponse throws on an invalid shape", () => {
   assert.throws(() => parseModelsResponse({}), /invalid \/models response/);
   assert.throws(() => parseModelsResponse(null), /invalid \/models response/);
+});
+
+test("endpoints that dial the same URL are the same target", () => {
+  // A base URL and the request URL the transport would build from it. Reported
+  // as a mismatch by a string compare, with nothing the user could fix.
+  assert.equal(
+    sameChatCompletionsTarget(
+      "https://openrouter.ai/api/v1",
+      "https://openrouter.ai/api/v1/chat/completions",
+    ),
+    true,
+  );
+  assert.equal(
+    sameChatCompletionsTarget(
+      "http://127.0.0.1:8080/v1/",
+      "http://127.0.0.1:8080/v1",
+    ),
+    true,
+  );
+  assert.equal(
+    sameChatCompletionsTarget(
+      "https://API.OpenAI.com/v1",
+      "https://api.openai.com/v1",
+    ),
+    true,
+  );
+});
+
+test("endpoints that dial elsewhere are not the same target", () => {
+  assert.equal(
+    sameChatCompletionsTarget(
+      "http://127.0.0.1:8080/v1",
+      "https://openrouter.ai/api/v1",
+    ),
+    false,
+  );
+  // Same host, different port: the local-fixture case that must stay visible.
+  assert.equal(
+    sameChatCompletionsTarget(
+      "http://127.0.0.1:8080/v1",
+      "http://127.0.0.1:44014/v1",
+    ),
+    false,
+  );
+  assert.equal(
+    sameChatCompletionsTarget(
+      "http://127.0.0.1:8080/v1",
+      "https://127.0.0.1:8080/v1",
+    ),
+    false,
+  );
+});
+
+test("an unparseable endpoint falls back to comparing the text", () => {
+  assert.equal(sameChatCompletionsTarget("not a url", " not a url "), true);
+  assert.equal(sameChatCompletionsTarget("not a url", "also not a url"), false);
+  assert.equal(
+    sameChatCompletionsTarget("", "https://openrouter.ai/api/v1"),
+    false,
+  );
 });
 
 test("captures all visible provider headers while redacting sensitive values", () => {

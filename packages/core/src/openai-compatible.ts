@@ -87,6 +87,35 @@ export function chatCompletionsUrl(endpoint: string): string {
   return `${trimmed}/chat/completions`;
 }
 
+/**
+ * Whether two endpoints dial the same chat completions URL.
+ *
+ * The question every caller means is "would a request end up in the same
+ * place", not "are these two strings equal". A base URL and the same URL with
+ * `/chat/completions` already appended resolve identically here, as do a
+ * trailing slash and a differently cased host. Comparing the raw strings
+ * instead reports a mismatch the user cannot act on, because there is nothing
+ * to fix.
+ *
+ * Lives with the protocol rather than with the UI that asks: what counts as
+ * the same target is a property of how this protocol builds its request URL.
+ */
+export function sameChatCompletionsTarget(a: string, b: string): boolean {
+  try {
+    // Re-parsed rather than compared as built: `chatCompletionsUrl` appends to
+    // the caller's text, so a host differing only in case survives it. Parsing
+    // canonicalizes the scheme, host case, and a redundant default port, and
+    // leaves the path alone, which is case-sensitive and must stay compared.
+    const target = (endpoint: string): string =>
+      new URL(chatCompletionsUrl(endpoint)).toString();
+    return target(a) === target(b);
+  } catch {
+    // An endpoint that cannot be parsed is reported by the readiness checks
+    // that own it. Comparing the text is the most this can honestly say.
+    return a.trim() === b.trim();
+  }
+}
+
 export function modelsUrl(endpoint: string): string {
   const trimmed = endpoint.trim().replace(/\/+$/, "");
   const parsed = new URL(trimmed);
