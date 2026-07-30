@@ -2,6 +2,7 @@
 
 import {
   type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
   useEffect,
@@ -203,18 +204,50 @@ type PaneTabsProps = {
   tabs: PaneTab[];
   value: string;
   onChange: (value: string) => void;
+  idPrefix?: string;
 };
 
-export function PaneTabs({ label, tabs, value, onChange }: PaneTabsProps) {
+export function PaneTabs({
+  label,
+  tabs,
+  value,
+  onChange,
+  idPrefix,
+}: PaneTabsProps) {
+  function moveSelection(
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    index: number,
+  ) {
+    let nextIndex: number | undefined;
+    if (event.key === "ArrowRight") nextIndex = (index + 1) % tabs.length;
+    if (event.key === "ArrowLeft") {
+      nextIndex = (index - 1 + tabs.length) % tabs.length;
+    }
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = tabs.length - 1;
+    if (nextIndex === undefined) return;
+    event.preventDefault();
+    onChange(tabs[nextIndex]!.id);
+    const buttons =
+      event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
+        '[role="tab"]',
+      );
+    buttons?.[nextIndex]?.focus();
+  }
+
   return (
     <div className="pane-tabs" role="tablist" aria-label={label}>
-      {tabs.map((tab) => (
+      {tabs.map((tab, index) => (
         <button
+          aria-controls={idPrefix ? `${idPrefix}-${tab.id}-panel` : undefined}
           aria-selected={value === tab.id}
           className={value === tab.id ? "active" : undefined}
+          id={idPrefix ? `${idPrefix}-${tab.id}-tab` : undefined}
           key={tab.id}
           role="tab"
+          tabIndex={value === tab.id ? 0 : -1}
           type="button"
+          onKeyDown={(event) => moveSelection(event, index)}
           onClick={() => onChange(tab.id)}
         >
           {tab.label}
@@ -229,18 +262,20 @@ export function PaneTabs({ label, tabs, value, onChange }: PaneTabsProps) {
 
 type ResizableTracePanelProps = {
   open: boolean;
+  canOpen?: boolean;
   onOpenChange: (open: boolean) => void;
   /** Optional view switcher, rendered between the toggle and the meta line. */
   tabs?: ReactNode;
-  meta?: ReactNode;
+  summary?: ReactNode;
   children: ReactNode;
 };
 
 export function ResizableTracePanel({
   open,
+  canOpen = true,
   onOpenChange,
   tabs,
-  meta,
+  summary,
   children,
 }: ResizableTracePanelProps) {
   const [height, setHeight] = useState(265);
@@ -288,7 +323,11 @@ export function ResizableTracePanel({
 
   return (
     <section
-      className={open ? "trace-panel open" : "trace-panel"}
+      className={[
+        "trace-panel",
+        open ? "open" : "",
+        summary ? "has-summary" : "",
+      ].filter(Boolean).join(" ")}
       style={{ "--trace-panel-height": `${height}px` } as CSSProperties}
     >
       {open && (
@@ -305,6 +344,7 @@ export function ResizableTracePanel({
         <button
           aria-expanded={open}
           className="trace-toggle"
+          disabled={!canOpen}
           type="button"
           onClick={() => onOpenChange(!open)}
         >
@@ -314,8 +354,12 @@ export function ResizableTracePanel({
           Run details
         </button>
         {tabs}
-        {meta && <span className="trace-meta">{meta}</span>}
       </header>
+      {summary && (
+        <div className="trace-summary-row" aria-live="polite">
+          {summary}
+        </div>
+      )}
       {open && <div className="trace-panel-content">{children}</div>}
     </section>
   );

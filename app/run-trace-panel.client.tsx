@@ -13,6 +13,11 @@ import {
   diffAttempts,
   diffCandidates,
 } from "../packages/core/src/run-diff";
+import {
+  runInspectionSummary,
+  type RunInspectionSummary as RunInspectionSummaryValue,
+  type RunInspectionStatus,
+} from "../packages/core/src/run-inspection";
 import { runMetrics } from "../packages/core/src/run-metrics";
 import { runTimeline } from "../packages/core/src/run-timeline";
 import { runStateFromTrace } from "../packages/core/src/run-trace";
@@ -21,9 +26,14 @@ import {
   RunDiffView,
 } from "./run-diff-view.client";
 import { RunMetricsView } from "./run-metrics-view.client";
+import {
+  formatDuration,
+  formatRate,
+  formatTokens,
+} from "./run-metrics-format.client";
 import { PaneTabs, ResizableTracePanel } from "./workbench-shell.client";
 
-type TraceTab = "events" | "metrics" | "templates" | "compare";
+type TraceTab = "events" | "metrics" | "resolution" | "compare";
 
 export interface ParentTraceState {
   status: "idle" | "loading" | "ready" | "error";
@@ -65,6 +75,73 @@ function EventStream({ events }: { events: RunEvent[] }) {
         </details>
       ))}
     </>
+  );
+}
+
+const STATUS_LABELS: Record<RunInspectionStatus, string> = {
+  starting: "Starting",
+  running: "Running",
+  waiting_for_tools: "Waiting for tools",
+  ready_to_continue: "Ready to continue",
+  retry_available: "Retry available",
+  completed: "Completed",
+  cancelled: "Cancelled",
+  failed: "Failed",
+};
+
+export function RunInspectionSummary({
+  summary,
+}: {
+  summary: RunInspectionSummaryValue;
+}) {
+  const metrics = [
+    summary.totalDurationMs === undefined
+      ? undefined
+      : {
+          label: summary.phase === "active" ? "Elapsed" : "Duration",
+          value: formatDuration(summary.totalDurationMs),
+        },
+    summary.ttfoMs === undefined
+      ? undefined
+      : {
+          label: "First output",
+          value: formatDuration(summary.ttfoMs),
+        },
+    summary.totalTokens === undefined
+      ? undefined
+      : {
+          label: "Tokens",
+          value: formatTokens(summary.totalTokens),
+        },
+    summary.outputTokensPerSecond === undefined
+      ? undefined
+      : {
+          label: "Rate",
+          value: formatRate(summary.outputTokensPerSecond),
+        },
+  ].filter((metric): metric is { label: string; value: string } =>
+    Boolean(metric),
+  );
+
+  return (
+    <dl className="run-inspection-summary" aria-label="Run summary">
+      <div>
+        <dt className="visually-hidden">Status</dt>
+        <dd>
+          <span
+            className={`run-inspection-status ${summary.status}`}
+          >
+            {STATUS_LABELS[summary.status]}
+          </span>
+        </dd>
+      </div>
+      {metrics.map((metric) => (
+        <div key={metric.label}>
+          <dt>{metric.label}</dt>
+          <dd>{metric.value}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
@@ -138,6 +215,10 @@ export function RunTracePanel({
     () => (runState ? runMetrics(runState) : null),
     [runState],
   );
+  const summary = useMemo(
+    () => runInspectionSummary(runState),
+    [runState],
+  );
   const timeline = useMemo(
     () => (metrics ? runTimeline(metrics) : null),
     [metrics],
@@ -194,11 +275,14 @@ export function RunTracePanel({
 
   return (
     <ResizableTracePanel
-      open={open}
+      open={Boolean(summary) && open}
+      canOpen={Boolean(summary)}
       onOpenChange={onOpenChange}
+      summary={summary ? <RunInspectionSummary summary={summary} /> : undefined}
       tabs={
-        open && (
+        summary && open && (
           <PaneTabs
+            idPrefix="run-details"
             label="Run details"
             value={tab}
             onChange={(value) => setTab(value as TraceTab)}
@@ -206,8 +290,8 @@ export function RunTracePanel({
               { id: "events", label: "Events", count: events.length },
               { id: "metrics", label: "Metrics" },
               {
-                id: "templates",
-                label: "Templates",
+                id: "resolution",
+                label: "Resolution",
                 count: templateResolutions.length,
               },
               { id: "compare", label: "Compare" },
@@ -215,14 +299,15 @@ export function RunTracePanel({
           />
         )
       }
-      meta={
-        metrics?.usage.totalTokens !== undefined ? (
-          <span>{metrics.usage.totalTokens.toLocaleString()} tokens</span>
-        ) : undefined
-      }
     >
       {tab === "compare" ? (
-        <div className="trace" aria-live="polite">
+        <div
+          aria-labelledby="run-details-compare-tab"
+          aria-live="polite"
+          className="trace"
+          id="run-details-compare-panel"
+          role="tabpanel"
+        >
           <RunDiffView
             diff={diff}
             candidates={candidates}
@@ -245,15 +330,32 @@ export function RunTracePanel({
           />
         </div>
       ) : tab === "metrics" ? (
-        <div className="trace">
+        <div
+          aria-labelledby="run-details-metrics-tab"
+          className="trace"
+          id="run-details-metrics-panel"
+          role="tabpanel"
+        >
           <RunMetricsView metrics={metrics} timeline={timeline} />
         </div>
-      ) : tab === "templates" ? (
-        <div className="trace" aria-live="polite">
+      ) : tab === "resolution" ? (
+        <div
+          aria-labelledby="run-details-resolution-tab"
+          aria-live="polite"
+          className="trace"
+          id="run-details-resolution-panel"
+          role="tabpanel"
+        >
           <TemplateProvenance resolutions={templateResolutions} />
         </div>
       ) : (
-        <div className="trace" aria-live="polite">
+        <div
+          aria-labelledby="run-details-events-tab"
+          aria-live="polite"
+          className="trace"
+          id="run-details-events-panel"
+          role="tabpanel"
+        >
           <EventStream events={events} />
         </div>
       )}
