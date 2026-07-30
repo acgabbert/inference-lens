@@ -175,13 +175,13 @@ export function ProjectTemplatesPane({
             + Message set
           </button>
           <button
-            className="text-button template-import-action"
+            className="button secondary template-import-action"
             disabled={Boolean(n8nImportDisabledReason)}
             title={n8nImportDisabledReason}
             type="button"
             onClick={onOpenN8nImport}
           >
-            Import prompt from n8n…
+            Import from n8n…
           </button>
         </div>
         <div className="template-list">

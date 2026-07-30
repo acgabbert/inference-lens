@@ -87,7 +87,7 @@ test("renders the project template library and revision defaults", async () => {
   assert.match(html, /fixture-model/);
   assert.match(html, /\{\{topic\}\}/);
   assert.match(html, /Add to conversation/);
-  assert.match(html, /Import prompt from n8n…/);
+  assert.match(html, /Import from n8n…/);
 });
 
 test("renders a multiline run value with save and reset actions", async () => {
@@ -233,7 +233,7 @@ test("labels non-current revisions without a Previous 0 state", async () => {
   assert.match(html, /Revision 2/);
   assert.match(
     html,
-    /disabled="" title="Finish the current run."[^>]*>Import prompt from n8n…/,
+    /disabled="" title="Finish the current run."[^>]*>Import from n8n…/,
   );
 });
 

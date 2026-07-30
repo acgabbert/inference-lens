@@ -977,6 +977,12 @@ output {
   gap: 7px;
 }
 
+/* The prompt library sidebar is intentionally narrow; this preserves a
+   one-line n8n import label without making the control visually distinct. */
+.template-import-action {
+  padding-inline: 8px;
+}
+
 .template-list {
   margin-top: 12px;
   display: grid;

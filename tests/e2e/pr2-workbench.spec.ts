@@ -277,7 +277,7 @@ test("groups lifecycle and run-data actions by owner", async ({ page }) => {
 
   await page.getByRole("tab", { name: "Prompt library" }).click();
   await expect(
-    page.getByRole("button", { name: "Import prompt from n8n…" }),
+    page.getByRole("button", { name: "Import from n8n…" }),
   ).toBeVisible();
 
   await page.getByRole("tab", { name: "Tools" }).click();
