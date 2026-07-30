@@ -200,7 +200,7 @@ function HomeContent() {
   const clearTemplateOverridesRef = useRef<() => void>(() => {});
   const [workbenchView, setWorkbenchView] =
     useState<WorkbenchView>("request");
-  const [traceOpen, setTraceOpen] = useState(true);
+  const [traceOpen, setTraceOpen] = useState(false);
   const [outputFollowing, setOutputFollowing] = useState(true);
   const [markdownPreview, setMarkdownPreview] = useState(true);
   const [markdownPreviewLoaded, setMarkdownPreviewLoaded] = useState(false);
@@ -289,6 +289,11 @@ function HomeContent() {
     onShowResponse() {
       setWorkbenchView("response");
       setOutputFollowing(true);
+    },
+    onOpenTrace() {
+      setWorkbenchView("response");
+      setOutputFollowing(true);
+      setTraceOpen(true);
     },
     onTraceSaved() { setSavedRunVersion((current) => current + 1); },
     onResetBranch() { setBranchContext(null); },
@@ -668,7 +673,6 @@ function HomeContent() {
       workspace,
       fileName: item.fileName,
     });
-    setTraceOpen(true);
     setRunHistoryOpen(false);
   }
   const runReachedTerminalStatus = Boolean(
@@ -813,7 +817,6 @@ function HomeContent() {
         onImportRunTrace={(event) => {
           const file = event.target.files?.[0];
           if (file) {
-            setTraceOpen(true);
             void runSession.importTrace(file);
           }
           event.target.value = "";

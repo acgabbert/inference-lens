@@ -32,6 +32,7 @@ export interface UseRunSessionOptions {
   mockForTool(toolId: ToolDefinition["id"]): Parameters<typeof toolResultDraftsForState>[2] extends (id: ToolDefinition["id"]) => infer T ? T : never;
   readTrace(fileName: string): Promise<RunTrace>;
   onShowResponse(): void;
+  onOpenTrace(): void;
   onTraceSaved(): void;
   onResetBranch(): void;
   onError(message: string): void;
@@ -193,7 +194,7 @@ export function useRunSession(options: UseRunSessionOptions) {
     parentGenerationRef.current += 1;
     setParentTrace({ status: "idle" });
     setVisibleBranchProvenance(trace.branchedFrom);
-    options.onShowResponse();
+    options.onOpenTrace();
     replaceState(runStateFromTrace(trace));
     setTraceStorage(origin.workspace
       ? { kind: "saved", location: runTraceWorkspacePath(origin.workspace, origin.fileName) }
