@@ -56,3 +56,31 @@ test("no @media (prefers-color-scheme) blocks — would desync from a future man
     "prefers-color-scheme media query found; theming should live entirely in light-dark() tokens",
   );
 });
+
+test("the product type scale has an 11px floor", () => {
+  const requiredRoles = {
+    "--type-body": 14,
+    "--type-compact": 13,
+    "--type-control": 12,
+    "--type-metadata": 11,
+    "--type-section-heading": 16,
+    "--type-page-heading": 18,
+  };
+
+  for (const [role, value] of Object.entries(requiredRoles)) {
+    assert.match(css, new RegExp(`${role}: ${value}px;`), `expected ${role}`);
+  }
+
+  const undersized = [...css.matchAll(/font-size:\s*([0-9.]+)(px|rem)\s*;/g)]
+    .filter((match) => {
+      const value = Number(match[1]);
+      return match[2] === "px" ? value < 11 : value * 16 < 11;
+    })
+    .map((match) => match[0]);
+
+  assert.deepEqual(
+    undersized,
+    [],
+    "meaningful text must use a semantic type role at or above 11px",
+  );
+});
