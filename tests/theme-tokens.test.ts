@@ -56,3 +56,86 @@ test("no @media (prefers-color-scheme) blocks — would desync from a future man
     "prefers-color-scheme media query found; theming should live entirely in light-dark() tokens",
   );
 });
+
+test("the product type scale is semantic, consolidated, and has an 11px floor", () => {
+  const requiredRoles = {
+    "--type-body": 14,
+    "--type-compact": 13,
+    "--type-control": 12,
+    "--type-metadata": 11,
+    "--type-section-heading": 16,
+    "--type-page-heading": 18,
+  };
+
+  for (const [role, value] of Object.entries(requiredRoles)) {
+    assert.match(css, new RegExp(`${role}: ${value}px;`), `expected ${role}`);
+  }
+
+  const fontSizeDeclarations = [...css.matchAll(/font-size:\s*([^;]+);/g)];
+  assert.ok(
+    fontSizeDeclarations.length <= 8,
+    `semantic role grouping regressed: found ${fontSizeDeclarations.length} font-size declarations`,
+  );
+
+  // This allowlist is deliberately selector-scoped. Only non-text geometry
+  // belongs here; adding a text selector to make the floor pass is not valid.
+  const nonTextFontSizeExceptions = {
+    "run-history-empty-illustration": {
+      selector: ".run-history-empty > span",
+      value: "28px",
+    },
+  } as const;
+
+  const literalDeclarations = [
+    ...css.matchAll(
+      /font-size:\s*([0-9.]+(?:px|rem))\s*;\s*(?:\/\* type-size-exception: ([a-z0-9-]+) \*\/)?/g,
+    ),
+  ];
+  const observedExceptionIds = new Set<string>();
+
+  for (const match of literalDeclarations) {
+    const [, value, exceptionId] = match;
+    assert.ok(
+      exceptionId,
+      `literal font-size ${value} is not assigned to a semantic role or documented exception`,
+    );
+    const exception =
+      nonTextFontSizeExceptions[
+        exceptionId as keyof typeof nonTextFontSizeExceptions
+      ];
+    assert.ok(exception, `unknown type-size exception: ${exceptionId}`);
+    assert.equal(value, exception.value, `wrong size for ${exceptionId}`);
+    observedExceptionIds.add(exceptionId);
+  }
+
+  assert.deepEqual(
+    observedExceptionIds,
+    new Set(Object.keys(nonTextFontSizeExceptions)),
+    "every documented non-text exception must be present exactly as audited",
+  );
+
+  for (const [exceptionId, exception] of Object.entries(
+    nonTextFontSizeExceptions,
+  )) {
+    const escapedSelector = exception.selector.replace(
+      /[.*+?^${}()|[\]\\]/g,
+      "\\$&",
+    );
+    assert.match(
+      css,
+      new RegExp(
+        `${escapedSelector}\\s*\\{[^}]*font-size:\\s*${exception.value.replace(".", "\\.")};\\s*/\\* type-size-exception: ${exceptionId} \\*/`,
+      ),
+      `type-size exception ${exceptionId} moved to an unaudited selector`,
+    );
+  }
+
+  const directSizes = fontSizeDeclarations
+    .map((match) => match[1].trim())
+    .filter((value) => !value.startsWith("var("));
+  assert.deepEqual(
+    directSizes,
+    Object.values(nonTextFontSizeExceptions).map(({ value }) => value),
+    "meaningful text must use a semantic type role",
+  );
+});

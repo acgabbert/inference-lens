@@ -25,6 +25,13 @@
   --text-muted: light-dark(#667069, #93a099);
   --text-faint: light-dark(#919a94, #6e7c75);
   --text-on-accent: light-dark(#ffffff, #06150e);
+  /* Type roles: choose these by the meaning of text, never by local density. */
+  --type-body: 14px;
+  --type-compact: 13px;
+  --type-control: 12px;
+  --type-metadata: 11px;
+  --type-section-heading: 16px;
+  --type-page-heading: 18px;
 
   /* Accent (brand green) */
   --accent: light-dark(#176b4d, #4fb98a);
@@ -120,6 +127,253 @@ body {
     sans-serif;
 }
 
+/*
+ * Semantic type ownership
+ *
+ * Component rules own layout, weight, and color. Size is assigned here by
+ * textual role so a component does not quietly invent another local tier.
+ */
+.app-error-card h1,
+.n8n-import-header h2,
+.confirmation-dialog h2,
+.registry-header h2,
+.markdown-body h1,
+.side-drawer-header h2,
+.icon-button {
+  font-size: var(--type-page-heading);
+}
+
+.brand h1,
+.panel-header h2,
+.template-empty-state h3,
+.template-rail-heading h3,
+.template-content-heading h3,
+.template-use-card h3,
+.n8n-import-centered h3,
+.n8n-review-summary h3,
+.registry-empty h3,
+.markdown-body h2,
+.waiting-for-answer h3,
+.tool-call-heading h3,
+.empty-state h3,
+.empty-glyph,
+.run-metric-value,
+.run-history-empty h3 {
+  font-size: var(--type-section-heading);
+}
+
+body,
+.app-error-card p:not(.eyebrow),
+input:not([type="range"]),
+textarea,
+.model-options-status,
+.capability-toggle small,
+.privacy-note,
+.template-empty,
+.template-empty-state p,
+.template-warning,
+.template-diagnostic,
+.tool-empty,
+.tool-manifest > header p,
+.schema-empty,
+.schema-unsupported,
+.schema-property-unsupported p,
+.n8n-import-header p,
+.n8n-import-error,
+.n8n-selector-list > p,
+.n8n-import-selector section > p,
+.n8n-review-summary p,
+.n8n-fidelity-copy,
+.n8n-recommendation-detail,
+.n8n-warning p,
+.n8n-review-empty,
+.n8n-import-footer p,
+.confirmation-dialog > p,
+.registry-header p,
+.registry-empty p,
+.branch-pending,
+.branch-provenance,
+.transcript-body > p,
+.output > p,
+.markdown-body,
+.waiting-for-answer p,
+.reasoning-stream > p,
+.reasoning-stream > .markdown-body,
+.empty-state p,
+.run-metric-hint,
+.trace-empty,
+.diff-parent-error,
+.diff-note,
+.diff-prompt,
+.diff-warning,
+.diff-absent,
+.run-readiness-summary > p,
+.run-readiness-why > p,
+.tools-tab-toolbar p,
+.side-drawer-header p,
+.run-history-empty p,
+.run-history-notice,
+.run-history-failures {
+  font-size: var(--type-body);
+}
+
+.project-error button,
+.model-option,
+.template-variable-row code,
+.template-use-variable code,
+.template-preview-content,
+.template-run-value-editor textarea,
+.advanced-schema .tool-schema,
+.schema-error,
+.registry-error,
+.registry-notice,
+.tool-mock-result textarea,
+.n8n-selector-item strong,
+.n8n-message-review pre,
+.n8n-field-review pre,
+.n8n-message-review details,
+.confirmation-details dd,
+.registry-list-item strong,
+.trace-storage,
+.transcript-tool-result,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6,
+.reasoning-stream summary,
+.run-metrics-counts dt,
+.run-timeline-legend,
+.run-timeline-label,
+.run-timeline-duration,
+.diff-picker select,
+.target-copy strong,
+.menu-chevron,
+.menu-heading,
+.menu-option strong,
+.menu-action,
+.project-popover button,
+.menu-file-button,
+.run-history-toolbar,
+.mobile-workbench-tabs button,
+.trace-storage-icon,
+.run-readiness-glyph,
+.trace-chevron {
+  font-size: var(--type-compact);
+}
+
+.button,
+button,
+label:not(.file-button),
+label.file-button,
+select,
+.section-heading,
+.workbench-notice-copy strong,
+.template-insert-label,
+.template-preview-heading,
+.request-preview summary,
+.request-preview h3,
+.tool-enabled,
+.tool-mock-toggle,
+.tool-manifest > header strong,
+.schema-node-controls input,
+.schema-node-controls select,
+.schema-property-row input,
+.schema-property-row select,
+.schema-enum-row input,
+.schema-subheading,
+.n8n-selector-heading,
+.n8n-review-tabs button,
+.n8n-message-review article > strong,
+.n8n-field-review article > header,
+.n8n-warning header,
+.n8n-binding-value > span,
+.n8n-recommendation-option label,
+.confirmation-details dt,
+.registry-editor-toolbar strong,
+.message-toolbar select,
+.transcript-message-header,
+.markdown-inline-code,
+.markdown-body pre.markdown-code,
+.markdown-body table,
+.trace-header,
+.run-metric-label,
+.run-metrics-table,
+.run-timeline-title,
+.diff-picker,
+.trace summary,
+.pane-tabs button,
+.run-settings-heading strong,
+.run-readiness-summary strong,
+.run-readiness-why > summary,
+.run-readiness-facts dt,
+.streaming-control > span,
+.tools-tab-toolbar strong,
+.trace-toggle,
+.jump-to-latest,
+.run-history-item-heading strong,
+.project-menu > summary::before {
+  font-size: var(--type-control);
+}
+
+.brand p,
+.provider-pill,
+.connection-mapping,
+.credential-status,
+output,
+.eyebrow,
+.template-list-item span,
+.template-variable-meta,
+.template-use-card small,
+.template-issue-count,
+.request-preview pre,
+.request-preview-raw summary,
+.tool-manifest-name code,
+.tool-manifest-name small,
+.tool-origin,
+.n8n-loaded-count,
+.n8n-step,
+.n8n-selector-item span,
+.n8n-import-selector .n8n-selector-scope,
+.fidelity-pill,
+.message-import-provenance,
+.status,
+.trace-storage-copy code,
+.reasoning-stream-hint,
+.reasoning-stream[open] .reasoning-stream-hint::after,
+.run-metrics-counts dd,
+.run-timeline-axis,
+.run-metrics-table thead th,
+.attempt-status,
+.diff-normalized,
+pre,
+.tab-count,
+.request-tool-line,
+.run-readiness-facts dd,
+.menu-heading small,
+.menu-option small,
+/* Sub-labels under a control label: metadata, so they stay smaller than the
+   12px control label they qualify rather than outsizing it. */
+.streaming-control small,
+.run-settings-heading small,
+.project-popover kbd,
+.run-history-item time,
+.run-history-item > span,
+.run-history-item code,
+.run-history-status,
+.app-error-mark,
+.brand-mark,
+.privacy-note span,
+.n8n-import-centered,
+.failure-glyph,
+.run-readiness-why-mark {
+  font-size: var(--type-metadata);
+}
+
+/* Decorative illustration size. Keep this selector-scoped exception in sync
+   with NON_TEXT_FONT_SIZE_EXCEPTIONS in tests/theme-tokens.test.ts. */
+.run-history-empty > span {
+  font-size: 28px; /* type-size-exception: run-history-empty-illustration */
+}
+
 .app-error {
   min-height: 100vh;
   display: grid;
@@ -138,14 +392,12 @@ body {
 
 .app-error-card h1 {
   margin: 12px 0 9px;
-  font-size: 24px;
   letter-spacing: -0.03em;
 }
 
 .app-error-card p:not(.eyebrow) {
   margin: 0 0 22px;
   color: var(--text-muted);
-  font-size: 14px;
   line-height: 1.55;
 }
 
@@ -157,7 +409,6 @@ body {
   place-items: center;
   background: var(--brand-mark-bg);
   color: var(--brand-mark-fg);
-  font-size: 11px;
   font-weight: 800;
   letter-spacing: -0.04em;
 }
@@ -166,7 +417,7 @@ button,
 input,
 select,
 textarea {
-  font: inherit;
+  font-family: inherit;
 }
 
 button,
@@ -210,21 +461,18 @@ label.file-button {
   place-items: center;
   background: var(--brand-mark-bg);
   color: var(--brand-mark-fg);
-  font-size: 11px;
   font-weight: 800;
   letter-spacing: -0.04em;
 }
 
 .brand h1 {
   margin: 0;
-  font-size: 15px;
   letter-spacing: -0.02em;
 }
 
 .brand p {
   margin: 2px 0 0;
   color: var(--text-muted);
-  font-size: 11px;
 }
 
 .header-actions {
@@ -237,7 +485,6 @@ label.file-button {
   padding: 9px 13px;
   background: var(--surface-panel);
   color: var(--text-primary);
-  font-size: 12px;
   font-weight: 650;
   cursor: pointer;
 }
@@ -282,7 +529,6 @@ label.file-button {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  font-size: 11px;
 }
 
 .project-error button {
@@ -290,7 +536,6 @@ label.file-button {
   background: transparent;
   color: inherit;
   cursor: pointer;
-  font-size: 10px;
   font-weight: 700;
 }
 
@@ -330,7 +575,6 @@ label.file-button {
   align-items: center;
   justify-content: space-between;
   color: var(--text-primary);
-  font-size: 11px;
   font-weight: 750;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -341,7 +585,6 @@ label.file-button {
   border-radius: 5px;
   background: var(--accent-soft);
   color: var(--accent);
-  font-size: 8px;
   letter-spacing: 0.02em;
 }
 
@@ -364,7 +607,6 @@ label.file-button {
   border-radius: 7px;
   background: var(--warning-surface);
   color: var(--warning-strong);
-  font-size: 9px;
   line-height: 1.45;
 }
 
@@ -420,7 +662,6 @@ label.file-button {
   color: var(--text-primary);
   cursor: pointer;
   font-family: var(--font-geist-mono), monospace;
-  font-size: 10px;
   text-align: left;
 }
 
@@ -438,7 +679,6 @@ label.file-button {
   margin: 0;
   padding: 10px;
   color: var(--text-muted);
-  font-size: 10px;
   font-weight: 500;
   line-height: 1.45;
 }
@@ -450,14 +690,12 @@ label.file-button {
   padding: 7px 10px 6px;
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-muted);
-  font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.03em;
   text-transform: uppercase;
 }
 
 .model-options-header .text-button {
-  font-size: 9px;
 }
 
 .model-options-error {
@@ -474,7 +712,6 @@ label:not(.file-button) {
   margin-bottom: 17px;
   display: block;
   color: var(--text-secondary);
-  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.02em;
 }
@@ -494,7 +731,6 @@ input:not([type="range"]) {
   margin-top: 7px;
   padding: 9px 10px;
   font-family: var(--font-geist-mono), monospace;
-  font-size: 10px;
 }
 
 /* Selects were the only control with no rules of their own: they inherited
@@ -510,7 +746,6 @@ select {
   appearance: none;
   color: var(--text-primary);
   cursor: pointer;
-  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0;
   text-overflow: ellipsis;
@@ -536,7 +771,6 @@ select:disabled {
   display: block;
   margin-top: 6px;
   color: var(--accent);
-  font-size: 11px;
   line-height: 1.35;
 }
 
@@ -571,13 +805,11 @@ select:disabled {
 }
 
 .workbench-notice-copy strong {
-  font-size: 12px;
 }
 
 .workbench-notice-copy span {
   margin-top: 3px;
   color: var(--text-muted);
-  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -633,7 +865,6 @@ textarea:focus {
   display: block;
   margin-top: 2px;
   color: var(--text-muted);
-  font-size: 9px;
   font-weight: 500;
   letter-spacing: 0;
   line-height: 1.35;
@@ -656,7 +887,6 @@ output {
   background: var(--surface-raised);
   text-align: center;
   font-family: var(--font-geist-mono), monospace;
-  font-size: 9px;
 }
 
 .privacy-note {
@@ -666,14 +896,12 @@ output {
   border-radius: 8px;
   background: var(--accent-soft);
   color: var(--text-muted);
-  font-size: 9px;
   line-height: 1.55;
 }
 
 .privacy-note span {
   margin-right: 5px;
   color: var(--accent-solid);
-  font-size: 7px;
 }
 
 .privacy-note strong {
@@ -697,7 +925,6 @@ output {
   display: block;
   margin-bottom: 4px;
   color: var(--accent);
-  font-size: 9px;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -705,7 +932,6 @@ output {
 
 .panel-header h2 {
   margin: 0;
-  font-size: 16px;
   letter-spacing: -0.025em;
 }
 
@@ -715,7 +941,6 @@ output {
   border: 0;
   background: transparent;
   color: var(--accent);
-  font-size: 10px;
   font-weight: 700;
   cursor: pointer;
 }
@@ -787,7 +1012,6 @@ output {
 .template-empty {
   margin: 4px 0 0;
   color: var(--text-muted);
-  font-size: 9px;
   line-height: 1.45;
 }
 
@@ -810,12 +1034,10 @@ output {
 .template-rail-heading h3,
 .template-content-heading h3 {
   margin: 0;
-  font-size: 13px;
 }
 
 .template-empty-state p {
   color: var(--text-muted);
-  font-size: 10px;
 }
 
 .template-editor-header {
@@ -937,7 +1159,6 @@ output {
   justify-content: space-between;
   gap: 8px;
   color: var(--text-muted);
-  font-size: 9px;
 }
 
 .template-variable-meta .text-button {
@@ -949,7 +1170,6 @@ output {
   display: block;
   color: var(--accent);
   font-family: var(--font-geist-mono), monospace;
-  font-size: 10px;
 }
 
 .template-insert-bar {
@@ -969,7 +1189,6 @@ output {
   margin-bottom: 9px;
   flex: 1;
   color: var(--text-secondary);
-  font-size: 10px;
   font-weight: 700;
 }
 
@@ -1031,12 +1250,10 @@ output {
 
 .template-use-card h3 {
   margin: 0 0 3px;
-  font-size: 13px;
 }
 
 .template-use-card small {
   color: var(--text-muted);
-  font-size: 9px;
 }
 
 .template-use-kicker {
@@ -1055,7 +1272,6 @@ output {
   border-radius: 999px;
   background: var(--warning-surface);
   color: var(--warning-strong);
-  font-size: 8px;
   font-weight: 750;
 }
 
@@ -1086,7 +1302,6 @@ output {
   align-items: center;
   gap: 10px;
   color: var(--text-secondary);
-  font-size: 10px;
   font-weight: 700;
 }
 
@@ -1103,7 +1318,7 @@ output {
   padding: 4px 7px;
   background: transparent;
   color: var(--text-muted);
-  font: inherit;
+  font-family: inherit;
   cursor: pointer;
 }
 
@@ -1129,7 +1344,6 @@ output {
   overflow-wrap: anywhere;
   color: var(--text-secondary);
   font-family: var(--font-geist-mono), monospace;
-  font-size: 10px;
   line-height: 1.55;
 }
 
@@ -1189,7 +1403,6 @@ output {
   box-shadow: var(--shadow-field-inset);
   resize: vertical;
   font-family: var(--font-geist-mono), monospace;
-  font-size: 10px;
   line-height: 1.5;
   white-space: pre-wrap;
   transition:
@@ -1221,7 +1434,6 @@ output {
   border-radius: 7px;
   background: var(--warning-surface);
   color: var(--warning-strong);
-  font-size: 10px;
   line-height: 1.45;
 }
 
@@ -1242,13 +1454,11 @@ output {
   padding: 11px 13px;
   cursor: pointer;
   color: var(--text-secondary);
-  font-size: 10px;
   font-weight: 750;
 }
 
 .request-preview h3 {
   margin: 12px 13px 6px;
-  font-size: 10px;
 }
 
 .request-preview pre {
@@ -1261,7 +1471,6 @@ output {
   background: var(--surface-panel);
   color: var(--text-secondary);
   font-family: var(--font-geist-mono), monospace;
-  font-size: 9px;
   line-height: 1.5;
 }
 
@@ -1298,7 +1507,6 @@ output {
 .request-preview-raw summary {
   padding: 0 0 8px;
   color: var(--text-muted);
-  font-size: 9px;
   font-weight: 700;
   cursor: pointer;
 }
@@ -1323,7 +1531,6 @@ output {
   border: 1px dashed var(--border-default);
   border-radius: 10px;
   color: var(--text-muted);
-  font-size: 10px;
   line-height: 1.55;
 }
 
@@ -1350,7 +1557,6 @@ output {
   align-items: center;
   gap: 7px;
   margin-bottom: 0 !important;
-  font-size: 10px;
   font-weight: 700;
 }
 
@@ -1424,13 +1630,11 @@ output {
 
 .tool-manifest > header strong {
   display: block;
-  font-size: 12px;
 }
 
 .tool-manifest > header p {
   margin: 3px 0 0;
   color: var(--text-muted);
-  font-size: 9px;
   line-height: 1.45;
 }
 
@@ -1472,7 +1676,6 @@ output {
   overflow: hidden;
   color: var(--text-primary);
   font-family: var(--font-geist-mono), monospace;
-  font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1482,7 +1685,6 @@ output {
   margin-top: 2px;
   overflow: hidden;
   color: var(--text-muted);
-  font-size: 9px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1491,7 +1693,6 @@ output {
   flex: 0 0 auto;
   padding: 2px 7px;
   border-radius: 999px;
-  font-size: 8px;
   font-weight: 800;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -1535,7 +1736,6 @@ output {
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 9px;
   font-weight: 750;
 }
 
@@ -1583,7 +1783,6 @@ output {
 .schema-enum-row input {
   margin-top: 5px;
   padding: 7px 8px;
-  font-size: 9px;
 }
 
 .schema-node-controls select,
@@ -1597,7 +1796,6 @@ output {
   min-height: 34px;
   justify-content: space-between;
   color: var(--text-secondary);
-  font-size: 9px;
   font-weight: 800;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -1609,7 +1807,6 @@ output {
   border: 1px dashed var(--border-default);
   border-radius: 7px;
   color: var(--text-muted);
-  font-size: 9px;
 }
 
 .schema-unsupported {
@@ -1619,7 +1816,6 @@ output {
   border-radius: 7px;
   background: var(--warning-surface);
   color: var(--warning-strong);
-  font-size: 9px;
   line-height: 1.45;
 }
 
@@ -1637,7 +1833,6 @@ output {
 .schema-property-unsupported p {
   margin: 0 0 7px;
   color: var(--warning-strong);
-  font-size: 9px;
   line-height: 1.4;
 }
 
@@ -1697,14 +1892,12 @@ output {
   min-height: 300px;
   padding: 11px;
   font-family: var(--font-geist-mono), monospace;
-  font-size: 10px;
   line-height: 1.5;
 }
 
 .schema-error,
 .registry-error {
   color: var(--danger);
-  font-size: 10px;
 }
 
 .registry-notice {
@@ -1712,7 +1905,6 @@ output {
   border-bottom: 1px solid var(--accent-border);
   background: var(--accent-soft);
   color: var(--accent);
-  font-size: 10px;
   font-weight: 700;
 }
 
@@ -1728,7 +1920,6 @@ output {
   background: var(--surface-inset);
   box-shadow: var(--shadow-field-inset);
   font-family: var(--font-geist-mono), monospace;
-  font-size: 10px;
   line-height: 1.5;
 }
 
@@ -1788,13 +1979,11 @@ output {
 
 .n8n-import-header h2 {
   margin: 0;
-  font-size: 19px;
 }
 
 .n8n-import-header p {
   margin: 4px 0 0;
   color: var(--text-muted);
-  font-size: 10px;
 }
 
 .n8n-import-error {
@@ -1806,7 +1995,6 @@ output {
   gap: 12px;
   background: var(--danger-surface);
   color: var(--danger);
-  font-size: 10px;
 }
 
 .n8n-import-centered {
@@ -1815,14 +2003,12 @@ output {
   padding: 32px;
   color: var(--text-muted);
   text-align: center;
-  font-size: 11px;
   line-height: 1.6;
 }
 
 .n8n-import-centered h3 {
   margin: 0 0 8px;
   color: var(--text-primary);
-  font-size: 15px;
 }
 
 .n8n-import-centered p {
@@ -1862,14 +2048,12 @@ output {
   align-items: center;
   gap: 7px;
   color: var(--text-secondary);
-  font-size: 10px;
 }
 
 .n8n-loaded-count {
   margin-left: auto;
   color: var(--text-muted);
   font-family: var(--font-geist-mono), monospace;
-  font-size: 8px;
   font-weight: 500;
 }
 
@@ -1883,7 +2067,6 @@ output {
   background: var(--accent-soft);
   color: var(--accent);
   font-family: var(--font-geist-mono), monospace;
-  font-size: 9px;
   font-weight: 800;
 }
 
@@ -1935,7 +2118,6 @@ output {
 .n8n-import-selector section > p {
   margin: 6px 4px;
   color: var(--text-muted);
-  font-size: 9px;
   line-height: 1.5;
 }
 
@@ -1970,14 +2152,12 @@ output {
 }
 
 .n8n-selector-item strong {
-  font-size: 10px;
 }
 
 .n8n-selector-item span {
   margin-top: 3px;
   color: var(--text-muted);
   font-family: var(--font-geist-mono), monospace;
-  font-size: 8px;
 }
 
 .n8n-load-more {
@@ -2001,7 +2181,6 @@ output {
 
 .n8n-import-selector .n8n-selector-scope {
   margin: 6px 4px 0;
-  font-size: 8px;
 }
 
 .n8n-import-review {
@@ -2020,13 +2199,11 @@ output {
 
 .n8n-review-summary h3 {
   margin: 2px 0 3px;
-  font-size: 16px;
 }
 
 .n8n-review-summary p,
 .n8n-fidelity-copy {
   color: var(--text-muted);
-  font-size: 10px;
   line-height: 1.5;
 }
 
@@ -2041,7 +2218,6 @@ output {
   border-radius: 999px;
   background: var(--accent-soft);
   color: var(--accent);
-  font-size: 8px;
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -2073,7 +2249,6 @@ output {
   align-items: flex-start;
   gap: 8px;
   color: var(--text-secondary);
-  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0;
   line-height: 1.4;
@@ -2094,7 +2269,6 @@ output {
 .n8n-recommendation-detail {
   margin: 6px 0 0 22px;
   color: var(--text-muted);
-  font-size: 10px;
   line-height: 1.5;
 }
 
@@ -2112,7 +2286,6 @@ output {
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 10px;
   font-weight: 700;
 }
 
@@ -2145,7 +2318,6 @@ output {
   padding: 8px 11px;
   display: block;
   color: var(--text-secondary);
-  font-size: 9px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -2159,7 +2331,6 @@ output {
   border-top: 1px solid var(--border-default);
   background: var(--surface-panel);
   font-family: var(--font-geist-mono), monospace;
-  font-size: 10px;
   line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -2170,7 +2341,6 @@ output {
   border: 1px solid var(--border-default);
   border-radius: 9px;
   color: var(--text-secondary);
-  font-size: 10px;
 }
 
 .n8n-message-review details pre {
@@ -2186,7 +2356,6 @@ output {
   flex-wrap: wrap;
   gap: 6px 10px;
   color: var(--text-muted);
-  font-size: 9px;
 }
 
 .n8n-field-review header strong,
@@ -2208,7 +2377,6 @@ output {
   padding: 8px 11px 0;
   display: block;
   color: var(--text-muted);
-  font-size: 8px;
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -2228,7 +2396,6 @@ output {
   margin: 0;
   padding: 0 11px 11px;
   color: var(--text-secondary);
-  font-size: 10px;
   line-height: 1.5;
 }
 
@@ -2236,7 +2403,6 @@ output {
   padding: 50px 20px;
   color: var(--text-muted);
   text-align: center;
-  font-size: 10px;
 }
 
 .n8n-import-footer {
@@ -2254,7 +2420,6 @@ output {
 .n8n-import-footer p {
   margin: 0 auto 0 0;
   color: var(--text-muted);
-  font-size: 9px;
 }
 
 .confirmation-backdrop {
@@ -2281,13 +2446,11 @@ output {
 
 .confirmation-dialog h2 {
   margin: 5px 0 0;
-  font-size: 19px;
 }
 
 .confirmation-dialog > p {
   margin: 8px 0 0;
   color: var(--text-muted);
-  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -2343,7 +2506,6 @@ output {
 
 .confirmation-details dt {
   color: var(--text-muted);
-  font-size: 9px;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -2354,7 +2516,6 @@ output {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
   font-family: var(--font-geist-mono), monospace;
-  font-size: 10px;
   line-height: 1.45;
 }
 
@@ -2386,13 +2547,11 @@ output {
 
 .registry-header h2 {
   margin: 0;
-  font-size: 19px;
 }
 
 .registry-header p {
   margin: 4px 0 0;
   color: var(--text-muted);
-  font-size: 10px;
 }
 
 .registry-workspace {
@@ -2447,7 +2606,6 @@ output {
 .registry-list-item strong {
   overflow: hidden;
   font-family: var(--font-geist-mono), monospace;
-  font-size: 10px;
   text-overflow: ellipsis;
 }
 
@@ -2455,7 +2613,6 @@ output {
   margin-top: 4px;
   overflow: hidden;
   color: var(--text-muted);
-  font-size: 9px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2481,7 +2638,6 @@ output {
 
 .registry-editor-toolbar strong {
   font-family: var(--font-geist-mono), monospace;
-  font-size: 11px;
 }
 
 .registry-editor-actions {
@@ -2502,13 +2658,11 @@ output {
 
 .registry-empty h3 {
   margin: 0 0 7px;
-  font-size: 14px;
 }
 
 .registry-empty p {
   margin: 0;
   color: var(--text-muted);
-  font-size: 10px;
 }
 
 .message-card {
@@ -2536,7 +2690,6 @@ output {
   background-color: transparent;
   background-position: calc(100% - 11px) center, calc(100% - 7px) center;
   color: var(--text-primary);
-  font-size: 9px;
   font-weight: 750;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -2555,7 +2708,6 @@ output {
   border-radius: 999px;
   background: var(--accent-soft);
   color: var(--accent);
-  font-size: 8px;
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2577,7 +2729,6 @@ textarea {
   border: 0;
   border-radius: 0;
   font-family: var(--font-geist-mono), monospace;
-  font-size: 11px;
   line-height: 1.65;
 }
 
@@ -2598,7 +2749,6 @@ textarea:focus {
   border: 1px solid var(--border-default);
   border-radius: 999px;
   color: var(--text-muted);
-  font-size: 9px;
   font-weight: 700;
   text-transform: capitalize;
 }
@@ -2653,7 +2803,6 @@ textarea:focus {
   gap: 9px;
   background: var(--surface-inset);
   color: var(--text-muted);
-  font-size: 10px;
 }
 
 .trace-storage-icon {
@@ -2665,7 +2814,6 @@ textarea:focus {
   display: grid;
   place-items: center;
   color: var(--text-faint);
-  font-size: 10px;
   font-weight: 800;
 }
 
@@ -2691,7 +2839,6 @@ textarea:focus {
 
 .trace-storage-copy code {
   color: var(--text-muted);
-  font-size: 9px;
 }
 
 .trace-storage-saved .trace-storage-icon,
@@ -2716,7 +2863,6 @@ textarea:focus {
   margin-left: auto;
   flex: 0 0 auto;
   padding: 5px 9px;
-  font-size: 9px;
 }
 
 .branch-pending,
@@ -2725,7 +2871,6 @@ textarea:focus {
   padding: 0.65rem 0.8rem;
   border-left: 3px solid var(--accent);
   background: color-mix(in srgb, var(--accent) 8%, transparent);
-  font-size: 0.88rem;
 }
 
 .branch-pending {
@@ -2756,7 +2901,6 @@ textarea:focus {
    block spacing and must not also be pre-wrapped. */
 .transcript-body > p {
   margin: 0 0 0.6rem;
-  font-size: 13px;
   line-height: 1.72;
   white-space: pre-wrap;
 }
@@ -2787,7 +2931,6 @@ textarea:focus {
   padding: 0.75rem;
   border-radius: 0.5rem;
   color: var(--text-muted);
-  font-size: 0.8rem;
   cursor: pointer;
 }
 
@@ -2830,7 +2973,7 @@ textarea:focus {
 
 .transcript-edit { margin-left: auto; }
 .transcript-tool-call { overflow: auto; }
-.transcript-tool-result { color: var(--text-muted); font-size: 0.85rem; }
+.transcript-tool-result { color: var(--text-muted); }
 
 @keyframes pulse {
   50% {
@@ -2848,7 +2991,6 @@ textarea:focus {
 .output > p {
   margin: 0;
   white-space: pre-wrap;
-  font-size: 13px;
   line-height: 1.72;
 }
 
@@ -2859,7 +3001,6 @@ textarea:focus {
 }
 
 .markdown-body {
-  font-size: 13px;
   line-height: 1.72;
 }
 
@@ -2888,21 +3029,17 @@ textarea:focus {
 }
 
 .markdown-body h1 {
-  font-size: 19px;
 }
 
 .markdown-body h2 {
-  font-size: 16px;
 }
 
 .markdown-body h3 {
-  font-size: 14px;
 }
 
 .markdown-body h4,
 .markdown-body h5,
 .markdown-body h6 {
-  font-size: 13px;
 }
 
 /* Tailwind's preflight sets `list-style: none` on every list, which left
@@ -2960,7 +3097,6 @@ textarea:focus {
   border-radius: 5px;
   background: var(--surface-inset);
   font-family: var(--font-geist-mono), monospace;
-  font-size: 11.5px;
 }
 
 .markdown-body pre.markdown-code {
@@ -2969,7 +3105,6 @@ textarea:focus {
   padding: 11px 13px;
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
-  font-size: 11.5px;
   line-height: 1.62;
 }
 
@@ -2985,7 +3120,6 @@ textarea:focus {
 
 .markdown-body table {
   border-collapse: collapse;
-  font-size: 12px;
 }
 
 .markdown-body th,
@@ -3011,12 +3145,10 @@ textarea:focus {
 .waiting-for-answer h3 {
   margin: 0 0 6px;
   color: var(--text-primary);
-  font-size: 13px;
 }
 
 .waiting-for-answer p {
   margin: 0;
-  font-size: 10px;
   line-height: 1.6;
 }
 
@@ -3029,7 +3161,6 @@ textarea:focus {
   place-items: center;
   background: var(--danger-surface);
   color: var(--danger);
-  font-size: 11px;
   font-weight: 800;
 }
 
@@ -3071,7 +3202,6 @@ textarea:focus {
   color: var(--text-secondary);
   cursor: pointer;
   list-style: none;
-  font-size: 10px;
   font-weight: 700;
 }
 
@@ -3082,17 +3212,16 @@ textarea:focus {
 .reasoning-stream-hint {
   margin-left: auto;
   color: var(--text-muted);
-  font-size: 9px;
   font-weight: 500;
 }
 
 .reasoning-stream[open] .reasoning-stream-hint {
-  font-size: 0;
+  visibility: hidden;
 }
 
 .reasoning-stream[open] .reasoning-stream-hint::after {
   content: "Hide";
-  font-size: 9px;
+  visibility: visible;
 }
 
 /* Direct child only: this must not also match a <p> nested inside the
@@ -3105,7 +3234,6 @@ textarea:focus {
   overflow: auto;
   color: var(--text-secondary);
   font-family: var(--font-geist-mono), monospace;
-  font-size: 10px;
   line-height: 1.6;
   white-space: pre-wrap;
 }
@@ -3117,7 +3245,6 @@ textarea:focus {
   padding: 0 12px 12px 28px;
   overflow: auto;
   color: var(--text-secondary);
-  font-size: 11px;
 }
 
 .tool-call-list {
@@ -3137,7 +3264,6 @@ textarea:focus {
 
 .tool-call-heading h3 {
   margin: 0;
-  font-size: 13px;
 }
 
 .tool-call-card > label {
@@ -3179,18 +3305,15 @@ textarea:focus {
   place-items: center;
   background: var(--accent-soft);
   color: var(--accent);
-  font-size: 16px;
 }
 
 .empty-state h3 {
   margin: 0 0 8px;
   color: var(--text-primary);
-  font-size: 13px;
 }
 
 .empty-state p {
   margin: 0;
-  font-size: 10px;
   line-height: 1.6;
 }
 
@@ -3200,7 +3323,6 @@ textarea:focus {
   justify-content: space-between;
   border-bottom: 1px solid var(--border-default);
   color: var(--text-muted);
-  font-size: 9px;
   font-weight: 750;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -3216,7 +3338,6 @@ textarea:focus {
   padding: 25px 20px;
   color: var(--text-faint);
   font-family: var(--font-geist-mono), monospace;
-  font-size: 9px;
 }
 
 /* The trace header is uppercase; the tab switcher should still read the same
@@ -3264,7 +3385,6 @@ textarea:focus {
 
 .run-metric-label {
   color: var(--text-muted);
-  font-size: 9px;
   font-weight: 750;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -3273,13 +3393,11 @@ textarea:focus {
 .run-metric-value {
   color: var(--text-primary);
   font-family: var(--font-geist-mono), monospace;
-  font-size: 16px;
   font-weight: 600;
 }
 
 .run-metric-hint {
   color: var(--text-faint);
-  font-size: 10px;
 }
 
 .run-metrics-counts {
@@ -3297,14 +3415,12 @@ textarea:focus {
 
 .run-metrics-counts dt {
   color: var(--text-muted);
-  font-size: 10px;
 }
 
 .run-metrics-counts dd {
   margin: 0;
   color: var(--text-secondary);
   font-family: var(--font-geist-mono), monospace;
-  font-size: 11px;
   font-weight: 600;
 }
 
@@ -3332,7 +3448,6 @@ textarea:focus {
 .run-timeline-title {
   margin: 0;
   color: var(--text-muted);
-  font-size: 9px;
   font-weight: 750;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -3346,7 +3461,6 @@ textarea:focus {
   flex-wrap: wrap;
   gap: 3px 12px;
   color: var(--text-faint);
-  font-size: 10px;
 }
 
 .run-timeline-legend li {
@@ -3400,7 +3514,6 @@ textarea:focus {
 
 .run-timeline-label {
   color: var(--text-secondary);
-  font-size: 10px;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3484,7 +3597,6 @@ textarea:focus {
 .run-timeline-duration {
   color: var(--text-primary);
   font-family: var(--font-geist-mono), monospace;
-  font-size: 10px;
   text-align: right;
 }
 
@@ -3503,7 +3615,6 @@ textarea:focus {
   justify-content: space-between;
   color: var(--text-faint);
   font-family: var(--font-geist-mono), monospace;
-  font-size: 9px;
 }
 
 .run-metrics-table-scroll {
@@ -3513,7 +3624,6 @@ textarea:focus {
 .run-metrics-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 11px;
   white-space: nowrap;
 }
 
@@ -3526,7 +3636,6 @@ textarea:focus {
 
 .run-metrics-table thead th {
   color: var(--text-muted);
-  font-size: 9px;
   font-weight: 750;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -3555,7 +3664,6 @@ textarea:focus {
   background: var(--surface-strong);
   color: var(--text-muted);
   font-family: var(--font-geist-sans), sans-serif;
-  font-size: 9px;
   font-weight: 700;
 }
 
@@ -3596,7 +3704,6 @@ textarea:focus {
   flex-direction: column;
   gap: 5px;
   color: var(--text-muted);
-  font-size: 9px;
   font-weight: 750;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -3610,7 +3717,6 @@ textarea:focus {
   border-radius: 7px;
   background: var(--surface-panel);
   color: var(--text-primary);
-  font-size: 10px;
   text-transform: none;
   letter-spacing: normal;
 }
@@ -3631,7 +3737,6 @@ textarea:focus {
   border-radius: 7px;
   background: var(--surface-subtle);
   color: var(--text-muted);
-  font-size: 10px;
   line-height: 1.5;
 }
 
@@ -3694,7 +3799,6 @@ textarea:focus {
   margin-left: 5px;
   color: var(--text-faint);
   font-family: var(--font-geist-sans), sans-serif;
-  font-size: 8px;
 }
 
 .diff-section-meta {
@@ -3748,7 +3852,6 @@ textarea:focus {
   cursor: pointer;
   list-style: none;
   font-family: var(--font-geist-mono), monospace;
-  font-size: 9px;
 }
 
 .trace summary::-webkit-details-marker {
@@ -3782,7 +3885,6 @@ pre {
   background: var(--surface-inset);
   color: var(--text-secondary);
   font-family: var(--font-geist-mono), monospace;
-  font-size: 8.5px;
   line-height: 1.6;
   white-space: pre-wrap;
 }
@@ -4013,7 +4115,6 @@ main {
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 10px;
   font-weight: 700;
 }
 
@@ -4031,7 +4132,6 @@ main {
   display: inline-block;
   background: var(--surface-strong);
   color: var(--text-muted);
-  font-size: 8px;
 }
 
 .pane-tabs button.active .tab-count {
@@ -4069,12 +4169,10 @@ main {
 
 .run-settings-heading strong {
   color: var(--text-secondary);
-  font-size: 10px;
 }
 
 .run-settings-heading small {
   color: var(--text-muted);
-  font-size: 8px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -4087,7 +4185,6 @@ main {
   justify-content: space-between;
   gap: 10px;
   color: var(--text-muted);
-  font-size: 9px;
 }
 
 .request-tool-line > span {
@@ -4130,7 +4227,6 @@ main {
   place-items: center;
   background: var(--surface-raised);
   color: var(--danger);
-  font-size: 10px;
   font-weight: 800;
 }
 
@@ -4150,14 +4246,12 @@ main {
 .run-readiness-summary strong {
   display: inline;
   color: var(--text-primary);
-  font-size: 11px;
 }
 
 .run-readiness-summary > p {
   display: inline;
   margin: 0 0 0 8px;
   color: var(--text-secondary);
-  font-size: 9px;
 }
 
 .run-readiness-why {
@@ -4171,7 +4265,6 @@ main {
   color: var(--text-muted);
   cursor: pointer;
   list-style: none;
-  font-size: 9px;
   font-weight: 700;
 }
 
@@ -4190,14 +4283,12 @@ main {
   border-radius: 50%;
   display: grid;
   place-items: center;
-  font-size: 8px;
   font-weight: 800;
 }
 
 .run-readiness-why > p {
   margin: 5px 0 0;
   color: var(--text-muted);
-  font-size: 10px;
   line-height: 1.5;
 }
 
@@ -4216,7 +4307,6 @@ main {
 .run-readiness-facts dt {
   flex: 0 0 auto;
   color: var(--text-muted);
-  font-size: 9px;
   font-weight: 700;
 }
 
@@ -4226,7 +4316,6 @@ main {
   overflow: hidden;
   color: var(--text-primary);
   font-family: var(--font-geist-mono), monospace;
-  font-size: 9px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -4241,7 +4330,6 @@ main {
 
 .run-readiness-actions .button {
   padding: 6px 9px;
-  font-size: 10px;
 }
 
 @container (max-width: 520px) {
@@ -4257,12 +4345,14 @@ main {
   }
 }
 
+/* The model column carries provider-qualified model IDs, which are the longest
+   value in this row; it gets the extra width the other two do not need. */
 .run-settings-grid {
   display: grid;
   grid-template-columns:
-    minmax(190px, 1.4fr)
-    minmax(145px, 0.75fr)
-    minmax(165px, 0.85fr);
+    minmax(215px, 1.75fr)
+    minmax(132px, 0.7fr)
+    minmax(148px, 0.75fr);
   align-items: end;
   gap: 16px;
 }
@@ -4296,7 +4386,6 @@ main {
 .streaming-control small {
   margin-top: 3px;
   color: var(--text-muted);
-  font-size: 9px;
   line-height: 1.3;
 }
 
@@ -4316,13 +4405,11 @@ main {
 
 .tools-tab-toolbar strong {
   display: block;
-  font-size: 12px;
 }
 
 .tools-tab-toolbar p {
   margin: 3px 0 0;
   color: var(--text-muted);
-  font-size: 9px;
 }
 
 .output-scroll {
@@ -4353,7 +4440,6 @@ main {
   color: var(--accent);
   box-shadow: var(--shadow-float);
   cursor: pointer;
-  font-size: 9px;
   font-weight: 750;
 }
 
@@ -4390,7 +4476,7 @@ main {
   background: transparent;
   color: inherit;
   cursor: pointer;
-  font: inherit;
+  font-family: inherit;
   font-weight: inherit;
   text-transform: inherit;
   letter-spacing: inherit;
@@ -4400,7 +4486,6 @@ main {
   width: 15px;
   display: inline-block;
   color: var(--accent);
-  font-size: 13px;
 }
 
 .trace-resize-handle {
@@ -4464,7 +4549,7 @@ main {
 .target-control {
   width: min(235px, 24vw);
   min-width: 170px;
-  height: 42px;
+  height: 46px;
   padding: 6px 9px;
   border: 1px solid var(--border-default);
   border-radius: 9px;
@@ -4509,19 +4594,16 @@ main {
 
 .target-copy strong {
   color: var(--text-primary);
-  font-size: 10px;
 }
 
 .target-copy small {
   margin-top: 2px;
   color: var(--text-muted);
   font-family: var(--font-geist-mono), monospace;
-  font-size: 8px;
 }
 
 .menu-chevron {
   color: var(--text-faint);
-  font-size: 10px;
 }
 
 .menu-popover {
@@ -4547,13 +4629,11 @@ main {
   justify-content: space-between;
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-primary);
-  font-size: 10px;
   font-weight: 750;
 }
 
 .menu-heading small {
   color: var(--text-muted);
-  font-size: 8px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -4598,14 +4678,12 @@ main {
 }
 
 .menu-option strong {
-  font-size: 10px;
 }
 
 .menu-option small {
   margin-top: 3px;
   color: var(--text-muted);
   font-family: var(--font-geist-mono), monospace;
-  font-size: 8px;
 }
 
 .menu-action {
@@ -4619,7 +4697,6 @@ main {
   background: var(--surface-subtle);
   color: var(--accent);
   cursor: pointer;
-  font-size: 10px;
   font-weight: 750;
 }
 
@@ -4641,7 +4718,6 @@ main {
   background: transparent;
   color: var(--text-primary);
   cursor: pointer;
-  font-size: 10px;
   text-align: left;
 }
 
@@ -4658,7 +4734,6 @@ main {
 .project-popover kbd {
   color: var(--text-muted);
   font-family: inherit;
-  font-size: 9px;
 }
 
 .menu-file-button input {
@@ -4710,7 +4785,6 @@ main {
 
 .side-drawer-header h2 {
   margin: 0;
-  font-size: 18px;
   letter-spacing: -0.025em;
 }
 
@@ -4718,7 +4792,6 @@ main {
   max-width: 310px;
   margin: 5px 0 0;
   color: var(--text-muted);
-  font-size: 9px;
   line-height: 1.45;
 }
 
@@ -4733,7 +4806,6 @@ main {
   background: var(--surface-panel);
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 18px;
 }
 
 .side-drawer-content {
@@ -4771,7 +4843,6 @@ main {
   min-height: 34px;
   margin-bottom: 10px;
   color: var(--text-muted);
-  font-size: 10px;
   font-weight: 700;
 }
 
@@ -4807,7 +4878,6 @@ main {
   min-width: 0;
   overflow: hidden;
   color: var(--text-primary);
-  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -4815,7 +4885,6 @@ main {
 .run-history-item time,
 .run-history-item > span,
 .run-history-item code {
-  font-size: 9px;
 }
 
 .run-history-item code {
@@ -4831,7 +4900,6 @@ main {
   border-radius: 999px;
   background: var(--surface-inset);
   color: var(--text-muted);
-  font-size: 8px;
   font-weight: 800;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -4872,19 +4940,16 @@ main {
 
 .run-history-empty > span {
   color: var(--text-faint);
-  font-size: 28px;
 }
 
 .run-history-empty h3 {
   margin: 10px 0 4px;
   color: var(--text-primary);
-  font-size: 14px;
 }
 
 .run-history-empty p {
   margin: 0 auto;
   max-width: 250px;
-  font-size: 10px;
   line-height: 1.5;
 }
 
@@ -4895,7 +4960,6 @@ main {
   border: 1px solid var(--border-default);
   border-radius: 8px;
   background: var(--surface-panel);
-  font-size: 9px;
 }
 
 .run-history-notice {
@@ -4942,6 +5006,12 @@ main {
 
   .pane-tabs button {
     padding-inline: 7px;
+  }
+
+  /* At this viewport the request pane is roughly half the screen, so the
+     desktop minimums would otherwise force it to scroll sideways. */
+  .run-settings-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -4999,7 +5069,6 @@ main {
   }
 
   .brand h1 {
-    font-size: 13px;
   }
 
   .header-actions {
@@ -5016,13 +5085,19 @@ main {
   }
 
   .project-menu > summary {
+    width: 38px;
     padding-inline: 10px;
-    font-size: 0;
+  }
+
+  .project-menu-label {
+    position: absolute;
+    visibility: hidden;
   }
 
   .project-menu > summary::before {
     content: "•••";
-    font-size: 12px;
+    visibility: visible;
+    color: var(--text-primary);
     letter-spacing: 0.08em;
   }
 
@@ -5051,7 +5126,6 @@ main {
     background: transparent;
     color: var(--text-muted);
     cursor: pointer;
-    font-size: 10px;
     font-weight: 750;
   }
 
@@ -5214,6 +5288,34 @@ main {
 
   .pane-tabs button {
     flex: 1;
+  }
+
+  /* The trace header has a toggle, a four-tab switcher, and token metadata.
+     Keep the controls in two rows rather than letting the global pane-tabs
+     width rule push the last tab beyond the viewport. */
+  .trace-panel .trace-header {
+    height: auto;
+    min-height: 45px;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    padding-block: 6px;
+  }
+
+  .trace-header .trace-meta {
+    margin-left: auto;
+    white-space: nowrap;
+  }
+
+  .trace-header .pane-tabs {
+    width: 100%;
+    flex: 0 0 100%;
+    order: 3;
+  }
+
+  .trace-header .pane-tabs button {
+    min-width: 0;
+    padding-inline: 3px;
   }
 
   .run-settings-heading small {
