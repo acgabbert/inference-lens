@@ -76,6 +76,7 @@ test("renders the buffered fixture transcript and exact token totals", async ({ 
   const response = page.locator(".response-pane");
   await expect(response).toContainText("Buffered fixture response: 2 + 2 = 4.");
   const summary = response.getByLabel("Run summary");
+  await expect(page.getByRole("button", { name: "Run details" })).toBeInViewport();
   await expect(summary.getByText("Tokens", { exact: true })).toBeVisible();
   await expect(summary.getByText("11", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Run details" }).click();

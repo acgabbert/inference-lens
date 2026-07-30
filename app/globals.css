@@ -4071,6 +4071,8 @@ main {
 }
 
 .response-pane {
+  display: flex;
+  flex-direction: column;
   background: var(--surface-subtle);
 }
 
