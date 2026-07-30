@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, type RefObject } from "react";
 import type { ConnectionRequirement } from "../packages/core/src/project";
 import type { ProviderCapabilities } from "../packages/core/src/types";
 import type { StoredInferenceProfile } from "./profile-store.client";
@@ -8,6 +9,7 @@ import type {
   ServerDefaultStatus,
 } from "./use-connection-profiles.client";
 import { SideDrawer } from "./workbench-shell.client";
+import type { ReadinessDestination } from "./run-readiness.client";
 
 /**
  * Whether the server would release its credential to this profile. The service
@@ -63,6 +65,8 @@ interface ConnectionDrawerProps {
   connectionRequirement?: ConnectionRequirement;
   mappedProfileId?: string;
   onMapProfile(): void;
+  pendingDestination?: ReadinessDestination;
+  onDestinationHandled(): void;
 }
 
 /**
@@ -76,11 +80,13 @@ function ConnectionMapping({
   activeProfile,
   mapped,
   onMapProfile,
+  mapButtonRef,
 }: {
   requirement: ConnectionRequirement;
   activeProfile: StoredInferenceProfile;
   mapped: boolean;
   onMapProfile(): void;
+  mapButtonRef: RefObject<HTMLButtonElement | null>;
 }) {
   const profileName = activeProfile.name.trim() || "the selected profile";
   const mismatched = activeProfile.endpoint !== requirement.endpoint;
@@ -109,7 +115,7 @@ function ConnectionMapping({
         </span>
       )}
       {!mapped && (
-        <button className="text-button" type="button" onClick={onMapProfile}>
+        <button ref={mapButtonRef} className="text-button" data-readiness-control="project-mapping" type="button" onClick={onMapProfile}>
           Use {profileName} for this project
         </button>
       )}
@@ -141,7 +147,13 @@ export function ConnectionDrawer({
   connectionRequirement,
   mappedProfileId,
   onMapProfile,
+  pendingDestination,
+  onDestinationHandled,
 }: ConnectionDrawerProps) {
+  const profileRef = useRef<HTMLSelectElement>(null);
+  const endpointRef = useRef<HTMLInputElement>(null);
+  const toolsCapabilityRef = useRef<HTMLInputElement>(null);
+  const mapButtonRef = useRef<HTMLButtonElement>(null);
   const keychainActive = isDesktopRuntime && credential.status.canPersist;
   const serverDefaultActive =
     !isDesktopRuntime && activeProfile.credentialRef === "environment-default";
@@ -158,6 +170,20 @@ export function ConnectionDrawer({
     usingServerDefault &&
     !matchesServerOrigin(activeProfile.endpoint, serverDefault.endpoint);
   const serverOrigin = configuredServerOrigin(serverDefault.endpoint);
+
+  useEffect(() => {
+    if (!open || pendingDestination?.surface !== "connections") return;
+    const target = {
+      profile: profileRef.current,
+      endpoint: endpointRef.current,
+      "tools-capability": toolsCapabilityRef.current,
+      "project-mapping": mapButtonRef.current,
+    }[pendingDestination.control];
+    if (!target) return;
+    target.scrollIntoView?.({ block: "center" });
+    target.focus();
+    onDestinationHandled();
+  }, [onDestinationHandled, open, pendingDestination]);
 
   return (
     <SideDrawer
@@ -176,6 +202,8 @@ export function ConnectionDrawer({
           <label>
             Profile
             <select
+              ref={profileRef}
+              data-readiness-control="profile"
               value={activeProfile.id}
               onChange={(event) => onSelectProfile(event.target.value)}
             >
@@ -207,6 +235,7 @@ export function ConnectionDrawer({
             activeProfile={activeProfile}
             mapped={Boolean(mappedProfileId)}
             onMapProfile={onMapProfile}
+            mapButtonRef={mapButtonRef}
           />
         )}
         <label>
@@ -220,6 +249,8 @@ export function ConnectionDrawer({
         <label>
           Endpoint
           <input
+            ref={endpointRef}
+            data-readiness-control="endpoint"
             value={activeProfile.endpoint}
             onChange={(event) =>
               onUpdateProfile({ endpoint: event.target.value })
@@ -321,6 +352,8 @@ export function ConnectionDrawer({
         </label>
         <label className="capability-toggle">
           <input
+            ref={toolsCapabilityRef}
+            data-readiness-control="tools-capability"
             type="checkbox"
             checked={capabilities.tools}
             onChange={(event) =>

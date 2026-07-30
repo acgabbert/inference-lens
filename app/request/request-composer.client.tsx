@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ConversationMessage, ToolDefinition, ToolId } from "../../packages/core/src/run-kernel";
 import type { ProjectFile, ToolMock } from "../../packages/core/src/project";
 import { conversationMessageText } from "../conversation-display";
@@ -10,7 +10,11 @@ import { PaneTabs } from "../workbench-shell.client";
 import { ProjectTemplatesPane, TemplateUseCard } from "../project-templates-pane.client";
 import { ToolsPane } from "../tools-pane.client";
 import { RunReadinessNotice } from "../run-readiness-notice.client";
-import type { RunReadiness, RunReadinessActionKind } from "../run-readiness.client";
+import type {
+  ReadinessDestination,
+  RunReadiness,
+  RunReadinessAction,
+} from "../run-readiness.client";
 import type { ProjectTemplatesHandle } from "../templates/use-project-templates.client";
 
 type RequestTab = "messages" | "templates" | "tools";
@@ -53,7 +57,9 @@ export interface RequestComposerProps {
     onLoadModels(force?: boolean): void;
   };
   readiness?: RunReadiness;
-  onReadinessAction(kind: RunReadinessActionKind): void;
+  pendingDestination?: ReadinessDestination;
+  onReadinessAction(destination: ReadinessDestination): void;
+  onDestinationHandled(): void;
   activeProfile: { name: string };
   pendingBranch?: {
     parentRunId: string;
@@ -73,7 +79,9 @@ export function RequestComposer({
   project,
   settings,
   readiness,
+  pendingDestination,
   onReadinessAction,
+  onDestinationHandled,
   activeProfile,
   pendingBranch,
   requestPreview,
@@ -83,6 +91,8 @@ export function RequestComposer({
   onDiscardPendingBranch,
 }: RequestComposerProps) {
   const [tab, setTab] = useState<RequestTab>("messages");
+  const composerRef = useRef<HTMLElement>(null);
+  const modelRef = useRef<HTMLInputElement>(null);
   const selectedProjectToolCount = requestDraft.tools.filter(({ id }) =>
     requestDraft.enabledToolIds.includes(id),
   ).length;
@@ -90,24 +100,47 @@ export function RequestComposer({
   // A newly imported snapshot is always shown before its notice is dismissed.
   const activeTab = templates.importNotice ? "messages" : tab;
 
-  function routeReadinessAction(kind: RunReadinessActionKind): void {
-    if (kind === "review-tools") {
-      setTab("tools");
-      return;
-    }
-    if (kind === "edit-template" || kind === "review-templates") {
-      setTab("templates");
-      return;
-    }
-    if (kind !== "map-profile" && kind !== "open-connections") {
-      setTab("messages");
-      return;
-    }
-    onReadinessAction(kind);
+  function routeReadinessAction(action: RunReadinessAction): void {
+    onReadinessAction(action.destination);
   }
 
+  useEffect(() => {
+    if (pendingDestination?.surface !== "request") return;
+    if (activeTab !== pendingDestination.tab) {
+      let cancelled = false;
+      queueMicrotask(() => {
+        if (!cancelled) setTab(pendingDestination.tab);
+      });
+      return () => { cancelled = true; };
+    }
+    const target =
+      pendingDestination.control === "model"
+        ? modelRef.current
+        : pendingDestination.control === "tool-manifest"
+          ? composerRef.current?.querySelector<HTMLElement>(
+              '[data-readiness-target="tool-manifest"]',
+            ) ?? null
+          : pendingDestination.control === "prompt-library"
+            ? composerRef.current?.querySelector<HTMLElement>(
+                '[data-readiness-target="prompt-library"]',
+              ) ?? null
+            : pendingDestination.entityId
+              ? pendingDestination.control === "template-variable" && pendingDestination.fieldName
+                ? composerRef.current?.querySelector<HTMLTextAreaElement>(
+                    `[data-template-use-id="${pendingDestination.entityId}"] textarea[data-template-variable="${pendingDestination.fieldName}"]`,
+                  ) ?? null
+                : composerRef.current?.querySelector<HTMLElement>(
+                    `[data-template-use-id="${pendingDestination.entityId}"]`,
+                  ) ?? null
+              : null;
+    if (!target) return;
+    target.scrollIntoView?.({ block: "center" });
+    target.focus();
+    onDestinationHandled();
+  }, [activeTab, onDestinationHandled, pendingDestination]);
+
   return (
-    <section className="composer">
+    <section className="composer" ref={composerRef}>
       <div className="panel-header request-header">
         <div>
           <span className="eyebrow">Request</span>
@@ -192,7 +225,7 @@ export function RequestComposer({
                 </button>
               </p>
               <div className="run-settings-grid">
-                <ModelCombobox value={settings.model} onChange={settings.onModelChange} discovery={settings.modelDiscovery} onLoadModels={settings.onLoadModels} />
+                <ModelCombobox inputRef={modelRef} value={settings.model} onChange={settings.onModelChange} discovery={settings.modelDiscovery} onLoadModels={settings.onLoadModels} />
                 <label className="temperature-control">
                   Temperature
                   <div className="range-row">

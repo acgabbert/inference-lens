@@ -600,6 +600,12 @@ textarea:focus {
   box-shadow: var(--focus-ring);
 }
 
+[data-readiness-target]:focus-visible,
+[data-template-use-id]:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 3px;
+}
+
 .range-row {
   gap: 12px;
   margin-top: 9px;

@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { runReadiness } from "../app/run-readiness.client.ts";
+import {
+  runEmptyStatePresentation,
+  runReadiness,
+} from "../app/run-readiness.client.ts";
 
 const ready = {
   projectOpen: true,
@@ -42,6 +45,10 @@ test("a profile with no endpoint sends the user to enter one", () => {
     readiness?.actions.map(({ kind }) => kind),
     ["open-connections"],
   );
+  assert.deepEqual(readiness?.actions[0]?.destination, {
+    surface: "connections",
+    control: "endpoint",
+  });
 });
 
 test("a missing endpoint outranks a missing model", () => {
@@ -112,7 +119,7 @@ test("an untitled profile is still named in the offered action", () => {
     activeProfileName: "   ",
   });
 
-  assert.equal(readiness?.actions[0]?.label, 'Use "Untitled profile"');
+  assert.equal(readiness?.actions[0]?.label, 'Map "Untitled profile"');
 });
 
 test("a missing connection outranks unresolved templates", () => {
@@ -171,6 +178,34 @@ test("one unresolved variable reads in the singular", () => {
     })?.headline,
     "1 template variable still needs a value",
   );
+});
+
+test("a template blocker names the exact variable to focus", () => {
+  const readiness = runReadiness({
+    ...ready,
+    templateIssues: [{ templateUseId: "template-use_a", variableName: "topic" }],
+  });
+
+  assert.deepEqual(readiness?.actions[0]?.destination, {
+    surface: "request",
+    tab: "messages",
+    control: "template-variable",
+    entityId: "template-use_a",
+    fieldName: "topic",
+  });
+});
+
+test("the idle response derives its next action from readiness", () => {
+  const blocked = runReadiness({ ...ready, activeProfileModel: "" });
+  assert.deepEqual(runEmptyStatePresentation(blocked), {
+    headline: "Choose a model",
+    detail: 'Choose one in Connections — the picker lists what this provider serves.',
+    action: blocked?.actions[0],
+  });
+  assert.deepEqual(runEmptyStatePresentation(undefined), {
+    headline: "Ready when you are",
+    detail: "Run the request to see its response here.",
+  });
 });
 
 test("a diagnostic naming no variable is reported as an issue, not a variable", () => {

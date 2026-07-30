@@ -46,6 +46,8 @@ export function ToolsPane({
       <section
         aria-label="Tool selection for this request"
         className={`tool-manifest ${state}`}
+        data-readiness-target="tool-manifest"
+        tabIndex={-1}
       >
         <header>
           <div>

@@ -11,6 +11,7 @@ import type {
 import { MarkdownView } from "./markdown-view.client";
 import { PaneTabs } from "./workbench-shell.client";
 import { ToolCallList, type ToolResultDraft } from "./tool-call-list.client";
+import type { RunEmptyStatePresentation } from "./run-readiness.client";
 
 /** System and user messages are usually re-reads of what was already typed;
  *  assistant and tool messages carry the outcome being inspected. */
@@ -45,6 +46,7 @@ type ResponseOutputProps = {
   transcript: TranscriptEntry[];
   nonBranchableMessageIds: ReadonlySet<ConversationMessage["id"]>;
   branchedFrom?: RunTrace["branchedFrom"];
+  emptyState: RunEmptyStatePresentation;
   onMarkdownPreviewChange(markdown: boolean): void;
   onOutputScroll(): void;
   onJumpToLatest(): void;
@@ -53,6 +55,7 @@ type ResponseOutputProps = {
   onRetry(): void;
   onSaveTrace(): void;
   onEditFromHere(messageId: ConversationMessage["id"]): void;
+  onEmptyStateAction(): void;
 };
 
 /** The response pane, excluding the independent trace panel below it. */
@@ -61,9 +64,10 @@ export function ResponseOutput({
   outputFollowing, outputScrollRef, completedToolCalls, toolResultDrafts,
   traceStorage,
   transcript, nonBranchableMessageIds, branchedFrom,
+  emptyState,
   onMarkdownPreviewChange, onOutputScroll, onJumpToLatest,
   onToolResultDraftChange, onContinue, onRetry,
-  onSaveTrace, onEditFromHere,
+  onSaveTrace, onEditFromHere, onEmptyStateAction,
 }: ResponseOutputProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const awaitingResults = runState?.status.kind === "awaiting_tool_results";
@@ -262,7 +266,7 @@ export function ResponseOutput({
             : retryableFailure ? <div className="waiting-for-answer run-failure-state" role="alert"><span className="failure-glyph" aria-hidden="true">!</span><div><h3>Attempt failed</h3><p>{retryableFailure.error.message}</p><button className="button secondary" type="button" onClick={onRetry}>Retry attempt</button></div></div>
             : runState?.status.kind === "failed" ? <div className="waiting-for-answer run-failure-state" role="alert"><span className="failure-glyph" aria-hidden="true">!</span><div><h3>Request failed</h3><p>{runState.status.error.message}</p></div></div>
             : runState?.status.kind === "cancelled" ? <div className="waiting-for-answer"><span className="failure-glyph muted" aria-hidden="true">×</span><div><h3>Request stopped</h3><p>{runState.status.reason}</p></div></div>
-            : <div className="empty-state"><span className="empty-glyph" aria-hidden="true">↗</span><h3>Ready when you are</h3><p>Add an API key, check your request, then run it to see the response here.</p></div>}
+            : <div className="empty-state"><span className="empty-glyph" aria-hidden="true">↗</span><h3>{emptyState.headline}</h3><p>{emptyState.detail}</p>{emptyState.action && <button className="button secondary" type="button" onClick={onEmptyStateAction}>{emptyState.action.label}</button>}</div>}
           {reasoning && <details className="reasoning-stream"><summary><span className={status === "running" ? "reasoning-dot" : "reasoning-dot complete"} aria-hidden="true" /><span>{status === "running" ? "Thinking…" : "Reasoning"}</span><span className="reasoning-stream-hint">Show</span></summary><p>{reasoning}</p></details>}
           {(output || reasoning) && retryableFailure && <div className="waiting-for-answer run-failure-state" role="alert"><span className="failure-glyph" aria-hidden="true">!</span><div><h3>Attempt failed</h3><p>{retryableFailure.error.message}</p><button className="button secondary" type="button" onClick={onRetry}>Retry attempt</button></div></div>}
         </div>}
