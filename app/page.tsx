@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type {
   ProviderCapabilities,
   RichInferenceRequest,
@@ -207,8 +213,10 @@ function HomeContent() {
   const [streamingPreferred, setStreamingPreferred] = useState(true);
   const [streamingPreferenceLoaded, setStreamingPreferenceLoaded] =
     useState(false);
+  const profileIds = useMemo(() => profiles.map(({ id }) => id), [profiles]);
   const project = useProjectWorkspace({
     activeProfileId: activeProfile.id,
+    profileIds,
     folderAccessAvailable,
     createProject() {
       return createProjectFile({

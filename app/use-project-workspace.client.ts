@@ -25,6 +25,15 @@ import type {
   ProjectWorkspaceHandle,
   WorkspaceResumeOutcome,
 } from "./project-workspace.client.ts";
+import { readProfiles } from "./profile-store.client.ts";
+import {
+  prunedProjectProfileMap,
+  readProjectProfileMap,
+  resolveMappedProfile,
+  withMappedProfile,
+  withoutMappedProfile,
+  writeProjectProfileMap,
+} from "./project-profile-map.client.ts";
 
 export type ProjectErrorKind =
   | "auto-save"
@@ -72,6 +81,8 @@ export interface ProjectWorkspaceHandleState {
  */
 export function useProjectWorkspace(input: {
   activeProfileId: string;
+  /** Every profile this device currently has, for validating stored mappings. */
+  profileIds: readonly string[];
   folderAccessAvailable: boolean;
   createProject(): ProjectFile;
   currentDraft(): UpdateProjectDraft;
@@ -79,6 +90,7 @@ export function useProjectWorkspace(input: {
 }): ProjectWorkspaceHandleState {
   const {
     activeProfileId,
+    profileIds,
     folderAccessAvailable,
     createProject,
     currentDraft,
@@ -101,6 +113,13 @@ export function useProjectWorkspace(input: {
   const autoSaveRetryNotBeforeRef = useRef(0);
   const hasProjectRef = useRef(false);
   const restoredRef = useRef(false);
+  // Read inside asynchronous adoption paths, which must see the profiles the
+  // device has now rather than the ones it had when the operation started.
+  const profileIdsRef = useRef(profileIds);
+
+  useEffect(() => {
+    profileIdsRef.current = profileIds;
+  }, [profileIds]);
 
   function advanceProjectChangeVersion(): number {
     autoSaveWindowStartedAtRef.current ??= Date.now();
@@ -191,6 +210,7 @@ export function useProjectWorkspace(input: {
     setProjectFile(project);
     setCurrentWorkspace(null);
     setMappedProfileId(activeProfileId);
+    rememberMappedProfile(project.projectId, activeProfileId);
     setProjectDirty(true);
     dismissError();
     return project;
@@ -203,25 +223,67 @@ export function useProjectWorkspace(input: {
     dismissError();
   }
 
+  /**
+   * Records the choice for this device, so reopening the project stops asking
+   * for a connection the user already picked. Nothing about the profile enters
+   * the portable project file.
+   */
+  function rememberMappedProfile(projectId: string, profileId: string): void {
+    writeProjectProfileMap(
+      withMappedProfile(
+        prunedProjectProfileMap(readProjectProfileMap(), knownProfileIds()),
+        projectId,
+        profileId,
+      ),
+    );
+  }
+
+  /**
+   * Every profile id this device can be said to have: the ones rendered, plus
+   * the ones still in storage. Both hooks restore from storage in a task of
+   * their own, so a project can be adopted before the profile list has been
+   * rendered. Validating against the rendered list alone would then read as
+   * "that profile is gone" and discard a mapping the user did make.
+   */
+  function knownProfileIds(): string[] {
+    const stored = readProfiles().profiles.map(({ id }) => id);
+    return [...new Set([...profileIdsRef.current, ...stored])];
+  }
+
+  function storedMappedProfile(project: ProjectFile): string | undefined {
+    return resolveMappedProfile(
+      readProjectProfileMap(),
+      project.projectId,
+      knownProfileIds(),
+    );
+  }
+
   function mapProfile(profileId: string): void {
-    if (projectFile) setMappedProfileId(profileId);
+    if (!projectFile) return;
+    setMappedProfileId(profileId);
+    rememberMappedProfile(projectFile.projectId, profileId);
   }
 
   function mapActiveProfile(): void {
-    if (projectFile) {
-      setMappedProfileId(activeProfileId);
-      setProjectError(undefined);
-    }
+    if (!projectFile) return;
+    setMappedProfileId(activeProfileId);
+    rememberMappedProfile(projectFile.projectId, activeProfileId);
+    setProjectError(undefined);
   }
 
   /**
    * Releases the mapping when the profile it names goes away. The project is
    * left unmapped rather than pointed at a replacement: which connection runs a
    * project is the user's choice, and asking again is better than guessing.
+   * Projects that are not open lose it too, since the profile is gone for all
+   * of them and a stored id is never reissued.
    */
   function unmapProfile(profileId: string): void {
     setMappedProfileId((current) =>
       current === profileId ? undefined : current,
+    );
+    writeProjectProfileMap(
+      withoutMappedProfile(readProjectProfileMap(), profileId),
     );
   }
 
@@ -229,6 +291,13 @@ export function useProjectWorkspace(input: {
     return updateProjectDraft(projectFile ?? createProject(), currentDraft());
   }
 
+  /**
+   * `profileId` is the mapping this adoption establishes — creating or saving a
+   * project maps it to the connection it was created with. Every other way a
+   * project arrives, including an import or a resumed folder, takes the mapping
+   * this device already recorded for it, and is left unmapped when there is
+   * none to take.
+   */
   function applyProjectDocument(
     project: ProjectFile,
     workspace: ProjectWorkspaceHandle | null,
@@ -240,7 +309,8 @@ export function useProjectWorkspace(input: {
     setProjectFile(project);
     setCurrentWorkspace(workspace);
     onApplyDraft(draft);
-    setMappedProfileId(profileId);
+    if (profileId) rememberMappedProfile(project.projectId, profileId);
+    setMappedProfileId(profileId ?? storedMappedProfile(project));
     setProjectDirty(false);
     dismissError();
   }
