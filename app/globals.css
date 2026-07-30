@@ -2543,7 +2543,7 @@ output {
   background-color: transparent;
   background-position: calc(100% - 11px) center, calc(100% - 7px) center;
   color: var(--text-primary);
-  font-size: var(--type-metadata);
+  font-size: var(--type-control);
   font-weight: 750;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -2584,7 +2584,7 @@ textarea {
   border: 0;
   border-radius: 0;
   font-family: var(--font-geist-mono), monospace;
-  font-size: 11px;
+  font-size: var(--type-control);
   line-height: 1.65;
 }
 
@@ -2723,7 +2723,7 @@ textarea:focus {
   margin-left: auto;
   flex: 0 0 auto;
   padding: 5px 9px;
-  font-size: var(--type-metadata);
+  font-size: var(--type-control);
 }
 
 .branch-pending,
@@ -4399,6 +4399,7 @@ main {
   color: inherit;
   cursor: pointer;
   font: inherit;
+  font-size: var(--type-control);
   font-weight: inherit;
   text-transform: inherit;
   letter-spacing: inherit;
@@ -4951,6 +4952,12 @@ main {
   .pane-tabs button {
     padding-inline: 7px;
   }
+
+  /* At this viewport the request pane is roughly half the screen, so the
+     desktop minimums would otherwise force it to scroll sideways. */
+  .run-settings-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 880px) {
@@ -5222,6 +5229,34 @@ main {
 
   .pane-tabs button {
     flex: 1;
+  }
+
+  /* The trace header has a toggle, a four-tab switcher, and token metadata.
+     Keep the controls in two rows rather than letting the global pane-tabs
+     width rule push the last tab beyond the viewport. */
+  .trace-panel .trace-header {
+    height: auto;
+    min-height: 45px;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    padding-block: 6px;
+  }
+
+  .trace-header .trace-meta {
+    margin-left: auto;
+    white-space: nowrap;
+  }
+
+  .trace-header .pane-tabs {
+    width: 100%;
+    flex: 0 0 100%;
+    order: 3;
+  }
+
+  .trace-header .pane-tabs button {
+    min-width: 0;
+    padding-inline: 3px;
   }
 
   .run-settings-heading small {

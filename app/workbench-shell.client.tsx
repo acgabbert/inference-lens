@@ -314,7 +314,7 @@ export function ResizableTracePanel({
           Run details
         </button>
         {tabs}
-        {meta}
+        {meta && <span className="trace-meta">{meta}</span>}
       </header>
       {open && <div className="trace-panel-content">{children}</div>}
     </section>
