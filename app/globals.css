@@ -4071,7 +4071,14 @@ main {
 }
 
 .response-pane {
+  display: flex;
+  flex-direction: column;
   background: var(--surface-subtle);
+}
+
+.response-view,
+.inspect-view {
+  display: contents;
 }
 
 .pane-scroll,
@@ -5191,7 +5198,7 @@ main {
     height: 43px;
     padding: 5px 10px;
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, 1fr);
     gap: 4px;
     border-bottom: 1px solid var(--border-default);
     background: var(--surface-inset);
@@ -5249,6 +5256,28 @@ main {
   }
 
   .workbench-pane.mobile-pane-hidden {
+    display: none;
+  }
+
+  .response-view,
+  .inspect-view {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    display: block;
+  }
+
+  .response-view.mobile-view-hidden,
+  .inspect-view.mobile-view-hidden {
+    display: none;
+  }
+
+  .inspect-view .trace-panel.open {
+    height: 100%;
+    max-height: none;
+  }
+
+  .inspect-view .trace-resize-handle {
     display: none;
   }
 

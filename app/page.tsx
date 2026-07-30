@@ -291,8 +291,7 @@ function HomeContent() {
       setOutputFollowing(true);
     },
     onOpenTrace() {
-      setWorkbenchView("response");
-      setOutputFollowing(true);
+      setWorkbenchView("inspect");
       setTraceOpen(true);
     },
     onTraceSaved() { setSavedRunVersion((current) => current + 1); },
@@ -1033,6 +1032,9 @@ function HomeContent() {
             }}
           />
 
+        </section>
+        }
+        inspect={
           <RunTracePanel
             open={traceOpen}
             runState={runState}
@@ -1041,7 +1043,6 @@ function HomeContent() {
             onLoadParentTrace={() => void runSession.loadParentTrace()}
             onOpenChange={setTraceOpen}
           />
-        </section>
         }
       />
       {toolRegistryOpen && (

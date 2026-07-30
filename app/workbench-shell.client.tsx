@@ -10,11 +10,12 @@ import {
   useState,
 } from "react";
 
-export type WorkbenchView = "request" | "response";
+export type WorkbenchView = "request" | "response" | "inspect";
 
 type WorkbenchShellProps = {
   request: ReactNode;
   response: ReactNode;
+  inspect: ReactNode;
   view: WorkbenchView;
   onViewChange: (view: WorkbenchView) => void;
   responseStatus?: string;
@@ -30,6 +31,7 @@ function clamp(value: number, minimum: number, maximum: number): number {
 export function WorkbenchShell({
   request,
   response,
+  inspect,
   view,
   onViewChange,
   responseStatus,
@@ -98,6 +100,13 @@ export function WorkbenchShell({
             <span className={`mobile-status-dot ${responseStatus}`} />
           )}
         </button>
+        <button
+          className={view === "inspect" ? "active" : undefined}
+          type="button"
+          onClick={() => onViewChange("inspect")}
+        >
+          Inspect
+        </button>
       </nav>
       <section
         className="workspace"
@@ -127,12 +136,29 @@ export function WorkbenchShell({
         </button>
         <div
           className={
-            view === "response"
-              ? "workbench-pane response-pane"
-              : "workbench-pane response-pane mobile-pane-hidden"
+            view === "request"
+              ? "workbench-pane response-pane mobile-pane-hidden"
+              : "workbench-pane response-pane"
           }
         >
-          {response}
+          <div
+            className={
+              view === "inspect"
+                ? "response-view mobile-view-hidden"
+                : "response-view"
+            }
+          >
+            {response}
+          </div>
+          <div
+            className={
+              view === "response"
+                ? "inspect-view mobile-view-hidden"
+                : "inspect-view"
+            }
+          >
+            {inspect}
+          </div>
         </div>
       </section>
     </>
@@ -260,6 +286,8 @@ export function PaneTabs({
   );
 }
 
+const TRACE_TOGGLE_HINT = "Run details become available once a run starts.";
+
 type ResizableTracePanelProps = {
   open: boolean;
   canOpen?: boolean;
@@ -340,8 +368,14 @@ export function ResizableTracePanel({
           <span />
         </button>
       )}
-      <header className="trace-header">
+      <header
+        className="trace-header"
+        // A disabled button does not reliably surface its own tooltip, so the
+        // pointer hint lives on the header while the description serves AT.
+        title={canOpen ? undefined : TRACE_TOGGLE_HINT}
+      >
         <button
+          aria-describedby={canOpen ? undefined : "trace-toggle-hint"}
           aria-expanded={open}
           className="trace-toggle"
           disabled={!canOpen}
@@ -353,12 +387,15 @@ export function ResizableTracePanel({
           </span>
           Run details
         </button>
+        {!canOpen && (
+          <span className="visually-hidden" id="trace-toggle-hint">
+            {TRACE_TOGGLE_HINT}
+          </span>
+        )}
         {tabs}
       </header>
       {summary && (
-        <div className="trace-summary-row" aria-live="polite">
-          {summary}
-        </div>
+        <div className="trace-summary-row">{summary}</div>
       )}
       {open && <div className="trace-panel-content">{children}</div>}
     </section>

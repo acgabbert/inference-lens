@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type {
   ResolvedTemplateUse,
@@ -127,7 +127,12 @@ export function RunInspectionSummary({
     <dl className="run-inspection-summary" aria-label="Run summary">
       <div>
         <dt className="visually-hidden">Status</dt>
-        <dd>
+        {/*
+          Only the status announces. The measurements beside it change on every
+          streamed event, so a live region around the whole summary would read
+          the row out once per delta.
+        */}
+        <dd aria-atomic="true" aria-live="polite">
           <span
             className={`run-inspection-status ${summary.status}`}
           >
@@ -272,6 +277,13 @@ export function RunTracePanel({
     const right = findSelection(rightKey);
     return left && right ? diffAttempts(left, right) : null;
   }, [candidates, leftKey, parentState, rightKey, runState]);
+
+  // Clearing the run leaves no evidence to disclose. Retiring the disclosure
+  // here rather than at each reset call site keeps a later run from opening
+  // the full inspector on its own.
+  useEffect(() => {
+    if (!summary && open) onOpenChange(false);
+  }, [onOpenChange, open, summary]);
 
   return (
     <ResizableTracePanel
