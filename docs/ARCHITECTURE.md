@@ -107,3 +107,21 @@ envelope. Attempt comparison canonicalizes captured JSON for display, but the
 underlying exact request text remains unchanged in exchange evidence. Adding
 the comparison view therefore does not change the trace schema or its
 compatibility boundary.
+
+## Workbench ownership
+
+`app/page.tsx` is the workbench composition root. It owns top-level layout,
+view selection, and the deliberate transactions that connect profile,
+workspace, draft, template, and run features; it does not own feature-local
+workflows.
+
+| Concern | Owner |
+| --- | --- |
+| Profile, capability, credential, and profile deletion | `useConnectionProfiles` |
+| Portable project lifecycle, folder resume, persistence, and profile mapping | `useProjectWorkspace` |
+| Authored request messages, tools, and mocks | `useRequestDraft` |
+| Run validation and provider-neutral input derivation | `app/run/prepare-workbench-run.client.ts` |
+| Live coordination, retry, continuation, stop, diagnostics, and trace lifecycle | `app/run/use-run-session.client.ts` |
+| Template-use state, immutable mutations, external-import application, and preview | `app/templates/use-project-templates.client.ts` |
+| Request-pane presentation and local navigation | `app/request/request-composer.client.tsx` |
+| Run-history listing and artifact reads | `useProjectRunHistory` |
