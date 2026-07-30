@@ -54,6 +54,33 @@ test("uses peer request and response views on a narrow screen", async ({ page })
   await expect(page.locator(".request-pane")).toBeVisible();
   await expect(page.locator(".response-pane")).toBeHidden();
 
+  const projectMenu = page.locator(".project-menu > summary");
+  await expect(projectMenu).toBeVisible();
+  await expect(page.locator(".project-menu-label")).toBeHidden();
+  const projectMenuBox = await projectMenu.boundingBox();
+  expect(projectMenuBox?.width).toBe(38);
+  const overflowGlyph = await projectMenu.evaluate((summary) => {
+    const style = getComputedStyle(summary, "::before");
+    return {
+      color: style.color,
+      content: style.content,
+      visibility: style.visibility,
+    };
+  });
+  expect(overflowGlyph.content).toBe("\"•••\"");
+  expect(overflowGlyph.visibility).toBe("visible");
+  expect(overflowGlyph.color).not.toBe("rgba(0, 0, 0, 0)");
+
+  await projectMenu.click();
+  const projectPopover = page.locator(".project-popover");
+  await expect(projectPopover).toBeVisible();
+  const projectPopoverBox = await projectPopover.boundingBox();
+  expect(
+    projectPopoverBox ? projectPopoverBox.x + projectPopoverBox.width : Infinity,
+  ).toBeLessThanOrEqual(390);
+  await projectMenu.click();
+  await expect(projectPopover).toBeHidden();
+
   await tabs.getByRole("button", { name: "Response" }).click();
   await expect(page.locator(".response-pane")).toBeVisible();
   await expect(page.locator(".request-pane")).toBeHidden();
