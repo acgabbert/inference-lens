@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
   appendPromptTemplateRevision,
-  createBranchRevision,
   createPromptTemplate,
   detachPromptTemplateUse,
   findPromptTemplateUsages,
@@ -11,7 +10,6 @@ import {
   projectDraft,
   removePromptTemplateUse,
   renamePromptTemplate,
-  resolveProjectRevision,
   setPromptTemplateRecommendedTarget,
   updateProjectDraft,
   updatePromptTemplateUseToLatest,
@@ -48,6 +46,11 @@ import {
   pendingBranchMessagesAfterItemUpdate,
   projectTemplateWorkbenchView,
 } from "./project-template-workbench.client";
+import {
+  projectForTemplateMutation,
+  templateRunOverridesAfterSave,
+  templateRunOverridesAfterUpdate,
+} from "./project-template-policy";
 import { removeDraftMessage } from "./use-request-draft.client";
 
 export interface ProjectTemplatesImportNotice {
@@ -138,18 +141,11 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
   }
 
   function projectForUseMutation(): { project: ProjectFile; revisionId: ConversationRevisionId } {
-    let project = input.ensureProjectDocument();
-    let revision = project.conversationRevisions.find(({ id }) => id === project.defaults.conversationRevisionId)!;
-    if (executedRevisionIdsRef.current.has(revision.id)) {
-      project = createBranchRevision(project, {
-        conversationId: revision.conversationId,
-        parentRevisionId: revision.id,
-        messages: resolveProjectRevision(project, revision, templateRunOverrides).messages,
-        items: structuredClone(revision.items),
-      });
-      revision = project.conversationRevisions.find(({ id }) => id === project.defaults.conversationRevisionId)!;
-    }
-    return { project, revisionId: revision.id };
+    return projectForTemplateMutation({
+      project: input.ensureProjectDocument(),
+      executedRevisionIds: executedRevisionIdsRef.current,
+      runOverrides: templateRunOverrides,
+    });
   }
 
   function createProjectTemplate(name: string, content: PromptTemplateContent): PromptTemplateId {
@@ -173,16 +169,14 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     adoptAuthoredProject(updatePromptTemplateUseValues(project, { conversationRevisionId: revisionId, templateUseId, values }));
   }
   function updateTemplateUseOverride(templateUseId: PromptTemplateUseId, values: Record<string, string>): void {
-    const overrides = { ...templateRunOverrides, [templateUseId]: values };
+    const overrides = templateRunOverridesAfterUpdate(templateRunOverrides, templateUseId, values);
     setTemplateRunOverrides(overrides);
     if (input.projectFile) input.replaceProjectDraft(projectDraft(input.projectFile, overrides));
   }
   function saveTemplateUseRunValue(templateUseId: PromptTemplateUseId, values: Record<string, string>, useOverrides: Record<string, string>): void {
     const { project, revisionId } = projectForUseMutation();
     const next = updatePromptTemplateUseValues(project, { conversationRevisionId: revisionId, templateUseId, values });
-    const overrides = { ...templateRunOverrides };
-    if (Object.keys(useOverrides).length) overrides[templateUseId] = useOverrides;
-    else delete overrides[templateUseId];
+    const overrides = templateRunOverridesAfterSave(templateRunOverrides, templateUseId, useOverrides);
     setTemplateRunOverrides(overrides);
     adoptAuthoredProject(next, overrides);
   }

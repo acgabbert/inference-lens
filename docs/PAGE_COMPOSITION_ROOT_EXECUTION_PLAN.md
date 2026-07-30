@@ -1,6 +1,6 @@
 # `app/page.tsx` composition-root execution plan
 
-**Status:** PR 2 in progress
+**Status:** PR 3 complete
 
 **Observed baseline:** `main` at `e59785c` on 2026-07-29
 
@@ -101,7 +101,7 @@ constraints, stop that PR and design the behavior change separately.
 | --- | --- | --- | --- |
 | 1 | Pure workbench-run preparation | Merged (`7618104`) | None |
 | 2 | Atomic live run session | Merged (`eb675a0`) | PR 1 |
-| 3 | Project-template workbench owner | In progress | PR 2 |
+| 3 | Project-template workbench owner | Complete | PR 2 |
 | 4 | Request composer | Blocked on PR 3 | PR 3 |
 | 5 | Feature organization and composition-root guardrail | Blocked on PR 4 | PR 4 |
 
@@ -254,6 +254,7 @@ revision.
 - No mutation occurs inside the preparation module.
 - Tests demonstrate failure non-mutation.
 - No compatibility constraint changed.
+
 - All specified verification is reported.
 
 ---
@@ -609,6 +610,32 @@ Assert exact preview and echoed message text.
 - Current template, n8n, recommendation, provenance, and pending-branch
   scenarios are reported.
 - No compatibility constraint changed.
+
+### Verification completed
+
+- `npm run lint`, `npm run typecheck`, `npm run typecheck:core`, and `npm test`
+  passed. The lint pass has no errors or warnings.
+- The Node-safe policy tests characterize executed-revision branching,
+  pre-execution mutation, transient override replacement/removal, and pending
+  branch projection. Existing core/import/render suites cover immutable
+  revisions, confirmation flows, provenance, and template rendering.
+- In the running app, the local n8n public-API fixture reported a configured
+  integration and imported the execution-reconstructed `Compound prompt cases`
+  snapshot. The rendered request text was exactly:
+
+  ```text
+  IL_P0_LITERAL
+  simple=IL_P0_TOPIC_ALPHA
+  two=IL_P0_REPEAT|IL_P0_SECOND_ALPHA
+  compound=IL_P0_TOPIC_ALPHA::IL_P0_SECOND_ALPHA
+  nested=value:{"inner":"IL_P0_TOPIC_ALPHA"}
+  repeated=IL_P0_REPEAT|IL_P0_REPEAT
+  ```
+
+  The local echo provider rendered exactly
+  `Fixture received user="IL_P0_LITERAL\\nsimple=IL_P0_TOPIC_ALPHA\\ntwo=IL_P0_REPEAT|IL_P0_SECOND_ALPHA\\ncompound=IL_P0_TOPIC_ALPHA::IL_P0_SECOND_ALPHA\\nnested=value:{\\"inner\\":\\"IL_P0_TOPIC_ALPHA\\"}\\nrepeated=IL_P0_REPEAT|IL_P0_REPEAT"`.
+  The imported composer and response transcript contained no
+  `NaN`, `Infinity`, or `undefined` text.
 
 ---
 
