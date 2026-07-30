@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
+import { RunCoordinator } from "../../packages/core/src/run-kernel/coordinator";
+import { createResolvedRunInput } from "../../packages/core/src/run-kernel/run-execution";
+import { createRunTrace } from "../../packages/core/src/run-kernel/reducer";
+import { serializeRunTrace } from "../../packages/core/src/run-trace";
+
 const PROFILE_STORAGE_KEY = "inference-lens:inference-profiles:v1";
 const STREAMING_STORAGE_KEY = "inference-lens:streaming-preference:v1";
 
@@ -25,6 +30,39 @@ async function waitForHydration(page: Page) {
   await expect(page.getByLabel("Stream response")).not.toBeChecked();
 }
 
+function importedTraceContents(): string {
+  const input = createResolvedRunInput(
+    {
+      provider: "openai-compatible",
+      endpoint: "https://api.example.com/v1",
+      model: "imported-model",
+      messages: [{ role: "user", content: "Imported request" }],
+    },
+    {
+      conversationId: "conversation_mobile-import",
+      conversationRevisionId: "revision_mobile-import",
+    },
+    [],
+    [],
+    "mobile-import",
+    "2026-07-30T12:00:00.000Z",
+  );
+  const coordinator = new RunCoordinator(input);
+  const { execution } = coordinator.start();
+  coordinator.accept({
+    type: "text_delta",
+    text: "Imported response",
+    source: { exchangeId: execution.exchangeId, frameIndex: 0 },
+  });
+  coordinator.accept({
+    type: "completed",
+    finishReason: { normalized: "stop" },
+    source: { exchangeId: execution.exchangeId, frameIndex: 0 },
+  });
+  coordinator.finishTurnStream();
+  return serializeRunTrace(createRunTrace(coordinator.state));
+}
+
 const responsiveWidths = [320, 390, 600, 759, 760, 761, 880, 1080, 1440];
 
 test("renders the buffered fixture transcript and exact token totals", async ({ page }) => {
@@ -37,7 +75,10 @@ test("renders the buffered fixture transcript and exact token totals", async ({ 
 
   const response = page.locator(".response-pane");
   await expect(response).toContainText("Buffered fixture response: 2 + 2 = 4.");
-  await expect(response).toContainText("11 tokens");
+  const summary = response.getByLabel("Run summary");
+  await expect(summary.getByText("Tokens", { exact: true })).toBeVisible();
+  await expect(summary.getByText("11", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Run details" }).click();
   await page.getByRole("tab", { name: "Metrics" }).click();
   const metrics = page.locator(".run-metrics");
   await expect(metrics).toContainText("4 in · 7 out");
@@ -103,8 +144,16 @@ test("keeps semantic type, state contrast, and layout intact at supported widths
     });
     if (width <= 760) {
       await expect(mobileNavigation).toBeVisible();
+      await expect(mobileNavigation.getByRole("button")).toHaveCount(3);
+      await mobileNavigation.getByRole("button", { name: "Inspect" }).click();
+      await expect(page.locator(".inspect-view")).toBeVisible();
+      await expect(page.locator(".response-view")).toBeHidden();
+      await mobileNavigation.getByRole("button", { name: "Request" }).click();
+      await expect(page.locator(".request-pane")).toBeVisible();
     } else {
       await expect(mobileNavigation).toBeHidden();
+      await expect(page.locator(".request-pane")).toBeVisible();
+      await expect(page.locator(".response-pane")).toBeVisible();
     }
   }
 
@@ -125,7 +174,7 @@ test("keeps semantic type, state contrast, and layout intact at supported widths
   expect(disabledState).not.toEqual(enabledState);
 });
 
-test("uses peer request and response views on a narrow screen", async ({ page }) => {
+test("uses peer request, response, and inspect views on a narrow screen", async ({ page }) => {
   await seedBufferedProfile(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
@@ -135,6 +184,7 @@ test("uses peer request and response views on a narrow screen", async ({ page })
   await expect(tabs).toBeVisible();
   await expect(page.locator(".request-pane")).toBeVisible();
   await expect(page.locator(".response-pane")).toBeHidden();
+  await expect(tabs.getByRole("button")).toHaveCount(3);
 
   const projectMenu = page.locator(".project-menu > summary");
   await expect(projectMenu).toBeVisible();
@@ -166,4 +216,58 @@ test("uses peer request and response views on a narrow screen", async ({ page })
   await tabs.getByRole("button", { name: "Response" }).click();
   await expect(page.locator(".response-pane")).toBeVisible();
   await expect(page.locator(".request-pane")).toBeHidden();
+  await expect(page.locator(".response-view")).toBeVisible();
+  await expect(page.locator(".inspect-view")).toBeHidden();
+
+  await page.getByRole("button", { name: /run request/i }).click();
+  await expect(page.locator(".response-pane")).toContainText(
+    "Buffered fixture response: 2 + 2 = 4.",
+  );
+  await expect(tabs.getByRole("button", { name: "Response" })).toHaveClass(
+    /active/,
+  );
+
+  await tabs.getByRole("button", { name: "Inspect" }).click();
+  await expect(page.locator(".response-view")).toBeHidden();
+  await expect(page.locator(".inspect-view")).toBeVisible();
+  await expect(page.locator(".inspect-view")).toContainText("Completed");
+  await expect(page.locator(".inspect-view")).not.toContainText(
+    /NaN|Infinity|undefined/,
+  );
+
+  await page.getByRole("button", { name: "Run details" }).click();
+  await page.getByRole("tab", { name: "Metrics" }).click();
+  await expect(page.getByRole("tabpanel", { name: "Metrics" })).toBeVisible();
+
+  await tabs.getByRole("button", { name: "Response" }).click();
+  await expect(page.locator(".response-view")).toBeVisible();
+  await expect(page.locator(".response-view .trace-panel")).toHaveCount(0);
+
+  await tabs.getByRole("button", { name: "Inspect" }).click();
+  await expect(page.getByRole("tab", { name: "Metrics" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+});
+
+test("selects Inspect when a trace is explicitly imported", async ({ page }) => {
+  await seedBufferedProfile(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await waitForHydration(page);
+
+  await page.locator(".project-menu > summary").click();
+  await page.getByLabel("Import run trace…").setInputFiles({
+    name: "run_mobile-import.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(importedTraceContents()),
+  });
+
+  const tabs = page.getByRole("navigation", { name: "Workbench view" });
+  await expect(tabs.getByRole("button", { name: "Inspect" })).toHaveClass(
+    /active/,
+  );
+  await expect(page.locator(".inspect-view")).toContainText("Completed");
+  await expect(page.locator(".inspect-view")).toContainText("Run details");
+  await expect(page.locator(".response-view")).toBeHidden();
 });

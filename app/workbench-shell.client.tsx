@@ -10,11 +10,12 @@ import {
   useState,
 } from "react";
 
-export type WorkbenchView = "request" | "response";
+export type WorkbenchView = "request" | "response" | "inspect";
 
 type WorkbenchShellProps = {
   request: ReactNode;
   response: ReactNode;
+  inspect: ReactNode;
   view: WorkbenchView;
   onViewChange: (view: WorkbenchView) => void;
   responseStatus?: string;
@@ -30,6 +31,7 @@ function clamp(value: number, minimum: number, maximum: number): number {
 export function WorkbenchShell({
   request,
   response,
+  inspect,
   view,
   onViewChange,
   responseStatus,
@@ -98,6 +100,13 @@ export function WorkbenchShell({
             <span className={`mobile-status-dot ${responseStatus}`} />
           )}
         </button>
+        <button
+          className={view === "inspect" ? "active" : undefined}
+          type="button"
+          onClick={() => onViewChange("inspect")}
+        >
+          Inspect
+        </button>
       </nav>
       <section
         className="workspace"
@@ -127,12 +136,29 @@ export function WorkbenchShell({
         </button>
         <div
           className={
-            view === "response"
-              ? "workbench-pane response-pane"
-              : "workbench-pane response-pane mobile-pane-hidden"
+            view === "request"
+              ? "workbench-pane response-pane mobile-pane-hidden"
+              : "workbench-pane response-pane"
           }
         >
-          {response}
+          <div
+            className={
+              view === "inspect"
+                ? "response-view mobile-view-hidden"
+                : "response-view"
+            }
+          >
+            {response}
+          </div>
+          <div
+            className={
+              view === "response"
+                ? "inspect-view mobile-view-hidden"
+                : "inspect-view"
+            }
+          >
+            {inspect}
+          </div>
         </div>
       </section>
     </>
