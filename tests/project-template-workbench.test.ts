@@ -11,7 +11,7 @@ import {
 import {
   pendingBranchMessagesAfterItemUpdate,
   projectTemplateWorkbenchView,
-} from "../app/project-template-workbench.client.ts";
+} from "../app/templates/project-template-workbench.client.ts";
 
 const request = {
   provider: "openai-compatible" as const,

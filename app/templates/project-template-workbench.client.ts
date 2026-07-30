@@ -1,17 +1,17 @@
 import {
   authoredItemsForMessages,
   resolveProjectRevision,
-} from "../packages/core/src/project.ts";
+} from "../../packages/core/src/project.ts";
 import type {
   ProjectConversationItem,
   ProjectFile,
   ResolvedProjectRevision,
   TemplateRunOverrides,
-} from "../packages/core/src/project.ts";
+} from "../../packages/core/src/project.ts";
 import type {
   ConversationMessage,
   ConversationRevisionId,
-} from "../packages/core/src/run-kernel/index.ts";
+} from "../../packages/core/src/run-kernel/index.ts";
 
 export interface ProjectTemplateWorkbenchView {
   composerItems: ProjectConversationItem[];

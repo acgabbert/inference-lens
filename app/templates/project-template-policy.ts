@@ -1,15 +1,15 @@
 import {
   createBranchRevision,
   resolveProjectRevision,
-} from "../packages/core/src/project.ts";
+} from "../../packages/core/src/project.ts";
 import type {
   ProjectFile,
   TemplateRunOverrides,
-} from "../packages/core/src/project.ts";
+} from "../../packages/core/src/project.ts";
 import type {
   ConversationRevisionId,
   PromptTemplateUseId,
-} from "../packages/core/src/run-kernel/index.ts";
+} from "../../packages/core/src/run-kernel/index.ts";
 
 /**
  * Selects the authored revision that a template mutation may update.

@@ -62,10 +62,10 @@ import type {
 import {
   prepareWorkbenchRun,
   type WorkbenchBranchContext,
-} from "./prepare-workbench-run.client";
-import { useRunSession } from "./use-run-session.client";
-import { useProjectTemplates } from "./use-project-templates.client";
-import { RequestComposer } from "./request-composer.client";
+} from "./run/prepare-workbench-run.client";
+import { useRunSession } from "./run/use-run-session.client";
+import { useProjectTemplates } from "./templates/use-project-templates.client";
+import { RequestComposer } from "./request/request-composer.client";
 
 const inferenceTransport = createInferenceTransport();
 
