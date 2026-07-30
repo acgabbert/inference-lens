@@ -151,8 +151,8 @@ export function ToolRegistryModal({
             <span className="eyebrow">Local library</span>
             <h2 id="tool-registry-title">Local tool library</h2>
             <p>
-              Saved locally for this app and reusable across projects. Nothing
-              is sent to a model until you copy or attach it.
+              Saved in this app and reusable across projects. Sent only after
+              you copy or attach it.
             </p>
           </div>
           <button className="button secondary" type="button" onClick={onClose}>
@@ -250,8 +250,7 @@ export function ToolRegistryModal({
                 <span className="empty-glyph" aria-hidden="true">⌘</span>
                 <h3>Your local tool library is empty</h3>
                 <p>
-                  Create a definition, then copy it to a project or use it on
-                  the next request.
+                  Create a definition, then add it to a project or request.
                 </p>
               </div>
             )}

@@ -324,9 +324,8 @@ export function ProjectTemplatesPane({
                   <h3>Recommended target</h3>
                 </div>
                 <p className="template-empty">
-                  Optional. Owned by the template, so changing it never appends a
-                  revision. Shown before a run when it differs from the run
-                  target; it never switches the run silently.
+                  Optional. It does not create a revision or change a run. Shown
+                  when it differs from the selected run target.
                 </p>
                 <label>
                   Connection

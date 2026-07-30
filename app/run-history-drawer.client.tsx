@@ -120,8 +120,7 @@ export function RunHistoryDrawer({
             <span aria-hidden="true">↗</span>
             <h3>No saved runs yet</h3>
             <p>
-              Run a request in this project and its terminal trace will appear
-              here.
+              Completed run traces for this project appear here.
             </p>
           </div>
         )}

@@ -65,10 +65,10 @@ export function ToolsPane({
             </strong>
             <p>
               {state === "empty"
-                ? "Select a project tool below, or attach a one-shot copy from the local library."
+                ? "Select a project tool or attach a one-shot library copy."
                 : state === "blocked"
                   ? `Profile “${profileName}” does not allow tool calling, so none of these reach the model.`
-                  : "Everything listed here is serialized into the request when the run starts."}
+                  : "These definitions are sent with the request."}
             </p>
           </div>
           {state === "blocked" && (
@@ -129,7 +129,7 @@ export function ToolsPane({
         <div>
           <span className="eyebrow">Project</span>
           <strong>Tool definitions</strong>
-          <p>Stored with this project. Only selected definitions are sent.</p>
+          <p>Stored with this project; sent only when selected.</p>
         </div>
         <div className="tool-header-actions">
           <button className="text-button" type="button" onClick={onOpenLibrary}>Browse local library</button>
@@ -137,7 +137,7 @@ export function ToolsPane({
         </div>
       </div>
       <div className="tool-list">
-        {tools.length === 0 ? <p className="tool-empty">No project-owned tools. Add one here or copy a snapshot from the local library.</p> : tools.map((tool) => {
+        {tools.length === 0 ? <p className="tool-empty">No project tools. Add one or copy one from the local library.</p> : tools.map((tool) => {
           const mock = mockForTool(tool.id);
           const mockText = mock?.result.content.map(({ text }) => text).join("") ?? "";
           return <article className="tool-editor" key={tool.id}>

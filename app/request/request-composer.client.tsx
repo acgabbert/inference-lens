@@ -179,8 +179,8 @@ export function RequestComposer({
             </strong>
             <span>
               {templates.importNotice.template
-                ? `${templates.importNotice.variableCount} ${templates.importNotice.variableCount === 1 ? "variable was" : "variables were"} carried over from the saved execution.`
-                : "The saved execution messages are now in the composer."}
+                ? `${templates.importNotice.variableCount} ${templates.importNotice.variableCount === 1 ? "variable" : "variables"} imported from the saved execution.`
+                : "Execution messages imported into the composer."}
             </span>
           </div>
           <div className="workbench-notice-actions">
@@ -195,7 +195,7 @@ export function RequestComposer({
       )}
       {pendingBranch && (
         <div className="branch-pending" role="status">
-          Branching from run <code>{pendingBranch.parentRunId}</code> at message <code>{pendingBranch.branchMessageId}</code> — the original trace is untouched.
+          Branching from run <code>{pendingBranch.parentRunId}</code> at message <code>{pendingBranch.branchMessageId}</code>. Original trace unchanged.
           {pendingBranch.parentTraceNeedsSaving && (
             <button className="button secondary" type="button" onClick={onSaveParentTrace}>Save trace…</button>
           )}
