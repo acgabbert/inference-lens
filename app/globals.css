@@ -209,9 +209,7 @@ textarea,
 .diff-absent,
 .run-readiness-summary > p,
 .run-readiness-why > p,
-.streaming-control small,
 .tools-tab-toolbar p,
-.run-settings-heading small,
 .side-drawer-header p,
 .run-history-empty p,
 .run-history-notice,
@@ -352,6 +350,10 @@ pre,
 .run-readiness-facts dd,
 .menu-heading small,
 .menu-option small,
+/* Sub-labels under a control label: metadata, so they stay smaller than the
+   12px control label they qualify rather than outsizing it. */
+.streaming-control small,
+.run-settings-heading small,
 .project-popover kbd,
 .run-history-item time,
 .run-history-item > span,
@@ -4343,12 +4345,14 @@ main {
   }
 }
 
+/* The model column carries provider-qualified model IDs, which are the longest
+   value in this row; it gets the extra width the other two do not need. */
 .run-settings-grid {
   display: grid;
   grid-template-columns:
-    minmax(190px, 1.4fr)
-    minmax(145px, 0.75fr)
-    minmax(165px, 0.85fr);
+    minmax(215px, 1.75fr)
+    minmax(132px, 0.7fr)
+    minmax(148px, 0.75fr);
   align-items: end;
   gap: 16px;
 }
@@ -4377,9 +4381,6 @@ main {
 .streaming-control span,
 .streaming-control small {
   display: block;
-}
-
-.streaming-control > span {
 }
 
 .streaming-control small {
