@@ -13,7 +13,16 @@ export default defineConfig({
     baseURL: `http://127.0.0.1:${appPort}`,
     trace: "on-first-retry",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    {
+      name: "chromium-light",
+      use: { ...devices["Desktop Chrome"], colorScheme: "light" },
+    },
+    {
+      name: "chromium-dark",
+      use: { ...devices["Desktop Chrome"], colorScheme: "dark" },
+    },
+  ],
   webServer: [
     {
       command: `npm run dev -- --hostname 127.0.0.1 --port ${appPort}`,

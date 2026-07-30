@@ -9,12 +9,13 @@ value reached the screen in a usable form, and it cannot exercise focus,
 layout, or contrast. This file is what a human or an agent works through in a
 browser to cover the rest.
 
-**This is a checklist, not a suite.** Playwright is deliberately not a
-repository dependency. Drive the app with whatever browser tooling is at hand;
-see the driver recipes, selector traps, and folder-picker stub in
-[the provider fixture guide](PROVIDER_FIXTURES.md), which this file assumes
-rather than repeats. The durable asset here is the *expected values*, not the
-runner.
+**This matrix is broader than the automated suite.** The repository's
+Playwright coverage exercises the deterministic paths that are practical to
+keep in the shared gate. Work through the remaining rows with available
+browser tooling; see the driver recipes, selector traps, and folder-picker
+stub in [the provider fixture guide](PROVIDER_FIXTURES.md), which this file
+assumes rather than repeats. The durable asset here is the *expected values*,
+not any one runner.
 
 ## Reporting contract
 
