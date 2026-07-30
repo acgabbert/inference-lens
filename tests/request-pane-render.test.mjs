@@ -125,7 +125,7 @@ function requestComposer(overrides = {}) {
 
 test("the extracted composer renders request snapshots without a project", async () => {
   const html = await render(
-    "/app/request-composer.client.tsx",
+    "/app/request/request-composer.client.tsx",
     "RequestComposer",
     requestComposer(),
   );
@@ -138,7 +138,7 @@ test("the extracted composer renders request snapshots without a project", async
 
 test("the extracted composer keeps pending-branch and template-error text in the request pane", async () => {
   const html = await render(
-    "/app/request-composer.client.tsx",
+    "/app/request/request-composer.client.tsx",
     "RequestComposer",
     requestComposer({
       readiness: {

@@ -1,10 +1,10 @@
-import type { ToolMock } from "../packages/core/src/project.ts";
+import type { ToolMock } from "../../packages/core/src/project.ts";
 import type {
   RunState,
   ToolCall,
   ToolDefinition,
   ToolResult,
-} from "../packages/core/src/run-kernel/index.ts";
+} from "../../packages/core/src/run-kernel/index.ts";
 
 /** Kept independent of the renderer so session policy can be tested in Node. */
 export type ToolResultDraft = {

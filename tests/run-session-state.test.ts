@@ -7,7 +7,7 @@ import {
   isRetryableRunState,
   isTerminalRunState,
   toolResultDraftsForState,
-} from "../app/run-session-state.client.ts";
+} from "../app/run/run-session-state.client.ts";
 
 test("classifies terminal and retryable session states", () => {
   const base = createRunState("run_policy");

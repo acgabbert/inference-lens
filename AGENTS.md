@@ -18,6 +18,15 @@ Do not begin implementation while a material contract decision remains
 unresolved. Small, reversible implementation details may be decided
 independently when they do not alter the agreed design.
 
+## Route composition roots
+
+Route and page components primarily compose feature owners and top-level
+regions. Cohesive feature state, effects, refs, and mutation workflows move
+with their feature owner; only genuine cross-feature adapters remain in the
+route. Before materially expanding a route component, name the intended owner
+and its contract. Ownership and contracts matter more than arbitrary file-size
+limits.
+
 ## Verify against a running app, not only against tests
 
 A green suite proves a derivation is correct. It does not prove the result

@@ -1,15 +1,15 @@
-import type { ProviderCapabilities, RichInferenceRequest } from "../packages/core/src/types.ts";
+import type { ProviderCapabilities, RichInferenceRequest } from "../../packages/core/src/types.ts";
 import {
   createBranchRevision,
   prepareProjectRevisionRun,
   sameConversationMessages,
-} from "../packages/core/src/project.ts";
+} from "../../packages/core/src/project.ts";
 import type {
   ProjectFile,
   ProjectTemplateDiagnostic,
   TemplateRunOverrides,
-} from "../packages/core/src/project.ts";
-import { createEntityId, createResolvedRunInput } from "../packages/core/src/run-kernel/index.ts";
+} from "../../packages/core/src/project.ts";
+import { createEntityId, createResolvedRunInput } from "../../packages/core/src/run-kernel/index.ts";
 import type {
   ConversationId,
   ConversationRevisionId,
@@ -19,8 +19,8 @@ import type {
   RunId,
   RunTrace,
   ToolDefinition,
-} from "../packages/core/src/run-kernel/index.ts";
-import { randomUUID } from "../packages/core/src/random-id.ts";
+} from "../../packages/core/src/run-kernel/index.ts";
+import { randomUUID } from "../../packages/core/src/random-id.ts";
 
 /** A pending branch is input to preparation, never a command it may consume. */
 export interface WorkbenchBranchContext {

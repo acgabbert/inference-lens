@@ -6,7 +6,7 @@ import {
   projectForTemplateMutation,
   templateRunOverridesAfterSave,
   templateRunOverridesAfterUpdate,
-} from "../app/project-template-policy.ts";
+} from "../app/templates/project-template-policy.ts";
 
 function project() {
   return createProjectFile({

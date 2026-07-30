@@ -1,19 +1,19 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import type { CredentialSelection, ProviderTurnTransport } from "../packages/contracts/src";
-import type { RichInferenceRequest } from "../packages/core/src/types";
-import { createEntityId, createRunTrace, RunCoordinator, transcriptFromRunState } from "../packages/core/src/run-kernel";
-import type { ProviderExecution, ResolvedRunInput, RunState, RunTrace, ToolDefinition, ToolResult } from "../packages/core/src/run-kernel";
-import { parseRunTraceJson, runStateFromTrace, traceFileName } from "../packages/core/src/run-trace";
-import { randomUUID } from "../packages/core/src/random-id";
-import { InferenceTransportError } from "./http-inference-transport.client";
-import { recordDiagnostic, redactDiagnosticValue, startDiagnosticCapture } from "./diagnostics.client";
-import type { DiagnosticCapture } from "./diagnostics.client";
-import { exportRunTraceFile, runTraceWorkspaceLocation, runTraceWorkspacePath, saveRunTraceWorkspace } from "./project-workspace.client";
-import type { ProjectWorkspaceHandle } from "./project-workspace.client";
-import type { TraceStorageStatus } from "./response-output.client";
-import type { ParentTraceState } from "./run-trace-panel.client";
+import type { CredentialSelection, ProviderTurnTransport } from "../../packages/contracts/src";
+import type { RichInferenceRequest } from "../../packages/core/src/types";
+import { createEntityId, createRunTrace, RunCoordinator, transcriptFromRunState } from "../../packages/core/src/run-kernel";
+import type { ProviderExecution, ResolvedRunInput, RunState, RunTrace, ToolDefinition, ToolResult } from "../../packages/core/src/run-kernel";
+import { parseRunTraceJson, runStateFromTrace, traceFileName } from "../../packages/core/src/run-trace";
+import { randomUUID } from "../../packages/core/src/random-id";
+import { InferenceTransportError } from "../http-inference-transport.client";
+import { recordDiagnostic, redactDiagnosticValue, startDiagnosticCapture } from "../diagnostics.client";
+import type { DiagnosticCapture } from "../diagnostics.client";
+import { exportRunTraceFile, runTraceWorkspaceLocation, runTraceWorkspacePath, saveRunTraceWorkspace } from "../project-workspace.client";
+import type { ProjectWorkspaceHandle } from "../project-workspace.client";
+import type { TraceStorageStatus } from "../response-output.client";
+import type { ParentTraceState } from "../run-trace-panel.client";
 import { isTerminalRunState, toolResultDraftsForState } from "./run-session-state.client";
 import type { ToolResultDraft } from "./run-session-state.client";
 

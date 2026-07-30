@@ -9,7 +9,7 @@ import {
 } from "../packages/core/src/project.ts";
 import type { ToolDefinition } from "../packages/core/src/run-kernel/index.ts";
 import { OPENAI_COMPATIBLE_CAPABILITIES } from "../packages/core/src/types.ts";
-import { prepareWorkbenchRun } from "../app/prepare-workbench-run.client.ts";
+import { prepareWorkbenchRun } from "../app/run/prepare-workbench-run.client.ts";
 
 const request = {
   provider: "openai-compatible" as const,

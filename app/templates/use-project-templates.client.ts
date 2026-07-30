@@ -14,7 +14,7 @@ import {
   updateProjectDraft,
   updatePromptTemplateUseToLatest,
   updatePromptTemplateUseValues,
-} from "../packages/core/src/project";
+} from "../../packages/core/src/project";
 import type {
   ProjectConversationItem,
   ProjectFile,
@@ -22,13 +22,13 @@ import type {
   PromptTemplateRecommendedTarget,
   TemplateRunOverrides,
   ToolMock,
-} from "../packages/core/src/project";
+} from "../../packages/core/src/project";
 import {
   importExternalPromptCandidate,
   importExternalPromptTemplateCandidate,
-} from "../packages/core/src/external-prompt-project";
-import type { ExternalPromptCandidate } from "../packages/core/src/external-prompt-import";
-import { createEntityId } from "../packages/core/src/run-kernel";
+} from "../../packages/core/src/external-prompt-project";
+import type { ExternalPromptCandidate } from "../../packages/core/src/external-prompt-import";
+import { createEntityId } from "../../packages/core/src/run-kernel";
 import type {
   ConversationMessage,
   ConversationRevisionId,
@@ -38,10 +38,10 @@ import type {
   PromptTemplateUseId,
   ToolDefinition,
   ToolId,
-} from "../packages/core/src/run-kernel";
-import { randomUUID } from "../packages/core/src/random-id";
-import { discoverTemplateVariables } from "../packages/core/src/template-engine";
-import type { ConfirmationDialogRequest } from "./confirmation-dialog.client";
+} from "../../packages/core/src/run-kernel";
+import { randomUUID } from "../../packages/core/src/random-id";
+import { discoverTemplateVariables } from "../../packages/core/src/template-engine";
+import type { ConfirmationDialogRequest } from "../confirmation-dialog.client";
 import {
   pendingBranchMessagesAfterItemUpdate,
   projectTemplateWorkbenchView,
@@ -51,7 +51,7 @@ import {
   templateRunOverridesAfterSave,
   templateRunOverridesAfterUpdate,
 } from "./project-template-policy";
-import { removeDraftMessage } from "./use-request-draft.client";
+import { removeDraftMessage } from "../use-request-draft.client";
 
 export interface ProjectTemplatesImportNotice {
   name: string;

@@ -1,17 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import type { ConversationMessage, ToolDefinition, ToolId } from "../packages/core/src/run-kernel";
-import type { ProjectFile, ToolMock } from "../packages/core/src/project";
-import { conversationMessageText } from "./conversation-display";
-import { ModelCombobox } from "./model-combobox.client";
-import type { ModelDiscoveryState } from "./use-model-discovery.client";
-import { PaneTabs } from "./workbench-shell.client";
-import { ProjectTemplatesPane, TemplateUseCard } from "./project-templates-pane.client";
-import { ToolsPane } from "./tools-pane.client";
-import { RunReadinessNotice } from "./run-readiness-notice.client";
-import type { RunReadiness, RunReadinessActionKind } from "./run-readiness.client";
-import type { ProjectTemplatesHandle } from "./use-project-templates.client";
+import type { ConversationMessage, ToolDefinition, ToolId } from "../../packages/core/src/run-kernel";
+import type { ProjectFile, ToolMock } from "../../packages/core/src/project";
+import { conversationMessageText } from "../conversation-display";
+import { ModelCombobox } from "../model-combobox.client";
+import type { ModelDiscoveryState } from "../use-model-discovery.client";
+import { PaneTabs } from "../workbench-shell.client";
+import { ProjectTemplatesPane, TemplateUseCard } from "../project-templates-pane.client";
+import { ToolsPane } from "../tools-pane.client";
+import { RunReadinessNotice } from "../run-readiness-notice.client";
+import type { RunReadiness, RunReadinessActionKind } from "../run-readiness.client";
+import type { ProjectTemplatesHandle } from "../templates/use-project-templates.client";
 
 type RequestTab = "messages" | "templates" | "tools";
 
