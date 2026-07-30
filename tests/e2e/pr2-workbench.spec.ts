@@ -80,6 +80,7 @@ test("renders the buffered fixture transcript and exact token totals", async ({ 
   await expect(summary.getByText("Tokens", { exact: true })).toBeVisible();
   await expect(summary.getByText("11", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Run details" }).click();
+  await expect(page.getByRole("tab", { name: "Resolution" })).toBeVisible();
   await page.getByRole("tab", { name: "Metrics" }).click();
   const metrics = page.locator(".run-metrics");
   await expect(metrics).toContainText("4 in · 7 out");
@@ -166,6 +167,8 @@ test("keeps semantic type, state contrast, and layout intact at supported widths
       const style = getComputedStyle(button);
       return { color: style.color, opacity: style.opacity };
     });
+  await projectMenu.click();
+  await page.locator(".run-data-menu > summary").click();
   const disabledState = await page
     .getByRole("button", { name: "Export run trace…" })
     .evaluate((button) => {
@@ -190,6 +193,9 @@ test("uses peer request, response, and inspect views on a narrow screen", async 
   const projectMenu = page.locator(".project-menu > summary");
   await expect(projectMenu).toBeVisible();
   await expect(page.locator(".project-menu-label")).toBeHidden();
+  const runDataMenu = page.locator(".run-data-menu > summary");
+  await expect(runDataMenu).toBeVisible();
+  await expect(page.locator(".run-data-menu-label")).toBeHidden();
   const projectMenuBox = await projectMenu.boundingBox();
   expect(projectMenuBox?.width).toBe(38);
   const overflowGlyph = await projectMenu.evaluate((summary) => {
@@ -205,14 +211,26 @@ test("uses peer request, response, and inspect views on a narrow screen", async 
   expect(overflowGlyph.color).not.toBe("rgba(0, 0, 0, 0)");
 
   await projectMenu.click();
-  const projectPopover = page.locator(".project-popover");
+  const projectPopover = page.locator(".project-menu .project-popover");
   await expect(projectPopover).toBeVisible();
+  await expect(projectPopover.getByText("Project", { exact: true })).toBeVisible();
+  await expect(projectPopover).not.toContainText("Run history");
+  await expect(projectPopover).not.toContainText("Local tool library");
+  await expect(projectPopover).not.toContainText("Import prompt from n8n");
   const projectPopoverBox = await projectPopover.boundingBox();
   expect(
     projectPopoverBox ? projectPopoverBox.x + projectPopoverBox.width : Infinity,
   ).toBeLessThanOrEqual(390);
   await projectMenu.click();
   await expect(projectPopover).toBeHidden();
+  await runDataMenu.click();
+  const runDataPopover = page.locator(".run-data-popover");
+  await expect(runDataPopover.getByText("Run data", { exact: true })).toBeVisible();
+  await expect(runDataPopover).toContainText("Run history");
+  await expect(runDataPopover).toContainText("Import run trace");
+  await expect(runDataPopover).toContainText("Export run trace");
+  await expect(runDataPopover).toContainText("Download diagnostics");
+  await runDataMenu.click();
 
   await tabs.getByRole("button", { name: "Response" }).click();
   await expect(page.locator(".response-pane")).toBeVisible();
@@ -251,13 +269,48 @@ test("uses peer request, response, and inspect views on a narrow screen", async 
   );
 });
 
+test("groups lifecycle and run-data actions by owner", async ({ page }) => {
+  await seedBufferedProfile(page);
+  await page.setViewportSize({ width: 1080, height: 900 });
+  await page.goto("/");
+  await waitForHydration(page);
+
+  await page.getByRole("tab", { name: "Prompt library" }).click();
+  await expect(
+    page.getByRole("button", { name: "Import prompt from n8n…" }),
+  ).toBeVisible();
+
+  await page.getByRole("tab", { name: "Tools" }).click();
+  await expect(
+    page.getByRole("button", { name: "Browse local library" }),
+  ).toBeVisible();
+
+  await page.getByLabel("Project menu").click();
+  const projectMenu = page.locator(".project-menu .project-popover");
+  await expect(projectMenu).toContainText("Project");
+  await expect(projectMenu).toContainText("Import project");
+  await expect(projectMenu).toContainText("Export project");
+  await expect(projectMenu).not.toContainText("Run history");
+  await expect(projectMenu).not.toContainText("Download diagnostics");
+
+  await page.getByLabel("Project menu").click();
+  await page.getByLabel("Run data menu").click();
+  const runDataMenu = page.locator(".run-data-popover");
+  await expect(runDataMenu).toContainText("Run data");
+  await expect(runDataMenu).toContainText("Run history");
+  await expect(runDataMenu).toContainText("Import run trace");
+  await expect(runDataMenu).toContainText("Export run trace");
+  await expect(runDataMenu).toContainText("Download diagnostics");
+  await expect(runDataMenu).not.toContainText("Import project");
+});
+
 test("selects Inspect when a trace is explicitly imported", async ({ page }) => {
   await seedBufferedProfile(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await waitForHydration(page);
 
-  await page.locator(".project-menu > summary").click();
+  await page.locator(".run-data-menu > summary").click();
   await page.getByLabel("Import run trace…").setInputFiles({
     name: "run_mobile-import.json",
     mimeType: "application/json",

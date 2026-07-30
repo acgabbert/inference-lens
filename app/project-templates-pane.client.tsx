@@ -29,6 +29,8 @@ interface ProjectTemplatesPaneProps {
   defaultConnectionRequirementId?: ConnectionRequirement["id"];
   usageCounts: ReadonlyMap<PromptTemplateId, number>;
   itemCount: number;
+  n8nImportDisabledReason?: string;
+  onOpenN8nImport(): void;
   onCreate(name: string, content: PromptTemplateContent): PromptTemplateId;
   onSave(
     templateId: PromptTemplateId,
@@ -58,6 +60,8 @@ export function ProjectTemplatesPane({
   defaultConnectionRequirementId,
   usageCounts,
   itemCount,
+  n8nImportDisabledReason,
+  onOpenN8nImport,
   onCreate,
   onSave,
   onInsert,
@@ -169,6 +173,15 @@ export function ProjectTemplatesPane({
           </button>
           <button className="button secondary" type="button" onClick={() => addTemplate("messages")}>
             + Message set
+          </button>
+          <button
+            className="text-button template-import-action"
+            disabled={Boolean(n8nImportDisabledReason)}
+            title={n8nImportDisabledReason}
+            type="button"
+            onClick={onOpenN8nImport}
+          >
+            Import prompt from n8n…
           </button>
         </div>
         <div className="template-list">

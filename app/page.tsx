@@ -787,13 +787,6 @@ function HomeContent() {
         hasRunTrace={runReachedTerminalStatus}
         hasProjectWorkspace={Boolean(projectWorkspace)}
         runHistoryBlocked={Boolean(runState) && !runReachedTerminalStatus}
-        n8nImportDisabledReason={
-          branchContext
-            ? "Finish or discard the pending branch before importing a prompt."
-            : Boolean(runState) && !runReachedTerminalStatus
-              ? "Finish or stop the current run before importing a prompt."
-              : undefined
-        }
         isRequestActive={isRequestActive}
         awaitingToolResults={runState?.status.kind === "awaiting_tool_results"}
         retryableFailure={
@@ -808,9 +801,7 @@ function HomeContent() {
         onOpenProject={() => void project.openProjectWorkspace()}
         onSaveProject={saveOrChooseProjectLocation}
         onImportProject={(event) => void project.importProject(event)}
-        onOpenN8nImport={() => setN8nImportOpen(true)}
         onExportProject={project.exportProject}
-        onOpenToolLibrary={() => setToolRegistryOpen(true)}
         onDownloadDiagnostics={downloadDiagnostics}
         onDownloadRunTrace={() => void runSession.exportTrace()}
         onImportRunTrace={(event) => {
@@ -993,7 +984,15 @@ function HomeContent() {
           activeProfile={activeProfile}
           {...(branchContext ? { pendingBranch: branchContext } : {})}
           {...(requestPreview ? { requestPreview } : {})}
+          n8nImportDisabledReason={
+            branchContext
+              ? "Finish or discard the pending branch before importing a prompt."
+              : Boolean(runState) && !runReachedTerminalStatus
+                ? "Finish or stop the current run before importing a prompt."
+                : undefined
+          }
           onOpenConnectionSettings={() => setConnectionDrawerOpen(true)}
+          onOpenN8nImport={() => setN8nImportOpen(true)}
           onOpenToolLibrary={() => setToolRegistryOpen(true)}
           onSaveParentTrace={() => void runSession.exportTrace()}
           onDiscardPendingBranch={() => setBranchContext(null)}
