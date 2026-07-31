@@ -1,0 +1,31 @@
+# Published-image deployment template. Download this file as `compose.yaml`,
+# optionally create a sibling `.env`, then run `docker compose up -d`.
+services:
+  inference-lens:
+    image: ghcr.io/acgabbert/inference-lens:latest
+    # Deliberately track the current stable release. Compose checks GHCR at
+    # every `up`, but leaves a running container alone when its image is current.
+    pull_policy: always
+    environment:
+      INFERENCE_LENS_API_KEY: ${INFERENCE_LENS_API_KEY:-}
+      INFERENCE_LENS_API_ENDPOINT: ${INFERENCE_LENS_API_ENDPOINT:-}
+      INFERENCE_LENS_MODEL: ${INFERENCE_LENS_MODEL:-}
+      INFERENCE_LENS_ALLOWED_HOSTS: ${INFERENCE_LENS_ALLOWED_HOSTS:-}
+      INFERENCE_LENS_N8N_BASE_URL: ${INFERENCE_LENS_N8N_BASE_URL:-}
+      INFERENCE_LENS_N8N_API_KEY: ${INFERENCE_LENS_N8N_API_KEY:-}
+      INFERENCE_LENS_N8N_LIST_RESPONSE_LIMIT_BYTES: ${INFERENCE_LENS_N8N_LIST_RESPONSE_LIMIT_BYTES:-}
+      INFERENCE_LENS_N8N_DETAIL_RESPONSE_LIMIT_BYTES: ${INFERENCE_LENS_N8N_DETAIL_RESPONSE_LIMIT_BYTES:-}
+    ports:
+      - "127.0.0.1:${INFERENCE_LENS_PORT:-3000}:3000"
+    # Docker Desktop resolves this on its own. The mapping makes a provider on
+    # the host reachable by the same name on plain Linux Docker Engine.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
