@@ -9,6 +9,7 @@ import {
   handleN8nExecutionsRequest,
   handleN8nStatusRequest,
   handleN8nWorkflowsRequest,
+  loadN8nSelectedExecution,
   N8nClient,
   N8nIntegrationError,
   parseN8nConfiguration,
@@ -72,6 +73,37 @@ test("reports unavailable, misconfigured, and configured states without connecti
   assert.doesNotMatch(text, new RegExp(apiKey));
   assert.doesNotMatch(text, /n8n\.example\.test/);
   assert.equal(response.headers.get("cache-control"), "no-store");
+});
+
+test("parses configurable n8n response ceilings and rejects invalid values", () => {
+  const configured = parseN8nConfiguration({
+    ...configuredEnvironment,
+    INFERENCE_LENS_N8N_LIST_RESPONSE_LIMIT_BYTES: "2097152",
+    INFERENCE_LENS_N8N_DETAIL_RESPONSE_LIMIT_BYTES: "16777216",
+  });
+  assert.equal(configured.state, "configured");
+  if (configured.state === "configured") {
+    assert.deepEqual(configured.responseLimits, {
+      listResponseLimitBytes: 2 * 1024 * 1024,
+      detailResponseLimitBytes: 16 * 1024 * 1024,
+    });
+  }
+
+  for (const [name, value] of [
+    ["INFERENCE_LENS_N8N_LIST_RESPONSE_LIMIT_BYTES", "0"],
+    ["INFERENCE_LENS_N8N_DETAIL_RESPONSE_LIMIT_BYTES", "8MiB"],
+    ["INFERENCE_LENS_N8N_DETAIL_RESPONSE_LIMIT_BYTES", "536870913"],
+  ] as const) {
+    const invalid = parseN8nConfiguration({
+      ...configuredEnvironment,
+      [name]: value,
+    });
+    assert.equal(invalid.state, "misconfigured");
+    assert.match(
+      invalid.state === "misconfigured" ? invalid.message : "",
+      new RegExp(name),
+    );
+  }
 });
 
 test("rejects invalid base URLs without reflecting their credential-like parts", async () => {
@@ -173,6 +205,35 @@ test("lists workflow summaries through the installation subpath and drops unknow
       redirect: "manual",
     },
   ]);
+});
+
+test("retries oversized workflow pages with progressively smaller page sizes", async () => {
+  const requestedPageSizes: string[] = [];
+  const client = new N8nClient(
+    new EnvironmentN8nCredentialSource(configuredEnvironment).resolve(),
+    {
+      listResponseLimitBytes: 128,
+      fetchImplementation: async (input) => {
+        const pageSize = new URL(input.toString()).searchParams.get("limit")!;
+        requestedPageSizes.push(pageSize);
+        if (Number(pageSize) > 2) {
+          return new Response("{}", {
+            headers: { "content-length": "129" },
+          });
+        }
+        return jsonResponse({
+          data: [{ id: "workflow_1", name: "Small page" }],
+          nextCursor: "next",
+        });
+      },
+    },
+  );
+
+  assert.deepEqual(await client.listWorkflows("same-cursor"), {
+    items: [{ id: "workflow_1", name: "Small page" }],
+    nextCursor: "next",
+  });
+  assert.deepEqual(requestedPageSizes, ["10", "5", "2"]);
 });
 
 test("lists execution summaries without requesting or returning execution data", async () => {
@@ -280,7 +341,7 @@ test("fetches selected execution detail lazily but returns only its safe normali
       startedAt: "2026-07-28T12:00:00.000Z",
       stoppedAt: "2026-07-28T12:00:01.000Z",
     },
-    detailAvailable: true,
+    detailAvailability: "full",
     discovery: {
       status: "no-supported-invocations",
       message:
@@ -334,7 +395,7 @@ test("an unreadable node falls back to the current workflow without failing it",
       workflowId: "workflow_1",
       status: "success",
     },
-    detailAvailable: true,
+    detailAvailability: "full",
     discovery: {
       status: "no-supported-invocations",
       message:
@@ -544,7 +605,7 @@ test("reports unavailable retained data with current authored workflow fallback 
       workflowId: "workflow_1",
       status: "error",
     },
-    detailAvailable: false,
+    detailAvailability: "not-retained",
     discovery: {
       status: "no-supported-invocations",
       message:
@@ -569,6 +630,74 @@ test("reports unavailable retained data with current authored workflow fallback 
       retryable: false,
     },
   });
+});
+
+test("falls back to current authored fields when full execution detail exceeds the configured limit", async () => {
+  const requests: string[] = [];
+  const workflow = {
+    id: "workflow_1",
+    name: "Current workflow",
+    nodes: [
+      {
+        id: "chain_1",
+        name: "Prompt chain",
+        type: "@n8n/n8n-nodes-langchain.chainLlm",
+        typeVersion: 1.9,
+        parameters: {
+          promptType: "define",
+          text: "Summarize {{ $json.topic }}",
+        },
+      },
+    ],
+    connections: {},
+  };
+  const client = new N8nClient(
+    new EnvironmentN8nCredentialSource(configuredEnvironment).resolve(),
+    {
+      detailResponseLimitBytes: 2_000,
+      fetchImplementation: async (input) => {
+        const url = new URL(input.toString());
+        requests.push(`${url.pathname}?${url.searchParams}`);
+        if (url.pathname.endsWith("/workflows/workflow_1")) {
+          return jsonResponse(workflow);
+        }
+        if (url.searchParams.get("includeData") === "true") {
+          return new Response("{}", {
+            headers: { "content-length": "2001" },
+          });
+        }
+        return jsonResponse({
+          id: "execution_1",
+          workflowId: "workflow_1",
+          status: "success",
+        });
+      },
+    },
+  );
+
+  const selected = await loadN8nSelectedExecution(
+    client,
+    "workflow_1",
+    "execution_1",
+  );
+  assert.equal(selected.detailAvailability, "omitted-response-too-large");
+  assert.equal(selected.discovery.status, "ready");
+  assert.equal(selected.extractions[0]?.status, "candidate");
+  if (selected.extractions[0]?.status === "candidate") {
+    assert.equal(selected.extractions[0].candidate.fidelity, "authored-only");
+    assert.deepEqual(
+      selected.extractions[0].candidate.warnings.map(({ code }) => code),
+      [
+        "execution-detail-omitted-response-too-large",
+        "current-workflow-snapshot",
+      ],
+    );
+  }
+  assert.deepEqual(requests, [
+    "/automation/api/v1/executions/execution_1?includeData=true",
+    "/automation/api/v1/executions/execution_1?includeData=false",
+    "/automation/api/v1/workflows/workflow_1?",
+  ]);
 });
 
 test("rejects path-like IDs and unexpected query parameters before contacting n8n", async () => {

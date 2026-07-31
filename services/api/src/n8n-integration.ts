@@ -14,10 +14,15 @@ import type { N8nPromptExtraction } from "./n8n-prompt-extractors.ts";
 
 export const N8N_BASE_URL_VARIABLE = "INFERENCE_LENS_N8N_BASE_URL";
 export const N8N_API_KEY_VARIABLE = "INFERENCE_LENS_N8N_API_KEY";
+export const N8N_LIST_RESPONSE_LIMIT_BYTES_VARIABLE =
+  "INFERENCE_LENS_N8N_LIST_RESPONSE_LIMIT_BYTES";
+export const N8N_DETAIL_RESPONSE_LIMIT_BYTES_VARIABLE =
+  "INFERENCE_LENS_N8N_DETAIL_RESPONSE_LIMIT_BYTES";
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 const LIST_RESPONSE_LIMIT_BYTES = 1024 * 1024;
 const DETAIL_RESPONSE_LIMIT_BYTES = 8 * 1024 * 1024;
+const MAX_CONFIGURED_RESPONSE_LIMIT_BYTES = 512 * 1024 * 1024;
 const REQUEST_BODY_LIMIT_BYTES = 4 * 1024;
 const WORKFLOW_PAGE_SIZE = 10;
 const EXECUTION_PAGE_SIZE = 25;
@@ -56,6 +61,11 @@ export interface N8nConnection {
   apiKey: string;
 }
 
+export interface N8nResponseLimits {
+  listResponseLimitBytes: number;
+  detailResponseLimitBytes: number;
+}
+
 export interface N8nExecutionLinkSelection {
   workflowId: string;
   executionId: string;
@@ -64,7 +74,11 @@ export interface N8nExecutionLinkSelection {
 export type N8nConfiguration =
   | { state: "unavailable" }
   | { state: "misconfigured"; message: string }
-  | { state: "configured"; connection: N8nConnection };
+  | {
+      state: "configured";
+      connection: N8nConnection;
+      responseLimits: N8nResponseLimits;
+    };
 
 export type PublicN8nConfiguration =
   | { state: "unavailable" }
@@ -103,6 +117,50 @@ function parseN8nBaseUrl(value: string): URL {
   return parsed;
 }
 
+function parseResponseLimitBytes(
+  environment: Record<string, string | undefined>,
+  variable: string,
+  defaultValue: number,
+): number {
+  const configured = environment[variable]?.trim();
+  if (!configured) return defaultValue;
+  if (!/^\d+$/.test(configured)) {
+    throw new N8nIntegrationError(
+      "configuration-invalid",
+      `${variable} must be a positive integer number of bytes.`,
+    );
+  }
+  const parsed = Number(configured);
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < 1 ||
+    parsed > MAX_CONFIGURED_RESPONSE_LIMIT_BYTES
+  ) {
+    throw new N8nIntegrationError(
+      "configuration-invalid",
+      `${variable} must be between 1 and ${MAX_CONFIGURED_RESPONSE_LIMIT_BYTES} bytes.`,
+    );
+  }
+  return parsed;
+}
+
+function parseN8nResponseLimits(
+  environment: Record<string, string | undefined>,
+): N8nResponseLimits {
+  return {
+    listResponseLimitBytes: parseResponseLimitBytes(
+      environment,
+      N8N_LIST_RESPONSE_LIMIT_BYTES_VARIABLE,
+      LIST_RESPONSE_LIMIT_BYTES,
+    ),
+    detailResponseLimitBytes: parseResponseLimitBytes(
+      environment,
+      N8N_DETAIL_RESPONSE_LIMIT_BYTES_VARIABLE,
+      DETAIL_RESPONSE_LIMIT_BYTES,
+    ),
+  };
+}
+
 export function parseN8nConfiguration(
   environment: Record<string, string | undefined>,
 ): N8nConfiguration {
@@ -119,6 +177,7 @@ export function parseN8nConfiguration(
     return {
       state: "configured",
       connection: { baseUrl: parseN8nBaseUrl(baseUrl), apiKey },
+      responseLimits: parseN8nResponseLimits(environment),
     };
   } catch (error) {
     return {
@@ -147,6 +206,23 @@ export class EnvironmentN8nCredentialSource {
   resolve(): N8nConnection {
     const configuration = parseN8nConfiguration(this.#environment);
     if (configuration.state === "configured") return configuration.connection;
+    if (configuration.state === "misconfigured") {
+      throw new N8nIntegrationError(
+        "configuration-invalid",
+        configuration.message,
+      );
+    }
+    throw new N8nIntegrationError(
+      "configuration-unavailable",
+      "The n8n integration is not configured.",
+    );
+  }
+
+  resolveResponseLimits(): N8nResponseLimits {
+    const configuration = parseN8nConfiguration(this.#environment);
+    if (configuration.state === "configured") {
+      return configuration.responseLimits;
+    }
     if (configuration.state === "misconfigured") {
       throw new N8nIntegrationError(
         "configuration-invalid",
@@ -382,6 +458,7 @@ async function readBoundedBody(
     10,
   );
   if (Number.isFinite(declaredLength) && declaredLength > limitBytes) {
+    await response.body?.cancel();
     throw new N8nIntegrationError(
       "response-too-large",
       `The n8n response exceeded the ${limitBytes}-byte limit.`,
@@ -445,17 +522,30 @@ function remoteStatusError(status: number): N8nIntegrationError {
 export interface N8nClientOptions {
   fetchImplementation?: typeof fetch;
   timeoutMs?: number;
+  listResponseLimitBytes?: number;
+  detailResponseLimitBytes?: number;
+}
+
+export interface N8nExecutionRequestOptions {
+  includeData?: boolean;
+  signal?: AbortSignal;
 }
 
 export class N8nClient {
   readonly #connection: N8nConnection;
   readonly #fetch: typeof fetch;
   readonly #timeoutMs: number;
+  readonly #listResponseLimitBytes: number;
+  readonly #detailResponseLimitBytes: number;
 
   constructor(connection: N8nConnection, options: N8nClientOptions = {}) {
     this.#connection = connection;
     this.#fetch = options.fetchImplementation ?? fetch;
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.#listResponseLimitBytes =
+      options.listResponseLimitBytes ?? LIST_RESPONSE_LIMIT_BYTES;
+    this.#detailResponseLimitBytes =
+      options.detailResponseLimitBytes ?? DETAIL_RESPONSE_LIMIT_BYTES;
   }
 
   async #request(
@@ -545,23 +635,39 @@ export class N8nClient {
     cursor?: string,
     signal?: AbortSignal,
   ): Promise<N8nPage<N8nWorkflowSummary>> {
-    const query = new URLSearchParams({
-      limit: String(WORKFLOW_PAGE_SIZE),
-      excludePinnedData: "true",
-    });
     const safeCursor = validateCursor(cursor);
-    if (safeCursor) query.set("cursor", safeCursor);
-    const page = (await this.#request(
-      ["workflows"],
-      query,
-      LIST_RESPONSE_LIMIT_BYTES,
-      pageSchema(workflowSummarySchema),
-      signal,
-    )) as z.infer<ReturnType<typeof pageSchema<typeof workflowSummarySchema>>>;
-    return {
-      items: page.data.map(workflowSummary),
-      ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
-    };
+    let pageSize = WORKFLOW_PAGE_SIZE;
+    while (true) {
+      const query = new URLSearchParams({
+        limit: String(pageSize),
+        excludePinnedData: "true",
+      });
+      if (safeCursor) query.set("cursor", safeCursor);
+      try {
+        const page = (await this.#request(
+          ["workflows"],
+          query,
+          this.#listResponseLimitBytes,
+          pageSchema(workflowSummarySchema),
+          signal,
+        )) as z.infer<
+          ReturnType<typeof pageSchema<typeof workflowSummarySchema>>
+        >;
+        return {
+          items: page.data.map(workflowSummary),
+          ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
+        };
+      } catch (error) {
+        if (
+          !(error instanceof N8nIntegrationError) ||
+          error.code !== "response-too-large" ||
+          pageSize === 1
+        ) {
+          throw error;
+        }
+        pageSize = Math.max(1, Math.floor(pageSize / 2));
+      }
+    }
   }
 
   async listExecutions(
@@ -580,7 +686,7 @@ export class N8nClient {
     const page = (await this.#request(
       ["executions"],
       query,
-      LIST_RESPONSE_LIMIT_BYTES,
+      this.#listResponseLimitBytes,
       pageSchema(executionSummarySchema),
       signal,
     )) as {
@@ -600,7 +706,7 @@ export class N8nClient {
     return (await this.#request(
       ["workflows", validateOpaqueId(workflowId, "Workflow ID")],
       undefined,
-      DETAIL_RESPONSE_LIMIT_BYTES,
+      this.#detailResponseLimitBytes,
       workflowDetailSchema,
       signal,
     )) as N8nWorkflowDetail;
@@ -608,21 +714,27 @@ export class N8nClient {
 
   async getExecution(
     executionId: string,
-    signal?: AbortSignal,
+    options: N8nExecutionRequestOptions = {},
   ): Promise<N8nExecutionDetail> {
+    const includeData = options.includeData ?? true;
     return (await this.#request(
       ["executions", validateOpaqueId(executionId, "Execution ID")],
-      new URLSearchParams({ includeData: "true" }),
-      DETAIL_RESPONSE_LIMIT_BYTES,
+      new URLSearchParams({ includeData: String(includeData) }),
+      this.#detailResponseLimitBytes,
       executionDetailSchema,
-      signal,
+      options.signal,
     )) as N8nExecutionDetail;
   }
 }
 
+export type N8nDetailAvailability =
+  | "full"
+  | "not-retained"
+  | "omitted-response-too-large";
+
 export interface N8nSelectedExecution {
   execution: N8nExecutionSummary;
-  detailAvailable: boolean;
+  detailAvailability: N8nDetailAvailability;
   discovery:
     | { status: "ready" }
     | {
@@ -639,14 +751,36 @@ export async function loadN8nSelectedExecution(
   signal?: AbortSignal,
 ): Promise<N8nSelectedExecution> {
   const safeWorkflowId = validateOpaqueId(workflowId, "Workflow ID");
-  const detail = await client.getExecution(executionId, signal);
+  let detail: N8nExecutionDetail;
+  let detailAvailability: N8nDetailAvailability;
+  try {
+    detail = await client.getExecution(executionId, {
+      includeData: true,
+      signal,
+    });
+    detailAvailability =
+      detail.data === undefined || detail.data === null
+        ? "not-retained"
+        : "full";
+  } catch (error) {
+    if (
+      !(error instanceof N8nIntegrationError) ||
+      error.code !== "response-too-large"
+    ) {
+      throw error;
+    }
+    detail = await client.getExecution(executionId, {
+      includeData: false,
+      signal,
+    });
+    detailAvailability = "omitted-response-too-large";
+  }
   if (detail.workflowId !== safeWorkflowId) {
     throw new N8nIntegrationError(
       "request-invalid",
       "The selected execution does not belong to the selected workflow.",
     );
   }
-  const detailAvailable = detail.data !== undefined && detail.data !== null;
   const data = detail.data;
   const nestedWorkflowSnapshot =
     data !== null &&
@@ -667,6 +801,8 @@ export async function loadN8nSelectedExecution(
   const extractions = await extractN8nPromptCandidates(
     detail,
     currentWorkflow,
+    undefined,
+    detailAvailability,
   );
   // Defensive: a current workflow that satisfies workflowDetailSchema also
   // satisfies the snapshot envelope check today, so this branch is reachable
@@ -687,7 +823,7 @@ export async function loadN8nSelectedExecution(
         : { status: "ready" };
   return {
     execution: executionSummary(detail),
-    detailAvailable,
+    detailAvailability,
     discovery,
     extractions,
   };
@@ -769,8 +905,12 @@ function clientFromEnvironment(
   environment: Record<string, string | undefined>,
   fetchImplementation?: typeof fetch,
 ): N8nClient {
-  const connection = new EnvironmentN8nCredentialSource(environment).resolve();
-  return new N8nClient(connection, { fetchImplementation });
+  const source = new EnvironmentN8nCredentialSource(environment);
+  const connection = source.resolve();
+  return new N8nClient(connection, {
+    fetchImplementation,
+    ...source.resolveResponseLimits(),
+  });
 }
 
 export function handleN8nStatusRequest(
@@ -891,15 +1031,17 @@ export async function handleN8nExecutionDetailRequest(
         { cause: selection.error },
       );
     }
-    const connection = new EnvironmentN8nCredentialSource(
-      environment,
-    ).resolve();
+    const source = new EnvironmentN8nCredentialSource(environment);
+    const connection = source.resolve();
     const identifiers =
       "executionUrl" in selection.data
         ? parseN8nExecutionLink(connection.baseUrl, selection.data.executionUrl)
         : selection.data;
     const selected = await loadN8nSelectedExecution(
-      new N8nClient(connection, { fetchImplementation }),
+      new N8nClient(connection, {
+        fetchImplementation,
+        ...source.resolveResponseLimits(),
+      }),
       identifiers.workflowId,
       identifiers.executionId,
       incoming.signal,

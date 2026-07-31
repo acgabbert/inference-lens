@@ -77,6 +77,9 @@ Configure the n8n instance root and public API key together:
 ```sh
 INFERENCE_LENS_N8N_BASE_URL=https://n8n.example.com/automation
 INFERENCE_LENS_N8N_API_KEY=your-public-api-key
+# Optional; defaults shown below.
+INFERENCE_LENS_N8N_LIST_RESPONSE_LIMIT_BYTES=1048576
+INFERENCE_LENS_N8N_DETAIL_RESPONSE_LIMIT_BYTES=8388608
 ```
 
 The base URL includes an installation subpath such as `/automation`, but
@@ -84,6 +87,16 @@ excludes `/api/v1`; Inference Lens appends that prefix itself. Both values are
 server-only. The browser receives configuration state and bounded
 workflow/execution summaries, never the API key, base URL, or raw execution
 payload.
+
+Both response ceilings are configurable up to 536870912 bytes (512 MiB).
+Workflow discovery responds to an oversized page by retrying the same cursor
+with progressively fewer workflows, down to one. If full execution data is too
+large, the importer retries without execution data and uses the current
+workflow definition when no saved workflow snapshot remains available. That
+authored-only fallback has no resolved execution values and warns when the
+current workflow may differ from the version that ran. Raising a ceiling
+increases peak memory use because the response must be buffered and parsed as
+JSON.
 
 Use HTTPS outside a trusted local network. Where the installed n8n edition
 offers scoped keys, choose its workflow-read and execution-read scopes. Some

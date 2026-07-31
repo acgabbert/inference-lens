@@ -10,6 +10,7 @@ import {
 } from "../../../packages/core/src/external-prompt-import.ts";
 
 import type {
+  N8nDetailAvailability,
   N8nExecutionDetail,
   N8nWorkflowDetail,
 } from "./n8n-integration.ts";
@@ -21,7 +22,7 @@ const AI_AGENT_VERSIONS = [2.2, 3, 3.1] as const;
 const MESSAGE_A_MODEL_TYPE = "@n8n/n8n-nodes-langchain.openAi";
 const MESSAGE_A_MODEL_VERSIONS = [1.2, 1.3] as const;
 const OPENAI_CHAT_MODEL_TYPE = "@n8n/n8n-nodes-langchain.lmChatOpenAi";
-const OPENAI_CHAT_MODEL_VERSION = 1.2;
+const OPENAI_CHAT_MODEL_VERSIONS = [1.2, 1.3] as const;
 const AUTHORED_TEXT_PATH = "parameters.text";
 
 export interface N8nNodeSnapshot {
@@ -59,6 +60,7 @@ export interface N8nExtractionContext {
   workflow: N8nWorkflowSnapshot;
   execution: N8nExecutionDetail;
   workflowSnapshotSource: "execution" | "current-workflow";
+  detailAvailability: N8nDetailAvailability;
 }
 
 export type N8nPromptExtraction =
@@ -448,7 +450,17 @@ async function authoredOnlyCandidate(
   message: string,
   runIndex?: number,
 ): Promise<N8nPromptExtraction> {
-  const warnings = [warning(code, message)];
+  const detailWasOmitted =
+    code === "execution-detail-unavailable" &&
+    context.detailAvailability === "omitted-response-too-large";
+  const warnings = [
+    warning(
+      detailWasOmitted ? "execution-detail-omitted-response-too-large" : code,
+      detailWasOmitted
+        ? "Full execution data exceeded the configured response limit, so only authored prompt fields can be reviewed."
+        : message,
+    ),
+  ];
   if (context.workflowSnapshotSource === "current-workflow") {
     warnings.push(
       warning(
@@ -507,6 +519,21 @@ function connectedModelNodes(
         ),
     );
   });
+}
+
+function supportsOpenAiChatModel(node: N8nNodeSnapshot): boolean {
+  return (
+    node.type === OPENAI_CHAT_MODEL_TYPE &&
+    OPENAI_CHAT_MODEL_VERSIONS.some(
+      (version) => node.typeVersion === version,
+    )
+  );
+}
+
+function supportedOpenAiChatModelLabel(): string {
+  return OPENAI_CHAT_MODEL_VERSIONS.map(
+    (version) => `${OPENAI_CHAT_MODEL_TYPE}@${version}`,
+  ).join(" or ");
 }
 
 function parentItemCount(run: unknown): number | undefined {
@@ -694,17 +721,14 @@ const basicLlmChainExtractor: N8nPromptExtractor = {
       ];
     }
     const modelNode = connectedModels[0]!;
-    if (
-      modelNode.type !== OPENAI_CHAT_MODEL_TYPE ||
-      modelNode.typeVersion !== OPENAI_CHAT_MODEL_VERSION
-    ) {
+    if (!supportsOpenAiChatModel(modelNode)) {
       return [
         await authoredOnlyCandidate(
           context,
           node,
           authored,
           "unsupported-model-node",
-          `The initial Basic LLM Chain importer supports only ${OPENAI_CHAT_MODEL_TYPE}@${OPENAI_CHAT_MODEL_VERSION}.`,
+          `The Basic LLM Chain importer supports only ${supportedOpenAiChatModelLabel()}.`,
           parentRunIndex,
         ),
       ];
@@ -1029,17 +1053,14 @@ function createAiAgentExtractor(version: number): N8nPromptExtractor {
         ];
       }
       const modelNode = connectedModels[0]!;
-      if (
-        modelNode.type !== OPENAI_CHAT_MODEL_TYPE ||
-        modelNode.typeVersion !== OPENAI_CHAT_MODEL_VERSION
-      ) {
+      if (!supportsOpenAiChatModel(modelNode)) {
         return [
           await authoredOnlyCandidate(
             context,
             node,
             authored,
             "unsupported-model-node",
-            `The initial AI Agent importer supports only ${OPENAI_CHAT_MODEL_TYPE}@${OPENAI_CHAT_MODEL_VERSION}.`,
+            `The AI Agent importer supports only ${supportedOpenAiChatModelLabel()}.`,
             parentRunIndex,
           ),
         ];
@@ -1233,6 +1254,10 @@ export async function extractN8nPromptCandidates(
   execution: N8nExecutionDetail,
   currentWorkflow?: N8nWorkflowDetail,
   extractors: readonly N8nPromptExtractor[] = defaultN8nPromptExtractors,
+  detailAvailability: N8nDetailAvailability =
+    execution.data === undefined || execution.data === null
+      ? "not-retained"
+      : "full",
 ): Promise<N8nPromptExtraction[]> {
   const fromExecution = executionWorkflowSnapshot(execution);
   const selectedWorkflow =
@@ -1251,6 +1276,7 @@ export async function extractN8nPromptCandidates(
     workflow,
     execution,
     workflowSnapshotSource: fromExecution ? "execution" : "current-workflow",
+    detailAvailability,
   };
   const results: N8nPromptExtraction[] = [];
   for (const node of workflow.nodes) {

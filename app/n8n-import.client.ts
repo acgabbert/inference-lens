@@ -104,7 +104,11 @@ const discoverySchema = z.discriminatedUnion("status", [
 const selectedExecutionSchema = z
   .object({
     execution: executionSchema,
-    detailAvailable: z.boolean(),
+    detailAvailability: z.enum([
+      "full",
+      "not-retained",
+      "omitted-response-too-large",
+    ]),
     discovery: discoverySchema,
     extractions: z.array(extractionSchema),
   })
