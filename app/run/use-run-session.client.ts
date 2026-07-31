@@ -7,9 +7,9 @@ import { createEntityId, createRunTrace, RunCoordinator, transcriptFromRunState 
 import type { ProviderExecution, ResolvedRunInput, RunState, RunTrace, ToolDefinition, ToolResult } from "../../packages/core/src/run-kernel";
 import { parseRunTraceJson, runStateFromTrace, traceFileName } from "../../packages/core/src/run-trace";
 import { randomUUID } from "../../packages/core/src/random-id";
-import { InferenceTransportError } from "../http-inference-transport.client";
 import { recordDiagnostic, redactDiagnosticValue, startDiagnosticCapture } from "../diagnostics.client";
 import type { DiagnosticCapture } from "../diagnostics.client";
+import { driveProviderTurn } from "./provider-turn-driver.client";
 import { exportRunTraceFile, runTraceWorkspaceLocation, runTraceWorkspacePath, saveRunTraceWorkspace } from "../project-workspace.client";
 import type { ProjectWorkspaceHandle } from "../project-workspace.client";
 import type { TraceStorageStatus } from "../response-output.client";
@@ -84,24 +84,28 @@ export function useRunSession(options: UseRunSessionOptions) {
   async function execute(execution: ProviderExecution, controller: AbortController, generation: number, capture: DiagnosticCapture): Promise<void> {
     const coordinator = coordinatorRef.current;
     if (!coordinator) throw new Error("Run coordinator is unavailable.");
-    try {
-      const credential = await options.prepareCredential();
-      const stream = await options.transport.executeTurn({ execution, credential }, controller.signal);
-      recordDiagnostic(capture, "client.response_received", { status: stream.status, headers: Object.fromEntries(stream.headers) });
-      for await (const event of stream.events) {
-        recordDiagnostic(capture, "client.ndjson_record_received", { raw: JSON.stringify(redactDiagnosticValue(event)), event });
-        if (requestGenerationRef.current !== generation) continue;
-        coordinator.accept(event); replaceState(coordinator.state);
-      }
-      if (requestGenerationRef.current !== generation) return;
-      coordinator.finishTurnStream(); replaceState(coordinator.state);
-      setToolResultDrafts(toolResultDraftsForState(coordinator.state, options.tools, options.mockForTool));
-    } catch (error) {
-      if (controller.signal.aborted || requestGenerationRef.current !== generation) throw error;
-      const status = error instanceof InferenceTransportError ? error.status : undefined;
-      coordinator.accept({ type: "failed", error: { code: error instanceof SyntaxError ? "protocol_error" : "transport_error", message: error instanceof Error ? error.message : "Request failed.", retryable: !(error instanceof SyntaxError) && (status === undefined || status === 408 || status === 429 || (status >= 500 && status <= 599)) } });
-      replaceState(coordinator.state);
+    const outcome = await driveProviderTurn({
+      coordinator,
+      execution,
+      transport: options.transport,
+      prepareCredential: options.prepareCredential,
+      signal: controller.signal,
+      isCurrent: () => requestGenerationRef.current === generation,
+      onStateChange: replaceState,
+      diagnostics: {
+        onResponseReceived: ({ status, headers }) => {
+          recordDiagnostic(capture, "client.response_received", { status, headers: Object.fromEntries(headers) });
+        },
+        onTransportEvent: (event) => {
+          recordDiagnostic(capture, "client.ndjson_record_received", { raw: JSON.stringify(redactDiagnosticValue(event)), event });
+        },
+      },
+    });
+    if (outcome === "superseded") return;
+    if (outcome === "aborted") {
+      throw new DOMException("The provider turn was interrupted.", "AbortError");
     }
+    setToolResultDrafts(toolResultDraftsForState(coordinator.state, options.tools, options.mockForTool));
   }
 
   async function start(input: ResolvedRunInput, context: RunSessionStartContext): Promise<void> {
