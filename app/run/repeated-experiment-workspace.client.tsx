@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from "react";
 
-import { repeatedExperimentAggregate } from "../../packages/core/src/experiment.ts";
+import {
+  finalAssistantOutput,
+  repeatedExperimentAggregate,
+} from "../../packages/core/src/experiment.ts";
 import type { RunId, RunState } from "../../packages/core/src/run-kernel/index.ts";
 import { runMetrics } from "../../packages/core/src/run-metrics.ts";
 import { formatDuration, formatRate, formatTokens } from "../run-metrics-format.client.ts";
@@ -25,6 +28,20 @@ function rowMetrics(state: RunState | undefined): string {
   if (!state || !["completed", "failed", "cancelled"].includes(state.status.kind)) return "—";
   const metrics = runMetrics(state);
   return `${formatDuration(metrics.totalDurationMs)} · ${formatTokens(metrics.usage.totalTokens)} tokens`;
+}
+
+const OUTPUT_PREVIEW_MAX_CHARACTERS = 240;
+
+function outputPreview(state: RunState | undefined): string | undefined {
+  if (state?.status.kind !== "completed") return undefined;
+  const output = finalAssistantOutput(state);
+  if (output === undefined) return undefined;
+  const normalized = output.replace(/\s+/g, " ").trim();
+  if (!normalized) return "No text output";
+  const characters = Array.from(normalized);
+  return characters.length > OUTPUT_PREVIEW_MAX_CHARACTERS
+    ? `${characters.slice(0, OUTPUT_PREVIEW_MAX_CHARACTERS).join("")}…`
+    : normalized;
 }
 
 function range(label: string, values: { count: number; min?: number; median?: number; max?: number }, formatter: (value?: number) => string) {
@@ -125,6 +142,7 @@ export function RepeatedExperimentWorkspace({
           const isActive = activeOrdinal === cell.ordinal;
           const status = isActive ? "running" : rowStatus(execution, cell.runId);
           const isSelected = execution.selectedRunId === cell.runId;
+          const preview = outputPreview(state);
           return (
             <article
               aria-current={isSelected ? "true" : undefined}
@@ -134,6 +152,7 @@ export function RepeatedExperimentWorkspace({
               <div><strong>Repetition {cell.ordinal}</strong><span className={`run-history-status ${status}`}>{isActive && <span className="experiment-row-activity-dot" aria-hidden="true" />}{status}</span></div>
               <span className="repeated-experiment-row-metrics">{rowMetrics(state)}</span>
               {trace ? <button className="text-button" type="button" onClick={() => onOpenTrace(cell.runId)}>Open Response &amp; Inspect</button> : <span className="repeated-experiment-row-pending">{status === "queued" ? "Waiting" : "Trace unavailable"}</span>}
+              {preview !== undefined && <p className="repeated-experiment-output-preview"><span>Output ready</span>{preview}</p>}
             </article>
           );
         })}

@@ -546,7 +546,8 @@ function usage(values: Array<number | undefined>): ExperimentUsageAggregate {
   };
 }
 
-function finalAssistantOutput(state: RunState): string | undefined {
+/** Returns the final successfully completed assistant text for a run. */
+export function finalAssistantOutput(state: RunState): string | undefined {
   for (const turn of [...state.turns].reverse()) {
     const attempt = [...turn.attempts].reverse().find((candidate) => candidate.status === "completed");
     if (attempt) return attempt.text;
