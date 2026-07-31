@@ -302,6 +302,32 @@ test("emits immutable progress snapshots with finished terminal-cell counts", as
   });
 });
 
+test("progress keeps the parsed schedule when the caller mutates its source plan", async () => {
+  const sourcePlan = plan(2);
+  const firstTraceStarted = deferred();
+  const releaseFirstTrace = deferred();
+  const requested: number[] = [];
+  const controller = new RepeatedExperimentController({
+    plan: sourcePlan,
+    transport: transportFor((runId) => events(completed(runId))),
+    async prepareCredential() { return { kind: "none" }; },
+    onProgress(progress) { requested.push(progress.requested); },
+    async onTerminalTrace(_trace, cell) {
+      if (cell.ordinal !== 1) return;
+      sourcePlan.cells.pop();
+      firstTraceStarted.resolve();
+      await releaseFirstTrace.promise;
+    },
+  });
+
+  const pending = controller.run();
+  await firstTraceStarted.promise;
+  releaseFirstTrace.resolve();
+  await pending;
+
+  assert.deepEqual(requested, Array(requested.length).fill(2));
+});
+
 test("a terminal-trace persistence failure deliberately interrupts the experiment", async () => {
   const started: string[] = [];
   let savedPlans = 0;

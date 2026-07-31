@@ -63,6 +63,7 @@ export class RepeatedExperimentController {
   private readonly options: RepeatedExperimentControllerOptions;
   private readonly states = new Map<RunId, RunState>();
   private activeAbortController: AbortController | undefined;
+  private frozenPlan: RepeatedExperimentPlanV1 | undefined;
   private cancellationRequested = false;
   private running = false;
   private hasRun = false;
@@ -88,6 +89,7 @@ export class RepeatedExperimentController {
     // Parse before any observable work, including optional persistence. This
     // keeps durable and ad hoc experiments on the same validation boundary.
     const plan = parseExperimentPlanFile(this.options.plan);
+    this.frozenPlan = plan;
     if (plan.commonInput.tools.length > 0) {
       throw new Error("Repeated experiments do not support tools yet.");
     }
@@ -227,9 +229,11 @@ export class RepeatedExperimentController {
   }
 
   private emitRunning(finished: number, currentOrdinal?: number): void {
+    const plan = this.frozenPlan;
+    if (!plan) throw new Error("The experiment plan has not been frozen.");
     this.emit({
       status: "running",
-      requested: this.options.plan.cells.length,
+      requested: plan.cells.length,
       finished,
       currentOrdinal,
       states: this.states,
