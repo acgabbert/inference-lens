@@ -1,7 +1,8 @@
 import type { CredentialSelection, ProviderTurnTransport } from "../../packages/contracts/src";
 import {
-  materializeExperimentCellInput,
-  serializeExperimentPlan,
+  materializeParsedExperimentCellInput,
+  parseExperimentPlanFile,
+  serializeParsedExperimentPlan,
   serializeExperimentResult,
 } from "../../packages/core/src/experiment.ts";
 import type {
@@ -19,7 +20,7 @@ export interface RepeatedExperimentProgress {
   status: "running" | "completed" | "cancelled";
   requested: number;
   /** Cells that reached a terminal run status; queued `not-run` cells are excluded. */
-  completed: number;
+  finished: number;
   currentOrdinal?: number;
   /** Started cells only, keyed by their preallocated ordinary run ID. */
   states: ReadonlyMap<RunId, RunState>;
@@ -34,7 +35,11 @@ export interface RepeatedExperimentControllerOptions {
   /** Must durably save the final result before resolving. Omit for an ad hoc session experiment. */
   saveResult?(result: ExperimentResultV1, serialized: string): Promise<void>;
   onProgress?(progress: RepeatedExperimentProgress): void;
-  /** Invoked exactly once for every started cell after it reaches a terminal state. */
+  /**
+   * Invoked exactly once for every started cell after it reaches a terminal state.
+   * A rejection deliberately interrupts the experiment: no later cells start and
+   * no result is saved, leaving the durable plan as an interrupted experiment.
+   */
   onTerminalTrace?(trace: RunTrace, cell: RepeatedExperimentCell): Promise<void> | void;
 }
 
@@ -70,9 +75,9 @@ export class RepeatedExperimentController {
     return this.running;
   }
 
-  /** Stops the active request, if any, and prevents all later cells from starting. */
+  /** Prevents execution before start, or stops the active request and later cells. */
   cancel(): void {
-    if (!this.running) return;
+    if (this.hasRun && !this.running) return;
     this.cancellationRequested = true;
     this.activeAbortController?.abort();
   }
@@ -80,22 +85,25 @@ export class RepeatedExperimentController {
   async run(): Promise<ExperimentResultV1> {
     if (this.running) throw new Error("The experiment is already running.");
     if (this.hasRun) throw new Error("The experiment has already run.");
-    if (this.options.plan.commonInput.tools.length > 0) {
+    // Parse before any observable work, including optional persistence. This
+    // keeps durable and ad hoc experiments on the same validation boundary.
+    const plan = parseExperimentPlanFile(this.options.plan);
+    if (plan.commonInput.tools.length > 0) {
       throw new Error("Repeated experiments do not support tools yet.");
     }
 
     this.running = true;
-    const { plan } = this.options;
     try {
       // This is intentionally awaited before even credential acquisition can begin.
-      await this.options.savePlan?.(plan, serializeExperimentPlan(plan));
+      const serializedPlan = serializeParsedExperimentPlan(plan);
+      if (this.options.savePlan) await this.options.savePlan(plan, serializedPlan);
       this.hasRun = true;
 
       const cells: ExperimentResultV1["cells"] = [];
       this.emitRunning(cells.length);
       for (const cell of plan.cells) {
         if (this.cancellationRequested) break;
-        await this.runCell(cell, cells);
+        await this.runCell(cell, cells, plan);
         if (this.cancellationRequested) break;
       }
 
@@ -113,11 +121,14 @@ export class RepeatedExperimentController {
         endedAt: new Date().toISOString(),
         cells,
       };
-      await this.options.saveResult?.(result, serializeExperimentResult(result, plan));
+      // Serialize unconditionally so ad hoc results cross the same strict
+      // result-validation boundary as durable results.
+      const serializedResult = serializeExperimentResult(result, plan);
+      if (this.options.saveResult) await this.options.saveResult(result, serializedResult);
       this.emit({
         status: result.status,
         requested: plan.cells.length,
-        completed: this.terminalCellCount(cells),
+        finished: this.terminalCellCount(cells),
         states: this.states,
       });
       return result;
@@ -130,8 +141,9 @@ export class RepeatedExperimentController {
   private async runCell(
     cell: RepeatedExperimentCell,
     cells: ExperimentResultV1["cells"],
+    plan: RepeatedExperimentPlanV1,
   ): Promise<void> {
-    const input = materializeExperimentCellInput(this.options.plan, cell.cellId);
+    const input = materializeParsedExperimentCellInput(plan, cell);
     const coordinator = new RunCoordinator(input);
     const command = coordinator.start();
     const controller = new AbortController();
@@ -154,6 +166,10 @@ export class RepeatedExperimentController {
         },
       });
       if (outcome === "aborted") {
+        // The supported transports emit a cancelled event before throwing when
+        // this controller's signal is aborted. Today this signal is aborted
+        // only by cancel(), so an aborted outcome intentionally ends the whole
+        // experiment. Revisit this if providers gain independent cancellation.
         coordinator.cancel("Stopped by user.");
         this.cancellationRequested = true;
       } else if (outcome === "superseded") {
@@ -195,18 +211,26 @@ export class RepeatedExperimentController {
     cells.push({ cellId: cell.cellId, runId: cell.runId, status: terminal.kind });
     if (terminal.kind === "cancelled") this.cancellationRequested = true;
     this.emitRunning(this.terminalCellCount(cells), cell.ordinal);
-    await this.options.onTerminalTrace?.(createRunTrace(coordinator.state), cell);
+    try {
+      await this.options.onTerminalTrace?.(createRunTrace(coordinator.state), cell);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Unknown error";
+      throw new Error(
+        `The experiment was interrupted because terminal trace ${cell.runId} could not be saved: ${detail}`,
+        { cause: error },
+      );
+    }
   }
 
   private terminalCellCount(cells: ExperimentResultV1["cells"]): number {
     return cells.filter((cell) => cell.status !== "not-run").length;
   }
 
-  private emitRunning(completed: number, currentOrdinal?: number): void {
+  private emitRunning(finished: number, currentOrdinal?: number): void {
     this.emit({
       status: "running",
       requested: this.options.plan.cells.length,
-      completed,
+      finished,
       currentOrdinal,
       states: this.states,
     });

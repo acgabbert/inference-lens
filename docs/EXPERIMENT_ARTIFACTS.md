@@ -15,7 +15,10 @@ optional terminal result records only the terminal experiment status and each
 cell’s disposition. Run evidence, including output, events, timing, usage,
 retries, and tool calls, remains in the referenced immutable trace.
 
-An existing plan with no result represents an interrupted experiment. A result
+An existing plan with no result represents an interrupted experiment. This
+includes an application crash and a failed terminal-trace write: the controller
+stops scheduling, does not write a result that would claim clean completion or
+user cancellation, and reports the persistence failure to its caller. A result
 whose trace has been removed remains valid; consumers must surface that cell as
 `trace missing` instead of rejecting the artifact.
 

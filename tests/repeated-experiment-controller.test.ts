@@ -6,6 +6,8 @@ import { OPENAI_COMPATIBLE_CAPABILITIES } from "../packages/core/src/types.ts";
 import type { RepeatedExperimentPlanV1 } from "../packages/core/src/experiment.ts";
 import type { ProviderTransportEvent, RunTrace } from "../packages/core/src/run-kernel/index.ts";
 import { RepeatedExperimentController } from "../app/run/repeated-experiment-controller.client.ts";
+import { createExperimentWorkspacePersistence } from "../app/run/experiment-workspace-persistence.client.ts";
+import type { ProjectWorkspaceHandle } from "../app/project-workspace.client.ts";
 
 function plan(count: number): RepeatedExperimentPlanV1 {
   return {
@@ -237,4 +239,145 @@ test("does not call a provider before a durable plan save succeeds and saves the
     "plan", "provider:run_1", "trace:run_1",
     "provider:run_2", "trace:run_2", "result",
   ]);
+});
+
+test("validates ad hoc plans before progress or provider work", async () => {
+  const invalid = plan(2);
+  invalid.cells[1]!.runId = invalid.cells[0]!.runId;
+  let providerCalls = 0;
+  const progress: unknown[] = [];
+  const controller = new RepeatedExperimentController({
+    plan: invalid,
+    transport: transportFor(() => {
+      providerCalls += 1;
+      return events(completed("unexpected"));
+    }),
+    async prepareCredential() { return { kind: "none" }; },
+    onProgress(snapshot) { progress.push(snapshot); },
+  });
+
+  await assert.rejects(() => controller.run(), /repeats run/);
+  assert.equal(providerCalls, 0);
+  assert.deepEqual(progress, []);
+});
+
+test("emits immutable progress snapshots with finished terminal-cell counts", async () => {
+  const snapshots: Array<{
+    status: string;
+    requested: number;
+    finished: number;
+    currentOrdinal?: number;
+    states: Array<[string, string]>;
+  }> = [];
+  const result = await new RepeatedExperimentController({
+    plan: plan(2),
+    transport: transportFor((runId) => events(completed(runId))),
+    async prepareCredential() { return { kind: "none" }; },
+    onProgress(progress) {
+      snapshots.push({
+        status: progress.status,
+        requested: progress.requested,
+        finished: progress.finished,
+        ...(progress.currentOrdinal === undefined ? {} : { currentOrdinal: progress.currentOrdinal }),
+        states: [...progress.states].map(([runId, state]) => [runId, state.status.kind]),
+      });
+    },
+  }).run();
+
+  assert.equal(result.status, "completed");
+  assert.deepEqual(snapshots[0], {
+    status: "running", requested: 2, finished: 0, states: [],
+  });
+  assert.ok(snapshots.some((snapshot) =>
+    snapshot.status === "running"
+    && snapshot.finished === 1
+    && snapshot.currentOrdinal === 1
+    && snapshot.states[0]?.[1] === "completed",
+  ));
+  assert.deepEqual(snapshots.at(-1), {
+    status: "completed",
+    requested: 2,
+    finished: 2,
+    states: [["run_1", "completed"], ["run_2", "completed"]],
+  });
+});
+
+test("a terminal-trace persistence failure deliberately interrupts the experiment", async () => {
+  const started: string[] = [];
+  let savedPlans = 0;
+  let savedResults = 0;
+  const controller = new RepeatedExperimentController({
+    plan: plan(3),
+    transport: transportFor((runId) => events(completed(runId)), started),
+    async prepareCredential() { return { kind: "none" }; },
+    async savePlan() { savedPlans += 1; },
+    async saveResult() { savedResults += 1; },
+    async onTerminalTrace() { throw new Error("Trace disk full"); },
+  });
+
+  await assert.rejects(
+    () => controller.run(),
+    /interrupted because terminal trace run_1 could not be saved: Trace disk full/,
+  );
+  assert.deepEqual(started, ["run_1"]);
+  assert.equal(savedPlans, 1);
+  assert.equal(savedResults, 0);
+});
+
+test("a cancellation requested before run saves a cancelled no-provider result", async () => {
+  let providerCalls = 0;
+  const saved: string[] = [];
+  const controller = new RepeatedExperimentController({
+    plan: plan(2),
+    transport: transportFor(() => {
+      providerCalls += 1;
+      return events(completed("unexpected"));
+    }),
+    async prepareCredential() { return { kind: "none" }; },
+    async savePlan() { saved.push("plan"); },
+    async saveResult() { saved.push("result"); },
+  });
+
+  controller.cancel();
+  const result = await controller.run();
+
+  assert.equal(providerCalls, 0);
+  assert.deepEqual(saved, ["plan", "result"]);
+  assert.equal(result.status, "cancelled");
+  assert.deepEqual(result.cells.map((cell) => cell.status), ["not-run", "not-run"]);
+});
+
+test("workspace persistence binds plans, terminal traces, and results to PR2 helpers", async () => {
+  const artifacts = new Map<string, string>();
+  const traces = new Map<string, string>();
+  const workspace: ProjectWorkspaceHandle = {
+    kind: "browser-directory",
+    displayName: "Experiment test",
+    displayPath: "Experiment test",
+    storage: {
+      async save() {},
+      async saveTrace(_runId, fileName, contents) { traces.set(fileName, contents); },
+      async listTraces() { return []; },
+      async readTrace() { throw new Error("not used"); },
+      async saveExperimentArtifact(fileName, contents) { artifacts.set(fileName, contents); },
+      async listExperimentArtifacts() { return []; },
+      async readExperimentArtifact() { throw new Error("not used"); },
+    },
+  };
+  const frozenPlan = plan(2);
+  const result = await new RepeatedExperimentController({
+    plan: frozenPlan,
+    transport: transportFor((runId) => events(completed(runId))),
+    async prepareCredential() { return { kind: "none" }; },
+    ...createExperimentWorkspacePersistence(workspace, frozenPlan),
+  }).run();
+
+  assert.equal(result.status, "completed");
+  assert.deepEqual([...artifacts.keys()].sort(), [
+    "experiment_controller.plan.json",
+    "experiment_controller.result.json",
+  ]);
+  assert.deepEqual([...traces.keys()].sort(), ["run_1.json", "run_2.json"]);
+  assert.match(artifacts.get("experiment_controller.plan.json")!, /"kind": "repeated-request"/);
+  assert.match(artifacts.get("experiment_controller.result.json")!, /"status": "completed"/);
 });
