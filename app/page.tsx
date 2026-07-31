@@ -70,6 +70,9 @@ import {
   type WorkbenchBranchContext,
 } from "./run/prepare-workbench-run.client";
 import { useRunSession } from "./run/use-run-session.client";
+import { useRepeatedExperimentSession } from "./run/use-repeated-experiment-session.client";
+import { RepeatedExperimentDialog } from "./run/repeated-experiment-dialog.client";
+import { RepeatedExperimentWorkspace } from "./run/repeated-experiment-workspace.client";
 import { useProjectTemplates } from "./templates/use-project-templates.client";
 import { RequestComposer } from "./request/request-composer.client";
 
@@ -311,6 +314,13 @@ function HomeContent() {
   });
   const { runState, isRequestActive, toolResultDrafts, traceStorage,
     hasDiagnosticCapture, visibleBranchProvenance, parentTrace, transcript } = runSession;
+  const repeatedExperiment = useRepeatedExperimentSession({
+    transport: inferenceTransport,
+    prepareCredential: credential.prepare,
+    onTraceSaved() { setSavedRunVersion((current) => current + 1); },
+    onError(message) { project.setError(message, { clearKind: true }); },
+    onOpenTrace(trace, origin) { runSession.adoptTrace(trace, origin); },
+  });
   const [sessionModel, setSessionModel] = useState<string>();
   const [sessionTemperature, setSessionTemperature] = useState<number>();
   const adHocConversationIdRef = useRef<ConversationId | null>(null);
@@ -650,6 +660,7 @@ function HomeContent() {
   }
 
   async function run() {
+    repeatedExperiment.clear();
     project.clearErrorKind();
     if (projectFile && mappedProfileId !== activeProfile.id) {
       project.setError(
@@ -701,6 +712,54 @@ function HomeContent() {
     });
     clearRequestTools();
     await sessionStart;
+  }
+
+  function repeat(): void {
+    project.clearErrorKind();
+    if (selectedToolCount > 0) {
+      project.setError("Repeated experiments do not support tools yet. Run this request normally instead.");
+      return;
+    }
+    if (projectFile && mappedProfileId !== activeProfile.id) {
+      project.setError(
+        mappedProfileId
+          ? "Activate this project's mapped connection before running."
+          : "Map this project's connection to a local profile before running.",
+      );
+      return;
+    }
+    const requestSnapshot = currentRequest();
+    const prepared = prepareWorkbenchRun({
+      request: requestSnapshot,
+      project: projectFile ?? undefined,
+      projectTools: resolvedTools(),
+      requestTools,
+      capabilities: activeCapabilities,
+      profileName: activeProfile.name,
+      branchContext: branchContext ?? undefined,
+      templateRunOverrides: projectTemplates.templateRunOverrides,
+      adHocConversationId: adHocConversationIdRef.current ?? undefined,
+    });
+    if (!prepared.ok) {
+      if (prepared.errorKind === "tools-disabled") project.setToolsDisabledError(prepared.message);
+      else project.setError(prepared.message);
+      return;
+    }
+    const input = {
+      ...prepared.input,
+      target: {
+        ...prepared.input.target,
+        profileId: createEntityId("profile", activeProfile.id),
+      },
+    };
+    repeatedExperiment.begin(input, activeProfile.name || "Untitled profile", () => {
+      if (prepared.projectMutation) project.adoptBranchRevision(prepared.projectMutation);
+      if (prepared.executedRevisionId) projectTemplates.markExecutedRevision(prepared.executedRevisionId);
+      if (prepared.adHocConversationId) adHocConversationIdRef.current = prepared.adHocConversationId;
+      if (prepared.consumesPendingBranch) setBranchContext(null);
+      clearRequestTools();
+      setWorkbenchView("response");
+    });
   }
 
   async function continueRun(): Promise<void> {
@@ -813,7 +872,7 @@ function HomeContent() {
         if (
           (event.metaKey || event.ctrlKey) &&
           event.key === "Enter" &&
-          !isRequestActive
+          !isRequestActive && !repeatedExperiment.isRunning
         ) {
           event.preventDefault();
           if (readiness?.blocked) return;
@@ -839,8 +898,9 @@ function HomeContent() {
         hasDiagnosticCapture={hasDiagnosticCapture}
         hasRunTrace={runReachedTerminalStatus}
         hasProjectWorkspace={Boolean(projectWorkspace)}
-        runHistoryBlocked={Boolean(runState) && !runReachedTerminalStatus}
+        runHistoryBlocked={(Boolean(runState) && !runReachedTerminalStatus) || repeatedExperiment.isRunning}
         isRequestActive={isRequestActive}
+        isExperimentActive={repeatedExperiment.isRunning}
         awaitingToolResults={runState?.status.kind === "awaiting_tool_results"}
         retryableFailure={
           runState?.status.kind === "paused" &&
@@ -848,6 +908,12 @@ function HomeContent() {
         }
         runDisabled={Boolean(readiness?.blocked)}
         runDisabledReason={readiness?.blocked ? readiness.summary : undefined}
+        repeatDisabled={Boolean(readiness?.blocked) || selectedToolCount > 0}
+        repeatDisabledReason={readiness?.blocked
+          ? readiness.summary
+          : selectedToolCount > 0
+            ? "Repeated experiments do not support tools yet."
+            : undefined}
         onChooseProfile={chooseProfile}
         onOpenConnections={() => setConnectionDrawerOpen(true)}
         onNewProject={() => setProjectCreationMode("new")}
@@ -866,7 +932,9 @@ function HomeContent() {
         }}
         onOpenRunHistory={() => setRunHistoryOpen(true)}
         onStop={stop}
+        onStopExperiment={repeatedExperiment.cancel}
         onRun={() => void run()}
+        onRepeat={repeat}
         onContinue={() => void continueRun()}
         onRetry={() => void retryRun()}
       />
@@ -1054,7 +1122,11 @@ function HomeContent() {
         }
         response={
         <section className="result">
-          <ResponseOutput
+          {repeatedExperiment.execution?.showWorkspace ? <RepeatedExperimentWorkspace
+            execution={repeatedExperiment.execution}
+            onStop={repeatedExperiment.cancel}
+            onOpenTrace={repeatedExperiment.openTrace}
+          /> : <ResponseOutput
             output={output}
             reasoning={reasoning}
             status={status}
@@ -1083,7 +1155,7 @@ function HomeContent() {
                 resolveReadiness(responseEmptyState.action.destination);
               }
             }}
-          />
+          />}
 
         </section>
         }
@@ -1132,6 +1204,14 @@ function HomeContent() {
               void project.saveProject(options);
             }
           }}
+        />
+      )}
+      {repeatedExperiment.draft && (
+        <RepeatedExperimentDialog
+          draft={repeatedExperiment.draft}
+          onCountChange={repeatedExperiment.setRepetitionCount}
+          onCancel={repeatedExperiment.dismissDialog}
+          onConfirm={() => void repeatedExperiment.confirm(projectWorkspace)}
         />
       )}
       {confirmation && (
