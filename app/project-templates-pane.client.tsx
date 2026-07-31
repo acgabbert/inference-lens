@@ -601,6 +601,18 @@ function effectiveValueLabel(value: string): string {
   return value.length ? value : "(empty)";
 }
 
+/**
+ * A collapsed variable row has one line to say what the value currently is, so
+ * the value is flattened to a single line and clipped. The full text stays
+ * available in the row's editor.
+ */
+function glanceLabel(value: string | undefined): string {
+  if (value === undefined) return "Not set";
+  if (!value.length) return "(empty)";
+  const singleLine = value.replace(/\s+/g, " ").trim();
+  return singleLine.length > 72 ? `${singleLine.slice(0, 72)}…` : singleLine;
+}
+
 function importProvenanceLabel(receipt: ExternalImportReceipt): string {
   const source = receipt.source.adapter.toLowerCase().includes("n8n")
     ? "n8n"
@@ -661,7 +673,19 @@ function TemplateContentPreview({
   );
 }
 
-export function TemplateUseCard({
+export function TemplateUseCard(props: TemplateUseCardProps) {
+  // A pinned revision defines the preview, variable set, defaults, and which
+  // rows block a run. Treat it as the identity boundary for this card's local
+  // summary state so a newly blocking row receives the normal open policy.
+  return (
+    <TemplateUseCardRevision
+      key={props.use.templateRevisionId}
+      {...props}
+    />
+  );
+}
+
+function TemplateUseCardRevision({
   use,
   template,
   diagnostics,
@@ -675,6 +699,9 @@ export function TemplateUseCard({
   onRemove,
 }: TemplateUseCardProps) {
   const [previewView, setPreviewView] = useState<"template" | "resolved">("template");
+  const [previewExpanded, setPreviewExpanded] = useState(false);
+  const [variableFilter, setVariableFilter] = useState("");
+  const [attentionOnly, setAttentionOnly] = useState(false);
   const revision = template.revisions.find(({ id }) => id === use.templateRevisionId)!;
   const discovery = discoverTemplateVariables(revision.content);
   const effectiveValues = resolveTemplateValues(
@@ -693,6 +720,72 @@ export function TemplateUseCard({
   const missingDiagnosticCount = uniqueDiagnostics.filter(
     ({ code }) => code === "missing-template-variable",
   ).length;
+  const reportedMissing = new Set(
+    uniqueDiagnostics.flatMap((diagnostic) =>
+      diagnostic.code === "missing-template-variable" ? [diagnostic.name] : [],
+    ),
+  );
+
+  const rows = discovery.variables.map((variable) => {
+    const sensitive = isSensitiveTemplateVariableName(variable.name);
+    const saved = Object.hasOwn(use.values, variable.name);
+    const overridden = Object.hasOwn(runOverrides, variable.name);
+    const defaulted = Object.hasOwn(revision.variableDefaults, variable.name);
+    const needsValue = !saved && !overridden && !defaulted;
+    return {
+      variable,
+      sensitive,
+      saved,
+      overridden,
+      defaulted,
+      needsValue,
+      effective: effectiveValues[variable.name],
+      valueSource: overridden
+        ? "Session override"
+        : saved
+          ? "Saved in project"
+          : defaulted
+            ? "Template default"
+            : "Needs a value",
+      // A row that blocks the run is never collapsed by default and never
+      // hidden by a filter: run readiness deep-links to exactly these fields,
+      // so they have to stay reachable whatever the card is filtered to.
+      blocking: sensitive || needsValue || reportedMissing.has(variable.name),
+    };
+  });
+  const [openVariables, setOpenVariables] = useState<Record<string, boolean>>(
+    () =>
+      Object.fromEntries(
+        rows.flatMap(({ variable, blocking }) =>
+          blocking ? [[variable.name, true] as const] : [],
+        ),
+      ),
+  );
+  const attentionCount = rows.filter(({ blocking }) => blocking).length;
+  const overrideCount = rows.filter(({ overridden }) => overridden).length;
+  const query = variableFilter.trim().toLowerCase();
+  const visibleRows = rows.filter(
+    (row) =>
+      row.blocking ||
+      (!attentionOnly &&
+        (!query || row.variable.name.toLowerCase().includes(query))),
+  );
+  const hiddenCount = rows.length - visibleRows.length;
+  // Below this a stack of expanded rows is still readable, and the controls
+  // would cost more attention than they save.
+  const dense = rows.length > 3;
+  const allVisibleOpen =
+    visibleRows.length > 0 &&
+    visibleRows.every(({ variable }) => openVariables[variable.name]);
+
+  function setAllVisible(open: boolean): void {
+    setOpenVariables((current) => ({
+      ...current,
+      ...Object.fromEntries(
+        visibleRows.map(({ variable }) => [variable.name, open]),
+      ),
+    }));
+  }
 
   function updateRecord(
     current: Readonly<Record<string, string>>,
@@ -772,37 +865,120 @@ export function TemplateUseCard({
               Resolved
             </button>
           </div>
+          <button
+            aria-expanded={previewExpanded}
+            className="text-button"
+            type="button"
+            onClick={() => setPreviewExpanded((expanded) => !expanded)}
+          >
+            {previewExpanded ? "Collapse" : "Expand"}
+          </button>
         </div>
-        <TemplateContentPreview
-          content={revision.content}
-          values={effectiveValues}
-          view={previewView}
-        />
+        <div
+          className={
+            previewExpanded
+              ? "template-preview-body"
+              : "template-preview-body clamped"
+          }
+        >
+          <TemplateContentPreview
+            content={revision.content}
+            values={effectiveValues}
+            view={previewView}
+          />
+        </div>
       </section>
 
       <div className="template-use-values">
-        {discovery.variables.map((variable) => {
-          const sensitive = isSensitiveTemplateVariableName(variable.name);
-          const saved = Object.hasOwn(use.values, variable.name);
-          const overridden = Object.hasOwn(runOverrides, variable.name);
-          const defaulted = Object.hasOwn(revision.variableDefaults, variable.name);
-          const effective = effectiveValues[variable.name];
-          const valueSource = overridden
-            ? "Session override"
-            : saved
-              ? "Saved in project"
-              : defaulted
-                ? "Template default"
-                : "Needs a value";
-          return (
-            <div className="template-use-variable" key={variable.name}>
-              <div className="template-use-variable-heading">
-                <code>{`{{${variable.name}}}`}</code>
-                <small>
-                  {variable.occurrences.length} location
-                  {variable.occurrences.length === 1 ? "" : "s"}
-                </small>
+        {rows.length > 0 && (
+          <div className="template-values-heading">
+            <div className="template-values-summary">
+              <strong>
+                {rows.length} variable{rows.length === 1 ? "" : "s"}
+              </strong>
+              {attentionCount > 0 && (
+                <span className="template-values-attention">
+                  {attentionCount} need{attentionCount === 1 ? "s" : ""} attention
+                </span>
+              )}
+              {overrideCount > 0 && (
+                <span>
+                  {overrideCount} session override
+                  {overrideCount === 1 ? "" : "s"}
+                </span>
+              )}
+            </div>
+            {dense && (
+              <div className="template-values-controls">
+                <input
+                  aria-label={`Filter ${template.name} variables`}
+                  placeholder="Filter variables"
+                  type="search"
+                  value={variableFilter}
+                  onChange={(event) => setVariableFilter(event.target.value)}
+                />
+                <label className="template-values-attention-toggle">
+                  <input
+                    checked={attentionOnly}
+                    type="checkbox"
+                    onChange={(event) => setAttentionOnly(event.target.checked)}
+                  />
+                  Needs attention only
+                </label>
+                <button
+                  className="text-button"
+                  type="button"
+                  onClick={() => setAllVisible(!allVisibleOpen)}
+                >
+                  {allVisibleOpen ? "Collapse all" : "Expand all"}
+                </button>
               </div>
+            )}
+          </div>
+        )}
+        {visibleRows.map(({
+          variable,
+          sensitive,
+          saved,
+          overridden,
+          effective,
+          valueSource,
+          blocking,
+        }) => {
+          return (
+            <details
+              className={
+                blocking
+                  ? "template-use-variable attention"
+                  : "template-use-variable"
+              }
+              key={variable.name}
+              open={openVariables[variable.name] ?? false}
+              onToggle={(event) => {
+                // The updater runs after the event is done with, so the new
+                // state has to be read while the target is still attached.
+                const open = event.currentTarget.open;
+                setOpenVariables((current) => ({
+                  ...current,
+                  [variable.name]: open,
+                }));
+              }}
+            >
+              <summary className="template-use-variable-heading">
+                <code>{`{{${variable.name}}}`}</code>
+                <span className="template-variable-glance">
+                  {sensitive ? "Cannot be given a value" : glanceLabel(effective)}
+                </span>
+                <small
+                  className={
+                    blocking
+                      ? "template-variable-source attention"
+                      : "template-variable-source"
+                  }
+                >
+                  {sensitive ? "Secret-like name" : valueSource}
+                </small>
+              </summary>
               {sensitive ? (
                 <div className="template-diagnostic">
                   Secret-like variables cannot receive portable or run-only
@@ -833,7 +1009,10 @@ export function TemplateUseCard({
                     />
                   </label>
                   <div className="template-run-value-footer">
-                    <small>{valueSource}</small>
+                    <small>
+                      {valueSource} · {variable.occurrences.length} location
+                      {variable.occurrences.length === 1 ? "" : "s"}
+                    </small>
                     <div className="template-run-value-actions">
                       {overridden && (
                         <>
@@ -883,9 +1062,15 @@ export function TemplateUseCard({
                   </div>
                 </div>
               )}
-            </div>
+            </details>
           );
         })}
+        {hiddenCount > 0 && (
+          <p className="template-values-hidden" role="status">
+            {hiddenCount} variable{hiddenCount === 1 ? "" : "s"} hidden by the
+            current filter.
+          </p>
+        )}
       </div>
     </article>
   );

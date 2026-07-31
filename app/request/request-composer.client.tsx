@@ -138,6 +138,11 @@ export function RequestComposer({
                   ) ?? null
               : null;
     if (!target) return;
+    // A variable row can be collapsed. Opening it through the DOM property
+    // fires the toggle event the card listens to, so its own state stays in
+    // step with what is now on screen.
+    const disclosure = target.closest?.("details");
+    if (disclosure && !disclosure.open) disclosure.open = true;
     target.scrollIntoView?.({ block: "center" });
     target.focus();
     onDestinationHandled();
