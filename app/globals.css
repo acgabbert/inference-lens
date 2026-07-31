@@ -359,6 +359,7 @@ pre,
 .run-history-item > span,
 .run-history-item code,
 .run-history-status,
+.experiment-elapsed,
 .app-error-mark,
 .brand-mark,
 .privacy-note span,
@@ -2458,6 +2459,202 @@ output {
   margin: 8px 0 0;
   color: var(--text-muted);
   line-height: 1.5;
+}
+
+.repeated-experiment-dialog {
+  width: min(640px, 100%);
+}
+
+.repeat-experiment-details {
+  margin-top: 1rem;
+}
+
+.repeat-experiment-details code {
+  overflow-wrap: anywhere;
+}
+
+.repeat-experiment-call-count {
+  margin-top: 1rem !important;
+}
+
+.repeated-experiment-workspace {
+  display: grid;
+  gap: 1rem;
+  min-height: 100%;
+  padding: 1.25rem;
+}
+
+.repeated-experiment-workspace.experiment-context-pane {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  align-content: start;
+  background: var(--surface-panel);
+  overscroll-behavior: contain;
+}
+
+.repeated-experiment-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.repeated-experiment-header h2 {
+  margin: 0.2rem 0 0;
+}
+
+.repeated-experiment-header p {
+  margin: 0.35rem 0 0;
+  color: var(--text-muted);
+}
+
+.experiment-elapsed {
+  padding: 2px 7px;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  background: var(--surface-inset);
+  color: var(--text-secondary);
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+.experiment-progress {
+  width: 100%;
+  height: 7px;
+  border: 0;
+  border-radius: 999px;
+  overflow: hidden;
+  accent-color: var(--accent-solid);
+  background: var(--surface-inset);
+}
+
+.repeated-experiment-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.repeated-experiment-notice {
+  margin: 0;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  color: var(--text-muted);
+  background: var(--surface-translucent);
+}
+
+.repeated-experiment-notice.error {
+  border-color: var(--danger-border);
+  color: var(--danger);
+  background: var(--danger-surface);
+}
+
+.repeated-experiment-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin: 0;
+}
+
+.repeated-experiment-summary > div {
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--surface-translucent);
+}
+
+.repeated-experiment-summary dt {
+  color: var(--text-muted);
+}
+
+.repeated-experiment-summary dd {
+  margin: 0.25rem 0 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.repeated-experiment-rows {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.repeated-experiment-row {
+  display: grid;
+  grid-template-columns: minmax(9rem, 1fr) minmax(10rem, 1fr) auto;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.8rem;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+}
+
+.repeated-experiment-row.active {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+.repeated-experiment-row.selected {
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent-solid);
+}
+
+.experiment-context-pane .repeated-experiment-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.experiment-context-pane .repeated-experiment-row-metrics {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+.repeated-experiment-row > div {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.repeated-experiment-row > span {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.repeated-experiment-row-pending {
+  text-align: right;
+}
+
+.run-history-status.running {
+  display: inline-flex;
+  align-items: center;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.experiment-row-activity-dot {
+  width: 8px;
+  height: 8px;
+  margin-right: 5px;
+  border-radius: 50%;
+  display: inline-block;
+  background: currentColor;
+  animation: pulse 1.1s infinite;
+}
+
+.run-history-status.interrupted {
+  background: var(--danger-surface);
+  color: var(--danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .experiment-row-activity-dot {
+    animation: none;
+  }
 }
 
 .project-creation-name {
@@ -5262,6 +5459,37 @@ main {
   .workspace {
     min-height: 0;
     display: block;
+  }
+
+  .repeated-experiment-workspace {
+    height: 100%;
+    min-height: 0;
+    padding: 0.9rem;
+    overflow: auto;
+    align-content: start;
+    overscroll-behavior: contain;
+  }
+
+  .repeated-experiment-header {
+    flex-direction: column;
+  }
+
+  .repeated-experiment-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .repeated-experiment-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .repeated-experiment-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .repeated-experiment-row-metrics {
+    grid-column: 1 / -1;
+    grid-row: 2;
   }
 
   .workbench-divider {

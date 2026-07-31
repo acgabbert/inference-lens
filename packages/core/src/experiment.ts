@@ -95,6 +95,8 @@ export interface RepeatedExperimentAggregate {
   runsWithRetries: number;
   totalDurationMs: ExperimentMetricRange;
   ttfoMs: ExperimentMetricRange;
+  reportedTotalTokens: ExperimentMetricRange;
+  reportedOutputTokens: ExperimentMetricRange;
   totalTokens: ExperimentUsageAggregate;
   outputTokens: ExperimentUsageAggregate;
   outputTokensPerSecond: ExperimentMetricRange;
@@ -619,6 +621,8 @@ export function repeatedExperimentAggregate(
     runsWithRetries,
     totalDurationMs: range(durations),
     ttfoMs: range(ttfo),
+    reportedTotalTokens: range(totalTokens.filter((value): value is number => value !== undefined)),
+    reportedOutputTokens: range(outputTokens.filter((value): value is number => value !== undefined)),
     totalTokens: usage(totalTokens),
     outputTokens: usage(outputTokens),
     outputTokensPerSecond: range(throughput),

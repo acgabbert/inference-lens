@@ -17,7 +17,12 @@ import type { ParentTraceState } from "../run-trace-panel.client";
 import { isTerminalRunState, toolResultDraftsForState } from "./run-session-state.client";
 import type { ToolResultDraft } from "./run-session-state.client";
 
-type TraceOrigin = { workspace: ProjectWorkspaceHandle | null; fileName: string };
+type TraceOrigin = {
+  workspace: ProjectWorkspaceHandle | null;
+  fileName: string;
+  /** An in-memory repeated-experiment trace, not a user-imported file. */
+  source?: "experiment";
+};
 
 export interface RunSessionStartContext {
   request: RichInferenceRequest;
@@ -202,7 +207,9 @@ export function useRunSession(options: UseRunSessionOptions) {
     replaceState(runStateFromTrace(trace));
     setTraceStorage(origin.workspace
       ? { kind: "saved", location: runTraceWorkspacePath(origin.workspace, origin.fileName) }
-      : { kind: "loaded", fileName: origin.fileName });
+      : origin.source === "experiment"
+        ? { kind: "unsaved" }
+        : { kind: "loaded", fileName: origin.fileName });
     options.onClearError();
   }
   async function importTrace(file: File): Promise<void> { try { adoptTrace(parseRunTraceJson(await file.text()), { workspace: null, fileName: file.name }); } catch (error) { options.onError(error instanceof Error ? error.message : "Could not import the run trace."); } }
