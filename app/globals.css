@@ -5415,7 +5415,7 @@ main {
     flex: 1;
   }
 
-  /* The trace header has a toggle, a four-tab switcher, and token metadata.
+  /* The trace header has a toggle, a tab switcher, and token metadata.
      Keep the controls in two rows rather than letting the global pane-tabs
      width rule push the last tab beyond the viewport. */
   .trace-panel .trace-header {

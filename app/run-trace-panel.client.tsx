@@ -155,14 +155,6 @@ export function TemplateProvenance({
 }: {
   resolutions: ResolvedTemplateUse[];
 }) {
-  if (resolutions.length === 0) {
-    return (
-      <p className="trace-empty">
-        This run has no project-template provenance.
-      </p>
-    );
-  }
-
   return (
     <>
       {resolutions.map((resolution) => (
@@ -216,6 +208,8 @@ export function RunTracePanel({
 
   const events = runState?.events ?? [];
   const templateResolutions = runState?.input?.templateResolutions ?? [];
+  const effectiveTab =
+    tab === "resolution" && templateResolutions.length === 0 ? "events" : tab;
   const metrics = useMemo(
     () => (runState ? runMetrics(runState) : null),
     [runState],
@@ -296,23 +290,27 @@ export function RunTracePanel({
           <PaneTabs
             idPrefix="run-details"
             label="Run details"
-            value={tab}
+            value={effectiveTab}
             onChange={(value) => setTab(value as TraceTab)}
             tabs={[
               { id: "events", label: "Events", count: events.length },
               { id: "metrics", label: "Metrics" },
-              {
-                id: "resolution",
-                label: "Resolution",
-                count: templateResolutions.length,
-              },
+              ...(templateResolutions.length > 0
+                ? [
+                    {
+                      id: "resolution",
+                      label: "Templates",
+                      count: templateResolutions.length,
+                    },
+                  ]
+                : []),
               { id: "compare", label: "Compare" },
             ]}
           />
         )
       }
     >
-      {tab === "compare" ? (
+      {effectiveTab === "compare" ? (
         <div
           aria-labelledby="run-details-compare-tab"
           aria-live="polite"
@@ -341,7 +339,7 @@ export function RunTracePanel({
             onLoadParent={onLoadParentTrace}
           />
         </div>
-      ) : tab === "metrics" ? (
+      ) : effectiveTab === "metrics" ? (
         <div
           aria-labelledby="run-details-metrics-tab"
           className="trace"
@@ -350,7 +348,7 @@ export function RunTracePanel({
         >
           <RunMetricsView metrics={metrics} timeline={timeline} />
         </div>
-      ) : tab === "resolution" ? (
+      ) : effectiveTab === "resolution" ? (
         <div
           aria-labelledby="run-details-resolution-tab"
           aria-live="polite"

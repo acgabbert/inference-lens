@@ -3,6 +3,10 @@ import type { Page } from "@playwright/test";
 
 import { RunCoordinator } from "../../packages/core/src/run-kernel/coordinator";
 import { createResolvedRunInput } from "../../packages/core/src/run-kernel/run-execution";
+import type {
+  ResolvedTemplateUse,
+  ToolDefinition,
+} from "../../packages/core/src/run-kernel/types";
 import { createRunTrace } from "../../packages/core/src/run-kernel/reducer";
 import { serializeRunTrace } from "../../packages/core/src/run-trace";
 
@@ -30,20 +34,27 @@ async function waitForHydration(page: Page) {
   await expect(page.getByLabel("Stream response")).not.toBeChecked();
 }
 
-function importedTraceContents(): string {
+function importedTraceContents(
+  templateResolutions: ResolvedTemplateUse[] = [],
+): string {
   const input = createResolvedRunInput(
     {
       provider: "openai-compatible",
       endpoint: "https://api.example.com/v1",
       model: "imported-model",
-      messages: [{ role: "user", content: "Imported request" }],
+      messages: [{
+        role: "user",
+        content: templateResolutions.length > 0
+          ? "Explain atomic branches."
+          : "Imported request",
+      }],
     },
     {
       conversationId: "conversation_mobile-import",
       conversationRevisionId: "revision_mobile-import",
     },
-    [],
-    [],
+    [] as ToolDefinition[],
+    templateResolutions,
     "mobile-import",
     "2026-07-30T12:00:00.000Z",
   );
@@ -63,6 +74,18 @@ function importedTraceContents(): string {
   return serializeRunTrace(createRunTrace(coordinator.state));
 }
 
+const importedTemplateResolution = {
+  templateUseId: "template-use_question",
+  templateId: "template_question",
+  templateRevisionId: "template-revision_question-2",
+  templateName: "Question",
+  content: { kind: "fragment" as const, text: "Explain {{topic}}." },
+  variableDefaults: { topic: "branching" },
+  values: { topic: "atomic branches" },
+  outputMessageIds: ["message_mobile-import-0"],
+  fragmentRole: "user" as const,
+} satisfies ResolvedTemplateUse;
+
 const responsiveWidths = [320, 390, 600, 759, 760, 761, 880, 1080, 1440];
 
 test("renders the buffered fixture transcript and exact token totals", async ({ page }) => {
@@ -80,7 +103,7 @@ test("renders the buffered fixture transcript and exact token totals", async ({ 
   await expect(summary.getByText("Tokens", { exact: true })).toBeVisible();
   await expect(summary.getByText("11", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Run details" }).click();
-  await expect(page.getByRole("tab", { name: "Resolution" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Templates" })).toHaveCount(0);
   await page.getByRole("tab", { name: "Metrics" }).click();
   const metrics = page.locator(".run-metrics");
   await expect(metrics).toContainText("4 in · 7 out");
@@ -323,5 +346,58 @@ test("selects Inspect when a trace is explicitly imported", async ({ page }) => 
   );
   await expect(page.locator(".inspect-view")).toContainText("Completed");
   await expect(page.locator(".inspect-view")).toContainText("Run details");
+  await expect(page.getByRole("tab", { name: "Templates" })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: /^Events/ })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await expect(page.locator(".response-view")).toBeHidden();
+});
+
+test("shows Templates only with captured evidence and restores its selection", async ({
+  page,
+}) => {
+  await seedBufferedProfile(page);
+  await page.goto("/");
+  await waitForHydration(page);
+
+  const importTrace = async (name: string, contents: string) => {
+    await page.locator(".run-data-menu > summary").click();
+    await page.getByLabel("Import run trace…").setInputFiles({
+      name,
+      mimeType: "application/json",
+      buffer: Buffer.from(contents),
+    });
+  };
+
+  await importTrace(
+    "run_with-template-evidence.json",
+    importedTraceContents([importedTemplateResolution]),
+  );
+  const templatesTab = page.getByRole("tab", { name: "Templates 1" });
+  await expect(templatesTab).toBeVisible();
+  await templatesTab.click();
+  await expect(page.getByRole("tabpanel", { name: "Templates 1" })).toContainText(
+    "Question",
+  );
+
+  await importTrace("run_without-template-evidence.json", importedTraceContents());
+  await expect(page.getByRole("tab", { name: /Templates/ })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: /^Events/ })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.getByRole("tabpanel", { name: /^Events/ })).toBeVisible();
+
+  await importTrace(
+    "run_with-template-evidence-again.json",
+    importedTraceContents([importedTemplateResolution]),
+  );
+  await expect(templatesTab).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tabpanel", { name: "Templates 1" })).toContainText(
+    "atomic branches",
+  );
+  await expect(page.locator(".inspect-view")).not.toContainText(
+    /NaN|Infinity|undefined/,
+  );
 });
