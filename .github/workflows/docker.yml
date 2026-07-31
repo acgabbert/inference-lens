@@ -26,6 +26,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      # This is the publishing boundary. Validate here even though CI also checks
+      # the manifests, because tag workflows do not run CI and `v*` deliberately
+      # remains a broad trigger so malformed release attempts fail visibly.
+      - name: Validate project version and release tag
+        env:
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: npm run version:check -- "$RELEASE_TAG"
+
       # arm64 is emulated on this amd64 runner. The build is short enough that
       # the penalty is minor, and the audience skews to Apple Silicon, where an
       # emulated amd64 Node server would be slower still at runtime.
