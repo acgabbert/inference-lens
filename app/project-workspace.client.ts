@@ -14,7 +14,28 @@ import {
   serializeRunTrace,
   traceFileName,
 } from "../packages/core/src/run-trace.ts";
-import type { RunTrace } from "../packages/core/src/run-kernel/index.ts";
+import type {
+  ExperimentId,
+  RunTrace,
+} from "../packages/core/src/run-kernel/index.ts";
+import {
+  assertExperimentEntryName,
+  experimentArtifactIdentity,
+  experimentPlanFileName,
+  experimentResultFileName,
+  serializeExperimentPlan,
+  serializeExperimentResult,
+} from "../packages/core/src/experiment.ts";
+import type {
+  ExperimentResultV1,
+  RepeatedExperimentPlanV1,
+} from "../packages/core/src/experiment.ts";
+import {
+  EXPERIMENTS_DIRECTORY_NAME,
+  listExperimentArtifactsFromDirectory,
+  readExperimentArtifactFromDirectory,
+} from "./experiment-directory.client.ts";
+import type { StoredExperimentArtifactFile } from "./experiment-directory.client.ts";
 import {
   listTracesFromDirectory,
   readTraceFromDirectory,
@@ -48,6 +69,13 @@ import type {
 } from "./workspace-resume.client.ts";
 
 export type { StoredRunTraceFile };
+export type { StoredExperimentArtifactFile };
+
+export interface StoredExperimentArtifactPair {
+  experimentId: ExperimentId;
+  plan?: StoredExperimentArtifactFile;
+  result?: StoredExperimentArtifactFile;
+}
 
 interface DirectoryPickerWindow extends Window {
   showDirectoryPicker?: (options?: {
@@ -67,6 +95,9 @@ interface WorkspaceStorage {
   saveTrace(runId: string, fileName: string, contents: string): Promise<void>;
   listTraces(): Promise<StoredRunTraceFile[]>;
   readTrace(fileName: string): Promise<string>;
+  saveExperimentArtifact(fileName: string, contents: string): Promise<void>;
+  listExperimentArtifacts(): Promise<StoredExperimentArtifactFile[]>;
+  readExperimentArtifact(fileName: string): Promise<string>;
 }
 
 export interface ProjectWorkspaceHandle {
@@ -175,6 +206,35 @@ function browserStorage(
     },
     async readTrace(fileName: string): Promise<string> {
       return readTraceFromDirectory(directory, fileName);
+    },
+    async saveExperimentArtifact(fileName: string, contents: string): Promise<void> {
+      const experiments = await directory.getDirectoryHandle(EXPERIMENTS_DIRECTORY_NAME, {
+        create: true,
+      });
+      const safeName = assertExperimentEntryName(fileName);
+      let fileHandle: FileSystemFileHandleLike;
+      try {
+        fileHandle = await experiments.getFileHandle(safeName);
+        const existing = await (await fileHandle.getFile()).text();
+        if (existing === contents) return;
+        throw new Error(
+          `${safeName} already exists with different contents. Experiment artifacts are immutable.`,
+        );
+      } catch (error) {
+        if (!(error instanceof DOMException) || error.name !== "NotFoundError") {
+          throw error;
+        }
+        fileHandle = await experiments.getFileHandle(safeName, { create: true });
+      }
+      const writable = await fileHandle.createWritable();
+      await writable.write(contents);
+      await writable.close();
+    },
+    async listExperimentArtifacts(): Promise<StoredExperimentArtifactFile[]> {
+      return listExperimentArtifactsFromDirectory(directory);
+    },
+    async readExperimentArtifact(fileName: string): Promise<string> {
+      return readExperimentArtifactFromDirectory(directory, fileName);
     },
   };
 }
@@ -440,6 +500,24 @@ function nativeWorkspaceHandle(
           fileName: assertTraceEntryName(fileName),
         });
       },
+      async saveExperimentArtifact(fileName: string, contents: string): Promise<void> {
+        await invokeNative("save_experiment_artifact", {
+          workspaceId: workspace.workspaceId,
+          fileName: assertExperimentEntryName(fileName),
+          contents,
+        });
+      },
+      async listExperimentArtifacts(): Promise<StoredExperimentArtifactFile[]> {
+        return invokeNative<StoredExperimentArtifactFile[]>("list_experiment_artifacts", {
+          workspaceId: workspace.workspaceId,
+        });
+      },
+      async readExperimentArtifact(fileName: string): Promise<string> {
+        return invokeNative<string>("read_experiment_artifact", {
+          workspaceId: workspace.workspaceId,
+          fileName: assertExperimentEntryName(fileName),
+        });
+      },
     },
   };
 }
@@ -519,6 +597,56 @@ export async function readRunTraceWorkspace(
   fileName: string,
 ): Promise<string> {
   return handle.storage.readTrace(fileName);
+}
+
+export async function saveExperimentPlanWorkspace(
+  handle: ProjectWorkspaceHandle,
+  plan: RepeatedExperimentPlanV1,
+): Promise<void> {
+  await handle.storage.saveExperimentArtifact(
+    experimentPlanFileName(plan.experimentId),
+    serializeExperimentPlan(plan),
+  );
+}
+
+export async function saveExperimentResultWorkspace(
+  handle: ProjectWorkspaceHandle,
+  result: ExperimentResultV1,
+  plan: RepeatedExperimentPlanV1,
+): Promise<void> {
+  await handle.storage.saveExperimentArtifact(
+    experimentResultFileName(result.experimentId),
+    serializeExperimentResult(result, plan),
+  );
+}
+
+export async function listExperimentArtifactsWorkspace(
+  handle: ProjectWorkspaceHandle,
+): Promise<StoredExperimentArtifactFile[]> {
+  return handle.storage.listExperimentArtifacts();
+}
+
+/** Pairs optional terminal results with their immutable experiment plans. */
+export async function listExperimentArtifactPairsWorkspace(
+  handle: ProjectWorkspaceHandle,
+): Promise<StoredExperimentArtifactPair[]> {
+  const pairs = new Map<ExperimentId, StoredExperimentArtifactPair>();
+  for (const artifact of await listExperimentArtifactsWorkspace(handle)) {
+    const { experimentId, kind } = experimentArtifactIdentity(artifact.fileName);
+    const pair = pairs.get(experimentId) ?? { experimentId };
+    pair[kind] = artifact;
+    pairs.set(experimentId, pair);
+  }
+  return [...pairs.values()].sort((left, right) =>
+    left.experimentId < right.experimentId ? -1 : left.experimentId > right.experimentId ? 1 : 0,
+  );
+}
+
+export async function readExperimentArtifactWorkspace(
+  handle: ProjectWorkspaceHandle,
+  fileName: string,
+): Promise<string> {
+  return handle.storage.readExperimentArtifact(fileName);
 }
 
 /**
