@@ -161,6 +161,12 @@ export interface PromptTemplate {
   id: PromptTemplateId;
   name: string;
   currentRevisionId: PromptTemplateRevisionId;
+  /**
+   * Archived templates remain in the portable project so pinned historical
+   * uses can still resolve, but authoring surfaces must not offer them for new
+   * uses. Absence means active, preserving compatibility with existing files.
+   */
+  archivedAt?: string;
   recommendedTarget?: PromptTemplateRecommendedTarget;
   revisions: PromptTemplateRevision[];
 }
@@ -500,6 +506,7 @@ const promptTemplateSchema: z.ZodType<PromptTemplate> = z
     id: entityId("template"),
     name: z.string().trim().min(1),
     currentRevisionId: entityId("template-revision"),
+    archivedAt: z.iso.datetime({ offset: true }).optional(),
     recommendedTarget: promptTemplateRecommendedTargetSchema.optional(),
     revisions: z.array(promptTemplateRevisionSchema).min(1),
   })
@@ -1223,6 +1230,7 @@ const preferredFieldOrder = new Map(
     "result",
     "isError",
     "currentRevisionId",
+    "archivedAt",
     "recommendedTarget",
     "revisions",
     "templateId",
@@ -1983,6 +1991,15 @@ export function insertPromptTemplateUse(
       },
     ]);
   }
+  if (template.archivedAt) {
+    throw new ProjectValidationError([
+      {
+        code: "custom",
+        path: ["promptTemplates", templateId, "archivedAt"],
+        message: "Archived templates cannot be added to a conversation.",
+      },
+    ]);
+  }
   const outputCount =
     revision.content.kind === "fragment"
       ? 1
@@ -2447,6 +2464,61 @@ export function renamePromptTemplate(
     ...promptTemplates[templateIndex]!,
     name: trimmed,
   };
+  return parseProjectFile({ ...project, promptTemplates });
+}
+
+/**
+ * Hides a template from future authoring without invalidating pinned uses in
+ * existing conversation revisions. Archiving is metadata and leaves every
+ * immutable template revision untouched.
+ */
+export function archivePromptTemplate(
+  project: ProjectFile,
+  templateId: PromptTemplateId,
+  archivedAt = new Date().toISOString(),
+): ProjectFile {
+  const templateIndex = project.promptTemplates.findIndex(
+    ({ id }) => id === templateId,
+  );
+  const template = project.promptTemplates[templateIndex];
+  if (!template) {
+    throw new ProjectValidationError([
+      {
+        code: "custom",
+        path: ["promptTemplates", templateId],
+        message: "Template does not exist.",
+      },
+    ]);
+  }
+  if (template.archivedAt) return project;
+  const promptTemplates = [...project.promptTemplates];
+  promptTemplates[templateIndex] = { ...template, archivedAt };
+  return parseProjectFile({ ...project, promptTemplates });
+}
+
+/** Restores an archived template to the prompt library for future uses. */
+export function restorePromptTemplate(
+  project: ProjectFile,
+  templateId: PromptTemplateId,
+): ProjectFile {
+  const templateIndex = project.promptTemplates.findIndex(
+    ({ id }) => id === templateId,
+  );
+  const template = project.promptTemplates[templateIndex];
+  if (!template) {
+    throw new ProjectValidationError([
+      {
+        code: "custom",
+        path: ["promptTemplates", templateId],
+        message: "Template does not exist.",
+      },
+    ]);
+  }
+  if (!template.archivedAt) return project;
+  const restored: PromptTemplate = { ...template };
+  delete restored.archivedAt;
+  const promptTemplates = [...project.promptTemplates];
+  promptTemplates[templateIndex] = restored;
   return parseProjectFile({ ...project, promptTemplates });
 }
 

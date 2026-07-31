@@ -6,6 +6,7 @@ import {
   PROJECT_FILE_NAME,
   PROJECT_GITIGNORE_CONTENTS,
   ProjectValidationError,
+  archivePromptTemplate,
   appendPromptTemplateRevision,
   authoredItemsForMessages,
   createBranchRevision,
@@ -24,6 +25,7 @@ import {
   removePromptTemplateRevision,
   removePromptTemplateUse,
   resolveProjectRevision,
+  restorePromptTemplate,
   sameConversationMessages,
   serializeProjectFile,
   setPromptTemplateCurrentRevision,
@@ -436,6 +438,62 @@ test("creates immutable template revisions, finds uses, and rejects unsafe remov
   assert.deepEqual(
     removed.promptTemplates[0]?.revisions.map(({ id }) => id),
     ["template-revision_question-1"],
+  );
+});
+
+test("archives templates without breaking pinned uses and restores future insertion", () => {
+  const base = createProjectFile({
+    name: "Archived template",
+    request,
+    idSuffix: "archive-template",
+    createdAt: "2026-07-31T12:00:00.000Z",
+  });
+  const created = createPromptTemplate(base, {
+    name: "Reusable",
+    content: { kind: "fragment", text: "Explain {{topic}}." },
+    variableDefaults: { topic: "archives" },
+    idSuffix: "archive-reusable",
+    revisionIdSuffix: "archive-reusable-1",
+    createdAt: "2026-07-31T12:01:00.000Z",
+  });
+  const conversationRevisionId = created.defaults.conversationRevisionId;
+  const used = insertPromptTemplateUse(created, {
+    conversationRevisionId,
+    templateId: "template_archive-reusable",
+    fragmentRole: "user",
+    idSuffix: "archive-use",
+    outputMessageIdSuffixes: ["archive-output"],
+  });
+
+  const archived = archivePromptTemplate(
+    used,
+    "template_archive-reusable",
+    "2026-07-31T12:02:00.000Z",
+  );
+  assert.equal(
+    archived.promptTemplates[0]?.archivedAt,
+    "2026-07-31T12:02:00.000Z",
+  );
+  assert.equal(findPromptTemplateUsages(archived, "template_archive-reusable").length, 1);
+  assert.equal(resolveProjectRevision(archived, archived.conversationRevisions[0]!).messages.at(-1)?.content[0]?.type, "text");
+  assert.throws(
+    () =>
+      insertPromptTemplateUse(archived, {
+        conversationRevisionId,
+        templateId: "template_archive-reusable",
+        fragmentRole: "user",
+      }),
+    /Archived templates cannot be added/,
+  );
+
+  const restored = restorePromptTemplate(archived, "template_archive-reusable");
+  assert.equal(restored.promptTemplates[0]?.archivedAt, undefined);
+  assert.doesNotThrow(() =>
+    insertPromptTemplateUse(restored, {
+      conversationRevisionId,
+      templateId: "template_archive-reusable",
+      fragmentRole: "user",
+    }),
   );
 });
 

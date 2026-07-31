@@ -77,6 +77,8 @@ test("renders the project template library and revision defaults", async () => {
     onOpenN8nImport: () => {},
     onCreate: () => "template_new",
     onSave: () => "template-revision_question-1",
+    onArchive: () => {},
+    onRestore: () => {},
     onInsert: () => {},
   });
 
@@ -87,6 +89,8 @@ test("renders the project template library and revision defaults", async () => {
   assert.match(html, /fixture-model/);
   assert.match(html, /\{\{topic\}\}/);
   assert.match(html, /Add to conversation/);
+  assert.match(html, />Archive</);
+  assert.match(html, /Archived <span>0<\/span>/);
   assert.match(html, /Import from n8n…/);
 });
 
@@ -226,6 +230,8 @@ test("labels non-current revisions without a Previous 0 state", async () => {
     onOpenN8nImport: () => {},
     onCreate: () => "template_new",
     onSave: () => "template-revision_question-1",
+    onArchive: () => {},
+    onRestore: () => {},
     onInsert: () => {},
   });
 

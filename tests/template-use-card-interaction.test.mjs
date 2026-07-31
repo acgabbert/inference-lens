@@ -105,7 +105,7 @@ function cardProps(overrides = {}) {
   };
 }
 
-async function mount(props) {
+async function mount(props, component = "TemplateUseCard") {
   let currentProps = props;
   const server = await createServer({
     configFile: false,
@@ -122,7 +122,7 @@ async function mount(props) {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
-  const element = () => createElement(module.TemplateUseCard, currentProps);
+  const element = () => createElement(module[component], currentProps);
   await act(async () => root.render(element()));
   return {
     container,
@@ -166,6 +166,71 @@ async function mount(props) {
     },
   };
 }
+
+function libraryProps(templates, overrides = {}) {
+  const noop = () => {};
+  return {
+    templates,
+    connectionRequirements: [],
+    usageCounts: new Map([[template.id, 2]]),
+    itemCount: 1,
+    onOpenN8nImport: noop,
+    onCreate: () => "template_new",
+    onSave: () => template.currentRevisionId,
+    onArchive: noop,
+    onRestore: noop,
+    onInsert: noop,
+    ...overrides,
+  };
+}
+
+test("archives move to a reversible library view without exposing insertion", async () => {
+  let finishArchive;
+  let restoredId;
+  const view = await mount(
+    libraryProps([template], {
+      onArchive(templateId, onArchived) {
+        assert.equal(templateId, template.id);
+        finishArchive = onArchived;
+      },
+      onRestore(templateId) {
+        restoredId = templateId;
+      },
+    }),
+    "ProjectTemplatesPane",
+  );
+  try {
+    const archive = [...view.container.querySelectorAll("button")].find(
+      (button) => button.textContent.trim() === "Archive",
+    );
+    await view.click(archive);
+    assert.equal(typeof finishArchive, "function");
+
+    const archived = { ...template, archivedAt: "2026-07-31T13:00:00.000Z" };
+    await view.act(async () => finishArchive());
+    await view.rerenderWith(
+      libraryProps([archived], {
+        onRestore(templateId) {
+          restoredId = templateId;
+        },
+      }),
+    );
+
+    assert.match(view.container.textContent, /Archived 1/);
+    assert.match(view.container.textContent, /Restore/);
+    assert.doesNotMatch(view.container.textContent, /Add to conversation/);
+
+    const restore = [...view.container.querySelectorAll("button")].find(
+      (button) => button.textContent.trim() === "Restore",
+    );
+    await view.click(restore);
+    assert.equal(restoredId, template.id);
+    await view.rerenderWith(libraryProps([template]));
+    assert.match(view.container.textContent, /Add to conversation/);
+  } finally {
+    await view.close();
+  }
+});
 
 test("a large import opens only the variables that still need attention", async () => {
   const view = await mount(cardProps());

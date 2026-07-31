@@ -39,6 +39,8 @@ interface ProjectTemplatesPaneProps {
     defaults: Record<string, string>,
     recommendedTarget?: PromptTemplateRecommendedTarget,
   ): PromptTemplateRevisionId;
+  onArchive(templateId: PromptTemplateId, onArchived?: () => void): void;
+  onRestore(templateId: PromptTemplateId): void;
   onInsert(
     templateId: PromptTemplateId,
     role: TemplateRole,
@@ -64,13 +66,20 @@ export function ProjectTemplatesPane({
   onOpenN8nImport,
   onCreate,
   onSave,
+  onArchive,
+  onRestore,
   onInsert,
 }: ProjectTemplatesPaneProps) {
+  const activeTemplates = templates.filter(({ archivedAt }) => !archivedAt);
+  const archivedTemplates = templates.filter(({ archivedAt }) => archivedAt);
+  const [libraryView, setLibraryView] = useState<"active" | "archived">("active");
+  const visibleTemplates =
+    libraryView === "active" ? activeTemplates : archivedTemplates;
+  const initialTemplate = activeTemplates[0];
   const [selectedId, setSelectedId] = useState<PromptTemplateId | undefined>(
-    templates[0]?.id,
+    initialTemplate?.id,
   );
-  const selected =
-    templates.find(({ id }) => id === selectedId) ?? templates[0];
+  const selected = visibleTemplates.find(({ id }) => id === selectedId);
   const initialRevision = selected ? currentRevision(selected) : undefined;
   const [viewedRevisionId, setViewedRevisionId] =
     useState<PromptTemplateRevisionId | undefined>(initialRevision?.id);
@@ -97,8 +106,10 @@ export function ProjectTemplatesPane({
   const viewedRevision = selected?.revisions.find(
     ({ id }) => id === viewedRevisionId,
   ) ?? initialRevision;
+  const archived = Boolean(selected?.archivedAt);
   const readOnly = Boolean(
-    selected && viewedRevision?.id !== selected.currentRevisionId,
+    selected &&
+      (archived || viewedRevision?.id !== selected.currentRevisionId),
   );
   const discovery = useMemo(
     () => discoverTemplateVariables(content),
@@ -131,6 +142,13 @@ export function ProjectTemplatesPane({
     );
   }
 
+  function selectLibraryView(view: "active" | "archived"): void {
+    setLibraryView(view);
+    const next = view === "active" ? activeTemplates[0] : archivedTemplates[0];
+    if (next) selectTemplate(next);
+    else setSelectedId(undefined);
+  }
+
   function selectRevision(revisionId: PromptTemplateRevisionId): void {
     if (!selected) return;
     const revision = selected.revisions.find(({ id }) => id === revisionId);
@@ -155,6 +173,7 @@ export function ProjectTemplatesPane({
       kind === "fragment" ? "Untitled prompt" : "Untitled message set",
       content,
     );
+    setLibraryView("active");
     setSelectedId(id);
     setViewedRevisionId(undefined);
     setName(kind === "fragment" ? "Untitled prompt" : "Untitled message set");
@@ -184,11 +203,33 @@ export function ProjectTemplatesPane({
             Import from n8n…
           </button>
         </div>
+        <div className="template-library-filter" aria-label="Template status">
+          <button
+            aria-pressed={libraryView === "active"}
+            className={libraryView === "active" ? "selected" : ""}
+            type="button"
+            onClick={() => selectLibraryView("active")}
+          >
+            Active <span>{activeTemplates.length}</span>
+          </button>
+          <button
+            aria-pressed={libraryView === "archived"}
+            className={libraryView === "archived" ? "selected" : ""}
+            type="button"
+            onClick={() => selectLibraryView("archived")}
+          >
+            Archived <span>{archivedTemplates.length}</span>
+          </button>
+        </div>
         <div className="template-list">
-          {templates.length === 0 ? (
-            <p className="template-empty">Create a project-owned prompt or message set.</p>
+          {visibleTemplates.length === 0 ? (
+            <p className="template-empty">
+              {libraryView === "active"
+                ? "Create a project-owned prompt or message set."
+                : "Archived templates will appear here."}
+            </p>
           ) : (
-            templates.map((template) => (
+            visibleTemplates.map((template) => (
               <button
                 aria-current={template.id === selected?.id}
                 className={template.id === selected?.id ? "template-list-item selected" : "template-list-item"}
@@ -211,8 +252,16 @@ export function ProjectTemplatesPane({
       <section className="template-editor">
         {!selected || !viewedRevision ? (
           <div className="template-empty-state">
-            <h3>No project templates yet</h3>
-            <p>Create a prompt fragment or an ordered message set to begin.</p>
+            <h3>
+              {libraryView === "active"
+                ? "No active project templates"
+                : "No archived templates"}
+            </h3>
+            <p>
+              {libraryView === "active"
+                ? "Create a prompt fragment or an ordered message set to begin."
+                : "Templates you archive will remain available to historical conversations."}
+            </p>
           </div>
         ) : (
           <>
@@ -244,45 +293,74 @@ export function ProjectTemplatesPane({
                   ))}
                 </select>
               </label>
-              {readOnly ? (
-                <span className="provider-pill">Read-only revision</span>
-              ) : (
-                <button
-                  className="button primary"
-                  disabled={
-                    !name.trim() ||
-                    discovery.diagnostics.length > 0 ||
-                    sensitiveVariables.length > 0
-                  }
-                  type="button"
-                  onClick={() =>
-                    setViewedRevisionId(
-                      onSave(
-                        selected.id,
-                        name,
-                        content,
-                        Object.fromEntries(
-                          discovery.variables.flatMap(({ name }) =>
-                            Object.hasOwn(defaults, name)
-                              ? [[name, defaults[name]!]]
-                              : [],
-                          ),
-                        ),
-                        recommendedModel.trim() &&
-                          recommendedConnectionRequirementId
-                          ? {
-                              connectionRequirementId:
-                                recommendedConnectionRequirementId,
-                              model: recommendedModel.trim(),
-                            }
-                          : undefined,
-                      ),
-                    )
-                  }
-                >
-                  Save template
-                </button>
-              )}
+              <div className="template-editor-actions">
+                {archived ? (
+                  <>
+                    <span className="provider-pill">Archived</span>
+                    <button
+                      className="button primary"
+                      type="button"
+                      onClick={() => {
+                        onRestore(selected.id);
+                        setLibraryView("active");
+                      }}
+                    >
+                      Restore
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {readOnly ? (
+                      <span className="provider-pill">Read-only revision</span>
+                    ) : (
+                      <button
+                        className="button primary"
+                        disabled={
+                          !name.trim() ||
+                          discovery.diagnostics.length > 0 ||
+                          sensitiveVariables.length > 0
+                        }
+                        type="button"
+                        onClick={() =>
+                          setViewedRevisionId(
+                            onSave(
+                              selected.id,
+                              name,
+                              content,
+                              Object.fromEntries(
+                                discovery.variables.flatMap(({ name }) =>
+                                  Object.hasOwn(defaults, name)
+                                    ? [[name, defaults[name]!]]
+                                    : [],
+                                ),
+                              ),
+                              recommendedModel.trim() &&
+                                recommendedConnectionRequirementId
+                                ? {
+                                    connectionRequirementId:
+                                      recommendedConnectionRequirementId,
+                                    model: recommendedModel.trim(),
+                                  }
+                                : undefined,
+                            ),
+                          )
+                        }
+                      >
+                        Save template
+                      </button>
+                    )}
+                    <button
+                      className="button secondary"
+                      type="button"
+                      onClick={() =>
+                        onArchive(selected.id, () => setLibraryView("archived"))
+                      }
+                    >
+                      Archive
+                    </button>
+                  </>
+                )}
+              </div>
             </header>
 
             {(duplicateName ||
@@ -408,7 +486,7 @@ export function ProjectTemplatesPane({
               </aside>
             </div>
 
-            <footer className="template-insert-bar">
+            {!archived && <footer className="template-insert-bar">
               <span className="template-insert-label">Pin into the conversation</span>
               {viewedRevision.content.kind === "fragment" && (
                 <label>
@@ -449,7 +527,7 @@ export function ProjectTemplatesPane({
               >
                 Add to conversation
               </button>
-            </footer>
+            </footer>}
           </>
         )}
       </section>

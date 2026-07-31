@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  archivePromptTemplate,
   appendPromptTemplateRevision,
   createPromptTemplate,
   detachPromptTemplateUse,
@@ -10,6 +11,7 @@ import {
   projectDraft,
   removePromptTemplateUse,
   renamePromptTemplate,
+  restorePromptTemplate,
   setPromptTemplateRecommendedTarget,
   updateProjectDraft,
   updatePromptTemplateUseToLatest,
@@ -92,6 +94,8 @@ export interface ProjectTemplatesHandle {
   importNotice?: ProjectTemplatesImportNotice;
   createProjectTemplate(name: string, content: PromptTemplateContent): PromptTemplateId;
   saveProjectTemplate(templateId: PromptTemplateId, name: string, content: PromptTemplateContent, defaults: Record<string, string>, recommendedTarget?: PromptTemplateRecommendedTarget): PromptTemplateRevisionId;
+  archiveProjectTemplate(templateId: PromptTemplateId, onArchived?: () => void): void;
+  restoreProjectTemplate(templateId: PromptTemplateId): void;
   insertProjectTemplate(templateId: PromptTemplateId, role: "system" | "user" | "assistant", itemIndex: number): void;
   updateTemplateUseValues(templateUseId: PromptTemplateUseId, values: Record<string, string>): void;
   saveTemplateUseRunValue(templateUseId: PromptTemplateUseId, values: Record<string, string>, useOverrides: Record<string, string>): void;
@@ -160,6 +164,28 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     adoptAuthoredProject(next);
     return next.promptTemplates.find(({ id }) => id === templateId)!.currentRevisionId;
   }
+  function archiveProjectTemplate(templateId: PromptTemplateId, onArchived?: () => void): void {
+    const project = input.ensureProjectDocument();
+    const template = project.promptTemplates.find(({ id }) => id === templateId);
+    if (!template || template.archivedAt) return;
+    const usageCount = findPromptTemplateUsages(project, templateId).length;
+    input.requestConfirmation({
+      title: `Archive "${template.name}"?`,
+      description: "It will move to Archived and cannot be added to new conversations. Existing pinned uses and saved traces will keep working.",
+      confirmLabel: "Archive template",
+      details: [
+        { label: "Revisions retained", value: String(template.revisions.length) },
+        { label: "Existing uses retained", value: String(usageCount) },
+      ],
+      onConfirm() {
+        adoptAuthoredProject(archivePromptTemplate(input.ensureProjectDocument(), templateId));
+        onArchived?.();
+      },
+    });
+  }
+  function restoreProjectTemplate(templateId: PromptTemplateId): void {
+    adoptAuthoredProject(restorePromptTemplate(input.ensureProjectDocument(), templateId));
+  }
   function insertProjectTemplate(templateId: PromptTemplateId, role: "system" | "user" | "assistant", itemIndex: number): void {
     const { project, revisionId } = projectForUseMutation();
     adoptAuthoredProject(insertPromptTemplateUse(project, { conversationRevisionId: revisionId, templateId, fragmentRole: role, itemIndex }));
@@ -227,5 +253,5 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     const receipt = imported.project.externalImports.find(({ id }) => id === imported.externalImportId);
     setImportNotice({ name: candidate.invocation.name, variableCount: receipt?.projection.kind === "prompt-template" ? receipt.projection.variables.length : 0, template: mode === "reusable-template" });
   }
-  return { templateWorkbench, activeProjectRevision, activeConnectionRequirement, templateUsageCounts, templateRunOverrides, importNotice, createProjectTemplate, saveProjectTemplate, insertProjectTemplate, updateTemplateUseValues, saveTemplateUseRunValue, updateTemplateUseOverride, updateTemplateUseToLatestRevision, detachTemplateUse, removeTemplateUse, addComposerMessage, updateComposerMessage, removeComposerMessage, importN8nPrompt, clearImportNotice: () => setImportNotice(undefined), clearTransientOverrides: () => setTemplateRunOverrides({}), markExecutedRevision: (id) => executedRevisionIdsRef.current.add(id) };
+  return { templateWorkbench, activeProjectRevision, activeConnectionRequirement, templateUsageCounts, templateRunOverrides, importNotice, createProjectTemplate, saveProjectTemplate, archiveProjectTemplate, restoreProjectTemplate, insertProjectTemplate, updateTemplateUseValues, saveTemplateUseRunValue, updateTemplateUseOverride, updateTemplateUseToLatestRevision, detachTemplateUse, removeTemplateUse, addComposerMessage, updateComposerMessage, removeComposerMessage, importN8nPrompt, clearImportNotice: () => setImportNotice(undefined), clearTransientOverrides: () => setTemplateRunOverrides({}), markExecutedRevision: (id) => executedRevisionIdsRef.current.add(id) };
 }

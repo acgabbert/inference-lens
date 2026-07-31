@@ -366,6 +366,7 @@ pre,
 .privacy-note span,
 .n8n-import-centered,
 .failure-glyph,
+.template-library-filter button,
 .run-readiness-why-mark {
   font-size: var(--type-metadata);
 }
@@ -985,6 +986,38 @@ output {
   padding-inline: 8px;
 }
 
+.template-library-filter {
+  margin-top: 12px;
+  padding: 3px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--surface-inset);
+}
+
+.template-library-filter button {
+  padding: 6px 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 700;
+}
+
+.template-library-filter button.selected {
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-field-inset);
+}
+
+.template-library-filter span {
+  color: var(--text-muted);
+}
+
 .template-list {
   margin-top: 12px;
   display: grid;
@@ -1068,6 +1101,16 @@ output {
 
 .template-editor-header .provider-pill {
   margin-bottom: 8px;
+}
+
+.template-editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.template-editor-actions .provider-pill {
+  margin-bottom: 0;
 }
 
 .template-notices {
