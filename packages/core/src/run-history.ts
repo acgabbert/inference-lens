@@ -48,6 +48,13 @@ export interface RunHistoryFailure {
   message: string;
 }
 
+export interface LoadedRunHistoryFiles {
+  items: RunHistoryItem[];
+  failures: RunHistoryFailure[];
+  /** Used transiently by grouped-history projections; callers should not retain it. */
+  tracesByRunId: ReadonlyMap<RunId, { fileName: string; trace: RunTrace }>;
+}
+
 /** Builds the list projection through the same validated state used by the UI. */
 export function summarizeRunTrace(trace: RunTrace): RunHistorySummary {
   const state = runStateFromTrace(trace);
@@ -76,15 +83,31 @@ export function loadRunHistoryFiles(files: RunHistorySource[]): {
   items: RunHistoryItem[];
   failures: RunHistoryFailure[];
 } {
+  const { items, failures } = loadRunHistoryFilesWithTraces(files);
+  return { items, failures };
+}
+
+/** Parses every trace once while a caller builds a richer on-demand projection. */
+export function loadRunHistoryFilesWithTraces(
+  files: RunHistorySource[],
+): LoadedRunHistoryFiles {
   const items: RunHistoryItem[] = [];
   const failures: RunHistoryFailure[] = [];
+  const tracesByRunId = new Map<RunId, { fileName: string; trace: RunTrace }>();
 
   for (const file of files) {
     try {
+      const trace = parseRunTraceJson(file.contents);
       items.push({
         fileName: file.fileName,
-        summary: summarizeRunTrace(parseRunTraceJson(file.contents)),
+        summary: summarizeRunTrace(trace),
       });
+      // Prefer the canonical filename when duplicate/renamed artifacts carry
+      // the same run. The selected filename remains explicit in the read model.
+      const current = tracesByRunId.get(trace.runId);
+      if (!current || file.fileName === `run_${trace.runId.slice("run_".length)}.json`) {
+        tracesByRunId.set(trace.runId, { fileName: file.fileName, trace });
+      }
     } catch (error) {
       failures.push({
         fileName: file.fileName,
@@ -95,7 +118,7 @@ export function loadRunHistoryFiles(files: RunHistorySource[]): {
   }
 
   items.sort(compareHistoryItems);
-  return { items, failures };
+  return { items, failures, tracesByRunId };
 }
 
 /**

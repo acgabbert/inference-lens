@@ -10,7 +10,7 @@ import type {
 import { createEntityId } from "../../packages/core/src/run-kernel/index.ts";
 import type { ResolvedRunInput, RunId, RunTrace } from "../../packages/core/src/run-kernel/index.ts";
 import { randomUUID } from "../../packages/core/src/random-id.ts";
-import { traceFileName } from "../../packages/core/src/run-trace.ts";
+import { runStateFromTrace, traceFileName } from "../../packages/core/src/run-trace.ts";
 import type { ProjectWorkspaceHandle } from "../project-workspace.client.ts";
 import { createExperimentWorkspacePersistence } from "./experiment-workspace-persistence.client.ts";
 import {
@@ -42,6 +42,7 @@ export interface RepeatedExperimentExecution {
   result?: ExperimentResultV1;
   error?: string;
   traces: ReadonlyMap<RunId, RunTrace>;
+  traceFileNames: ReadonlyMap<RunId, string>;
   /** Keeps the experiment beside the ordinary run while reviewing one cell. */
   selectedRunId: RunId | null;
 }
@@ -140,6 +141,7 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
       workspace,
       progress: initialProgress,
       traces: new Map(),
+      traceFileNames: new Map(),
       selectedRunId: null,
     });
 
@@ -161,8 +163,10 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
         setExecution((current) => {
           if (current?.plan.experimentId !== pending.plan.experimentId) return current;
           const traces = new Map(current.traces);
+          const traceFileNames = new Map(current.traceFileNames);
           traces.set(trace.runId, trace);
-          return { ...current, traces };
+          traceFileNames.set(trace.runId, traceFileName(trace.runId));
+          return { ...current, traces, traceFileNames };
         });
         if (workspace) options.onTraceSaved();
       },
@@ -194,10 +198,38 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
     setExecution((active) => active === current ? { ...active, selectedRunId: runId } : active);
     options.onOpenTrace(trace, {
       workspace: current.workspace,
-      fileName: traceFileName(trace.runId),
+      fileName: current.traceFileNames.get(trace.runId) ?? traceFileName(trace.runId),
       source: "experiment",
     });
   }, [execution, options]);
+
+  const openSaved = useCallback((opened: {
+    plan: RepeatedExperimentPlanV1;
+    result?: ExperimentResultV1;
+    traces: ReadonlyMap<RunId, RunTrace>;
+    traceFileNames: ReadonlyMap<RunId, string>;
+  }, workspace: ProjectWorkspaceHandle) => {
+    if (controllerRef.current?.isRunning) return;
+    const states = new Map(
+      [...opened.traces].map(([runId, trace]) => [runId, runStateFromTrace(trace)] as const),
+    );
+    setExecution({
+      plan: opened.plan,
+      storage: "durable",
+      startedAtMs: Date.parse(opened.plan.createdAt),
+      workspace,
+      progress: {
+        status: opened.result?.status ?? "completed",
+        requested: opened.plan.cells.length,
+        finished: states.size,
+        states,
+      },
+      ...(opened.result ? { result: opened.result } : {}),
+      traces: opened.traces,
+      traceFileNames: opened.traceFileNames,
+      selectedRunId: null,
+    });
+  }, []);
 
   const returnToRequest = useCallback(() => {
     setExecution((current) => current ? { ...current, selectedRunId: null } : current);
@@ -216,6 +248,7 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
     confirm,
     cancel,
     openTrace,
+    openSaved,
     returnToRequest,
     clear,
     isRunning,
