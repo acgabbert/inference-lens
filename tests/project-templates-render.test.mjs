@@ -88,6 +88,7 @@ test("renders the project template library and revision defaults", async () => {
   assert.match(html, /\{\{topic\}\}/);
   assert.match(html, /Add to conversation/);
   assert.match(html, /Import from n8n…/);
+  assert.match(html, /Open prompt editor in focus mode/);
 });
 
 test("renders a multiline run value with save and reset actions", async () => {

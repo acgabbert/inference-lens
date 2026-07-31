@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   ConnectionRequirement,
@@ -93,6 +93,9 @@ export function ProjectTemplatesPane({
   );
   const [fragmentRole, setFragmentRole] = useState<TemplateRole>("user");
   const [insertionIndex, setInsertionIndex] = useState(itemCount);
+  const [focusMode, setFocusMode] = useState(false);
+  const editorRef = useRef<HTMLElement>(null);
+  const focusToggleRef = useRef<HTMLButtonElement>(null);
 
   const viewedRevision = selected?.revisions.find(
     ({ id }) => id === viewedRevisionId,
@@ -116,6 +119,71 @@ export function ProjectTemplatesPane({
   const sensitiveVariables = discovery.variables.filter(({ name }) =>
     isSensitiveTemplateVariableName(name),
   );
+
+  useEffect(() => {
+    if (!focusMode) return;
+
+    const editor = editorRef.current;
+    if (!editor) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const focusableSelector = [
+      "button:not([disabled])",
+      "input:not([disabled])",
+      "select:not([disabled])",
+      "textarea:not([disabled])",
+      '[tabindex]:not([tabindex="-1"])',
+    ].join(",");
+    const focusEditor = window.setTimeout(() => {
+      const contentField = editor.querySelector<HTMLElement>(
+        ".template-content-editor textarea:not([disabled])",
+      );
+      (contentField ?? editor.querySelector<HTMLElement>(focusableSelector))?.focus();
+    }, 0);
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setFocusMode(false);
+        window.setTimeout(() => focusToggleRef.current?.focus(), 0);
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const focusable = Array.from(
+        editor.querySelectorAll<HTMLElement>(focusableSelector),
+      );
+      if (focusable.length === 0) {
+        event.preventDefault();
+        return;
+      }
+      const first = focusable[0]!;
+      const last = focusable.at(-1)!;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      } else if (!editor.contains(document.activeElement)) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.clearTimeout(focusEditor);
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [focusMode]);
+
+  function closeFocusMode(): void {
+    setFocusMode(false);
+    window.setTimeout(() => focusToggleRef.current?.focus(), 0);
+  }
 
   function selectTemplate(template: PromptTemplate): void {
     const revision = currentRevision(template);
@@ -208,7 +276,13 @@ export function ProjectTemplatesPane({
         </div>
       </aside>
 
-      <section className="template-editor">
+      <section
+        aria-label={focusMode ? "Prompt editor focus mode" : undefined}
+        aria-modal={focusMode ? "true" : undefined}
+        className={focusMode ? "template-editor template-editor-focus-mode" : "template-editor"}
+        ref={editorRef}
+        role={focusMode ? "dialog" : undefined}
+      >
         {!selected || !viewedRevision ? (
           <div className="template-empty-state">
             <h3>No project templates yet</h3>
@@ -315,6 +389,12 @@ export function ProjectTemplatesPane({
               <TemplateContentEditor
                 content={content}
                 disabled={readOnly}
+                focusMode={focusMode}
+                focusToggleRef={focusToggleRef}
+                onFocusModeChange={(open) => {
+                  if (open) setFocusMode(true);
+                  else closeFocusMode();
+                }}
                 onChange={setContent}
               />
 
@@ -460,36 +540,53 @@ export function ProjectTemplatesPane({
 function TemplateContentEditor({
   content,
   disabled,
+  focusMode,
+  focusToggleRef,
+  onFocusModeChange,
   onChange,
 }: {
   content: PromptTemplateContent;
   disabled: boolean;
+  focusMode: boolean;
+  focusToggleRef: React.RefObject<HTMLButtonElement | null>;
+  onFocusModeChange(open: boolean): void;
   onChange(content: PromptTemplateContent): void;
 }) {
   return (
     <section className="template-content-editor">
       <div className="template-content-heading">
         <h3>Content</h3>
-        <label className="template-kind-field">
-          Kind
-          <select
-            disabled={disabled}
-            value={content.kind}
-            onChange={(event) =>
-              onChange(
-                event.target.value === "fragment"
-                  ? { kind: "fragment", text: "" }
-                  : {
-                      kind: "messages",
-                      messages: [{ role: "user", content: "" }],
-                    },
-              )
-            }
+        <div className="template-content-actions">
+          <label className="template-kind-field">
+            Kind
+            <select
+              disabled={disabled}
+              value={content.kind}
+              onChange={(event) =>
+                onChange(
+                  event.target.value === "fragment"
+                    ? { kind: "fragment", text: "" }
+                    : {
+                        kind: "messages",
+                        messages: [{ role: "user", content: "" }],
+                      },
+                )
+              }
+            >
+              <option value="fragment">Prompt</option>
+              <option value="messages">Message set</option>
+            </select>
+          </label>
+          <button
+            aria-label={focusMode ? "Exit prompt editor focus mode" : "Open prompt editor in focus mode"}
+            className="button secondary template-focus-toggle"
+            ref={focusToggleRef}
+            type="button"
+            onClick={() => onFocusModeChange(!focusMode)}
           >
-            <option value="fragment">Prompt</option>
-            <option value="messages">Message set</option>
-          </select>
-        </label>
+            {focusMode ? "Close" : "Expand"}
+          </button>
+        </div>
       </div>
       {content.kind === "fragment" ? (
         <label className="template-fragment-field">
