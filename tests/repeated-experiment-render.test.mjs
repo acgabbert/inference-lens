@@ -64,6 +64,28 @@ function assertNoBrokenValues(html) {
   }
 }
 
+function completedState(runId, text) {
+  return {
+    runId,
+    status: { kind: "completed", completedAt: "2026-07-30T12:00:10.000Z" },
+    events: [],
+    turns: [{
+      turnId: "turn_render",
+      attempts: [{
+        attempt: 1,
+        exchangeId: "exchange_render",
+        status: "completed",
+        text,
+        reasoning: "",
+        toolCalls: [],
+      }],
+    }],
+    exchanges: {},
+    toolResults: [],
+    lastSequence: 0,
+  };
+}
+
 test("repeat confirmation exposes the frozen request, exact count, and sequential cost", async () => {
   const frozenPlan = plan();
   const html = await render(
@@ -172,6 +194,50 @@ test("running workspace exposes determinate activity, the active repetition, and
   assert.match(html, /experiment-row-activity-dot/);
   assert.doesNotMatch(html, /experiment-activity-dot/);
   assert.match(html, /Stop remaining/);
+  assertNoBrokenValues(html);
+});
+
+test("completed experiment rows show a brief normalized output preview", async () => {
+  const frozenPlan = plan();
+  const longOutput = `A finished answer.\n\n${"More detail. ".repeat(30)}`;
+  const html = await render(
+    "/app/run/repeated-experiment-workspace.client.tsx",
+    "RepeatedExperimentWorkspace",
+    {
+      execution: {
+        plan: frozenPlan,
+        storage: "durable",
+        startedAtMs: Date.now(),
+        workspace: {},
+        progress: {
+          status: "completed",
+          requested: 2,
+          finished: 2,
+          states: new Map([
+            ["run_render-1", completedState("run_render-1", longOutput)],
+            ["run_render-2", completedState("run_render-2", "   ")],
+          ]),
+        },
+        result: {
+          schemaVersion: 1,
+          experimentId: frozenPlan.experimentId,
+          status: "completed",
+          endedAt: "2026-07-30T12:01:00.000Z",
+          cells: frozenPlan.cells.map(({ cellId, runId }) => ({ cellId, runId, status: "completed" })),
+        },
+        traces: new Map(),
+        selectedRunId: null,
+      },
+      onStop() {},
+      onOpenTrace() {},
+    },
+  );
+
+  assert.equal((html.match(/Output ready/g) ?? []).length, 2);
+  assert.match(html, /A finished answer\. More detail\./);
+  assert.match(html, /More detail\. …/);
+  assert.match(html, /No text output/);
+  assert.doesNotMatch(html, /A finished answer\.\n/);
   assertNoBrokenValues(html);
 });
 
