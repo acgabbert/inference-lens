@@ -105,6 +105,23 @@ model in the UI. A key entered this way remains only in the current browser
 session. For provider networking, server-side credentials, Compose, and
 troubleshooting, see the [Docker guide](docs/DOCKER.md).
 
+### Run the published image with Compose
+
+For a persistent deployment without a long `docker run` command, download the
+published-image Compose template into an empty directory and start it:
+
+```sh
+mkdir inference-lens && cd inference-lens
+curl -fsSLO https://raw.githubusercontent.com/acgabbert/inference-lens/main/deploy/compose.yaml
+docker compose up -d
+```
+
+The template pulls `:latest` from GHCR whenever you run `docker compose up`,
+so it follows the newest stable release. Create a sibling `.env` only if you
+want a server-side provider credential or other configuration; otherwise enter
+the provider settings in the UI. See the [Docker guide](docs/DOCKER.md#run-the-published-image-with-compose)
+for the `.env` fields and how to pin a specific image version.
+
 ### Running from source with Compose
 
 Compose builds the image locally, which is the right choice when working on

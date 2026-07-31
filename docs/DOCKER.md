@@ -20,6 +20,35 @@ Engine, so a provider running natively on the host can be reached. Docker
 Desktop provides the name on its own and ignores the flag; passing it always is
 simpler than remembering which platform needs it.
 
+## Run the published image with Compose
+
+The repository includes a standalone Compose template at
+[`deploy/compose.yaml`](../deploy/compose.yaml). Save or download it as
+`compose.yaml` in the directory where you want to operate the service:
+
+```sh
+mkdir inference-lens && cd inference-lens
+curl -fsSLO https://raw.githubusercontent.com/acgabbert/inference-lens/main/deploy/compose.yaml
+docker compose up -d
+```
+
+It uses `ghcr.io/acgabbert/inference-lens:latest` and `pull_policy: always`.
+Consequently, every `docker compose up` checks GHCR for the latest stable image
+before starting the service; it does not recreate an already-running container
+when the pulled image is unchanged. Use `docker compose logs -f` to follow its
+startup and `docker compose down` to stop it.
+
+The template does not require a `.env` file. To configure a server-side default
+credential or another supported setting, create a sibling `.env` containing the
+variables described in [Set a server-side default credential](#set-a-server-side-default-credential).
+Compose passes only the `INFERENCE_LENS_*` variables named in the template to
+the container. Do not commit that `.env` file.
+
+To stay on a known release instead, replace `:latest` in `compose.yaml` with a
+version tag such as `:0.2.0`; the template will still pull that exact tag on
+every `up`. To update an existing long-running service immediately, run
+`docker compose pull && docker compose up -d`.
+
 The container prints where to open it, then Vinext logs
 `http://0.0.0.0:3000`. That second address is the one the server listens on
 *inside* the container, not a URL to open in a browser. Use `localhost` or
