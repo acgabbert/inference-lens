@@ -761,6 +761,8 @@ function HomeContent() {
       if (prepared.adHocConversationId) adHocConversationIdRef.current = prepared.adHocConversationId;
       if (prepared.consumesPendingBranch) setBranchContext(null);
       clearRequestTools();
+      runSession.reset();
+      setTraceOpen(false);
       setWorkbenchView("response");
     });
   }
