@@ -115,6 +115,20 @@ function fidelityCopy(fidelity: ImportFidelity): string {
   }
 }
 
+function detailAvailabilityCopy(
+  availability: N8nSelectedExecution["detailAvailability"] | undefined,
+): string | undefined {
+  switch (availability) {
+    case "not-retained":
+      return "n8n did not retain detailed data for this execution.";
+    case "omitted-response-too-large":
+      return "Full execution data exceeded the configured response limit. Only authored fields are available, without resolved execution values.";
+    case "full":
+    case undefined:
+      return undefined;
+  }
+}
+
 function invocationLabel(extraction: N8nPromptExtraction): string {
   const invocation =
     extraction.status === "candidate"
@@ -214,6 +228,9 @@ export function N8nImportModal({
     candidate?.resolved && candidate.fidelity !== "authored-only",
   );
   const templateImportable = canImportExternalPromptAsTemplate(candidate);
+  const detailAvailabilityMessage = detailAvailabilityCopy(
+    detail?.detailAvailability,
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -803,6 +820,11 @@ export function N8nImportModal({
                         : ""}
                       {" Your current connection and model will not change."}
                     </p>
+                    {detailAvailabilityMessage && (
+                      <p className="n8n-fidelity-copy">
+                        {detailAvailabilityMessage}
+                      </p>
+                    )}
                     {templateImportable && candidate.resolved?.model && (
                       <div className="n8n-recommendation-option">
                         <label>
@@ -959,10 +981,8 @@ export function N8nImportModal({
                   <div className="n8n-import-centered">
                     <h3>Nothing importable was found</h3>
                     <p>{detail?.discovery.message}</p>
-                    {!detail?.detailAvailable && (
-                      <p>
-                        n8n did not retain detailed data for this execution.
-                      </p>
+                    {detailAvailabilityMessage && (
+                      <p>{detailAvailabilityMessage}</p>
                     )}
                   </div>
                 ) : (

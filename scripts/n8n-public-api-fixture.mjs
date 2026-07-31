@@ -9,6 +9,12 @@ const port = Number.parseInt(
 );
 const apiKey =
   process.env.INFERENCE_LENS_N8N_FIXTURE_API_KEY ?? "fixture-api-key";
+const modelNodeVersion = Number(
+  process.env.INFERENCE_LENS_N8N_FIXTURE_MODEL_VERSION ?? "1.2",
+);
+if (!Number.isFinite(modelNodeVersion)) {
+  throw new Error("INFERENCE_LENS_N8N_FIXTURE_MODEL_VERSION must be a number.");
+}
 const fixtureDirectory = path.resolve(
   import.meta.dirname,
   "../tests/fixtures/n8n/captures/2.32.5/basic-llm-chain-success",
@@ -18,6 +24,17 @@ const [workflow, execution] = await Promise.all(
     JSON.parse(await readFile(path.join(fixtureDirectory, filename), "utf8")),
   ),
 );
+
+// The execution evidence contract is independent of the model node's authored
+// version field. This override exercises importer compatibility gates through
+// the running app without rewriting the committed provider capture.
+for (const snapshot of [workflow, execution?.data?.workflowData]) {
+  const modelNode = snapshot?.nodes?.find(
+    (node) =>
+      node.type === "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+  );
+  if (modelNode) modelNode.typeVersion = modelNodeVersion;
+}
 
 // The committed capture deliberately contains two parent items whose model
 // sub-runs cannot be associated safely. Keep that fail-closed evidence intact,
@@ -160,8 +177,11 @@ const server = createServer((request, response) => {
     return;
   }
   if (url.pathname.startsWith("/api/v1/executions/")) {
-    if (url.searchParams.get("includeData") !== "true") {
-      sendJson(response, 400, { message: "Execution detail requires data." });
+    const includeData = url.searchParams.get("includeData");
+    if (includeData !== "true" && includeData !== "false") {
+      sendJson(response, 400, {
+        message: "Execution detail requires includeData.",
+      });
       return;
     }
     const executionId = decodeURIComponent(
@@ -170,6 +190,10 @@ const server = createServer((request, response) => {
     const summary = executionSummaries.find(({ id }) => id === executionId);
     if (!summary) {
       sendJson(response, 404, { message: "Fixture execution not found." });
+      return;
+    }
+    if (includeData === "false") {
+      sendJson(response, 200, summary);
       return;
     }
     sendJson(response, 200, {

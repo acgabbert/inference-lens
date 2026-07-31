@@ -68,7 +68,7 @@ test("requires an explicit execution discovery outcome", async () => {
           workflowId: "workflow_1",
           status: "success",
         },
-        detailAvailable: true,
+        detailAvailability: "full",
         extractions: [],
       }),
     async () => {
@@ -125,7 +125,7 @@ test("submits pasted execution links to the selected-execution endpoint", async 
           workflowId: "workflow_1",
           status: "success",
         },
-        detailAvailable: true,
+        detailAvailability: "full",
         discovery: { status: "no-supported-invocations", message: "None." },
         extractions: [],
       });

@@ -5,6 +5,7 @@ import test from "node:test";
 
 import { parseExternalPromptCandidate } from "../packages/core/src/external-prompt-import.ts";
 import {
+  canImportExternalPromptAsTemplate,
   projectExternalPromptTemplate,
 } from "../packages/core/src/external-prompt-project.ts";
 import {
@@ -157,6 +158,58 @@ test("a single-item Basic LLM Chain produces a validated reconstructed user mess
   assert.equal(compound.candidate.invocation.runIndex, 0);
   assert.equal(compound.candidate.invocation.itemIndex, 0);
   assert.doesNotThrow(() => parseExternalPromptCandidate(compound.candidate));
+});
+
+test("OpenAI Chat Model 1.3 reconstructs saved evidence for chains and agents", async () => {
+  for (const fixture of [
+    {
+      directory: "basic-llm-chain-success",
+      parentName: "Compound prompt cases",
+      modelName: "Fixture OpenAI Chat Model",
+    },
+    {
+      directory: "ai-agent-3-1",
+      parentName: "AI Agent 3.1 contract",
+      modelName: "AI Agent 3.1 OpenAI Chat Model",
+    },
+  ]) {
+    const execution = clone(
+      await executionFixture(fixture.directory, "execution-success.json"),
+    );
+    const runData = runDataRecord(execution);
+    if (fixture.directory === "basic-llm-chain-success") {
+      const parentRuns = runData[fixture.parentName] as Array<{
+        data: { main: unknown[][] };
+      }>;
+      parentRuns[0]!.data.main[0] = parentRuns[0]!.data.main[0]!.slice(0, 1);
+      runData[fixture.modelName] = (
+        runData[fixture.modelName] as unknown[]
+      ).slice(0, 1);
+    }
+    const workflowData = dataRecord(execution).workflowData as {
+      nodes: Array<{ type: string; typeVersion: number }>;
+    };
+    workflowData.nodes.find(
+      ({ type }) =>
+        type === "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+    )!.typeVersion = 1.3;
+
+    const results = await extractN8nPromptCandidates(execution);
+    const result = results.find(
+      (extraction) =>
+        extraction.status === "candidate" &&
+        extraction.candidate.invocation.name === fixture.parentName,
+    );
+    assert.ok(result?.status === "candidate");
+    assert.equal(result.candidate.fidelity, "execution-reconstructed");
+    assert.ok(result.candidate.resolved?.messages.length);
+    assert.equal(
+      result.candidate.warnings.some(
+        ({ code }) => code === "unsupported-model-node",
+      ),
+      false,
+    );
+  }
 });
 
 test("fixture-verified AI Agent versions reconstruct attributable system and user messages", async () => {
@@ -408,6 +461,38 @@ test("missing retained execution data falls back to current authored text with a
   assert.equal(
     compound.candidate.source.execution?.id,
     "execution_without_data",
+  );
+});
+
+test("an unsupported connected model preserves an importable authored trace", async () => {
+  const execution = clone(
+    await executionFixture("ai-agent-3-1", "execution-success.json"),
+  );
+  const workflowData = dataRecord(execution).workflowData as {
+    nodes: Array<{ type: string; typeVersion: number }>;
+  };
+  workflowData.nodes.find(
+    ({ type }) => type === "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+  )!.typeVersion = 1.4;
+
+  const results = await extractN8nPromptCandidates(execution);
+  assert.equal(results.length, 1);
+  const result = results[0];
+  assert.ok(result?.status === "candidate");
+  assert.equal(result.candidate.fidelity, "authored-only");
+  assert.equal(result.candidate.resolved, undefined);
+  assert.deepEqual(
+    result.candidate.warnings.map(({ code }) => code),
+    ["unsupported-model-node"],
+  );
+  assert.equal(canImportExternalPromptAsTemplate(result.candidate), true);
+  const projection = projectExternalPromptTemplate(result.candidate);
+  assert.equal(projection.content.kind, "messages");
+  assert.deepEqual(
+    projection.content.kind === "messages"
+      ? projection.content.messages.map(({ role }) => role)
+      : [],
+    ["system", "user"],
   );
 });
 
