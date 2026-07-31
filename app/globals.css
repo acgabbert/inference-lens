@@ -1172,9 +1172,13 @@ output {
   padding: 0;
 }
 
-.template-variable-row code,
-.template-use-variable code {
+.template-variable-row code {
   display: block;
+  color: var(--accent);
+  font-family: var(--font-geist-mono), monospace;
+}
+
+.template-use-variable code {
   color: var(--accent);
   font-family: var(--font-geist-mono), monospace;
 }
@@ -1341,6 +1345,13 @@ output {
   padding: 11px;
 }
 
+/* An imported prompt can be thousands of words. Collapsed is the default so
+   the card stays navigable; the full text is one click and a scroll away. */
+.template-preview-body.clamped {
+  max-height: 15rem;
+  overflow-y: auto;
+}
+
 .template-preview-message {
   display: grid;
   gap: 4px;
@@ -1372,11 +1383,103 @@ output {
   color: var(--warning-strong);
 }
 
+.template-values-heading {
+  padding-bottom: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.template-values-summary,
+.template-values-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  color: var(--text-muted);
+}
+
+.template-values-summary strong {
+  color: var(--text-secondary);
+}
+
+.template-values-attention {
+  color: var(--warning-strong);
+  font-weight: 700;
+}
+
+.template-values-controls input[type="search"] {
+  width: 11rem;
+  padding: 4px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-inset);
+}
+
+.template-values-controls label.template-values-attention-toggle {
+  margin-bottom: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 400;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.template-values-hidden {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+}
+
 .template-use-variable {
   padding-top: 10px;
   border-top: 1px solid var(--accent-border);
   display: grid;
   gap: 8px;
+}
+
+.template-use-variable > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.template-use-variable > summary::-webkit-details-marker {
+  display: none;
+}
+
+.template-use-variable > summary::before {
+  content: "▸";
+  color: var(--text-muted);
+}
+
+.template-use-variable[open] > summary::before {
+  content: "▾";
+}
+
+.template-use-variable > summary code {
+  flex: none;
+}
+
+.template-variable-glance {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-family: var(--font-geist-mono), monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.template-variable-source {
+  flex: none;
+  color: var(--text-muted);
+}
+
+.template-variable-source.attention {
+  color: var(--warning-strong);
+  font-weight: 700;
 }
 
 .template-use-variable-heading,
