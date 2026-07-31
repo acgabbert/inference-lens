@@ -35,6 +35,18 @@ const runState = {
   lastSequence: -1,
 };
 
+const templateResolution = {
+  templateUseId: "template-use_question",
+  templateId: "template_question",
+  templateRevisionId: "template-revision_question-2",
+  templateName: "Question",
+  content: { kind: "fragment", text: "Explain {{topic}}." },
+  variableDefaults: { topic: "branching" },
+  values: { topic: "atomic branches" },
+  outputMessageIds: ["message_question"],
+  fragmentRole: "user",
+};
+
 test("disclosure preserves the selected tab and tabs support arrow keys", async () => {
   const server = await createServer({
     configFile: false,
@@ -171,6 +183,88 @@ test("clearing the run retires the disclosure so the next run stays collapsed", 
     await act(async () => render());
     assert.equal(open, false);
     assert.equal(container.querySelector('[role="tabpanel"]'), null);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    await server.close();
+  }
+});
+
+test("falls back from a preserved Templates preference and restores it when available", async () => {
+  const server = await createServer({
+    configFile: false,
+    root: process.cwd(),
+    plugins: [react()],
+    server: { middlewareMode: true, hmr: false },
+    logLevel: "warn",
+  });
+  const [
+    { RunTracePanel },
+    { createElement },
+    { createRoot },
+    { act },
+  ] = await Promise.all([
+    server.ssrLoadModule("/app/run-trace-panel.client.tsx"),
+    import("react"),
+    import("react-dom/client"),
+    import("react"),
+  ]);
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  let state = {
+    ...runState,
+    input: { templateResolutions: [templateResolution] },
+  };
+
+  const render = () =>
+    root.render(
+      createElement(RunTracePanel, {
+        open: true,
+        runState: state,
+        parentTrace: { status: "idle" },
+        onLoadParentTrace() {},
+        onOpenChange() {},
+      }),
+    );
+
+  try {
+    await act(async () => render());
+    const templatesTab = container.querySelector("#run-details-resolution-tab");
+    assert.ok(templatesTab);
+    assert.match(templatesTab.textContent, /Templates1/);
+    await act(async () => templatesTab.click());
+    assert.equal(templatesTab.getAttribute("aria-selected"), "true");
+    assert.match(container.innerHTML, /run-details-resolution-panel/);
+
+    state = { ...runState, input: { templateResolutions: [] } };
+    await act(async () => render());
+    assert.equal(container.querySelector("#run-details-resolution-tab"), null);
+    assert.equal(
+      container.querySelectorAll('[role="tab"][aria-selected="true"]').length,
+      1,
+    );
+    assert.equal(
+      container
+        .querySelector("#run-details-events-tab")
+        ?.getAttribute("aria-selected"),
+      "true",
+    );
+    assert.match(container.innerHTML, /run-details-events-panel/);
+    assert.doesNotMatch(container.innerHTML, /run-details-resolution-panel/);
+
+    state = {
+      ...runState,
+      input: { templateResolutions: [templateResolution] },
+    };
+    await act(async () => render());
+    assert.equal(
+      container
+        .querySelector("#run-details-resolution-tab")
+        ?.getAttribute("aria-selected"),
+      "true",
+    );
+    assert.match(container.innerHTML, /run-details-resolution-panel/);
   } finally {
     await act(async () => root.unmount());
     container.remove();

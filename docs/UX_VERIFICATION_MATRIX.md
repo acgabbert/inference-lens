@@ -123,7 +123,7 @@ blocker rather than defaulting to the API key.
 | D2 | View state stability | 320, 390 | Switching views preserves request draft, transcript position where practical, inspector tab, and disclosure state. |
 | D3 | Desktop unchanged | 880, 1080, desktop | Split resizing and inspector height behave as they did before the mobile work. |
 | D4 | Themes | any | Hierarchy holds. Active and disabled states stay distinguishable in both themes. |
-| D5 | Vocabulary and menus | any | Project holds only project lifecycle. Run data holds history, trace transfer, diagnostics. Tool library reachable from Tools; n8n import from Prompt library. Authoring tab reads "Prompt library"; run evidence reads "Resolution". Narrow-screen overflow keeps the Project and Run data group labels. Every pre-cycle action remains reachable with the same enable/disable rules. |
+| D5 | Vocabulary and menus | any | Project holds only project lifecycle. Run data holds history, trace transfer, diagnostics. Tool library reachable from Tools; n8n import from Prompt library. Authoring tab reads "Prompt library"; run evidence reads "Templates" only when template-resolution evidence was captured. Older traces with no captured evidence omit that tab. Narrow-screen overflow keeps the Project and Run data group labels. Every pre-cycle action remains reachable with the same enable/disable rules. |
 
 ## Known gaps
 

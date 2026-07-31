@@ -78,9 +78,27 @@ test("renders self-contained template provenance in the evidence inspector", asy
   }
 });
 
-test("renders an explicit empty provenance state", async () => {
-  const html = await renderTemplateProvenance([]);
-  assert.match(html, /no project-template provenance/i);
+test("omits template evidence when an older trace has no captured resolutions", async () => {
+  const html = await renderComponent("RunTracePanel", {
+    open: true,
+    runState: {
+      runId: "run_without_template_evidence",
+      status: { kind: "starting" },
+      input: { templateResolutions: [] },
+      events: [],
+      turns: [],
+      exchanges: {},
+      toolResults: [],
+      lastSequence: -1,
+    },
+    parentTrace: { status: "idle" },
+    onLoadParentTrace() {},
+    onOpenChange() {},
+  });
+
+  assert.doesNotMatch(html, /run-details-resolution-tab/);
+  assert.doesNotMatch(html, /project-template provenance/i);
+  assert.match(html, /run-details-events-panel/);
 });
 
 test("formats the compact terminal summary and omits absent metrics", async () => {
