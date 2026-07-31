@@ -4,6 +4,10 @@ import test from "node:test";
 import {
   createProjectFolder,
   downloadProjectFile,
+  listExperimentArtifactPairsWorkspace,
+  listExperimentArtifactsWorkspace,
+  readExperimentArtifactWorkspace,
+  saveExperimentPlanWorkspace,
 } from "../app/project-workspace.client.ts";
 import type {
   FileSystemDirectoryHandleLike,
@@ -13,6 +17,8 @@ import {
   createProjectFile,
   parseProjectJson,
 } from "../packages/core/src/project.ts";
+import { createResolvedRunInput } from "../packages/core/src/run-kernel/run-execution.ts";
+import type { RepeatedExperimentPlanV1 } from "../packages/core/src/experiment.ts";
 
 class MemoryFile implements FileSystemFileHandleLike {
   readonly kind = "file";
@@ -111,6 +117,38 @@ function project() {
       messages: [{ role: "user", content: "Keep this authored prompt private." }],
     },
   });
+}
+
+function experimentPlan(): RepeatedExperimentPlanV1 {
+  const input = createResolvedRunInput(
+    {
+      provider: "openai-compatible",
+      endpoint: "https://api.example.com/v1",
+      model: "example-model",
+      messages: [{ role: "user", content: "Repeat this request" }],
+    },
+    {
+      conversationId: "conversation_workspace-experiment",
+      conversationRevisionId: "revision_workspace-experiment",
+    },
+    [],
+    [],
+    "workspace-experiment-source",
+    "2026-07-30T12:00:00.000Z",
+  );
+  const { runId: sourceRunId, ...commonInput } = input;
+  assert.equal(sourceRunId, "run_workspace-experiment-source");
+  return {
+    schemaVersion: 1,
+    experimentId: "experiment_workspace",
+    kind: "repeated-request",
+    createdAt: "2026-07-30T12:00:01.000Z",
+    commonInput,
+    cells: [
+      { cellId: "experiment-cell_one", ordinal: 1, runId: "run_workspace-one" },
+      { cellId: "experiment-cell_two", ordinal: 2, runId: "run_workspace-two" },
+    ],
+  };
 }
 
 async function withDirectoryPicker<T>(
@@ -225,6 +263,46 @@ test("browser creation removes a partial bundle so creation can be retried", asy
     }),
   );
   assert.ok(opened);
+});
+
+test("browser workspaces save experiment artifacts once and list them separately from traces", async () => {
+  const writes: string[] = [];
+  const parent = new MemoryDirectory("code-repository", writes);
+  const opened = await withDirectoryPicker(parent, () =>
+    createProjectFolder(project(), { name: "Prompt Lab", protectFromGit: false }),
+  );
+  assert.ok(opened);
+  const plan = experimentPlan();
+
+  await saveExperimentPlanWorkspace(opened.handle, plan);
+  await saveExperimentPlanWorkspace(opened.handle, plan);
+  assert.deepEqual(await listExperimentArtifactsWorkspace(opened.handle), [
+    {
+      fileName: "experiment_workspace.plan.json",
+      contents: await readExperimentArtifactWorkspace(
+        opened.handle,
+        "experiment_workspace.plan.json",
+      ),
+    },
+  ]);
+  assert.deepEqual(await listExperimentArtifactPairsWorkspace(opened.handle), [
+    {
+      experimentId: "experiment_workspace",
+      plan: {
+        fileName: "experiment_workspace.plan.json",
+        contents: await readExperimentArtifactWorkspace(
+          opened.handle,
+          "experiment_workspace.plan.json",
+        ),
+      },
+    },
+  ]);
+
+  const changed = { ...plan, createdAt: "2026-07-30T12:00:02.000Z" };
+  await assert.rejects(
+    () => saveExperimentPlanWorkspace(opened.handle, changed),
+    /immutable/,
+  );
 });
 
 test("project downloads use the sanitized name and defer URL revocation", async () => {

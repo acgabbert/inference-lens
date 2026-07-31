@@ -26,6 +26,7 @@ const PROJECT_DIRECTORY_SUFFIX: &str = ".inference-lens";
 const PROJECT_FILE_NAME: &str = "project.json";
 const PROJECT_GITIGNORE_CONTENTS: &str = "*\n";
 const TRACES_DIRECTORY_NAME: &str = "traces";
+const EXPERIMENTS_DIRECTORY_NAME: &str = "experiments";
 
 #[derive(Default)]
 struct ProjectWorkspaces(Mutex<HashMap<String, ProjectWorkspaceState>>);
@@ -47,6 +48,13 @@ struct NativeProjectWorkspace {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct NativeRunTraceFile {
+    file_name: String,
+    contents: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeExperimentArtifactFile {
     file_name: String,
     contents: String,
 }
@@ -297,6 +305,65 @@ fn write_run_trace(directory: &Path, run_id: &str, contents: &str) -> Result<(),
     })
 }
 
+fn is_safe_experiment_id(experiment_id: &str) -> bool {
+    let Some(suffix) = experiment_id.strip_prefix("experiment_") else {
+        return false;
+    };
+    suffix
+        .chars()
+        .next()
+        .is_some_and(|character| character.is_ascii_alphanumeric())
+        && !experiment_id.contains("..")
+        && experiment_id
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || "._-".contains(character))
+}
+
+/// Mirrors `isExperimentEntryName` in `packages/core/src/experiment.ts`.
+fn is_experiment_entry_name(file_name: &str) -> bool {
+    [".plan.json", ".result.json"].iter().any(|suffix| {
+        file_name
+            .strip_suffix(suffix)
+            .is_some_and(is_safe_experiment_id)
+    })
+}
+
+fn write_experiment_artifact(
+    directory: &Path,
+    file_name: &str,
+    contents: &str,
+) -> Result<(), String> {
+    if !is_experiment_entry_name(file_name) {
+        return Err(command_error(format!(
+            "{file_name} is not an experiment artifact file name."
+        )));
+    }
+    let experiments = directory.join(EXPERIMENTS_DIRECTORY_NAME);
+    fs::create_dir_all(&experiments)
+        .map_err(|error| format!("Could not create the experiments directory: {error}"))?;
+    let destination = experiments.join(file_name);
+    if destination.exists() {
+        let existing = fs::read_to_string(&destination)
+            .map_err(|error| format!("Could not read the existing experiment artifact: {error}"))?;
+        if existing == contents {
+            return Ok(());
+        }
+        return Err(command_error(format!(
+            "{file_name} already exists with different contents. Experiment artifacts are immutable."
+        )));
+    }
+    let temporary = experiments.join(format!(
+        ".inference-lens-experiment-{}.tmp",
+        uuid::Uuid::new_v4()
+    ));
+    fs::write(&temporary, contents)
+        .map_err(|error| format!("Could not write the experiment artifact: {error}"))?;
+    fs::rename(&temporary, &destination).map_err(|error| {
+        let _ = fs::remove_file(&temporary);
+        format!("Could not finalize the experiment artifact: {error}")
+    })
+}
+
 /// Mirrors `isTraceEntryName` in `packages/core/src/run-trace.ts`. A history
 /// entry is discovered rather than derived from a validated run ID, so the name
 /// is re-checked before it is joined onto the traces directory again.
@@ -346,6 +413,47 @@ fn read_single_run_trace(directory: &Path, file_name: &str) -> Result<String, St
         )));
     }
     let path = directory.join(TRACES_DIRECTORY_NAME).join(file_name);
+    fs::read_to_string(&path).map_err(|error| format!("Could not read {file_name}: {error}"))
+}
+
+fn read_experiment_artifacts(
+    directory: &Path,
+) -> Result<Vec<NativeExperimentArtifactFile>, String> {
+    let experiments = directory.join(EXPERIMENTS_DIRECTORY_NAME);
+    let entries = match fs::read_dir(&experiments) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(format!("Could not read the experiments directory: {error}")),
+    };
+    let mut files = entries
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| {
+            let file_name = entry.file_name().into_string().ok()?;
+            if !is_experiment_entry_name(&file_name) {
+                return None;
+            }
+            Some((file_name, entry.path()))
+        })
+        .map(|(file_name, path)| {
+            fs::read_to_string(&path)
+                .map(|contents| NativeExperimentArtifactFile {
+                    file_name,
+                    contents,
+                })
+                .map_err(|error| format!("Could not read {}: {error}", path.display()))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    files.sort_by(|left, right| left.file_name.cmp(&right.file_name));
+    Ok(files)
+}
+
+fn read_single_experiment_artifact(directory: &Path, file_name: &str) -> Result<String, String> {
+    if !is_experiment_entry_name(file_name) {
+        return Err(command_error(format!(
+            "{file_name} is not an experiment artifact file name."
+        )));
+    }
+    let path = directory.join(EXPERIMENTS_DIRECTORY_NAME).join(file_name);
     fs::read_to_string(&path).map_err(|error| format!("Could not read {file_name}: {error}"))
 }
 
@@ -517,6 +625,54 @@ fn read_run_trace(
         .get(&workspace_id)
         .ok_or_else(|| command_error("This project folder is no longer open."))?;
     read_single_run_trace(&workspace.directory, &file_name)
+}
+
+#[tauri::command]
+fn save_experiment_artifact(
+    workspaces: State<'_, ProjectWorkspaces>,
+    workspace_id: String,
+    file_name: String,
+    contents: String,
+) -> Result<(), String> {
+    let workspaces = workspaces
+        .0
+        .lock()
+        .map_err(|_| command_error("Project workspace state is unavailable."))?;
+    let workspace = workspaces
+        .get(&workspace_id)
+        .ok_or_else(|| command_error("This project folder is no longer open."))?;
+    write_experiment_artifact(&workspace.directory, &file_name, &contents)
+}
+
+#[tauri::command]
+fn list_experiment_artifacts(
+    workspaces: State<'_, ProjectWorkspaces>,
+    workspace_id: String,
+) -> Result<Vec<NativeExperimentArtifactFile>, String> {
+    let workspaces = workspaces
+        .0
+        .lock()
+        .map_err(|_| command_error("Project workspace state is unavailable."))?;
+    let workspace = workspaces
+        .get(&workspace_id)
+        .ok_or_else(|| command_error("This project folder is no longer open."))?;
+    read_experiment_artifacts(&workspace.directory)
+}
+
+#[tauri::command]
+fn read_experiment_artifact(
+    workspaces: State<'_, ProjectWorkspaces>,
+    workspace_id: String,
+    file_name: String,
+) -> Result<String, String> {
+    let workspaces = workspaces
+        .0
+        .lock()
+        .map_err(|_| command_error("Project workspace state is unavailable."))?;
+    let workspace = workspaces
+        .get(&workspace_id)
+        .ok_or_else(|| command_error("This project folder is no longer open."))?;
+    read_single_experiment_artifact(&workspace.directory, &file_name)
 }
 
 #[tauri::command]
@@ -1107,6 +1263,9 @@ pub fn run() {
             save_run_trace,
             list_run_traces,
             read_run_trace,
+            save_experiment_artifact,
+            list_experiment_artifacts,
+            read_experiment_artifact,
             export_run_trace,
         ])
         .run(tauri::generate_context!())
@@ -1314,6 +1473,51 @@ mod tests {
     fn rejects_run_ids_that_could_escape_the_traces_directory() {
         assert!(trace_file_name("run_../../secret").is_err());
         assert!(trace_file_name("other_example").is_err());
+    }
+
+    #[test]
+    fn writes_experiment_artifacts_once_and_rejects_different_replacements() {
+        let directory = TemporaryProjectDirectory::new();
+        write_experiment_artifact(
+            &directory.0,
+            "experiment_example.plan.json",
+            "{\"schemaVersion\":1}\n",
+        )
+        .expect("write plan");
+        write_experiment_artifact(
+            &directory.0,
+            "experiment_example.plan.json",
+            "{\"schemaVersion\":1}\n",
+        )
+        .expect("idempotent plan write");
+        assert!(write_experiment_artifact(
+            &directory.0,
+            "experiment_example.plan.json",
+            "{\"schemaVersion\":1,\"changed\":true}\n",
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn lists_and_reads_experiment_artifacts_without_exposing_other_files() {
+        let directory = TemporaryProjectDirectory::new();
+        write_experiment_artifact(&directory.0, "experiment_second.result.json", "second\n")
+            .expect("write result");
+        write_experiment_artifact(&directory.0, "experiment_first.plan.json", "first\n")
+            .expect("write plan");
+        let experiments = directory.0.join(EXPERIMENTS_DIRECTORY_NAME);
+        fs::write(experiments.join("notes.json"), "ignore").expect("write unrelated file");
+
+        let files = read_experiment_artifacts(&directory.0).expect("list artifacts");
+        assert_eq!(files.len(), 2);
+        assert_eq!(files[0].file_name, "experiment_first.plan.json");
+        assert_eq!(files[1].file_name, "experiment_second.result.json");
+        assert_eq!(
+            read_single_experiment_artifact(&directory.0, "experiment_first.plan.json")
+                .expect("read plan"),
+            "first\n"
+        );
+        assert!(read_single_experiment_artifact(&directory.0, "../secret.json").is_err());
     }
 
     #[test]
