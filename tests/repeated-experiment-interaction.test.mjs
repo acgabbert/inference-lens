@@ -65,9 +65,9 @@ function execution() {
   return {
     plan,
     storage: "unsaved",
-    startedAtMs: Date.now(),
     workspace: null,
-    progress: { status: "completed", requested: 2, finished: 2, states: new Map() },
+    states: new Map(),
+    unreadableTraces: new Map(),
     result: {
       schemaVersion: 1,
       experimentId: plan.experimentId,

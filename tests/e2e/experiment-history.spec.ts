@@ -121,7 +121,11 @@ test("opens an interrupted experiment from grouped browser history", async ({ pa
   await page.goto("/");
   await page.getByLabel("Project menu").click();
   await page.getByRole("button", { name: "Open project…" }).click();
-  await expect(page.getByText("Experiment history fixture", { exact: true })).toBeVisible();
+  // The topbar renders the project name inside its subtitle line, so this
+  // asserts on the line that actually carries it rather than on a node whose
+  // whole text is the name.
+  await expect(page.getByText(/Inspect every model run · Experiment history fixture/))
+    .toBeVisible();
 
   await page.getByLabel("Run data menu").click();
   await page.getByRole("button", { name: "Run history…" }).click();
@@ -135,5 +139,17 @@ test("opens an interrupted experiment from grouped browser history", async ({ pa
   await expect(workspace).toBeVisible();
   await expect(workspace).toContainText("2 requested repetitions");
   await expect(workspace).toContainText("2 not run · 0 missing trace");
+
+  // A saved experiment has no live progress to report. Reopening one must not
+  // describe an interrupted plan as finished, run a session clock against its
+  // creation time, or claim its unstarted repetitions are queued.
+  await expect(workspace.locator(".run-history-status").first()).toHaveText("interrupted");
+  await expect(workspace).not.toContainText("elapsed");
+  await expect(workspace).not.toContainText("finished");
+  await expect(workspace).not.toContainText("Waiting");
+  await expect(workspace.getByRole("progressbar")).toHaveCount(0);
+  await expect(workspace.getByRole("button", { name: "Stop remaining" })).toHaveCount(0);
+  await expect(workspace).not.toHaveAttribute("aria-busy", "true");
+  await expect(workspace.locator(".repeated-experiment-row-pending").first()).toHaveText("Not run");
   await expect(workspace).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
 });

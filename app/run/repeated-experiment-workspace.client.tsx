@@ -11,8 +11,12 @@ import { runMetrics } from "../../packages/core/src/run-metrics.ts";
 import { formatDuration, formatRate, formatTokens } from "../run-metrics-format.client.ts";
 import type { RepeatedExperimentExecution } from "./use-repeated-experiment-session.client.ts";
 
-function rowStatus(execution: RepeatedExperimentExecution, runId: RunId): string {
-  const state = execution.progress.states.get(runId);
+function rowStatus(
+  execution: RepeatedExperimentExecution,
+  runId: RunId,
+  isLive: boolean,
+): string {
+  const state = execution.states.get(runId);
   if (state) {
     switch (state.status.kind) {
       case "completed": return "completed";
@@ -22,7 +26,19 @@ function rowStatus(execution: RepeatedExperimentExecution, runId: RunId): string
     }
   }
   return execution.result?.cells.find((cell) => cell.runId === runId)?.status
-    ?? (execution.progress.status === "running" ? "queued" : "not-run");
+    ?? (isLive ? "queued" : "not-run");
+}
+
+/**
+ * A repetition without an openable trace is one of three different things, and
+ * the roadmap keeps them distinct: it is still queued, it never started, or its
+ * referenced trace is gone or unreadable.
+ */
+function pendingLabel(status: string, unreadable: string | undefined): string {
+  if (unreadable) return "Trace could not be read";
+  if (status === "queued") return "Waiting";
+  if (status === "not-run") return "Not run";
+  return "Trace missing";
 }
 
 function rowMetrics(state: RunState | undefined): string {
@@ -81,11 +97,12 @@ export function RepeatedExperimentWorkspace({
   const aggregate = repeatedExperimentAggregate(
     execution.plan,
     execution.result,
-    execution.progress.states,
+    execution.states,
   );
-  const isRunning = execution.progress.status === "running" && !execution.error && !execution.result;
+  const live = execution.result || execution.error ? undefined : execution.live;
+  const isRunning = live !== undefined;
   const lifecycle = isRunning ? "running" : execution.error ? "interrupted" : aggregate.lifecycle;
-  const activeOrdinal = isRunning ? execution.progress.currentOrdinal : undefined;
+  const activeOrdinal = live?.currentOrdinal;
 
   useEffect(() => {
     if (!isRunning) return;
@@ -104,8 +121,8 @@ export function RepeatedExperimentWorkspace({
           <span className="eyebrow">{execution.storage === "durable" ? "Saved project experiment" : "Unsaved session experiment"}</span>
           <h2>Repeated experiment</h2>
           <p>
-            {isRunning
-              ? <>{execution.progress.finished} of {execution.progress.requested} finished{activeOrdinal ? ` · Running repetition ${activeOrdinal}` : " · Preparing"} · <span className="experiment-elapsed">{elapsedTime(nowMs - execution.startedAtMs)} elapsed</span></>
+            {live
+              ? <>{live.finished} of {live.requested} finished{activeOrdinal ? ` · Running repetition ${activeOrdinal}` : " · Preparing"} · <span className="experiment-elapsed">{elapsedTime(nowMs - live.startedAtMs)} elapsed</span></>
               : `${aggregate.requested} requested repetitions`}
           </p>
         </div>
@@ -116,7 +133,7 @@ export function RepeatedExperimentWorkspace({
         </div>
       </header>
 
-      {isRunning && <progress aria-label="Experiment progress" className="experiment-progress" max={execution.progress.requested} value={execution.progress.finished}>{execution.progress.finished} of {execution.progress.requested}</progress>}
+      {live && <progress aria-label="Experiment progress" className="experiment-progress" max={live.requested} value={live.finished}>{live.finished} of {live.requested}</progress>}
 
       {execution.storage === "unsaved" && <p className="repeated-experiment-notice" role="status">This experiment is not saved and will be lost when this session closes.</p>}
       {execution.error && <p className="repeated-experiment-notice error" role="alert">{execution.error}</p>}
@@ -138,10 +155,11 @@ export function RepeatedExperimentWorkspace({
 
       <div className="repeated-experiment-rows">
         {execution.plan.cells.map((cell) => {
-          const state = execution.progress.states.get(cell.runId);
+          const state = execution.states.get(cell.runId);
           const trace = execution.traces.get(cell.runId);
+          const unreadable = execution.unreadableTraces.get(cell.runId);
           const isActive = activeOrdinal === cell.ordinal;
-          const status = isActive ? "running" : rowStatus(execution, cell.runId);
+          const status = isActive ? "running" : rowStatus(execution, cell.runId, isRunning);
           const isSelected = execution.selectedRunId === cell.runId;
           const preview = outputPreview(state);
           return (
@@ -152,7 +170,9 @@ export function RepeatedExperimentWorkspace({
             >
               <div><strong>Repetition {cell.ordinal}</strong><span className={`run-history-status ${status}`}>{isActive && <span className="experiment-row-activity-dot" aria-hidden="true" />}{status}</span></div>
               <span className="repeated-experiment-row-metrics">{rowMetrics(state)}</span>
-              {trace ? <button className="text-button" type="button" onClick={() => onOpenTrace(cell.runId)}>Open Response &amp; Inspect</button> : <span className="repeated-experiment-row-pending">{status === "queued" ? "Waiting" : "Trace unavailable"}</span>}
+              {trace
+                ? <button className="text-button" type="button" onClick={() => onOpenTrace(cell.runId)}>Open Response &amp; Inspect</button>
+                : <span className="repeated-experiment-row-pending" title={unreadable}>{pendingLabel(status, unreadable)}</span>}
               {preview !== undefined && <p className="repeated-experiment-output-preview"><span>Output ready</span>{preview}</p>}
             </article>
           );

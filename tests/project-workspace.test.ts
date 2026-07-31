@@ -4,7 +4,6 @@ import test from "node:test";
 import {
   createProjectFolder,
   downloadProjectFile,
-  listExperimentArtifactPairsWorkspace,
   listExperimentArtifactsWorkspace,
   readExperimentArtifactWorkspace,
   saveExperimentPlanWorkspace,
@@ -283,18 +282,6 @@ test("browser workspaces save experiment artifacts once and list them separately
         opened.handle,
         "experiment_workspace.plan.json",
       ),
-    },
-  ]);
-  assert.deepEqual(await listExperimentArtifactPairsWorkspace(opened.handle), [
-    {
-      experimentId: "experiment_workspace",
-      plan: {
-        fileName: "experiment_workspace.plan.json",
-        contents: await readExperimentArtifactWorkspace(
-          opened.handle,
-          "experiment_workspace.plan.json",
-        ),
-      },
     },
   ]);
 

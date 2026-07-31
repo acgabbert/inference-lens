@@ -36,6 +36,12 @@ export interface OpenedProjectExperiment {
   result?: ExperimentResultV1;
   traces: ReadonlyMap<RunId, RunTrace>;
   traceFileNames: ReadonlyMap<RunId, string>;
+  /**
+   * Cells whose referenced trace was listed but could not be read back, keyed
+   * by run ID. A trace damaged or removed since the last refresh must stay
+   * distinguishable from a repetition that never ran.
+   */
+  unreadableTraces: ReadonlyMap<RunId, string>;
 }
 
 export type ProjectRunHistoryStatus = "idle" | "loading" | "loaded" | "failed";
@@ -178,21 +184,39 @@ export function useProjectRunHistory(
         : undefined;
       const traces = new Map<RunId, RunTrace>();
       const traceFileNames = new Map<RunId, string>();
+      const unreadableTraces = new Map<RunId, string>();
       await Promise.all(item.cells.map(async (cell) => {
         if (!cell.traceFileName) return;
         try {
           const trace = parseRunTraceJson(
             await readRunTraceWorkspace(workspace, cell.traceFileName),
           );
-          if (trace.runId !== cell.runId) return;
+          if (trace.runId !== cell.runId) {
+            unreadableTraces.set(
+              cell.runId,
+              `${cell.traceFileName} now holds a different run.`,
+            );
+            return;
+          }
           traces.set(cell.runId, trace);
           traceFileNames.set(cell.runId, cell.traceFileName);
-        } catch {
-          // A trace removed or damaged after refresh becomes unavailable in the
-          // experiment view; the plan itself remains independently openable.
+        } catch (error) {
+          // A trace removed or damaged after the last refresh is reported as
+          // unreadable rather than silently shown as a repetition that never
+          // ran; the plan itself remains independently openable.
+          unreadableTraces.set(
+            cell.runId,
+            error instanceof Error ? error.message : `${cell.traceFileName} could not be read.`,
+          );
         }
       }));
-      return { plan, ...(result ? { result } : {}), traces, traceFileNames };
+      return {
+        plan,
+        ...(result ? { result } : {}),
+        traces,
+        traceFileNames,
+        unreadableTraces,
+      };
     },
     [workspace],
   );

@@ -122,9 +122,9 @@ test("repeated workspace renders unsaved state, exact aggregate text, and ordina
       execution: {
         plan: frozenPlan,
         storage: "unsaved",
-        startedAtMs: Date.now(),
         workspace: null,
-        progress: { status: "completed", requested: 2, finished: 2, states: new Map() },
+        states: new Map(),
+        unreadableTraces: new Map(),
         result: {
           schemaVersion: 1,
           experimentId: frozenPlan.experimentId,
@@ -167,15 +167,10 @@ test("running workspace exposes determinate activity, the active repetition, and
       execution: {
         plan: frozenPlan,
         storage: "durable",
-        startedAtMs: Date.now(),
         workspace: {},
-        progress: {
-          status: "running",
-          requested: 2,
-          finished: 1,
-          currentOrdinal: 2,
-          states: new Map(),
-        },
+        states: new Map(),
+        unreadableTraces: new Map(),
+        live: { startedAtMs: Date.now(), requested: 2, finished: 1, currentOrdinal: 2 },
         traces: new Map(),
         selectedRunId: null,
       },
@@ -207,17 +202,12 @@ test("completed experiment rows show a brief normalized output preview", async (
       execution: {
         plan: frozenPlan,
         storage: "durable",
-        startedAtMs: Date.now(),
         workspace: {},
-        progress: {
-          status: "completed",
-          requested: 2,
-          finished: 2,
-          states: new Map([
-            ["run_render-1", completedState("run_render-1", longOutput)],
-            ["run_render-2", completedState("run_render-2", "   ")],
-          ]),
-        },
+        states: new Map([
+          ["run_render-1", completedState("run_render-1", longOutput)],
+          ["run_render-2", completedState("run_render-2", "   ")],
+        ]),
+        unreadableTraces: new Map(),
         result: {
           schemaVersion: 1,
           experimentId: frozenPlan.experimentId,
@@ -238,6 +228,81 @@ test("completed experiment rows show a brief normalized output preview", async (
   assert.match(html, /More detail\. …/);
   assert.match(html, /No text output/);
   assert.doesNotMatch(html, /A finished answer\.\n/);
+  assertNoBrokenValues(html);
+});
+
+test("a saved interrupted experiment reads as interrupted and shows no live progress", async () => {
+  const frozenPlan = plan();
+  const html = await render(
+    "/app/run/repeated-experiment-workspace.client.tsx",
+    "RepeatedExperimentWorkspace",
+    {
+      execution: {
+        plan: frozenPlan,
+        storage: "durable",
+        workspace: {},
+        // No result artifact and no live progress: the session that produced
+        // this experiment ended before it could finish.
+        states: new Map([["run_render-1", completedState("run_render-1", "Only answer")]]),
+        traces: new Map([["run_render-1", { runId: "run_render-1" }]]),
+        traceFileNames: new Map([["run_render-1", "run_render-1.json"]]),
+        unreadableTraces: new Map(),
+        selectedRunId: null,
+      },
+      onStop() {},
+      onOpenTrace() {},
+    },
+  );
+
+  // The experiment-level badge, not a repetition's own status.
+  const header = html.slice(0, html.indexOf("</header>"));
+  assert.match(header, /run-history-status interrupted">interrupted</);
+  assert.doesNotMatch(header, /completed|cancelled|running/);
+  assert.match(html, /2 requested repetitions/);
+  assert.doesNotMatch(html, /elapsed/);
+  assert.doesNotMatch(html, /<progress/);
+  assert.doesNotMatch(html, /Stop remaining/);
+  assert.doesNotMatch(html, /aria-busy="true"/);
+  // The cell that never started must not be described as a queued repetition.
+  assert.match(html, /1 completed · 0 failed · 0 cancelled/);
+  assert.match(html, /1 not run · 0 missing trace/);
+  assert.doesNotMatch(html, /Waiting/);
+  assert.match(html, /Not run/);
+  assertNoBrokenValues(html);
+});
+
+test("a referenced trace that cannot be read is distinguished from one that never ran", async () => {
+  const frozenPlan = plan();
+  const html = await render(
+    "/app/run/repeated-experiment-workspace.client.tsx",
+    "RepeatedExperimentWorkspace",
+    {
+      execution: {
+        plan: frozenPlan,
+        storage: "durable",
+        workspace: {},
+        states: new Map(),
+        result: {
+          schemaVersion: 1,
+          experimentId: frozenPlan.experimentId,
+          status: "completed",
+          endedAt: "2026-07-30T12:01:00.000Z",
+          cells: frozenPlan.cells.map(({ cellId, runId }) => ({ cellId, runId, status: "completed" })),
+        },
+        traces: new Map(),
+        traceFileNames: new Map(),
+        unreadableTraces: new Map([["run_render-1", "run_render-1.json is not valid JSON."]]),
+        selectedRunId: null,
+      },
+      onStop() {},
+      onOpenTrace() {},
+    },
+  );
+
+  assert.match(html, /Trace could not be read/);
+  assert.match(html, /run_render-1\.json is not valid JSON\./);
+  // The other cell completed and its trace is simply gone.
+  assert.match(html, /Trace missing/);
   assertNoBrokenValues(html);
 });
 

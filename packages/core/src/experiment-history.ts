@@ -1,13 +1,14 @@
 import {
+  experimentArtifactIdentity,
+  isExperimentEntryName,
   parseExperimentPlanJson,
   parseExperimentResultJson,
   repeatedExperimentAggregate,
   type ExperimentLifecycle,
 } from "./experiment.ts";
-import type { ExperimentId, RunId } from "./run-kernel/types.ts";
-import { runStateFromTrace } from "./run-trace.ts";
+import type { ExperimentId, RunId, RunState } from "./run-kernel/types.ts";
 import {
-  loadRunHistoryFilesWithTraces,
+  loadRunHistoryFilesWithStates,
   type RunHistoryFailure,
   type RunHistoryItem,
   type RunHistorySource,
@@ -68,19 +69,20 @@ export function loadProjectHistoryFiles(
   traceFiles: RunHistorySource[],
   experimentFiles: ExperimentHistorySource[],
 ): ProjectHistoryProjection {
-  const loadedRuns = loadRunHistoryFilesWithTraces(traceFiles);
+  const loadedRuns = loadRunHistoryFilesWithStates(traceFiles);
   const failures = [...loadedRuns.failures];
   const plans = new Map<ExperimentId, ExperimentHistorySource>();
   const results = new Map<ExperimentId, ExperimentHistorySource>();
 
   for (const file of experimentFiles) {
-    const match = /^(experiment_[A-Za-z0-9][A-Za-z0-9._-]*)\.(plan|result)\.json$/.exec(file.fileName);
-    if (!match) {
+    // The one filename convention lives in `experiment.ts`; this projection
+    // must never grow a second, subtly different copy of it.
+    if (!isExperimentEntryName(file.fileName)) {
       failures.push({ fileName: file.fileName, message: "The experiment artifact filename is invalid." });
       continue;
     }
-    const destination = match[2] === "plan" ? plans : results;
-    destination.set(match[1] as ExperimentId, file);
+    const { experimentId, kind } = experimentArtifactIdentity(file.fileName);
+    (kind === "plan" ? plans : results).set(experimentId, file);
   }
 
   const experiments: ExperimentHistoryItem[] = [];
@@ -109,11 +111,11 @@ export function loadProjectHistoryFiles(
       }
     }
 
-    const states = new Map<RunId, ReturnType<typeof runStateFromTrace>>();
+    const states = new Map<RunId, RunState>();
     const cells = plan.cells.map((cell) => {
       groupedRunIds.add(cell.runId);
-      const stored = loadedRuns.tracesByRunId.get(cell.runId);
-      if (stored) states.set(cell.runId, runStateFromTrace(stored.trace));
+      const stored = loadedRuns.statesByRunId.get(cell.runId);
+      if (stored) states.set(cell.runId, stored.state);
       return {
         ordinal: cell.ordinal,
         runId: cell.runId,
