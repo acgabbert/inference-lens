@@ -473,7 +473,16 @@ export function parseExperimentResultJson(
 }
 
 export function serializeExperimentPlan(plan: RepeatedExperimentPlanV1): string {
-  return `${JSON.stringify(stableJsonValue(parseExperimentPlanFile(plan)), null, 2)}\n`;
+  return serializeParsedExperimentPlan(parseExperimentPlanFile(plan));
+}
+
+/**
+ * Serializes a plan that was already accepted by `parseExperimentPlanFile`.
+ * This is useful to execution owners that must validate an ad hoc plan before
+ * starting, but must not re-parse the full frozen input for every cell.
+ */
+export function serializeParsedExperimentPlan(plan: RepeatedExperimentPlanV1): string {
+  return `${JSON.stringify(stableJsonValue(plan), null, 2)}\n`;
 }
 
 export function serializeExperimentResult(
@@ -491,7 +500,23 @@ export function materializeExperimentCellInput(
   const parsed = parseExperimentPlanFile(plan);
   const cell = parsed.cells.find((candidate) => candidate.cellId === cellId);
   if (!cell) throw new ExperimentValidationError(`Unknown experiment cell ${cellId}.`);
-  return { ...parsed.commonInput, runId: cell.runId };
+  return materializeParsedExperimentCellInput(parsed, cell);
+}
+
+/**
+ * Materializes a cell from a plan already accepted by `parseExperimentPlanFile`.
+ * Callers that receive untrusted plans must use `materializeExperimentCellInput`
+ * or parse first.
+ */
+export function materializeParsedExperimentCellInput(
+  plan: RepeatedExperimentPlanV1,
+  cell: RepeatedExperimentCell,
+): ResolvedRunInput {
+  const plannedCell = plan.cells.find((candidate) => candidate.cellId === cell.cellId);
+  if (!plannedCell || plannedCell.runId !== cell.runId) {
+    throw new ExperimentValidationError(`Unknown experiment cell ${cell.cellId}.`);
+  }
+  return { ...plan.commonInput, runId: plannedCell.runId };
 }
 
 /** A plan with no result survived an interrupted application session. */
