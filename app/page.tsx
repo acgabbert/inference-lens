@@ -55,7 +55,10 @@ import { WorkbenchShell } from "./workbench-shell.client";
 import type { WorkbenchView } from "./workbench-shell.client";
 import { RunTracePanel } from "./run-trace-panel.client";
 import { RunHistoryDrawer } from "./run-history-drawer.client";
-import type { ProjectRunHistoryItem } from "./use-project-run-history.client";
+import type {
+  ProjectExperimentHistoryItem,
+  ProjectRunHistoryItem,
+} from "./use-project-run-history.client";
 import { useProjectRunHistory } from "./use-project-run-history.client";
 import {
   ConfirmationDialog,
@@ -784,6 +787,15 @@ function HomeContent() {
       workspace,
       fileName: item.fileName,
     });
+    repeatedExperiment.clear();
+    setRunHistoryOpen(false);
+  }
+  async function openHistoryExperiment(item: ProjectExperimentHistoryItem): Promise<void> {
+    const workspace = projectWorkspace;
+    if (!workspace) throw new Error("The project folder is no longer open.");
+    repeatedExperiment.openSaved(await runHistory.readExperiment(item), workspace);
+    runSession.reset();
+    setWorkbenchView("response");
     setRunHistoryOpen(false);
   }
   const runReachedTerminalStatus = Boolean(
@@ -1070,9 +1082,11 @@ function HomeContent() {
         open={runHistoryOpen}
         projectName={projectFile?.name}
         selectedRunId={runState?.runId}
+        selectedExperimentId={repeatedExperiment.execution?.plan.experimentId}
         history={runHistory}
         onClose={() => setRunHistoryOpen(false)}
         onSelect={(item) => openHistoryTrace(item)}
+        onSelectExperiment={(item) => openHistoryExperiment(item)}
       />
 
       <WorkbenchShell

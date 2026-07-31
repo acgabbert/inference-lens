@@ -21,7 +21,8 @@ function rowStatus(execution: RepeatedExperimentExecution, runId: RunId): string
       default: return "running";
     }
   }
-  return execution.result?.cells.find((cell) => cell.runId === runId)?.status ?? "queued";
+  return execution.result?.cells.find((cell) => cell.runId === runId)?.status
+    ?? (execution.progress.status === "running" ? "queued" : "not-run");
 }
 
 function rowMetrics(state: RunState | undefined): string {

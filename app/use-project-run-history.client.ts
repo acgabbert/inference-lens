@@ -3,30 +3,55 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
-  loadRunHistoryFiles,
   type RunHistoryFailure,
   type RunHistoryItem,
 } from "../packages/core/src/run-history";
-import type { RunTrace } from "../packages/core/src/run-kernel";
+import {
+  loadProjectHistoryFiles,
+  type ExperimentHistoryItem,
+  type ProjectHistoryEntry,
+} from "../packages/core/src/experiment-history.ts";
+import {
+  parseExperimentPlanJson,
+  parseExperimentResultJson,
+  type ExperimentResultV1,
+  type RepeatedExperimentPlanV1,
+} from "../packages/core/src/experiment.ts";
+import type { RunId, RunTrace } from "../packages/core/src/run-kernel";
 import { parseRunTraceJson } from "../packages/core/src/run-trace";
 import {
+  listExperimentArtifactsWorkspace,
   listRunTraceWorkspace,
+  readExperimentArtifactWorkspace,
   readRunTraceWorkspace,
   type ProjectWorkspaceHandle,
 } from "./project-workspace.client";
 
 export type ProjectRunHistoryItem = RunHistoryItem;
 export type ProjectRunHistoryFailure = RunHistoryFailure;
+export type ProjectExperimentHistoryItem = ExperimentHistoryItem;
+
+export interface OpenedProjectExperiment {
+  plan: RepeatedExperimentPlanV1;
+  result?: ExperimentResultV1;
+  traces: ReadonlyMap<RunId, RunTrace>;
+  traceFileNames: ReadonlyMap<RunId, string>;
+}
 
 export type ProjectRunHistoryStatus = "idle" | "loading" | "loaded" | "failed";
 
 export interface ProjectRunHistoryState {
   status: ProjectRunHistoryStatus;
+  entries: ProjectHistoryEntry[];
   items: ProjectRunHistoryItem[];
+  experiments: ProjectExperimentHistoryItem[];
   failures: ProjectRunHistoryFailure[];
+  artifactCount: number;
+  largeHistory: boolean;
   error?: string;
   refresh(): Promise<void>;
   readTrace(fileName: string): Promise<RunTrace>;
+  readExperiment(item: ProjectExperimentHistoryItem): Promise<OpenedProjectExperiment>;
 }
 
 interface LoadedFor {
@@ -53,8 +78,12 @@ export function useProjectRunHistory(
   savedRunVersion = 0,
 ): ProjectRunHistoryState {
   const [status, setStatus] = useState<ProjectRunHistoryStatus>("idle");
+  const [entries, setEntries] = useState<ProjectHistoryEntry[]>([]);
   const [items, setItems] = useState<ProjectRunHistoryItem[]>([]);
+  const [experiments, setExperiments] = useState<ProjectExperimentHistoryItem[]>([]);
   const [failures, setFailures] = useState<ProjectRunHistoryFailure[]>([]);
+  const [artifactCount, setArtifactCount] = useState(0);
+  const [largeHistory, setLargeHistory] = useState(false);
   const [error, setError] = useState<string>();
   const generationRef = useRef(0);
   const loadedForRef = useRef<LoadedFor | null>(null);
@@ -64,8 +93,12 @@ export function useProjectRunHistory(
     loadedForRef.current = { workspace, savedRunVersion };
     if (!workspace) {
       setStatus("loaded");
+      setEntries([]);
       setItems([]);
+      setExperiments([]);
       setFailures([]);
+      setArtifactCount(0);
+      setLargeHistory(false);
       setError(undefined);
       return;
     }
@@ -73,15 +106,27 @@ export function useProjectRunHistory(
     setStatus("loading");
     setError(undefined);
     try {
-      const result = loadRunHistoryFiles(await listRunTraceWorkspace(workspace));
+      const [traceFiles, experimentFiles] = await Promise.all([
+        listRunTraceWorkspace(workspace),
+        listExperimentArtifactsWorkspace(workspace),
+      ]);
+      const result = loadProjectHistoryFiles(traceFiles, experimentFiles);
       if (generation !== generationRef.current) return;
-      setItems(result.items);
+      setEntries(result.entries);
+      setItems(result.runs);
+      setExperiments(result.experiments);
       setFailures(result.failures);
+      setArtifactCount(result.artifactCount);
+      setLargeHistory(result.largeHistory);
       setStatus("loaded");
     } catch (loadError) {
       if (generation !== generationRef.current) return;
+      setEntries([]);
       setItems([]);
+      setExperiments([]);
       setFailures([]);
+      setArtifactCount(0);
+      setLargeHistory(false);
       setError(
         loadError instanceof Error
           ? loadError.message
@@ -116,5 +161,53 @@ export function useProjectRunHistory(
     [workspace],
   );
 
-  return { status, items, failures, error, refresh, readTrace };
+  const readExperiment = useCallback(
+    async (item: ProjectExperimentHistoryItem): Promise<OpenedProjectExperiment> => {
+      if (!workspace) throw new Error("The project folder is no longer open.");
+      const plan = parseExperimentPlanJson(
+        await readExperimentArtifactWorkspace(workspace, item.planFileName),
+      );
+      if (plan.experimentId !== item.experimentId) {
+        throw new Error("The experiment plan changed since history was refreshed.");
+      }
+      const result = item.resultFileName
+        ? parseExperimentResultJson(
+            await readExperimentArtifactWorkspace(workspace, item.resultFileName),
+            plan,
+          )
+        : undefined;
+      const traces = new Map<RunId, RunTrace>();
+      const traceFileNames = new Map<RunId, string>();
+      await Promise.all(item.cells.map(async (cell) => {
+        if (!cell.traceFileName) return;
+        try {
+          const trace = parseRunTraceJson(
+            await readRunTraceWorkspace(workspace, cell.traceFileName),
+          );
+          if (trace.runId !== cell.runId) return;
+          traces.set(cell.runId, trace);
+          traceFileNames.set(cell.runId, cell.traceFileName);
+        } catch {
+          // A trace removed or damaged after refresh becomes unavailable in the
+          // experiment view; the plan itself remains independently openable.
+        }
+      }));
+      return { plan, ...(result ? { result } : {}), traces, traceFileNames };
+    },
+    [workspace],
+  );
+
+  return {
+    status,
+    entries,
+    items,
+    experiments,
+    failures,
+    artifactCount,
+    largeHistory,
+    error,
+    refresh,
+    readTrace,
+    readExperiment,
+  };
 }
