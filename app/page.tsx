@@ -1078,9 +1078,19 @@ function HomeContent() {
       <WorkbenchShell
         view={workbenchView}
         onViewChange={setWorkbenchView}
-        responseStatus={status}
+        responseStatus={repeatedExperiment.isRunning ? "running" : status}
+        requestLabel={repeatedExperiment.execution?.selectedRunId ? "Experiment" : "Request"}
         request={
-        <RequestComposer
+        repeatedExperiment.execution?.selectedRunId ? <RepeatedExperimentWorkspace
+          execution={repeatedExperiment.execution}
+          placement="request"
+          onStop={repeatedExperiment.cancel}
+          onOpenTrace={repeatedExperiment.openTrace}
+          onReturnToRequest={() => {
+            repeatedExperiment.returnToRequest();
+            setWorkbenchView("request");
+          }}
+        /> : <RequestComposer
           requestDraft={{
             messages, tools, requestTools, enabledToolIds, addTool, removeTool, updateTool,
             setToolEnabled, mockForTool, updateToolMock, removeRequestTool,
@@ -1122,7 +1132,7 @@ function HomeContent() {
         }
         response={
         <section className="result">
-          {repeatedExperiment.execution?.showWorkspace ? <RepeatedExperimentWorkspace
+          {repeatedExperiment.execution && !repeatedExperiment.execution.selectedRunId ? <RepeatedExperimentWorkspace
             execution={repeatedExperiment.execution}
             onStop={repeatedExperiment.cancel}
             onOpenTrace={repeatedExperiment.openTrace}

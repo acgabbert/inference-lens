@@ -100,6 +100,7 @@ test("repeated workspace renders unsaved state, exact aggregate text, and ordina
       execution: {
         plan: frozenPlan,
         storage: "unsaved",
+        startedAtMs: Date.now(),
         workspace: null,
         progress: { status: "completed", requested: 2, finished: 2, states: new Map() },
         result: {
@@ -113,10 +114,12 @@ test("repeated workspace renders unsaved state, exact aggregate text, and ordina
           ],
         },
         traces: new Map([["run_render-1", { runId: "run_render-1" }]]),
-        showWorkspace: true,
+        selectedRunId: "run_render-1",
       },
+      placement: "request",
       onStop() {},
       onOpenTrace() {},
+      onReturnToRequest() {},
     },
   );
 
@@ -125,7 +128,68 @@ test("repeated workspace renders unsaved state, exact aggregate text, and ordina
   assert.match(html, /0 completed · 0 failed · 0 cancelled/);
   assert.match(html, /0 not run · 2 missing trace/);
   assert.match(html, /Repetition 1/);
+  assert.match(html, /aria-current="true"/);
   assert.match(html, /Open Response &amp; Inspect/);
   assert.match(html, /Repetition 2/);
+  assert.match(html, /Back to request/);
+  assert.match(html, /experiment-context-pane/);
+  assertNoBrokenValues(html);
+});
+
+test("running workspace exposes determinate activity, the active repetition, and elapsed time", async () => {
+  const frozenPlan = plan();
+  const html = await render(
+    "/app/run/repeated-experiment-workspace.client.tsx",
+    "RepeatedExperimentWorkspace",
+    {
+      execution: {
+        plan: frozenPlan,
+        storage: "durable",
+        startedAtMs: Date.now(),
+        workspace: {},
+        progress: {
+          status: "running",
+          requested: 2,
+          finished: 1,
+          currentOrdinal: 2,
+          states: new Map(),
+        },
+        traces: new Map(),
+        selectedRunId: null,
+      },
+      onStop() {},
+      onOpenTrace() {},
+    },
+  );
+
+  assert.match(html, /aria-busy="true"/);
+  assert.match(html, /1 of 2 finished/);
+  assert.match(html, /Running repetition 2/);
+  assert.match(html, /\d+:\d{2} elapsed/);
+  assert.match(html, /experiment-elapsed/);
+  assert.match(html, /<progress[^>]+max="2"[^>]+value="1"/);
+  assert.match(html, /repeated-experiment-row active/);
+  assert.match(html, /experiment-row-activity-dot/);
+  assert.doesNotMatch(html, /experiment-activity-dot/);
+  assert.match(html, /Stop remaining/);
+  assertNoBrokenValues(html);
+});
+
+test("workbench shell can expose Experiment as the contextual mobile pane", async () => {
+  const html = await render(
+    "/app/workbench-shell.client.tsx",
+    "WorkbenchShell",
+    {
+      request: "Experiment summary",
+      response: "Selected response",
+      inspect: "Selected inspection",
+      view: "request",
+      onViewChange() {},
+      requestLabel: "Experiment",
+    },
+  );
+
+  assert.match(html, /<button[^>]+class="active"[^>]*>Experiment<\/button>/);
+  assert.match(html, /Experiment summary/);
   assertNoBrokenValues(html);
 });

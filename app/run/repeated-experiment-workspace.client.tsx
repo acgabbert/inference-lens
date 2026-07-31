@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import { repeatedExperimentAggregate } from "../../packages/core/src/experiment.ts";
 import type { RunId, RunState } from "../../packages/core/src/run-kernel/index.ts";
 import { runMetrics } from "../../packages/core/src/run-metrics.ts";
@@ -34,36 +36,69 @@ function range(label: string, values: { count: number; min?: number; median?: nu
   );
 }
 
+function elapsedTime(elapsedMs: number): string {
+  const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1_000));
+  const hours = Math.floor(totalSeconds / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
+  const seconds = totalSeconds % 60;
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+    : `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
 export function RepeatedExperimentWorkspace({
   execution,
   onStop,
   onOpenTrace,
+  placement = "response",
+  onReturnToRequest,
 }: {
   execution: RepeatedExperimentExecution;
   onStop(): void;
   onOpenTrace(runId: RunId): void;
+  placement?: "request" | "response";
+  onReturnToRequest?(): void;
 }) {
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const aggregate = repeatedExperimentAggregate(
     execution.plan,
     execution.result,
     execution.progress.states,
   );
-  const isRunning = execution.progress.status === "running";
+  const isRunning = execution.progress.status === "running" && !execution.error && !execution.result;
   const lifecycle = isRunning ? "running" : execution.error ? "interrupted" : aggregate.lifecycle;
+  const activeOrdinal = isRunning ? execution.progress.currentOrdinal : undefined;
+
+  useEffect(() => {
+    if (!isRunning) return;
+    const intervalId = window.setInterval(() => setNowMs(Date.now()), 1_000);
+    return () => window.clearInterval(intervalId);
+  }, [isRunning]);
 
   return (
-    <section className="repeated-experiment-workspace" aria-label="Repeated experiment results">
+    <section
+      aria-busy={isRunning ? "true" : undefined}
+      aria-label="Repeated experiment results"
+      className={`repeated-experiment-workspace ${placement === "request" ? "experiment-context-pane" : ""}`.trim()}
+    >
       <header className="repeated-experiment-header">
         <div>
           <span className="eyebrow">{execution.storage === "durable" ? "Saved project experiment" : "Unsaved session experiment"}</span>
           <h2>Repeated experiment</h2>
-          <p>{isRunning ? `Completed ${execution.progress.finished} / ${execution.progress.requested}` : `${aggregate.requested} requested repetitions`}</p>
+          <p>
+            {isRunning
+              ? <>{execution.progress.finished} of {execution.progress.requested} finished{activeOrdinal ? ` · Running repetition ${activeOrdinal}` : " · Preparing"} · <span className="experiment-elapsed">{elapsedTime(nowMs - execution.startedAtMs)} elapsed</span></>
+              : `${aggregate.requested} requested repetitions`}
+          </p>
         </div>
         <div className="repeated-experiment-actions">
           <span className={`run-history-status ${lifecycle}`}>{lifecycle}</span>
           {isRunning && <button className="button stop" type="button" onClick={onStop}>Stop remaining</button>}
+          {placement === "request" && onReturnToRequest && <button className="button" type="button" onClick={onReturnToRequest}>Back to request</button>}
         </div>
       </header>
+
+      {isRunning && <progress aria-label="Experiment progress" className="experiment-progress" max={execution.progress.requested} value={execution.progress.finished}>{execution.progress.finished} of {execution.progress.requested}</progress>}
 
       {execution.storage === "unsaved" && <p className="repeated-experiment-notice" role="status">This experiment is not saved and will be lost when this session closes.</p>}
       {execution.error && <p className="repeated-experiment-notice error" role="alert">{execution.error}</p>}
@@ -86,12 +121,18 @@ export function RepeatedExperimentWorkspace({
       <div className="repeated-experiment-rows">
         {execution.plan.cells.map((cell) => {
           const state = execution.progress.states.get(cell.runId);
-          const status = rowStatus(execution, cell.runId);
           const trace = execution.traces.get(cell.runId);
+          const isActive = activeOrdinal === cell.ordinal;
+          const status = isActive ? "running" : rowStatus(execution, cell.runId);
+          const isSelected = execution.selectedRunId === cell.runId;
           return (
-            <article className="repeated-experiment-row" key={cell.cellId}>
-              <div><strong>Repetition {cell.ordinal}</strong><span className={`run-history-status ${status}`}>{status}</span></div>
-              <span>{rowMetrics(state)}</span>
+            <article
+              aria-current={isSelected ? "true" : undefined}
+              className={`repeated-experiment-row${isActive ? " active" : ""}${isSelected ? " selected" : ""}`}
+              key={cell.cellId}
+            >
+              <div><strong>Repetition {cell.ordinal}</strong><span className={`run-history-status ${status}`}>{isActive && <span className="experiment-row-activity-dot" aria-hidden="true" />}{status}</span></div>
+              <span className="repeated-experiment-row-metrics">{rowMetrics(state)}</span>
               {trace ? <button className="text-button" type="button" onClick={() => onOpenTrace(cell.runId)}>Open Response &amp; Inspect</button> : <span className="repeated-experiment-row-pending">{status === "queued" ? "Waiting" : "Trace unavailable"}</span>}
             </article>
           );

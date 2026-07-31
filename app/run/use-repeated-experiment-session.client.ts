@@ -8,7 +8,7 @@ import type {
   RepeatedExperimentPlanV1,
 } from "../../packages/core/src/experiment.ts";
 import { createEntityId } from "../../packages/core/src/run-kernel/index.ts";
-import type { ResolvedRunInput, RunId, RunState, RunTrace } from "../../packages/core/src/run-kernel/index.ts";
+import type { ResolvedRunInput, RunId, RunTrace } from "../../packages/core/src/run-kernel/index.ts";
 import { randomUUID } from "../../packages/core/src/random-id.ts";
 import { traceFileName } from "../../packages/core/src/run-trace.ts";
 import type { ProjectWorkspaceHandle } from "../project-workspace.client.ts";
@@ -34,13 +34,16 @@ export interface RepeatedExperimentDraft {
 export interface RepeatedExperimentExecution {
   plan: RepeatedExperimentPlanV1;
   storage: "durable" | "unsaved";
+  /** Session-clock start used only for live elapsed-time presentation. */
+  startedAtMs: number;
   /** The experiment's original workspace, retained for opening its saved traces. */
   workspace: ProjectWorkspaceHandle | null;
   progress: RepeatedExperimentProgress;
   result?: ExperimentResultV1;
   error?: string;
   traces: ReadonlyMap<RunId, RunTrace>;
-  showWorkspace: boolean;
+  /** Keeps the experiment beside the ordinary run while reviewing one cell. */
+  selectedRunId: RunId | null;
 }
 
 export interface UseRepeatedExperimentSessionOptions {
@@ -59,7 +62,8 @@ function normalizedCount(value: number): number {
 /** Freezes the resolved semantic input and allocates every ordinary run before execution. */
 function planFor(input: ResolvedRunInput, repetitionCount: number): RepeatedExperimentPlanV1 {
   const frozenInput = structuredClone(input);
-  const { runId: _discardedRunId, ...commonInput } = frozenInput;
+  const { runId: discardedRunId, ...commonInput } = frozenInput;
+  void discardedRunId;
   const experimentId = createEntityId("experiment", randomUUID());
   return {
     schemaVersion: 1,
@@ -132,10 +136,11 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
     setExecution({
       plan: pending.plan,
       storage: workspace ? "durable" : "unsaved",
+      startedAtMs: Date.now(),
       workspace,
       progress: initialProgress,
       traces: new Map(),
-      showWorkspace: true,
+      selectedRunId: null,
     });
 
     const persistence = workspace
@@ -186,13 +191,17 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
     const current = execution;
     const trace = current?.traces.get(runId);
     if (!current || !trace) return;
-    setExecution((active) => active === current ? { ...active, showWorkspace: false } : active);
+    setExecution((active) => active === current ? { ...active, selectedRunId: runId } : active);
     options.onOpenTrace(trace, {
       workspace: current.workspace,
       fileName: traceFileName(trace.runId),
       source: "experiment",
     });
   }, [execution, options]);
+
+  const returnToRequest = useCallback(() => {
+    setExecution((current) => current ? { ...current, selectedRunId: null } : current);
+  }, []);
 
   const clear = useCallback(() => {
     if (!controllerRef.current?.isRunning) setExecution(undefined);
@@ -207,6 +216,7 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
     confirm,
     cancel,
     openTrace,
+    returnToRequest,
     clear,
     isRunning,
   };
