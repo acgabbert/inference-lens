@@ -1,20 +1,25 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { CHECK_KINDS } from "../../packages/core/src/checks";
 import type { CheckDefinition, CheckKind } from "../../packages/core/src/checks";
 import type { EvaluationCase } from "../../packages/core/src/project";
 import { FocusModeToggle, useFocusMode } from "../focus-mode.client";
 import type { EvaluationSuiteAuthoringHandle } from "./use-evaluation-suite-authoring.client";
 
-const checkKinds: Array<{ kind: CheckKind; label: string }> = [
-  { kind: "exact-match", label: "Exact output" },
-  { kind: "contains", label: "Contains text" },
-  { kind: "regex", label: "Safe regex" },
-  { kind: "valid-json", label: "Valid JSON" },
-  { kind: "max-output-characters", label: "Maximum characters" },
-  { kind: "max-duration-ms", label: "Maximum duration" },
-  { kind: "max-total-tokens", label: "Maximum tokens" },
-];
+const checkKindLabels: Record<CheckKind, string> = {
+  "exact-match": "Exact output",
+  contains: "Contains text",
+  regex: "Safe regex",
+  "valid-json": "Valid JSON",
+  "max-output-characters": "Maximum characters",
+  "max-duration-ms": "Maximum duration",
+  "max-total-tokens": "Maximum tokens",
+};
+
+// Ordered by the vocabulary itself, so a new kind cannot be offered without a
+// label or silently left out of the picker.
+const checkKinds = CHECK_KINDS.map((kind) => ({ kind, label: checkKindLabels[kind] }));
 
 function CheckEditor({ check, onCommit, onRemove }: {
   check: CheckDefinition;

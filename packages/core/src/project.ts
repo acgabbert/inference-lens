@@ -34,8 +34,6 @@ import type {
   ConversationId,
   ConversationMessage,
   ConversationRevisionId,
-  EvaluationInputBindingId,
-  EvaluationSuiteId,
   ExternalImportId,
   InferenceOptions,
   JsonObject,
@@ -1721,76 +1719,6 @@ export function parseProjectFile(value: unknown): ProjectFile {
   const parsed = projectFileV7Schema.safeParse(source);
   if (!parsed.success) throw new ProjectValidationError(parsed.error.issues);
   return parsed.data;
-}
-
-export type EvaluationSuiteCompatibilityDiagnostic =
-  | {
-      code: "missing-template-use";
-      inputBindingId: EvaluationInputBindingId;
-      templateUseId: PromptTemplateUseId;
-      message: string;
-    }
-  | {
-      code: "missing-template-variable";
-      inputBindingId: EvaluationInputBindingId;
-      templateUseId: PromptTemplateUseId;
-      variableName: string;
-      message: string;
-    };
-
-/**
- * Reports whether one authored suite can supply inputs to one selected
- * conversation revision. Compatibility is intentionally separate from
- * project validity: a suite may remain useful for another historical branch.
- */
-export function evaluationSuiteCompatibilityDiagnostics(
-  project: ProjectFile,
-  evaluationSuiteId: EvaluationSuiteId,
-  conversationRevisionId: ConversationRevisionId,
-): EvaluationSuiteCompatibilityDiagnostic[] {
-  const suite = project.evaluationSuites.find(
-    ({ id }) => id === evaluationSuiteId,
-  );
-  const revision = project.conversationRevisions.find(
-    ({ id }) => id === conversationRevisionId,
-  );
-  if (!suite || !revision) {
-    throw new ProjectValidationError([
-      {
-        code: "custom",
-        path: suite
-          ? ["conversationRevisions", conversationRevisionId]
-          : ["evaluationSuites", evaluationSuiteId],
-        message: suite
-          ? `Conversation revision "${conversationRevisionId}" does not exist.`
-          : `Evaluation suite "${evaluationSuiteId}" does not exist.`,
-      },
-    ]);
-  }
-
-  const uses = templateUseVariableIndex([revision], project.promptTemplates);
-  const diagnostics: EvaluationSuiteCompatibilityDiagnostic[] = [];
-  suite.inputBindings.forEach((binding) => {
-    const occurrence = uses.get(binding.target.templateUseId)?.[0];
-    if (!occurrence) {
-      diagnostics.push({
-        code: "missing-template-use",
-        inputBindingId: binding.id,
-        templateUseId: binding.target.templateUseId,
-        message: `Selected revision does not contain template use "${binding.target.templateUseId}".`,
-      });
-      return;
-    }
-    if (occurrence.variables.has(binding.target.variableName)) return;
-    diagnostics.push({
-      code: "missing-template-variable",
-      inputBindingId: binding.id,
-      templateUseId: binding.target.templateUseId,
-      variableName: binding.target.variableName,
-      message: `Template use "${binding.target.templateUseId}" does not contain variable "${binding.target.variableName}" in the selected revision.`,
-    });
-  });
-  return diagnostics;
 }
 
 const preferredFieldOrder = new Map(

@@ -1,4 +1,5 @@
 import type {
+  CheckId,
   ConversationRevisionId,
   EvaluationCaseId,
   EvaluationInputBindingId,
@@ -91,7 +92,33 @@ export type EvaluationSuitePreflightDiagnostic =
       templateUseId: PromptTemplateUseId;
       variableName: string;
       message: string;
+    }
+  | {
+      code: "empty-case-value";
+      caseId: EvaluationCaseId;
+      inputBindingId: EvaluationInputBindingId;
+      message: string;
+    }
+  | {
+      code: "unfinished-check";
+      caseId: EvaluationCaseId;
+      checkId: CheckId;
+      message: string;
     };
+
+/**
+ * A text check whose expected text is still empty is what "+ Add check" leaves
+ * behind: `contains ""` passes against every possible answer, and `exact-match
+ * ""` asserts an empty answer, which is almost never what the author meant to
+ * write. Reporting it during authoring is the last chance to catch it before
+ * an execution spends provider calls proving nothing.
+ */
+function unfinishedCheckText(check: CheckDefinition): boolean {
+  return (
+    (check.kind === "contains" || check.kind === "exact-match") &&
+    check.value === ""
+  );
+}
 
 /** Pure, provider-free authoring preflight for a selected suite and revision. */
 export function evaluationSuitePreflight(
@@ -110,6 +137,30 @@ export function evaluationSuitePreflight(
   } else if (selectedCaseIds && selectedCaseIds.length === 0) {
     diagnostics.push({ code: "no-cases-selected", message: "Select at least one case before running this suite." });
   }
+
+  const selectedCases = selectedCaseIds
+    ? suite.cases.filter(({ id }) => selectedCaseIds.includes(id))
+    : suite.cases;
+  selectedCases.forEach((evaluationCase) => {
+    suite.inputBindings.forEach((binding) => {
+      if ((evaluationCase.values[binding.id] ?? "").trim() !== "") return;
+      diagnostics.push({
+        code: "empty-case-value",
+        caseId: evaluationCase.id,
+        inputBindingId: binding.id,
+        message: `Case "${evaluationCase.name}" has no value for input "${binding.name}".`,
+      });
+    });
+    evaluationCase.checks.forEach((check) => {
+      if (!unfinishedCheckText(check)) return;
+      diagnostics.push({
+        code: "unfinished-check",
+        caseId: evaluationCase.id,
+        checkId: check.checkId,
+        message: `A ${check.kind} check on case "${evaluationCase.name}" has no expected text yet.`,
+      });
+    });
+  });
 
   const uses = templateUseVariableIndex([revision], project.promptTemplates);
   suite.inputBindings.forEach((binding) => {

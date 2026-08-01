@@ -64,7 +64,10 @@ export function useEvaluationSuiteAuthoring(
 ): EvaluationSuiteAuthoringHandle {
   const [suiteId, setSuiteId] = useState<EvaluationSuiteId>();
   const [revisionId, setRevisionId] = useState<ConversationRevisionId>();
-  const [selectedCaseIds, setSelectedCaseIds] = useState<Set<EvaluationCaseId>>(new Set());
+  // Undefined means "every case", so opening a saved suite previews the run the
+  // author actually described rather than an empty selection they must repair.
+  // It narrows to an explicit set the first time a checkbox is touched.
+  const [selectedCaseIds, setSelectedCaseIds] = useState<ReadonlySet<EvaluationCaseId>>();
   const [focusedCaseId, setFocusedCaseId] = useState<EvaluationCaseId>();
   const [repetitions, setRepetitionsState] = useState(1);
   const [error, setError] = useState<string>();
@@ -77,9 +80,9 @@ export function useEvaluationSuiteAuthoring(
     : project?.defaults.conversationRevisionId;
   const suite = project?.evaluationSuites.find(({ id }) => id === effectiveSuiteId);
   const validCaseIds = new Set(suite?.cases.map(({ id }) => id) ?? []);
-  const effectiveSelectedCaseIds = new Set(
-    [...selectedCaseIds].filter((id) => validCaseIds.has(id)),
-  );
+  const effectiveSelectedCaseIds = selectedCaseIds
+    ? new Set([...selectedCaseIds].filter((id) => validCaseIds.has(id)))
+    : validCaseIds;
   const effectiveFocusedCaseId = focusedCaseId && validCaseIds.has(focusedCaseId)
     ? focusedCaseId
     : suite?.cases[0]?.id;
@@ -122,11 +125,11 @@ export function useEvaluationSuiteAuthoring(
     candidates,
     diagnostics,
     ...(error ? { error } : {}),
-    selectSuite(id) { setSuiteId(id); setFocusedCaseId(undefined); setSelectedCaseIds(new Set()); },
+    selectSuite(id) { setSuiteId(id); setFocusedCaseId(undefined); setSelectedCaseIds(undefined); },
     selectRevision: setRevisionId,
     setCaseSelected(id, selected) {
       setSelectedCaseIds((current) => {
-        const next = new Set(current);
+        const next = new Set(current ?? validCaseIds);
         if (selected) next.add(id); else next.delete(id);
         return next;
       });
@@ -138,7 +141,7 @@ export function useEvaluationSuiteAuthoring(
       const created = createEvaluationSuite(project);
       adoptProjectMutation(created.project);
       setSuiteId(created.suiteId);
-      setSelectedCaseIds(new Set());
+      setSelectedCaseIds(undefined);
       setFocusedCaseId(undefined);
       setError(undefined);
     },
@@ -164,7 +167,10 @@ export function useEvaluationSuiteAuthoring(
         const added = addEvaluationCase(project, effectiveSuiteId);
         adoptProjectMutation(added.project);
         setFocusedCaseId(added.caseId);
-        setSelectedCaseIds((current) => new Set(current).add(added.caseId));
+        // A whole-suite selection already includes the new case.
+        setSelectedCaseIds((current) =>
+          current ? new Set(current).add(added.caseId) : current,
+        );
         setError(undefined);
       } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not add the case."); }
     },

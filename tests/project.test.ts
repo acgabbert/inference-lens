@@ -14,7 +14,6 @@ import {
   createProjectFile,
   createPromptTemplate,
   detachPromptTemplateUse,
-  evaluationSuiteCompatibilityDiagnostics,
   findPromptTemplateUsages,
   insertPromptTemplateUse,
   parseProjectFile,
@@ -37,6 +36,7 @@ import {
   updatePromptTemplateUseToLatest,
   updatePromptTemplateUseValues,
 } from "../packages/core/src/project.ts";
+import { evaluationSuitePreflight } from "../packages/core/src/evaluation-suites.ts";
 import { resolveProviderCapabilities } from "../packages/core/src/types.ts";
 
 const request = {
@@ -398,11 +398,11 @@ test("rejects dangling and secret-like evaluation input bindings", () => {
   );
 });
 
-test("reports selected-revision suite compatibility without invalidating historical bindings", () => {
+test("preflight reports selected-revision compatibility without invalidating historical bindings", () => {
   let project = projectWithEvaluationSuite();
   const originalRevisionId = project.defaults.conversationRevisionId;
   assert.deepEqual(
-    evaluationSuiteCompatibilityDiagnostics(
+    evaluationSuitePreflight(
       project,
       "evaluation-suite_topics",
       originalRevisionId,
@@ -453,7 +453,7 @@ test("reports selected-revision suite compatibility without invalidating histori
   });
 
   assert.deepEqual(
-    evaluationSuiteCompatibilityDiagnostics(
+    evaluationSuitePreflight(
       project,
       "evaluation-suite_topics",
       incompatibleRevisionId,
@@ -461,7 +461,7 @@ test("reports selected-revision suite compatibility without invalidating histori
     ["missing-template-variable"],
   );
   assert.deepEqual(
-    evaluationSuiteCompatibilityDiagnostics(
+    evaluationSuitePreflight(
       project,
       "evaluation-suite_topics",
       missingUseRevisionId,

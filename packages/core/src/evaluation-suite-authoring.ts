@@ -202,12 +202,20 @@ export function removeEvaluationCase(
   }));
 }
 
+/**
+ * Every default must already satisfy the check schema, because adding a check
+ * revalidates the whole project: a default the parser rejects makes that kind
+ * unreachable from the editor rather than merely unfinished. Empty text values
+ * are legal and are reported by preflight as unfinished, but an empty Safe
+ * regex pattern is not, so the regex default is the placeholder `.` for the
+ * author to replace.
+ */
 export function defaultCheck(kind: CheckKind, suffix: IdSuffix = generatedSuffix): CheckDefinition {
   const checkId = createEntityId("check", suffix()) as CheckId;
   switch (kind) {
     case "exact-match": return { checkId, kind, value: "" };
     case "contains": return { checkId, kind, value: "" };
-    case "regex": return { checkId, kind, syntax: "re2", pattern: "" };
+    case "regex": return { checkId, kind, syntax: "re2", pattern: "." };
     case "valid-json": return { checkId, kind, topLevel: "any" };
     case "max-output-characters": return { checkId, kind, limit: 1000 };
     case "max-duration-ms": return { checkId, kind, limit: 30000 };

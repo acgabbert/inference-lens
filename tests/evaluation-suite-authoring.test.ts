@@ -8,9 +8,12 @@ import {
   createEvaluationSuite,
   evaluationBindingCandidates,
   evaluationSuitePreflight,
+  defaultCheck,
   removeEvaluationInput,
   updateEvaluationCase,
+  updateEvaluationCheck,
 } from "../packages/core/src/evaluation-suite-authoring.ts";
+import { CHECK_KINDS } from "../packages/core/src/checks.ts";
 import {
   createProjectFile,
   createPromptTemplate,
@@ -60,6 +63,11 @@ test("authors complete suite inputs, cases, and globally fresh checks", () => {
     values: { [input.inputId]: "database migrations" },
   });
   project = addEvaluationCheck(project, created.suiteId, addedCase.caseId, "contains", () => "mentions-migrations");
+  project = updateEvaluationCheck(project, created.suiteId, addedCase.caseId, {
+    ...project.evaluationSuites[0]!.cases[0]!.checks[0]!,
+    kind: "contains",
+    value: "rollback",
+  });
   project = updateEvaluationCase(project, created.suiteId, addedCase.caseId, {
     referenceAnswer: "Use a reversible rollout.",
   });
@@ -74,6 +82,70 @@ test("authors complete suite inputs, cases, and globally fresh checks", () => {
 
   project = removeEvaluationInput(project, created.suiteId, input.inputId);
   assert.deepEqual(project.evaluationSuites[0]?.cases[0]?.values, {});
+});
+
+test("every offered check kind can actually be added to a case", () => {
+  let project = fixture();
+  const created = createEvaluationSuite(project, "Topics", () => "topics");
+  project = created.project;
+  const addedCase = addEvaluationCase(project, created.suiteId, () => "first");
+  project = addedCase.project;
+
+  // Adding a check revalidates the whole project, so a default the parser
+  // rejects makes that kind unreachable from the editor entirely.
+  for (const kind of CHECK_KINDS) {
+    project = addEvaluationCheck(project, created.suiteId, addedCase.caseId, kind, () => kind);
+  }
+  assert.deepEqual(
+    project.evaluationSuites[0]?.cases[0]?.checks.map(({ kind }) => kind),
+    [...CHECK_KINDS],
+  );
+});
+
+test("preflight reports unfinished checks and empty values for selected cases only", () => {
+  let project = fixture();
+  const revisionId = project.defaults.conversationRevisionId;
+  const candidates = evaluationBindingCandidates(project, revisionId);
+  const created = createEvaluationSuite(project, "Topics", () => "topics");
+  project = created.project;
+  const input = addEvaluationInput(project, created.suiteId, candidates[0]!, () => "topic");
+  project = input.project;
+  const selected = addEvaluationCase(project, created.suiteId, () => "selected");
+  project = selected.project;
+  const ignored = addEvaluationCase(project, created.suiteId, () => "ignored");
+  project = addEvaluationCheck(ignored.project, created.suiteId, selected.caseId, "contains", () => "unfinished");
+
+  assert.deepEqual(
+    evaluationSuitePreflight(project, created.suiteId, revisionId, [selected.caseId])
+      .map(({ code }) => code),
+    ["empty-case-value", "unfinished-check"],
+  );
+
+  // The unselected case's own empty value is not this run's problem.
+  project = updateEvaluationCase(project, created.suiteId, selected.caseId, {
+    values: { [input.inputId]: "database migrations" },
+  });
+  const unfinished = defaultCheck("contains", () => "unfinished");
+  assert.equal(unfinished.kind, "contains");
+  project = updateEvaluationCheck(project, created.suiteId, selected.caseId, {
+    ...unfinished,
+    kind: "contains",
+    value: "rollback",
+  });
+  assert.deepEqual(
+    evaluationSuitePreflight(project, created.suiteId, revisionId, [selected.caseId]),
+    [],
+  );
+
+  // Whitespace is not a value.
+  project = updateEvaluationCase(project, created.suiteId, selected.caseId, {
+    values: { [input.inputId]: "   " },
+  });
+  assert.deepEqual(
+    evaluationSuitePreflight(project, created.suiteId, revisionId, [selected.caseId])
+      .map(({ code }) => code),
+    ["empty-case-value"],
+  );
 });
 
 test("preflight distinguishes empty selection from incompatible revisions", () => {

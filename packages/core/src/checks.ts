@@ -33,14 +33,22 @@ export class CheckValidationError extends Error {
   }
 }
 
-export type CheckKind =
-  | "exact-match"
-  | "contains"
-  | "regex"
-  | "valid-json"
-  | "max-output-characters"
-  | "max-duration-ms"
-  | "max-total-tokens";
+/**
+ * The whole vocabulary, in one place, so that anything which must cover every
+ * kind — an authoring picker, an exhaustiveness test — enumerates it rather
+ * than repeating a list that silently falls behind the union.
+ */
+export const CHECK_KINDS = [
+  "exact-match",
+  "contains",
+  "regex",
+  "valid-json",
+  "max-output-characters",
+  "max-duration-ms",
+  "max-total-tokens",
+] as const;
+
+export type CheckKind = (typeof CHECK_KINDS)[number];
 
 export type CheckJsonTopLevel = "any" | "object" | "array";
 
