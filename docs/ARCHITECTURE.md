@@ -108,6 +108,15 @@ underlying exact request text remains unchanged in exchange evidence. Adding
 the comparison view therefore does not change the trace schema or its
 compatibility boundary.
 
+`packages/core/src/run-output.ts` owns the one canonical projection of what a
+run answered, and `packages/core/src/checks.ts` owns the provider-neutral
+deterministic-check vocabulary evaluated over it. Both are pure derivations
+over `RunState`. Check outcomes are never written into a `RunTrace`: a trace
+stays immutable provider evidence, while whether that evidence satisfies an
+assertion is re-derived. A run that failed or was cancelled makes every check
+`not-evaluated` rather than failed, so provider instability is never reported
+as a quality regression. See [deterministic checks](DETERMINISTIC_CHECKS.md).
+
 ## Workbench ownership
 
 `app/page.tsx` is the workbench composition root. It owns top-level layout,
