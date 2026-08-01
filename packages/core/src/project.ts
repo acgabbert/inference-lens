@@ -1,6 +1,16 @@
 import { z } from "zod";
 import { checkDefinitionSchema } from "./checks.ts";
-import type { CheckDefinition } from "./checks.ts";
+import { templateUseVariableIndex } from "./evaluation-suites.ts";
+import type {
+  EvaluationCase,
+  EvaluationInputBinding,
+  EvaluationSuite,
+} from "./evaluation-suites.ts";
+export type {
+  EvaluationCase,
+  EvaluationInputBinding,
+  EvaluationSuite,
+} from "./evaluation-suites.ts";
 import { stableJsonValue } from "./stable-json.ts";
 
 import {
@@ -24,9 +34,6 @@ import type {
   ConversationId,
   ConversationMessage,
   ConversationRevisionId,
-  EvaluationCaseId,
-  EvaluationInputBindingId,
-  EvaluationSuiteId,
   ExternalImportId,
   InferenceOptions,
   JsonObject,
@@ -211,36 +218,6 @@ export interface ProjectDefaults {
   };
   options: InferenceOptions;
   enabledToolIds: ToolId[];
-}
-
-export interface EvaluationInputBinding {
-  id: EvaluationInputBindingId;
-  name: string;
-  target: {
-    kind: "template-variable";
-    templateUseId: PromptTemplateUseId;
-    variableName: string;
-  };
-}
-
-export interface EvaluationCase {
-  id: EvaluationCaseId;
-  name: string;
-  values: Record<EvaluationInputBindingId, string>;
-  checks: CheckDefinition[];
-  referenceAnswer?: string;
-}
-
-/**
- * Authored, provider-neutral evaluation content. A suite deliberately does not
- * pin a conversation revision: execution selects one and preflight checks
- * whether its stable template-use identities remain compatible.
- */
-export interface EvaluationSuite {
-  id: EvaluationSuiteId;
-  name: string;
-  inputBindings: EvaluationInputBinding[];
-  cases: EvaluationCase[];
 }
 
 /**
@@ -1350,29 +1327,10 @@ function validateEvaluationSuites(
     context,
   );
 
-  const uses = new Map<
-    PromptTemplateUseId,
-    Array<{ variables: ReadonlySet<string> }>
-  >();
-  project.conversationRevisions.forEach((revision) => {
-    revision.items.forEach((item) => {
-      if (item.kind !== "template-use") return;
-      const template = templates.get(item.use.templateId);
-      const templateRevision = template?.revisions.find(
-        ({ id }) => id === item.use.templateRevisionId,
-      );
-      if (!templateRevision) return;
-      const occurrences = uses.get(item.use.id) ?? [];
-      occurrences.push({
-        variables: new Set(
-          discoverTemplateVariables(templateRevision.messages).variables.map(
-            ({ name }) => name,
-          ),
-        ),
-      });
-      uses.set(item.use.id, occurrences);
-    });
-  });
+  const uses = templateUseVariableIndex(
+    project.conversationRevisions,
+    [...templates.values()],
+  );
 
   const inputIds = new Set<string>();
   const caseIds = new Set<string>();
@@ -1761,93 +1719,6 @@ export function parseProjectFile(value: unknown): ProjectFile {
   const parsed = projectFileV7Schema.safeParse(source);
   if (!parsed.success) throw new ProjectValidationError(parsed.error.issues);
   return parsed.data;
-}
-
-export type EvaluationSuiteCompatibilityDiagnostic =
-  | {
-      code: "missing-template-use";
-      inputBindingId: EvaluationInputBindingId;
-      templateUseId: PromptTemplateUseId;
-      message: string;
-    }
-  | {
-      code: "missing-template-variable";
-      inputBindingId: EvaluationInputBindingId;
-      templateUseId: PromptTemplateUseId;
-      variableName: string;
-      message: string;
-    };
-
-/**
- * Reports whether one authored suite can supply inputs to one selected
- * conversation revision. Compatibility is intentionally separate from
- * project validity: a suite may remain useful for another historical branch.
- */
-export function evaluationSuiteCompatibilityDiagnostics(
-  project: ProjectFile,
-  evaluationSuiteId: EvaluationSuiteId,
-  conversationRevisionId: ConversationRevisionId,
-): EvaluationSuiteCompatibilityDiagnostic[] {
-  const suite = project.evaluationSuites.find(
-    ({ id }) => id === evaluationSuiteId,
-  );
-  const revision = project.conversationRevisions.find(
-    ({ id }) => id === conversationRevisionId,
-  );
-  if (!suite || !revision) {
-    throw new ProjectValidationError([
-      {
-        code: "custom",
-        path: suite
-          ? ["conversationRevisions", conversationRevisionId]
-          : ["evaluationSuites", evaluationSuiteId],
-        message: suite
-          ? `Conversation revision "${conversationRevisionId}" does not exist.`
-          : `Evaluation suite "${evaluationSuiteId}" does not exist.`,
-      },
-    ]);
-  }
-
-  const uses = new Map(
-    revision.items.flatMap((item) =>
-      item.kind === "template-use" ? [[item.use.id, item.use] as const] : [],
-    ),
-  );
-  const templates = new Map(
-    project.promptTemplates.map((template) => [template.id, template]),
-  );
-  const diagnostics: EvaluationSuiteCompatibilityDiagnostic[] = [];
-  suite.inputBindings.forEach((binding) => {
-    const use = uses.get(binding.target.templateUseId);
-    if (!use) {
-      diagnostics.push({
-        code: "missing-template-use",
-        inputBindingId: binding.id,
-        templateUseId: binding.target.templateUseId,
-        message: `Selected revision does not contain template use "${binding.target.templateUseId}".`,
-      });
-      return;
-    }
-    const templateRevision = templates
-      .get(use.templateId)
-      ?.revisions.find(({ id }) => id === use.templateRevisionId);
-    const variables = templateRevision
-      ? new Set(
-          discoverTemplateVariables(templateRevision.messages).variables.map(
-            ({ name }) => name,
-          ),
-        )
-      : new Set<string>();
-    if (variables.has(binding.target.variableName)) return;
-    diagnostics.push({
-      code: "missing-template-variable",
-      inputBindingId: binding.id,
-      templateUseId: binding.target.templateUseId,
-      variableName: binding.target.variableName,
-      message: `Template use "${binding.target.templateUseId}" does not contain variable "${binding.target.variableName}" in the selected revision.`,
-    });
-  });
-  return diagnostics;
 }
 
 const preferredFieldOrder = new Map(
