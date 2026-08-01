@@ -10,6 +10,7 @@ import { PaneTabs } from "../workbench-shell.client";
 import { ProjectTemplatesPane, TemplateUseCard } from "../project-templates-pane.client";
 import { ToolsPane } from "../tools-pane.client";
 import { RunReadinessNotice } from "../run-readiness-notice.client";
+import { useFocusMode } from "../use-focus-mode.client";
 import type {
   ReadinessDestination,
   RunReadiness,
@@ -95,7 +96,9 @@ export function RequestComposer({
   onDiscardPendingBranch,
 }: RequestComposerProps) {
   const [tab, setTab] = useState<RequestTab>("messages");
+  const [focusMode, setFocusMode] = useState(false);
   const composerRef = useRef<HTMLElement>(null);
+  const focusToggleRef = useRef<HTMLButtonElement>(null);
   const modelRef = useRef<HTMLInputElement>(null);
   const selectedProjectToolCount = requestDraft.tools.filter(({ id }) =>
     requestDraft.enabledToolIds.includes(id),
@@ -103,6 +106,15 @@ export function RequestComposer({
   const selectedToolCount = selectedProjectToolCount + requestDraft.requestTools.length;
   // A newly imported snapshot is always shown before its notice is dismissed.
   const activeTab = templates.importNotice ? "messages" : tab;
+  const requestFocusMode = focusMode && activeTab === "messages";
+
+  useFocusMode({
+    open: requestFocusMode,
+    setOpen: setFocusMode,
+    containerRef: composerRef,
+    triggerRef: focusToggleRef,
+    initialFocusSelector: ".message-card textarea:not([disabled])",
+  });
 
   function routeReadinessAction(action: RunReadinessAction): void {
     onReadinessAction(action.destination);
@@ -113,7 +125,10 @@ export function RequestComposer({
     if (activeTab !== pendingDestination.tab) {
       let cancelled = false;
       queueMicrotask(() => {
-        if (!cancelled) setTab(pendingDestination.tab);
+        if (!cancelled) {
+          if (pendingDestination.tab !== "messages") setFocusMode(false);
+          setTab(pendingDestination.tab);
+        }
       });
       return () => { cancelled = true; };
     }
@@ -149,7 +164,13 @@ export function RequestComposer({
   }, [activeTab, onDestinationHandled, pendingDestination]);
 
   return (
-    <section className="composer" ref={composerRef}>
+    <section
+      aria-label={requestFocusMode ? "Request composer focus mode" : undefined}
+      aria-modal={requestFocusMode ? "true" : undefined}
+      className={requestFocusMode ? "composer composer-focus-mode" : "composer"}
+      ref={composerRef}
+      role={requestFocusMode ? "dialog" : undefined}
+    >
       <div className="panel-header request-header">
         <div>
           <span className="eyebrow">Request</span>
@@ -158,7 +179,11 @@ export function RequestComposer({
         <PaneTabs
           label="Request editor"
           value={activeTab}
-          onChange={(value) => setTab(value as RequestTab)}
+          onChange={(value) => {
+            const nextTab = value as RequestTab;
+            if (nextTab !== "messages") setFocusMode(false);
+            setTab(nextTab);
+          }}
           tabs={[
             { id: "messages", label: "Messages", count: requestDraft.messages.length },
             { id: "templates", label: "Prompt library", count: project?.promptTemplates.length ?? 0 },
@@ -166,9 +191,20 @@ export function RequestComposer({
           ]}
         />
         {activeTab === "messages" ? (
-          <button className="text-button header-text-action" onClick={templates.addComposerMessage}>
-            + Add message
-          </button>
+          <div className="request-header-actions">
+            <button className="text-button header-text-action" onClick={templates.addComposerMessage}>
+              + Add message
+            </button>
+            <button
+              aria-label={requestFocusMode ? "Exit request composer focus mode" : "Open request composer in focus mode"}
+              className={requestFocusMode ? "icon-button request-focus-toggle" : "button secondary request-focus-toggle"}
+              ref={focusToggleRef}
+              type="button"
+              onClick={() => setFocusMode((open) => !open)}
+            >
+              {requestFocusMode ? "×" : "Expand"}
+            </button>
+          </div>
         ) : activeTab === "tools" ? (
           <button className="text-button header-text-action" type="button" onClick={requestDraft.addTool}>
             + Add tool
@@ -190,7 +226,7 @@ export function RequestComposer({
           </div>
           <div className="workbench-notice-actions">
             {templates.importNotice.template && (
-              <button className="button primary" type="button" onClick={() => { setTab("templates"); templates.clearImportNotice(); }}>
+              <button className="button primary" type="button" onClick={() => { setFocusMode(false); setTab("templates"); templates.clearImportNotice(); }}>
                 View template
               </button>
             )}
@@ -229,7 +265,7 @@ export function RequestComposer({
                         ? `${selectedToolCount} ${selectedToolCount === 1 ? "tool" : "tools"} sent, ${requestDraft.requestTools.length} only once.`
                         : `${selectedToolCount} ${selectedToolCount === 1 ? "tool" : "tools"} sent with this request.`}
                 </span>
-                <button className="text-button" type="button" onClick={() => setTab("tools")}>
+                <button className="text-button" type="button" onClick={() => { setFocusMode(false); setTab("tools"); }}>
                   {selectedToolCount === 0 ? "Add tools" : "Review"}
                 </button>
               </p>

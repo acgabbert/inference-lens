@@ -1105,10 +1105,11 @@ output {
   gap: 8px;
 }
 
-.template-kind-field {
+.template-content-actions .template-kind-field {
   display: flex !important;
   align-items: center;
   gap: 8px;
+  margin-bottom: 0;
 }
 
 .template-kind-field select {
@@ -1118,7 +1119,9 @@ output {
 }
 
 .template-focus-toggle {
-  min-height: 34px;
+  height: 32px;
+  min-height: 32px;
+  padding-block: 0;
 }
 
 .template-editor-focus-mode {
@@ -4461,6 +4464,18 @@ main {
   border: 0;
 }
 
+.composer-focus-mode {
+  position: fixed;
+  inset: 16px;
+  z-index: 50;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: var(--surface-panel);
+  box-shadow: 0 0 0 100vmax var(--overlay-scrim), var(--shadow-modal);
+}
+
 .request-pane {
   background: var(--surface-panel);
 }
@@ -4544,6 +4559,17 @@ main {
 .header-text-action {
   justify-self: end;
   white-space: nowrap;
+}
+
+.request-header-actions {
+  display: flex;
+  align-items: center;
+  justify-self: end;
+  gap: 8px;
+}
+
+.request-focus-toggle {
+  flex: 0 0 auto;
 }
 
 .run-settings {
@@ -5536,6 +5562,12 @@ main {
 @media (max-width: 760px) {
   main {
     min-height: 0;
+  }
+
+  .composer-focus-mode {
+    inset: 0;
+    border: 0;
+    border-radius: 0;
   }
 
   .topbar {

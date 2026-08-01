@@ -127,12 +127,46 @@ test("focus mode expands the live editor and restores focus when dismissed", asy
       document.activeElement,
       dialog.querySelector('textarea[aria-label="Prompt content"]'),
     );
+    const close = dialog.querySelector(
+      '[aria-label="Exit prompt editor focus mode"]',
+    );
+    assert.ok(close);
+    assert.equal(close.textContent, "×");
 
     await view.keydown("Escape");
     await view.settle();
 
     assert.equal(view.container.querySelector('[role="dialog"]'), null);
     assert.equal(document.body.style.overflow, "");
+    assert.equal(
+      document.activeElement,
+      view.container.querySelector(
+        '[aria-label="Open prompt editor in focus mode"]',
+      ),
+    );
+  } finally {
+    await view.close();
+  }
+});
+
+test("focus mode has an explicit close button", async () => {
+  const view = await mount();
+  try {
+    await view.click(
+      view.container.querySelector(
+        '[aria-label="Open prompt editor in focus mode"]',
+      ),
+    );
+    await view.settle();
+
+    const close = view.container.querySelector(
+      '[aria-label="Exit prompt editor focus mode"]',
+    );
+    assert.ok(close);
+    await view.click(close);
+    await view.settle();
+
+    assert.equal(view.container.querySelector('[role="dialog"]'), null);
     assert.equal(
       document.activeElement,
       view.container.querySelector(

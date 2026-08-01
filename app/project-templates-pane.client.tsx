@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import type {
   ConnectionRequirement,
@@ -20,6 +20,7 @@ import {
   discoverTemplateVariables,
   resolveTemplateValues,
 } from "../packages/core/src/template-engine";
+import { useFocusMode } from "./use-focus-mode.client";
 
 type TemplateRole = "system" | "user" | "assistant";
 
@@ -120,65 +121,13 @@ export function ProjectTemplatesPane({
     isSensitiveTemplateVariableName(name),
   );
 
-  useEffect(() => {
-    if (!focusMode) return;
-
-    const editor = editorRef.current;
-    if (!editor) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    const focusableSelector = [
-      "button:not([disabled])",
-      "input:not([disabled])",
-      "select:not([disabled])",
-      "textarea:not([disabled])",
-      '[tabindex]:not([tabindex="-1"])',
-    ].join(",");
-    const focusEditor = window.setTimeout(() => {
-      const contentField = editor.querySelector<HTMLElement>(
-        ".template-content-editor textarea:not([disabled])",
-      );
-      (contentField ?? editor.querySelector<HTMLElement>(focusableSelector))?.focus();
-    }, 0);
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        setFocusMode(false);
-        window.setTimeout(() => focusToggleRef.current?.focus(), 0);
-        return;
-      }
-      if (event.key !== "Tab") return;
-
-      const focusable = Array.from(
-        editor.querySelectorAll<HTMLElement>(focusableSelector),
-      );
-      if (focusable.length === 0) {
-        event.preventDefault();
-        return;
-      }
-      const first = focusable[0]!;
-      const last = focusable.at(-1)!;
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      } else if (!editor.contains(document.activeElement)) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.clearTimeout(focusEditor);
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [focusMode]);
+  useFocusMode({
+    open: focusMode,
+    setOpen: setFocusMode,
+    containerRef: editorRef,
+    triggerRef: focusToggleRef,
+    initialFocusSelector: ".template-content-editor textarea:not([disabled])",
+  });
 
   function closeFocusMode(): void {
     setFocusMode(false);
@@ -579,12 +528,12 @@ function TemplateContentEditor({
           </label>
           <button
             aria-label={focusMode ? "Exit prompt editor focus mode" : "Open prompt editor in focus mode"}
-            className="button secondary template-focus-toggle"
+            className={focusMode ? "icon-button template-focus-toggle" : "button secondary template-focus-toggle"}
             ref={focusToggleRef}
             type="button"
             onClick={() => onFocusModeChange(!focusMode)}
           >
-            {focusMode ? "Close" : "Expand"}
+            {focusMode ? "×" : "Expand"}
           </button>
         </div>
       </div>
