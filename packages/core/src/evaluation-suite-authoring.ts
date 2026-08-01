@@ -1,3 +1,4 @@
+import { parseCheckDefinition } from "./checks.ts";
 import type { CheckDefinition, CheckKind } from "./checks.ts";
 import { evaluationSuitePreflight, templateUseVariableIndex } from "./evaluation-suites.ts";
 import type { EvaluationCase, EvaluationInputBinding, EvaluationSuite } from "./evaluation-suites.ts";
@@ -21,6 +22,13 @@ export interface EvaluationBindingCandidate {
   templateName: string;
   variableName: string;
 }
+
+type NonRegexCheckKind = Exclude<CheckKind, "regex">;
+
+/** The complete information required before a check enters portable project data. */
+export type NewEvaluationCheck =
+  | { kind: NonRegexCheckKind }
+  | { kind: "regex"; pattern: string; flags?: string };
 
 export function evaluationBindingCandidates(
   project: ProjectFile,
@@ -202,24 +210,26 @@ export function removeEvaluationCase(
   }));
 }
 
-/**
- * Every default must already satisfy the check schema, because adding a check
- * revalidates the whole project: a default the parser rejects makes that kind
- * unreachable from the editor rather than merely unfinished. Empty text values
- * are legal and are reported by preflight as unfinished, but an empty Safe
- * regex pattern is not, so the regex default is the placeholder `.` for the
- * author to replace.
- */
-export function defaultCheck(kind: CheckKind, suffix: IdSuffix = generatedSuffix): CheckDefinition {
+/** Every created check is valid before it enters portable project data. */
+export function defaultCheck(
+  input: NewEvaluationCheck,
+  suffix: IdSuffix = generatedSuffix,
+): CheckDefinition {
   const checkId = createEntityId("check", suffix()) as CheckId;
-  switch (kind) {
-    case "exact-match": return { checkId, kind, value: "" };
-    case "contains": return { checkId, kind, value: "" };
-    case "regex": return { checkId, kind, syntax: "re2", pattern: "." };
-    case "valid-json": return { checkId, kind, topLevel: "any" };
-    case "max-output-characters": return { checkId, kind, limit: 1000 };
-    case "max-duration-ms": return { checkId, kind, limit: 30000 };
-    case "max-total-tokens": return { checkId, kind, limit: 1000 };
+  switch (input.kind) {
+    case "exact-match": return { checkId, kind: input.kind, value: "" };
+    case "contains": return { checkId, kind: input.kind, value: "" };
+    case "regex": return parseCheckDefinition({
+      checkId,
+      kind: input.kind,
+      syntax: "re2",
+      pattern: input.pattern,
+      ...(input.flags ? { flags: input.flags } : {}),
+    });
+    case "valid-json": return { checkId, kind: input.kind, topLevel: "any" };
+    case "max-output-characters": return { checkId, kind: input.kind, limit: 1000 };
+    case "max-duration-ms": return { checkId, kind: input.kind, limit: 30000 };
+    case "max-total-tokens": return { checkId, kind: input.kind, limit: 1000 };
   }
 }
 
@@ -227,13 +237,13 @@ export function addEvaluationCheck(
   project: ProjectFile,
   suiteId: EvaluationSuiteId,
   caseId: EvaluationCaseId,
-  kind: CheckKind,
+  input: NewEvaluationCheck,
   suffix: IdSuffix = generatedSuffix,
 ): ProjectFile {
   return mapSuite(project, suiteId, (suite) => ({
     ...suite,
     cases: suite.cases.map((evaluationCase) => evaluationCase.id === caseId
-      ? { ...evaluationCase, checks: [...evaluationCase.checks, defaultCheck(kind, suffix)] }
+      ? { ...evaluationCase, checks: [...evaluationCase.checks, defaultCheck(input, suffix)] }
       : evaluationCase),
   }));
 }

@@ -6,6 +6,7 @@ import type { CheckDefinition, CheckKind } from "../../packages/core/src/checks"
 import type { EvaluationCase } from "../../packages/core/src/project";
 import { FocusModeToggle, useFocusMode } from "../focus-mode.client";
 import type { EvaluationSuiteAuthoringHandle } from "./use-evaluation-suite-authoring.client";
+import type { EvaluationCheckAuthoringField } from "./use-evaluation-suite-authoring.client";
 
 const checkKindLabels: Record<CheckKind, string> = {
   "exact-match": "Exact output",
@@ -21,9 +22,10 @@ const checkKindLabels: Record<CheckKind, string> = {
 // label or silently left out of the picker.
 const checkKinds = CHECK_KINDS.map((kind) => ({ kind, label: checkKindLabels[kind] }));
 
-function CheckEditor({ check, onCommit, onRemove }: {
+function CheckEditor({ check, error, onCommit, onRemove }: {
   check: CheckDefinition;
-  onCommit(check: CheckDefinition): void;
+  error?: { field: EvaluationCheckAuthoringField; message: string };
+  onCommit(check: CheckDefinition, field: EvaluationCheckAuthoringField): boolean;
   onRemove(): void;
 }) {
   const value = check.kind === "exact-match" || check.kind === "contains"
@@ -37,49 +39,76 @@ function CheckEditor({ check, onCommit, onRemove }: {
         <strong>{checkKinds.find(({ kind }) => kind === check.kind)?.label}</strong>
         <button className="remove-button" type="button" onClick={onRemove}>Remove</button>
       </div>
-      <label>Label <input defaultValue={check.label ?? ""} onBlur={(event) => onCommit({ ...check, ...(event.target.value ? { label: event.target.value } : { label: undefined }) })} /></label>
+      <label>Label <input defaultValue={check.label ?? ""} onBlur={(event) => {
+        if (!onCommit({ ...check, ...(event.target.value ? { label: event.target.value } : { label: undefined }) }, "label")) event.currentTarget.value = check.label ?? "";
+      }} /></label>
+      {error?.field === "label" && <p className="evaluation-field-error" role="alert">{error.message}</p>}
       {value !== undefined && (
         <label>{check.kind === "regex" ? "Pattern" : "Expected text"}
-          <textarea defaultValue={value} rows={3} onBlur={(event) => onCommit((check.kind === "regex" ? { ...check, pattern: event.target.value } : { ...check, value: event.target.value }) as CheckDefinition)} />
+          <textarea defaultValue={value} rows={3} onBlur={(event) => {
+            const field = check.kind === "regex" ? "pattern" : "expected-text";
+            const next = (check.kind === "regex" ? { ...check, pattern: event.target.value } : { ...check, value: event.target.value }) as CheckDefinition;
+            if (!onCommit(next, field)) event.currentTarget.value = value;
+          }} />
         </label>
       )}
+      {(error?.field === "pattern" || error?.field === "expected-text") && <p className="evaluation-field-error" role="alert">{error.message}</p>}
       {(check.kind === "exact-match" || check.kind === "contains") && (
         <div className="evaluation-check-options">
-          <label><input type="checkbox" defaultChecked={check.caseSensitive !== false} onChange={(event) => onCommit({ ...check, caseSensitive: event.target.checked })} /> Case sensitive</label>
-          <label><input type="checkbox" defaultChecked={check.trimWhitespace ?? false} onChange={(event) => onCommit({ ...check, trimWhitespace: event.target.checked })} /> Trim whitespace</label>
-          <label><input type="checkbox" defaultChecked={check.negate ?? false} onChange={(event) => onCommit({ ...check, negate: event.target.checked })} /> Negate</label>
+          <label><input type="checkbox" defaultChecked={check.caseSensitive !== false} onChange={(event) => { if (!onCommit({ ...check, caseSensitive: event.target.checked }, "case-sensitive")) event.currentTarget.checked = check.caseSensitive !== false; }} /> Case sensitive</label>
+          <label><input type="checkbox" defaultChecked={check.trimWhitespace ?? false} onChange={(event) => { if (!onCommit({ ...check, trimWhitespace: event.target.checked }, "trim-whitespace")) event.currentTarget.checked = check.trimWhitespace ?? false; }} /> Trim whitespace</label>
+          <label><input type="checkbox" defaultChecked={check.negate ?? false} onChange={(event) => { if (!onCommit({ ...check, negate: event.target.checked }, "negate")) event.currentTarget.checked = check.negate ?? false; }} /> Negate</label>
         </div>
       )}
+      {(check.kind === "exact-match" || check.kind === "contains") && (error?.field === "case-sensitive" || error?.field === "trim-whitespace" || error?.field === "negate") && <p className="evaluation-field-error" role="alert">{error.message}</p>}
       {check.kind === "regex" && (
         <div className="evaluation-check-options">
-          <label>Flags <input className="evaluation-flags" defaultValue={check.flags ?? ""} placeholder="ims" onBlur={(event) => onCommit({ ...check, flags: event.target.value || undefined })} /></label>
-          <label><input type="checkbox" defaultChecked={check.negate ?? false} onChange={(event) => onCommit({ ...check, negate: event.target.checked })} /> Negate</label>
+          <label>Flags <input className="evaluation-flags" defaultValue={check.flags ?? ""} placeholder="ims" onBlur={(event) => { if (!onCommit({ ...check, flags: event.target.value || undefined }, "flags")) event.currentTarget.value = check.flags ?? ""; }} /></label>
+          <label><input type="checkbox" defaultChecked={check.negate ?? false} onChange={(event) => { if (!onCommit({ ...check, negate: event.target.checked }, "negate")) event.currentTarget.checked = check.negate ?? false; }} /> Negate</label>
         </div>
       )}
+      {(error?.field === "flags" || (check.kind === "regex" && error?.field === "negate")) && <p className="evaluation-field-error" role="alert">{error.message}</p>}
       {check.kind === "valid-json" && (
         <div className="evaluation-check-options">
-          <label>Top level <select defaultValue={check.topLevel ?? "any"} onChange={(event) => onCommit({ ...check, topLevel: event.target.value as "any" | "object" | "array" })}><option value="any">Any JSON</option><option value="object">Object</option><option value="array">Array</option></select></label>
-          <label><input type="checkbox" defaultChecked={check.negate ?? false} onChange={(event) => onCommit({ ...check, negate: event.target.checked })} /> Negate</label>
+          <label>Top level <select defaultValue={check.topLevel ?? "any"} onChange={(event) => { if (!onCommit({ ...check, topLevel: event.target.value as "any" | "object" | "array" }, "top-level")) event.currentTarget.value = check.topLevel ?? "any"; }}><option value="any">Any JSON</option><option value="object">Object</option><option value="array">Array</option></select></label>
+          <label><input type="checkbox" defaultChecked={check.negate ?? false} onChange={(event) => { if (!onCommit({ ...check, negate: event.target.checked }, "negate")) event.currentTarget.checked = check.negate ?? false; }} /> Negate</label>
         </div>
       )}
+      {(error?.field === "top-level" || (check.kind === "valid-json" && error?.field === "negate")) && <p className="evaluation-field-error" role="alert">{error.message}</p>}
       {(check.kind === "max-output-characters" || check.kind === "max-duration-ms" || check.kind === "max-total-tokens") && (
-        <label>Limit <input type="number" min="0" step="1" defaultValue={check.limit} onBlur={(event) => onCommit({ ...check, limit: Math.max(0, Math.floor(Number(event.target.value) || 0)) })} /></label>
+        <label>Limit <input type="number" min="0" step="1" defaultValue={check.limit} onBlur={(event) => { if (!onCommit({ ...check, limit: Math.max(0, Math.floor(Number(event.target.value) || 0)) }, "limit")) event.currentTarget.value = String(check.limit); }} /></label>
       )}
+      {error?.field === "limit" && <p className="evaluation-field-error" role="alert">{error.message}</p>}
     </article>
   );
 }
 
 function CaseChecks({ evaluationCase, authoring }: { evaluationCase: EvaluationCase; authoring: EvaluationSuiteAuthoringHandle }) {
   const [newKind, setNewKind] = useState<CheckKind>("contains");
+  const [regexPattern, setRegexPattern] = useState("");
+  const checkError = authoring.error?.target.kind === "check" && authoring.error.target.caseId === evaluationCase.id
+    ? authoring.error
+    : undefined;
+  const addError = authoring.error?.target.kind === "add-check" && authoring.error.target.caseId === evaluationCase.id
+    ? authoring.error.message
+    : undefined;
   return (
     <section className="evaluation-case-detail" aria-label={`Checks for ${evaluationCase.name}`}>
       <div className="evaluation-section-heading"><div><span className="eyebrow">Focused case</span><h3>{evaluationCase.name}</h3></div><button className="remove-button" type="button" onClick={() => authoring.deleteCase(evaluationCase.id)}>Delete case</button></div>
       <label>Reference answer <textarea rows={4} defaultValue={evaluationCase.referenceAnswer ?? ""} placeholder="Optional human reference; not scored automatically." onBlur={(event) => authoring.updateCase(evaluationCase.id, { referenceAnswer: event.target.value || undefined })} /></label>
       <div className="evaluation-check-list">
         {evaluationCase.checks.length === 0 && <p className="evaluation-empty-inline">No deterministic checks yet.</p>}
-        {evaluationCase.checks.map((check) => <CheckEditor key={check.checkId} check={check} onCommit={(next) => authoring.updateCheck(evaluationCase.id, next)} onRemove={() => authoring.deleteCheck(evaluationCase.id, check.checkId)} />)}
+        {evaluationCase.checks.map((check) => <CheckEditor key={check.checkId} check={check} error={checkError?.target.kind === "check" && checkError.target.checkId === check.checkId ? { field: checkError.target.field, message: checkError.message } : undefined} onCommit={(next, field) => authoring.updateCheck(evaluationCase.id, next, field)} onRemove={() => authoring.deleteCheck(evaluationCase.id, check.checkId)} />)}
       </div>
-      <div className="evaluation-add-row"><select aria-label="New check kind" value={newKind} onChange={(event) => setNewKind(event.target.value as CheckKind)}>{checkKinds.map(({ kind, label }) => <option key={kind} value={kind}>{label}</option>)}</select><button className="button secondary" type="button" onClick={() => authoring.addCheck(evaluationCase.id, newKind)}>+ Add check</button></div>
+      <div className="evaluation-add-row">
+        <select aria-label="New check kind" value={newKind} onChange={(event) => setNewKind(event.target.value as CheckKind)}>{checkKinds.map(({ kind, label }) => <option key={kind} value={kind}>{label}</option>)}</select>
+        {newKind === "regex" && <label className="evaluation-new-regex">Pattern <input aria-label="New Safe regex pattern" value={regexPattern} onChange={(event) => setRegexPattern(event.target.value)} /></label>}
+        <button className="button secondary" type="button" onClick={() => {
+          const added = authoring.addCheck(evaluationCase.id, newKind === "regex" ? { kind: newKind, pattern: regexPattern } : { kind: newKind });
+          if (added) setRegexPattern("");
+        }}>+ Add check</button>
+      </div>
+      {addError && <p className="evaluation-field-error" role="alert">{addError}</p>}
     </section>
   );
 }
@@ -113,7 +142,7 @@ export function EvaluationSuiteEditor({ authoring }: { authoring: EvaluationSuit
             <label>Suite name <input defaultValue={suite.name} key={suite.id} onBlur={(event) => authoring.renameSuite(event.target.value || suite.name)} /></label>
             <button className="remove-button" type="button" onClick={authoring.deleteSuite}>Delete suite</button>
           </div>
-          {authoring.error && <div className="template-diagnostic" role="alert">{authoring.error}</div>}
+          {authoring.error?.target.kind === "editor" && <div className="template-diagnostic" role="alert">{authoring.error.message}</div>}
           <section className="evaluation-preflight" aria-label="Evaluation preflight">
             <div><span className="eyebrow">Preflight</span><strong>{authoring.diagnostics.length === 0 ? "Ready to author" : `${authoring.diagnostics.length} setup ${authoring.diagnostics.length === 1 ? "issue" : "issues"}`}</strong></div>
             <label>Conversation revision <select value={authoring.revisionId} onChange={(event) => authoring.selectRevision(event.target.value as NonNullable<typeof authoring.revisionId>)}>{project.conversationRevisions.map((revision) => <option key={revision.id} value={revision.id}>{revision.id === project.defaults.conversationRevisionId ? "Current · " : ""}{new Date(revision.createdAt).toLocaleString()}</option>)}</select></label>

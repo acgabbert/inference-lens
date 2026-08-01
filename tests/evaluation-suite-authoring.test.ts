@@ -62,7 +62,7 @@ test("authors complete suite inputs, cases, and globally fresh checks", () => {
     name: "Migrations",
     values: { [input.inputId]: "database migrations" },
   });
-  project = addEvaluationCheck(project, created.suiteId, addedCase.caseId, "contains", () => "mentions-migrations");
+  project = addEvaluationCheck(project, created.suiteId, addedCase.caseId, { kind: "contains" }, () => "mentions-migrations");
   project = updateEvaluationCheck(project, created.suiteId, addedCase.caseId, {
     ...project.evaluationSuites[0]!.cases[0]!.checks[0]!,
     kind: "contains",
@@ -94,11 +94,19 @@ test("every offered check kind can actually be added to a case", () => {
   // Adding a check revalidates the whole project, so a default the parser
   // rejects makes that kind unreachable from the editor entirely.
   for (const kind of CHECK_KINDS) {
-    project = addEvaluationCheck(project, created.suiteId, addedCase.caseId, kind, () => kind);
+    const input = kind === "regex" ? { kind, pattern: "migration" } : { kind };
+    project = addEvaluationCheck(project, created.suiteId, addedCase.caseId, input, () => kind);
   }
   assert.deepEqual(
     project.evaluationSuites[0]?.cases[0]?.checks.map(({ kind }) => kind),
     [...CHECK_KINDS],
+  );
+});
+
+test("a regex check requires its authored pattern before entering the project", () => {
+  assert.throws(
+    () => defaultCheck({ kind: "regex", pattern: "" }, () => "empty-regex"),
+    /Safe regex patterns must not be empty/,
   );
 });
 
@@ -113,7 +121,7 @@ test("preflight reports unfinished checks and empty values for selected cases on
   const selected = addEvaluationCase(project, created.suiteId, () => "selected");
   project = selected.project;
   const ignored = addEvaluationCase(project, created.suiteId, () => "ignored");
-  project = addEvaluationCheck(ignored.project, created.suiteId, selected.caseId, "contains", () => "unfinished");
+  project = addEvaluationCheck(ignored.project, created.suiteId, selected.caseId, { kind: "contains" }, () => "unfinished");
 
   assert.deepEqual(
     evaluationSuitePreflight(project, created.suiteId, revisionId, [selected.caseId])
@@ -125,7 +133,7 @@ test("preflight reports unfinished checks and empty values for selected cases on
   project = updateEvaluationCase(project, created.suiteId, selected.caseId, {
     values: { [input.inputId]: "database migrations" },
   });
-  const unfinished = defaultCheck("contains", () => "unfinished");
+  const unfinished = defaultCheck({ kind: "contains" }, () => "unfinished");
   assert.equal(unfinished.kind, "contains");
   project = updateEvaluationCheck(project, created.suiteId, selected.caseId, {
     ...unfinished,

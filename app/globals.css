@@ -6062,6 +6062,19 @@ main {
   max-width: 420px;
 }
 
+.evaluation-new-regex {
+  display: flex;
+  min-width: min(280px, 100%);
+  flex-direction: column;
+  gap: 5px;
+}
+
+.evaluation-field-error {
+  margin: 0;
+  color: var(--danger);
+  line-height: 1.4;
+}
+
 .evaluation-portable-warning,
 .evaluation-empty-inline {
   color: var(--text-muted);

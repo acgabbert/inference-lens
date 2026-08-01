@@ -68,6 +68,20 @@ function projectWithSavedSuite() {
   return project;
 }
 
+async function importProject(page: Page, project: ProjectFile) {
+  await page.getByLabel("Project menu").click();
+  await page.setInputFiles(
+    '.project-popover:not(.run-data-popover) input[type="file"]',
+    {
+      name: "authoring.project.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(serializeProjectFile(project)),
+    },
+  );
+  await expect(page.locator(".brand")).toContainText("Evaluation authoring fixture");
+  await page.locator(".project-menu").evaluate((element) => element.removeAttribute("open"));
+}
+
 async function openProject(page: Page, project: ProjectFile, width: number) {
   await page.addInitScript(({ profileKey, streamingKey, endpoint }) => {
     localStorage.setItem(profileKey, JSON.stringify({
@@ -92,17 +106,7 @@ async function openProject(page: Page, project: ProjectFile, width: number) {
   await page.setViewportSize({ width, height: 900 });
   await page.goto("/");
   await expect(page.locator(".topbar")).toContainText("Buffered fixture");
-  await page.getByLabel("Project menu").click();
-  await page.setInputFiles(
-    '.project-popover:not(.run-data-popover) input[type="file"]',
-    {
-      name: "authoring.project.json",
-      mimeType: "application/json",
-      buffer: Buffer.from(serializeProjectFile(project)),
-    },
-  );
-  await expect(page.locator(".brand")).toContainText("Evaluation authoring fixture");
-  await page.locator(".project-menu").evaluate((element) => element.removeAttribute("open"));
+  await importProject(page, project);
   await page.getByRole("tab", { name: /Evaluations/ }).click();
 }
 
@@ -128,6 +132,12 @@ test("every offered check kind is addable in the running editor", async ({ page 
     "Maximum tokens",
   ]) {
     await page.getByLabel("New check kind").selectOption({ label });
+    if (label === "Safe regex") {
+      await page.getByRole("button", { name: "+ Add check" }).click();
+      await expect(editor.locator(".evaluation-case-detail").getByRole("alert"))
+        .toContainText("Safe regex patterns must not be empty");
+      await page.getByLabel("New Safe regex pattern").fill("migration");
+    }
     await page.getByRole("button", { name: "+ Add check" }).click();
     await page.waitForTimeout(120);
     const alert = editor.locator('[role="alert"]');
@@ -150,6 +160,32 @@ test("a saved suite opens with every case selected and preflight clean", async (
   await page.getByLabel("Select indexes").uncheck();
   await expect(editor).toContainText("2 cases × 1 = 2 planned runs");
   await expect(editor).toContainText("Ready to author");
+
+  // Explicit UI selection belongs to the open project, even when a replacement
+  // happens to reuse the same suite and case identifiers.
+  const replacement = projectWithSavedSuite();
+  replacement.projectId = "project_replacement";
+  await importProject(page, replacement);
+  await expect(editor).toContainText("3 cases × 1 = 3 planned runs");
+});
+
+test("a rejected check edit stays local and restores the saved value", async ({ page }) => {
+  await openProject(page, baseProject(), 1440);
+  const editor = page.locator(".evaluation-editor");
+  await page.getByRole("button", { name: "Create evaluation suite" }).click();
+  await page.getByRole("button", { name: "+ Add case" }).click();
+  await page.getByLabel("New check kind").selectOption({ label: "Safe regex" });
+  await page.getByLabel("New Safe regex pattern").fill("migration");
+  await page.getByRole("button", { name: "+ Add check" }).click();
+
+  const regexCard = editor.locator(".evaluation-check-card").filter({ hasText: "Safe regex" });
+  const flags = regexCard.getByLabel("Flags");
+  await flags.fill("g");
+  await flags.blur();
+
+  await expect(regexCard.getByRole("alert")).toContainText("Safe regex flags must be a unique subset of ims");
+  await expect(flags).toHaveValue("");
+  await expect(editor.locator(".evaluation-suite-header + [role=alert]")).toHaveCount(0);
 });
 
 test("preflight reports an unfinished check and an empty value", async ({ page }) => {
