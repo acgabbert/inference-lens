@@ -30,15 +30,28 @@ function rowStatus(
 }
 
 /**
- * A repetition without an openable trace is one of three different things, and
- * the roadmap keeps them distinct: it is still queued, it never started, or its
- * referenced trace is gone or unreadable.
+ * Explains why a repetition cannot be opened yet. The roadmap keeps the reasons
+ * distinct, and only the last of them reports durable data loss.
+ *
+ * A live experiment reaches a cell's terminal status before that cell's trace
+ * exists: the controller emits terminal progress, then awaits `onTerminalTrace`
+ * to write the trace. A running cell has no trace at all until it finishes.
+ * Neither is a missing trace, so both are named rather than falling through to
+ * one — otherwise every ordinary repetition claims its evidence was lost for as
+ * long as the provider call and the filesystem write take.
  */
-function pendingLabel(status: string, unreadable: string | undefined): string {
+function pendingLabel(
+  status: string,
+  unreadable: string | undefined,
+  isLive: boolean,
+): string {
   if (unreadable) return "Trace could not be read";
   if (status === "queued") return "Waiting";
   if (status === "not-run") return "Not run";
-  return "Trace missing";
+  if (status === "running") return "Open when finished";
+  // Terminal with no trace: still being written while this session drives the
+  // experiment, genuinely absent once it no longer does.
+  return isLive ? "Saving trace…" : "Trace missing";
 }
 
 function rowMetrics(state: RunState | undefined): string {
@@ -159,7 +172,11 @@ export function RepeatedExperimentWorkspace({
           const trace = execution.traces.get(cell.runId);
           const unreadable = execution.unreadableTraces.get(cell.runId);
           const isActive = activeOrdinal === cell.ordinal;
-          const status = isActive ? "running" : rowStatus(execution, cell.runId, isRunning);
+          // The controller keeps reporting a cell as current while its terminal
+          // trace is written, so the status word comes from the cell's own
+          // evidence. Overriding it with the controller's cursor relabelled a
+          // finished repetition as still running.
+          const status = rowStatus(execution, cell.runId, isRunning);
           const isSelected = execution.selectedRunId === cell.runId;
           const preview = outputPreview(state);
           return (
@@ -172,7 +189,7 @@ export function RepeatedExperimentWorkspace({
               <span className="repeated-experiment-row-metrics">{rowMetrics(state)}</span>
               {trace
                 ? <button className="text-button" type="button" onClick={() => onOpenTrace(cell.runId)}>Open Response &amp; Inspect</button>
-                : <span className="repeated-experiment-row-pending" title={unreadable}>{pendingLabel(status, unreadable)}</span>}
+                : <span className="repeated-experiment-row-pending" title={unreadable}>{pendingLabel(status, unreadable, isRunning)}</span>}
               {preview !== undefined && <p className="repeated-experiment-output-preview"><span>Output ready</span>{preview}</p>}
             </article>
           );

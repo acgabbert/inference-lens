@@ -86,6 +86,34 @@ function completedState(runId, text) {
   };
 }
 
+function streamingState(runId) {
+  return {
+    runId,
+    status: { kind: "streaming", startedAt: "2026-07-30T12:00:01.000Z" },
+    events: [],
+    turns: [{
+      turnId: "turn_render",
+      attempts: [{
+        attempt: 1,
+        exchangeId: "exchange_render",
+        status: "streaming",
+        text: "partial",
+        reasoning: "",
+        toolCalls: [],
+      }],
+    }],
+    exchanges: {},
+    toolResults: [],
+    lastSequence: 0,
+  };
+}
+
+/** Reads the reason each traceless repetition gives for not being openable. */
+function pendingLabels(html) {
+  return [...html.matchAll(/repeated-experiment-row-pending"[^>]*>([^<]*)</g)]
+    .map((match) => match[1]);
+}
+
 test("repeat confirmation exposes the frozen request, exact count, and sequential cost", async () => {
   const frozenPlan = plan();
   const html = await render(
@@ -190,6 +218,62 @@ test("running workspace exposes determinate activity, the active repetition, and
   assert.doesNotMatch(html, /experiment-activity-dot/);
   assert.match(html, /Stop remaining/);
   assertNoBrokenValues(html);
+});
+
+test("a live repetition is never described as having lost its trace", async () => {
+  const frozenPlan = plan();
+  // Repetition 1 is mid-stream and repetition 2 has not started. Neither has a
+  // trace yet, and neither has lost one.
+  const streaming = await render(
+    "/app/run/repeated-experiment-workspace.client.tsx",
+    "RepeatedExperimentWorkspace",
+    {
+      execution: {
+        plan: frozenPlan,
+        storage: "durable",
+        workspace: {},
+        states: new Map([["run_render-1", streamingState("run_render-1")]]),
+        live: { startedAtMs: Date.now(), requested: 2, finished: 0, currentOrdinal: 1 },
+        traces: new Map(),
+        traceFileNames: new Map(),
+        unreadableTraces: new Map(),
+        selectedRunId: null,
+      },
+      onStop() {},
+      onOpenTrace() {},
+    },
+  );
+
+  assert.deepEqual(pendingLabels(streaming), ["Open when finished", "Waiting"]);
+  assert.doesNotMatch(streaming, /Trace missing/);
+  assertNoBrokenValues(streaming);
+
+  // Repetition 1 has reached a terminal status, but the controller emits that
+  // progress before awaiting the trace write, so `states` leads `traces` for as
+  // long as persistence takes. That window is a save in flight, not data loss.
+  const persisting = await render(
+    "/app/run/repeated-experiment-workspace.client.tsx",
+    "RepeatedExperimentWorkspace",
+    {
+      execution: {
+        plan: frozenPlan,
+        storage: "durable",
+        workspace: {},
+        states: new Map([["run_render-1", completedState("run_render-1", "Answer")]]),
+        live: { startedAtMs: Date.now(), requested: 2, finished: 1, currentOrdinal: 1 },
+        traces: new Map(),
+        traceFileNames: new Map(),
+        unreadableTraces: new Map(),
+        selectedRunId: null,
+      },
+      onStop() {},
+      onOpenTrace() {},
+    },
+  );
+
+  assert.deepEqual(pendingLabels(persisting), ["Saving trace…", "Waiting"]);
+  assert.doesNotMatch(persisting, /Trace missing/);
+  assertNoBrokenValues(persisting);
 });
 
 test("completed experiment rows show a brief normalized output preview", async () => {
