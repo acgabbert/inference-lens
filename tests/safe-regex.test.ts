@@ -111,6 +111,14 @@ test("supports only the agreed flags and always uses Unicode semantics", () => {
   }
 });
 
+test("supports RE2 inline modifiers inside patterns", () => {
+  assert.equal(matchedText("(?i)answer", "ANSWER"), "ANSWER");
+  assert.equal(matchedText("(?s)a.b", "a\nb"), "a\nb");
+  assert.equal(matchedText("(?U)a+", "aaaa"), "a");
+  assert.equal(matchedText("(?i:answer)", "ANSWER"), "ANSWER");
+  assert.equal(matchedText("(?i)ANSWER(?-i:case)", "answercase"), "answercase");
+});
+
 test("rejects lookaround and backreferences with actionable diagnostics", () => {
   const cases = [
     ["answer(?=!)", /does not support lookahead/],

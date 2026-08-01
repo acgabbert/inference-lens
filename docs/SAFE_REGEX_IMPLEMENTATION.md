@@ -25,6 +25,18 @@ persisted language accidentally.
 There is no asynchronous initialization. The core module can therefore remain
 pure and synchronous in browser, Tauri, tests, and a Node headless runner.
 
+Compiled expressions are retained in a process-local, 256-entry LRU cache keyed
+by pattern and external flags. Validation therefore warms the same cache used
+by evaluation, and repeated checks over a run history do not recompile the same
+definition. The cache is an internal performance detail and does not change the
+serialized Safe regex contract.
+
+The authored pattern surface includes RE2 inline modifier groups such as
+`(?i)`, `(?s)`, scoped modifiers such as `(?i:answer)`, and RE2's `(?U)`
+ungreedy modifier. The separate `flags` field remains restricted to a unique
+subset of `ims`; it is a convenience field, not a restriction on equivalent
+inline pattern syntax.
+
 ## Verification surfaces
 
 - `tests/safe-regex.test.ts` owns the provider-neutral conformance, validation,
@@ -32,6 +44,7 @@ pure and synchronous in browser, Tauri, tests, and a Node headless runner.
 - `scripts/safe-regex-runtime-probe.mjs` consumes the core contract directly in
   Node.
 - `tests/safe-regex-browser-runtime.test.mjs` bundles the core module through
-  the application's Vite toolchain and executes it in Chromium.
+  the application's Vite toolchain and executes it in Chromium. CI runs this
+  probe in the end-to-end job after installing Chromium.
 - The production Vinext and Tauri-target builds verify that the dependency is
   compatible with both application bundles.

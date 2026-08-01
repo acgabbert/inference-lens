@@ -53,6 +53,8 @@ export type SafeRegexExecution =
   | { status: "input-too-large"; limit: number; actual: number };
 
 const allowedFlagSet = new Set<string>(SAFE_REGEX_FLAGS);
+const MAX_COMPILED_EXPRESSION_CACHE_SIZE = 256;
+const compiledExpressionCache = new Map<string, RE2JS>();
 
 function flagIssue(flags: string): SafeRegexValidationIssue | undefined {
   if (
@@ -140,6 +142,26 @@ function engineFlags(flags: string): number {
   return compiled;
 }
 
+function compiledExpression(pattern: string, flags: string): RE2JS {
+  const cacheKey = JSON.stringify([pattern, flags]);
+  const cached = compiledExpressionCache.get(cacheKey);
+  if (cached) {
+    // Refresh insertion order so the bounded cache evicts the least recently
+    // used expression rather than a frequently evaluated one.
+    compiledExpressionCache.delete(cacheKey);
+    compiledExpressionCache.set(cacheKey, cached);
+    return cached;
+  }
+
+  const expression = RE2JS.compile(pattern, engineFlags(flags));
+  compiledExpressionCache.set(cacheKey, expression);
+  if (compiledExpressionCache.size > MAX_COMPILED_EXPRESSION_CACHE_SIZE) {
+    const oldestKey = compiledExpressionCache.keys().next().value;
+    if (oldestKey !== undefined) compiledExpressionCache.delete(oldestKey);
+  }
+  return expression;
+}
+
 function compile(
   definition: SafeRegexDefinition,
 ): { expression: RE2JS } | { issue: SafeRegexValidationIssue } {
@@ -177,7 +199,7 @@ function compile(
   if (unsupported) return { issue: unsupported };
 
   try {
-    return { expression: RE2JS.compile(pattern, engineFlags(flags)) };
+    return { expression: compiledExpression(pattern, flags) };
   } catch {
     return {
       issue: {
@@ -189,7 +211,7 @@ function compile(
   }
 }
 
-/** Validates the complete Safe Regex v1 contract without retaining an engine. */
+/** Validates the complete Safe Regex v1 contract. */
 export function validateSafeRegex(
   definition: SafeRegexDefinition,
 ): SafeRegexValidationIssue | undefined {

@@ -51,6 +51,8 @@ jobs:
       # AGENTS.md requires every user-visible change to be verified against a
       # running app. Without this job that rule is unenforced, and a browser
       # check can go stale without anything failing.
+      - run: npm run test:safe-regex:browser
+
       - run: npm run test:e2e
 
       - uses: actions/upload-artifact@v4

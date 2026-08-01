@@ -117,6 +117,13 @@ subset of:
 Unicode semantics are always enabled, so there is no `u` flag. Stateful or
 engine-specific flags, including `g`, `y`, and `u`, are rejected.
 
+Patterns may also use RE2 inline modifier groups. `(?i)`, `(?m)`, and `(?s)`
+enable the corresponding behavior inside a pattern; modifiers can be combined,
+disabled with `-`, or scoped to a group (for example, `(?i:answer)`). RE2's
+`(?U)` modifier swaps greedy and non-greedy repetition behavior. These inline
+modifiers are pattern syntax and are not restricted by the separate `flags`
+field.
+
 Lookahead, lookbehind, and backreferences are not supported. Common rewrites
 are:
 
