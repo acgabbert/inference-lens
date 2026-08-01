@@ -2,7 +2,7 @@
 
 Inference Lens projects use a visible `<name>.inference-lens/` directory bundle
 containing one canonical, portable JSON document named `project.json`. New
-saves use schema version 6. Version 5 projects are upgraded on load; earlier
+saves use schema version 7. Version 5 and 6 projects are upgraded on load; earlier
 project formats and the proof-of-concept request export remain unsupported.
 Every schema is strict, so a reader rejects a document it does not understand
 rather than guessing.
@@ -154,7 +154,7 @@ credential store, an environment variable, or session memory.
 
 ## Template authoring session
 
-The live Project v6 document is the canonical owner of template definitions and
+The live Project v7 document is the canonical owner of template definitions and
 authored conversation items. Opening the Templates workspace from an ad-hoc
 request materializes an untitled in-memory project; it does not create a
 machine-local template registry.
@@ -186,6 +186,34 @@ trailing newline.
 All entities use stable, kind-prefixed IDs and ordered arrays. References use
 IDs rather than array positions. Provider-native configuration is allowed only
 inside explicit `providerOptions` objects.
+
+## Evaluation suites
+
+Project v7 adds ordered `evaluationSuites` as authored, portable content. A
+suite owns stable input-binding and case IDs. Each case owns an ordered list of
+provider-neutral deterministic checks and may carry a reference answer for
+human review; reference answers do not receive an automatic score.
+
+An input binding has a human-readable name and targets one stable template-use
+ID plus one template variable name. Cases store their values by input-binding
+ID rather than display name, so renaming an input does not rewrite the dataset.
+Every case supplies exactly one string value for every binding; an empty string
+is an intentional value. A suite may have no cases while it is being authored,
+but execution preflight will not treat that as a runnable dataset.
+
+Suites deliberately do not pin a conversation revision. The execution surface
+selects a revision, then checks whether that revision still contains each
+targeted template use and variable. A revision-specific mismatch is a preflight
+diagnostic because the suite may remain valid for another historical branch.
+The portable project parser still rejects a use ID that exists nowhere, a
+variable absent from every occurrence of that use, incomplete or extra case
+values, repeated identities, invalid checks, and secret-like target variable
+names. This prevents evaluation cases from becoming a portable secret store.
+
+Project v6 migrates to v7 by adding an empty suite collection. Project v5 uses
+the existing prompt-template migration first and then receives the empty suite
+collection. Loading performs this migration in memory; the workspace is not
+rewritten until its ordinary explicit-save or auto-save path runs.
 
 ## Tool mock semantics
 
@@ -222,7 +250,7 @@ Inference Lens refuses to overwrite it and asks the user to reopen the project.
 Completed, cancelled, and explicitly stopped runs are written as immutable
 `traces/<runId>.json` diagnostic artifacts. A repeated byte-identical write is
 allowed; different contents can never replace an existing run ID. These files
-are deliberately outside the Project v3 manifest contract, so adding or
+are deliberately outside the Project v7 manifest contract, so adding or
 removing a trace does not dirty authored project state. See
 [the run trace format](RUN_TRACE_FORMAT.md).
 

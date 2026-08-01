@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { checkDefinitionSchema } from "./checks.ts";
+import type { CheckDefinition } from "./checks.ts";
 import { stableJsonValue } from "./stable-json.ts";
 
 import {
@@ -22,6 +24,9 @@ import type {
   ConversationId,
   ConversationMessage,
   ConversationRevisionId,
+  EvaluationCaseId,
+  EvaluationInputBindingId,
+  EvaluationSuiteId,
   ExternalImportId,
   InferenceOptions,
   JsonObject,
@@ -55,7 +60,7 @@ export const PROJECT_DIRECTORY_SUFFIX = ".inference-lens";
 export const PROJECT_FILE_NAME = "project.json";
 export const PROJECT_EXPORT_FILE_SUFFIX = ".project.json";
 export const PROJECT_GITIGNORE_CONTENTS = "*\n";
-export const PROJECT_SCHEMA_VERSION = 6;
+export const PROJECT_SCHEMA_VERSION = 7;
 
 /**
  * Turns the portable project display name into one safe, visible directory
@@ -208,6 +213,36 @@ export interface ProjectDefaults {
   enabledToolIds: ToolId[];
 }
 
+export interface EvaluationInputBinding {
+  id: EvaluationInputBindingId;
+  name: string;
+  target: {
+    kind: "template-variable";
+    templateUseId: PromptTemplateUseId;
+    variableName: string;
+  };
+}
+
+export interface EvaluationCase {
+  id: EvaluationCaseId;
+  name: string;
+  values: Record<EvaluationInputBindingId, string>;
+  checks: CheckDefinition[];
+  referenceAnswer?: string;
+}
+
+/**
+ * Authored, provider-neutral evaluation content. A suite deliberately does not
+ * pin a conversation revision: execution selects one and preflight checks
+ * whether its stable template-use identities remain compatible.
+ */
+export interface EvaluationSuite {
+  id: EvaluationSuiteId;
+  name: string;
+  inputBindings: EvaluationInputBinding[];
+  cases: EvaluationCase[];
+}
+
 /**
  * Minimal durable provenance for imported literal messages. The selected
  * authored fields are retained for review; remote payloads, connection
@@ -279,7 +314,22 @@ export interface ProjectFileV6 {
   defaults: ProjectDefaults;
 }
 
-export type ProjectFile = ProjectFileV6;
+export interface ProjectFileV7 {
+  schemaVersion: 7;
+  projectId: ProjectId;
+  name: string;
+  connectionRequirements: ConnectionRequirement[];
+  conversations: ProjectConversation[];
+  conversationRevisions: ProjectConversationRevision[];
+  tools: ToolDefinition[];
+  toolMocks: ToolMock[];
+  promptTemplates: PromptTemplate[];
+  externalImports: ExternalImportReceipt[];
+  evaluationSuites: EvaluationSuite[];
+  defaults: ProjectDefaults;
+}
+
+export type ProjectFile = ProjectFileV7;
 
 const entityId = <Kind extends Parameters<typeof createEntityId>[0]>(
   kind: Kind,
@@ -718,6 +768,39 @@ const projectDefaultsSchema = z
   })
   .strict();
 
+const evaluationInputBindingSchema: z.ZodType<EvaluationInputBinding> = z
+  .object({
+    id: entityId("evaluation-input"),
+    name: z.string().trim().min(1),
+    target: z
+      .object({
+        kind: z.literal("template-variable"),
+        templateUseId: entityId("template-use"),
+        variableName: z.string().regex(variableName, "Invalid template variable name."),
+      })
+      .strict(),
+  })
+  .strict();
+
+const evaluationCaseSchema: z.ZodType<EvaluationCase> = z
+  .object({
+    id: entityId("evaluation-case"),
+    name: z.string().trim().min(1),
+    values: z.record(entityId("evaluation-input"), z.string()),
+    checks: z.array(checkDefinitionSchema),
+    referenceAnswer: z.string().optional(),
+  })
+  .strict();
+
+const evaluationSuiteSchema: z.ZodType<EvaluationSuite> = z
+  .object({
+    id: entityId("evaluation-suite"),
+    name: z.string().trim().min(1),
+    inputBindings: z.array(evaluationInputBindingSchema),
+    cases: z.array(evaluationCaseSchema),
+  })
+  .strict();
+
 const projectFileV5Schema = z
   .object({
     schemaVersion: z.literal(5),
@@ -740,6 +823,23 @@ type ProjectFileV5 = z.infer<typeof projectFileV5Schema>;
 
 const projectFileV6Schema: z.ZodType<ProjectFileV6> = z
   .object({
+    schemaVersion: z.literal(6),
+    projectId: entityId("project"),
+    name: z.string().trim().min(1),
+    connectionRequirements: z.array(connectionRequirementSchema).min(1),
+    conversations: z.array(projectConversationSchema).min(1),
+    conversationRevisions: z.array(projectConversationRevisionSchema).min(1),
+    tools: z.array(toolDefinitionSchema),
+    toolMocks: z.array(toolMockSchema),
+    promptTemplates: z.array(promptTemplateSchema),
+    externalImports: z.array(externalImportReceiptSchema),
+    defaults: projectDefaultsSchema,
+  })
+  .strict()
+  .superRefine(validateProjectReferences);
+
+const projectFileV7Schema: z.ZodType<ProjectFileV7> = z
+  .object({
     schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
     projectId: entityId("project"),
     name: z.string().trim().min(1),
@@ -750,6 +850,7 @@ const projectFileV6Schema: z.ZodType<ProjectFileV6> = z
     toolMocks: z.array(toolMockSchema),
     promptTemplates: z.array(promptTemplateSchema),
     externalImports: z.array(externalImportReceiptSchema),
+    evaluationSuites: z.array(evaluationSuiteSchema),
     defaults: projectDefaultsSchema,
   })
   .strict()
@@ -970,7 +1071,7 @@ function validateSharedProjectReferences(
 }
 
 function validateProjectReferences(
-  project: ProjectFileV6,
+  project: ProjectFileV6 | ProjectFileV7,
   context: z.RefinementCtx,
 ): void {
   validateSharedProjectReferences(
@@ -1142,6 +1243,10 @@ function validateProjectReferences(
     });
   });
 
+  if ("evaluationSuites" in project) {
+    validateEvaluationSuites(project, templates, context);
+  }
+
   project.externalImports.forEach((receipt, receiptIndex) => {
     if (!referencedExternalImportIds.has(receipt.id)) {
       context.addIssue({
@@ -1231,6 +1336,143 @@ function validateProjectReferences(
       "Template import projection does not reproduce its anchored revision.",
       context,
     );
+  });
+}
+
+function validateEvaluationSuites(
+  project: ProjectFileV7,
+  templates: ReadonlyMap<PromptTemplateId, PromptTemplate>,
+  context: z.RefinementCtx,
+): void {
+  addDuplicateIssues(
+    project.evaluationSuites.map(({ id }) => id),
+    ["evaluationSuites"],
+    context,
+  );
+
+  const uses = new Map<
+    PromptTemplateUseId,
+    Array<{ variables: ReadonlySet<string> }>
+  >();
+  project.conversationRevisions.forEach((revision) => {
+    revision.items.forEach((item) => {
+      if (item.kind !== "template-use") return;
+      const template = templates.get(item.use.templateId);
+      const templateRevision = template?.revisions.find(
+        ({ id }) => id === item.use.templateRevisionId,
+      );
+      if (!templateRevision) return;
+      const occurrences = uses.get(item.use.id) ?? [];
+      occurrences.push({
+        variables: new Set(
+          discoverTemplateVariables(templateRevision.messages).variables.map(
+            ({ name }) => name,
+          ),
+        ),
+      });
+      uses.set(item.use.id, occurrences);
+    });
+  });
+
+  const inputIds = new Set<string>();
+  const caseIds = new Set<string>();
+  const checkIds = new Set<string>();
+  project.evaluationSuites.forEach((suite, suiteIndex) => {
+    const suitePath = ["evaluationSuites", suiteIndex];
+    const localInputIds = new Set<string>();
+    const inputNames = new Set<string>();
+
+    suite.inputBindings.forEach((binding, bindingIndex) => {
+      const path = [...suitePath, "inputBindings", bindingIndex];
+      if (inputIds.has(binding.id)) {
+        context.addIssue({
+          code: "custom",
+          path: [...path, "id"],
+          message: `Duplicate identifier "${binding.id}".`,
+        });
+      }
+      inputIds.add(binding.id);
+      localInputIds.add(binding.id);
+      if (inputNames.has(binding.name)) {
+        context.addIssue({
+          code: "custom",
+          path: [...path, "name"],
+          message: `Evaluation input name "${binding.name}" is repeated within the suite.`,
+        });
+      }
+      inputNames.add(binding.name);
+
+      const occurrences = uses.get(binding.target.templateUseId);
+      requireReference(
+        Boolean(occurrences?.length),
+        [...path, "target", "templateUseId"],
+        `Evaluation input references unknown template use "${binding.target.templateUseId}".`,
+        context,
+      );
+      if (
+        occurrences?.length &&
+        !occurrences.some(({ variables }) =>
+          variables.has(binding.target.variableName),
+        )
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: [...path, "target", "variableName"],
+          message: `Template use "${binding.target.templateUseId}" has no revision containing variable "${binding.target.variableName}".`,
+        });
+      }
+      if (isSensitiveTemplateVariableName(binding.target.variableName)) {
+        context.addIssue({
+          code: "custom",
+          path: [...path, "target", "variableName"],
+          message:
+            "Secret-like template variables cannot be evaluation inputs because case values are portable project data.",
+        });
+      }
+    });
+
+    suite.cases.forEach((evaluationCase, caseIndex) => {
+      const path = [...suitePath, "cases", caseIndex];
+      if (caseIds.has(evaluationCase.id)) {
+        context.addIssue({
+          code: "custom",
+          path: [...path, "id"],
+          message: `Duplicate identifier "${evaluationCase.id}".`,
+        });
+      }
+      caseIds.add(evaluationCase.id);
+
+      const valueIds = new Set(Object.keys(evaluationCase.values));
+      localInputIds.forEach((inputId) => {
+        if (!valueIds.has(inputId)) {
+          context.addIssue({
+            code: "custom",
+            path: [...path, "values"],
+            message: `Evaluation case is missing a value for "${inputId}".`,
+          });
+        }
+      });
+      valueIds.forEach((inputId) => {
+        if (!localInputIds.has(inputId)) {
+          context.addIssue({
+            code: "custom",
+            path: [...path, "values", inputId],
+            message: `Evaluation case references unknown suite input "${inputId}".`,
+          });
+        }
+      });
+
+      evaluationCase.checks.forEach((check, checkIndex) => {
+        if (checkIds.has(check.checkId)) {
+          context.addIssue({
+            code: "custom",
+            path: [...path, "checks", checkIndex, "checkId"],
+            message: `Duplicate identifier "${check.checkId}".`,
+          });
+        }
+        checkIds.add(check.checkId);
+      });
+    });
   });
 }
 
@@ -1476,29 +1718,136 @@ function migrateProjectV5(project: ProjectFileV5): ProjectFileV6 {
 
   return {
     ...project,
-    schemaVersion: PROJECT_SCHEMA_VERSION,
+    schemaVersion: 6,
     promptTemplates,
     conversationRevisions,
   };
 }
 
+function migrateProjectV6(project: ProjectFileV6): ProjectFileV7 {
+  return {
+    ...project,
+    schemaVersion: PROJECT_SCHEMA_VERSION,
+    evaluationSuites: [],
+  };
+}
+
 export function parseProjectFile(value: unknown): ProjectFile {
-  const source =
-    typeof value === "object" &&
-    value !== null &&
-    "schemaVersion" in value &&
-    value.schemaVersion === 5
-      ? (() => {
-          const legacy = projectFileV5Schema.safeParse(value);
-          if (!legacy.success) {
-            throw new ProjectValidationError(legacy.error.issues);
-          }
-          return migrateProjectV5(legacy.data);
-        })()
-      : value;
-  const parsed = projectFileV6Schema.safeParse(source);
+  let source = value;
+  if (
+    typeof source === "object" &&
+    source !== null &&
+    "schemaVersion" in source &&
+    source.schemaVersion === 5
+  ) {
+    const legacy = projectFileV5Schema.safeParse(source);
+    if (!legacy.success) {
+      throw new ProjectValidationError(legacy.error.issues);
+    }
+    source = migrateProjectV5(legacy.data);
+  }
+  if (
+    typeof source === "object" &&
+    source !== null &&
+    "schemaVersion" in source &&
+    source.schemaVersion === 6
+  ) {
+    const previous = projectFileV6Schema.safeParse(source);
+    if (!previous.success) {
+      throw new ProjectValidationError(previous.error.issues);
+    }
+    source = migrateProjectV6(previous.data);
+  }
+  const parsed = projectFileV7Schema.safeParse(source);
   if (!parsed.success) throw new ProjectValidationError(parsed.error.issues);
   return parsed.data;
+}
+
+export type EvaluationSuiteCompatibilityDiagnostic =
+  | {
+      code: "missing-template-use";
+      inputBindingId: EvaluationInputBindingId;
+      templateUseId: PromptTemplateUseId;
+      message: string;
+    }
+  | {
+      code: "missing-template-variable";
+      inputBindingId: EvaluationInputBindingId;
+      templateUseId: PromptTemplateUseId;
+      variableName: string;
+      message: string;
+    };
+
+/**
+ * Reports whether one authored suite can supply inputs to one selected
+ * conversation revision. Compatibility is intentionally separate from
+ * project validity: a suite may remain useful for another historical branch.
+ */
+export function evaluationSuiteCompatibilityDiagnostics(
+  project: ProjectFile,
+  evaluationSuiteId: EvaluationSuiteId,
+  conversationRevisionId: ConversationRevisionId,
+): EvaluationSuiteCompatibilityDiagnostic[] {
+  const suite = project.evaluationSuites.find(
+    ({ id }) => id === evaluationSuiteId,
+  );
+  const revision = project.conversationRevisions.find(
+    ({ id }) => id === conversationRevisionId,
+  );
+  if (!suite || !revision) {
+    throw new ProjectValidationError([
+      {
+        code: "custom",
+        path: suite
+          ? ["conversationRevisions", conversationRevisionId]
+          : ["evaluationSuites", evaluationSuiteId],
+        message: suite
+          ? `Conversation revision "${conversationRevisionId}" does not exist.`
+          : `Evaluation suite "${evaluationSuiteId}" does not exist.`,
+      },
+    ]);
+  }
+
+  const uses = new Map(
+    revision.items.flatMap((item) =>
+      item.kind === "template-use" ? [[item.use.id, item.use] as const] : [],
+    ),
+  );
+  const templates = new Map(
+    project.promptTemplates.map((template) => [template.id, template]),
+  );
+  const diagnostics: EvaluationSuiteCompatibilityDiagnostic[] = [];
+  suite.inputBindings.forEach((binding) => {
+    const use = uses.get(binding.target.templateUseId);
+    if (!use) {
+      diagnostics.push({
+        code: "missing-template-use",
+        inputBindingId: binding.id,
+        templateUseId: binding.target.templateUseId,
+        message: `Selected revision does not contain template use "${binding.target.templateUseId}".`,
+      });
+      return;
+    }
+    const templateRevision = templates
+      .get(use.templateId)
+      ?.revisions.find(({ id }) => id === use.templateRevisionId);
+    const variables = templateRevision
+      ? new Set(
+          discoverTemplateVariables(templateRevision.messages).variables.map(
+            ({ name }) => name,
+          ),
+        )
+      : new Set<string>();
+    if (variables.has(binding.target.variableName)) return;
+    diagnostics.push({
+      code: "missing-template-variable",
+      inputBindingId: binding.id,
+      templateUseId: binding.target.templateUseId,
+      variableName: binding.target.variableName,
+      message: `Template use "${binding.target.templateUseId}" does not contain variable "${binding.target.variableName}" in the selected revision.`,
+    });
+  });
+  return diagnostics;
 }
 
 const preferredFieldOrder = new Map(
@@ -1513,6 +1862,7 @@ const preferredFieldOrder = new Map(
     "toolMocks",
     "promptTemplates",
     "externalImports",
+    "evaluationSuites",
     "defaults",
     "id",
     "provider",
@@ -1553,6 +1903,11 @@ const preferredFieldOrder = new Map(
     "authoredPath",
     "expression",
     "variableName",
+    "inputBindings",
+    "templateUseId",
+    "cases",
+    "checks",
+    "referenceAnswer",
     "adapter",
     "resource",
     "execution",
@@ -2936,6 +3291,7 @@ export function createProjectFile({
     toolMocks: [],
     promptTemplates: [],
     externalImports: [],
+    evaluationSuites: [],
     defaults: {
       conversationRevisionId: revisionId,
       target: {

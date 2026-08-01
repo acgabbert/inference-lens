@@ -5,6 +5,7 @@ import {
   PROJECT_DIRECTORY_SUFFIX,
   PROJECT_FILE_NAME,
   PROJECT_GITIGNORE_CONTENTS,
+  PROJECT_SCHEMA_VERSION,
   ProjectValidationError,
   archivePromptTemplate,
   appendPromptTemplateRevision,
@@ -13,6 +14,7 @@ import {
   createProjectFile,
   createPromptTemplate,
   detachPromptTemplateUse,
+  evaluationSuiteCompatibilityDiagnostics,
   findPromptTemplateUsages,
   insertPromptTemplateUse,
   parseProjectFile,
@@ -51,7 +53,64 @@ const request = {
   }),
 };
 
-test("creates a strict, portable Project v6 document", () => {
+function projectWithEvaluationSuite() {
+  let project = createProjectFile({
+    name: "Evaluation contract",
+    request,
+    idSuffix: "evaluation",
+    createdAt: "2026-08-01T12:00:00.000Z",
+  });
+  project = createPromptTemplate(project, {
+    name: "Question",
+    messages: [{ role: "user", content: "Explain {{topic}}." }],
+    idSuffix: "evaluation-question",
+    revisionIdSuffix: "evaluation-question-1",
+    createdAt: "2026-08-01T12:00:01.000Z",
+  });
+  project = insertPromptTemplateUse(project, {
+    conversationRevisionId: project.defaults.conversationRevisionId,
+    templateId: "template_evaluation-question",
+    idSuffix: "evaluation-question",
+    outputMessageIdSuffixes: ["evaluation-question"],
+  });
+  return parseProjectFile({
+    ...project,
+    evaluationSuites: [{
+      id: "evaluation-suite_topics",
+      name: "Topics",
+      inputBindings: [{
+        id: "evaluation-input_topic",
+        name: "Topic",
+        target: {
+          kind: "template-variable",
+          templateUseId: "template-use_evaluation-question",
+          variableName: "topic",
+        },
+      }],
+      cases: [{
+        id: "evaluation-case_migrations",
+        name: "Migrations",
+        values: { "evaluation-input_topic": "database migrations" },
+        checks: [
+          {
+            checkId: "check_mentions-migrations",
+            kind: "contains",
+            value: "migration",
+            caseSensitive: false,
+          },
+          {
+            checkId: "check_length",
+            kind: "max-output-characters",
+            limit: 500,
+          },
+        ],
+        referenceAnswer: "A concise explanation of safe database migrations.",
+      }],
+    }],
+  });
+}
+
+test("creates a strict, portable Project v7 document", () => {
   const project = createProjectFile({
     name: "Example",
     request,
@@ -78,7 +137,8 @@ test("creates a strict, portable Project v6 document", () => {
   assert.equal(projectDirectoryName("   "), "Untitled.inference-lens");
   assert.equal(projectExportFileName("Prompt Lab"), "Prompt Lab.project.json");
   assert.equal(projectExportFileName("CON"), "CON-project.project.json");
-  assert.equal(project.schemaVersion, 6);
+  assert.equal(PROJECT_SCHEMA_VERSION, 7);
+  assert.equal(project.schemaVersion, 7);
   assert.equal(project.projectId, "project_example");
   const draft = projectDraft(project);
   assert.deepEqual(projectDraft(project), {
@@ -101,7 +161,8 @@ test("creates a strict, portable Project v6 document", () => {
     enabledToolIds: [],
   });
   assert.deepEqual(project.externalImports, []);
-  assert.equal(JSON.parse(serializeProjectFile(project)).schemaVersion, 6);
+  assert.deepEqual(project.evaluationSuites, []);
+  assert.equal(JSON.parse(serializeProjectFile(project)).schemaVersion, 7);
 });
 
 test("serialization is deterministic and ends with a newline", () => {
@@ -148,6 +209,255 @@ test("rejects projects older than the supported v5 migration boundary", () => {
   }
 });
 
+test("migrates Project v6 by adding an empty evaluation suite collection", () => {
+  const current = createProjectFile({
+    name: "Version 6",
+    request,
+    idSuffix: "version-6",
+    createdAt: "2026-08-01T12:00:00.000Z",
+  });
+  const { evaluationSuites, ...version7WithoutSuites } = current;
+  assert.deepEqual(evaluationSuites, []);
+
+  const migrated = parseProjectFile({
+    ...version7WithoutSuites,
+    schemaVersion: 6,
+  });
+
+  assert.equal(migrated.schemaVersion, 7);
+  assert.deepEqual(migrated.evaluationSuites, []);
+  assert.equal(JSON.parse(serializeProjectFile(migrated)).schemaVersion, 7);
+});
+
+test("stores ordered evaluation suites, cases, bindings, checks, and reference answers", () => {
+  const project = projectWithEvaluationSuite();
+  const suite = project.evaluationSuites[0]!;
+
+  assert.equal(suite.id, "evaluation-suite_topics");
+  assert.deepEqual(suite.inputBindings.map(({ id }) => id), [
+    "evaluation-input_topic",
+  ]);
+  assert.deepEqual(suite.cases[0]?.checks.map(({ checkId }) => checkId), [
+    "check_mentions-migrations",
+    "check_length",
+  ]);
+  assert.equal(
+    suite.cases[0]?.referenceAnswer,
+    "A concise explanation of safe database migrations.",
+  );
+  assert.deepEqual(parseProjectJson(serializeProjectFile(project)), project);
+
+  const empty = parseProjectFile({
+    ...project,
+    evaluationSuites: [{ ...suite, cases: [] }],
+  });
+  assert.deepEqual(empty.evaluationSuites[0]?.cases, []);
+});
+
+test("strictly validates evaluation identities, checks, and complete case values", () => {
+  const project = projectWithEvaluationSuite();
+  const suite = project.evaluationSuites[0]!;
+  const evaluationCase = suite.cases[0]!;
+  const binding = suite.inputBindings[0]!;
+
+  assert.throws(
+    () => parseProjectFile({
+      ...project,
+      evaluationSuites: [{ ...suite, extra: true }],
+    }),
+    /Unrecognized key: "extra"/,
+  );
+  assert.throws(
+    () => parseProjectFile({
+      ...project,
+      evaluationSuites: [{
+        ...suite,
+        inputBindings: [binding, { ...binding, name: "Second" }],
+      }],
+    }),
+    /Duplicate identifier "evaluation-input_topic"/,
+  );
+  assert.throws(
+    () => parseProjectFile({
+      ...project,
+      evaluationSuites: [{
+        ...suite,
+        cases: [{ ...evaluationCase, values: {} }],
+      }],
+    }),
+    /missing a value for "evaluation-input_topic"/,
+  );
+  assert.throws(
+    () => parseProjectFile({
+      ...project,
+      evaluationSuites: [{
+        ...suite,
+        cases: [{
+          ...evaluationCase,
+          values: {
+            ...evaluationCase.values,
+            "evaluation-input_unknown": "extra",
+          },
+        }],
+      }],
+    }),
+    /unknown suite input "evaluation-input_unknown"/,
+  );
+  assert.throws(
+    () => parseProjectFile({
+      ...project,
+      evaluationSuites: [{
+        ...suite,
+        cases: [
+          evaluationCase,
+          {
+            ...evaluationCase,
+            id: "evaluation-case_second",
+            checks: [evaluationCase.checks[0]],
+          },
+        ],
+      }],
+    }),
+    /Duplicate identifier "check_mentions-migrations"/,
+  );
+  assert.throws(
+    () => parseProjectFile({
+      ...project,
+      evaluationSuites: [{
+        ...suite,
+        cases: [{
+          ...evaluationCase,
+          checks: [{
+            checkId: "check_invalid-regex",
+            kind: "regex",
+            syntax: "re2",
+            pattern: "(unclosed",
+          }],
+        }],
+      }],
+    }),
+    /valid RE2-compatible Safe regex syntax/,
+  );
+});
+
+test("rejects dangling and secret-like evaluation input bindings", () => {
+  const project = projectWithEvaluationSuite();
+  const suite = project.evaluationSuites[0]!;
+  const binding = suite.inputBindings[0]!;
+
+  assert.throws(
+    () => parseProjectFile({
+      ...project,
+      evaluationSuites: [{
+        ...suite,
+        inputBindings: [{
+          ...binding,
+          target: { ...binding.target, templateUseId: "template-use_missing" },
+        }],
+      }],
+    }),
+    /unknown template use "template-use_missing"/,
+  );
+  assert.throws(
+    () => parseProjectFile({
+      ...project,
+      evaluationSuites: [{
+        ...suite,
+        inputBindings: [{
+          ...binding,
+          target: { ...binding.target, variableName: "audience" },
+        }],
+      }],
+    }),
+    /no revision containing variable "audience"/,
+  );
+  assert.throws(
+    () => parseProjectFile({
+      ...project,
+      evaluationSuites: [{
+        ...suite,
+        inputBindings: [{
+          ...binding,
+          target: { ...binding.target, variableName: "api_key" },
+        }],
+      }],
+    }),
+    /Secret-like template variables cannot be evaluation inputs/,
+  );
+});
+
+test("reports selected-revision suite compatibility without invalidating historical bindings", () => {
+  let project = projectWithEvaluationSuite();
+  const originalRevisionId = project.defaults.conversationRevisionId;
+  assert.deepEqual(
+    evaluationSuiteCompatibilityDiagnostics(
+      project,
+      "evaluation-suite_topics",
+      originalRevisionId,
+    ),
+    [],
+  );
+
+  project = appendPromptTemplateRevision(project, {
+    templateId: "template_evaluation-question",
+    messages: [{ role: "user", content: "Explain the selected subject." }],
+    idSuffix: "evaluation-question-2",
+    createdAt: "2026-08-01T12:00:02.000Z",
+  });
+  const original = project.conversationRevisions.find(
+    ({ id }) => id === originalRevisionId,
+  )!;
+  const incompatibleRevisionId = "revision_evaluation-incompatible" as const;
+  const missingUseRevisionId = "revision_evaluation-missing-use" as const;
+  project = parseProjectFile({
+    ...project,
+    conversationRevisions: [
+      ...project.conversationRevisions,
+      {
+        id: incompatibleRevisionId,
+        conversationId: original.conversationId,
+        parentRevisionId: original.id,
+        createdAt: "2026-08-01T12:00:03.000Z",
+        items: original.items.map((item) =>
+          item.kind === "template-use"
+            ? {
+                ...item,
+                use: {
+                  ...item.use,
+                  templateRevisionId: "template-revision_evaluation-question-2",
+                },
+              }
+            : item,
+        ),
+      },
+      {
+        id: missingUseRevisionId,
+        conversationId: original.conversationId,
+        parentRevisionId: incompatibleRevisionId,
+        createdAt: "2026-08-01T12:00:04.000Z",
+        items: original.items.filter((item) => item.kind !== "template-use"),
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    evaluationSuiteCompatibilityDiagnostics(
+      project,
+      "evaluation-suite_topics",
+      incompatibleRevisionId,
+    ).map(({ code }) => code),
+    ["missing-template-variable"],
+  );
+  assert.deepEqual(
+    evaluationSuiteCompatibilityDiagnostics(
+      project,
+      "evaluation-suite_topics",
+      missingUseRevisionId,
+    ).map(({ code }) => code),
+    ["missing-template-use"],
+  );
+});
+
 test("migrates v5 fragments by duplicating templates used under different roles", () => {
   const base = createProjectFile({
     name: "Legacy roles",
@@ -155,8 +465,10 @@ test("migrates v5 fragments by duplicating templates used under different roles"
     idSuffix: "legacy-roles",
     createdAt: "2026-07-24T12:00:00.000Z",
   });
+  const { evaluationSuites, ...legacyBase } = base;
+  assert.deepEqual(evaluationSuites, []);
   const legacy = {
-    ...base,
+    ...legacyBase,
     schemaVersion: 5,
     promptTemplates: [{
       id: "template_legacy-prompt",
@@ -186,7 +498,8 @@ test("migrates v5 fragments by duplicating templates used under different roles"
   };
 
   const migrated = parseProjectFile(legacy);
-  assert.equal(migrated.schemaVersion, 6);
+  assert.equal(migrated.schemaVersion, 7);
+  assert.deepEqual(migrated.evaluationSuites, []);
   assert.equal(migrated.promptTemplates.length, 2);
   assert.deepEqual(
     migrated.promptTemplates.map(({ name, revisions }) => [
@@ -213,8 +526,10 @@ test("refuses to migrate a v5 revision that carries no messages", () => {
     idSuffix: "legacy-empty",
     createdAt: "2026-07-24T12:00:00.000Z",
   });
+  const { evaluationSuites, ...legacyBase } = base;
+  assert.deepEqual(evaluationSuites, []);
   const legacy = {
-    ...base,
+    ...legacyBase,
     schemaVersion: 5,
     promptTemplates: [{
       id: "template_legacy-empty",
