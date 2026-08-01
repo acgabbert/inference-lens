@@ -9,7 +9,7 @@ async function renderTemplateProvenance(resolutions) {
     configFile: false,
     root: process.cwd(),
     plugins: [react()],
-    server: { middlewareMode: true, hmr: false },
+    server: { middlewareMode: true, hmr: false, ws: false },
     logLevel: "warn",
   });
   try {
@@ -35,7 +35,7 @@ async function renderComponent(component, props) {
     configFile: false,
     root: process.cwd(),
     plugins: [react()],
-    server: { middlewareMode: true, hmr: false },
+    server: { middlewareMode: true, hmr: false, ws: false },
     logLevel: "warn",
   });
   try {

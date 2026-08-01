@@ -91,7 +91,7 @@ test("contextual experiment review can select another trace and return to the re
     configFile: false,
     root: process.cwd(),
     plugins: [react()],
-    server: { middlewareMode: true, hmr: false },
+    server: { middlewareMode: true, hmr: false, ws: false },
     logLevel: "warn",
   });
   const [{ RepeatedExperimentWorkspace }, { createElement }, { createRoot }, { act }] =

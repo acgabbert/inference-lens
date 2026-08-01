@@ -11,7 +11,7 @@ async function renderImportModal() {
     configFile: false,
     root: process.cwd(),
     plugins: [react()],
-    server: { middlewareMode: true, hmr: false },
+    server: { middlewareMode: true, hmr: false, ws: false },
     logLevel: "warn",
   });
   try {
@@ -38,7 +38,7 @@ async function renderExecutionLinkSelector() {
     configFile: false,
     root: process.cwd(),
     plugins: [react()],
-    server: { middlewareMode: true, hmr: false },
+    server: { middlewareMode: true, hmr: false, ws: false },
     logLevel: "warn",
   });
   try {

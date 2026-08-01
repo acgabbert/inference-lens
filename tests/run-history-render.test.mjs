@@ -19,7 +19,7 @@ async function renderDrawer(props) {
     configFile: false,
     root: process.cwd(),
     plugins: [react()],
-    server: { middlewareMode: true, hmr: false },
+    server: { middlewareMode: true, hmr: false, ws: false },
     logLevel: "warn",
   });
   try {
