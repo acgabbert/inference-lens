@@ -57,9 +57,13 @@ never ran. A repetition with no openable trace is presented as `Waiting`,
 `Not run`, `Trace missing`, or `Trace could not be read` — never as one
 undifferentiated blank.
 
-Both files use `schemaVersion: 1`. Parsers reject unknown fields, unsupported
-versions, invalid or duplicate IDs, mismatched result references, and
-credential-like keys at provider-option boundaries. Serializers produce stable
+Both files use `schemaVersion: 2`. Version 1 remains importable: its plans
+stored one-message template provenance as a role-less fragment plus a use-level
+role, which migration folds into an ordered message list. That legacy shape is
+accepted only from a document declaring Version 1; a Version 2 document
+carrying it is rejected. Parsers reject unknown fields, unsupported versions,
+invalid or duplicate IDs, mismatched result references, and credential-like keys
+at provider-option boundaries. Serializers produce stable
 JSON with a trailing newline. Artifacts are write-once: saving byte-identical
 contents again is idempotent, while different replacement contents are refused.
 

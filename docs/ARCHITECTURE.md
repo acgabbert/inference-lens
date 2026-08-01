@@ -55,11 +55,11 @@ resumable state machine, or the provider protocol parsing, in Rust.
 Project persistence follows the same boundary:
 
 ```text
-Project v5 parser/serializer -> ProjectWorkspace -> browser bundle or Tauri filesystem
+Project v6 parser/serializer -> ProjectWorkspace -> browser bundle or Tauri filesystem
 RunTrace v1 parser/serializer -> ProjectWorkspace -> traces/<runId>.json
 ```
 
-`packages/core/src/project.ts` owns the strict, portable Project v5 document
+`packages/core/src/project.ts` owns the strict, portable Project v6 document
 and the provider-neutral bundle naming rules.
 Browser and Tauri adapters own directory selection, permissions,
 external-change detection, and writing. Imported projects contain portable

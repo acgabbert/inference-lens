@@ -26,7 +26,7 @@ async function render(modulePath, component, props) {
 
 function plan() {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     experimentId: "experiment_render",
     kind: "repeated-request",
     createdAt: "2026-07-30T12:00:00.000Z",
@@ -179,7 +179,7 @@ test("repeated workspace renders unsaved state, exact aggregate text, and ordina
         states: new Map(),
         unreadableTraces: new Map(),
         result: {
-          schemaVersion: 1,
+          schemaVersion: 2,
           experimentId: frozenPlan.experimentId,
           status: "completed",
           endedAt: "2026-07-30T12:01:00.000Z",
@@ -393,7 +393,7 @@ test("completed experiment rows show a brief normalized output preview", async (
         ]),
         unreadableTraces: new Map(),
         result: {
-          schemaVersion: 1,
+          schemaVersion: 2,
           experimentId: frozenPlan.experimentId,
           status: "completed",
           endedAt: "2026-07-30T12:01:00.000Z",
@@ -473,7 +473,7 @@ test("a referenced trace that cannot be read is distinguished from one that neve
         workspace: {},
         states: new Map(),
         result: {
-          schemaVersion: 1,
+          schemaVersion: 2,
           experimentId: frozenPlan.experimentId,
           status: "completed",
           endedAt: "2026-07-30T12:01:00.000Z",

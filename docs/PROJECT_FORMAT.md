@@ -2,9 +2,10 @@
 
 Inference Lens projects use a visible `<name>.inference-lens/` directory bundle
 containing one canonical, portable JSON document named `project.json`. New
-saves use schema version 5. Earlier project formats and the proof-of-concept
-request export are intentionally unsupported: every schema is strict, so a
-reader rejects a document it does not fully understand rather than guessing.
+saves use schema version 6. Version 5 projects are upgraded on load; earlier
+project formats and the proof-of-concept request export remain unsupported.
+Every schema is strict, so a reader rejects a document it does not understand
+rather than guessing.
 
 New bundles contain an internal `.gitignore` with `*` by default. This makes the
 entire working project—including authored prompts, fixtures, and run
@@ -40,8 +41,7 @@ so their relative order is explicit:
         "templateId": "template_question",
         "templateRevisionId": "template-revision_question-1",
         "values": { "topic": "migration safety" },
-        "outputMessageIds": ["message_question"],
-        "fragmentRole": "user"
+        "outputMessageIds": ["message_question"]
       }
     }
   ],
@@ -67,12 +67,21 @@ being filled. The UI presents those diagnostics for correction, while the
 provider-neutral `prepareProjectRevisionRun` boundary refuses to produce
 executable messages and provenance until every diagnostic is resolved.
 
-A message-set use has one stable `outputMessageIds` entry per template message.
-A fragment use has exactly one output message ID and a required
-`fragmentRole`. A fragment supplies the complete text of one
-generated system, user, or assistant message. Inline prefix/template/suffix
-composition is not part of this format and may later be introduced as a new
-authored-item or content-part variant.
+Every template revision owns a non-empty ordered `messages` array. Each message
+contains its `system`, `user`, or `assistant` role and text, so uses never
+override roles. A use has one stable `outputMessageIds` entry per template
+message. A newly created prompt begins as one user message; system instructions
+and additional messages expand that same structure. Inline
+prefix/template/suffix composition is not part of this format.
+
+Version 5 represented single-message prompts as role-less fragments and stored
+the role on each use. During migration a fragment becomes a one-message prompt.
+If one legacy template was used under several roles, the migration keeps the
+primary role on the original template and creates a role-labelled copy for each
+additional role, then rewrites uses to the matching copy. This preserves output
+roles without retaining a role override in the v6 contract. A v5 revision that
+carries no messages at all has no faithful v6 form, so the migration refuses the
+document rather than inventing one.
 
 Template revisions are immutable. Saving changed content or defaults appends a
 revision and advances `currentRevisionId`; saving an unchanged revision is a
@@ -85,7 +94,7 @@ literal messages, or remove it.
 
 Branching also respects authored-item boundaries. A complete template use is
 copied into the child revision rather than flattened into generated messages.
-A message-set use is atomic: branching after its final emitted message
+A multi-message template use is atomic: branching after its final emitted message
 preserves it, while branching inside the emitted set requires detaching the use
 first. Literal and provider-produced messages remain literal items in the child.
 
@@ -145,7 +154,7 @@ credential store, an environment variable, or session memory.
 
 ## Template authoring session
 
-The live Project v5 document is the canonical owner of template definitions and
+The live Project v6 document is the canonical owner of template definitions and
 authored conversation items. Opening the Templates workspace from an ad-hoc
 request materializes an untitled in-memory project; it does not create a
 machine-local template registry.

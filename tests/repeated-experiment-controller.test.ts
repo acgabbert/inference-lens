@@ -3,15 +3,15 @@ import test from "node:test";
 
 import type { ProviderTurnStream, ProviderTurnTransport } from "../packages/contracts/src/inference.ts";
 import { OPENAI_COMPATIBLE_CAPABILITIES } from "../packages/core/src/types.ts";
-import type { RepeatedExperimentPlanV1 } from "../packages/core/src/experiment.ts";
+import type { RepeatedExperimentPlanV2 } from "../packages/core/src/experiment.ts";
 import type { ProviderTransportEvent, RunTrace } from "../packages/core/src/run-kernel/index.ts";
 import { RepeatedExperimentController } from "../app/run/repeated-experiment-controller.client.ts";
 import { createExperimentWorkspacePersistence } from "../app/run/experiment-workspace-persistence.client.ts";
 import type { ProjectWorkspaceHandle } from "../app/project-workspace.client.ts";
 
-function plan(count: number): RepeatedExperimentPlanV1 {
+function plan(count: number): RepeatedExperimentPlanV2 {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     experimentId: "experiment_controller",
     kind: "repeated-request",
     createdAt: "2026-07-30T12:00:00.000Z",

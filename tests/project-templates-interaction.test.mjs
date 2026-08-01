@@ -36,7 +36,7 @@ const template = {
     {
       id: "template-revision_question-1",
       createdAt: "2026-07-31T12:00:00.000Z",
-      content: { kind: "fragment", text: "Explain {{topic}}." },
+      messages: [{ role: "user", content: "Explain {{topic}}." }],
       variableDefaults: { topic: "branching" },
     },
   ],
@@ -104,6 +104,52 @@ async function mount() {
     },
   };
 }
+
+test("starts as one user prompt and reveals message controls on demand", async () => {
+  const view = await mount();
+  try {
+    assert.ok(view.container.querySelector('textarea[aria-label="Prompt content"]'));
+    assert.equal(
+      view.container.querySelectorAll('[aria-label^="Template message"][aria-label$="role"]').length,
+      0,
+    );
+    const addSystem = [...view.container.querySelectorAll("button")].find(
+      (button) => button.textContent?.includes("Add system instructions"),
+    );
+    const addMessage = [...view.container.querySelectorAll("button")].find(
+      (button) => button.textContent?.trim() === "+ Add message",
+    );
+    assert.ok(addSystem);
+    assert.ok(addMessage);
+
+    await view.click(addSystem);
+    const roleSelectors = view.container.querySelectorAll(
+      '[aria-label^="Template message"][aria-label$="role"]',
+    );
+    assert.equal(roleSelectors.length, 2);
+    assert.deepEqual(
+      [...roleSelectors].map((select) => select.value),
+      ["system", "user"],
+    );
+    assert.equal(
+      view.container.querySelector('textarea[aria-label="Template message 1 content"]')?.value,
+      "",
+    );
+    assert.equal(
+      view.container.querySelector('textarea[aria-label="Template message 2 content"]')?.value,
+      "Explain {{topic}}.",
+    );
+
+    const removeSystem = view.container.querySelector(
+      ".template-message-editor .remove-button",
+    );
+    assert.ok(removeSystem);
+    await view.click(removeSystem);
+    assert.ok(view.container.querySelector('textarea[aria-label="Prompt content"]'));
+  } finally {
+    await view.close();
+  }
+});
 
 test("focus mode expands the live editor and restores focus when dismissed", async () => {
   const view = await mount();

@@ -21,7 +21,7 @@ import type {
   ToolDefinition,
 } from "./run-kernel/types.ts";
 
-export const EXPERIMENT_SCHEMA_VERSION = 1;
+export const EXPERIMENT_SCHEMA_VERSION = 2;
 export const EXPERIMENT_PLAN_FILE_SUFFIX = ".plan.json";
 export const EXPERIMENT_RESULT_FILE_SUFFIX = ".result.json";
 
@@ -38,8 +38,8 @@ export interface RepeatedExperimentCell {
   runId: RunId;
 }
 
-export interface RepeatedExperimentPlanV1 {
-  schemaVersion: 1;
+export interface RepeatedExperimentPlanV2 {
+  schemaVersion: 2;
   experimentId: ExperimentId;
   kind: "repeated-request";
   createdAt: string;
@@ -63,8 +63,8 @@ export type ExperimentCellResult =
   | ExperimentTerminalCellResult
   | ExperimentNotRunCellResult;
 
-export interface ExperimentResultV1 {
-  schemaVersion: 1;
+export interface ExperimentResultV2 {
+  schemaVersion: 2;
   experimentId: ExperimentId;
   status: "completed" | "cancelled";
   endedAt: string;
@@ -190,7 +190,7 @@ const toolDefinitionSchema: z.ZodType<ToolDefinition> = z
   })
   .strict();
 
-const templateContentSchema = z.discriminatedUnion("kind", [
+const legacyTemplateContentSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("fragment"), text: z.string() }).strict(),
   z
     .object({
@@ -209,19 +209,60 @@ const templateContentSchema = z.discriminatedUnion("kind", [
     .strict(),
 ]);
 
-const resolvedTemplateUseSchema: z.ZodType<ResolvedTemplateUse> = z
-  .object({
+const resolvedTemplateUseBaseSchema = z.object({
     templateUseId: entityId("template-use"),
     templateId: entityId("template"),
     templateRevisionId: entityId("template-revision"),
     templateName: z.string(),
-    content: templateContentSchema,
     variableDefaults: z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), z.string()),
     values: z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), z.string()),
     outputMessageIds: z.array(entityId("message")).min(1),
+  });
+
+const templateMessagesSchema = z
+  .array(
+    z
+      .object({
+        role: z.enum(["system", "user", "assistant"]),
+        content: z.string(),
+      })
+      .strict(),
+  )
+  .min(1) as unknown as z.ZodType<ResolvedTemplateUse["messages"]>;
+
+const resolvedTemplateUseSchema: z.ZodType<ResolvedTemplateUse> =
+  resolvedTemplateUseBaseSchema
+    .extend({ messages: templateMessagesSchema })
+    .strict();
+
+/**
+ * Version 1 stored one-message provenance as a role-less fragment plus a
+ * use-level role. It is accepted only under the Version 1 plan schema so a
+ * document declaring Version 2 cannot smuggle the old shape past the gate.
+ */
+const legacyResolvedTemplateUseSchema = resolvedTemplateUseBaseSchema
+  .extend({
+    content: legacyTemplateContentSchema,
     fragmentRole: z.enum(["system", "user", "assistant"]).optional(),
   })
-  .strict();
+  .strict()
+  .transform(({ content, fragmentRole, ...resolution }, context) => {
+    if (content.kind === "fragment" && !fragmentRole) {
+      context.addIssue({
+        code: "custom",
+        path: ["fragmentRole"],
+        message: "Fragment template provenance requires a role.",
+      });
+      return z.NEVER;
+    }
+    return {
+      ...resolution,
+      messages:
+        content.kind === "fragment"
+          ? [{ role: fragmentRole!, content: content.text }]
+          : content.messages,
+    } as ResolvedTemplateUse;
+  });
 
 const capabilitiesSchema = z
   .object({
@@ -237,7 +278,7 @@ const capabilitiesSchema = z
   })
   .strict();
 
-const commonInputSchema = z
+const commonInputBaseSchema = z
   .object({
     conversationId: entityId("conversation"),
     conversationRevisionId: entityId("revision"),
@@ -265,33 +306,46 @@ const commonInputSchema = z
       })
       .strict(),
     messages: z.array(conversationMessageSchema),
-    templateResolutions: z.array(resolvedTemplateUseSchema),
     responseMode: z.enum(["streaming", "buffered"]),
     options: inferenceOptionsSchema,
     tools: z.array(toolDefinitionSchema),
     resolvedAt: z.string().datetime(),
+  });
+
+const commonInputSchema = commonInputBaseSchema
+  .extend({ templateResolutions: z.array(resolvedTemplateUseSchema) })
+  .strict();
+
+const legacyCommonInputSchema = commonInputBaseSchema
+  .extend({ templateResolutions: z.array(legacyResolvedTemplateUseSchema) })
+  .strict();
+
+const planBaseSchema = z.object({
+  experimentId: entityId("experiment"),
+  kind: z.literal("repeated-request"),
+  createdAt: z.string().datetime(),
+  cells: z
+    .array(
+      z
+        .object({
+          cellId: entityId("experiment-cell"),
+          ordinal: z.number().int().positive(),
+          runId: entityId("run"),
+        })
+        .strict(),
+    )
+    .min(2),
+});
+
+const planSchema = planBaseSchema
+  .extend({
+    schemaVersion: z.literal(EXPERIMENT_SCHEMA_VERSION),
+    commonInput: commonInputSchema,
   })
   .strict();
 
-const planSchema = z
-  .object({
-    schemaVersion: z.literal(EXPERIMENT_SCHEMA_VERSION),
-    experimentId: entityId("experiment"),
-    kind: z.literal("repeated-request"),
-    createdAt: z.string().datetime(),
-    commonInput: commonInputSchema,
-    cells: z
-      .array(
-        z
-          .object({
-            cellId: entityId("experiment-cell"),
-            ordinal: z.number().int().positive(),
-            runId: entityId("run"),
-          })
-          .strict(),
-      )
-      .min(2),
-  })
+const planV1Schema = planBaseSchema
+  .extend({ schemaVersion: z.literal(1), commonInput: legacyCommonInputSchema })
   .strict();
 
 const resultSchema = z
@@ -321,6 +375,10 @@ const resultSchema = z
   })
   .strict();
 
+const resultV1Schema = resultSchema
+  .extend({ schemaVersion: z.literal(1) })
+  .strict();
+
 function parseWith<T>(schema: z.ZodType<T>, value: unknown, label: string): T {
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
@@ -334,7 +392,7 @@ function parseWith<T>(schema: z.ZodType<T>, value: unknown, label: string): T {
   return parsed.data;
 }
 
-function assertNoSensitiveProviderOptions(plan: RepeatedExperimentPlanV1): void {
+function assertNoSensitiveProviderOptions(plan: RepeatedExperimentPlanV2): void {
   function inspect(value: JsonValue | undefined, path: string): void {
     if (!value || typeof value !== "object" || Array.isArray(value)) return;
     for (const [key, nested] of Object.entries(value)) {
@@ -353,7 +411,7 @@ function assertNoSensitiveProviderOptions(plan: RepeatedExperimentPlanV1): void 
   );
 }
 
-function assertPlanReferences(plan: RepeatedExperimentPlanV1): void {
+function assertPlanReferences(plan: RepeatedExperimentPlanV2): void {
   const cellIds = new Set<string>();
   const runIds = new Set<string>();
   plan.cells.forEach((cell, index) => {
@@ -372,8 +430,8 @@ function assertPlanReferences(plan: RepeatedExperimentPlanV1): void {
 }
 
 function assertResultReferences(
-  result: ExperimentResultV1,
-  plan: RepeatedExperimentPlanV1,
+  result: ExperimentResultV2,
+  plan: RepeatedExperimentPlanV2,
 ): void {
   if (result.experimentId !== plan.experimentId) {
     throw new ExperimentValidationError("Experiment result belongs to a different experiment.");
@@ -436,14 +494,24 @@ export function experimentArtifactIdentity(fileName: string): {
   };
 }
 
-export function parseExperimentPlanFile(value: unknown): RepeatedExperimentPlanV1 {
-  const plan = parseWith(planSchema, value, "experiment plan") as RepeatedExperimentPlanV1;
+export function parseExperimentPlanFile(value: unknown): RepeatedExperimentPlanV2 {
+  const source =
+    typeof value === "object" &&
+    value !== null &&
+    "schemaVersion" in value &&
+    value.schemaVersion === 1
+      ? {
+          ...parseWith(planV1Schema, value, "experiment plan"),
+          schemaVersion: EXPERIMENT_SCHEMA_VERSION,
+        }
+      : value;
+  const plan = parseWith(planSchema, source, "experiment plan") as RepeatedExperimentPlanV2;
   assertPlanReferences(plan);
   assertNoSensitiveProviderOptions(plan);
   return plan;
 }
 
-export function parseExperimentPlanJson(contents: string): RepeatedExperimentPlanV1 {
+export function parseExperimentPlanJson(contents: string): RepeatedExperimentPlanV2 {
   try {
     return parseExperimentPlanFile(JSON.parse(contents));
   } catch (error) {
@@ -454,18 +522,28 @@ export function parseExperimentPlanJson(contents: string): RepeatedExperimentPla
 
 export function parseExperimentResultFile(
   value: unknown,
-  plan: RepeatedExperimentPlanV1,
-): ExperimentResultV1 {
+  plan: RepeatedExperimentPlanV2,
+): ExperimentResultV2 {
   const parsedPlan = parseExperimentPlanFile(plan);
-  const result = parseWith(resultSchema, value, "experiment result") as ExperimentResultV1;
+  const source =
+    typeof value === "object" &&
+    value !== null &&
+    "schemaVersion" in value &&
+    value.schemaVersion === 1
+      ? {
+          ...parseWith(resultV1Schema, value, "experiment result"),
+          schemaVersion: EXPERIMENT_SCHEMA_VERSION,
+        }
+      : value;
+  const result = parseWith(resultSchema, source, "experiment result") as ExperimentResultV2;
   assertResultReferences(result, parsedPlan);
   return result;
 }
 
 export function parseExperimentResultJson(
   contents: string,
-  plan: RepeatedExperimentPlanV1,
-): ExperimentResultV1 {
+  plan: RepeatedExperimentPlanV2,
+): ExperimentResultV2 {
   let value: unknown;
   try {
     value = JSON.parse(contents);
@@ -475,7 +553,7 @@ export function parseExperimentResultJson(
   return parseExperimentResultFile(value, plan);
 }
 
-export function serializeExperimentPlan(plan: RepeatedExperimentPlanV1): string {
+export function serializeExperimentPlan(plan: RepeatedExperimentPlanV2): string {
   return serializeParsedExperimentPlan(parseExperimentPlanFile(plan));
 }
 
@@ -484,20 +562,20 @@ export function serializeExperimentPlan(plan: RepeatedExperimentPlanV1): string 
  * This is useful to execution owners that must validate an ad hoc plan before
  * starting, but must not re-parse the full frozen input for every cell.
  */
-export function serializeParsedExperimentPlan(plan: RepeatedExperimentPlanV1): string {
+export function serializeParsedExperimentPlan(plan: RepeatedExperimentPlanV2): string {
   return `${JSON.stringify(stableJsonValue(plan), null, 2)}\n`;
 }
 
 export function serializeExperimentResult(
-  result: ExperimentResultV1,
-  plan: RepeatedExperimentPlanV1,
+  result: ExperimentResultV2,
+  plan: RepeatedExperimentPlanV2,
 ): string {
   return `${JSON.stringify(stableJsonValue(parseExperimentResultFile(result, plan)), null, 2)}\n`;
 }
 
 /** Materializes exactly one preallocated repetition without changing its frozen input. */
 export function materializeExperimentCellInput(
-  plan: RepeatedExperimentPlanV1,
+  plan: RepeatedExperimentPlanV2,
   cellId: ExperimentCellId,
 ): ResolvedRunInput {
   const parsed = parseExperimentPlanFile(plan);
@@ -512,7 +590,7 @@ export function materializeExperimentCellInput(
  * or parse first.
  */
 export function materializeParsedExperimentCellInput(
-  plan: RepeatedExperimentPlanV1,
+  plan: RepeatedExperimentPlanV2,
   cell: RepeatedExperimentCell,
 ): ResolvedRunInput {
   const plannedCell = plan.cells.find((candidate) => candidate.cellId === cell.cellId);
@@ -524,8 +602,8 @@ export function materializeParsedExperimentCellInput(
 
 /** A plan with no result survived an interrupted application session. */
 export function experimentLifecycle(
-  _plan: RepeatedExperimentPlanV1,
-  result?: ExperimentResultV1,
+  _plan: RepeatedExperimentPlanV2,
+  result?: ExperimentResultV2,
 ): ExperimentLifecycle {
   return result ? result.status : "interrupted";
 }
@@ -555,8 +633,8 @@ export { finalAssistantOutput } from "./run-output.ts";
  * metrics or successful repetitions.
  */
 export function repeatedExperimentAggregate(
-  plan: RepeatedExperimentPlanV1,
-  result: ExperimentResultV1 | undefined,
+  plan: RepeatedExperimentPlanV2,
+  result: ExperimentResultV2 | undefined,
   states: ReadonlyMap<RunId, RunState> = new Map(),
 ): RepeatedExperimentAggregate {
   const parsedPlan = parseExperimentPlanFile(plan);

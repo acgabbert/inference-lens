@@ -32,7 +32,7 @@ function templateProject() {
   });
   project = createPromptTemplate(project, {
     name: "Prompt",
-    content: { kind: "fragment", text: "Topic: {{topic}}" },
+    messages: [{ role: "user", content: "Topic: {{topic}}" }],
     variableDefaults: { topic: "default" },
     idSuffix: "prompt",
     revisionIdSuffix: "prompt-1",
@@ -41,7 +41,6 @@ function templateProject() {
   project = insertPromptTemplateUse(project, {
     conversationRevisionId: project.defaults.conversationRevisionId,
     templateId: "template_prompt",
-    fragmentRole: "user",
     idSuffix: "prompt",
     outputMessageIdSuffixes: ["prompt"],
   });

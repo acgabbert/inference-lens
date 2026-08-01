@@ -6,9 +6,9 @@ import {
   serializeExperimentResult,
 } from "../../packages/core/src/experiment.ts";
 import type {
-  ExperimentResultV1,
+  ExperimentResultV2,
   RepeatedExperimentCell,
-  RepeatedExperimentPlanV1,
+  RepeatedExperimentPlanV2,
 } from "../../packages/core/src/experiment.ts";
 import { RunCoordinator } from "../../packages/core/src/run-kernel/index.ts";
 import { createRunTrace } from "../../packages/core/src/run-kernel/reducer.ts";
@@ -27,13 +27,13 @@ export interface RepeatedExperimentProgress {
 }
 
 export interface RepeatedExperimentControllerOptions {
-  plan: RepeatedExperimentPlanV1;
+  plan: RepeatedExperimentPlanV2;
   transport: ProviderTurnTransport;
   prepareCredential(): Promise<CredentialSelection>;
   /** Must durably save the plan before resolving. Omit for an ad hoc session experiment. */
-  savePlan?(plan: RepeatedExperimentPlanV1, serialized: string): Promise<void>;
+  savePlan?(plan: RepeatedExperimentPlanV2, serialized: string): Promise<void>;
   /** Must durably save the final result before resolving. Omit for an ad hoc session experiment. */
-  saveResult?(result: ExperimentResultV1, serialized: string): Promise<void>;
+  saveResult?(result: ExperimentResultV2, serialized: string): Promise<void>;
   onProgress?(progress: RepeatedExperimentProgress): void;
   /**
    * Invoked exactly once for every started cell after it reaches a terminal state.
@@ -63,7 +63,7 @@ export class RepeatedExperimentController {
   private readonly options: RepeatedExperimentControllerOptions;
   private readonly states = new Map<RunId, RunState>();
   private activeAbortController: AbortController | undefined;
-  private frozenPlan: RepeatedExperimentPlanV1 | undefined;
+  private frozenPlan: RepeatedExperimentPlanV2 | undefined;
   private cancellationRequested = false;
   private running = false;
   private hasRun = false;
@@ -83,7 +83,7 @@ export class RepeatedExperimentController {
     this.activeAbortController?.abort();
   }
 
-  async run(): Promise<ExperimentResultV1> {
+  async run(): Promise<ExperimentResultV2> {
     if (this.running) throw new Error("The experiment is already running.");
     if (this.hasRun) throw new Error("The experiment has already run.");
     // Parse before any observable work, including optional persistence. This
@@ -101,7 +101,7 @@ export class RepeatedExperimentController {
       if (this.options.savePlan) await this.options.savePlan(plan, serializedPlan);
       this.hasRun = true;
 
-      const cells: ExperimentResultV1["cells"] = [];
+      const cells: ExperimentResultV2["cells"] = [];
       this.emitRunning(cells.length);
       for (const cell of plan.cells) {
         if (this.cancellationRequested) break;
@@ -116,8 +116,8 @@ export class RepeatedExperimentController {
         }
       }
 
-      const result: ExperimentResultV1 = {
-        schemaVersion: 1,
+      const result: ExperimentResultV2 = {
+        schemaVersion: 2,
         experimentId: plan.experimentId,
         status: cancelled ? "cancelled" : "completed",
         endedAt: new Date().toISOString(),
@@ -142,8 +142,8 @@ export class RepeatedExperimentController {
 
   private async runCell(
     cell: RepeatedExperimentCell,
-    cells: ExperimentResultV1["cells"],
-    plan: RepeatedExperimentPlanV1,
+    cells: ExperimentResultV2["cells"],
+    plan: RepeatedExperimentPlanV2,
   ): Promise<void> {
     const input = materializeParsedExperimentCellInput(plan, cell);
     const coordinator = new RunCoordinator(input);
@@ -224,7 +224,7 @@ export class RepeatedExperimentController {
     }
   }
 
-  private terminalCellCount(cells: ExperimentResultV1["cells"]): number {
+  private terminalCellCount(cells: ExperimentResultV2["cells"]): number {
     return cells.filter((cell) => cell.status !== "not-run").length;
   }
 

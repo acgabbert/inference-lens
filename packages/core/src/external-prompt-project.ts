@@ -14,7 +14,7 @@ import type {
   ExternalImportReceipt,
   ProjectFile,
   ProjectConversationItem,
-  PromptTemplateContent,
+  PromptTemplateMessages,
 } from "./project.ts";
 import { createEntityId } from "./run-kernel/types.ts";
 import type {
@@ -63,7 +63,7 @@ export interface ExternalTemplateVariableProjection {
 
 export interface ExternalPromptTemplateProjection {
   name: string;
-  content: PromptTemplateContent;
+  messages: PromptTemplateMessages;
   values: Record<string, string>;
   variables: ExternalTemplateVariableProjection[];
 }
@@ -330,10 +330,7 @@ export function projectExternalPromptTemplate(
     name: candidate.source.resource.name
       ? `${candidate.source.resource.name} — ${candidate.invocation.name}`
       : candidate.invocation.name,
-    content:
-      messages.length === 1
-        ? { kind: "fragment", text: messages[0]!.content }
-        : { kind: "messages", messages },
+    messages: messages as PromptTemplateMessages,
     values,
     variables,
   };
@@ -478,10 +475,7 @@ export async function importExternalPromptTemplateCandidate(
     throw new Error("Project has no active conversation revision.");
   }
 
-  const messageCount =
-    projection.content.kind === "fragment"
-      ? 1
-      : projection.content.messages.length;
+  const messageCount = projection.messages.length;
   const suffix = templateCollisionSafeSuffix(
     project,
     candidate.sourceDigest,
@@ -540,7 +534,7 @@ export async function importExternalPromptTemplateCandidate(
           {
             id: templateRevisionId,
             createdAt: importedAt,
-            content: structuredClone(projection.content),
+            messages: structuredClone(projection.messages),
             variableDefaults: {},
             externalImportId,
           },
@@ -563,9 +557,6 @@ export async function importExternalPromptTemplateCandidate(
               templateRevisionId,
               values: projection.values,
               outputMessageIds: messageIds,
-              ...(projection.content.kind === "fragment"
-                ? { fragmentRole: candidate.authored[0]!.role }
-                : {}),
             },
           },
         ],

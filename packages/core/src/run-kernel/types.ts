@@ -182,15 +182,10 @@ export interface ResolvedProviderTarget {
   capabilities: ProviderCapabilities;
 }
 
-export type ResolvedTemplateContent =
-  | { kind: "fragment"; text: string }
-  | {
-      kind: "messages";
-      messages: Array<{
-        role: "system" | "user" | "assistant";
-        content: string;
-      }>;
-    };
+export interface ResolvedTemplateMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
 
 /** Self-contained, secret-free provenance for one pinned authored template use. */
 export interface ResolvedTemplateUse {
@@ -198,11 +193,10 @@ export interface ResolvedTemplateUse {
   templateId: PromptTemplateId;
   templateRevisionId: PromptTemplateRevisionId;
   templateName: string;
-  content: ResolvedTemplateContent;
+  messages: [ResolvedTemplateMessage, ...ResolvedTemplateMessage[]];
   variableDefaults: Record<string, string>;
   values: Record<string, string>;
   outputMessageIds: MessageId[];
-  fragmentRole?: "system" | "user" | "assistant";
 }
 
 /**
@@ -483,7 +477,7 @@ export interface RunState {
 }
 
 export interface RunTrace {
-  schemaVersion: 1 | 2 | 3 | 4;
+  schemaVersion: 1 | 2 | 3 | 4 | 5;
   runId: RunId;
   input: ResolvedRunInput;
   status: TerminalRunStatus;

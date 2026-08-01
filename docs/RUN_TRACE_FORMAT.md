@@ -1,17 +1,18 @@
 # Run trace format
 
-New traces use schema version 4. Versions 1 through 3 remain importable.
+New traces use schema version 5. Versions 1 through 4 remain importable.
 Versions 1 and 2 gain an empty `input.templateResolutions` collection during
 migration; Versions 1 through 3 gain `responseMode: "streaming"` on the run,
-turn events, and attempt projections.
+turn events, and attempt projections. Version 5 replaces fragment-shaped
+template provenance with a non-empty ordered message list.
 
 ## Template provenance
 
 When an authored conversation contains pinned template uses, version 3 stores
 a self-contained `templateResolutions` array on `ResolvedRunInput`. Each entry
-contains the use, template, and revision IDs; the template name; pinned content
-and defaults; the final selected non-secret values; stable output message IDs;
-and the fragment role when applicable.
+contains the use, template, and revision IDs; the template name; pinned messages
+and defaults; the final selected non-secret values; and stable output message
+IDs.
 
 The ordinary resolved `input.messages` remain the provider-neutral execution
 input. On import, Inference Lens renders every provenance entry and rejects the
@@ -29,7 +30,7 @@ accepted as a valid Inference Lens run. Version 1 and 2 compatibility remains
 unchanged because those formats contain no template provenance.
 
 Inference Lens run traces are immutable, credential-free diagnostic artifacts.
-Version 4 uses deterministic JSON and is stored as `traces/<runId>.json` when a
+Version 5 uses deterministic JSON and is stored as `traces/<runId>.json` when a
 run belongs to an open project folder. A terminal ad hoc run can be exported
 from the Project menu, and older traces can be imported for
 inspection.
@@ -107,10 +108,10 @@ when the stored projections disagree.
 
 ## Compatibility and immutability
 
-The root `schemaVersion` is currently `4`. Version 1 is accepted with its
+The root `schemaVersion` is currently `5`. Version 1 is accepted with its
 original strict root schema; Version 2 adds the optional `branchedFrom` field,
-Version 3 adds required template provenance, and Version 4 adds the required
-run-level response mode:
+Version 3 adds required template provenance, Version 4 adds the required
+run-level response mode, and Version 5 stores template provenance as messages:
 
 ```ts
 "streaming" | "buffered"
@@ -118,7 +119,7 @@ run-level response mode:
 
 The mode is copied into each provider-turn input, so retries and tool-driven
 continuation turns preserve how the run was executed. New serialization always
-writes Version 4. Unknown root fields, unsupported versions, invalid
+writes Version 5. Unknown root fields, unsupported versions, invalid
 identifiers, non-contiguous event sequences, and unsafe run IDs are rejected.
 
 Trace writes are write-once by run ID. Writing identical contents again is

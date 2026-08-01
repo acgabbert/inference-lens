@@ -79,11 +79,10 @@ const importedTemplateResolution = {
   templateId: "template_question",
   templateRevisionId: "template-revision_question-2",
   templateName: "Question",
-  content: { kind: "fragment" as const, text: "Explain {{topic}}." },
+  messages: [{ role: "user", content: "Explain {{topic}}." }],
   variableDefaults: { topic: "branching" },
   values: { topic: "atomic branches" },
   outputMessageIds: ["message_mobile-import-0"],
-  fragmentRole: "user" as const,
 } satisfies ResolvedTemplateUse;
 
 const responsiveWidths = [320, 390, 600, 759, 760, 761, 880, 1080, 1440];
