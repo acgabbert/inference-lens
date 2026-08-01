@@ -53,6 +53,15 @@ export interface AttemptMetrics {
   status: AttemptMetricStatus;
 }
 
+export interface AttemptUsageCoverage {
+  /** Attempts that reported this usage field. */
+  reportedAttempts: number;
+  /** Provider attempts that may have incurred usage. */
+  totalAttempts: number;
+}
+
+export type RunUsageCoverage = Record<keyof RunTokenUsage, AttemptUsageCoverage>;
+
 export interface RunMetrics {
   runId: RunId;
   statusKind: RunState["status"]["kind"];
@@ -65,6 +74,8 @@ export interface RunMetrics {
    * later failed and were retried, because those tokens were still billed.
    */
   usage: RunTokenUsage;
+  /** Per-field coverage for the summed usage above. */
+  usageCoverage: RunUsageCoverage;
   outputTokensPerSecond?: number;
   turnCount: number;
   attemptCount: number;
@@ -188,6 +199,27 @@ function sumUsage(reported: RunTokenUsage[]): RunTokenUsage {
   return total;
 }
 
+/**
+ * Measures usage coverage over attempts that reached the provider boundary.
+ * Usage evidence also makes an attempt relevant on its own, which keeps a
+ * malformed or older trace from producing an impossible zero-attempt report.
+ */
+function usageCoverage(attempts: readonly AttemptMetrics[]): RunUsageCoverage {
+  const relevant = attempts.filter(
+    ({ requestedAtMs, usage }) => requestedAtMs !== undefined || usage !== undefined,
+  );
+  const coverage = {} as RunUsageCoverage;
+  for (const field of USAGE_FIELDS) {
+    coverage[field] = {
+      reportedAttempts: relevant.filter(
+        ({ usage }) => typeof usage?.[field] === "number",
+      ).length,
+      totalAttempts: relevant.length,
+    };
+  }
+  return coverage;
+}
+
 function attemptMetrics(
   turnId: TurnId,
   turnIndex: number,
@@ -293,6 +325,7 @@ export function runMetrics(state: RunState): RunMetrics {
     totalDurationMs: state.events.at(-1)?.elapsedMs,
     ttfoMs: attempts.find(({ ttfoMs }) => ttfoMs !== undefined)?.ttfoMs,
     usage,
+    usageCoverage: usageCoverage(attempts),
     outputTokensPerSecond: throughput(generatedTokens, outputSpanMs),
     turnCount,
     attemptCount,

@@ -50,11 +50,13 @@ Within a completed run, an individual check is `not-evaluated` when its own
 evidence is missing:
 
 - output-shaped checks, when the run produced no final assistant output;
-- `max-total-tokens`, when the provider reported no total token usage;
+- `max-total-tokens`, unless every provider attempt reported total token usage;
 - `max-duration-ms`, when the run recorded no total duration; and
 - `regex`, when the definition does not compile (see below).
 
 Missing usage stays missing. It is never substituted with zero.
+An available subtotal is only a lower bound, so partial attempt coverage cannot
+pass or fail a maximum-token check.
 
 ## Vocabulary
 

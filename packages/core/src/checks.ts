@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { runMetrics } from "./run-metrics.ts";
+import type { AttemptUsageCoverage } from "./run-metrics.ts";
 import { finalAssistantOutput, outputCharacterCount } from "./run-output.ts";
 import type {
   CheckId,
@@ -158,6 +159,7 @@ export interface RunCheckSubject {
   /** The canonical final assistant output of a completed run. */
   output?: string;
   totalDurationMs?: number;
+  totalTokenCoverage?: AttemptUsageCoverage;
   reportedTotalTokens?: number;
 }
 
@@ -333,12 +335,17 @@ export function runCheckSubject(state: RunState): RunCheckSubject {
 
   const metrics = runMetrics(state);
   const output = finalAssistantOutput(state);
+  const totalTokenCoverage = metrics.usageCoverage.totalTokens;
+  const hasCompleteTotalTokenUsage =
+    totalTokenCoverage.totalAttempts > 0 &&
+    totalTokenCoverage.reportedAttempts === totalTokenCoverage.totalAttempts;
   return {
     ...(output !== undefined ? { output } : {}),
     ...(metrics.totalDurationMs !== undefined
       ? { totalDurationMs: metrics.totalDurationMs }
       : {}),
-    ...(metrics.usage.totalTokens !== undefined
+    totalTokenCoverage,
+    ...(hasCompleteTotalTokenUsage && metrics.usage.totalTokens !== undefined
       ? { reportedTotalTokens: metrics.usage.totalTokens }
       : {}),
   };
@@ -559,6 +566,13 @@ export function evaluateCheck(
     }
     case "max-total-tokens": {
       if (subject.reportedTotalTokens === undefined) {
+        const coverage = subject.totalTokenCoverage;
+        if (coverage && coverage.reportedAttempts > 0) {
+          return {
+            status: "not-evaluated",
+            reason: `The provider reported total tokens for ${coverage.reportedAttempts} of ${coverage.totalAttempts} attempts.`,
+          };
+        }
         return {
           status: "not-evaluated",
           reason: "The provider did not report total tokens for this run.",

@@ -163,13 +163,26 @@ function cancelledRun(): RunState {
 }
 
 /** A retried turn: the failed attempt's partial text must never be the answer. */
-function retriedRun(): RunState {
+function retriedRun(
+  usage: { first?: RunTokenUsage; retry?: RunTokenUsage } = {},
+): RunState {
   const next = eventStream(runId);
   return reduceAll([
     next(0, { type: "run.started", input: resolvedInput }),
     next(0, { type: "turn.started", turnId, attempt: 1, exchangeId, input: turnInput }),
     next(10, { type: "exchange.requested", turnId, attempt: 1, exchangeId, request }),
     next(20, { type: "assistant.text_delta", turnId, attempt: 1, exchangeId, text: "Half" }),
+    ...(usage.first
+      ? [
+          next(25, {
+            type: "usage.reported",
+            turnId,
+            attempt: 1,
+            exchangeId,
+            usage: usage.first,
+          }),
+        ]
+      : []),
     next(30, {
       type: "turn.attempt_failed",
       turnId,
@@ -192,6 +205,17 @@ function retriedRun(): RunState {
       exchangeId: retryExchangeId,
       text: "Whole answer",
     }),
+    ...(usage.retry
+      ? [
+          next(190, {
+            type: "usage.reported",
+            turnId,
+            attempt: 2,
+            exchangeId: retryExchangeId,
+            usage: usage.retry,
+          }),
+        ]
+      : []),
     next(200, {
       type: "assistant.completed",
       turnId,
@@ -576,6 +600,39 @@ test("keeps unreported usage missing instead of scoring it as zero", () => {
   assert.match(
     outcome.status === "not-evaluated" ? outcome.reason : "",
     /did not report total tokens/,
+  );
+});
+
+test("does not score a maximum token check from partial attempt usage", () => {
+  const state = retriedRun({ first: { totalTokens: 100 } });
+  const subject = runCheckSubject(state);
+  const outcome = outcomeFor(state, { kind: "max-total-tokens", limit: 100 });
+
+  assert.deepEqual(subject.totalTokenCoverage, {
+    reportedAttempts: 1,
+    totalAttempts: 2,
+  });
+  assert.equal(subject.reportedTotalTokens, undefined);
+  assert.equal(outcome.status, "not-evaluated");
+  assert.match(
+    outcome.status === "not-evaluated" ? outcome.reason : "",
+    /1 of 2 attempts/,
+  );
+});
+
+test("scores a maximum token check when every provider attempt reports usage", () => {
+  const state = retriedRun({
+    first: { totalTokens: 40 },
+    retry: { totalTokens: 60 },
+  });
+
+  assert.equal(
+    outcomeFor(state, { kind: "max-total-tokens", limit: 100 }).status,
+    "passed",
+  );
+  assert.equal(
+    outcomeFor(state, { kind: "max-total-tokens", limit: 99 }).status,
+    "failed",
   );
 });
 

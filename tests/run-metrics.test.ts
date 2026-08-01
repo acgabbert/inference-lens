@@ -373,6 +373,10 @@ test("measures a retried attempt from its own request and keeps its tokens", () 
   );
   // Tokens billed for the failed attempt still count toward the run total.
   assert.deepEqual(metrics.usage, { outputTokens: 12, totalTokens: 12 });
+  assert.deepEqual(metrics.usageCoverage.totalTokens, {
+    reportedAttempts: 2,
+    totalAttempts: 2,
+  });
 });
 
 test("reports partial metrics for a run still streaming", () => {
