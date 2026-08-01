@@ -3,6 +3,11 @@ import { z } from "zod";
 import { runMetrics } from "./run-metrics.ts";
 import type { AttemptUsageCoverage } from "./run-metrics.ts";
 import { finalAssistantOutput, outputCharacterCount } from "./run-output.ts";
+import {
+  executeSafeRegex,
+  SAFE_REGEX_SYNTAX,
+  validateSafeRegex,
+} from "./safe-regex.ts";
 import type {
   CheckId,
   EntityId,
@@ -19,7 +24,7 @@ import type {
  * Adding, removing, or changing the meaning of a kind requires bumping this
  * constant and the version of every container that stores checks.
  */
-export const CHECK_SCHEMA_VERSION = 1;
+export const CHECK_SCHEMA_VERSION = 2;
 
 export class CheckValidationError extends Error {
   constructor(message: string) {
@@ -81,8 +86,9 @@ export interface ContainsCheck extends NegatableCheckBase, TextComparisonOptions
 
 export interface RegexCheck extends NegatableCheckBase {
   kind: "regex";
+  syntax: "re2";
   pattern: string;
-  /** Any of `i`, `m`, `s`, `u`. Stateful flags are refused. */
+  /** Any unique subset of `i`, `m`, and `s`. Unicode semantics are implicit. */
   flags?: string;
 }
 
@@ -163,8 +169,6 @@ export interface RunCheckSubject {
   reportedTotalTokens?: number;
 }
 
-const ALLOWED_REGEX_FLAGS = ["i", "m", "s", "u"] as const;
-
 function entityId<Kind extends EntityIdKind>(
   kind: Kind,
 ): z.ZodType<EntityId<Kind>> {
@@ -190,16 +194,6 @@ const textComparison = {
 
 const limit = z.number().int().nonnegative();
 
-const regexFlags = z
-  .string()
-  .refine(
-    (flags) =>
-      Array.from(flags).every((flag) =>
-        (ALLOWED_REGEX_FLAGS as readonly string[]).includes(flag),
-      ) && new Set(flags).size === flags.length,
-    `Regular expression flags must be a unique subset of ${ALLOWED_REGEX_FLAGS.join("")}.`,
-  );
-
 export const checkDefinitionSchema: z.ZodType<CheckDefinition> = z
   .discriminatedUnion("kind", [
     z
@@ -222,8 +216,11 @@ export const checkDefinitionSchema: z.ZodType<CheckDefinition> = z
       .object({
         ...negatableBase,
         kind: z.literal("regex"),
-        pattern: z.string().min(1),
-        flags: regexFlags.optional(),
+        syntax: z.literal(SAFE_REGEX_SYNTAX, {
+          error: `Safe regex syntax must be ${SAFE_REGEX_SYNTAX}.`,
+        }),
+        pattern: z.string(),
+        flags: z.string().optional(),
       })
       .strict(),
     z
@@ -245,11 +242,12 @@ export const checkDefinitionSchema: z.ZodType<CheckDefinition> = z
   ])
   .superRefine((definition, context) => {
     if (definition.kind !== "regex") return;
-    if (!compileRegex(definition)) {
+    const issue = validateSafeRegex(definition);
+    if (issue) {
       context.addIssue({
         code: "custom",
-        path: ["pattern"],
-        message: "Expected a supported regular expression.",
+        path: [issue.field],
+        message: issue.message,
       });
     }
   }) as z.ZodType<CheckDefinition>;
@@ -286,31 +284,6 @@ export function parseCheckDefinitions(value: unknown): CheckDefinition[] {
     seen.add(definition.checkId);
   }
   return definitions;
-}
-
-/**
- * Builds the regular expression a definition describes, or `undefined` when it
- * is not one this engine can evaluate. Stateful flags would make repeated
- * evaluation of the same definition depend on call order, so they are refused
- * rather than reset between runs.
- */
-function compileRegex(definition: {
-  pattern: string;
-  flags?: string;
-}): RegExp | undefined {
-  const flags = definition.flags ?? "";
-  if (
-    !Array.from(flags).every((flag) =>
-      (ALLOWED_REGEX_FLAGS as readonly string[]).includes(flag),
-    )
-  ) {
-    return undefined;
-  }
-  try {
-    return new RegExp(definition.pattern, flags);
-  } catch {
-    return undefined;
-  }
 }
 
 /**
@@ -449,28 +422,34 @@ function evaluateOutputCheck(
       );
     }
     case "regex": {
-      const expression = compileRegex(definition);
-      if (!expression) {
+      const execution = executeSafeRegex(definition, output);
+      if (execution.status === "invalid") {
         return {
           status: "not-evaluated",
-          reason: "The check does not define a supported regular expression.",
+          reason: execution.issue.message,
         };
       }
-      const match = expression.exec(output);
+      if (execution.status === "input-too-large") {
+        return {
+          status: "not-evaluated",
+          reason: `The final assistant output is ${execution.actual} UTF-16 code units; Safe regex checks support at most ${execution.limit}.`,
+        };
+      }
+      const match = execution.status === "matched" ? execution.match : undefined;
       return decide(
-        match !== null,
+        match !== undefined,
         definition.negate,
         {
           whenUnsatisfied: "Final assistant output did not match the expected pattern.",
           whenSatisfied: "Final assistant output matched a pattern it must not match.",
         },
         {
-          matched: match !== null,
+          matched: match !== undefined,
           characters: outputCharacterCount(output),
           ...(match
             ? {
                 index: codePointIndex(output, match.index),
-                matchedCharacters: outputCharacterCount(match[0]),
+                matchedCharacters: outputCharacterCount(match.text),
               }
             : {}),
         },

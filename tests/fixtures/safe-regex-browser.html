@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Safe Regex browser fixture</title>
+  </head>
+  <body>
+    <output id="result">pending</output>
+    <script type="module">
+      import {
+        executeSafeRegex,
+        validateSafeRegex,
+      } from "/packages/core/src/safe-regex.ts";
+
+      const match = executeSafeRegex(
+        { syntax: "re2", pattern: "^line", flags: "im" },
+        "first\nLine two",
+      );
+      const adversarial = executeSafeRegex(
+        { syntax: "re2", pattern: "(a+)+$" },
+        `${"a".repeat(100_000)}!`,
+      );
+      const unsupported = validateSafeRegex({
+        syntax: "re2",
+        pattern: "(?=unsafe)",
+      });
+
+      document.querySelector("#result").textContent = JSON.stringify({
+        match: match.status,
+        adversarial: adversarial.status,
+        unsupported: unsupported?.code,
+      });
+    </script>
+  </body>
+</html>

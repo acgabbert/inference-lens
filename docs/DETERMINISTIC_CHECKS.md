@@ -52,7 +52,8 @@ evidence is missing:
 - output-shaped checks, when the run produced no final assistant output;
 - `max-total-tokens`, unless every provider attempt reported total token usage;
 - `max-duration-ms`, when the run recorded no total duration; and
-- `regex`, when the definition does not compile (see below).
+- `regex`, when the Safe regex definition is invalid or the output exceeds its
+  explicit checkable-size limit (see below).
 
 Missing usage stays missing. It is never substituted with zero.
 An available subtotal is only a lower bound, so partial attempt coverage cannot
@@ -69,7 +70,7 @@ in the kind name, so they reject `negate` at parse time.
 | --- | --- | --- |
 | `exact-match` | `value`, text options | The answer equals `value` |
 | `contains` | `value`, text options | The answer contains `value` |
-| `regex` | `pattern`, `flags?` | The pattern matches somewhere in the answer |
+| `regex` | `syntax: "re2"`, `pattern`, `flags?` | The Safe regex pattern matches somewhere in the answer |
 | `valid-json` | `topLevel?` | The whole answer parses as JSON of that shape |
 | `max-output-characters` | `limit` | Character count ≤ `limit` |
 | `max-duration-ms` | `limit` | Total run duration ≤ `limit` |
@@ -97,21 +98,46 @@ stored suite always states what it actually compared:
 Positions reported in evidence are indices into the compared text, which is the
 raw answer unless one of these options transformed it.
 
-### Regular expressions
+### Safe regex
 
-Patterns are JavaScript regular expressions. Flags are restricted to a unique
-subset of `i`, `m`, `s`, and `u`. The stateful flags `g` and `y` are refused:
-they carry a `lastIndex` across calls, which would make repeated evaluation of
-the same stored definition depend on call order.
+Regex checks use the application-owned **Safe regex v1** contract. Every stored
+definition carries `syntax: "re2"`; this is a compatibility boundary, not the
+name of the package currently implementing it. Matching has RE2-compatible
+linear-time behavior and never falls back to JavaScript `RegExp`.
 
-The parser rejects a pattern that does not compile. The engine independently
-returns `not-evaluated` for one that reaches it anyway, because a definition
-constructed in code never passed through the parser and evaluation must not
-throw.
+Safe regex supports literals, anchors, alternation, character classes,
+capturing and non-capturing groups, and greedy or lazy repetition. It searches
+anywhere in the answer unless the pattern supplies anchors. Flags are a unique
+subset of:
 
-Patterns are author-supplied and evaluated synchronously with no time limit.
-A catastrophically backtracking pattern will block the caller. This is a known
-limitation of the v1 engine.
+- `i` — case-insensitive matching;
+- `m` — `^` and `$` also match line boundaries; and
+- `s` — `.` also matches newlines.
+
+Unicode semantics are always enabled, so there is no `u` flag. Stateful or
+engine-specific flags, including `g`, `y`, and `u`, are rejected.
+
+Lookahead, lookbehind, and backreferences are not supported. Common rewrites
+are:
+
+- Replace `^(?=.*error)(?=.*retry)` with two Safe regex checks, `error` and
+  `retry`.
+- Replace `^(?!.*error)` with a Safe regex check for `error` whose `negate`
+  option is `true`.
+- Replace `(?<=Status: )ok` with `Status: ok` when the surrounding text is
+  literal.
+- A repeated-capture assertion such as `^(.+) \\1$` cannot generally be
+  rewritten as one Safe regex check; restructure the case or use a separate
+  deterministic assertion.
+
+The parser and authoring validator report these unsupported constructs
+specifically. An invalid definition that bypasses parsing returns
+`not-evaluated`; it is never handed to another regex engine.
+
+Patterns are limited to 4,096 UTF-16 code units. Checkable outputs are limited
+to 1,000,000 UTF-16 code units. A larger output returns `not-evaluated` rather
+than being truncated, because truncation could silently change whether the
+pattern matches.
 
 ### JSON
 
@@ -147,12 +173,12 @@ quote the offending input inside it.
 Check definitions carry no `schemaVersion` of their own. They are always
 embedded in a versioned container — the project document, or an evaluation
 execution artifact — and that container's version is what a parser negotiates.
-`CHECK_SCHEMA_VERSION` records the vocabulary's version. Adding, removing, or
-changing the meaning of a kind requires bumping it and the version of every
-container that stores checks.
+`CHECK_SCHEMA_VERSION` records the vocabulary's version. Safe regex is version
+2 of that vocabulary. Adding, removing, or changing the meaning of a kind
+requires bumping it and the version of every container that stores checks.
 
 Parsers reject unknown fields, unknown kinds, unsafe identifiers, `negate` on a
-threshold kind, unusable regular expressions, and repeated check identities
+threshold kind, unusable Safe regex definitions, and repeated check identities
 within one list.
 
 ## What is deliberately not here

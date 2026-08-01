@@ -378,7 +378,7 @@ test("reports a completed run with no assistant output as undecidable", () => {
   for (const definition of [
     { kind: "exact-match", value: "" },
     { kind: "contains", value: "a" },
-    { kind: "regex", pattern: "a" },
+    { kind: "regex", syntax: "re2", pattern: "a" },
     { kind: "valid-json" },
     { kind: "max-output-characters", limit: 10 },
   ] as const) {
@@ -482,7 +482,7 @@ test("counts astral characters and positions once", () => {
     { found: true, characters: 9, expectedCharacters: 1, index: 8 },
   );
   assert.deepEqual(
-    evidenceOf(outcomeFor(state, { kind: "regex", pattern: "hello" })),
+    evidenceOf(outcomeFor(state, { kind: "regex", syntax: "re2", pattern: "hello" })),
     { matched: true, characters: 9, index: 2, matchedCharacters: 5 },
   );
 });
@@ -501,7 +501,7 @@ test("asserts the opposite predicate when a check is negated", () => {
   );
 
   assert.equal(
-    outcomeFor(state, { kind: "regex", pattern: "^ERROR", negate: true }).status,
+    outcomeFor(state, { kind: "regex", syntax: "re2", pattern: "^ERROR", negate: true }).status,
     "passed",
   );
   assert.equal(
@@ -511,29 +511,29 @@ test("asserts the opposite predicate when a check is negated", () => {
   assert.equal(outcomeFor(state, { kind: "valid-json", negate: true }).status, "passed");
 });
 
-test("evaluates regular expressions without stateful flags", () => {
+test("evaluates Safe regex with bounded, stateless flags", () => {
   const state = completedRun({ text: "Line one\nLine two" });
 
   assert.equal(
-    outcomeFor(state, { kind: "regex", pattern: "^line", flags: "im" }).status,
+    outcomeFor(state, { kind: "regex", syntax: "re2", pattern: "^line", flags: "im" }).status,
     "passed",
   );
-  assert.equal(outcomeFor(state, { kind: "regex", pattern: "^line" }).status, "failed");
+  assert.equal(outcomeFor(state, { kind: "regex", syntax: "re2", pattern: "^line" }).status, "failed");
   assert.equal(
-    outcomeFor(state, { kind: "regex", pattern: "one.Line", flags: "s" }).status,
+    outcomeFor(state, { kind: "regex", syntax: "re2", pattern: "one.Line", flags: "s" }).status,
     "passed",
   );
 
   // A definition that never went through the parser must not throw at
   // evaluation time; it is simply undecidable.
-  const invalid = outcomeFor(state, { kind: "regex", pattern: "(unclosed" });
+  const invalid = outcomeFor(state, { kind: "regex", syntax: "re2", pattern: "(unclosed" });
   assert.equal(invalid.status, "not-evaluated");
   assert.match(
     invalid.status === "not-evaluated" ? invalid.reason : "",
-    /supported regular expression/,
+    /valid RE2-compatible Safe regex syntax/,
   );
   assert.equal(
-    outcomeFor(state, { kind: "regex", pattern: "Line", flags: "g" }).status,
+    outcomeFor(state, { kind: "regex", syntax: "re2", pattern: "Line", flags: "g" }).status,
     "not-evaluated",
   );
 });
@@ -705,18 +705,19 @@ test("rejects unknown fields, unusable patterns, and repeated identities", () =>
     CheckValidationError,
   );
   assert.throws(
-    () => parseCheckDefinition({ checkId: "check_one", kind: "regex", pattern: "(unclosed" }),
-    /supported regular expression/,
+    () => parseCheckDefinition({ checkId: "check_one", kind: "regex", syntax: "re2", pattern: "(unclosed" }),
+    /valid RE2-compatible Safe regex syntax/,
   );
   assert.throws(
     () =>
       parseCheckDefinition({
         checkId: "check_one",
         kind: "regex",
+        syntax: "re2",
         pattern: "a",
         flags: "gi",
       }),
-    /flags must be a unique subset/,
+    /Safe regex flags must be a unique subset/,
   );
   assert.throws(
     () =>
