@@ -233,7 +233,8 @@ async function expectInterruptedExperiment(page: Page): Promise<void> {
   const workspace = page.getByRole("region", { name: "Repeated experiment results" });
   await expect(workspace).toBeVisible();
   await expect(workspace).toContainText("2 requested repetitions");
-  await expect(workspace).toContainText("2 not run · 0 missing trace");
+  await expect(workspace).toContainText("2 not run");
+  await expect(workspace).not.toContainText("missing trace");
 
   // A saved experiment has no live progress to report. Reopening one must not
   // describe an interrupted plan as finished, run a session clock against its

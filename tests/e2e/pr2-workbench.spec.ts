@@ -113,6 +113,7 @@ test("renders the buffered fixture transcript and exact token totals", async ({ 
 
 test("retires previous run details when a repeated experiment starts", async ({ page }) => {
   await seedBufferedProfile(page);
+  await page.setViewportSize({ width: 1280, height: 600 });
   await page.goto("/");
   await waitForHydration(page);
 
@@ -245,7 +246,8 @@ test("uses peer request, response, and inspect views on a narrow screen", async 
   await expect(tabs).toBeVisible();
   await expect(page.locator(".request-pane")).toBeVisible();
   await expect(page.locator(".response-pane")).toBeHidden();
-  await expect(tabs.getByRole("button")).toHaveCount(3);
+  await expect(tabs.getByRole("button")).toHaveCount(2);
+  await expect(tabs.getByRole("button", { name: "Inspect" })).toHaveCount(0);
 
   const projectMenu = page.locator(".project-menu > summary");
   await expect(projectMenu).toBeVisible();
@@ -299,6 +301,8 @@ test("uses peer request, response, and inspect views on a narrow screen", async 
   await expect(page.locator(".response-pane")).toContainText(
     "Buffered fixture response: 2 + 2 = 4.",
   );
+  await expect(tabs.getByRole("button")).toHaveCount(3);
+  await expect(tabs.getByRole("button", { name: "Inspect" })).toBeVisible();
   await expect(tabs.getByRole("button", { name: "Response" })).toHaveClass(
     /active/,
   );
