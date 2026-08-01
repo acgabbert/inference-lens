@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { isSensitiveTemplateVariableName } from "./project.ts";
 import { runMetrics } from "./run-metrics.ts";
+import { finalAssistantOutput, outputCharacterCount } from "./run-output.ts";
 import { stableJsonValue } from "./stable-json.ts";
 import type {
   ConversationMessage,
@@ -546,14 +547,7 @@ function usage(values: Array<number | undefined>): ExperimentUsageAggregate {
   };
 }
 
-/** Returns the final successfully completed assistant text for a run. */
-export function finalAssistantOutput(state: RunState): string | undefined {
-  for (const turn of [...state.turns].reverse()) {
-    const attempt = [...turn.attempts].reverse().find((candidate) => candidate.status === "completed");
-    if (attempt) return attempt.text;
-  }
-  return undefined;
-}
+export { finalAssistantOutput } from "./run-output.ts";
 
 /**
  * Derives summary evidence from immutable artifacts and ordinary run states.
@@ -628,6 +622,6 @@ export function repeatedExperimentAggregate(
     outputTokens: usage(outputTokens),
     outputTokensPerSecond: range(throughput),
     distinctFinalAssistantOutputs: new Set(outputs).size,
-    outputCharacterCount: range(outputs.map((output) => Array.from(output).length)),
+    outputCharacterCount: range(outputs.map(outputCharacterCount)),
   };
 }

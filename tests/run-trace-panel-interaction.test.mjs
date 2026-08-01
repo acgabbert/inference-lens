@@ -52,7 +52,7 @@ test("disclosure preserves the selected tab and tabs support arrow keys", async 
     configFile: false,
     root: process.cwd(),
     plugins: [react()],
-    server: { middlewareMode: true, hmr: false },
+    server: { middlewareMode: true, hmr: false, ws: false },
     logLevel: "warn",
   });
   const [
@@ -134,7 +134,7 @@ test("clearing the run retires the disclosure so the next run stays collapsed", 
     configFile: false,
     root: process.cwd(),
     plugins: [react()],
-    server: { middlewareMode: true, hmr: false },
+    server: { middlewareMode: true, hmr: false, ws: false },
     logLevel: "warn",
   });
   const [
@@ -195,7 +195,7 @@ test("falls back from a preserved Templates preference and restores it when avai
     configFile: false,
     root: process.cwd(),
     plugins: [react()],
-    server: { middlewareMode: true, hmr: false },
+    server: { middlewareMode: true, hmr: false, ws: false },
     logLevel: "warn",
   });
   const [

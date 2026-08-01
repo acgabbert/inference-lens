@@ -32,7 +32,7 @@ async function render(modulePath, component, props) {
     configFile: false,
     root: process.cwd(),
     plugins: [react()],
-    server: { middlewareMode: true, hmr: false },
+    server: { middlewareMode: true, hmr: false, ws: false },
     logLevel: "warn",
   });
   const [{ createElement }, { createRoot }, { act }, module] = await Promise.all([
