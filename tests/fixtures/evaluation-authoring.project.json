@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 7,
+  "projectId": "project_evaluation-ui",
+  "name": "Evaluation UI fixture",
+  "connectionRequirements": [{
+    "name": "Default connection",
+    "id": "connection_evaluation-ui-default",
+    "provider": "openai-compatible",
+    "protocol": "openai-compatible-chat-completions",
+    "endpoint": "http://localhost:4010/v1/chat/completions"
+  }],
+  "conversations": [{
+    "name": "Main conversation",
+    "id": "conversation_evaluation-ui-default"
+  }],
+  "conversationRevisions": [{
+    "id": "revision_evaluation-ui-initial",
+    "conversationId": "conversation_evaluation-ui-default",
+    "items": [
+      { "kind": "message", "message": { "id": "message_evaluation-ui-0", "role": "system", "content": [{ "text": "Answer clearly.", "type": "text" }] } },
+      { "kind": "message", "message": { "id": "message_evaluation-ui-1", "role": "user", "content": [{ "text": "Draft request", "type": "text" }] } },
+      { "kind": "template-use", "use": {
+        "id": "template-use_evaluation-ui-question",
+        "templateId": "template_evaluation-ui-question",
+        "templateRevisionId": "template-revision_evaluation-ui-question-1",
+        "values": {},
+        "outputMessageIds": ["message_evaluation-ui-question"]
+      } }
+    ],
+    "createdAt": "2026-08-01T12:00:00.000Z"
+  }],
+  "tools": [],
+  "toolMocks": [],
+  "promptTemplates": [{
+    "name": "Question",
+    "id": "template_evaluation-ui-question",
+    "currentRevisionId": "template-revision_evaluation-ui-question-1",
+    "revisions": [{
+      "id": "template-revision_evaluation-ui-question-1",
+      "messages": [{ "role": "user", "content": "Explain {{topic}} to {{audience}}." }],
+      "createdAt": "2026-08-01T12:00:01.000Z",
+      "variableDefaults": {}
+    }]
+  }],
+  "externalImports": [],
+  "evaluationSuites": [],
+  "defaults": {
+    "conversationRevisionId": "revision_evaluation-ui-initial",
+    "target": { "connectionRequirementId": "connection_evaluation-ui-default", "model": "fixture-model" },
+    "options": {},
+    "enabledToolIds": []
+  }
+}

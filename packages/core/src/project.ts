@@ -1,6 +1,16 @@
 import { z } from "zod";
 import { checkDefinitionSchema } from "./checks.ts";
-import type { CheckDefinition } from "./checks.ts";
+import { templateUseVariableIndex } from "./evaluation-suites.ts";
+import type {
+  EvaluationCase,
+  EvaluationInputBinding,
+  EvaluationSuite,
+} from "./evaluation-suites.ts";
+export type {
+  EvaluationCase,
+  EvaluationInputBinding,
+  EvaluationSuite,
+} from "./evaluation-suites.ts";
 import { stableJsonValue } from "./stable-json.ts";
 
 import {
@@ -24,7 +34,6 @@ import type {
   ConversationId,
   ConversationMessage,
   ConversationRevisionId,
-  EvaluationCaseId,
   EvaluationInputBindingId,
   EvaluationSuiteId,
   ExternalImportId,
@@ -211,36 +220,6 @@ export interface ProjectDefaults {
   };
   options: InferenceOptions;
   enabledToolIds: ToolId[];
-}
-
-export interface EvaluationInputBinding {
-  id: EvaluationInputBindingId;
-  name: string;
-  target: {
-    kind: "template-variable";
-    templateUseId: PromptTemplateUseId;
-    variableName: string;
-  };
-}
-
-export interface EvaluationCase {
-  id: EvaluationCaseId;
-  name: string;
-  values: Record<EvaluationInputBindingId, string>;
-  checks: CheckDefinition[];
-  referenceAnswer?: string;
-}
-
-/**
- * Authored, provider-neutral evaluation content. A suite deliberately does not
- * pin a conversation revision: execution selects one and preflight checks
- * whether its stable template-use identities remain compatible.
- */
-export interface EvaluationSuite {
-  id: EvaluationSuiteId;
-  name: string;
-  inputBindings: EvaluationInputBinding[];
-  cases: EvaluationCase[];
 }
 
 /**
@@ -1350,29 +1329,10 @@ function validateEvaluationSuites(
     context,
   );
 
-  const uses = new Map<
-    PromptTemplateUseId,
-    Array<{ variables: ReadonlySet<string> }>
-  >();
-  project.conversationRevisions.forEach((revision) => {
-    revision.items.forEach((item) => {
-      if (item.kind !== "template-use") return;
-      const template = templates.get(item.use.templateId);
-      const templateRevision = template?.revisions.find(
-        ({ id }) => id === item.use.templateRevisionId,
-      );
-      if (!templateRevision) return;
-      const occurrences = uses.get(item.use.id) ?? [];
-      occurrences.push({
-        variables: new Set(
-          discoverTemplateVariables(templateRevision.messages).variables.map(
-            ({ name }) => name,
-          ),
-        ),
-      });
-      uses.set(item.use.id, occurrences);
-    });
-  });
+  const uses = templateUseVariableIndex(
+    project.conversationRevisions,
+    [...templates.values()],
+  );
 
   const inputIds = new Set<string>();
   const caseIds = new Set<string>();
@@ -1808,18 +1768,11 @@ export function evaluationSuiteCompatibilityDiagnostics(
     ]);
   }
 
-  const uses = new Map(
-    revision.items.flatMap((item) =>
-      item.kind === "template-use" ? [[item.use.id, item.use] as const] : [],
-    ),
-  );
-  const templates = new Map(
-    project.promptTemplates.map((template) => [template.id, template]),
-  );
+  const uses = templateUseVariableIndex([revision], project.promptTemplates);
   const diagnostics: EvaluationSuiteCompatibilityDiagnostic[] = [];
   suite.inputBindings.forEach((binding) => {
-    const use = uses.get(binding.target.templateUseId);
-    if (!use) {
+    const occurrence = uses.get(binding.target.templateUseId)?.[0];
+    if (!occurrence) {
       diagnostics.push({
         code: "missing-template-use",
         inputBindingId: binding.id,
@@ -1828,17 +1781,7 @@ export function evaluationSuiteCompatibilityDiagnostics(
       });
       return;
     }
-    const templateRevision = templates
-      .get(use.templateId)
-      ?.revisions.find(({ id }) => id === use.templateRevisionId);
-    const variables = templateRevision
-      ? new Set(
-          discoverTemplateVariables(templateRevision.messages).variables.map(
-            ({ name }) => name,
-          ),
-        )
-      : new Set<string>();
-    if (variables.has(binding.target.variableName)) return;
+    if (occurrence.variables.has(binding.target.variableName)) return;
     diagnostics.push({
       code: "missing-template-variable",
       inputBindingId: binding.id,

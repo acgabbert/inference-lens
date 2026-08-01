@@ -78,6 +78,7 @@ import { RepeatedExperimentDialog } from "./run/repeated-experiment-dialog.clien
 import { RepeatedExperimentWorkspace } from "./run/repeated-experiment-workspace.client";
 import { useProjectTemplates } from "./templates/use-project-templates.client";
 import { RequestComposer } from "./request/request-composer.client";
+import { useEvaluationSuiteAuthoring } from "./evaluations/use-evaluation-suite-authoring.client";
 
 const inferenceTransport = createInferenceTransport();
 
@@ -441,6 +442,11 @@ function HomeContent() {
       setN8nImportOpen(false);
     },
   });
+  const evaluationAuthoring = useEvaluationSuiteAuthoring(
+    projectFile,
+    project.adoptProjectMutation,
+    setConfirmation,
+  );
   useEffect(() => {
     clearTemplateOverridesRef.current = projectTemplates.clearTransientOverrides;
   }, [projectTemplates.clearTransientOverrides]);
@@ -1113,6 +1119,7 @@ function HomeContent() {
             setToolEnabled, mockForTool, updateToolMock, removeRequestTool,
           }}
           templates={projectTemplates}
+          evaluations={evaluationAuthoring}
           project={projectFile}
           settings={{
             model: activeModel,

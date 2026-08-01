@@ -98,6 +98,13 @@ function composerProps(pendingDestination, onDestinationHandled) {
       clearImportNotice: noop,
     },
     project: null,
+    evaluations: {
+      project: null, selectedCaseIds: new Set(), repetitions: 1, candidates: [], diagnostics: [],
+      selectSuite: noop, selectRevision: noop, setCaseSelected: noop, focusCase: noop,
+      setRepetitions: noop, createSuite: noop, renameSuite: noop, deleteSuite: noop,
+      addInput: noop, renameInput: noop, deleteInput: noop, addCase: noop,
+      updateCase: noop, deleteCase: noop, addCheck: noop, updateCheck: noop, deleteCheck: noop,
+    },
     settings: {
       model: "fixture-model", temperature: 0.7, responseMode: "buffered",
       streamingAvailable: true, toolsEnabled: true, modelDiscovery: null,

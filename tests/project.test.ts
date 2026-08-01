@@ -245,7 +245,9 @@ test("stores ordered evaluation suites, cases, bindings, checks, and reference a
     suite.cases[0]?.referenceAnswer,
     "A concise explanation of safe database migrations.",
   );
-  assert.deepEqual(parseProjectJson(serializeProjectFile(project)), project);
+  const serialized = serializeProjectFile(project);
+  assert.deepEqual(parseProjectJson(serialized), project);
+  assert.equal(serializeProjectFile(parseProjectJson(serialized)), serialized);
 
   const empty = parseProjectFile({
     ...project,
@@ -302,6 +304,16 @@ test("strictly validates evaluation identities, checks, and complete case values
       }],
     }),
     /unknown suite input "evaluation-input_unknown"/,
+  );
+  assert.throws(
+    () => parseProjectFile({
+      ...project,
+      evaluationSuites: [{
+        ...suite,
+        cases: [{ ...evaluationCase, values: { "not-an-id": "extra" } }],
+      }],
+    }),
+    /Invalid key in record/,
   );
   assert.throws(
     () => parseProjectFile({

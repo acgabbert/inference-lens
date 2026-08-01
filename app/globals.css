@@ -257,7 +257,9 @@ textarea,
 .trace-storage-icon,
 .run-readiness-glyph,
 .trace-chevron,
-.repeated-experiment-metric-section h3 {
+.repeated-experiment-metric-section h3,
+.evaluation-portable-warning,
+.evaluation-empty-inline {
   font-size: var(--type-compact);
 }
 
@@ -5787,7 +5789,7 @@ main {
     background: var(--warning);
   }
 
-  .mobile-status-dot.failed {
+.mobile-status-dot.failed {
     background: var(--danger);
   }
 
@@ -5945,6 +5947,219 @@ main {
     position: fixed;
     top: 58px;
     right: 10px;
+  }
+}
+
+/* Evaluation suite authoring */
+.evaluation-editor {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+  gap: 18px;
+  padding: 20px;
+}
+
+.evaluation-editor.evaluation-focus-mode {
+  overflow: auto;
+  padding: 24px clamp(20px, 4vw, 56px);
+}
+
+.evaluation-toolbar,
+.evaluation-suite-header,
+.evaluation-section-heading,
+.evaluation-add-row,
+.evaluation-check-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.evaluation-toolbar {
+  flex-wrap: wrap;
+}
+
+.evaluation-toolbar label,
+.evaluation-suite-header label {
+  flex: 1 1 260px;
+}
+
+.evaluation-toolbar select,
+.evaluation-suite-header input,
+.evaluation-preflight select,
+.evaluation-preflight input,
+.evaluation-add-row select,
+.evaluation-binding-row input,
+.evaluation-case-grid input,
+.evaluation-case-grid textarea,
+.evaluation-case-detail input,
+.evaluation-case-detail textarea,
+.evaluation-case-detail select {
+  width: 100%;
+}
+
+.evaluation-suite-header,
+.evaluation-inputs,
+.evaluation-cases,
+.evaluation-case-detail,
+.evaluation-preflight {
+  border: 1px solid var(--border-default);
+  border-radius: 14px;
+  background: var(--surface-panel);
+  padding: 16px;
+}
+
+.evaluation-preflight {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.8fr) minmax(220px, 1.6fr) minmax(90px, 0.5fr) minmax(190px, 1fr);
+  align-items: end;
+  gap: 14px;
+}
+
+.evaluation-preflight > div,
+.evaluation-preflight label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.evaluation-preflight output {
+  padding-bottom: 8px;
+}
+
+.evaluation-diagnostics {
+  margin: -8px 0 0;
+  border-left: 3px solid var(--warning);
+  color: var(--text-muted);
+}
+
+.evaluation-section-heading h3,
+.evaluation-case-detail h3 {
+  margin: 2px 0 0;
+}
+
+.evaluation-binding-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(90px, auto) minmax(170px, 1.5fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.evaluation-binding-row span {
+  overflow: hidden;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.evaluation-add-row {
+  justify-content: flex-start;
+  margin-top: 12px;
+}
+
+.evaluation-add-row select {
+  max-width: 420px;
+}
+
+.evaluation-portable-warning,
+.evaluation-empty-inline {
+  color: var(--text-muted);
+}
+
+.evaluation-grid-scroll {
+  overflow-x: auto;
+  margin-top: 12px;
+}
+
+.evaluation-case-grid {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+}
+
+.evaluation-case-grid th,
+.evaluation-case-grid td {
+  border-bottom: 1px solid var(--border-default);
+  padding: 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.evaluation-case-grid th:first-child,
+.evaluation-case-grid td:first-child {
+  width: 48px;
+  text-align: center;
+}
+
+.evaluation-case-grid textarea {
+  min-width: 170px;
+  resize: vertical;
+}
+
+.evaluation-case-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.evaluation-check-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.evaluation-check-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  padding: 12px;
+}
+
+.evaluation-check-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.evaluation-check-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.evaluation-check-options label {
+  flex-direction: row;
+  align-items: center;
+}
+
+.evaluation-check-options input[type="checkbox"] {
+  width: auto;
+}
+
+.evaluation-check-options .evaluation-flags {
+  width: 72px;
+}
+
+@media (max-width: 900px) {
+  .evaluation-editor {
+    padding: 14px;
+  }
+
+  .evaluation-preflight {
+    grid-template-columns: 1fr;
+  }
+
+  .evaluation-binding-row {
+    grid-template-columns: 1fr auto;
+  }
+
+  .evaluation-binding-row span {
+    grid-column: 1 / -1;
   }
 }
 

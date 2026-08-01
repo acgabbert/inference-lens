@@ -17,8 +17,10 @@ import type {
   RunReadinessAction,
 } from "../run-readiness.client";
 import type { ProjectTemplatesHandle } from "../templates/use-project-templates.client";
+import { EvaluationSuiteEditor } from "../evaluations/evaluation-suite-editor.client";
+import type { EvaluationSuiteAuthoringHandle } from "../evaluations/use-evaluation-suite-authoring.client";
 
-type RequestTab = "messages" | "templates" | "tools";
+type RequestTab = "messages" | "templates" | "tools" | "evaluations";
 
 type RequestPreview =
   | { body: unknown; messages: ConversationMessage[] }
@@ -44,6 +46,7 @@ export interface RequestComposerProps {
     removeRequestTool(id: ToolId): void;
   };
   templates: ProjectTemplatesHandle;
+  evaluations: EvaluationSuiteAuthoringHandle;
   project: Pick<ProjectFile, "projectId" | "promptTemplates" | "connectionRequirements" | "defaults" | "externalImports"> | null;
   settings: {
     model: string;
@@ -79,6 +82,7 @@ export interface RequestComposerProps {
 export function RequestComposer({
   requestDraft,
   templates,
+  evaluations,
   project,
   settings,
   readiness,
@@ -193,6 +197,7 @@ export function RequestComposer({
             { id: "messages", label: "Messages", count: requestDraft.messages.length },
             { id: "templates", label: "Prompt library", count: project?.promptTemplates.filter(({ archivedAt }) => !archivedAt).length ?? 0 },
             { id: "tools", label: "Tools", count: selectedToolCount },
+            { id: "evaluations", label: "Evaluations", count: evaluations.project?.evaluationSuites.length ?? 0 },
           ]}
         />
         {activeTab === "messages" ? (
@@ -325,8 +330,10 @@ export function RequestComposer({
           </>
         ) : activeTab === "templates" ? (
           <ProjectTemplatesPane key={project?.projectId ?? "unsaved-project"} templates={project?.promptTemplates ?? []} connectionRequirements={project?.connectionRequirements ?? []} defaultConnectionRequirementId={project?.defaults.target.connectionRequirementId} usageCounts={templates.templateUsageCounts} itemCount={templates.activeProjectRevision?.items.length ?? requestDraft.messages.length} n8nImportDisabledReason={n8nImportDisabledReason} onOpenN8nImport={onOpenN8nImport} onCreate={templates.createProjectTemplate} onSave={templates.saveProjectTemplate} onArchive={templates.archiveProjectTemplate} onRestore={templates.restoreProjectTemplate} onInsert={(...args) => { templates.insertProjectTemplate(...args); setTab("messages"); }} />
-        ) : (
+        ) : activeTab === "tools" ? (
           <ToolsPane tools={requestDraft.tools} requestTools={requestDraft.requestTools} enabledToolIds={requestDraft.enabledToolIds} activeProfileName={activeProfile.name} toolsEnabled={settings.toolsEnabled} onOpenLibrary={onOpenToolLibrary} onOpenConnectionSettings={onOpenConnectionSettings} onAddTool={requestDraft.addTool} onRemoveTool={requestDraft.removeTool} onUpdateTool={requestDraft.updateTool} onSetToolEnabled={requestDraft.setToolEnabled} mockForTool={requestDraft.mockForTool} onUpdateToolMock={requestDraft.updateToolMock} onRemoveRequestTool={requestDraft.removeRequestTool} />
+        ) : (
+          <EvaluationSuiteEditor authoring={evaluations} />
         )}
       </div>
     </section>
