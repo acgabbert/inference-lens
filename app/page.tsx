@@ -1094,6 +1094,7 @@ function HomeContent() {
       <WorkbenchShell
         view={workbenchView}
         onViewChange={setWorkbenchView}
+        inspectAvailable={Boolean(runState && runState.status.kind !== "not_started")}
         responseStatus={repeatedExperiment.isRunning ? "running" : status}
         requestLabel={repeatedExperiment.execution?.selectedRunId ? "Experiment" : "Request"}
         request={

@@ -16,6 +16,7 @@ type WorkbenchShellProps = {
   request: ReactNode;
   response: ReactNode;
   inspect: ReactNode;
+  inspectAvailable?: boolean;
   view: WorkbenchView;
   onViewChange: (view: WorkbenchView) => void;
   responseStatus?: string;
@@ -33,6 +34,7 @@ export function WorkbenchShell({
   request,
   response,
   inspect,
+  inspectAvailable = true,
   view,
   onViewChange,
   responseStatus,
@@ -40,6 +42,7 @@ export function WorkbenchShell({
 }: WorkbenchShellProps) {
   const shellRef = useRef<HTMLElement>(null);
   const [requestWidth, setRequestWidth] = useState(48);
+  const visibleView = view === "inspect" && !inspectAvailable ? "response" : view;
 
   useEffect(() => {
     const restoreId = window.setTimeout(() => {
@@ -86,14 +89,14 @@ export function WorkbenchShell({
     <>
       <nav className="mobile-workbench-tabs" aria-label="Workbench view">
         <button
-          className={view === "request" ? "active" : undefined}
+          className={visibleView === "request" ? "active" : undefined}
           type="button"
           onClick={() => onViewChange("request")}
         >
           {requestLabel}
         </button>
         <button
-          className={view === "response" ? "active" : undefined}
+          className={visibleView === "response" ? "active" : undefined}
           type="button"
           onClick={() => onViewChange("response")}
         >
@@ -102,13 +105,15 @@ export function WorkbenchShell({
             <span className={`mobile-status-dot ${responseStatus}`} />
           )}
         </button>
-        <button
-          className={view === "inspect" ? "active" : undefined}
-          type="button"
-          onClick={() => onViewChange("inspect")}
-        >
-          Inspect
-        </button>
+        {inspectAvailable && (
+          <button
+            className={visibleView === "inspect" ? "active" : undefined}
+            type="button"
+            onClick={() => onViewChange("inspect")}
+          >
+            Inspect
+          </button>
+        )}
       </nav>
       <section
         className="workspace"
@@ -121,7 +126,7 @@ export function WorkbenchShell({
       >
         <div
           className={
-            view === "request"
+            visibleView === "request"
               ? "workbench-pane request-pane"
               : "workbench-pane request-pane mobile-pane-hidden"
           }
@@ -145,7 +150,7 @@ export function WorkbenchShell({
         >
           <div
             className={
-              view === "inspect"
+              visibleView === "inspect"
                 ? "response-view mobile-view-hidden"
                 : "response-view"
             }
@@ -154,7 +159,7 @@ export function WorkbenchShell({
           </div>
           <div
             className={
-              view === "response"
+              visibleView === "response"
                 ? "inspect-view mobile-view-hidden"
                 : "inspect-view"
             }

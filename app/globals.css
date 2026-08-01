@@ -2685,6 +2685,14 @@ output {
   padding: 1.25rem;
 }
 
+.repeated-experiment-workspace:not(.experiment-context-pane) {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  align-content: start;
+  overscroll-behavior: contain;
+}
+
 .repeated-experiment-workspace.experiment-context-pane {
   height: 100%;
   min-height: 0;

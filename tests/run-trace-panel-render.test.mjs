@@ -151,7 +151,7 @@ test("announces the run status without reading the streamed measurements", async
   );
 });
 
-test("idle run details cannot expose an empty inspector body", async () => {
+test("idle run details stay hidden until run evidence exists", async () => {
   const html = await renderComponent("RunTracePanel", {
     open: true,
     runState: null,
@@ -160,15 +160,5 @@ test("idle run details cannot expose an empty inspector body", async () => {
     onOpenChange() {},
   });
 
-  assert.match(html, /<button[^>]+disabled=""[^>]*>[\s\S]*Run details/);
-  assert.doesNotMatch(html, /role="tabpanel"/);
-  assert.doesNotMatch(html, /Normalized events will appear here/);
-
-  // The idle toggle explains why it cannot be opened, by pointer and by AT.
-  assert.match(html, /aria-describedby="trace-toggle-hint"/);
-  assert.match(
-    html,
-    /<span class="visually-hidden" id="trace-toggle-hint">Run details become available once a run starts\./,
-  );
-  assert.match(html, /title="Run details become available once a run starts\./);
+  assert.equal(html, "");
 });
