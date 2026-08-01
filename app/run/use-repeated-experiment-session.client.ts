@@ -8,15 +8,17 @@ import type {
   RepeatedExperimentPlanV1,
 } from "../../packages/core/src/experiment.ts";
 import { createEntityId } from "../../packages/core/src/run-kernel/index.ts";
-import type { ResolvedRunInput, RunId, RunTrace } from "../../packages/core/src/run-kernel/index.ts";
+import type {
+  ResolvedRunInput,
+  RunId,
+  RunState,
+  RunTrace,
+} from "../../packages/core/src/run-kernel/index.ts";
 import { randomUUID } from "../../packages/core/src/random-id.ts";
-import { traceFileName } from "../../packages/core/src/run-trace.ts";
+import { runStateFromTrace, traceFileName } from "../../packages/core/src/run-trace.ts";
 import type { ProjectWorkspaceHandle } from "../project-workspace.client.ts";
 import { createExperimentWorkspacePersistence } from "./experiment-workspace-persistence.client.ts";
-import {
-  RepeatedExperimentController,
-  type RepeatedExperimentProgress,
-} from "./repeated-experiment-controller.client.ts";
+import { RepeatedExperimentController } from "./repeated-experiment-controller.client.ts";
 
 export const DEFAULT_REPETITION_COUNT = 5;
 export const MIN_REPETITION_COUNT = 2;
@@ -31,17 +33,35 @@ export interface RepeatedExperimentDraft {
   commitPreparation(): void;
 }
 
+/**
+ * Progress that exists only while this session drives the experiment. A saved
+ * experiment reopened from history has no live progress: its disposition comes
+ * from its plan, its optional result, and the states its traces reduce to.
+ */
+export interface RepeatedExperimentLiveProgress {
+  /** Session-clock start used only for live elapsed-time presentation. */
+  startedAtMs: number;
+  requested: number;
+  /** Cells that reached a terminal run status; queued cells are excluded. */
+  finished: number;
+  currentOrdinal?: number;
+}
+
 export interface RepeatedExperimentExecution {
   plan: RepeatedExperimentPlanV1;
   storage: "durable" | "unsaved";
-  /** Session-clock start used only for live elapsed-time presentation. */
-  startedAtMs: number;
   /** The experiment's original workspace, retained for opening its saved traces. */
   workspace: ProjectWorkspaceHandle | null;
-  progress: RepeatedExperimentProgress;
+  /** Reduced state for every started cell, keyed by its preallocated run ID. */
+  states: ReadonlyMap<RunId, RunState>;
+  /** Absent once the experiment is terminal, and for every saved experiment. */
+  live?: RepeatedExperimentLiveProgress;
   result?: ExperimentResultV1;
   error?: string;
   traces: ReadonlyMap<RunId, RunTrace>;
+  traceFileNames: ReadonlyMap<RunId, string>;
+  /** Referenced traces that exist in the plan but could not be read, by run ID. */
+  unreadableTraces: ReadonlyMap<RunId, string>;
   /** Keeps the experiment beside the ordinary run while reviewing one cell. */
   selectedRunId: RunId | null;
 }
@@ -127,19 +147,19 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
     pending.commitPreparation();
     setIsRunning(true);
 
-    const initialProgress: RepeatedExperimentProgress = {
-      status: "running",
-      requested: pending.plan.cells.length,
-      finished: 0,
-      states: new Map(),
-    };
     setExecution({
       plan: pending.plan,
       storage: workspace ? "durable" : "unsaved",
-      startedAtMs: Date.now(),
       workspace,
-      progress: initialProgress,
+      states: new Map(),
+      live: {
+        startedAtMs: Date.now(),
+        requested: pending.plan.cells.length,
+        finished: 0,
+      },
       traces: new Map(),
+      traceFileNames: new Map(),
+      unreadableTraces: new Map(),
       selectedRunId: null,
     });
 
@@ -152,17 +172,35 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
       prepareCredential: options.prepareCredential,
       ...persistence,
       onProgress(progress) {
-        setExecution((current) => current?.plan.experimentId === pending.plan.experimentId
-          ? { ...current, progress }
-          : current);
+        setExecution((current) => {
+          if (current?.plan.experimentId !== pending.plan.experimentId) return current;
+          return {
+            ...current,
+            states: progress.states,
+            // A terminal emission retires the live clock rather than leaving a
+            // finished experiment describing itself as still in progress.
+            live: progress.status === "running"
+              ? {
+                  startedAtMs: current.live?.startedAtMs ?? Date.now(),
+                  requested: progress.requested,
+                  finished: progress.finished,
+                  ...(progress.currentOrdinal === undefined
+                    ? {}
+                    : { currentOrdinal: progress.currentOrdinal }),
+                }
+              : undefined,
+          };
+        });
       },
       async onTerminalTrace(trace, cell) {
         await persistence?.onTerminalTrace?.(trace, cell);
         setExecution((current) => {
           if (current?.plan.experimentId !== pending.plan.experimentId) return current;
           const traces = new Map(current.traces);
+          const traceFileNames = new Map(current.traceFileNames);
           traces.set(trace.runId, trace);
-          return { ...current, traces };
+          traceFileNames.set(trace.runId, traceFileName(trace.runId));
+          return { ...current, traces, traceFileNames };
         });
         if (workspace) options.onTraceSaved();
       },
@@ -181,6 +219,11 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
       options.onError(message);
     } finally {
       if (controllerRef.current === controller) controllerRef.current = undefined;
+      // An interruption never reaches a terminal progress emission, so the live
+      // clock is retired here for every way this experiment can stop.
+      setExecution((current) => current?.plan.experimentId === pending.plan.experimentId
+        ? { ...current, live: undefined }
+        : current);
       setIsRunning(false);
     }
   }, [draft, options]);
@@ -194,10 +237,37 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
     setExecution((active) => active === current ? { ...active, selectedRunId: runId } : active);
     options.onOpenTrace(trace, {
       workspace: current.workspace,
-      fileName: traceFileName(trace.runId),
+      fileName: current.traceFileNames.get(trace.runId) ?? traceFileName(trace.runId),
       source: "experiment",
     });
   }, [execution, options]);
+
+  const openSaved = useCallback((opened: {
+    plan: RepeatedExperimentPlanV1;
+    result?: ExperimentResultV1;
+    traces: ReadonlyMap<RunId, RunTrace>;
+    traceFileNames: ReadonlyMap<RunId, string>;
+    unreadableTraces: ReadonlyMap<RunId, string>;
+  }, workspace: ProjectWorkspaceHandle) => {
+    // Replacing the execution under a running controller would strand it, so
+    // this refuses out loud rather than dropping the request silently.
+    if (controllerRef.current?.isRunning) {
+      throw new Error("Stop the running experiment before opening a saved one.");
+    }
+    setExecution({
+      plan: opened.plan,
+      storage: "durable",
+      workspace,
+      states: new Map(
+        [...opened.traces].map(([runId, trace]) => [runId, runStateFromTrace(trace)] as const),
+      ),
+      ...(opened.result ? { result: opened.result } : {}),
+      traces: opened.traces,
+      traceFileNames: opened.traceFileNames,
+      unreadableTraces: opened.unreadableTraces,
+      selectedRunId: null,
+    });
+  }, []);
 
   const returnToRequest = useCallback(() => {
     setExecution((current) => current ? { ...current, selectedRunId: null } : current);
@@ -216,6 +286,7 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
     confirm,
     cancel,
     openTrace,
+    openSaved,
     returnToRequest,
     clear,
     isRunning,

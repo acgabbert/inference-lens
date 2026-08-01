@@ -33,6 +33,35 @@ jobs:
       # `npm test` runs `npm run build` first, so the web build is covered here.
       - run: npm test
 
+  e2e:
+    name: End-to-end
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx playwright install --with-deps chromium
+
+      # AGENTS.md requires every user-visible change to be verified against a
+      # running app. Without this job that rule is unenforced, and a browser
+      # check can go stale without anything failing.
+      - run: npm run test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            playwright-report
+            test-results
+          retention-days: 7
+
   desktop:
     name: Desktop host
     runs-on: macos-latest

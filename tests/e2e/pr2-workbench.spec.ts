@@ -111,6 +111,29 @@ test("renders the buffered fixture transcript and exact token totals", async ({ 
   await expect(response).not.toContainText(/NaN|Infinity|undefined|null/);
 });
 
+test("retires previous run details when a repeated experiment starts", async ({ page }) => {
+  await seedBufferedProfile(page);
+  await page.goto("/");
+  await waitForHydration(page);
+
+  await page.getByRole("button", { name: /run request/i }).click();
+  await expect(page.locator(".response-pane")).toContainText(
+    "Buffered fixture response: 2 + 2 = 4.",
+  );
+  await page.getByRole("button", { name: "Run details" }).click();
+  await expect(page.getByRole("tab", { name: "Metrics" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Repeat…" }).click();
+  await page.getByLabel("Repetitions").fill("2");
+  await page.getByRole("button", { name: "Start 2 repetitions" }).click();
+
+  await expect(
+    page.getByRole("region", { name: "Repeated experiment results" }),
+  ).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Metrics" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Run details" })).toBeDisabled();
+});
+
 test("keeps semantic type, state contrast, and layout intact at supported widths", async ({
   page,
 }) => {

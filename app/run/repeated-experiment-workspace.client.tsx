@@ -11,8 +11,12 @@ import { runMetrics } from "../../packages/core/src/run-metrics.ts";
 import { formatDuration, formatRate, formatTokens } from "../run-metrics-format.client.ts";
 import type { RepeatedExperimentExecution } from "./use-repeated-experiment-session.client.ts";
 
-function rowStatus(execution: RepeatedExperimentExecution, runId: RunId): string {
-  const state = execution.progress.states.get(runId);
+function rowStatus(
+  execution: RepeatedExperimentExecution,
+  runId: RunId,
+  isLive: boolean,
+): string {
+  const state = execution.states.get(runId);
   if (state) {
     switch (state.status.kind) {
       case "completed": return "completed";
@@ -21,7 +25,33 @@ function rowStatus(execution: RepeatedExperimentExecution, runId: RunId): string
       default: return "running";
     }
   }
-  return execution.result?.cells.find((cell) => cell.runId === runId)?.status ?? "queued";
+  return execution.result?.cells.find((cell) => cell.runId === runId)?.status
+    ?? (isLive ? "queued" : "not-run");
+}
+
+/**
+ * Explains why a repetition cannot be opened yet. The roadmap keeps the reasons
+ * distinct, and only the last of them reports durable data loss.
+ *
+ * A live experiment reaches a cell's terminal status before that cell's trace
+ * exists: the controller emits terminal progress, then awaits `onTerminalTrace`
+ * to write the trace. A running cell has no trace at all until it finishes.
+ * Neither is a missing trace, so both are named rather than falling through to
+ * one — otherwise every ordinary repetition claims its evidence was lost for as
+ * long as the provider call and the filesystem write take.
+ */
+function pendingLabel(
+  status: string,
+  unreadable: string | undefined,
+  isLive: boolean,
+): string {
+  if (unreadable) return "Trace could not be read";
+  if (status === "queued") return "Waiting";
+  if (status === "not-run") return "Not run";
+  if (status === "running") return "Open when finished";
+  // Terminal with no trace: still being written while this session drives the
+  // experiment, genuinely absent once it no longer does.
+  return isLive ? "Saving trace…" : "Trace missing";
 }
 
 function rowMetrics(state: RunState | undefined): string {
@@ -80,11 +110,12 @@ export function RepeatedExperimentWorkspace({
   const aggregate = repeatedExperimentAggregate(
     execution.plan,
     execution.result,
-    execution.progress.states,
+    execution.states,
   );
-  const isRunning = execution.progress.status === "running" && !execution.error && !execution.result;
+  const live = execution.result || execution.error ? undefined : execution.live;
+  const isRunning = live !== undefined;
   const lifecycle = isRunning ? "running" : execution.error ? "interrupted" : aggregate.lifecycle;
-  const activeOrdinal = isRunning ? execution.progress.currentOrdinal : undefined;
+  const activeOrdinal = live?.currentOrdinal;
 
   useEffect(() => {
     if (!isRunning) return;
@@ -103,8 +134,8 @@ export function RepeatedExperimentWorkspace({
           <span className="eyebrow">{execution.storage === "durable" ? "Saved project experiment" : "Unsaved session experiment"}</span>
           <h2>Repeated experiment</h2>
           <p>
-            {isRunning
-              ? <>{execution.progress.finished} of {execution.progress.requested} finished{activeOrdinal ? ` · Running repetition ${activeOrdinal}` : " · Preparing"} · <span className="experiment-elapsed">{elapsedTime(nowMs - execution.startedAtMs)} elapsed</span></>
+            {live
+              ? <>{live.finished} of {live.requested} finished{activeOrdinal ? ` · Running repetition ${activeOrdinal}` : " · Preparing"} · <span className="experiment-elapsed">{elapsedTime(nowMs - live.startedAtMs)} elapsed</span></>
               : `${aggregate.requested} requested repetitions`}
           </p>
         </div>
@@ -115,7 +146,7 @@ export function RepeatedExperimentWorkspace({
         </div>
       </header>
 
-      {isRunning && <progress aria-label="Experiment progress" className="experiment-progress" max={execution.progress.requested} value={execution.progress.finished}>{execution.progress.finished} of {execution.progress.requested}</progress>}
+      {live && <progress aria-label="Experiment progress" className="experiment-progress" max={live.requested} value={live.finished}>{live.finished} of {live.requested}</progress>}
 
       {execution.storage === "unsaved" && <p className="repeated-experiment-notice" role="status">This experiment is not saved and will be lost when this session closes.</p>}
       {execution.error && <p className="repeated-experiment-notice error" role="alert">{execution.error}</p>}
@@ -137,10 +168,15 @@ export function RepeatedExperimentWorkspace({
 
       <div className="repeated-experiment-rows">
         {execution.plan.cells.map((cell) => {
-          const state = execution.progress.states.get(cell.runId);
+          const state = execution.states.get(cell.runId);
           const trace = execution.traces.get(cell.runId);
+          const unreadable = execution.unreadableTraces.get(cell.runId);
           const isActive = activeOrdinal === cell.ordinal;
-          const status = isActive ? "running" : rowStatus(execution, cell.runId);
+          // The controller keeps reporting a cell as current while its terminal
+          // trace is written, so the status word comes from the cell's own
+          // evidence. Overriding it with the controller's cursor relabelled a
+          // finished repetition as still running.
+          const status = rowStatus(execution, cell.runId, isRunning);
           const isSelected = execution.selectedRunId === cell.runId;
           const preview = outputPreview(state);
           return (
@@ -151,7 +187,9 @@ export function RepeatedExperimentWorkspace({
             >
               <div><strong>Repetition {cell.ordinal}</strong><span className={`run-history-status ${status}`}>{isActive && <span className="experiment-row-activity-dot" aria-hidden="true" />}{status}</span></div>
               <span className="repeated-experiment-row-metrics">{rowMetrics(state)}</span>
-              {trace ? <button className="text-button" type="button" onClick={() => onOpenTrace(cell.runId)}>Open Response &amp; Inspect</button> : <span className="repeated-experiment-row-pending">{status === "queued" ? "Waiting" : "Trace unavailable"}</span>}
+              {trace
+                ? <button className="text-button" type="button" onClick={() => onOpenTrace(cell.runId)}>Open Response &amp; Inspect</button>
+                : <span className="repeated-experiment-row-pending" title={unreadable}>{pendingLabel(status, unreadable, isRunning)}</span>}
               {preview !== undefined && <p className="repeated-experiment-output-preview"><span>Output ready</span>{preview}</p>}
             </article>
           );

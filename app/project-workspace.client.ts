@@ -14,13 +14,9 @@ import {
   serializeRunTrace,
   traceFileName,
 } from "../packages/core/src/run-trace.ts";
-import type {
-  ExperimentId,
-  RunTrace,
-} from "../packages/core/src/run-kernel/index.ts";
+import type { RunTrace } from "../packages/core/src/run-kernel/index.ts";
 import {
   assertExperimentEntryName,
-  experimentArtifactIdentity,
   experimentPlanFileName,
   experimentResultFileName,
   serializeExperimentPlan,
@@ -70,12 +66,6 @@ import type {
 
 export type { StoredRunTraceFile };
 export type { StoredExperimentArtifactFile };
-
-export interface StoredExperimentArtifactPair {
-  experimentId: ExperimentId;
-  plan?: StoredExperimentArtifactFile;
-  result?: StoredExperimentArtifactFile;
-}
 
 interface DirectoryPickerWindow extends Window {
   showDirectoryPicker?: (options?: {
@@ -624,22 +614,6 @@ export async function listExperimentArtifactsWorkspace(
   handle: ProjectWorkspaceHandle,
 ): Promise<StoredExperimentArtifactFile[]> {
   return handle.storage.listExperimentArtifacts();
-}
-
-/** Pairs optional terminal results with their immutable experiment plans. */
-export async function listExperimentArtifactPairsWorkspace(
-  handle: ProjectWorkspaceHandle,
-): Promise<StoredExperimentArtifactPair[]> {
-  const pairs = new Map<ExperimentId, StoredExperimentArtifactPair>();
-  for (const artifact of await listExperimentArtifactsWorkspace(handle)) {
-    const { experimentId, kind } = experimentArtifactIdentity(artifact.fileName);
-    const pair = pairs.get(experimentId) ?? { experimentId };
-    pair[kind] = artifact;
-    pairs.set(experimentId, pair);
-  }
-  return [...pairs.values()].sort((left, right) =>
-    left.experimentId < right.experimentId ? -1 : left.experimentId > right.experimentId ? 1 : 0,
-  );
 }
 
 export async function readExperimentArtifactWorkspace(

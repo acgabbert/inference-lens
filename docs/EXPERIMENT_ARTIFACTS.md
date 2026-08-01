@@ -26,6 +26,37 @@ Workspace listings pair the optional result with its plan by experiment ID, so
 an interrupted plan and a damaged result-only folder can be represented without
 inventing a mutable checkpoint file.
 
+## Grouped project history
+
+`loadProjectHistoryFiles` builds the read model for both artifact kinds in one
+pass over a project folder. It is pure: adapters supply the listed file
+contents, and the projection returns grouped entries, ungrouped runs, and the
+artifacts it had to skip.
+
+Reading follows the same rules the artifacts promise:
+
+- One damaged artifact is skipped on its own and never hides a valid neighbour.
+  A plan that does not parse leaves its cells' traces listed as ordinary runs.
+- A run referenced by a valid plan appears only inside its experiment, so a
+  repeated experiment does not flood the list with rows that look unrelated.
+- The `experiments/` filename convention lives in `experiment.ts` alone. The
+  projection reuses `isExperimentEntryName` and `experimentArtifactIdentity`
+  rather than restating the pattern.
+- Every artifact is parsed and reduced exactly once. The list summary and the
+  grouped projection share one `RunState` per trace instead of reducing the
+  same events per consumer.
+
+The projection is still a full folder scan with no persisted index, so its cost
+grows with everything the project has ever recorded. It is deliberately run only
+on demand, and it reports `artifactCount` and `largeHistory` so a caller can say
+so. Whether durable history eventually needs an index is an open decision; it is
+not one this projection makes on its own.
+
+A cell whose trace cannot be read back is reported separately from a cell that
+never ran. A repetition with no openable trace is presented as `Waiting`,
+`Not run`, `Trace missing`, or `Trace could not be read` — never as one
+undifferentiated blank.
+
 Both files use `schemaVersion: 1`. Parsers reject unknown fields, unsupported
 versions, invalid or duplicate IDs, mismatched result references, and
 credential-like keys at provider-option boundaries. Serializers produce stable

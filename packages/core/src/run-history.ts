@@ -1,11 +1,12 @@
 import type {
   RunId,
+  RunState,
   RunTokenUsage,
   RunTrace,
   TerminalRunStatus,
 } from "./run-kernel/types.ts";
 import { runMetrics } from "./run-metrics.ts";
-import { parseRunTraceJson, runStateFromTrace } from "./run-trace.ts";
+import { parseRunTraceJson, runStateFromTrace, traceFileName } from "./run-trace.ts";
 
 /**
  * Compact, derived metadata for a persisted trace. History summaries are
@@ -48,9 +49,28 @@ export interface RunHistoryFailure {
   message: string;
 }
 
+export interface LoadedRunHistoryFiles {
+  items: RunHistoryItem[];
+  failures: RunHistoryFailure[];
+  /**
+   * The run state each listed artifact reduces to, which the list projection
+   * has already derived. Grouped projections read it instead of reducing the
+   * same events a second time. It holds every event of every artifact in the
+   * folder, so callers should build their projection and drop it.
+   */
+  statesByRunId: ReadonlyMap<RunId, { fileName: string; state: RunState }>;
+}
+
 /** Builds the list projection through the same validated state used by the UI. */
 export function summarizeRunTrace(trace: RunTrace): RunHistorySummary {
-  const state = runStateFromTrace(trace);
+  return summarizeReducedRunTrace(trace, runStateFromTrace(trace));
+}
+
+/** Summarizes a trace whose state the caller has already reduced. */
+function summarizeReducedRunTrace(
+  trace: RunTrace,
+  state: RunState,
+): RunHistorySummary {
   const metrics = runMetrics(state);
 
   return {
@@ -76,15 +96,36 @@ export function loadRunHistoryFiles(files: RunHistorySource[]): {
   items: RunHistoryItem[];
   failures: RunHistoryFailure[];
 } {
+  const { items, failures } = loadRunHistoryFilesWithStates(files);
+  return { items, failures };
+}
+
+/**
+ * Parses and reduces every trace exactly once while a caller builds a richer
+ * on-demand projection, so grouped history costs one pass over the folder
+ * rather than one pass per projection.
+ */
+export function loadRunHistoryFilesWithStates(
+  files: RunHistorySource[],
+): LoadedRunHistoryFiles {
   const items: RunHistoryItem[] = [];
   const failures: RunHistoryFailure[] = [];
+  const statesByRunId = new Map<RunId, { fileName: string; state: RunState }>();
 
   for (const file of files) {
     try {
+      const trace = parseRunTraceJson(file.contents);
+      const state = runStateFromTrace(trace);
       items.push({
         fileName: file.fileName,
-        summary: summarizeRunTrace(parseRunTraceJson(file.contents)),
+        summary: summarizeReducedRunTrace(trace, state),
       });
+      // Prefer the canonical filename when duplicate/renamed artifacts carry
+      // the same run. The selected filename remains explicit in the read model.
+      const current = statesByRunId.get(trace.runId);
+      if (!current || file.fileName === traceFileName(trace.runId)) {
+        statesByRunId.set(trace.runId, { fileName: file.fileName, state });
+      }
     } catch (error) {
       failures.push({
         fileName: file.fileName,
@@ -95,7 +136,7 @@ export function loadRunHistoryFiles(files: RunHistorySource[]): {
   }
 
   items.sort(compareHistoryItems);
-  return { items, failures };
+  return { items, failures, statesByRunId };
 }
 
 /**

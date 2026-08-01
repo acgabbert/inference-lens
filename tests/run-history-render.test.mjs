@@ -35,6 +35,7 @@ async function renderDrawer(props) {
         projectName: "demo-project",
         onClose() {},
         async onSelect() {},
+        async onSelectExperiment() {},
         ...props,
       }),
     );
@@ -43,17 +44,28 @@ async function renderDrawer(props) {
   }
 }
 
-function historyState(overrides) {
-  return {
+function historyState(overrides = {}) {
+  const state = {
     status: "loaded",
+    entries: [],
     items: [],
+    experiments: [],
     failures: [],
+    artifactCount: 0,
+    largeHistory: false,
     async refresh() {},
     async readTrace() {
       throw new Error("not used");
     },
     ...overrides,
   };
+  if (!("entries" in overrides)) {
+    state.entries = [
+      ...state.items.map((item) => ({ kind: "run", item })),
+      ...state.experiments.map((item) => ({ kind: "experiment", item })),
+    ];
+  }
+  return state;
 }
 
 function summary(overrides) {
@@ -167,8 +179,8 @@ test("a listing that has not been attempted does not render as an empty project"
 
   const loaded = await renderDrawer({ history: historyState() });
 
-  assert.match(loaded, /No saved runs yet/);
-  assert.match(loaded, /0 saved runs/);
+  assert.match(loaded, /No saved evidence yet/);
+  assert.match(loaded, /0 saved entries/);
 });
 
 test("surfaces a failed listing and the artifacts it skipped", async () => {
@@ -182,11 +194,50 @@ test("surfaces a failed listing and the artifacts it skipped", async () => {
     }),
   });
 
-  assert.match(html, /1 saved run/);
-  assert.match(html, /1 invalid trace was skipped/);
+  assert.match(html, /1 saved entry/);
+  assert.match(html, /1 invalid history artifact was skipped/);
   assert.match(html, /torn\.json/);
   assert.match(html, /not valid JSON/);
   // One damaged artifact must not hide the runs that are readable.
   assert.match(html, /run_ok\.json/);
   assertNoBrokenNumbers(html);
+});
+
+test("renders repeated experiments as one grouped history entry", async () => {
+  const experiment = {
+    experimentId: "experiment_grouped",
+    planFileName: "experiment_grouped.plan.json",
+    resultFileName: "experiment_grouped.result.json",
+    createdAt: "2026-07-25T13:00:00.000Z",
+    endedAt: "2026-07-25T13:01:00.000Z",
+    model: "grouped-model",
+    lifecycle: "completed",
+    requested: 5,
+    completed: 4,
+    failed: 1,
+    cancelled: 0,
+    notRun: 0,
+    missingTrace: 0,
+    cells: [],
+  };
+  const html = await renderDrawer({
+    selectedExperimentId: experiment.experimentId,
+    history: historyState({ experiments: [experiment] }),
+  });
+
+  assert.match(html, /1 saved entry/);
+  assert.match(html, /Repeated experiment · grouped-model/);
+  assert.match(html, /5 repetitions · 4 completed · 1 failed/);
+  assert.match(html, /experiment_grouped\.plan\.json/);
+  assert.match(html, /aria-current="true"/);
+  assertNoBrokenNumbers(html);
+});
+
+test("warns about large immutable history without implying deletion", async () => {
+  const html = await renderDrawer({
+    history: historyState({ artifactCount: 500, largeHistory: true }),
+  });
+  assert.match(html, /Large project history/);
+  assert.match(html, /500 immutable artifacts/);
+  assert.match(html, /Nothing was deleted/);
 });

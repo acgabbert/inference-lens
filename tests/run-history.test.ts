@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   loadRunHistoryFiles,
+  loadRunHistoryFilesWithStates,
   summarizeRunTrace,
 } from "../packages/core/src/run-history.ts";
 import {
@@ -521,4 +522,36 @@ test("an entry keeps the file name it was found under, not one derived from its 
     result.items[0]?.summary.runId,
     createEntityId("run", "history-renamed"),
   );
+});
+
+test("a grouped projection reuses the state the list already reduced", () => {
+  const trace = completedTrace({ suffix: "history-shared-state" });
+  const runId = createEntityId("run", "history-shared-state");
+  const loaded = loadRunHistoryFilesWithStates([
+    { fileName: `${runId}.json`, contents: serializeRunTrace(trace) },
+  ]);
+
+  // The summary and the grouped projection must come from one reduction of one
+  // artifact, not from reducing the same events once per consumer.
+  const stored = loaded.statesByRunId.get(runId);
+  assert.equal(stored?.fileName, `${runId}.json`);
+  assert.equal(stored?.state.runId, runId);
+  assert.equal(stored?.state.status.kind, "completed");
+  assert.deepEqual(loaded.items[0]?.summary, summarizeRunTrace(trace));
+});
+
+test("a duplicated artifact resolves to the file named after its run", () => {
+  const trace = completedTrace({ suffix: "history-duplicated" });
+  const runId = createEntityId("run", "history-duplicated");
+  const contents = serializeRunTrace(trace);
+  const canonical = `${runId}.json`;
+
+  for (const files of [
+    [{ fileName: "a-copy.json", contents }, { fileName: canonical, contents }],
+    [{ fileName: canonical, contents }, { fileName: "a-copy.json", contents }],
+  ]) {
+    const loaded = loadRunHistoryFilesWithStates(files);
+    assert.equal(loaded.items.length, 2);
+    assert.equal(loaded.statesByRunId.get(runId)?.fileName, canonical);
+  }
 });
