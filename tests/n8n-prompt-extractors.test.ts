@@ -75,11 +75,9 @@ test("the fixture-proven multi-item Basic LLM Chain fails closed with authored p
   );
   assert.doesNotThrow(() => parseExternalPromptCandidate(compound.candidate));
   const projection = projectExternalPromptTemplate(compound.candidate);
-  assert.equal(projection.content.kind, "fragment");
+  assert.equal(projection.messages.length, 1);
   assert.equal(
-    projection.content.kind === "fragment"
-      ? projection.content.text
-      : undefined,
+    projection.messages[0]?.content,
     "IL_P0_LITERAL\n" +
       "simple={{topic}}\n" +
       "two={{first}}|{{second}}\n" +
@@ -375,11 +373,8 @@ test("Message a Model 1.2 and 1.3 retain ordered authored roles without trusting
     assert.doesNotThrow(() => parseExternalPromptCandidate(candidate));
 
     const projection = projectExternalPromptTemplate(candidate);
-    assert.equal(projection.content.kind, "messages");
     assert.deepEqual(
-      projection.content.kind === "messages"
-        ? projection.content.messages.map(({ role }) => role)
-        : [],
+      projection.messages.map(({ role }) => role),
       ["system", "assistant", "user"],
     );
   }
@@ -487,11 +482,8 @@ test("an unsupported connected model preserves an importable authored trace", as
   );
   assert.equal(canImportExternalPromptAsTemplate(result.candidate), true);
   const projection = projectExternalPromptTemplate(result.candidate);
-  assert.equal(projection.content.kind, "messages");
   assert.deepEqual(
-    projection.content.kind === "messages"
-      ? projection.content.messages.map(({ role }) => role)
-      : [],
+    projection.messages.map(({ role }) => role),
     ["system", "user"],
   );
 });

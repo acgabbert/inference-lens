@@ -215,7 +215,7 @@ test("projects resolved snapshots into literal messages with durable receipts", 
   });
 
   assert.equal(base.externalImports.length, 0);
-  assert.equal(imported.project.schemaVersion, 5);
+  assert.equal(imported.project.schemaVersion, 6);
   assert.equal(imported.project.externalImports.length, 1);
   assert.equal(
     imported.project.externalImports[0]?.sourceDigest,
@@ -433,11 +433,10 @@ test("projects authored expressions into deterministic native variables", async 
   assert.equal(canImportExternalPromptAsTemplate(candidate), true);
   assert.deepEqual(projectExternalPromptTemplate(candidate), {
     name: "Fixture workflow — Fixture prompt",
-    content: {
-      kind: "fragment",
-      text:
-        "Explain {{topic}} / {{topic}} / {{topic_2}} / {{expression_1}}",
-    },
+    messages: [{
+      role: "user",
+      content: "Explain {{topic}} / {{topic}} / {{topic_2}} / {{expression_1}}",
+    }],
     values: {},
     variables: [
       {
@@ -476,7 +475,7 @@ test("projects authored expressions into deterministic native variables", async 
   const revision = template.revisions[0]!;
   assert.equal(revision.externalImportId, imported.externalImportId);
   assert.equal(template.recommendedTarget, undefined);
-  assert.equal(revision.content.kind, "fragment");
+  assert.equal(revision.messages[0].role, "user");
   assert.deepEqual(
     imported.project.externalImports.at(-1)?.projection,
     {
@@ -502,10 +501,7 @@ test("projects authored expressions into deterministic native variables", async 
                   itemRevision.id === imported.templateRevisionId
                     ? {
                         ...itemRevision,
-                        content: {
-                          kind: "fragment" as const,
-                          text: "Tampered {{topic}}",
-                        },
+                        messages: [{ role: "user" as const, content: "Tampered {{topic}}" }],
                       }
                     : itemRevision,
                 ),
@@ -531,7 +527,7 @@ test("projects authored expressions into deterministic native variables", async 
   assert.equal(withoutUse.externalImports.length, 1);
   const revised = appendPromptTemplateRevision(withoutUse, {
     templateId: imported.templateId,
-    content: { kind: "fragment", text: "Edited {{topic}}" },
+    messages: [{ role: "user", content: "Edited {{topic}}" }],
     idSuffix: "edited-import",
     createdAt: "2026-07-28T18:10:00.000Z",
   });
@@ -604,10 +600,7 @@ test("uses a captured string only when one complete expression is attributable",
     }),
   );
   const projection = projectExternalPromptTemplate(candidate);
-  assert.deepEqual(projection.content, {
-    kind: "fragment",
-    text: "{{topic}}",
-  });
+  assert.deepEqual(projection.messages, [{ role: "user", content: "{{topic}}" }]);
   assert.deepEqual(projection.values, { topic: "Captured topic" });
 });
 

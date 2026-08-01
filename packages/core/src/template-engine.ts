@@ -1,4 +1,4 @@
-import type { PromptTemplateContent } from "./project.ts";
+import type { PromptTemplateMessages } from "./project.ts";
 
 export const TEMPLATE_VARIABLE_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
@@ -72,16 +72,8 @@ export interface RenderTemplateTextResult {
   diagnostics: TemplateDiagnostic[];
 }
 
-export interface RenderTemplateContentResult {
-  content:
-    | { kind: "fragment"; text: string }
-    | {
-        kind: "messages";
-        messages: Array<{
-          role: "system" | "user" | "assistant";
-          content: string;
-        }>;
-      };
+export interface RenderTemplateMessagesResult {
+  messages: PromptTemplateMessages;
   variables: TemplateVariable[];
   diagnostics: TemplateDiagnostic[];
 }
@@ -167,11 +159,8 @@ function groupVariables(
   }));
 }
 
-function parsedContent(content: PromptTemplateContent): ParsedTemplateText[] {
-  if (content.kind === "fragment") {
-    return [parseTemplateText(content.text, { kind: "fragment" })];
-  }
-  return content.messages.map((message, messageIndex) =>
+function parsedMessages(messages: PromptTemplateMessages): ParsedTemplateText[] {
+  return messages.map((message, messageIndex) =>
     parseTemplateText(message.content, {
       kind: "message",
       messageIndex,
@@ -181,9 +170,9 @@ function parsedContent(content: PromptTemplateContent): ParsedTemplateText[] {
 }
 
 export function discoverTemplateVariables(
-  content: PromptTemplateContent,
+  messages: PromptTemplateMessages,
 ): DiscoveredTemplateVariables {
-  const parsed = parsedContent(content);
+  const parsed = parsedMessages(messages);
   return {
     variables: groupVariables(parsed.flatMap(({ occurrences }) => occurrences)),
     diagnostics: parsed.flatMap(({ diagnostics }) => diagnostics),
@@ -239,33 +228,24 @@ export function renderTemplateText(
   return renderParsedText(parseTemplateText(text, location), values);
 }
 
-export function renderTemplateContent(
-  content: PromptTemplateContent,
+export function renderTemplateMessages(
+  messages: PromptTemplateMessages,
   values: Readonly<Record<string, string>>,
-): RenderTemplateContentResult {
-  const parsed = parsedContent(content);
+): RenderTemplateMessagesResult {
+  const parsed = parsedMessages(messages);
   const variables = groupVariables(
     parsed.flatMap(({ occurrences }) => occurrences),
   );
   const rendered = parsed.map((item) => renderParsedText(item, values));
   const diagnostics = rendered.flatMap(({ diagnostics: item }) => item);
-  return content.kind === "fragment"
-    ? {
-        content: { kind: "fragment", text: rendered[0]!.text },
-        variables,
-        diagnostics,
-      }
-    : {
-        content: {
-          kind: "messages",
-          messages: content.messages.map((message, index) => ({
-            role: message.role,
-            content: rendered[index]!.text,
-          })),
-        },
-        variables,
-        diagnostics,
-      };
+  return {
+    messages: messages.map((message, index) => ({
+      role: message.role,
+      content: rendered[index]!.text,
+    })) as PromptTemplateMessages,
+    variables,
+    diagnostics,
+  };
 }
 
 export function resolveTemplateValues(

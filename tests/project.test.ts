@@ -51,7 +51,7 @@ const request = {
   }),
 };
 
-test("creates a strict, portable Project v5 document", () => {
+test("creates a strict, portable Project v6 document", () => {
   const project = createProjectFile({
     name: "Example",
     request,
@@ -78,7 +78,7 @@ test("creates a strict, portable Project v5 document", () => {
   assert.equal(projectDirectoryName("   "), "Untitled.inference-lens");
   assert.equal(projectExportFileName("Prompt Lab"), "Prompt Lab.project.json");
   assert.equal(projectExportFileName("CON"), "CON-project.project.json");
-  assert.equal(project.schemaVersion, 5);
+  assert.equal(project.schemaVersion, 6);
   assert.equal(project.projectId, "project_example");
   const draft = projectDraft(project);
   assert.deepEqual(projectDraft(project), {
@@ -101,7 +101,7 @@ test("creates a strict, portable Project v5 document", () => {
     enabledToolIds: [],
   });
   assert.deepEqual(project.externalImports, []);
-  assert.equal(JSON.parse(serializeProjectFile(project)).schemaVersion, 5);
+  assert.equal(JSON.parse(serializeProjectFile(project)).schemaVersion, 6);
 });
 
 test("serialization is deterministic and ends with a newline", () => {
@@ -131,7 +131,7 @@ test("serialization is deterministic and ends with a newline", () => {
   assert.ok(serialized.indexOf('"alpha"') < serialized.indexOf('"zeta"'));
 });
 
-test("rejects pre-v5 projects while migration is intentionally deferred", () => {
+test("rejects projects older than the supported v5 migration boundary", () => {
   const current = createProjectFile({
     name: "Legacy",
     request,
@@ -148,7 +148,65 @@ test("rejects pre-v5 projects while migration is intentionally deferred", () => 
   }
 });
 
-test("resolves pinned fragment and message-set uses with stable output IDs", () => {
+test("migrates v5 fragments by duplicating templates used under different roles", () => {
+  const base = createProjectFile({
+    name: "Legacy roles",
+    request,
+    idSuffix: "legacy-roles",
+    createdAt: "2026-07-24T12:00:00.000Z",
+  });
+  const legacy = {
+    ...base,
+    schemaVersion: 5,
+    promptTemplates: [{
+      id: "template_legacy-prompt",
+      name: "Legacy prompt",
+      currentRevisionId: "template-revision_legacy-prompt-1",
+      revisions: [{
+        id: "template-revision_legacy-prompt-1",
+        createdAt: "2026-07-24T12:00:01.000Z",
+        content: { kind: "fragment", text: "Hello {{name}}" },
+        variableDefaults: { name: "Ada" },
+      }],
+    }],
+    conversationRevisions: base.conversationRevisions.map((revision) => ({
+      ...revision,
+      items: ["user", "system"].map((role, index) => ({
+        kind: "template-use",
+        use: {
+          id: `template-use_legacy-${role}`,
+          templateId: "template_legacy-prompt",
+          templateRevisionId: "template-revision_legacy-prompt-1",
+          values: {},
+          outputMessageIds: [`message_legacy-${index}`],
+          fragmentRole: role,
+        },
+      })),
+    })),
+  };
+
+  const migrated = parseProjectFile(legacy);
+  assert.equal(migrated.schemaVersion, 6);
+  assert.equal(migrated.promptTemplates.length, 2);
+  assert.deepEqual(
+    migrated.promptTemplates.map(({ name, revisions }) => [
+      name,
+      revisions[0]?.messages[0]?.role,
+    ]),
+    [["Legacy prompt", "user"], ["Legacy prompt (System)", "system"]],
+  );
+  assert.deepEqual(
+    projectDraft(migrated).messages.map(({ role, content }) => [
+      role,
+      content[0]?.type === "text" ? content[0].text : undefined,
+    ]),
+    [["user", "Hello Ada"], ["system", "Hello Ada"]],
+  );
+  const serialized = serializeProjectFile(migrated);
+  assert.doesNotMatch(serialized, /fragmentRole|"kind": "fragment"/);
+});
+
+test("resolves pinned single and multi-message prompts with stable output IDs", () => {
   const project = createProjectFile({
     name: "Templates",
     request,
@@ -164,7 +222,7 @@ test("resolves pinned fragment and message-set uses with stable output IDs", () 
         {
           id: "template-revision_prompt-1",
           createdAt: "2026-07-24T12:00:00.000Z",
-          content: { kind: "fragment", text: "Explain {{topic}} to {{audience}}." },
+          messages: [{ role: "user", content: "Explain {{topic}} to {{audience}}." }],
           variableDefaults: { audience: "developers" },
         },
       ],
@@ -177,13 +235,10 @@ test("resolves pinned fragment and message-set uses with stable output IDs", () 
         {
           id: "template-revision_pair-1",
           createdAt: "2026-07-24T12:00:00.000Z",
-          content: {
-            kind: "messages",
-            messages: [
+          messages: [
               { role: "system", content: "Voice: {{voice}}" },
               { role: "user", content: "Question: {{question}}" },
             ],
-          },
           variableDefaults: { voice: "clear" },
         },
       ],
@@ -198,7 +253,6 @@ test("resolves pinned fragment and message-set uses with stable output IDs", () 
         templateRevisionId: "template-revision_prompt-1",
         values: { topic: "migrations" },
         outputMessageIds: ["message_prompt"],
-        fragmentRole: "user",
       },
     },
     {
@@ -287,13 +341,10 @@ test("keeps authored order when literal messages and template uses interleave", 
         {
           id: "template-revision_middle-1",
           createdAt: "2026-07-24T12:00:00.000Z",
-          content: {
-            kind: "messages",
-            messages: [
+          messages: [
               { role: "user", content: "Second" },
               { role: "assistant", content: "Third" },
             ],
-          },
           variableDefaults: {},
         },
       ],
@@ -353,7 +404,7 @@ test("creates immutable template revisions, finds uses, and rejects unsafe remov
   });
   const created = createPromptTemplate(project, {
     name: "Question",
-    content: { kind: "fragment", text: "Explain {{topic}}." },
+    messages: [{ role: "user", content: "Explain {{topic}}." }],
     variableDefaults: { topic: "branching" },
     idSuffix: "question",
     revisionIdSuffix: "question-1",
@@ -361,7 +412,7 @@ test("creates immutable template revisions, finds uses, and rejects unsafe remov
   });
   const unchanged = appendPromptTemplateRevision(created, {
     templateId: "template_question",
-    content: { kind: "fragment", text: "Explain {{topic}}." },
+    messages: [{ role: "user", content: "Explain {{topic}}." }],
     variableDefaults: { topic: "branching" },
     idSuffix: "unused",
   });
@@ -380,7 +431,7 @@ test("creates immutable template revisions, finds uses, and rejects unsafe remov
 
   const revised = appendPromptTemplateRevision(created, {
     templateId: "template_question",
-    content: { kind: "fragment", text: "Summarize {{topic}}." },
+    messages: [{ role: "user", content: "Summarize {{topic}}." }],
     variableDefaults: { topic: "branching" },
     idSuffix: "question-2",
     createdAt: "2026-07-24T12:02:00.000Z",
@@ -399,7 +450,6 @@ test("creates immutable template revisions, finds uses, and rejects unsafe remov
       templateRevisionId: "template-revision_question-1",
       values: {},
       outputMessageIds: ["message_question"],
-      fragmentRole: "user",
     },
   });
   const used = parseProjectFile(revised);
@@ -450,7 +500,7 @@ test("archives templates without breaking pinned uses and restores future insert
   });
   const created = createPromptTemplate(base, {
     name: "Reusable",
-    content: { kind: "fragment", text: "Explain {{topic}}." },
+    messages: [{ role: "user", content: "Explain {{topic}}." }],
     variableDefaults: { topic: "archives" },
     idSuffix: "archive-reusable",
     revisionIdSuffix: "archive-reusable-1",
@@ -460,7 +510,6 @@ test("archives templates without breaking pinned uses and restores future insert
   const used = insertPromptTemplateUse(created, {
     conversationRevisionId,
     templateId: "template_archive-reusable",
-    fragmentRole: "user",
     idSuffix: "archive-use",
     outputMessageIdSuffixes: ["archive-output"],
   });
@@ -481,7 +530,6 @@ test("archives templates without breaking pinned uses and restores future insert
       insertPromptTemplateUse(archived, {
         conversationRevisionId,
         templateId: "template_archive-reusable",
-        fragmentRole: "user",
       }),
     /Archived templates cannot be added/,
   );
@@ -492,7 +540,6 @@ test("archives templates without breaking pinned uses and restores future insert
     insertPromptTemplateUse(restored, {
       conversationRevisionId,
       templateId: "template_archive-reusable",
-      fragmentRole: "user",
     }),
   );
 });
@@ -506,10 +553,7 @@ test("inserts, updates, detaches, and removes template uses through core helpers
   });
   const created = createPromptTemplate(base, {
     name: "Reusable",
-    content: {
-      kind: "fragment",
-      text: "{{kept}} {{obsolete}}",
-    },
+    messages: [{ role: "user", content: "{{kept}} {{obsolete}}" }],
     variableDefaults: {},
     idSuffix: "reusable",
     revisionIdSuffix: "reusable-1",
@@ -520,7 +564,6 @@ test("inserts, updates, detaches, and removes template uses through core helpers
     conversationRevisionId,
     templateId: "template_reusable",
     values: { kept: "Keep", obsolete: "Remove" },
-    fragmentRole: "user",
     itemIndex: 1,
     idSuffix: "reusable",
     outputMessageIdSuffixes: ["reusable-1"],
@@ -537,13 +580,10 @@ test("inserts, updates, detaches, and removes template uses through core helpers
   });
   const revised = appendPromptTemplateRevision(valuesUpdated, {
     templateId: "template_reusable",
-    content: {
-      kind: "messages",
-      messages: [
+    messages: [
         { role: "system", content: "{{kept}}" },
         { role: "user", content: "{{added}}" },
       ],
-    },
     variableDefaults: {},
     idSuffix: "reusable-2",
     createdAt: "2026-07-24T12:02:00.000Z",
@@ -571,7 +611,7 @@ test("inserts, updates, detaches, and removes template uses through core helpers
     "message_reusable-1",
     "message_reusable-2",
   ]);
-  assert.equal(latestUse.fragmentRole, undefined);
+  assert.equal("fragmentRole" in latestUse, false);
 
   const detached = detachPromptTemplateUse(latestWithValues, {
     conversationRevisionId,
@@ -627,7 +667,7 @@ test("resolves an unfilled variable into a diagnostic instead of a failure", () 
         {
           id: "template-revision_open-1",
           createdAt: "2026-07-24T12:00:00.000Z",
-          content: { kind: "fragment", text: "Explain {{topic}}." },
+          messages: [{ role: "user", content: "Explain {{topic}}." }],
           variableDefaults: {},
         },
       ],
@@ -642,7 +682,6 @@ test("resolves an unfilled variable into a diagnostic instead of a failure", () 
         templateRevisionId: "template-revision_open-1",
         values: {},
         outputMessageIds: ["message_open"],
-        fragmentRole: "user",
       },
     },
   ];
@@ -747,7 +786,7 @@ test("rejects invalid template-use ownership, output shape, and secret-like valu
         {
           id: "template-revision_prompt-1",
           createdAt: "2026-07-24T12:00:00.000Z",
-          content: { kind: "fragment", text: "{{input}}" },
+          messages: [{ role: "user", content: "{{input}}" }],
           variableDefaults: {},
         },
       ],
@@ -789,7 +828,6 @@ test("rejects invalid template-use ownership, output shape, and secret-like valu
       templateRevisionId: "template-revision_prompt-1",
       values: { apiKey: "not-allowed" },
       outputMessageIds: ["message_one"],
-      fragmentRole: "user",
     },
   };
   assert.throws(() => parseProjectFile(project), /Secret values cannot be stored/);
@@ -816,7 +854,7 @@ test("records a recommended target without appending a revision or unpinning use
   });
   const created = createPromptTemplate(base, {
     name: "Question",
-    content: { kind: "fragment", text: "Explain {{topic}}." },
+    messages: [{ role: "user", content: "Explain {{topic}}." }],
     variableDefaults: { topic: "branching" },
     idSuffix: "question",
     revisionIdSuffix: "question-1",
@@ -827,7 +865,6 @@ test("records a recommended target without appending a revision or unpinning use
     templateId: "template_question",
     itemIndex: 0,
     values: {},
-    fragmentRole: "user",
     idSuffix: "question-use",
     outputMessageIdSuffixes: ["question-use-1"],
   });
@@ -1039,13 +1076,10 @@ test("keeps template uses atomic and authored when creating a branch", () => {
         {
           id: "template-revision_pair-1",
           createdAt: "2026-07-24T12:00:00.000Z",
-          content: {
-            kind: "messages",
-            messages: [
+          messages: [
               { role: "system", content: "System {{topic}}" },
               { role: "user", content: "User {{topic}}" },
             ],
-          },
           variableDefaults: { topic: "branching" },
         },
       ],
@@ -1159,7 +1193,7 @@ test("rejects unsupported versions, unknown fields, and dangling references", ()
               {
                 id: "template-revision_invalid-target-1",
                 createdAt: "2026-07-24T12:00:01.000Z",
-                content: { kind: "fragment", text: "Hello" },
+                messages: [{ role: "user", content: "Hello" }],
                 variableDefaults: {},
               },
             ],
@@ -1227,7 +1261,7 @@ test("rejects mock and template references outside their owners", () => {
       {
         id: "template-revision_summary-1",
         createdAt: "2026-07-24T12:00:00.000Z",
-        content: { kind: "fragment", text: "Summarize {{input}}" },
+        messages: [{ role: "user", content: "Summarize {{input}}" }],
         variableDefaults: {},
       },
     ],
@@ -1257,13 +1291,10 @@ function templateBranchProject() {
         {
           id: "template-revision_pair-1",
           createdAt: "2026-07-26T12:00:00.000Z",
-          content: {
-            kind: "messages",
-            messages: [
+          messages: [
               { role: "system", content: "System {{topic}}" },
               { role: "user", content: "User {{topic}}" },
             ],
-          },
           variableDefaults: { topic: "saved" },
         },
       ],
@@ -1405,7 +1436,7 @@ test("explains that a secret-like variable can never be filled", () => {
   });
   project = createPromptTemplate(project, {
     name: "Leaky",
-    content: { kind: "fragment", text: "Key is {{api_key}}." },
+    messages: [{ role: "user", content: "Key is {{api_key}}." }],
     idSuffix: "leaky",
     revisionIdSuffix: "leaky-1",
     createdAt: "2026-07-26T12:00:01.000Z",
@@ -1413,7 +1444,6 @@ test("explains that a secret-like variable can never be filled", () => {
   project = insertPromptTemplateUse(project, {
     conversationRevisionId: project.defaults.conversationRevisionId,
     templateId: "template_leaky",
-    fragmentRole: "user",
     idSuffix: "leaky",
     outputMessageIdSuffixes: ["leaky-out"],
   });

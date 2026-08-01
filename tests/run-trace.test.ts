@@ -6,7 +6,7 @@ import {
 } from "../packages/core/src/run-kernel/run-execution.ts";
 import { RunCoordinator } from "../packages/core/src/run-kernel/coordinator.ts";
 import { createRunTrace } from "../packages/core/src/run-kernel/reducer.ts";
-import type { RunTrace } from "../packages/core/src/run-kernel/types.ts";
+import type { ResolvedTemplateUse, RunTrace } from "../packages/core/src/run-kernel/types.ts";
 import {
   assertTraceEntryName,
   isTraceEntryName,
@@ -84,7 +84,7 @@ test("serializes and parses a deterministic run trace", () => {
   assert.deepEqual(runStateFromTrace(trace).events, trace.events);
   assert.match(serialized, /"raw": "data: \{/);
   assert.match(serialized, /"body": "\{\\"model\\"/);
-  assert.match(serialized, /"schemaVersion": 4/);
+  assert.match(serialized, /"schemaVersion": 5/);
 });
 
 test("migrates Version 1 evidence but rejects Version 1 branch provenance", () => {
@@ -108,11 +108,11 @@ test("migrates Version 1 evidence but rejects Version 1 branch provenance", () =
     }
   }
   const migrated = parseRunTraceJson(JSON.stringify(v1));
-  assert.equal(migrated.schemaVersion, 4);
+  assert.equal(migrated.schemaVersion, 5);
   assert.deepEqual(migrated.input.templateResolutions, []);
   assert.equal(migrated.input.responseMode, "streaming");
   assert.equal(migrated.turns[0]?.attempts[0]?.input.responseMode, "streaming");
-  assert.match(serializeRunTrace(v1), /"schemaVersion": 4/);
+  assert.match(serializeRunTrace(v1), /"schemaVersion": 5/);
 
   assert.throws(
     () => parseRunTraceJson(JSON.stringify({
@@ -143,16 +143,15 @@ test("round-trips branch provenance", () => {
 
 test("accepts self-contained template provenance and rejects mismatched evidence", () => {
   const trace = structuredClone(completedTrace());
-  const resolution = {
+  const resolution: ResolvedTemplateUse = {
     templateUseId: "template-use_trace" as const,
     templateId: "template_trace" as const,
     templateRevisionId: "template-revision_trace-1" as const,
     templateName: "Greeting",
-    content: { kind: "fragment" as const, text: "{{greeting}}" },
+    messages: [{ role: "user" as const, content: "{{greeting}}" }],
     variableDefaults: { greeting: "Hello" },
     values: { greeting: "Hello" },
     outputMessageIds: ["message_trace-test-0" as const],
-    fragmentRole: "user" as const,
   };
   trace.input.templateResolutions = [resolution];
   const started = trace.events[0];
@@ -172,18 +171,56 @@ test("accepts self-contained template provenance and rejects mismatched evidence
   );
 });
 
+test("migrates Version 4 fragment provenance into one owned message", () => {
+  const trace = structuredClone(completedTrace());
+  const resolution: ResolvedTemplateUse = {
+    templateUseId: "template-use_trace",
+    templateId: "template_trace",
+    templateRevisionId: "template-revision_trace-1",
+    templateName: "Greeting",
+    messages: [{ role: "user", content: "Hello" }],
+    variableDefaults: {},
+    values: {},
+    outputMessageIds: ["message_trace-test-0"],
+  };
+  trace.input.templateResolutions = [resolution];
+  const started = trace.events[0];
+  assert.equal(started?.type, "run.started");
+  if (started?.type !== "run.started") return;
+  started.input.templateResolutions = [resolution];
+  const legacy = JSON.parse(serializeRunTrace(trace));
+  legacy.schemaVersion = 4;
+  const legacyResolution = {
+    templateUseId: resolution.templateUseId,
+    templateId: resolution.templateId,
+    templateRevisionId: resolution.templateRevisionId,
+    templateName: resolution.templateName,
+    content: { kind: "fragment", text: "Hello" },
+    variableDefaults: {},
+    values: {},
+    outputMessageIds: resolution.outputMessageIds,
+    fragmentRole: "user",
+  };
+  legacy.input.templateResolutions = [legacyResolution];
+  legacy.events[0].input.templateResolutions = [legacyResolution];
+
+  assert.deepEqual(
+    parseRunTraceJson(JSON.stringify(legacy)).input.templateResolutions,
+    [resolution],
+  );
+});
+
 test("rejects template provenance for a run with an unresolved variable", () => {
   const trace = structuredClone(completedTrace());
-  const resolution = {
+  const resolution: ResolvedTemplateUse = {
     templateUseId: "template-use_trace" as const,
     templateId: "template_trace" as const,
     templateRevisionId: "template-revision_trace-1" as const,
     templateName: "Greeting",
-    content: { kind: "fragment" as const, text: "{{greeting}}" },
+    messages: [{ role: "user" as const, content: "{{greeting}}" }],
     variableDefaults: {},
     values: {},
     outputMessageIds: ["message_trace-test-0" as const],
-    fragmentRole: "user" as const,
   };
   trace.input.messages[0]!.content = [{ type: "text", text: "{{greeting}}" }];
   trace.input.templateResolutions = [resolution];
@@ -201,16 +238,15 @@ test("rejects template provenance for a run with an unresolved variable", () => 
 
 test("rejects duplicate template-use and output-message provenance", () => {
   const trace = structuredClone(completedTrace());
-  const resolution = {
+  const resolution: ResolvedTemplateUse = {
     templateUseId: "template-use_trace" as const,
     templateId: "template_trace" as const,
     templateRevisionId: "template-revision_trace-1" as const,
     templateName: "Greeting",
-    content: { kind: "fragment" as const, text: "Hello" },
+    messages: [{ role: "user" as const, content: "Hello" }],
     variableDefaults: {},
     values: {},
     outputMessageIds: ["message_trace-test-0" as const],
-    fragmentRole: "user" as const,
   };
   trace.input.templateResolutions = [resolution, structuredClone(resolution)];
   const started = trace.events[0];

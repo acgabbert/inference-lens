@@ -7,7 +7,7 @@ import type {
   ExternalImportReceipt,
   ProjectTemplateDiagnostic,
   PromptTemplate,
-  PromptTemplateContent,
+  PromptTemplateMessages,
   PromptTemplateRecommendedTarget,
   PromptTemplateUse,
 } from "../packages/core/src/project";
@@ -32,25 +32,21 @@ interface ProjectTemplatesPaneProps {
   itemCount: number;
   n8nImportDisabledReason?: string;
   onOpenN8nImport(): void;
-  onCreate(name: string, content: PromptTemplateContent): PromptTemplateId;
+  onCreate(name: string, messages: PromptTemplateMessages): PromptTemplateId;
   onSave(
     templateId: PromptTemplateId,
     name: string,
-    content: PromptTemplateContent,
+    messages: PromptTemplateMessages,
     defaults: Record<string, string>,
     recommendedTarget?: PromptTemplateRecommendedTarget,
   ): PromptTemplateRevisionId;
   onArchive(templateId: PromptTemplateId, onArchived?: () => void): void;
   onRestore(templateId: PromptTemplateId): void;
-  onInsert(
-    templateId: PromptTemplateId,
-    role: TemplateRole,
-    itemIndex: number,
-  ): void;
+  onInsert(templateId: PromptTemplateId, itemIndex: number): void;
 }
 
-function newFragment(): PromptTemplateContent {
-  return { kind: "fragment", text: "Write about {{topic}}." };
+function newPrompt(): PromptTemplateMessages {
+  return [{ role: "user", content: "Write about {{topic}}." }];
 }
 
 function currentRevision(template: PromptTemplate) {
@@ -85,8 +81,8 @@ export function ProjectTemplatesPane({
   const [viewedRevisionId, setViewedRevisionId] =
     useState<PromptTemplateRevisionId | undefined>(initialRevision?.id);
   const [name, setName] = useState(selected?.name ?? "");
-  const [content, setContent] = useState<PromptTemplateContent>(
-    initialRevision ? structuredClone(initialRevision.content) : newFragment(),
+  const [messages, setMessages] = useState<PromptTemplateMessages>(
+    initialRevision ? structuredClone(initialRevision.messages) : newPrompt(),
   );
   const [defaults, setDefaults] = useState<Record<string, string>>(
     initialRevision ? { ...initialRevision.variableDefaults } : {},
@@ -101,7 +97,6 @@ export function ProjectTemplatesPane({
     selected?.recommendedTarget?.connectionRequirementId ??
       defaultConnectionRequirementId,
   );
-  const [fragmentRole, setFragmentRole] = useState<TemplateRole>("user");
   const [insertionIndex, setInsertionIndex] = useState(itemCount);
   const [focusMode, setFocusMode] = useState(false);
   const editorRef = useRef<HTMLElement>(null);
@@ -116,8 +111,8 @@ export function ProjectTemplatesPane({
       (archived || viewedRevision?.id !== selected.currentRevisionId),
   );
   const discovery = useMemo(
-    () => discoverTemplateVariables(content),
-    [content],
+    () => discoverTemplateVariables(messages),
+    [messages],
   );
   const duplicateName = templates.some(
     (template) =>
@@ -145,7 +140,7 @@ export function ProjectTemplatesPane({
     setSelectedId(template.id);
     setViewedRevisionId(revision.id);
     setName(template.name);
-    setContent(structuredClone(revision.content));
+    setMessages(structuredClone(revision.messages));
     setDefaults({ ...revision.variableDefaults });
     setRecommendedModel(template.recommendedTarget?.model ?? "");
     setRecommendedConnectionRequirementId(
@@ -166,30 +161,18 @@ export function ProjectTemplatesPane({
     const revision = selected.revisions.find(({ id }) => id === revisionId);
     if (!revision) return;
     setViewedRevisionId(revision.id);
-    setContent(structuredClone(revision.content));
+    setMessages(structuredClone(revision.messages));
     setDefaults({ ...revision.variableDefaults });
   }
 
-  function addTemplate(kind: PromptTemplateContent["kind"]): void {
-    const content =
-      kind === "fragment"
-        ? newFragment()
-        : {
-            kind: "messages" as const,
-            messages: [
-              { role: "system" as const, content: "You are helpful." },
-              { role: "user" as const, content: "Explain {{topic}}." },
-            ],
-          };
-    const id = onCreate(
-      kind === "fragment" ? "Untitled prompt" : "Untitled message set",
-      content,
-    );
+  function addTemplate(): void {
+    const messages = newPrompt();
+    const id = onCreate("Untitled prompt", messages);
     setLibraryView("active");
     setSelectedId(id);
     setViewedRevisionId(undefined);
-    setName(kind === "fragment" ? "Untitled prompt" : "Untitled message set");
-    setContent(structuredClone(content));
+    setName("Untitled prompt");
+    setMessages(structuredClone(messages));
     setDefaults({});
     setRecommendedModel("");
     setRecommendedConnectionRequirementId(defaultConnectionRequirementId);
@@ -199,11 +182,8 @@ export function ProjectTemplatesPane({
     <div className="templates-workspace" data-readiness-target="prompt-library" tabIndex={-1}>
       <aside className="template-sidebar">
         <div className="template-create-actions">
-          <button className="button secondary" type="button" onClick={() => addTemplate("fragment")}>
+          <button className="button secondary" type="button" onClick={addTemplate}>
             + Prompt
-          </button>
-          <button className="button secondary" type="button" onClick={() => addTemplate("messages")}>
-            + Message set
           </button>
           <button
             className="button secondary template-import-action"
@@ -237,7 +217,7 @@ export function ProjectTemplatesPane({
           {visibleTemplates.length === 0 ? (
             <p className="template-empty">
               {libraryView === "active"
-                ? "Create a project-owned prompt or message set."
+                ? "Create a project-owned prompt."
                 : "Archived templates will appear here."}
             </p>
           ) : (
@@ -251,7 +231,7 @@ export function ProjectTemplatesPane({
               >
                 <strong>{template.name}</strong>
                 <span>
-                  {currentRevision(template).content.kind === "fragment" ? "Prompt" : "Message set"}
+                  {currentRevision(template).messages.length} {currentRevision(template).messages.length === 1 ? "message" : "messages"}
                   {" · "}
                   {usageCounts.get(template.id) ?? 0} uses
                 </span>
@@ -277,7 +257,7 @@ export function ProjectTemplatesPane({
             </h3>
             <p>
               {libraryView === "active"
-                ? "Create a prompt fragment or an ordered message set to begin."
+                ? "Create a prompt to begin."
                 : "Templates you archive will remain available to historical conversations."}
             </p>
           </div>
@@ -344,7 +324,7 @@ export function ProjectTemplatesPane({
                             onSave(
                               selected.id,
                               name,
-                              content,
+                              messages,
                               Object.fromEntries(
                                 discovery.variables.flatMap(({ name }) =>
                                   Object.hasOwn(defaults, name)
@@ -408,8 +388,8 @@ export function ProjectTemplatesPane({
             )}
 
             <div className="template-editor-body">
-              <TemplateContentEditor
-                content={content}
+              <TemplateMessagesEditor
+                messages={messages}
                 disabled={readOnly}
                 focusMode={focusMode}
                 focusToggleRef={focusToggleRef}
@@ -417,7 +397,7 @@ export function ProjectTemplatesPane({
                   if (open) setFocusMode(true);
                   else closeFocusMode();
                 }}
-                onChange={setContent}
+                onChange={setMessages}
               />
 
               <aside className="template-variable-rail">
@@ -512,19 +492,6 @@ export function ProjectTemplatesPane({
 
             {!archived && <footer className="template-insert-bar">
               <span className="template-insert-label">Pin into the conversation</span>
-              {viewedRevision.content.kind === "fragment" && (
-                <label>
-                  Role
-                  <select
-                    value={fragmentRole}
-                    onChange={(event) => setFragmentRole(event.target.value as TemplateRole)}
-                  >
-                    <option value="system">System</option>
-                    <option value="user">User</option>
-                    <option value="assistant">Assistant</option>
-                  </select>
-                </label>
-              )}
               <label>
                 Position
                 <select
@@ -542,11 +509,7 @@ export function ProjectTemplatesPane({
                 className="button primary"
                 type="button"
                 onClick={() =>
-                  onInsert(
-                    selected.id,
-                    fragmentRole,
-                    Math.min(insertionIndex, itemCount),
-                  )
+                  onInsert(selected.id, Math.min(insertionIndex, itemCount))
                 }
               >
                 Add to conversation
@@ -559,46 +522,53 @@ export function ProjectTemplatesPane({
   );
 }
 
-function TemplateContentEditor({
-  content,
+function TemplateMessagesEditor({
+  messages,
   disabled,
   focusMode,
   focusToggleRef,
   onFocusModeChange,
   onChange,
 }: {
-  content: PromptTemplateContent;
+  messages: PromptTemplateMessages;
   disabled: boolean;
   focusMode: boolean;
   focusToggleRef: React.RefObject<HTMLButtonElement | null>;
   onFocusModeChange(open: boolean): void;
-  onChange(content: PromptTemplateContent): void;
+  onChange(messages: PromptTemplateMessages): void;
 }) {
+  const expanded = messages.length > 1 || messages[0].role !== "user";
+
+  function addMessage(role: TemplateRole = "user", index = messages.length): void {
+    const next = [...messages];
+    next.splice(index, 0, { role, content: "" });
+    onChange(next as PromptTemplateMessages);
+  }
+
+  function updateMessage(
+    index: number,
+    patch: Partial<PromptTemplateMessages[number]>,
+  ): void {
+    onChange(
+      messages.map((message, candidateIndex) =>
+        candidateIndex === index ? { ...message, ...patch } : message,
+      ) as PromptTemplateMessages,
+    );
+  }
+
+  function moveMessage(index: number, offset: -1 | 1): void {
+    const target = index + offset;
+    if (target < 0 || target >= messages.length) return;
+    const next = [...messages];
+    [next[index], next[target]] = [next[target]!, next[index]!];
+    onChange(next as PromptTemplateMessages);
+  }
+
   return (
     <section className="template-content-editor">
       <div className="template-content-heading">
         <h3>Content</h3>
         <div className="template-content-actions">
-          <label className="template-kind-field">
-            Kind
-            <select
-              disabled={disabled}
-              value={content.kind}
-              onChange={(event) =>
-                onChange(
-                  event.target.value === "fragment"
-                    ? { kind: "fragment", text: "" }
-                    : {
-                        kind: "messages",
-                        messages: [{ role: "user", content: "" }],
-                      },
-                )
-              }
-            >
-              <option value="fragment">Prompt</option>
-              <option value="messages">Message set</option>
-            </select>
-          </label>
           <FocusModeToggle
             className="template-focus-toggle"
             open={focusMode}
@@ -608,88 +578,83 @@ function TemplateContentEditor({
           />
         </div>
       </div>
-      {content.kind === "fragment" ? (
-        <label className="template-fragment-field">
+      {!expanded ? (
+        <div className="template-fragment-field">
           <textarea
             aria-label="Prompt content"
             disabled={disabled}
             rows={9}
-            value={content.text}
-            onChange={(event) =>
-              onChange({ kind: "fragment", text: event.target.value })
-            }
+            value={messages[0].content}
+            onChange={(event) => updateMessage(0, { content: event.target.value })}
           />
-        </label>
+          {!disabled && (
+            <span className="template-simple-actions">
+              <button
+                className="button secondary"
+                type="button"
+                onClick={() => addMessage("system", 0)}
+              >
+                + Add system instructions
+              </button>
+              <button
+                className="button secondary"
+                type="button"
+                onClick={() => addMessage()}
+              >
+                + Add message
+              </button>
+            </span>
+          )}
+        </div>
       ) : (
         <div className="template-message-set">
-          {content.messages.map((message, index) => (
+          {messages.map((message, index) => (
             <article className="template-message-editor message-card" key={index}>
               <div className="message-toolbar">
                 <select
                   aria-label={`Template message ${index + 1} role`}
                   disabled={disabled}
                   value={message.role}
-                  onChange={(event) =>
-                    onChange({
-                      kind: "messages",
-                      messages: content.messages.map((candidate, candidateIndex) =>
-                        candidateIndex === index
-                          ? { ...candidate, role: event.target.value as TemplateRole }
-                          : candidate,
-                      ),
-                    })
-                  }
+                  onChange={(event) => updateMessage(index, { role: event.target.value as TemplateRole })}
                 >
                   <option value="system">System</option>
                   <option value="user">User</option>
                   <option value="assistant">Assistant</option>
                 </select>
-                {!disabled && content.messages.length > 1 && (
-                  <button
-                    className="remove-button"
-                    type="button"
-                    onClick={() =>
-                      onChange({
-                        kind: "messages",
-                        messages: content.messages.filter((_, candidateIndex) => candidateIndex !== index),
-                      })
-                    }
-                  >
-                    Remove
-                  </button>
-                )}
+                {!disabled && <div className="template-message-actions">
+                  <button aria-label={`Move template message ${index + 1} up`} className="text-button" disabled={index === 0} type="button" onClick={() => moveMessage(index, -1)}>Up</button>
+                  <button aria-label={`Move template message ${index + 1} down`} className="text-button" disabled={index === messages.length - 1} type="button" onClick={() => moveMessage(index, 1)}>Down</button>
+                  {messages.length > 1 && (
+                    <button
+                      className="remove-button"
+                      type="button"
+                      onClick={() => onChange(messages.filter((_, candidateIndex) => candidateIndex !== index) as PromptTemplateMessages)}
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>}
               </div>
               <textarea
                 aria-label={`Template message ${index + 1} content`}
                 disabled={disabled}
                 rows={5}
                 value={message.content}
-                onChange={(event) =>
-                  onChange({
-                    kind: "messages",
-                    messages: content.messages.map((candidate, candidateIndex) =>
-                      candidateIndex === index
-                        ? { ...candidate, content: event.target.value }
-                        : candidate,
-                    ),
-                  })
-                }
+                onChange={(event) => updateMessage(index, { content: event.target.value })}
               />
             </article>
           ))}
           {!disabled && (
-            <button
-              className="button secondary"
-              type="button"
-              onClick={() =>
-                onChange({
-                  kind: "messages",
-                  messages: [...content.messages, { role: "user", content: "" }],
-                })
-              }
-            >
-              + Add template message
-            </button>
+            <div className="template-expanded-actions">
+              {!messages.some(({ role }) => role === "system") && (
+                <button className="button secondary" type="button" onClick={() => addMessage("system", 0)}>
+                  + Add system instructions
+                </button>
+              )}
+              <button className="button secondary" type="button" onClick={() => addMessage()}>
+                + Add message
+              </button>
+            </div>
           )}
         </div>
       )}
@@ -749,18 +714,14 @@ function importProvenanceLabel(receipt: ExternalImportReceipt): string {
 }
 
 function TemplateContentPreview({
-  content,
+  messages,
   values,
   view,
 }: {
-  content: PromptTemplateContent;
+  messages: PromptTemplateMessages;
   values: Readonly<Record<string, string>>;
   view: "template" | "resolved";
 }) {
-  const messages =
-    content.kind === "fragment"
-      ? [{ role: "user", content: content.text }]
-      : content.messages;
   return (
     <div className="template-content-preview" aria-label={`${view} template preview`}>
       {messages.map((message, messageIndex) => (
@@ -820,7 +781,7 @@ function TemplateUseCardRevision({
   const [variableFilter, setVariableFilter] = useState("");
   const [attentionOnly, setAttentionOnly] = useState(false);
   const revision = template.revisions.find(({ id }) => id === use.templateRevisionId)!;
-  const discovery = discoverTemplateVariables(revision.content);
+  const discovery = discoverTemplateVariables(revision.messages);
   const effectiveValues = resolveTemplateValues(
     revision.variableDefaults,
     use.values,
@@ -999,7 +960,7 @@ function TemplateUseCardRevision({
           }
         >
           <TemplateContentPreview
-            content={revision.content}
+            messages={revision.messages}
             values={effectiveValues}
             view={previewView}
           />

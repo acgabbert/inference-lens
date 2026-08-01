@@ -21,7 +21,7 @@ import type {
   ToolDefinition,
 } from "./run-kernel/types.ts";
 
-export const EXPERIMENT_SCHEMA_VERSION = 1;
+export const EXPERIMENT_SCHEMA_VERSION = 2;
 export const EXPERIMENT_PLAN_FILE_SUFFIX = ".plan.json";
 export const EXPERIMENT_RESULT_FILE_SUFFIX = ".result.json";
 
@@ -38,8 +38,8 @@ export interface RepeatedExperimentCell {
   runId: RunId;
 }
 
-export interface RepeatedExperimentPlanV1 {
-  schemaVersion: 1;
+export interface RepeatedExperimentPlanV2 {
+  schemaVersion: 2;
   experimentId: ExperimentId;
   kind: "repeated-request";
   createdAt: string;
@@ -63,13 +63,18 @@ export type ExperimentCellResult =
   | ExperimentTerminalCellResult
   | ExperimentNotRunCellResult;
 
-export interface ExperimentResultV1 {
-  schemaVersion: 1;
+export interface ExperimentResultV2 {
+  schemaVersion: 2;
   experimentId: ExperimentId;
   status: "completed" | "cancelled";
   endedAt: string;
   cells: ExperimentCellResult[];
 }
+
+/** @deprecated Prefer RepeatedExperimentPlanV2. */
+export type RepeatedExperimentPlanV1 = RepeatedExperimentPlanV2;
+/** @deprecated Prefer ExperimentResultV2. */
+export type ExperimentResultV1 = ExperimentResultV2;
 
 export type ExperimentLifecycle = "interrupted" | "completed" | "cancelled";
 
@@ -190,7 +195,7 @@ const toolDefinitionSchema: z.ZodType<ToolDefinition> = z
   })
   .strict();
 
-const templateContentSchema = z.discriminatedUnion("kind", [
+const legacyTemplateContentSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("fragment"), text: z.string() }).strict(),
   z
     .object({
@@ -209,19 +214,55 @@ const templateContentSchema = z.discriminatedUnion("kind", [
     .strict(),
 ]);
 
-const resolvedTemplateUseSchema: z.ZodType<ResolvedTemplateUse> = z
-  .object({
+const resolvedTemplateUseBaseSchema = z.object({
     templateUseId: entityId("template-use"),
     templateId: entityId("template"),
     templateRevisionId: entityId("template-revision"),
     templateName: z.string(),
-    content: templateContentSchema,
     variableDefaults: z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), z.string()),
     values: z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), z.string()),
     outputMessageIds: z.array(entityId("message")).min(1),
-    fragmentRole: z.enum(["system", "user", "assistant"]).optional(),
-  })
-  .strict();
+  });
+
+const templateMessagesSchema = z
+  .array(
+    z
+      .object({
+        role: z.enum(["system", "user", "assistant"]),
+        content: z.string(),
+      })
+      .strict(),
+  )
+  .min(1) as unknown as z.ZodType<ResolvedTemplateUse["messages"]>;
+
+const resolvedTemplateUseSchema: z.ZodType<ResolvedTemplateUse> = z.union([
+  resolvedTemplateUseBaseSchema
+    .extend({ messages: templateMessagesSchema })
+    .strict(),
+  resolvedTemplateUseBaseSchema
+    .extend({
+      content: legacyTemplateContentSchema,
+      fragmentRole: z.enum(["system", "user", "assistant"]).optional(),
+    })
+    .strict()
+    .transform(({ content, fragmentRole, ...resolution }, context) => {
+      if (content.kind === "fragment" && !fragmentRole) {
+        context.addIssue({
+          code: "custom",
+          path: ["fragmentRole"],
+          message: "Fragment template provenance requires a role.",
+        });
+        return z.NEVER;
+      }
+      return {
+        ...resolution,
+        messages:
+          content.kind === "fragment"
+            ? [{ role: fragmentRole!, content: content.text }]
+            : content.messages,
+      } as ResolvedTemplateUse;
+    }),
+]);
 
 const capabilitiesSchema = z
   .object({
@@ -294,6 +335,8 @@ const planSchema = z
   })
   .strict();
 
+const planV1Schema = planSchema.extend({ schemaVersion: z.literal(1) }).strict();
+
 const resultSchema = z
   .object({
     schemaVersion: z.literal(EXPERIMENT_SCHEMA_VERSION),
@@ -319,6 +362,10 @@ const resultSchema = z
       ]),
     ),
   })
+  .strict();
+
+const resultV1Schema = resultSchema
+  .extend({ schemaVersion: z.literal(1) })
   .strict();
 
 function parseWith<T>(schema: z.ZodType<T>, value: unknown, label: string): T {
@@ -437,7 +484,17 @@ export function experimentArtifactIdentity(fileName: string): {
 }
 
 export function parseExperimentPlanFile(value: unknown): RepeatedExperimentPlanV1 {
-  const plan = parseWith(planSchema, value, "experiment plan") as RepeatedExperimentPlanV1;
+  const source =
+    typeof value === "object" &&
+    value !== null &&
+    "schemaVersion" in value &&
+    value.schemaVersion === 1
+      ? {
+          ...parseWith(planV1Schema, value, "experiment plan"),
+          schemaVersion: EXPERIMENT_SCHEMA_VERSION,
+        }
+      : value;
+  const plan = parseWith(planSchema, source, "experiment plan") as RepeatedExperimentPlanV1;
   assertPlanReferences(plan);
   assertNoSensitiveProviderOptions(plan);
   return plan;
@@ -457,7 +514,17 @@ export function parseExperimentResultFile(
   plan: RepeatedExperimentPlanV1,
 ): ExperimentResultV1 {
   const parsedPlan = parseExperimentPlanFile(plan);
-  const result = parseWith(resultSchema, value, "experiment result") as ExperimentResultV1;
+  const source =
+    typeof value === "object" &&
+    value !== null &&
+    "schemaVersion" in value &&
+    value.schemaVersion === 1
+      ? {
+          ...parseWith(resultV1Schema, value, "experiment result"),
+          schemaVersion: EXPERIMENT_SCHEMA_VERSION,
+        }
+      : value;
+  const result = parseWith(resultSchema, source, "experiment result") as ExperimentResultV1;
   assertResultReferences(result, parsedPlan);
   return result;
 }

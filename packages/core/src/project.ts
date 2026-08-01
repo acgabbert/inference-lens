@@ -41,7 +41,7 @@ import { createEntityId } from "./run-kernel/types.ts";
 import { randomUUID } from "./random-id.ts";
 import {
   discoverTemplateVariables,
-  renderTemplateContent,
+  renderTemplateMessages,
   resolveTemplateValues,
 } from "./template-engine.ts";
 import type { TemplateDiagnostic } from "./template-engine.ts";
@@ -55,7 +55,7 @@ export const PROJECT_DIRECTORY_SUFFIX = ".inference-lens";
 export const PROJECT_FILE_NAME = "project.json";
 export const PROJECT_EXPORT_FILE_SUFFIX = ".project.json";
 export const PROJECT_GITIGNORE_CONTENTS = "*\n";
-export const PROJECT_SCHEMA_VERSION = 5;
+export const PROJECT_SCHEMA_VERSION = 6;
 
 /**
  * Turns the portable project display name into one safe, visible directory
@@ -124,15 +124,15 @@ export interface ToolMock {
   result: ToolMockResultTemplate;
 }
 
-export type PromptTemplateContent =
-  | { kind: "fragment"; text: string }
-  | {
-      kind: "messages";
-      messages: Array<{
-        role: "system" | "user" | "assistant";
-        content: string;
-      }>;
-    };
+export interface PromptTemplateMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+export type PromptTemplateMessages = [
+  PromptTemplateMessage,
+  ...PromptTemplateMessage[],
+];
 
 /**
  * A portable recommendation for the target a template was authored or verified
@@ -152,7 +152,7 @@ export interface PromptTemplateRecommendedTarget {
 export interface PromptTemplateRevision {
   id: PromptTemplateRevisionId;
   createdAt: string;
-  content: PromptTemplateContent;
+  messages: PromptTemplateMessages;
   variableDefaults: Record<string, string>;
   externalImportId?: ExternalImportId;
 }
@@ -177,7 +177,6 @@ export interface PromptTemplateUse {
   templateRevisionId: PromptTemplateRevisionId;
   values: Record<string, string>;
   outputMessageIds: MessageId[];
-  fragmentRole?: "system" | "user" | "assistant";
 }
 
 export type ProjectConversationItem =
@@ -266,8 +265,8 @@ interface ProjectReferenceValidationShape {
   defaults: ProjectDefaults;
 }
 
-export interface ProjectFileV5 {
-  schemaVersion: 5;
+export interface ProjectFileV6 {
+  schemaVersion: 6;
   projectId: ProjectId;
   name: string;
   connectionRequirements: ConnectionRequirement[];
@@ -280,7 +279,7 @@ export interface ProjectFileV5 {
   defaults: ProjectDefaults;
 }
 
-export type ProjectFile = ProjectFileV5;
+export type ProjectFile = ProjectFileV6;
 
 const entityId = <Kind extends Parameters<typeof createEntityId>[0]>(
   kind: Kind,
@@ -477,22 +476,46 @@ const promptTemplateRevisionSchema: z.ZodType<PromptTemplateRevision> = z
   .object({
     id: entityId("template-revision"),
     createdAt: z.iso.datetime({ offset: true }),
-    content: z.discriminatedUnion("kind", [
-      z.object({ kind: z.literal("fragment"), text: z.string() }).strict(),
-      z
-        .object({
-          kind: z.literal("messages"),
-          messages: z.array(
-            z
-              .object({
-                role: z.enum(["system", "user", "assistant"]),
-                content: z.string(),
-              })
-              .strict(),
-          ),
-        })
-        .strict(),
-    ]),
+    messages: z
+      .array(
+        z
+          .object({
+            role: z.enum(["system", "user", "assistant"]),
+            content: z.string(),
+          })
+          .strict(),
+      )
+      .min(1) as unknown as z.ZodType<PromptTemplateMessages>,
+    variableDefaults: z.record(
+      z.string().regex(variableName, "Invalid template variable name."),
+      z.string(),
+    ),
+    externalImportId: entityId("external-import").optional(),
+  })
+  .strict();
+
+const legacyPromptTemplateContentSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("fragment"), text: z.string() }).strict(),
+  z
+    .object({
+      kind: z.literal("messages"),
+      messages: z.array(
+        z
+          .object({
+            role: z.enum(["system", "user", "assistant"]),
+            content: z.string(),
+          })
+          .strict(),
+      ),
+    })
+    .strict(),
+]);
+
+const legacyPromptTemplateRevisionSchema = z
+  .object({
+    id: entityId("template-revision"),
+    createdAt: z.iso.datetime({ offset: true }),
+    content: legacyPromptTemplateContentSchema,
     variableDefaults: z.record(
       z.string().regex(variableName, "Invalid template variable name."),
       z.string(),
@@ -512,7 +535,31 @@ const promptTemplateSchema: z.ZodType<PromptTemplate> = z
   })
   .strict();
 
+const legacyPromptTemplateSchema = z
+  .object({
+    id: entityId("template"),
+    name: z.string().trim().min(1),
+    currentRevisionId: entityId("template-revision"),
+    archivedAt: z.iso.datetime({ offset: true }).optional(),
+    recommendedTarget: promptTemplateRecommendedTargetSchema.optional(),
+    revisions: z.array(legacyPromptTemplateRevisionSchema).min(1),
+  })
+  .strict();
+
 const promptTemplateUseSchema: z.ZodType<PromptTemplateUse> = z
+  .object({
+    id: entityId("template-use"),
+    templateId: entityId("template"),
+    templateRevisionId: entityId("template-revision"),
+    values: z.record(
+      z.string().regex(variableName, "Invalid template variable name."),
+      z.string(),
+    ),
+    outputMessageIds: z.array(entityId("message")).min(1),
+  })
+  .strict();
+
+const legacyPromptTemplateUseSchema = z
   .object({
     id: entityId("template-use"),
     templateId: entityId("template"),
@@ -553,6 +600,32 @@ const projectConversationRevisionSchema: z.ZodType<ProjectConversationRevision> 
       createdAt: z.iso.datetime({ offset: true }),
     })
     .strict();
+
+const legacyProjectConversationRevisionSchema = z
+  .object({
+    id: entityId("revision"),
+    conversationId: entityId("conversation"),
+    parentRevisionId: entityId("revision").optional(),
+    items: z.array(
+      z.discriminatedUnion("kind", [
+        z
+          .object({
+            kind: z.literal("message"),
+            message: conversationMessageSchema,
+            externalImportId: entityId("external-import").optional(),
+          })
+          .strict(),
+        z
+          .object({
+            kind: z.literal("template-use"),
+            use: legacyPromptTemplateUseSchema,
+          })
+          .strict(),
+      ]),
+    ),
+    createdAt: z.iso.datetime({ offset: true }),
+  })
+  .strict();
 
 const externalImportReceiptSchema: z.ZodType<ExternalImportReceipt> = z
   .object({
@@ -631,7 +704,41 @@ const externalImportReceiptSchema: z.ZodType<ExternalImportReceipt> = z
     });
   });
 
-const projectFileV5Schema: z.ZodType<ProjectFileV5> = z
+const projectDefaultsSchema = z
+  .object({
+    conversationRevisionId: entityId("revision"),
+    target: z
+      .object({
+        connectionRequirementId: entityId("connection"),
+        model: z.string().trim().min(1),
+      })
+      .strict(),
+    options: inferenceOptionsSchema,
+    enabledToolIds: z.array(entityId("tool")),
+  })
+  .strict();
+
+const projectFileV5Schema = z
+  .object({
+    schemaVersion: z.literal(5),
+    projectId: entityId("project"),
+    name: z.string().trim().min(1),
+    connectionRequirements: z.array(connectionRequirementSchema).min(1),
+    conversations: z.array(projectConversationSchema).min(1),
+    conversationRevisions: z
+      .array(legacyProjectConversationRevisionSchema)
+      .min(1),
+    tools: z.array(toolDefinitionSchema),
+    toolMocks: z.array(toolMockSchema),
+    promptTemplates: z.array(legacyPromptTemplateSchema),
+    externalImports: z.array(externalImportReceiptSchema),
+    defaults: projectDefaultsSchema,
+  })
+  .strict();
+
+type ProjectFileV5 = z.infer<typeof projectFileV5Schema>;
+
+const projectFileV6Schema: z.ZodType<ProjectFileV6> = z
   .object({
     schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
     projectId: entityId("project"),
@@ -643,19 +750,7 @@ const projectFileV5Schema: z.ZodType<ProjectFileV5> = z
     toolMocks: z.array(toolMockSchema),
     promptTemplates: z.array(promptTemplateSchema),
     externalImports: z.array(externalImportReceiptSchema),
-    defaults: z
-      .object({
-        conversationRevisionId: entityId("revision"),
-        target: z
-          .object({
-            connectionRequirementId: entityId("connection"),
-            model: z.string().trim().min(1),
-          })
-          .strict(),
-        options: inferenceOptionsSchema,
-        enabledToolIds: z.array(entityId("tool")),
-      })
-      .strict(),
+    defaults: projectDefaultsSchema,
   })
   .strict()
   .superRefine(validateProjectReferences);
@@ -875,7 +970,7 @@ function validateSharedProjectReferences(
 }
 
 function validateProjectReferences(
-  project: ProjectFileV5,
+  project: ProjectFileV6,
   context: z.RefinementCtx,
 ): void {
   validateSharedProjectReferences(
@@ -1015,10 +1110,7 @@ function validateProjectReferences(
       );
       if (!templateRevision) return;
 
-      const expectedMessageCount =
-        templateRevision.content.kind === "fragment"
-          ? 1
-          : templateRevision.content.messages.length;
+      const expectedMessageCount = templateRevision.messages.length;
       if (item.use.outputMessageIds.length !== expectedMessageCount) {
         context.addIssue({
           code: "custom",
@@ -1026,29 +1118,9 @@ function validateProjectReferences(
           message: `Template use must provide ${expectedMessageCount} output message ID${expectedMessageCount === 1 ? "" : "s"}.`,
         });
       }
-      if (
-        templateRevision.content.kind === "fragment" &&
-        !item.use.fragmentRole
-      ) {
-        context.addIssue({
-          code: "custom",
-          path: [...path, "fragmentRole"],
-          message: "Fragment template uses require an explicit message role.",
-        });
-      }
-      if (
-        templateRevision.content.kind === "messages" &&
-        item.use.fragmentRole !== undefined
-      ) {
-        context.addIssue({
-          code: "custom",
-          path: [...path, "fragmentRole"],
-          message: "Message-set template uses cannot specify a fragment role.",
-        });
-      }
       Object.keys(item.use.values).forEach((name) => {
         const revisionVariables = new Set(
-          discoverTemplateVariables(templateRevision.content).variables.map(
+          discoverTemplateVariables(templateRevision.messages).variables.map(
             ({ name: variableName }) => variableName,
           ),
         );
@@ -1151,19 +1223,10 @@ function validateProjectReferences(
       });
       return;
     }
-    const expectedContent: PromptTemplateContent =
-      messages.length === 1
-        ? { kind: "fragment", text: messages[0]!.content }
-        : {
-            kind: "messages",
-            messages: messages as Array<{
-              role: "system" | "user" | "assistant";
-              content: string;
-            }>,
-          };
+    const expectedMessages = messages as PromptTemplateMessages;
     requireReference(
-      JSON.stringify(stableJsonValue(revision.content)) ===
-        JSON.stringify(stableJsonValue(expectedContent)),
+      JSON.stringify(stableJsonValue(revision.messages)) ===
+        JSON.stringify(stableJsonValue(expectedMessages)),
       ["externalImports", receiptIndex, "projection"],
       "Template import projection does not reproduce its anchored revision.",
       context,
@@ -1185,8 +1248,240 @@ export class ProjectValidationError extends Error {
   }
 }
 
+type TemplateRole = PromptTemplateMessage["role"];
+
+interface MigratedTemplateVariant {
+  templateId: PromptTemplateId;
+  revisionIds: Map<PromptTemplateRevisionId, PromptTemplateRevisionId>;
+}
+
+/**
+ * Project v5 stored one-message prompts as role-less fragments and attached the
+ * role to every use. V6 moves that role into the immutable template revision.
+ * When one legacy template was used with several roles, each role receives its
+ * own template so no use changes meaning.
+ */
+function migrateProjectV5(project: ProjectFileV5): ProjectFileV6 {
+  const roles: TemplateRole[] = ["system", "user", "assistant"];
+  const occupiedTemplateIds = new Set(project.promptTemplates.map(({ id }) => id));
+  const occupiedRevisionIds = new Set(
+    project.promptTemplates.flatMap(({ revisions }) =>
+      revisions.map(({ id }) => id),
+    ),
+  );
+  const legacyTemplates = new Map(
+    project.promptTemplates.map((template) => [template.id, template]),
+  );
+  const rolesByTemplate = new Map<PromptTemplateId, Set<TemplateRole>>();
+
+  for (const conversationRevision of project.conversationRevisions) {
+    for (const item of conversationRevision.items) {
+      if (item.kind !== "template-use") continue;
+      const template = legacyTemplates.get(item.use.templateId);
+      const revision = template?.revisions.find(
+        ({ id }) => id === item.use.templateRevisionId,
+      );
+      if (!revision) continue;
+      if (revision.content.kind === "messages") {
+        if (item.use.fragmentRole !== undefined) {
+          throw new ProjectValidationError([{
+            code: "custom",
+            path: ["conversationRevisions", conversationRevision.id, "items", item.use.id, "fragmentRole"],
+            message: "Message-set template uses cannot specify a fragment role.",
+          }]);
+        }
+        continue;
+      }
+      if (!item.use.fragmentRole) {
+        throw new ProjectValidationError([{
+          code: "custom",
+          path: ["conversationRevisions", conversationRevision.id, "items", item.use.id, "fragmentRole"],
+          message: "Fragment template uses require an explicit message role.",
+        }]);
+      }
+      const usedRoles = rolesByTemplate.get(item.use.templateId) ?? new Set<TemplateRole>();
+      usedRoles.add(item.use.fragmentRole);
+      rolesByTemplate.set(item.use.templateId, usedRoles);
+    }
+  }
+
+  // Imported one-message templates already have an authored role. Preserve the
+  // original IDs for that role so the receipt remains anchored without being
+  // duplicated or rewritten.
+  const importedRoleByTemplate = new Map<PromptTemplateId, TemplateRole>();
+  for (const receipt of project.externalImports) {
+    if (receipt.projection.kind !== "prompt-template") continue;
+    const projection = receipt.projection;
+    const template = legacyTemplates.get(projection.templateId);
+    const revision = template?.revisions.find(
+      ({ id }) => id === projection.templateRevisionId,
+    );
+    const authoredRole = receipt.authored[0]?.role;
+    if (revision?.content.kind === "fragment" && authoredRole) {
+      importedRoleByTemplate.set(projection.templateId, authoredRole);
+      const usedRoles = rolesByTemplate.get(projection.templateId) ?? new Set<TemplateRole>();
+      usedRoles.add(authoredRole);
+      rolesByTemplate.set(projection.templateId, usedRoles);
+    }
+  }
+
+  function uniqueTemplateId(
+    templateId: PromptTemplateId,
+    role: TemplateRole,
+  ): PromptTemplateId {
+    const suffix = templateId.slice("template_".length);
+    for (let occurrence = 1; ; occurrence += 1) {
+      const candidate = createEntityId(
+        "template",
+        `${suffix}-${role}${occurrence === 1 ? "" : `-${occurrence}`}`,
+      );
+      if (!occupiedTemplateIds.has(candidate)) {
+        occupiedTemplateIds.add(candidate);
+        return candidate;
+      }
+    }
+  }
+
+  function uniqueRevisionId(
+    revisionId: PromptTemplateRevisionId,
+    role: TemplateRole,
+  ): PromptTemplateRevisionId {
+    const suffix = revisionId.slice("template-revision_".length);
+    for (let occurrence = 1; ; occurrence += 1) {
+      const candidate = createEntityId(
+        "template-revision",
+        `${suffix}-${role}${occurrence === 1 ? "" : `-${occurrence}`}`,
+      );
+      if (!occupiedRevisionIds.has(candidate)) {
+        occupiedRevisionIds.add(candidate);
+        return candidate;
+      }
+    }
+  }
+
+  const variantsByTemplate = new Map<
+    PromptTemplateId,
+    Map<TemplateRole, MigratedTemplateVariant>
+  >();
+  const primaryRoleByTemplate = new Map<PromptTemplateId, TemplateRole>();
+  const promptTemplates: PromptTemplate[] = [];
+
+  for (const template of project.promptTemplates) {
+    const usedRoles = rolesByTemplate.get(template.id) ?? new Set<TemplateRole>();
+    const importedRole = importedRoleByTemplate.get(template.id);
+    const primaryRole =
+      importedRole ??
+      (usedRoles.has("user")
+        ? "user"
+        : roles.find((role) => usedRoles.has(role)) ?? "user");
+    const hasFragments = template.revisions.some(
+      ({ content }) => content.kind === "fragment",
+    );
+    const variantRoles = hasFragments
+      ? [primaryRole, ...roles.filter((role) => usedRoles.has(role) && role !== primaryRole)]
+      : [primaryRole];
+    const variants = new Map<TemplateRole, MigratedTemplateVariant>();
+    primaryRoleByTemplate.set(template.id, primaryRole);
+
+    variantRoles.forEach((role, variantIndex) => {
+      const primary = variantIndex === 0;
+      const templateId = primary
+        ? template.id
+        : uniqueTemplateId(template.id, role);
+      const revisionIds = new Map<
+        PromptTemplateRevisionId,
+        PromptTemplateRevisionId
+      >();
+      const revisions = template.revisions.map((revision) => {
+        const id = primary ? revision.id : uniqueRevisionId(revision.id, role);
+        revisionIds.set(revision.id, id);
+        const messages: PromptTemplateMessages =
+          revision.content.kind === "fragment"
+            ? [{ role, content: revision.content.text }]
+            : revision.content.messages.length > 0
+              ? structuredClone(revision.content.messages) as PromptTemplateMessages
+              : [{ role: "user", content: "" }];
+        return {
+          id,
+          createdAt: revision.createdAt,
+          messages,
+          variableDefaults: { ...revision.variableDefaults },
+          ...(primary && revision.externalImportId
+            ? { externalImportId: revision.externalImportId }
+            : {}),
+        };
+      });
+      variants.set(role, { templateId, revisionIds });
+      promptTemplates.push({
+        id: templateId,
+        name: primary
+          ? template.name
+          : `${template.name} (${role[0]!.toUpperCase()}${role.slice(1)})`,
+        currentRevisionId: revisionIds.get(template.currentRevisionId)!,
+        ...(template.archivedAt ? { archivedAt: template.archivedAt } : {}),
+        ...(template.recommendedTarget
+          ? { recommendedTarget: structuredClone(template.recommendedTarget) }
+          : {}),
+        revisions,
+      });
+    });
+    variantsByTemplate.set(template.id, variants);
+  }
+
+  const conversationRevisions: ProjectConversationRevision[] =
+    project.conversationRevisions.map((revision) => ({
+      ...revision,
+      items: revision.items.map((item): ProjectConversationItem => {
+        if (item.kind === "message") return structuredClone(item);
+        const template = legacyTemplates.get(item.use.templateId);
+        const pinned = template?.revisions.find(
+          ({ id }) => id === item.use.templateRevisionId,
+        );
+        const primaryRole =
+          primaryRoleByTemplate.get(item.use.templateId) ?? "user";
+        const role =
+          pinned?.content.kind === "fragment"
+            ? item.use.fragmentRole ?? primaryRole
+            : primaryRole;
+        const variant = variantsByTemplate.get(item.use.templateId)?.get(role);
+        return {
+          kind: "template-use",
+          use: {
+            id: item.use.id,
+            templateId: variant?.templateId ?? item.use.templateId,
+            templateRevisionId:
+              variant?.revisionIds.get(item.use.templateRevisionId) ??
+              item.use.templateRevisionId,
+            values: { ...item.use.values },
+            outputMessageIds: [...item.use.outputMessageIds],
+          },
+        };
+      }),
+    }));
+
+  return {
+    ...project,
+    schemaVersion: PROJECT_SCHEMA_VERSION,
+    promptTemplates,
+    conversationRevisions,
+  };
+}
+
 export function parseProjectFile(value: unknown): ProjectFile {
-  const parsed = projectFileV5Schema.safeParse(value);
+  const source =
+    typeof value === "object" &&
+    value !== null &&
+    "schemaVersion" in value &&
+    value.schemaVersion === 5
+      ? (() => {
+          const legacy = projectFileV5Schema.safeParse(value);
+          if (!legacy.success) {
+            throw new ProjectValidationError(legacy.error.issues);
+          }
+          return migrateProjectV5(legacy.data);
+        })()
+      : value;
+  const parsed = projectFileV6Schema.safeParse(source);
   if (!parsed.success) throw new ProjectValidationError(parsed.error.issues);
   return parsed.data;
 }
@@ -1237,7 +1532,6 @@ const preferredFieldOrder = new Map(
     "templateRevisionId",
     "values",
     "outputMessageIds",
-    "fragmentRole",
     "variableDefaults",
     "projection",
     "bindingIndex",
@@ -1459,7 +1753,7 @@ export function resolveProjectRevision(
       item.use.values,
       runOverrides[item.use.id],
     );
-    const rendered = renderTemplateContent(templateRevision.content, values);
+    const rendered = renderTemplateMessages(templateRevision.messages, values);
     diagnostics.push(
       ...rendered.diagnostics.map((diagnostic) => ({
         itemIndex,
@@ -1477,28 +1771,7 @@ export function resolveProjectRevision(
             : diagnostic,
       })),
     );
-    if (rendered.content.kind === "fragment") {
-      const role = item.use.fragmentRole;
-      if (!role) throw new Error("Validated fragment use is missing a role.");
-      messages.push({
-        id: item.use.outputMessageIds[0]!,
-        role,
-        content: [{ type: "text", text: rendered.content.text }],
-      });
-      templateResolutions.push({
-        templateUseId: item.use.id,
-        templateId: template.id,
-        templateRevisionId: templateRevision.id,
-        templateName: template.name,
-        content: structuredClone(templateRevision.content),
-        variableDefaults: { ...templateRevision.variableDefaults },
-        values,
-        outputMessageIds: [...item.use.outputMessageIds],
-        fragmentRole: role,
-      });
-      return;
-    }
-    rendered.content.messages.forEach((message, index) => {
+    rendered.messages.forEach((message, index) => {
       messages.push({
         id: item.use.outputMessageIds[index]!,
         role: message.role,
@@ -1510,7 +1783,7 @@ export function resolveProjectRevision(
       templateId: template.id,
       templateRevisionId: templateRevision.id,
       templateName: template.name,
-      content: structuredClone(templateRevision.content),
+      messages: structuredClone(templateRevision.messages),
       variableDefaults: { ...templateRevision.variableDefaults },
       values,
       outputMessageIds: [...item.use.outputMessageIds],
@@ -1958,7 +2231,6 @@ export interface InsertPromptTemplateUseOptions {
   templateId: PromptTemplateId;
   templateRevisionId?: PromptTemplateRevisionId;
   values?: Record<string, string>;
-  fragmentRole?: "system" | "user" | "assistant";
   itemIndex?: number;
   idSuffix?: string;
   outputMessageIdSuffixes?: string[];
@@ -1971,7 +2243,6 @@ export function insertPromptTemplateUse(
     templateId,
     templateRevisionId,
     values = {},
-    fragmentRole,
     itemIndex,
     idSuffix = randomUUID(),
     outputMessageIdSuffixes,
@@ -2000,10 +2271,7 @@ export function insertPromptTemplateUse(
       },
     ]);
   }
-  const outputCount =
-    revision.content.kind === "fragment"
-      ? 1
-      : revision.content.messages.length;
+  const outputCount = revision.messages.length;
   if (
     outputMessageIdSuffixes &&
     outputMessageIdSuffixes.length !== outputCount
@@ -2027,7 +2295,6 @@ export function insertPromptTemplateUse(
         outputMessageIdSuffixes?.[index] ?? `${idSuffix}-${index + 1}`,
       ),
     ),
-    ...(revision.content.kind === "fragment" ? { fragmentRole } : {}),
   };
   return updateConversationRevisionItems(
     project,
@@ -2095,7 +2362,6 @@ export interface UpdatePromptTemplateUseToLatestOptions {
   conversationRevisionId: ConversationRevisionId;
   templateUseId: PromptTemplateUseId;
   newOutputMessageIdSuffixes?: string[];
-  fragmentRole?: "system" | "user" | "assistant";
 }
 
 export function updatePromptTemplateUseToLatest(
@@ -2104,7 +2370,6 @@ export function updatePromptTemplateUseToLatest(
     conversationRevisionId,
     templateUseId,
     newOutputMessageIdSuffixes = [],
-    fragmentRole,
   }: UpdatePromptTemplateUseToLatestOptions,
 ): ProjectFile {
   const revision = project.conversationRevisions.find(
@@ -2127,8 +2392,7 @@ export function updatePromptTemplateUseToLatest(
     ({ id }) => id === template.currentRevisionId,
   )!;
   if (item.use.templateRevisionId === latest.id) return project;
-  const outputCount =
-    latest.content.kind === "fragment" ? 1 : latest.content.messages.length;
+  const outputCount = latest.messages.length;
   const additionalCount = Math.max(
     0,
     outputCount - item.use.outputMessageIds.length,
@@ -2143,7 +2407,7 @@ export function updatePromptTemplateUseToLatest(
     ]);
   }
   const variableNames = new Set(
-    discoverTemplateVariables(latest.content).variables.map(({ name }) => name),
+    discoverTemplateVariables(latest.messages).variables.map(({ name }) => name),
   );
   const values = Object.fromEntries(
     Object.entries(item.use.values).filter(([name]) => variableNames.has(name)),
@@ -2154,20 +2418,6 @@ export function updatePromptTemplateUseToLatest(
       createEntityId("message", suffix),
     ),
   ];
-  const nextFragmentRole =
-    latest.content.kind === "fragment"
-      ? fragmentRole ?? item.use.fragmentRole
-      : undefined;
-  if (latest.content.kind === "fragment" && !nextFragmentRole) {
-    throw new ProjectValidationError([
-      {
-        code: "custom",
-        path: ["fragmentRole"],
-        message:
-          "Updating a message-set use to a fragment requires an explicit message role.",
-      },
-    ]);
-  }
   return updateConversationRevisionItems(
     project,
     conversationRevisionId,
@@ -2185,7 +2435,6 @@ export function updatePromptTemplateUseToLatest(
           templateRevisionId: latest.id,
           values,
           outputMessageIds,
-          ...(nextFragmentRole ? { fragmentRole: nextFragmentRole } : {}),
         };
         return { kind: "template-use", use };
       }),
@@ -2286,7 +2535,7 @@ export function removePromptTemplateUse(
 
 export interface CreatePromptTemplateOptions {
   name: string;
-  content: PromptTemplateContent;
+  messages: PromptTemplateMessages;
   variableDefaults?: Record<string, string>;
   recommendedTarget?: PromptTemplateRecommendedTarget;
   idSuffix?: string;
@@ -2298,7 +2547,7 @@ export function createPromptTemplate(
   project: ProjectFile,
   {
     name,
-    content,
+    messages,
     variableDefaults = {},
     recommendedTarget,
     idSuffix = randomUUID(),
@@ -2322,7 +2571,7 @@ export function createPromptTemplate(
           {
             id: revisionId,
             createdAt,
-            content: structuredClone(content),
+            messages: structuredClone(messages),
             variableDefaults: { ...variableDefaults },
           },
         ],
@@ -2333,7 +2582,7 @@ export function createPromptTemplate(
 
 export interface AppendPromptTemplateRevisionOptions {
   templateId: PromptTemplateId;
-  content: PromptTemplateContent;
+  messages: PromptTemplateMessages;
   variableDefaults?: Record<string, string>;
   idSuffix?: string;
   createdAt?: string;
@@ -2343,7 +2592,7 @@ export function appendPromptTemplateRevision(
   project: ProjectFile,
   {
     templateId,
-    content,
+    messages,
     variableDefaults = {},
     idSuffix = randomUUID(),
     createdAt = new Date().toISOString(),
@@ -2366,8 +2615,8 @@ export function appendPromptTemplateRevision(
     ({ id }) => id === template.currentRevisionId,
   )!;
   if (
-    JSON.stringify(stableJsonValue(current.content)) ===
-      JSON.stringify(stableJsonValue(content)) &&
+    JSON.stringify(stableJsonValue(current.messages)) ===
+      JSON.stringify(stableJsonValue(messages)) &&
     JSON.stringify(stableJsonValue(current.variableDefaults)) ===
       JSON.stringify(stableJsonValue(variableDefaults))
   ) {
@@ -2376,7 +2625,7 @@ export function appendPromptTemplateRevision(
   const revision: PromptTemplateRevision = {
     id: createEntityId("template-revision", idSuffix),
     createdAt,
-    content: structuredClone(content),
+    messages: structuredClone(messages),
     variableDefaults: { ...variableDefaults },
   };
   const promptTemplates = [...project.promptTemplates];

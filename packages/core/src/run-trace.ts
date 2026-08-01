@@ -7,9 +7,9 @@ import {
 } from "./run-kernel/reducer.ts";
 import { isSensitiveTemplateVariableName } from "./project.ts";
 import { stableJsonValue } from "./stable-json.ts";
-import { renderTemplateContent } from "./template-engine.ts";
+import { renderTemplateMessages } from "./template-engine.ts";
 
-export const RUN_TRACE_SCHEMA_VERSION = 4;
+export const RUN_TRACE_SCHEMA_VERSION = 5;
 export const RUN_TRACE_FILE_SUFFIX = ".json";
 
 /**
@@ -80,7 +80,7 @@ const branchProvenanceSchema = z
 
 const templateMessageRoleSchema = z.enum(["system", "user", "assistant"]);
 
-const resolvedTemplateContentSchema = z.discriminatedUnion("kind", [
+const legacyResolvedTemplateContentSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("fragment"), text: z.string() }).strict(),
   z
     .object({
@@ -105,38 +105,62 @@ const resolvedTemplateContentSchema = z.discriminatedUnion("kind", [
  * is rejected as an invalid trace instead of reaching the renderer and
  * surfacing as an internal error.
  */
-const resolvedTemplateUseSchema = z
-  .object({
-    templateUseId: z.string().regex(/^template-use_.+/),
-    templateId: z.string().regex(/^template_.+/),
-    templateRevisionId: z.string().regex(/^template-revision_.+/),
-    templateName: z.string(),
-    content: resolvedTemplateContentSchema,
-    variableDefaults: z.record(
-      z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/),
-      z.string(),
-    ),
-    values: z.record(
-      z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/),
-      z.string(),
-    ),
-    outputMessageIds: z.array(z.string().regex(/^message_.+/)).min(1),
+const resolvedTemplateUseBaseSchema = z.object({
+  templateUseId: z.string().regex(/^template-use_.+/),
+  templateId: z.string().regex(/^template_.+/),
+  templateRevisionId: z.string().regex(/^template-revision_.+/),
+  templateName: z.string(),
+  variableDefaults: z.record(
+    z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/),
+    z.string(),
+  ),
+  values: z.record(
+    z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/),
+    z.string(),
+  ),
+  outputMessageIds: z.array(z.string().regex(/^message_.+/)).min(1),
+});
+
+function rejectSensitiveTemplateProvenance(
+  resolution: { variableDefaults: Record<string, string>; values: Record<string, string> },
+  context: z.RefinementCtx,
+): void {
+  for (const field of ["variableDefaults", "values"] as const) {
+    Object.keys(resolution[field]).forEach((name) => {
+      if (isSensitiveTemplateVariableName(name)) {
+        context.addIssue({
+          code: "custom",
+          path: [field, name],
+          message: "Template provenance cannot contain secret-like variables.",
+        });
+      }
+    });
+  }
+}
+
+const legacyResolvedTemplateUseSchema = resolvedTemplateUseBaseSchema
+  .extend({
+    content: legacyResolvedTemplateContentSchema,
     fragmentRole: templateMessageRoleSchema.optional(),
   })
   .strict()
-  .superRefine((resolution, context) => {
-    for (const field of ["variableDefaults", "values"] as const) {
-      Object.keys(resolution[field]).forEach((name) => {
-        if (isSensitiveTemplateVariableName(name)) {
-          context.addIssue({
-            code: "custom",
-            path: [field, name],
-            message: "Template provenance cannot contain secret-like variables.",
-          });
-        }
-      });
-    }
-  });
+  .superRefine(rejectSensitiveTemplateProvenance);
+
+const resolvedTemplateUseSchema = resolvedTemplateUseBaseSchema
+  .extend({
+    messages: z
+      .array(
+        z
+          .object({
+            role: templateMessageRoleSchema,
+            content: z.string(),
+          })
+          .strict(),
+      )
+      .min(1),
+  })
+  .strict()
+  .superRefine(rejectSensitiveTemplateProvenance);
 
 const traceV1EnvelopeSchema = traceEnvelopeBaseSchema
   .extend({ schemaVersion: z.literal(1) })
@@ -155,7 +179,7 @@ const traceV3EnvelopeSchema = traceEnvelopeBaseSchema
     input: z
       .object({
         runId: z.string().regex(/^run_.+/),
-        templateResolutions: z.array(resolvedTemplateUseSchema),
+        templateResolutions: z.array(legacyResolvedTemplateUseSchema),
       })
       .passthrough(),
     branchedFrom: branchProvenanceSchema.optional(),
@@ -165,6 +189,20 @@ const traceV3EnvelopeSchema = traceEnvelopeBaseSchema
 const traceV4EnvelopeSchema = traceEnvelopeBaseSchema
   .extend({
     schemaVersion: z.literal(4),
+    input: z
+      .object({
+        runId: z.string().regex(/^run_.+/),
+        templateResolutions: z.array(legacyResolvedTemplateUseSchema),
+        responseMode: z.enum(["streaming", "buffered"]),
+      })
+      .passthrough(),
+    branchedFrom: branchProvenanceSchema.optional(),
+  })
+  .strict();
+
+const traceV5EnvelopeSchema = traceEnvelopeBaseSchema
+  .extend({
+    schemaVersion: z.literal(5),
     input: z
       .object({
         runId: z.string().regex(/^run_.+/),
@@ -184,6 +222,7 @@ const traceEnvelopeSchema = z.discriminatedUnion("schemaVersion", [
   traceV2EnvelopeSchema,
   traceV3EnvelopeSchema,
   traceV4EnvelopeSchema,
+  traceV5EnvelopeSchema,
 ]);
 
 export function traceFileName(runId: RunId): string {
@@ -234,6 +273,31 @@ export function parseRunTraceJson(contents: string): RunTrace {
   return parseRunTraceFile(value);
 }
 
+function migrateTemplateResolutionShape(
+  input: RunTrace["input"],
+): RunTrace["input"] {
+  const templateResolutions = input.templateResolutions.map((resolution) => {
+    if ("messages" in resolution) return resolution;
+    const legacy = resolution as unknown as z.infer<
+      typeof legacyResolvedTemplateUseSchema
+    >;
+    const { content, fragmentRole, ...shared } = legacy;
+    if (content.kind === "fragment" && !fragmentRole) {
+      throw new RunTraceValidationError(
+        `Template provenance for "${legacy.templateUseId}" is missing its fragment role.`,
+      );
+    }
+    return {
+      ...shared,
+      messages:
+        content.kind === "fragment"
+          ? [{ role: fragmentRole!, content: content.text }]
+          : content.messages,
+    };
+  });
+  return { ...input, templateResolutions } as RunTrace["input"];
+}
+
 export function parseRunTraceFile(value: unknown): RunTrace {
   const result = traceEnvelopeSchema.safeParse(value);
   if (!result.success) {
@@ -245,7 +309,7 @@ export function parseRunTraceFile(value: unknown): RunTrace {
     );
   }
 
-  const envelope = value as RunTrace;
+  const envelope = value as unknown as RunTrace;
   let trace = envelope;
   if (trace.schemaVersion < 3) {
     trace = {
@@ -297,6 +361,18 @@ export function parseRunTraceFile(value: unknown): RunTrace {
       })),
     };
   }
+  if (envelope.schemaVersion < 5) {
+    trace = {
+      ...trace,
+      schemaVersion: RUN_TRACE_SCHEMA_VERSION,
+      input: migrateTemplateResolutionShape(trace.input),
+      events: trace.events.map((event) =>
+        event.type === "run.started"
+          ? { ...event, input: migrateTemplateResolutionShape(event.input) }
+          : event,
+      ),
+    };
+  }
   if (trace.runId !== trace.input.runId) {
     throw new RunTraceValidationError("Run trace input has a different run ID.");
   }
@@ -343,8 +419,8 @@ export function parseRunTraceFile(value: unknown): RunTrace {
       templateOutputMessageIds.add(messageId);
     }
 
-    const rendered = renderTemplateContent(
-      resolution.content,
+    const rendered = renderTemplateMessages(
+      resolution.messages,
       resolution.values,
     );
     if (rendered.diagnostics.length > 0) {
@@ -352,20 +428,11 @@ export function parseRunTraceFile(value: unknown): RunTrace {
         `Template provenance for "${resolution.templateUseId}" is unresolved.`,
       );
     }
-    const expected =
-      rendered.content.kind === "fragment"
-        ? [
-            {
-              id: resolution.outputMessageIds[0],
-              role: resolution.fragmentRole,
-              text: rendered.content.text,
-            },
-          ]
-        : rendered.content.messages.map((message, index) => ({
-            id: resolution.outputMessageIds[index],
-            role: message.role,
-            text: message.content,
-          }));
+    const expected = rendered.messages.map((message, index) => ({
+      id: resolution.outputMessageIds[index],
+      role: message.role,
+      text: message.content,
+    }));
     if (
       expected.length !== resolution.outputMessageIds.length ||
       expected.some(({ id, role, text }) => {

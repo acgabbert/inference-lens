@@ -40,11 +40,10 @@ const templateResolution = {
   templateId: "template_question",
   templateRevisionId: "template-revision_question-2",
   templateName: "Question",
-  content: { kind: "fragment", text: "Explain {{topic}}." },
+  messages: [{ role: "user", content: "Explain {{topic}}." }],
   variableDefaults: { topic: "branching" },
   values: { topic: "atomic branches" },
   outputMessageIds: ["message_question"],
-  fragmentRole: "user",
 };
 
 test("disclosure preserves the selected tab and tabs support arrow keys", async () => {

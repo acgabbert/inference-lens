@@ -1197,6 +1197,29 @@ output {
   background: var(--surface-panel);
 }
 
+.template-fragment-field,
+.template-simple-actions,
+.template-expanded-actions,
+.template-message-actions {
+  display: flex;
+}
+
+.template-fragment-field {
+  flex-direction: column;
+  gap: 10px;
+}
+
+.template-simple-actions,
+.template-expanded-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.template-message-actions {
+  align-items: center;
+  gap: 6px;
+}
+
 .template-message-set {
   display: grid;
   gap: 10px;

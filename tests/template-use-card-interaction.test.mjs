@@ -52,9 +52,7 @@ const template = {
     {
       id: "template-revision_support-1",
       createdAt: "2026-07-31T12:00:00.000Z",
-      content: {
-        kind: "messages",
-        messages: [
+      messages: [
           {
             role: "system",
             content: `You are a support agent.\n${variableNames
@@ -63,7 +61,6 @@ const template = {
           },
           { role: "user", content: "Handle {{ticket_summary}}." },
         ],
-      },
       variableDefaults: Object.fromEntries(
         satisfied.map((name) => [name, `default ${name}`]),
       ),

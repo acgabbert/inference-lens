@@ -86,7 +86,7 @@ function planFor(input: ResolvedRunInput, repetitionCount: number): RepeatedExpe
   void discardedRunId;
   const experimentId = createEntityId("experiment", randomUUID());
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     experimentId,
     kind: "repeated-request",
     createdAt: new Date().toISOString(),

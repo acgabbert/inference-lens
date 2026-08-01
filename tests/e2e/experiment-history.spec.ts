@@ -12,7 +12,7 @@ import { OPENAI_COMPATIBLE_CAPABILITIES } from "../../packages/core/src/types";
 function interruptedPlan(): RepeatedExperimentPlanV1 {
   const createdAt = "2026-07-31T12:00:00.000Z";
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     experimentId: createEntityId("experiment", "browser-history"),
     kind: "repeated-request",
     createdAt,

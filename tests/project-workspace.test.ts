@@ -138,7 +138,7 @@ function experimentPlan(): RepeatedExperimentPlanV1 {
   const { runId: sourceRunId, ...commonInput } = input;
   assert.equal(sourceRunId, "run_workspace-experiment-source");
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     experimentId: "experiment_workspace",
     kind: "repeated-request",
     createdAt: "2026-07-30T12:00:01.000Z",

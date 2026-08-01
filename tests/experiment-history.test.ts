@@ -24,7 +24,7 @@ import { OPENAI_COMPATIBLE_CAPABILITIES } from "../packages/core/src/types.ts";
 function plan(suffix: string, createdAt = "2026-07-31T12:00:00.000Z"): RepeatedExperimentPlanV1 {
   const experimentId = createEntityId("experiment", suffix);
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     experimentId,
     kind: "repeated-request",
     createdAt,
@@ -145,7 +145,7 @@ function completedTraceSource(value: RepeatedExperimentPlanV1, ordinal: number) 
 test("groups completed experiments even when referenced traces are missing", () => {
   const value = plan("complete");
   const result: ExperimentResultV1 = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     experimentId: value.experimentId,
     status: "completed",
     endedAt: "2026-07-31T12:01:00.000Z",
@@ -173,7 +173,7 @@ test("groups completed experiments even when referenced traces are missing", () 
 test("groups cancelled experiments with their unstarted cells", () => {
   const value = plan("cancelled");
   const result: ExperimentResultV1 = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     experimentId: value.experimentId,
     status: "cancelled",
     endedAt: "2026-07-31T12:00:10.000Z",

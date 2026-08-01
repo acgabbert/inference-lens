@@ -117,7 +117,7 @@ export class RepeatedExperimentController {
       }
 
       const result: ExperimentResultV1 = {
-        schemaVersion: 1,
+        schemaVersion: 2,
         experimentId: plan.experimentId,
         status: cancelled ? "cancelled" : "completed",
         endedAt: new Date().toISOString(),
