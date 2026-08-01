@@ -279,14 +279,17 @@ export function RunTracePanel({
     if (!summary && open) onOpenChange(false);
   }, [onOpenChange, open, summary]);
 
+  // With no run evidence, there is no disclosure to offer. Omitting the
+  // panel also returns its collapsed height to the response workspace.
+  if (!summary) return null;
+
   return (
     <ResizableTracePanel
-      open={Boolean(summary) && open}
-      canOpen={Boolean(summary)}
+      open={open}
       onOpenChange={onOpenChange}
-      summary={summary ? <RunInspectionSummary summary={summary} /> : undefined}
+      summary={<RunInspectionSummary summary={summary} />}
       tabs={
-        summary && open && (
+        open && (
           <PaneTabs
             idPrefix="run-details"
             label="Run details"

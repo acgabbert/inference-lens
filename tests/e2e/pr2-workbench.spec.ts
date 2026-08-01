@@ -113,6 +113,7 @@ test("renders the buffered fixture transcript and exact token totals", async ({ 
 
 test("retires previous run details when a repeated experiment starts", async ({ page }) => {
   await seedBufferedProfile(page);
+  await page.setViewportSize({ width: 1280, height: 600 });
   await page.goto("/");
   await waitForHydration(page);
 
@@ -131,7 +132,18 @@ test("retires previous run details when a repeated experiment starts", async ({ 
     page.getByRole("region", { name: "Repeated experiment results" }),
   ).toBeVisible();
   await expect(page.getByRole("tab", { name: "Metrics" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Run details" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Run details" })).toHaveCount(0);
+
+  const results = page.getByRole("region", { name: "Repeated experiment results" });
+  const scrollLayout = await results.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    overflowY: getComputedStyle(element).overflowY,
+    scrollHeight: element.scrollHeight,
+  }));
+  expect(scrollLayout.overflowY).toBe("auto");
+  expect(scrollLayout.scrollHeight).toBeGreaterThan(scrollLayout.clientHeight);
+  await results.evaluate((element) => element.scrollTo(0, element.scrollHeight));
+  await expect(results.getByText("Repetition 2", { exact: true })).toBeInViewport();
 });
 
 test("keeps semantic type, state contrast, and layout intact at supported widths", async ({
@@ -192,10 +204,10 @@ test("keeps semantic type, state contrast, and layout intact at supported widths
     });
     if (width <= 760) {
       await expect(mobileNavigation).toBeVisible();
-      await expect(mobileNavigation.getByRole("button")).toHaveCount(3);
-      await mobileNavigation.getByRole("button", { name: "Inspect" }).click();
-      await expect(page.locator(".inspect-view")).toBeVisible();
-      await expect(page.locator(".response-view")).toBeHidden();
+      await expect(mobileNavigation.getByRole("button")).toHaveCount(2);
+      await expect(mobileNavigation.getByRole("button", { name: "Inspect" })).toHaveCount(0);
+      await mobileNavigation.getByRole("button", { name: "Response" }).click();
+      await expect(page.locator(".response-view")).toBeVisible();
       await mobileNavigation.getByRole("button", { name: "Request" }).click();
       await expect(page.locator(".request-pane")).toBeVisible();
     } else {
@@ -234,7 +246,8 @@ test("uses peer request, response, and inspect views on a narrow screen", async 
   await expect(tabs).toBeVisible();
   await expect(page.locator(".request-pane")).toBeVisible();
   await expect(page.locator(".response-pane")).toBeHidden();
-  await expect(tabs.getByRole("button")).toHaveCount(3);
+  await expect(tabs.getByRole("button")).toHaveCount(2);
+  await expect(tabs.getByRole("button", { name: "Inspect" })).toHaveCount(0);
 
   const projectMenu = page.locator(".project-menu > summary");
   await expect(projectMenu).toBeVisible();
@@ -288,6 +301,8 @@ test("uses peer request, response, and inspect views on a narrow screen", async 
   await expect(page.locator(".response-pane")).toContainText(
     "Buffered fixture response: 2 + 2 = 4.",
   );
+  await expect(tabs.getByRole("button")).toHaveCount(3);
+  await expect(tabs.getByRole("button", { name: "Inspect" })).toBeVisible();
   await expect(tabs.getByRole("button", { name: "Response" })).toHaveClass(
     /active/,
   );

@@ -256,7 +256,8 @@ textarea,
 .mobile-workbench-tabs button,
 .trace-storage-icon,
 .run-readiness-glyph,
-.trace-chevron {
+.trace-chevron,
+.repeated-experiment-metric-section h3 {
   font-size: var(--type-compact);
 }
 
@@ -2685,6 +2686,14 @@ output {
   padding: 1.25rem;
 }
 
+.repeated-experiment-workspace:not(.experiment-context-pane) {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  align-content: start;
+  overscroll-behavior: contain;
+}
+
 .repeated-experiment-workspace.experiment-context-pane {
   height: 100%;
   min-height: 0;
@@ -2761,10 +2770,10 @@ output {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.65rem;
-  margin: 0;
 }
 
-.repeated-experiment-summary > div {
+.repeated-experiment-metric-section,
+.repeated-experiment-more-metrics {
   min-width: 0;
   padding: 0.75rem;
   border: 1px solid var(--border-default);
@@ -2772,13 +2781,51 @@ output {
   background: var(--surface-translucent);
 }
 
-.repeated-experiment-summary dt {
+.repeated-experiment-metric-section h3 {
+  margin: 0 0 0.65rem;
+  color: var(--text-primary);
+}
+
+.repeated-experiment-metric-section dl,
+.repeated-experiment-more-metrics dl {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+}
+
+.repeated-experiment-metric-section dl > div,
+.repeated-experiment-more-metrics dl > div {
+  min-width: 0;
+}
+
+.repeated-experiment-metric-section dt,
+.repeated-experiment-more-metrics dt {
   color: var(--text-muted);
 }
 
-.repeated-experiment-summary dd {
+.repeated-experiment-metric-section dd,
+.repeated-experiment-more-metrics dd {
   margin: 0.25rem 0 0;
   font-variant-numeric: tabular-nums;
+}
+
+.repeated-experiment-more-metrics {
+  padding: 0;
+}
+
+.repeated-experiment-more-metrics summary {
+  padding: 0.75rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.repeated-experiment-more-metrics[open] summary {
+  border-bottom: 1px solid var(--border-default);
+}
+
+.repeated-experiment-more-metrics dl {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 0.75rem;
 }
 
 .repeated-experiment-rows {
@@ -5745,6 +5792,10 @@ main {
   }
 
   .repeated-experiment-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .repeated-experiment-more-metrics dl {
     grid-template-columns: 1fr;
   }
 

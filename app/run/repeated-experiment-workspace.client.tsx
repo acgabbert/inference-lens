@@ -54,10 +54,14 @@ function pendingLabel(
   return isLive ? "Saving trace…" : "Trace missing";
 }
 
-function rowMetrics(state: RunState | undefined): string {
-  if (!state || !["completed", "failed", "cancelled"].includes(state.status.kind)) return "—";
+function rowMetrics(state: RunState | undefined): string | undefined {
+  if (!state || !["completed", "failed", "cancelled"].includes(state.status.kind)) return undefined;
   const metrics = runMetrics(state);
-  return `${formatDuration(metrics.totalDurationMs)} · ${formatTokens(metrics.usage.totalTokens)} tokens`;
+  const values = [
+    metrics.totalDurationMs === undefined ? undefined : formatDuration(metrics.totalDurationMs),
+    metrics.usage.totalTokens === undefined ? undefined : `${formatTokens(metrics.usage.totalTokens)} tokens`,
+  ].filter((value): value is string => value !== undefined);
+  return values.length > 0 ? values.join(" · ") : undefined;
 }
 
 const OUTPUT_PREVIEW_MAX_CHARACTERS = 240;
@@ -74,11 +78,16 @@ function outputPreview(state: RunState | undefined): string | undefined {
     : normalized;
 }
 
-function range(label: string, values: { count: number; min?: number; median?: number; max?: number }, formatter: (value?: number) => string) {
+function range(
+  label: string,
+  values: { count: number; min?: number; median?: number; max?: number },
+  formatter: (value?: number) => string,
+) {
+  if (values.count === 0) return null;
   return (
     <div>
       <dt>{label}</dt>
-      <dd>{values.count === 0 ? "—" : `${formatter(values.median)} median · ${formatter(values.min)}–${formatter(values.max)}`}</dd>
+      <dd>{formatter(values.median)} median · {formatter(values.min)}–{formatter(values.max)}</dd>
     </div>
   );
 }
@@ -116,6 +125,16 @@ export function RepeatedExperimentWorkspace({
   const isRunning = live !== undefined;
   const lifecycle = isRunning ? "running" : execution.error ? "interrupted" : aggregate.lifecycle;
   const activeOrdinal = live?.currentOrdinal;
+  const incompleteOutcomes = [
+    aggregate.notRun > 0 ? `${aggregate.notRun} not run` : undefined,
+    aggregate.missingTrace > 0 ? `${aggregate.missingTrace} missing trace` : undefined,
+  ].filter((value): value is string => value !== undefined);
+  const hasLatency = aggregate.totalDurationMs.count > 0 || aggregate.ttfoMs.count > 0;
+  const hasUsage = aggregate.reportedTotalTokens.count > 0;
+  const hasMoreMetrics =
+    aggregate.reportedOutputTokens.count > 0 ||
+    aggregate.outputTokensPerSecond.count > 0 ||
+    aggregate.outputCharacterCount.count > 0;
 
   useEffect(() => {
     if (!isRunning) return;
@@ -151,20 +170,49 @@ export function RepeatedExperimentWorkspace({
       {execution.storage === "unsaved" && <p className="repeated-experiment-notice" role="status">This experiment is not saved and will be lost when this session closes.</p>}
       {execution.error && <p className="repeated-experiment-notice error" role="alert">{execution.error}</p>}
 
-      <dl className="repeated-experiment-summary" aria-label="Repeated experiment summary">
-        <div><dt>Outcomes</dt><dd>{aggregate.completed} completed · {aggregate.failed} failed · {aggregate.cancelled} cancelled</dd></div>
-        <div><dt>Unstarted / missing</dt><dd>{aggregate.notRun} not run · {aggregate.missingTrace} missing trace</dd></div>
-        <div><dt>Retries observed</dt><dd>{aggregate.runsWithRetries}</dd></div>
-        <div><dt>Exact output variants</dt><dd>{aggregate.distinctFinalAssistantOutputs}</dd></div>
-        {range("Total duration", aggregate.totalDurationMs, formatDuration)}
-        {range("Time to first output", aggregate.ttfoMs, formatDuration)}
-        {range("Reported total tokens", aggregate.reportedTotalTokens, formatTokens)}
-        {range("Reported output tokens", aggregate.reportedOutputTokens, formatTokens)}
-        {range("Output throughput", aggregate.outputTokensPerSecond, formatRate)}
-        {range("Output characters", aggregate.outputCharacterCount, (value) => value?.toLocaleString() ?? "—")}
-        <div><dt>Summed reported total tokens</dt><dd>{formatTokens(aggregate.totalTokens.total)} across {aggregate.totalTokens.reportedRuns} runs</dd></div>
-        <div><dt>Summed reported output tokens</dt><dd>{formatTokens(aggregate.outputTokens.total)} across {aggregate.outputTokens.reportedRuns} runs</dd></div>
-      </dl>
+      <div className="repeated-experiment-summary" aria-label="Repeated experiment summary">
+        <section className="repeated-experiment-metric-section">
+          <h3>Outcomes</h3>
+          <dl>
+            <div><dt>Finished runs</dt><dd>{aggregate.completed} completed · {aggregate.failed} failed · {aggregate.cancelled} cancelled</dd></div>
+            {incompleteOutcomes.length > 0 && <div><dt>Unstarted / missing</dt><dd>{incompleteOutcomes.join(" · ")}</dd></div>}
+          </dl>
+        </section>
+
+        <section className="repeated-experiment-metric-section">
+          <h3>Consistency</h3>
+          <dl>
+            <div><dt>Exact output variants</dt><dd>{aggregate.distinctFinalAssistantOutputs}</dd></div>
+            <div><dt>Retries observed</dt><dd>{aggregate.runsWithRetries}</dd></div>
+          </dl>
+        </section>
+
+        {hasLatency && <section className="repeated-experiment-metric-section">
+          <h3>Latency</h3>
+          <dl>
+            {range("Total duration", aggregate.totalDurationMs, formatDuration)}
+            {range("Time to first output", aggregate.ttfoMs, formatDuration)}
+          </dl>
+        </section>}
+
+        {hasUsage && <section className="repeated-experiment-metric-section">
+          <h3>Usage</h3>
+          <dl>
+            {range("Per-run total tokens", aggregate.reportedTotalTokens, formatTokens)}
+            <div><dt>Experiment total</dt><dd>{formatTokens(aggregate.totalTokens.total)} across {aggregate.totalTokens.reportedRuns} runs</dd></div>
+          </dl>
+        </section>}
+      </div>
+
+      {hasMoreMetrics && <details className="repeated-experiment-more-metrics">
+        <summary>More metrics</summary>
+        <dl>
+          {range("Per-run output tokens", aggregate.reportedOutputTokens, formatTokens)}
+          {aggregate.outputTokens.reportedRuns > 0 && <div><dt>Experiment output tokens</dt><dd>{formatTokens(aggregate.outputTokens.total)} across {aggregate.outputTokens.reportedRuns} runs</dd></div>}
+          {range("Output throughput", aggregate.outputTokensPerSecond, formatRate)}
+          {range("Output characters", aggregate.outputCharacterCount, (value) => value?.toLocaleString() ?? "")}
+        </dl>
+      </details>}
 
       <div className="repeated-experiment-rows">
         {execution.plan.cells.map((cell) => {
@@ -179,6 +227,7 @@ export function RepeatedExperimentWorkspace({
           const status = rowStatus(execution, cell.runId, isRunning);
           const isSelected = execution.selectedRunId === cell.runId;
           const preview = outputPreview(state);
+          const metrics = rowMetrics(state);
           return (
             <article
               aria-current={isSelected ? "true" : undefined}
@@ -186,7 +235,7 @@ export function RepeatedExperimentWorkspace({
               key={cell.cellId}
             >
               <div><strong>Repetition {cell.ordinal}</strong><span className={`run-history-status ${status}`}>{isActive && <span className="experiment-row-activity-dot" aria-hidden="true" />}{status}</span></div>
-              <span className="repeated-experiment-row-metrics">{rowMetrics(state)}</span>
+              {metrics && <span className="repeated-experiment-row-metrics">{metrics}</span>}
               {trace
                 ? <button className="text-button" type="button" onClick={() => onOpenTrace(cell.runId)}>Open Response &amp; Inspect</button>
                 : <span className="repeated-experiment-row-pending" title={unreadable}>{pendingLabel(status, unreadable, isRunning)}</span>}
