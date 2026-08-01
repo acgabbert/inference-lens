@@ -79,7 +79,9 @@ the role on each use. During migration a fragment becomes a one-message prompt.
 If one legacy template was used under several roles, the migration keeps the
 primary role on the original template and creates a role-labelled copy for each
 additional role, then rewrites uses to the matching copy. This preserves output
-roles without retaining a role override in the v6 contract.
+roles without retaining a role override in the v6 contract. A v5 revision that
+carries no messages at all has no faithful v6 form, so the migration refuses the
+document rather than inventing one.
 
 Template revisions are immutable. Saving changed content or defaults appends a
 revision and advances `currentRevisionId`; saving an unchanged revision is a

@@ -206,6 +206,48 @@ test("migrates v5 fragments by duplicating templates used under different roles"
   assert.doesNotMatch(serialized, /fragmentRole|"kind": "fragment"/);
 });
 
+test("refuses to migrate a v5 revision that carries no messages", () => {
+  const base = createProjectFile({
+    name: "Legacy empty",
+    request,
+    idSuffix: "legacy-empty",
+    createdAt: "2026-07-24T12:00:00.000Z",
+  });
+  const legacy = {
+    ...base,
+    schemaVersion: 5,
+    promptTemplates: [{
+      id: "template_legacy-empty",
+      name: "Legacy empty",
+      currentRevisionId: "template-revision_legacy-empty-1",
+      revisions: [{
+        id: "template-revision_legacy-empty-1",
+        createdAt: "2026-07-24T12:00:01.000Z",
+        content: { kind: "messages", messages: [] },
+        variableDefaults: {},
+      }],
+    }],
+    conversationRevisions: base.conversationRevisions.map((revision) => ({
+      ...revision,
+      items: [{
+        kind: "template-use",
+        use: {
+          id: "template-use_legacy-empty",
+          templateId: "template_legacy-empty",
+          templateRevisionId: "template-revision_legacy-empty-1",
+          values: {},
+          outputMessageIds: ["message_legacy-empty-0"],
+        },
+      }],
+    })),
+  };
+
+  assert.throws(
+    () => parseProjectFile(legacy),
+    /Cannot migrate a template revision with no messages/,
+  );
+});
+
 test("resolves pinned single and multi-message prompts with stable output IDs", () => {
   const project = createProjectFile({
     name: "Templates",

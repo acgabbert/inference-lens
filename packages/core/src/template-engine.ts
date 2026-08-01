@@ -3,7 +3,7 @@ import type { PromptTemplateMessages } from "./project.ts";
 export const TEMPLATE_VARIABLE_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export type TemplateContentLocation =
-  | { kind: "fragment" }
+  | { kind: "text" }
   | {
       kind: "message";
       messageIndex: number;
@@ -223,7 +223,7 @@ function renderParsedText(
 export function renderTemplateText(
   text: string,
   values: Readonly<Record<string, string>>,
-  location: TemplateContentLocation = { kind: "fragment" },
+  location: TemplateContentLocation = { kind: "text" },
 ): RenderTemplateTextResult {
   return renderParsedText(parseTemplateText(text, location), values);
 }

@@ -17,7 +17,7 @@ import {
   parseProjectJson,
 } from "../packages/core/src/project.ts";
 import { createResolvedRunInput } from "../packages/core/src/run-kernel/run-execution.ts";
-import type { RepeatedExperimentPlanV1 } from "../packages/core/src/experiment.ts";
+import type { RepeatedExperimentPlanV2 } from "../packages/core/src/experiment.ts";
 
 class MemoryFile implements FileSystemFileHandleLike {
   readonly kind = "file";
@@ -118,7 +118,7 @@ function project() {
   });
 }
 
-function experimentPlan(): RepeatedExperimentPlanV1 {
+function experimentPlan(): RepeatedExperimentPlanV2 {
   const input = createResolvedRunInput(
     {
       provider: "openai-compatible",

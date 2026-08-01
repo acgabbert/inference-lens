@@ -1395,12 +1395,27 @@ function migrateProjectV5(project: ProjectFileV5): ProjectFileV6 {
       const revisions = template.revisions.map((revision) => {
         const id = primary ? revision.id : uniqueRevisionId(revision.id, role);
         revisionIds.set(revision.id, id);
+        if (
+          revision.content.kind === "messages" &&
+          revision.content.messages.length === 0
+        ) {
+          // Migration is destructive and runs once. An empty legacy message set
+          // has no faithful v6 form, so refuse rather than invent a message.
+          throw new ProjectValidationError([
+            {
+              code: "custom",
+              path: ["promptTemplates", template.id, "revisions", revision.id],
+              message:
+                "Cannot migrate a template revision with no messages.",
+            },
+          ]);
+        }
         const messages: PromptTemplateMessages =
           revision.content.kind === "fragment"
             ? [{ role, content: revision.content.text }]
-            : revision.content.messages.length > 0
-              ? structuredClone(revision.content.messages) as PromptTemplateMessages
-              : [{ role: "user", content: "" }];
+            : (structuredClone(
+                revision.content.messages,
+              ) as PromptTemplateMessages);
         return {
           id,
           createdAt: revision.createdAt,

@@ -4,8 +4,8 @@ import { useCallback, useRef, useState } from "react";
 
 import type { CredentialSelection, ProviderTurnTransport } from "../../packages/contracts/src/index.ts";
 import type {
-  ExperimentResultV1,
-  RepeatedExperimentPlanV1,
+  ExperimentResultV2,
+  RepeatedExperimentPlanV2,
 } from "../../packages/core/src/experiment.ts";
 import { createEntityId } from "../../packages/core/src/run-kernel/index.ts";
 import type {
@@ -25,7 +25,7 @@ export const MIN_REPETITION_COUNT = 2;
 export const MAX_REPETITION_COUNT = 100;
 
 export interface RepeatedExperimentDraft {
-  plan: RepeatedExperimentPlanV1;
+  plan: RepeatedExperimentPlanV2;
   targetName: string;
   requestSummary: string;
   repetitionCount: number;
@@ -48,7 +48,7 @@ export interface RepeatedExperimentLiveProgress {
 }
 
 export interface RepeatedExperimentExecution {
-  plan: RepeatedExperimentPlanV1;
+  plan: RepeatedExperimentPlanV2;
   storage: "durable" | "unsaved";
   /** The experiment's original workspace, retained for opening its saved traces. */
   workspace: ProjectWorkspaceHandle | null;
@@ -56,7 +56,7 @@ export interface RepeatedExperimentExecution {
   states: ReadonlyMap<RunId, RunState>;
   /** Absent once the experiment is terminal, and for every saved experiment. */
   live?: RepeatedExperimentLiveProgress;
-  result?: ExperimentResultV1;
+  result?: ExperimentResultV2;
   error?: string;
   traces: ReadonlyMap<RunId, RunTrace>;
   traceFileNames: ReadonlyMap<RunId, string>;
@@ -80,7 +80,7 @@ function normalizedCount(value: number): number {
 }
 
 /** Freezes the resolved semantic input and allocates every ordinary run before execution. */
-function planFor(input: ResolvedRunInput, repetitionCount: number): RepeatedExperimentPlanV1 {
+function planFor(input: ResolvedRunInput, repetitionCount: number): RepeatedExperimentPlanV2 {
   const frozenInput = structuredClone(input);
   const { runId: discardedRunId, ...commonInput } = frozenInput;
   void discardedRunId;
@@ -243,8 +243,8 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
   }, [execution, options]);
 
   const openSaved = useCallback((opened: {
-    plan: RepeatedExperimentPlanV1;
-    result?: ExperimentResultV1;
+    plan: RepeatedExperimentPlanV2;
+    result?: ExperimentResultV2;
     traces: ReadonlyMap<RunId, RunTrace>;
     traceFileNames: ReadonlyMap<RunId, string>;
     unreadableTraces: ReadonlyMap<RunId, string>;

@@ -51,13 +51,13 @@ test("renders escapes, explicit empty values, and unmatched braces literally", (
       occurrences: [
         {
           name: "empty",
-          location: { kind: "fragment" },
+          location: { kind: "text" },
           start: 13,
           end: 22,
         },
         {
           name: "name",
-          location: { kind: "fragment" },
+          location: { kind: "text" },
           start: 23,
           end: 31,
         },
@@ -83,13 +83,13 @@ test("uses presence-based precedence and does not recursively render values", ()
     occurrences: [
       {
         name: "value",
-        location: { kind: "fragment" },
+        location: { kind: "text" },
         start: 0,
         end: 9,
       },
       {
         name: "inserted",
-        location: { kind: "fragment" },
+        location: { kind: "text" },
         start: 10,
         end: 22,
       },

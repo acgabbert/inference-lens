@@ -12,14 +12,14 @@ import {
   serializeExperimentResult,
 } from "../packages/core/src/experiment.ts";
 import type {
-  ExperimentResultV1,
-  RepeatedExperimentPlanV1,
+  ExperimentResultV2,
+  RepeatedExperimentPlanV2,
 } from "../packages/core/src/experiment.ts";
 import { createResolvedRunInput } from "../packages/core/src/run-kernel/run-execution.ts";
 import { RunCoordinator } from "../packages/core/src/run-kernel/coordinator.ts";
 import type { ResolvedRunInput, RunId } from "../packages/core/src/run-kernel/types.ts";
 
-function plan(): RepeatedExperimentPlanV1 {
+function plan(): RepeatedExperimentPlanV2 {
   const input = createResolvedRunInput(
     {
       provider: "openai-compatible",
@@ -116,6 +116,27 @@ test("migrates Version 1 fragment provenance to Version 2 messages", () => {
   assert.doesNotMatch(serializeExperimentPlan(migrated), /fragmentRole/);
 });
 
+test("rejects Version 1 fragment provenance inside a Version 2 plan", () => {
+  const mislabelled = JSON.parse(serializeExperimentPlan(plan()));
+  mislabelled.commonInput.templateResolutions = [{
+    templateUseId: "template-use_legacy",
+    templateId: "template_legacy",
+    templateRevisionId: "template-revision_legacy-1",
+    templateName: "Legacy",
+    content: { kind: "fragment", text: "Say hello" },
+    variableDefaults: {},
+    values: {},
+    outputMessageIds: [mislabelled.commonInput.messages[0].id],
+    fragmentRole: "user",
+  }];
+
+  assert.equal(mislabelled.schemaVersion, 2);
+  assert.throws(
+    () => parseExperimentPlanJson(JSON.stringify(mislabelled)),
+    ExperimentValidationError,
+  );
+});
+
 test("rejects unknown fields, duplicate identities, and credential-like provider options", () => {
   const source = plan();
   const unknown = JSON.parse(serializeExperimentPlan(source));
@@ -140,7 +161,7 @@ test("rejects unknown fields, duplicate identities, and credential-like provider
 
 test("validates result identity and planned references exactly", () => {
   const source = plan();
-  const result: ExperimentResultV1 = {
+  const result: ExperimentResultV2 = {
     schemaVersion: 2,
     experimentId: source.experimentId,
     status: "cancelled",
@@ -165,7 +186,7 @@ test("projects interrupted and missing-trace evidence without fabricating result
   const source = plan();
   const firstInput = materializeExperimentCellInput(source, "experiment-cell_first");
   const first = completedState(firstInput, "Hi 👋");
-  const result: ExperimentResultV1 = {
+  const result: ExperimentResultV2 = {
     schemaVersion: 2,
     experimentId: source.experimentId,
     status: "completed",
