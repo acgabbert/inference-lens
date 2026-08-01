@@ -134,6 +134,7 @@ test("the extracted composer renders request snapshots without a project", async
   assert.match(html, /Profile default/);
   assert.match(html, /Composer fixture message/);
   assert.match(html, /Stream response/);
+  assert.match(html, /Open request composer in focus mode/);
 });
 
 test("the extracted composer keeps pending-branch and template-error text in the request pane", async () => {

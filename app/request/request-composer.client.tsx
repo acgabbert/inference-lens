@@ -10,6 +10,7 @@ import { PaneTabs } from "../workbench-shell.client";
 import { ProjectTemplatesPane, TemplateUseCard } from "../project-templates-pane.client";
 import { ToolsPane } from "../tools-pane.client";
 import { RunReadinessNotice } from "../run-readiness-notice.client";
+import { FocusModeToggle, useFocusMode } from "../focus-mode.client";
 import type {
   ReadinessDestination,
   RunReadiness,
@@ -95,7 +96,10 @@ export function RequestComposer({
   onDiscardPendingBranch,
 }: RequestComposerProps) {
   const [tab, setTab] = useState<RequestTab>("messages");
+  const [focusMode, setFocusMode] = useState(false);
+  const [focusModeTab, setFocusModeTab] = useState<RequestTab>("messages");
   const composerRef = useRef<HTMLElement>(null);
+  const focusToggleRef = useRef<HTMLButtonElement>(null);
   const modelRef = useRef<HTMLInputElement>(null);
   const selectedProjectToolCount = requestDraft.tools.filter(({ id }) =>
     requestDraft.enabledToolIds.includes(id),
@@ -103,6 +107,26 @@ export function RequestComposer({
   const selectedToolCount = selectedProjectToolCount + requestDraft.requestTools.length;
   // A newly imported snapshot is always shown before its notice is dismissed.
   const activeTab = templates.importNotice ? "messages" : tab;
+
+  // Focus mode belongs to the messages tab. Leaving it drops the state here
+  // rather than at each navigation call site, so a tab change from anywhere —
+  // the tab strip, a readiness destination, a notice — cannot leave focus mode
+  // latent and reopen it on return. Adjusting during render keeps the discarded
+  // state from reaching the DOM at all, unlike a post-commit effect.
+  if (focusModeTab !== activeTab) {
+    setFocusModeTab(activeTab);
+    if (focusMode) setFocusMode(false);
+  }
+
+  const requestFocusMode = focusMode && activeTab === "messages";
+
+  const { close: closeFocusMode } = useFocusMode({
+    open: requestFocusMode,
+    setOpen: setFocusMode,
+    containerRef: composerRef,
+    triggerRef: focusToggleRef,
+    initialFocusSelector: ".message-card textarea:not([disabled])",
+  });
 
   function routeReadinessAction(action: RunReadinessAction): void {
     onReadinessAction(action.destination);
@@ -149,7 +173,13 @@ export function RequestComposer({
   }, [activeTab, onDestinationHandled, pendingDestination]);
 
   return (
-    <section className="composer" ref={composerRef}>
+    <section
+      aria-label={requestFocusMode ? "Request composer focus mode" : undefined}
+      aria-modal={requestFocusMode ? "true" : undefined}
+      className={requestFocusMode ? "composer focus-mode-surface composer-focus-mode" : "composer"}
+      ref={composerRef}
+      role={requestFocusMode ? "dialog" : undefined}
+    >
       <div className="panel-header request-header">
         <div>
           <span className="eyebrow">Request</span>
@@ -166,9 +196,18 @@ export function RequestComposer({
           ]}
         />
         {activeTab === "messages" ? (
-          <button className="text-button header-text-action" onClick={templates.addComposerMessage}>
-            + Add message
-          </button>
+          <div className="request-header-actions">
+            <button className="text-button header-text-action" onClick={templates.addComposerMessage}>
+              + Add message
+            </button>
+            <FocusModeToggle
+              className="request-focus-toggle"
+              open={requestFocusMode}
+              subject="request composer"
+              toggleRef={focusToggleRef}
+              onToggle={() => (requestFocusMode ? closeFocusMode() : setFocusMode(true))}
+            />
+          </div>
         ) : activeTab === "tools" ? (
           <button className="text-button header-text-action" type="button" onClick={requestDraft.addTool}>
             + Add tool

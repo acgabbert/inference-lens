@@ -92,6 +92,7 @@ test("renders the project template library and revision defaults", async () => {
   assert.match(html, />Archive</);
   assert.match(html, /Archived <span>0<\/span>/);
   assert.match(html, /Import from n8n…/);
+  assert.match(html, /Open prompt editor in focus mode/);
 });
 
 test("renders a multiline run value with save and reset actions", async () => {
