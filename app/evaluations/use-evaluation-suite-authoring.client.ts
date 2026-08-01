@@ -46,12 +46,13 @@ export interface EvaluationSuiteAuthoringHandle {
   focusCase(id: EvaluationCaseId): void;
   setRepetitions(value: number): void;
   createSuite(): void;
-  renameSuite(name: string): void;
+  renameSuite(name: string): boolean;
   deleteSuite(): void;
   addInput(candidate: ReturnType<typeof evaluationBindingCandidates>[number]): void;
-  renameInput(id: EvaluationInputBindingId, name: string): void;
+  renameInput(id: EvaluationInputBindingId, name: string): boolean;
   deleteInput(id: EvaluationInputBindingId): void;
   addCase(): void;
+  renameCase(id: EvaluationCaseId, name: string): boolean;
   updateCase(id: EvaluationCaseId, patch: Parameters<typeof updateEvaluationCase>[3]): void;
   deleteCase(id: EvaluationCaseId): void;
   addCheck(caseId: EvaluationCaseId, input: NewEvaluationCheck): boolean;
@@ -62,6 +63,9 @@ export interface EvaluationSuiteAuthoringHandle {
 export type EvaluationSuiteAuthoringErrorTarget =
   | { kind: "check"; caseId: EvaluationCaseId; checkId: CheckId; field: EvaluationCheckAuthoringField }
   | { kind: "add-check"; caseId: EvaluationCaseId }
+  | { kind: "suite-name" }
+  | { kind: "input-name"; inputId: EvaluationInputBindingId }
+  | { kind: "case-name"; caseId: EvaluationCaseId }
   | { kind: "editor" };
 
 export type EvaluationCheckAuthoringField =
@@ -211,7 +215,11 @@ export function useEvaluationSuiteAuthoring(
       setFocusedCaseId(undefined);
       setStoredError(undefined);
     },
-    renameSuite(name) { if (effectiveSuiteId) commit((current) => renameEvaluationSuite(current, effectiveSuiteId, name)); },
+    renameSuite(name) {
+      return effectiveSuiteId
+        ? commit((current) => renameEvaluationSuite(current, effectiveSuiteId, name), { kind: "suite-name" })
+        : false;
+    },
     deleteSuite() {
       if (!effectiveSuiteId) return;
       const remove = () => commit((current) => removeEvaluationSuite(current, effectiveSuiteId));
@@ -220,7 +228,11 @@ export function useEvaluationSuiteAuthoring(
     addInput(candidate) {
       if (effectiveSuiteId && candidate) commit((current) => addEvaluationInput(current, effectiveSuiteId, candidate).project);
     },
-    renameInput(id, name) { if (effectiveSuiteId) commit((current) => renameEvaluationInput(current, effectiveSuiteId, id, name)); },
+    renameInput(id, name) {
+      return effectiveSuiteId
+        ? commit((current) => renameEvaluationInput(current, effectiveSuiteId, id, name), { kind: "input-name", inputId: id })
+        : false;
+    },
     deleteInput(id) {
       if (!effectiveSuiteId) return;
       const binding = suite?.inputBindings.find(({ id: candidateId }) => candidateId === id);
@@ -241,6 +253,11 @@ export function useEvaluationSuiteAuthoring(
       } catch (cause) {
         setStoredError({ projectId: project.projectId, suiteId: effectiveSuiteId, target: { kind: "editor" }, message: mutationErrorMessage(cause) });
       }
+    },
+    renameCase(id, name) {
+      return effectiveSuiteId
+        ? commit((current) => updateEvaluationCase(current, effectiveSuiteId, id, { name }), { kind: "case-name", caseId: id })
+        : false;
     },
     updateCase(id, patch) { if (effectiveSuiteId) commit((current) => updateEvaluationCase(current, effectiveSuiteId, id, patch)); },
     deleteCase(id) {

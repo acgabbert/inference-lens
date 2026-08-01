@@ -139,9 +139,12 @@ export function EvaluationSuiteEditor({ authoring }: { authoring: EvaluationSuit
       ) : (
         <>
           <div className="evaluation-suite-header">
-            <label>Suite name <input defaultValue={suite.name} key={suite.id} onBlur={(event) => authoring.renameSuite(event.target.value || suite.name)} /></label>
+            <label>Suite name <input defaultValue={suite.name} key={suite.id} onBlur={(event) => {
+              if (!authoring.renameSuite(event.target.value)) event.currentTarget.value = suite.name;
+            }} /></label>
             <button className="remove-button" type="button" onClick={authoring.deleteSuite}>Delete suite</button>
           </div>
+          {authoring.error?.target.kind === "suite-name" && <p className="evaluation-field-error" role="alert">{authoring.error.message}</p>}
           {authoring.error?.target.kind === "editor" && <div className="template-diagnostic" role="alert">{authoring.error.message}</div>}
           <section className="evaluation-preflight" aria-label="Evaluation preflight">
             <div><span className="eyebrow">Preflight</span><strong>{authoring.diagnostics.length === 0 ? "Ready to author" : `${authoring.diagnostics.length} setup ${authoring.diagnostics.length === 1 ? "issue" : "issues"}`}</strong></div>
@@ -153,7 +156,14 @@ export function EvaluationSuiteEditor({ authoring }: { authoring: EvaluationSuit
 
           <section className="evaluation-inputs">
             <div className="evaluation-section-heading"><div><span className="eyebrow">Dataset columns</span><h3>Template-variable inputs</h3></div></div>
-            {suite.inputBindings.map((binding) => <div className="evaluation-binding-row" key={binding.id}><input aria-label={`Input name ${binding.name}`} defaultValue={binding.name} onBlur={(event) => authoring.renameInput(binding.id, event.target.value || binding.name)} /><code>{binding.target.variableName}</code><span title={binding.target.templateUseId}>{binding.target.templateUseId}</span><button className="remove-button" type="button" onClick={() => authoring.deleteInput(binding.id)}>Remove</button></div>)}
+            {suite.inputBindings.map((binding) => {
+              const inputError = authoring.error?.target.kind === "input-name" && authoring.error.target.inputId === binding.id
+                ? authoring.error.message
+                : undefined;
+              return <div className="evaluation-binding-row" key={binding.id}><input aria-label={`Input name ${binding.name}`} defaultValue={binding.name} onBlur={(event) => {
+                if (!authoring.renameInput(binding.id, event.target.value)) event.currentTarget.value = binding.name;
+              }} /><code>{binding.target.variableName}</code><span title={binding.target.templateUseId}>{binding.target.templateUseId}</span><button className="remove-button" type="button" onClick={() => authoring.deleteInput(binding.id)}>Remove</button>{inputError && <p className="evaluation-field-error" role="alert">{inputError}</p>}</div>;
+            })}
             <div className="evaluation-add-row"><select aria-label="Template variable to bind" value={candidateIndex} disabled={availableCandidates.length === 0} onChange={(event) => setCandidateIndex(Number(event.target.value))}>{availableCandidates.map((candidate, index) => <option key={`${candidate.templateUseId}-${candidate.variableName}`} value={index}>{candidate.templateName} · {candidate.variableName}</option>)}</select><button className="button secondary" type="button" disabled={availableCandidates.length === 0} onClick={() => { const candidate = availableCandidates[candidateIndex]; if (candidate) authoring.addInput(candidate); setCandidateIndex(0); }}>+ Bind input</button></div>
           </section>
 
@@ -161,7 +171,14 @@ export function EvaluationSuiteEditor({ authoring }: { authoring: EvaluationSuit
             <div className="evaluation-section-heading"><div><span className="eyebrow">Dataset</span><h3>Cases</h3></div><button className="button secondary" type="button" onClick={authoring.addCase}>+ Add case</button></div>
             <p className="evaluation-portable-warning">Case values are saved in portable project data. Do not enter credentials or secrets.</p>
             {suite.cases.length === 0 ? <div className="evaluation-empty-inline">No cases yet. Empty suites can be saved but cannot run.</div> : (
-              <div className="evaluation-grid-scroll"><table className="evaluation-case-grid"><thead><tr><th scope="col">Run</th><th scope="col">Case</th>{suite.inputBindings.map((binding) => <th scope="col" key={binding.id}>{binding.name}</th>)}<th scope="col">Checks</th></tr></thead><tbody>{suite.cases.map((evaluationCase) => <tr key={evaluationCase.id}><td><input aria-label={`Select ${evaluationCase.name}`} type="checkbox" checked={authoring.selectedCaseIds.has(evaluationCase.id)} onChange={(event) => authoring.setCaseSelected(evaluationCase.id, event.target.checked)} /></td><td><input aria-label={`Case name ${evaluationCase.name}`} defaultValue={evaluationCase.name} onBlur={(event) => authoring.updateCase(evaluationCase.id, { name: event.target.value || evaluationCase.name })} /></td>{suite.inputBindings.map((binding) => <td key={binding.id}><textarea aria-label={`${evaluationCase.name} ${binding.name}`} rows={2} value={evaluationCase.values[binding.id] ?? ""} onChange={(event) => authoring.updateCase(evaluationCase.id, { values: { ...evaluationCase.values, [binding.id]: event.target.value } })} /></td>)}<td><button className={focusedCase?.id === evaluationCase.id ? "button secondary selected" : "button secondary"} type="button" onClick={() => authoring.focusCase(evaluationCase.id)}>{evaluationCase.checks.length} · Edit</button></td></tr>)}</tbody></table></div>
+              <div className="evaluation-grid-scroll"><table className="evaluation-case-grid"><thead><tr><th scope="col">Run</th><th scope="col">Case</th>{suite.inputBindings.map((binding) => <th scope="col" key={binding.id}>{binding.name}</th>)}<th scope="col">Checks</th></tr></thead><tbody>{suite.cases.map((evaluationCase) => {
+                const caseError = authoring.error?.target.kind === "case-name" && authoring.error.target.caseId === evaluationCase.id
+                  ? authoring.error.message
+                  : undefined;
+                return <tr key={evaluationCase.id}><td><input aria-label={`Select ${evaluationCase.name}`} type="checkbox" checked={authoring.selectedCaseIds.has(evaluationCase.id)} onChange={(event) => authoring.setCaseSelected(evaluationCase.id, event.target.checked)} /></td><td><input aria-label={`Case name ${evaluationCase.name}`} defaultValue={evaluationCase.name} onBlur={(event) => {
+                  if (!authoring.renameCase(evaluationCase.id, event.target.value)) event.currentTarget.value = evaluationCase.name;
+                }} />{caseError && <p className="evaluation-field-error" role="alert">{caseError}</p>}</td>{suite.inputBindings.map((binding) => <td key={binding.id}><textarea aria-label={`${evaluationCase.name} ${binding.name}`} rows={2} value={evaluationCase.values[binding.id] ?? ""} onChange={(event) => authoring.updateCase(evaluationCase.id, { values: { ...evaluationCase.values, [binding.id]: event.target.value } })} /></td>)}<td><button className={focusedCase?.id === evaluationCase.id ? "button secondary selected" : "button secondary"} type="button" onClick={() => authoring.focusCase(evaluationCase.id)}>{evaluationCase.checks.length} · Edit</button></td></tr>;
+              })}</tbody></table></div>
             )}
           </section>
           {focusedCase && <CaseChecks evaluationCase={focusedCase} authoring={authoring} />}

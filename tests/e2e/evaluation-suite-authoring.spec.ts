@@ -188,6 +188,45 @@ test("a rejected check edit stays local and restores the saved value", async ({ 
   await expect(editor.locator(".evaluation-suite-header + [role=alert]")).toHaveCount(0);
 });
 
+test("rejected suite, case, and input names restore saved values with local errors", async ({ page }) => {
+  await openProject(page, baseProject(), 1440);
+  const editor = page.locator(".evaluation-editor");
+  await page.getByRole("button", { name: "Create evaluation suite" }).click();
+  await page.getByRole("button", { name: "+ Bind input" }).click();
+  await page.getByLabel("Template variable to bind").selectOption({ label: "Question · audience" });
+  await page.getByRole("button", { name: "+ Bind input" }).click();
+  await page.getByRole("button", { name: "+ Add case" }).click();
+
+  const suiteName = page.getByLabel("Suite name");
+  await suiteName.fill("   ");
+  await suiteName.blur();
+  await expect(suiteName).toHaveValue("Untitled evaluation");
+  await expect(editor.locator(".evaluation-suite-header + .evaluation-field-error"))
+    .toContainText("expected string to have >=1 characters");
+
+  const caseName = page.getByLabel("Case name Untitled case");
+  await caseName.fill("   ");
+  await caseName.blur();
+  await expect(caseName).toHaveValue("Untitled case");
+  await expect(caseName.locator("xpath=..").getByRole("alert"))
+    .toContainText("expected string to have >=1 characters");
+
+  const audienceRow = editor.locator(".evaluation-binding-row").filter({ hasText: "audience" });
+  const audienceName = page.getByLabel("Input name audience");
+  await audienceName.fill("   ");
+  await audienceName.blur();
+  await expect(audienceName).toHaveValue("audience");
+  await expect(audienceRow.getByRole("alert"))
+    .toContainText("expected string to have >=1 characters");
+
+  await audienceName.fill("topic");
+  await audienceName.blur();
+  await expect(audienceName).toHaveValue("audience");
+  await expect(audienceRow.getByRole("alert"))
+    .toContainText('Evaluation input name "topic" is repeated within the suite.');
+  await expect(editor.locator(".template-diagnostic[role=alert]")).toHaveCount(0);
+});
+
 test("preflight reports an unfinished check and an empty value", async ({ page }) => {
   await openProject(page, projectWithSavedSuite(), 1440);
   const editor = page.locator(".evaluation-editor");
