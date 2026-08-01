@@ -3,15 +3,15 @@ import test from "node:test";
 
 import type { ProviderTurnStream, ProviderTurnTransport } from "../packages/contracts/src/inference.ts";
 import { OPENAI_COMPATIBLE_CAPABILITIES } from "../packages/core/src/types.ts";
-import type { RepeatedExperimentPlanV2 } from "../packages/core/src/experiment.ts";
+import type { RepeatedExperimentPlanV3 } from "../packages/core/src/experiment.ts";
 import type { ProviderTransportEvent, RunTrace } from "../packages/core/src/run-kernel/index.ts";
-import { RepeatedExperimentController } from "../app/run/repeated-experiment-controller.client.ts";
+import { SequentialExperimentController } from "../app/run/sequential-experiment-controller.client.ts";
 import { createExperimentWorkspacePersistence } from "../app/run/experiment-workspace-persistence.client.ts";
 import type { ProjectWorkspaceHandle } from "../app/project-workspace.client.ts";
 
-function plan(count: number): RepeatedExperimentPlanV2 {
+function plan(count: number): RepeatedExperimentPlanV3 {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     experimentId: "experiment_controller",
     kind: "repeated-request",
     createdAt: "2026-07-30T12:00:00.000Z",
@@ -86,7 +86,7 @@ test("runs two, five, and high-count schedules strictly one cell at a time", asy
       yield* completed(`response ${runId}`);
       active -= 1;
     }, started);
-    const controller = new RepeatedExperimentController({
+    const controller = new SequentialExperimentController({
       plan: plan(count),
       transport,
       async prepareCredential() { return { kind: "none" }; },
@@ -109,7 +109,7 @@ test("finalizes a retryable failure and continues later cells", async () => {
   const transport = transportFor((runId) => events(runId === "run_2"
     ? [{ type: "failed", error: { code: "provider_error", message: "Busy", retryable: true } }]
     : completed(runId)), started);
-  const result = await new RepeatedExperimentController({
+  const result = await new SequentialExperimentController({
     plan: plan(3),
     transport,
     async prepareCredential() { return { kind: "none" }; },
@@ -127,7 +127,7 @@ test("continues after credential failures before and after an earlier terminal c
   let credentialAttempt = 0;
   const started: string[] = [];
   const traces: RunTrace[] = [];
-  const result = await new RepeatedExperimentController({
+  const result = await new SequentialExperimentController({
     plan: plan(3),
     transport: transportFor((runId) => events(completed(runId)), started),
     async prepareCredential() {
@@ -156,7 +156,7 @@ test("cancels a streamed cell, preserves its ordinary trace, and marks later cel
       signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
     });
   }, started);
-  const controller = new RepeatedExperimentController({
+  const controller = new SequentialExperimentController({
     plan: plan(3),
     transport,
     async prepareCredential() { return { kind: "none" }; },
@@ -180,7 +180,7 @@ test("cancellation between cells does not start the next provider request", asyn
   const traceStarted = deferred();
   const releaseTrace = deferred();
   const started: string[] = [];
-  const controller = new RepeatedExperimentController({
+  const controller = new SequentialExperimentController({
     plan: plan(2),
     transport: transportFor((runId) => events(completed(runId)), started),
     async prepareCredential() { return { kind: "none" }; },
@@ -202,7 +202,7 @@ test("cancellation between cells does not start the next provider request", asyn
 
 test("does not call a provider before a durable plan save succeeds and saves the result after traces", async () => {
   let providerCalls = 0;
-  const rejected = new RepeatedExperimentController({
+  const rejected = new SequentialExperimentController({
     plan: plan(2),
     transport: transportFor(() => {
       providerCalls += 1;
@@ -216,7 +216,7 @@ test("does not call a provider before a durable plan save succeeds and saves the
 
   const order: string[] = [];
   const savedTraces: RunTrace[] = [];
-  const result = await new RepeatedExperimentController({
+  const result = await new SequentialExperimentController({
     plan: plan(2),
     transport: transportFor((runId) => {
       order.push(`provider:${runId}`);
@@ -246,7 +246,7 @@ test("validates ad hoc plans before progress or provider work", async () => {
   invalid.cells[1]!.runId = invalid.cells[0]!.runId;
   let providerCalls = 0;
   const progress: unknown[] = [];
-  const controller = new RepeatedExperimentController({
+  const controller = new SequentialExperimentController({
     plan: invalid,
     transport: transportFor(() => {
       providerCalls += 1;
@@ -269,7 +269,7 @@ test("emits immutable progress snapshots with finished terminal-cell counts", as
     currentOrdinal?: number;
     states: Array<[string, string]>;
   }> = [];
-  const result = await new RepeatedExperimentController({
+  const result = await new SequentialExperimentController({
     plan: plan(2),
     transport: transportFor((runId) => events(completed(runId))),
     async prepareCredential() { return { kind: "none" }; },
@@ -307,7 +307,7 @@ test("progress keeps the parsed schedule when the caller mutates its source plan
   const firstTraceStarted = deferred();
   const releaseFirstTrace = deferred();
   const requested: number[] = [];
-  const controller = new RepeatedExperimentController({
+  const controller = new SequentialExperimentController({
     plan: sourcePlan,
     transport: transportFor((runId) => events(completed(runId))),
     async prepareCredential() { return { kind: "none" }; },
@@ -332,7 +332,7 @@ test("a terminal-trace persistence failure deliberately interrupts the experimen
   const started: string[] = [];
   let savedPlans = 0;
   let savedResults = 0;
-  const controller = new RepeatedExperimentController({
+  const controller = new SequentialExperimentController({
     plan: plan(3),
     transport: transportFor((runId) => events(completed(runId)), started),
     async prepareCredential() { return { kind: "none" }; },
@@ -353,7 +353,7 @@ test("a terminal-trace persistence failure deliberately interrupts the experimen
 test("a cancellation requested before run saves a cancelled no-provider result", async () => {
   let providerCalls = 0;
   const saved: string[] = [];
-  const controller = new RepeatedExperimentController({
+  const controller = new SequentialExperimentController({
     plan: plan(2),
     transport: transportFor(() => {
       providerCalls += 1;
@@ -391,7 +391,7 @@ test("workspace persistence binds plans, terminal traces, and results to PR2 hel
     },
   };
   const frozenPlan = plan(2);
-  const result = await new RepeatedExperimentController({
+  const result = await new SequentialExperimentController({
     plan: frozenPlan,
     transport: transportFor((runId) => events(completed(runId))),
     async prepareCredential() { return { kind: "none" }; },

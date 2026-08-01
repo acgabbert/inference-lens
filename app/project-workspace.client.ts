@@ -23,8 +23,8 @@ import {
   serializeExperimentResult,
 } from "../packages/core/src/experiment.ts";
 import type {
-  ExperimentResultV2,
-  RepeatedExperimentPlanV2,
+  ExperimentResultV3,
+  ExperimentPlanV3,
 } from "../packages/core/src/experiment.ts";
 import {
   EXPERIMENTS_DIRECTORY_NAME,
@@ -591,7 +591,7 @@ export async function readRunTraceWorkspace(
 
 export async function saveExperimentPlanWorkspace(
   handle: ProjectWorkspaceHandle,
-  plan: RepeatedExperimentPlanV2,
+  plan: ExperimentPlanV3,
 ): Promise<void> {
   await handle.storage.saveExperimentArtifact(
     experimentPlanFileName(plan.experimentId),
@@ -601,8 +601,8 @@ export async function saveExperimentPlanWorkspace(
 
 export async function saveExperimentResultWorkspace(
   handle: ProjectWorkspaceHandle,
-  result: ExperimentResultV2,
-  plan: RepeatedExperimentPlanV2,
+  result: ExperimentResultV3,
+  plan: ExperimentPlanV3,
 ): Promise<void> {
   await handle.storage.saveExperimentArtifact(
     experimentResultFileName(result.experimentId),

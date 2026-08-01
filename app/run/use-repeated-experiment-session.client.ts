@@ -4,8 +4,9 @@ import { useCallback, useRef, useState } from "react";
 
 import type { CredentialSelection, ProviderTurnTransport } from "../../packages/contracts/src/index.ts";
 import type {
-  ExperimentResultV2,
-  RepeatedExperimentPlanV2,
+  ExperimentPlanV3,
+  ExperimentResultV3,
+  RepeatedExperimentPlanV3,
 } from "../../packages/core/src/experiment.ts";
 import { createEntityId } from "../../packages/core/src/run-kernel/index.ts";
 import type {
@@ -18,14 +19,14 @@ import { randomUUID } from "../../packages/core/src/random-id.ts";
 import { runStateFromTrace, traceFileName } from "../../packages/core/src/run-trace.ts";
 import type { ProjectWorkspaceHandle } from "../project-workspace.client.ts";
 import { createExperimentWorkspacePersistence } from "./experiment-workspace-persistence.client.ts";
-import { RepeatedExperimentController } from "./repeated-experiment-controller.client.ts";
+import { SequentialExperimentController } from "./sequential-experiment-controller.client.ts";
 
 export const DEFAULT_REPETITION_COUNT = 5;
 export const MIN_REPETITION_COUNT = 2;
 export const MAX_REPETITION_COUNT = 100;
 
 export interface RepeatedExperimentDraft {
-  plan: RepeatedExperimentPlanV2;
+  plan: RepeatedExperimentPlanV3;
   targetName: string;
   requestSummary: string;
   repetitionCount: number;
@@ -48,7 +49,7 @@ export interface RepeatedExperimentLiveProgress {
 }
 
 export interface RepeatedExperimentExecution {
-  plan: RepeatedExperimentPlanV2;
+  plan: RepeatedExperimentPlanV3;
   storage: "durable" | "unsaved";
   /** The experiment's original workspace, retained for opening its saved traces. */
   workspace: ProjectWorkspaceHandle | null;
@@ -56,7 +57,7 @@ export interface RepeatedExperimentExecution {
   states: ReadonlyMap<RunId, RunState>;
   /** Absent once the experiment is terminal, and for every saved experiment. */
   live?: RepeatedExperimentLiveProgress;
-  result?: ExperimentResultV2;
+  result?: ExperimentResultV3;
   error?: string;
   traces: ReadonlyMap<RunId, RunTrace>;
   traceFileNames: ReadonlyMap<RunId, string>;
@@ -80,13 +81,13 @@ function normalizedCount(value: number): number {
 }
 
 /** Freezes the resolved semantic input and allocates every ordinary run before execution. */
-function planFor(input: ResolvedRunInput, repetitionCount: number): RepeatedExperimentPlanV2 {
+function planFor(input: ResolvedRunInput, repetitionCount: number): RepeatedExperimentPlanV3 {
   const frozenInput = structuredClone(input);
   const { runId: discardedRunId, ...commonInput } = frozenInput;
   void discardedRunId;
   const experimentId = createEntityId("experiment", randomUUID());
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     experimentId,
     kind: "repeated-request",
     createdAt: new Date().toISOString(),
@@ -109,7 +110,7 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
   const [draft, setDraft] = useState<RepeatedExperimentDraft>();
   const [execution, setExecution] = useState<RepeatedExperimentExecution>();
   const [isRunning, setIsRunning] = useState(false);
-  const controllerRef = useRef<RepeatedExperimentController | undefined>(undefined);
+  const controllerRef = useRef<SequentialExperimentController | undefined>(undefined);
 
   const begin = useCallback((input: ResolvedRunInput, targetName: string, commitPreparation: () => void) => {
     const count = DEFAULT_REPETITION_COUNT;
@@ -166,7 +167,7 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
     const persistence = workspace
       ? createExperimentWorkspacePersistence(workspace, pending.plan)
       : undefined;
-    const controller = new RepeatedExperimentController({
+    const controller = new SequentialExperimentController({
       plan: pending.plan,
       transport: options.transport,
       prepareCredential: options.prepareCredential,
@@ -243,8 +244,8 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
   }, [execution, options]);
 
   const openSaved = useCallback((opened: {
-    plan: RepeatedExperimentPlanV2;
-    result?: ExperimentResultV2;
+    plan: ExperimentPlanV3;
+    result?: ExperimentResultV3;
     traces: ReadonlyMap<RunId, RunTrace>;
     traceFileNames: ReadonlyMap<RunId, string>;
     unreadableTraces: ReadonlyMap<RunId, string>;
@@ -253,6 +254,9 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
     // this refuses out loud rather than dropping the request silently.
     if (controllerRef.current?.isRunning) {
       throw new Error("Stop the running experiment before opening a saved one.");
+    }
+    if (opened.plan.kind !== "repeated-request") {
+      throw new Error("Open evaluation executions from the evaluation results workspace.");
     }
     setExecution({
       plan: opened.plan,

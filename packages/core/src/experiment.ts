@@ -1,13 +1,24 @@
 import { z } from "zod";
 
+import {
+  CHECK_SCHEMA_VERSION,
+  checkDefinitionSchema,
+  checkOutcomeSummary,
+  evaluateChecks,
+} from "./checks.ts";
+import type { CheckDefinition, CheckResult } from "./checks.ts";
 import { isSensitiveTemplateVariableName } from "./project.ts";
 import { runMetrics } from "./run-metrics.ts";
 import { finalAssistantOutput, outputCharacterCount } from "./run-output.ts";
 import { stableJsonValue } from "./stable-json.ts";
 import type {
   ConversationMessage,
+  ConversationRevisionId,
   EntityId,
   EntityIdKind,
+  EvaluationCaseId,
+  EvaluationInputBindingId,
+  EvaluationSuiteId,
   ExperimentCellId,
   ExperimentId,
   InferenceOptions,
@@ -19,9 +30,10 @@ import type {
   RunState,
   TerminalRunStatus,
   ToolDefinition,
+  PromptTemplateUseId,
 } from "./run-kernel/types.ts";
 
-export const EXPERIMENT_SCHEMA_VERSION = 2;
+export const EXPERIMENT_SCHEMA_VERSION = 3;
 export const EXPERIMENT_PLAN_FILE_SUFFIX = ".plan.json";
 export const EXPERIMENT_RESULT_FILE_SUFFIX = ".result.json";
 
@@ -32,20 +44,68 @@ export class ExperimentValidationError extends Error {
   }
 }
 
-export interface RepeatedExperimentCell {
+export interface ExperimentCellBase {
   cellId: ExperimentCellId;
   ordinal: number;
   runId: RunId;
 }
 
-export interface RepeatedExperimentPlanV2 {
-  schemaVersion: 2;
+export type RepeatedExperimentCell = ExperimentCellBase;
+
+export interface RepeatedExperimentPlanV3 {
+  schemaVersion: 3;
   experimentId: ExperimentId;
   kind: "repeated-request";
   createdAt: string;
   commonInput: Omit<ResolvedRunInput, "runId">;
   cells: RepeatedExperimentCell[];
 }
+
+export interface EvaluationInputBindingSnapshot {
+  id: EvaluationInputBindingId;
+  name: string;
+  target: {
+    kind: "template-variable";
+    templateUseId: PromptTemplateUseId;
+    variableName: string;
+  };
+}
+
+export interface EvaluationCaseSnapshot {
+  caseId: EvaluationCaseId;
+  name: string;
+  values: Record<EvaluationInputBindingId, string>;
+  checks: CheckDefinition[];
+  referenceAnswer?: string;
+  /** Fully resolved authored input. A cell adds only its preallocated run ID. */
+  input: Omit<ResolvedRunInput, "runId">;
+}
+
+export interface EvaluationExperimentCell extends ExperimentCellBase {
+  caseId: EvaluationCaseId;
+  repetition: number;
+}
+
+export interface EvaluationExperimentPlanV3 {
+  schemaVersion: 3;
+  experimentId: ExperimentId;
+  kind: "evaluation";
+  createdAt: string;
+  checkSchemaVersion: typeof CHECK_SCHEMA_VERSION;
+  scoringPolicy: "strict";
+  repetitions: number;
+  suite: {
+    suiteId: EvaluationSuiteId;
+    name: string;
+    conversationRevisionId: ConversationRevisionId;
+    inputBindings: EvaluationInputBindingSnapshot[];
+    cases: EvaluationCaseSnapshot[];
+  };
+  cells: EvaluationExperimentCell[];
+}
+
+export type ExperimentPlanV3 = RepeatedExperimentPlanV3 | EvaluationExperimentPlanV3;
+export type ExperimentCell = RepeatedExperimentCell | EvaluationExperimentCell;
 
 export interface ExperimentTerminalCellResult {
   cellId: ExperimentCellId;
@@ -63,12 +123,47 @@ export type ExperimentCellResult =
   | ExperimentTerminalCellResult
   | ExperimentNotRunCellResult;
 
-export interface ExperimentResultV2 {
-  schemaVersion: 2;
+export interface ExperimentResultV3 {
+  schemaVersion: 3;
   experimentId: ExperimentId;
   status: "completed" | "cancelled";
   endedAt: string;
   cells: ExperimentCellResult[];
+}
+
+export type EvaluationRepetitionClassification =
+  | "passed"
+  | "check-failed"
+  | "not-evaluated"
+  | "run-failed"
+  | "cancelled"
+  | "not-run"
+  | "missing-trace";
+
+export interface EvaluationRepetitionAssessment {
+  cellId: ExperimentCellId;
+  runId: RunId;
+  repetition: number;
+  classification: EvaluationRepetitionClassification;
+  checks: CheckResult[];
+}
+
+export interface EvaluationCaseAssessment {
+  caseId: EvaluationCaseId;
+  name: string;
+  passed: boolean;
+  repetitions: EvaluationRepetitionAssessment[];
+}
+
+export interface EvaluationAggregate {
+  lifecycle: ExperimentLifecycle;
+  passed: boolean;
+  cases: EvaluationCaseAssessment[];
+  caseCounts: { total: number; passed: number; failed: number };
+  repetitionCounts: Record<EvaluationRepetitionClassification, number>;
+  checkCounts: { total: number; passed: number; failed: number; notEvaluated: number };
+  totalTokens: ExperimentUsageAggregate;
+  outputTokens: ExperimentUsageAggregate;
 }
 
 export type ExperimentLifecycle = "interrupted" | "completed" | "cancelled";
@@ -190,25 +285,6 @@ const toolDefinitionSchema: z.ZodType<ToolDefinition> = z
   })
   .strict();
 
-const legacyTemplateContentSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("fragment"), text: z.string() }).strict(),
-  z
-    .object({
-      kind: z.literal("messages"),
-      messages: z
-        .array(
-          z
-            .object({
-              role: z.enum(["system", "user", "assistant"]),
-              content: z.string(),
-            })
-            .strict(),
-        )
-        .min(1),
-    })
-    .strict(),
-]);
-
 const resolvedTemplateUseBaseSchema = z.object({
     templateUseId: entityId("template-use"),
     templateId: entityId("template"),
@@ -234,35 +310,6 @@ const resolvedTemplateUseSchema: z.ZodType<ResolvedTemplateUse> =
   resolvedTemplateUseBaseSchema
     .extend({ messages: templateMessagesSchema })
     .strict();
-
-/**
- * Version 1 stored one-message provenance as a role-less fragment plus a
- * use-level role. It is accepted only under the Version 1 plan schema so a
- * document declaring Version 2 cannot smuggle the old shape past the gate.
- */
-const legacyResolvedTemplateUseSchema = resolvedTemplateUseBaseSchema
-  .extend({
-    content: legacyTemplateContentSchema,
-    fragmentRole: z.enum(["system", "user", "assistant"]).optional(),
-  })
-  .strict()
-  .transform(({ content, fragmentRole, ...resolution }, context) => {
-    if (content.kind === "fragment" && !fragmentRole) {
-      context.addIssue({
-        code: "custom",
-        path: ["fragmentRole"],
-        message: "Fragment template provenance requires a role.",
-      });
-      return z.NEVER;
-    }
-    return {
-      ...resolution,
-      messages:
-        content.kind === "fragment"
-          ? [{ role: fragmentRole!, content: content.text }]
-          : content.messages,
-    } as ResolvedTemplateUse;
-  });
 
 const capabilitiesSchema = z
   .object({
@@ -316,37 +363,71 @@ const commonInputSchema = commonInputBaseSchema
   .extend({ templateResolutions: z.array(resolvedTemplateUseSchema) })
   .strict();
 
-const legacyCommonInputSchema = commonInputBaseSchema
-  .extend({ templateResolutions: z.array(legacyResolvedTemplateUseSchema) })
-  .strict();
+const experimentCellBaseSchema = z.object({
+  cellId: entityId("experiment-cell"),
+  ordinal: z.number().int().positive(),
+  runId: entityId("run"),
+});
 
 const planBaseSchema = z.object({
   experimentId: entityId("experiment"),
-  kind: z.literal("repeated-request"),
   createdAt: z.string().datetime(),
-  cells: z
-    .array(
-      z
-        .object({
-          cellId: entityId("experiment-cell"),
-          ordinal: z.number().int().positive(),
-          runId: entityId("run"),
-        })
-        .strict(),
-    )
-    .min(2),
 });
 
-const planSchema = planBaseSchema
-  .extend({
+const repeatedPlanSchema = planBaseSchema.extend({
     schemaVersion: z.literal(EXPERIMENT_SCHEMA_VERSION),
+    kind: z.literal("repeated-request"),
     commonInput: commonInputSchema,
+    cells: z.array(experimentCellBaseSchema.strict()).min(2),
   })
   .strict();
 
-const planV1Schema = planBaseSchema
-  .extend({ schemaVersion: z.literal(1), commonInput: legacyCommonInputSchema })
-  .strict();
+const evaluationInputBindingSchema = z.object({
+  id: entityId("evaluation-input"),
+  name: z.string().trim().min(1),
+  target: z.object({
+    kind: z.literal("template-variable"),
+    templateUseId: entityId("template-use"),
+    variableName: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/),
+  }).strict(),
+}).strict();
+
+const evaluationCaseSnapshotSchema = z.object({
+  caseId: entityId("evaluation-case"),
+  name: z.string().trim().min(1),
+  values: z.record(entityId("evaluation-input"), z.string()),
+  checks: z.array(checkDefinitionSchema).min(1),
+  referenceAnswer: z.string().optional(),
+  input: commonInputSchema,
+}).strict();
+
+const evaluationPlanSchema = planBaseSchema.extend({
+  schemaVersion: z.literal(EXPERIMENT_SCHEMA_VERSION),
+  kind: z.literal("evaluation"),
+  checkSchemaVersion: z.literal(CHECK_SCHEMA_VERSION),
+  scoringPolicy: z.literal("strict"),
+  repetitions: z.number().int().positive(),
+  suite: z.object({
+    suiteId: entityId("evaluation-suite"),
+    name: z.string().trim().min(1),
+    conversationRevisionId: entityId("revision"),
+    inputBindings: z.array(evaluationInputBindingSchema),
+    cases: z.array(evaluationCaseSnapshotSchema).min(1),
+  }).strict(),
+  cells: z.array(experimentCellBaseSchema.extend({
+    caseId: entityId("evaluation-case"),
+    repetition: z.number().int().positive(),
+  }).strict()).min(1),
+}).strict();
+
+const planSchema: z.ZodType<ExperimentPlanV3> = z.discriminatedUnion("kind", [
+  repeatedPlanSchema,
+  evaluationPlanSchema,
+]);
+
+// Kept only as schemas for clear rejection diagnostics when stale artifacts
+// are encountered. PR10 intentionally does not migrate pre-v3 artifacts.
+const unsupportedPlanVersionSchema = z.object({ schemaVersion: z.number().int() }).passthrough();
 
 const resultSchema = z
   .object({
@@ -375,10 +456,6 @@ const resultSchema = z
   })
   .strict();
 
-const resultV1Schema = resultSchema
-  .extend({ schemaVersion: z.literal(1) })
-  .strict();
-
 function parseWith<T>(schema: z.ZodType<T>, value: unknown, label: string): T {
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
@@ -392,7 +469,13 @@ function parseWith<T>(schema: z.ZodType<T>, value: unknown, label: string): T {
   return parsed.data;
 }
 
-function assertNoSensitiveProviderOptions(plan: RepeatedExperimentPlanV2): void {
+function planInputs(plan: ExperimentPlanV3): Array<Omit<ResolvedRunInput, "runId">> {
+  return plan.kind === "repeated-request"
+    ? [plan.commonInput]
+    : plan.suite.cases.map(({ input }) => input);
+}
+
+function assertNoSensitiveProviderOptions(plan: ExperimentPlanV3): void {
   function inspect(value: JsonValue | undefined, path: string): void {
     if (!value || typeof value !== "object" || Array.isArray(value)) return;
     for (const [key, nested] of Object.entries(value)) {
@@ -405,13 +488,16 @@ function assertNoSensitiveProviderOptions(plan: RepeatedExperimentPlanV2): void 
     }
   }
 
-  inspect(plan.commonInput.options.providerOptions, "commonInput.options.providerOptions");
-  plan.commonInput.tools.forEach((tool, index) =>
-    inspect(tool.providerOptions, `commonInput.tools.${index}.providerOptions`),
-  );
+  planInputs(plan).forEach((input, inputIndex) => {
+    const prefix = plan.kind === "repeated-request" ? "commonInput" : `suite.cases.${inputIndex}.input`;
+    inspect(input.options.providerOptions, `${prefix}.options.providerOptions`);
+    input.tools.forEach((tool, toolIndex) =>
+      inspect(tool.providerOptions, `${prefix}.tools.${toolIndex}.providerOptions`),
+    );
+  });
 }
 
-function assertPlanReferences(plan: RepeatedExperimentPlanV2): void {
+function assertPlanReferences(plan: ExperimentPlanV3): void {
   const cellIds = new Set<string>();
   const runIds = new Set<string>();
   plan.cells.forEach((cell, index) => {
@@ -427,11 +513,42 @@ function assertPlanReferences(plan: RepeatedExperimentPlanV2): void {
     cellIds.add(cell.cellId);
     runIds.add(cell.runId);
   });
+
+  if (plan.kind !== "evaluation") return;
+  const bindingIds = new Set(plan.suite.inputBindings.map(({ id }) => id));
+  if (bindingIds.size !== plan.suite.inputBindings.length) {
+    throw new ExperimentValidationError("Evaluation input binding identities must be unique.");
+  }
+  const cases = new Map<EvaluationCaseId, EvaluationCaseSnapshot>();
+  plan.suite.cases.forEach((evaluationCase) => {
+    if (cases.has(evaluationCase.caseId)) {
+      throw new ExperimentValidationError(`Evaluation repeats case ${evaluationCase.caseId}.`);
+    }
+    const valueIds = Object.keys(evaluationCase.values);
+    if (valueIds.length !== bindingIds.size || valueIds.some((id) => !bindingIds.has(id as EvaluationInputBindingId))) {
+      throw new ExperimentValidationError(`Evaluation case ${evaluationCase.caseId} must snapshot exactly one value for every input binding.`);
+    }
+    if (evaluationCase.input.conversationRevisionId !== plan.suite.conversationRevisionId) {
+      throw new ExperimentValidationError(`Evaluation case ${evaluationCase.caseId} resolves a different conversation revision.`);
+    }
+    cases.set(evaluationCase.caseId, evaluationCase);
+  });
+  if (plan.cells.length !== plan.suite.cases.length * plan.repetitions) {
+    throw new ExperimentValidationError("Evaluation cells must include every planned case repetition exactly once.");
+  }
+  plan.suite.cases.forEach((evaluationCase, caseIndex) => {
+    for (let repetition = 1; repetition <= plan.repetitions; repetition += 1) {
+      const cell = plan.cells[caseIndex * plan.repetitions + repetition - 1];
+      if (cell?.caseId !== evaluationCase.caseId || cell.repetition !== repetition) {
+        throw new ExperimentValidationError("Evaluation cells must retain suite case order and contiguous one-based repetitions.");
+      }
+    }
+  });
 }
 
 function assertResultReferences(
-  result: ExperimentResultV2,
-  plan: RepeatedExperimentPlanV2,
+  result: ExperimentResultV3,
+  plan: ExperimentPlanV3,
 ): void {
   if (result.experimentId !== plan.experimentId) {
     throw new ExperimentValidationError("Experiment result belongs to a different experiment.");
@@ -494,24 +611,20 @@ export function experimentArtifactIdentity(fileName: string): {
   };
 }
 
-export function parseExperimentPlanFile(value: unknown): RepeatedExperimentPlanV2 {
-  const source =
-    typeof value === "object" &&
-    value !== null &&
-    "schemaVersion" in value &&
-    value.schemaVersion === 1
-      ? {
-          ...parseWith(planV1Schema, value, "experiment plan"),
-          schemaVersion: EXPERIMENT_SCHEMA_VERSION,
-        }
-      : value;
-  const plan = parseWith(planSchema, source, "experiment plan") as RepeatedExperimentPlanV2;
+export function parseExperimentPlanFile(value: unknown): ExperimentPlanV3 {
+  const version = unsupportedPlanVersionSchema.safeParse(value);
+  if (version.success && version.data.schemaVersion !== EXPERIMENT_SCHEMA_VERSION) {
+    throw new ExperimentValidationError(
+      `Experiment plan schema Version ${version.data.schemaVersion} is unsupported; expected Version ${EXPERIMENT_SCHEMA_VERSION}.`,
+    );
+  }
+  const plan = parseWith(planSchema, value, "experiment plan");
   assertPlanReferences(plan);
   assertNoSensitiveProviderOptions(plan);
   return plan;
 }
 
-export function parseExperimentPlanJson(contents: string): RepeatedExperimentPlanV2 {
+export function parseExperimentPlanJson(contents: string): ExperimentPlanV3 {
   try {
     return parseExperimentPlanFile(JSON.parse(contents));
   } catch (error) {
@@ -522,28 +635,24 @@ export function parseExperimentPlanJson(contents: string): RepeatedExperimentPla
 
 export function parseExperimentResultFile(
   value: unknown,
-  plan: RepeatedExperimentPlanV2,
-): ExperimentResultV2 {
+  plan: ExperimentPlanV3,
+): ExperimentResultV3 {
   const parsedPlan = parseExperimentPlanFile(plan);
-  const source =
-    typeof value === "object" &&
-    value !== null &&
-    "schemaVersion" in value &&
-    value.schemaVersion === 1
-      ? {
-          ...parseWith(resultV1Schema, value, "experiment result"),
-          schemaVersion: EXPERIMENT_SCHEMA_VERSION,
-        }
-      : value;
-  const result = parseWith(resultSchema, source, "experiment result") as ExperimentResultV2;
+  const version = unsupportedPlanVersionSchema.safeParse(value);
+  if (version.success && version.data.schemaVersion !== EXPERIMENT_SCHEMA_VERSION) {
+    throw new ExperimentValidationError(
+      `Experiment result schema Version ${version.data.schemaVersion} is unsupported; expected Version ${EXPERIMENT_SCHEMA_VERSION}.`,
+    );
+  }
+  const result = parseWith(resultSchema, value, "experiment result") as ExperimentResultV3;
   assertResultReferences(result, parsedPlan);
   return result;
 }
 
 export function parseExperimentResultJson(
   contents: string,
-  plan: RepeatedExperimentPlanV2,
-): ExperimentResultV2 {
+  plan: ExperimentPlanV3,
+): ExperimentResultV3 {
   let value: unknown;
   try {
     value = JSON.parse(contents);
@@ -553,7 +662,7 @@ export function parseExperimentResultJson(
   return parseExperimentResultFile(value, plan);
 }
 
-export function serializeExperimentPlan(plan: RepeatedExperimentPlanV2): string {
+export function serializeExperimentPlan(plan: ExperimentPlanV3): string {
   return serializeParsedExperimentPlan(parseExperimentPlanFile(plan));
 }
 
@@ -562,20 +671,20 @@ export function serializeExperimentPlan(plan: RepeatedExperimentPlanV2): string 
  * This is useful to execution owners that must validate an ad hoc plan before
  * starting, but must not re-parse the full frozen input for every cell.
  */
-export function serializeParsedExperimentPlan(plan: RepeatedExperimentPlanV2): string {
+export function serializeParsedExperimentPlan(plan: ExperimentPlanV3): string {
   return `${JSON.stringify(stableJsonValue(plan), null, 2)}\n`;
 }
 
 export function serializeExperimentResult(
-  result: ExperimentResultV2,
-  plan: RepeatedExperimentPlanV2,
+  result: ExperimentResultV3,
+  plan: ExperimentPlanV3,
 ): string {
   return `${JSON.stringify(stableJsonValue(parseExperimentResultFile(result, plan)), null, 2)}\n`;
 }
 
 /** Materializes exactly one preallocated repetition without changing its frozen input. */
 export function materializeExperimentCellInput(
-  plan: RepeatedExperimentPlanV2,
+  plan: ExperimentPlanV3,
   cellId: ExperimentCellId,
 ): ResolvedRunInput {
   const parsed = parseExperimentPlanFile(plan);
@@ -590,20 +699,26 @@ export function materializeExperimentCellInput(
  * or parse first.
  */
 export function materializeParsedExperimentCellInput(
-  plan: RepeatedExperimentPlanV2,
-  cell: RepeatedExperimentCell,
+  plan: ExperimentPlanV3,
+  cell: ExperimentCell,
 ): ResolvedRunInput {
   const plannedCell = plan.cells.find((candidate) => candidate.cellId === cell.cellId);
   if (!plannedCell || plannedCell.runId !== cell.runId) {
     throw new ExperimentValidationError(`Unknown experiment cell ${cell.cellId}.`);
   }
-  return { ...plan.commonInput, runId: plannedCell.runId };
+  if (plan.kind === "repeated-request") {
+    return { ...plan.commonInput, runId: plannedCell.runId };
+  }
+  const evaluationCell = plannedCell as EvaluationExperimentCell;
+  const evaluationCase = plan.suite.cases.find(({ caseId }) => caseId === evaluationCell.caseId);
+  if (!evaluationCase) throw new ExperimentValidationError(`Unknown evaluation case ${evaluationCell.caseId}.`);
+  return { ...evaluationCase.input, runId: plannedCell.runId };
 }
 
 /** A plan with no result survived an interrupted application session. */
 export function experimentLifecycle(
-  _plan: RepeatedExperimentPlanV2,
-  result?: ExperimentResultV2,
+  _plan: ExperimentPlanV3,
+  result?: ExperimentResultV3,
 ): ExperimentLifecycle {
   return result ? result.status : "interrupted";
 }
@@ -633,11 +748,14 @@ export { finalAssistantOutput } from "./run-output.ts";
  * metrics or successful repetitions.
  */
 export function repeatedExperimentAggregate(
-  plan: RepeatedExperimentPlanV2,
-  result: ExperimentResultV2 | undefined,
+  plan: RepeatedExperimentPlanV3,
+  result: ExperimentResultV3 | undefined,
   states: ReadonlyMap<RunId, RunState> = new Map(),
 ): RepeatedExperimentAggregate {
   const parsedPlan = parseExperimentPlanFile(plan);
+  if (parsedPlan.kind !== "repeated-request") {
+    throw new ExperimentValidationError("Repeated-experiment aggregates require a repeated-request plan.");
+  }
   const parsedResult = result ? parseExperimentResultFile(result, parsedPlan) : undefined;
   const results = new Map(parsedResult?.cells.map((cell) => [cell.cellId, cell]));
   let completed = 0;
@@ -701,5 +819,117 @@ export function repeatedExperimentAggregate(
     outputTokensPerSecond: range(throughput),
     distinctFinalAssistantOutputs: new Set(outputs).size,
     outputCharacterCount: range(outputs.map(outputCharacterCount)),
+  };
+}
+
+/**
+ * Derives the immutable "As run" assessment. Strict scoring is intentionally
+ * encoded here rather than persisted: every repetition, case, and the suite
+ * pass only when all required lower-level evidence passes.
+ */
+export function evaluationExperimentAggregate(
+  plan: EvaluationExperimentPlanV3,
+  result: ExperimentResultV3 | undefined,
+  states: ReadonlyMap<RunId, RunState> = new Map(),
+): EvaluationAggregate {
+  const parsed = parseExperimentPlanFile(plan);
+  if (parsed.kind !== "evaluation") {
+    throw new ExperimentValidationError("Evaluation aggregates require an evaluation plan.");
+  }
+  const parsedResult = result ? parseExperimentResultFile(result, parsed) : undefined;
+  const dispositions = new Map(parsedResult?.cells.map((cell) => [cell.cellId, cell]));
+  const cases = new Map(parsed.suite.cases.map((evaluationCase) => [evaluationCase.caseId, evaluationCase]));
+  const assessments = new Map<EvaluationCaseId, EvaluationRepetitionAssessment[]>();
+  const repetitionCounts: Record<EvaluationRepetitionClassification, number> = {
+    passed: 0,
+    "check-failed": 0,
+    "not-evaluated": 0,
+    "run-failed": 0,
+    cancelled: 0,
+    "not-run": 0,
+    "missing-trace": 0,
+  };
+  const checkCounts = { total: 0, passed: 0, failed: 0, notEvaluated: 0 };
+  const totalTokenValues: Array<number | undefined> = [];
+  const outputTokenValues: Array<number | undefined> = [];
+
+  for (const cell of parsed.cells) {
+    const evaluationCase = cases.get(cell.caseId)!;
+    const disposition = dispositions.get(cell.cellId);
+    const state = states.get(cell.runId);
+    checkCounts.total += evaluationCase.checks.length;
+    let classification: EvaluationRepetitionClassification;
+    let checks: CheckResult[] = [];
+
+    if (disposition?.status === "not-run" || (!disposition && !state)) {
+      classification = "not-run";
+      checkCounts.notEvaluated += evaluationCase.checks.length;
+    } else if (!state) {
+      classification = "missing-trace";
+      checkCounts.notEvaluated += evaluationCase.checks.length;
+    } else if (state.status.kind === "failed") {
+      classification = "run-failed";
+      checks = evaluateChecks(state, evaluationCase.checks);
+    } else if (state.status.kind === "cancelled") {
+      classification = "cancelled";
+      checks = evaluateChecks(state, evaluationCase.checks);
+    } else if (state.status.kind !== "completed") {
+      classification = "not-evaluated";
+      checkCounts.notEvaluated += evaluationCase.checks.length;
+    } else {
+      checks = evaluateChecks(state, evaluationCase.checks);
+      const summary = checkOutcomeSummary(checks);
+      classification = summary.notEvaluated > 0
+        ? "not-evaluated"
+        : summary.failed > 0
+          ? "check-failed"
+          : "passed";
+    }
+
+    if (checks.length > 0) {
+      const summary = checkOutcomeSummary(checks);
+      checkCounts.passed += summary.passed;
+      checkCounts.failed += summary.failed;
+      checkCounts.notEvaluated += summary.notEvaluated;
+    }
+    if (state && ["completed", "failed", "cancelled"].includes(state.status.kind)) {
+      const metrics = runMetrics(state);
+      totalTokenValues.push(metrics.usage.totalTokens);
+      outputTokenValues.push(metrics.usage.outputTokens);
+    }
+    repetitionCounts[classification] += 1;
+    const repetition: EvaluationRepetitionAssessment = {
+      cellId: cell.cellId,
+      runId: cell.runId,
+      repetition: cell.repetition,
+      classification,
+      checks,
+    };
+    assessments.set(cell.caseId, [...(assessments.get(cell.caseId) ?? []), repetition]);
+  }
+
+  const caseAssessments = parsed.suite.cases.map((evaluationCase): EvaluationCaseAssessment => {
+    const repetitions = assessments.get(evaluationCase.caseId) ?? [];
+    return {
+      caseId: evaluationCase.caseId,
+      name: evaluationCase.name,
+      passed: repetitions.length > 0 && repetitions.every(({ classification }) => classification === "passed"),
+      repetitions,
+    };
+  });
+  const passedCases = caseAssessments.filter(({ passed }) => passed).length;
+  return {
+    lifecycle: experimentLifecycle(parsed, parsedResult),
+    passed: caseAssessments.length > 0 && passedCases === caseAssessments.length,
+    cases: caseAssessments,
+    caseCounts: {
+      total: caseAssessments.length,
+      passed: passedCases,
+      failed: caseAssessments.length - passedCases,
+    },
+    repetitionCounts,
+    checkCounts,
+    totalTokens: usage(totalTokenValues),
+    outputTokens: usage(outputTokenValues),
   };
 }

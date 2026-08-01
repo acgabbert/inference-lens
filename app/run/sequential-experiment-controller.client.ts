@@ -6,9 +6,9 @@ import {
   serializeExperimentResult,
 } from "../../packages/core/src/experiment.ts";
 import type {
-  ExperimentResultV2,
-  RepeatedExperimentCell,
-  RepeatedExperimentPlanV2,
+  ExperimentCell,
+  ExperimentPlanV3,
+  ExperimentResultV3,
 } from "../../packages/core/src/experiment.ts";
 import { RunCoordinator } from "../../packages/core/src/run-kernel/index.ts";
 import { createRunTrace } from "../../packages/core/src/run-kernel/reducer.ts";
@@ -16,7 +16,7 @@ import type { RunState, RunTrace, TerminalRunStatus } from "../../packages/core/
 import type { RunId } from "../../packages/core/src/run-kernel/types.ts";
 import { driveProviderTurn } from "./provider-turn-driver.client.ts";
 
-export interface RepeatedExperimentProgress {
+export interface SequentialExperimentProgress {
   status: "running" | "completed" | "cancelled";
   requested: number;
   /** Cells that reached a terminal run status; queued `not-run` cells are excluded. */
@@ -26,21 +26,21 @@ export interface RepeatedExperimentProgress {
   states: ReadonlyMap<RunId, RunState>;
 }
 
-export interface RepeatedExperimentControllerOptions {
-  plan: RepeatedExperimentPlanV2;
+export interface SequentialExperimentControllerOptions {
+  plan: ExperimentPlanV3;
   transport: ProviderTurnTransport;
   prepareCredential(): Promise<CredentialSelection>;
   /** Must durably save the plan before resolving. Omit for an ad hoc session experiment. */
-  savePlan?(plan: RepeatedExperimentPlanV2, serialized: string): Promise<void>;
+  savePlan?(plan: ExperimentPlanV3, serialized: string): Promise<void>;
   /** Must durably save the final result before resolving. Omit for an ad hoc session experiment. */
-  saveResult?(result: ExperimentResultV2, serialized: string): Promise<void>;
-  onProgress?(progress: RepeatedExperimentProgress): void;
+  saveResult?(result: ExperimentResultV3, serialized: string): Promise<void>;
+  onProgress?(progress: SequentialExperimentProgress): void;
   /**
    * Invoked exactly once for every started cell after it reaches a terminal state.
    * A rejection deliberately interrupts the experiment: no later cells start and
    * no result is saved, leaving the durable plan as an interrupted experiment.
    */
-  onTerminalTrace?(trace: RunTrace, cell: RepeatedExperimentCell): Promise<void> | void;
+  onTerminalTrace?(trace: RunTrace, cell: ExperimentCell): Promise<void> | void;
 }
 
 function terminalStatus(state: RunState): TerminalRunStatus | undefined {
@@ -55,20 +55,20 @@ function terminalStatus(state: RunState): TerminalRunStatus | undefined {
 }
 
 /**
- * Sequential, non-React execution owner for one already-frozen repeated plan.
+ * Sequential, non-React execution owner for one already-frozen experiment plan.
  * It deliberately has no automatic retry or tool-result policy: a retryable
  * attempt is finalized as a failed ordinary run and the next cell proceeds.
  */
-export class RepeatedExperimentController {
-  private readonly options: RepeatedExperimentControllerOptions;
+export class SequentialExperimentController {
+  private readonly options: SequentialExperimentControllerOptions;
   private readonly states = new Map<RunId, RunState>();
   private activeAbortController: AbortController | undefined;
-  private frozenPlan: RepeatedExperimentPlanV2 | undefined;
+  private frozenPlan: ExperimentPlanV3 | undefined;
   private cancellationRequested = false;
   private running = false;
   private hasRun = false;
 
-  constructor(options: RepeatedExperimentControllerOptions) {
+  constructor(options: SequentialExperimentControllerOptions) {
     this.options = options;
   }
 
@@ -83,15 +83,18 @@ export class RepeatedExperimentController {
     this.activeAbortController?.abort();
   }
 
-  async run(): Promise<ExperimentResultV2> {
+  async run(): Promise<ExperimentResultV3> {
     if (this.running) throw new Error("The experiment is already running.");
     if (this.hasRun) throw new Error("The experiment has already run.");
     // Parse before any observable work, including optional persistence. This
     // keeps durable and ad hoc experiments on the same validation boundary.
     const plan = parseExperimentPlanFile(this.options.plan);
     this.frozenPlan = plan;
-    if (plan.commonInput.tools.length > 0) {
-      throw new Error("Repeated experiments do not support tools yet.");
+    const exposedTools = plan.kind === "repeated-request"
+      ? plan.commonInput.tools.length
+      : plan.suite.cases.reduce((count, evaluationCase) => count + evaluationCase.input.tools.length, 0);
+    if (exposedTools > 0) {
+      throw new Error("Experiments do not support exposed tools yet.");
     }
 
     this.running = true;
@@ -101,7 +104,7 @@ export class RepeatedExperimentController {
       if (this.options.savePlan) await this.options.savePlan(plan, serializedPlan);
       this.hasRun = true;
 
-      const cells: ExperimentResultV2["cells"] = [];
+      const cells: ExperimentResultV3["cells"] = [];
       this.emitRunning(cells.length);
       for (const cell of plan.cells) {
         if (this.cancellationRequested) break;
@@ -116,8 +119,8 @@ export class RepeatedExperimentController {
         }
       }
 
-      const result: ExperimentResultV2 = {
-        schemaVersion: 2,
+      const result: ExperimentResultV3 = {
+        schemaVersion: 3,
         experimentId: plan.experimentId,
         status: cancelled ? "cancelled" : "completed",
         endedAt: new Date().toISOString(),
@@ -141,9 +144,9 @@ export class RepeatedExperimentController {
   }
 
   private async runCell(
-    cell: RepeatedExperimentCell,
-    cells: ExperimentResultV2["cells"],
-    plan: RepeatedExperimentPlanV2,
+    cell: ExperimentCell,
+    cells: ExperimentResultV3["cells"],
+    plan: ExperimentPlanV3,
   ): Promise<void> {
     const input = materializeParsedExperimentCellInput(plan, cell);
     const coordinator = new RunCoordinator(input);
@@ -177,7 +180,7 @@ export class RepeatedExperimentController {
       } else if (outcome === "superseded") {
         coordinator.fail({
           code: "internal_error",
-          message: "The repeated experiment request was superseded unexpectedly.",
+          message: "The experiment request was superseded unexpectedly.",
         });
       }
     }
@@ -195,7 +198,7 @@ export class RepeatedExperimentController {
     ) {
       coordinator.fail({
         code: "tool_error",
-        message: "Repeated experiments do not support manual tool handling.",
+        message: "Experiments do not support manual tool handling.",
       });
     }
 
@@ -203,11 +206,11 @@ export class RepeatedExperimentController {
     if (!status) {
       coordinator.fail({
         code: "internal_error",
-        message: "The repeated experiment cell ended without a terminal status.",
+        message: "The experiment cell ended without a terminal status.",
       });
     }
     const terminal = terminalStatus(coordinator.state);
-    if (!terminal) throw new Error("The repeated experiment cell could not be finalized.");
+    if (!terminal) throw new Error("The experiment cell could not be finalized.");
 
     this.states.set(input.runId, coordinator.state);
     cells.push({ cellId: cell.cellId, runId: cell.runId, status: terminal.kind });
@@ -224,7 +227,7 @@ export class RepeatedExperimentController {
     }
   }
 
-  private terminalCellCount(cells: ExperimentResultV2["cells"]): number {
+  private terminalCellCount(cells: ExperimentResultV3["cells"]): number {
     return cells.filter((cell) => cell.status !== "not-run").length;
   }
 
@@ -240,7 +243,7 @@ export class RepeatedExperimentController {
     });
   }
 
-  private emit(progress: RepeatedExperimentProgress): void {
+  private emit(progress: SequentialExperimentProgress): void {
     this.options.onProgress?.({ ...progress, states: new Map(this.states) });
   }
 }

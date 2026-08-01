@@ -3,16 +3,16 @@ import type { Page } from "@playwright/test";
 
 import {
   serializeExperimentPlan,
-  type RepeatedExperimentPlanV2,
+  type RepeatedExperimentPlanV3,
 } from "../../packages/core/src/experiment";
 import { createProjectFile, serializeProjectFile } from "../../packages/core/src/project";
 import { createEntityId } from "../../packages/core/src/run-kernel";
 import { OPENAI_COMPATIBLE_CAPABILITIES } from "../../packages/core/src/types";
 
-function interruptedPlan(): RepeatedExperimentPlanV2 {
+function interruptedPlan(): RepeatedExperimentPlanV3 {
   const createdAt = "2026-07-31T12:00:00.000Z";
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     experimentId: createEntityId("experiment", "browser-history"),
     kind: "repeated-request",
     createdAt,

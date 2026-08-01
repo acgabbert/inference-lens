@@ -104,6 +104,11 @@ export type EvaluationSuitePreflightDiagnostic =
       caseId: EvaluationCaseId;
       checkId: CheckId;
       message: string;
+    }
+  | {
+      code: "no-checks";
+      caseId: EvaluationCaseId;
+      message: string;
     };
 
 /**
@@ -142,6 +147,13 @@ export function evaluationSuitePreflight(
     ? suite.cases.filter(({ id }) => selectedCaseIds.includes(id))
     : suite.cases;
   selectedCases.forEach((evaluationCase) => {
+    if (evaluationCase.checks.length === 0) {
+      diagnostics.push({
+        code: "no-checks",
+        caseId: evaluationCase.id,
+        message: `Case "${evaluationCase.name}" needs at least one deterministic check before it can run.`,
+      });
+    }
     suite.inputBindings.forEach((binding) => {
       if ((evaluationCase.values[binding.id] ?? "").trim() !== "") return;
       diagnostics.push({
@@ -184,4 +196,3 @@ export function evaluationSuitePreflight(
   });
   return diagnostics;
 }
-
