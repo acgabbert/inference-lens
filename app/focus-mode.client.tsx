@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 
 interface FocusModeOptions {
@@ -13,7 +13,9 @@ interface FocusModeOptions {
 
 /**
  * Focus-mode editors share modal keyboard behavior while continuing to own
- * their draft state locally. Closing only restores presentation and focus.
+ * their draft state locally. Closing only restores presentation and focus, so
+ * every dismissal path — Escape and the visible control alike — goes through
+ * the returned `close` and lands focus back on the trigger.
  */
 export function useFocusMode({
   open,
@@ -21,7 +23,12 @@ export function useFocusMode({
   containerRef,
   triggerRef,
   initialFocusSelector,
-}: FocusModeOptions): void {
+}: FocusModeOptions): { close: () => void } {
+  const close = useCallback(() => {
+    setOpen(false);
+    window.setTimeout(() => triggerRef.current?.focus(), 0);
+  }, [setOpen, triggerRef]);
+
   useEffect(() => {
     if (!open) return;
 
@@ -42,10 +49,6 @@ export function useFocusMode({
       (preferred ?? container.querySelector<HTMLElement>(focusableSelector))?.focus();
     }, 0);
 
-    const close = () => {
-      setOpen(false);
-      window.setTimeout(() => triggerRef.current?.focus(), 0);
-    };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -81,5 +84,37 @@ export function useFocusMode({
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [containerRef, initialFocusSelector, open, setOpen, triggerRef]);
+  }, [close, containerRef, initialFocusSelector, open]);
+
+  return { close };
+}
+
+/**
+ * The toggle doubles as the dismiss control, so it keeps its identity across
+ * the transition and stays a valid focus-restoration target.
+ */
+export function FocusModeToggle({
+  className,
+  open,
+  subject,
+  toggleRef,
+  onToggle,
+}: {
+  className: string;
+  open: boolean;
+  subject: string;
+  toggleRef: RefObject<HTMLButtonElement | null>;
+  onToggle(): void;
+}) {
+  return (
+    <button
+      aria-label={open ? `Exit ${subject} focus mode` : `Open ${subject} in focus mode`}
+      className={`${open ? "icon-button" : "button secondary"} ${className}`}
+      ref={toggleRef}
+      type="button"
+      onClick={onToggle}
+    >
+      {open ? "×" : "Expand"}
+    </button>
+  );
 }

@@ -1124,18 +1124,6 @@ output {
   padding-block: 0;
 }
 
-.template-editor-focus-mode {
-  position: fixed;
-  inset: 16px;
-  z-index: 50;
-  min-width: 0;
-  overflow: hidden;
-  border: 1px solid var(--border-strong);
-  border-radius: 14px;
-  background: var(--surface-panel);
-  box-shadow: 0 0 0 100vmax var(--overlay-scrim), var(--shadow-modal);
-}
-
 .template-editor-focus-mode .template-editor-body {
   min-height: 0;
   overflow-y: auto;
@@ -1296,12 +1284,6 @@ output {
 }
 
 @media (max-width: 760px) {
-  .template-editor-focus-mode {
-    inset: 0;
-    border: 0;
-    border-radius: 0;
-  }
-
   .template-content-heading {
     align-items: flex-start;
   }
@@ -4464,16 +4446,28 @@ main {
   border: 0;
 }
 
-.composer-focus-mode {
+/* Every focus-mode editor lifts the same panel out of the layout; only the
+   inner reflow is specific to what each one wraps. This has to stay below the
+   `.composer, .result` reset above — both selectors are one class, so source
+   order decides the border and height. */
+.focus-mode-surface {
   position: fixed;
   inset: 16px;
   z-index: 50;
   min-width: 0;
+  height: auto;
   overflow: hidden;
   border: 1px solid var(--border-strong);
   border-radius: 14px;
   background: var(--surface-panel);
   box-shadow: 0 0 0 100vmax var(--overlay-scrim), var(--shadow-modal);
+}
+
+/* `.pane-scroll` already owns the scroll viewport here, so focus mode only has
+   to spend the extra height on the message bodies — the `rows` hint that suits
+   the docked pane leaves them stranded at the top of a fullscreen panel. */
+.composer-focus-mode .message-card textarea {
+  min-height: 220px;
 }
 
 .request-pane {
@@ -5564,10 +5558,14 @@ main {
     min-height: 0;
   }
 
-  .composer-focus-mode {
+  .focus-mode-surface {
     inset: 0;
     border: 0;
     border-radius: 0;
+  }
+
+  .composer-focus-mode .message-card textarea {
+    min-height: 160px;
   }
 
   .topbar {

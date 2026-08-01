@@ -20,7 +20,7 @@ import {
   discoverTemplateVariables,
   resolveTemplateValues,
 } from "../packages/core/src/template-engine";
-import { useFocusMode } from "./use-focus-mode.client";
+import { FocusModeToggle, useFocusMode } from "./focus-mode.client";
 
 type TemplateRole = "system" | "user" | "assistant";
 
@@ -121,18 +121,13 @@ export function ProjectTemplatesPane({
     isSensitiveTemplateVariableName(name),
   );
 
-  useFocusMode({
+  const { close: closeFocusMode } = useFocusMode({
     open: focusMode,
     setOpen: setFocusMode,
     containerRef: editorRef,
     triggerRef: focusToggleRef,
     initialFocusSelector: ".template-content-editor textarea:not([disabled])",
   });
-
-  function closeFocusMode(): void {
-    setFocusMode(false);
-    window.setTimeout(() => focusToggleRef.current?.focus(), 0);
-  }
 
   function selectTemplate(template: PromptTemplate): void {
     const revision = currentRevision(template);
@@ -228,7 +223,7 @@ export function ProjectTemplatesPane({
       <section
         aria-label={focusMode ? "Prompt editor focus mode" : undefined}
         aria-modal={focusMode ? "true" : undefined}
-        className={focusMode ? "template-editor template-editor-focus-mode" : "template-editor"}
+        className={focusMode ? "template-editor focus-mode-surface template-editor-focus-mode" : "template-editor"}
         ref={editorRef}
         role={focusMode ? "dialog" : undefined}
       >
@@ -526,15 +521,13 @@ function TemplateContentEditor({
               <option value="messages">Message set</option>
             </select>
           </label>
-          <button
-            aria-label={focusMode ? "Exit prompt editor focus mode" : "Open prompt editor in focus mode"}
-            className={focusMode ? "icon-button template-focus-toggle" : "button secondary template-focus-toggle"}
-            ref={focusToggleRef}
-            type="button"
-            onClick={() => onFocusModeChange(!focusMode)}
-          >
-            {focusMode ? "×" : "Expand"}
-          </button>
+          <FocusModeToggle
+            className="template-focus-toggle"
+            open={focusMode}
+            subject="prompt editor"
+            toggleRef={focusToggleRef}
+            onToggle={() => onFocusModeChange(!focusMode)}
+          />
         </div>
       </div>
       {content.kind === "fragment" ? (

@@ -121,6 +121,7 @@ test("focus mode expands the live editor and restores focus when dismissed", asy
     );
     assert.ok(dialog);
     assert.equal(dialog.getAttribute("aria-modal"), "true");
+    assert.ok(dialog.classList.contains("focus-mode-surface"));
     assert.ok(dialog.classList.contains("template-editor-focus-mode"));
     assert.equal(document.body.style.overflow, "hidden");
     assert.equal(
@@ -167,6 +168,8 @@ test("focus mode has an explicit close button", async () => {
     await view.settle();
 
     assert.equal(view.container.querySelector('[role="dialog"]'), null);
+    assert.equal(document.body.style.overflow, "");
+    // Dismissing with the pointer restores focus exactly as Escape does.
     assert.equal(
       document.activeElement,
       view.container.querySelector(
