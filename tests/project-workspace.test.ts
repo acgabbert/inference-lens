@@ -5,6 +5,7 @@ import {
   createProjectFolder,
   downloadProjectFile,
   listExperimentArtifactsWorkspace,
+  openProjectFolder,
   readExperimentArtifactWorkspace,
   saveExperimentPlanWorkspace,
 } from "../app/project-workspace.client.ts";
@@ -213,6 +214,29 @@ test("browser creation can deliberately leave a project visible to Git", async (
     (bundle as MemoryDirectory).entries.has(".gitignore"),
     false,
   );
+});
+
+test("opening a Project v6 workspace migrates in memory without rewriting it", async () => {
+  const writes: string[] = [];
+  const directory = new MemoryDirectory("Legacy.inference-lens", writes);
+  const current = project();
+  const { evaluationSuites, ...version7WithoutSuites } = current;
+  assert.deepEqual(evaluationSuites, []);
+  const originalContents = `${JSON.stringify({
+    ...version7WithoutSuites,
+    schemaVersion: 6,
+  })}\n`;
+  const manifest = new MemoryFile("project.json", writes, new Set());
+  manifest.contents = originalContents;
+  directory.entries.set("project.json", manifest);
+
+  const opened = await withDirectoryPicker(directory, () => openProjectFolder());
+
+  assert.ok(opened);
+  assert.equal(opened.project.schemaVersion, 7);
+  assert.deepEqual(opened.project.evaluationSuites, []);
+  assert.equal(manifest.contents, originalContents);
+  assert.deepEqual(writes, []);
 });
 
 test("browser creation refuses to reuse an existing bundle", async () => {
