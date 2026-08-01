@@ -86,6 +86,31 @@ function completedState(runId, text) {
   };
 }
 
+function completedMetricState(runId, text, {
+  totalDurationMs,
+  ttfoMs,
+  outputSpanMs,
+  outputTokens,
+  totalTokens,
+}) {
+  const state = completedState(runId, text);
+  const turnId = `turn_${runId}`;
+  const exchangeId = `exchange_${runId}`;
+  const requestedAtMs = 100;
+  const firstOutputAtMs = requestedAtMs + ttfoMs;
+  const completedAtMs = firstOutputAtMs + outputSpanMs;
+  state.turns[0].turnId = turnId;
+  state.turns[0].attempts[0].exchangeId = exchangeId;
+  state.turns[0].attempts[0].usage = { outputTokens, totalTokens };
+  state.events = [
+    { type: "exchange.requested", turnId, attempt: 1, exchangeId, elapsedMs: requestedAtMs },
+    { type: "assistant.text_delta", turnId, attempt: 1, exchangeId, elapsedMs: firstOutputAtMs },
+    { type: "assistant.completed", turnId, attempt: 1, exchangeId, elapsedMs: completedAtMs },
+    { type: "run.completed", elapsedMs: totalDurationMs },
+  ];
+  return state;
+}
+
 function streamingState(runId) {
   return {
     runId,
@@ -176,7 +201,14 @@ test("repeated workspace renders unsaved state, exact aggregate text, and ordina
   assert.match(html, /Unsaved session experiment/);
   assert.match(html, /lost when this session closes/);
   assert.match(html, /0 completed · 0 failed · 0 cancelled/);
-  assert.match(html, /0 not run · 2 missing trace/);
+  assert.match(html, /2 missing trace/);
+  assert.doesNotMatch(html, /0 not run/);
+  assert.match(html, />Outcomes</);
+  assert.match(html, />Consistency</);
+  assert.doesNotMatch(html, />Latency</);
+  assert.doesNotMatch(html, />Usage</);
+  assert.doesNotMatch(html, /More metrics/);
+  assert.doesNotMatch(html, /—/);
   assert.match(html, /Repetition 1/);
   assert.match(html, /aria-current="true"/);
   assert.match(html, /Open Response &amp; Inspect/);
@@ -217,6 +249,74 @@ test("running workspace exposes determinate activity, the active repetition, and
   assert.match(html, /experiment-row-activity-dot/);
   assert.doesNotMatch(html, /experiment-activity-dot/);
   assert.match(html, /Stop remaining/);
+  assertNoBrokenValues(html);
+});
+
+test("successful experiment consolidates primary evidence and collapses secondary metrics", async () => {
+  const frozenPlan = plan();
+  const states = new Map([
+    ["run_render-1", completedMetricState("run_render-1", "Hello", {
+      totalDurationMs: 1_650,
+      ttfoMs: 500,
+      outputSpanMs: 1_000,
+      outputTokens: 20,
+      totalTokens: 30,
+    })],
+    ["run_render-2", completedMetricState("run_render-2", "Longer", {
+      totalDurationMs: 2_350,
+      ttfoMs: 700,
+      outputSpanMs: 1_000,
+      outputTokens: 30,
+      totalTokens: 50,
+    })],
+  ]);
+  const html = await render(
+    "/app/run/repeated-experiment-workspace.client.tsx",
+    "RepeatedExperimentWorkspace",
+    {
+      execution: {
+        plan: frozenPlan,
+        storage: "durable",
+        workspace: {},
+        states,
+        unreadableTraces: new Map(),
+        result: {
+          schemaVersion: 1,
+          experimentId: frozenPlan.experimentId,
+          status: "completed",
+          endedAt: "2026-07-30T12:01:00.000Z",
+          cells: frozenPlan.cells.map(({ cellId, runId }) => ({ cellId, runId, status: "completed" })),
+        },
+        traces: new Map(),
+        selectedRunId: null,
+      },
+      onStop() {},
+      onOpenTrace() {},
+    },
+  );
+
+  const primary = html.slice(
+    html.indexOf('<div class="repeated-experiment-summary"'),
+    html.indexOf('<details class="repeated-experiment-more-metrics">'),
+  );
+  assert.match(primary, />Outcomes</);
+  assert.match(primary, /2 completed · 0 failed · 0 cancelled/);
+  assert.doesNotMatch(primary, /Unstarted \/ missing/);
+  assert.match(primary, />Consistency</);
+  assert.match(primary, />Latency</);
+  assert.match(primary, /Total duration/);
+  assert.match(primary, /Time to first output/);
+  assert.match(primary, />Usage</);
+  assert.match(primary, /Per-run total tokens/);
+  assert.match(primary, /Experiment total<\/dt><dd>80 across 2 runs/);
+  assert.doesNotMatch(primary, /output tokens|Output throughput|Output characters/);
+
+  assert.match(html, /<details class="repeated-experiment-more-metrics">/);
+  assert.match(html, /Per-run output tokens/);
+  assert.match(html, /Experiment output tokens<\/dt><dd>50 across 2 runs/);
+  assert.match(html, /Output throughput/);
+  assert.match(html, /Output characters/);
+  assert.doesNotMatch(html, /—/);
   assertNoBrokenValues(html);
 });
 
@@ -308,6 +408,11 @@ test("completed experiment rows show a brief normalized output preview", async (
   );
 
   assert.equal((html.match(/Output ready/g) ?? []).length, 2);
+  assert.match(html, /<details class="repeated-experiment-more-metrics">/);
+  assert.match(html, /<summary>More metrics<\/summary>/);
+  assert.match(html, /Output characters/);
+  assert.doesNotMatch(html, /Per-run output tokens/);
+  assert.doesNotMatch(html, /Output throughput/);
   assert.match(html, /A finished answer\. More detail\./);
   assert.match(html, /More detail\. …/);
   assert.match(html, /No text output/);
@@ -349,7 +454,8 @@ test("a saved interrupted experiment reads as interrupted and shows no live prog
   assert.doesNotMatch(html, /aria-busy="true"/);
   // The cell that never started must not be described as a queued repetition.
   assert.match(html, /1 completed · 0 failed · 0 cancelled/);
-  assert.match(html, /1 not run · 0 missing trace/);
+  assert.match(html, /1 not run/);
+  assert.doesNotMatch(html, /0 missing trace/);
   assert.doesNotMatch(html, /Waiting/);
   assert.match(html, /Not run/);
   assertNoBrokenValues(html);
