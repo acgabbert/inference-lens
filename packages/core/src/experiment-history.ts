@@ -29,6 +29,7 @@ export interface ExperimentHistoryCellReference {
 
 export interface ExperimentHistoryItem {
   experimentId: ExperimentId;
+  kind: "repeated-request" | "evaluation";
   planFileName: string;
   resultFileName?: string;
   createdAt: string;
@@ -122,14 +123,46 @@ export function loadProjectHistoryFiles(
         ...(stored ? { traceFileName: stored.fileName } : {}),
       };
     });
-    const aggregate = repeatedExperimentAggregate(plan, result, states);
+    const aggregate = plan.kind === "repeated-request"
+      ? repeatedExperimentAggregate(plan, result, states)
+      : (() => {
+          const dispositions = new Map(result?.cells.map((cell) => [cell.cellId, cell]));
+          let completed = 0;
+          let failed = 0;
+          let cancelled = 0;
+          let notRun = 0;
+          let missingTrace = 0;
+          plan.cells.forEach((cell) => {
+            const disposition = dispositions.get(cell.cellId);
+            const state = states.get(cell.runId);
+            if (disposition?.status === "not-run" || (!disposition && !state)) notRun += 1;
+            else if (!state) missingTrace += 1;
+            else if (state.status.kind === "completed") completed += 1;
+            else if (state.status.kind === "failed") failed += 1;
+            else if (state.status.kind === "cancelled") cancelled += 1;
+            else notRun += 1;
+          });
+          const lifecycle: ExperimentLifecycle = result?.status ?? "interrupted";
+          return {
+            lifecycle,
+            requested: plan.cells.length,
+            completed,
+            failed,
+            cancelled,
+            notRun,
+            missingTrace,
+          };
+        })();
     experiments.push({
       experimentId: plan.experimentId,
+      kind: plan.kind,
       planFileName: planFile.fileName,
       ...(resultFileName ? { resultFileName } : {}),
       createdAt: plan.createdAt,
       ...(result ? { endedAt: result.endedAt } : {}),
-      model: plan.commonInput.target.model,
+      model: plan.kind === "repeated-request"
+        ? plan.commonInput.target.model
+        : plan.suite.cases[0]!.input.target.model,
       lifecycle: aggregate.lifecycle,
       requested: aggregate.requested,
       completed: aggregate.completed,

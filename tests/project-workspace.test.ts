@@ -18,7 +18,7 @@ import {
   parseProjectJson,
 } from "../packages/core/src/project.ts";
 import { createResolvedRunInput } from "../packages/core/src/run-kernel/run-execution.ts";
-import type { RepeatedExperimentPlanV2 } from "../packages/core/src/experiment.ts";
+import type { RepeatedExperimentPlanV3 } from "../packages/core/src/experiment.ts";
 
 class MemoryFile implements FileSystemFileHandleLike {
   readonly kind = "file";
@@ -119,7 +119,7 @@ function project() {
   });
 }
 
-function experimentPlan(): RepeatedExperimentPlanV2 {
+function experimentPlan(): RepeatedExperimentPlanV3 {
   const input = createResolvedRunInput(
     {
       provider: "openai-compatible",
@@ -139,7 +139,7 @@ function experimentPlan(): RepeatedExperimentPlanV2 {
   const { runId: sourceRunId, ...commonInput } = input;
   assert.equal(sourceRunId, "run_workspace-experiment-source");
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     experimentId: "experiment_workspace",
     kind: "repeated-request",
     createdAt: "2026-07-30T12:00:01.000Z",

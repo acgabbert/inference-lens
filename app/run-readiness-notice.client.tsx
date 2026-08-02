@@ -28,7 +28,7 @@ export function RunReadinessNotice({
       role={blocked ? "alert" : "status"}
     >
       <span className="run-readiness-glyph" aria-hidden="true">
-        {blocked ? "!" : "i"}
+        {blocked ? "!" : <span className="info-mark-glyph">i</span>}
       </span>
       <div className="run-readiness-copy">
         <div className="run-readiness-summary">
@@ -41,7 +41,7 @@ export function RunReadinessNotice({
           <details className="run-readiness-why">
             <summary>
               <span className="run-readiness-why-mark" aria-hidden="true">
-                i
+                <span className="info-mark-glyph">i</span>
               </span>
               Why
             </summary>

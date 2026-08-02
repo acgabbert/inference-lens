@@ -8,8 +8,8 @@ import {
 import {
   serializeExperimentPlan,
   serializeExperimentResult,
-  type ExperimentResultV2,
-  type RepeatedExperimentPlanV2,
+  type ExperimentResultV3,
+  type RepeatedExperimentPlanV3,
 } from "../packages/core/src/experiment.ts";
 import {
   createEntityId,
@@ -21,10 +21,10 @@ import type { RunEvent } from "../packages/core/src/run-kernel/index.ts";
 import { serializeRunTrace } from "../packages/core/src/run-trace.ts";
 import { OPENAI_COMPATIBLE_CAPABILITIES } from "../packages/core/src/types.ts";
 
-function plan(suffix: string, createdAt = "2026-07-31T12:00:00.000Z"): RepeatedExperimentPlanV2 {
+function plan(suffix: string, createdAt = "2026-07-31T12:00:00.000Z"): RepeatedExperimentPlanV3 {
   const experimentId = createEntityId("experiment", suffix);
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     experimentId,
     kind: "repeated-request",
     createdAt,
@@ -57,14 +57,14 @@ function plan(suffix: string, createdAt = "2026-07-31T12:00:00.000Z"): RepeatedE
   };
 }
 
-function planSource(value: RepeatedExperimentPlanV2) {
+function planSource(value: RepeatedExperimentPlanV3) {
   return {
     fileName: `${value.experimentId}.plan.json`,
     contents: serializeExperimentPlan(value),
   };
 }
 
-function completedTraceSource(value: RepeatedExperimentPlanV2, ordinal: number) {
+function completedTraceSource(value: RepeatedExperimentPlanV3, ordinal: number) {
   const cell = value.cells[ordinal - 1]!;
   const input = { ...value.commonInput, runId: cell.runId };
   const turnId = createEntityId("turn", `${cell.runId}-turn`);
@@ -144,8 +144,8 @@ function completedTraceSource(value: RepeatedExperimentPlanV2, ordinal: number) 
 
 test("groups completed experiments even when referenced traces are missing", () => {
   const value = plan("complete");
-  const result: ExperimentResultV2 = {
-    schemaVersion: 2,
+  const result: ExperimentResultV3 = {
+    schemaVersion: 3,
     experimentId: value.experimentId,
     status: "completed",
     endedAt: "2026-07-31T12:01:00.000Z",
@@ -172,8 +172,8 @@ test("groups completed experiments even when referenced traces are missing", () 
 
 test("groups cancelled experiments with their unstarted cells", () => {
   const value = plan("cancelled");
-  const result: ExperimentResultV2 = {
-    schemaVersion: 2,
+  const result: ExperimentResultV3 = {
+    schemaVersion: 3,
     experimentId: value.experimentId,
     status: "cancelled",
     endedAt: "2026-07-31T12:00:10.000Z",

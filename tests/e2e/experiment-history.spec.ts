@@ -3,16 +3,17 @@ import type { Page } from "@playwright/test";
 
 import {
   serializeExperimentPlan,
-  type RepeatedExperimentPlanV2,
+  type EvaluationExperimentPlanV3,
+  type RepeatedExperimentPlanV3,
 } from "../../packages/core/src/experiment";
 import { createProjectFile, serializeProjectFile } from "../../packages/core/src/project";
 import { createEntityId } from "../../packages/core/src/run-kernel";
 import { OPENAI_COMPATIBLE_CAPABILITIES } from "../../packages/core/src/types";
 
-function interruptedPlan(): RepeatedExperimentPlanV2 {
+function interruptedPlan(): RepeatedExperimentPlanV3 {
   const createdAt = "2026-07-31T12:00:00.000Z";
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     experimentId: createEntityId("experiment", "browser-history"),
     kind: "repeated-request",
     createdAt,
@@ -45,6 +46,40 @@ function interruptedPlan(): RepeatedExperimentPlanV2 {
   };
 }
 
+function interruptedEvaluationPlan(): EvaluationExperimentPlanV3 {
+  const repeated = interruptedPlan();
+  const caseId = createEntityId("evaluation-case", "browser-history");
+  return {
+    schemaVersion: 3,
+    experimentId: createEntityId("experiment", "evaluation-browser-history"),
+    kind: "evaluation",
+    createdAt: "2026-07-31T12:30:00.000Z",
+    checkSchemaVersion: 2,
+    scoringPolicy: "strict",
+    repetitions: 1,
+    suite: {
+      suiteId: createEntityId("evaluation-suite", "browser-history"),
+      name: "History quality gate",
+      conversationRevisionId: repeated.commonInput.conversationRevisionId,
+      inputBindings: [],
+      cases: [{
+        caseId,
+        name: "Saved case",
+        values: {},
+        checks: [{ checkId: createEntityId("check", "browser-history"), kind: "valid-json" }],
+        input: repeated.commonInput,
+      }],
+    },
+    cells: [{
+      cellId: createEntityId("experiment-cell", "evaluation-browser-history-1"),
+      ordinal: 1,
+      runId: createEntityId("run", "evaluation-browser-history-1"),
+      caseId,
+      repetition: 1,
+    }],
+  };
+}
+
 /**
  * The one project folder both storage adapters are asked to reproduce: a
  * project manifest, an empty traces directory, and one interrupted experiment
@@ -63,15 +98,18 @@ function historyFixture() {
     },
   });
   const plan = interruptedPlan();
+  const evaluationPlan = interruptedEvaluationPlan();
   return {
     projectJson: serializeProjectFile(project),
     planJson: serializeExperimentPlan(plan),
     planName: `${plan.experimentId}.plan.json`,
+    evaluationPlanJson: serializeExperimentPlan(evaluationPlan),
+    evaluationPlanName: `${evaluationPlan.experimentId}.plan.json`,
   };
 }
 
 async function installProjectFolderFixture(page: Page): Promise<void> {
-  await page.addInitScript(({ projectJson, planJson, planName }) => {
+  await page.addInitScript(({ projectJson, planJson, planName, evaluationPlanJson, evaluationPlanName }) => {
     class MemoryFileHandle {
       readonly kind = "file";
       constructor(readonly name: string, public contents: string) {}
@@ -117,6 +155,7 @@ async function installProjectFolderFixture(page: Page): Promise<void> {
     root.entries.set("traces", new MemoryDirectoryHandle("traces"));
     const experiments = new MemoryDirectoryHandle("experiments");
     experiments.entries.set(planName, new MemoryFileHandle(planName, planJson));
+    experiments.entries.set(evaluationPlanName, new MemoryFileHandle(evaluationPlanName, evaluationPlanJson));
     root.entries.set("experiments", experiments);
     Object.defineProperty(window, "showDirectoryPicker", {
       configurable: true,
@@ -140,9 +179,9 @@ async function installProjectFolderFixture(page: Page): Promise<void> {
  * on so a rename in either cannot pass both.
  */
 async function installNativeWorkspaceFixture(page: Page): Promise<void> {
-  await page.addInitScript(({ projectJson, planJson, planName }) => {
+  await page.addInitScript(({ projectJson, planJson, planName, evaluationPlanJson, evaluationPlanName }) => {
     const WORKSPACE_ID = "workspace-fixture";
-    const experiments = new Map<string, string>([[planName, planJson]]);
+    const experiments = new Map<string, string>([[planName, planJson], [evaluationPlanName, evaluationPlanJson]]);
     const calls: Array<{ command: string; args: Record<string, unknown> }> = [];
     (window as unknown as { __nativeCalls: typeof calls }).__nativeCalls = calls;
 
@@ -225,10 +264,11 @@ async function expectInterruptedExperiment(page: Page): Promise<void> {
   await page.getByLabel("Run data menu").click();
   await page.getByRole("button", { name: "Run history…" }).click();
   const grouped = page.locator(".run-history-item.experiment");
-  await expect(grouped).toHaveCount(1);
-  await expect(grouped).toContainText("Repeated experiment · history-fixture-model");
-  await expect(grouped).toContainText("interrupted");
-  await grouped.click();
+  await expect(grouped).toHaveCount(2);
+  const repeated = grouped.filter({ hasText: "Repeated experiment" });
+  await expect(repeated).toContainText("Repeated experiment · history-fixture-model");
+  await expect(repeated).toContainText("interrupted");
+  await repeated.click();
 
   const workspace = page.getByRole("region", { name: "Repeated experiment results" });
   await expect(workspace).toBeVisible();
@@ -250,6 +290,23 @@ async function expectInterruptedExperiment(page: Page): Promise<void> {
   await expect(workspace).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
 }
 
+async function expectInterruptedEvaluation(page: Page): Promise<void> {
+  await page.getByLabel("Run data menu").click();
+  await page.getByRole("button", { name: "Run history…" }).click();
+  const grouped = page.locator(".run-history-item.experiment").filter({ hasText: "Evaluation · history-fixture-model" });
+  await expect(grouped).toContainText("interrupted");
+  await grouped.click();
+
+  const workspace = page.getByRole("region", { name: "Evaluation results" });
+  await expect(workspace).toContainText("History quality gate");
+  await expect(workspace).toContainText("As run · 1 cases · 1 repetition");
+  await expect(workspace).toContainText("0 / 1 passed");
+  await expect(workspace).toContainText("1 not evaluated");
+  await expect(workspace).toContainText("Not run");
+  await expect(workspace.locator(".run-history-status").first()).toHaveText("interrupted");
+  await expect(workspace).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
+}
+
 test("opens an interrupted experiment from grouped browser history", async ({ page }) => {
   await installProjectFolderFixture(page);
   await page.goto("/");
@@ -262,6 +319,7 @@ test("opens an interrupted experiment from grouped browser history", async ({ pa
     .toBeVisible();
 
   await expectInterruptedExperiment(page);
+  await expectInterruptedEvaluation(page);
 });
 
 test("opens an interrupted experiment from grouped desktop history", async ({ page }) => {
@@ -273,6 +331,7 @@ test("opens an interrupted experiment from grouped desktop history", async ({ pa
     .toBeVisible();
 
   await expectInterruptedExperiment(page);
+  await expectInterruptedEvaluation(page);
 
   // The desktop adapter is only correct if it speaks the commands `src-tauri`
   // actually exposes. Pin the names and argument keys so a rename on either

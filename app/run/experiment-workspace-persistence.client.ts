@@ -1,13 +1,13 @@
 import type {
-  RepeatedExperimentControllerOptions,
-} from "./repeated-experiment-controller.client.ts";
+  SequentialExperimentControllerOptions,
+} from "./sequential-experiment-controller.client.ts";
 import {
   saveExperimentPlanWorkspace,
   saveExperimentResultWorkspace,
   saveRunTraceWorkspace,
 } from "../project-workspace.client.ts";
 import type { ProjectWorkspaceHandle } from "../project-workspace.client.ts";
-import type { RepeatedExperimentPlanV2 } from "../../packages/core/src/experiment.ts";
+import type { ExperimentPlanV3 } from "../../packages/core/src/experiment.ts";
 
 /**
  * Binds the storage-neutral controller callbacks to one writable project.
@@ -16,9 +16,9 @@ import type { RepeatedExperimentPlanV2 } from "../../packages/core/src/experimen
  */
 export function createExperimentWorkspacePersistence(
   workspace: ProjectWorkspaceHandle,
-  plan: RepeatedExperimentPlanV2,
+  plan: ExperimentPlanV3,
 ): Pick<
-  RepeatedExperimentControllerOptions,
+  SequentialExperimentControllerOptions,
   "savePlan" | "saveResult" | "onTerminalTrace"
 > {
   return {

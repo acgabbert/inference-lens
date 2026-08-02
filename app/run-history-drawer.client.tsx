@@ -180,13 +180,13 @@ export function RunHistoryDrawer({
                   onClick={() => void selectExperiment(item)}
                 >
                   <span className="run-history-item-heading">
-                    <strong>Repeated experiment · {item.model}</strong>
+                    <strong>{item.kind === "evaluation" ? "Evaluation" : "Repeated experiment"} · {item.model}</strong>
                     <span className={`run-history-status ${item.lifecycle}`}>
                       {pending ? "opening" : item.lifecycle}
                     </span>
                   </span>
                   <time dateTime={item.createdAt}>{formatDate(item.createdAt)}</time>
-                  <span>{item.requested} repetitions · {experimentMeta(item)}</span>
+                  <span>{item.requested} {item.kind === "evaluation" ? "planned runs" : "repetitions"} · {experimentMeta(item)}</span>
                   <code>{item.planFileName}</code>
                 </button>
               );
