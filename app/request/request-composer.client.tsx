@@ -57,10 +57,13 @@ export interface RequestComposerProps {
     streamingAvailable: boolean;
     toolsEnabled: boolean;
     modelDiscovery: ModelDiscoveryState | null;
+    /** Pinned model ids for the active profile; see `ModelCombobox`. */
+    favoriteModels: string[];
     onModelChange(model: string): void;
     onTemperatureChange(temperature: number): void;
     onStreamingPreferenceChange(streaming: boolean): void;
     onLoadModels(force?: boolean): void;
+    onToggleFavoriteModel(model: string): void;
   };
   readiness?: RunReadiness;
   pendingDestination?: ReadinessDestination;
@@ -290,7 +293,7 @@ export function RequestComposer({
                 </button>
               </p>
               <div className="run-settings-grid">
-                <ModelCombobox inputRef={modelRef} value={settings.model} onChange={settings.onModelChange} discovery={settings.modelDiscovery} onLoadModels={settings.onLoadModels} />
+                <ModelCombobox inputRef={modelRef} value={settings.model} onChange={settings.onModelChange} discovery={settings.modelDiscovery} onLoadModels={settings.onLoadModels} favoriteModels={settings.favoriteModels} onToggleFavoriteModel={settings.onToggleFavoriteModel} />
                 <label className="temperature-control">
                   Temperature
                   <div className="range-row">

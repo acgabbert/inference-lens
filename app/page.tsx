@@ -47,6 +47,7 @@ import { N8nImportModal } from "./n8n-import-modal.client";
 import { ProjectCreationDialog } from "./project-creation-dialog.client";
 import { useModelDiscovery } from "./use-model-discovery.client";
 import { useConnectionProfiles } from "./use-connection-profiles.client";
+import { toggleFavoriteModel } from "./profile-store.client";
 import { useRequestDraft } from "./use-request-draft.client";
 import { useProjectWorkspace } from "./use-project-workspace.client";
 import { ConnectionDrawer } from "./connection-drawer.client";
@@ -1239,10 +1240,18 @@ function HomeContent() {
             streamingAvailable: activeCapabilities.streaming,
             toolsEnabled: activeCapabilities.tools,
             modelDiscovery: activeModelDiscovery,
+            favoriteModels: activeProfile.favoriteModels ?? [],
             onModelChange: setEditorModel,
             onTemperatureChange: setEditorTemperature,
             onStreamingPreferenceChange: setStreamingPreferred,
             onLoadModels: (force) => void loadModels(force),
+            onToggleFavoriteModel: (model) =>
+              updateActiveProfile({
+                favoriteModels: toggleFavoriteModel(
+                  activeProfile.favoriteModels,
+                  model,
+                ),
+              }),
           }}
           {...(readiness ? { readiness } : {})}
           pendingDestination={pendingReadinessDestination}

@@ -31,6 +31,15 @@ export interface StoredInferenceProfile extends InferenceProfile {
    * so device-local references cannot attach to a different profile instance.
    */
   instanceId: string;
+  /**
+   * Model ids pinned for quick access in this profile's picker. A device/user
+   * preference, not portable project data — two projects sharing one
+   * connection profile share its favorites. Omitted rather than `[]` when
+   * empty, matching `capabilityOverrides`. A favorite that a provider later
+   * drops from its catalogue is left in place: free-text model ids are
+   * already valid here, so there is nothing to reconcile it against.
+   */
+  favoriteModels?: string[];
 }
 
 /** Editable metadata; both forms of local identity are immutable. */
@@ -105,6 +114,26 @@ export function nextCapabilityOverrides(
 }
 
 /**
+ * Adds or removes a single model from a profile's favorites, without
+ * mutating the array it is given. Returns `undefined` rather than `[]` when
+ * the result is empty, so an unfavorited-back-to-nothing profile stores no
+ * favorites field at all — the same "no disagreement, nothing stored"
+ * convention `nextCapabilityOverrides` uses.
+ */
+export function toggleFavoriteModel(
+  favorites: string[] | undefined,
+  model: string,
+): string[] | undefined {
+  const trimmed = model.trim();
+  if (!trimmed) return favorites;
+  const current = favorites ?? [];
+  const next = current.includes(trimmed)
+    ? current.filter((id) => id !== trimmed)
+    : [...current, trimmed];
+  return next.length === 0 ? undefined : next;
+}
+
+/**
  * Why this profile cannot be deleted, phrased for the user, or undefined when it
  * can be. The list must never empty out — the active profile is resolved by
  * falling back to the first one — and a profile the server provisioned would be
@@ -150,7 +179,14 @@ export function removeProfile(
   };
 }
 
-type PersistedInferenceProfile = InferenceProfile & { instanceId?: string };
+type PersistedInferenceProfile = InferenceProfile & {
+  instanceId?: string;
+  favoriteModels?: unknown;
+};
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
 
 function isStoredProfile(value: unknown): value is PersistedInferenceProfile {
   if (!value || typeof value !== "object") return false;
@@ -165,7 +201,8 @@ function isStoredProfile(value: unknown): value is PersistedInferenceProfile {
     typeof profile.model === "string" &&
     (profile.temperature === undefined || typeof profile.temperature === "number") &&
     (profile.capabilityOverrides === undefined ||
-      isProviderCapabilityOverrides(profile.capabilityOverrides))
+      isProviderCapabilityOverrides(profile.capabilityOverrides)) &&
+    (profile.favoriteModels === undefined || isStringArray(profile.favoriteModels))
   );
 }
 
@@ -173,6 +210,12 @@ function isStoredProfile(value: unknown): value is PersistedInferenceProfile {
 function sanitizeProfile(
   profile: PersistedInferenceProfile,
 ): StoredInferenceProfile {
+  // A profile written before this field existed simply lacks it, which
+  // `isStoredProfile` already treats as valid; an empty favorites list is
+  // dropped here the same way a resolved-to-baseline capability override is.
+  const favoriteModels = isStringArray(profile.favoriteModels)
+    ? Array.from(new Set(profile.favoriteModels.map((id) => id.trim()).filter(Boolean)))
+    : [];
   return {
     id: profile.id,
     instanceId: profile.instanceId?.trim() || profileInstanceId(),
@@ -189,6 +232,7 @@ function sanitizeProfile(
     ...(profile.credentialRef === undefined
       ? {}
       : { credentialRef: profile.credentialRef }),
+    ...(favoriteModels.length === 0 ? {} : { favoriteModels }),
   };
 }
 

@@ -665,26 +665,46 @@ label.file-button {
   box-shadow: var(--shadow-popover);
 }
 
-.model-option {
-  width: 100%;
-  padding: 9px 10px;
-  border: 0;
+.model-option-row {
+  display: flex;
+  align-items: stretch;
   border-bottom: 1px solid var(--border-subtle);
-  background: transparent;
-  color: var(--text-primary);
-  cursor: pointer;
-  font-family: var(--font-geist-mono), monospace;
-  text-align: left;
 }
 
-.model-option:last-child {
+.model-option-row:last-child {
   border-bottom: 0;
 }
 
-.model-option:hover,
-.model-option.highlighted {
+.model-option-row:hover,
+.model-option-row.highlighted {
   background: var(--accent-soft);
   color: var(--accent);
+}
+
+.model-favorite-toggle {
+  flex: 0 0 auto;
+  padding: 9px 4px 9px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.model-favorite-toggle.favorited {
+  color: var(--warning);
+}
+
+.model-option {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 9px 10px 9px 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-family: var(--font-geist-mono), monospace;
+  text-align: left;
 }
 
 .model-options-status {
