@@ -146,6 +146,30 @@ test("evaluation authoring does not show ordinary request readiness", async () =
   }
 });
 
+test("temperature is omitted by default and can be explicitly overridden", async () => {
+  const changes = [];
+  const view = await mount({
+    settings: {
+      ...composerProps().settings,
+      temperature: undefined,
+      onTemperatureChange: (temperature) => changes.push(temperature),
+    },
+  });
+  try {
+    assert.match(view.container.textContent, /Provider default/);
+    const toggle = view.container.querySelector(
+      '.temperature-control input[type="checkbox"]',
+    );
+    assert.ok(toggle);
+    assert.equal(toggle.checked, false);
+
+    await view.click(toggle);
+    assert.deepEqual(changes, [0.2]);
+  } finally {
+    await view.close();
+  }
+});
+
 async function mount(overrides = {}) {
   const server = await createServer({
     configFile: false,

@@ -65,7 +65,7 @@ export interface EvaluationStartDraftInput {
   model: string;
   capabilities: ProviderCapabilities;
   responseMode: "streaming" | "buffered";
-  temperature: number;
+  temperature?: number;
   durable: boolean;
 }
 
@@ -89,7 +89,9 @@ export function createEvaluationStartDraft(input: EvaluationStartDraftInput) {
           capabilities: input.capabilities,
         },
         responseMode: input.responseMode,
-        options: { temperature: input.temperature },
+        options: input.temperature === undefined
+          ? {}
+          : { temperature: input.temperature },
         tools: [],
       },
     }),

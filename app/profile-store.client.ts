@@ -80,7 +80,6 @@ export function createDefaultProfile(): StoredInferenceProfile {
     provider: "openai-compatible",
     endpoint: "",
     model: "",
-    temperature: 0.7,
   };
 }
 

@@ -5,7 +5,9 @@ const port = Number.parseInt(
   process.env.INFERENCE_LENS_BUFFERED_PORT ?? "4014",
   10,
 );
-const answer = "Buffered fixture response: 2 + 2 = 4.";
+const ordinaryAnswer = "Buffered fixture response: 2 + 2 = 4.";
+const providerDefaultModel = "provider-default-temperature-model";
+const providerDefaultAnswer = "Provider received no temperature override.";
 
 async function readJson(request) {
   const chunks = [];
@@ -20,7 +22,10 @@ const server = createServer(async (request, response) => {
     response.writeHead(200, { "content-type": "application/json" });
     response.end(JSON.stringify({
       object: "list",
-      data: [{ id: "buffered-test-model", object: "model" }],
+      data: [
+        { id: "buffered-test-model", object: "model" },
+        { id: providerDefaultModel, object: "model" },
+      ],
     }));
     return;
   }
@@ -46,6 +51,17 @@ const server = createServer(async (request, response) => {
     }));
     return;
   }
+  if (body.model === providerDefaultModel && "temperature" in body) {
+    response.writeHead(400, { "content-type": "application/json" });
+    response.end(JSON.stringify({
+      error: "Expected the temperature field to be omitted.",
+    }));
+    return;
+  }
+
+  const answer = body.model === providerDefaultModel
+    ? providerDefaultAnswer
+    : ordinaryAnswer;
 
   response.writeHead(200, {
     "content-type": "application/json",
@@ -68,7 +84,11 @@ const server = createServer(async (request, response) => {
       total_tokens: 11,
     },
   }));
-  console.log("served buffered response with 4 input, 7 output, 11 total tokens");
+  console.log(
+    body.model === providerDefaultModel
+      ? "served provider-default response with no temperature override"
+      : "served buffered response with 4 input, 7 output, 11 total tokens",
+  );
 });
 
 server.listen(port, host, () => {
