@@ -40,6 +40,7 @@ interface ProjectTemplatesPaneProps {
     defaults: Record<string, string>,
     recommendedTarget?: PromptTemplateRecommendedTarget,
   ): PromptTemplateRevisionId;
+  onRename(templateId: PromptTemplateId, name: string): boolean;
   onArchive(templateId: PromptTemplateId, onArchived?: () => void): void;
   onRestore(templateId: PromptTemplateId): void;
   onInsert(templateId: PromptTemplateId, itemIndex: number): void;
@@ -63,6 +64,7 @@ export function ProjectTemplatesPane({
   onOpenN8nImport,
   onCreate,
   onSave,
+  onRename,
   onArchive,
   onRestore,
   onInsert,
@@ -198,15 +200,25 @@ export function ProjectTemplatesPane({
         <div className="template-library-filter" aria-label="Template status">
           <button
             aria-pressed={libraryView === "active"}
-            className={libraryView === "active" ? "selected" : ""}
+            className={
+              libraryView === "active"
+                ? "template-library-tab selected"
+                : "template-library-tab"
+            }
             type="button"
             onClick={() => selectLibraryView("active")}
           >
             Active <span>{activeTemplates.length}</span>
           </button>
+          {/* Quiet by design: archiving should not read as a peer destination
+              to Active, only as a reachable place to look for it later. */}
           <button
             aria-pressed={libraryView === "archived"}
-            className={libraryView === "archived" ? "selected" : ""}
+            className={
+              libraryView === "archived"
+                ? "template-library-archive-link selected"
+                : "template-library-archive-link"
+            }
             type="button"
             onClick={() => selectLibraryView("archived")}
           >
@@ -270,6 +282,16 @@ export function ProjectTemplatesPane({
                   disabled={readOnly}
                   value={name}
                   onChange={(event) => setName(event.target.value)}
+                  onBlur={(event) => {
+                    // The name is the one field that persists on its own: it
+                    // is metadata, not revision content, so committing it
+                    // does not mint a new revision the way "Save template"
+                    // does. A blank name is left uncommitted for the user to
+                    // fix rather than silently reverted or saved empty.
+                    const trimmed = event.target.value.trim();
+                    if (!selected || !trimmed || trimmed === selected.name) return;
+                    onRename(selected.id, trimmed);
+                  }}
                 />
               </label>
               <label className="template-revision-field">
@@ -350,9 +372,21 @@ export function ProjectTemplatesPane({
                     <button
                       className="button secondary"
                       type="button"
-                      onClick={() =>
-                        onArchive(selected.id, () => setLibraryView("archived"))
-                      }
+                      onClick={() => {
+                        const archivingId = selected.id;
+                        onArchive(archivingId, () => {
+                          // Archiving stays on the Active tab (dropping into
+                          // Archived right after the action reads as "my
+                          // prompts are gone"). Fall through to another
+                          // active template so the editor doesn't show a
+                          // stale, now-archived selection.
+                          const fallback = activeTemplates.find(
+                            (candidate) => candidate.id !== archivingId,
+                          );
+                          if (fallback) selectTemplate(fallback);
+                          else setSelectedId(undefined);
+                        });
+                      }}
                     >
                       Archive
                     </button>

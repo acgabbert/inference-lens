@@ -94,6 +94,8 @@ export interface ProjectTemplatesHandle {
   importNotice?: ProjectTemplatesImportNotice;
   createProjectTemplate(name: string, messages: PromptTemplateMessages): PromptTemplateId;
   saveProjectTemplate(templateId: PromptTemplateId, name: string, messages: PromptTemplateMessages, defaults: Record<string, string>, recommendedTarget?: PromptTemplateRecommendedTarget): PromptTemplateRevisionId;
+  /** Commits only the label, without touching revision content. Returns false (and leaves the project untouched) for a blank name. */
+  renameProjectTemplate(templateId: PromptTemplateId, name: string): boolean;
   archiveProjectTemplate(templateId: PromptTemplateId, onArchived?: () => void): void;
   restoreProjectTemplate(templateId: PromptTemplateId): void;
   insertProjectTemplate(templateId: PromptTemplateId, itemIndex: number): void;
@@ -163,6 +165,18 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     next = appendPromptTemplateRevision(next, { templateId, messages, variableDefaults: defaults });
     adoptAuthoredProject(next);
     return next.promptTemplates.find(({ id }) => id === templateId)!.currentRevisionId;
+  }
+  // Renaming is committed on its own, decoupled from "Save template", so that
+  // editing just the name (the most common one-field edit) persists without
+  // requiring the explicit save affordance that also mints a new revision.
+  function renameProjectTemplate(templateId: PromptTemplateId, name: string): boolean {
+    const trimmed = name.trim();
+    if (!trimmed) return false;
+    const project = input.ensureProjectDocument();
+    const template = project.promptTemplates.find(({ id }) => id === templateId);
+    if (!template || template.name === trimmed) return true;
+    adoptAuthoredProject(renamePromptTemplate(project, templateId, trimmed));
+    return true;
   }
   function archiveProjectTemplate(templateId: PromptTemplateId, onArchived?: () => void): void {
     const project = input.ensureProjectDocument();
@@ -253,5 +267,5 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     const receipt = imported.project.externalImports.find(({ id }) => id === imported.externalImportId);
     setImportNotice({ name: candidate.invocation.name, variableCount: receipt?.projection.kind === "prompt-template" ? receipt.projection.variables.length : 0, template: mode === "reusable-template" });
   }
-  return { templateWorkbench, activeProjectRevision, activeConnectionRequirement, templateUsageCounts, templateRunOverrides, importNotice, createProjectTemplate, saveProjectTemplate, archiveProjectTemplate, restoreProjectTemplate, insertProjectTemplate, updateTemplateUseValues, saveTemplateUseRunValue, updateTemplateUseOverride, updateTemplateUseToLatestRevision, detachTemplateUse, removeTemplateUse, addComposerMessage, updateComposerMessage, removeComposerMessage, importN8nPrompt, clearImportNotice: () => setImportNotice(undefined), clearTransientOverrides: () => setTemplateRunOverrides({}), markExecutedRevision: (id) => executedRevisionIdsRef.current.add(id) };
+  return { templateWorkbench, activeProjectRevision, activeConnectionRequirement, templateUsageCounts, templateRunOverrides, importNotice, createProjectTemplate, saveProjectTemplate, renameProjectTemplate, archiveProjectTemplate, restoreProjectTemplate, insertProjectTemplate, updateTemplateUseValues, saveTemplateUseRunValue, updateTemplateUseOverride, updateTemplateUseToLatestRevision, detachTemplateUse, removeTemplateUse, addComposerMessage, updateComposerMessage, removeComposerMessage, importN8nPrompt, clearImportNotice: () => setImportNotice(undefined), clearTransientOverrides: () => setTemplateRunOverrides({}), markExecutedRevision: (id) => executedRevisionIdsRef.current.add(id) };
 }
