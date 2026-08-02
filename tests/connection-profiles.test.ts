@@ -23,6 +23,7 @@ test("the starting profile carries no endpoint or model", () => {
   const starter = createDefaultProfile();
   assert.equal(starter.endpoint, "");
   assert.equal(starter.model, "");
+  assert.equal(starter.temperature, undefined);
 });
 
 test("fixed profile ids still receive non-reused instance identities", () => {
@@ -43,6 +44,7 @@ test("legacy stored profiles gain an instance identity that is persisted", () =>
         provider: "openai-compatible",
         endpoint: "https://api.example.com/v1",
         model: "example-model",
+        temperature: 0.7,
       },
     ],
     activeProfileId: "openai-compatible",
@@ -63,6 +65,7 @@ test("legacy stored profiles gain an instance identity that is persisted", () =>
     const snapshot = readProfiles();
     assert.equal(snapshot.restored, true);
     assert.match(snapshot.profiles[0]!.instanceId, /^profile-instance-/);
+    assert.equal(snapshot.profiles[0]!.temperature, 0.7);
 
     writeProfiles(snapshot);
     assert.equal(

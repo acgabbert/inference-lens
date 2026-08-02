@@ -28,6 +28,8 @@ export interface SeedProfileOptions {
   favoriteModels?: string[];
   /** Written to the streaming preference key; "buffered" disables streaming. */
   streaming?: "buffered" | "stream";
+  /** Omitted to exercise the provider/model's own sampling default. */
+  temperature?: number;
   instanceId?: string;
 }
 
@@ -48,6 +50,7 @@ export async function seedProfile(
     name = "Buffered fixture",
     favoriteModels,
     streaming = "buffered",
+    temperature,
     instanceId,
   } = options;
   await page.addInitScript(
@@ -63,7 +66,9 @@ export async function seedProfile(
               provider: "openai-compatible",
               endpoint: seed.endpoint,
               model: seed.model,
-              temperature: 0.7,
+              ...(seed.temperature === undefined
+                ? {}
+                : { temperature: seed.temperature }),
               ...(seed.favoriteModels
                 ? { favoriteModels: seed.favoriteModels }
                 : {}),
@@ -82,6 +87,7 @@ export async function seedProfile(
       name,
       favoriteModels,
       streaming,
+      temperature,
       instanceId,
     },
   );

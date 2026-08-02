@@ -98,6 +98,7 @@ test("buildChatCompletionsRequest owns buffered delivery fields", () => {
   });
   assert.equal(body.stream, false);
   assert.equal("stream_options" in body, false);
+  assert.equal("temperature" in body, false);
 });
 
 test("buildChatCompletionsRequest rejects tools the profile does not support", () => {

@@ -4,8 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import type { ConversationMessage, ToolDefinition, ToolId } from "../../packages/core/src/run-kernel";
 import type { ProjectFile, ToolMock } from "../../packages/core/src/project";
 import { conversationMessageText } from "../conversation-display";
-import { ModelCombobox } from "../model-combobox.client";
-import type { ModelDiscoveryState } from "../use-model-discovery.client";
 import { PaneTabs } from "../workbench-shell.client";
 import { ProjectTemplatesPane, TemplateUseCard } from "../project-templates-pane.client";
 import { ToolsPane } from "../tools-pane.client";
@@ -20,6 +18,8 @@ import type { ProjectTemplatesHandle } from "../templates/use-project-templates.
 import { EvaluationSuiteEditor } from "../evaluations/evaluation-suite-editor.client";
 import type { EvaluationSuiteExecutionActions } from "../evaluations/evaluation-suite-editor.client";
 import type { EvaluationSuiteAuthoringHandle } from "../evaluations/use-evaluation-suite-authoring.client";
+import { RequestSettings } from "./request-settings.client";
+import type { RequestSettingsProps } from "./request-settings.client";
 
 type RequestTab = "messages" | "templates" | "tools" | "evaluations";
 
@@ -50,20 +50,8 @@ export interface RequestComposerProps {
   evaluations: EvaluationSuiteAuthoringHandle;
   evaluationExecution: EvaluationSuiteExecutionActions;
   project: Pick<ProjectFile, "projectId" | "promptTemplates" | "connectionRequirements" | "defaults" | "externalImports"> | null;
-  settings: {
-    model: string;
-    temperature: number;
-    responseMode: "streaming" | "buffered";
-    streamingAvailable: boolean;
+  settings: RequestSettingsProps & {
     toolsEnabled: boolean;
-    modelDiscovery: ModelDiscoveryState | null;
-    /** Pinned model ids for the active profile; see `ModelCombobox`. */
-    favoriteModels: string[];
-    onModelChange(model: string): void;
-    onTemperatureChange(temperature: number): void;
-    onStreamingPreferenceChange(streaming: boolean): void;
-    onLoadModels(force?: boolean): void;
-    onToggleFavoriteModel(model: string): void;
   };
   readiness?: RunReadiness;
   pendingDestination?: ReadinessDestination;
@@ -292,20 +280,7 @@ export function RequestComposer({
                   {selectedToolCount === 0 ? "Add tools" : "Review"}
                 </button>
               </p>
-              <div className="run-settings-grid">
-                <ModelCombobox inputRef={modelRef} value={settings.model} onChange={settings.onModelChange} discovery={settings.modelDiscovery} onLoadModels={settings.onLoadModels} favoriteModels={settings.favoriteModels} onToggleFavoriteModel={settings.onToggleFavoriteModel} />
-                <label className="temperature-control">
-                  Temperature
-                  <div className="range-row">
-                    <input type="range" min="0" max="2" step="0.1" value={settings.temperature} onChange={(event) => settings.onTemperatureChange(Number(event.target.value))} />
-                    <output>{settings.temperature.toFixed(1)}</output>
-                  </div>
-                </label>
-                <label className={settings.streamingAvailable ? "streaming-control" : "streaming-control disabled"} title={settings.streamingAvailable ? undefined : "This profile does not support streaming responses."}>
-                  <input type="checkbox" checked={settings.responseMode === "streaming"} disabled={!settings.streamingAvailable} onChange={(event) => settings.onStreamingPreferenceChange(event.target.checked)} />
-                  <span>Stream response<small>{settings.streamingAvailable ? "Show output as the provider sends it." : "Unavailable for this profile; responses are buffered."}</small></span>
-                </label>
-              </div>
+              <RequestSettings {...settings} modelInputRef={modelRef} />
             </section>
             <div className="message-list">
               {templates.templateWorkbench.composerItems.map((item, index) => {

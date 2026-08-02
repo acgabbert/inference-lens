@@ -46,15 +46,22 @@ const valueSourceLabels: Record<EvaluationValueSource, string> = {
 
 /**
  * Renders only the options that are actually populated, so the settings region
- * shows what the plan will snapshot rather than a fixed grid of blanks. Values
- * that are not finite are dropped rather than formatted, which is what keeps
- * `NaN` out of a numeric preflight.
+ * shows what the plan will snapshot rather than a fixed grid of blanks. The
+ * provider-default temperature is included explicitly because omission has
+ * execution meaning; other non-finite values are dropped rather than
+ * formatted, which is what keeps `NaN` out of a numeric preflight.
  */
 function inferenceOptionRows(options: InferenceOptions): { label: string; value: string }[] {
   const rows: { label: string; value: string }[] = [];
-  if (Number.isFinite(options.temperature)) {
-    rows.push({ label: "Temperature", value: options.temperature!.toFixed(1) });
-  }
+  rows.push({
+    label: "Temperature",
+    value: options.temperature === undefined
+      ? "Provider default"
+      : Number.isFinite(options.temperature)
+        ? options.temperature.toFixed(1)
+        : "",
+  });
+  if (rows[0]!.value === "") rows.shift();
   if (Number.isFinite(options.maxOutputTokens)) {
     rows.push({ label: "Max output tokens", value: String(options.maxOutputTokens) });
   }

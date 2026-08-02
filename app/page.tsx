@@ -264,7 +264,7 @@ function HomeContent() {
       clearTemplateOverridesRef.current();
       setBranchContext(null);
       setSessionModel(draft.model);
-      setSessionTemperature(draft.temperature ?? 0.7);
+      setSessionTemperature(draft.temperature);
       runSession.reset();
     },
   });
@@ -412,8 +412,9 @@ function HomeContent() {
   }, [toolRegistry, toolRegistryLoaded]);
 
   const activeModel = sessionModel ?? activeProfile.model;
-  const activeTemperature =
-    sessionTemperature ?? activeProfile.temperature ?? 0.7;
+  const activeTemperature = projectFile
+    ? sessionTemperature
+    : activeProfile.temperature;
   const activeResponseMode =
     streamingPreferred && activeCapabilities.streaming
       ? "streaming"
@@ -604,7 +605,7 @@ function HomeContent() {
     }
   }
 
-  function setEditorTemperature(temperature: number): void {
+  function setEditorTemperature(temperature: number | undefined): void {
     if (projectFile) {
       setSessionTemperature(temperature);
       project.markDirty();
