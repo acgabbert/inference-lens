@@ -2,7 +2,7 @@
 
 Inference Lens projects use a visible `<name>.inference-lens/` directory bundle
 containing one canonical, portable JSON document named `project.json`. New
-saves use schema version 7. Version 5 and 6 projects are upgraded on load; earlier
+saves use schema version 8. Version 5, 6, and 7 projects are upgraded on load; earlier
 project formats and the proof-of-concept request export remain unsupported.
 Every schema is strict, so a reader rejects a document it does not understand
 rather than guessing.
@@ -154,7 +154,7 @@ credential store, an environment variable, or session memory.
 
 ## Template authoring session
 
-The live Project v7 document is the canonical owner of template definitions and
+The live Project v8 document is the canonical owner of template definitions and
 authored conversation items. Opening the Templates workspace from an ad-hoc
 request materializes an untitled in-memory project; it does not create a
 machine-local template registry.
@@ -189,7 +189,7 @@ inside explicit `providerOptions` objects.
 
 ## Evaluation suites
 
-Project v7 adds ordered `evaluationSuites` as authored, portable content. A
+Project v7 added ordered `evaluationSuites` as authored, portable content. A
 suite owns stable input-binding and case IDs. Each case owns an ordered list of
 provider-neutral deterministic checks and may carry a reference answer for
 human review; reference answers do not receive an automatic score.
@@ -201,19 +201,57 @@ Every case supplies exactly one string value for every binding; an empty string
 is an intentional value. A suite may have no cases while it is being authored,
 but execution preflight will not treat that as a runnable dataset.
 
-Suites deliberately do not pin a conversation revision. The execution surface
-selects a revision, then checks whether that revision still contains each
-targeted template use and variable. A revision-specific mismatch is a preflight
-diagnostic because the suite may remain valid for another historical branch.
-The portable project parser still rejects a use ID that exists nowhere, a
-variable absent from every occurrence of that use, incomplete or extra case
-values, repeated identities, invalid checks, and secret-like target variable
-names. This prevents evaluation cases from becoming a portable secret store.
+### Suite-owned input and execution
 
-Project v6 migrates to v7 by adding an empty suite collection. Project v5 uses
-the existing prompt-template migration first and then receives the empty suite
-collection. Loading performs this migration in memory; the workspace is not
-rewritten until its ordinary explicit-save or auto-save path runs.
+Project v8 gives every suite its own `input` and `execution`:
+
+```json
+"input": { "kind": "conversation-revision", "conversationRevisionId": "revision_example" },
+"execution": {
+  "target": { "connectionRequirementId": "connection_default", "model": "example-model" },
+  "responseMode": "buffered",
+  "options": { "temperature": 0.4 },
+  "repetitions": 1
+}
+```
+
+A suite therefore pins what it runs and how it runs it, and both travel with the
+project. Editing Messages, the composer's model, or the composer's temperature
+no longer changes what an evaluation sends: an author who wants the new prompt
+points the suite at the new revision deliberately. Repetitions are portable
+authored content rather than session state, so a shared suite reproduces the
+same batch size elsewhere.
+
+`execution.responseMode` defaults to `buffered` for new and migrated suites. A
+batch is read after it finishes, so incremental delivery buys an evaluation
+nothing while narrowing which providers the suite can run against. Streaming
+remains selectable, and preflight reports a setup issue when the suite pins a
+mode the mapped connection cannot serve.
+
+The boundary is unchanged: `execution.target` names a *connection requirement*
+and a model. The local profile, endpoint, protocol, and capabilities that
+satisfy that requirement stay device-local and are supplied to an execution plan
+as a separate `runtimeTarget`. Credentials and local profile identity never
+enter a suite.
+
+Selecting a revision still checks whether that revision contains each targeted
+template use and variable. A revision-specific mismatch is a preflight
+diagnostic rather than a parse error, because the suite may remain valid for
+another historical branch. The portable project parser still rejects a use ID
+that exists nowhere, a variable absent from every occurrence of that use,
+incomplete or extra case values, repeated identities, invalid checks, and
+secret-like target variable names. This prevents evaluation cases from becoming
+a portable secret store.
+
+Project v7 migrates to v8 by making each suite's borrowed context explicit: the
+project's default conversation revision becomes the suite input, and the
+project's default target and inference options are copied into the suite, with
+buffered delivery and one repetition. Copies are independent, so later changes
+to the project defaults do not reach migrated suites. Project v6 migrates by
+adding an empty suite collection first, and v5 uses the existing prompt-template
+migration before that. Loading performs these migrations in memory; the
+workspace is not rewritten until its ordinary explicit-save or auto-save path
+runs.
 
 ### Starting an evaluation from a saved prompt
 
@@ -224,9 +262,15 @@ conversation, carrying that revision as `parentRevisionId` and exactly one
 `template-use` item pinned to the template's current immutable revision. The
 use gets fresh stable use and output-message IDs and an empty authored `values`
 map, so ordinary template defaults still apply and case bindings can still
-supply the final override. The shortcut then advances
-`project.defaults.conversationRevisionId` so the Messages editor edits the new
-revision.
+supply the final override.
+
+The shortcut does **not** advance `project.defaults.conversationRevisionId`: it
+points the selected suite's `input` at the new revision and leaves the Messages
+editor exactly where the author left it. `createRevisionFromSavedPrompt` itself
+changes no suite; the evaluation authoring hook performs that update explicitly
+after the revision exists, which keeps the core helper reusable and the
+mutation visible. Historical revisions remain reachable through a secondary
+picker, so the suite's own input stays the headline.
 
 The child deliberately does not inherit its parent's items. That gives the
 action predictable replacement semantics and makes it impossible to silently
@@ -234,9 +278,9 @@ duplicate a system message or an earlier prompt; a template's own multi-message
 structure still arrives whole and ordered, because one use emits every message
 of its pinned revision. Authors add surrounding messages afterwards in Messages.
 
-Suites, bindings, cases, target, inference options, and tools are untouched, and
-the project stays at schema version 7 — the shortcut writes nothing a v7 parser
-did not already accept. Because the new use has a new stable ID, existing suite
+Bindings, cases, and tools are untouched, other suites are untouched, and the
+project stays at schema version 8 — the shortcut writes nothing a v8 parser did
+not already accept. Because the new use has a new stable ID, existing suite
 bindings are never retargeted onto it: an identical template ID says nothing
 about whether a binding still resolves, so a suite that already has case inputs
 is warned before the revision is created rather than silently rewritten.
@@ -280,7 +324,7 @@ Inference Lens refuses to overwrite it and asks the user to reopen the project.
 Completed, cancelled, and explicitly stopped runs are written as immutable
 `traces/<runId>.json` diagnostic artifacts. A repeated byte-identical write is
 allowed; different contents can never replace an existing run ID. These files
-are deliberately outside the Project v7 manifest contract, so adding or
+are deliberately outside the Project v8 manifest contract, so adding or
 removing a trace does not dirty authored project state. See
 [the run trace format](RUN_TRACE_FORMAT.md).
 
