@@ -102,7 +102,17 @@ export function SavedPromptDialog({
                 Cancel
               </button>
               {onOpenTemplates && (
-                <button className="button primary" type="button" onClick={onOpenTemplates}>
+                <button
+                  className="button primary"
+                  type="button"
+                  onClick={() => {
+                    // The picker owner outlives this tab. Close its state before
+                    // navigating so returning to Evaluations does not reopen a
+                    // dialog the author already left.
+                    onCancel();
+                    onOpenTemplates();
+                  }}
+                >
                   Open Templates
                 </button>
               )}

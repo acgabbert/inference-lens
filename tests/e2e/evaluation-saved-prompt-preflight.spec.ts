@@ -243,6 +243,11 @@ test("an empty saved-prompt picker opens the Prompt library", async ({ page }) =
     "aria-selected",
     "true",
   );
+
+  // The picker owner lives above the tab content. Returning to Evaluations must
+  // not resurrect the dialog after its empty-state action navigated away.
+  await page.getByRole("tab", { name: /Evaluations/ }).click();
+  await expect(page.getByRole("dialog", { name: "Start from saved prompt" })).toHaveCount(0);
 });
 
 test("the resolved-input regions stay inside a phone viewport", async ({ page }) => {

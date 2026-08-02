@@ -4487,6 +4487,15 @@ pre {
 }
 
 @media (max-width: 720px) {
+  /* A floating notice can cover most of a phone viewport and intercept controls
+     after the page scrolls underneath it. Keep the same notice content and
+     actions, but let it occupy document space on narrow screens. */
+  .workbench-notices {
+    position: static;
+    max-width: none;
+    margin: 12px;
+  }
+
   .topbar {
     height: auto;
     padding: 13px 15px;

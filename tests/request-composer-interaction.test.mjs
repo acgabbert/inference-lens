@@ -152,8 +152,10 @@ test("evaluation authoring does not show ordinary request readiness", async () =
 
 test("an empty saved-prompt picker opens the Prompt library", async () => {
   const evaluations = evaluationFixture();
+  let pickerClosed = false;
   evaluations.savedPromptCandidates = [];
   evaluations.savedPromptPickerOpen = true;
+  evaluations.closeSavedPromptPicker = () => { pickerClosed = true; };
   const view = await mount({ evaluations });
   try {
     await view.click(view.tab("Evaluations"));
@@ -163,6 +165,7 @@ test("an empty saved-prompt picker opens the Prompt library", async () => {
     assert.ok(openTemplates);
 
     await view.click(openTemplates);
+    assert.equal(pickerClosed, true);
     assert.equal(view.tab("Prompt library")?.getAttribute("aria-selected"), "true");
   } finally {
     await view.close();
