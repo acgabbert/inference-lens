@@ -67,7 +67,7 @@ export interface UseProjectTemplatesInput {
   projectDirty: boolean;
   messages: ConversationMessage[];
   model: string;
-  temperature: number;
+  temperature?: number;
   serializedTools(): ToolDefinition[];
   toolMocks: ToolMock[];
   enabledToolIds: ToolId[];

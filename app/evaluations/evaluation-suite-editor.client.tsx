@@ -226,7 +226,7 @@ function CaseProviderInput({ evaluationCase, authoring, execution }: {
       {suite.inputBindings.length === 0
         ? <p className="evaluation-provider-sameness"><strong>All cases currently use this provider input.</strong> References and checks may still differ.</p>
         : <p>This case replaces the bound template values in the saved revision. Repetitions resend this same resolved input; other cases can resolve to different messages.</p>}
-      {execution?.preview && <dl className="evaluation-provider-settings"><div><dt>Temperature</dt><dd>{execution.preview.temperature.toFixed(1)}</dd></div><div><dt>Delivery</dt><dd>{execution.preview.responseMode === "streaming" ? "Streaming" : "Buffered"}</dd></div><div><dt>Tools</dt><dd>None</dd></div></dl>}
+      {execution?.preview && <dl className="evaluation-provider-settings"><div><dt>Temperature</dt><dd>{execution.preview.temperature === undefined ? "Provider default" : execution.preview.temperature.toFixed(1)}</dd></div><div><dt>Delivery</dt><dd>{execution.preview.responseMode === "streaming" ? "Streaming" : "Buffered"}</dd></div><div><dt>Tools</dt><dd>None</dd></div></dl>}
       {resolutionError ? (
         <div className="template-diagnostic" role="alert">{resolutionError}</div>
       ) : prepared?.ok ? (
@@ -243,7 +243,7 @@ export interface EvaluationSuiteExecutionActions {
   preview?: {
     targetName: string;
     model: string;
-    temperature: number;
+    temperature?: number;
     responseMode: "streaming" | "buffered";
   };
   disabledReason?: string;
