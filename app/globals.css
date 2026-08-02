@@ -4826,6 +4826,13 @@ main {
   font-weight: 800;
 }
 
+/* The lowercase i's dot makes its optical center sit slightly below its box. */
+.info-mark-glyph {
+  display: block;
+  line-height: 1;
+  transform: translateY(-0.5px);
+}
+
 .run-readiness-why > p {
   margin: 5px 0 0;
   color: var(--text-muted);
@@ -6611,6 +6618,60 @@ main {
   display: flex;
   flex-direction: column;
   gap: 5px;
+}
+
+.evaluation-check-title {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.evaluation-regex-dialect {
+  position: relative;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.evaluation-regex-dialect > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.evaluation-regex-dialect > summary::-webkit-details-marker {
+  display: none;
+}
+
+.evaluation-regex-dialect > summary > span {
+  width: 13px;
+  height: 13px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.67rem;
+  font-weight: 800;
+}
+
+.evaluation-regex-dialect > p {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 1;
+  width: 280px;
+  max-width: calc(100vw - 48px);
+  margin: 6px 0 0;
+  padding: 7px 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-float);
+  color: var(--text-secondary);
+  font-weight: 500;
+  line-height: 1.35;
 }
 
 .evaluation-check-options {

@@ -152,18 +152,18 @@ test("every offered check kind is addable in the running editor", async ({ page 
   for (const label of [
     "Exact output",
     "Contains text",
-    "Safe regex",
+    "Regex",
     "Valid JSON",
     "Maximum characters",
     "Maximum duration",
     "Maximum tokens",
   ]) {
     await page.getByLabel("New check kind").selectOption({ label });
-    if (label === "Safe regex") {
+    if (label === "Regex") {
       await page.getByRole("button", { name: "+ Add check" }).click();
       await expect(editor.locator(".evaluation-case-detail").getByRole("alert"))
         .toContainText("Safe regex patterns must not be empty");
-      await page.getByLabel("New Safe regex pattern").fill("migration");
+      await page.getByLabel("New regex pattern").fill("migration");
     }
     await page.getByRole("button", { name: "+ Add check" }).click();
     await page.waitForTimeout(120);
@@ -255,11 +255,14 @@ test("a rejected check edit stays local and restores the saved value", async ({ 
   const editor = page.locator(".evaluation-editor");
   await page.getByRole("button", { name: "Create evaluation suite" }).click();
   await page.getByRole("button", { name: "+ Add case", exact: true }).click();
-  await page.getByLabel("New check kind").selectOption({ label: "Safe regex" });
-  await page.getByLabel("New Safe regex pattern").fill("migration");
+  await page.getByLabel("New check kind").selectOption({ label: "Regex" });
+  await page.getByLabel("New regex pattern").fill("migration");
   await page.getByRole("button", { name: "+ Add check" }).click();
 
-  const regexCard = editor.locator(".evaluation-check-card").filter({ hasText: "Safe regex" });
+  const regexCard = editor.locator(".evaluation-check-card").filter({ hasText: "Regex" });
+  await expect(regexCard).toContainText("RE2 syntax");
+  await regexCard.getByLabel("About RE2 syntax").click();
+  await expect(regexCard.getByText("Lookarounds and backreferences aren’t supported.")).toBeVisible();
   const flags = regexCard.getByLabel("Flags");
   await flags.fill("g");
   await flags.blur();

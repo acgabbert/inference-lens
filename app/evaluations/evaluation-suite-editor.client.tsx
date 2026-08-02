@@ -22,7 +22,7 @@ import {
 const checkKindLabels: Record<CheckKind, string> = {
   "exact-match": "Exact output",
   contains: "Contains text",
-  regex: "Safe regex",
+  regex: "Regex",
   "valid-json": "Valid JSON",
   "max-output-characters": "Maximum characters",
   "max-duration-ms": "Maximum duration",
@@ -79,7 +79,17 @@ function CheckEditor({ check, error, onCommit, onRemove }: {
   return (
     <article className="evaluation-check-card">
       <div className="evaluation-check-heading">
-        <strong>{checkKinds.find(({ kind }) => kind === check.kind)?.label}</strong>
+        <div className="evaluation-check-title">
+          <strong>{checkKinds.find(({ kind }) => kind === check.kind)?.label}</strong>
+          {check.kind === "regex" && (
+            <details className="evaluation-regex-dialect">
+              <summary aria-label="About RE2 syntax">
+                RE2 syntax <span aria-hidden="true"><span className="info-mark-glyph">i</span></span>
+              </summary>
+              <p>Lookarounds and backreferences aren’t supported.</p>
+            </details>
+          )}
+        </div>
         <button className="remove-button" type="button" onClick={onRemove}>Remove</button>
       </div>
       <label>Label <input defaultValue={check.label ?? ""} onBlur={(event) => {
@@ -167,7 +177,7 @@ function CaseEditor({ evaluationCase, authoring, execution }: {
       </div>
       <div className="evaluation-add-row">
         <select aria-label="New check kind" value={newKind} onChange={(event) => setNewKind(event.target.value as CheckKind)}>{checkKinds.map(({ kind, label }) => <option key={kind} value={kind}>{label}</option>)}</select>
-        {newKind === "regex" && <label className="evaluation-new-regex">Pattern <input aria-label="New Safe regex pattern" value={regexPattern} onChange={(event) => setRegexPattern(event.target.value)} /></label>}
+        {newKind === "regex" && <label className="evaluation-new-regex">Pattern <input aria-label="New regex pattern" value={regexPattern} onChange={(event) => setRegexPattern(event.target.value)} /></label>}
         <button className="button secondary" type="button" onClick={() => {
           const added = authoring.addCheck(evaluationCase.id, newKind === "regex" ? { kind: newKind, pattern: regexPattern } : { kind: newKind });
           if (added) setRegexPattern("");
