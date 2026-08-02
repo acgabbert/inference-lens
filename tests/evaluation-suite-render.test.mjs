@@ -110,3 +110,24 @@ test("renders revision incompatibility as a setup issue", async () => {
   assert.match(html, /1 setup issue/);
   assert.match(html, /Selected revision no longer has topic/);
 });
+
+test("contains provider preview errors for a historical revision missing a bound template use", async () => {
+  const authoring = evaluationFixture();
+  authoring.project.conversationRevisions.push({
+    id: "revision_historical",
+    conversationId: "conversation_fixture",
+    createdAt: "2026-07-31T12:00:00.000Z",
+    items: [],
+  });
+  authoring.revisionId = "revision_historical";
+  authoring.diagnostics = [{
+    code: "missing-template-use",
+    message: 'Selected revision does not contain template use "template-use_question".',
+  }];
+
+  const html = await render(authoring);
+
+  assert.match(html, /1 setup issue/);
+  assert.match(html, /This case cannot be previewed because the selected revision does not contain template use/);
+  assert.match(html, /role="alert"/);
+});

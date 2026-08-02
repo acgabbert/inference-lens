@@ -4,7 +4,10 @@ import { useRef, useState } from "react";
 import { CHECK_KINDS } from "../../packages/core/src/checks";
 import type { CheckDefinition, CheckKind } from "../../packages/core/src/checks";
 import type { EvaluationCase } from "../../packages/core/src/project";
-import { prepareProjectRevisionRun } from "../../packages/core/src/project";
+import {
+  prepareProjectRevisionRun,
+  ProjectValidationError,
+} from "../../packages/core/src/project";
 import type { TemplateRunOverrides } from "../../packages/core/src/project";
 import type { EvaluationInputBinding } from "../../packages/core/src/evaluation-suites";
 import { conversationMessageText } from "../conversation-display";
@@ -29,6 +32,19 @@ const checkKindLabels: Record<CheckKind, string> = {
 // Ordered by the vocabulary itself, so a new kind cannot be offered without a
 // label or silently left out of the picker.
 const checkKinds = CHECK_KINDS.map((kind) => ({ kind, label: checkKindLabels[kind] }));
+
+function providerInputResolutionError(cause: unknown): string {
+  if (cause instanceof ProjectValidationError) {
+    const issue = cause.issues[0];
+    if (issue?.path[0] === "runOverrides" && issue.path[1]) {
+      return `This case cannot be previewed because the selected revision does not contain template use "${String(issue.path[1])}".`;
+    }
+    return issue?.message ?? "This revision cannot be resolved for the selected case.";
+  }
+  return cause instanceof Error
+    ? cause.message
+    : "This revision cannot be resolved for the selected case.";
+}
 
 function evaluationInputLabel(
   project: NonNullable<EvaluationSuiteAuthoringHandle["project"]>,
@@ -178,7 +194,17 @@ function CaseProviderInput({ evaluationCase, authoring, execution }: {
     values[binding.target.variableName] = evaluationCase.values[binding.id] ?? "";
     overrides[binding.target.templateUseId] = values;
   });
-  const prepared = prepareProjectRevisionRun(project, revision, overrides as TemplateRunOverrides);
+  let prepared: ReturnType<typeof prepareProjectRevisionRun> | undefined;
+  let resolutionError: string | undefined;
+  try {
+    prepared = prepareProjectRevisionRun(
+      project,
+      revision,
+      overrides as TemplateRunOverrides,
+    );
+  } catch (cause) {
+    resolutionError = providerInputResolutionError(cause);
+  }
 
   return (
     <section className="evaluation-provider-input" aria-label={`Provider input for ${evaluationCase.name}`}>
@@ -190,11 +216,13 @@ function CaseProviderInput({ evaluationCase, authoring, execution }: {
         ? <p className="evaluation-provider-sameness"><strong>All cases currently use this provider input.</strong> References and checks may still differ.</p>
         : <p>This case replaces the bound template values in the saved revision. Repetitions resend this same resolved input; other cases can resolve to different messages.</p>}
       {execution?.preview && <dl className="evaluation-provider-settings"><div><dt>Temperature</dt><dd>{execution.preview.temperature.toFixed(1)}</dd></div><div><dt>Delivery</dt><dd>{execution.preview.responseMode === "streaming" ? "Streaming" : "Buffered"}</dd></div><div><dt>Tools</dt><dd>None</dd></div></dl>}
-      {prepared.ok ? (
+      {resolutionError ? (
+        <div className="template-diagnostic" role="alert">{resolutionError}</div>
+      ) : prepared?.ok ? (
         <div className="evaluation-provider-messages">
           {prepared.messages.map((message, index) => <article className="request-preview-message" key={`${message.id}-${index}`}><span className="eyebrow">{message.role}</span><pre>{conversationMessageText(message)}</pre></article>)}
         </div>
-      ) : <div className="template-diagnostic" role="alert">{prepared.diagnostics[0]?.diagnostic.message ?? "This case cannot be resolved."}</div>}
+      ) : <div className="template-diagnostic" role="alert">{prepared?.diagnostics[0]?.diagnostic.message ?? "This case cannot be resolved."}</div>}
     </section>
   );
 }

@@ -208,6 +208,30 @@ test("a saved suite opens with every case selected and preflight clean", async (
   await expect(editor).toContainText("3 selected × 1 rep → 3 runs");
 });
 
+test("selecting a historical revision with no bound template use stays in the editor", async ({ page }) => {
+  const project = projectWithSavedSuite();
+  project.conversationRevisions.unshift({
+    id: "revision_historical-before-template",
+    conversationId: project.conversations[0]!.id,
+    createdAt: "2026-07-31T12:00:00.000Z",
+    items: [],
+  });
+  await openProject(page, project, 1440);
+  const editor = page.locator(".evaluation-editor");
+
+  await page.getByLabel("Base conversation revision").selectOption(
+    "revision_historical-before-template",
+  );
+
+  await expect(editor).toBeVisible();
+  await expect(editor.locator(".evaluation-diagnostics")).toContainText(
+    "Selected revision does not contain template use",
+  );
+  await expect(editor.getByRole("region", { name: "Provider input for migrations" }))
+    .toContainText("This case cannot be previewed because the selected revision does not contain template use");
+  await expect(editor).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
+});
+
 test("a rejected check edit stays local and restores the saved value", async ({ page }) => {
   await openProject(page, baseProject(), 1440);
   const editor = page.locator(".evaluation-editor");
