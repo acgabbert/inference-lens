@@ -1336,6 +1336,7 @@ function HomeContent() {
           onChange={setToolRegistry}
           onAttachToProject={attachRegistryToolToProject}
           onAttachToRequest={attachRegistryToolToRequest}
+          requestConfirmation={setConfirmation}
           onClose={() => setToolRegistryOpen(false)}
         />
       )}
