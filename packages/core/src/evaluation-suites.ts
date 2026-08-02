@@ -7,12 +7,15 @@ import type {
   PromptTemplateUseId,
 } from "./run-kernel/types.ts";
 import type { CheckDefinition } from "./checks.ts";
-import { discoverTemplateVariables } from "./template-engine.ts";
+import { prepareProjectRevisionRun } from "./project.ts";
 import type {
   ProjectConversationRevision,
   ProjectFile,
   PromptTemplate,
+  TemplateRunOverrides,
 } from "./project.ts";
+import { templateUseVariableIndex } from "./template-use-variable-index.ts";
+export { templateUseVariableIndex } from "./template-use-variable-index.ts";
 
 export interface EvaluationInputBinding {
   id: EvaluationInputBindingId;
@@ -38,43 +41,6 @@ export interface EvaluationSuite {
   name: string;
   inputBindings: EvaluationInputBinding[];
   cases: EvaluationCase[];
-}
-
-export interface TemplateUseVariableOccurrence {
-  revisionId: ConversationRevisionId;
-  variables: ReadonlySet<string>;
-}
-
-/**
- * Indexes the variables exposed by each stable template-use identity. Project
- * validation asks for all revisions; authoring preflight asks for one. Keeping
- * the walk here prevents those contracts from drifting as suite execution is
- * added later.
- */
-export function templateUseVariableIndex(
-  revisions: readonly ProjectConversationRevision[],
-  templates: readonly PromptTemplate[],
-): ReadonlyMap<PromptTemplateUseId, readonly TemplateUseVariableOccurrence[]> {
-  const templatesById = new Map(templates.map((template) => [template.id, template]));
-  const uses = new Map<PromptTemplateUseId, TemplateUseVariableOccurrence[]>();
-  revisions.forEach((revision) => {
-    revision.items.forEach((item) => {
-      if (item.kind !== "template-use") return;
-      const templateRevision = templatesById
-        .get(item.use.templateId)
-        ?.revisions.find(({ id }) => id === item.use.templateRevisionId);
-      if (!templateRevision) return;
-      const occurrences = uses.get(item.use.id) ?? [];
-      occurrences.push({
-        revisionId: revision.id,
-        variables: new Set(
-          discoverTemplateVariables(templateRevision.messages).variables.map(({ name }) => name),
-        ),
-      });
-      uses.set(item.use.id, occurrences);
-    });
-  });
-  return uses;
 }
 
 export type EvaluationSuitePreflightDiagnostic =
@@ -108,6 +74,13 @@ export type EvaluationSuitePreflightDiagnostic =
   | {
       code: "no-checks";
       caseId: EvaluationCaseId;
+      message: string;
+    }
+  | {
+      code: "unresolved-template-variable";
+      caseId: EvaluationCaseId;
+      templateUseId: PromptTemplateUseId;
+      variableName: string;
       message: string;
     };
 
@@ -146,6 +119,11 @@ export function evaluationSuitePreflight(
   const selectedCases = selectedCaseIds
     ? suite.cases.filter(({ id }) => selectedCaseIds.includes(id))
     : suite.cases;
+  const uses = templateUseVariableIndex([revision], project.promptTemplates);
+  const bindingsMatchRevision = suite.inputBindings.every((binding) => {
+    const occurrence = uses.get(binding.target.templateUseId)?.[0];
+    return occurrence?.variables.has(binding.target.variableName) ?? false;
+  });
   selectedCases.forEach((evaluationCase) => {
     if (evaluationCase.checks.length === 0) {
       diagnostics.push({
@@ -172,9 +150,34 @@ export function evaluationSuitePreflight(
         message: `A ${check.kind} check on case "${evaluationCase.name}" has no expected text yet.`,
       });
     });
+
+    if (!bindingsMatchRevision) return;
+
+    const overrides: Record<string, Record<string, string>> = {};
+    suite.inputBindings.forEach((binding) => {
+      const values = overrides[binding.target.templateUseId] ?? {};
+      values[binding.target.variableName] = evaluationCase.values[binding.id] ?? "";
+      overrides[binding.target.templateUseId] = values;
+    });
+    const prepared = prepareProjectRevisionRun(
+      project as ProjectFile,
+      revision,
+      overrides as TemplateRunOverrides,
+    );
+    if (!prepared.ok) {
+      prepared.diagnostics.forEach(({ templateUseId, diagnostic }) => {
+        if (diagnostic.code !== "missing-template-variable") return;
+        diagnostics.push({
+          code: "unresolved-template-variable",
+          caseId: evaluationCase.id,
+          templateUseId,
+          variableName: diagnostic.name,
+          message: `Case "${evaluationCase.name}" cannot resolve template variable "${diagnostic.name}": ${diagnostic.message}`,
+        });
+      });
+    }
   });
 
-  const uses = templateUseVariableIndex([revision], project.promptTemplates);
   suite.inputBindings.forEach((binding) => {
     const occurrence = uses.get(binding.target.templateUseId)?.[0];
     if (!occurrence) {

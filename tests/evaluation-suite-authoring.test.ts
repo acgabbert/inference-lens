@@ -35,6 +35,7 @@ function fixture() {
   project = createPromptTemplate(project, {
     name: "Question",
     messages: [{ role: "user", content: "Explain {{topic}} to {{audience}}." }],
+    variableDefaults: { audience: "engineers" },
     idSuffix: "question",
     createdAt: "2026-08-01T12:00:01.000Z",
   });
@@ -153,6 +154,33 @@ test("preflight reports unfinished checks and empty values for selected cases on
     evaluationSuitePreflight(project, created.suiteId, revisionId, [selected.caseId])
       .map(({ code }) => code),
     ["empty-case-value"],
+  );
+});
+
+test("preflight blocks selected cases with unbound unresolved template variables", () => {
+  let project = fixture();
+  const revisionId = project.defaults.conversationRevisionId;
+  const created = createEvaluationSuite(project, "Topics", () => "topics");
+  project = created.project;
+  const addedCase = addEvaluationCase(project, created.suiteId, () => "first");
+  project = addEvaluationCheck(addedCase.project, created.suiteId, addedCase.caseId, {
+    kind: "contains",
+  }, () => "contains");
+  project = updateEvaluationCheck(project, created.suiteId, addedCase.caseId, {
+    ...project.evaluationSuites[0]!.cases[0]!.checks[0]!,
+    kind: "contains",
+    value: "topic",
+  });
+
+  assert.deepEqual(
+    evaluationSuitePreflight(project, created.suiteId, revisionId, [addedCase.caseId]),
+    [{
+      code: "unresolved-template-variable",
+      caseId: addedCase.caseId,
+      templateUseId: "template-use_question-use",
+      variableName: "topic",
+      message: 'Case "Untitled case" cannot resolve template variable "topic": Template variable "topic" has no value.',
+    }],
   );
 });
 

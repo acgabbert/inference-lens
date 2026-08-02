@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { checkDefinitionSchema } from "./checks.ts";
-import { templateUseVariableIndex } from "./evaluation-suites.ts";
+import { templateUseVariableIndex } from "./template-use-variable-index.ts";
 import type {
   EvaluationCase,
   EvaluationInputBinding,

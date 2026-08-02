@@ -175,6 +175,24 @@ test("every offered check kind is addable in the running editor", async ({ page 
   await expect(editor).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
 });
 
+test("expanded editor blocks an unbound template variable before evaluation starts", async ({ page }) => {
+  await openProject(page, baseProject(), 1440);
+  const editor = page.locator(".evaluation-editor");
+  await page.getByRole("button", { name: "Create evaluation suite" }).click();
+  await page.getByRole("button", { name: "+ Add case", exact: true }).click();
+  await page.getByLabel("New check kind").selectOption({ label: "Contains text" });
+  await page.getByRole("button", { name: "+ Add check" }).click();
+  const expected = editor.getByLabel("Expected text");
+  await expected.fill("topic");
+  await expected.blur();
+
+  await page.getByLabel("Open evaluation editor in focus mode").click();
+  const expanded = page.getByRole("dialog", { name: "Evaluation editor focus mode" });
+  await expect(expanded).toContainText('Case "Untitled case" cannot resolve template variable "topic"');
+  await expect(expanded).toContainText("1 setup issue");
+  await expect(expanded.getByRole("button", { name: "Start evaluation…" })).toBeDisabled();
+});
+
 test("a saved suite opens with every case selected and preflight clean", async ({ page }) => {
   await openProject(page, projectWithSavedSuite(), 1440);
   const editor = page.locator(".evaluation-editor");
