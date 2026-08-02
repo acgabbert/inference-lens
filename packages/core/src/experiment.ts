@@ -836,6 +836,20 @@ export function evaluationExperimentAggregate(
   if (parsed.kind !== "evaluation") {
     throw new ExperimentValidationError("Evaluation aggregates require an evaluation plan.");
   }
+  return evaluationParsedExperimentAggregate(parsed, result, states);
+}
+
+/**
+ * Derives an evaluation aggregate from a plan already accepted by
+ * `parseExperimentPlanFile`. Render paths can retain this trusted immutable
+ * snapshot while streamed state changes without re-validating every case input.
+ */
+export function evaluationParsedExperimentAggregate(
+  plan: EvaluationExperimentPlanV3,
+  result: ExperimentResultV3 | undefined,
+  states: ReadonlyMap<RunId, RunState> = new Map(),
+): EvaluationAggregate {
+  const parsed = plan;
   const parsedResult = result ? parseExperimentResultFile(result, parsed) : undefined;
   const dispositions = new Map(parsedResult?.cells.map((cell) => [cell.cellId, cell]));
   const cases = new Map(parsed.suite.cases.map((evaluationCase) => [evaluationCase.caseId, evaluationCase]));
@@ -918,6 +932,13 @@ export function evaluationExperimentAggregate(
     };
   });
   const passedCases = caseAssessments.filter(({ passed }) => passed).length;
+  const terminalCases = caseAssessments.filter(({ repetitions }) =>
+    repetitions.every(({ classification }) => ![
+      "not-evaluated",
+      "not-run",
+      "missing-trace",
+    ].includes(classification)),
+  ).length;
   return {
     lifecycle: experimentLifecycle(parsed, parsedResult),
     passed: caseAssessments.length > 0 && passedCases === caseAssessments.length,
@@ -925,7 +946,7 @@ export function evaluationExperimentAggregate(
     caseCounts: {
       total: caseAssessments.length,
       passed: passedCases,
-      failed: caseAssessments.length - passedCases,
+      failed: terminalCases - passedCases,
     },
     repetitionCounts,
     checkCounts,

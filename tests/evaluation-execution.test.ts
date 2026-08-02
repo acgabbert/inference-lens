@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   evaluationExperimentAggregate,
+  evaluationParsedExperimentAggregate,
   materializeExperimentCellInput,
   parseExperimentPlanJson,
   serializeExperimentPlan,
@@ -219,6 +220,12 @@ test("strict scoring keeps check failure distinct and fails the whole case and s
   assert.deepEqual(aggregate.totalTokens, { reportedRuns: 1, total: 30 });
   assert.deepEqual(aggregate.outputTokens, { reportedRuns: 1, total: 10 });
   assert.equal(aggregate.cases[0]?.caseId, "evaluation-case_migrations" as EvaluationCaseId);
+});
+
+test("live evaluations do not report unstarted cases as failed", () => {
+  const plan = planFixture();
+  const aggregate = evaluationParsedExperimentAggregate(plan, undefined, new Map());
+  assert.deepEqual(aggregate.caseCounts, { total: 1, passed: 0, failed: 0 });
 });
 
 test("missing traces and cancellation remain separate non-passing classifications", () => {

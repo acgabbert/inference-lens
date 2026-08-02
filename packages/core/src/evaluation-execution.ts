@@ -159,6 +159,11 @@ export function createEvaluationExperimentPlan(
     cells,
   };
   const parsed = parseExperimentPlanFile(plan);
-  if (parsed.kind !== "evaluation") throw new EvaluationSetupError([]);
+  if (parsed.kind !== "evaluation") {
+    throw new EvaluationSetupError([{
+      code: "unexpected-plan-kind",
+      message: "Evaluation setup produced an invalid experiment plan.",
+    }]);
+  }
   return parsed;
 }

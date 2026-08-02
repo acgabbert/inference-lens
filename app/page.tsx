@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useEffectEvent,
   useRef,
   useState,
   useSyncExternalStore,
@@ -79,8 +80,10 @@ import { RepeatedExperimentWorkspace } from "./run/repeated-experiment-workspace
 import { useProjectTemplates } from "./templates/use-project-templates.client";
 import { RequestComposer } from "./request/request-composer.client";
 import { useEvaluationSuiteAuthoring } from "./evaluations/use-evaluation-suite-authoring.client";
-import { createEvaluationExperimentPlan } from "../packages/core/src/evaluation-execution.ts";
-import { evaluationBatchGuardrail } from "./evaluations/evaluation-batch.client";
+import {
+  createEvaluationStartDraft,
+  evaluationStartReadiness,
+} from "./evaluations/evaluation-start.client";
 import { useEvaluationExecutionSession } from "./evaluations/use-evaluation-execution-session.client";
 import { EvaluationStartDialog } from "./evaluations/evaluation-start-dialog.client";
 import { EvaluationResultsWorkspace } from "./evaluations/evaluation-results-workspace.client";
@@ -791,64 +794,25 @@ function HomeContent() {
 
   function startEvaluation(): void {
     project.clearErrorKind();
-    if (!projectFile || !evaluationAuthoring.suiteId || !evaluationAuthoring.revisionId) {
-      project.setError("Open a project evaluation suite before starting.");
+    if (evaluationStartDisabledReason) {
+      project.setError(evaluationStartDisabledReason);
       return;
     }
-    if (isRequestActive || repeatedExperiment.isRunning || evaluationExecution.isRunning) return;
-    if (mappedProfileId !== activeProfile.id) {
-      project.setError(
-        mappedProfileId
-          ? "Activate this project's mapped connection before starting the evaluation."
-          : "Map this project's connection to a local profile before starting the evaluation.",
-      );
-      return;
-    }
-    if (selectedToolCount > 0) {
-      project.setError("Evaluations do not support exposed tools yet. Disable tools before starting.");
-      return;
-    }
-    const batch = evaluationBatchGuardrail(
-      evaluationAuthoring.selectedCaseIds.size,
-      evaluationAuthoring.repetitions,
-    );
-    if (evaluationAuthoring.diagnostics.length > 0 || batch.error) {
-      project.setError(batch.error ?? evaluationAuthoring.diagnostics[0]!.message);
-      return;
-    }
-    const revision = projectFile.conversationRevisions.find(
-      ({ id }) => id === evaluationAuthoring.revisionId,
-    );
-    if (!revision) {
-      project.setError("The selected conversation revision no longer exists.");
-      return;
-    }
+    if (!projectFile || !evaluationAuthoring.suiteId || !evaluationAuthoring.revisionId) return;
     try {
-      const plan = createEvaluationExperimentPlan({
+      evaluationExecution.begin(createEvaluationStartDraft({
         project: projectFile,
         suiteId: evaluationAuthoring.suiteId,
-        conversationRevisionId: evaluationAuthoring.revisionId,
+        revisionId: evaluationAuthoring.revisionId,
         selectedCaseIds: [...evaluationAuthoring.selectedCaseIds],
         repetitions: evaluationAuthoring.repetitions,
-        execution: {
-          target: {
-            profileId: createEntityId("profile", activeProfile.id),
-            protocol: "openai-compatible-chat-completions",
-            endpoint: activeProfile.endpoint,
-            model: activeModel,
-            capabilities: activeCapabilities,
-          },
-          responseMode: activeResponseMode,
-          options: { temperature: activeTemperature },
-          tools: [],
-        },
-      });
-      evaluationExecution.begin({
-        plan,
-        targetName: activeProfile.name || "Untitled profile",
-        revisionCreatedAt: revision.createdAt,
-        storage: projectWorkspace ? "durable" : "unsaved",
-      });
+        profile: activeProfile,
+        model: activeModel,
+        capabilities: activeCapabilities,
+        responseMode: activeResponseMode,
+        temperature: activeTemperature,
+        durable: Boolean(projectWorkspace),
+      }));
     } catch (error) {
       project.setError(error instanceof Error ? error.message : "Could not prepare the evaluation.");
     }
@@ -967,56 +931,50 @@ function HomeContent() {
     }
   }
   const responseEmptyState = runEmptyStatePresentation(readiness);
-  const evaluationBatch = evaluationBatchGuardrail(
-    evaluationAuthoring.selectedCaseIds.size,
-    evaluationAuthoring.repetitions,
-  );
-  const evaluationStartDisabledReason = !projectFile
-    ? "Open or save a project first."
-    : !evaluationAuthoring.suiteId
-      ? "Create an evaluation suite first."
-      : evaluationAuthoring.diagnostics[0]?.message
-        ?? evaluationBatch.error
-        ?? (selectedToolCount > 0
-          ? "Evaluations do not support exposed tools yet. Disable tools before starting."
-          : mappedProfileId !== activeProfile.id
-            ? mappedProfileId
-              ? "Activate this project's mapped connection before starting."
-              : "Map this project's connection to a local profile before starting."
-            : !activeProfile.endpoint.trim()
-              ? "Enter an endpoint before starting."
-              : !activeModel.trim()
-                ? "Enter a model before starting."
-                : isRequestActive || repeatedExperiment.isRunning || evaluationExecution.isRunning
-                  ? "Finish or stop the current run first."
-                  : undefined);
+  const evaluationStartDisabledReason = evaluationStartReadiness({
+    projectOpen: Boolean(projectFile),
+    suiteSelected: Boolean(evaluationAuthoring.suiteId),
+    revisionSelected: Boolean(evaluationAuthoring.revisionId),
+    revisionAvailable: Boolean(projectFile?.conversationRevisions.some(
+      ({ id }) => id === evaluationAuthoring.revisionId,
+    )),
+    diagnostics: evaluationAuthoring.diagnostics,
+    selectedCaseCount: evaluationAuthoring.selectedCaseIds.size,
+    repetitions: evaluationAuthoring.repetitions,
+    selectedToolCount,
+    connectionMapped: mappedProfileId === activeProfile.id,
+    hasProjectMapping: Boolean(mappedProfileId),
+    endpoint: activeProfile.endpoint,
+    model: activeModel,
+    activityInProgress: isRequestActive || repeatedExperiment.isRunning || evaluationExecution.isRunning,
+  }).blockedReason;
 
+  const onContextualRunShortcut = useEffectEvent((event: KeyboardEvent) => {
+    if (!(event.metaKey || event.ctrlKey) || event.key !== "Enter") return;
+    event.preventDefault();
+    if (
+      confirmation ||
+      repeatedExperiment.draft ||
+      evaluationExecution.draft ||
+      isRequestActive ||
+      repeatedExperiment.isRunning ||
+      evaluationExecution.isRunning
+    ) return;
+    if (requestActionContext === "evaluation") {
+      if (!evaluationStartDisabledReason) startEvaluation();
+      return;
+    }
+    if (readiness?.blocked) return;
+    if (runState?.status.kind === "paused" && runState.status.reason === "attempt_failed") {
+      void retryRun();
+    } else if (runState?.status.kind !== "awaiting_tool_results") {
+      void run();
+    }
+  });
   useEffect(() => {
-    const onContextualRunShortcut = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey) || event.key !== "Enter") return;
-      event.preventDefault();
-      if (
-        confirmation ||
-        repeatedExperiment.draft ||
-        evaluationExecution.draft ||
-        isRequestActive ||
-        repeatedExperiment.isRunning ||
-        evaluationExecution.isRunning
-      ) return;
-      if (requestActionContext === "evaluation") {
-        if (!evaluationStartDisabledReason) startEvaluation();
-        return;
-      }
-      if (readiness?.blocked) return;
-      if (runState?.status.kind === "paused" && runState.status.reason === "attempt_failed") {
-        void retryRun();
-      } else if (runState?.status.kind !== "awaiting_tool_results") {
-        void run();
-      }
-    };
     window.addEventListener("keydown", onContextualRunShortcut);
     return () => window.removeEventListener("keydown", onContextualRunShortcut);
-  });
+  }, []);
 
   function saveOrChooseProjectLocation(): void {
     if (projectWorkspace || !folderAccessAvailable) {

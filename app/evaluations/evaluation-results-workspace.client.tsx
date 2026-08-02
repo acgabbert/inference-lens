@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { evaluationExperimentAggregate } from "../../packages/core/src/experiment.ts";
+import {
+  evaluationParsedExperimentAggregate,
+  parseExperimentPlanFile,
+} from "../../packages/core/src/experiment.ts";
 import type { EvaluationRepetitionClassification } from "../../packages/core/src/experiment.ts";
 import type { RunId } from "../../packages/core/src/run-kernel/index.ts";
 import { formatTokens } from "../run-metrics-format.client.ts";
@@ -45,7 +48,15 @@ export function EvaluationResultsWorkspace({
   onReturnToEvaluation?(): void;
 }) {
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const aggregate = evaluationExperimentAggregate(execution.plan, execution.result, execution.states);
+  const parsedPlan = useMemo(() => {
+    const plan = parseExperimentPlanFile(execution.plan);
+    if (plan.kind !== "evaluation") throw new Error("Expected an evaluation plan.");
+    return plan;
+  }, [execution.plan]);
+  const aggregate = useMemo(
+    () => evaluationParsedExperimentAggregate(parsedPlan, execution.result, execution.states),
+    [parsedPlan, execution.result, execution.states],
+  );
   const live = execution.result || execution.error ? undefined : execution.live;
   const activeCell = live?.currentOrdinal === undefined
     ? undefined
