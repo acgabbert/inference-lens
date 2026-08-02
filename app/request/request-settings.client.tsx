@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useState } from "react";
 import type { RefObject } from "react";
 import { ModelCombobox } from "../model-combobox.client";
 import type { ModelDiscoveryState } from "../use-model-discovery.client";
@@ -38,17 +38,18 @@ export function RequestSettings({
   onLoadModels,
   onToggleFavoriteModel,
 }: RequestSettingsProps) {
-  const lastTemperatureOverride = useRef(
+  const [lastTemperatureOverride, setLastTemperatureOverride] = useState(
     temperature ?? INITIAL_TEMPERATURE_OVERRIDE,
   );
+  const [previousTemperature, setPreviousTemperature] = useState(temperature);
 
-  useEffect(() => {
-    if (temperature !== undefined) lastTemperatureOverride.current = temperature;
-  }, [temperature]);
+  if (temperature !== previousTemperature) {
+    setPreviousTemperature(temperature);
+    if (temperature !== undefined) setLastTemperatureOverride(temperature);
+  }
 
   const temperatureOverridden = temperature !== undefined;
-  const sliderTemperature =
-    temperature ?? lastTemperatureOverride.current;
+  const sliderTemperature = temperature ?? lastTemperatureOverride;
   const experimentalTemperature =
     temperatureOverridden && sliderTemperature > 1;
 
@@ -71,7 +72,7 @@ export function RequestSettings({
             onChange={(event) =>
               onTemperatureChange(
                 event.target.checked
-                  ? lastTemperatureOverride.current
+                  ? lastTemperatureOverride
                   : undefined,
               )
             }
@@ -92,7 +93,7 @@ export function RequestSettings({
             disabled={!temperatureOverridden}
             onChange={(event) => {
               const next = Number(event.target.value);
-              lastTemperatureOverride.current = next;
+              setLastTemperatureOverride(next);
               onTemperatureChange(next);
             }}
           />
