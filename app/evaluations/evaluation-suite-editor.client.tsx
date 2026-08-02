@@ -230,32 +230,41 @@ function RevisionProvenanceRegion({ descriptor, caseName }: {
 }) {
   return (
     <section className="evaluation-preflight-region" aria-label={`Revision provenance for ${caseName}`}>
-      <h5>Revision provenance</h5>
-      <p className="evaluation-provenance-label">{revisionChoice(descriptor).label}</p>
-      {descriptor.templateUses.length === 0
-        ? <p className="evaluation-empty-inline">No pinned prompts; this revision is authored messages only.</p>
-        : <ul className="evaluation-provenance-uses">
+      {/* Collapsed by default: the resolved messages are what an author reads
+          case to case; provenance is a trust check they open deliberately. */}
+      <details className="evaluation-region-disclosure">
+        <summary>Revision provenance</summary>
+        <p className="evaluation-provenance-label">{revisionChoice(descriptor).label}</p>
+        {descriptor.templateUses.length === 0
+          ? <p className="evaluation-empty-inline">No pinned prompts; this revision is authored messages only.</p>
+          : <ul className="evaluation-provenance-uses">
+              {descriptor.templateUses.map((use) => (
+                <li key={use.templateUseId}>
+                  <strong>{use.templateName}</strong>
+                  <span>
+                    {use.messageCount} {use.messageCount === 1 ? "message" : "messages"}
+                    {" · "}
+                    {use.pinnedToCurrentTemplateRevision
+                      ? "pinned to the template’s current revision"
+                      : "pinned to an earlier template revision"}
+                  </span>
+                </li>
+              ))}
+            </ul>}
+        <details className="evaluation-provenance-details">
+          <summary>Stable identity</summary>
+          <dl>
+            <div><dt>Revision</dt><dd><code>{descriptor.revisionId}</code></dd></div>
+            <div><dt>Conversation</dt><dd><code>{descriptor.conversationId}</code></dd></div>
             {descriptor.templateUses.map((use) => (
-              <li key={use.templateUseId}>
-                <strong>{use.templateName}</strong>
-                <span>
-                  {use.messageCount} {use.messageCount === 1 ? "message" : "messages"}
-                  {" · "}
-                  {use.pinnedToCurrentTemplateRevision
-                    ? "pinned to the template’s current revision"
-                    : "pinned to an earlier template revision"}
-                </span>
-                <code>{use.templateRevisionId}</code>
-              </li>
+              <div key={use.templateUseId}>
+                <dt>{use.templateName} revision</dt>
+                <dd><code>{use.templateRevisionId}</code></dd>
+              </div>
             ))}
-          </ul>}
-      <details className="evaluation-provenance-details">
-        <summary>Stable identity</summary>
-        <dl>
-          <div><dt>Revision</dt><dd><code>{descriptor.revisionId}</code></dd></div>
-          <div><dt>Conversation</dt><dd><code>{descriptor.conversationId}</code></dd></div>
-          <div><dt>Created</dt><dd>{revisionTime(descriptor.createdAt)}</dd></div>
-        </dl>
+            <div><dt>Created</dt><dd>{revisionTime(descriptor.createdAt)}</dd></div>
+          </dl>
+        </details>
       </details>
     </section>
   );
@@ -357,7 +366,10 @@ function ExecutionSettingsRegion({ preview, caseName }: {
   const options = inferenceOptionRows(preview.options);
   return (
     <section className="evaluation-preflight-region" aria-label={`Execution settings for ${caseName}`}>
-      <h5>Execution settings</h5>
+      {/* Collapsed by default: the section heading already shows the target
+          and model, so the full settings list is a deliberate look. */}
+      <details className="evaluation-region-disclosure">
+      <summary>Execution settings</summary>
       <dl className="evaluation-provider-settings">
         <div><dt>Connection</dt><dd>{preview.targetName}</dd></div>
         <div><dt>Endpoint</dt><dd><code>{preview.endpoint || "Not set"}</code></dd></div>
@@ -369,6 +381,7 @@ function ExecutionSettingsRegion({ preview, caseName }: {
             None rather than listing a set the plan would not carry. */}
         <div><dt>Tools</dt><dd>None</dd></div>
       </dl>
+      </details>
     </section>
   );
 }

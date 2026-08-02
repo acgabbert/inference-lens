@@ -120,9 +120,14 @@ test("authoring from a saved prompt shows the exact resolved input it will run",
   await expected.fill("Buffered fixture");
   await expected.blur();
 
-  // Region 1 — revision provenance: recognizable without reading an ID, with
-  // the pinned template revision stated and the stable ID kept in details.
+  // Region 1 — revision provenance: collapsed by default, recognizable without
+  // reading an ID once opened, with every stable ID kept in details.
   const provenance = editor.getByRole("region", { name: /^Revision provenance for / });
+  // Closed-details content still reaches innerText, so collapsed-by-default is
+  // asserted through visibility rather than text absence.
+  await expect(provenance.locator(".evaluation-provenance-label")).toBeHidden();
+  await provenance.getByText("Revision provenance").click();
+  await expect(provenance.locator(".evaluation-provenance-label")).toBeVisible();
   await expect(provenance).toContainText("Current · Question");
   await expect(provenance).toContainText("pinned to the template’s current revision");
   await expect(provenance).toContainText("1 message");
@@ -142,8 +147,10 @@ test("authoring from a saved prompt shows the exact resolved input it will run",
   await expect(conversation.locator(".request-preview-message")).toHaveCount(1);
   await expect(conversation).toContainText("Explain database migrations to engineers.");
 
-  // Region 4 — the target and settings that go with it.
+  // Region 4 — the target and settings that go with it, collapsed by default
+  // because the section heading already names the target and model.
   const settings = editor.getByRole("region", { name: /^Execution settings for / });
+  await settings.getByText("Execution settings").click();
   await expect(settings).toContainText("Buffered fixture");
   await expect(settings).toContainText(BUFFERED_FIXTURE_ENDPOINT);
   await expect(settings).toContainText("openai-compatible-chat-completions");
@@ -195,6 +202,7 @@ test("a second saved prompt warns about existing bindings and stays distinct in 
   // The prompt-only child replaces rather than appends, so the earlier
   // question use is not carried along and its binding no longer resolves.
   const provenance = editor.getByRole("region", { name: /^Revision provenance for / });
+  await provenance.getByText("Revision provenance").click();
   await expect(provenance).toContainText("Current · Safety policy");
   await expect(provenance).not.toContainText("Question");
 

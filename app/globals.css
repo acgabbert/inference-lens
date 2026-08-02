@@ -380,7 +380,8 @@ pre,
 .evaluation-case-check-count,
 .evaluation-regex-dialect > summary > span,
 .saved-prompt-list legend,
-.evaluation-preflight-region h5 {
+.evaluation-preflight-region h5,
+.evaluation-region-disclosure > summary {
   font-size: var(--type-metadata);
 }
 
@@ -6277,12 +6278,24 @@ main {
   border-top: 1px solid var(--border-default);
 }
 
-.evaluation-preflight-region h5 {
+.evaluation-preflight-region h5,
+.evaluation-region-disclosure > summary {
   margin: 0;
   color: var(--text-muted);
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+}
+
+/* The summary is the region heading; collapsed regions keep the preflight
+   readable while every detail stays one deliberate click away. */
+.evaluation-region-disclosure > summary {
+  cursor: pointer;
+}
+
+.evaluation-region-disclosure[open] {
+  display: grid;
+  gap: 8px;
 }
 
 .evaluation-provenance-label {

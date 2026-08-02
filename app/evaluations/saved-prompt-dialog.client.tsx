@@ -20,9 +20,7 @@ function PromptDetails({ candidate }: { candidate: SavedPromptCandidate }) {
       </div>
       <div>
         <dt>Current revision</dt>
-        <dd>
-          <code>{candidate.currentRevisionId}</code> · {revisionTime(candidate.revisionCreatedAt)}
-        </dd>
+        <dd>Saved {revisionTime(candidate.revisionCreatedAt)}</dd>
       </div>
       <div>
         <dt>Variables</dt>

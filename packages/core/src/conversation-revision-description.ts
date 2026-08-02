@@ -110,7 +110,9 @@ export function describeConversationRevision(
     return [{
       templateUseId: item.use.id,
       templateId: item.use.templateId,
-      templateName: template?.name ?? item.use.templateId,
+      // A missing template is a described condition, not an excuse to surface
+      // a raw ID where every other use shows a human name.
+      templateName: template?.name ?? "Missing template",
       templateRevisionId: item.use.templateRevisionId,
       pinnedToCurrentTemplateRevision: template?.currentRevisionId === item.use.templateRevisionId,
       messageCount: item.use.outputMessageIds.length,
