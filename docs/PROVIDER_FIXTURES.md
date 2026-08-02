@@ -103,6 +103,21 @@ for a Playwright run; the config owns that lifecycle.
 The suite is deliberately **not** part of `npm test`. Run both before opening a
 pull request.
 
+Use the npm script rather than a bare `npx playwright test`: `pretest:e2e`
+installs the exact Chromium build this Playwright version pins, which is a
+sub-second no-op once it is cached. Without it, an environment holding an older
+cached build — a cloud session, a fresh container — fails with *"Executable
+doesn't exist … Run `npx playwright install`"* rather than running. Playwright
+is pinned to an exact version for the same reason: a minor bump expects a
+browser build nobody has cached yet.
+
+The browser build is not interchangeable. This suite asserts an 11px type
+floor, contrast, and layout at nine widths, so a different Chromium is a
+different result — which is why the run refuses to start rather than
+substituting a system browser. If the install cannot reach the network, say the
+browser check could not run. Do not report the suite as passing when it never
+started.
+
 Prefer adding a spec to `tests/e2e/` over writing a throwaway driver script. A
 scratch script proves the same thing once and then deletes the evidence; a spec
 keeps proving it. When a check really is one-off, still write it as a spec, run
