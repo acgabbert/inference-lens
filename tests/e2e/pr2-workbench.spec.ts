@@ -134,6 +134,14 @@ test("retires previous run details when a repeated experiment starts", async ({ 
   await expect(page.getByRole("button", { name: "Run details" })).toHaveCount(0);
 
   const results = page.getByRole("region", { name: "Repeated experiment results" });
+  // The region grows as each repetition lands, so its geometry is only final
+  // once the experiment has finished. Measuring earlier reads a region whose
+  // content still fits and fails the overflow assertion. The progress element
+  // renders only while the experiment is live, so its absence is the signal
+  // that every row has its final content — a row existing is not enough, since
+  // it is attached before its result fills in.
+  await expect(page.getByLabel("Experiment progress")).toHaveCount(0);
+  await expect(results.getByText("Repetition 2", { exact: true })).toBeAttached();
   const scrollLayout = await results.evaluate((element) => ({
     clientHeight: element.clientHeight,
     overflowY: getComputedStyle(element).overflowY,
