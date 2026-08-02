@@ -260,7 +260,8 @@ textarea,
 .trace-chevron,
 .repeated-experiment-metric-section h3,
 .evaluation-portable-warning,
-.evaluation-empty-inline {
+.evaluation-empty-inline,
+.evaluation-regex-dialect {
   font-size: var(--type-compact);
 }
 
@@ -373,7 +374,8 @@ pre,
 .template-library-filter button,
 .run-readiness-why-mark,
 .evaluation-case-list-item button span,
-.evaluation-case-check-count {
+.evaluation-case-check-count,
+.evaluation-regex-dialect > summary > span {
   font-size: var(--type-metadata);
 }
 
@@ -6629,7 +6631,6 @@ main {
 .evaluation-regex-dialect {
   position: relative;
   color: var(--text-muted);
-  font-size: 0.78rem;
   font-weight: 600;
 }
 
@@ -6652,7 +6653,6 @@ main {
   border-radius: 50%;
   display: grid;
   place-items: center;
-  font-size: 0.67rem;
   font-weight: 800;
 }
 
