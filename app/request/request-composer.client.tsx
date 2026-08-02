@@ -18,6 +18,7 @@ import type {
 } from "../run-readiness.client";
 import type { ProjectTemplatesHandle } from "../templates/use-project-templates.client";
 import { EvaluationSuiteEditor } from "../evaluations/evaluation-suite-editor.client";
+import type { EvaluationSuiteExecutionActions } from "../evaluations/evaluation-suite-editor.client";
 import type { EvaluationSuiteAuthoringHandle } from "../evaluations/use-evaluation-suite-authoring.client";
 
 type RequestTab = "messages" | "templates" | "tools" | "evaluations";
@@ -47,6 +48,7 @@ export interface RequestComposerProps {
   };
   templates: ProjectTemplatesHandle;
   evaluations: EvaluationSuiteAuthoringHandle;
+  evaluationExecution: EvaluationSuiteExecutionActions;
   project: Pick<ProjectFile, "projectId" | "promptTemplates" | "connectionRequirements" | "defaults" | "externalImports"> | null;
   settings: {
     model: string;
@@ -77,12 +79,14 @@ export interface RequestComposerProps {
   onOpenToolLibrary(): void;
   onSaveParentTrace(): void;
   onDiscardPendingBranch(): void;
+  onActionContextChange(context: "ordinary" | "evaluation"): void;
 }
 
 export function RequestComposer({
   requestDraft,
   templates,
   evaluations,
+  evaluationExecution,
   project,
   settings,
   readiness,
@@ -98,6 +102,7 @@ export function RequestComposer({
   onOpenToolLibrary,
   onSaveParentTrace,
   onDiscardPendingBranch,
+  onActionContextChange,
 }: RequestComposerProps) {
   const [tab, setTab] = useState<RequestTab>("messages");
   const [focusMode, setFocusMode] = useState(false);
@@ -111,6 +116,11 @@ export function RequestComposer({
   const selectedToolCount = selectedProjectToolCount + requestDraft.requestTools.length;
   // A newly imported snapshot is always shown before its notice is dismissed.
   const activeTab = templates.importNotice ? "messages" : tab;
+
+  useEffect(() => {
+    onActionContextChange(activeTab === "evaluations" ? "evaluation" : "ordinary");
+    return () => onActionContextChange("ordinary");
+  }, [activeTab, onActionContextChange]);
 
   // Focus mode belongs to the messages tab. Leaving it drops the state here
   // rather than at each navigation call site, so a tab change from anywhere —
@@ -333,7 +343,7 @@ export function RequestComposer({
         ) : activeTab === "tools" ? (
           <ToolsPane tools={requestDraft.tools} requestTools={requestDraft.requestTools} enabledToolIds={requestDraft.enabledToolIds} activeProfileName={activeProfile.name} toolsEnabled={settings.toolsEnabled} onOpenLibrary={onOpenToolLibrary} onOpenConnectionSettings={onOpenConnectionSettings} onAddTool={requestDraft.addTool} onRemoveTool={requestDraft.removeTool} onUpdateTool={requestDraft.updateTool} onSetToolEnabled={requestDraft.setToolEnabled} mockForTool={requestDraft.mockForTool} onUpdateToolMock={requestDraft.updateToolMock} onRemoveRequestTool={requestDraft.removeRequestTool} />
         ) : (
-          <EvaluationSuiteEditor authoring={evaluations} />
+          <EvaluationSuiteEditor authoring={evaluations} execution={evaluationExecution} />
         )}
       </div>
     </section>

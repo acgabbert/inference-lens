@@ -205,7 +205,7 @@ export function useEvaluationSuiteAuthoring(
       });
     },
     focusCase: setFocusedCaseId,
-    setRepetitions(value) { setRepetitionsState(Math.max(1, Math.min(100, Math.floor(value) || 1))); },
+    setRepetitions(value) { setRepetitionsState(value); },
     createSuite() {
       if (!project) return;
       const created = createEvaluationSuite(project);

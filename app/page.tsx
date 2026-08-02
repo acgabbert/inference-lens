@@ -79,6 +79,11 @@ import { RepeatedExperimentWorkspace } from "./run/repeated-experiment-workspace
 import { useProjectTemplates } from "./templates/use-project-templates.client";
 import { RequestComposer } from "./request/request-composer.client";
 import { useEvaluationSuiteAuthoring } from "./evaluations/use-evaluation-suite-authoring.client";
+import { createEvaluationExperimentPlan } from "../packages/core/src/evaluation-execution.ts";
+import { evaluationBatchGuardrail } from "./evaluations/evaluation-batch.client";
+import { useEvaluationExecutionSession } from "./evaluations/use-evaluation-execution-session.client";
+import { EvaluationStartDialog } from "./evaluations/evaluation-start-dialog.client";
+import { EvaluationResultsWorkspace } from "./evaluations/evaluation-results-workspace.client";
 
 const inferenceTransport = createInferenceTransport();
 
@@ -214,6 +219,8 @@ function HomeContent() {
   const clearTemplateOverridesRef = useRef<() => void>(() => {});
   const [workbenchView, setWorkbenchView] =
     useState<WorkbenchView>("request");
+  const [requestActionContext, setRequestActionContext] =
+    useState<"ordinary" | "evaluation">("ordinary");
   const [traceOpen, setTraceOpen] = useState(false);
   const [outputFollowing, setOutputFollowing] = useState(true);
   const [markdownPreview, setMarkdownPreview] = useState(true);
@@ -319,6 +326,13 @@ function HomeContent() {
   const { runState, isRequestActive, toolResultDrafts, traceStorage,
     hasDiagnosticCapture, visibleBranchProvenance, parentTrace, transcript } = runSession;
   const repeatedExperiment = useRepeatedExperimentSession({
+    transport: inferenceTransport,
+    prepareCredential: credential.prepare,
+    onTraceSaved() { setSavedRunVersion((current) => current + 1); },
+    onError(message) { project.setError(message, { clearKind: true }); },
+    onOpenTrace(trace, origin) { runSession.adoptTrace(trace, origin); },
+  });
+  const evaluationExecution = useEvaluationExecutionSession({
     transport: inferenceTransport,
     prepareCredential: credential.prepare,
     onTraceSaved() { setSavedRunVersion((current) => current + 1); },
@@ -670,6 +684,7 @@ function HomeContent() {
 
   async function run() {
     repeatedExperiment.clear();
+    evaluationExecution.clear();
     project.clearErrorKind();
     if (projectFile && mappedProfileId !== activeProfile.id) {
       project.setError(
@@ -724,6 +739,7 @@ function HomeContent() {
   }
 
   function repeat(): void {
+    evaluationExecution.clear();
     project.clearErrorKind();
     if (selectedToolCount > 0) {
       project.setError("Repeated experiments do not support tools yet. Run this request normally instead.");
@@ -773,6 +789,79 @@ function HomeContent() {
     });
   }
 
+  function startEvaluation(): void {
+    project.clearErrorKind();
+    if (!projectFile || !evaluationAuthoring.suiteId || !evaluationAuthoring.revisionId) {
+      project.setError("Open a project evaluation suite before starting.");
+      return;
+    }
+    if (isRequestActive || repeatedExperiment.isRunning || evaluationExecution.isRunning) return;
+    if (mappedProfileId !== activeProfile.id) {
+      project.setError(
+        mappedProfileId
+          ? "Activate this project's mapped connection before starting the evaluation."
+          : "Map this project's connection to a local profile before starting the evaluation.",
+      );
+      return;
+    }
+    if (selectedToolCount > 0) {
+      project.setError("Evaluations do not support exposed tools yet. Disable tools before starting.");
+      return;
+    }
+    const batch = evaluationBatchGuardrail(
+      evaluationAuthoring.selectedCaseIds.size,
+      evaluationAuthoring.repetitions,
+    );
+    if (evaluationAuthoring.diagnostics.length > 0 || batch.error) {
+      project.setError(batch.error ?? evaluationAuthoring.diagnostics[0]!.message);
+      return;
+    }
+    const revision = projectFile.conversationRevisions.find(
+      ({ id }) => id === evaluationAuthoring.revisionId,
+    );
+    if (!revision) {
+      project.setError("The selected conversation revision no longer exists.");
+      return;
+    }
+    try {
+      const plan = createEvaluationExperimentPlan({
+        project: projectFile,
+        suiteId: evaluationAuthoring.suiteId,
+        conversationRevisionId: evaluationAuthoring.revisionId,
+        selectedCaseIds: [...evaluationAuthoring.selectedCaseIds],
+        repetitions: evaluationAuthoring.repetitions,
+        execution: {
+          target: {
+            profileId: createEntityId("profile", activeProfile.id),
+            protocol: "openai-compatible-chat-completions",
+            endpoint: activeProfile.endpoint,
+            model: activeModel,
+            capabilities: activeCapabilities,
+          },
+          responseMode: activeResponseMode,
+          options: { temperature: activeTemperature },
+          tools: [],
+        },
+      });
+      evaluationExecution.begin({
+        plan,
+        targetName: activeProfile.name || "Untitled profile",
+        revisionCreatedAt: revision.createdAt,
+        storage: projectWorkspace ? "durable" : "unsaved",
+      });
+    } catch (error) {
+      project.setError(error instanceof Error ? error.message : "Could not prepare the evaluation.");
+    }
+  }
+
+  function confirmEvaluation(): void {
+    runSession.reset();
+    repeatedExperiment.clear();
+    setTraceOpen(false);
+    setWorkbenchView("response");
+    void evaluationExecution.confirm(projectWorkspace);
+  }
+
   async function continueRun(): Promise<void> {
     return runSession.continueRun();
   }
@@ -796,12 +885,20 @@ function HomeContent() {
       fileName: item.fileName,
     });
     repeatedExperiment.clear();
+    evaluationExecution.clear();
     setRunHistoryOpen(false);
   }
   async function openHistoryExperiment(item: ProjectExperimentHistoryItem): Promise<void> {
     const workspace = projectWorkspace;
     if (!workspace) throw new Error("The project folder is no longer open.");
-    repeatedExperiment.openSaved(await runHistory.readExperiment(item), workspace);
+    const opened = await runHistory.readExperiment(item);
+    if (opened.plan.kind === "evaluation") {
+      evaluationExecution.openSaved({ ...opened, plan: opened.plan }, workspace);
+      repeatedExperiment.clear();
+    } else {
+      repeatedExperiment.openSaved(opened, workspace);
+      evaluationExecution.clear();
+    }
     runSession.reset();
     setWorkbenchView("response");
     setRunHistoryOpen(false);
@@ -870,6 +967,56 @@ function HomeContent() {
     }
   }
   const responseEmptyState = runEmptyStatePresentation(readiness);
+  const evaluationBatch = evaluationBatchGuardrail(
+    evaluationAuthoring.selectedCaseIds.size,
+    evaluationAuthoring.repetitions,
+  );
+  const evaluationStartDisabledReason = !projectFile
+    ? "Open or save a project first."
+    : !evaluationAuthoring.suiteId
+      ? "Create an evaluation suite first."
+      : evaluationAuthoring.diagnostics[0]?.message
+        ?? evaluationBatch.error
+        ?? (selectedToolCount > 0
+          ? "Evaluations do not support exposed tools yet. Disable tools before starting."
+          : mappedProfileId !== activeProfile.id
+            ? mappedProfileId
+              ? "Activate this project's mapped connection before starting."
+              : "Map this project's connection to a local profile before starting."
+            : !activeProfile.endpoint.trim()
+              ? "Enter an endpoint before starting."
+              : !activeModel.trim()
+                ? "Enter a model before starting."
+                : isRequestActive || repeatedExperiment.isRunning || evaluationExecution.isRunning
+                  ? "Finish or stop the current run first."
+                  : undefined);
+
+  useEffect(() => {
+    const onContextualRunShortcut = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key !== "Enter") return;
+      event.preventDefault();
+      if (
+        confirmation ||
+        repeatedExperiment.draft ||
+        evaluationExecution.draft ||
+        isRequestActive ||
+        repeatedExperiment.isRunning ||
+        evaluationExecution.isRunning
+      ) return;
+      if (requestActionContext === "evaluation") {
+        if (!evaluationStartDisabledReason) startEvaluation();
+        return;
+      }
+      if (readiness?.blocked) return;
+      if (runState?.status.kind === "paused" && runState.status.reason === "attempt_failed") {
+        void retryRun();
+      } else if (runState?.status.kind !== "awaiting_tool_results") {
+        void run();
+      }
+    };
+    window.addEventListener("keydown", onContextualRunShortcut);
+    return () => window.removeEventListener("keydown", onContextualRunShortcut);
+  });
 
   function saveOrChooseProjectLocation(): void {
     if (projectWorkspace || !folderAccessAvailable) {
@@ -889,22 +1036,6 @@ function HomeContent() {
           event.preventDefault();
           saveOrChooseProjectLocation();
         }
-        if (
-          (event.metaKey || event.ctrlKey) &&
-          event.key === "Enter" &&
-          !isRequestActive && !repeatedExperiment.isRunning
-        ) {
-          event.preventDefault();
-          if (readiness?.blocked) return;
-          if (
-            runState?.status.kind === "paused" &&
-            runState.status.reason === "attempt_failed"
-          ) {
-            void retryRun();
-          } else if (runState?.status.kind !== "awaiting_tool_results") {
-            void run();
-          }
-        }
       }}
     >
       <Topbar
@@ -918,9 +1049,10 @@ function HomeContent() {
         hasDiagnosticCapture={hasDiagnosticCapture}
         hasRunTrace={runReachedTerminalStatus}
         hasProjectWorkspace={Boolean(projectWorkspace)}
-        runHistoryBlocked={(Boolean(runState) && !runReachedTerminalStatus) || repeatedExperiment.isRunning}
+        runHistoryBlocked={(Boolean(runState) && !runReachedTerminalStatus) || repeatedExperiment.isRunning || evaluationExecution.isRunning}
         isRequestActive={isRequestActive}
-        isExperimentActive={repeatedExperiment.isRunning}
+        isExperimentActive={repeatedExperiment.isRunning || evaluationExecution.isRunning}
+        actionContext={requestActionContext}
         awaitingToolResults={runState?.status.kind === "awaiting_tool_results"}
         retryableFailure={
           runState?.status.kind === "paused" &&
@@ -952,7 +1084,7 @@ function HomeContent() {
         }}
         onOpenRunHistory={() => setRunHistoryOpen(true)}
         onStop={stop}
-        onStopExperiment={repeatedExperiment.cancel}
+        onStopExperiment={evaluationExecution.isRunning ? evaluationExecution.cancel : repeatedExperiment.cancel}
         onRun={() => void run()}
         onRepeat={repeat}
         onContinue={() => void continueRun()}
@@ -1090,7 +1222,7 @@ function HomeContent() {
         open={runHistoryOpen}
         projectName={projectFile?.name}
         selectedRunId={runState?.runId}
-        selectedExperimentId={repeatedExperiment.execution?.plan.experimentId}
+        selectedExperimentId={evaluationExecution.execution?.plan.experimentId ?? repeatedExperiment.execution?.plan.experimentId}
         history={runHistory}
         onClose={() => setRunHistoryOpen(false)}
         onSelect={(item) => openHistoryTrace(item)}
@@ -1101,10 +1233,19 @@ function HomeContent() {
         view={workbenchView}
         onViewChange={setWorkbenchView}
         inspectAvailable={Boolean(runState && runState.status.kind !== "not_started")}
-        responseStatus={repeatedExperiment.isRunning ? "running" : status}
-        requestLabel={repeatedExperiment.execution?.selectedRunId ? "Experiment" : "Request"}
+        responseStatus={repeatedExperiment.isRunning || evaluationExecution.isRunning ? "running" : status}
+        requestLabel={evaluationExecution.execution?.selectedRunId ? "Evaluation" : repeatedExperiment.execution?.selectedRunId ? "Experiment" : "Request"}
         request={
-        repeatedExperiment.execution?.selectedRunId ? <RepeatedExperimentWorkspace
+        evaluationExecution.execution?.selectedRunId ? <EvaluationResultsWorkspace
+          execution={evaluationExecution.execution}
+          placement="request"
+          onStop={evaluationExecution.cancel}
+          onOpenTrace={evaluationExecution.openTrace}
+          onReturnToEvaluation={() => {
+            evaluationExecution.returnToEvaluation();
+            setWorkbenchView("request");
+          }}
+        /> : repeatedExperiment.execution?.selectedRunId ? <RepeatedExperimentWorkspace
           execution={repeatedExperiment.execution}
           placement="request"
           onStop={repeatedExperiment.cancel}
@@ -1120,6 +1261,12 @@ function HomeContent() {
           }}
           templates={projectTemplates}
           evaluations={evaluationAuthoring}
+          evaluationExecution={{
+            storage: projectWorkspace ? "durable" : "unsaved",
+            running: evaluationExecution.isRunning,
+            ...(evaluationStartDisabledReason ? { disabledReason: evaluationStartDisabledReason } : {}),
+            onStart: startEvaluation,
+          }}
           project={projectFile}
           settings={{
             model: activeModel,
@@ -1152,11 +1299,16 @@ function HomeContent() {
           onOpenToolLibrary={() => setToolRegistryOpen(true)}
           onSaveParentTrace={() => void runSession.exportTrace()}
           onDiscardPendingBranch={() => setBranchContext(null)}
+          onActionContextChange={setRequestActionContext}
         />
         }
         response={
         <section className="result">
-          {repeatedExperiment.execution && !repeatedExperiment.execution.selectedRunId ? <RepeatedExperimentWorkspace
+          {evaluationExecution.execution && !evaluationExecution.execution.selectedRunId ? <EvaluationResultsWorkspace
+            execution={evaluationExecution.execution}
+            onStop={evaluationExecution.cancel}
+            onOpenTrace={evaluationExecution.openTrace}
+          /> : repeatedExperiment.execution && !repeatedExperiment.execution.selectedRunId ? <RepeatedExperimentWorkspace
             execution={repeatedExperiment.execution}
             onStop={repeatedExperiment.cancel}
             onOpenTrace={repeatedExperiment.openTrace}
@@ -1246,6 +1398,13 @@ function HomeContent() {
           onCountChange={repeatedExperiment.setRepetitionCount}
           onCancel={repeatedExperiment.dismissDialog}
           onConfirm={() => void repeatedExperiment.confirm(projectWorkspace)}
+        />
+      )}
+      {evaluationExecution.draft && (
+        <EvaluationStartDialog
+          draft={evaluationExecution.draft}
+          onCancel={evaluationExecution.dismissDialog}
+          onConfirm={confirmEvaluation}
         />
       )}
       {confirmation && (

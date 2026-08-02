@@ -4,19 +4,19 @@ import react from "@vitejs/plugin-react";
 import { createServer } from "vite";
 import { evaluationFixture } from "./fixtures/evaluation-suite-authoring.mjs";
 
-async function render(authoring) {
+async function render(authoring, execution) {
   const server = await createServer({ configFile: false, root: process.cwd(), plugins: [react()], server: { middlewareMode: true, hmr: false, ws: false }, logLevel: "warn" });
   try {
     const [{ EvaluationSuiteEditor }, { renderToStaticMarkup }, { createElement }] = await Promise.all([
       server.ssrLoadModule("/app/evaluations/evaluation-suite-editor.client.tsx"),
       import("react-dom/server"), import("react"),
     ]);
-    return renderToStaticMarkup(createElement(EvaluationSuiteEditor, { authoring }));
+    return renderToStaticMarkup(createElement(EvaluationSuiteEditor, { authoring, execution }));
   } finally { await server.close(); }
 }
 
 test("renders suite preflight, case grid, checks, and paid-cell preview", async () => {
-  const html = await render(evaluationFixture());
+  const html = await render(evaluationFixture(), { storage: "durable", running: false, onStart() {} });
   assert.match(html, /Topic quality/);
   assert.match(html, /Template-variable inputs/);
   assert.match(html, /database migrations/);
@@ -24,6 +24,65 @@ test("renders suite preflight, case grid, checks, and paid-cell preview", async 
   assert.match(html, /1 cases × 3 = <strong>3 planned runs/);
   assert.match(html, /Do not enter credentials or secrets/);
   assert.match(html, /Open evaluation editor in focus mode/);
+  assert.match(html, /Ready to run/);
+  assert.match(html, />Include</);
+  assert.match(html, /Start evaluation…/);
+  assert.match(html, /saved project revision/i);
+  assert.match(html, /plan, traces, and result will be saved/i);
+});
+
+test("warns without resizing large batches and names session-only evidence", async () => {
+  const authoring = evaluationFixture();
+  authoring.repetitions = 25;
+  const html = await render(authoring, { storage: "unsaved", running: false, onStart() {} });
+  assert.match(html, /25 planned runs/);
+  assert.match(html, /Large evaluation batch: 25 provider calls/);
+  assert.match(html, /results will be lost when this session closes/i);
+});
+
+test("shows an explicit error above the repetition maximum", async () => {
+  const authoring = evaluationFixture();
+  authoring.repetitions = 101;
+  const html = await render(authoring, { storage: "durable", running: false, onStart() {} });
+  assert.match(html, /at most 100 repetitions/);
+  assert.match(html, /value was not changed/i);
+  assert.doesNotMatch(html, /Ready to run/);
+});
+
+test("evaluation confirmation names the frozen revision, target, cases, repetitions, calls, and storage", async () => {
+  const server = await createServer({ configFile: false, root: process.cwd(), plugins: [react()], server: { middlewareMode: true, hmr: false, ws: false }, logLevel: "warn" });
+  try {
+    const [{ EvaluationStartDialog }, { renderToStaticMarkup }, { createElement }] = await Promise.all([
+      server.ssrLoadModule("/app/evaluations/evaluation-start-dialog.client.tsx"),
+      import("react-dom/server"), import("react"),
+    ]);
+    const target = { model: "fixture-model" };
+    const cases = Array.from({ length: 5 }, (_, index) => ({
+      caseId: `evaluation-case_${index + 1}`,
+      name: `Case ${index + 1}`,
+      input: { target },
+    }));
+    const html = renderToStaticMarkup(createElement(EvaluationStartDialog, {
+      draft: {
+        targetName: "Fixture profile",
+        revisionCreatedAt: "2026-08-01T12:00:00.000Z",
+        storage: "durable",
+        plan: {
+          repetitions: 5,
+          cells: Array.from({ length: 25 }),
+          suite: { name: "Quality gate", conversationRevisionId: "revision_frozen", cases },
+        },
+      },
+      onCancel() {}, onConfirm() {},
+    }));
+    assert.match(html, /revision_frozen/);
+    assert.match(html, /Fixture profile · fixture-model/);
+    assert.match(html, /5 · Case 1, Case 2, Case 3, Case 4, Case 5/);
+    assert.match(html, /5 per case/);
+    assert.match(html, /25 planned/);
+    assert.match(html, /Saved to the open project folder/);
+    assert.match(html, /Large evaluation batch/);
+  } finally { await server.close(); }
 });
 
 test("renders revision incompatibility as a setup issue", async () => {

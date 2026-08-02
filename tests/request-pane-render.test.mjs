@@ -125,6 +125,7 @@ function requestComposer(overrides = {}) {
       updateCheck: noop,
       deleteCheck: noop,
     },
+    evaluationExecution: { storage: "unsaved", running: false, onStart: noop },
     settings: {
       model: "fixture-model",
       temperature: 0.7,
@@ -143,6 +144,8 @@ function requestComposer(overrides = {}) {
     onOpenToolLibrary: noop,
     onSaveParentTrace: noop,
     onDiscardPendingBranch: noop,
+    onActionContextChange: noop,
+    onDestinationHandled: noop,
     ...overrides,
   };
 }
@@ -160,6 +163,25 @@ test("the extracted composer renders request snapshots without a project", async
   assert.match(html, /Composer fixture message/);
   assert.match(html, /Stream response/);
   assert.match(html, /Open request composer in focus mode/);
+});
+
+test("the topbar hides ordinary run actions in evaluation context", async () => {
+  const noop = () => {};
+  const profile = { id: "fixture", name: "Fixture", endpoint: "https://example.test/v1", model: "fixture-model" };
+  const html = await render("/app/topbar.client.tsx", "Topbar", {
+    profiles: [profile], activeProfile: profile, activeModel: profile.model,
+    hasCredential: false, projectDirty: false, folderAccessAvailable: false,
+    hasDiagnosticCapture: false, hasRunTrace: false, hasProjectWorkspace: false,
+    runHistoryBlocked: false, isRequestActive: false, isExperimentActive: false,
+    actionContext: "evaluation", awaitingToolResults: false, retryableFailure: false,
+    runDisabled: false, repeatDisabled: false,
+    onChooseProfile: noop, onOpenConnections: noop, onNewProject: noop,
+    onOpenProject: noop, onSaveProject: noop, onImportProject: noop,
+    onExportProject: noop, onDownloadDiagnostics: noop, onDownloadRunTrace: noop,
+    onImportRunTrace: noop, onOpenRunHistory: noop, onStop: noop,
+    onStopExperiment: noop, onRun: noop, onRepeat: noop, onContinue: noop, onRetry: noop,
+  });
+  assert.doesNotMatch(html, /Run request|Repeat…|Run new request/);
 });
 
 test("the extracted composer keeps pending-branch and template-error text in the request pane", async () => {

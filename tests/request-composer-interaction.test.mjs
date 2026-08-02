@@ -34,7 +34,7 @@ const message = {
   content: [{ type: "text", text: "Composer fixture message" }],
 };
 
-function composerProps() {
+function composerProps(overrides = {}) {
   const noop = () => {};
   return {
     requestDraft: {
@@ -77,6 +77,7 @@ function composerProps() {
       addInput: noop, renameInput: noop, deleteInput: noop, addCase: noop,
       updateCase: noop, deleteCase: noop, addCheck: noop, updateCheck: noop, deleteCheck: noop,
     },
+    evaluationExecution: { storage: "unsaved", running: false, onStart: noop },
     settings: {
       model: "fixture-model",
       temperature: 0.7,
@@ -97,15 +98,31 @@ function composerProps() {
     onOpenToolLibrary: noop,
     onSaveParentTrace: noop,
     onDiscardPendingBranch: noop,
+    onActionContextChange: noop,
+    ...overrides,
   };
 }
 
-async function mount() {
+test("reports evaluation action context when that tab owns the composer", async () => {
+  const contexts = [];
+  const view = await mount({ onActionContextChange: (context) => contexts.push(context) });
+  try {
+    assert.equal(contexts.at(-1), "ordinary");
+    await view.click(view.tab("Evaluations"));
+    assert.equal(contexts.at(-1), "evaluation");
+    await view.click(view.tab("Messages"));
+    assert.equal(contexts.at(-1), "ordinary");
+  } finally {
+    await view.close();
+  }
+});
+
+async function mount(overrides = {}) {
   const server = await createServer({
     configFile: false,
     root: process.cwd(),
     plugins: [react()],
-    server: { middlewareMode: true, hmr: false },
+    server: { middlewareMode: true, hmr: false, ws: false },
     logLevel: "warn",
   });
   const [{ createElement, act }, { createRoot }, { RequestComposer }] =
@@ -118,7 +135,7 @@ async function mount() {
   document.body.append(container);
   const root = createRoot(container);
   await act(async () => {
-    root.render(createElement(RequestComposer, composerProps()));
+    root.render(createElement(RequestComposer, composerProps(overrides)));
   });
   return {
     container,

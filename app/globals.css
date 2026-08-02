@@ -5537,6 +5537,24 @@ main {
   color: var(--danger);
 }
 
+.run-history-status.check-failed,
+.run-history-status.run-failed,
+.run-history-status.missing-trace {
+  background: var(--danger-surface);
+  color: var(--danger);
+}
+
+.run-history-status.passed {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.run-history-status.not-evaluated,
+.run-history-status.not-run {
+  background: var(--surface-inset);
+  color: var(--text-muted);
+}
+
 /* A cancelled run is neither a success nor a fault, so it keeps the neutral
    pill the base rule sets. It is named here so the omission reads as a
    decision rather than as a missing case. */
@@ -6011,7 +6029,7 @@ main {
 
 .evaluation-preflight {
   display: grid;
-  grid-template-columns: minmax(150px, 0.8fr) minmax(220px, 1.6fr) minmax(90px, 0.5fr) minmax(190px, 1fr);
+  grid-template-columns: minmax(140px, 0.7fr) minmax(250px, 1.5fr) minmax(100px, 0.5fr) minmax(190px, 0.9fr);
   align-items: end;
   gap: 14px;
 }
@@ -6025,6 +6043,206 @@ main {
 
 .evaluation-preflight output {
   padding-bottom: 8px;
+}
+
+.evaluation-preflight label small,
+.evaluation-start-area small {
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.evaluation-start-area {
+  grid-column: 1 / -1;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px !important;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-default);
+}
+
+.evaluation-start-area small {
+  max-width: 430px;
+}
+
+.evaluation-batch-warning {
+  margin: -8px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--warning-border, var(--border-strong));
+  border-radius: 9px;
+  background: var(--warning-surface, var(--surface-inset));
+  color: var(--text-secondary);
+}
+
+.evaluation-batch-warning.error {
+  border-color: var(--danger-border);
+  background: var(--danger-surface);
+  color: var(--danger);
+}
+
+.evaluation-start-dialog {
+  width: min(720px, 100%);
+}
+
+.evaluation-start-details code {
+  display: block;
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+  color: var(--text-muted);
+}
+
+.evaluation-results-workspace {
+  display: grid;
+  gap: 1rem;
+  min-height: 100%;
+  padding: 1.25rem;
+}
+
+.evaluation-results-workspace:not(.experiment-context-pane) {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  align-content: start;
+  overscroll-behavior: contain;
+}
+
+.evaluation-results-workspace.experiment-context-pane {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  align-content: start;
+  background: var(--surface-panel);
+}
+
+.evaluation-results-header,
+.evaluation-case-result > summary,
+.evaluation-repetition-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.evaluation-results-header {
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.evaluation-results-header h2 {
+  margin: 0.2rem 0 0;
+}
+
+.evaluation-results-header p {
+  margin: 0.35rem 0 0;
+  color: var(--text-muted);
+}
+
+.evaluation-results-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.evaluation-results-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.evaluation-results-summary > div {
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--surface-translucent);
+}
+
+.evaluation-results-summary span,
+.evaluation-results-summary strong {
+  display: block;
+}
+
+.evaluation-results-summary span {
+  margin-bottom: 0.25rem;
+  color: var(--text-muted);
+}
+
+.evaluation-case-results,
+.evaluation-repetition-results {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.evaluation-case-result {
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface-translucent);
+}
+
+.evaluation-case-result > summary {
+  align-items: center;
+  padding: 0.85rem;
+  cursor: pointer;
+}
+
+.evaluation-case-result > summary > span:first-child,
+.evaluation-case-result > summary small {
+  display: block;
+}
+
+.evaluation-case-result > summary small {
+  margin-top: 0.2rem;
+  color: var(--text-muted);
+}
+
+.evaluation-repetition-results {
+  padding: 0 0.85rem 0.85rem;
+  border-top: 1px solid var(--border-default);
+}
+
+.evaluation-repetition-result {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--surface-panel);
+}
+
+.evaluation-repetition-result:first-child {
+  margin-top: 0.85rem;
+}
+
+.evaluation-repetition-result.active {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+.evaluation-check-results {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.evaluation-check-results li {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.35fr) minmax(0, 1fr);
+  gap: 0.65rem;
+  color: var(--text-muted);
+}
+
+.evaluation-check-results li strong {
+  color: var(--text-secondary);
+}
+
+.evaluation-check-results li.failed strong {
+  color: var(--danger);
 }
 
 .evaluation-diagnostics {
@@ -6173,6 +6391,15 @@ main {
 
   .evaluation-binding-row span {
     grid-column: 1 / -1;
+  }
+
+  .evaluation-start-area {
+    align-items: stretch;
+    flex-direction: column !important;
+  }
+
+  .evaluation-results-summary {
+    grid-template-columns: 1fr;
   }
 }
 

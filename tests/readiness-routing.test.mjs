@@ -105,6 +105,7 @@ function composerProps(pendingDestination, onDestinationHandled) {
       addInput: noop, renameInput: noop, deleteInput: noop, addCase: noop,
       updateCase: noop, deleteCase: noop, addCheck: noop, updateCheck: noop, deleteCheck: noop,
     },
+    evaluationExecution: { storage: "unsaved", running: false, onStart: noop },
     settings: {
       model: "fixture-model", temperature: 0.7, responseMode: "buffered",
       streamingAvailable: true, toolsEnabled: true, modelDiscovery: null,
@@ -114,6 +115,7 @@ function composerProps(pendingDestination, onDestinationHandled) {
     activeProfile: { name: "Fixture" }, pendingDestination, onDestinationHandled,
     onReadinessAction: noop, onOpenConnectionSettings: noop, onOpenToolLibrary: noop,
     onSaveParentTrace: noop, onDiscardPendingBranch: noop,
+    onActionContextChange: noop,
   };
 }
 

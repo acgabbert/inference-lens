@@ -2,11 +2,13 @@ import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
 import {
+  addEvaluationCheck,
   addEvaluationCase,
   addEvaluationInput,
   createEvaluationSuite,
   evaluationBindingCandidates,
   updateEvaluationCase,
+  updateEvaluationCheck,
 } from "../../packages/core/src/evaluation-suite-authoring";
 import {
   createProjectFile,
@@ -36,6 +38,7 @@ function baseProject() {
   project = createPromptTemplate(project, {
     name: "Question",
     messages: [{ role: "user", content: "Explain {{topic}} to {{audience}}." }],
+    variableDefaults: { audience: "engineers" },
     idSuffix: "question",
     createdAt: "2026-08-01T12:00:01.000Z",
   });
@@ -64,7 +67,31 @@ function projectWithSavedSuite() {
       name: value,
       values: { [input.inputId]: `database ${value}` },
     });
+    project = addEvaluationCheck(project, created.suiteId, added.caseId, { kind: "contains" }, () => `saved-${index}`);
+    const check = project.evaluationSuites[0]!.cases[index]!.checks[0]!;
+    project = updateEvaluationCheck(project, created.suiteId, added.caseId, {
+      checkId: check.checkId,
+      kind: "contains",
+      label: "Mentions database",
+      value: "database",
+    });
   }
+  return project;
+}
+
+function projectWithRunnableSuite() {
+  let project = projectWithSavedSuite();
+  const suite = project.evaluationSuites[0]!;
+  const expected = ["Buffered fixture", "not present", "2 + 2 = 4"];
+  suite.cases.forEach((evaluationCase, index) => {
+    const check = project.evaluationSuites[0]!.cases[index]!.checks[0]!;
+    project = updateEvaluationCheck(project, suite.id, evaluationCase.id, {
+      checkId: check.checkId,
+      kind: "contains",
+      label: `Expected result ${index + 1}`,
+      value: expected[index]!,
+    });
+  });
   return project;
 }
 
@@ -153,13 +180,13 @@ test("a saved suite opens with every case selected and preflight clean", async (
   const editor = page.locator(".evaluation-editor");
 
   await expect(editor).toContainText("3 cases × 1 = 3 planned runs");
-  await expect(editor).toContainText("Ready to author");
+  await expect(editor).toContainText("Ready to run");
   await expect(editor.locator(".evaluation-diagnostics")).toHaveCount(0);
 
   // Narrowing the selection is explicit, and preflight follows it.
   await page.getByLabel("Select indexes").uncheck();
   await expect(editor).toContainText("2 cases × 1 = 2 planned runs");
-  await expect(editor).toContainText("Ready to author");
+  await expect(editor).toContainText("Ready to run");
 
   // Explicit UI selection belongs to the open project, even when a replacement
   // happens to reuse the same suite and case identifiers.
@@ -232,9 +259,9 @@ test("preflight reports an unfinished check and an empty value", async ({ page }
   const editor = page.locator(".evaluation-editor");
 
   await page.getByLabel("migrations topic").fill("   ");
-  await page.getByRole("button", { name: /^0 · Edit$/ }).first().click();
-  await page.getByLabel("New check kind").selectOption({ label: "Contains text" });
-  await page.getByRole("button", { name: "+ Add check" }).click();
+  await page.getByRole("button", { name: /^1 · Edit$/ }).first().click();
+  await page.getByLabel("Expected text").fill("");
+  await page.getByLabel("Expected text").blur();
 
   const diagnostics = editor.locator(".evaluation-diagnostics");
   await expect(diagnostics).toContainText('Case "migrations" has no value for input "topic".');
@@ -251,4 +278,42 @@ test("keeps the evaluations tab within the viewport on a phone", async ({ page }
     viewportWidth: document.documentElement.clientWidth,
   }));
   expect(layout.bodyWidth).toBeLessThanOrEqual(layout.viewportWidth);
+});
+
+test("starts contextually, confirms the frozen batch, and renders strict live evidence", async ({ page }) => {
+  await openProject(page, projectWithRunnableSuite(), 1440);
+  await page.getByLabel(/^Run target:/).click();
+  await page.getByRole("button", { name: /manage connections/i }).click();
+  await page.locator(".connection-mapping").getByRole("button", { name: /use .* for this project/i }).click();
+  await page.getByRole("button", { name: /close connections/i }).click();
+  const editor = page.locator(".evaluation-editor");
+  await expect(editor).toContainText("Ready to run");
+  const start = editor.getByRole("button", { name: "Start evaluation…" });
+  await expect(start).toBeEnabled();
+  await expect(page.locator(".topbar")).not.toContainText("Run request");
+  await expect(page.locator(".topbar")).not.toContainText("Repeat…");
+
+  await start.focus();
+  await page.keyboard.press("Control+Enter");
+  const dialog = page.getByRole("dialog", { name: /Start “Topics”/ });
+  await expect(dialog).toContainText("3 · migrations, indexes, replication");
+  await expect(dialog).toContainText("1 per case");
+  await expect(dialog).toContainText("3 planned");
+  await expect(dialog).toContainText("Session only");
+  await expect(dialog).toContainText("buffered-test-model");
+
+  await dialog.getByRole("button", { name: "Start 3 calls" }).click();
+  const results = page.locator(".evaluation-results-workspace");
+  await expect(results).toContainText("As run · 3 cases · 1 repetition");
+  await expect(results).toContainText("2 / 3 passed");
+  await expect(results).toContainText("2 passed · 1 failed · 0 not evaluated");
+  await expect(results).toContainText("33 tokens · 3/3 runs reported");
+  await expect(results).toContainText("This evaluation is not saved and will be lost when this session closes.");
+  await expect(results.getByText("check failed")).toHaveCount(1);
+  await expect(results.locator("button", { hasText: "Open Response & Inspect" })).toHaveCount(3);
+  await expect(results).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
+
+  await results.locator(".evaluation-case-result").first().locator("summary").click();
+  await results.getByRole("button", { name: "Open Response & Inspect" }).first().click();
+  await expect(page.getByLabel("Run transcript")).toContainText("Buffered fixture response: 2 + 2 = 4.");
 });
