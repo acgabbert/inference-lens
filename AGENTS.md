@@ -35,10 +35,18 @@ the tests fabricate.
 
 For anything a user reads or a provider drives, run it:
 
+- **Drive the browser with the committed Playwright suite: `npm run test:e2e`.**
+  Add a spec under `tests/e2e/` rather than writing a throwaway driver script,
+  and import the shared drivers from `tests/e2e/support/` — `seedProfile`,
+  `waitForHydration`, `importProject`, `stubProjectDirectory` — instead of
+  re-deriving them. The config starts the dev server and the buffered fixture
+  itself, so do not start one by hand for a Playwright run. Read
+  [the provider fixture guide](docs/PROVIDER_FIXTURES.md) first: it lists the
+  traps that produce a *passing* test which exercised nothing.
 - Prefer a local fixture over a hosted account. When the situation under test is
   a specific failure, a specific timing, or a specific payload, write a fixture
   that produces it deterministically rather than waiting for a real provider to
-  cooperate. See [the provider fixture guide](docs/PROVIDER_FIXTURES.md).
+  cooperate.
 - Choose fixture values you can predict the correct output from, so the UI's
   numbers can be checked rather than merely eyeballed for plausibility.
 - Assert on rendered text, not only on screenshots. Scanning a numeric UI for
@@ -47,7 +55,11 @@ For anything a user reads or a provider drives, run it:
 - Stop long-lived fixtures and dev servers when the check is finished.
 
 Report what was actually run. If a check was skipped or a fixture could not
-reproduce the situation, say so rather than implying broader coverage.
+reproduce the situation, say so rather than implying broader coverage. Naming a
+spec is a report; "verified the app" is not.
+
+A new regression test must be shown to fail without the fix. A test written
+against already-fixed code proves only that it passes today.
 
 ## Keep n8n work API-first and collaborative
 

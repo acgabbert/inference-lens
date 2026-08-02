@@ -9,26 +9,7 @@ import type {
 } from "../../packages/core/src/run-kernel/types";
 import { createRunTrace } from "../../packages/core/src/run-kernel/reducer";
 import { serializeRunTrace } from "../../packages/core/src/run-trace";
-
-const PROFILE_STORAGE_KEY = "inference-lens:inference-profiles:v1";
-const STREAMING_STORAGE_KEY = "inference-lens:streaming-preference:v1";
-
-async function seedBufferedProfile(page: Page) {
-  await page.addInitScript(({ profileKey, streamingKey }) => {
-    localStorage.setItem(profileKey, JSON.stringify({
-      profiles: [{
-        id: "buffered",
-        name: "Buffered fixture",
-        provider: "openai-compatible",
-        endpoint: "http://127.0.0.1:44014/v1",
-        model: "buffered-test-model",
-        temperature: 0.7,
-      }],
-      activeProfileId: "buffered",
-    }));
-    localStorage.setItem(streamingKey, "buffered");
-  }, { profileKey: PROFILE_STORAGE_KEY, streamingKey: STREAMING_STORAGE_KEY });
-}
+import { seedProfile } from "./support";
 
 async function waitForHydration(page: Page) {
   await expect(page.getByLabel("Stream response")).not.toBeChecked();
@@ -88,7 +69,7 @@ const importedTemplateResolution = {
 const responsiveWidths = [320, 390, 600, 759, 760, 761, 880, 1080, 1440];
 
 test("renders the buffered fixture transcript and exact token totals", async ({ page }) => {
-  await seedBufferedProfile(page);
+  await seedProfile(page);
   await page.goto("/");
   await waitForHydration(page);
 
@@ -111,7 +92,7 @@ test("renders the buffered fixture transcript and exact token totals", async ({ 
 });
 
 test("retires previous run details when a repeated experiment starts", async ({ page }) => {
-  await seedBufferedProfile(page);
+  await seedProfile(page);
   await page.setViewportSize({ width: 1280, height: 600 });
   await page.goto("/");
   await waitForHydration(page);
@@ -156,7 +137,7 @@ test("retires previous run details when a repeated experiment starts", async ({ 
 test("keeps semantic type, state contrast, and layout intact at supported widths", async ({
   page,
 }) => {
-  await seedBufferedProfile(page);
+  await seedProfile(page);
 
   for (const width of responsiveWidths) {
     await page.setViewportSize({ width, height: 900 });
@@ -244,7 +225,7 @@ test("keeps semantic type, state contrast, and layout intact at supported widths
 });
 
 test("uses peer request, response, and inspect views on a narrow screen", async ({ page }) => {
-  await seedBufferedProfile(page);
+  await seedProfile(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await waitForHydration(page);
@@ -338,7 +319,7 @@ test("uses peer request, response, and inspect views on a narrow screen", async 
 });
 
 test("groups lifecycle and run-data actions by owner", async ({ page }) => {
-  await seedBufferedProfile(page);
+  await seedProfile(page);
   await page.setViewportSize({ width: 1080, height: 900 });
   await page.goto("/");
   await waitForHydration(page);
@@ -373,7 +354,7 @@ test("groups lifecycle and run-data actions by owner", async ({ page }) => {
 });
 
 test("selects Inspect when a trace is explicitly imported", async ({ page }) => {
-  await seedBufferedProfile(page);
+  await seedProfile(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await waitForHydration(page);
@@ -402,7 +383,7 @@ test("selects Inspect when a trace is explicitly imported", async ({ page }) => 
 test("shows Templates only with captured evidence and restores its selection", async ({
   page,
 }) => {
-  await seedBufferedProfile(page);
+  await seedProfile(page);
   await page.goto("/");
   await waitForHydration(page);
 

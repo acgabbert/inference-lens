@@ -17,9 +17,8 @@ import {
   serializeProjectFile,
 } from "../../packages/core/src/project";
 import type { ProjectFile } from "../../packages/core/src/project";
+import { seedProfile } from "./support";
 
-const PROFILE_STORAGE_KEY = "inference-lens:inference-profiles:v1";
-const STREAMING_STORAGE_KEY = "inference-lens:streaming-preference:v1";
 const PROFILE_ENDPOINT = "http://127.0.0.1:44014/v1";
 
 function baseProject() {
@@ -110,24 +109,9 @@ async function importProject(page: Page, project: ProjectFile) {
 }
 
 async function openProject(page: Page, project: ProjectFile, width: number) {
-  await page.addInitScript(({ profileKey, streamingKey, endpoint }) => {
-    localStorage.setItem(profileKey, JSON.stringify({
-      profiles: [{
-        id: "buffered",
-        instanceId: "profile-instance-buffered",
-        name: "Buffered fixture",
-        provider: "openai-compatible",
-        endpoint,
-        model: "buffered-test-model",
-        temperature: 0.7,
-      }],
-      activeProfileId: "buffered",
-    }));
-    localStorage.setItem(streamingKey, "buffered");
-  }, {
-    profileKey: PROFILE_STORAGE_KEY,
-    streamingKey: STREAMING_STORAGE_KEY,
+  await seedProfile(page, {
     endpoint: PROFILE_ENDPOINT,
+    instanceId: "profile-instance-buffered",
   });
 
   await page.setViewportSize({ width, height: 900 });

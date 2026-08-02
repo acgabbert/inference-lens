@@ -1,13 +1,13 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
+import { createProjectFile } from "../../packages/core/src/project";
 import {
-  createProjectFile,
-  serializeProjectFile,
-} from "../../packages/core/src/project";
-
-const PROFILE_STORAGE_KEY = "inference-lens:inference-profiles:v1";
-const PROFILE_ENDPOINT = "http://127.0.0.1:44014/v1";
+  BUFFERED_FIXTURE_ENDPOINT,
+  importProject,
+  seedProfile,
+  waitForHydration,
+} from "./support";
 
 /**
  * An open project is the condition that makes an empty model fatal: a project's
@@ -21,7 +21,7 @@ function fixtureProject() {
     name: "Model picker fixture",
     request: {
       provider: "openai-compatible",
-      endpoint: PROFILE_ENDPOINT,
+      endpoint: BUFFERED_FIXTURE_ENDPOINT,
       model: "buffered-test-model",
       messages: [{ role: "user", content: "Hello" }],
       temperature: 0.4,
@@ -31,63 +31,10 @@ function fixtureProject() {
   });
 }
 
-async function seedProfile(page: Page) {
-  await page.addInitScript(
-    ({ profileKey, endpoint }) => {
-      localStorage.setItem(
-        profileKey,
-        JSON.stringify({
-          profiles: [
-            {
-              id: "buffered",
-              name: "Buffered fixture",
-              provider: "openai-compatible",
-              endpoint,
-              model: "buffered-test-model",
-              temperature: 0.7,
-              favoriteModels: ["buffered-test-model"],
-            },
-          ],
-          activeProfileId: "buffered",
-        }),
-      );
-    },
-    { profileKey: PROFILE_STORAGE_KEY, endpoint: PROFILE_ENDPOINT },
-  );
-}
-
 async function openFixtureProject(page: Page) {
-  const project = fixtureProject();
   await page.goto("/");
-  // Wait for hydration before driving the menu: `setInputFiles` dispatches a
-  // change event, and if React has not attached its handler yet the import is
-  // silently dropped and the app stays on "No project open".
-  await expect(page.locator(".topbar")).toContainText("Buffered fixture");
-  await page.getByLabel("Project menu").click();
-  await page.setInputFiles(
-    '.project-popover:not(.run-data-popover) input[type="file"]',
-    {
-      name: "model-picker.project.json",
-      mimeType: "application/json",
-      buffer: Buffer.from(serializeProjectFile(project)),
-    },
-  );
-  // `Run target:` renders with or without a project, so waiting on it passes
-  // vacuously when the import silently fails. Wait for the project itself:
-  // without one open, `defaults.target.model` does not exist and the crash
-  // under test is unreachable.
-  await expect(page.locator("main")).toContainText("Model picker fixture");
-  await expect(page.locator("main")).not.toContainText("No project open");
-  // The Project menu is a `<details>` that stays open and overlays the request
-  // pane; Escape does not close one. Set the state directly, per the recipe in
-  // docs/PROVIDER_FIXTURES.md, or it swallows clicks meant for the model field.
-  await page.evaluate(() => {
-    document
-      .querySelectorAll<HTMLDetailsElement>("details.project-menu")
-      .forEach((menu) => {
-        menu.open = false;
-      });
-  });
+  await waitForHydration(page);
+  await importProject(page, fixtureProject(), "Model picker fixture");
 }
 
 test("clearing the model field in an open project does not throw", async ({
@@ -96,7 +43,7 @@ test("clearing the model field in an open project does not throw", async ({
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
 
-  await seedProfile(page);
+  await seedProfile(page, { favoriteModels: ["buffered-test-model"] });
   await openFixtureProject(page);
 
   const model = page.locator('input[data-readiness-control="model"]');
@@ -124,7 +71,7 @@ test("typing a replacement model after clearing commits the new id", async ({
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
 
-  await seedProfile(page);
+  await seedProfile(page, { favoriteModels: ["buffered-test-model"] });
   await openFixtureProject(page);
 
   const model = page.locator('input[data-readiness-control="model"]');
@@ -143,7 +90,7 @@ test("a favorite stays selectable when the catalogue cannot be listed", async ({
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
 
-  await seedProfile(page);
+  await seedProfile(page, { favoriteModels: ["buffered-test-model"] });
   // Fail discovery outright: a favorite is a stored id, so it must survive a
   // provider whose optional catalogue endpoint is unreachable. Discovery goes
   // through the app's own `/api/models` proxy (MODELS_API_PATH), not to the

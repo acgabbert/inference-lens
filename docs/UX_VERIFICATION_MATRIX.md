@@ -10,12 +10,14 @@ layout, or contrast. This file is what a human or an agent works through in a
 browser to cover the rest.
 
 **This matrix is broader than the automated suite.** The repository's
-Playwright coverage exercises the deterministic paths that are practical to
-keep in the shared gate. Work through the remaining rows with available
-browser tooling; see the driver recipes, selector traps, and folder-picker
-stub in [the provider fixture guide](PROVIDER_FIXTURES.md), which this file
-assumes rather than repeats. The durable asset here is the *expected values*,
-not any one runner.
+Playwright suite (`npm run test:e2e`) exercises the deterministic paths that
+are practical to keep committed. Work through the remaining rows the same way —
+add a spec under `tests/e2e/` using the shared drivers in `tests/e2e/support/`,
+and see the false-pass traps in [the provider fixture
+guide](PROVIDER_FIXTURES.md), which this file assumes rather than repeats. The
+durable asset here is the *expected values*, not any one runner; a row that
+turns out to be deterministic should graduate into a committed spec rather than
+being re-driven by hand each cycle.
 
 ## Reporting contract
 

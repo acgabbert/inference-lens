@@ -9,6 +9,7 @@ import {
 import { createProjectFile, serializeProjectFile } from "../../packages/core/src/project";
 import { createEntityId } from "../../packages/core/src/run-kernel";
 import { OPENAI_COMPATIBLE_CAPABILITIES } from "../../packages/core/src/types";
+import { stubProjectDirectory } from "./support";
 
 function interruptedPlan(): RepeatedExperimentPlanV3 {
   const createdAt = "2026-07-31T12:00:00.000Z";
@@ -109,59 +110,17 @@ function historyFixture() {
 }
 
 async function installProjectFolderFixture(page: Page): Promise<void> {
-  await page.addInitScript(({ projectJson, planJson, planName, evaluationPlanJson, evaluationPlanName }) => {
-    class MemoryFileHandle {
-      readonly kind = "file";
-      constructor(readonly name: string, public contents: string) {}
-      async getFile() { return new File([this.contents], this.name, { type: "application/json" }); }
-      async createWritable() {
-        return {
-          write: async (value: string) => { this.contents = value; },
-          close: async () => {},
-        };
-      }
-    }
-    class MemoryDirectoryHandle {
-      readonly kind = "directory";
-      readonly entries = new Map<string, MemoryFileHandle | MemoryDirectoryHandle>();
-      constructor(readonly name: string) {}
-      async queryPermission() { return "granted" as const; }
-      async requestPermission() { return "granted" as const; }
-      async *values() { yield* this.entries.values(); }
-      async getFileHandle(name: string, options?: { create?: boolean }) {
-        const current = this.entries.get(name);
-        if (current?.kind === "file") return current;
-        if (!current && options?.create) {
-          const created = new MemoryFileHandle(name, "");
-          this.entries.set(name, created);
-          return created;
-        }
-        throw new DOMException("Not found", "NotFoundError");
-      }
-      async getDirectoryHandle(name: string, options?: { create?: boolean }) {
-        const current = this.entries.get(name);
-        if (current?.kind === "directory") return current;
-        if (!current && options?.create) {
-          const created = new MemoryDirectoryHandle(name);
-          this.entries.set(name, created);
-          return created;
-        }
-        throw new DOMException("Not found", "NotFoundError");
-      }
-      async removeEntry(name: string) { this.entries.delete(name); }
-    }
-    const root = new MemoryDirectoryHandle("experiment-history-fixture");
-    root.entries.set("project.json", new MemoryFileHandle("project.json", projectJson));
-    root.entries.set("traces", new MemoryDirectoryHandle("traces"));
-    const experiments = new MemoryDirectoryHandle("experiments");
-    experiments.entries.set(planName, new MemoryFileHandle(planName, planJson));
-    experiments.entries.set(evaluationPlanName, new MemoryFileHandle(evaluationPlanName, evaluationPlanJson));
-    root.entries.set("experiments", experiments);
-    Object.defineProperty(window, "showDirectoryPicker", {
-      configurable: true,
-      value: async () => root,
-    });
-  }, historyFixture());
+  const { projectJson, planJson, planName, evaluationPlanJson, evaluationPlanName } =
+    historyFixture();
+  await stubProjectDirectory(page, {
+    name: "experiment-history-fixture",
+    files: {
+      "project.json": projectJson,
+      [`experiments/${planName}`]: planJson,
+      [`experiments/${evaluationPlanName}`]: evaluationPlanJson,
+    },
+    directories: ["traces"],
+  });
 }
 
 /**
