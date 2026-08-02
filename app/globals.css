@@ -4751,7 +4751,7 @@ main {
   border-radius: 8px;
   background: var(--danger-surface);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 9px;
 }
 
@@ -4786,13 +4786,13 @@ main {
 }
 
 .run-readiness-summary strong {
-  display: inline;
+  display: block;
   color: var(--text-primary);
 }
 
 .run-readiness-summary > p {
-  display: inline;
-  margin: 0 0 0 8px;
+  display: block;
+  margin: 3px 0 0;
   color: var(--text-secondary);
 }
 
