@@ -1958,8 +1958,11 @@ export type PreparedProjectRevisionRun =
       diagnostics: ProjectTemplateDiagnostic[];
     };
 
+/** Project-owned template data required to resolve one conversation revision. */
+export type ProjectTemplateResolutionSource = Pick<ProjectFile, "promptTemplates">;
+
 export function resolveProjectRevision(
-  project: ProjectFile,
+  project: ProjectTemplateResolutionSource,
   revision: ProjectConversationRevision,
   runOverrides: TemplateRunOverrides = {},
 ): ResolvedProjectRevision {
@@ -2041,7 +2044,7 @@ export function resolveProjectRevision(
  * receive a request while a template diagnostic remains unresolved.
  */
 export function prepareProjectRevisionRun(
-  project: ProjectFile,
+  project: ProjectTemplateResolutionSource,
   revision: ProjectConversationRevision,
   runOverrides: TemplateRunOverrides = {},
 ): PreparedProjectRevisionRun {
@@ -2057,7 +2060,7 @@ export function prepareProjectRevisionRun(
 }
 
 export function resolveProjectRevisionMessages(
-  project: ProjectFile,
+  project: ProjectTemplateResolutionSource,
   revision: ProjectConversationRevision,
   runOverrides: TemplateRunOverrides = {},
 ): ConversationMessage[] {

@@ -213,7 +213,8 @@ textarea,
 .side-drawer-header p,
 .run-history-empty p,
 .run-history-notice,
-.run-history-failures {
+.run-history-failures,
+.evaluation-provider-input h4 {
   font-size: var(--type-body);
 }
 
@@ -370,7 +371,9 @@ pre,
 .n8n-import-centered,
 .failure-glyph,
 .template-library-filter button,
-.run-readiness-why-mark {
+.run-readiness-why-mark,
+.evaluation-case-list-item button span,
+.evaluation-case-check-count {
   font-size: var(--type-metadata);
 }
 
@@ -6124,7 +6127,6 @@ main {
 
 .evaluation-provider-input h4 {
   margin-top: 2px;
-  font-size: var(--type-body);
 }
 
 .evaluation-provider-input > p,
@@ -6531,7 +6533,6 @@ main {
 .evaluation-case-list-item button span {
   margin-top: 3px;
   color: var(--text-muted);
-  font-size: var(--type-caption);
 }
 
 .evaluation-case-check-count {
@@ -6542,7 +6543,6 @@ main {
   background: var(--surface-inset);
   color: var(--text-muted);
   text-align: center;
-  font-size: var(--type-caption);
   font-weight: 700;
 }
 

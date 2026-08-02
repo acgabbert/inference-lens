@@ -145,7 +145,7 @@ test("every offered check kind is addable in the running editor", async ({ page 
   await page.getByRole("button", { name: "Create evaluation suite" }).click();
   await page.getByLabel("Template variable to bind").selectOption({ label: "Question · topic" });
   await page.getByRole("button", { name: "+ Add case input" }).click();
-  await page.getByRole("button", { name: "+ Add case" }).click();
+  await page.getByRole("button", { name: "+ Add case", exact: true }).click();
   await page.getByLabel("Untitled case topic").fill("database migrations");
 
   const failures: string[] = [];
@@ -254,7 +254,7 @@ test("a rejected check edit stays local and restores the saved value", async ({ 
   await openProject(page, baseProject(), 1440);
   const editor = page.locator(".evaluation-editor");
   await page.getByRole("button", { name: "Create evaluation suite" }).click();
-  await page.getByRole("button", { name: "+ Add case" }).click();
+  await page.getByRole("button", { name: "+ Add case", exact: true }).click();
   await page.getByLabel("New check kind").selectOption({ label: "Safe regex" });
   await page.getByLabel("New Safe regex pattern").fill("migration");
   await page.getByRole("button", { name: "+ Add check" }).click();
@@ -273,7 +273,10 @@ test("rejected suite and case names restore saved values with local errors", asy
   await openProject(page, baseProject(), 1440);
   const editor = page.locator(".evaluation-editor");
   await page.getByRole("button", { name: "Create evaluation suite" }).click();
+  await page.getByLabel("Template variable to bind").selectOption({ label: "Question · topic" });
+  await page.getByRole("button", { name: "+ Add case input" }).click();
   await page.getByRole("button", { name: "+ Add case", exact: true }).click();
+  await page.getByLabel("Untitled case topic").fill("database migrations");
 
   await page.getByRole("button", { name: "Rename" }).click();
   const suiteName = page.getByLabel("Suite name");

@@ -9,9 +9,7 @@ import type {
 import type { CheckDefinition } from "./checks.ts";
 import { prepareProjectRevisionRun } from "./project.ts";
 import type {
-  ProjectConversationRevision,
   ProjectFile,
-  PromptTemplate,
   TemplateRunOverrides,
 } from "./project.ts";
 import { templateUseVariableIndex } from "./template-use-variable-index.ts";
@@ -160,7 +158,7 @@ export function evaluationSuitePreflight(
       overrides[binding.target.templateUseId] = values;
     });
     const prepared = prepareProjectRevisionRun(
-      project as ProjectFile,
+      project,
       revision,
       overrides as TemplateRunOverrides,
     );
