@@ -144,7 +144,7 @@ test("every offered check kind is addable in the running editor", async ({ page 
 
   await page.getByRole("button", { name: "Create evaluation suite" }).click();
   await page.getByLabel("Template variable to bind").selectOption({ label: "Question · topic" });
-  await page.getByRole("button", { name: "+ Bind input" }).click();
+  await page.getByRole("button", { name: "+ Add case input" }).click();
   await page.getByRole("button", { name: "+ Add case" }).click();
   await page.getByLabel("Untitled case topic").fill("database migrations");
 
@@ -171,7 +171,7 @@ test("every offered check kind is addable in the running editor", async ({ page 
     if (await alert.count() > 0) failures.push(`${label}: ${await alert.innerText()}`);
   }
   expect(failures).toEqual([]);
-  await expect(editor.getByRole("button", { name: /^7 · Edit$/ })).toBeVisible();
+  await expect(editor.locator(".evaluation-case-check-count")).toHaveText("7");
   await expect(editor).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
 });
 
@@ -179,7 +179,7 @@ test("a saved suite opens with every case selected and preflight clean", async (
   await openProject(page, projectWithSavedSuite(), 1440);
   const editor = page.locator(".evaluation-editor");
 
-  await expect(editor).toContainText("3 cases × 1 = 3 planned runs");
+  await expect(editor).toContainText("3 selected × 1 rep → 3 runs");
   await expect(editor).toContainText("Ready to run");
   await expect(editor.locator(".evaluation-diagnostics")).toHaveCount(0);
   await expect(editor.getByRole("region", { name: "Provider input for migrations" }))
@@ -197,7 +197,7 @@ test("a saved suite opens with every case selected and preflight clean", async (
 
   // Narrowing the selection is explicit, and preflight follows it.
   await page.getByLabel("Select indexes").uncheck();
-  await expect(editor).toContainText("2 cases × 1 = 2 planned runs");
+  await expect(editor).toContainText("2 selected × 1 rep → 2 runs");
   await expect(editor).toContainText("Ready to run");
 
   // Explicit UI selection belongs to the open project, even when a replacement
@@ -205,7 +205,7 @@ test("a saved suite opens with every case selected and preflight clean", async (
   const replacement = projectWithSavedSuite();
   replacement.projectId = "project_replacement";
   await importProject(page, replacement);
-  await expect(editor).toContainText("3 cases × 1 = 3 planned runs");
+  await expect(editor).toContainText("3 selected × 1 rep → 3 runs");
 });
 
 test("a rejected check edit stays local and restores the saved value", async ({ page }) => {
@@ -227,13 +227,10 @@ test("a rejected check edit stays local and restores the saved value", async ({ 
   await expect(editor.locator(".evaluation-suite-header + [role=alert]")).toHaveCount(0);
 });
 
-test("rejected suite, case, and input names restore saved values with local errors", async ({ page }) => {
+test("rejected suite and case names restore saved values with local errors", async ({ page }) => {
   await openProject(page, baseProject(), 1440);
   const editor = page.locator(".evaluation-editor");
   await page.getByRole("button", { name: "Create evaluation suite" }).click();
-  await page.getByRole("button", { name: "+ Bind input" }).click();
-  await page.getByLabel("Template variable to bind").selectOption({ label: "Question · audience" });
-  await page.getByRole("button", { name: "+ Bind input" }).click();
   await page.getByRole("button", { name: "+ Add case" }).click();
 
   const suiteName = page.getByLabel("Suite name");
@@ -250,19 +247,6 @@ test("rejected suite, case, and input names restore saved values with local erro
   await expect(caseName.locator("xpath=..").getByRole("alert"))
     .toContainText("expected string to have >=1 characters");
 
-  const audienceRow = editor.locator(".evaluation-binding-row").filter({ hasText: "audience" });
-  const audienceName = page.getByLabel("Input name audience");
-  await audienceName.fill("   ");
-  await audienceName.blur();
-  await expect(audienceName).toHaveValue("audience");
-  await expect(audienceRow.getByRole("alert"))
-    .toContainText("expected string to have >=1 characters");
-
-  await audienceName.fill("topic");
-  await audienceName.blur();
-  await expect(audienceName).toHaveValue("audience");
-  await expect(audienceRow.getByRole("alert"))
-    .toContainText('Evaluation input name "topic" is repeated within the suite.');
   await expect(editor.locator(".template-diagnostic[role=alert]")).toHaveCount(0);
 });
 
@@ -271,7 +255,7 @@ test("preflight reports an unfinished check and an empty value", async ({ page }
   const editor = page.locator(".evaluation-editor");
 
   await page.getByLabel("migrations topic").fill("   ");
-  await page.getByRole("button", { name: /^1 · Edit$/ }).first().click();
+  await editor.locator(".evaluation-case-list-item").filter({ hasText: "migrations" }).getByRole("button").click();
   await page.getByLabel("Expected text").fill("");
   await page.getByLabel("Expected text").blur();
 
@@ -283,7 +267,7 @@ test("preflight reports an unfinished check and an empty value", async ({ page }
 
 test("keeps the evaluations tab within the viewport on a phone", async ({ page }) => {
   await openProject(page, projectWithSavedSuite(), 390);
-  await expect(page.locator(".evaluation-editor")).toContainText("3 planned runs");
+  await expect(page.locator(".evaluation-editor")).toContainText("3 runs");
 
   const layout = await page.evaluate(() => ({
     bodyWidth: document.body.scrollWidth,

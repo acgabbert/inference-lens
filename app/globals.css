@@ -6008,9 +6008,6 @@ main {
 .evaluation-preflight select,
 .evaluation-preflight input,
 .evaluation-add-row select,
-.evaluation-binding-row input,
-.evaluation-case-grid input,
-.evaluation-case-grid textarea,
 .evaluation-case-detail input,
 .evaluation-case-detail textarea,
 .evaluation-case-detail select {
@@ -6018,10 +6015,7 @@ main {
 }
 
 .evaluation-suite-header,
-.evaluation-inputs,
 .evaluation-cases,
-.evaluation-case-detail,
-.evaluation-provider-input,
 .evaluation-preflight {
   border: 1px solid var(--border-default);
   border-radius: 14px;
@@ -6042,6 +6036,10 @@ main {
   gap: 5px;
 }
 
+.evaluation-preflight label {
+  margin-bottom: 0;
+}
+
 .evaluation-preflight-status {
   flex-direction: row;
   align-items: baseline;
@@ -6050,15 +6048,30 @@ main {
 
 .evaluation-preflight-controls {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(90px, 0.28fr) minmax(170px, 0.52fr);
-  align-items: end;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
   gap: 14px;
+}
+
+.evaluation-batch-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+}
+
+.evaluation-batch-controls label {
+  width: 132px;
 }
 
 .evaluation-preflight-controls output {
   min-width: 0;
-  padding-bottom: 8px;
+  justify-self: start;
+  padding: 0 0 8px;
+  border: 0;
+  background: transparent;
   overflow-wrap: anywhere;
+  text-align: left;
+  white-space: nowrap;
 }
 
 .evaluation-preflight label small,
@@ -6072,7 +6085,7 @@ main {
   display: flex !important;
   flex-direction: row !important;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 12px !important;
   padding-top: 12px;
   border-top: 1px solid var(--border-default);
@@ -6087,11 +6100,20 @@ main {
 .evaluation-provider-input {
   display: grid;
   gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  background: var(--surface-sunken);
 }
 
-.evaluation-provider-input h3,
+.evaluation-provider-input h4,
 .evaluation-provider-input p {
   margin: 0;
+}
+
+.evaluation-provider-input h4 {
+  margin-top: 2px;
+  font-size: var(--type-body);
 }
 
 .evaluation-provider-input > p,
@@ -6099,14 +6121,15 @@ main {
   color: var(--text-muted);
 }
 
-.evaluation-case-sameness-note {
-  margin: 12px 0 0;
-  padding: 9px 10px;
-  border: 1px solid var(--warning-border);
-  border-radius: 7px;
-  background: var(--warning-surface);
-  color: var(--warning-strong);
+.evaluation-provider-input .evaluation-provider-sameness {
+  padding-left: 9px;
+  border-left: 2px solid var(--border-strong);
+  color: var(--text-muted);
   line-height: 1.45;
+}
+
+.evaluation-provider-sameness strong {
+  color: var(--text-secondary);
 }
 
 .evaluation-provider-target {
@@ -6343,15 +6366,49 @@ main {
   margin: 2px 0 0;
 }
 
+.evaluation-input-manager {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  background: var(--surface-sunken);
+}
+
+.evaluation-input-manager-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.evaluation-input-manager-heading strong,
+.evaluation-input-manager-heading span {
+  display: block;
+}
+
+.evaluation-input-manager-heading div > span,
+.evaluation-input-manager-heading > span {
+  margin-top: 3px;
+  color: var(--text-muted);
+}
+
 .evaluation-binding-row {
   display: grid;
-  grid-template-columns: minmax(140px, 1fr) minmax(90px, auto) minmax(170px, 1.5fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-default);
 }
 
-.evaluation-binding-row span {
+.evaluation-binding-identity strong,
+.evaluation-binding-identity span {
+  display: block;
+}
+
+.evaluation-binding-identity span {
+  margin-top: 3px;
   overflow: hidden;
   color: var(--text-muted);
   text-overflow: ellipsis;
@@ -6385,52 +6442,141 @@ main {
   color: var(--text-muted);
 }
 
-.evaluation-grid-scroll {
-  overflow-x: auto;
-  margin-top: 12px;
+.evaluation-portable-warning {
+  margin-bottom: 0;
 }
 
-.evaluation-case-grid {
-  width: 100%;
-  min-width: 720px;
-  border-collapse: collapse;
+.evaluation-cases-workspace {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(190px, 0.32fr) minmax(0, 1fr);
+  margin-top: 14px;
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  border-radius: 11px;
+  background: var(--surface-panel);
 }
 
-.evaluation-case-grid th,
-.evaluation-case-grid td {
-  border-bottom: 1px solid var(--border-default);
+.evaluation-case-rail {
+  min-width: 0;
   padding: 8px;
+  border-right: 1px solid var(--border-default);
+  background: var(--surface-sunken);
+}
+
+.evaluation-case-list-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+
+.evaluation-case-list-item + .evaluation-case-list-item {
+  margin-top: 5px;
+}
+
+.evaluation-case-list-item:hover,
+.evaluation-case-list-item.selected {
+  border-color: var(--accent-border);
+  background: var(--surface-raised);
+}
+
+.evaluation-case-list-item.selected {
+  box-shadow: inset 3px 0 var(--accent);
+}
+
+.evaluation-case-list-item > label {
+  display: grid;
+  align-self: stretch;
+  place-items: center;
+  padding-left: 9px;
+  cursor: pointer;
+}
+
+.evaluation-case-list-item input {
+  width: auto;
+}
+
+.evaluation-case-list-item button {
+  min-width: 0;
+  padding: 9px 2px;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
   text-align: left;
-  vertical-align: top;
 }
 
-.evaluation-case-grid th:first-child,
-.evaluation-case-grid td:first-child {
-  width: 48px;
+.evaluation-case-list-item button strong,
+.evaluation-case-list-item button span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.evaluation-case-list-item button span {
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: var(--type-caption);
+}
+
+.evaluation-case-check-count {
+  min-width: 24px;
+  margin-right: 7px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--surface-inset);
+  color: var(--text-muted);
   text-align: center;
+  font-size: var(--type-caption);
+  font-weight: 700;
 }
 
-.evaluation-case-grid textarea {
-  min-width: 170px;
-  resize: vertical;
-}
-
-.evaluation-case-grid textarea,
 .evaluation-case-detail textarea {
   border-color: var(--border-strong);
   background: var(--surface-sunken);
   box-shadow: var(--shadow-field-inset);
 }
 
-.evaluation-case-grid textarea:hover,
 .evaluation-case-detail textarea:hover {
   border-color: var(--accent-border);
 }
 
 .evaluation-case-detail {
   display: flex;
+  min-width: 0;
   flex-direction: column;
   gap: 14px;
+  padding: 16px;
+}
+
+.evaluation-case-detail > label,
+.evaluation-case-values label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.evaluation-case-values {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  background: var(--surface-translucent);
+}
+
+.evaluation-case-values > div {
+  grid-column: 1 / -1;
+}
+
+.evaluation-case-values p {
+  margin: 3px 0 0;
+  color: var(--text-muted);
 }
 
 .evaluation-check-list {
@@ -6477,11 +6623,15 @@ main {
 
 @container (max-width: 720px) {
   .evaluation-preflight-controls {
-    grid-template-columns: minmax(0, 1fr) minmax(90px, 0.38fr);
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .evaluation-batch-controls {
+    align-items: flex-end;
+    flex-wrap: wrap;
   }
 
   .evaluation-preflight-controls output {
-    grid-column: 1 / -1;
     padding-bottom: 0;
   }
 
@@ -6498,6 +6648,17 @@ main {
   .evaluation-provider-target {
     text-align: left;
   }
+
+  .evaluation-cases-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .evaluation-case-rail {
+    max-height: 240px;
+    overflow-y: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--border-default);
+  }
 }
 
 @media (max-width: 900px) {
@@ -6506,11 +6667,7 @@ main {
   }
 
   .evaluation-binding-row {
-    grid-template-columns: 1fr auto;
-  }
-
-  .evaluation-binding-row span {
-    grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .evaluation-results-summary {

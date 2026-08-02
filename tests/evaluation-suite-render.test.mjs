@@ -15,17 +15,21 @@ async function render(authoring, execution) {
   } finally { await server.close(); }
 }
 
-test("renders suite preflight, case grid, checks, and paid-cell preview", async () => {
+test("renders compact preflight and the focused case workspace", async () => {
   const html = await render(evaluationFixture(), { storage: "durable", running: false, onStart() {} });
   assert.match(html, /Topic quality/);
-  assert.match(html, /Template-variable inputs/);
+  assert.match(html, /Case inputs/);
+  assert.match(html, /Question/);
+  assert.match(html, /topic<\/code> template variable/);
+  assert.doesNotMatch(html, /template-use_question/);
+  assert.doesNotMatch(html, /Input name Topic/);
   assert.match(html, /database migrations/);
   assert.match(html, /Contains text/);
-  assert.match(html, /1 cases × 3 = <strong>3 planned runs/);
+  assert.match(html, /1 selected<\/span> × <span>3 reps<\/span> → <strong>3 runs/);
   assert.match(html, /Do not enter credentials or secrets/);
   assert.match(html, /Open evaluation editor in focus mode/);
   assert.match(html, /Ready to run/);
-  assert.match(html, />Include</);
+  assert.match(html, /aria-label="Evaluation cases"/);
   assert.match(html, /Start evaluation…/);
   assert.match(html, /saved project revision/i);
   assert.match(html, /plan, traces, and result will be saved/i);
@@ -38,7 +42,7 @@ test("warns without resizing large batches and names session-only evidence", asy
   const authoring = evaluationFixture();
   authoring.repetitions = 25;
   const html = await render(authoring, { storage: "unsaved", running: false, onStart() {} });
-  assert.match(html, /25 planned runs/);
+  assert.match(html, /25 runs/);
   assert.match(html, /Large evaluation batch: 25 provider calls/);
   assert.match(html, /results will be lost when this session closes/i);
 });
@@ -47,9 +51,11 @@ test("explains when cases do not vary provider input", async () => {
   const authoring = evaluationFixture();
   authoring.project.evaluationSuites[0].inputBindings = [];
   authoring.project.evaluationSuites[0].cases[0].values = {};
+  authoring.candidates = [];
   const html = await render(authoring);
-  assert.match(html, /Every case currently sends the same conversation/);
-  assert.match(html, /different checks or reference answers/);
+  assert.match(html, /All cases currently use this provider input/);
+  assert.match(html, /References and checks may still differ/);
+  assert.doesNotMatch(html, /evaluation-input-manager/);
 });
 
 test("shows an explicit error above the repetition maximum", async () => {
