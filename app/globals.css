@@ -158,7 +158,8 @@ body {
 .empty-state h3,
 .empty-glyph,
 .run-metric-value,
-.run-history-empty h3 {
+.run-history-empty h3,
+.pane-empty-state h3 {
   font-size: var(--type-section-heading);
 }
 
@@ -214,7 +215,8 @@ textarea,
 .run-history-empty p,
 .run-history-notice,
 .run-history-failures,
-.evaluation-provider-input h4 {
+.evaluation-provider-input h4,
+.pane-empty-state p {
   font-size: var(--type-body);
 }
 
@@ -3855,6 +3857,33 @@ textarea:focus {
 .empty-state p {
   margin: 0;
   line-height: 1.6;
+}
+
+.pane-empty-state {
+  max-width: 280px;
+  margin: 45px auto 0;
+  padding: 0 20px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.pane-empty-state .eyebrow {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.pane-empty-state h3 {
+  margin: 0 0 8px;
+  color: var(--text-primary);
+}
+
+.pane-empty-state p {
+  margin: 0 0 14px;
+  line-height: 1.6;
+}
+
+.pane-empty-state .button {
+  margin: 0 auto;
 }
 
 .trace-header {

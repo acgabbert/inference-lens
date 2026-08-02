@@ -2,6 +2,7 @@
 
 import type { ToolDefinition, ToolId } from "../packages/core/src/run-kernel";
 import type { ToolMock } from "../packages/core/src/project";
+import { PaneEmptyState } from "./pane-empty-state.client";
 import { ToolDefinitionEditor } from "./tool-definition-editor.client";
 
 interface ToolsPaneProps {
@@ -137,7 +138,14 @@ export function ToolsPane({
         </div>
       </div>
       <div className="tool-list">
-        {tools.length === 0 ? <p className="tool-empty">No project tools. Add one or copy one from the local library.</p> : tools.map((tool) => {
+        {tools.length === 0 ? (
+          <PaneEmptyState
+            eyebrow="Project"
+            heading="No project tools yet"
+            detail="Tool definitions are saved with this project and sent to the model only when selected."
+            action={{ label: "+ Add project tool", onClick: onAddTool }}
+          />
+        ) : tools.map((tool) => {
           const mock = mockForTool(tool.id);
           const mockText = mock?.result.content.map(({ text }) => text).join("") ?? "";
           return <article className="tool-editor" key={tool.id}>
