@@ -2,8 +2,17 @@ export function evaluationFixture() {
   const noop = () => {};
   const project = {
     schemaVersion: 7,
-    defaults: { conversationRevisionId: "revision_current" },
-    connectionRequirements: [],
+    defaults: {
+      conversationRevisionId: "revision_current",
+      target: { connectionRequirementId: "connection_default", model: "buffered-test-model" },
+    },
+    connectionRequirements: [{
+      id: "connection_default",
+      name: "Buffered fixture",
+      provider: "openai-compatible",
+      protocol: "openai-compatible-chat-completions",
+      endpoint: "http://127.0.0.1:44014/v1",
+    }],
     conversationRevisions: [{ id: "revision_current", conversationId: "conversation_fixture", createdAt: "2026-08-01T12:00:00.000Z", items: [{ kind: "template-use", use: { id: "template-use_question", templateId: "template_question", templateRevisionId: "template-revision_question", values: {}, outputMessageIds: ["message_question"] } }] }],
     promptTemplates: [{ id: "template_question", name: "Question", currentRevisionId: "template-revision_question", revisions: [{ id: "template-revision_question", createdAt: "2026-08-01T12:00:00.000Z", messages: [{ role: "user", content: "Explain {{topic}}." }], variableDefaults: { topic: "a topic" } }] }],
     evaluationSuites: [{

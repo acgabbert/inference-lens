@@ -61,12 +61,13 @@ async function openEvaluations(
   page: Page,
   project: ProjectFile,
   width = 1440,
+  expectedProjectName = PROJECT_NAME,
 ): Promise<void> {
   await seedProfile(page, { instanceId: "profile-instance-buffered" });
   await page.setViewportSize({ width, height: 900 });
   await page.goto("/");
   await waitForHydration(page);
-  await importProject(page, project, PROJECT_NAME);
+  await importProject(page, project, expectedProjectName);
   await page.getByRole("tab", { name: /Evaluations/ }).click();
 }
 
@@ -216,6 +217,32 @@ test("a second saved prompt warns about existing bindings and stays distinct in 
   await expect(
     editor.getByLabel("Base conversation revision").locator("option"),
   ).toContainText([/Question/, /Safety policy/]);
+});
+
+test("an empty saved-prompt picker opens the Prompt library", async ({ page }) => {
+  const project = createProjectFile({
+    name: "No saved prompts",
+    request: {
+      provider: "openai-compatible",
+      endpoint: BUFFERED_FIXTURE_ENDPOINT,
+      model: "buffered-test-model",
+      messages: [{ role: "user", content: "Hello" }],
+    },
+    idSuffix: "no-prompts",
+    createdAt: "2026-08-01T12:00:00.000Z",
+  });
+  await openEvaluations(page, project, 1440, "No saved prompts");
+  await page.getByRole("button", { name: "Create evaluation suite" }).click();
+  await page.getByRole("button", { name: "Start from saved prompt…" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Start from saved prompt" });
+  await expect(dialog).toContainText("no active saved prompts");
+  await dialog.getByRole("button", { name: "Open Templates" }).click();
+
+  await expect(page.getByRole("tab", { name: /Prompt library/ })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
 });
 
 test("the resolved-input regions stay inside a phone viewport", async ({ page }) => {

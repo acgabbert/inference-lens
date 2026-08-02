@@ -6,6 +6,7 @@ import {
   createProjectFile,
   createPromptTemplate,
   insertPromptTemplateUse,
+  parseProjectFile,
   setPromptTemplateRecommendedTarget,
 } from "../packages/core/src/project.ts";
 import type { ProjectFile } from "../packages/core/src/project.ts";
@@ -46,10 +47,35 @@ function fixture(): ProjectFile {
   });
 }
 
-function recommend(project: ProjectFile, templateId: string, model: string): ProjectFile {
-  return setPromptTemplateRecommendedTarget(project, templateId as never, {
+function evaluationTarget(project: ProjectFile, model = "target-model") {
+  return {
     connectionRequirementId: project.defaults.target.connectionRequirementId,
     model,
+  };
+}
+
+function recommend(
+  project: ProjectFile,
+  templateId: string,
+  model: string,
+  connectionRequirementId = project.defaults.target.connectionRequirementId,
+): ProjectFile {
+  return setPromptTemplateRecommendedTarget(project, templateId as never, {
+    connectionRequirementId,
+    model,
+  });
+}
+
+function withAlternateConnection(project: ProjectFile): ProjectFile {
+  return parseProjectFile({
+    ...project,
+    connectionRequirements: [...project.connectionRequirements, {
+      id: "connection_alternate",
+      name: "Alternate connection",
+      provider: "openai-compatible",
+      protocol: "openai-compatible-chat-completions",
+      endpoint: "http://localhost:4011/v1/chat/completions",
+    }],
   });
 }
 
@@ -59,10 +85,12 @@ test("reports nothing to say when no template carries a recommendation", () => {
   const advisories = promptTargetAdvisories(
     project,
     project.conversationRevisions[0]!,
-    { model: "target-model" },
+    evaluationTarget(project),
   );
 
-  assert.deepEqual(advisories, { recommendations: [], differing: [], recommendedModels: [] });
+  assert.deepEqual(advisories, {
+    recommendations: [], distinctTargets: [], differing: [], recommendedModels: [],
+  });
 });
 
 test("stays silent when the recommendation matches the target the evaluation sends", () => {
@@ -71,7 +99,7 @@ test("stays silent when the recommendation matches the target the evaluation sen
   const advisories = promptTargetAdvisories(
     project,
     project.conversationRevisions[0]!,
-    { model: "target-model" },
+    evaluationTarget(project),
   );
 
   assert.equal(advisories.recommendations.length, 1);
@@ -85,7 +113,7 @@ test("names the template and its connection when a recommendation disagrees", ()
   const advisories = promptTargetAdvisories(
     project,
     project.conversationRevisions[0]!,
-    { model: "target-model" },
+    evaluationTarget(project),
   );
 
   assert.deepEqual(
@@ -103,7 +131,7 @@ test("reports two prompts recommending different models as a conflict no target 
   const advisories = promptTargetAdvisories(
     project,
     project.conversationRevisions[0]!,
-    { model: "safety-model" },
+    evaluationTarget(project, "safety-model"),
   );
 
   // Authored order, not template order: the revision is what the author reads.
@@ -122,7 +150,7 @@ test("keeps two uses of one recommending template distinct", () => {
   const advisories = promptTargetAdvisories(
     withSecondUse,
     withSecondUse.conversationRevisions[0]!,
-    { model: "target-model" },
+    evaluationTarget(withSecondUse),
   );
 
   assert.deepEqual(
@@ -132,4 +160,24 @@ test("keeps two uses of one recommending template distinct", () => {
   // One model is recommended twice, so the prompts do not disagree with
   // each other — only with the target.
   assert.deepEqual(advisories.recommendedModels, ["authored-against-model"]);
+});
+
+test("reports a connection requirement mismatch even when the model matches", () => {
+  let project = withAlternateConnection(fixture());
+  project = recommend(
+    project,
+    "template_question",
+    "target-model",
+    "connection_alternate" as never,
+  );
+
+  const advisories = promptTargetAdvisories(
+    project,
+    project.conversationRevisions[0]!,
+    evaluationTarget(project),
+  );
+
+  assert.deepEqual(advisories.differing.map(({ templateName, connectionName, model }) =>
+    [templateName, connectionName, model].join(" | "),
+  ), ["Question | Alternate connection | target-model"]);
 });

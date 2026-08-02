@@ -407,7 +407,10 @@ function CaseProviderInput({ evaluationCase, authoring, execution }: {
   if (!project || !suite || !revision || !resolution) return null;
 
   const advisories = execution?.preview
-    ? promptTargetAdvisories(project, revision, { model: execution.preview.model })
+    ? promptTargetAdvisories(project, revision, {
+        connectionRequirementId: project.defaults.target.connectionRequirementId,
+        model: execution.preview.model,
+      })
     : undefined;
 
   return (
@@ -421,12 +424,13 @@ function CaseProviderInput({ evaluationCase, authoring, execution }: {
         : <p>This case replaces the bound template values in the saved revision. Repetitions resend this same resolved input; other cases can resolve to different messages.</p>}
       {/* Advisory, never blocking, and never applied: one revision can pin
           several prompts while a provider call carries exactly one model. */}
-      {advisories && advisories.recommendedModels.length > 1 && (
+      {advisories && advisories.distinctTargets.length > 1 && (
         <p className="evaluation-target-advisory" role="status">
-          <strong>These prompts recommend different targets.</strong> {advisories.recommendedModels.join(", ")}. No single evaluation target can match them all; the target below is unchanged.
+          <strong>These prompts recommend different targets.</strong>{" "}
+          {advisories.distinctTargets.map(({ connectionName, model }) => `${connectionName} · ${model}`).join(", ")}. No single evaluation target can match them all; the target below is unchanged.
         </p>
       )}
-      {advisories && advisories.differing.length > 0 && advisories.recommendedModels.length === 1 && (
+      {advisories && advisories.differing.length > 0 && advisories.distinctTargets.length === 1 && (
         <p className="evaluation-target-advisory" role="status">
           <strong>Advisory:</strong> {advisories.differing.map(({ templateName }) => templateName).join(", ")} {advisories.differing.length === 1 ? "was" : "were"} authored against {advisories.differing[0]!.connectionName} · {advisories.differing[0]!.model}. The evaluation target below is unchanged.
         </p>
@@ -462,9 +466,12 @@ export interface EvaluationSuiteExecutionActions {
 export function EvaluationSuiteEditor({
   authoring,
   execution,
+  onOpenTemplates,
 }: {
   authoring: EvaluationSuiteAuthoringHandle;
   execution?: EvaluationSuiteExecutionActions;
+  /** Request-composer navigation stays with its owner. */
+  onOpenTemplates?(): void;
 }) {
   const [focusMode, setFocusMode] = useState(false);
   const [candidateIndex, setCandidateIndex] = useState(0);
@@ -584,6 +591,7 @@ export function EvaluationSuiteEditor({
           {...(authoring.savedPromptError ? { error: authoring.savedPromptError } : {})}
           onCancel={authoring.closeSavedPromptPicker}
           onConfirm={authoring.startFromSavedPrompt}
+          {...(onOpenTemplates ? { onOpenTemplates } : {})}
         />
       )}
     </section>

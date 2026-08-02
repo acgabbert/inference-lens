@@ -348,7 +348,11 @@ export function RequestComposer({
         ) : activeTab === "tools" ? (
           <ToolsPane tools={requestDraft.tools} requestTools={requestDraft.requestTools} enabledToolIds={requestDraft.enabledToolIds} activeProfileName={activeProfile.name} toolsEnabled={settings.toolsEnabled} onOpenLibrary={onOpenToolLibrary} onOpenConnectionSettings={onOpenConnectionSettings} onAddTool={requestDraft.addTool} onRemoveTool={requestDraft.removeTool} onUpdateTool={requestDraft.updateTool} onSetToolEnabled={requestDraft.setToolEnabled} mockForTool={requestDraft.mockForTool} onUpdateToolMock={requestDraft.updateToolMock} onRemoveRequestTool={requestDraft.removeRequestTool} />
         ) : (
-          <EvaluationSuiteEditor authoring={evaluations} execution={evaluationExecution} />
+          <EvaluationSuiteEditor
+            authoring={evaluations}
+            execution={evaluationExecution}
+            onOpenTemplates={() => setTab("templates")}
+          />
         )}
       </div>
     </section>

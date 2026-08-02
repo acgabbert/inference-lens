@@ -17,7 +17,9 @@ export interface PromptTargetRecommendation {
 export interface PromptTargetAdvisories {
   /** Every recommendation carried by the revision's uses, in authored order. */
   recommendations: PromptTargetRecommendation[];
-  /** Recommendations whose model is not the model the evaluation will send. */
+  /** One recommendation per distinct connection-requirement/model pair, in authored order. */
+  distinctTargets: PromptTargetRecommendation[];
+  /** Recommendations whose target pair differs from the evaluation target. */
   differing: PromptTargetRecommendation[];
   /**
    * The distinct recommended models, in authored order. More than one means the
@@ -37,14 +39,16 @@ export interface PromptTargetAdvisories {
  * automatically would mean silently picking a winner. This projection therefore
  * only reports disagreement, and only the caller decides how loudly to say it.
  *
- * Comparison is by model. A recommendation's connection is reported for display
- * but not matched, because which local profile serves a project's connection
- * requirement is session state that portable project data cannot see.
+ * Evaluations may run only through the profile mapped to the project's selected
+ * connection requirement. That requirement plus the session-selected model is
+ * therefore the complete target pair to compare against a recommendation; the
+ * local profile identity itself remains session state and is deliberately not
+ * part of this portable boundary.
  */
 export function promptTargetAdvisories(
   project: Pick<ProjectFile, "promptTemplates" | "connectionRequirements">,
   revision: Pick<ProjectConversationRevision, "items">,
-  target: { model: string },
+  target: { connectionRequirementId: ConnectionRequirementId; model: string },
 ): PromptTargetAdvisories {
   const templatesById = new Map(project.promptTemplates.map((template) => [template.id, template]));
   const connectionsById = new Map(
@@ -67,9 +71,19 @@ export function promptTargetAdvisories(
     }];
   });
 
+  const distinctTargets = [...new Map(
+    recommendations.map((recommendation) => [
+      `${recommendation.connectionRequirementId}::${recommendation.model}`,
+      recommendation,
+    ]),
+  ).values()];
+
   return {
     recommendations,
-    differing: recommendations.filter(({ model }) => model !== target.model),
+    distinctTargets,
+    differing: recommendations.filter(({ connectionRequirementId, model }) =>
+      connectionRequirementId !== target.connectionRequirementId || model !== target.model
+    ),
     recommendedModels: [...new Set(recommendations.map(({ model }) => model))],
   };
 }
