@@ -233,7 +233,7 @@ test("opening a Project v6 workspace migrates in memory without rewriting it", a
   const opened = await withDirectoryPicker(directory, () => openProjectFolder());
 
   assert.ok(opened);
-  assert.equal(opened.project.schemaVersion, 7);
+  assert.equal(opened.project.schemaVersion, 8);
   assert.deepEqual(opened.project.evaluationSuites, []);
   assert.equal(manifest.contents, originalContents);
   assert.deepEqual(writes, []);

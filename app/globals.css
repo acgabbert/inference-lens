@@ -6187,9 +6187,98 @@ main {
 
 .evaluation-preflight-controls {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: 14px;
+}
+
+.evaluation-input-summary,
+.evaluation-execution-editor {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  background: var(--surface-sunken);
+}
+
+.evaluation-input-summary > span,
+.evaluation-input-summary > strong,
+.evaluation-input-summary > small {
+  display: block;
+}
+
+.evaluation-input-summary > strong {
+  margin-top: 4px;
+}
+
+.evaluation-input-summary > small,
+.evaluation-execution-editor-heading small {
+  margin-top: 3px;
+  color: var(--text-muted);
+}
+
+.evaluation-input-picker {
+  margin-top: 10px;
+}
+
+.evaluation-input-summary > .button {
+  margin-top: 10px;
+}
+
+.evaluation-input-picker > summary {
+  width: fit-content;
+  color: var(--accent-text);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.evaluation-input-picker[open] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: end;
+  gap: 10px;
+}
+
+.evaluation-input-picker[open] > summary {
+  grid-column: 1 / -1;
+}
+
+.evaluation-execution-editor {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  align-items: end;
+  gap: 10px;
+}
+
+.evaluation-execution-editor-heading,
+.evaluation-execution-editor output {
+  grid-column: 1 / -1;
+}
+
+.evaluation-execution-editor-heading span,
+.evaluation-execution-editor-heading small {
+  display: block;
+}
+
+.evaluation-resolution-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--warning-border, var(--border-strong));
+  border-radius: 9px;
+  background: var(--warning-surface, var(--surface-inset));
+}
+
+.evaluation-resolution-action strong,
+.evaluation-resolution-action span {
+  display: block;
+}
+
+.evaluation-resolution-action span {
+  margin-top: 3px;
+  color: var(--text-muted);
 }
 
 .evaluation-batch-controls {
@@ -6234,6 +6323,10 @@ main {
   min-width: 0;
   max-width: 430px;
   overflow-wrap: anywhere;
+}
+
+.evaluation-start-area small.evaluation-start-blocked {
+  color: var(--warning-strong);
 }
 
 .evaluation-provider-input {
@@ -7079,6 +7172,22 @@ main {
 
   .evaluation-revision-picker {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .evaluation-input-picker[open],
+  .evaluation-execution-editor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .evaluation-execution-editor-heading,
+  .evaluation-execution-editor output,
+  .evaluation-input-picker[open] > summary {
+    grid-column: 1;
+  }
+
+  .evaluation-resolution-action {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .evaluation-revision-picker button {

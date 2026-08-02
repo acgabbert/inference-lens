@@ -61,6 +61,13 @@ function projectFixture(withChecks = true) {
     evaluationSuites: [{
       id: "evaluation-suite_topics",
       name: "Topics",
+      input: { kind: "conversation-revision", conversationRevisionId: revisionId },
+      execution: {
+        target: { ...project.defaults.target },
+        responseMode: "buffered",
+        options: { temperature: 0.2, seed: 7 },
+        repetitions: 2,
+      },
       inputBindings: [{
         id: "evaluation-input_topic",
         name: "Topic",
@@ -86,27 +93,32 @@ function projectFixture(withChecks = true) {
 }
 
 function planFixture(repetitions = 2) {
-  const project = projectFixture();
+  const initial = projectFixture();
+  const project = parseProjectFile({
+    ...initial,
+    evaluationSuites: initial.evaluationSuites.map((suite) => ({
+      ...suite,
+      execution: {
+        ...suite.execution,
+        target: { ...suite.execution.target, model: "confirmed-model" },
+        responseMode: "buffered",
+        options: { temperature: 0.2, seed: 7 },
+        repetitions,
+      },
+    })),
+  });
   let suffix = 0;
   return createEvaluationExperimentPlan({
     project,
     suiteId: "evaluation-suite_topics",
-    conversationRevisionId: project.defaults.conversationRevisionId,
     selectedCaseIds: ["evaluation-case_migrations"],
-    repetitions,
     createdAt: "2026-08-01T12:10:00.000Z",
     createSuffix: () => `fixture-${++suffix}`,
-    execution: {
-      target: {
+    runtimeTarget: {
         profileId: "profile_confirmed",
         protocol: "openai-compatible-chat-completions",
         endpoint: "https://confirmed.example.test/v1",
-        model: "confirmed-model",
         capabilities: OPENAI_COMPATIBLE_CAPABILITIES,
-      },
-      responseMode: "buffered",
-      options: { temperature: 0.2, seed: 7 },
-      tools: [],
     },
   });
 }
@@ -144,20 +156,12 @@ test("rejects selected zero-check cases before an evaluation plan exists", () =>
     () => createEvaluationExperimentPlan({
       project,
       suiteId: "evaluation-suite_topics",
-      conversationRevisionId: project.defaults.conversationRevisionId,
       selectedCaseIds: ["evaluation-case_migrations"],
-      repetitions: 1,
-      execution: {
-        target: {
+      runtimeTarget: {
           profileId: "profile_test",
           protocol: "openai-compatible-chat-completions",
           endpoint: "https://provider.example.test/v1",
-          model: "test",
           capabilities: OPENAI_COMPATIBLE_CAPABILITIES,
-        },
-        responseMode: "streaming",
-        options: {},
-        tools: [],
       },
     }),
     EvaluationSetupError,

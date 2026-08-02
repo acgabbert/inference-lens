@@ -1,7 +1,7 @@
 export function evaluationFixture() {
   const noop = () => {};
   const project = {
-    schemaVersion: 7,
+    schemaVersion: 8,
     defaults: {
       conversationRevisionId: "revision_current",
       target: { connectionRequirementId: "connection_default", model: "buffered-test-model" },
@@ -18,6 +18,13 @@ export function evaluationFixture() {
     evaluationSuites: [{
       id: "evaluation-suite_topics",
       name: "Topic quality",
+      input: { kind: "conversation-revision", conversationRevisionId: "revision_current" },
+      execution: {
+        target: { connectionRequirementId: "connection_default", model: "buffered-test-model" },
+        responseMode: "buffered",
+        options: {},
+        repetitions: 3,
+      },
       inputBindings: [{ id: "evaluation-input_topic", name: "Topic", target: { kind: "template-variable", templateUseId: "template-use_question", variableName: "topic" } }],
       cases: [{ id: "evaluation-case_migrations", name: "Migrations", values: { "evaluation-input_topic": "database migrations" }, referenceAnswer: "Explain a safe rollout.", checks: [{ checkId: "check_contains", kind: "contains", value: "rollback" }] }],
     }],
@@ -92,7 +99,7 @@ export function evaluationFixture() {
     }],
     savedPromptPickerOpen: false,
     selectSuite: noop, selectRevision: noop, setCaseSelected: noop, focusCase: noop,
-    setRepetitions: noop, createSuite: noop, renameSuite: noop, deleteSuite: noop,
+    setRepetitions: noop, updateExecution: () => true, createSuite: noop, renameSuite: noop, deleteSuite: noop,
     addInput: noop, renameInput: noop, deleteInput: noop, addCase: noop,
     updateCase: noop, deleteCase: noop, addCheck: noop, updateCheck: noop, deleteCheck: noop,
     openSavedPromptPicker: noop, closeSavedPromptPicker: noop,

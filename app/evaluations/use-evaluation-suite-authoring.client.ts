@@ -19,6 +19,8 @@ import {
   savedPromptCandidates,
   updateEvaluationCase,
   updateEvaluationCheck,
+  updateEvaluationSuiteExecution,
+  updateEvaluationSuiteInput,
 } from "../../packages/core/src/evaluation-suite-authoring";
 import type {
   NewEvaluationCheck,
@@ -29,7 +31,7 @@ import type { ConversationRevisionDescriptor } from "../../packages/core/src/con
 import { resolveEvaluationCase } from "../../packages/core/src/evaluation-case-resolution";
 import type { EvaluationCaseResolution } from "../../packages/core/src/evaluation-case-resolution";
 import { ProjectValidationError } from "../../packages/core/src/project";
-import type { ProjectFile } from "../../packages/core/src/project";
+import type { EvaluationSuite, ProjectFile } from "../../packages/core/src/project";
 import type {
   CheckId,
   ConversationRevisionId,
@@ -81,6 +83,7 @@ export interface EvaluationSuiteAuthoringHandle {
   setCaseSelected(id: EvaluationCaseId, selected: boolean): void;
   focusCase(id: EvaluationCaseId): void;
   setRepetitions(value: number): void;
+  updateExecution(execution: EvaluationSuite["execution"]): boolean;
   createSuite(): void;
   renameSuite(name: string): boolean;
   deleteSuite(): void;
@@ -156,31 +159,20 @@ function mutationErrorMessage(cause: unknown): string {
 export interface UseEvaluationSuiteAuthoringInput {
   project: ProjectFile | null;
   adoptProjectMutation(project: ProjectFile): void;
-  /**
-   * Re-seeds cross-feature composer state after a mutation moved the project's
-   * active authored revision. The evaluation owner does not know how the
-   * composer draft, transient template overrides, or a pending branch are
-   * built, so the route supplies exactly this one adapter rather than having
-   * evaluation state migrate into the route.
-   */
-  onActiveRevisionChanged?(project: ProjectFile): void;
   requestConfirmation?(request: ConfirmationDialogRequest): void;
 }
 
 export function useEvaluationSuiteAuthoring({
   project,
   adoptProjectMutation,
-  onActiveRevisionChanged,
   requestConfirmation,
 }: UseEvaluationSuiteAuthoringInput): EvaluationSuiteAuthoringHandle {
   const [suiteId, setSuiteId] = useState<EvaluationSuiteId>();
-  const [revisionId, setRevisionId] = useState<ConversationRevisionId>();
   // Undefined means "every case", so opening a saved suite previews the run the
   // author actually described rather than an empty selection they must repair.
   // It narrows to an explicit set the first time a checkbox is touched.
   const [selection, setSelection] = useState<ScopedCaseSelection>();
   const [focusedCaseId, setFocusedCaseId] = useState<EvaluationCaseId>();
-  const [repetitions, setRepetitionsState] = useState(1);
   const [storedError, setStoredError] = useState<ScopedAuthoringError>();
   const [savedPromptPickerOpen, setSavedPromptPickerOpen] = useState(false);
   const [storedPromptError, setStoredPromptError] = useState<ScopedProjectMessage>();
@@ -189,10 +181,8 @@ export function useEvaluationSuiteAuthoring({
   const effectiveSuiteId = project?.evaluationSuites.some(({ id }) => id === suiteId)
     ? suiteId
     : project?.evaluationSuites[0]?.id;
-  const effectiveRevisionId = project?.conversationRevisions.some(({ id }) => id === revisionId)
-    ? revisionId
-    : project?.defaults.conversationRevisionId;
   const suite = project?.evaluationSuites.find(({ id }) => id === effectiveSuiteId);
+  const effectiveRevisionId = suite?.input.conversationRevisionId;
   const validCaseIds = new Set(suite?.cases.map(({ id }) => id) ?? []);
   const explicitSelection = selection &&
     selection.projectId === project?.projectId &&
@@ -278,18 +268,19 @@ export function useEvaluationSuiteAuthoring({
     : undefined;
 
   function startFromSavedPrompt(templateId: PromptTemplateId): boolean {
-    if (!project || !effectiveRevisionId) return false;
+    if (!project || !effectiveSuiteId || !effectiveRevisionId) return false;
     const candidate = promptCandidates.find(({ templateId: id }) => id === templateId);
     try {
       const created = createRevisionFromSavedPrompt(project, {
         parentRevisionId: effectiveRevisionId,
         templateId,
       });
-      adoptProjectMutation(created.project);
-      // The mutation advanced the project's active authored revision, so the
-      // composer must be re-seeded from it before the author switches tabs.
-      onActiveRevisionChanged?.(created.project);
-      setRevisionId(created.conversationRevisionId);
+      const updated = updateEvaluationSuiteInput(
+        created.project,
+        effectiveSuiteId,
+        created.conversationRevisionId,
+      );
+      adoptProjectMutation(updated);
       setStoredPromptError(undefined);
       setSavedPromptPickerOpen(false);
       setStoredNotice({
@@ -314,7 +305,7 @@ export function useEvaluationSuiteAuthoring({
     ...(effectiveRevisionId ? { revisionId: effectiveRevisionId } : {}),
     selectedCaseIds: effectiveSelectedCaseIds,
     ...(effectiveFocusedCaseId ? { focusedCaseId: effectiveFocusedCaseId } : {}),
-    repetitions,
+    repetitions: suite?.execution.repetitions ?? 1,
     candidates,
     diagnostics,
     ...(error ? { error } : {}),
@@ -330,7 +321,11 @@ export function useEvaluationSuiteAuthoring({
     startFromSavedPrompt,
     dismissNotice() { setStoredNotice(undefined); },
     selectSuite(id) { setSuiteId(id); setFocusedCaseId(undefined); setSelection(undefined); setStoredError(undefined); },
-    selectRevision(id) { setRevisionId(id); setStoredNotice(undefined); },
+    selectRevision(id) {
+      if (!effectiveSuiteId) return;
+      commit((current) => updateEvaluationSuiteInput(current, effectiveSuiteId, id));
+      setStoredNotice(undefined);
+    },
     setCaseSelected(id, selected) {
       if (!project || !effectiveSuiteId) return;
       setSelection((current) => {
@@ -343,7 +338,18 @@ export function useEvaluationSuiteAuthoring({
       });
     },
     focusCase: setFocusedCaseId,
-    setRepetitions(value) { setRepetitionsState(value); },
+    setRepetitions(value) {
+      if (!suite || !effectiveSuiteId) return;
+      commit((current) => updateEvaluationSuiteExecution(current, effectiveSuiteId, {
+        ...suite.execution,
+        repetitions: value,
+      }));
+    },
+    updateExecution(execution) {
+      return effectiveSuiteId
+        ? commit((current) => updateEvaluationSuiteExecution(current, effectiveSuiteId, execution))
+        : false;
+    },
     createSuite() {
       if (!project) return;
       const created = createEvaluationSuite(project);

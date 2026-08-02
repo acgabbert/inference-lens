@@ -1,10 +1,12 @@
 import type {
   CheckId,
+  ConnectionRequirementId,
   ConversationRevisionId,
   EvaluationCaseId,
   EvaluationInputBindingId,
   EvaluationSuiteId,
   PromptTemplateUseId,
+  InferenceOptions,
 } from "./run-kernel/types.ts";
 import type { CheckDefinition } from "./checks.ts";
 import { resolveEvaluationCase } from "./evaluation-case-resolution.ts";
@@ -34,6 +36,21 @@ export interface EvaluationCase {
 export interface EvaluationSuite {
   id: EvaluationSuiteId;
   name: string;
+  /** The immutable authored input this suite resolves independently of Messages. */
+  input: {
+    kind: "conversation-revision";
+    conversationRevisionId: ConversationRevisionId;
+  };
+  /** Portable execution preferences. Credentials and local profile identity never enter project data. */
+  execution: {
+    target: {
+      connectionRequirementId: ConnectionRequirementId;
+      model: string;
+    };
+    responseMode: "streaming" | "buffered";
+    options: InferenceOptions;
+    repetitions: number;
+  };
   inputBindings: EvaluationInputBinding[];
   cases: EvaluationCase[];
 }
@@ -90,7 +107,7 @@ function unfinishedCheckText(check: CheckDefinition): boolean {
   return (
     (check.kind === "contains" || check.kind === "exact-match") &&
     check.value === ""
-  );
+  ) || (check.kind === "regex" && check.pattern === "");
 }
 
 /** Pure, provider-free authoring preflight for a selected suite and revision. */
@@ -142,7 +159,9 @@ export function evaluationSuitePreflight(
         code: "unfinished-check",
         caseId: evaluationCase.id,
         checkId: check.checkId,
-        message: `A ${check.kind} check on case "${evaluationCase.name}" has no expected text yet.`,
+        message: check.kind === "regex"
+          ? `A regex check on case "${evaluationCase.name}" needs a pattern.`
+          : `A ${check.kind} check on case "${evaluationCase.name}" has no expected text yet.`,
       });
     });
 

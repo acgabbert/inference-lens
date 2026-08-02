@@ -465,16 +465,11 @@ function HomeContent() {
   const evaluationAuthoring = useEvaluationSuiteAuthoring({
     project: projectFile,
     adoptProjectMutation: project.adoptProjectMutation,
-    // The only cross-feature adapter evaluation authoring needs: when it
-    // advances the project's active authored revision, the composer draft,
-    // transient template overrides, and any pending branch have to follow.
-    onActiveRevisionChanged(next) {
-      replaceProjectDraft(projectDraft(next));
-      clearTemplateOverridesRef.current();
-      setBranchContext(null);
-    },
     requestConfirmation: setConfirmation,
   });
+  const selectedEvaluationSuite = projectFile?.evaluationSuites.find(
+    ({ id }) => id === evaluationAuthoring.suiteId,
+  );
   useEffect(() => {
     clearTemplateOverridesRef.current = projectTemplates.clearTransientOverrides;
   }, [projectTemplates.clearTransientOverrides]);
@@ -809,19 +804,14 @@ function HomeContent() {
       project.setError(evaluationStartDisabledReason);
       return;
     }
-    if (!projectFile || !evaluationAuthoring.suiteId || !evaluationAuthoring.revisionId) return;
+    if (!projectFile || !selectedEvaluationSuite || !evaluationAuthoring.revisionId) return;
     try {
       evaluationExecution.begin(createEvaluationStartDraft({
         project: projectFile,
-        suiteId: evaluationAuthoring.suiteId,
-        revisionId: evaluationAuthoring.revisionId,
+        suiteId: selectedEvaluationSuite.id,
         selectedCaseIds: [...evaluationAuthoring.selectedCaseIds],
-        repetitions: evaluationAuthoring.repetitions,
         profile: activeProfile,
-        model: activeModel,
         capabilities: activeCapabilities,
-        responseMode: activeResponseMode,
-        temperature: activeTemperature,
         durable: Boolean(projectWorkspace),
       }));
     } catch (error) {
@@ -951,12 +941,14 @@ function HomeContent() {
     )),
     diagnostics: evaluationAuthoring.diagnostics,
     selectedCaseCount: evaluationAuthoring.selectedCaseIds.size,
-    repetitions: evaluationAuthoring.repetitions,
-    selectedToolCount,
+    repetitions: selectedEvaluationSuite?.execution.repetitions ?? 1,
+    selectedToolCount: 0,
     connectionMapped: mappedProfileId === activeProfile.id,
     hasProjectMapping: Boolean(mappedProfileId),
     endpoint: activeProfile.endpoint,
-    model: activeModel,
+    model: selectedEvaluationSuite?.execution.target.model ?? "",
+    responseMode: selectedEvaluationSuite?.execution.responseMode ?? "buffered",
+    streamingAvailable: activeCapabilities.streaming,
     activityInProgress: isRequestActive || repeatedExperiment.isRunning || evaluationExecution.isRunning,
   }).blockedReason;
 
@@ -1237,9 +1229,10 @@ function HomeContent() {
               targetName: activeProfile.name || "Untitled profile",
               endpoint: activeProfile.endpoint,
               protocol: "openai-compatible-chat-completions",
-              model: activeModel,
-              responseMode: activeResponseMode,
-              options: { temperature: activeTemperature },
+              model: selectedEvaluationSuite?.execution.target.model ?? "",
+              responseMode: selectedEvaluationSuite?.execution.responseMode ?? "buffered",
+              options: selectedEvaluationSuite?.execution.options ?? {},
+              streamingAvailable: activeCapabilities.streaming,
             },
             ...(evaluationStartDisabledReason ? { disabledReason: evaluationStartDisabledReason } : {}),
             onStart: startEvaluation,

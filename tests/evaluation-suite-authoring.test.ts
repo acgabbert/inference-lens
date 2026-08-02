@@ -104,11 +104,10 @@ test("every offered check kind can actually be added to a case", () => {
   );
 });
 
-test("a regex check requires its authored pattern before entering the project", () => {
-  assert.throws(
-    () => defaultCheck({ kind: "regex", pattern: "" }, () => "empty-regex"),
-    /Safe regex patterns must not be empty/,
-  );
+test("an empty regex enters authored state instead of being required by the add action", () => {
+  const check = defaultCheck({ kind: "regex" }, () => "empty-regex");
+  assert.equal(check.kind, "regex");
+  assert.equal(check.kind === "regex" ? check.pattern : undefined, "");
 });
 
 test("preflight reports unfinished checks and empty values for selected cases only", () => {

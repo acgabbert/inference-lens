@@ -121,9 +121,8 @@ export function SavedPromptDialog({
         ) : (
           <>
             <p>
-              This creates a new conversation revision containing one pinned use of the prompt’s
-              current revision, and selects it for this evaluation. Surrounding messages are not
-              copied; add them afterwards in Messages.
+              This evaluation will use the prompt’s current immutable revision as its input.
+              Surrounding messages are not copied, and the Messages editor is not changed.
             </p>
             <fieldset className="saved-prompt-list">
               <legend>Active saved prompts</legend>
@@ -170,7 +169,7 @@ export function SavedPromptDialog({
                 type="button"
                 onClick={() => selected && onConfirm(selected.templateId)}
               >
-                Create revision &amp; select
+                Use saved prompt
               </button>
             </div>
           </>

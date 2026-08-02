@@ -276,15 +276,11 @@ test("the focused-case preview and the frozen plan resolve identically", () => {
   const plan = createEvaluationExperimentPlan({
     project,
     suiteId: authoredSuite.id,
-    conversationRevisionId: project.conversationRevisions[0]!.id,
     selectedCaseIds: [added.caseId],
-    repetitions: 1,
-    execution: {
-      target: {
+    runtimeTarget: {
         profileId: "profile_fixture",
         protocol: "openai-compatible-chat-completions",
         endpoint: "http://localhost:4010/v1",
-        model: "fixture",
         capabilities: {
           chatCompletions: true,
           responsesApi: false,
@@ -296,10 +292,6 @@ test("the focused-case preview and the frozen plan resolve identically", () => {
           vision: false,
           embeddings: false,
         },
-      },
-      responseMode: "buffered",
-      options: { temperature: 0.2 },
-      tools: [],
     },
     createdAt: "2026-08-02T09:00:00.000Z",
     createSuffix: () => "plan",

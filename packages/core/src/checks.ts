@@ -260,6 +260,34 @@ export const checkDefinitionSchema: z.ZodType<CheckDefinition> = z
     }
   }) as z.ZodType<CheckDefinition>;
 
+/**
+ * Portable project authoring permits one intentionally incomplete state: an
+ * empty regex pattern. Preflight blocks it before an executable plan is
+ * created, while every non-empty pattern still receives the exact runtime
+ * Safe regex validation here.
+ */
+export const authoredCheckDefinitionSchema: z.ZodType<CheckDefinition> = z
+  .discriminatedUnion("kind", [
+    z.object({ ...negatableBase, ...textComparison, kind: z.literal("exact-match"), value: z.string() }).strict(),
+    z.object({ ...negatableBase, ...textComparison, kind: z.literal("contains"), value: z.string() }).strict(),
+    z.object({
+      ...negatableBase,
+      kind: z.literal("regex"),
+      syntax: z.literal(SAFE_REGEX_SYNTAX, { error: `Safe regex syntax must be ${SAFE_REGEX_SYNTAX}.` }),
+      pattern: z.string(),
+      flags: z.string().optional(),
+    }).strict(),
+    z.object({ ...negatableBase, kind: z.literal("valid-json"), topLevel: z.enum(["any", "object", "array"]).optional() }).strict(),
+    z.object({ ...definitionBase, kind: z.literal("max-output-characters"), limit }).strict(),
+    z.object({ ...definitionBase, kind: z.literal("max-duration-ms"), limit }).strict(),
+    z.object({ ...definitionBase, kind: z.literal("max-total-tokens"), limit }).strict(),
+  ])
+  .superRefine((definition, context) => {
+    if (definition.kind !== "regex" || definition.pattern === "") return;
+    const issue = validateSafeRegex(definition);
+    if (issue) context.addIssue({ code: "custom", path: [issue.field], message: issue.message });
+  }) as z.ZodType<CheckDefinition>;
+
 function parseWith<T>(schema: z.ZodType<T>, value: unknown, label: string): T {
   const parsed = schema.safeParse(value);
   if (!parsed.success) {

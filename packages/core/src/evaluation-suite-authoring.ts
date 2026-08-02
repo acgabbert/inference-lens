@@ -1,4 +1,3 @@
-import { parseCheckDefinition } from "./checks.ts";
 import type { CheckDefinition, CheckKind } from "./checks.ts";
 import { evaluationSuitePreflight, templateUseVariableIndex } from "./evaluation-suites.ts";
 import type { EvaluationCase, EvaluationInputBinding, EvaluationSuite } from "./evaluation-suites.ts";
@@ -37,7 +36,7 @@ type NonRegexCheckKind = Exclude<CheckKind, "regex">;
 /** The complete information required before a check enters portable project data. */
 export type NewEvaluationCheck =
   | { kind: NonRegexCheckKind }
-  | { kind: "regex"; pattern: string; flags?: string };
+  | { kind: "regex"; pattern?: string; flags?: string };
 
 export function evaluationBindingCandidates(
   project: ProjectFile,
@@ -154,8 +153,9 @@ export interface SavedPromptRevision {
 
 /**
  * Authors a prompt-only child of `parentRevisionId` containing exactly one
- * pinned use of the template's current immutable revision, and advances the
- * project's active authored revision to it.
+ * pinned use of the template's current immutable revision. The Messages
+ * editor remains on its own active revision; this revision belongs to the
+ * evaluation input that selects it.
  *
  * The child deliberately does not inherit the parent's items. "Start from
  * saved prompt" then has predictable replacement semantics and cannot silently
@@ -198,8 +198,13 @@ export function createRevisionFromSavedPrompt(
     idSuffix: revisionIdSuffix,
     createdAt,
   });
+  const messagesRevisionId = project.defaults.conversationRevisionId;
+  const evaluationBranch = parseProjectFile({
+    ...branched,
+    defaults: { ...branched.defaults, conversationRevisionId: messagesRevisionId },
+  });
   return {
-    project: insertPromptTemplateUse(branched, {
+    project: insertPromptTemplateUse(evaluationBranch, {
       conversationRevisionId,
       templateId,
       idSuffix: templateUseIdSuffix,
@@ -246,10 +251,42 @@ export function createEvaluationSuite(
     project: updatedSuites(project, [...project.evaluationSuites, {
       id: suiteId,
       name: uniqueName(name, project.evaluationSuites.map(({ name: existing }) => existing)),
+      input: {
+        kind: "conversation-revision",
+        conversationRevisionId: project.defaults.conversationRevisionId,
+      },
+      execution: {
+        target: structuredClone(project.defaults.target),
+        // Buffered by default: a batch of runs is read after it finishes, so
+        // incremental delivery buys nothing and only narrows which providers
+        // the suite can run against.
+        responseMode: "buffered",
+        options: structuredClone(project.defaults.options),
+        repetitions: 1,
+      },
       inputBindings: [],
       cases: [],
     }]),
   };
+}
+
+export function updateEvaluationSuiteInput(
+  project: ProjectFile,
+  suiteId: EvaluationSuiteId,
+  conversationRevisionId: ConversationRevisionId,
+): ProjectFile {
+  return mapSuite(project, suiteId, (suite) => ({
+    ...suite,
+    input: { kind: "conversation-revision", conversationRevisionId },
+  }));
+}
+
+export function updateEvaluationSuiteExecution(
+  project: ProjectFile,
+  suiteId: EvaluationSuiteId,
+  execution: EvaluationSuite["execution"],
+): ProjectFile {
+  return mapSuite(project, suiteId, (suite) => ({ ...suite, execution }));
 }
 
 export function renameEvaluationSuite(
@@ -369,7 +406,7 @@ export function removeEvaluationCase(
   }));
 }
 
-/** Every created check is valid before it enters portable project data. */
+/** Every created check is structurally valid; unfinished values are preflight state. */
 export function defaultCheck(
   input: NewEvaluationCheck,
   suffix: IdSuffix = generatedSuffix,
@@ -378,13 +415,13 @@ export function defaultCheck(
   switch (input.kind) {
     case "exact-match": return { checkId, kind: input.kind, value: "" };
     case "contains": return { checkId, kind: input.kind, value: "" };
-    case "regex": return parseCheckDefinition({
+    case "regex": return {
       checkId,
       kind: input.kind,
       syntax: "re2",
-      pattern: input.pattern,
+      pattern: input.pattern ?? "",
       ...(input.flags ? { flags: input.flags } : {}),
-    });
+    };
     case "valid-json": return { checkId, kind: input.kind, topLevel: "any" };
     case "max-output-characters": return { checkId, kind: input.kind, limit: 1000 };
     case "max-duration-ms": return { checkId, kind: input.kind, limit: 30000 };

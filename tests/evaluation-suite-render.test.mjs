@@ -31,7 +31,7 @@ test("renders compact preflight and the focused case workspace", async () => {
   assert.match(html, /Ready to run/);
   assert.match(html, /aria-label="Evaluation cases"/);
   assert.match(html, /Start evaluation…/);
-  assert.match(html, /saved project revision/i);
+  assert.match(html, /suite keeps its own immutable input/i);
   assert.match(html, /plan, traces, and result will be saved/i);
   assert.match(html, /Provider input/);
   assert.match(html, /Explain database migrations\./);

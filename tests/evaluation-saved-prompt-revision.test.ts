@@ -104,7 +104,7 @@ test("creates a prompt-only child revision that pins the template's current immu
   // room for case bindings to supply the final override.
   assert.deepEqual(use?.values, {});
 
-  assert.equal(created.project.defaults.conversationRevisionId, created.conversationRevisionId);
+  assert.equal(created.project.defaults.conversationRevisionId, parentRevisionId);
   // The parent is untouched and the input project was not mutated.
   assert.equal(project.defaults.conversationRevisionId, parentRevisionId);
   assert.equal(project.conversationRevisions.length, 1);
@@ -199,7 +199,7 @@ test("rejects a missing template, a missing parent revision, and an archived tem
   assert.equal(archived.conversationRevisions.length, 1);
 });
 
-test("unresolved template variables are valid authored state, and the project stays schema version 7", () => {
+test("unresolved template variables are valid authored state, and the project stays schema version 8", () => {
   const project = fixture();
   const created = createRevisionFromSavedPrompt(project, {
     parentRevisionId: project.defaults.conversationRevisionId,
@@ -209,7 +209,7 @@ test("unresolved template variables are valid authored state, and the project st
   });
 
   assert.equal(created.project.schemaVersion, PROJECT_SCHEMA_VERSION);
-  assert.equal(created.project.schemaVersion, 7);
+  assert.equal(created.project.schemaVersion, 8);
   // `topic` has no value at any level; that is authoring in progress, not a
   // document the parser may reject.
   const serialized = serializeProjectFile(created.project);
@@ -234,14 +234,14 @@ test("describes literal-only, single-template, multi-template, and empty revisio
   const [parent, child] = describeConversationRevisions(project);
   assert.ok(parent && child);
 
-  assert.equal(parent.isCurrentRevision, false);
+  assert.equal(parent.isCurrentRevision, true);
   assert.equal(parent.templateUses.length, 1);
   assert.equal(parent.templateUses[0]!.templateName, "Question");
   assert.equal(parent.summary, "Be concise.");
   assert.equal(parent.summaryRole, "system");
   assert.equal(parent.messageCount, 2);
 
-  assert.equal(child.isCurrentRevision, true);
+  assert.equal(child.isCurrentRevision, false);
   // Authored order is preserved, and each use is described by its own identity.
   assert.deepEqual(child.templateUses.map(({ templateName }) => templateName), [
     "Safety policy",

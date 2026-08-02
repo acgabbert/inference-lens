@@ -16,6 +16,8 @@ const ready = {
   hasProjectMapping: true,
   endpoint: "https://provider.example.test/v1",
   model: "test-model",
+  responseMode: "streaming" as const,
+  streamingAvailable: true,
   activityInProgress: false,
 };
 

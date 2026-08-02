@@ -78,6 +78,16 @@ function projectWithEvaluationSuite() {
     evaluationSuites: [{
       id: "evaluation-suite_topics",
       name: "Topics",
+      input: {
+        kind: "conversation-revision",
+        conversationRevisionId: project.defaults.conversationRevisionId,
+      },
+      execution: {
+        target: structuredClone(project.defaults.target),
+        responseMode: "streaming",
+        options: structuredClone(project.defaults.options),
+        repetitions: 1,
+      },
       inputBindings: [{
         id: "evaluation-input_topic",
         name: "Topic",
@@ -110,7 +120,7 @@ function projectWithEvaluationSuite() {
   });
 }
 
-test("creates a strict, portable Project v7 document", () => {
+test("creates a strict, portable Project v8 document", () => {
   const project = createProjectFile({
     name: "Example",
     request,
@@ -137,8 +147,8 @@ test("creates a strict, portable Project v7 document", () => {
   assert.equal(projectDirectoryName("   "), "Untitled.inference-lens");
   assert.equal(projectExportFileName("Prompt Lab"), "Prompt Lab.project.json");
   assert.equal(projectExportFileName("CON"), "CON-project.project.json");
-  assert.equal(PROJECT_SCHEMA_VERSION, 7);
-  assert.equal(project.schemaVersion, 7);
+  assert.equal(PROJECT_SCHEMA_VERSION, 8);
+  assert.equal(project.schemaVersion, 8);
   assert.equal(project.projectId, "project_example");
   const draft = projectDraft(project);
   assert.deepEqual(projectDraft(project), {
@@ -162,7 +172,7 @@ test("creates a strict, portable Project v7 document", () => {
   });
   assert.deepEqual(project.externalImports, []);
   assert.deepEqual(project.evaluationSuites, []);
-  assert.equal(JSON.parse(serializeProjectFile(project)).schemaVersion, 7);
+  assert.equal(JSON.parse(serializeProjectFile(project)).schemaVersion, 8);
 });
 
 test("serialization is deterministic and ends with a newline", () => {
@@ -224,9 +234,45 @@ test("migrates Project v6 by adding an empty evaluation suite collection", () =>
     schemaVersion: 6,
   });
 
-  assert.equal(migrated.schemaVersion, 7);
+  assert.equal(migrated.schemaVersion, 8);
   assert.deepEqual(migrated.evaluationSuites, []);
-  assert.equal(JSON.parse(serializeProjectFile(migrated)).schemaVersion, 7);
+  assert.equal(JSON.parse(serializeProjectFile(migrated)).schemaVersion, 8);
+});
+
+test("migrates a populated Project v7 suite onto suite-owned input and execution", () => {
+  const current = projectWithEvaluationSuite();
+  const { input, execution, ...version7Suite } = current.evaluationSuites[0]!;
+  // A v7 suite borrowed the project's revision and settings implicitly. The
+  // migration has to make that borrowing explicit without changing what the
+  // suite would run.
+  const migrated = parseProjectFile({
+    ...current,
+    schemaVersion: 7,
+    evaluationSuites: [version7Suite],
+  });
+
+  const suite = migrated.evaluationSuites[0]!;
+  assert.equal(migrated.schemaVersion, 8);
+  assert.deepEqual(suite.input, {
+    kind: "conversation-revision",
+    conversationRevisionId: current.defaults.conversationRevisionId,
+  });
+  assert.deepEqual(suite.execution.target, current.defaults.target);
+  assert.deepEqual(suite.execution.options, current.defaults.options);
+  assert.equal(suite.execution.options.temperature, 0.4);
+  // Buffered, because a migrated suite must run against every provider the
+  // project could already reach, streaming or not.
+  assert.equal(suite.execution.responseMode, "buffered");
+  assert.equal(suite.execution.repetitions, 1);
+
+  // Authored content is carried across untouched.
+  assert.deepEqual(suite.cases, current.evaluationSuites[0]!.cases);
+  assert.deepEqual(suite.inputBindings, current.evaluationSuites[0]!.inputBindings);
+  assert.equal(suite.name, "Topics");
+
+  // The copies are independent of the project defaults they came from.
+  suite.execution.target.model = "changed";
+  assert.notEqual(migrated.defaults.target.model, "changed");
 });
 
 test("stores ordered evaluation suites, cases, bindings, checks, and reference answers", () => {
@@ -510,7 +556,7 @@ test("migrates v5 fragments by duplicating templates used under different roles"
   };
 
   const migrated = parseProjectFile(legacy);
-  assert.equal(migrated.schemaVersion, 7);
+  assert.equal(migrated.schemaVersion, 8);
   assert.deepEqual(migrated.evaluationSuites, []);
   assert.equal(migrated.promptTemplates.length, 2);
   assert.deepEqual(

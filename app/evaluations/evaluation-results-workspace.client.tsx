@@ -68,9 +68,10 @@ export function EvaluationResultsWorkspace({
 
   useEffect(() => {
     if (!live) return;
+    setNowMs(Date.now());
     const interval = window.setInterval(() => setNowMs(Date.now()), 1_000);
     return () => window.clearInterval(interval);
-  }, [live]);
+  }, [Boolean(live), live?.startedAtMs]);
 
   return (
     <section aria-busy={live ? "true" : undefined} aria-label="Evaluation results" className={`evaluation-results-workspace ${placement === "request" ? "experiment-context-pane" : ""}`.trim()}>
@@ -103,10 +104,15 @@ export function EvaluationResultsWorkspace({
       <div className="evaluation-case-results">
         {aggregate.cases.map((caseAssessment) => {
           const planCase = execution.plan.suite.cases.find(({ caseId }) => caseId === caseAssessment.caseId)!;
-          const allTerminal = caseAssessment.repetitions.every(({ classification }) => !["not-run", "missing-trace"].includes(classification));
+          const caseStillRunning = Boolean(live && execution.plan.cells
+            .filter(({ caseId }) => caseId === caseAssessment.caseId)
+            .some(({ runId }) => {
+              const status = execution.states.get(runId)?.status.kind;
+              return status !== "completed" && status !== "failed" && status !== "cancelled";
+            }));
           return (
             <details className="evaluation-case-result" key={caseAssessment.caseId} open={aggregate.cases.length === 1}>
-              <summary><span><strong>{caseAssessment.name}</strong><small>{planCase.checks.length} {planCase.checks.length === 1 ? "check" : "checks"} · {caseAssessment.repetitions.length} {caseAssessment.repetitions.length === 1 ? "repetition" : "repetitions"}</small></span><span className={`run-history-status ${caseAssessment.passed ? "completed" : live && !allTerminal ? "running" : "failed"}`}>{caseAssessment.passed ? "passed" : live && !allTerminal ? "running" : "did not pass"}</span></summary>
+              <summary><span><strong>{caseAssessment.name}</strong><small>{planCase.checks.length} {planCase.checks.length === 1 ? "check" : "checks"} · {caseAssessment.repetitions.length} {caseAssessment.repetitions.length === 1 ? "repetition" : "repetitions"}</small></span><span className={`run-history-status ${caseAssessment.passed ? "completed" : caseStillRunning ? "running" : "failed"}`}>{caseAssessment.passed ? "passed" : caseStillRunning ? "running" : "did not pass"}</span></summary>
               <div className="evaluation-repetition-results">
                 {caseAssessment.repetitions.map((repetition) => {
                   const trace = execution.traces.get(repetition.runId);
@@ -123,7 +129,7 @@ export function EvaluationResultsWorkspace({
                       })}</ul>}
                       {trace
                         ? <button className="text-button" type="button" onClick={() => onOpenTrace(repetition.runId)}>Open Response &amp; Inspect</button>
-                        : <span className="repeated-experiment-row-pending" title={unreadable}>{unreadable ? "Trace could not be read" : active ? "Open when finished" : repetition.classification === "not-run" ? "Not run" : repetition.classification === "missing-trace" ? "Trace missing" : "Waiting"}</span>}
+                        : <span className="repeated-experiment-row-pending" title={unreadable}>{unreadable ? "Trace could not be read" : active ? "Running…" : repetition.classification === "not-run" ? "Not run" : repetition.classification === "missing-trace" ? "Trace missing" : "Waiting"}</span>}
                     </article>
                   );
                 })}

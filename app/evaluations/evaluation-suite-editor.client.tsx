@@ -184,7 +184,6 @@ function CaseEditor({ evaluationCase, authoring, execution }: {
   execution?: EvaluationSuiteExecutionActions;
 }) {
   const [newKind, setNewKind] = useState<CheckKind>("contains");
-  const [regexPattern, setRegexPattern] = useState("");
   const project = authoring.project;
   const suite = project?.evaluationSuites.find(({ id }) => id === authoring.suiteId);
   const checkError = authoring.error?.target.kind === "check" && authoring.error.target.caseId === evaluationCase.id
@@ -219,10 +218,8 @@ function CaseEditor({ evaluationCase, authoring, execution }: {
       </div>
       <div className="evaluation-add-row">
         <select aria-label="New check kind" value={newKind} onChange={(event) => setNewKind(event.target.value as CheckKind)}>{checkKinds.map(({ kind, label }) => <option key={kind} value={kind}>{label}</option>)}</select>
-        {newKind === "regex" && <label className="evaluation-new-regex">Pattern <input aria-label="New regex pattern" value={regexPattern} onChange={(event) => setRegexPattern(event.target.value)} /></label>}
         <button className="button secondary" type="button" onClick={() => {
-          const added = authoring.addCheck(evaluationCase.id, newKind === "regex" ? { kind: newKind, pattern: regexPattern } : { kind: newKind });
-          if (added) setRegexPattern("");
+          authoring.addCheck(evaluationCase.id, { kind: newKind });
         }}>+ Add check</button>
       </div>
       {addError && <p className="evaluation-field-error" role="alert">{addError}</p>}
@@ -415,7 +412,7 @@ function CaseProviderInput({ evaluationCase, authoring, execution }: {
 
   const advisories = execution?.preview
     ? promptTargetAdvisories(project, revision, {
-        connectionRequirementId: project.defaults.target.connectionRequirementId,
+        connectionRequirementId: suite.execution.target.connectionRequirementId,
         model: execution.preview.model,
       })
     : undefined;
@@ -464,6 +461,7 @@ export interface EvaluationSuiteExecutionActions {
     model: string;
     responseMode: "streaming" | "buffered";
     options: InferenceOptions;
+    streamingAvailable: boolean;
   };
   disabledReason?: string;
   running: boolean;
@@ -494,6 +492,20 @@ export function EvaluationSuiteEditor({
   const batch = evaluationBatchGuardrail(selectedCount, authoring.repetitions);
   const availableCandidates = authoring.candidates.filter((candidate) => !suite?.inputBindings.some((binding) => binding.target.templateUseId === candidate.templateUseId && binding.target.variableName === candidate.variableName));
   const revisionGroups = groupRevisionChoices(authoring.revisionChoices);
+  const resolvableMissingInput = authoring.diagnostics.find(
+    (diagnostic) => diagnostic.code === "unresolved-template-variable" &&
+      availableCandidates.some((candidate) => candidate.templateUseId === diagnostic.templateUseId && candidate.variableName === diagnostic.variableName),
+  );
+  const suggestedCandidate = resolvableMissingInput?.code === "unresolved-template-variable"
+    ? availableCandidates.find((candidate) => candidate.templateUseId === resolvableMissingInput.templateUseId && candidate.variableName === resolvableMissingInput.variableName)
+    : undefined;
+  // The suite owns its delivery mode, but whether that mode can be served is a
+  // property of the connection this device resolves. Preflight is where the two
+  // meet, so it must not report "Ready to run" for a mode that cannot execute.
+  const deliveryIssue = suite && execution?.preview && suite.execution.responseMode === "streaming" && !execution.preview.streamingAvailable
+    ? `This evaluation is set to Streaming, but ${execution.preview.targetName} cannot stream. Choose Buffered delivery.`
+    : undefined;
+  const issueCount = authoring.diagnostics.length + (batch.error ? 1 : 0) + (deliveryIssue ? 1 : 0);
 
   if (!project) return <PaneEmptyState eyebrow="Evaluations" heading="Open or save a project first" detail="Evaluation suites are portable project content, so they need a project document." />;
 
@@ -526,16 +538,22 @@ export function EvaluationSuiteEditor({
           {authoring.error?.target.kind === "suite-name" && <p className="evaluation-field-error" role="alert">{authoring.error.message}</p>}
           {authoring.error?.target.kind === "editor" && <div className="template-diagnostic" role="alert">{authoring.error.message}</div>}
           {authoring.notice && <p className="evaluation-authoring-notice" role="status">
-            <strong>Created a revision from “{authoring.notice.templateName}”.</strong> It pins {authoring.notice.messageCount} {authoring.notice.messageCount === 1 ? "message" : "messages"} and {authoring.notice.variableCount === 0 ? "no variables" : `${authoring.notice.variableCount} ${authoring.notice.variableCount === 1 ? "variable" : "variables"}`}, and is selected below.
+            <strong>Evaluation input now uses “{authoring.notice.templateName}”.</strong> It pins {authoring.notice.messageCount} {authoring.notice.messageCount === 1 ? "message" : "messages"} and {authoring.notice.variableCount === 0 ? "no variables" : `${authoring.notice.variableCount} ${authoring.notice.variableCount === 1 ? "variable" : "variables"}`}. Messages was not changed.
             <button className="text-button" type="button" onClick={authoring.dismissNotice}>Dismiss</button>
           </p>}
           {authoring.savedPromptError && !authoring.savedPromptPickerOpen && <p className="evaluation-field-error" role="alert">{authoring.savedPromptError}</p>}
           <section className="evaluation-preflight" aria-label="Evaluation preflight">
-            <div className="evaluation-preflight-status"><span className="eyebrow">Preflight</span><strong>{authoring.diagnostics.length === 0 && !batch.error ? "Ready to run" : `${authoring.diagnostics.length + (batch.error ? 1 : 0)} setup ${authoring.diagnostics.length + (batch.error ? 1 : 0) === 1 ? "issue" : "issues"}`}</strong></div>
+            <div className="evaluation-preflight-status"><span className="eyebrow">Preflight</span><strong>{issueCount === 0 ? "Ready to run" : `${issueCount} setup ${issueCount === 1 ? "issue" : "issues"}`}</strong></div>
             <div className="evaluation-preflight-controls">
-              <div className="evaluation-revision-picker">
-                <label>Base conversation revision
-                  <select value={authoring.revisionId} onChange={(event) => authoring.selectRevision(event.target.value as NonNullable<typeof authoring.revisionId>)}>
+              <div className="evaluation-input-summary">
+                <span>Evaluation input</span>
+                <strong>{authoring.selectedRevision ? revisionChoice(authoring.selectedRevision).label : "Input unavailable"}</strong>
+                <small>This suite keeps its own immutable input; changing Messages does not change it.</small>
+                <button className="button secondary" type="button" onClick={authoring.openSavedPromptPicker}>Use saved prompt…</button>
+                <details className="evaluation-input-picker">
+                  <summary>Use a project revision…</summary>
+                  <label>Existing project revision
+                    <select value={authoring.revisionId} onChange={(event) => authoring.selectRevision(event.target.value as NonNullable<typeof authoring.revisionId>)}>
                     {revisionGroups.grouped ? (
                       <>
                         {/* Incompatible revisions stay selectable: choosing one is how an
@@ -544,21 +562,47 @@ export function EvaluationSuiteEditor({
                         {revisionGroups.other.length > 0 && <optgroup label="Other revisions">{revisionGroups.other.map(revisionOption)}</optgroup>}
                       </>
                     ) : authoring.revisionChoices.map(revisionOption)}
-                  </select>
-                  <small>Cases start from this saved project revision; session-only composer values and run overrides are excluded.</small>
-                </label>
-                <button className="button secondary" type="button" onClick={authoring.openSavedPromptPicker}>Start from saved prompt…</button>
+                    </select>
+                  </label>
+                </details>
               </div>
-              <div className="evaluation-batch-controls">
+              <div className="evaluation-execution-editor" aria-label="Evaluation execution settings">
+                <div className="evaluation-execution-editor-heading"><span>Execution settings</span><small>Saved with this evaluation suite.</small></div>
+                <label>Connection
+                  <select value={suite.execution.target.connectionRequirementId} onChange={(event) => authoring.updateExecution({ ...suite.execution, target: { ...suite.execution.target, connectionRequirementId: event.target.value as typeof suite.execution.target.connectionRequirementId } })}>
+                    {project.connectionRequirements.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
+                  </select>
+                </label>
+                <label>Model <input defaultValue={suite.execution.target.model} onBlur={(event) => { if (!authoring.updateExecution({ ...suite.execution, target: { ...suite.execution.target, model: event.target.value } })) event.currentTarget.value = suite.execution.target.model; }} /></label>
+                <label>Delivery
+                  <select value={suite.execution.responseMode} onChange={(event) => authoring.updateExecution({ ...suite.execution, responseMode: event.target.value as "streaming" | "buffered" })}>
+                    <option value="streaming" disabled={execution ? !execution.preview?.streamingAvailable : false}>Streaming</option>
+                    <option value="buffered">Buffered</option>
+                  </select>
+                </label>
+                <label>Temperature
+                  <select value={suite.execution.options.temperature === undefined ? "default" : String(suite.execution.options.temperature)} onChange={(event) => authoring.updateExecution({ ...suite.execution, options: { ...suite.execution.options, temperature: event.target.value === "default" ? undefined : Number(event.target.value) } })}>
+                    <option value="default">Provider default</option>
+                    {Array.from({ length: 21 }, (_, index) => index / 10).map((value) => <option key={value} value={value}>{value.toFixed(1)}</option>)}
+                  </select>
+                </label>
                 <label>Repetitions <input type="number" min="1" max={MAX_EVALUATION_REPETITIONS} step="1" value={authoring.repetitions} onChange={(event) => authoring.setRepetitions(Number(event.target.value))} /></label>
                 <output><span>{selectedCount} selected</span> × <span>{authoring.repetitions} {authoring.repetitions === 1 ? "rep" : "reps"}</span> → <strong>{Number.isFinite(batch.plannedCalls) ? batch.plannedCalls.toLocaleString() : "Invalid"} runs</strong></output>
               </div>
             </div>
-            {execution && <div className="evaluation-start-area"><button className="button primary" type="button" disabled={execution.running || Boolean(execution.disabledReason) || authoring.diagnostics.length > 0 || Boolean(batch.error)} title={execution.disabledReason ?? batch.error} onClick={execution.onStart}>{execution.running ? "Evaluation running" : "Start evaluation…"}</button><small>{execution.storage === "durable" ? "The plan, traces, and result will be saved in this project folder." : "Session evaluation: results will be lost when this session closes."}</small></div>}
+            {execution && <div className="evaluation-start-area"><button className="button primary" type="button" disabled={execution.running || Boolean(execution.disabledReason) || issueCount > 0} title={execution.disabledReason ?? batch.error} onClick={execution.onStart}>{execution.running ? "Evaluation running" : "Start evaluation…"}</button>
+              {/* A disabled primary action must say why in text, not only in a
+                  tooltip a keyboard or touch author never sees. */}
+              {!execution.running && execution.disabledReason && authoring.diagnostics.length === 0 && <small className="evaluation-start-blocked">{execution.disabledReason}</small>}
+              <small>{execution.storage === "durable" ? "The plan, traces, and result will be saved in this project folder." : "Session evaluation: results will be lost when this session closes."}</small></div>}
           </section>
           {batch.warning && <p className="evaluation-batch-warning" role="status"><strong>{batch.warning}</strong> Review the exact call count in confirmation before starting.</p>}
           {batch.error && <p className="evaluation-batch-warning error" role="alert">{batch.error}</p>}
-          {authoring.diagnostics.length > 0 && <ul className="evaluation-diagnostics">{authoring.diagnostics.map((diagnostic, index) => <li key={`${diagnostic.code}-${index}`}>{diagnostic.message}</li>)}</ul>}
+          {(authoring.diagnostics.length > 0 || deliveryIssue) && <ul className="evaluation-diagnostics">
+            {authoring.diagnostics.map((diagnostic, index) => <li key={`${diagnostic.code}-${index}`}>{diagnostic.message}</li>)}
+            {deliveryIssue && <li key="delivery">{deliveryIssue}</li>}
+          </ul>}
+          {suggestedCandidate && <div className="evaluation-resolution-action" role="status"><div><strong>Add a case input for <code>{suggestedCandidate.variableName}</code></strong><span>Each case can then supply the missing value and clear this setup issue.</span></div><button className="button secondary" type="button" onClick={() => authoring.addInput(suggestedCandidate)}>+ Add case input</button></div>}
 
           <section className="evaluation-cases">
             <div className="evaluation-section-heading"><div><span className="eyebrow">Dataset</span><h3>Cases</h3></div><button className="button secondary" type="button" onClick={authoring.addCase}>+ Add case</button></div>
