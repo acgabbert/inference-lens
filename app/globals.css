@@ -6370,6 +6370,7 @@ main {
 
 .evaluation-diagnostics {
   margin: -8px 0 0;
+  padding-left: 10px;
   border-left: 3px solid var(--warning);
   color: var(--text-muted);
 }
