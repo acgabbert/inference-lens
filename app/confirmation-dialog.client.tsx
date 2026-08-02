@@ -22,12 +22,19 @@ export function ConfirmationDialog({
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key !== "Escape") return;
+      // This dialog is always layered on top of another overlay (e.g. the tool
+      // registry modal). Listening on the capture phase and stopping
+      // propagation here means this Escape press only dismisses the
+      // confirmation, instead of also reaching the bubble-phase Escape
+      // listener of whatever is underneath it and closing that too.
+      event.stopPropagation();
+      onClose();
     };
-    window.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("keydown", closeOnEscape, true);
     return () => {
       document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("keydown", closeOnEscape, true);
     };
   }, [onClose]);
 

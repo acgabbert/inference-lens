@@ -57,10 +57,13 @@ export interface RequestComposerProps {
     streamingAvailable: boolean;
     toolsEnabled: boolean;
     modelDiscovery: ModelDiscoveryState | null;
+    /** Pinned model ids for the active profile; see `ModelCombobox`. */
+    favoriteModels: string[];
     onModelChange(model: string): void;
     onTemperatureChange(temperature: number): void;
     onStreamingPreferenceChange(streaming: boolean): void;
     onLoadModels(force?: boolean): void;
+    onToggleFavoriteModel(model: string): void;
   };
   readiness?: RunReadiness;
   pendingDestination?: ReadinessDestination;
@@ -290,7 +293,7 @@ export function RequestComposer({
                 </button>
               </p>
               <div className="run-settings-grid">
-                <ModelCombobox inputRef={modelRef} value={settings.model} onChange={settings.onModelChange} discovery={settings.modelDiscovery} onLoadModels={settings.onLoadModels} />
+                <ModelCombobox inputRef={modelRef} value={settings.model} onChange={settings.onModelChange} discovery={settings.modelDiscovery} onLoadModels={settings.onLoadModels} favoriteModels={settings.favoriteModels} onToggleFavoriteModel={settings.onToggleFavoriteModel} />
                 <label className="temperature-control">
                   Temperature
                   <div className="range-row">
@@ -341,7 +344,7 @@ export function RequestComposer({
             {requestPreview && <details className="request-preview"><summary>Resolved request preview</summary>{"error" in requestPreview ? <div className="template-diagnostic">{requestPreview.error}</div> : <><>{(templates.templateWorkbench.resolution?.diagnostics.length ?? 0) > 0 && <div className="template-warning" role="status">Preview contains unresolved variables. Running is blocked until they have values.</div>}</><h3>Resolved messages</h3><div className="request-preview-messages">{requestPreview.messages.map((message, index) => <article className="request-preview-message" key={`${message.role}-${index}`}><span className="eyebrow">{message.role}</span><pre>{conversationMessageText(message)}</pre></article>)}</div><details className="request-preview-raw"><summary>Raw OpenAI-compatible request body</summary><pre>{JSON.stringify(requestPreview.body, null, 2)}</pre></details></>}</details>}
           </>
         ) : activeTab === "templates" ? (
-          <ProjectTemplatesPane key={project?.projectId ?? "unsaved-project"} templates={project?.promptTemplates ?? []} connectionRequirements={project?.connectionRequirements ?? []} defaultConnectionRequirementId={project?.defaults.target.connectionRequirementId} usageCounts={templates.templateUsageCounts} itemCount={templates.activeProjectRevision?.items.length ?? requestDraft.messages.length} n8nImportDisabledReason={n8nImportDisabledReason} onOpenN8nImport={onOpenN8nImport} onCreate={templates.createProjectTemplate} onSave={templates.saveProjectTemplate} onArchive={templates.archiveProjectTemplate} onRestore={templates.restoreProjectTemplate} onInsert={(...args) => { templates.insertProjectTemplate(...args); setTab("messages"); }} />
+          <ProjectTemplatesPane key={project?.projectId ?? "unsaved-project"} templates={project?.promptTemplates ?? []} connectionRequirements={project?.connectionRequirements ?? []} defaultConnectionRequirementId={project?.defaults.target.connectionRequirementId} usageCounts={templates.templateUsageCounts} itemCount={templates.activeProjectRevision?.items.length ?? requestDraft.messages.length} n8nImportDisabledReason={n8nImportDisabledReason} onOpenN8nImport={onOpenN8nImport} onCreate={templates.createProjectTemplate} onSave={templates.saveProjectTemplate} onRename={templates.renameProjectTemplate} onArchive={templates.archiveProjectTemplate} onRestore={templates.restoreProjectTemplate} onInsert={(...args) => { templates.insertProjectTemplate(...args); setTab("messages"); }} />
         ) : activeTab === "tools" ? (
           <ToolsPane tools={requestDraft.tools} requestTools={requestDraft.requestTools} enabledToolIds={requestDraft.enabledToolIds} activeProfileName={activeProfile.name} toolsEnabled={settings.toolsEnabled} onOpenLibrary={onOpenToolLibrary} onOpenConnectionSettings={onOpenConnectionSettings} onAddTool={requestDraft.addTool} onRemoveTool={requestDraft.removeTool} onUpdateTool={requestDraft.updateTool} onSetToolEnabled={requestDraft.setToolEnabled} mockForTool={requestDraft.mockForTool} onUpdateToolMock={requestDraft.updateToolMock} onRemoveRequestTool={requestDraft.removeRequestTool} />
         ) : (

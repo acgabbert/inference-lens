@@ -87,41 +87,100 @@ screen in a readable form. The run-metrics work shipped a per-attempt label that
 passed every test and rendered a raw turn UUID in the browser. Only opening the
 page caught it.
 
-Playwright is **not** a repository dependency, and there is no committed browser
-suite. The workflow below is an ad hoc driver script run from a scratch
-directory with `playwright-core` installed there. Keep it that way unless a
-committed browser suite is deliberately designed.
+Playwright **is** a repository dependency and there **is** a committed browser
+suite. Run it with `npm run test:e2e`, or narrow it while working:
 
-### Seed the profile instead of clicking through settings
-
-Connection profiles are metadata in local storage under
-`inference-lens:inference-profiles:v1` (see `app/profile-store.client.ts`).
-Credentials are never persisted there, and a fixture needs no key, so a profile
-can be seeded directly:
-
-```js
-await page.goto("http://localhost:3000");
-await page.evaluate(() => {
-  localStorage.setItem(
-    "inference-lens:inference-profiles:v1",
-    JSON.stringify({
-      profiles: [{
-        id: "paced",
-        name: "Paced fixture",
-        provider: "openai-compatible",
-        endpoint: "http://127.0.0.1:4011/v1",
-        model: "paced-test-model",
-        temperature: 0.7,
-      }],
-      activeProfileId: "paced",
-    }),
-  );
-});
-await page.reload({ waitUntil: "networkidle" });
+```
+npx playwright test model-picker-empty-value          # one spec
+npx playwright test --project=chromium-light          # one theme
 ```
 
-This is a shortcut through the connection drawer, not a substitute for testing
-it. When the drawer itself is what changed, drive the drawer.
+`playwright.config.ts` starts the dev server on port 4300 and the buffered
+fixture provider on 44014 for you, and runs every spec twice — once in
+`chromium-light` and once in `chromium-dark`. Do not start a dev server by hand
+for a Playwright run; the config owns that lifecycle.
+
+The suite is deliberately **not** part of `npm test`. Run both before opening a
+pull request.
+
+Use the npm script rather than a bare `npx playwright test`: `pretest:e2e`
+installs the exact Chromium build this Playwright version pins, which is a
+sub-second no-op once it is cached. Without it, an environment holding an older
+cached build — a cloud session, a fresh container — fails with *"Executable
+doesn't exist … Run `npx playwright install`"* rather than running. Playwright
+is pinned to an exact version for the same reason: a minor bump expects a
+browser build nobody has cached yet.
+
+The browser build is not interchangeable. This suite asserts an 11px type
+floor, contrast, and layout at nine widths, so a different Chromium is a
+different result — which is why the run refuses to start rather than
+substituting a system browser. If the install cannot reach the network, say the
+browser check could not run. Do not report the suite as passing when it never
+started.
+
+Prefer adding a spec to `tests/e2e/` over writing a throwaway driver script. A
+scratch script proves the same thing once and then deletes the evidence; a spec
+keeps proving it. When a check really is one-off, still write it as a spec, run
+it, and only then decide whether to keep it.
+
+### Use the shared drivers
+
+`tests/e2e/support/` holds the recipes every spec needs. Import them rather than
+re-deriving them — each one exists because getting it wrong produces a *passing*
+test that proves nothing:
+
+```ts
+import {
+  BUFFERED_FIXTURE_ENDPOINT,
+  importProject,
+  seedProfile,
+  stubProjectDirectory,
+  waitForHydration,
+} from "./support";
+
+await seedProfile(page, { favoriteModels: ["buffered-test-model"] });
+await page.goto("/");
+await waitForHydration(page);
+await importProject(page, fixtureProject(), "My fixture project");
+```
+
+- **`seedProfile`** writes the connection profile straight to local storage.
+  Credentials are never persisted there and a fixture needs no key. This is a
+  shortcut through the connection drawer, not a substitute for testing it — when
+  the drawer itself is what changed, drive the drawer.
+- **`waitForHydration`** waits for the seeded profile name to appear in the top
+  bar. Do this before any synthetic event, and see the hydration trap below.
+- **`importProject`** imports through the Project menu's hidden file input,
+  waits for the project to really be open, and closes the menu.
+- **`stubProjectDirectory`** replaces `showDirectoryPicker` with an in-memory
+  directory, which is the only way to reach project-backed features in a
+  browser.
+
+### Traps that produce false passes
+
+Each of these has silently shipped a green test that exercised nothing:
+
+- **Assert on something that only exists when the state is real.** `Run target:`
+  renders with *or without* an open project, so waiting on it after an import
+  passes even when the import was dropped — and every later assertion then tests
+  the no-project path. Wait for the project's own name. This is what
+  `importProject`'s required `expectedName` is for.
+- **Synthetic events before hydration are dropped silently.** `setInputFiles`
+  dispatches a change event against the DOM; if React has not attached its
+  handler yet, nothing happens and no error is raised. Call `waitForHydration`
+  first. Waiting on a server-rendered element proves nothing here, because it is
+  visible before hydration — wait for state that can only come from local
+  storage.
+- **Clicking an already-focused element fires no `focus` event.** Opening a
+  project can leave focus on a field, so a later `click()` on it will not open a
+  focus-driven menu. Click something neutral first.
+- **Model discovery goes through the app, not the provider.** The browser fetches
+  `/api/models` (`MODELS_API_PATH`), so routing `**/v1/models` intercepts
+  nothing. Route `**/api/models` to simulate a catalogue that cannot be listed.
+- **Measure layout only after the content settles.** A region that grows as
+  results arrive has non-final geometry until the work finishes; a row is
+  attached before its contents fill in. Wait for a completion signal — the
+  absence of `Experiment progress`, for instance — not merely for a row.
 
 ### Selectors worth knowing
 
@@ -156,35 +215,18 @@ takes handles through the `FileSystemDirectoryHandleLike` and
 `FileSystemFileHandleLike` shapes in `app/project-directory.client.ts`, so an
 in-memory object satisfying those runs the real application code:
 
-```js
-await page.addInitScript((contents) => {
-  const file = (name, text) => ({
-    kind: "file",
-    name,
-    getFile: async () => ({ text: async () => text }),
-    createWritable: async () => ({ async write() {}, async close() {} }),
-  });
-  const dir = (name, entries) => ({
-    kind: "directory",
-    name,
-    async *values() { for (const entry of entries) yield entry; },
-    async getFileHandle(requested) {
-      const match = entries.find((e) => e.kind === "file" && e.name === requested);
-      if (!match) throw new DOMException("missing", "NotFoundError");
-      return match;
-    },
-    async getDirectoryHandle(requested) {
-      const match = entries.find((e) => e.kind === "directory" && e.name === requested);
-      if (!match) throw new DOMException("missing", "NotFoundError");
-      return match;
-    },
-  });
-  const project = dir("history-demo.inference-lens", [
-    file("project.json", contents.manifest),
-    dir("traces", [file("run_a.json", contents.traceA)]),
-  ]);
-  window.showDirectoryPicker = async () => project;
-}, contents);
+`stubProjectDirectory` in `tests/e2e/support/` does this. Give it a folder name
+and a flat map of paths to contents:
+
+```ts
+await stubProjectDirectory(page, {
+  name: "history-demo.inference-lens",
+  files: {
+    "project.json": manifest,
+    "traces/run_a.json": traceA,
+  },
+  directories: ["experiments"],   // paths that must exist but stay empty
+});
 ```
 
 Generate the manifest and the traces with `createProjectFile`,

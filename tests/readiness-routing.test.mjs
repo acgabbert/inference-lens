@@ -109,8 +109,10 @@ function composerProps(pendingDestination, onDestinationHandled) {
     settings: {
       model: "fixture-model", temperature: 0.7, responseMode: "buffered",
       streamingAvailable: true, toolsEnabled: true, modelDiscovery: null,
+      favoriteModels: [],
       onModelChange: noop, onTemperatureChange: noop,
       onStreamingPreferenceChange: noop, onLoadModels: noop,
+      onToggleFavoriteModel: noop,
     },
     activeProfile: { name: "Fixture" }, pendingDestination, onDestinationHandled,
     onReadinessAction: noop, onOpenConnectionSettings: noop, onOpenToolLibrary: noop,

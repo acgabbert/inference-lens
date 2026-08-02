@@ -181,7 +181,7 @@ function libraryProps(templates, overrides = {}) {
   };
 }
 
-test("archives move to a reversible library view without exposing insertion", async () => {
+test("archiving stays on the Active tab; Archived remains reachable without exposing insertion", async () => {
   let finishArchive;
   let restoredId;
   const view = await mount(
@@ -213,9 +213,24 @@ test("archives move to a reversible library view without exposing insertion", as
       }),
     );
 
+    // Archiving never auto-drops the author into the Archived view: staying
+    // on Active with nothing selected is the honest state when the library
+    // had only the one (now archived) template.
     assert.match(view.container.textContent, /Archived 1/);
-    assert.match(view.container.textContent, /Restore/);
+    assert.ok(
+      view.container
+        .querySelector(".template-library-tab.selected")
+        ?.textContent.startsWith("Active"),
+    );
+    assert.doesNotMatch(view.container.textContent, /Restore/);
     assert.doesNotMatch(view.container.textContent, /Add to conversation/);
+
+    // Archived stays reachable through its own (quieter) toggle.
+    const archivedToggle = [...view.container.querySelectorAll("button")].find(
+      (button) => button.textContent.trim().startsWith("Archived"),
+    );
+    await view.click(archivedToggle);
+    assert.match(view.container.textContent, /Restore/);
 
     const restore = [...view.container.querySelectorAll("button")].find(
       (button) => button.textContent.trim() === "Restore",

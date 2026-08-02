@@ -42,7 +42,21 @@ const template = {
   ],
 };
 
-async function mount() {
+const templateTwo = {
+  id: "template_summary",
+  name: "Summary",
+  currentRevisionId: "template-revision_summary-1",
+  revisions: [
+    {
+      id: "template-revision_summary-1",
+      createdAt: "2026-07-31T12:00:00.000Z",
+      messages: [{ role: "user", content: "Summarize {{topic}}." }],
+      variableDefaults: {},
+    },
+  ],
+};
+
+async function mount(overrides = {}) {
   const server = await createServer({
     configFile: false,
     root: process.cwd(),
@@ -70,7 +84,11 @@ async function mount() {
         onOpenN8nImport: noop,
         onCreate: () => "template_new",
         onSave: () => template.currentRevisionId,
+        onRename: () => true,
+        onArchive: (templateId, onArchived) => onArchived?.(),
+        onRestore: noop,
         onInsert: noop,
+        ...overrides,
       }),
     );
   });
@@ -92,6 +110,24 @@ async function mount() {
             ...options,
           }),
         );
+      });
+    },
+    async type(input, value) {
+      await act(async () => {
+        const setter = Object.getOwnPropertyDescriptor(
+          dom.window.HTMLInputElement.prototype,
+          "value",
+        ).set;
+        setter.call(input, value);
+        input.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+      });
+    },
+    async blur(element) {
+      // React 17+ implements onBlur via the bubbling "focusout" event, not
+      // the native non-bubbling "blur" — dispatch the event React listens
+      // for so the synthetic handler actually fires.
+      await act(async () => {
+        element.dispatchEvent(new dom.window.FocusEvent("focusout", { bubbles: true }));
       });
     },
     async settle() {
@@ -246,6 +282,95 @@ test("focus mode traps keyboard focus within the editor", async () => {
     await view.keydown("Tab");
 
     assert.equal(document.activeElement, focusable[0]);
+  } finally {
+    await view.close();
+  }
+});
+
+test("commits a renamed template on blur without requiring Save template", async () => {
+  const renamed = [];
+  const view = await mount({
+    onRename: (templateId, name) => {
+      renamed.push([templateId, name]);
+      return true;
+    },
+  });
+  try {
+    const nameInput = view.container.querySelector(".template-name-field input");
+    assert.equal(nameInput.value, "Question");
+
+    await view.type(nameInput, "Explain it simply");
+    await view.blur(nameInput);
+
+    assert.deepEqual(renamed, [["template_question", "Explain it simply"]]);
+  } finally {
+    await view.close();
+  }
+});
+
+test("does not commit an unchanged or blank name on blur", async () => {
+  const renamed = [];
+  const view = await mount({
+    onRename: (templateId, name) => {
+      renamed.push([templateId, name]);
+      return true;
+    },
+  });
+  try {
+    const nameInput = view.container.querySelector(".template-name-field input");
+
+    // Blurring without editing should not fire a rename.
+    await view.blur(nameInput);
+    assert.deepEqual(renamed, []);
+
+    // A blank name is left uncommitted rather than saved empty.
+    await view.type(nameInput, "   ");
+    await view.blur(nameInput);
+    assert.deepEqual(renamed, []);
+  } finally {
+    await view.close();
+  }
+});
+
+test("archiving stays on the Active tab and selects a remaining active template", async () => {
+  const view = await mount({ templates: [template, templateTwo] });
+  try {
+    const activeTab = () => view.container.querySelector(".template-library-tab.selected");
+    const archiveLink = () => view.container.querySelector(".template-library-archive-link.selected");
+    assert.ok(activeTab()?.textContent.startsWith("Active"));
+    assert.equal(archiveLink(), null);
+
+    const archiveButton = [...view.container.querySelectorAll("button")].find(
+      (button) => button.textContent.trim() === "Archive",
+    );
+    assert.ok(archiveButton);
+    await view.click(archiveButton);
+
+    // Still on the Active tab: an archive action never reads as "your prompts
+    // are gone" by dropping the author into the Archived view.
+    assert.ok(activeTab()?.textContent.startsWith("Active"));
+    assert.equal(archiveLink(), null);
+
+    // Selection falls through to the other active template instead of
+    // leaving the now-archived one showing (or an empty state) behind.
+    const nameInput = view.container.querySelector(".template-name-field input");
+    assert.equal(nameInput.value, "Summary");
+  } finally {
+    await view.close();
+  }
+});
+
+test("the Archived toggle reads as a quiet secondary control, not a peer tab", async () => {
+  const view = await mount();
+  try {
+    const activeTab = view.container.querySelector(".template-library-tab");
+    const archiveLink = view.container.querySelector(".template-library-archive-link");
+    assert.ok(activeTab);
+    assert.ok(archiveLink);
+    // The two controls are visually distinct classes, not the same segmented
+    // "tab" styling applied to both sides.
+    assert.notEqual(activeTab.className, archiveLink.className);
+    assert.ok(!archiveLink.className.includes("template-library-tab"));
   } finally {
     await view.close();
   }

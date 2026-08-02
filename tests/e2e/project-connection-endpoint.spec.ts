@@ -5,12 +5,14 @@ import {
   createProjectFile,
   serializeProjectFile,
 } from "../../packages/core/src/project";
+import {
+  BUFFERED_FIXTURE_ENDPOINT as PROFILE_ENDPOINT,
+  PROFILE_STORAGE_KEY,
+  PROJECT_PROFILE_MAP_STORAGE_KEY,
+  STREAMING_STORAGE_KEY,
+} from "./support";
 
-const PROFILE_STORAGE_KEY = "inference-lens:inference-profiles:v1";
-const PROJECT_PROFILE_MAP_STORAGE_KEY =
-  "inference-lens:project-profile-map:v2";
-const STREAMING_STORAGE_KEY = "inference-lens:streaming-preference:v1";
-const PROFILE_ENDPOINT = "http://127.0.0.1:44014/v1";
+
 const DECLARED_ENDPOINT = "http://127.0.0.1:8080/v1";
 
 /**

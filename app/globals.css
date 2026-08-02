@@ -158,7 +158,8 @@ body {
 .empty-state h3,
 .empty-glyph,
 .run-metric-value,
-.run-history-empty h3 {
+.run-history-empty h3,
+.pane-empty-state h3 {
   font-size: var(--type-section-heading);
 }
 
@@ -214,7 +215,8 @@ textarea,
 .run-history-empty p,
 .run-history-notice,
 .run-history-failures,
-.evaluation-provider-input h4 {
+.evaluation-provider-input h4,
+.pane-empty-state p {
   font-size: var(--type-body);
 }
 
@@ -371,7 +373,8 @@ pre,
 .privacy-note span,
 .n8n-import-centered,
 .failure-glyph,
-.template-library-filter button,
+.template-library-tab,
+.template-library-archive-link,
 .run-readiness-why-mark,
 .evaluation-case-list-item button span,
 .evaluation-case-check-count,
@@ -664,26 +667,46 @@ label.file-button {
   box-shadow: var(--shadow-popover);
 }
 
-.model-option {
-  width: 100%;
-  padding: 9px 10px;
-  border: 0;
+.model-option-row {
+  display: flex;
+  align-items: stretch;
   border-bottom: 1px solid var(--border-subtle);
-  background: transparent;
-  color: var(--text-primary);
-  cursor: pointer;
-  font-family: var(--font-geist-mono), monospace;
-  text-align: left;
 }
 
-.model-option:last-child {
+.model-option-row:last-child {
   border-bottom: 0;
 }
 
-.model-option:hover,
-.model-option.highlighted {
+.model-option-row:hover,
+.model-option-row.highlighted {
   background: var(--accent-soft);
   color: var(--accent);
+}
+
+.model-favorite-toggle {
+  flex: 0 0 auto;
+  padding: 9px 4px 9px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.model-favorite-toggle.favorited {
+  color: var(--warning);
+}
+
+.model-option {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 9px 10px 9px 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-family: var(--font-geist-mono), monospace;
+  text-align: left;
 }
 
 .model-options-status {
@@ -994,32 +1017,51 @@ output {
   padding-inline: 8px;
 }
 
+/* Active and Archived are deliberately not equal peers here: Active reads as
+   the working tab (a filled segment), Archived reads as a quiet, secondary
+   link so landing on it never feels like the primary destination. See
+   .template-library-archive-link below. */
 .template-library-filter {
   margin-top: 12px;
-  padding: 3px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 3px;
-  border: 1px solid var(--border-default);
-  border-radius: 8px;
-  background: var(--surface-inset);
+  padding: 3px 2px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
 }
 
-.template-library-filter button {
-  padding: 6px 4px;
-  border: 0;
+.template-library-tab {
+  padding: 6px 10px;
+  border: 1px solid var(--border-default);
   border-radius: 6px;
-  background: transparent;
+  background: var(--surface-inset);
   color: var(--text-muted);
   cursor: pointer;
   font-family: inherit;
   font-weight: 700;
 }
 
-.template-library-filter button.selected {
+.template-library-tab.selected {
   background: var(--surface-panel);
   color: var(--text-primary);
+  border-color: var(--border-strong);
   box-shadow: var(--shadow-field-inset);
+}
+
+.template-library-archive-link {
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 600;
+}
+
+.template-library-archive-link.selected {
+  color: var(--text-muted);
+  text-decoration: underline;
 }
 
 .template-library-filter span {
@@ -3817,6 +3859,33 @@ textarea:focus {
   line-height: 1.6;
 }
 
+.pane-empty-state {
+  max-width: 280px;
+  margin: 45px auto 0;
+  padding: 0 20px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.pane-empty-state .eyebrow {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.pane-empty-state h3 {
+  margin: 0 0 8px;
+  color: var(--text-primary);
+}
+
+.pane-empty-state p {
+  margin: 0 0 14px;
+  line-height: 1.6;
+}
+
+.pane-empty-state .button {
+  margin: 0 auto;
+}
+
 .trace-header {
   height: 45px;
   padding: 0 20px;
@@ -4751,7 +4820,7 @@ main {
   border-radius: 8px;
   background: var(--danger-surface);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 9px;
 }
 
@@ -4786,13 +4855,13 @@ main {
 }
 
 .run-readiness-summary strong {
-  display: inline;
+  display: block;
   color: var(--text-primary);
 }
 
 .run-readiness-summary > p {
-  display: inline;
-  margin: 0 0 0 8px;
+  display: block;
+  margin: 3px 0 0;
   color: var(--text-secondary);
 }
 

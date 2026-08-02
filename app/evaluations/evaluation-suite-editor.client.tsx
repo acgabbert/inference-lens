@@ -12,6 +12,7 @@ import type { TemplateRunOverrides } from "../../packages/core/src/project";
 import type { EvaluationInputBinding } from "../../packages/core/src/evaluation-suites";
 import { conversationMessageText } from "../conversation-display";
 import { FocusModeToggle, useFocusMode } from "../focus-mode.client";
+import { PaneEmptyState } from "../pane-empty-state.client";
 import type { EvaluationSuiteAuthoringHandle } from "./use-evaluation-suite-authoring.client";
 import type { EvaluationCheckAuthoringField } from "./use-evaluation-suite-authoring.client";
 import {
@@ -271,7 +272,7 @@ export function EvaluationSuiteEditor({
   const batch = evaluationBatchGuardrail(selectedCount, authoring.repetitions);
   const availableCandidates = authoring.candidates.filter((candidate) => !suite?.inputBindings.some((binding) => binding.target.templateUseId === candidate.templateUseId && binding.target.variableName === candidate.variableName));
 
-  if (!project) return <div className="pane-empty-state"><span className="eyebrow">Evaluations</span><h3>Open or save a project first</h3><p>Evaluation suites are portable project content, so they need a project document.</p></div>;
+  if (!project) return <PaneEmptyState eyebrow="Evaluations" heading="Open or save a project first" detail="Evaluation suites are portable project content, so they need a project document." />;
 
   return (
     <section ref={containerRef} role={focusMode ? "dialog" : undefined} aria-modal={focusMode ? "true" : undefined} aria-label={focusMode ? "Evaluation editor focus mode" : "Evaluation suites"} className={focusMode ? "evaluation-editor focus-mode-surface evaluation-focus-mode" : "evaluation-editor"}>
@@ -283,7 +284,11 @@ export function EvaluationSuiteEditor({
         <FocusModeToggle className="evaluation-focus-toggle" open={focusMode} subject="evaluation editor" toggleRef={focusToggleRef} onToggle={() => focusMode ? close() : setFocusMode(true)} />
       </div>
       {!suite ? (
-        <div className="pane-empty-state"><h3>No evaluation suites yet</h3><p>Create one to bind template variables, author cases, and add deterministic checks.</p><button className="button primary" type="button" onClick={authoring.createSuite}>Create evaluation suite</button></div>
+        <PaneEmptyState
+          heading="No evaluation suites yet"
+          detail="Create one to bind template variables, author cases, and add deterministic checks."
+          action={{ label: "Create evaluation suite", onClick: authoring.createSuite }}
+        />
       ) : (
         <>
           {renamingSuite && <form className="evaluation-suite-rename" onSubmit={(event) => {

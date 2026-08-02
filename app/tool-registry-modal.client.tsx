@@ -10,6 +10,7 @@ import type {
   RegistryToolId,
   ToolRegistryV1,
 } from "../packages/core/src/tool-registry";
+import type { ConfirmationDialogRequest } from "./confirmation-dialog.client";
 import { ToolDefinitionEditor } from "./tool-definition-editor.client";
 import { randomUUID } from "../packages/core/src/random-id";
 
@@ -19,6 +20,7 @@ interface ToolRegistryModalProps {
   onChange(registry: ToolRegistryV1): void;
   onAttachToProject(tool: RegistryTool): string | undefined;
   onAttachToRequest(tool: RegistryTool): string | undefined;
+  requestConfirmation(request: ConfirmationDialogRequest): void;
   onClose(): void;
 }
 
@@ -28,6 +30,7 @@ export function ToolRegistryModal({
   onChange,
   onAttachToProject,
   onAttachToRequest,
+  requestConfirmation,
   onClose,
 }: ToolRegistryModalProps) {
   const initialTool = registry.tools[0];
@@ -108,14 +111,24 @@ export function ToolRegistryModal({
 
   function removeSelected(): void {
     if (!selected) return;
-    if (!window.confirm(`Delete "${selected.name}" from the local tool library?`)) {
-      return;
-    }
-    const tools = registry.tools.filter(({ id }) => id !== selected.id);
-    onChange({ ...registry, tools });
-    const next = tools[0];
-    setSelectedId(next?.id);
-    setDraft(next ? structuredClone(next) : undefined);
+    const toRemove = selected;
+    requestConfirmation({
+      title: `Delete "${toRemove.name}"?`,
+      description:
+        "Removes this definition from the local tool library. This can't be undone, but any project or request that already attached a copy keeps its own snapshot and is not affected.",
+      confirmLabel: "Delete tool",
+      destructive: true,
+      ...(toRemove.description
+        ? { details: [{ label: "Description", value: toRemove.description }] }
+        : {}),
+      onConfirm() {
+        const tools = registry.tools.filter(({ id }) => id !== toRemove.id);
+        onChange({ ...registry, tools });
+        const next = tools[0];
+        setSelectedId(next?.id);
+        setDraft(next ? structuredClone(next) : undefined);
+      },
+    });
   }
 
   function attach(kind: "project" | "request"): void {

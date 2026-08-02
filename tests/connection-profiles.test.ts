@@ -7,6 +7,7 @@ import {
   profileDeletionRefusal,
   readProfiles,
   removeProfile,
+  toggleFavoriteModel,
   writeProfiles,
 } from "../app/profile-store.client.ts";
 import type { StoredInferenceProfile } from "../app/profile-store.client.ts";
@@ -183,6 +184,88 @@ test("deletion is refused while a profile is the only one left", () => {
     /At least one connection profile/,
   );
   assert.equal(profileDeletionRefusal([only, named("b")], only, false), undefined);
+});
+
+test("toggling a model favorites it, and again unfavorites it", () => {
+  const once = toggleFavoriteModel(undefined, "gpt-4o");
+  assert.deepEqual(once, ["gpt-4o"]);
+
+  const twice = toggleFavoriteModel(once, "gpt-4o");
+  assert.equal(twice, undefined);
+});
+
+test("favoriting a second model appends to the existing list", () => {
+  const first = toggleFavoriteModel(undefined, "gpt-4o");
+  const second = toggleFavoriteModel(first, "claude-opus");
+
+  assert.deepEqual(second, ["gpt-4o", "claude-opus"]);
+});
+
+test("does not mutate the favorites array it is given", () => {
+  const existing = ["gpt-4o"];
+
+  toggleFavoriteModel(existing, "claude-opus");
+
+  assert.deepEqual(existing, ["gpt-4o"]);
+});
+
+test("toggling a blank model id is a no-op", () => {
+  assert.deepEqual(toggleFavoriteModel(["gpt-4o"], "   "), ["gpt-4o"]);
+});
+
+test("legacy stored profiles without favorites default to none, and persist favorites once set", () => {
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  let stored = JSON.stringify({
+    profiles: [
+      {
+        id: "openai-compatible",
+        name: "Legacy profile",
+        provider: "openai-compatible",
+        endpoint: "https://api.example.com/v1",
+        model: "example-model",
+      },
+    ],
+    activeProfileId: "openai-compatible",
+  });
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      localStorage: {
+        getItem: () => stored,
+        setItem: (_key: string, value: string) => {
+          stored = value;
+        },
+      },
+    },
+  });
+
+  try {
+    const snapshot = readProfiles();
+    assert.equal(snapshot.profiles[0]!.favoriteModels, undefined);
+
+    const withFavorite = {
+      ...snapshot,
+      profiles: [
+        {
+          ...snapshot.profiles[0]!,
+          favoriteModels: toggleFavoriteModel(
+            snapshot.profiles[0]!.favoriteModels,
+            "gpt-4o",
+          ),
+        },
+      ],
+    };
+    writeProfiles(withFavorite);
+
+    const restored = readProfiles();
+    assert.deepEqual(restored.profiles[0]!.favoriteModels, ["gpt-4o"]);
+  } finally {
+    if (originalWindow) {
+      Object.defineProperty(globalThis, "window", originalWindow);
+    } else {
+      delete (globalThis as { window?: unknown }).window;
+    }
+  }
 });
 
 test("a server-provisioned profile is deletable only once unconfigured", () => {
