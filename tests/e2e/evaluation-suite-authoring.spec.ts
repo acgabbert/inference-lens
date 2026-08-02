@@ -182,6 +182,18 @@ test("a saved suite opens with every case selected and preflight clean", async (
   await expect(editor).toContainText("3 cases × 1 = 3 planned runs");
   await expect(editor).toContainText("Ready to run");
   await expect(editor.locator(".evaluation-diagnostics")).toHaveCount(0);
+  await expect(editor.getByRole("region", { name: "Provider input for migrations" }))
+    .toContainText("Explain database migrations to engineers.");
+  const layout = await editor.locator(".evaluation-preflight").evaluate((preflight) => {
+    const startArea = preflight.querySelector<HTMLElement>(".evaluation-start-area");
+    const note = startArea?.querySelector<HTMLElement>("small");
+    return {
+      preflightFits: preflight.scrollWidth <= preflight.clientWidth,
+      startAreaFits: Boolean(startArea && startArea.scrollWidth <= startArea.clientWidth),
+      noteFits: Boolean(note && note.scrollWidth <= note.clientWidth),
+    };
+  });
+  expect(layout).toEqual({ preflightFits: true, startAreaFits: true, noteFits: true });
 
   // Narrowing the selection is explicit, and preflight follows it.
   await page.getByLabel("Select indexes").uncheck();

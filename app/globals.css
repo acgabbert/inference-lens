@@ -5970,6 +5970,7 @@ main {
 
 /* Evaluation suite authoring */
 .evaluation-editor {
+  container-type: inline-size;
   display: flex;
   min-height: 100%;
   flex-direction: column;
@@ -6020,6 +6021,7 @@ main {
 .evaluation-inputs,
 .evaluation-cases,
 .evaluation-case-detail,
+.evaluation-provider-input,
 .evaluation-preflight {
   border: 1px solid var(--border-default);
   border-radius: 14px;
@@ -6029,20 +6031,34 @@ main {
 
 .evaluation-preflight {
   display: grid;
-  grid-template-columns: minmax(140px, 0.7fr) minmax(250px, 1.5fr) minmax(100px, 0.5fr) minmax(190px, 0.9fr);
-  align-items: end;
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
 }
 
-.evaluation-preflight > div,
+.evaluation-preflight-status,
 .evaluation-preflight label {
   display: flex;
   flex-direction: column;
   gap: 5px;
 }
 
-.evaluation-preflight output {
+.evaluation-preflight-status {
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.evaluation-preflight-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(90px, 0.28fr) minmax(170px, 0.52fr);
+  align-items: end;
+  gap: 14px;
+}
+
+.evaluation-preflight-controls output {
+  min-width: 0;
   padding-bottom: 8px;
+  overflow-wrap: anywhere;
 }
 
 .evaluation-preflight label small,
@@ -6063,7 +6079,78 @@ main {
 }
 
 .evaluation-start-area small {
+  min-width: 0;
   max-width: 430px;
+  overflow-wrap: anywhere;
+}
+
+.evaluation-provider-input {
+  display: grid;
+  gap: 12px;
+}
+
+.evaluation-provider-input h3,
+.evaluation-provider-input p {
+  margin: 0;
+}
+
+.evaluation-provider-input > p,
+.evaluation-provider-target {
+  color: var(--text-muted);
+}
+
+.evaluation-case-sameness-note {
+  margin: 12px 0 0;
+  padding: 9px 10px;
+  border: 1px solid var(--warning-border);
+  border-radius: 7px;
+  background: var(--warning-surface);
+  color: var(--warning-strong);
+  line-height: 1.45;
+}
+
+.evaluation-provider-target {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.evaluation-provider-settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+}
+
+.evaluation-provider-settings > div {
+  display: flex;
+  gap: 5px;
+  padding: 5px 8px;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  background: var(--surface-sunken);
+}
+
+.evaluation-provider-settings dt {
+  color: var(--text-muted);
+}
+
+.evaluation-provider-settings dd {
+  margin: 0;
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+.evaluation-provider-messages {
+  display: grid;
+  gap: 8px;
+}
+
+.evaluation-provider-messages pre {
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .evaluation-batch-warning {
@@ -6328,6 +6415,18 @@ main {
   resize: vertical;
 }
 
+.evaluation-case-grid textarea,
+.evaluation-case-detail textarea {
+  border-color: var(--border-strong);
+  background: var(--surface-sunken);
+  box-shadow: var(--shadow-field-inset);
+}
+
+.evaluation-case-grid textarea:hover,
+.evaluation-case-detail textarea:hover {
+  border-color: var(--accent-border);
+}
+
 .evaluation-case-detail {
   display: flex;
   flex-direction: column;
@@ -6376,13 +6475,34 @@ main {
   width: 72px;
 }
 
+@container (max-width: 720px) {
+  .evaluation-preflight-controls {
+    grid-template-columns: minmax(0, 1fr) minmax(90px, 0.38fr);
+  }
+
+  .evaluation-preflight-controls output {
+    grid-column: 1 / -1;
+    padding-bottom: 0;
+  }
+
+  .evaluation-start-area {
+    align-items: flex-start;
+    flex-direction: column !important;
+  }
+
+  .evaluation-provider-input .evaluation-section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .evaluation-provider-target {
+    text-align: left;
+  }
+}
+
 @media (max-width: 900px) {
   .evaluation-editor {
     padding: 14px;
-  }
-
-  .evaluation-preflight {
-    grid-template-columns: 1fr;
   }
 
   .evaluation-binding-row {
@@ -6391,11 +6511,6 @@ main {
 
   .evaluation-binding-row span {
     grid-column: 1 / -1;
-  }
-
-  .evaluation-start-area {
-    align-items: stretch;
-    flex-direction: column !important;
   }
 
   .evaluation-results-summary {

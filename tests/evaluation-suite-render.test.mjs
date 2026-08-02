@@ -29,6 +29,9 @@ test("renders suite preflight, case grid, checks, and paid-cell preview", async 
   assert.match(html, /Start evaluation…/);
   assert.match(html, /saved project revision/i);
   assert.match(html, /plan, traces, and result will be saved/i);
+  assert.match(html, /Provider input/);
+  assert.match(html, /Explain database migrations\./);
+  assert.match(html, /other cases can resolve to different messages/i);
 });
 
 test("warns without resizing large batches and names session-only evidence", async () => {
@@ -38,6 +41,15 @@ test("warns without resizing large batches and names session-only evidence", asy
   assert.match(html, /25 planned runs/);
   assert.match(html, /Large evaluation batch: 25 provider calls/);
   assert.match(html, /results will be lost when this session closes/i);
+});
+
+test("explains when cases do not vary provider input", async () => {
+  const authoring = evaluationFixture();
+  authoring.project.evaluationSuites[0].inputBindings = [];
+  authoring.project.evaluationSuites[0].cases[0].values = {};
+  const html = await render(authoring);
+  assert.match(html, /Every case currently sends the same conversation/);
+  assert.match(html, /different checks or reference answers/);
 });
 
 test("shows an explicit error above the repetition maximum", async () => {

@@ -4,6 +4,9 @@ import { useRef, useState } from "react";
 import { CHECK_KINDS } from "../../packages/core/src/checks";
 import type { CheckDefinition, CheckKind } from "../../packages/core/src/checks";
 import type { EvaluationCase } from "../../packages/core/src/project";
+import { prepareProjectRevisionRun } from "../../packages/core/src/project";
+import type { TemplateRunOverrides } from "../../packages/core/src/project";
+import { conversationMessageText } from "../conversation-display";
 import { FocusModeToggle, useFocusMode } from "../focus-mode.client";
 import type { EvaluationSuiteAuthoringHandle } from "./use-evaluation-suite-authoring.client";
 import type { EvaluationCheckAuthoringField } from "./use-evaluation-suite-authoring.client";
@@ -117,8 +120,49 @@ function CaseChecks({ evaluationCase, authoring }: { evaluationCase: EvaluationC
   );
 }
 
+function CaseProviderInput({ evaluationCase, authoring, execution }: {
+  evaluationCase: EvaluationCase;
+  authoring: EvaluationSuiteAuthoringHandle;
+  execution?: EvaluationSuiteExecutionActions;
+}) {
+  const project = authoring.project;
+  const suite = project?.evaluationSuites.find(({ id }) => id === authoring.suiteId);
+  const revision = project?.conversationRevisions.find(({ id }) => id === authoring.revisionId);
+  if (!project || !suite || !revision) return null;
+
+  const overrides: Record<string, Record<string, string>> = {};
+  suite.inputBindings.forEach((binding) => {
+    const values = overrides[binding.target.templateUseId] ?? {};
+    values[binding.target.variableName] = evaluationCase.values[binding.id] ?? "";
+    overrides[binding.target.templateUseId] = values;
+  });
+  const prepared = prepareProjectRevisionRun(project, revision, overrides as TemplateRunOverrides);
+
+  return (
+    <section className="evaluation-provider-input" aria-label={`Provider input for ${evaluationCase.name}`}>
+      <div className="evaluation-section-heading">
+        <div><span className="eyebrow">Provider input</span><h3>{evaluationCase.name}</h3></div>
+        {execution?.preview && <span className="evaluation-provider-target">{execution.preview.targetName} · {execution.preview.model}</span>}
+      </div>
+      <p>This case replaces the bound template values in the saved revision. Repetitions resend this same resolved input; other cases can resolve to different messages.</p>
+      {execution?.preview && <dl className="evaluation-provider-settings"><div><dt>Temperature</dt><dd>{execution.preview.temperature.toFixed(1)}</dd></div><div><dt>Delivery</dt><dd>{execution.preview.responseMode === "streaming" ? "Streaming" : "Buffered"}</dd></div><div><dt>Tools</dt><dd>None</dd></div></dl>}
+      {prepared.ok ? (
+        <div className="evaluation-provider-messages">
+          {prepared.messages.map((message, index) => <article className="request-preview-message" key={`${message.id}-${index}`}><span className="eyebrow">{message.role}</span><pre>{conversationMessageText(message)}</pre></article>)}
+        </div>
+      ) : <div className="template-diagnostic" role="alert">{prepared.diagnostics[0]?.diagnostic.message ?? "This case cannot be resolved."}</div>}
+    </section>
+  );
+}
+
 export interface EvaluationSuiteExecutionActions {
   storage: "durable" | "unsaved";
+  preview?: {
+    targetName: string;
+    model: string;
+    temperature: number;
+    responseMode: "streaming" | "buffered";
+  };
   disabledReason?: string;
   running: boolean;
   onStart(): void;
@@ -139,6 +183,9 @@ export function EvaluationSuiteEditor({
   const project = authoring.project;
   const suite = project?.evaluationSuites.find(({ id }) => id === authoring.suiteId);
   const focusedCase = suite?.cases.find(({ id }) => id === authoring.focusedCaseId);
+  const previewCase = focusedCase
+    ?? suite?.cases.find(({ id }) => authoring.selectedCaseIds.has(id))
+    ?? suite?.cases[0];
   const selectedCount = authoring.selectedCaseIds.size;
   const batch = evaluationBatchGuardrail(selectedCount, authoring.repetitions);
   const availableCandidates = authoring.candidates.filter((candidate) => !suite?.inputBindings.some((binding) => binding.target.templateUseId === candidate.templateUseId && binding.target.variableName === candidate.variableName));
@@ -165,10 +212,12 @@ export function EvaluationSuiteEditor({
           {authoring.error?.target.kind === "suite-name" && <p className="evaluation-field-error" role="alert">{authoring.error.message}</p>}
           {authoring.error?.target.kind === "editor" && <div className="template-diagnostic" role="alert">{authoring.error.message}</div>}
           <section className="evaluation-preflight" aria-label="Evaluation preflight">
-            <div><span className="eyebrow">Preflight</span><strong>{authoring.diagnostics.length === 0 && !batch.error ? "Ready to run" : `${authoring.diagnostics.length + (batch.error ? 1 : 0)} setup ${authoring.diagnostics.length + (batch.error ? 1 : 0) === 1 ? "issue" : "issues"}`}</strong></div>
-            <label>Base conversation revision <select value={authoring.revisionId} onChange={(event) => authoring.selectRevision(event.target.value as NonNullable<typeof authoring.revisionId>)}>{project.conversationRevisions.map((revision) => <option key={revision.id} value={revision.id}>{revision.id === project.defaults.conversationRevisionId ? "Current · " : ""}{new Date(revision.createdAt).toLocaleString()}</option>)}</select><small>Cases resolve from this saved project revision. Session-only composer values and run overrides are not included.</small></label>
-            <label>Repetitions <input type="number" min="1" max={MAX_EVALUATION_REPETITIONS} step="1" value={authoring.repetitions} onChange={(event) => authoring.setRepetitions(Number(event.target.value))} /></label>
-            <output>{selectedCount} cases × {authoring.repetitions} = <strong>{Number.isFinite(batch.plannedCalls) ? batch.plannedCalls.toLocaleString() : "Invalid"} planned runs</strong></output>
+            <div className="evaluation-preflight-status"><span className="eyebrow">Preflight</span><strong>{authoring.diagnostics.length === 0 && !batch.error ? "Ready to run" : `${authoring.diagnostics.length + (batch.error ? 1 : 0)} setup ${authoring.diagnostics.length + (batch.error ? 1 : 0) === 1 ? "issue" : "issues"}`}</strong></div>
+            <div className="evaluation-preflight-controls">
+              <label>Base conversation revision <select value={authoring.revisionId} onChange={(event) => authoring.selectRevision(event.target.value as NonNullable<typeof authoring.revisionId>)}>{project.conversationRevisions.map((revision) => <option key={revision.id} value={revision.id}>{revision.id === project.defaults.conversationRevisionId ? "Current · " : ""}{new Date(revision.createdAt).toLocaleString()}</option>)}</select><small>Cases start from this saved project revision; session-only composer values and run overrides are excluded.</small></label>
+              <label>Repetitions <input type="number" min="1" max={MAX_EVALUATION_REPETITIONS} step="1" value={authoring.repetitions} onChange={(event) => authoring.setRepetitions(Number(event.target.value))} /></label>
+              <output>{selectedCount} cases × {authoring.repetitions} = <strong>{Number.isFinite(batch.plannedCalls) ? batch.plannedCalls.toLocaleString() : "Invalid"} planned runs</strong></output>
+            </div>
             {execution && <div className="evaluation-start-area"><button className="button primary" type="button" disabled={execution.running || Boolean(execution.disabledReason) || authoring.diagnostics.length > 0 || Boolean(batch.error)} title={execution.disabledReason ?? batch.error} onClick={execution.onStart}>{execution.running ? "Evaluation running" : "Start evaluation…"}</button><small>{execution.storage === "durable" ? "The plan, traces, and result will be saved in this project folder." : "Session evaluation: results will be lost when this session closes."}</small></div>}
           </section>
           {batch.warning && <p className="evaluation-batch-warning" role="status"><strong>{batch.warning}</strong> Review the exact call count in confirmation before starting.</p>}
@@ -177,6 +226,7 @@ export function EvaluationSuiteEditor({
 
           <section className="evaluation-inputs">
             <div className="evaluation-section-heading"><div><span className="eyebrow">Dataset columns</span><h3>Template-variable inputs</h3></div></div>
+            {suite.inputBindings.length === 0 && <p className="evaluation-case-sameness-note"><strong>Every case currently sends the same conversation.</strong> Bind a template variable to make case inputs differ. Separate cases can still use different checks or reference answers.</p>}
             {suite.inputBindings.map((binding) => {
               const inputError = authoring.error?.target.kind === "input-name" && authoring.error.target.inputId === binding.id
                 ? authoring.error.message
@@ -202,6 +252,7 @@ export function EvaluationSuiteEditor({
               })}</tbody></table></div>
             )}
           </section>
+          {previewCase && <CaseProviderInput evaluationCase={previewCase} authoring={authoring} execution={execution} />}
           {focusedCase && <CaseChecks evaluationCase={focusedCase} authoring={authoring} />}
         </>
       )}

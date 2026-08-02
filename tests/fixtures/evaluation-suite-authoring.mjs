@@ -3,7 +3,8 @@ export function evaluationFixture() {
   const project = {
     schemaVersion: 7,
     defaults: { conversationRevisionId: "revision_current" },
-    conversationRevisions: [{ id: "revision_current", createdAt: "2026-08-01T12:00:00.000Z" }],
+    conversationRevisions: [{ id: "revision_current", conversationId: "conversation_fixture", createdAt: "2026-08-01T12:00:00.000Z", items: [{ kind: "template-use", use: { id: "template-use_question", templateId: "template_question", templateRevisionId: "template-revision_question", values: {}, outputMessageIds: ["message_question"] } }] }],
+    promptTemplates: [{ id: "template_question", name: "Question", currentRevisionId: "template-revision_question", revisions: [{ id: "template-revision_question", createdAt: "2026-08-01T12:00:00.000Z", messages: [{ role: "user", content: "Explain {{topic}}." }], variableDefaults: { topic: "a topic" } }] }],
     evaluationSuites: [{
       id: "evaluation-suite_topics",
       name: "Topic quality",
@@ -26,4 +27,3 @@ export function evaluationFixture() {
     updateCase: noop, deleteCase: noop, addCheck: noop, updateCheck: noop, deleteCheck: noop,
   };
 }
-

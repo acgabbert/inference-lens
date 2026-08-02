@@ -1264,6 +1264,12 @@ function HomeContent() {
           evaluationExecution={{
             storage: projectWorkspace ? "durable" : "unsaved",
             running: evaluationExecution.isRunning,
+            preview: {
+              targetName: activeProfile.name || "Untitled profile",
+              model: activeModel,
+              temperature: activeTemperature,
+              responseMode: activeResponseMode,
+            },
             ...(evaluationStartDisabledReason ? { disabledReason: evaluationStartDisabledReason } : {}),
             onStart: startEvaluation,
           }}
