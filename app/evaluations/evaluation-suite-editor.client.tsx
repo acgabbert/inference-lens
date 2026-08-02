@@ -249,6 +249,8 @@ export function EvaluationSuiteEditor({
 }) {
   const [focusMode, setFocusMode] = useState(false);
   const [candidateIndex, setCandidateIndex] = useState(0);
+  const [renamingSuite, setRenamingSuite] = useState(false);
+  const [suiteNameDraft, setSuiteNameDraft] = useState("");
   const containerRef = useRef<HTMLElement>(null);
   const focusToggleRef = useRef<HTMLButtonElement>(null);
   const { close } = useFocusMode({ open: focusMode, setOpen: setFocusMode, containerRef, triggerRef: focusToggleRef, initialFocusSelector: "select" });
@@ -266,18 +268,23 @@ export function EvaluationSuiteEditor({
       <div className="evaluation-toolbar">
         <label>Suite <select aria-label="Evaluation suite" value={authoring.suiteId ?? ""} onChange={(event) => authoring.selectSuite(event.target.value as NonNullable<typeof authoring.suiteId>)}>{project.evaluationSuites.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}</select></label>
         <button className="button secondary" type="button" onClick={authoring.createSuite}>+ New suite</button>
+        {suite && <button className="button secondary" type="button" onClick={() => { setSuiteNameDraft(suite.name); setRenamingSuite(true); }}>Rename</button>}
+        {suite && <button className="remove-button" type="button" onClick={authoring.deleteSuite}>Delete suite</button>}
         <FocusModeToggle className="evaluation-focus-toggle" open={focusMode} subject="evaluation editor" toggleRef={focusToggleRef} onToggle={() => focusMode ? close() : setFocusMode(true)} />
       </div>
       {!suite ? (
         <div className="pane-empty-state"><h3>No evaluation suites yet</h3><p>Create one to bind template variables, author cases, and add deterministic checks.</p><button className="button primary" type="button" onClick={authoring.createSuite}>Create evaluation suite</button></div>
       ) : (
         <>
-          <div className="evaluation-suite-header">
-            <label>Suite name <input defaultValue={suite.name} key={suite.id} onBlur={(event) => {
-              if (!authoring.renameSuite(event.target.value)) event.currentTarget.value = suite.name;
-            }} /></label>
-            <button className="remove-button" type="button" onClick={authoring.deleteSuite}>Delete suite</button>
-          </div>
+          {renamingSuite && <form className="evaluation-suite-rename" onSubmit={(event) => {
+            event.preventDefault();
+            if (authoring.renameSuite(suiteNameDraft)) setRenamingSuite(false);
+            else setSuiteNameDraft(suite.name);
+          }}>
+            <label>Suite name <input autoFocus value={suiteNameDraft} onChange={(event) => setSuiteNameDraft(event.target.value)} /></label>
+            <button className="button primary" type="submit">Save name</button>
+            <button className="text-button" type="button" onClick={() => setRenamingSuite(false)}>Cancel</button>
+          </form>}
           {authoring.error?.target.kind === "suite-name" && <p className="evaluation-field-error" role="alert">{authoring.error.message}</p>}
           {authoring.error?.target.kind === "editor" && <div className="template-diagnostic" role="alert">{authoring.error.message}</div>}
           <section className="evaluation-preflight" aria-label="Evaluation preflight">

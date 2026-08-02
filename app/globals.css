@@ -5984,7 +5984,6 @@ main {
 }
 
 .evaluation-toolbar,
-.evaluation-suite-header,
 .evaluation-section-heading,
 .evaluation-add-row,
 .evaluation-check-heading {
@@ -5998,13 +5997,11 @@ main {
   flex-wrap: wrap;
 }
 
-.evaluation-toolbar label,
-.evaluation-suite-header label {
+.evaluation-toolbar label {
   flex: 1 1 260px;
 }
 
 .evaluation-toolbar select,
-.evaluation-suite-header input,
 .evaluation-preflight select,
 .evaluation-preflight input,
 .evaluation-add-row select,
@@ -6014,13 +6011,27 @@ main {
   width: 100%;
 }
 
-.evaluation-suite-header,
 .evaluation-cases,
 .evaluation-preflight {
   border: 1px solid var(--border-default);
   border-radius: 14px;
   background: var(--surface-panel);
   padding: 16px;
+}
+
+.evaluation-suite-rename {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.evaluation-suite-rename label {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.evaluation-suite-rename input {
+  width: 100%;
 }
 
 .evaluation-preflight {

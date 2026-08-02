@@ -248,27 +248,28 @@ test("a rejected check edit stays local and restores the saved value", async ({ 
 
   await expect(regexCard.getByRole("alert")).toContainText("Safe regex flags must be a unique subset of ims");
   await expect(flags).toHaveValue("");
-  await expect(editor.locator(".evaluation-suite-header + [role=alert]")).toHaveCount(0);
+  await expect(editor.locator(".evaluation-suite-rename + [role=alert]")).toHaveCount(0);
 });
 
 test("rejected suite and case names restore saved values with local errors", async ({ page }) => {
   await openProject(page, baseProject(), 1440);
   const editor = page.locator(".evaluation-editor");
   await page.getByRole("button", { name: "Create evaluation suite" }).click();
-  await page.getByRole("button", { name: "+ Add case" }).click();
+  await page.getByRole("button", { name: "+ Add case", exact: true }).click();
 
+  await page.getByRole("button", { name: "Rename" }).click();
   const suiteName = page.getByLabel("Suite name");
   await suiteName.fill("   ");
-  await suiteName.blur();
+  await page.getByRole("button", { name: "Save name" }).click();
   await expect(suiteName).toHaveValue("Untitled evaluation");
-  await expect(editor.locator(".evaluation-suite-header + .evaluation-field-error"))
+  await expect(editor.locator(".evaluation-suite-rename + .evaluation-field-error"))
     .toContainText("expected string to have >=1 characters");
 
   const caseName = page.getByLabel("Case name Untitled case");
   await caseName.fill("   ");
   await caseName.blur();
   await expect(caseName).toHaveValue("Untitled case");
-  await expect(caseName.locator("xpath=..").getByRole("alert"))
+  await expect(editor.locator(".evaluation-case-detail > .evaluation-field-error"))
     .toContainText("expected string to have >=1 characters");
 
   await expect(editor.locator(".template-diagnostic[role=alert]")).toHaveCount(0);
