@@ -180,7 +180,8 @@ test("contains provider preview errors for a historical revision missing a bound
 });
 
 test("renders the four focused-case preflight regions from the shared resolution", async () => {
-  const html = await render(evaluationFixture(), {
+  const authoring = evaluationFixture();
+  const html = await render(authoring, {
     storage: "durable",
     running: false,
     onStart() {},
@@ -197,7 +198,13 @@ test("renders the four focused-case preflight regions from the shared resolution
   // 1. Revision provenance: a meaningful label, the pinned template revision,
   //    and the stable ID kept in details rather than as the primary label.
   assert.match(html, /aria-label="Revision provenance for Migrations"/);
-  assert.match(html, /Current · Question · “Explain a topic\.” · Aug 1, 12:00 PM/);
+  const localRevisionTime = new Date(authoring.selectedRevision.createdAt).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  assert.ok(html.includes(`Current · Question · “Explain a topic.” · ${localRevisionTime}`));
   assert.match(html, /pinned to the template’s current revision/);
   assert.match(html, /template-revision_question/);
   assert.match(html, /<summary>Stable identity<\/summary>/);
