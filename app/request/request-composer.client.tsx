@@ -229,7 +229,9 @@ export function RequestComposer({
           </button>
         ) : null}
       </div>
-      <RunReadinessNotice {...(readiness ? { readiness } : {})} onAction={routeReadinessAction} />
+      {activeTab !== "evaluations" && (
+        <RunReadinessNotice {...(readiness ? { readiness } : {})} onAction={routeReadinessAction} />
+      )}
       {templates.importNotice && (
         <div className="workbench-notice" role="status">
           <div className="workbench-notice-copy">

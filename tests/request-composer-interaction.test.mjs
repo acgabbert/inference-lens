@@ -117,6 +117,33 @@ test("reports evaluation action context when that tab owns the composer", async 
   }
 });
 
+test("evaluation authoring does not show ordinary request readiness", async () => {
+  const view = await mount({
+    readiness: {
+      blocked: true,
+      headline: "A template variable still needs a value",
+      detail: "Enter a value for topic in the Messages tab.",
+      summary: "Complete the named template input before running.",
+      facts: [],
+      actions: [],
+    },
+  });
+  try {
+    assert.match(view.container.textContent, /template variable still needs a value/i);
+
+    await view.click(view.tab("Evaluations"));
+
+    assert.doesNotMatch(view.container.textContent, /template variable still needs a value/i);
+    assert.match(view.container.textContent, /Open or save a project first/i);
+
+    await view.click(view.tab("Messages"));
+
+    assert.match(view.container.textContent, /template variable still needs a value/i);
+  } finally {
+    await view.close();
+  }
+});
+
 async function mount(overrides = {}) {
   const server = await createServer({
     configFile: false,
