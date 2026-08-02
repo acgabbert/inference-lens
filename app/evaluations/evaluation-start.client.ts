@@ -7,7 +7,9 @@ import type {
   EvaluationCaseId,
   EvaluationSuiteId,
 } from "../../packages/core/src/run-kernel/types.ts";
+import { describeConversationRevision } from "../../packages/core/src/conversation-revision-description.ts";
 import { evaluationBatchGuardrail } from "./evaluation-batch.client.ts";
+import { revisionChoice } from "./revision-choice.client.ts";
 
 export interface EvaluationStartReadinessInput {
   projectOpen: boolean;
@@ -73,7 +75,13 @@ export interface EvaluationStartDraftInput {
 export function createEvaluationStartDraft(input: EvaluationStartDraftInput) {
   const revision = input.project.conversationRevisions.find(({ id }) => id === input.revisionId);
   if (!revision) throw new Error("The selected conversation revision no longer exists.");
+  // Confirmation names the revision the same way the selector and preflight did,
+  // so the author confirms something they recognize rather than a bare timestamp.
+  const revisionLabel = revisionChoice(
+    describeConversationRevision(input.project, revision),
+  ).label;
   return {
+    revisionLabel,
     plan: createEvaluationExperimentPlan({
       project: input.project,
       suiteId: input.suiteId,
@@ -94,7 +102,6 @@ export function createEvaluationStartDraft(input: EvaluationStartDraftInput) {
       },
     }),
     targetName: input.profile.name || "Untitled profile",
-    revisionCreatedAt: revision.createdAt,
     storage: input.durable ? "durable" as const : "unsaved" as const,
   };
 }

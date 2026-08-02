@@ -339,3 +339,43 @@ test("composer run-only overrides cannot enter evaluation resolution", () => {
     ),
   );
 });
+
+test("describes an unrenderable revision instead of throwing, keeping provenance", () => {
+  const base = fixture();
+  const { project, suite, inputIds } = suiteBoundTo(base, [
+    { templateUseId: "template-use_first-question", variableName: "topic" },
+  ]);
+  // A pinned immutable revision goes missing, which is the shape a hand-edited
+  // or partially restored project arrives in. Resolution must stay describable:
+  // an exception here would take the whole evaluation editor down.
+  const damaged: ProjectFile = {
+    ...project,
+    promptTemplates: project.promptTemplates.map((template) =>
+      template.id === "template_safety"
+        ? { ...template, revisions: [] }
+        : template,
+    ),
+  };
+
+  const resolution = resolveEvaluationCase(
+    damaged,
+    damaged.conversationRevisions[0]!,
+    suite,
+    { values: { [inputIds[0]!]: "database migrations" } },
+  );
+
+  assert.equal(resolution.ok, false);
+  if (resolution.ok) throw new Error("unreachable");
+  assert.match(resolution.unresolvable ?? "", /invalid pinned revision/i);
+  assert.doesNotMatch(resolution.unresolvable ?? "", /undefined/);
+  // The uses that are still intact keep reporting their own provenance.
+  assert.deepEqual(
+    resolution.variables.map(({ templateUseId, variableName }) => `${templateUseId} ${variableName}`),
+    [
+      "template-use_first-question topic",
+      "template-use_first-question audience",
+      "template-use_second-question topic",
+      "template-use_second-question audience",
+    ],
+  );
+});

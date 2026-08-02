@@ -229,8 +229,13 @@ test("selecting a historical revision with no bound template use stays in the ed
   await expect(editor.locator(".evaluation-diagnostics")).toContainText(
     "Selected revision does not contain template use",
   );
-  await expect(editor.getByRole("region", { name: "Provider input for migrations" }))
-    .toContainText("This case cannot be previewed because the selected revision does not contain template use");
+  // The preview no longer collapses to one generic refusal: the binding that
+  // cannot be satisfied is its own row, and the rest of the input still
+  // resolves and renders around it.
+  const preview = editor.getByRole("region", { name: "Provider input for migrations" });
+  await expect(preview).toContainText("Case input “topic” has nowhere to go");
+  await expect(preview).toContainText("revision has no such template use");
+  await expect(preview).toContainText("This revision resolves to no messages");
   await expect(editor).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
 });
 

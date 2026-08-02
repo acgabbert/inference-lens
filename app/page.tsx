@@ -1234,9 +1234,11 @@ function HomeContent() {
             running: evaluationExecution.isRunning,
             preview: {
               targetName: activeProfile.name || "Untitled profile",
+              endpoint: activeProfile.endpoint,
+              protocol: "openai-compatible-chat-completions",
               model: activeModel,
-              temperature: activeTemperature,
               responseMode: activeResponseMode,
+              options: { temperature: activeTemperature },
             },
             ...(evaluationStartDisabledReason ? { disabledReason: evaluationStartDisabledReason } : {}),
             onStart: startEvaluation,

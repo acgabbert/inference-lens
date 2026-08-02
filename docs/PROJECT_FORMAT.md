@@ -215,6 +215,36 @@ the existing prompt-template migration first and then receives the empty suite
 collection. Loading performs this migration in memory; the workspace is not
 rewritten until its ordinary explicit-save or auto-save path runs.
 
+### Starting an evaluation from a saved prompt
+
+**Start from saved prompt…** is an authoring shortcut, not a second kind of
+evaluation input. It appends an ordinary `ProjectConversationRevision`: a
+prompt-only child of the revision the evaluation currently selects, in the same
+conversation, carrying that revision as `parentRevisionId` and exactly one
+`template-use` item pinned to the template's current immutable revision. The
+use gets fresh stable use and output-message IDs and an empty authored `values`
+map, so ordinary template defaults still apply and case bindings can still
+supply the final override. The shortcut then advances
+`project.defaults.conversationRevisionId` so the Messages editor edits the new
+revision.
+
+The child deliberately does not inherit its parent's items. That gives the
+action predictable replacement semantics and makes it impossible to silently
+duplicate a system message or an earlier prompt; a template's own multi-message
+structure still arrives whole and ordered, because one use emits every message
+of its pinned revision. Authors add surrounding messages afterwards in Messages.
+
+Suites, bindings, cases, target, inference options, and tools are untouched, and
+the project stays at schema version 7 — the shortcut writes nothing a v7 parser
+did not already accept. Because the new use has a new stable ID, existing suite
+bindings are never retargeted onto it: an identical template ID says nothing
+about whether a binding still resolves, so a suite that already has case inputs
+is warned before the revision is created rather than silently rewritten.
+
+Human revision descriptions are projected on demand from this data and are not
+stored. A mutable `revisionName` on portable content would let a label drift
+from the immutable revision an execution actually snapshotted.
+
 ## Tool mock semantics
 
 A tool definition controls what may be sent to a model. A `ToolMock` supplies a

@@ -72,10 +72,13 @@ function composerProps(overrides = {}) {
     project: null,
     evaluations: {
       project: null, selectedCaseIds: new Set(), repetitions: 1, candidates: [], diagnostics: [],
+      revisionChoices: [], savedPromptCandidates: [], savedPromptPickerOpen: false,
       selectSuite: noop, selectRevision: noop, setCaseSelected: noop, focusCase: noop,
       setRepetitions: noop, createSuite: noop, renameSuite: noop, deleteSuite: noop,
       addInput: noop, renameInput: noop, deleteInput: noop, addCase: noop,
       updateCase: noop, deleteCase: noop, addCheck: noop, updateCheck: noop, deleteCheck: noop,
+      openSavedPromptPicker: noop, closeSavedPromptPicker: noop,
+      startFromSavedPrompt: () => true, dismissNotice: noop,
     },
     evaluationExecution: { storage: "unsaved", running: false, onStart: noop },
     settings: {

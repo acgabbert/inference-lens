@@ -379,7 +379,8 @@ pre,
 .evaluation-case-list-item button span,
 .evaluation-case-check-count,
 .evaluation-regex-dialect > summary > span,
-.saved-prompt-list legend {
+.saved-prompt-list legend,
+.evaluation-preflight-region h5 {
   font-size: var(--type-metadata);
 }
 
@@ -6266,6 +6267,127 @@ main {
   overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.evaluation-preflight-region {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-default);
+}
+
+.evaluation-preflight-region h5 {
+  margin: 0;
+  color: var(--text-muted);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.evaluation-provenance-label {
+  color: var(--text-primary);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.evaluation-provenance-uses {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.evaluation-provenance-uses li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+.evaluation-provenance-uses span,
+.evaluation-provenance-uses code,
+.evaluation-provenance-details code {
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.evaluation-provenance-details summary {
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.evaluation-provenance-details dl {
+  display: grid;
+  gap: 4px;
+  margin: 6px 0 0;
+}
+
+.evaluation-provenance-details dl > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+.evaluation-provenance-details dt {
+  color: var(--text-muted);
+}
+
+.evaluation-provenance-details dd {
+  margin: 0;
+  min-width: 0;
+}
+
+/* The table can exceed a phone's width; it scrolls itself so the page cannot. */
+.evaluation-value-scroll {
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.evaluation-value-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.evaluation-value-table th,
+.evaluation-value-table td {
+  padding: 6px 10px 6px 0;
+  border-bottom: 1px solid var(--border-default);
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.evaluation-value-table th {
+  color: var(--text-muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.evaluation-value-table td {
+  color: var(--text-secondary);
+}
+
+.evaluation-value-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.evaluation-value-table .evaluation-value-missing td {
+  color: var(--danger);
+}
+
+.evaluation-target-advisory {
+  padding-left: 9px;
+  border-left: 2px solid var(--border-strong);
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.evaluation-target-advisory strong {
+  color: var(--text-secondary);
 }
 
 .evaluation-batch-warning {

@@ -40,7 +40,7 @@ export function EvaluationStartDialog({
         <h2 id="evaluation-start-title">Start “{draft.plan.suite.name}”?</h2>
         <p>Each selected case is resolved from the frozen project revision and runs sequentially. Composer-only values are not included.</p>
         <dl className="confirmation-details evaluation-start-details">
-          <div><dt>Revision</dt><dd>{new Date(draft.revisionCreatedAt).toLocaleString()} <code>{draft.plan.suite.conversationRevisionId}</code></dd></div>
+          <div><dt>Revision</dt><dd>{draft.revisionLabel} <code>{draft.plan.suite.conversationRevisionId}</code></dd></div>
           <div><dt>Target</dt><dd>{draft.targetName} · {target.model}</dd></div>
           <div><dt>Cases</dt><dd>{draft.plan.suite.cases.length} · {caseSummary(draft)}</dd></div>
           <div><dt>Repetitions</dt><dd>{draft.plan.repetitions} per case</dd></div>
