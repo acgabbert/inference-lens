@@ -13,6 +13,7 @@ import type {
 } from "../packages/core/src/types";
 import {
   createProjectFile,
+  projectDraft,
   updateConnectionRequirementEndpoint,
 } from "../packages/core/src/project";
 import {
@@ -460,11 +461,19 @@ function HomeContent() {
       setN8nImportOpen(false);
     },
   });
-  const evaluationAuthoring = useEvaluationSuiteAuthoring(
-    projectFile,
-    project.adoptProjectMutation,
-    setConfirmation,
-  );
+  const evaluationAuthoring = useEvaluationSuiteAuthoring({
+    project: projectFile,
+    adoptProjectMutation: project.adoptProjectMutation,
+    // The only cross-feature adapter evaluation authoring needs: when it
+    // advances the project's active authored revision, the composer draft,
+    // transient template overrides, and any pending branch have to follow.
+    onActiveRevisionChanged(next) {
+      replaceProjectDraft(projectDraft(next));
+      clearTemplateOverridesRef.current();
+      setBranchContext(null);
+    },
+    requestConfirmation: setConfirmation,
+  });
   useEffect(() => {
     clearTemplateOverridesRef.current = projectTemplates.clearTransientOverrides;
   }, [projectTemplates.clearTransientOverrides]);

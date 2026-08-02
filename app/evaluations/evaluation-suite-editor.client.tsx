@@ -10,9 +10,12 @@ import {
 } from "../../packages/core/src/project";
 import type { TemplateRunOverrides } from "../../packages/core/src/project";
 import type { EvaluationInputBinding } from "../../packages/core/src/evaluation-suites";
+import type { ConversationRevisionDescriptor } from "../../packages/core/src/conversation-revision-description";
 import { conversationMessageText } from "../conversation-display";
 import { FocusModeToggle, useFocusMode } from "../focus-mode.client";
 import { PaneEmptyState } from "../pane-empty-state.client";
+import { groupRevisionChoices, revisionChoice } from "./revision-choice.client";
+import { SavedPromptDialog } from "./saved-prompt-dialog.client";
 import type { EvaluationSuiteAuthoringHandle } from "./use-evaluation-suite-authoring.client";
 import type { EvaluationCheckAuthoringField } from "./use-evaluation-suite-authoring.client";
 import {
@@ -64,6 +67,19 @@ function evaluationInputLabel(
     variableName: binding.target.variableName,
     label: `${templateName} · ${binding.target.variableName}`,
   };
+}
+
+function revisionOption(descriptor: ConversationRevisionDescriptor) {
+  const choice = revisionChoice(descriptor);
+  return (
+    <option
+      key={descriptor.revisionId}
+      title={`${descriptor.revisionId} · ${descriptor.messageCount} ${descriptor.messageCount === 1 ? "message" : "messages"}`}
+      value={descriptor.revisionId}
+    >
+      {choice.label}
+    </option>
+  );
 }
 
 function CheckEditor({ check, error, onCommit, onRemove }: {
@@ -271,6 +287,7 @@ export function EvaluationSuiteEditor({
   const selectedCount = authoring.selectedCaseIds.size;
   const batch = evaluationBatchGuardrail(selectedCount, authoring.repetitions);
   const availableCandidates = authoring.candidates.filter((candidate) => !suite?.inputBindings.some((binding) => binding.target.templateUseId === candidate.templateUseId && binding.target.variableName === candidate.variableName));
+  const revisionGroups = groupRevisionChoices(authoring.revisionChoices);
 
   if (!project) return <PaneEmptyState eyebrow="Evaluations" heading="Open or save a project first" detail="Evaluation suites are portable project content, so they need a project document." />;
 
@@ -302,10 +319,30 @@ export function EvaluationSuiteEditor({
           </form>}
           {authoring.error?.target.kind === "suite-name" && <p className="evaluation-field-error" role="alert">{authoring.error.message}</p>}
           {authoring.error?.target.kind === "editor" && <div className="template-diagnostic" role="alert">{authoring.error.message}</div>}
+          {authoring.notice && <p className="evaluation-authoring-notice" role="status">
+            <strong>Created a revision from “{authoring.notice.templateName}”.</strong> It pins {authoring.notice.messageCount} {authoring.notice.messageCount === 1 ? "message" : "messages"} and {authoring.notice.variableCount === 0 ? "no variables" : `${authoring.notice.variableCount} ${authoring.notice.variableCount === 1 ? "variable" : "variables"}`}, and is selected below.
+            <button className="text-button" type="button" onClick={authoring.dismissNotice}>Dismiss</button>
+          </p>}
+          {authoring.savedPromptError && !authoring.savedPromptPickerOpen && <p className="evaluation-field-error" role="alert">{authoring.savedPromptError}</p>}
           <section className="evaluation-preflight" aria-label="Evaluation preflight">
             <div className="evaluation-preflight-status"><span className="eyebrow">Preflight</span><strong>{authoring.diagnostics.length === 0 && !batch.error ? "Ready to run" : `${authoring.diagnostics.length + (batch.error ? 1 : 0)} setup ${authoring.diagnostics.length + (batch.error ? 1 : 0) === 1 ? "issue" : "issues"}`}</strong></div>
             <div className="evaluation-preflight-controls">
-              <label>Base conversation revision <select value={authoring.revisionId} onChange={(event) => authoring.selectRevision(event.target.value as NonNullable<typeof authoring.revisionId>)}>{project.conversationRevisions.map((revision) => <option key={revision.id} value={revision.id}>{revision.id === project.defaults.conversationRevisionId ? "Current · " : ""}{new Date(revision.createdAt).toLocaleString()}</option>)}</select><small>Cases start from this saved project revision; session-only composer values and run overrides are excluded.</small></label>
+              <div className="evaluation-revision-picker">
+                <label>Base conversation revision
+                  <select value={authoring.revisionId} onChange={(event) => authoring.selectRevision(event.target.value as NonNullable<typeof authoring.revisionId>)}>
+                    {revisionGroups.grouped ? (
+                      <>
+                        {/* Incompatible revisions stay selectable: choosing one is how an
+                            author sees and repairs a historical incompatibility. */}
+                        {revisionGroups.compatible.length > 0 && <optgroup label="Compatible revisions">{revisionGroups.compatible.map(revisionOption)}</optgroup>}
+                        {revisionGroups.other.length > 0 && <optgroup label="Other revisions">{revisionGroups.other.map(revisionOption)}</optgroup>}
+                      </>
+                    ) : authoring.revisionChoices.map(revisionOption)}
+                  </select>
+                  <small>Cases start from this saved project revision; session-only composer values and run overrides are excluded.</small>
+                </label>
+                <button className="button secondary" type="button" onClick={authoring.openSavedPromptPicker}>Start from saved prompt…</button>
+              </div>
               <div className="evaluation-batch-controls">
                 <label>Repetitions <input type="number" min="1" max={MAX_EVALUATION_REPETITIONS} step="1" value={authoring.repetitions} onChange={(event) => authoring.setRepetitions(Number(event.target.value))} /></label>
                 <output><span>{selectedCount} selected</span> × <span>{authoring.repetitions} {authoring.repetitions === 1 ? "rep" : "reps"}</span> → <strong>{Number.isFinite(batch.plannedCalls) ? batch.plannedCalls.toLocaleString() : "Invalid"} runs</strong></output>
@@ -347,6 +384,15 @@ export function EvaluationSuiteEditor({
             )}
           </section>
         </>
+      )}
+      {authoring.savedPromptPickerOpen && (
+        <SavedPromptDialog
+          candidates={authoring.savedPromptCandidates}
+          hasExistingBindings={(suite?.inputBindings.length ?? 0) > 0}
+          {...(authoring.savedPromptError ? { error: authoring.savedPromptError } : {})}
+          onCancel={authoring.closeSavedPromptPicker}
+          onConfirm={authoring.startFromSavedPrompt}
+        />
       )}
     </section>
   );

@@ -12,6 +12,27 @@ export function evaluationFixture() {
       cases: [{ id: "evaluation-case_migrations", name: "Migrations", values: { "evaluation-input_topic": "database migrations" }, referenceAnswer: "Explain a safe rollout.", checks: [{ checkId: "check_contains", kind: "contains", value: "rollback" }] }],
     }],
   };
+  // Mirrors describeConversationRevision for this revision. The fixture states
+  // it literally because these render tests run outside the TypeScript loader.
+  const currentDescriptor = {
+    revisionId: "revision_current",
+    conversationId: "conversation_fixture",
+    createdAt: "2026-08-01T12:00:00.000Z",
+    isCurrentRevision: true,
+    templateUses: [{
+      templateUseId: "template-use_question",
+      templateId: "template_question",
+      templateName: "Question",
+      templateRevisionId: "template-revision_question",
+      pinnedToCurrentTemplateRevision: true,
+      messageCount: 1,
+    }],
+    messageCount: 1,
+    summary: "Explain a topic.",
+    summaryRole: "user",
+    resolvable: true,
+    compatibility: { kind: "compatible" },
+  };
   return {
     project,
     suiteId: "evaluation-suite_topics",
@@ -21,9 +42,50 @@ export function evaluationFixture() {
     repetitions: 3,
     candidates: [{ templateUseId: "template-use_question", templateName: "Question", variableName: "audience" }],
     diagnostics: [],
+    revisionChoices: [currentDescriptor],
+    selectedRevision: currentDescriptor,
+    focusedCaseResolution: {
+      ok: true,
+      messages: [{ id: "message_question", role: "user", content: [{ type: "text", text: "Explain database migrations." }] }],
+      templateResolutions: [{
+        templateUseId: "template-use_question",
+        templateId: "template_question",
+        templateRevisionId: "template-revision_question",
+        templateName: "Question",
+        messages: [{ role: "user", content: "Explain {{topic}}." }],
+        variableDefaults: { topic: "a topic" },
+        values: { topic: "database migrations" },
+        outputMessageIds: ["message_question"],
+      }],
+      variables: [{
+        templateUseId: "template-use_question",
+        templateId: "template_question",
+        templateName: "Question",
+        templateRevisionId: "template-revision_question",
+        variableName: "topic",
+        value: "database migrations",
+        source: "case",
+        inputBindingId: "evaluation-input_topic",
+        inputName: "Topic",
+      }],
+      caseValues: { "evaluation-input_topic": "database migrations" },
+      unresolvedBindings: [],
+    },
+    savedPromptCandidates: [{
+      templateId: "template_question",
+      name: "Question",
+      currentRevisionId: "template-revision_question",
+      revisionCreatedAt: "2026-08-01T12:00:00.000Z",
+      messageCount: 1,
+      roles: ["user"],
+      variables: [{ name: "topic", hasDefault: true, defaultValue: "a topic" }],
+    }],
+    savedPromptPickerOpen: false,
     selectSuite: noop, selectRevision: noop, setCaseSelected: noop, focusCase: noop,
     setRepetitions: noop, createSuite: noop, renameSuite: noop, deleteSuite: noop,
     addInput: noop, renameInput: noop, deleteInput: noop, addCase: noop,
     updateCase: noop, deleteCase: noop, addCheck: noop, updateCheck: noop, deleteCheck: noop,
+    openSavedPromptPicker: noop, closeSavedPromptPicker: noop,
+    startFromSavedPrompt: () => true, dismissNotice: noop,
   };
 }

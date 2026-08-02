@@ -1,9 +1,9 @@
 import { CHECK_SCHEMA_VERSION } from "./checks.ts";
 import { parseExperimentPlanFile } from "./experiment.ts";
 import type { EvaluationExperimentPlanV3 } from "./experiment.ts";
+import { resolveEvaluationCase } from "./evaluation-case-resolution.ts";
 import { evaluationSuitePreflight } from "./evaluation-suites.ts";
-import { prepareProjectRevisionRun } from "./project.ts";
-import type { ProjectFile, TemplateRunOverrides } from "./project.ts";
+import type { ProjectFile } from "./project.ts";
 import { randomUUID } from "./random-id.ts";
 import { createEntityId } from "./run-kernel/types.ts";
 import type {
@@ -92,19 +92,11 @@ export function createEvaluationExperimentPlan(
   const now = options.createdAt ?? new Date().toISOString();
   const suffix = options.createSuffix ?? randomUUID;
   const cases = selectedCases.map((evaluationCase) => {
-    const overrides: Record<string, Record<string, string>> = {};
-    suite.inputBindings.forEach((binding) => {
-      const values = overrides[binding.target.templateUseId] ?? {};
-      values[binding.target.variableName] = evaluationCase.values[binding.id]!;
-      overrides[binding.target.templateUseId] = values;
-    });
-    const prepared = prepareProjectRevisionRun(
-      project,
-      revision,
-      overrides as TemplateRunOverrides,
-    );
-    if (!prepared.ok) {
-      throw new EvaluationSetupError(prepared.diagnostics.map(({ diagnostic }) => ({
+    // The same projection the focused-case preview renders, so what an author
+    // approved and what the plan freezes cannot disagree.
+    const resolved = resolveEvaluationCase(project, revision, suite, evaluationCase);
+    if (!resolved.ok) {
+      throw new EvaluationSetupError(resolved.diagnostics.map(({ diagnostic }) => ({
         code: diagnostic.code,
         message: diagnostic.message,
       })));
@@ -121,8 +113,8 @@ export function createEvaluationExperimentPlan(
         conversationId: revision.conversationId,
         conversationRevisionId: revision.id,
         target: structuredClone(execution.target),
-        messages: prepared.messages,
-        templateResolutions: prepared.templateResolutions,
+        messages: resolved.messages,
+        templateResolutions: resolved.templateResolutions,
         responseMode: execution.responseMode,
         options: structuredClone(execution.options),
         tools: structuredClone(execution.tools),

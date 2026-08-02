@@ -7,11 +7,8 @@ import type {
   PromptTemplateUseId,
 } from "./run-kernel/types.ts";
 import type { CheckDefinition } from "./checks.ts";
-import { prepareProjectRevisionRun } from "./project.ts";
-import type {
-  ProjectFile,
-  TemplateRunOverrides,
-} from "./project.ts";
+import { resolveEvaluationCase } from "./evaluation-case-resolution.ts";
+import type { ProjectFile } from "./project.ts";
 import { templateUseVariableIndex } from "./template-use-variable-index.ts";
 export { templateUseVariableIndex } from "./template-use-variable-index.ts";
 
@@ -149,31 +146,23 @@ export function evaluationSuitePreflight(
       });
     });
 
+    // A binding the revision cannot satisfy is already reported once, below, as
+    // a suite-level incompatibility. Repeating it per case would bury the one
+    // fact the author needs behind a row for every case.
     if (!bindingsMatchRevision) return;
 
-    const overrides: Record<string, Record<string, string>> = {};
-    suite.inputBindings.forEach((binding) => {
-      const values = overrides[binding.target.templateUseId] ?? {};
-      values[binding.target.variableName] = evaluationCase.values[binding.id] ?? "";
-      overrides[binding.target.templateUseId] = values;
-    });
-    const prepared = prepareProjectRevisionRun(
-      project,
-      revision,
-      overrides as TemplateRunOverrides,
-    );
-    if (!prepared.ok) {
-      prepared.diagnostics.forEach(({ templateUseId, diagnostic }) => {
-        if (diagnostic.code !== "missing-template-variable") return;
-        diagnostics.push({
-          code: "unresolved-template-variable",
-          caseId: evaluationCase.id,
-          templateUseId,
-          variableName: diagnostic.name,
-          message: `Case "${evaluationCase.name}" cannot resolve template variable "${diagnostic.name}": ${diagnostic.message}`,
-        });
+    const resolution = resolveEvaluationCase(project, revision, suite, evaluationCase);
+    if (resolution.ok) return;
+    resolution.diagnostics.forEach(({ templateUseId, diagnostic }) => {
+      if (diagnostic.code !== "missing-template-variable") return;
+      diagnostics.push({
+        code: "unresolved-template-variable",
+        caseId: evaluationCase.id,
+        templateUseId,
+        variableName: diagnostic.name,
+        message: `Case "${evaluationCase.name}" cannot resolve template variable "${diagnostic.name}": ${diagnostic.message}`,
       });
-    }
+    });
   });
 
   suite.inputBindings.forEach((binding) => {
