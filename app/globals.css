@@ -3928,6 +3928,50 @@ textarea {
   font-family: var(--font-geist-mono), monospace;
 }
 
+/* The outbound request, lifted out of the event JSON so it can be read and
+   copied for comparison against another client's payload. */
+.request-evidence {
+  margin: 0 0 8px;
+  padding: 9px 11px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+}
+
+.request-evidence-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-family: var(--font-geist-mono), monospace;
+  word-break: break-all;
+}
+
+.request-evidence-actions {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.request-evidence-status,
+.request-evidence-note {
+  color: var(--text-faint);
+  font-family: var(--font-geist-sans), sans-serif;
+  line-height: 1.4;
+}
+
+.request-evidence-note {
+  margin: 7px 0 0;
+  word-break: break-word;
+}
+
+.request-evidence-body {
+  max-height: 340px;
+  margin: 8px 0 0;
+  overflow: auto;
+}
+
 /* The trace header is uppercase; the tab switcher should still read the same
    here as it does above the response pane. */
 .trace-header .pane-tabs button {
