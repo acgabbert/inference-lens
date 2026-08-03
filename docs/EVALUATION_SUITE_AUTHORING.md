@@ -80,12 +80,21 @@ documented in [the project format](PROJECT_FORMAT.md#starting-an-evaluation-from
 
 ## Exact focused-case preflight
 
-The focused case shows the exact provider input an execution would snapshot, in
-four regions:
+The focused case shows the exact provider input an execution would snapshot. It
+renders in the **response pane**, titled "Provider input", whenever the
+Evaluations tab is the active request context and no execution is on screen —
+the same pane the results workspace claims the moment a run starts. The editor
+on the left keeps the controls; the pane on the right shows what they resolve
+to, and follows the focused case as it changes. A live or reopened execution
+always wins the pane. On a narrow viewport the panes are tabs, and the response
+tab names itself "Preview" while an evaluation is being authored.
+
+All four regions are open by default; only the stable IDs inside revision
+provenance stay behind a disclosure:
 
 1. **Revision provenance** — the same projected description the selector and the
    start confirmation use, which prompts are pinned and at which immutable
-   template revision, and the stable IDs in a details disclosure.
+   template revision, and the stable IDs behind a details disclosure.
 2. **Resolved values** — one row per template variable with its effective value
    and its source: case value, authored use value, or template default. A
    variable no level supplies stays visible as a setup error rather than a blank,

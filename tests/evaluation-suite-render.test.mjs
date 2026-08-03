@@ -15,6 +15,18 @@ async function render(authoring, execution) {
   } finally { await server.close(); }
 }
 
+/** The preview is the response pane's occupant, so it renders on its own. */
+async function renderPreview(authoring, execution) {
+  const server = await createServer({ configFile: false, root: process.cwd(), plugins: [react()], server: { middlewareMode: true, hmr: false, ws: false }, logLevel: "warn" });
+  try {
+    const [{ EvaluationPreviewWorkspace }, { renderToStaticMarkup }, { createElement }] = await Promise.all([
+      server.ssrLoadModule("/app/evaluations/evaluation-case-preview.client.tsx"),
+      import("react-dom/server"), import("react"),
+    ]);
+    return renderToStaticMarkup(createElement(EvaluationPreviewWorkspace, { authoring, execution }));
+  } finally { await server.close(); }
+}
+
 test("renders compact preflight and the focused case workspace", async () => {
   const html = await render(evaluationFixture(), { storage: "durable", running: false, onStart() {} });
   assert.match(html, /Topic quality/);
@@ -33,9 +45,11 @@ test("renders compact preflight and the focused case workspace", async () => {
   assert.match(html, /Start evaluation…/);
   assert.match(html, /suite keeps its own immutable input/i);
   assert.match(html, /plan, traces, and result will be saved/i);
-  assert.match(html, /Provider input/);
-  assert.match(html, /Explain database migrations\./);
-  assert.match(html, /other cases can resolve to different messages/i);
+  // The provider-input preview is the response pane's, not the editor's: the
+  // editor keeps the controls, the pane shows what they resolve to.
+  assert.doesNotMatch(html, /Provider input/);
+  assert.doesNotMatch(html, /Explain database migrations\./);
+  assert.doesNotMatch(html, /other cases can resolve to different messages/i);
 });
 
 test("warns without resizing large batches and names session-only evidence", async () => {
@@ -52,9 +66,10 @@ test("explains when cases do not vary provider input", async () => {
   authoring.project.evaluationSuites[0].inputBindings = [];
   authoring.project.evaluationSuites[0].cases[0].values = {};
   authoring.candidates = [];
+  const preview = await renderPreview(authoring);
+  assert.match(preview, /All cases currently use this provider input/);
+  assert.match(preview, /References and checks may still differ/);
   const html = await render(authoring);
-  assert.match(html, /All cases currently use this provider input/);
-  assert.match(html, /References and checks may still differ/);
   assert.doesNotMatch(html, /evaluation-input-manager/);
 });
 
@@ -166,22 +181,26 @@ test("contains provider preview errors for a historical revision missing a bound
     }],
   };
 
+  // The setup issue is preflight's, in the editor; the unsatisfiable binding is
+  // the preview's. The two panes report the same failure from one resolution.
   const html = await render(authoring);
-
   assert.match(html, /1 setup issue/);
   assert.match(html, /Selected revision does not contain template use/);
+
+  const preview = await renderPreview(authoring);
   // The unsatisfiable binding is a visible row in the value table, not a
   // silently dropped override.
-  assert.match(html, /Case input “Topic” has nowhere to go/);
-  assert.match(html, /revision has no such template use/);
-  assert.match(html, /evaluation-value-missing/);
-  assert.match(html, /resolves to no messages/);
+  assert.match(preview, /Case input “Topic” has nowhere to go/);
+  assert.match(preview, /revision has no such template use/);
+  assert.match(preview, /evaluation-value-missing/);
+  assert.match(preview, /resolves to no messages/);
   assert.doesNotMatch(html, /NaN|Infinity|undefined|\[object Object\]/);
+  assert.doesNotMatch(preview, /NaN|Infinity|undefined|\[object Object\]/);
 });
 
 test("renders the four focused-case preflight regions from the shared resolution", async () => {
   const authoring = evaluationFixture();
-  const html = await render(authoring, {
+  const html = await renderPreview(authoring, {
     storage: "durable",
     running: false,
     onStart() {},
@@ -194,6 +213,12 @@ test("renders the four focused-case preflight regions from the shared resolution
       options: { temperature: 0.4, maxOutputTokens: 256, stop: ["</end>"] },
     },
   });
+
+  // The pane names itself and the case it is showing, so an author reading the
+  // right-hand pane never has to look left to know which case this is.
+  assert.match(html, /<h2>Provider input<\/h2>/);
+  assert.match(html, /aria-label="Provider input for Migrations"/);
+  assert.match(html, /Migrations/);
 
   // 1. Revision provenance: a meaningful label, the pinned template revision,
   //    and the stable ID kept in details rather than as the primary label.
@@ -235,6 +260,14 @@ test("renders the four focused-case preflight regions from the shared resolution
   assert.doesNotMatch(html, /<dt>Seed<\/dt>/);
   assert.doesNotMatch(html, /<dt>Provider options<\/dt>/);
   assert.doesNotMatch(html, /NaN|Infinity|undefined|\[object Object\]/);
+
+  // With the pane's room, provenance and execution settings are headings the
+  // author reads, not disclosures they have to open. Only the stable IDs stay
+  // behind a summary.
+  assert.match(html, /<h5>Revision provenance<\/h5>/);
+  assert.match(html, /<h5>Execution settings<\/h5>/);
+  assert.doesNotMatch(html, /<summary>Revision provenance<\/summary>/);
+  assert.doesNotMatch(html, /<summary>Execution settings<\/summary>/);
 });
 
 test("shows every value source and keeps a variable with no value visible as a setup error", async () => {
@@ -271,7 +304,7 @@ test("shows every value source and keeps a variable with no value visible as a s
     ],
   };
 
-  const html = await render(authoring);
+  const html = await renderPreview(authoring);
 
   assert.match(html, /<td>Case value · Topic<\/td>/);
   assert.match(html, /<td>Authored use value<\/td>/);
@@ -291,7 +324,7 @@ test("marks a disagreeing prompt target recommendation as advisory without chang
     model: "authored-against-model",
   };
 
-  const html = await render(authoring, {
+  const execution = {
     storage: "durable",
     running: false,
     onStart() {},
@@ -303,13 +336,15 @@ test("marks a disagreeing prompt target recommendation as advisory without chang
       responseMode: "buffered",
       options: { temperature: 0.4 },
     },
-  });
+  };
+  const preview = await renderPreview(authoring, execution);
 
-  assert.match(html, /Question was authored against Research cluster · authored-against-model/);
-  assert.match(html, /The evaluation target below is unchanged/);
-  // Advisory, not blocking: preflight is still ready and the target still reads
-  // as the one the route supplied.
+  assert.match(preview, /Question was authored against Research cluster · authored-against-model/);
+  assert.match(preview, /The evaluation target below is unchanged/);
+  assert.match(preview, /<dt>Model<\/dt><dd>buffered-test-model<\/dd>/);
+  assert.doesNotMatch(preview, /NaN|Infinity|undefined|\[object Object\]/);
+
+  // Advisory, not blocking: preflight in the editor is still ready to run.
+  const html = await render(authoring, execution);
   assert.match(html, /Ready to run/);
-  assert.match(html, /<dt>Model<\/dt><dd>buffered-test-model<\/dd>/);
-  assert.doesNotMatch(html, /NaN|Infinity|undefined|\[object Object\]/);
 });

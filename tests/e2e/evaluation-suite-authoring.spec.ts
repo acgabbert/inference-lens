@@ -192,7 +192,8 @@ test("a saved suite opens with every case selected and preflight clean", async (
   await expect(editor).toContainText("3 selected × 1 rep → 3 runs");
   await expect(editor).toContainText("Ready to run");
   await expect(editor.locator(".evaluation-diagnostics")).toHaveCount(0);
-  await expect(editor.getByRole("region", { name: "Provider input for migrations" }))
+  await expect(page.locator(".evaluation-preview-scroll")
+    .getByRole("region", { name: "Provider input for migrations" }))
     .toContainText("Explain database migrations to engineers.");
   const layout = await editor.locator(".evaluation-preflight").evaluate((preflight) => {
     const startArea = preflight.querySelector<HTMLElement>(".evaluation-start-area");
@@ -243,11 +244,13 @@ test("selecting a historical revision with no bound template use stays in the ed
   // The preview no longer collapses to one generic refusal: the binding that
   // cannot be satisfied is its own row, and the rest of the input still
   // resolves and renders around it.
-  const preview = editor.getByRole("region", { name: "Provider input for migrations" });
+  const preview = page.locator(".evaluation-preview-scroll")
+    .getByRole("region", { name: "Provider input for migrations" });
   await expect(preview).toContainText("Case input “topic” has nowhere to go");
   await expect(preview).toContainText("revision has no such template use");
   await expect(preview).toContainText("This revision resolves to no messages");
   await expect(editor).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
+  await expect(preview).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
 });
 
 test("a rejected check edit stays local and restores the saved value", async ({ page }) => {

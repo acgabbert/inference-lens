@@ -123,13 +123,14 @@ test("authoring from a saved prompt shows the exact resolved input it will run",
   await expected.fill("Buffered fixture");
   await expected.blur();
 
-  // Region 1 — revision provenance: collapsed by default, recognizable without
-  // reading an ID once opened, with every stable ID kept in details.
-  const provenance = editor.getByRole("region", { name: /^Revision provenance for / });
-  // Closed-details content still reaches innerText, so collapsed-by-default is
-  // asserted through visibility rather than text absence.
-  await expect(provenance.locator(".evaluation-provenance-label")).toBeHidden();
-  await provenance.getByText("Revision provenance").click();
+  // The preview is the response pane's, not the editor's.
+  const preview = page.locator(".evaluation-preview-scroll");
+  await expect(page.locator(".result").getByRole("heading", { name: "Provider input" }))
+    .toBeVisible();
+
+  // Region 1 — revision provenance: open by default now that the pane has the
+  // room, recognizable without reading an ID, with stable IDs kept in details.
+  const provenance = preview.getByRole("region", { name: /^Revision provenance for / });
   await expect(provenance.locator(".evaluation-provenance-label")).toBeVisible();
   await expect(provenance).toContainText("Question · “Explain");
   // No "Current ·" prefix: the suite pins a revision of its own, and creating
@@ -140,7 +141,7 @@ test("authoring from a saved prompt shows the exact resolved input it will run",
   await expect(provenance.getByText("Stable identity")).toBeVisible();
 
   // Region 2 — resolved values: one row per variable, each naming its source.
-  const values = editor.getByRole("region", { name: /^Resolved values for / });
+  const values = preview.getByRole("region", { name: /^Resolved values for / });
   const topicRow = values.locator("tbody tr").filter({ hasText: "topic" });
   await expect(topicRow).toContainText("database migrations");
   await expect(topicRow).toContainText("Case value · topic");
@@ -149,14 +150,12 @@ test("authoring from a saved prompt shows the exact resolved input it will run",
   await expect(audienceRow).toContainText("Template default");
 
   // Region 3 — the exact ordered message the plan will snapshot.
-  const conversation = editor.getByRole("region", { name: /^Resolved conversation for / });
+  const conversation = preview.getByRole("region", { name: /^Resolved conversation for / });
   await expect(conversation.locator(".request-preview-message")).toHaveCount(1);
   await expect(conversation).toContainText("Explain database migrations to engineers.");
 
-  // Region 4 — the target and settings that go with it, collapsed by default
-  // because the section heading already names the target and model.
-  const settings = editor.getByRole("region", { name: /^Execution settings for / });
-  await settings.getByText("Execution settings").click();
+  // Region 4 — the target and settings that go with it, also open by default.
+  const settings = preview.getByRole("region", { name: /^Execution settings for / });
   await expect(settings).toContainText("Buffered fixture");
   await expect(settings).toContainText(BUFFERED_FIXTURE_ENDPOINT);
   await expect(settings).toContainText("openai-compatible-chat-completions");
@@ -169,6 +168,7 @@ test("authoring from a saved prompt shows the exact resolved input it will run",
   await expect(settings).toContainText("None");
 
   await expect(editor).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
+  await expect(preview).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
 
   // Confirmation names the same revision the same way, then the run itself
   // goes through the buffered fixture deterministically.
@@ -207,16 +207,17 @@ test("a second saved prompt warns about existing bindings and stays distinct in 
 
   // The prompt-only child replaces rather than appends, so the earlier
   // question use is not carried along and its binding no longer resolves.
-  const provenance = editor.getByRole("region", { name: /^Revision provenance for / });
-  await provenance.getByText("Revision provenance").click();
+  const preview = page.locator(".evaluation-preview-scroll");
+  const provenance = preview.getByRole("region", { name: /^Revision provenance for / });
   await expect(provenance).toContainText("Safety policy · “Answer within");
   await expect(provenance).not.toContainText("Question");
 
-  const values = editor.getByRole("region", { name: /^Resolved values for / });
+  const values = preview.getByRole("region", { name: /^Resolved values for / });
   await expect(values).toContainText("Case input “topic” has nowhere to go");
   await expect(values).toContainText("revision has no such template use");
   await expect(values).toContainText("Template default");
   await expect(editor).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
+  await expect(preview).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
 
   // The earlier revision is still reachable and still described meaningfully,
   // one disclosure away.
@@ -267,8 +268,14 @@ test("the resolved-input regions stay inside a phone viewport", async ({ page })
   await page.getByRole("button", { name: "+ Add case", exact: true }).click();
   await page.getByLabel("Untitled case topic").fill("database migrations");
 
-  const editor = page.locator(".evaluation-editor");
-  await expect(editor.getByRole("region", { name: /^Resolved values for / })).toBeVisible();
+  // On a phone the panes are tabs, and the response tab names itself Preview
+  // while an evaluation is being authored rather than showing a run status.
+  const previewTab = page.locator(".mobile-workbench-tabs").getByRole("button", { name: "Preview" });
+  await expect(previewTab).toBeVisible();
+  await previewTab.click();
+
+  const preview = page.locator(".evaluation-preview-scroll");
+  await expect(preview.getByRole("region", { name: /^Resolved values for / })).toBeVisible();
 
   const layout = await page.evaluate(() => ({
     bodyWidth: document.body.scrollWidth,

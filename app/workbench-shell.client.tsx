@@ -21,6 +21,7 @@ type WorkbenchShellProps = {
   onViewChange: (view: WorkbenchView) => void;
   responseStatus?: string;
   requestLabel?: string;
+  responseLabel?: string;
 };
 
 const SPLIT_STORAGE_KEY = "inference-lens:workbench-split:v1";
@@ -39,6 +40,7 @@ export function WorkbenchShell({
   onViewChange,
   responseStatus,
   requestLabel = "Request",
+  responseLabel = "Response",
 }: WorkbenchShellProps) {
   const shellRef = useRef<HTMLElement>(null);
   const [requestWidth, setRequestWidth] = useState(48);
@@ -100,7 +102,7 @@ export function WorkbenchShell({
           type="button"
           onClick={() => onViewChange("response")}
         >
-          Response
+          {responseLabel}
           {responseStatus && (
             <span className={`mobile-status-dot ${responseStatus}`} />
           )}

@@ -89,6 +89,8 @@ import {
 import { useEvaluationExecutionSession } from "./evaluations/use-evaluation-execution-session.client";
 import { EvaluationStartDialog } from "./evaluations/evaluation-start-dialog.client";
 import { EvaluationResultsWorkspace } from "./evaluations/evaluation-results-workspace.client";
+import { EvaluationPreviewWorkspace } from "./evaluations/evaluation-case-preview.client";
+import type { EvaluationSuiteExecutionActions } from "./evaluations/evaluation-suite-editor.client";
 
 const inferenceTransport = createInferenceTransport();
 
@@ -952,6 +954,33 @@ function HomeContent() {
     activityInProgress: isRequestActive || repeatedExperiment.isRunning || evaluationExecution.isRunning,
   }).blockedReason;
 
+  // One object, two panes: the composer's preflight and the response pane's
+  // provider-input preview must report the same target and settings, so they
+  // read the same value rather than each assembling their own.
+  const evaluationExecutionActions: EvaluationSuiteExecutionActions = {
+    storage: projectWorkspace ? "durable" : "unsaved",
+    running: evaluationExecution.isRunning,
+    preview: {
+      targetName: activeProfile.name || "Untitled profile",
+      endpoint: activeProfile.endpoint,
+      protocol: "openai-compatible-chat-completions",
+      model: selectedEvaluationSuite?.execution.target.model ?? "",
+      responseMode: selectedEvaluationSuite?.execution.responseMode ?? "buffered",
+      options: selectedEvaluationSuite?.execution.options ?? {},
+      streamingAvailable: activeCapabilities.streaming,
+    },
+    ...(evaluationStartDisabledReason ? { disabledReason: evaluationStartDisabledReason } : {}),
+    onStart: startEvaluation,
+  };
+
+  // The provider-input preview only claims the response pane while an
+  // evaluation is being authored: a live or reopened execution keeps its
+  // results workspace, which is the same thing the pane branch below decides.
+  const evaluationPreviewInResponsePane =
+    requestActionContext === "evaluation" &&
+    !(evaluationExecution.execution && !evaluationExecution.execution.selectedRunId) &&
+    !(repeatedExperiment.execution && !repeatedExperiment.execution.selectedRunId);
+
   const onContextualRunShortcut = useEffectEvent((event: KeyboardEvent) => {
     if (!(event.metaKey || event.ctrlKey) || event.key !== "Enter") return;
     event.preventDefault();
@@ -1194,7 +1223,10 @@ function HomeContent() {
         view={workbenchView}
         onViewChange={setWorkbenchView}
         inspectAvailable={Boolean(runState && runState.status.kind !== "not_started")}
-        responseStatus={repeatedExperiment.isRunning || evaluationExecution.isRunning ? "running" : status}
+        {...(evaluationPreviewInResponsePane
+          ? {}
+          : { responseStatus: repeatedExperiment.isRunning || evaluationExecution.isRunning ? "running" : status })}
+        responseLabel={evaluationPreviewInResponsePane ? "Preview" : "Response"}
         requestLabel={evaluationExecution.execution?.selectedRunId ? "Evaluation" : repeatedExperiment.execution?.selectedRunId ? "Experiment" : "Request"}
         request={
         evaluationExecution.execution?.selectedRunId ? <EvaluationResultsWorkspace
@@ -1222,21 +1254,7 @@ function HomeContent() {
           }}
           templates={projectTemplates}
           evaluations={evaluationAuthoring}
-          evaluationExecution={{
-            storage: projectWorkspace ? "durable" : "unsaved",
-            running: evaluationExecution.isRunning,
-            preview: {
-              targetName: activeProfile.name || "Untitled profile",
-              endpoint: activeProfile.endpoint,
-              protocol: "openai-compatible-chat-completions",
-              model: selectedEvaluationSuite?.execution.target.model ?? "",
-              responseMode: selectedEvaluationSuite?.execution.responseMode ?? "buffered",
-              options: selectedEvaluationSuite?.execution.options ?? {},
-              streamingAvailable: activeCapabilities.streaming,
-            },
-            ...(evaluationStartDisabledReason ? { disabledReason: evaluationStartDisabledReason } : {}),
-            onStart: startEvaluation,
-          }}
+          evaluationExecution={evaluationExecutionActions}
           project={projectFile}
           settings={{
             model: activeModel,
@@ -1290,6 +1308,9 @@ function HomeContent() {
             execution={repeatedExperiment.execution}
             onStop={repeatedExperiment.cancel}
             onOpenTrace={repeatedExperiment.openTrace}
+          /> : evaluationPreviewInResponsePane ? <EvaluationPreviewWorkspace
+            authoring={evaluationAuthoring}
+            execution={evaluationExecutionActions}
           /> : <ResponseOutput
             output={output}
             reasoning={reasoning}

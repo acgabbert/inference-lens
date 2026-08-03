@@ -380,8 +380,8 @@ pre,
 .evaluation-case-check-count,
 .evaluation-regex-dialect > summary > span,
 .saved-prompt-list legend,
-.evaluation-preflight-region h5,
-.evaluation-region-disclosure > summary {
+.evaluation-preview-case,
+.evaluation-preflight-region h5 {
   font-size: var(--type-metadata);
 }
 
@@ -6329,22 +6329,34 @@ main {
   color: var(--warning-strong);
 }
 
+/* The response pane is the surface here, so the preview is a plain stack of
+   regions rather than the nested card it was inside the composer. */
+.evaluation-preview-scroll {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-height: 0;
+  flex: 1 1 auto;
+  padding: 14px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--surface-panel);
+}
+
+.evaluation-preview-case {
+  color: var(--text-secondary);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
 .evaluation-provider-input {
   display: grid;
   gap: 12px;
-  padding: 14px;
-  border: 1px solid var(--border-default);
-  border-radius: 10px;
-  background: var(--surface-sunken);
+  min-width: 0;
 }
 
-.evaluation-provider-input h4,
 .evaluation-provider-input p {
   margin: 0;
-}
-
-.evaluation-provider-input h4 {
-  margin-top: 2px;
 }
 
 .evaluation-provider-input > p,
@@ -6415,24 +6427,12 @@ main {
   border-top: 1px solid var(--border-default);
 }
 
-.evaluation-preflight-region h5,
-.evaluation-region-disclosure > summary {
+.evaluation-preflight-region h5 {
   margin: 0;
   color: var(--text-muted);
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-}
-
-/* The summary is the region heading; collapsed regions keep the preflight
-   readable while every detail stays one deliberate click away. */
-.evaluation-region-disclosure > summary {
-  cursor: pointer;
-}
-
-.evaluation-region-disclosure[open] {
-  display: grid;
-  gap: 8px;
 }
 
 .evaluation-provenance-label {
@@ -7211,11 +7211,6 @@ main {
   .evaluation-start-area {
     align-items: flex-start;
     flex-direction: column !important;
-  }
-
-  .evaluation-provider-input .evaluation-section-heading {
-    align-items: flex-start;
-    flex-direction: column;
   }
 
   .evaluation-provider-target {
