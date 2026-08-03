@@ -199,7 +199,50 @@ test("serialization is deterministic and ends with a newline", () => {
   assert.equal(serialized, serializeProjectFile(parseProjectJson(serialized)));
   assert.ok(serialized.endsWith("\n"));
   assert.ok(serialized.indexOf('"schemaVersion"') < serialized.indexOf('"projectId"'));
-  assert.ok(serialized.indexOf('"alpha"') < serialized.indexOf('"zeta"'));
+});
+
+test("tool input schemas keep their authored property order through a round trip", () => {
+  const project = createProjectFile({
+    name: "Example",
+    request,
+    idSuffix: "ordered",
+    createdAt: "2026-07-24T12:00:00.000Z",
+  });
+  project.tools.push({
+    id: "tool_search",
+    name: "search",
+    inputSchema: {
+      type: "object",
+      properties: {
+        zeta: { type: "string" },
+        alpha: { type: "string" },
+        nested: {
+          type: "object",
+          properties: {
+            omega: { type: "string" },
+            beta: { type: "string" },
+          },
+        },
+      },
+    },
+  });
+  project.defaults.enabledToolIds.push("tool_search");
+
+  const serialized = serializeProjectFile(project);
+  assert.ok(serialized.indexOf('"zeta"') < serialized.indexOf('"alpha"'));
+  assert.ok(serialized.indexOf('"omega"') < serialized.indexOf('"beta"'));
+
+  const reloaded = parseProjectJson(serialized);
+  const properties = (reloaded.tools[0].inputSchema.properties ?? {}) as Record<
+    string,
+    Record<string, unknown>
+  >;
+  assert.deepEqual(Object.keys(properties), ["zeta", "alpha", "nested"]);
+  assert.deepEqual(
+    Object.keys(properties.nested.properties as Record<string, unknown>),
+    ["omega", "beta"],
+  );
+  assert.equal(serializeProjectFile(reloaded), serialized);
 });
 
 test("rejects projects older than the supported v5 migration boundary", () => {

@@ -31,6 +31,13 @@ export interface SeedProfileOptions {
   /** Omitted to exercise the provider/model's own sampling default. */
   temperature?: number;
   instanceId?: string;
+  /**
+   * Capabilities this profile states differently from the openai-compatible
+   * baseline. Tool calling is off in that baseline, so a spec that sends tools
+   * has to pass `{ tools: true }` — otherwise the request is built without
+   * them and the assertion passes against an empty manifest.
+   */
+  capabilityOverrides?: Record<string, boolean>;
 }
 
 /**
@@ -52,6 +59,7 @@ export async function seedProfile(
     streaming = "buffered",
     temperature,
     instanceId,
+    capabilityOverrides,
   } = options;
   await page.addInitScript(
     (seed) => {
@@ -72,6 +80,9 @@ export async function seedProfile(
               ...(seed.favoriteModels
                 ? { favoriteModels: seed.favoriteModels }
                 : {}),
+              ...(seed.capabilityOverrides
+                ? { capabilityOverrides: seed.capabilityOverrides }
+                : {}),
             },
           ],
           activeProfileId: "buffered",
@@ -89,6 +100,7 @@ export async function seedProfile(
       streaming,
       temperature,
       instanceId,
+      capabilityOverrides,
     },
   );
 }

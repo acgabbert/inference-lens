@@ -35,6 +35,7 @@ export interface RequestDraftHandle extends RequestDraftSnapshot {
   addTool(): void;
   updateTool(id: ToolId, patch: Partial<ToolDefinition>): void;
   removeTool(id: ToolId): void;
+  moveTool(id: ToolId, offset: number): void;
   setToolEnabled(id: ToolId, enabled: boolean): void;
   mockForTool(toolId: ToolId): ToolMock | undefined;
   updateToolMock(toolId: ToolId, text: string, enabled: boolean): void;
@@ -181,6 +182,23 @@ export function useRequestDraft(input: {
     onProjectDirty();
   }
 
+  /**
+   * Selected project tools reach the provider in this array's order, so moving
+   * a tool changes the `tools` list the model is given, not just the pane.
+   */
+  function moveTool(id: ToolId, offset: number): void {
+    setTools((current) => {
+      const index = current.findIndex((tool) => tool.id === id);
+      const target = index + offset;
+      if (index < 0 || target < 0 || target >= current.length) return current;
+      const next = [...current];
+      const [moved] = next.splice(index, 1);
+      next.splice(target, 0, moved);
+      return next;
+    });
+    onProjectDirty();
+  }
+
   function setToolEnabled(id: ToolId, enabled: boolean): void {
     setEnabledToolIds((current) =>
       enabled ? [...current, id] : current.filter((toolId) => toolId !== id),
@@ -276,6 +294,7 @@ export function useRequestDraft(input: {
     addTool,
     updateTool,
     removeTool,
+    moveTool,
     setToolEnabled,
     mockForTool,
     updateToolMock,

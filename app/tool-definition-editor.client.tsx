@@ -137,6 +137,47 @@ function EnumEditor({
   );
 }
 
+/**
+ * Up/down buttons rather than dragging: the order they control is authored
+ * data, so it has to be reachable by keyboard and assertable in a test without
+ * synthesizing pointer gestures.
+ */
+function ReorderControls({
+  name,
+  index,
+  count,
+  onMove,
+}: {
+  name: string;
+  index: number;
+  count: number;
+  onMove(offset: number): void;
+}) {
+  const label = name.trim() || `parameter ${index + 1}`;
+  return (
+    <div className="schema-property-reorder">
+      <button
+        aria-label={`Move ${label} up`}
+        className="text-button"
+        disabled={index === 0}
+        type="button"
+        onClick={() => onMove(-1)}
+      >
+        ↑
+      </button>
+      <button
+        aria-label={`Move ${label} down`}
+        className="text-button"
+        disabled={index === count - 1}
+        type="button"
+        onClick={() => onMove(1)}
+      >
+        ↓
+      </button>
+    </div>
+  );
+}
+
 function SchemaNode({
   schema,
   onChange,
@@ -150,6 +191,7 @@ function SchemaNode({
 }) {
   const type = schemaType(schema);
   const properties = schemaObject(schema.properties);
+  const propertyCount = Object.keys(properties).length;
   const required = Array.isArray(schema.required)
     ? schema.required.filter((item): item is string => typeof item === "string")
     : [];
@@ -193,6 +235,22 @@ function SchemaNode({
       properties: nextProperties,
       ...(nextRequired.length > 0 ? { required: nextRequired } : {}),
     });
+  }
+
+  /**
+   * Property order is not presentation. It is serialized verbatim into the
+   * `parameters` schema the provider receives, so moving a parameter here
+   * changes what goes on the wire.
+   */
+  function moveProperty(name: string, offset: number): void {
+    const entries = Object.entries(properties);
+    const index = entries.findIndex(([propertyName]) => propertyName === name);
+    const target = index + offset;
+    if (index < 0 || target < 0 || target >= entries.length) return;
+    const reordered = [...entries];
+    const [moved] = reordered.splice(index, 1);
+    reordered.splice(target, 0, moved);
+    onChange({ ...schema, properties: Object.fromEntries(reordered) });
   }
 
   function removeProperty(name: string): void {
@@ -278,7 +336,7 @@ function SchemaNode({
               + Add parameter
             </button>
           </div>
-          {Object.entries(properties).length === 0 ? (
+          {propertyCount === 0 ? (
             <p className="schema-empty">No parameters yet.</p>
           ) : (
             Object.entries(properties).map(([name, value], propertyIndex) => {
@@ -289,6 +347,12 @@ function SchemaNode({
                     key={`property-${propertyIndex}`}
                   >
                     <div className="schema-property-row schema-property-unsupported">
+                      <ReorderControls
+                        name={name}
+                        index={propertyIndex}
+                        count={propertyCount}
+                        onMove={(offset) => moveProperty(name, offset)}
+                      />
                       <label>
                         Name
                         <input
@@ -332,6 +396,12 @@ function SchemaNode({
                   key={`property-${propertyIndex}`}
                 >
                   <div className="schema-property-row">
+                    <ReorderControls
+                      name={name}
+                      index={propertyIndex}
+                      count={propertyCount}
+                      onMove={(offset) => moveProperty(name, offset)}
+                    />
                     <label>
                       Name
                       <input

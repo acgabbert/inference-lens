@@ -1834,6 +1834,20 @@ output {
   background: var(--surface-subtle);
 }
 
+/* Sits between the send toggle and Remove: the order these buttons change is
+   the order the selected tools reach the provider in. */
+.tool-reorder {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+  margin-right: 10px;
+}
+
+.tool-reorder button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 .tool-enabled,
 .tool-mock-toggle {
   display: flex !important;
@@ -2119,7 +2133,7 @@ output {
 }
 
 .schema-property-row.schema-property-unsupported {
-  grid-template-columns: minmax(120px, 0.8fr) minmax(220px, 1.6fr) 70px auto;
+  grid-template-columns: 22px minmax(120px, 0.8fr) minmax(220px, 1.6fr) 70px auto;
 }
 
 .schema-property-unsupported p {
@@ -2132,6 +2146,7 @@ output {
   padding: 9px;
   display: grid;
   grid-template-columns:
+    22px
     minmax(90px, 0.8fr)
     minmax(78px, 0.55fr)
     54px
@@ -2140,6 +2155,25 @@ output {
     auto;
   align-items: end;
   gap: 7px;
+}
+
+/* Parameter order is sent to the provider verbatim, so these sit with the
+   parameter they move rather than in a separate ordering mode. */
+.schema-property-reorder {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-bottom: 5px;
+}
+
+.schema-property-reorder button {
+  padding: 0;
+  line-height: 1.1;
+}
+
+.schema-property-reorder button:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .schema-required {
