@@ -19,6 +19,10 @@ import {
   evaluationBatchGuardrail,
   MAX_EVALUATION_REPETITIONS,
 } from "./evaluation-batch.client";
+import {
+  EvaluationSuiteHistory,
+  type EvaluationSuiteHistoryHandle,
+} from "./evaluation-suite-history.client";
 
 const checkKindLabels: Record<CheckKind, string> = {
   "exact-match": "Exact output",
@@ -221,11 +225,14 @@ export interface ModelFavoritesHandle {
 export function EvaluationSuiteEditor({
   authoring,
   execution,
+  history,
   modelFavorites,
   onOpenTemplates,
 }: {
   authoring: EvaluationSuiteAuthoringHandle;
   execution?: EvaluationSuiteExecutionActions;
+  /** Saved executions of the selected suite, listed by the route. */
+  history?: EvaluationSuiteHistoryHandle;
   modelFavorites?: ModelFavoritesHandle;
   /** Request-composer navigation stays with its owner. */
   onOpenTemplates?(): void;
@@ -363,6 +370,7 @@ export function EvaluationSuiteEditor({
             {authoring.diagnostics.map((diagnostic, index) => <li key={`${diagnostic.code}-${index}`}>{diagnostic.message}</li>)}
             {deliveryIssue && <li key="delivery">{deliveryIssue}</li>}
           </ul>}
+          {history && <EvaluationSuiteHistory history={history} />}
           {suggestedCandidate && <div className="evaluation-resolution-action" role="status"><div><strong>Add a case input for <code>{suggestedCandidate.variableName}</code></strong><span>Each case can then supply the missing value and clear this setup issue.</span></div><button className="button secondary" type="button" onClick={() => authoring.addInput(suggestedCandidate)}>+ Add case input</button></div>}
 
           <section className="evaluation-cases">

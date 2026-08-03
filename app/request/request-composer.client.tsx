@@ -17,6 +17,7 @@ import type {
 import type { ProjectTemplatesHandle } from "../templates/use-project-templates.client";
 import { EvaluationSuiteEditor } from "../evaluations/evaluation-suite-editor.client";
 import type { EvaluationSuiteExecutionActions } from "../evaluations/evaluation-suite-editor.client";
+import type { EvaluationSuiteHistoryHandle } from "../evaluations/evaluation-suite-history.client";
 import type { EvaluationSuiteAuthoringHandle } from "../evaluations/use-evaluation-suite-authoring.client";
 import { RequestSettings } from "./request-settings.client";
 import type { RequestSettingsProps } from "./request-settings.client";
@@ -49,6 +50,8 @@ export interface RequestComposerProps {
   templates: ProjectTemplatesHandle;
   evaluations: EvaluationSuiteAuthoringHandle;
   evaluationExecution: EvaluationSuiteExecutionActions;
+  /** Saved executions of the selected suite. Absent without a project folder. */
+  evaluationHistory?: EvaluationSuiteHistoryHandle;
   project: Pick<ProjectFile, "projectId" | "promptTemplates" | "connectionRequirements" | "defaults" | "externalImports"> | null;
   settings: RequestSettingsProps & {
     toolsEnabled: boolean;
@@ -78,6 +81,7 @@ export function RequestComposer({
   templates,
   evaluations,
   evaluationExecution,
+  evaluationHistory,
   project,
   settings,
   readiness,
@@ -326,6 +330,7 @@ export function RequestComposer({
           <EvaluationSuiteEditor
             authoring={evaluations}
             execution={evaluationExecution}
+            {...(evaluationHistory ? { history: evaluationHistory } : {})}
             modelFavorites={{ models: settings.favoriteModels, onToggle: settings.onToggleFavoriteModel }}
             onOpenTemplates={() => setTab("templates")}
           />

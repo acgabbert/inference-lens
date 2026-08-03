@@ -4,14 +4,14 @@ import react from "@vitejs/plugin-react";
 import { createServer } from "vite";
 import { evaluationFixture } from "./fixtures/evaluation-suite-authoring.mjs";
 
-async function render(authoring, execution) {
+async function render(authoring, execution, history) {
   const server = await createServer({ configFile: false, root: process.cwd(), plugins: [react()], server: { middlewareMode: true, hmr: false, ws: false }, logLevel: "warn" });
   try {
     const [{ EvaluationSuiteEditor }, { renderToStaticMarkup }, { createElement }] = await Promise.all([
       server.ssrLoadModule("/app/evaluations/evaluation-suite-editor.client.tsx"),
       import("react-dom/server"), import("react"),
     ]);
-    return renderToStaticMarkup(createElement(EvaluationSuiteEditor, { authoring, execution }));
+    return renderToStaticMarkup(createElement(EvaluationSuiteEditor, { authoring, execution, history }));
   } finally { await server.close(); }
 }
 
@@ -347,4 +347,120 @@ test("marks a disagreeing prompt target recommendation as advisory without chang
   // Advisory, not blocking: preflight in the editor is still ready to run.
   const html = await render(authoring, execution);
   assert.match(html, /Ready to run/);
+});
+
+function suiteHistory(overrides = {}) {
+  return {
+    status: "loaded",
+    executions: [],
+    onExpand() {},
+    onRefresh() {},
+    async onOpen() {},
+    ...overrides,
+  };
+}
+
+function execution(overrides = {}) {
+  return {
+    experimentId: "experiment_past",
+    kind: "evaluation",
+    planFileName: "experiment_past.plan.json",
+    createdAt: "2026-08-02T09:30:00.000Z",
+    model: "past-model",
+    lifecycle: "completed",
+    requested: 3,
+    completed: 3,
+    failed: 0,
+    cancelled: 0,
+    notRun: 0,
+    missingTrace: 0,
+    cells: [],
+    evaluation: {
+      suiteId: "evaluation-suite_topics",
+      suiteName: "Topic quality",
+      conversationRevisionId: "revision_current",
+      passed: true,
+      caseCounts: { total: 2, passed: 2, failed: 0 },
+    },
+    ...overrides,
+  };
+}
+
+test("past executions are offered in the editor and stay collapsed until asked for", async () => {
+  const html = await render(
+    evaluationFixture(),
+    { storage: "durable", running: false, onStart() {} },
+    suiteHistory({ executions: [execution()] }),
+  );
+
+  assert.match(html, /Past executions/);
+  // Collapsed: listing every artifact in the project folder is expensive, so
+  // opening a project must not pay for a list nobody asked to see.
+  assert.doesNotMatch(html, /<details class="evaluation-suite-history" open/);
+  assert.doesNotMatch(html, /Refresh/);
+  // Collapsed, the card holds two words and no visible content, so it has to
+  // say it opens. A native marker alone did not read as a disclosure.
+  assert.match(html, /Show saved runs of this suite/);
+  assert.match(html, /evaluation-suite-history-chevron/);
+  assert.doesNotMatch(html, />Hide</);
+});
+
+test("the editor omits past executions entirely without a project folder", async () => {
+  const html = await render(evaluationFixture(), { storage: "unsaved", running: false, onStart() {} });
+  assert.doesNotMatch(html, /Past executions/);
+});
+
+test("an execution against another input revision stays listed and is marked", async () => {
+  // Suite identity, not revision identity, decides membership: PR12's whole
+  // point is comparing a pass rate across an input change, so hiding the older
+  // run would hide the comparison.
+  const html = await render(
+    evaluationFixture(),
+    { storage: "durable", running: false, onStart() {} },
+    suiteHistory({
+      currentRevisionId: "revision_current",
+      executions: [
+        execution(),
+        execution({
+          experimentId: "experiment_older",
+          planFileName: "experiment_older.plan.json",
+          createdAt: "2026-08-01T09:30:00.000Z",
+          evaluation: {
+            suiteId: "evaluation-suite_topics",
+            suiteName: "Topic quality",
+            conversationRevisionId: "revision_older",
+            passed: false,
+            caseCounts: { total: 2, passed: 1, failed: 1 },
+          },
+        }),
+      ],
+    }),
+  );
+
+  assert.match(html, /2\/2 cases passed/);
+  assert.match(html, /1\/2 cases passed/);
+  const drift = html.match(/Ran against a different input revision/g) ?? [];
+  assert.equal(drift.length, 1, "only the older revision's execution is marked");
+});
+
+test("an interrupted evaluation is not coloured as a failure", async () => {
+  const html = await render(
+    evaluationFixture(),
+    { storage: "durable", running: false, onStart() {} },
+    suiteHistory({
+      executions: [execution({
+        lifecycle: "interrupted",
+        evaluation: {
+          suiteId: "evaluation-suite_topics",
+          suiteName: "Topic quality",
+          conversationRevisionId: "revision_current",
+          passed: false,
+          caseCounts: { total: 2, passed: 0, failed: 0 },
+        },
+      })],
+    }),
+  );
+
+  assert.match(html, /class="evaluation-pass pending"/);
+  assert.doesNotMatch(html, /class="evaluation-pass failed"/);
 });

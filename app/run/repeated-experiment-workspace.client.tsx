@@ -108,12 +108,18 @@ export function RepeatedExperimentWorkspace({
   onOpenTrace,
   placement = "response",
   onReturnToRequest,
+  onDismiss,
 }: {
   execution: RepeatedExperimentExecution;
   onStop(): void;
   onOpenTrace(runId: RunId): void;
   placement?: "request" | "response";
   onReturnToRequest?(): void;
+  /**
+   * Hands the response pane back to the single-run response. Offered only once
+   * the batch is finished; a saved experiment reopens from project history.
+   */
+  onDismiss?(): void;
 }) {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const aggregate = repeatedExperimentAggregate(
@@ -162,6 +168,7 @@ export function RepeatedExperimentWorkspace({
           <span className={`run-history-status ${lifecycle}`}>{lifecycle}</span>
           {isRunning && <button className="button stop" type="button" onClick={onStop}>Stop remaining</button>}
           {placement === "request" && onReturnToRequest && <button className="button" type="button" onClick={onReturnToRequest}>Back to request</button>}
+          {placement === "response" && !isRunning && onDismiss && <button className="button" type="button" onClick={onDismiss}>Close results</button>}
         </div>
       </header>
 

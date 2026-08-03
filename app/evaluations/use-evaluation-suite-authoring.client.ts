@@ -160,12 +160,20 @@ export interface UseEvaluationSuiteAuthoringInput {
   project: ProjectFile | null;
   adoptProjectMutation(project: ProjectFile): void;
   requestConfirmation?(request: ConfirmationDialogRequest): void;
+  /**
+   * Fires when authoring points at a different suite, revision, or case, so
+   * the route can release a finished execution that no longer describes what
+   * the editor is showing. Selection changes only — editing a field the
+   * current target already owns is not a re-target.
+   */
+  onRetarget?(): void;
 }
 
 export function useEvaluationSuiteAuthoring({
   project,
   adoptProjectMutation,
   requestConfirmation,
+  onRetarget,
 }: UseEvaluationSuiteAuthoringInput): EvaluationSuiteAuthoringHandle {
   const [suiteId, setSuiteId] = useState<EvaluationSuiteId>();
   // Undefined means "every case", so opening a saved suite previews the run the
@@ -317,9 +325,13 @@ export function useEvaluationSuiteAuthoring({
     closeSavedPromptPicker() { setSavedPromptPickerOpen(false); setStoredPromptError(undefined); },
     startFromSavedPrompt,
     dismissNotice() { setStoredNotice(undefined); },
-    selectSuite(id) { setSuiteId(id); setFocusedCaseId(undefined); setSelection(undefined); setStoredError(undefined); },
+    selectSuite(id) {
+      if (id !== effectiveSuiteId) onRetarget?.();
+      setSuiteId(id); setFocusedCaseId(undefined); setSelection(undefined); setStoredError(undefined);
+    },
     selectRevision(id) {
       if (!effectiveSuiteId) return;
+      if (id !== effectiveRevisionId) onRetarget?.();
       commit((current) => updateEvaluationSuiteInput(current, effectiveSuiteId, id));
       setStoredNotice(undefined);
     },
@@ -334,7 +346,10 @@ export function useEvaluationSuiteAuthoring({
         return { projectId: project.projectId, suiteId: effectiveSuiteId, caseIds: next };
       });
     },
-    focusCase: setFocusedCaseId,
+    focusCase(id) {
+      if (id !== effectiveFocusedCaseId) onRetarget?.();
+      setFocusedCaseId(id);
+    },
     setRepetitions(value) {
       if (!suite || !effectiveSuiteId) return;
       commit((current) => updateEvaluationSuiteExecution(current, effectiveSuiteId, {
@@ -349,6 +364,7 @@ export function useEvaluationSuiteAuthoring({
     },
     createSuite() {
       if (!project) return;
+      onRetarget?.();
       const created = createEvaluationSuite(project);
       adoptProjectMutation(created.project);
       setSuiteId(created.suiteId);
@@ -363,7 +379,10 @@ export function useEvaluationSuiteAuthoring({
     },
     deleteSuite() {
       if (!effectiveSuiteId) return;
-      const remove = () => commit((current) => removeEvaluationSuite(current, effectiveSuiteId));
+      const remove = () => {
+        onRetarget?.();
+        commit((current) => removeEvaluationSuite(current, effectiveSuiteId));
+      };
       confirmOrRun({ title: `Delete “${suite?.name ?? "evaluation suite"}”?`, description: "Its cases, input bindings, and checks will be removed from the portable project.", confirmLabel: "Delete suite", destructive: true }, remove);
     },
     addInput(candidate) {

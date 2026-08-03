@@ -58,6 +58,7 @@ import { WorkbenchShell } from "./workbench-shell.client";
 import type { WorkbenchView } from "./workbench-shell.client";
 import { RunTracePanel } from "./run-trace-panel.client";
 import { RunHistoryDrawer } from "./run-history-drawer.client";
+import type { EvaluationSuiteHistoryHandle } from "./evaluations/evaluation-suite-history.client";
 import type {
   ProjectExperimentHistoryItem,
   ProjectRunHistoryItem,
@@ -222,6 +223,10 @@ function HomeContent() {
   const [pendingReadinessDestination, setPendingReadinessDestination] =
     useState<ReadinessDestination>();
   const [runHistoryOpen, setRunHistoryOpen] = useState(false);
+  // Set once the suite editor's past-execution list has been expanded. Listing
+  // costs a full parse of every artifact in the project folder, so neither
+  // surface being open means no listing happens at all.
+  const [suiteHistoryRequested, setSuiteHistoryRequested] = useState(false);
   const [savedRunVersion, setSavedRunVersion] = useState(0);
   const clearTemplateOverridesRef = useRef<() => void>(() => {});
   const [workbenchView, setWorkbenchView] =
@@ -280,7 +285,7 @@ function HomeContent() {
   } = project;
   const runHistory = useProjectRunHistory(
     projectWorkspace,
-    runHistoryOpen,
+    runHistoryOpen || suiteHistoryRequested,
     savedRunVersion,
   );
   const {
@@ -468,6 +473,10 @@ function HomeContent() {
     project: projectFile,
     adoptProjectMutation: project.adoptProjectMutation,
     requestConfirmation: setConfirmation,
+    // Pointing the editor at a different suite, revision, or case means the
+    // finished results in the response pane describe something else, so they
+    // give the pane back to the provider-input preview.
+    onRetarget: () => releaseFinishedExperiment(),
   });
   const selectedEvaluationSuite = projectFile?.evaluationSuites.find(
     ({ id }) => id === evaluationAuthoring.suiteId,
@@ -870,6 +879,40 @@ function HomeContent() {
     setWorkbenchView("response");
     setRunHistoryOpen(false);
   }
+  /**
+   * Releases a finished batch from the response pane. A durable batch is
+   * written to the project folder and reopens from run history, so dismissing
+   * it is navigation. An unsaved one exists only in this session's state, and
+   * clearing it is the last copy — that case is confirmed first.
+   */
+  function dismissFinishedExperiment(kind: "evaluation" | "repeated"): void {
+    const session = kind === "evaluation" ? evaluationExecution : repeatedExperiment;
+    const clear = session.clear;
+    if (!session.execution || session.execution.storage === "durable") {
+      clear();
+      return;
+    }
+    setConfirmation({
+      title: kind === "evaluation" ? "Discard these evaluation results?" : "Discard these experiment results?",
+      description:
+        "This batch was never saved to a project folder, so its runs cannot be reopened from run history once they are cleared.",
+      confirmLabel: "Discard results",
+      destructive: true,
+      onConfirm: clear,
+    });
+  }
+  /**
+   * The same release, driven by authoring rather than by a button, so a
+   * re-target cannot discard unsaved evidence on a path the explicit dismiss
+   * would have confirmed. A running batch keeps the pane either way.
+   */
+  function releaseFinishedExperiment(): void {
+    if (evaluationExecution.execution && !evaluationExecution.isRunning) {
+      dismissFinishedExperiment("evaluation");
+    } else if (repeatedExperiment.execution && !repeatedExperiment.isRunning) {
+      dismissFinishedExperiment("repeated");
+    }
+  }
   const runReachedTerminalStatus = Boolean(
     runState &&
       ["completed", "cancelled", "failed"].includes(runState.status.kind),
@@ -972,6 +1015,28 @@ function HomeContent() {
     ...(evaluationStartDisabledReason ? { disabledReason: evaluationStartDisabledReason } : {}),
     onStart: startEvaluation,
   };
+
+  // Cross-feature adapter: saved executions are project-workspace evidence and
+  // the suite being authored is authoring state, so scoping one to the other
+  // belongs to the route rather than to either owner. Executions are matched by
+  // suite identity across every input revision — a run against an older
+  // revision is still this suite's evidence, and the editor marks it as drifted
+  // rather than hiding it.
+  const evaluationHistory: EvaluationSuiteHistoryHandle | undefined = projectWorkspace
+    ? {
+        status: runHistory.status,
+        executions: runHistory.experiments.filter(
+          (item) => item.evaluation?.suiteId === selectedEvaluationSuite?.id,
+        ),
+        ...(runHistory.error ? { error: runHistory.error } : {}),
+        ...(evaluationAuthoring.revisionId
+          ? { currentRevisionId: evaluationAuthoring.revisionId }
+          : {}),
+        onExpand: () => setSuiteHistoryRequested(true),
+        onRefresh: () => void runHistory.refresh(),
+        onOpen: (item) => openHistoryExperiment(item),
+      }
+    : undefined;
 
   // The provider-input preview only claims the response pane while an
   // evaluation is being authored: a live or reopened execution keeps its
@@ -1255,6 +1320,7 @@ function HomeContent() {
           templates={projectTemplates}
           evaluations={evaluationAuthoring}
           evaluationExecution={evaluationExecutionActions}
+          {...(evaluationHistory ? { evaluationHistory } : {})}
           project={projectFile}
           settings={{
             model: activeModel,
@@ -1304,10 +1370,12 @@ function HomeContent() {
             execution={evaluationExecution.execution}
             onStop={evaluationExecution.cancel}
             onOpenTrace={evaluationExecution.openTrace}
+            onDismiss={() => dismissFinishedExperiment("evaluation")}
           /> : repeatedExperiment.execution && !repeatedExperiment.execution.selectedRunId ? <RepeatedExperimentWorkspace
             execution={repeatedExperiment.execution}
             onStop={repeatedExperiment.cancel}
             onOpenTrace={repeatedExperiment.openTrace}
+            onDismiss={() => dismissFinishedExperiment("repeated")}
           /> : evaluationPreviewInResponsePane ? <EvaluationPreviewWorkspace
             authoring={evaluationAuthoring}
             execution={evaluationExecutionActions}
