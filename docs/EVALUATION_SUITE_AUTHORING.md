@@ -89,6 +89,17 @@ to, and follows the focused case as it changes. A live or reopened execution
 always wins the pane. On a narrow viewport the panes are tabs, and the response
 tab names itself "Preview" while an evaluation is being authored.
 
+A **finished** execution gives the pane back in either of two ways: its "Back to
+editing" action, or pointing the editor at a different suite, revision, or case,
+which makes the results describe something other than what is being authored.
+Editing a field of the suite that was run is not a re-target and keeps the
+results on screen. Both routes are the same release: a durable evaluation is
+already written to the project folder and reopens from grouped run history, so
+dismissing it is navigation; an unsaved session evaluation is the last copy of
+its runs, so clearing one is confirmed first. A running batch keeps the pane
+either way. Repeated experiments release the pane on the same rule, through
+"Close results".
+
 All four regions are open by default; only the stable IDs inside revision
 provenance stay behind a disclosure:
 

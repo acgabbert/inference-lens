@@ -468,6 +468,10 @@ function HomeContent() {
     project: projectFile,
     adoptProjectMutation: project.adoptProjectMutation,
     requestConfirmation: setConfirmation,
+    // Pointing the editor at a different suite, revision, or case means the
+    // finished results in the response pane describe something else, so they
+    // give the pane back to the provider-input preview.
+    onRetarget: () => releaseFinishedExperiment(),
   });
   const selectedEvaluationSuite = projectFile?.evaluationSuites.find(
     ({ id }) => id === evaluationAuthoring.suiteId,
@@ -869,6 +873,40 @@ function HomeContent() {
     runSession.reset();
     setWorkbenchView("response");
     setRunHistoryOpen(false);
+  }
+  /**
+   * Releases a finished batch from the response pane. A durable batch is
+   * written to the project folder and reopens from run history, so dismissing
+   * it is navigation. An unsaved one exists only in this session's state, and
+   * clearing it is the last copy — that case is confirmed first.
+   */
+  function dismissFinishedExperiment(kind: "evaluation" | "repeated"): void {
+    const session = kind === "evaluation" ? evaluationExecution : repeatedExperiment;
+    const clear = session.clear;
+    if (!session.execution || session.execution.storage === "durable") {
+      clear();
+      return;
+    }
+    setConfirmation({
+      title: kind === "evaluation" ? "Discard these evaluation results?" : "Discard these experiment results?",
+      description:
+        "This batch was never saved to a project folder, so its runs cannot be reopened from run history once they are cleared.",
+      confirmLabel: "Discard results",
+      destructive: true,
+      onConfirm: clear,
+    });
+  }
+  /**
+   * The same release, driven by authoring rather than by a button, so a
+   * re-target cannot discard unsaved evidence on a path the explicit dismiss
+   * would have confirmed. A running batch keeps the pane either way.
+   */
+  function releaseFinishedExperiment(): void {
+    if (evaluationExecution.execution && !evaluationExecution.isRunning) {
+      dismissFinishedExperiment("evaluation");
+    } else if (repeatedExperiment.execution && !repeatedExperiment.isRunning) {
+      dismissFinishedExperiment("repeated");
+    }
   }
   const runReachedTerminalStatus = Boolean(
     runState &&
@@ -1304,10 +1342,12 @@ function HomeContent() {
             execution={evaluationExecution.execution}
             onStop={evaluationExecution.cancel}
             onOpenTrace={evaluationExecution.openTrace}
+            onDismiss={() => dismissFinishedExperiment("evaluation")}
           /> : repeatedExperiment.execution && !repeatedExperiment.execution.selectedRunId ? <RepeatedExperimentWorkspace
             execution={repeatedExperiment.execution}
             onStop={repeatedExperiment.cancel}
             onOpenTrace={repeatedExperiment.openTrace}
+            onDismiss={() => dismissFinishedExperiment("repeated")}
           /> : evaluationPreviewInResponsePane ? <EvaluationPreviewWorkspace
             authoring={evaluationAuthoring}
             execution={evaluationExecutionActions}

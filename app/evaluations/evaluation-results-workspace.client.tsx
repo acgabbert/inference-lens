@@ -40,12 +40,19 @@ export function EvaluationResultsWorkspace({
   onOpenTrace,
   placement = "response",
   onReturnToEvaluation,
+  onDismiss,
 }: {
   execution: EvaluationExecution;
   onStop(): void;
   onOpenTrace(runId: RunId): void;
   placement?: "request" | "response";
   onReturnToEvaluation?(): void;
+  /**
+   * Hands the response pane back to the suite editor's provider-input preview.
+   * Offered only once the batch is finished: a saved evaluation reopens from
+   * project history, so this is a navigation, not a discard.
+   */
+  onDismiss?(): void;
 }) {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const parsedPlan = useMemo(() => {
@@ -93,6 +100,7 @@ export function EvaluationResultsWorkspace({
           <span className={`run-history-status ${lifecycle}`}>{lifecycle}</span>
           {live && <button className="button stop" type="button" onClick={onStop}>Stop remaining</button>}
           {placement === "request" && onReturnToEvaluation && <button className="button" type="button" onClick={onReturnToEvaluation}>Back to evaluation</button>}
+          {placement === "response" && !live && onDismiss && <button className="button" type="button" onClick={onDismiss}>Back to editing</button>}
         </div>
       </header>
 
