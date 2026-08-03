@@ -31,6 +31,11 @@ test("the collapsed panel reports what the run will send, and expanding reveals 
   await expect(page.getByLabel("Stream response")).toHaveCount(0);
 
   await openInferenceSettings(page);
+  // The global `label:not(.file-button)` rule outranks a bare class selector,
+  // so these labels must win specificity or their checkboxes stack above the
+  // text instead of sitting beside it.
+  await expect(panel.locator(".temperature-toggle")).toHaveCSS("display", "flex");
+  await expect(panel.locator(".streaming-control")).toHaveCSS("display", "flex");
   await expect(page.getByLabel("Stream response")).not.toBeChecked();
   await expect(panel.getByLabel("Model", { exact: true })).toHaveValue(
     "buffered-test-model",

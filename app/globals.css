@@ -5105,7 +5105,10 @@ main {
   min-height: 36px;
 }
 
-.temperature-toggle {
+/* `label.…` rather than `.…`: these are labels, and the bare class would lose
+   to `label:not(.file-button)`'s display: block, stacking each checkbox above
+   its text. */
+label.temperature-toggle {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -5140,7 +5143,7 @@ main {
   text-align: right;
 }
 
-.streaming-control {
+label.streaming-control {
   min-height: 36px;
   display: flex;
   align-items: center;
