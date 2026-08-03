@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 import {
   createProjectFile,
@@ -336,6 +336,66 @@ test("a run in progress reports running state and ticks the elapsed clock", asyn
   await expect(results).toContainText("6 passed · 0 failed · 0 not evaluated");
   await expect(results).toContainText("66 tokens · 6/6 runs reported");
   await expect(results).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
+});
+
+/**
+ * The panel is one component with three mounts, so its controls must not be
+ * restyled by whichever page they land in. The suite's mount sits inside
+ * `.evaluation-preflight`, whose own `label`, `input`, and `output` rules match
+ * the panel's at equal specificity and used to win on source order: the
+ * checkboxes stacked above their text, their hit boxes stretched across the
+ * column, and the temperature readout lost its field.
+ */
+async function settingsLayout(panel: Locator) {
+  return panel.evaluate((element) => {
+    const checkboxLayout = (selector: string) => {
+      const label = element.querySelector<HTMLElement>(selector);
+      const input = label?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+      const text = label?.querySelector<HTMLElement>("span");
+      if (!label || !input || !text) return "missing";
+      const box = input.getBoundingClientRect();
+      const words = text.getBoundingClientRect();
+      // Beside, not above: the glyph sits left of its text and the two overlap
+      // vertically. A stretched box is the other half of the same failure.
+      const beside = box.right <= words.left && box.bottom > words.top;
+      return `${beside ? "beside" : "stacked"}/${box.width < 30 ? "compact" : "stretched"}`;
+    };
+    const style = (selector: string) => {
+      const node = element.querySelector<HTMLElement>(selector);
+      return node ? getComputedStyle(node) : null;
+    };
+    const output = style(".temperature-control output");
+    const hint = style(".streaming-control small");
+    return {
+      temperature: checkboxLayout(".temperature-toggle"),
+      streaming: checkboxLayout(".streaming-control"),
+      readout: output ? `${output.borderTopWidth}/${output.textAlign}` : "missing",
+      hint: hint ? `${hint.fontSize}/${hint.lineHeight}` : "missing",
+    };
+  });
+}
+
+test("the suite's settings panel lays its controls out like the composer's", async ({ page }) => {
+  await openMappedEvaluations(page, fixtureProject());
+  await page.getByRole("button", { name: "Create evaluation suite" }).click();
+  await useSavedPrompt(page, "Question");
+
+  const suite = await settingsLayout(
+    await openInferenceSettings(page, "Evaluation execution settings"),
+  );
+  await page.getByRole("tab", { name: /Messages/ }).click();
+  const composer = await settingsLayout(await openInferenceSettings(page));
+
+  // The composer is the reference only because it is the mount no page rules
+  // reach; both are asserted absolutely so a regression there cannot make this
+  // pass by matching two broken layouts.
+  expect(composer).toEqual({
+    temperature: "beside/compact",
+    streaming: "beside/compact",
+    readout: "1px/right",
+    hint: "11px/14.3px",
+  });
+  expect(suite).toEqual(composer);
 });
 
 test("preflight input and execution settings fit at desktop and phone widths", async ({ page }) => {

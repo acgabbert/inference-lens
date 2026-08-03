@@ -5136,11 +5136,15 @@ main {
   min-height: 36px;
 }
 
-/* `label.…` rather than `.…`: these are labels, and the bare class would lose
-   to `label:not(.file-button)`'s display: block, stacking each checkbox above
-   its text. */
-label.temperature-toggle {
+/* These controls are mounted inside three different pages, so they carry their
+   own panel scope rather than relying on source order. `label:not(.file-button)`
+   and the host page's own `label`/`input`/`output` rules — `.evaluation-preflight`
+   stacks labels and stretches inputs — match the bare class at equal specificity
+   and win from further down the file, which stacked each checkbox above its text
+   and flattened the temperature readout in the evaluation suite's mount. */
+.inference-settings label.temperature-toggle {
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 7px;
   color: var(--text-primary);
@@ -5149,60 +5153,68 @@ label.temperature-toggle {
 
 /* width: auto against the global input width: 100%, which otherwise stretches
    the checkbox's box across the row and strands the glyph far from its text. */
-.temperature-toggle input {
+.inference-settings .temperature-toggle input {
   margin: 0;
   width: auto;
 }
 
-.temperature-control output {
+/* The base `output` look is restated rather than inherited: a host page that
+   flattens its own outputs — `.evaluation-preflight-controls` does, for its run
+   count — would otherwise take the field out from under the readout. */
+.inference-settings .temperature-control output {
   min-width: 3rem;
+  padding: 5px;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  background: var(--surface-raised);
   text-align: right;
 }
 
-.temperature-default {
+.inference-settings .temperature-default {
   display: block;
   margin-top: 3px;
   color: var(--text-muted);
   font-weight: 500;
 }
 
-.temperature-control output.experimental,
-.temperature-warning {
+.inference-settings .temperature-control output.experimental,
+.inference-settings .temperature-warning {
   color: var(--warning-strong);
 }
 
-.temperature-warning {
+.inference-settings .temperature-warning {
   display: block;
   margin-top: 3px;
   text-align: right;
 }
 
-label.streaming-control {
+.inference-settings label.streaming-control {
   min-height: 36px;
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 9px;
   color: var(--text-primary);
   cursor: pointer;
 }
 
-.streaming-control input {
+.inference-settings .streaming-control input {
   margin: 0;
   width: auto;
 }
 
-.streaming-control span,
-.streaming-control small {
+.inference-settings .streaming-control span,
+.inference-settings .streaming-control small {
   display: block;
 }
 
-.streaming-control small {
+.inference-settings .streaming-control small {
   margin-top: 3px;
   color: var(--text-muted);
   line-height: 1.3;
 }
 
-.streaming-control.disabled {
+.inference-settings .streaming-control.disabled {
   cursor: not-allowed;
   opacity: 0.65;
 }
