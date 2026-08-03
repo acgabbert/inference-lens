@@ -34,6 +34,28 @@ test("parses valid registry tools and rejects an invalid registry atomically", (
   );
 });
 
+test("rejects a registry whose tool name a provider would refuse", () => {
+  const tool = createRegistryTool("registry-tool_search", createdAt, 0);
+
+  ["get weather", "search\ttool", "search.tool", "búsqueda", "a".repeat(65)].forEach(
+    (name) => {
+      assert.deepEqual(
+        parseToolRegistry({ schemaVersion: 1, tools: [{ ...tool, name }] }),
+        emptyToolRegistry(),
+        `expected "${name}" to be rejected`,
+      );
+    },
+  );
+
+  ["get_weather", "get-weather", "getWeather9", "a".repeat(64)].forEach((name) => {
+    assert.deepEqual(
+      parseToolRegistry({ schemaVersion: 1, tools: [{ ...tool, name }] }),
+      { schemaVersion: 1, tools: [{ ...tool, name }] },
+      `expected "${name}" to be accepted`,
+    );
+  });
+});
+
 test("snapshots a registry tool under a fresh project-scoped identity", () => {
   const source = createRegistryTool("registry-tool_search", createdAt, 0);
   source.name = "search";

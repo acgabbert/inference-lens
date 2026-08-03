@@ -11,6 +11,7 @@ import { isSensitiveTemplateVariableName } from "./project.ts";
 import { runMetrics } from "./run-metrics.ts";
 import { finalAssistantOutput, outputCharacterCount } from "./run-output.ts";
 import { stableJsonValue } from "./stable-json.ts";
+import { toolNameSchema } from "./tool-name.ts";
 import type {
   ConversationMessage,
   ConversationRevisionId,
@@ -278,7 +279,7 @@ const inferenceOptionsSchema: z.ZodType<InferenceOptions> = z
 const toolDefinitionSchema: z.ZodType<ToolDefinition> = z
   .object({
     id: entityId("tool"),
-    name: z.string().trim().min(1),
+    name: toolNameSchema,
     description: z.string().optional(),
     inputSchema: jsonObjectSchema,
     providerOptions: jsonObjectSchema.optional(),

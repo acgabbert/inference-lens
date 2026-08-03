@@ -13,7 +13,6 @@ import type {
 } from "../packages/core/src/types";
 import {
   createProjectFile,
-  projectDraft,
   updateConnectionRequirementEndpoint,
 } from "../packages/core/src/project";
 import {

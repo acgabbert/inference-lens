@@ -6,6 +6,7 @@ import type {
   ToolDefinition,
   ToolId,
 } from "./run-kernel/types.ts";
+import { toolNameSchema } from "./tool-name.ts";
 
 export const TOOL_REGISTRY_SCHEMA_VERSION = 1;
 
@@ -48,7 +49,7 @@ const registryToolSchema: z.ZodType<RegistryTool> = z
       .string()
       .regex(/^registry-tool_.+/, 'Expected an identifier beginning with "registry-tool_".')
       .transform((value) => value as RegistryToolId),
-    name: z.string().trim().min(1),
+    name: toolNameSchema,
     description: z.string().optional(),
     inputSchema: jsonObjectSchema,
     providerOptions: jsonObjectSchema.optional(),
