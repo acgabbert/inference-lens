@@ -76,7 +76,20 @@ export function EvaluationSuiteHistory({ history }: { history: EvaluationSuiteHi
       }}
     >
       <summary>
-        <span className="evaluation-suite-history-chevron" aria-hidden="true">⌄</span>
+        {/* Drawn rather than typed: U+2304's ink sits high in its em box, which
+            a bordered square exposes as an off-centre glyph. `currentColor`
+            keeps it on the theme tokens. */}
+        <span className="evaluation-suite-history-chevron" aria-hidden="true">
+          <svg viewBox="0 0 10 10" width="10" height="10" fill="none">
+            <path
+              d="M2 3.5l3 3 3-3"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </span>
         <span className="evaluation-suite-history-title">
           <span className="eyebrow">Evidence</span>
           <strong>Past executions</strong>

@@ -7062,8 +7062,12 @@ main {
   border: 1px solid var(--border-default);
   border-radius: 6px;
   color: var(--text-muted);
-  line-height: 1;
+  line-height: 0;
   transition: transform 120ms ease;
+}
+
+.evaluation-suite-history-chevron svg {
+  display: block;
 }
 
 .evaluation-suite-history[open] .evaluation-suite-history-chevron {

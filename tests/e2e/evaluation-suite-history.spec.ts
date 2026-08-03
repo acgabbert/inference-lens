@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 import { createEvaluationExperimentPlan } from "../../packages/core/src/evaluation-execution";
 import {
@@ -163,6 +163,17 @@ async function openFixtureProject(page: Page): Promise<void> {
   await page.getByRole("tab", { name: /Evaluations/ }).click();
 }
 
+/** Asserts `mark`'s rendered centre coincides with `box`'s, within a pixel. */
+async function expectCentred(box: Locator, mark: Locator): Promise<void> {
+  const outer = await box.boundingBox();
+  const inner = await mark.boundingBox();
+  if (!outer || !inner) throw new Error("chevron is not rendered");
+  expect(Math.abs((inner.x + inner.width / 2) - (outer.x + outer.width / 2)))
+    .toBeLessThanOrEqual(1);
+  expect(Math.abs((inner.y + inner.height / 2) - (outer.y + outer.height / 2)))
+    .toBeLessThanOrEqual(1);
+}
+
 test("past executions of the authored suite open from the suite editor", async ({ page }) => {
   await openFixtureProject(page);
 
@@ -180,7 +191,17 @@ test("past executions of the authored suite open from the suite editor", async (
   await expect(section).toContainText("Show saved runs of this suite");
   await expect(section).not.toContainText("saved execution of this suite");
 
+  // The disclosure marker sits in a bordered square, which makes any drift
+  // between the mark and its box visible. A text glyph centres its line box
+  // rather than its ink, so it renders off-centre; the drawn mark must sit
+  // within a pixel of the box's centre in both states.
+  const chevronBox = section.locator(".evaluation-suite-history-chevron");
+  const chevronMark = chevronBox.locator("svg");
+  await expect(chevronMark).toBeVisible();
+  await expectCentred(chevronBox, chevronMark);
+
   await section.getByText("Past executions").click();
+  await expectCentred(chevronBox, chevronMark);
   await expect(section).toContainText("1 saved execution of this suite");
   await expect(section).toContainText("Hide");
   await expect(items).toHaveCount(1);
