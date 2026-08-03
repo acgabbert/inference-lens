@@ -1246,9 +1246,7 @@ output {
 
 .template-fragment-field textarea {
   margin-top: 0;
-  border: 1px solid var(--border-default);
   border-radius: 8px;
-  background: var(--surface-panel);
 }
 
 .template-fragment-field,
@@ -1864,8 +1862,6 @@ output {
 
 .tool-schema {
   min-height: 150px;
-  border: 1px solid var(--border-default);
-  border-radius: 7px;
 }
 
 .tool-header-actions,
@@ -3279,17 +3275,27 @@ output {
   cursor: default;
 }
 
+/* Shape only. A textarea keeps the border the shared control rule gives every
+   input and select: stripping it here left every textarea in the app invisible
+   against a panel until focus, and each new one had to re-declare the border
+   its neighbours already had. */
 textarea {
   min-height: 92px;
   padding: 13px;
   resize: vertical;
-  border: 0;
-  border-radius: 0;
   font-family: var(--font-geist-mono), monospace;
   line-height: 1.65;
 }
 
-textarea:focus {
+/* The composer's message body is the exception: it fills its card edge to edge,
+   so the card's own border is the field's border and a second one would double
+   up. Focus is drawn inset for the same reason. */
+.message-card textarea {
+  border: 0;
+  border-radius: 0;
+}
+
+.message-card textarea:focus {
   box-shadow: inset 0 0 0 1px var(--accent-focus);
 }
 
@@ -3837,8 +3843,6 @@ textarea:focus {
 
 .tool-call-card textarea {
   margin-top: 6px;
-  border: 1px solid var(--border-default);
-  border-radius: 7px;
 }
 
 .continue-tool-run {
