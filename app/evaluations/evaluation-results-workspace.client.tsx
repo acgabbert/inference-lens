@@ -66,12 +66,18 @@ export function EvaluationResultsWorkspace({
     : undefined;
   const lifecycle = live ? "running" : execution.error ? "interrupted" : aggregate.lifecycle;
 
+  const liveActive = Boolean(live);
+  const liveStartedAtMs = live?.startedAtMs;
   useEffect(() => {
-    if (!live) return;
-    setNowMs(Date.now());
-    const interval = window.setInterval(() => setNowMs(Date.now()), 1_000);
-    return () => window.clearInterval(interval);
-  }, [Boolean(live), live?.startedAtMs]);
+    if (!liveActive) return;
+    const tick = () => setNowMs(Date.now());
+    const immediate = window.setTimeout(tick, 0);
+    const interval = window.setInterval(tick, 1_000);
+    return () => {
+      window.clearTimeout(immediate);
+      window.clearInterval(interval);
+    };
+  }, [liveActive, liveStartedAtMs]);
 
   return (
     <section aria-busy={live ? "true" : undefined} aria-label="Evaluation results" className={`evaluation-results-workspace ${placement === "request" ? "experiment-context-pane" : ""}`.trim()}>

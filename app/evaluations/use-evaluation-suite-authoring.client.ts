@@ -230,12 +230,9 @@ export function useEvaluationSuiteAuthoring({
     else run();
   }
 
-  const candidates = useMemo(
-    () => project && effectiveRevisionId
-      ? evaluationBindingCandidates(project, effectiveRevisionId)
-      : [],
-    [effectiveRevisionId, project],
-  );
+  const candidates = project && effectiveRevisionId
+    ? evaluationBindingCandidates(project, effectiveRevisionId)
+    : [];
   const diagnostics = project && effectiveSuiteId && effectiveRevisionId
     ? evaluationSuitePreflight(project, effectiveSuiteId, effectiveRevisionId, [...effectiveSelectedCaseIds])
     : [];
