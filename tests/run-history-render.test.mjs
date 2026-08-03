@@ -241,3 +241,80 @@ test("warns about large immutable history without implying deletion", async () =
   assert.match(html, /500 immutable artifacts/);
   assert.match(html, /Nothing was deleted/);
 });
+
+test("an evaluation row reports its strict pass rate, not its run status", async () => {
+  // Every run completed. Under strict scoring the suite still failed, and the
+  // row must say so: "2 completed" would describe the provider calls and hide
+  // the only outcome an author opened history to find.
+  const experiment = {
+    experimentId: "experiment_eval",
+    kind: "evaluation",
+    planFileName: "experiment_eval.plan.json",
+    resultFileName: "experiment_eval.result.json",
+    createdAt: "2026-07-25T14:00:00.000Z",
+    endedAt: "2026-07-25T14:01:00.000Z",
+    model: "eval-model",
+    lifecycle: "completed",
+    requested: 4,
+    completed: 4,
+    failed: 0,
+    cancelled: 0,
+    notRun: 0,
+    missingTrace: 0,
+    cells: [],
+    evaluation: {
+      suiteId: "evaluation-suite_topics",
+      suiteName: "Topics",
+      conversationRevisionId: "revision_one",
+      passed: false,
+      caseCounts: { total: 3, passed: 1, failed: 2 },
+    },
+  };
+  const html = await renderDrawer({
+    history: historyState({ experiments: [experiment] }),
+  });
+
+  assert.match(html, /Evaluation · Topics/);
+  assert.match(html, /1\/3 cases passed/);
+  assert.match(html, /3 cases · 4 planned runs · eval-model/);
+  assert.doesNotMatch(html, /4 completed/);
+  assertNoBrokenNumbers(html);
+});
+
+test("an evaluation that could not be scored says so rather than reporting zero passes", async () => {
+  const html = await renderDrawer({
+    history: historyState({
+      experiments: [{
+        experimentId: "experiment_unscored",
+        kind: "evaluation",
+        planFileName: "experiment_unscored.plan.json",
+        createdAt: "2026-07-25T15:00:00.000Z",
+        model: "eval-model",
+        lifecycle: "interrupted",
+        requested: 2,
+        completed: 0,
+        failed: 0,
+        cancelled: 0,
+        notRun: 2,
+        missingTrace: 0,
+        cells: [],
+      }],
+    }),
+  });
+
+  assert.match(html, /not scored/);
+  assert.doesNotMatch(html, /0\/0 cases passed/);
+  assertNoBrokenNumbers(html);
+});
+
+test("the kind filter is offered with every entry shown by default", async () => {
+  const html = await renderDrawer({
+    history: historyState({ items: [{ fileName: "run_alpha.json", summary: summary() }] }),
+  });
+
+  for (const label of ["All", "Runs", "Repeated", "Evaluations"]) {
+    assert.match(html, new RegExp(`>${label}</button>`));
+  }
+  assert.match(html, /aria-pressed="true"[^>]*>All</);
+  assert.match(html, /1 saved entry/);
+});

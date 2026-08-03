@@ -252,8 +252,14 @@ async function expectInterruptedExperiment(page: Page): Promise<void> {
 async function expectInterruptedEvaluation(page: Page): Promise<void> {
   await page.getByLabel("Run data menu").click();
   await page.getByRole("button", { name: "Run history…" }).click();
-  const grouped = page.locator(".run-history-item.experiment").filter({ hasText: "Evaluation · history-fixture-model" });
+  // The row is titled by its suite, not by its model: a project runs many
+  // suites against one model, and the model alone cannot tell them apart.
+  const grouped = page.locator(".run-history-item.experiment").filter({ hasText: "Evaluation · History quality gate" });
   await expect(grouped).toContainText("interrupted");
+  // Nothing ran, so nothing passed and nothing failed. The row reports the
+  // strict pass rate rather than the run-status counts.
+  await expect(grouped).toContainText("0/1 case passed");
+  await expect(grouped.locator(".evaluation-pass")).toHaveClass(/pending/);
   await grouped.click();
 
   const workspace = page.getByRole("region", { name: "Evaluation results" });

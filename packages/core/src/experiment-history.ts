@@ -1,4 +1,5 @@
 import {
+  evaluationParsedExperimentAggregate,
   experimentArtifactIdentity,
   isExperimentEntryName,
   parseExperimentPlanJson,
@@ -6,7 +7,13 @@ import {
   repeatedExperimentAggregate,
   type ExperimentLifecycle,
 } from "./experiment.ts";
-import type { ExperimentId, RunId, RunState } from "./run-kernel/types.ts";
+import type {
+  ConversationRevisionId,
+  EvaluationSuiteId,
+  ExperimentId,
+  RunId,
+  RunState,
+} from "./run-kernel/types.ts";
 import {
   loadRunHistoryFilesWithStates,
   type RunHistoryFailure,
@@ -27,9 +34,31 @@ export interface ExperimentHistoryCellReference {
   traceFileName?: string;
 }
 
+/**
+ * The evaluation-specific facet of a history item.
+ *
+ * The surrounding item's `completed`/`failed`/`cancelled` counts describe run
+ * status, which is the right fact for a repeated experiment and the wrong one
+ * for an evaluation: a run that completed and then failed its checks is not a
+ * passing case. Evaluation meaning therefore lives here, derived from the same
+ * strict "As run" aggregate the results workspace renders, so one artifact
+ * cannot read as passing in one surface and failing in another.
+ *
+ * Absent when the plan is not an evaluation, or when the aggregate could not be
+ * derived — a damaged case must not remove the experiment from history.
+ */
+export interface EvaluationHistoryFacet {
+  suiteId: EvaluationSuiteId;
+  suiteName: string;
+  conversationRevisionId: ConversationRevisionId;
+  passed: boolean;
+  caseCounts: { total: number; passed: number; failed: number };
+}
+
 export interface ExperimentHistoryItem {
   experimentId: ExperimentId;
   kind: "repeated-request" | "evaluation";
+  evaluation?: EvaluationHistoryFacet;
   planFileName: string;
   resultFileName?: string;
   createdAt: string;
@@ -153,9 +182,31 @@ export function loadProjectHistoryFiles(
             missingTrace,
           };
         })();
+    let evaluation: EvaluationHistoryFacet | undefined;
+    if (plan.kind === "evaluation") {
+      try {
+        const assessment = evaluationParsedExperimentAggregate(plan, result, states);
+        evaluation = {
+          suiteId: plan.suite.suiteId,
+          suiteName: plan.suite.name,
+          conversationRevisionId: plan.suite.conversationRevisionId,
+          passed: assessment.passed,
+          caseCounts: assessment.caseCounts,
+        };
+      } catch (error) {
+        // Scoring a saved evaluation must not be able to hide it. The item
+        // still lists and still opens; only the pass rate is unavailable.
+        failures.push({
+          fileName: planFile.fileName,
+          message: message(error, "The evaluation could not be scored."),
+        });
+      }
+    }
+
     experiments.push({
       experimentId: plan.experimentId,
       kind: plan.kind,
+      ...(evaluation ? { evaluation } : {}),
       planFileName: planFile.fileName,
       ...(resultFileName ? { resultFileName } : {}),
       createdAt: plan.createdAt,

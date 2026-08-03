@@ -366,6 +366,8 @@ pre,
 .run-history-item > span,
 .run-history-item code,
 .run-history-status,
+.run-history-filter button,
+.evaluation-pass,
 .experiment-elapsed,
 .repeated-experiment-output-preview > span,
 .app-error-mark,
@@ -5596,6 +5598,69 @@ main {
   font-weight: 700;
 }
 
+.run-history-filter {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+  padding: 3px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--surface-inset);
+}
+
+.run-history-filter button {
+  flex: 1 1 0;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.run-history-filter button:hover {
+  color: var(--text-primary);
+}
+
+.run-history-filter button.selected {
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-control);
+}
+
+/* The strict pass rate of a saved evaluation. `partial` is deliberately not
+   `passed`: under strict scoring a suite with any failing case has not passed,
+   and colouring it like a success would contradict the results workspace. */
+.evaluation-pass {
+  flex: 0 0 auto;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: var(--surface-inset);
+  color: var(--text-muted);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.evaluation-pass.passed {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.evaluation-pass.failed,
+.evaluation-pass.partial {
+  background: var(--danger-surface);
+  color: var(--danger);
+}
+
+/* `pending` and `unscored` keep the neutral pill the base rule sets. They are
+   named here so the omission reads as a decision rather than a missing case. */
+.evaluation-pass.pending,
+.evaluation-pass.unscored {
+  background: var(--surface-inset);
+  color: var(--text-muted);
+}
+
 .run-history-list {
   display: grid;
   gap: 8px;
@@ -6939,6 +7004,7 @@ main {
 .evaluation-portable-warning {
   margin-bottom: 0;
 }
+
 
 .evaluation-cases-workspace {
   min-width: 0;

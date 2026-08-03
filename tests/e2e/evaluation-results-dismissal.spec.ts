@@ -182,7 +182,7 @@ test("a finished evaluation hands the pane back to the preview, and reopens from
   await page.getByLabel("Run data menu").click();
   await page.getByRole("button", { name: "Run history…" }).click();
   await page.locator(".run-history-item.experiment")
-    .filter({ hasText: "Evaluation · buffered-test-model" })
+    .filter({ hasText: "Evaluation · Topics" })
     .first()
     .click();
   await expect(page.locator(".evaluation-results-workspace")).toContainText("2 / 2 passed");
