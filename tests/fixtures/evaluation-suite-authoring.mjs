@@ -1,16 +1,54 @@
 export function evaluationFixture() {
   const noop = () => {};
   const project = {
-    schemaVersion: 7,
-    defaults: { conversationRevisionId: "revision_current" },
+    schemaVersion: 8,
+    defaults: {
+      conversationRevisionId: "revision_current",
+      target: { connectionRequirementId: "connection_default", model: "buffered-test-model" },
+    },
+    connectionRequirements: [{
+      id: "connection_default",
+      name: "Buffered fixture",
+      provider: "openai-compatible",
+      protocol: "openai-compatible-chat-completions",
+      endpoint: "http://127.0.0.1:44014/v1",
+    }],
     conversationRevisions: [{ id: "revision_current", conversationId: "conversation_fixture", createdAt: "2026-08-01T12:00:00.000Z", items: [{ kind: "template-use", use: { id: "template-use_question", templateId: "template_question", templateRevisionId: "template-revision_question", values: {}, outputMessageIds: ["message_question"] } }] }],
     promptTemplates: [{ id: "template_question", name: "Question", currentRevisionId: "template-revision_question", revisions: [{ id: "template-revision_question", createdAt: "2026-08-01T12:00:00.000Z", messages: [{ role: "user", content: "Explain {{topic}}." }], variableDefaults: { topic: "a topic" } }] }],
     evaluationSuites: [{
       id: "evaluation-suite_topics",
       name: "Topic quality",
+      input: { kind: "conversation-revision", conversationRevisionId: "revision_current" },
+      execution: {
+        target: { connectionRequirementId: "connection_default", model: "buffered-test-model" },
+        responseMode: "buffered",
+        options: {},
+        repetitions: 3,
+      },
       inputBindings: [{ id: "evaluation-input_topic", name: "Topic", target: { kind: "template-variable", templateUseId: "template-use_question", variableName: "topic" } }],
       cases: [{ id: "evaluation-case_migrations", name: "Migrations", values: { "evaluation-input_topic": "database migrations" }, referenceAnswer: "Explain a safe rollout.", checks: [{ checkId: "check_contains", kind: "contains", value: "rollback" }] }],
     }],
+  };
+  // Mirrors describeConversationRevision for this revision. The fixture states
+  // it literally because these render tests run outside the TypeScript loader.
+  const currentDescriptor = {
+    revisionId: "revision_current",
+    conversationId: "conversation_fixture",
+    createdAt: "2026-08-01T12:00:00.000Z",
+    isCurrentRevision: true,
+    templateUses: [{
+      templateUseId: "template-use_question",
+      templateId: "template_question",
+      templateName: "Question",
+      templateRevisionId: "template-revision_question",
+      pinnedToCurrentTemplateRevision: true,
+      messageCount: 1,
+    }],
+    messageCount: 1,
+    summary: "Explain a topic.",
+    summaryRole: "user",
+    resolvable: true,
+    compatibility: { kind: "compatible" },
   };
   return {
     project,
@@ -21,9 +59,50 @@ export function evaluationFixture() {
     repetitions: 3,
     candidates: [{ templateUseId: "template-use_question", templateName: "Question", variableName: "audience" }],
     diagnostics: [],
+    revisionChoices: [currentDescriptor],
+    selectedRevision: currentDescriptor,
+    focusedCaseResolution: {
+      ok: true,
+      messages: [{ id: "message_question", role: "user", content: [{ type: "text", text: "Explain database migrations." }] }],
+      templateResolutions: [{
+        templateUseId: "template-use_question",
+        templateId: "template_question",
+        templateRevisionId: "template-revision_question",
+        templateName: "Question",
+        messages: [{ role: "user", content: "Explain {{topic}}." }],
+        variableDefaults: { topic: "a topic" },
+        values: { topic: "database migrations" },
+        outputMessageIds: ["message_question"],
+      }],
+      variables: [{
+        templateUseId: "template-use_question",
+        templateId: "template_question",
+        templateName: "Question",
+        templateRevisionId: "template-revision_question",
+        variableName: "topic",
+        value: "database migrations",
+        source: "case",
+        inputBindingId: "evaluation-input_topic",
+        inputName: "Topic",
+      }],
+      caseValues: { "evaluation-input_topic": "database migrations" },
+      unresolvedBindings: [],
+    },
+    savedPromptCandidates: [{
+      templateId: "template_question",
+      name: "Question",
+      currentRevisionId: "template-revision_question",
+      revisionCreatedAt: "2026-08-01T12:00:00.000Z",
+      messageCount: 1,
+      roles: ["user"],
+      variables: [{ name: "topic", hasDefault: true, defaultValue: "a topic" }],
+    }],
+    savedPromptPickerOpen: false,
     selectSuite: noop, selectRevision: noop, setCaseSelected: noop, focusCase: noop,
-    setRepetitions: noop, createSuite: noop, renameSuite: noop, deleteSuite: noop,
+    setRepetitions: noop, updateExecution: () => true, createSuite: noop, renameSuite: noop, deleteSuite: noop,
     addInput: noop, renameInput: noop, deleteInput: noop, addCase: noop,
     updateCase: noop, deleteCase: noop, addCheck: noop, updateCheck: noop, deleteCheck: noop,
+    openSavedPromptPicker: noop, closeSavedPromptPicker: noop,
+    startFromSavedPrompt: () => true, dismissNotice: noop,
   };
 }

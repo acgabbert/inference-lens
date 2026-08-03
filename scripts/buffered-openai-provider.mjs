@@ -8,6 +8,9 @@ const port = Number.parseInt(
 const ordinaryAnswer = "Buffered fixture response: 2 + 2 = 4.";
 const providerDefaultModel = "provider-default-temperature-model";
 const providerDefaultAnswer = "Provider received no temperature override.";
+// Answers with the temperature it was actually sent, so a UI control that sets
+// one can be checked against the wire rather than against its own readout.
+const echoTemperatureModel = "echo-temperature-model";
 
 async function readJson(request) {
   const chunks = [];
@@ -25,6 +28,7 @@ const server = createServer(async (request, response) => {
       data: [
         { id: "buffered-test-model", object: "model" },
         { id: providerDefaultModel, object: "model" },
+        { id: echoTemperatureModel, object: "model" },
       ],
     }));
     return;
@@ -61,7 +65,9 @@ const server = createServer(async (request, response) => {
 
   const answer = body.model === providerDefaultModel
     ? providerDefaultAnswer
-    : ordinaryAnswer;
+    : body.model === echoTemperatureModel
+      ? `Provider received temperature ${"temperature" in body ? String(body.temperature) : "absent"}.`
+      : ordinaryAnswer;
 
   response.writeHead(200, {
     "content-type": "application/json",
@@ -87,7 +93,9 @@ const server = createServer(async (request, response) => {
   console.log(
     body.model === providerDefaultModel
       ? "served provider-default response with no temperature override"
-      : "served buffered response with 4 input, 7 output, 11 total tokens",
+      : body.model === echoTemperatureModel
+        ? `served echoed temperature ${"temperature" in body ? String(body.temperature) : "absent"}`
+        : "served buffered response with 4 input, 7 output, 11 total tokens",
   );
 });
 

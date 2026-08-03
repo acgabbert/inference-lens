@@ -7,7 +7,9 @@ import type {
   EvaluationCaseId,
   EvaluationSuiteId,
 } from "../../packages/core/src/run-kernel/types.ts";
+import { describeConversationRevision } from "../../packages/core/src/conversation-revision-description.ts";
 import { evaluationBatchGuardrail } from "./evaluation-batch.client.ts";
+import { revisionChoice } from "./revision-choice.client.ts";
 
 export interface EvaluationStartReadinessInput {
   projectOpen: boolean;
@@ -22,6 +24,8 @@ export interface EvaluationStartReadinessInput {
   hasProjectMapping: boolean;
   endpoint: string;
   model: string;
+  responseMode: "streaming" | "buffered";
+  streamingAvailable: boolean;
   activityInProgress: boolean;
 }
 
@@ -51,6 +55,9 @@ export function evaluationStartReadiness(
   }
   if (!input.endpoint.trim()) return { blockedReason: "Enter an endpoint before starting." };
   if (!input.model.trim()) return { blockedReason: "Enter a model before starting." };
+  if (input.responseMode === "streaming" && !input.streamingAvailable) {
+    return { blockedReason: "This connection does not support streaming. Choose buffered delivery for this evaluation." };
+  }
   if (input.activityInProgress) return { blockedReason: "Finish or stop the current run first." };
   return {};
 }
@@ -58,45 +65,36 @@ export function evaluationStartReadiness(
 export interface EvaluationStartDraftInput {
   project: ProjectFile;
   suiteId: EvaluationSuiteId;
-  revisionId: ConversationRevisionId;
   selectedCaseIds: readonly EvaluationCaseId[];
-  repetitions: number;
   profile: { id: string; name: string; endpoint: string };
-  model: string;
   capabilities: ProviderCapabilities;
-  responseMode: "streaming" | "buffered";
-  temperature?: number;
   durable: boolean;
 }
 
 /** Snapshots cross-feature route inputs into the draft owned by evaluation execution. */
 export function createEvaluationStartDraft(input: EvaluationStartDraftInput) {
-  const revision = input.project.conversationRevisions.find(({ id }) => id === input.revisionId);
+  const suite = input.project.evaluationSuites.find(({ id }) => id === input.suiteId);
+  const revision = input.project.conversationRevisions.find(({ id }) => id === suite?.input.conversationRevisionId);
   if (!revision) throw new Error("The selected conversation revision no longer exists.");
+  // Confirmation names the revision the same way the selector and preflight did,
+  // so the author confirms something they recognize rather than a bare timestamp.
+  const revisionLabel = revisionChoice(
+    describeConversationRevision(input.project, revision),
+  ).label;
   return {
+    revisionLabel,
     plan: createEvaluationExperimentPlan({
       project: input.project,
       suiteId: input.suiteId,
-      conversationRevisionId: input.revisionId,
       selectedCaseIds: input.selectedCaseIds,
-      repetitions: input.repetitions,
-      execution: {
-        target: {
+      runtimeTarget: {
           profileId: createEntityId("profile", input.profile.id),
           protocol: "openai-compatible-chat-completions",
           endpoint: input.profile.endpoint,
-          model: input.model,
           capabilities: input.capabilities,
-        },
-        responseMode: input.responseMode,
-        options: input.temperature === undefined
-          ? {}
-          : { temperature: input.temperature },
-        tools: [],
       },
     }),
     targetName: input.profile.name || "Untitled profile",
-    revisionCreatedAt: revision.createdAt,
     storage: input.durable ? "durable" as const : "unsaved" as const,
   };
 }

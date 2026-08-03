@@ -16,7 +16,12 @@ import { SequentialExperimentController } from "../run/sequential-experiment-con
 export interface EvaluationExecutionDraft {
   plan: EvaluationExperimentPlanV3;
   targetName: string;
-  revisionCreatedAt: string;
+  /**
+   * The same projected description the selector and preflight showed. It
+   * already ends with the revision's creation time, so the draft carries no
+   * separate timestamp for confirmation to reformat differently.
+   */
+  revisionLabel: string;
   storage: "durable" | "unsaved";
 }
 

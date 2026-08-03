@@ -1,9 +1,9 @@
 import { CHECK_SCHEMA_VERSION } from "./checks.ts";
 import { parseExperimentPlanFile } from "./experiment.ts";
 import type { EvaluationExperimentPlanV3 } from "./experiment.ts";
+import { resolveEvaluationCase } from "./evaluation-case-resolution.ts";
 import { evaluationSuitePreflight } from "./evaluation-suites.ts";
-import { prepareProjectRevisionRun } from "./project.ts";
-import type { ProjectFile, TemplateRunOverrides } from "./project.ts";
+import type { ProjectFile } from "./project.ts";
 import { randomUUID } from "./random-id.ts";
 import { createEntityId } from "./run-kernel/types.ts";
 import type {
@@ -26,11 +26,9 @@ export class EvaluationSetupError extends Error {
 export interface CreateEvaluationPlanOptions {
   project: ProjectFile;
   suiteId: EvaluationSuiteId;
-  conversationRevisionId: ConversationRevisionId;
   selectedCaseIds: readonly EvaluationCaseId[];
-  repetitions: number;
-  /** Snapshot of confirmation-time execution settings; never contains credentials. */
-  execution: Pick<ResolvedRunInput, "target" | "responseMode" | "options" | "tools">;
+  /** Device-local target resolution; authored model and options come only from the suite. */
+  runtimeTarget: Omit<ResolvedRunInput["target"], "model">;
   createdAt?: string;
   createSuffix?: () => string;
 }
@@ -46,10 +44,16 @@ export function createEvaluationExperimentPlan(
   const {
     project,
     suiteId,
-    conversationRevisionId,
     selectedCaseIds,
-    execution,
   } = options;
+  const suite = project.evaluationSuites.find(({ id }) => id === suiteId);
+  const conversationRevisionId = suite?.input.conversationRevisionId;
+  if (!suite || !conversationRevisionId) {
+    throw new EvaluationSetupError([{
+      code: "missing-selection",
+      message: "The selected evaluation suite or input revision no longer exists.",
+    }]);
+  }
   const diagnostics = evaluationSuitePreflight(
     project,
     suiteId,
@@ -57,20 +61,13 @@ export function createEvaluationExperimentPlan(
     selectedCaseIds,
   );
   if (diagnostics.length > 0) throw new EvaluationSetupError(diagnostics);
-  if (execution.tools.length > 0) {
-    throw new EvaluationSetupError([{
-      code: "tools-exposed",
-      message: "Evaluations do not support exposed tools yet. Disable tools before starting.",
-    }]);
-  }
-  if (!Number.isInteger(options.repetitions) || options.repetitions < 1) {
+  if (!Number.isInteger(suite.execution.repetitions) || suite.execution.repetitions < 1) {
     throw new EvaluationSetupError([{
       code: "invalid-repetitions",
       message: "Evaluation repetitions must be a positive integer.",
     }]);
   }
 
-  const suite = project.evaluationSuites.find(({ id }) => id === suiteId);
   const revision = project.conversationRevisions.find(({ id }) => id === conversationRevisionId);
   if (!suite || !revision) {
     throw new EvaluationSetupError([{
@@ -92,19 +89,11 @@ export function createEvaluationExperimentPlan(
   const now = options.createdAt ?? new Date().toISOString();
   const suffix = options.createSuffix ?? randomUUID;
   const cases = selectedCases.map((evaluationCase) => {
-    const overrides: Record<string, Record<string, string>> = {};
-    suite.inputBindings.forEach((binding) => {
-      const values = overrides[binding.target.templateUseId] ?? {};
-      values[binding.target.variableName] = evaluationCase.values[binding.id]!;
-      overrides[binding.target.templateUseId] = values;
-    });
-    const prepared = prepareProjectRevisionRun(
-      project,
-      revision,
-      overrides as TemplateRunOverrides,
-    );
-    if (!prepared.ok) {
-      throw new EvaluationSetupError(prepared.diagnostics.map(({ diagnostic }) => ({
+    // The same projection the focused-case preview renders, so what an author
+    // approved and what the plan freezes cannot disagree.
+    const resolved = resolveEvaluationCase(project, revision, suite, evaluationCase);
+    if (!resolved.ok) {
+      throw new EvaluationSetupError(resolved.diagnostics.map(({ diagnostic }) => ({
         code: diagnostic.code,
         message: diagnostic.message,
       })));
@@ -120,12 +109,15 @@ export function createEvaluationExperimentPlan(
       input: {
         conversationId: revision.conversationId,
         conversationRevisionId: revision.id,
-        target: structuredClone(execution.target),
-        messages: prepared.messages,
-        templateResolutions: prepared.templateResolutions,
-        responseMode: execution.responseMode,
-        options: structuredClone(execution.options),
-        tools: structuredClone(execution.tools),
+        target: {
+          ...structuredClone(options.runtimeTarget),
+          model: suite.execution.target.model,
+        },
+        messages: resolved.messages,
+        templateResolutions: resolved.templateResolutions,
+        responseMode: suite.execution.responseMode,
+        options: structuredClone(suite.execution.options),
+        tools: [],
         resolvedAt: now,
       },
     };
@@ -133,7 +125,7 @@ export function createEvaluationExperimentPlan(
 
   let ordinal = 0;
   const cells = cases.flatMap((evaluationCase) =>
-    Array.from({ length: options.repetitions }, (_, index) => ({
+    Array.from({ length: suite.execution.repetitions }, (_, index) => ({
       cellId: createEntityId("experiment-cell", suffix()),
       ordinal: ++ordinal,
       runId: createEntityId("run", suffix()),
@@ -148,7 +140,7 @@ export function createEvaluationExperimentPlan(
     createdAt: now,
     checkSchemaVersion: CHECK_SCHEMA_VERSION,
     scoringPolicy: "strict",
-    repetitions: options.repetitions,
+    repetitions: suite.execution.repetitions,
     suite: {
       suiteId: suite.id,
       name: suite.name,

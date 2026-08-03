@@ -378,7 +378,10 @@ pre,
 .run-readiness-why-mark,
 .evaluation-case-list-item button span,
 .evaluation-case-check-count,
-.evaluation-regex-dialect > summary > span {
+.evaluation-regex-dialect > summary > span,
+.saved-prompt-list legend,
+.evaluation-preview-case,
+.evaluation-preflight-region h5 {
   font-size: var(--type-metadata);
 }
 
@@ -4484,6 +4487,15 @@ pre {
 }
 
 @media (max-width: 720px) {
+  /* A floating notice can cover most of a phone viewport and intercept controls
+     after the page scrolls underneath it. Keep the same notice content and
+     actions, but let it occupy document space on narrow screens. */
+  .workbench-notices {
+    position: static;
+    max-width: none;
+    margin: 12px;
+  }
+
   .topbar {
     height: auto;
     padding: 13px 15px;
@@ -6175,9 +6187,98 @@ main {
 
 .evaluation-preflight-controls {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: 14px;
+}
+
+.evaluation-input-summary,
+.evaluation-execution-editor {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  background: var(--surface-sunken);
+}
+
+.evaluation-input-summary > span,
+.evaluation-input-summary > strong,
+.evaluation-input-summary > small {
+  display: block;
+}
+
+.evaluation-input-summary > strong {
+  margin-top: 4px;
+}
+
+.evaluation-input-summary > small,
+.evaluation-execution-editor-heading small {
+  margin-top: 3px;
+  color: var(--text-muted);
+}
+
+.evaluation-input-picker {
+  margin-top: 10px;
+}
+
+.evaluation-input-summary > .button {
+  margin-top: 10px;
+}
+
+.evaluation-input-picker > summary {
+  width: fit-content;
+  color: var(--accent-text);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.evaluation-input-picker[open] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: end;
+  gap: 10px;
+}
+
+.evaluation-input-picker[open] > summary {
+  grid-column: 1 / -1;
+}
+
+.evaluation-execution-editor {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  align-items: end;
+  gap: 10px;
+}
+
+.evaluation-execution-editor-heading,
+.evaluation-execution-editor output {
+  grid-column: 1 / -1;
+}
+
+.evaluation-execution-editor-heading span,
+.evaluation-execution-editor-heading small {
+  display: block;
+}
+
+.evaluation-resolution-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--warning-border, var(--border-strong));
+  border-radius: 9px;
+  background: var(--warning-surface, var(--surface-inset));
+}
+
+.evaluation-resolution-action strong,
+.evaluation-resolution-action span {
+  display: block;
+}
+
+.evaluation-resolution-action span {
+  margin-top: 3px;
+  color: var(--text-muted);
 }
 
 .evaluation-batch-controls {
@@ -6224,22 +6325,38 @@ main {
   overflow-wrap: anywhere;
 }
 
+.evaluation-start-area small.evaluation-start-blocked {
+  color: var(--warning-strong);
+}
+
+/* The response pane is the surface here, so the preview is a plain stack of
+   regions rather than the nested card it was inside the composer. */
+.evaluation-preview-scroll {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-height: 0;
+  flex: 1 1 auto;
+  padding: 14px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--surface-panel);
+}
+
+.evaluation-preview-case {
+  color: var(--text-secondary);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
 .evaluation-provider-input {
   display: grid;
   gap: 12px;
-  padding: 14px;
-  border: 1px solid var(--border-default);
-  border-radius: 10px;
-  background: var(--surface-sunken);
+  min-width: 0;
 }
 
-.evaluation-provider-input h4,
 .evaluation-provider-input p {
   margin: 0;
-}
-
-.evaluation-provider-input h4 {
-  margin-top: 2px;
 }
 
 .evaluation-provider-input > p,
@@ -6302,6 +6419,127 @@ main {
   overflow-wrap: anywhere;
 }
 
+.evaluation-preflight-region {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-default);
+}
+
+.evaluation-preflight-region h5 {
+  margin: 0;
+  color: var(--text-muted);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.evaluation-provenance-label {
+  color: var(--text-primary);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.evaluation-provenance-uses {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.evaluation-provenance-uses li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+.evaluation-provenance-uses span,
+.evaluation-provenance-uses code,
+.evaluation-provenance-details code {
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.evaluation-provenance-details summary {
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.evaluation-provenance-details dl {
+  display: grid;
+  gap: 4px;
+  margin: 6px 0 0;
+}
+
+.evaluation-provenance-details dl > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+.evaluation-provenance-details dt {
+  color: var(--text-muted);
+}
+
+.evaluation-provenance-details dd {
+  margin: 0;
+  min-width: 0;
+}
+
+/* The table can exceed a phone's width; it scrolls itself so the page cannot. */
+.evaluation-value-scroll {
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.evaluation-value-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.evaluation-value-table th,
+.evaluation-value-table td {
+  padding: 6px 10px 6px 0;
+  border-bottom: 1px solid var(--border-default);
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.evaluation-value-table th {
+  color: var(--text-muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.evaluation-value-table td {
+  color: var(--text-secondary);
+}
+
+.evaluation-value-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.evaluation-value-table .evaluation-value-missing td {
+  color: var(--danger);
+}
+
+.evaluation-target-advisory {
+  padding-left: 9px;
+  border-left: 2px solid var(--border-strong);
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.evaluation-target-advisory strong {
+  color: var(--text-secondary);
+}
+
 .evaluation-batch-warning {
   margin: -8px 0 0;
   padding: 10px 12px;
@@ -6317,8 +6555,137 @@ main {
   color: var(--danger);
 }
 
+.evaluation-revision-picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+  min-width: 0;
+}
+
+.evaluation-revision-picker label {
+  min-width: 0;
+}
+
+.evaluation-revision-picker select {
+  text-overflow: ellipsis;
+}
+
+.evaluation-authoring-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin: -8px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 9px;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.evaluation-authoring-notice strong {
+  color: var(--text-secondary);
+}
+
+.evaluation-authoring-notice .text-button {
+  margin-left: auto;
+}
+
 .evaluation-start-dialog {
   width: min(720px, 100%);
+}
+
+.saved-prompt-dialog {
+  width: min(680px, 100%);
+  max-height: min(86vh, 760px);
+  overflow-y: auto;
+}
+
+.saved-prompt-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 9px;
+}
+
+.saved-prompt-list legend {
+  padding: 0 6px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.saved-prompt-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  margin-bottom: 0;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.saved-prompt-option:hover {
+  background: var(--surface-sunken);
+}
+
+.saved-prompt-option.selected {
+  border-color: var(--border-strong);
+  background: var(--surface-sunken);
+}
+
+.saved-prompt-option input[type="radio"] {
+  width: auto;
+  margin: 0;
+}
+
+.saved-prompt-option strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.saved-prompt-details {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 9px;
+  background: var(--surface-sunken);
+}
+
+.saved-prompt-details > div {
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.saved-prompt-details dt {
+  color: var(--text-muted);
+}
+
+.saved-prompt-details dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.saved-prompt-details code {
+  overflow-wrap: anywhere;
+  color: var(--text-muted);
+}
+
+.saved-prompt-advisory {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-muted);
 }
 
 .evaluation-start-details code {
@@ -6803,6 +7170,35 @@ main {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .evaluation-revision-picker {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .evaluation-input-picker[open],
+  .evaluation-execution-editor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .evaluation-execution-editor-heading,
+  .evaluation-execution-editor output,
+  .evaluation-input-picker[open] > summary {
+    grid-column: 1;
+  }
+
+  .evaluation-resolution-action {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .evaluation-revision-picker button {
+    justify-self: start;
+  }
+
+  .saved-prompt-details > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+
   .evaluation-batch-controls {
     align-items: flex-end;
     flex-wrap: wrap;
@@ -6815,11 +7211,6 @@ main {
   .evaluation-start-area {
     align-items: flex-start;
     flex-direction: column !important;
-  }
-
-  .evaluation-provider-input .evaluation-section-heading {
-    align-items: flex-start;
-    flex-direction: column;
   }
 
   .evaluation-provider-target {

@@ -1,17 +1,16 @@
 import type {
   CheckId,
+  ConnectionRequirementId,
   ConversationRevisionId,
   EvaluationCaseId,
   EvaluationInputBindingId,
   EvaluationSuiteId,
   PromptTemplateUseId,
+  InferenceOptions,
 } from "./run-kernel/types.ts";
 import type { CheckDefinition } from "./checks.ts";
-import { prepareProjectRevisionRun } from "./project.ts";
-import type {
-  ProjectFile,
-  TemplateRunOverrides,
-} from "./project.ts";
+import { resolveEvaluationCase } from "./evaluation-case-resolution.ts";
+import type { ProjectFile } from "./project.ts";
 import { templateUseVariableIndex } from "./template-use-variable-index.ts";
 export { templateUseVariableIndex } from "./template-use-variable-index.ts";
 
@@ -37,6 +36,21 @@ export interface EvaluationCase {
 export interface EvaluationSuite {
   id: EvaluationSuiteId;
   name: string;
+  /** The immutable authored input this suite resolves independently of Messages. */
+  input: {
+    kind: "conversation-revision";
+    conversationRevisionId: ConversationRevisionId;
+  };
+  /** Portable execution preferences. Credentials and local profile identity never enter project data. */
+  execution: {
+    target: {
+      connectionRequirementId: ConnectionRequirementId;
+      model: string;
+    };
+    responseMode: "streaming" | "buffered";
+    options: InferenceOptions;
+    repetitions: number;
+  };
   inputBindings: EvaluationInputBinding[];
   cases: EvaluationCase[];
 }
@@ -93,7 +107,7 @@ function unfinishedCheckText(check: CheckDefinition): boolean {
   return (
     (check.kind === "contains" || check.kind === "exact-match") &&
     check.value === ""
-  );
+  ) || (check.kind === "regex" && check.pattern === "");
 }
 
 /** Pure, provider-free authoring preflight for a selected suite and revision. */
@@ -145,35 +159,29 @@ export function evaluationSuitePreflight(
         code: "unfinished-check",
         caseId: evaluationCase.id,
         checkId: check.checkId,
-        message: `A ${check.kind} check on case "${evaluationCase.name}" has no expected text yet.`,
+        message: check.kind === "regex"
+          ? `A regex check on case "${evaluationCase.name}" needs a pattern.`
+          : `A ${check.kind} check on case "${evaluationCase.name}" has no expected text yet.`,
       });
     });
 
+    // A binding the revision cannot satisfy is already reported once, below, as
+    // a suite-level incompatibility. Repeating it per case would bury the one
+    // fact the author needs behind a row for every case.
     if (!bindingsMatchRevision) return;
 
-    const overrides: Record<string, Record<string, string>> = {};
-    suite.inputBindings.forEach((binding) => {
-      const values = overrides[binding.target.templateUseId] ?? {};
-      values[binding.target.variableName] = evaluationCase.values[binding.id] ?? "";
-      overrides[binding.target.templateUseId] = values;
-    });
-    const prepared = prepareProjectRevisionRun(
-      project,
-      revision,
-      overrides as TemplateRunOverrides,
-    );
-    if (!prepared.ok) {
-      prepared.diagnostics.forEach(({ templateUseId, diagnostic }) => {
-        if (diagnostic.code !== "missing-template-variable") return;
-        diagnostics.push({
-          code: "unresolved-template-variable",
-          caseId: evaluationCase.id,
-          templateUseId,
-          variableName: diagnostic.name,
-          message: `Case "${evaluationCase.name}" cannot resolve template variable "${diagnostic.name}": ${diagnostic.message}`,
-        });
+    const resolution = resolveEvaluationCase(project, revision, suite, evaluationCase);
+    if (resolution.ok) return;
+    resolution.diagnostics.forEach(({ templateUseId, diagnostic }) => {
+      if (diagnostic.code !== "missing-template-variable") return;
+      diagnostics.push({
+        code: "unresolved-template-variable",
+        caseId: evaluationCase.id,
+        templateUseId,
+        variableName: diagnostic.name,
+        message: `Case "${evaluationCase.name}" cannot resolve template variable "${diagnostic.name}": ${diagnostic.message}`,
       });
-    }
+    });
   });
 
   suite.inputBindings.forEach((binding) => {

@@ -1,17 +1,25 @@
-import { parseCheckDefinition } from "./checks.ts";
 import type { CheckDefinition, CheckKind } from "./checks.ts";
 import { evaluationSuitePreflight, templateUseVariableIndex } from "./evaluation-suites.ts";
 import type { EvaluationCase, EvaluationInputBinding, EvaluationSuite } from "./evaluation-suites.ts";
-import { parseProjectFile } from "./project.ts";
-import type { ProjectFile } from "./project.ts";
+import {
+  createBranchRevision,
+  insertPromptTemplateUse,
+  parseProjectFile,
+  ProjectValidationError,
+} from "./project.ts";
+import type { ProjectFile, PromptTemplateMessage } from "./project.ts";
 import { randomUUID } from "./random-id.ts";
 import { createEntityId } from "./run-kernel/types.ts";
+import { discoverTemplateVariables } from "./template-engine.ts";
 import type {
   CheckId,
+  ConnectionRequirementId,
   ConversationRevisionId,
   EvaluationCaseId,
   EvaluationInputBindingId,
   EvaluationSuiteId,
+  PromptTemplateId,
+  PromptTemplateRevisionId,
   PromptTemplateUseId,
 } from "./run-kernel/types.ts";
 
@@ -28,7 +36,7 @@ type NonRegexCheckKind = Exclude<CheckKind, "regex">;
 /** The complete information required before a check enters portable project data. */
 export type NewEvaluationCheck =
   | { kind: NonRegexCheckKind }
-  | { kind: "regex"; pattern: string; flags?: string };
+  | { kind: "regex"; pattern?: string; flags?: string };
 
 export function evaluationBindingCandidates(
   project: ProjectFile,
@@ -48,6 +56,162 @@ export function evaluationBindingCandidates(
       variableName,
     }));
   });
+}
+
+export interface SavedPromptVariable {
+  name: string;
+  /** True when the template revision itself supplies a value for this variable. */
+  hasDefault: boolean;
+  defaultValue?: string;
+}
+
+export interface SavedPromptCandidate {
+  templateId: PromptTemplateId;
+  name: string;
+  currentRevisionId: PromptTemplateRevisionId;
+  revisionCreatedAt: string;
+  messageCount: number;
+  roles: PromptTemplateMessage["role"][];
+  variables: SavedPromptVariable[];
+  /**
+   * Advisory only. A recommendation records the target a template was authored
+   * against; it never selects or overrides the evaluation's target, because one
+   * request may contain several templates and the provider accepts one model.
+   */
+  recommendedTarget?: {
+    connectionRequirementId: ConnectionRequirementId;
+    connectionName: string;
+    model: string;
+  };
+}
+
+/**
+ * The templates the saved-prompt shortcut may insert, described from each
+ * template's current immutable revision.
+ *
+ * Archived templates are excluded: existing project policy forbids adding them
+ * to a conversation, so offering one would produce a refusal rather than a
+ * revision.
+ */
+export function savedPromptCandidates(
+  project: Pick<ProjectFile, "promptTemplates" | "connectionRequirements">,
+): SavedPromptCandidate[] {
+  const connectionsById = new Map(
+    project.connectionRequirements.map((requirement) => [requirement.id, requirement]),
+  );
+  return project.promptTemplates.flatMap((template): SavedPromptCandidate[] => {
+    if (template.archivedAt) return [];
+    const revision = template.revisions.find(({ id }) => id === template.currentRevisionId);
+    if (!revision) return [];
+    const recommendation = template.recommendedTarget;
+    return [{
+      templateId: template.id,
+      name: template.name,
+      currentRevisionId: revision.id,
+      revisionCreatedAt: revision.createdAt,
+      messageCount: revision.messages.length,
+      roles: revision.messages.map(({ role }) => role),
+      variables: discoverTemplateVariables(revision.messages).variables.map(({ name }) => {
+        const hasDefault = Object.prototype.hasOwnProperty.call(revision.variableDefaults, name);
+        return {
+          name,
+          hasDefault,
+          ...(hasDefault ? { defaultValue: revision.variableDefaults[name]! } : {}),
+        };
+      }),
+      ...(recommendation
+        ? {
+            recommendedTarget: {
+              connectionRequirementId: recommendation.connectionRequirementId,
+              connectionName:
+                connectionsById.get(recommendation.connectionRequirementId)?.name ?? "Unknown connection",
+              model: recommendation.model,
+            },
+          }
+        : {}),
+    }];
+  });
+}
+
+export interface CreateRevisionFromSavedPromptOptions {
+  /**
+   * The revision the evaluation currently selects. It supplies lineage and the
+   * conversation, not content: the child is authored from the prompt alone.
+   */
+  parentRevisionId: ConversationRevisionId;
+  templateId: PromptTemplateId;
+  revisionIdSuffix?: string;
+  templateUseIdSuffix?: string;
+  createdAt?: string;
+}
+
+export interface SavedPromptRevision {
+  project: ProjectFile;
+  conversationRevisionId: ConversationRevisionId;
+  templateUseId: PromptTemplateUseId;
+}
+
+/**
+ * Authors a prompt-only child of `parentRevisionId` containing exactly one
+ * pinned use of the template's current immutable revision. The Messages
+ * editor remains on its own active revision; this revision belongs to the
+ * evaluation input that selects it.
+ *
+ * The child deliberately does not inherit the parent's items. "Start from
+ * saved prompt" then has predictable replacement semantics and cannot silently
+ * duplicate a system message or an earlier prompt; a template's own multi-
+ * message structure still arrives whole and ordered, because one use emits
+ * every message of its pinned revision. Authors add surrounding messages
+ * afterwards in the Messages editor.
+ *
+ * Suites, bindings, cases, target, and inference options are untouched: this
+ * mints a new stable template-use ID, so retargeting existing bindings would be
+ * a guess rather than a translation.
+ */
+export function createRevisionFromSavedPrompt(
+  project: ProjectFile,
+  {
+    parentRevisionId,
+    templateId,
+    revisionIdSuffix = randomUUID(),
+    templateUseIdSuffix = randomUUID(),
+    createdAt = new Date().toISOString(),
+  }: CreateRevisionFromSavedPromptOptions,
+): SavedPromptRevision {
+  const parent = project.conversationRevisions.find(({ id }) => id === parentRevisionId);
+  if (!parent) {
+    throw new ProjectValidationError([{
+      code: "custom",
+      path: ["conversationRevisions", "parentRevisionId"],
+      message: "The revision this prompt would start from no longer exists.",
+    }]);
+  }
+  const conversationRevisionId = createEntityId("revision", revisionIdSuffix);
+  // Branching first and inserting second reuses the existing lineage and
+  // pinned-use rules verbatim, including the archived-template refusal, rather
+  // than restating them here where they could drift.
+  const branched = createBranchRevision(project, {
+    conversationId: parent.conversationId,
+    parentRevisionId,
+    messages: [],
+    items: [],
+    idSuffix: revisionIdSuffix,
+    createdAt,
+  });
+  const messagesRevisionId = project.defaults.conversationRevisionId;
+  const evaluationBranch = parseProjectFile({
+    ...branched,
+    defaults: { ...branched.defaults, conversationRevisionId: messagesRevisionId },
+  });
+  return {
+    project: insertPromptTemplateUse(evaluationBranch, {
+      conversationRevisionId,
+      templateId,
+      idSuffix: templateUseIdSuffix,
+    }),
+    conversationRevisionId,
+    templateUseId: createEntityId("template-use", templateUseIdSuffix),
+  };
 }
 
 type IdSuffix = () => string;
@@ -87,10 +251,42 @@ export function createEvaluationSuite(
     project: updatedSuites(project, [...project.evaluationSuites, {
       id: suiteId,
       name: uniqueName(name, project.evaluationSuites.map(({ name: existing }) => existing)),
+      input: {
+        kind: "conversation-revision",
+        conversationRevisionId: project.defaults.conversationRevisionId,
+      },
+      execution: {
+        target: structuredClone(project.defaults.target),
+        // Buffered by default: a batch of runs is read after it finishes, so
+        // incremental delivery buys nothing and only narrows which providers
+        // the suite can run against.
+        responseMode: "buffered",
+        options: structuredClone(project.defaults.options),
+        repetitions: 1,
+      },
       inputBindings: [],
       cases: [],
     }]),
   };
+}
+
+export function updateEvaluationSuiteInput(
+  project: ProjectFile,
+  suiteId: EvaluationSuiteId,
+  conversationRevisionId: ConversationRevisionId,
+): ProjectFile {
+  return mapSuite(project, suiteId, (suite) => ({
+    ...suite,
+    input: { kind: "conversation-revision", conversationRevisionId },
+  }));
+}
+
+export function updateEvaluationSuiteExecution(
+  project: ProjectFile,
+  suiteId: EvaluationSuiteId,
+  execution: EvaluationSuite["execution"],
+): ProjectFile {
+  return mapSuite(project, suiteId, (suite) => ({ ...suite, execution }));
 }
 
 export function renameEvaluationSuite(
@@ -210,7 +406,7 @@ export function removeEvaluationCase(
   }));
 }
 
-/** Every created check is valid before it enters portable project data. */
+/** Every created check is structurally valid; unfinished values are preflight state. */
 export function defaultCheck(
   input: NewEvaluationCheck,
   suffix: IdSuffix = generatedSuffix,
@@ -219,13 +415,13 @@ export function defaultCheck(
   switch (input.kind) {
     case "exact-match": return { checkId, kind: input.kind, value: "" };
     case "contains": return { checkId, kind: input.kind, value: "" };
-    case "regex": return parseCheckDefinition({
+    case "regex": return {
       checkId,
       kind: input.kind,
       syntax: "re2",
-      pattern: input.pattern,
+      pattern: input.pattern ?? "",
       ...(input.flags ? { flags: input.flags } : {}),
-    });
+    };
     case "valid-json": return { checkId, kind: input.kind, topLevel: "any" };
     case "max-output-characters": return { checkId, kind: input.kind, limit: 1000 };
     case "max-duration-ms": return { checkId, kind: input.kind, limit: 30000 };

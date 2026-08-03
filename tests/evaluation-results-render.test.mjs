@@ -30,14 +30,16 @@ async function fixture() {
   });
   project = projectCore.parseProjectFile({ ...project, evaluationSuites: [{
     id: "evaluation-suite_topics", name: "Topic quality",
+    input: { kind: "conversation-revision", conversationRevisionId: project.defaults.conversationRevisionId },
+    execution: { target: { ...project.defaults.target, model: "fixture-model" }, responseMode: "buffered", options: {}, repetitions: 2 },
     inputBindings: [{ id: "evaluation-input_topic", name: "Topic", target: { kind: "template-variable", templateUseId: "template-use_question-use", variableName: "topic" } }],
     cases: [{ id: "evaluation-case_migrations", name: "Migrations", values: { "evaluation-input_topic": "database migrations" }, checks: [{ checkId: "check_mentions-rollback", kind: "contains", value: "rollback", label: "Mentions rollback" }] }],
   }] });
   let suffix = 0;
   const plan = executionCore.createEvaluationExperimentPlan({
-    project, suiteId: "evaluation-suite_topics", conversationRevisionId: project.defaults.conversationRevisionId,
-    selectedCaseIds: ["evaluation-case_migrations"], repetitions: 2, createdAt: "2026-08-01T12:10:00.000Z", createSuffix: () => `render-${++suffix}`,
-    execution: { target: { profileId: "profile_fixture", protocol: "openai-compatible-chat-completions", endpoint: "https://provider.example.test/v1", model: "fixture-model", capabilities: types.OPENAI_COMPATIBLE_CAPABILITIES }, responseMode: "buffered", options: {}, tools: [] },
+    project, suiteId: "evaluation-suite_topics",
+    selectedCaseIds: ["evaluation-case_migrations"], createdAt: "2026-08-01T12:10:00.000Z", createSuffix: () => `render-${++suffix}`,
+    runtimeTarget: { profileId: "profile_fixture", protocol: "openai-compatible-chat-completions", endpoint: "https://provider.example.test/v1", capabilities: types.OPENAI_COMPATIBLE_CAPABILITIES },
   });
   return { server, plan, experimentCore, kernel, ...component, ...reactServer, ...reactModule };
 }
@@ -62,6 +64,9 @@ test("renders live evaluation progress with the active case and repetition", asy
     }));
     assert.match(html, /0 of 2 finished · Migrations, repetition 1/);
     assert.match(html, /Evaluation progress/);
+    assert.match(html, /Running…/);
+    assert.match(html, /In progress/);
+    assert.doesNotMatch(html, /Open when finished|Did not pass/);
     assert.match(html, /not saved and will be lost/);
     assert.doesNotMatch(html, /NaN|Infinity|undefined|\[object Object\]/);
   } finally { await fx.server.close(); }

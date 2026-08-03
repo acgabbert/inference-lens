@@ -1,11 +1,9 @@
 "use client";
 
-import { useState } from "react";
 import type { RefObject } from "react";
 import { ModelCombobox } from "../model-combobox.client";
+import { TemperatureControl } from "../temperature-control.client";
 import type { ModelDiscoveryState } from "../use-model-discovery.client";
-
-export const INITIAL_TEMPERATURE_OVERRIDE = 0.2;
 
 export interface RequestSettingsProps {
   model: string;
@@ -38,21 +36,6 @@ export function RequestSettings({
   onLoadModels,
   onToggleFavoriteModel,
 }: RequestSettingsProps) {
-  const [lastTemperatureOverride, setLastTemperatureOverride] = useState(
-    temperature ?? INITIAL_TEMPERATURE_OVERRIDE,
-  );
-  const [previousTemperature, setPreviousTemperature] = useState(temperature);
-
-  if (temperature !== previousTemperature) {
-    setPreviousTemperature(temperature);
-    if (temperature !== undefined) setLastTemperatureOverride(temperature);
-  }
-
-  const temperatureOverridden = temperature !== undefined;
-  const sliderTemperature = temperature ?? lastTemperatureOverride;
-  const experimentalTemperature =
-    temperatureOverridden && sliderTemperature > 1;
-
   return (
     <div className="run-settings-grid">
       <ModelCombobox
@@ -64,49 +47,10 @@ export function RequestSettings({
         favoriteModels={favoriteModels}
         onToggleFavoriteModel={onToggleFavoriteModel}
       />
-      <div className="temperature-control">
-        <label className="temperature-toggle">
-          <input
-            type="checkbox"
-            checked={temperatureOverridden}
-            onChange={(event) =>
-              onTemperatureChange(
-                event.target.checked
-                  ? lastTemperatureOverride
-                  : undefined,
-              )
-            }
-          />
-          <span>Override temperature</span>
-        </label>
-        {!temperatureOverridden ? (
-          <small className="temperature-default">Provider default</small>
-        ) : null}
-        <div className="range-row">
-          <input
-            aria-label="Temperature"
-            type="range"
-            min="0"
-            max="2"
-            step="0.1"
-            value={sliderTemperature}
-            disabled={!temperatureOverridden}
-            onChange={(event) => {
-              const next = Number(event.target.value);
-              setLastTemperatureOverride(next);
-              onTemperatureChange(next);
-            }}
-          />
-          <output className={experimentalTemperature ? "experimental" : undefined}>
-            {temperatureOverridden
-              ? sliderTemperature.toFixed(1)
-              : "—"}
-          </output>
-        </div>
-        {experimentalTemperature ? (
-          <small className="temperature-warning">Experimental above 1.0</small>
-        ) : null}
-      </div>
+      <TemperatureControl
+        value={temperature}
+        onChange={onTemperatureChange}
+      />
       <label
         className={
           streamingAvailable

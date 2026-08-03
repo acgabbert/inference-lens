@@ -7,6 +7,7 @@ import {
   addEvaluationCheck,
   addEvaluationInput,
   createEvaluationSuite,
+  createRevisionFromSavedPrompt,
   evaluationBindingCandidates,
   evaluationSuitePreflight,
   removeEvaluationCase,
@@ -15,20 +16,39 @@ import {
   removeEvaluationSuite,
   renameEvaluationInput,
   renameEvaluationSuite,
+  savedPromptCandidates,
   updateEvaluationCase,
   updateEvaluationCheck,
+  updateEvaluationSuiteExecution,
+  updateEvaluationSuiteInput,
 } from "../../packages/core/src/evaluation-suite-authoring";
-import type { NewEvaluationCheck } from "../../packages/core/src/evaluation-suite-authoring";
+import type {
+  NewEvaluationCheck,
+  SavedPromptCandidate,
+} from "../../packages/core/src/evaluation-suite-authoring";
+import { describeConversationRevisions } from "../../packages/core/src/conversation-revision-description";
+import type { ConversationRevisionDescriptor } from "../../packages/core/src/conversation-revision-description";
+import { resolveEvaluationCase } from "../../packages/core/src/evaluation-case-resolution";
+import type { EvaluationCaseResolution } from "../../packages/core/src/evaluation-case-resolution";
 import { ProjectValidationError } from "../../packages/core/src/project";
-import type { ProjectFile } from "../../packages/core/src/project";
+import type { EvaluationSuite, ProjectFile } from "../../packages/core/src/project";
 import type {
   CheckId,
   ConversationRevisionId,
   EvaluationCaseId,
   EvaluationInputBindingId,
   EvaluationSuiteId,
+  PromptTemplateId,
 } from "../../packages/core/src/run-kernel";
 import type { ConfirmationDialogRequest } from "../confirmation-dialog.client";
+
+/** A concise, dismissible confirmation that a project mutation landed. */
+export interface EvaluationAuthoringNotice {
+  kind: "saved-prompt-revision";
+  templateName: string;
+  messageCount: number;
+  variableCount: number;
+}
 
 export interface EvaluationSuiteAuthoringHandle {
   project: ProjectFile | null;
@@ -40,11 +60,30 @@ export interface EvaluationSuiteAuthoringHandle {
   candidates: ReturnType<typeof evaluationBindingCandidates>;
   diagnostics: ReturnType<typeof evaluationSuitePreflight>;
   error?: EvaluationSuiteAuthoringError;
+  /** Every revision, described against the selected suite's exact bindings. */
+  revisionChoices: ConversationRevisionDescriptor[];
+  selectedRevision?: ConversationRevisionDescriptor;
+  /** The exact resolved input the focused case would snapshot. */
+  focusedCaseResolution?: EvaluationCaseResolution;
+  savedPromptCandidates: SavedPromptCandidate[];
+  savedPromptPickerOpen: boolean;
+  savedPromptError?: string;
+  notice?: EvaluationAuthoringNotice;
+  openSavedPromptPicker(): void;
+  closeSavedPromptPicker(): void;
+  /**
+   * Authors a prompt-only revision from an active saved prompt and selects it
+   * for this evaluation. Returns false and reports a local error when the
+   * project mutation is rejected.
+   */
+  startFromSavedPrompt(templateId: PromptTemplateId): boolean;
+  dismissNotice(): void;
   selectSuite(id: EvaluationSuiteId): void;
   selectRevision(id: ConversationRevisionId): void;
   setCaseSelected(id: EvaluationCaseId, selected: boolean): void;
   focusCase(id: EvaluationCaseId): void;
   setRepetitions(value: number): void;
+  updateExecution(execution: EvaluationSuite["execution"]): boolean;
   createSuite(): void;
   renameSuite(name: string): boolean;
   deleteSuite(): void;
@@ -95,6 +134,21 @@ interface ScopedAuthoringError extends EvaluationSuiteAuthoringError {
   suiteId: EvaluationSuiteId;
 }
 
+/**
+ * Authoring a revision is a project-level mutation that does not require a
+ * suite, so its error and its success notice are scoped to the project rather
+ * than to the selected suite.
+ */
+interface ScopedProjectMessage {
+  projectId: ProjectFile["projectId"];
+  message: string;
+}
+
+interface ScopedNotice {
+  projectId: ProjectFile["projectId"];
+  notice: EvaluationAuthoringNotice;
+}
+
 function mutationErrorMessage(cause: unknown): string {
   if (cause instanceof ProjectValidationError) {
     return cause.issues[0]?.message ?? "The evaluation suite change is invalid.";
@@ -102,28 +156,33 @@ function mutationErrorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : "Could not update the evaluation suite.";
 }
 
-export function useEvaluationSuiteAuthoring(
-  project: ProjectFile | null,
-  adoptProjectMutation: (project: ProjectFile) => void,
-  requestConfirmation?: (request: ConfirmationDialogRequest) => void,
-): EvaluationSuiteAuthoringHandle {
+export interface UseEvaluationSuiteAuthoringInput {
+  project: ProjectFile | null;
+  adoptProjectMutation(project: ProjectFile): void;
+  requestConfirmation?(request: ConfirmationDialogRequest): void;
+}
+
+export function useEvaluationSuiteAuthoring({
+  project,
+  adoptProjectMutation,
+  requestConfirmation,
+}: UseEvaluationSuiteAuthoringInput): EvaluationSuiteAuthoringHandle {
   const [suiteId, setSuiteId] = useState<EvaluationSuiteId>();
-  const [revisionId, setRevisionId] = useState<ConversationRevisionId>();
   // Undefined means "every case", so opening a saved suite previews the run the
   // author actually described rather than an empty selection they must repair.
   // It narrows to an explicit set the first time a checkbox is touched.
   const [selection, setSelection] = useState<ScopedCaseSelection>();
   const [focusedCaseId, setFocusedCaseId] = useState<EvaluationCaseId>();
-  const [repetitions, setRepetitionsState] = useState(1);
   const [storedError, setStoredError] = useState<ScopedAuthoringError>();
+  const [savedPromptPickerOpen, setSavedPromptPickerOpen] = useState(false);
+  const [storedPromptError, setStoredPromptError] = useState<ScopedProjectMessage>();
+  const [storedNotice, setStoredNotice] = useState<ScopedNotice>();
 
   const effectiveSuiteId = project?.evaluationSuites.some(({ id }) => id === suiteId)
     ? suiteId
     : project?.evaluationSuites[0]?.id;
-  const effectiveRevisionId = project?.conversationRevisions.some(({ id }) => id === revisionId)
-    ? revisionId
-    : project?.defaults.conversationRevisionId;
   const suite = project?.evaluationSuites.find(({ id }) => id === effectiveSuiteId);
+  const effectiveRevisionId = suite?.input.conversationRevisionId;
   const validCaseIds = new Set(suite?.cases.map(({ id }) => id) ?? []);
   const explicitSelection = selection &&
     selection.projectId === project?.projectId &&
@@ -171,15 +230,71 @@ export function useEvaluationSuiteAuthoring(
     else run();
   }
 
-  const candidates = useMemo(
-    () => project && effectiveRevisionId
-      ? evaluationBindingCandidates(project, effectiveRevisionId)
-      : [],
-    [effectiveRevisionId, project],
-  );
+  const candidates = project && effectiveRevisionId
+    ? evaluationBindingCandidates(project, effectiveRevisionId)
+    : [];
   const diagnostics = project && effectiveSuiteId && effectiveRevisionId
     ? evaluationSuitePreflight(project, effectiveSuiteId, effectiveRevisionId, [...effectiveSelectedCaseIds])
     : [];
+
+  const revisionChoices = useMemo(
+    () => (project ? describeConversationRevisions(project, suite) : []),
+    [project, suite],
+  );
+  const selectedRevision = revisionChoices.find(({ revisionId }) => revisionId === effectiveRevisionId);
+  const promptCandidates = useMemo(
+    () => (project ? savedPromptCandidates(project) : []),
+    [project],
+  );
+
+  const focusedCase = suite?.cases.find(({ id }) => id === effectiveFocusedCaseId);
+  const selectedRevisionDocument = project?.conversationRevisions.find(
+    ({ id }) => id === effectiveRevisionId,
+  );
+  const focusedCaseResolution = project && suite && selectedRevisionDocument && focusedCase
+    ? resolveEvaluationCase(project, selectedRevisionDocument, suite, focusedCase)
+    : undefined;
+
+  // Both are discarded when the project changes, so a message never survives
+  // into a document it does not describe.
+  const savedPromptError = storedPromptError && storedPromptError.projectId === project?.projectId
+    ? storedPromptError.message
+    : undefined;
+  const notice = storedNotice && storedNotice.projectId === project?.projectId
+    ? storedNotice.notice
+    : undefined;
+
+  function startFromSavedPrompt(templateId: PromptTemplateId): boolean {
+    if (!project || !effectiveSuiteId || !effectiveRevisionId) return false;
+    const candidate = promptCandidates.find(({ templateId: id }) => id === templateId);
+    try {
+      const created = createRevisionFromSavedPrompt(project, {
+        parentRevisionId: effectiveRevisionId,
+        templateId,
+      });
+      const updated = updateEvaluationSuiteInput(
+        created.project,
+        effectiveSuiteId,
+        created.conversationRevisionId,
+      );
+      adoptProjectMutation(updated);
+      setStoredPromptError(undefined);
+      setSavedPromptPickerOpen(false);
+      setStoredNotice({
+        projectId: project.projectId,
+        notice: {
+          kind: "saved-prompt-revision",
+          templateName: candidate?.name ?? "Saved prompt",
+          messageCount: candidate?.messageCount ?? 0,
+          variableCount: candidate?.variables.length ?? 0,
+        },
+      });
+      return true;
+    } catch (cause) {
+      setStoredPromptError({ projectId: project.projectId, message: mutationErrorMessage(cause) });
+      return false;
+    }
+  }
 
   return {
     project,
@@ -187,12 +302,27 @@ export function useEvaluationSuiteAuthoring(
     ...(effectiveRevisionId ? { revisionId: effectiveRevisionId } : {}),
     selectedCaseIds: effectiveSelectedCaseIds,
     ...(effectiveFocusedCaseId ? { focusedCaseId: effectiveFocusedCaseId } : {}),
-    repetitions,
+    repetitions: suite?.execution.repetitions ?? 1,
     candidates,
     diagnostics,
     ...(error ? { error } : {}),
+    revisionChoices,
+    ...(selectedRevision ? { selectedRevision } : {}),
+    ...(focusedCaseResolution ? { focusedCaseResolution } : {}),
+    savedPromptCandidates: promptCandidates,
+    savedPromptPickerOpen,
+    ...(savedPromptError ? { savedPromptError } : {}),
+    ...(notice ? { notice } : {}),
+    openSavedPromptPicker() { setStoredPromptError(undefined); setSavedPromptPickerOpen(true); },
+    closeSavedPromptPicker() { setSavedPromptPickerOpen(false); setStoredPromptError(undefined); },
+    startFromSavedPrompt,
+    dismissNotice() { setStoredNotice(undefined); },
     selectSuite(id) { setSuiteId(id); setFocusedCaseId(undefined); setSelection(undefined); setStoredError(undefined); },
-    selectRevision: setRevisionId,
+    selectRevision(id) {
+      if (!effectiveSuiteId) return;
+      commit((current) => updateEvaluationSuiteInput(current, effectiveSuiteId, id));
+      setStoredNotice(undefined);
+    },
     setCaseSelected(id, selected) {
       if (!project || !effectiveSuiteId) return;
       setSelection((current) => {
@@ -205,7 +335,18 @@ export function useEvaluationSuiteAuthoring(
       });
     },
     focusCase: setFocusedCaseId,
-    setRepetitions(value) { setRepetitionsState(value); },
+    setRepetitions(value) {
+      if (!suite || !effectiveSuiteId) return;
+      commit((current) => updateEvaluationSuiteExecution(current, effectiveSuiteId, {
+        ...suite.execution,
+        repetitions: value,
+      }));
+    },
+    updateExecution(execution) {
+      return effectiveSuiteId
+        ? commit((current) => updateEvaluationSuiteExecution(current, effectiveSuiteId, execution))
+        : false;
+    },
     createSuite() {
       if (!project) return;
       const created = createEvaluationSuite(project);

@@ -143,16 +143,24 @@ test("every offered check kind is addable in the running editor", async ({ page 
     "Maximum tokens",
   ]) {
     await page.getByLabel("New check kind").selectOption({ label });
-    if (label === "Regex") {
-      await page.getByRole("button", { name: "+ Add check" }).click();
-      await expect(editor.locator(".evaluation-case-detail").getByRole("alert"))
-        .toContainText("Safe regex patterns must not be empty");
-      await page.getByLabel("New regex pattern").fill("migration");
-    }
     await page.getByRole("button", { name: "+ Add check" }).click();
     await page.waitForTimeout(120);
     const alert = editor.locator('[role="alert"]');
     if (await alert.count() > 0) failures.push(`${label}: ${await alert.innerText()}`);
+    if (label === "Regex") {
+      // An empty pattern is an accepted authoring draft: the card exists, and
+      // preflight — not the add action — is what blocks the run until it is
+      // filled in.
+      await expect(editor.locator(".evaluation-diagnostics"))
+        .toContainText("needs a pattern");
+      const pattern = editor.locator(".evaluation-check-card")
+        .filter({ hasText: "RE2 syntax" })
+        .getByLabel("Pattern");
+      await pattern.fill("migration");
+      await pattern.blur();
+      await expect(editor.locator(".evaluation-diagnostics"))
+        .not.toContainText("needs a pattern");
+    }
   }
   expect(failures).toEqual([]);
   await expect(editor.locator(".evaluation-case-check-count")).toHaveText("7");
@@ -184,7 +192,8 @@ test("a saved suite opens with every case selected and preflight clean", async (
   await expect(editor).toContainText("3 selected × 1 rep → 3 runs");
   await expect(editor).toContainText("Ready to run");
   await expect(editor.locator(".evaluation-diagnostics")).toHaveCount(0);
-  await expect(editor.getByRole("region", { name: "Provider input for migrations" }))
+  await expect(page.locator(".evaluation-preview-scroll")
+    .getByRole("region", { name: "Provider input for migrations" }))
     .toContainText("Explain database migrations to engineers.");
   const layout = await editor.locator(".evaluation-preflight").evaluate((preflight) => {
     const startArea = preflight.querySelector<HTMLElement>(".evaluation-start-area");
@@ -221,7 +230,10 @@ test("selecting a historical revision with no bound template use stays in the ed
   await openProject(page, project, 1440);
   const editor = page.locator(".evaluation-editor");
 
-  await page.getByLabel("Base conversation revision").selectOption(
+  // Historical revisions are deliberately secondary: the picker lives behind a
+  // disclosure so the suite's own input stays the headline.
+  await editor.getByText("Use a project revision…").click();
+  await editor.getByLabel("Existing project revision").selectOption(
     "revision_historical-before-template",
   );
 
@@ -229,9 +241,16 @@ test("selecting a historical revision with no bound template use stays in the ed
   await expect(editor.locator(".evaluation-diagnostics")).toContainText(
     "Selected revision does not contain template use",
   );
-  await expect(editor.getByRole("region", { name: "Provider input for migrations" }))
-    .toContainText("This case cannot be previewed because the selected revision does not contain template use");
+  // The preview no longer collapses to one generic refusal: the binding that
+  // cannot be satisfied is its own row, and the rest of the input still
+  // resolves and renders around it.
+  const preview = page.locator(".evaluation-preview-scroll")
+    .getByRole("region", { name: "Provider input for migrations" });
+  await expect(preview).toContainText("Case input “topic” has nowhere to go");
+  await expect(preview).toContainText("revision has no such template use");
+  await expect(preview).toContainText("This revision resolves to no messages");
   await expect(editor).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
+  await expect(preview).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
 });
 
 test("a rejected check edit stays local and restores the saved value", async ({ page }) => {
@@ -240,10 +259,12 @@ test("a rejected check edit stays local and restores the saved value", async ({ 
   await page.getByRole("button", { name: "Create evaluation suite" }).click();
   await page.getByRole("button", { name: "+ Add case", exact: true }).click();
   await page.getByLabel("New check kind").selectOption({ label: "Regex" });
-  await page.getByLabel("New regex pattern").fill("migration");
   await page.getByRole("button", { name: "+ Add check" }).click();
 
-  const regexCard = editor.locator(".evaluation-check-card").filter({ hasText: "Regex" });
+  const regexCard = editor.locator(".evaluation-check-card").filter({ hasText: "RE2 syntax" });
+  const pattern = regexCard.getByLabel("Pattern");
+  await pattern.fill("migration");
+  await pattern.blur();
   await expect(regexCard).toContainText("RE2 syntax");
   await regexCard.getByLabel("About RE2 syntax").click();
   await expect(regexCard.getByText("Lookarounds and backreferences aren’t supported.")).toBeVisible();

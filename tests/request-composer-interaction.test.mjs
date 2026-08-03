@@ -4,6 +4,7 @@ import test, { after } from "node:test";
 import react from "@vitejs/plugin-react";
 import { JSDOM } from "jsdom";
 import { createServer } from "vite";
+import { evaluationFixture } from "./fixtures/evaluation-suite-authoring.mjs";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   url: "http://localhost",
@@ -72,10 +73,13 @@ function composerProps(overrides = {}) {
     project: null,
     evaluations: {
       project: null, selectedCaseIds: new Set(), repetitions: 1, candidates: [], diagnostics: [],
+      revisionChoices: [], savedPromptCandidates: [], savedPromptPickerOpen: false,
       selectSuite: noop, selectRevision: noop, setCaseSelected: noop, focusCase: noop,
       setRepetitions: noop, createSuite: noop, renameSuite: noop, deleteSuite: noop,
       addInput: noop, renameInput: noop, deleteInput: noop, addCase: noop,
       updateCase: noop, deleteCase: noop, addCheck: noop, updateCheck: noop, deleteCheck: noop,
+      openSavedPromptPicker: noop, closeSavedPromptPicker: noop,
+      startFromSavedPrompt: () => true, dismissNotice: noop,
     },
     evaluationExecution: { storage: "unsaved", running: false, onStart: noop },
     settings: {
@@ -141,6 +145,28 @@ test("evaluation authoring does not show ordinary request readiness", async () =
     await view.click(view.tab("Messages"));
 
     assert.match(view.container.textContent, /template variable still needs a value/i);
+  } finally {
+    await view.close();
+  }
+});
+
+test("an empty saved-prompt picker opens the Prompt library", async () => {
+  const evaluations = evaluationFixture();
+  let pickerClosed = false;
+  evaluations.savedPromptCandidates = [];
+  evaluations.savedPromptPickerOpen = true;
+  evaluations.closeSavedPromptPicker = () => { pickerClosed = true; };
+  const view = await mount({ evaluations });
+  try {
+    await view.click(view.tab("Evaluations"));
+    const openTemplates = Array.from(view.container.querySelectorAll("button")).find(
+      (button) => button.textContent === "Open Templates",
+    );
+    assert.ok(openTemplates);
+
+    await view.click(openTemplates);
+    assert.equal(pickerClosed, true);
+    assert.equal(view.tab("Prompt library")?.getAttribute("aria-selected"), "true");
   } finally {
     await view.close();
   }

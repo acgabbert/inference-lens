@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { checkDefinitionSchema } from "./checks.ts";
+import { authoredCheckDefinitionSchema } from "./checks.ts";
 import { templateUseVariableIndex } from "./template-use-variable-index.ts";
 import type {
   EvaluationCase,
@@ -67,7 +67,7 @@ export const PROJECT_DIRECTORY_SUFFIX = ".inference-lens";
 export const PROJECT_FILE_NAME = "project.json";
 export const PROJECT_EXPORT_FILE_SUFFIX = ".project.json";
 export const PROJECT_GITIGNORE_CONTENTS = "*\n";
-export const PROJECT_SCHEMA_VERSION = 7;
+export const PROJECT_SCHEMA_VERSION = 8;
 
 /**
  * Turns the portable project display name into one safe, visible directory
@@ -302,11 +302,26 @@ export interface ProjectFileV7 {
   toolMocks: ToolMock[];
   promptTemplates: PromptTemplate[];
   externalImports: ExternalImportReceipt[];
+  evaluationSuites: Array<Omit<EvaluationSuite, "input" | "execution">>;
+  defaults: ProjectDefaults;
+}
+
+export interface ProjectFileV8 {
+  schemaVersion: 8;
+  projectId: ProjectId;
+  name: string;
+  connectionRequirements: ConnectionRequirement[];
+  conversations: ProjectConversation[];
+  conversationRevisions: ProjectConversationRevision[];
+  tools: ToolDefinition[];
+  toolMocks: ToolMock[];
+  promptTemplates: PromptTemplate[];
+  externalImports: ExternalImportReceipt[];
   evaluationSuites: EvaluationSuite[];
   defaults: ProjectDefaults;
 }
 
-export type ProjectFile = ProjectFileV7;
+export type ProjectFile = ProjectFileV8;
 
 const entityId = <Kind extends Parameters<typeof createEntityId>[0]>(
   kind: Kind,
@@ -764,7 +779,7 @@ const evaluationCaseSchema: z.ZodType<EvaluationCase> = z
     id: entityId("evaluation-case"),
     name: z.string().trim().min(1),
     values: z.record(entityId("evaluation-input"), z.string()),
-    checks: z.array(checkDefinitionSchema),
+    checks: z.array(authoredCheckDefinitionSchema),
     referenceAnswer: z.string().optional(),
   })
   .strict();
@@ -773,10 +788,30 @@ const evaluationSuiteSchema: z.ZodType<EvaluationSuite> = z
   .object({
     id: entityId("evaluation-suite"),
     name: z.string().trim().min(1),
+    input: z.object({
+      kind: z.literal("conversation-revision"),
+      conversationRevisionId: entityId("revision"),
+    }).strict(),
+    execution: z.object({
+      target: z.object({
+        connectionRequirementId: entityId("connection"),
+        model: z.string().trim().min(1),
+      }).strict(),
+      responseMode: z.enum(["streaming", "buffered"]),
+      options: inferenceOptionsSchema,
+      repetitions: z.number().int().min(1).max(100),
+    }).strict(),
     inputBindings: z.array(evaluationInputBindingSchema),
     cases: z.array(evaluationCaseSchema),
   })
   .strict();
+
+const legacyEvaluationSuiteV7Schema = z.object({
+  id: entityId("evaluation-suite"),
+  name: z.string().trim().min(1),
+  inputBindings: z.array(evaluationInputBindingSchema),
+  cases: z.array(evaluationCaseSchema),
+}).strict();
 
 const projectFileV5Schema = z
   .object({
@@ -816,6 +851,24 @@ const projectFileV6Schema: z.ZodType<ProjectFileV6> = z
   .superRefine(validateProjectReferences);
 
 const projectFileV7Schema: z.ZodType<ProjectFileV7> = z
+  .object({
+    schemaVersion: z.literal(7),
+    projectId: entityId("project"),
+    name: z.string().trim().min(1),
+    connectionRequirements: z.array(connectionRequirementSchema).min(1),
+    conversations: z.array(projectConversationSchema).min(1),
+    conversationRevisions: z.array(projectConversationRevisionSchema).min(1),
+    tools: z.array(toolDefinitionSchema),
+    toolMocks: z.array(toolMockSchema),
+    promptTemplates: z.array(promptTemplateSchema),
+    externalImports: z.array(externalImportReceiptSchema),
+    evaluationSuites: z.array(legacyEvaluationSuiteV7Schema),
+    defaults: projectDefaultsSchema,
+  })
+  .strict()
+  .superRefine(validateProjectReferences);
+
+const projectFileV8Schema: z.ZodType<ProjectFileV8> = z
   .object({
     schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
     projectId: entityId("project"),
@@ -1048,7 +1101,7 @@ function validateSharedProjectReferences(
 }
 
 function validateProjectReferences(
-  project: ProjectFileV6 | ProjectFileV7,
+  project: ProjectFileV6 | ProjectFileV7 | ProjectFileV8,
   context: z.RefinementCtx,
 ): void {
   validateSharedProjectReferences(
@@ -1317,7 +1370,7 @@ function validateProjectReferences(
 }
 
 function validateEvaluationSuites(
-  project: ProjectFileV7,
+  project: ProjectFileV7 | ProjectFileV8,
   templates: ReadonlyMap<PromptTemplateId, PromptTemplate>,
   context: z.RefinementCtx,
 ): void {
@@ -1337,6 +1390,21 @@ function validateEvaluationSuites(
   const checkIds = new Set<string>();
   project.evaluationSuites.forEach((suite, suiteIndex) => {
     const suitePath = ["evaluationSuites", suiteIndex];
+    if (project.schemaVersion === 8) {
+      const currentSuite = project.evaluationSuites[suiteIndex]!;
+      requireReference(
+        project.conversationRevisions.some(({ id }) => id === currentSuite.input.conversationRevisionId),
+        [...suitePath, "input", "conversationRevisionId"],
+        "Evaluation input references an unknown conversation revision.",
+        context,
+      );
+      requireReference(
+        project.connectionRequirements.some(({ id }) => id === currentSuite.execution.target.connectionRequirementId),
+        [...suitePath, "execution", "target", "connectionRequirementId"],
+        "Evaluation execution references an unknown connection requirement.",
+        context,
+      );
+    }
     const localInputIds = new Set<string>();
     const inputNames = new Set<string>();
 
@@ -1685,8 +1753,30 @@ function migrateProjectV5(project: ProjectFileV5): ProjectFileV6 {
 function migrateProjectV6(project: ProjectFileV6): ProjectFileV7 {
   return {
     ...project,
-    schemaVersion: PROJECT_SCHEMA_VERSION,
+    schemaVersion: 7,
     evaluationSuites: [],
+  };
+}
+
+function migrateProjectV7(project: ProjectFileV7): ProjectFileV8 {
+  return {
+    ...project,
+    schemaVersion: PROJECT_SCHEMA_VERSION,
+    evaluationSuites: project.evaluationSuites.map((suite) => ({
+      ...suite,
+      input: {
+        kind: "conversation-revision" as const,
+        conversationRevisionId: project.defaults.conversationRevisionId,
+      },
+      execution: {
+        target: structuredClone(project.defaults.target),
+        // Matches `createEvaluationSuite`: migrated suites run buffered, which
+        // every provider the project can already reach supports.
+        responseMode: "buffered" as const,
+        options: structuredClone(project.defaults.options),
+        repetitions: 1,
+      },
+    })),
   };
 }
 
@@ -1716,7 +1806,19 @@ export function parseProjectFile(value: unknown): ProjectFile {
     }
     source = migrateProjectV6(previous.data);
   }
-  const parsed = projectFileV7Schema.safeParse(source);
+  if (
+    typeof source === "object" &&
+    source !== null &&
+    "schemaVersion" in source &&
+    source.schemaVersion === 7
+  ) {
+    const previous = projectFileV7Schema.safeParse(source);
+    if (!previous.success) {
+      throw new ProjectValidationError(previous.error.issues);
+    }
+    source = migrateProjectV7(previous.data);
+  }
+  const parsed = projectFileV8Schema.safeParse(source);
   if (!parsed.success) throw new ProjectValidationError(parsed.error.issues);
   return parsed.data;
 }

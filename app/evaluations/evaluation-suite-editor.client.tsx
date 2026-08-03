@@ -4,15 +4,15 @@ import { useRef, useState } from "react";
 import { CHECK_KINDS } from "../../packages/core/src/checks";
 import type { CheckDefinition, CheckKind } from "../../packages/core/src/checks";
 import type { EvaluationCase } from "../../packages/core/src/project";
-import {
-  prepareProjectRevisionRun,
-  ProjectValidationError,
-} from "../../packages/core/src/project";
-import type { TemplateRunOverrides } from "../../packages/core/src/project";
 import type { EvaluationInputBinding } from "../../packages/core/src/evaluation-suites";
-import { conversationMessageText } from "../conversation-display";
+import type { ConversationRevisionDescriptor } from "../../packages/core/src/conversation-revision-description";
+import type { InferenceOptions, ProviderProtocol } from "../../packages/core/src/run-kernel";
 import { FocusModeToggle, useFocusMode } from "../focus-mode.client";
+import { ModelCombobox } from "../model-combobox.client";
 import { PaneEmptyState } from "../pane-empty-state.client";
+import { TemperatureControl } from "../temperature-control.client";
+import { groupRevisionChoices, revisionChoice } from "./revision-choice.client";
+import { SavedPromptDialog } from "./saved-prompt-dialog.client";
 import type { EvaluationSuiteAuthoringHandle } from "./use-evaluation-suite-authoring.client";
 import type { EvaluationCheckAuthoringField } from "./use-evaluation-suite-authoring.client";
 import {
@@ -34,19 +34,6 @@ const checkKindLabels: Record<CheckKind, string> = {
 // label or silently left out of the picker.
 const checkKinds = CHECK_KINDS.map((kind) => ({ kind, label: checkKindLabels[kind] }));
 
-function providerInputResolutionError(cause: unknown): string {
-  if (cause instanceof ProjectValidationError) {
-    const issue = cause.issues[0];
-    if (issue?.path[0] === "runOverrides" && issue.path[1]) {
-      return `This case cannot be previewed because the selected revision does not contain template use "${String(issue.path[1])}".`;
-    }
-    return issue?.message ?? "This revision cannot be resolved for the selected case.";
-  }
-  return cause instanceof Error
-    ? cause.message
-    : "This revision cannot be resolved for the selected case.";
-}
-
 function evaluationInputLabel(
   project: NonNullable<EvaluationSuiteAuthoringHandle["project"]>,
   revisionId: EvaluationSuiteAuthoringHandle["revisionId"],
@@ -64,6 +51,19 @@ function evaluationInputLabel(
     variableName: binding.target.variableName,
     label: `${templateName} · ${binding.target.variableName}`,
   };
+}
+
+function revisionOption(descriptor: ConversationRevisionDescriptor) {
+  const choice = revisionChoice(descriptor);
+  return (
+    <option
+      key={descriptor.revisionId}
+      title={`${descriptor.revisionId} · ${descriptor.messageCount} ${descriptor.messageCount === 1 ? "message" : "messages"}`}
+      value={descriptor.revisionId}
+    >
+      {choice.label}
+    </option>
+  );
 }
 
 function CheckEditor({ check, error, onCommit, onRemove }: {
@@ -137,13 +137,11 @@ function CheckEditor({ check, error, onCommit, onRemove }: {
   );
 }
 
-function CaseEditor({ evaluationCase, authoring, execution }: {
+function CaseEditor({ evaluationCase, authoring }: {
   evaluationCase: EvaluationCase;
   authoring: EvaluationSuiteAuthoringHandle;
-  execution?: EvaluationSuiteExecutionActions;
 }) {
   const [newKind, setNewKind] = useState<CheckKind>("contains");
-  const [regexPattern, setRegexPattern] = useState("");
   const project = authoring.project;
   const suite = project?.evaluationSuites.find(({ id }) => id === authoring.suiteId);
   const checkError = authoring.error?.target.kind === "check" && authoring.error.target.caseId === evaluationCase.id
@@ -159,7 +157,6 @@ function CaseEditor({ evaluationCase, authoring, execution }: {
         if (!authoring.renameCase(evaluationCase.id, event.target.value)) event.currentTarget.value = evaluationCase.name;
       }} /></label>
       {authoring.error?.target.kind === "case-name" && authoring.error.target.caseId === evaluationCase.id && <p className="evaluation-field-error" role="alert">{authoring.error.message}</p>}
-      <CaseProviderInput evaluationCase={evaluationCase} authoring={authoring} execution={execution} />
       {suite && suite.inputBindings.length > 0 && (
         <div className="evaluation-case-values">
           <div><span className="eyebrow">Case inputs</span><p>Values inserted into this case’s bound template variables.</p></div>
@@ -178,10 +175,8 @@ function CaseEditor({ evaluationCase, authoring, execution }: {
       </div>
       <div className="evaluation-add-row">
         <select aria-label="New check kind" value={newKind} onChange={(event) => setNewKind(event.target.value as CheckKind)}>{checkKinds.map(({ kind, label }) => <option key={kind} value={kind}>{label}</option>)}</select>
-        {newKind === "regex" && <label className="evaluation-new-regex">Pattern <input aria-label="New regex pattern" value={regexPattern} onChange={(event) => setRegexPattern(event.target.value)} /></label>}
         <button className="button secondary" type="button" onClick={() => {
-          const added = authoring.addCheck(evaluationCase.id, newKind === "regex" ? { kind: newKind, pattern: regexPattern } : { kind: newKind });
-          if (added) setRegexPattern("");
+          authoring.addCheck(evaluationCase.id, { kind: newKind });
         }}>+ Add check</button>
       </div>
       {addError && <p className="evaluation-field-error" role="alert">{addError}</p>}
@@ -189,74 +184,51 @@ function CaseEditor({ evaluationCase, authoring, execution }: {
   );
 }
 
-function CaseProviderInput({ evaluationCase, authoring, execution }: {
-  evaluationCase: EvaluationCase;
-  authoring: EvaluationSuiteAuthoringHandle;
-  execution?: EvaluationSuiteExecutionActions;
-}) {
-  const project = authoring.project;
-  const suite = project?.evaluationSuites.find(({ id }) => id === authoring.suiteId);
-  const revision = project?.conversationRevisions.find(({ id }) => id === authoring.revisionId);
-  if (!project || !suite || !revision) return null;
-
-  const overrides: Record<string, Record<string, string>> = {};
-  suite.inputBindings.forEach((binding) => {
-    const values = overrides[binding.target.templateUseId] ?? {};
-    values[binding.target.variableName] = evaluationCase.values[binding.id] ?? "";
-    overrides[binding.target.templateUseId] = values;
-  });
-  let prepared: ReturnType<typeof prepareProjectRevisionRun> | undefined;
-  let resolutionError: string | undefined;
-  try {
-    prepared = prepareProjectRevisionRun(
-      project,
-      revision,
-      overrides as TemplateRunOverrides,
-    );
-  } catch (cause) {
-    resolutionError = providerInputResolutionError(cause);
-  }
-
-  return (
-    <section className="evaluation-provider-input" aria-label={`Provider input for ${evaluationCase.name}`}>
-      <div className="evaluation-section-heading">
-        <div><span className="eyebrow">Provider input</span><h4>Resolved conversation</h4></div>
-        {execution?.preview && <span className="evaluation-provider-target">{execution.preview.targetName} · {execution.preview.model}</span>}
-      </div>
-      {suite.inputBindings.length === 0
-        ? <p className="evaluation-provider-sameness"><strong>All cases currently use this provider input.</strong> References and checks may still differ.</p>
-        : <p>This case replaces the bound template values in the saved revision. Repetitions resend this same resolved input; other cases can resolve to different messages.</p>}
-      {execution?.preview && <dl className="evaluation-provider-settings"><div><dt>Temperature</dt><dd>{execution.preview.temperature === undefined ? "Provider default" : execution.preview.temperature.toFixed(1)}</dd></div><div><dt>Delivery</dt><dd>{execution.preview.responseMode === "streaming" ? "Streaming" : "Buffered"}</dd></div><div><dt>Tools</dt><dd>None</dd></div></dl>}
-      {resolutionError ? (
-        <div className="template-diagnostic" role="alert">{resolutionError}</div>
-      ) : prepared?.ok ? (
-        <div className="evaluation-provider-messages">
-          {prepared.messages.map((message, index) => <article className="request-preview-message" key={`${message.id}-${index}`}><span className="eyebrow">{message.role}</span><pre>{conversationMessageText(message)}</pre></article>)}
-        </div>
-      ) : <div className="template-diagnostic" role="alert">{prepared?.diagnostics[0]?.diagnostic.message ?? "This case cannot be resolved."}</div>}
-    </section>
-  );
-}
-
 export interface EvaluationSuiteExecutionActions {
   storage: "durable" | "unsaved";
+  /**
+   * The exact target and settings an execution would snapshot. Supplied by the
+   * route because the connection, model, and inference options are session
+   * execution state rather than portable evaluation content.
+   */
   preview?: {
     targetName: string;
+    endpoint: string;
+    protocol: ProviderProtocol;
     model: string;
-    temperature?: number;
     responseMode: "streaming" | "buffered";
+    options: InferenceOptions;
+    streamingAvailable: boolean;
   };
   disabledReason?: string;
   running: boolean;
   onStart(): void;
 }
 
+/**
+ * Model ids this device has pinned. They are session profile state rather than
+ * portable evaluation content, so the route supplies them and the suite stores
+ * nothing about them. Discovery is deliberately absent: a suite targets its own
+ * connection requirement, which need not be the profile that is active, and
+ * offering that profile's catalogue here would name models this target may not
+ * serve.
+ */
+export interface ModelFavoritesHandle {
+  models: string[];
+  onToggle(model: string): void;
+}
+
 export function EvaluationSuiteEditor({
   authoring,
   execution,
+  modelFavorites,
+  onOpenTemplates,
 }: {
   authoring: EvaluationSuiteAuthoringHandle;
   execution?: EvaluationSuiteExecutionActions;
+  modelFavorites?: ModelFavoritesHandle;
+  /** Request-composer navigation stays with its owner. */
+  onOpenTemplates?(): void;
 }) {
   const [focusMode, setFocusMode] = useState(false);
   const [candidateIndex, setCandidateIndex] = useState(0);
@@ -271,6 +243,21 @@ export function EvaluationSuiteEditor({
   const selectedCount = authoring.selectedCaseIds.size;
   const batch = evaluationBatchGuardrail(selectedCount, authoring.repetitions);
   const availableCandidates = authoring.candidates.filter((candidate) => !suite?.inputBindings.some((binding) => binding.target.templateUseId === candidate.templateUseId && binding.target.variableName === candidate.variableName));
+  const revisionGroups = groupRevisionChoices(authoring.revisionChoices);
+  const resolvableMissingInput = authoring.diagnostics.find(
+    (diagnostic) => diagnostic.code === "unresolved-template-variable" &&
+      availableCandidates.some((candidate) => candidate.templateUseId === diagnostic.templateUseId && candidate.variableName === diagnostic.variableName),
+  );
+  const suggestedCandidate = resolvableMissingInput?.code === "unresolved-template-variable"
+    ? availableCandidates.find((candidate) => candidate.templateUseId === resolvableMissingInput.templateUseId && candidate.variableName === resolvableMissingInput.variableName)
+    : undefined;
+  // The suite owns its delivery mode, but whether that mode can be served is a
+  // property of the connection this device resolves. Preflight is where the two
+  // meet, so it must not report "Ready to run" for a mode that cannot execute.
+  const deliveryIssue = suite && execution?.preview && suite.execution.responseMode === "streaming" && !execution.preview.streamingAvailable
+    ? `This evaluation is set to Streaming, but ${execution.preview.targetName} cannot stream. Choose Buffered delivery.`
+    : undefined;
+  const issueCount = authoring.diagnostics.length + (batch.error ? 1 : 0) + (deliveryIssue ? 1 : 0);
 
   if (!project) return <PaneEmptyState eyebrow="Evaluations" heading="Open or save a project first" detail="Evaluation suites are portable project content, so they need a project document." />;
 
@@ -302,20 +289,81 @@ export function EvaluationSuiteEditor({
           </form>}
           {authoring.error?.target.kind === "suite-name" && <p className="evaluation-field-error" role="alert">{authoring.error.message}</p>}
           {authoring.error?.target.kind === "editor" && <div className="template-diagnostic" role="alert">{authoring.error.message}</div>}
+          {authoring.notice && <p className="evaluation-authoring-notice" role="status">
+            <strong>Evaluation input now uses “{authoring.notice.templateName}”.</strong> It pins {authoring.notice.messageCount} {authoring.notice.messageCount === 1 ? "message" : "messages"} and {authoring.notice.variableCount === 0 ? "no variables" : `${authoring.notice.variableCount} ${authoring.notice.variableCount === 1 ? "variable" : "variables"}`}. Messages was not changed.
+            <button className="text-button" type="button" onClick={authoring.dismissNotice}>Dismiss</button>
+          </p>}
+          {authoring.savedPromptError && !authoring.savedPromptPickerOpen && <p className="evaluation-field-error" role="alert">{authoring.savedPromptError}</p>}
           <section className="evaluation-preflight" aria-label="Evaluation preflight">
-            <div className="evaluation-preflight-status"><span className="eyebrow">Preflight</span><strong>{authoring.diagnostics.length === 0 && !batch.error ? "Ready to run" : `${authoring.diagnostics.length + (batch.error ? 1 : 0)} setup ${authoring.diagnostics.length + (batch.error ? 1 : 0) === 1 ? "issue" : "issues"}`}</strong></div>
+            <div className="evaluation-preflight-status"><span className="eyebrow">Preflight</span><strong>{issueCount === 0 ? "Ready to run" : `${issueCount} setup ${issueCount === 1 ? "issue" : "issues"}`}</strong></div>
             <div className="evaluation-preflight-controls">
-              <label>Base conversation revision <select value={authoring.revisionId} onChange={(event) => authoring.selectRevision(event.target.value as NonNullable<typeof authoring.revisionId>)}>{project.conversationRevisions.map((revision) => <option key={revision.id} value={revision.id}>{revision.id === project.defaults.conversationRevisionId ? "Current · " : ""}{new Date(revision.createdAt).toLocaleString()}</option>)}</select><small>Cases start from this saved project revision; session-only composer values and run overrides are excluded.</small></label>
-              <div className="evaluation-batch-controls">
+              <div className="evaluation-input-summary">
+                <span>Evaluation input</span>
+                <strong>{authoring.selectedRevision ? revisionChoice(authoring.selectedRevision).label : "Input unavailable"}</strong>
+                <small>This suite keeps its own immutable input; changing Messages does not change it.</small>
+                <button className="button secondary" type="button" onClick={authoring.openSavedPromptPicker}>Use saved prompt…</button>
+                <details className="evaluation-input-picker">
+                  <summary>Use a project revision…</summary>
+                  <label>Existing project revision
+                    <select value={authoring.revisionId} onChange={(event) => authoring.selectRevision(event.target.value as NonNullable<typeof authoring.revisionId>)}>
+                    {revisionGroups.grouped ? (
+                      <>
+                        {/* Incompatible revisions stay selectable: choosing one is how an
+                            author sees and repairs a historical incompatibility. */}
+                        {revisionGroups.compatible.length > 0 && <optgroup label="Compatible revisions">{revisionGroups.compatible.map(revisionOption)}</optgroup>}
+                        {revisionGroups.other.length > 0 && <optgroup label="Other revisions">{revisionGroups.other.map(revisionOption)}</optgroup>}
+                      </>
+                    ) : authoring.revisionChoices.map(revisionOption)}
+                    </select>
+                  </label>
+                </details>
+              </div>
+              <div className="evaluation-execution-editor" aria-label="Evaluation execution settings">
+                <div className="evaluation-execution-editor-heading"><span>Execution settings</span><small>Saved with this evaluation suite.</small></div>
+                <label>Connection
+                  <select value={suite.execution.target.connectionRequirementId} onChange={(event) => authoring.updateExecution({ ...suite.execution, target: { ...suite.execution.target, connectionRequirementId: event.target.value as typeof suite.execution.target.connectionRequirementId } })}>
+                    {project.connectionRequirements.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
+                  </select>
+                </label>
+                <ModelCombobox
+                  idPrefix="evaluation-model"
+                  readinessTarget={false}
+                  value={suite.execution.target.model}
+                  onChange={(model) => { authoring.updateExecution({ ...suite.execution, target: { ...suite.execution.target, model } }); }}
+                  discovery={null}
+                  onLoadModels={() => {}}
+                  favoriteModels={modelFavorites?.models ?? []}
+                  onToggleFavoriteModel={(model) => modelFavorites?.onToggle(model)}
+                />
+                <label>Delivery
+                  <select value={suite.execution.responseMode} onChange={(event) => authoring.updateExecution({ ...suite.execution, responseMode: event.target.value as "streaming" | "buffered" })}>
+                    <option value="streaming" disabled={execution ? !execution.preview?.streamingAvailable : false}>Streaming</option>
+                    <option value="buffered">Buffered</option>
+                  </select>
+                </label>
+                {/* Each drag step commits, which the project's debounced
+                    auto-save absorbs into one write. */}
+                <TemperatureControl
+                  value={suite.execution.options.temperature}
+                  onChange={(temperature) => { authoring.updateExecution({ ...suite.execution, options: { ...suite.execution.options, temperature } }); }}
+                />
                 <label>Repetitions <input type="number" min="1" max={MAX_EVALUATION_REPETITIONS} step="1" value={authoring.repetitions} onChange={(event) => authoring.setRepetitions(Number(event.target.value))} /></label>
                 <output><span>{selectedCount} selected</span> × <span>{authoring.repetitions} {authoring.repetitions === 1 ? "rep" : "reps"}</span> → <strong>{Number.isFinite(batch.plannedCalls) ? batch.plannedCalls.toLocaleString() : "Invalid"} runs</strong></output>
               </div>
             </div>
-            {execution && <div className="evaluation-start-area"><button className="button primary" type="button" disabled={execution.running || Boolean(execution.disabledReason) || authoring.diagnostics.length > 0 || Boolean(batch.error)} title={execution.disabledReason ?? batch.error} onClick={execution.onStart}>{execution.running ? "Evaluation running" : "Start evaluation…"}</button><small>{execution.storage === "durable" ? "The plan, traces, and result will be saved in this project folder." : "Session evaluation: results will be lost when this session closes."}</small></div>}
+            {execution && <div className="evaluation-start-area"><button className="button primary" type="button" disabled={execution.running || Boolean(execution.disabledReason) || issueCount > 0} title={execution.disabledReason ?? batch.error} onClick={execution.onStart}>{execution.running ? "Evaluation running" : "Start evaluation…"}</button>
+              {/* A disabled primary action must say why in text, not only in a
+                  tooltip a keyboard or touch author never sees. */}
+              {!execution.running && execution.disabledReason && authoring.diagnostics.length === 0 && <small className="evaluation-start-blocked">{execution.disabledReason}</small>}
+              <small>{execution.storage === "durable" ? "The plan, traces, and result will be saved in this project folder." : "Session evaluation: results will be lost when this session closes."}</small></div>}
           </section>
           {batch.warning && <p className="evaluation-batch-warning" role="status"><strong>{batch.warning}</strong> Review the exact call count in confirmation before starting.</p>}
           {batch.error && <p className="evaluation-batch-warning error" role="alert">{batch.error}</p>}
-          {authoring.diagnostics.length > 0 && <ul className="evaluation-diagnostics">{authoring.diagnostics.map((diagnostic, index) => <li key={`${diagnostic.code}-${index}`}>{diagnostic.message}</li>)}</ul>}
+          {(authoring.diagnostics.length > 0 || deliveryIssue) && <ul className="evaluation-diagnostics">
+            {authoring.diagnostics.map((diagnostic, index) => <li key={`${diagnostic.code}-${index}`}>{diagnostic.message}</li>)}
+            {deliveryIssue && <li key="delivery">{deliveryIssue}</li>}
+          </ul>}
+          {suggestedCandidate && <div className="evaluation-resolution-action" role="status"><div><strong>Add a case input for <code>{suggestedCandidate.variableName}</code></strong><span>Each case can then supply the missing value and clear this setup issue.</span></div><button className="button secondary" type="button" onClick={() => authoring.addInput(suggestedCandidate)}>+ Add case input</button></div>}
 
           <section className="evaluation-cases">
             <div className="evaluation-section-heading"><div><span className="eyebrow">Dataset</span><h3>Cases</h3></div><button className="button secondary" type="button" onClick={authoring.addCase}>+ Add case</button></div>
@@ -342,11 +390,21 @@ export function EvaluationSuiteEditor({
                     </div>;
                   })}
                 </aside>
-                {focusedCase && <CaseEditor evaluationCase={focusedCase} authoring={authoring} execution={execution} />}
+                {focusedCase && <CaseEditor evaluationCase={focusedCase} authoring={authoring} />}
               </div>
             )}
           </section>
         </>
+      )}
+      {authoring.savedPromptPickerOpen && (
+        <SavedPromptDialog
+          candidates={authoring.savedPromptCandidates}
+          hasExistingBindings={(suite?.inputBindings.length ?? 0) > 0}
+          {...(authoring.savedPromptError ? { error: authoring.savedPromptError } : {})}
+          onCancel={authoring.closeSavedPromptPicker}
+          onConfirm={authoring.startFromSavedPrompt}
+          {...(onOpenTemplates ? { onOpenTemplates } : {})}
+        />
       )}
     </section>
   );

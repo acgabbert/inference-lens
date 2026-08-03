@@ -54,7 +54,7 @@ manifest. New projects are protected from Git by default through an internal
 intended for version control. In browsers that support directory access,
 **New project** selects the bundle's parent folder and **Open project** selects
 an existing bundle. Other browsers can use **Import** and **Export** with the
-same Project v7 JSON format.
+same Project v8 JSON format.
 
 The Docker container does not need a project volume: the browser reads and
 writes only the host folder the user explicitly selects. Tauri uses a native
@@ -84,7 +84,7 @@ history costs nothing until its history is asked for.
 ## Tool registry
 
 Reusable, secret-free tool definitions live in a versioned local registry.
-Definitions can be copied into an open Project v7 file or attached only to the
+Definitions can be copied into an open Project v8 file or attached only to the
 next run. The GUI schema builder and Advanced JSON mode share one canonical
 JSON Schema object, so unsupported keywords are preserved. See
 [the tool registry design](docs/TOOL_REGISTRY.md) for snapshot and persistence
