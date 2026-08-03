@@ -89,6 +89,13 @@ function deliverySummary(responseMode: "streaming" | "buffered"): string {
  * keeps its own persistence, because the same three fields are session state in
  * one place and portable project content in another.
  *
+ * The model field is the one control that stays out of the disclosure: it is
+ * the setting these surfaces change most often, so it lives in the summary row
+ * as a live combobox while temperature, delivery, and the surface's own slots
+ * collapse behind the chevron. A read-only mount reports the model as a fact
+ * instead — a frozen plan's field would be an invitation to an edit that can
+ * never be accepted.
+ *
  * The disclosure is deliberately inline rather than floating. Two of the three
  * mounts sit inside `overflow: auto` panes and the third inside a modal, where
  * an anchored popover is either clipped or in the top layer above a dialog. The
@@ -137,9 +144,11 @@ export function InferenceSettingsPanel({
     }
   }
 
+  // The live combobox is the model's presence in an editable panel, so only a
+  // read-only mount reports it as a fact alongside the rest.
   const facts = [
     connection?.summary,
-    value.model || "No model",
+    readOnly ? value.model || "No model" : undefined,
     temperatureSummary(value.temperature),
     deliverySummary(value.responseMode),
     repetitions?.summary,
@@ -151,31 +160,51 @@ export function InferenceSettingsPanel({
       aria-label={label}
     >
       <div className="inference-settings-summary">
-        <button
-          aria-controls={bodyId}
-          aria-expanded={open}
-          className="inference-settings-toggle"
-          onClick={() => onOpenChange(!open)}
-          type="button"
-        >
-          <span className="inference-settings-identity">
-            <strong>{heading}</strong>
-            {scopeNote ? <small>{scopeNote}</small> : null}
-          </span>
-          {/* The collapsed values are the reason this can be collapsed at all,
-              so they stay in the trigger rather than behind it. */}
-          <span className="inference-settings-facts">
-            {facts.map((fact) => (
-              <span className="inference-settings-fact" key={fact}>
-                {fact}
-              </span>
-            ))}
-          </span>
-          <span aria-hidden="true" className="menu-chevron">
-            ⌄
-          </span>
-        </button>
-        {action}
+        {/* Outside the toggle: a button cannot wrap around the interactive
+            combobox that now sits between the identity and the facts. */}
+        <span className="inference-settings-identity">
+          <strong>{heading}</strong>
+          {scopeNote ? <small>{scopeNote}</small> : null}
+        </span>
+        {readOnly ? null : (
+          <ModelCombobox
+            idPrefix={`${idPrefix}-model`}
+            readinessTarget={readinessTarget}
+            {...(modelInputRef ? { inputRef: modelInputRef } : {})}
+            value={value.model}
+            onChange={(model) => onChange({ ...value, model })}
+            discovery={modelDiscovery}
+            onLoadModels={(force) => onLoadModels?.(force)}
+            favoriteModels={favoriteModels}
+            onToggleFavoriteModel={(model) => onToggleFavoriteModel?.(model)}
+          />
+        )}
+        {/* One flex child so a squeezed summary wraps the trigger and the
+            action to the next line together instead of stranding either. */}
+        <span className="inference-settings-tail">
+          <button
+            aria-controls={bodyId}
+            aria-expanded={open}
+            aria-label={`${heading} controls`}
+            className="inference-settings-toggle"
+            onClick={() => onOpenChange(!open)}
+            type="button"
+          >
+            {/* The collapsed values are the reason this can be collapsed at
+                all, so they stay in the trigger rather than behind it. */}
+            <span className="inference-settings-facts">
+              {facts.map((fact) => (
+                <span className="inference-settings-fact" key={fact}>
+                  {fact}
+                </span>
+              ))}
+            </span>
+            <span aria-hidden="true" className="menu-chevron">
+              ⌄
+            </span>
+          </button>
+          {action}
+        </span>
       </div>
       {open ? (
         <div className="inference-settings-body" id={bodyId}>
@@ -213,17 +242,6 @@ export function InferenceSettingsPanel({
           ) : (
             <div className="inference-settings-grid">
               {connection?.control}
-              <ModelCombobox
-                idPrefix={`${idPrefix}-model`}
-                readinessTarget={readinessTarget}
-                {...(modelInputRef ? { inputRef: modelInputRef } : {})}
-                value={value.model}
-                onChange={(model) => onChange({ ...value, model })}
-                discovery={modelDiscovery}
-                onLoadModels={(force) => onLoadModels?.(force)}
-                favoriteModels={favoriteModels}
-                onToggleFavoriteModel={(model) => onToggleFavoriteModel?.(model)}
-              />
               <TemperatureControl
                 value={value.temperature}
                 rememberedOverride={rememberedTemperature}

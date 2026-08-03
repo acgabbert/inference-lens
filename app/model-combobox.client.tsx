@@ -137,7 +137,10 @@ export function ModelCombobox({
 
   return (
     <label className="model-combobox">
-      Model
+      {/* A span rather than a bare text node so a host that provides its own
+          visual context — the settings panel's summary row — can hide the word
+          without losing the accessible name. */}
+      <span className="model-combobox-label">Model</span>
       <div className="combobox-control">
         <input
           ref={inputRef}

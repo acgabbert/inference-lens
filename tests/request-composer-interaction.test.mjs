@@ -234,13 +234,16 @@ test("the settings panel hides its controls behind a summary of what will be sen
     const toggle = view.settingsToggle();
     assert.ok(toggle);
     assert.equal(toggle.getAttribute("aria-expanded"), "false");
-    // Collapsed, every value is still named, and none of them is editable.
+    // The model stays a live field in the summary row; collapsing hides only
+    // the secondary controls, whose values remain named as facts.
+    const model = view.container.querySelector('[data-readiness-control="model"]');
+    assert.equal(model?.value, "fixture-model");
     const facts = Array.from(
       view.container.querySelectorAll(".inference-settings-fact"),
     ).map((fact) => fact.textContent);
-    assert.deepEqual(facts, ["fixture-model", "Temp 0.7", "Buffered"]);
+    assert.deepEqual(facts, ["Temp 0.7", "Buffered"]);
     assert.equal(
-      view.container.querySelector('[data-readiness-control="model"]'),
+      view.container.querySelector('.temperature-control input[type="range"]'),
       null,
     );
 
@@ -250,7 +253,6 @@ test("the settings panel hides its controls behind a summary of what will be sen
       toggle.getAttribute("aria-controls"),
       view.container.querySelector(".inference-settings-body")?.id,
     );
-    assert.ok(view.container.querySelector('[data-readiness-control="model"]'));
     assert.ok(
       view.container.querySelector('.temperature-control input[type="range"]'),
     );
@@ -262,18 +264,18 @@ test("the settings panel hides its controls behind a summary of what will be sen
   }
 });
 
-test("a readiness destination naming the model opens the collapsed panel and focuses it", async () => {
+test("a readiness destination naming the model focuses it without disturbing the panel", async () => {
   let handled = 0;
   const view = await mount({
     pendingDestination: { surface: "request", tab: "messages", control: "model" },
     onDestinationHandled: () => { handled += 1; },
   });
   try {
-    // Nothing was clicked: the destination alone had to expand the panel,
-    // because the field it names does not exist while it is collapsed.
+    // The field lives in the always-visible summary row, so the destination
+    // focuses it directly and the disclosure stays collapsed.
     const input = view.container.querySelector('[data-readiness-control="model"]');
     assert.ok(input);
-    assert.equal(view.settingsToggle().getAttribute("aria-expanded"), "true");
+    assert.equal(view.settingsToggle().getAttribute("aria-expanded"), "false");
     assert.equal(document.activeElement, input);
     assert.equal(handled, 1);
   } finally {

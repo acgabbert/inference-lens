@@ -19,14 +19,18 @@ test("the collapsed panel reports what the run will send, and expanding reveals 
   const panel = page.locator('[aria-label="Run settings"]');
   const toggle = panel.locator(".inference-settings-toggle");
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
-  // Every value is named while collapsed. These are exact so a formatting
-  // regression cannot hide behind a substring match.
-  await expect(panel.locator(".inference-settings-fact")).toHaveText([
+  // The model outlives the disclosure: it stays a live field in the summary
+  // row, not a chip that collapsing could take away.
+  await expect(panel.getByLabel("Model", { exact: true })).toHaveValue(
     "buffered-test-model",
+  );
+  // Every other value is named while collapsed. These are exact so a
+  // formatting regression cannot hide behind a substring match.
+  await expect(panel.locator(".inference-settings-fact")).toHaveText([
     "Temp 0.3",
     "Buffered",
   ]);
-  // Collapsed means absent, not merely hidden: nothing here is reachable.
+  // Collapsed means absent, not merely hidden: nothing else here is reachable.
   await expect(page.locator(".temperature-control")).toHaveCount(0);
   await expect(page.getByLabel("Stream response")).toHaveCount(0);
 
@@ -46,7 +50,6 @@ test("the collapsed panel reports what the run will send, and expanding reveals 
   await panel.getByRole("slider", { name: "Temperature" }).fill("0.9");
   await toggle.click();
   await expect(panel.locator(".inference-settings-fact")).toHaveText([
-    "buffered-test-model",
     "Temp 0.9",
     "Buffered",
   ]);

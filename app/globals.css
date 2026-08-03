@@ -4804,8 +4804,44 @@ main {
 .inference-settings-summary {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 5px 12px 5px 5px;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 5px 12px;
+}
+
+/* The model field earns the summary row's spare width: it is the setting these
+   surfaces change most often, which is why it is not behind the disclosure. */
+.inference-settings-summary .model-combobox {
+  /* Basis is the wrap threshold, not the width: it decides how narrow the pane
+     can get before the tail drops to its own line, and the 2× grow hands the
+     field most of the spare width once the line fits. */
+  flex: 2 1 180px;
+  min-width: 0;
+}
+
+/* The trigger and the surface's action travel as one unit: on a wide pane they
+   share the model's line, and squeezed they drop below it together instead of
+   stranding one of them. */
+.inference-settings-tail {
+  min-width: 0;
+  flex: 1 0 auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+/* The row's context already says what the field is; the word stays for the
+   accessible name only. */
+.inference-settings-summary .model-combobox-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .inference-settings-toggle {
@@ -4887,8 +4923,7 @@ main {
 }
 
 /* A flex row rather than fixed columns: the control count varies with the
-   surface's declared slots, and the model field earns the extra width because
-   it carries provider-qualified ids. */
+   surface's declared slots. */
 .inference-settings-grid {
   display: flex;
   align-items: flex-end;
@@ -4899,10 +4934,6 @@ main {
 .inference-settings-grid > * {
   min-width: 0;
   flex: 1 1 148px;
-}
-
-.inference-settings-grid > .model-combobox {
-  flex: 2 1 215px;
 }
 
 /* A repetition count is two or three digits wide however much room is left. */
@@ -5116,8 +5147,11 @@ label.temperature-toggle {
   cursor: pointer;
 }
 
+/* width: auto against the global input width: 100%, which otherwise stretches
+   the checkbox's box across the row and strands the glyph far from its text. */
 .temperature-toggle input {
   margin: 0;
+  width: auto;
 }
 
 .temperature-control output {
@@ -5154,6 +5188,7 @@ label.streaming-control {
 
 .streaming-control input {
   margin: 0;
+  width: auto;
 }
 
 .streaming-control span,
@@ -5895,7 +5930,7 @@ label.streaming-control {
     flex-basis: calc(50% - 8px);
   }
 
-  .inference-settings-grid > .model-combobox {
+  .inference-settings-summary .model-combobox {
     flex-basis: 100%;
   }
 }
@@ -5927,7 +5962,7 @@ label.streaming-control {
   }
 
   .inference-settings-grid > *,
-  .inference-settings-grid > .model-combobox {
+  .inference-settings-summary .model-combobox {
     flex-basis: 100%;
   }
 

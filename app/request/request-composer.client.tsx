@@ -150,16 +150,9 @@ export function RequestComposer({
       });
       return () => { cancelled = true; };
     }
-    // The model field only exists while the settings panel is expanded, so a
-    // readiness destination that names it opens the panel first and focuses on
-    // the following pass rather than silently finding nothing to focus.
-    if (pendingDestination.control === "model" && !settingsOpen) {
-      let cancelled = false;
-      queueMicrotask(() => {
-        if (!cancelled) setSettingsOpen(true);
-      });
-      return () => { cancelled = true; };
-    }
+    // The model field lives in the settings panel's always-visible summary
+    // row, so a destination that names it focuses directly — no disclosure
+    // needs to open first.
     const target =
       pendingDestination.control === "model"
         ? modelRef.current
@@ -189,7 +182,7 @@ export function RequestComposer({
     target.scrollIntoView?.({ block: "center" });
     target.focus();
     onDestinationHandled();
-  }, [activeTab, onDestinationHandled, pendingDestination, settingsOpen]);
+  }, [activeTab, onDestinationHandled, pendingDestination]);
 
   return (
     <section

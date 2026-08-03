@@ -53,9 +53,12 @@ test("a project can use the provider default despite a mapped profile override",
   await waitForHydration(page, "Provider-default fixture");
   await importProject(page, project, "Provider-default project");
 
-  // Collapsed, the panel already reports what the run will send.
-  await expect(page.locator(".inference-settings-fact")).toHaveText([
+  // Collapsed, the panel already reports what the run will send: the model in
+  // its always-visible field, the rest as summary chips.
+  await expect(page.getByLabel("Model", { exact: true })).toHaveValue(
     "provider-default-temperature-model",
+  );
+  await expect(page.locator(".inference-settings-fact")).toHaveText([
     "Provider default temp",
     "Buffered",
   ]);
