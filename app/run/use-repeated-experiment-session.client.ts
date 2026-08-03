@@ -35,6 +35,18 @@ export interface RepeatedExperimentDraft {
 }
 
 /**
+ * The inference options a repeated experiment will freeze. An edit here is
+ * scoped to the experiment: the plan holds its own copy of the resolved input,
+ * so adjusting the model or temperature before starting never rewrites the
+ * composer's own settings or the project's defaults.
+ */
+export interface RepeatedExperimentSettings {
+  model: string;
+  temperature: number | undefined;
+  responseMode: "streaming" | "buffered";
+}
+
+/**
  * Progress that exists only while this session drives the experiment. A saved
  * experiment reopened from history has no live progress: its disposition comes
  * from its plan, its optional result, and the states its traces reduce to.
@@ -102,7 +114,12 @@ function planFor(input: ResolvedRunInput, repetitionCount: number): RepeatedExpe
 
 function requestSummary(input: ResolvedRunInput): string {
   const messageCount = input.messages.length;
-  return `${messageCount} ${messageCount === 1 ? "message" : "messages"} · ${input.responseMode} response`;
+  return `${messageCount} ${messageCount === 1 ? "message" : "messages"}`;
+}
+
+/** Reconstitutes the resolved input a plan froze, so it can be re-planned. */
+function sampleInput(plan: RepeatedExperimentPlanV3): ResolvedRunInput {
+  return { ...plan.commonInput, runId: plan.cells[0]!.runId };
 }
 
 /** Owns one repeated-experiment dialog, controller, live evidence, and result. */
@@ -127,14 +144,39 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
     setDraft((current) => {
       if (!current) return current;
       const count = normalizedCount(value);
-      const sampleInput = {
-        ...current.plan.commonInput,
-        runId: current.plan.cells[0]!.runId,
-      };
       return {
         ...current,
-        plan: planFor(sampleInput, count),
+        plan: planFor(sampleInput(current.plan), count),
         repetitionCount: count,
+      };
+    });
+  }, []);
+
+  /**
+   * Repatches the frozen input and re-plans. The plan is the only record of what
+   * the repetitions will send, so an option changed here has to be written into
+   * it rather than held beside it.
+   */
+  const updateSettings = useCallback((settings: RepeatedExperimentSettings) => {
+    setDraft((current) => {
+      if (!current) return current;
+      const input = sampleInput(current.plan);
+      return {
+        ...current,
+        plan: planFor(
+          {
+            ...input,
+            target: { ...input.target, model: settings.model },
+            responseMode: settings.responseMode,
+            options: {
+              ...input.options,
+              ...(settings.temperature === undefined
+                ? { temperature: undefined }
+                : { temperature: settings.temperature }),
+            },
+          },
+          current.repetitionCount,
+        ),
       };
     });
   }, []);
@@ -286,6 +328,7 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
     execution,
     begin,
     setRepetitionCount,
+    updateSettings,
     dismissDialog,
     confirm,
     cancel,

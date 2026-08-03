@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 import {
   createProjectFile,
@@ -10,6 +10,7 @@ import {
   BUFFERED_FIXTURE_ENDPOINT,
   PROJECT_PROFILE_MAP_STORAGE_KEY,
   importProject,
+  openInferenceSettings,
   seedProfile,
   waitForHydration,
 } from "./support";
@@ -132,7 +133,7 @@ test("suite execution settings reach the provider without changing Messages sett
   // Both settings are moved away from the project's: the model differs, and
   // the temperature is cleared. The fixture answers this model only when no
   // temperature field is present at all.
-  const executionSettings = page.locator('[aria-label="Evaluation execution settings"]');
+  const executionSettings = await openInferenceSettings(page, "Evaluation execution settings");
   const model = executionSettings.getByLabel("Model", { exact: true });
   await model.fill(PROVIDER_DEFAULT_MODEL);
   await model.blur();
@@ -159,6 +160,7 @@ test("suite execution settings reach the provider without changing Messages sett
   // the composer anything.
   await page.getByRole("button", { name: "Back to evaluation" }).click();
   await page.getByRole("tab", { name: /Messages/ }).click();
+  await openInferenceSettings(page);
   await expect(page.locator(".temperature-control output")).toHaveText("0.4");
   await expect(page.locator(".topbar")).toContainText("buffered-test-model");
   await expect(page.locator(".topbar")).not.toContainText(PROVIDER_DEFAULT_MODEL);
@@ -171,7 +173,7 @@ test("the execution slider sends the temperature it shows, and a favorite fills 
   await useSavedPrompt(page, "Question");
   await authorSingleCase(page, "database migrations");
 
-  const executionSettings = page.locator('[aria-label="Evaluation execution settings"]');
+  const executionSettings = await openInferenceSettings(page, "Evaluation execution settings");
   const model = executionSettings.getByLabel("Model", { exact: true });
   await model.fill(ECHO_TEMPERATURE_MODEL);
   // The suite's field offers no catalogue — its connection requirement need not
@@ -208,9 +210,10 @@ test("the execution slider sends the temperature it shows, and a favorite fills 
   // Favorites are the one list the field can offer honestly: they are ids this
   // device pinned, not a claim about what this target serves.
   await page.getByRole("tab", { name: /Messages/ }).click();
-  await page.locator('[aria-label="Run settings"]').getByLabel("Model", { exact: true }).click();
+  await (await openInferenceSettings(page)).getByLabel("Model", { exact: true }).click();
   await page.getByRole("button", { name: `Favorite ${ECHO_TEMPERATURE_MODEL}` }).click();
   await page.getByRole("tab", { name: /Evaluations/ }).click();
+  await openInferenceSettings(page, "Evaluation execution settings");
 
   await model.fill("echo");
   await executionSettings.getByRole("option", { name: ECHO_TEMPERATURE_MODEL }).click();
@@ -307,7 +310,7 @@ test("a run in progress reports running state and ticks the elapsed clock", asyn
   const expected = page.locator(".evaluation-editor").getByLabel("Expected text");
   await expected.fill("Buffered fixture");
   await expected.blur();
-  await page.locator('[aria-label="Evaluation execution settings"]')
+  await (await openInferenceSettings(page, "Evaluation execution settings"))
     .getByLabel("Repetitions").fill("6");
 
   await page.locator(".evaluation-editor").getByRole("button", { name: "Start evaluation…" }).click();
@@ -335,6 +338,66 @@ test("a run in progress reports running state and ticks the elapsed clock", asyn
   await expect(results).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
 });
 
+/**
+ * The panel is one component with three mounts, so its controls must not be
+ * restyled by whichever page they land in. The suite's mount sits inside
+ * `.evaluation-preflight`, whose own `label`, `input`, and `output` rules match
+ * the panel's at equal specificity and used to win on source order: the
+ * checkboxes stacked above their text, their hit boxes stretched across the
+ * column, and the temperature readout lost its field.
+ */
+async function settingsLayout(panel: Locator) {
+  return panel.evaluate((element) => {
+    const checkboxLayout = (selector: string) => {
+      const label = element.querySelector<HTMLElement>(selector);
+      const input = label?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+      const text = label?.querySelector<HTMLElement>("span");
+      if (!label || !input || !text) return "missing";
+      const box = input.getBoundingClientRect();
+      const words = text.getBoundingClientRect();
+      // Beside, not above: the glyph sits left of its text and the two overlap
+      // vertically. A stretched box is the other half of the same failure.
+      const beside = box.right <= words.left && box.bottom > words.top;
+      return `${beside ? "beside" : "stacked"}/${box.width < 30 ? "compact" : "stretched"}`;
+    };
+    const style = (selector: string) => {
+      const node = element.querySelector<HTMLElement>(selector);
+      return node ? getComputedStyle(node) : null;
+    };
+    const output = style(".temperature-control output");
+    const hint = style(".streaming-control small");
+    return {
+      temperature: checkboxLayout(".temperature-toggle"),
+      streaming: checkboxLayout(".streaming-control"),
+      readout: output ? `${output.borderTopWidth}/${output.textAlign}` : "missing",
+      hint: hint ? `${hint.fontSize}/${hint.lineHeight}` : "missing",
+    };
+  });
+}
+
+test("the suite's settings panel lays its controls out like the composer's", async ({ page }) => {
+  await openMappedEvaluations(page, fixtureProject());
+  await page.getByRole("button", { name: "Create evaluation suite" }).click();
+  await useSavedPrompt(page, "Question");
+
+  const suite = await settingsLayout(
+    await openInferenceSettings(page, "Evaluation execution settings"),
+  );
+  await page.getByRole("tab", { name: /Messages/ }).click();
+  const composer = await settingsLayout(await openInferenceSettings(page));
+
+  // The composer is the reference only because it is the mount no page rules
+  // reach; both are asserted absolutely so a regression there cannot make this
+  // pass by matching two broken layouts.
+  expect(composer).toEqual({
+    temperature: "beside/compact",
+    streaming: "beside/compact",
+    readout: "1px/right",
+    hint: "11px/14.3px",
+  });
+  expect(suite).toEqual(composer);
+});
+
 test("preflight input and execution settings fit at desktop and phone widths", async ({ page }) => {
   await openMappedEvaluations(page, fixtureProject());
   await page.getByRole("button", { name: "Create evaluation suite" }).click();
@@ -346,9 +409,13 @@ test("preflight input and execution settings fit at desktop and phone widths", a
   await expectedText.fill("Buffered fixture");
   await expectedText.blur();
   await expect(page.locator(".evaluation-editor")).toContainText("Ready to run");
+  // Expanded on purpose: collapsed, the panel has nothing that could overflow,
+  // so measuring it shut would pass without testing the controls at all.
+  await openInferenceSettings(page, "Evaluation execution settings");
 
-  // Both regions are new in this preflight and both hold long text — a revision
-  // label and an endpoint-shaped model — so overflow is the failure to watch.
+  // Both regions hold long text — a revision label and an endpoint-shaped model
+  // — so overflow is the failure to watch. The settings summary is measured too,
+  // because its value chips are the widest single line in the collapsed state.
   const measure = () => page.locator(".evaluation-preflight").evaluate((preflight) => {
     const fits = (selector: string) => {
       const element = preflight.querySelector<HTMLElement>(selector);
@@ -357,11 +424,18 @@ test("preflight input and execution settings fit at desktop and phone widths", a
     return {
       preflightFits: preflight.scrollWidth <= preflight.clientWidth,
       summaryFits: fits(".evaluation-input-summary"),
-      executionFits: fits(".evaluation-execution-editor"),
+      executionFits: fits(".inference-settings"),
+      settingsSummaryFits: fits(".inference-settings-summary"),
       bodyFits: document.body.scrollWidth <= document.documentElement.clientWidth,
     };
   });
-  const expected = { preflightFits: true, summaryFits: true, executionFits: true, bodyFits: true };
+  const expected = {
+    preflightFits: true,
+    summaryFits: true,
+    executionFits: true,
+    settingsSummaryFits: true,
+    bodyFits: true,
+  };
   expect(await measure()).toEqual(expected);
 
   await page.setViewportSize({ width: 390, height: 844 });

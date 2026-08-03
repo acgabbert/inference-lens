@@ -12,7 +12,9 @@ import { serializeRunTrace } from "../../packages/core/src/run-trace";
 import { seedProfile } from "./support";
 
 async function waitForHydration(page: Page) {
-  await expect(page.getByLabel("Stream response")).not.toBeChecked();
+  // The seeded profile's name can only come from localStorage, so unlike the
+  // server-rendered settings panel it cannot appear before hydration.
+  await expect(page.locator(".topbar")).toContainText("Buffered fixture");
 }
 
 function importedTraceContents(

@@ -1463,7 +1463,21 @@ function HomeContent() {
       {repeatedExperiment.draft && (
         <RepeatedExperimentDialog
           draft={repeatedExperiment.draft}
+          settings={{
+            streamingAvailable: activeCapabilities.streaming,
+            modelDiscovery: activeModelDiscovery,
+            favoriteModels: activeProfile.favoriteModels ?? [],
+            onLoadModels: (force) => void loadModels(force),
+            onToggleFavoriteModel: (model) =>
+              updateActiveProfile({
+                favoriteModels: toggleFavoriteModel(
+                  activeProfile.favoriteModels,
+                  model,
+                ),
+              }),
+          }}
           onCountChange={repeatedExperiment.setRepetitionCount}
+          onSettingsChange={repeatedExperiment.updateSettings}
           onCancel={repeatedExperiment.dismissDialog}
           onConfirm={() => void repeatedExperiment.confirm(projectWorkspace)}
         />

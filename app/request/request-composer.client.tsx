@@ -101,6 +101,10 @@ export function RequestComposer({
   onActionContextChange,
 }: RequestComposerProps) {
   const [tab, setTab] = useState<RequestTab>("messages");
+  // Collapsed by default: the settings summary says what the next run will
+  // send, which is what most visits to this pane need, and the message list
+  // starts higher up for the visits that do not.
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
   const [focusModeTab, setFocusModeTab] = useState<RequestTab>("messages");
   const composerRef = useRef<HTMLElement>(null);
@@ -151,6 +155,9 @@ export function RequestComposer({
       });
       return () => { cancelled = true; };
     }
+    // The model field lives in the settings panel's always-visible summary
+    // row, so a destination that names it focuses directly — no disclosure
+    // needs to open first.
     const target =
       pendingDestination.control === "model"
         ? modelRef.current
@@ -263,14 +270,18 @@ export function RequestComposer({
       <div className="pane-scroll request-content">
         {activeTab === "messages" ? (
           <>
-            <section className="run-settings" aria-label="Run settings">
-              <div className="run-settings-heading">
-                <span>
-                  <strong>Run settings</strong>
-                  <small>{project ? "Project override" : "Profile default"}</small>
-                </span>
-                <button className="text-button" type="button" onClick={onOpenConnectionSettings}>Connection settings</button>
-              </div>
+            <div className="run-settings">
+              <RequestSettings
+                {...settings}
+                modelInputRef={modelRef}
+                open={settingsOpen}
+                onOpenChange={setSettingsOpen}
+                scopeNote={project ? "Project override" : "Profile default"}
+                action={<button className="text-button" type="button" onClick={onOpenConnectionSettings}>Connection settings</button>}
+              />
+              {/* Outside the panel deliberately: how many tools accompany the
+                  request is not one of the inference options, and its blocked
+                  variant must stay readable while the panel is collapsed. */}
               <p className={selectedToolCount > 0 && !settings.toolsEnabled ? "request-tool-line blocked" : "request-tool-line"} role="status">
                 <span>
                   {selectedToolCount === 0
@@ -285,8 +296,7 @@ export function RequestComposer({
                   {selectedToolCount === 0 ? "Add tools" : "Review"}
                 </button>
               </p>
-              <RequestSettings {...settings} modelInputRef={modelRef} />
-            </section>
+            </div>
             <div className="message-list">
               {templates.templateWorkbench.composerItems.map((item, index) => {
                 if (item.kind === "template-use") {

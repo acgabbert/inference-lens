@@ -1,10 +1,15 @@
 "use client";
 
-import type { RefObject } from "react";
-import { ModelCombobox } from "../model-combobox.client";
-import { TemperatureControl } from "../temperature-control.client";
+import type { ReactNode, RefObject } from "react";
+import { InferenceSettingsPanel } from "../inference-settings-panel.client";
 import type { ModelDiscoveryState } from "../use-model-discovery.client";
 
+/**
+ * The composer's snapshot of the provider-facing settings. It stays in the
+ * granular shape the workbench already publishes — one callback per field —
+ * because the composer's fields are three separately owned pieces of session
+ * state, not one stored object like an evaluation suite's execution block.
+ */
 export interface RequestSettingsProps {
   model: string;
   temperature?: number;
@@ -21,7 +26,20 @@ export interface RequestSettingsProps {
   onToggleFavoriteModel(model: string): void;
 }
 
-/** Owns the provider-facing controls shown above the request composer. */
+interface RequestSettingsDisclosure {
+  open: boolean;
+  onOpenChange(open: boolean): void;
+  /** Where these settings are saved, in the open project's terms. */
+  scopeNote: string;
+  /** Stays reachable while the panel is collapsed. */
+  action: ReactNode;
+}
+
+/**
+ * Adapts the composer's per-field settings snapshot onto the shared inference
+ * settings panel. The disclosure state belongs to the composer, which has to be
+ * able to open the panel before readiness routing focuses the model field.
+ */
 export function RequestSettings({
   model,
   temperature,
@@ -35,51 +53,35 @@ export function RequestSettings({
   onStreamingPreferenceChange,
   onLoadModels,
   onToggleFavoriteModel,
-}: RequestSettingsProps) {
+  open,
+  onOpenChange,
+  scopeNote,
+  action,
+}: RequestSettingsProps & RequestSettingsDisclosure) {
   return (
-    <div className="run-settings-grid">
-      <ModelCombobox
-        inputRef={modelInputRef}
-        value={model}
-        onChange={onModelChange}
-        discovery={modelDiscovery}
-        onLoadModels={onLoadModels}
-        favoriteModels={favoriteModels}
-        onToggleFavoriteModel={onToggleFavoriteModel}
-      />
-      <TemperatureControl
-        value={temperature}
-        onChange={onTemperatureChange}
-      />
-      <label
-        className={
-          streamingAvailable
-            ? "streaming-control"
-            : "streaming-control disabled"
+    <InferenceSettingsPanel
+      idPrefix="request"
+      label="Run settings"
+      heading="Run settings"
+      scopeNote={scopeNote}
+      open={open}
+      onOpenChange={onOpenChange}
+      value={{ model, temperature, responseMode }}
+      onChange={(next) => {
+        if (next.model !== model) onModelChange(next.model);
+        if (next.temperature !== temperature) onTemperatureChange(next.temperature);
+        if (next.responseMode !== responseMode) {
+          onStreamingPreferenceChange(next.responseMode === "streaming");
         }
-        title={
-          streamingAvailable
-            ? undefined
-            : "This profile does not support streaming responses."
-        }
-      >
-        <input
-          type="checkbox"
-          checked={responseMode === "streaming"}
-          disabled={!streamingAvailable}
-          onChange={(event) =>
-            onStreamingPreferenceChange(event.target.checked)
-          }
-        />
-        <span>
-          Stream response
-          <small>
-            {streamingAvailable
-              ? "Show output as the provider sends it."
-              : "Unavailable for this profile; responses are buffered."}
-          </small>
-        </span>
-      </label>
-    </div>
+      }}
+      streamingAvailable={streamingAvailable}
+      modelDiscovery={modelDiscovery}
+      favoriteModels={favoriteModels}
+      onLoadModels={onLoadModels}
+      onToggleFavoriteModel={onToggleFavoriteModel}
+      {...(modelInputRef ? { modelInputRef } : {})}
+      readinessTarget
+      action={action}
+    />
   );
 }

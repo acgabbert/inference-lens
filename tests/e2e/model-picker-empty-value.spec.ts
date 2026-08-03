@@ -5,6 +5,7 @@ import { createProjectFile } from "../../packages/core/src/project";
 import {
   BUFFERED_FIXTURE_ENDPOINT,
   importProject,
+  openInferenceSettings,
   seedProfile,
   waitForHydration,
 } from "./support";
@@ -35,6 +36,8 @@ async function openFixtureProject(page: Page) {
   await page.goto("/");
   await waitForHydration(page);
   await importProject(page, fixtureProject(), "Model picker fixture");
+  // The model field lives in the settings panel, which starts collapsed.
+  await openInferenceSettings(page);
 }
 
 test("clearing the model field in an open project does not throw", async ({

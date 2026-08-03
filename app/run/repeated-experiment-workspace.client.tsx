@@ -8,6 +8,7 @@ import {
 } from "../../packages/core/src/experiment.ts";
 import type { RunId, RunState } from "../../packages/core/src/run-kernel/index.ts";
 import { runMetrics } from "../../packages/core/src/run-metrics.ts";
+import { InferenceSettingsPanel } from "../inference-settings-panel.client.tsx";
 import { formatDuration, formatRate, formatTokens } from "../run-metrics-format.client.ts";
 import type { RepeatedExperimentExecution } from "./use-repeated-experiment-session.client.ts";
 
@@ -122,6 +123,7 @@ export function RepeatedExperimentWorkspace({
   onDismiss?(): void;
 }) {
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const aggregate = repeatedExperimentAggregate(
     execution.plan,
     execution.result,
@@ -176,6 +178,31 @@ export function RepeatedExperimentWorkspace({
 
       {execution.storage === "unsaved" && <p className="repeated-experiment-notice" role="status">This experiment is not saved and will be lost when this session closes.</p>}
       {execution.error && <p className="repeated-experiment-notice error" role="alert">{execution.error}</p>}
+
+      {/* The same panel the Repeat dialog offers, now a record: these values
+          were frozen into the plan on start and no edit can reach the calls
+          that have already been made. */}
+      <InferenceSettingsPanel
+        idPrefix="experiment-record"
+        label="Repeated experiment settings"
+        heading="Experiment settings"
+        scopeNote="Frozen by this plan"
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        readOnly
+        value={{
+          model: execution.plan.commonInput.target.model,
+          temperature: execution.plan.commonInput.options.temperature,
+          responseMode: execution.plan.commonInput.responseMode,
+        }}
+        onChange={() => {}}
+        streamingAvailable={execution.plan.commonInput.responseMode === "streaming"}
+        connection={{ summary: execution.plan.commonInput.target.endpoint, control: null }}
+        repetitions={{
+          summary: `${execution.plan.cells.length} ${execution.plan.cells.length === 1 ? "rep" : "reps"}`,
+          control: null,
+        }}
+      />
 
       <div className="repeated-experiment-summary" aria-label="Repeated experiment summary">
         <section className="repeated-experiment-metric-section">

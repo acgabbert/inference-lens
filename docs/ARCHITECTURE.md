@@ -133,4 +133,31 @@ workflows.
 | Live coordination, retry, continuation, stop, diagnostics, and trace lifecycle | `app/run/use-run-session.client.ts` |
 | Template-use state, immutable mutations, external-import application, and preview | `app/templates/use-project-templates.client.ts` |
 | Request-pane presentation and local navigation | `app/request/request-composer.client.tsx` |
+| Inference option-set presentation and its disclosure | `app/inference-settings-panel.client.tsx` |
 | Run-history listing and artifact reads | `useProjectRunHistory` |
+
+### The shared inference settings panel
+
+Model, temperature, and delivery are one option set with three owners: the
+request composer holds them as session state, an evaluation suite stores them as
+portable project content in `suite.execution`, and a repeated experiment freezes
+them into its plan. `InferenceSettingsPanel` presents that set once for all
+three. It stores nothing — `value` in, `onChange` out — so each surface keeps the
+persistence its own contract requires.
+
+Two properties are contractual rather than cosmetic:
+
+- **The disclosure is controlled by the surface.** The panel's controls are not
+  in the document while it is collapsed, so run-readiness routing to
+  `{ surface: "request", control: "model" }` has to open the composer's panel
+  before it can focus the field. An uncontrolled disclosure would make that
+  destination fail silently.
+- **State that must outlive a collapse belongs above the disclosure.** The
+  remembered temperature override lives in the panel, not in
+  `TemperatureControl`, because the control unmounts every time the panel closes.
+
+Surface-specific settings arrive as declared slots (`connection`,
+`repetitions`), each carrying its own collapsed summary, so hiding the panel
+never hides a value. Anything that is a *consequence* of the settings rather
+than one of them — the composer's tool line, an evaluation's planned run count —
+stays outside the panel, because those must remain readable while it is closed.
