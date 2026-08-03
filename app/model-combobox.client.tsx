@@ -17,6 +17,17 @@ type ModelComboboxProps = {
   favoriteModels: string[];
   onToggleFavoriteModel: (model: string) => void;
   inputRef?: RefObject<HTMLInputElement | null>;
+  /**
+   * Namespaces the listbox and option ids. More than one combobox can be
+   * mounted at a time, and `aria-activedescendant` resolves by id, so a shared
+   * prefix would point one field's cursor at another field's option.
+   */
+  idPrefix?: string;
+  /**
+   * The composer's field is the destination readiness routing focuses. Other
+   * instances opt out so that selector keeps naming exactly one control.
+   */
+  readinessTarget?: boolean;
 };
 
 /**
@@ -32,7 +43,11 @@ export function ModelCombobox({
   favoriteModels,
   onToggleFavoriteModel,
   inputRef,
+  idPrefix = "model",
+  readinessTarget = true,
 }: ModelComboboxProps) {
+  const listboxId = `${idPrefix}-options`;
+  const optionId = (index: number): string => `${idPrefix}-option-${index}`;
   const [menuOpen, setMenuOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -68,6 +83,10 @@ export function ModelCombobox({
   // arrow-key navigation and `Enter` operate on; `highlightedIndex` is an
   // index into it, not into either group alone.
   const rows = [...matchingFavorites, ...matchingModels];
+  // Without discovery there is no status to report, so a field whose favorites
+  // do not match has nothing to show. Opening an empty popover over the form
+  // would be a menu that says nothing.
+  const menuVisible = menuOpen && (rows.length > 0 || discovery !== null);
 
   function selectModel(model: string): void {
     onChange(model);
@@ -104,7 +123,7 @@ export function ModelCombobox({
         <button
           aria-selected={index === highlightedIndex}
           className="model-option"
-          id={`model-option-${index}`}
+          id={optionId(index)}
           role="option"
           type="button"
           onMouseDown={preventBlur}
@@ -122,14 +141,14 @@ export function ModelCombobox({
       <div className="combobox-control">
         <input
           ref={inputRef}
-          data-readiness-control="model"
+          {...(readinessTarget ? { "data-readiness-control": "model" } : {})}
           role="combobox"
           aria-autocomplete="list"
-          aria-controls="model-options"
-          aria-expanded={menuOpen}
+          aria-controls={listboxId}
+          aria-expanded={menuVisible}
           aria-activedescendant={
-            menuOpen && rows[highlightedIndex]
-              ? `model-option-${highlightedIndex}`
+            menuVisible && rows[highlightedIndex]
+              ? optionId(highlightedIndex)
               : undefined
           }
           value={draft ?? value}
@@ -185,8 +204,8 @@ export function ModelCombobox({
           spellCheck={false}
           autoComplete="off"
         />
-        {menuOpen && (
-          <div className="model-options" id="model-options" role="listbox">
+        {menuVisible && (
+          <div className="model-options" id={listboxId} role="listbox">
             {matchingFavorites.length > 0 && (
               <>
                 <div className="model-options-header">
