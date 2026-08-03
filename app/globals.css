@@ -368,6 +368,10 @@ pre,
 .run-history-status,
 .run-history-filter button,
 .evaluation-pass,
+.evaluation-suite-history-hint,
+.evaluation-suite-history-toolbar,
+.evaluation-suite-history-item time,
+.evaluation-suite-history-item > span,
 .experiment-elapsed,
 .repeated-experiment-output-preview > span,
 .app-error-mark,
@@ -7005,6 +7009,135 @@ main {
   margin-bottom: 0;
 }
 
+.evaluation-suite-history {
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  background: var(--surface-panel);
+}
+
+.evaluation-suite-history > summary {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.evaluation-suite-history > summary::-webkit-details-marker {
+  display: none;
+}
+
+.evaluation-suite-history > summary:hover {
+  background: var(--surface-inset);
+}
+
+.evaluation-suite-history > summary:hover .evaluation-suite-history-hint {
+  color: var(--text-secondary);
+}
+
+.evaluation-suite-history[open] > summary {
+  border-radius: 10px 10px 0 0;
+}
+
+.evaluation-suite-history-title {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.evaluation-suite-history > summary strong {
+  color: var(--text-primary);
+}
+
+/* The affordance the native marker is too quiet to provide. It rotates rather
+   than swapping glyphs so the open and closed states are the same object. */
+.evaluation-suite-history-chevron {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  color: var(--text-muted);
+  line-height: 1;
+  transition: transform 120ms ease;
+}
+
+.evaluation-suite-history[open] .evaluation-suite-history-chevron {
+  transform: rotate(180deg);
+}
+
+.evaluation-suite-history-hint {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.evaluation-suite-history-body {
+  display: grid;
+  gap: 8px;
+  padding: 0 14px 14px;
+}
+
+.evaluation-suite-history-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.evaluation-suite-history-item {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 9px;
+  display: grid;
+  gap: 5px;
+  background: var(--surface-panel);
+  color: var(--text-muted);
+  cursor: pointer;
+  text-align: left;
+  box-shadow: var(--shadow-control);
+}
+
+.evaluation-suite-history-item:hover {
+  border-color: var(--border-strong);
+}
+
+.evaluation-suite-history-item[aria-busy="true"] {
+  cursor: progress;
+}
+
+.evaluation-suite-history-item:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.evaluation-suite-history-item-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.evaluation-suite-history-item-heading time {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.evaluation-suite-history-drift {
+  color: var(--text-faint);
+}
 
 .evaluation-cases-workspace {
   min-width: 0;

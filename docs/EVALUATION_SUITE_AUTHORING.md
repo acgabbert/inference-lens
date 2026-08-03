@@ -130,3 +130,38 @@ authored against and is reported when it disagrees with the evaluation's model,
 or when two pinned prompts recommend different models — a disagreement no single
 target can settle, since a provider call carries one model. It never selects or
 overrides the target.
+
+## Reviewing past executions
+
+A finished evaluation is written to the project folder as an immutable plan, a
+result, and one trace per repetition. Those artifacts stay readable after the
+session ends, and there are two ways back to them.
+
+**Past executions**, in the suite editor, lists the saved executions of the
+suite being authored. It is collapsed until asked for: building the listing
+costs a full parse of every artifact in the project folder, so opening a project
+does not pay for a list nobody has opened. Expanding it loads the listing once
+and caches it; **Refresh** re-reads the folder.
+
+Membership is by suite identity, not by input revision. An execution recorded
+against an older revision of the suite's input is still that suite's evidence
+and stays listed, marked *Ran against a different input revision*. This is
+deliberate: a pass rate that moved because the prompt changed is a different
+finding from one that moved on its own, and hiding the older run would hide the
+comparison.
+
+**Run history**, under the topbar's **Run data** menu, is the whole-project
+view: ordinary runs, repeated experiments, and evaluations across every suite,
+newest first, filterable by kind.
+
+Both surfaces summarize an evaluation by its strict pass rate — `1/2 cases
+passed` — rather than by run status. The distinction matters: a repetition that
+completed and then failed its checks is a completed *run* and a failed *case*.
+Run-status counts (`4 completed · 1 failed`) stay with repeated experiments,
+where they are the outcome rather than a step on the way to one. An execution
+that decided nothing, because it was interrupted before its cases could be
+scored, is reported neutrally rather than as a failure.
+
+Opening an execution from either surface reaches the same **As run** results
+workspace, scored by the same aggregate. A suite edited since a run does not
+change that run's saved outcome.

@@ -58,6 +58,7 @@ import { WorkbenchShell } from "./workbench-shell.client";
 import type { WorkbenchView } from "./workbench-shell.client";
 import { RunTracePanel } from "./run-trace-panel.client";
 import { RunHistoryDrawer } from "./run-history-drawer.client";
+import type { EvaluationSuiteHistoryHandle } from "./evaluations/evaluation-suite-history.client";
 import type {
   ProjectExperimentHistoryItem,
   ProjectRunHistoryItem,
@@ -222,6 +223,10 @@ function HomeContent() {
   const [pendingReadinessDestination, setPendingReadinessDestination] =
     useState<ReadinessDestination>();
   const [runHistoryOpen, setRunHistoryOpen] = useState(false);
+  // Set once the suite editor's past-execution list has been expanded. Listing
+  // costs a full parse of every artifact in the project folder, so neither
+  // surface being open means no listing happens at all.
+  const [suiteHistoryRequested, setSuiteHistoryRequested] = useState(false);
   const [savedRunVersion, setSavedRunVersion] = useState(0);
   const clearTemplateOverridesRef = useRef<() => void>(() => {});
   const [workbenchView, setWorkbenchView] =
@@ -280,7 +285,7 @@ function HomeContent() {
   } = project;
   const runHistory = useProjectRunHistory(
     projectWorkspace,
-    runHistoryOpen,
+    runHistoryOpen || suiteHistoryRequested,
     savedRunVersion,
   );
   const {
@@ -1011,6 +1016,28 @@ function HomeContent() {
     onStart: startEvaluation,
   };
 
+  // Cross-feature adapter: saved executions are project-workspace evidence and
+  // the suite being authored is authoring state, so scoping one to the other
+  // belongs to the route rather than to either owner. Executions are matched by
+  // suite identity across every input revision — a run against an older
+  // revision is still this suite's evidence, and the editor marks it as drifted
+  // rather than hiding it.
+  const evaluationHistory: EvaluationSuiteHistoryHandle | undefined = projectWorkspace
+    ? {
+        status: runHistory.status,
+        executions: runHistory.experiments.filter(
+          (item) => item.evaluation?.suiteId === selectedEvaluationSuite?.id,
+        ),
+        ...(runHistory.error ? { error: runHistory.error } : {}),
+        ...(evaluationAuthoring.revisionId
+          ? { currentRevisionId: evaluationAuthoring.revisionId }
+          : {}),
+        onExpand: () => setSuiteHistoryRequested(true),
+        onRefresh: () => void runHistory.refresh(),
+        onOpen: (item) => openHistoryExperiment(item),
+      }
+    : undefined;
+
   // The provider-input preview only claims the response pane while an
   // evaluation is being authored: a live or reopened execution keeps its
   // results workspace, which is the same thing the pane branch below decides.
@@ -1293,6 +1320,7 @@ function HomeContent() {
           templates={projectTemplates}
           evaluations={evaluationAuthoring}
           evaluationExecution={evaluationExecutionActions}
+          {...(evaluationHistory ? { evaluationHistory } : {})}
           project={projectFile}
           settings={{
             model: activeModel,
