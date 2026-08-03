@@ -15,6 +15,7 @@ interface ToolsPaneProps {
   onOpenConnectionSettings(): void;
   onAddTool(): void;
   onRemoveTool(id: ToolId): void;
+  onMoveTool(id: ToolId, offset: number): void;
   onUpdateTool(id: ToolId, patch: Partial<ToolDefinition>): void;
   onSetToolEnabled(id: ToolId, enabled: boolean): void;
   mockForTool(id: ToolId): ToolMock | undefined;
@@ -31,7 +32,7 @@ interface ToolsPaneProps {
  */
 export function ToolsPane({
   tools, requestTools, enabledToolIds, activeProfileName, toolsEnabled,
-  onOpenLibrary, onOpenConnectionSettings, onAddTool, onRemoveTool, onUpdateTool,
+  onOpenLibrary, onOpenConnectionSettings, onAddTool, onRemoveTool, onMoveTool, onUpdateTool,
   onSetToolEnabled, mockForTool, onUpdateToolMock, onRemoveRequestTool,
 }: ToolsPaneProps) {
   const selectedProjectTools = tools.filter(({ id }) =>
@@ -69,7 +70,7 @@ export function ToolsPane({
                 ? "Select a project tool or attach a one-shot library copy."
                 : state === "blocked"
                   ? `Profile “${profileName}” does not allow tool calling, so none of these reach the model.`
-                  : "These definitions are sent with the request."}
+                  : "These definitions are sent with the request, in this order."}
             </p>
           </div>
           {state === "blocked" && (
@@ -145,11 +146,12 @@ export function ToolsPane({
             detail="Tool definitions are saved with this project and sent to the model only when selected."
             action={{ label: "+ Add project tool", onClick: onAddTool }}
           />
-        ) : tools.map((tool) => {
+        ) : tools.map((tool, index) => {
           const mock = mockForTool(tool.id);
           const mockText = mock?.result.content.map(({ text }) => text).join("") ?? "";
+          const toolLabel = tool.name.trim() || `tool ${index + 1}`;
           return <article className="tool-editor" key={tool.id}>
-            <div className="tool-editor-toolbar"><label className="tool-enabled"><input type="checkbox" checked={enabledToolIds.includes(tool.id)} onChange={(event) => onSetToolEnabled(tool.id, event.target.checked)} />Send with requests</label><button className="remove-button" type="button" onClick={() => onRemoveTool(tool.id)}>Remove</button></div>
+            <div className="tool-editor-toolbar"><label className="tool-enabled"><input type="checkbox" checked={enabledToolIds.includes(tool.id)} onChange={(event) => onSetToolEnabled(tool.id, event.target.checked)} />Send with requests</label><div className="tool-reorder"><button aria-label={`Move ${toolLabel} earlier in the request`} className="text-button" disabled={index === 0} type="button" onClick={() => onMoveTool(tool.id, -1)}>↑</button><button aria-label={`Move ${toolLabel} later in the request`} className="text-button" disabled={index === tools.length - 1} type="button" onClick={() => onMoveTool(tool.id, 1)}>↓</button></div><button className="remove-button" type="button" onClick={() => onRemoveTool(tool.id)}>Remove</button></div>
             <ToolDefinitionEditor value={tool} onChange={(value) => onUpdateTool(tool.id, value)} />
             <div className="tool-fields tool-mock-fields"><label className="tool-mock-toggle"><input type="checkbox" checked={mock?.enabled ?? false} onChange={(event) => onUpdateToolMock(tool.id, mockText, event.target.checked)} />Use static mock result</label>{mock?.enabled && <label className="tool-mock-result">Mock result<textarea value={mockText} onChange={(event) => onUpdateToolMock(tool.id, event.target.value, true)} /></label>}</div>
           </article>;

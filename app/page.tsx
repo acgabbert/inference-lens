@@ -302,6 +302,7 @@ function HomeContent() {
     addTool,
     updateTool,
     removeTool,
+    moveTool,
     setToolEnabled,
     mockForTool,
     updateToolMock,
@@ -1313,7 +1314,7 @@ function HomeContent() {
           }}
         /> : <RequestComposer
           requestDraft={{
-            messages, tools, requestTools, enabledToolIds, addTool, removeTool, updateTool,
+            messages, tools, requestTools, enabledToolIds, addTool, removeTool, moveTool, updateTool,
             setToolEnabled, mockForTool, updateToolMock, removeRequestTool,
           }}
           templates={projectTemplates}
