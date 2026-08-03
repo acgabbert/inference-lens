@@ -16,18 +16,20 @@ import { seedProfile, waitForHydration } from "./support";
 type Field = { label: string; borderWidth: string; borderColor: string; background: string };
 
 async function unfocusedFields(page: import("@playwright/test").Page): Promise<Field[]> {
-  return page.$$eval("textarea:not(.message-card textarea)", (nodes) =>
-    nodes
-      .filter((node) => node.offsetParent !== null)
-      .map((node) => {
-        const style = getComputedStyle(node);
-        return {
-          label: node.getAttribute("aria-label") ?? node.className ?? node.tagName,
-          borderWidth: style.borderTopWidth,
-          borderColor: style.borderTopColor,
-          background: style.backgroundColor,
-        };
-      }),
+  return page.$$eval<Field[], HTMLTextAreaElement>(
+    "textarea:not(.message-card textarea)",
+    (nodes) =>
+      nodes
+        .filter((node) => node.offsetParent !== null)
+        .map((node) => {
+          const style = getComputedStyle(node);
+          return {
+            label: node.getAttribute("aria-label") ?? node.className ?? node.tagName,
+            borderWidth: style.borderTopWidth,
+            borderColor: style.borderTopColor,
+            background: style.backgroundColor,
+          };
+        }),
   );
 }
 

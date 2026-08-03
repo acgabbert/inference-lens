@@ -3,7 +3,6 @@ import { createEvaluationExperimentPlan } from "../../packages/core/src/evaluati
 import type { ProjectFile } from "../../packages/core/src/project.ts";
 import { createEntityId } from "../../packages/core/src/run-kernel/types.ts";
 import type {
-  ConversationRevisionId,
   EvaluationCaseId,
   EvaluationSuiteId,
 } from "../../packages/core/src/run-kernel/types.ts";

@@ -7,7 +7,6 @@ import type { ProjectFile } from "./project.ts";
 import { randomUUID } from "./random-id.ts";
 import { createEntityId } from "./run-kernel/types.ts";
 import type {
-  ConversationRevisionId,
   EvaluationCaseId,
   EvaluationSuiteId,
   ResolvedRunInput,

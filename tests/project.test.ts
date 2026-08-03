@@ -241,6 +241,8 @@ test("migrates Project v6 by adding an empty evaluation suite collection", () =>
 
 test("migrates a populated Project v7 suite onto suite-owned input and execution", () => {
   const current = projectWithEvaluationSuite();
+  // The point of the destructure is what it drops: a v7 suite carried neither key.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { input, execution, ...version7Suite } = current.evaluationSuites[0]!;
   // A v7 suite borrowed the project's revision and settings implicitly. The
   // migration has to make that borrowing explicit without changing what the
