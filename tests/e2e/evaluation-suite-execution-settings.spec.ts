@@ -24,6 +24,8 @@ const PROFILE_INSTANCE_ID = "profile-instance-buffered";
  */
 const PROVIDER_DEFAULT_MODEL = "provider-default-temperature-model";
 const PROVIDER_DEFAULT_ANSWER = "Provider received no temperature override.";
+/** The fixture answers this model with the temperature it was actually sent. */
+const ECHO_TEMPERATURE_MODEL = "echo-temperature-model";
 
 function fixtureProject(): ProjectFile {
   const project = createProjectFile({
@@ -134,9 +136,10 @@ test("suite execution settings reach the provider without changing Messages sett
   const model = executionSettings.getByLabel("Model", { exact: true });
   await model.fill(PROVIDER_DEFAULT_MODEL);
   await model.blur();
-  // Not `exact`: a wrapping <label> around a <select> carries every option's
-  // text in its own text content.
-  await executionSettings.getByLabel("Temperature").selectOption({ label: "Provider default" });
+  // Clearing the override is what removes the field entirely; the slider keeps
+  // showing the remembered value but nothing sends it.
+  await executionSettings.getByLabel("Override temperature").uncheck();
+  await expect(executionSettings.locator(".temperature-control")).toContainText("Provider default");
 
   const editor = page.locator(".evaluation-editor");
   await expect(editor).toContainText("Ready to run");
@@ -159,6 +162,59 @@ test("suite execution settings reach the provider without changing Messages sett
   await expect(page.locator(".temperature-control output")).toHaveText("0.4");
   await expect(page.locator(".topbar")).toContainText("buffered-test-model");
   await expect(page.locator(".topbar")).not.toContainText(PROVIDER_DEFAULT_MODEL);
+});
+
+test("the execution slider sends the temperature it shows, and a favorite fills the model", async ({ page }) => {
+  await openMappedEvaluations(page, fixtureProject());
+
+  await page.getByRole("button", { name: "Create evaluation suite" }).click();
+  await useSavedPrompt(page, "Question");
+  await authorSingleCase(page, "database migrations");
+
+  const executionSettings = page.locator('[aria-label="Evaluation execution settings"]');
+  const model = executionSettings.getByLabel("Model", { exact: true });
+  await model.fill(ECHO_TEMPERATURE_MODEL);
+  // The suite's field offers no catalogue — its connection requirement need not
+  // be the active profile — so an unlisted id must stay usable, and the menu
+  // must not open over the form with nothing in it.
+  await expect(executionSettings.locator(".model-options")).toHaveCount(0);
+  await model.blur();
+
+  const temperature = executionSettings.getByRole("slider", { name: "Temperature" });
+  await temperature.fill("1.4");
+  await expect(executionSettings.locator(".temperature-control output")).toHaveText("1.4");
+  await expect(executionSettings.locator(".temperature-warning")).toContainText("Experimental above 1.0");
+
+  const editor = page.locator(".evaluation-editor");
+  await page.getByLabel("New check kind").selectOption({ label: "Contains text" });
+  await page.getByRole("button", { name: "+ Add check" }).click();
+  const expected = editor.getByLabel("Expected text");
+  await expected.fill("Provider received temperature 1.4.");
+  await expected.blur();
+
+  await expect(editor).toContainText("Ready to run");
+  await editor.getByRole("button", { name: "Start evaluation…" }).click();
+  await page.getByRole("dialog", { name: /Start “Untitled evaluation”/ })
+    .getByRole("button", { name: "Start 1 call" }).click();
+
+  // Provider-side proof: the fixture answers with the temperature it was sent,
+  // so this fails if the slider's value never left the suite's settings.
+  const results = page.locator(".evaluation-results-workspace");
+  await expect(results).toContainText("1 / 1 passed");
+  await results.getByRole("button", { name: "Open Response & Inspect" }).first().click();
+  await expect(page.getByLabel("Run transcript")).toContainText("Provider received temperature 1.4.");
+  await page.getByRole("button", { name: "Back to evaluation" }).click();
+
+  // Favorites are the one list the field can offer honestly: they are ids this
+  // device pinned, not a claim about what this target serves.
+  await page.getByRole("tab", { name: /Messages/ }).click();
+  await page.locator('[aria-label="Run settings"]').getByLabel("Model", { exact: true }).click();
+  await page.getByRole("button", { name: `Favorite ${ECHO_TEMPERATURE_MODEL}` }).click();
+  await page.getByRole("tab", { name: /Evaluations/ }).click();
+
+  await model.fill("echo");
+  await executionSettings.getByRole("option", { name: ECHO_TEMPERATURE_MODEL }).click();
+  await expect(model).toHaveValue(ECHO_TEMPERATURE_MODEL);
 });
 
 test("an empty regex is an accepted draft that preflight blocks until it has a pattern", async ({ page }) => {

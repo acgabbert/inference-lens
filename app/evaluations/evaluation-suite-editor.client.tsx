@@ -8,7 +8,9 @@ import type { EvaluationInputBinding } from "../../packages/core/src/evaluation-
 import type { ConversationRevisionDescriptor } from "../../packages/core/src/conversation-revision-description";
 import type { InferenceOptions, ProviderProtocol } from "../../packages/core/src/run-kernel";
 import { FocusModeToggle, useFocusMode } from "../focus-mode.client";
+import { ModelCombobox } from "../model-combobox.client";
 import { PaneEmptyState } from "../pane-empty-state.client";
+import { TemperatureControl } from "../temperature-control.client";
 import { groupRevisionChoices, revisionChoice } from "./revision-choice.client";
 import { SavedPromptDialog } from "./saved-prompt-dialog.client";
 import type { EvaluationSuiteAuthoringHandle } from "./use-evaluation-suite-authoring.client";
@@ -203,13 +205,28 @@ export interface EvaluationSuiteExecutionActions {
   onStart(): void;
 }
 
+/**
+ * Model ids this device has pinned. They are session profile state rather than
+ * portable evaluation content, so the route supplies them and the suite stores
+ * nothing about them. Discovery is deliberately absent: a suite targets its own
+ * connection requirement, which need not be the profile that is active, and
+ * offering that profile's catalogue here would name models this target may not
+ * serve.
+ */
+export interface ModelFavoritesHandle {
+  models: string[];
+  onToggle(model: string): void;
+}
+
 export function EvaluationSuiteEditor({
   authoring,
   execution,
+  modelFavorites,
   onOpenTemplates,
 }: {
   authoring: EvaluationSuiteAuthoringHandle;
   execution?: EvaluationSuiteExecutionActions;
+  modelFavorites?: ModelFavoritesHandle;
   /** Request-composer navigation stays with its owner. */
   onOpenTemplates?(): void;
 }) {
@@ -308,19 +325,28 @@ export function EvaluationSuiteEditor({
                     {project.connectionRequirements.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
                   </select>
                 </label>
-                <label>Model <input defaultValue={suite.execution.target.model} onBlur={(event) => { if (!authoring.updateExecution({ ...suite.execution, target: { ...suite.execution.target, model: event.target.value } })) event.currentTarget.value = suite.execution.target.model; }} /></label>
+                <ModelCombobox
+                  idPrefix="evaluation-model"
+                  readinessTarget={false}
+                  value={suite.execution.target.model}
+                  onChange={(model) => { authoring.updateExecution({ ...suite.execution, target: { ...suite.execution.target, model } }); }}
+                  discovery={null}
+                  onLoadModels={() => {}}
+                  favoriteModels={modelFavorites?.models ?? []}
+                  onToggleFavoriteModel={(model) => modelFavorites?.onToggle(model)}
+                />
                 <label>Delivery
                   <select value={suite.execution.responseMode} onChange={(event) => authoring.updateExecution({ ...suite.execution, responseMode: event.target.value as "streaming" | "buffered" })}>
                     <option value="streaming" disabled={execution ? !execution.preview?.streamingAvailable : false}>Streaming</option>
                     <option value="buffered">Buffered</option>
                   </select>
                 </label>
-                <label>Temperature
-                  <select value={suite.execution.options.temperature === undefined ? "default" : String(suite.execution.options.temperature)} onChange={(event) => authoring.updateExecution({ ...suite.execution, options: { ...suite.execution.options, temperature: event.target.value === "default" ? undefined : Number(event.target.value) } })}>
-                    <option value="default">Provider default</option>
-                    {Array.from({ length: 21 }, (_, index) => index / 10).map((value) => <option key={value} value={value}>{value.toFixed(1)}</option>)}
-                  </select>
-                </label>
+                {/* Each drag step commits, which the project's debounced
+                    auto-save absorbs into one write. */}
+                <TemperatureControl
+                  value={suite.execution.options.temperature}
+                  onChange={(temperature) => { authoring.updateExecution({ ...suite.execution, options: { ...suite.execution.options, temperature } }); }}
+                />
                 <label>Repetitions <input type="number" min="1" max={MAX_EVALUATION_REPETITIONS} step="1" value={authoring.repetitions} onChange={(event) => authoring.setRepetitions(Number(event.target.value))} /></label>
                 <output><span>{selectedCount} selected</span> × <span>{authoring.repetitions} {authoring.repetitions === 1 ? "rep" : "reps"}</span> → <strong>{Number.isFinite(batch.plannedCalls) ? batch.plannedCalls.toLocaleString() : "Invalid"} runs</strong></output>
               </div>

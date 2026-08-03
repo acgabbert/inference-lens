@@ -326,6 +326,7 @@ export function RequestComposer({
           <EvaluationSuiteEditor
             authoring={evaluations}
             execution={evaluationExecution}
+            modelFavorites={{ models: settings.favoriteModels, onToggle: settings.onToggleFavoriteModel }}
             onOpenTemplates={() => setTab("templates")}
           />
         )}
