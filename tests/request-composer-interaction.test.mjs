@@ -182,6 +182,7 @@ test("temperature is omitted by default and can be explicitly overridden", async
     },
   });
   try {
+    await view.click(view.settingsToggle());
     assert.match(view.container.textContent, /Provider default/);
     const toggle = view.container.querySelector(
       '.temperature-control input[type="checkbox"]',
@@ -191,6 +192,90 @@ test("temperature is omitted by default and can be explicitly overridden", async
 
     await view.click(toggle);
     assert.deepEqual(changes, [0.2]);
+  } finally {
+    await view.close();
+  }
+});
+
+test("the remembered temperature override survives collapsing the panel", async () => {
+  const changes = [];
+  // The profile's own value, which the author is entitled to get back after
+  // clearing the override. The workbench owns the committed value, so the test
+  // re-renders with it exactly as the route does.
+  const settings = (temperature) => ({
+    ...composerProps().settings,
+    temperature,
+    onTemperatureChange: (next) => changes.push(next),
+  });
+  const view = await mount({ settings: settings(0.7) });
+  try {
+    await view.click(view.settingsToggle());
+    const override = () =>
+      view.container.querySelector('.temperature-control input[type="checkbox"]');
+    await view.click(override());
+    assert.deepEqual(changes, [undefined]);
+    await view.rerender({ settings: settings(undefined) });
+    assert.equal(override().checked, false);
+
+    // The control that reads the remembered override is inside the disclosure,
+    // so a collapse and reopen is exactly what would discard it.
+    await view.click(view.settingsToggle());
+    await view.click(view.settingsToggle());
+    await view.click(override());
+    assert.deepEqual(changes, [undefined, 0.7]);
+  } finally {
+    await view.close();
+  }
+});
+
+test("the settings panel hides its controls behind a summary of what will be sent", async () => {
+  const view = await mount();
+  try {
+    const toggle = view.settingsToggle();
+    assert.ok(toggle);
+    assert.equal(toggle.getAttribute("aria-expanded"), "false");
+    // Collapsed, every value is still named, and none of them is editable.
+    const facts = Array.from(
+      view.container.querySelectorAll(".inference-settings-fact"),
+    ).map((fact) => fact.textContent);
+    assert.deepEqual(facts, ["fixture-model", "Temp 0.7", "Buffered"]);
+    assert.equal(
+      view.container.querySelector('[data-readiness-control="model"]'),
+      null,
+    );
+
+    await view.click(toggle);
+    assert.equal(toggle.getAttribute("aria-expanded"), "true");
+    assert.equal(
+      toggle.getAttribute("aria-controls"),
+      view.container.querySelector(".inference-settings-body")?.id,
+    );
+    assert.ok(view.container.querySelector('[data-readiness-control="model"]'));
+    assert.ok(
+      view.container.querySelector('.temperature-control input[type="range"]'),
+    );
+
+    await view.click(toggle);
+    assert.equal(view.container.querySelector(".inference-settings-body"), null);
+  } finally {
+    await view.close();
+  }
+});
+
+test("a readiness destination naming the model opens the collapsed panel and focuses it", async () => {
+  let handled = 0;
+  const view = await mount({
+    pendingDestination: { surface: "request", tab: "messages", control: "model" },
+    onDestinationHandled: () => { handled += 1; },
+  });
+  try {
+    // Nothing was clicked: the destination alone had to expand the panel,
+    // because the field it names does not exist while it is collapsed.
+    const input = view.container.querySelector('[data-readiness-control="model"]');
+    assert.ok(input);
+    assert.equal(view.settingsToggle().getAttribute("aria-expanded"), "true");
+    assert.equal(document.activeElement, input);
+    assert.equal(handled, 1);
   } finally {
     await view.close();
   }
@@ -218,8 +303,15 @@ async function mount(overrides = {}) {
   });
   return {
     container,
+    /** Re-renders with new props, as the workbench does when a setting commits. */
+    async rerender(nextOverrides) {
+      await act(async () => {
+        root.render(createElement(RequestComposer, composerProps(nextOverrides)));
+      });
+    },
     expandButton: () =>
       container.querySelector('[aria-label="Open request composer in focus mode"]'),
+    settingsToggle: () => container.querySelector(".inference-settings-toggle"),
     closeButton: () =>
       container.querySelector('[aria-label="Exit request composer focus mode"]'),
     tab: (label) =>

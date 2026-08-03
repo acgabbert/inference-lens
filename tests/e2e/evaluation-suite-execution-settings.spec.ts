@@ -10,6 +10,7 @@ import {
   BUFFERED_FIXTURE_ENDPOINT,
   PROJECT_PROFILE_MAP_STORAGE_KEY,
   importProject,
+  openInferenceSettings,
   seedProfile,
   waitForHydration,
 } from "./support";
@@ -132,7 +133,7 @@ test("suite execution settings reach the provider without changing Messages sett
   // Both settings are moved away from the project's: the model differs, and
   // the temperature is cleared. The fixture answers this model only when no
   // temperature field is present at all.
-  const executionSettings = page.locator('[aria-label="Evaluation execution settings"]');
+  const executionSettings = await openInferenceSettings(page, "Evaluation execution settings");
   const model = executionSettings.getByLabel("Model", { exact: true });
   await model.fill(PROVIDER_DEFAULT_MODEL);
   await model.blur();
@@ -159,6 +160,7 @@ test("suite execution settings reach the provider without changing Messages sett
   // the composer anything.
   await page.getByRole("button", { name: "Back to evaluation" }).click();
   await page.getByRole("tab", { name: /Messages/ }).click();
+  await openInferenceSettings(page);
   await expect(page.locator(".temperature-control output")).toHaveText("0.4");
   await expect(page.locator(".topbar")).toContainText("buffered-test-model");
   await expect(page.locator(".topbar")).not.toContainText(PROVIDER_DEFAULT_MODEL);
@@ -171,7 +173,7 @@ test("the execution slider sends the temperature it shows, and a favorite fills 
   await useSavedPrompt(page, "Question");
   await authorSingleCase(page, "database migrations");
 
-  const executionSettings = page.locator('[aria-label="Evaluation execution settings"]');
+  const executionSettings = await openInferenceSettings(page, "Evaluation execution settings");
   const model = executionSettings.getByLabel("Model", { exact: true });
   await model.fill(ECHO_TEMPERATURE_MODEL);
   // The suite's field offers no catalogue — its connection requirement need not
@@ -208,9 +210,10 @@ test("the execution slider sends the temperature it shows, and a favorite fills 
   // Favorites are the one list the field can offer honestly: they are ids this
   // device pinned, not a claim about what this target serves.
   await page.getByRole("tab", { name: /Messages/ }).click();
-  await page.locator('[aria-label="Run settings"]').getByLabel("Model", { exact: true }).click();
+  await (await openInferenceSettings(page)).getByLabel("Model", { exact: true }).click();
   await page.getByRole("button", { name: `Favorite ${ECHO_TEMPERATURE_MODEL}` }).click();
   await page.getByRole("tab", { name: /Evaluations/ }).click();
+  await openInferenceSettings(page, "Evaluation execution settings");
 
   await model.fill("echo");
   await executionSettings.getByRole("option", { name: ECHO_TEMPERATURE_MODEL }).click();
@@ -307,7 +310,7 @@ test("a run in progress reports running state and ticks the elapsed clock", asyn
   const expected = page.locator(".evaluation-editor").getByLabel("Expected text");
   await expected.fill("Buffered fixture");
   await expected.blur();
-  await page.locator('[aria-label="Evaluation execution settings"]')
+  await (await openInferenceSettings(page, "Evaluation execution settings"))
     .getByLabel("Repetitions").fill("6");
 
   await page.locator(".evaluation-editor").getByRole("button", { name: "Start evaluation…" }).click();
@@ -346,9 +349,13 @@ test("preflight input and execution settings fit at desktop and phone widths", a
   await expectedText.fill("Buffered fixture");
   await expectedText.blur();
   await expect(page.locator(".evaluation-editor")).toContainText("Ready to run");
+  // Expanded on purpose: collapsed, the panel has nothing that could overflow,
+  // so measuring it shut would pass without testing the controls at all.
+  await openInferenceSettings(page, "Evaluation execution settings");
 
-  // Both regions are new in this preflight and both hold long text — a revision
-  // label and an endpoint-shaped model — so overflow is the failure to watch.
+  // Both regions hold long text — a revision label and an endpoint-shaped model
+  // — so overflow is the failure to watch. The settings summary is measured too,
+  // because its value chips are the widest single line in the collapsed state.
   const measure = () => page.locator(".evaluation-preflight").evaluate((preflight) => {
     const fits = (selector: string) => {
       const element = preflight.querySelector<HTMLElement>(selector);
@@ -357,11 +364,18 @@ test("preflight input and execution settings fit at desktop and phone widths", a
     return {
       preflightFits: preflight.scrollWidth <= preflight.clientWidth,
       summaryFits: fits(".evaluation-input-summary"),
-      executionFits: fits(".evaluation-execution-editor"),
+      executionFits: fits(".inference-settings"),
+      settingsSummaryFits: fits(".inference-settings-summary"),
       bodyFits: document.body.scrollWidth <= document.documentElement.clientWidth,
     };
   });
-  const expected = { preflightFits: true, summaryFits: true, executionFits: true, bodyFits: true };
+  const expected = {
+    preflightFits: true,
+    summaryFits: true,
+    executionFits: true,
+    settingsSummaryFits: true,
+    bodyFits: true,
+  };
   expect(await measure()).toEqual(expected);
 
   await page.setViewportSize({ width: 390, height: 844 });

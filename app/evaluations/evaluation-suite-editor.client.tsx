@@ -8,9 +8,8 @@ import type { EvaluationInputBinding } from "../../packages/core/src/evaluation-
 import type { ConversationRevisionDescriptor } from "../../packages/core/src/conversation-revision-description";
 import type { InferenceOptions, ProviderProtocol } from "../../packages/core/src/run-kernel";
 import { FocusModeToggle, useFocusMode } from "../focus-mode.client";
-import { ModelCombobox } from "../model-combobox.client";
+import { InferenceSettingsPanel } from "../inference-settings-panel.client";
 import { PaneEmptyState } from "../pane-empty-state.client";
-import { TemperatureControl } from "../temperature-control.client";
 import { groupRevisionChoices, revisionChoice } from "./revision-choice.client";
 import { SavedPromptDialog } from "./saved-prompt-dialog.client";
 import type { EvaluationSuiteAuthoringHandle } from "./use-evaluation-suite-authoring.client";
@@ -231,6 +230,7 @@ export function EvaluationSuiteEditor({
   onOpenTemplates?(): void;
 }) {
   const [focusMode, setFocusMode] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [candidateIndex, setCandidateIndex] = useState(0);
   const [renamingSuite, setRenamingSuite] = useState(false);
   const [suiteNameDraft, setSuiteNameDraft] = useState("");
@@ -258,6 +258,12 @@ export function EvaluationSuiteEditor({
     ? `This evaluation is set to Streaming, but ${execution.preview.targetName} cannot stream. Choose Buffered delivery.`
     : undefined;
   const issueCount = authoring.diagnostics.length + (batch.error ? 1 : 0) + (deliveryIssue ? 1 : 0);
+  // Named in the collapsed summary, so which connection a suite targets stays
+  // readable without expanding the panel that chooses it.
+  const connectionName = suite
+    ? project?.connectionRequirements.find(({ id }) => id === suite.execution.target.connectionRequirementId)?.name
+      ?? suite.execution.target.connectionRequirementId
+    : undefined;
 
   if (!project) return <PaneEmptyState eyebrow="Evaluations" heading="Open or save a project first" detail="Evaluation suites are portable project content, so they need a project document." />;
 
@@ -318,38 +324,49 @@ export function EvaluationSuiteEditor({
                   </label>
                 </details>
               </div>
-              <div className="evaluation-execution-editor" aria-label="Evaluation execution settings">
-                <div className="evaluation-execution-editor-heading"><span>Execution settings</span><small>Saved with this evaluation suite.</small></div>
-                <label>Connection
-                  <select value={suite.execution.target.connectionRequirementId} onChange={(event) => authoring.updateExecution({ ...suite.execution, target: { ...suite.execution.target, connectionRequirementId: event.target.value as typeof suite.execution.target.connectionRequirementId } })}>
-                    {project.connectionRequirements.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
-                  </select>
-                </label>
-                <ModelCombobox
-                  idPrefix="evaluation-model"
-                  readinessTarget={false}
-                  value={suite.execution.target.model}
-                  onChange={(model) => { authoring.updateExecution({ ...suite.execution, target: { ...suite.execution.target, model } }); }}
-                  discovery={null}
-                  onLoadModels={() => {}}
-                  favoriteModels={modelFavorites?.models ?? []}
-                  onToggleFavoriteModel={(model) => modelFavorites?.onToggle(model)}
-                />
-                <label>Delivery
-                  <select value={suite.execution.responseMode} onChange={(event) => authoring.updateExecution({ ...suite.execution, responseMode: event.target.value as "streaming" | "buffered" })}>
-                    <option value="streaming" disabled={execution ? !execution.preview?.streamingAvailable : false}>Streaming</option>
-                    <option value="buffered">Buffered</option>
-                  </select>
-                </label>
-                {/* Each drag step commits, which the project's debounced
-                    auto-save absorbs into one write. */}
-                <TemperatureControl
-                  value={suite.execution.options.temperature}
-                  onChange={(temperature) => { authoring.updateExecution({ ...suite.execution, options: { ...suite.execution.options, temperature } }); }}
-                />
-                <label>Repetitions <input type="number" min="1" max={MAX_EVALUATION_REPETITIONS} step="1" value={authoring.repetitions} onChange={(event) => authoring.setRepetitions(Number(event.target.value))} /></label>
-                <output><span>{selectedCount} selected</span> × <span>{authoring.repetitions} {authoring.repetitions === 1 ? "rep" : "reps"}</span> → <strong>{Number.isFinite(batch.plannedCalls) ? batch.plannedCalls.toLocaleString() : "Invalid"} runs</strong></output>
-              </div>
+              {/* Each edit commits, which the project's debounced auto-save
+                  absorbs into one write. */}
+              <InferenceSettingsPanel
+                idPrefix="evaluation"
+                label="Evaluation execution settings"
+                heading="Execution settings"
+                scopeNote="Saved with this suite"
+                open={settingsOpen}
+                onOpenChange={setSettingsOpen}
+                value={{
+                  model: suite.execution.target.model,
+                  temperature: suite.execution.options.temperature,
+                  responseMode: suite.execution.responseMode,
+                }}
+                onChange={(next) => authoring.updateExecution({
+                  ...suite.execution,
+                  target: { ...suite.execution.target, model: next.model },
+                  responseMode: next.responseMode,
+                  options: { ...suite.execution.options, temperature: next.temperature },
+                })}
+                // Discovery is deliberately absent here; see ModelFavoritesHandle.
+                streamingAvailable={execution ? Boolean(execution.preview?.streamingAvailable) : true}
+                favoriteModels={modelFavorites?.models ?? []}
+                onToggleFavoriteModel={(model) => modelFavorites?.onToggle(model)}
+                connection={{
+                  summary: connectionName,
+                  control: (
+                    <label>Connection
+                      <select value={suite.execution.target.connectionRequirementId} onChange={(event) => authoring.updateExecution({ ...suite.execution, target: { ...suite.execution.target, connectionRequirementId: event.target.value as typeof suite.execution.target.connectionRequirementId } })}>
+                        {project.connectionRequirements.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
+                      </select>
+                    </label>
+                  ),
+                }}
+                repetitions={{
+                  summary: `${authoring.repetitions} ${authoring.repetitions === 1 ? "rep" : "reps"}`,
+                  control: <label className="inference-settings-count">Repetitions <input type="number" min="1" max={MAX_EVALUATION_REPETITIONS} step="1" value={authoring.repetitions} onChange={(event) => authoring.setRepetitions(Number(event.target.value))} /></label>,
+                }}
+              />
+              {/* Outside the panel deliberately: how many provider calls the
+                  suite is about to make is the consequence of these settings,
+                  and it must stay readable while the panel is collapsed. */}
+              <output><span>{selectedCount} selected</span> × <span>{authoring.repetitions} {authoring.repetitions === 1 ? "rep" : "reps"}</span> → <strong>{Number.isFinite(batch.plannedCalls) ? batch.plannedCalls.toLocaleString() : "Invalid"} runs</strong></output>
             </div>
             {execution && <div className="evaluation-start-area"><button className="button primary" type="button" disabled={execution.running || Boolean(execution.disabledReason) || issueCount > 0} title={execution.disabledReason ?? batch.error} onClick={execution.onStart}>{execution.running ? "Evaluation running" : "Start evaluation…"}</button>
               {/* A disabled primary action must say why in text, not only in a

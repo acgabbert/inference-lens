@@ -163,8 +163,18 @@ test("the extracted composer renders request snapshots without a project", async
   assert.match(html, /Evaluations/);
   assert.match(html, /Profile default/);
   assert.match(html, /Composer fixture message/);
-  assert.match(html, /Stream response/);
   assert.match(html, /Open request composer in focus mode/);
+  // The settings panel starts collapsed: its summary reports every value the
+  // next run will send, and the controls themselves are not in the document
+  // until the panel is expanded.
+  assert.match(html, /fixture-model/);
+  assert.match(html, /Temp 0\.7/);
+  assert.match(html, /Buffered/);
+  assert.doesNotMatch(html, /Stream response/);
+  assert.doesNotMatch(html, /Override temperature/);
+  // The tool line stays outside the panel, so a blocked tool selection cannot
+  // be hidden by collapsing it.
+  assert.match(html, /No tools sent with this request/);
 });
 
 test("the topbar hides ordinary run actions in evaluation context", async () => {

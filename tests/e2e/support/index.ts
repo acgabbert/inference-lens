@@ -7,7 +7,7 @@
  * every one of them has silently produced a passing test that proved nothing.
  */
 import { expect } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 import { serializeProjectFile } from "../../../packages/core/src/project";
 import type { ProjectFile } from "../../../packages/core/src/project";
@@ -111,6 +111,31 @@ export async function waitForHydration(
   profileName = "Buffered fixture",
 ): Promise<void> {
   await expect(page.locator(".topbar")).toContainText(profileName);
+}
+
+/**
+ * Expands an inference settings panel and returns it.
+ *
+ * The panel is collapsed by default on every surface that mounts it, so its
+ * controls are not in the document at all — not merely hidden. `getByLabel`
+ * against a collapsed panel resolves to nothing and the assertion times out
+ * with no hint that a disclosure was the reason, so open it explicitly.
+ *
+ * Idempotent: an already-expanded panel is left alone rather than toggled shut,
+ * which is what makes it safe to call before each group of settings assertions.
+ */
+export async function openInferenceSettings(
+  page: Page,
+  label = "Run settings",
+): Promise<Locator> {
+  const panel = page.locator(`[aria-label="${label}"]`);
+  const toggle = panel.locator(".inference-settings-toggle");
+  await expect(toggle).toBeVisible();
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") {
+    await toggle.click();
+  }
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  return panel;
 }
 
 /**

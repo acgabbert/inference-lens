@@ -4,6 +4,7 @@ import { createProjectFile } from "../../packages/core/src/project";
 import {
   BUFFERED_FIXTURE_ENDPOINT,
   importProject,
+  openInferenceSettings,
   PROJECT_PROFILE_MAP_STORAGE_KEY,
   seedProfile,
   waitForHydration,
@@ -52,6 +53,14 @@ test("a project can use the provider default despite a mapped profile override",
   await waitForHydration(page, "Provider-default fixture");
   await importProject(page, project, "Provider-default project");
 
+  // Collapsed, the panel already reports what the run will send.
+  await expect(page.locator(".inference-settings-fact")).toHaveText([
+    "provider-default-temperature-model",
+    "Provider default temp",
+    "Buffered",
+  ]);
+
+  await openInferenceSettings(page);
   const override = page.getByRole("checkbox", {
     name: "Override temperature",
   });
@@ -75,6 +84,15 @@ test("a project can use the provider default despite a mapped profile override",
 
   await override.uncheck();
   await expect(slider).toBeDisabled();
+
+  // Collapsing hides the controls, not the decision they encode: the summary
+  // reports the cleared override, and the run still honours it.
+  await page.locator('[aria-label="Run settings"] .inference-settings-toggle').click();
+  await expect(page.locator(".temperature-control")).toHaveCount(0);
+  await expect(page.locator(".inference-settings-facts")).toContainText(
+    "Provider default temp",
+  );
+
   await page.getByRole("button", { name: /run request/i }).click();
   await expect(page.locator(".response-pane")).toContainText(
     "Provider received no temperature override.",

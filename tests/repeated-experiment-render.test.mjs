@@ -148,21 +148,71 @@ test("repeat confirmation exposes the frozen request, exact count, and sequentia
       draft: {
         plan: frozenPlan,
         targetName: "Fixture connection",
-        requestSummary: "1 message · streaming response",
+        requestSummary: "1 message",
         repetitionCount: 5,
         commitPreparation() {},
       },
+      settings: {
+        streamingAvailable: true,
+        modelDiscovery: null,
+        favoriteModels: [],
+        onLoadModels() {},
+        onToggleFavoriteModel() {},
+      },
       onCountChange() {},
+      onSettingsChange() {},
       onCancel() {},
       onConfirm() {},
     },
   );
 
   assert.match(html, /Frozen request/);
-  assert.match(html, /Fixture connection · render-model/);
+  assert.match(html, /Fixture connection/);
   assert.match(html, /Runs sequentially/);
   assert.match(html, /Minimum provider calls: 5/);
   assert.match(html, /Start 5 repetitions/);
+  // The dialog is where the plan's options are still editable, so its panel
+  // starts expanded with the real controls rather than only their summary.
+  assert.match(html, /aria-label="Repeated experiment settings"/);
+  assert.match(html, /aria-expanded="true"/);
+  assert.match(html, /class="model-combobox"/);
+  // Readiness routing names exactly one model field, and it is the composer's.
+  assert.doesNotMatch(html, /data-readiness-control="model"/);
+  assert.match(html, /Override temperature/);
+  assert.match(html, /Stream response/);
+  assert.match(html, /render-model/);
+  assertNoBrokenValues(html);
+});
+
+test("a started experiment reports its frozen settings as a record, not as controls", async () => {
+  const html = await render(
+    "/app/run/repeated-experiment-workspace.client.tsx",
+    "RepeatedExperimentWorkspace",
+    {
+      execution: {
+        plan: plan(),
+        storage: "unsaved",
+        workspace: null,
+        states: new Map(),
+        traces: new Map(),
+        traceFileNames: new Map(),
+        unreadableTraces: new Map(),
+        selectedRunId: null,
+      },
+      onStop() {},
+      onOpenTrace() {},
+    },
+  );
+
+  // Collapsed, so the values reach the reader as the summary the panel shows
+  // everywhere else — including the repetition count the plan allocated.
+  assert.match(html, /Frozen by this plan/);
+  assert.match(html, /render-model/);
+  assert.match(html, /Provider default temp/);
+  assert.match(html, /Streaming/);
+  assert.match(html, /2 reps/);
+  // Nothing here may invite an edit: these calls have already been planned.
+  assert.doesNotMatch(html, /Override temperature|Stream response/);
   assertNoBrokenValues(html);
 });
 

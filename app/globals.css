@@ -308,7 +308,8 @@ select,
 .diff-picker,
 .trace summary,
 .pane-tabs button,
-.run-settings-heading strong,
+.inference-settings-identity strong,
+.inference-settings-record dt,
 .run-readiness-summary strong,
 .run-readiness-why > summary,
 .run-readiness-facts dt,
@@ -360,7 +361,9 @@ pre,
 /* Sub-labels under a control label: metadata, so they stay smaller than the
    12px control label they qualify rather than outsizing it. */
 .streaming-control small,
-.run-settings-heading small,
+.inference-settings-identity small,
+.inference-settings-fact,
+.inference-settings-record dd,
 .project-popover kbd,
 .run-history-item time,
 .run-history-item > span,
@@ -2754,6 +2757,16 @@ output {
   margin-top: 1rem !important;
 }
 
+.repeated-experiment-dialog .inference-settings {
+  margin-top: 1rem;
+}
+
+/* The dialog is not a workbench pane, so its panel keeps the dialog's own
+   sunken treatment rather than the pane background. */
+.repeated-experiment-dialog .inference-settings.open {
+  background: var(--surface-translucent);
+}
+
 .repeated-experiment-workspace {
   display: grid;
   gap: 1rem;
@@ -4767,42 +4780,155 @@ main {
   flex: 0 0 auto;
 }
 
+/* The composer's mount of the shared settings panel; the other surfaces place
+   the same panel with their own surrounding spacing. */
 .run-settings {
   margin: 12px 20px 0;
-  padding: 11px 13px 12px;
+}
+
+/* One hide-able panel for the inference option set, mounted by the composer, an
+   evaluation suite, and the repeated-experiment dialog. The disclosure is
+   inline: two of those sit inside `overflow: auto` panes and the third inside a
+   modal, where an anchored popover is either clipped or above a dialog. */
+.inference-settings {
+  min-width: 0;
   border: 1px solid var(--border-subtle);
   border-radius: 9px;
   background: var(--surface-panel);
 }
 
-.run-settings-heading {
-  margin-bottom: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+.inference-settings.open {
+  background: var(--surface-sunken);
 }
 
-.run-settings-heading > span {
+.inference-settings-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 5px 12px 5px 5px;
+}
+
+.inference-settings-toggle {
   min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 7px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.inference-settings-toggle:hover {
+  background: var(--surface-inset);
+}
+
+.inference-settings-identity {
+  min-width: 0;
+  flex: 0 0 auto;
   display: flex;
   align-items: baseline;
   gap: 8px;
 }
 
-.run-settings-heading strong {
+.inference-settings-identity strong {
   color: var(--text-secondary);
 }
 
-.run-settings-heading small {
+.inference-settings-identity small {
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
 
+/* The collapsed values wrap rather than truncate. A model id the reader cannot
+   finish reading is no better than one the panel hid. */
+.inference-settings-facts {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 7px;
+}
+
+/* Expanded, the controls are the values; repeating them in the trigger reads as
+   a second, possibly stale copy. */
+.inference-settings.open .inference-settings-facts {
+  display: none;
+}
+
+.inference-settings-fact {
+  padding: 1px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.inference-settings .menu-chevron {
+  margin-left: auto;
+  flex: 0 0 auto;
+  color: var(--text-muted);
+}
+
+.inference-settings.open .menu-chevron {
+  rotate: 180deg;
+}
+
+.inference-settings-body {
+  padding: 3px 12px 12px;
+}
+
+.inference-settings label {
+  margin: 0;
+}
+
+/* A flex row rather than fixed columns: the control count varies with the
+   surface's declared slots, and the model field earns the extra width because
+   it carries provider-qualified ids. */
+.inference-settings-grid {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+}
+
+.inference-settings-grid > * {
+  min-width: 0;
+  flex: 1 1 148px;
+}
+
+.inference-settings-grid > .model-combobox {
+  flex: 2 1 215px;
+}
+
+/* A repetition count is two or three digits wide however much room is left. */
+.inference-settings-grid > .inference-settings-count {
+  flex: 0 1 132px;
+}
+
+.inference-settings-record {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 10px 16px;
+}
+
+.inference-settings-record dt {
+  color: var(--text-secondary);
+}
+
+.inference-settings-record dd {
+  margin-top: 2px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
 /* The Tools tab owns the manifest; this is only a pointer to it. */
 .request-tool-line {
-  margin: 7px 0 9px;
+  margin: 8px 6px 0;
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -4973,22 +5099,6 @@ main {
     padding-left: 26px;
     justify-content: flex-start;
   }
-}
-
-/* The model column carries provider-qualified model IDs, which are the longest
-   value in this row; it gets the extra width the other two do not need. */
-.run-settings-grid {
-  display: grid;
-  grid-template-columns:
-    minmax(215px, 1.75fr)
-    minmax(132px, 0.7fr)
-    minmax(148px, 0.75fr);
-  align-items: end;
-  gap: 16px;
-}
-
-.run-settings label {
-  margin: 0;
 }
 
 .temperature-control .range-row {
@@ -5778,8 +5888,12 @@ main {
 
   /* At this viewport the request pane is roughly half the screen, so the
      desktop minimums would otherwise force it to scroll sideways. */
-  .run-settings-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .inference-settings-grid > * {
+    flex-basis: calc(50% - 8px);
+  }
+
+  .inference-settings-grid > .model-combobox {
+    flex-basis: 100%;
   }
 }
 
@@ -5809,8 +5923,25 @@ main {
     display: none;
   }
 
-  .run-settings-grid {
-    grid-template-columns: 1fr;
+  .inference-settings-grid > *,
+  .inference-settings-grid > .model-combobox {
+    flex-basis: 100%;
+  }
+
+  /* The summary is the only thing left worth keeping on one line here. */
+  .inference-settings-toggle {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .inference-settings .menu-chevron {
+    position: absolute;
+    right: 12px;
+  }
+
+  .inference-settings-summary {
+    position: relative;
   }
 }
 
@@ -6192,8 +6323,7 @@ main {
   gap: 14px;
 }
 
-.evaluation-input-summary,
-.evaluation-execution-editor {
+.evaluation-input-summary {
   min-width: 0;
   padding: 12px;
   border: 1px solid var(--border-default);
@@ -6211,8 +6341,7 @@ main {
   margin-top: 4px;
 }
 
-.evaluation-input-summary > small,
-.evaluation-execution-editor-heading small {
+.evaluation-input-summary > small {
   margin-top: 3px;
   color: var(--text-muted);
 }
@@ -6241,23 +6370,6 @@ main {
 
 .evaluation-input-picker[open] > summary {
   grid-column: 1 / -1;
-}
-
-.evaluation-execution-editor {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(120px, 1fr));
-  align-items: end;
-  gap: 10px;
-}
-
-.evaluation-execution-editor-heading,
-.evaluation-execution-editor output {
-  grid-column: 1 / -1;
-}
-
-.evaluation-execution-editor-heading span,
-.evaluation-execution-editor-heading small {
-  display: block;
 }
 
 .evaluation-resolution-action {
@@ -7174,13 +7286,10 @@ main {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .evaluation-input-picker[open],
-  .evaluation-execution-editor {
+  .evaluation-input-picker[open] {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .evaluation-execution-editor-heading,
-  .evaluation-execution-editor output,
   .evaluation-input-picker[open] > summary {
     grid-column: 1;
   }
@@ -7305,7 +7414,7 @@ main {
     padding-inline: 3px;
   }
 
-  .run-settings-heading small {
+  .inference-settings-identity small {
     display: none;
   }
 
