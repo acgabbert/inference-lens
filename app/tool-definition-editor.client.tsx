@@ -1,11 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import type {
   JsonObject,
   JsonValue,
 } from "../packages/core/src/run-kernel";
+import {
+  TOOL_NAME_REQUIREMENT,
+  isValidToolName,
+} from "../packages/core/src/tool-name";
 
 export interface EditableToolDefinition {
   name: string;
@@ -473,6 +477,8 @@ export function ToolDefinitionEditor({
   onSchemaValidityChange,
 }: ToolDefinitionEditorProps) {
   const [tab, setTab] = useState<"builder" | "json">("builder");
+  const nameRequirementId = `${useId()}-tool-name-requirement`;
+  const nameInvalid = !isValidToolName(value.name);
   const [jsonDraft, setJsonDraft] = useState(() =>
     JSON.stringify(value.inputSchema, null, 2),
   );
@@ -515,14 +521,23 @@ export function ToolDefinitionEditor({
         <label>
           Function name
           <input
+            aria-invalid={nameInvalid || undefined}
+            aria-describedby={nameInvalid ? nameRequirementId : undefined}
             value={value.name}
             onChange={(event) => onChange({ ...value, name: event.target.value })}
             spellCheck={false}
           />
+          {nameInvalid && (
+            <span className="tool-name-warning" id={nameRequirementId} role="alert">
+              {TOOL_NAME_REQUIREMENT}
+            </span>
+          )}
         </label>
         <label>
           Description
-          <input
+          <textarea
+            className="tool-description"
+            rows={4}
             value={value.description ?? ""}
             onChange={(event) =>
               onChange({ ...value, description: event.target.value })

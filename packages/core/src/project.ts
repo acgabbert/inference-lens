@@ -12,6 +12,7 @@ export type {
   EvaluationSuite,
 } from "./evaluation-suites.ts";
 import { stableJsonValue } from "./stable-json.ts";
+import { toolNameSchema } from "./tool-name.ts";
 
 import {
   authoredPromptFieldSchema,
@@ -481,7 +482,7 @@ const projectConversationSchema: z.ZodType<ProjectConversation> = z
 const toolDefinitionSchema: z.ZodType<ToolDefinition> = z
   .object({
     id: entityId("tool"),
-    name: z.string().trim().min(1),
+    name: toolNameSchema,
     description: z.string().optional(),
     inputSchema: jsonObjectSchema,
     providerOptions: jsonObjectSchema.optional(),

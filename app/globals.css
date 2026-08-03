@@ -263,7 +263,8 @@ textarea,
 .repeated-experiment-metric-section h3,
 .evaluation-portable-warning,
 .evaluation-empty-inline,
-.evaluation-regex-dialect {
+.evaluation-regex-dialect,
+.tool-name-warning {
   font-size: var(--type-compact);
 }
 
@@ -2003,6 +2004,17 @@ output {
 
 .tool-identity-fields {
   grid-template-columns: minmax(160px, 0.7fr) minmax(220px, 1.3fr);
+  align-items: start;
+}
+
+.tool-description {
+  min-height: 84px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.tool-name-warning {
+  color: var(--danger);
 }
 
 .schema-tabs {
