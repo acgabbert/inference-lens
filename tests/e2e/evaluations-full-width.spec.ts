@@ -71,6 +71,9 @@ function fixtureProject(): ProjectFile {
     project = updateEvaluationCase(added.project, topics.suiteId, added.caseId, {
       name: value,
       values: { [input.inputId]: `database ${value}` },
+      // Only the first case carries one, so the disclosure's two states and
+      // the per-case remount are both observable.
+      ...(index === 0 ? { referenceAnswer: "Explain a safe rollout." } : {}),
     });
     project = addEvaluationCheck(
       project,
@@ -227,6 +230,62 @@ test("the provider input can be put away and brought back", async ({ page }) => 
 
   await restore.click();
   await expect(page.getByRole("complementary", { name: "Provider input" })).toBeVisible();
+});
+
+test("the setup band says it can be shut, and shutting it gives the cases the height", async ({ page }) => {
+  await openEvaluations(page, 1280);
+
+  const setup = page.getByRole("button", { name: /^Setup/ });
+  // Open by default, so the affordance has to be on the control itself: a
+  // chevron plus a hint naming what shutting it hides.
+  await expect(setup).toHaveAttribute("aria-expanded", "true");
+  await expect(setup).toContainText("Hide");
+
+  const before = (await page.locator(".evaluation-cases-workspace").boundingBox())!.height;
+  await setup.click();
+  await expect(setup).toContainText("Show input, settings, and tools");
+  const after = (await page.locator(".evaluation-cases-workspace").boundingBox())!.height;
+  expect(after).toBeGreaterThan(before);
+});
+
+test("the reference answer sits below the checks and stays with its own case", async ({ page }) => {
+  await openEvaluations(page, 1280);
+
+  const detail = page.locator(".evaluation-case-detail");
+  const reference = detail.locator(".evaluation-reference-answer");
+
+  // Checks are what the case asserts, so they come first in the document.
+  const order = await detail.evaluate((element) => {
+    const checks = element.querySelector(".evaluation-check-list");
+    const ref = element.querySelector(".evaluation-reference-answer");
+    return Boolean(checks && ref &&
+      checks.compareDocumentPosition(ref) & Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+  expect(order).toBe(true);
+
+  // migrations has one written, so it is not hidden from the author who wrote it.
+  await expect(reference).toHaveAttribute("open", "");
+  const written = page.getByLabel("Reference answer migrations");
+  await expect(written).toHaveValue("Explain a safe rollout.");
+
+  // Edit it, so the field is dirty, then focus a case that has no reference.
+  await written.fill("Explain a safe rollout, with a rollback step.");
+  await written.blur();
+
+  await page.locator(".evaluation-case-rail").getByRole("button", { name: "indexes" }).click();
+  await expect(detail).toHaveAttribute("aria-label", "Edit indexes");
+  // Shut, because this case has nothing written — an empty optional field does
+  // not outrank the checks.
+  await expect(reference).not.toHaveAttribute("open", "");
+  await reference.getByText("Reference answer").click();
+  // The regression the case editor's key exists for: reusing the instance left
+  // the previous case's edited text in this uncontrolled field.
+  await expect(page.getByLabel("Reference answer indexes")).toHaveValue("");
+
+  // And the edit is still on the case it was made against.
+  await page.locator(".evaluation-case-rail").getByRole("button", { name: "migrations" }).click();
+  await expect(page.getByLabel("Reference answer migrations"))
+    .toHaveValue("Explain a safe rollout, with a rollback step.");
 });
 
 // 1280 is the acceptance width; the others are the mode strip's own breakpoints,

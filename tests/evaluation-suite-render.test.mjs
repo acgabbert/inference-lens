@@ -49,6 +49,19 @@ test("renders compact preflight and the focused case workspace", async () => {
   // Setup is a band that can be shut, so its summary states everything a start
   // depends on: the connection, the model, tool exposure, and repetitions.
   assert.match(html, /Buffered fixture · buffered-test-model · No tools · 3 reps/);
+  // Expanded by default, so it has to carry a marked affordance or it reads as
+  // a heading and nobody finds out it collapses.
+  assert.match(html, /_setupChevron/);
+  assert.match(html, /_setupHint[^"]*">Hide</);
+
+  // The reference answer is an optional human note that nothing scores, so it
+  // sits below the checks rather than above them, behind a disclosure that
+  // opens itself only because this fixture's case has one written.
+  const checksAt = html.indexOf("evaluation-check-list");
+  const referenceAt = html.indexOf("evaluation-reference-answer");
+  assert.ok(checksAt > 0 && referenceAt > checksAt, "checks come before the reference answer");
+  assert.match(html, /<details class="evaluation-reference-answer" open=""/);
+  assert.match(html, /Reference answer<span>Written<\/span>/);
   assert.match(html, /aria-label="Evaluation cases"/);
   assert.match(html, /Start evaluation…/);
   assert.match(html, /suite keeps its own immutable input/i);
@@ -486,7 +499,9 @@ test("past executions are offered in the editor and stay collapsed until asked f
   // say it opens. A native marker alone did not read as a disclosure.
   assert.match(html, /Show saved runs of this suite/);
   assert.match(html, /evaluation-suite-history-chevron/);
-  assert.doesNotMatch(html, />Hide</);
+  // Scoped to this disclosure's own hint: the setup band above it is a second
+  // disclosure, and it is open, so a bare />Hide</ now matches that one.
+  assert.doesNotMatch(html, /evaluation-suite-history-hint">Hide</);
 });
 
 test("the editor omits past executions entirely without a project folder", async () => {

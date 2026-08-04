@@ -7804,6 +7804,52 @@ main {
   gap: 12px;
 }
 
+/* Below the checks and shut by default: an optional human note that nothing
+   scores should not hold the space the case's assertions want. */
+.evaluation-reference-answer > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-weight: 700;
+  list-style: none;
+}
+
+.evaluation-reference-answer > summary::-webkit-details-marker {
+  display: none;
+}
+
+.evaluation-reference-answer > summary > span {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.evaluation-reference-chevron {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  color: var(--text-muted);
+  line-height: 0;
+  transition: transform 120ms ease;
+}
+
+.evaluation-reference-chevron svg {
+  display: block;
+}
+
+.evaluation-reference-answer[open] > summary {
+  margin-bottom: 8px;
+}
+
+.evaluation-reference-answer[open] .evaluation-reference-chevron {
+  transform: rotate(180deg);
+}
+
 .evaluation-check-card {
   display: flex;
   flex-direction: column;

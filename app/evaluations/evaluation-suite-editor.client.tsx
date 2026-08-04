@@ -29,6 +29,7 @@ import {
   EvaluationSuiteHistory,
   type EvaluationSuiteHistoryHandle,
 } from "./evaluation-suite-history.client";
+import { DisclosureChevron } from "./disclosure-chevron.client";
 import styles from "./evaluation-surface.module.css";
 
 const checkKindLabels: Record<CheckKind, string> = {
@@ -192,6 +193,11 @@ function CaseEditor({ evaluationCase, authoring }: {
   authoring: EvaluationSuiteAuthoringHandle;
 }) {
   const [newKind, setNewKind] = useState<CheckKind>("contains");
+  // Seeded from the case rather than driven by it: a controlled `open` would
+  // snap the disclosure shut under the author whenever an unrelated edit
+  // re-rendered. The editor is keyed by case id, so focusing another case
+  // remounts and re-seeds this.
+  const [referenceOpen, setReferenceOpen] = useState(Boolean(evaluationCase.referenceAnswer));
   const project = authoring.project;
   const suite = project?.evaluationSuites.find(({ id }) => id === authoring.suiteId);
   const checkError = authoring.error?.target.kind === "check" && authoring.error.target.caseId === evaluationCase.id
@@ -218,7 +224,10 @@ function CaseEditor({ evaluationCase, authoring }: {
           })}
         </div>
       )}
-      <label>Reference answer <textarea rows={4} defaultValue={evaluationCase.referenceAnswer ?? ""} placeholder="Optional human reference; not scored automatically." onBlur={(event) => authoring.updateCase(evaluationCase.id, { referenceAnswer: event.target.value || undefined })} /></label>
+      {/* Above the reference answer, not below it. Checks are what the case
+          asserts and what an evaluation scores; the reference is an optional
+          human note that nothing reads automatically, so it does not get the
+          space directly under the inputs. */}
       <div className="evaluation-check-list">
         {evaluationCase.checks.length === 0 && <p className="evaluation-empty-inline">No deterministic checks yet.</p>}
         {evaluationCase.checks.map((check) => <CheckEditor key={check.checkId} check={check} error={checkError?.target.kind === "check" && checkError.target.checkId === check.checkId ? { field: checkError.target.field, message: checkError.message } : undefined} onCommit={(next, field) => authoring.updateCheck(evaluationCase.id, next, field)} onRemove={() => authoring.deleteCheck(evaluationCase.id, check.checkId)} />)}
@@ -230,6 +239,17 @@ function CaseEditor({ evaluationCase, authoring }: {
         }}>+ Add check</button>
       </div>
       {addError && <p className="evaluation-field-error" role="alert">{addError}</p>}
+      {/* Open when the case has one, so an existing reference is never hidden
+          from the author who wrote it; shut otherwise, because an empty
+          optional field should not outrank the checks. */}
+      <details className="evaluation-reference-answer" open={referenceOpen} onToggle={(event) => setReferenceOpen(event.currentTarget.open)}>
+        <summary>
+          <DisclosureChevron className="evaluation-reference-chevron" />
+          Reference answer
+          <span>{evaluationCase.referenceAnswer ? "Written" : "Optional · not scored"}</span>
+        </summary>
+        <textarea aria-label={`Reference answer ${evaluationCase.name}`} rows={4} defaultValue={evaluationCase.referenceAnswer ?? ""} placeholder="Optional human reference; not scored automatically." onBlur={(event) => authoring.updateCase(evaluationCase.id, { referenceAnswer: event.target.value || undefined })} />
+      </details>
     </section>
   );
 }
@@ -438,9 +458,14 @@ export function EvaluationSuiteEditor({
           </header>
 
           <div className={styles.setup}>
+            {/* Expanded by default, so without a marked affordance the band
+                reads as a heading and nobody discovers it can be shut — which
+                is the move that gives the cases the rest of the height. */}
             <button aria-expanded={setupOpen} className={styles.setupToggle} type="button" onClick={() => setSetupOpen(!setupOpen)}>
+              <DisclosureChevron className={styles.setupChevron} />
               <strong>Setup</strong>
-              <span>{setupSummary}</span>
+              <span className={styles.setupFacts}>{setupSummary}</span>
+              <span className={styles.setupHint}>{setupOpen ? "Hide" : "Show input, settings, and tools"}</span>
             </button>
             {setupOpen && <div className={`evaluation-setup ${styles.setupBody}`}>
               <div className="evaluation-input-summary">
@@ -581,7 +606,11 @@ export function EvaluationSuiteEditor({
                     </div>;
                   })}
                 </aside>
-                {focusedCase && <CaseEditor evaluationCase={focusedCase} authoring={authoring} />}
+                {/* Keyed: without it, focusing another case reuses this
+                    instance, and the uncontrolled fields — the case name and
+                    the reference answer — keep the previous case's edited
+                    text while the heading says otherwise. */}
+                {focusedCase && <CaseEditor key={focusedCase.id} evaluationCase={focusedCase} authoring={authoring} />}
               </div>
             )}
           </section>

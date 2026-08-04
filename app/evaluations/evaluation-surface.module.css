@@ -148,8 +148,7 @@
 
 .setupToggle {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  align-items: center;
   gap: 10px;
   padding: 12px 16px;
   border: 0;
@@ -161,8 +160,49 @@
   text-align: left;
 }
 
-.setupToggle > span:last-child {
+.setupToggle:hover {
+  background: var(--surface-raised);
+}
+
+/* Matches the past-executions disclosure below it: the same object turning,
+   rather than two glyphs swapping. */
+.setupChevron {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
   color: var(--text-muted);
+  line-height: 0;
+  transform: rotate(180deg);
+  transition: transform 120ms ease;
+}
+
+.setupChevron svg {
+  display: block;
+}
+
+.setupToggle[aria-expanded="false"] .setupChevron {
+  transform: rotate(0deg);
+}
+
+.setupFacts {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Says what shutting it costs, so the control reads as a disclosure rather
+   than as decoration beside a heading. */
+.setupHint {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 /*
