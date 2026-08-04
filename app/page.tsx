@@ -79,6 +79,8 @@ import {
   type WorkbenchBranchContext,
 } from "./run/prepare-workbench-run.client";
 import { useRunSession } from "./run/use-run-session.client";
+import { toolBindingFor } from "./run/run-session-state.client";
+import { useCommandTools } from "./tools/use-command-tools.client";
 import { useRepeatedExperimentSession } from "./run/use-repeated-experiment-session.client";
 import { RepeatedExperimentDialog } from "./run/repeated-experiment-dialog.client";
 import { RepeatedExperimentWorkspace } from "./run/repeated-experiment-workspace.client";
@@ -330,11 +332,16 @@ function HomeContent() {
     onProjectDirty: project.markDirty,
     onProjectError: project.setError,
   });
+  // Device-local execution capability. Owned here only long enough to be
+  // joined with the project's mocks below: what serves a tool is one question,
+  // and the run session must not have to ask it twice.
+  const commandTools = useCommandTools();
   const runSession = useRunSession({
     transport: inferenceTransport,
     prepareCredential: credential.prepare,
     tools,
-    mockForTool,
+    bindingForTool: (toolId) =>
+      toolBindingFor(toolId, mockForTool(toolId), commandTools.bindingFor(toolId)),
     readTrace: runHistory.readTrace,
     onShowResponse() {
       setWorkbenchView("response");
@@ -1350,6 +1357,7 @@ function HomeContent() {
             messages, tools, requestTools, enabledToolIds, addTool, removeTool, moveTool, updateTool,
             setToolEnabled, mockForTool, updateToolMock, removeRequestTool,
           }}
+          commandTools={commandTools}
           templates={projectTemplates}
           evaluations={evaluationAuthoring}
           evaluationExecution={evaluationExecutionActions}

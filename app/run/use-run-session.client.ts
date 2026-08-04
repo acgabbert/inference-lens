@@ -6,7 +6,8 @@ import type { RichInferenceRequest } from "../../packages/core/src/types";
 import { createEntityId, createRunTrace, RunCoordinator, transcriptFromRunState } from "../../packages/core/src/run-kernel";
 import type { ProviderExecution, ResolvedRunInput, RunState, RunTrace, ToolCall, ToolDefinition, ToolResult } from "../../packages/core/src/run-kernel";
 import { executeToolCall } from "../../packages/core/src/tool-execution";
-import { createMockToolExecutor } from "../../packages/core/src/mock-tool-executor";
+import type { ToolBinding } from "../../packages/core/src/tool-execution";
+import { createToolExecutor } from "./tool-executors.client";
 import { parseRunTraceJson, runStateFromTrace, traceFileName } from "../../packages/core/src/run-trace";
 import { randomUUID } from "../../packages/core/src/random-id";
 import { recordDiagnostic, redactDiagnosticValue, startDiagnosticCapture } from "../diagnostics.client";
@@ -36,7 +37,8 @@ export interface UseRunSessionOptions {
   transport: ProviderTurnTransport;
   prepareCredential(): Promise<CredentialSelection>;
   tools: readonly ToolDefinition[];
-  mockForTool(toolId: ToolDefinition["id"]): Parameters<typeof toolResultDraftsForState>[2] extends (id: ToolDefinition["id"]) => infer T ? T : never;
+  /** Composed by the route from project mocks and this device's command grants. */
+  bindingForTool(toolId: ToolDefinition["id"]): ToolBinding | undefined;
   readTrace(fileName: string): Promise<RunTrace>;
   onShowResponse(): void;
   onOpenTrace(): void;
@@ -112,7 +114,7 @@ export function useRunSession(options: UseRunSessionOptions) {
     if (outcome === "aborted") {
       throw new DOMException("The provider turn was interrupted.", "AbortError");
     }
-    setToolResultDrafts(toolResultDraftsForState(coordinator.state, options.tools, options.mockForTool));
+    setToolResultDrafts(toolResultDraftsForState(coordinator.state, options.tools, options.bindingForTool));
   }
 
   async function start(input: ResolvedRunInput, context: RunSessionStartContext): Promise<void> {
@@ -157,7 +159,7 @@ export function useRunSession(options: UseRunSessionOptions) {
     if (binding) {
       const attempt = await executeToolCall(
         coordinator,
-        createMockToolExecutor(binding),
+        createToolExecutor(binding),
         binding,
         { toolCallId: entry.call.id, tool: entry.tool!, call: entry.call },
         { signal },
@@ -172,9 +174,14 @@ export function useRunSession(options: UseRunSessionOptions) {
         // value instead of re-running an executor that just failed.
         setToolResultDrafts((current) => {
           const previous = current[entry.call.id];
-          return previous
-            ? { ...current, [entry.call.id]: { ...previous, binding: undefined, resolution: { kind: "manual" } } }
-            : current;
+          if (!previous) return current;
+          // Rebuilt rather than spread-and-overridden, so nothing that made
+          // this draft executable — the binding, its prefill, the label
+          // promising a command will run — survives into the manual one.
+          return {
+            ...current,
+            [entry.call.id]: { text: previous.text, resolution: { kind: "manual" } },
+          };
         });
         options.onError(
           `${entry.call.name} could not be executed: ${

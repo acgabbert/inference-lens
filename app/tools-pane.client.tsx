@@ -4,6 +4,8 @@ import type { ToolDefinition, ToolId } from "../packages/core/src/run-kernel";
 import type { ToolMock } from "../packages/core/src/project";
 import { PaneEmptyState } from "./pane-empty-state.client";
 import { ToolDefinitionEditor } from "./tool-definition-editor.client";
+import { CommandToolBindingEditor } from "./tools/command-tool-binding-editor.client";
+import type { CommandToolsHandle } from "./tools/use-command-tools.client";
 
 interface ToolsPaneProps {
   tools: ToolDefinition[];
@@ -21,6 +23,8 @@ interface ToolsPaneProps {
   mockForTool(id: ToolId): ToolMock | undefined;
   onUpdateToolMock(id: ToolId, text: string, enabled: boolean): void;
   onRemoveRequestTool(id: ToolId): void;
+  /** What this device may run, and what each tool has been allowed to run. */
+  commandTools: CommandToolsHandle;
 }
 
 /**
@@ -33,7 +37,7 @@ interface ToolsPaneProps {
 export function ToolsPane({
   tools, requestTools, enabledToolIds, activeProfileName, toolsEnabled,
   onOpenLibrary, onOpenConnectionSettings, onAddTool, onRemoveTool, onMoveTool, onUpdateTool,
-  onSetToolEnabled, mockForTool, onUpdateToolMock, onRemoveRequestTool,
+  onSetToolEnabled, mockForTool, onUpdateToolMock, onRemoveRequestTool, commandTools,
 }: ToolsPaneProps) {
   const selectedProjectTools = tools.filter(({ id }) =>
     enabledToolIds.includes(id),
@@ -150,10 +154,15 @@ export function ToolsPane({
           const mock = mockForTool(tool.id);
           const mockText = mock?.result.content.map(({ text }) => text).join("") ?? "";
           const toolLabel = tool.name.trim() || `tool ${index + 1}`;
+          // Both can be configured at once, and only one can answer. Saying so
+          // beside the one that will not is cheaper than a user discovering it
+          // from a transcript.
+          const commandServes = Boolean(commandTools.bindingFor(tool.id));
           return <article className="tool-editor" key={tool.id}>
             <div className="tool-editor-toolbar"><label className="tool-enabled"><input type="checkbox" checked={enabledToolIds.includes(tool.id)} onChange={(event) => onSetToolEnabled(tool.id, event.target.checked)} />Send with requests</label><div className="tool-reorder"><button aria-label={`Move ${toolLabel} earlier in the request`} className="text-button" disabled={index === 0} type="button" onClick={() => onMoveTool(tool.id, -1)}>↑</button><button aria-label={`Move ${toolLabel} later in the request`} className="text-button" disabled={index === tools.length - 1} type="button" onClick={() => onMoveTool(tool.id, 1)}>↓</button></div><button className="remove-button" type="button" onClick={() => onRemoveTool(tool.id)}>Remove</button></div>
             <ToolDefinitionEditor value={tool} onChange={(value) => onUpdateTool(tool.id, value)} />
-            <div className="tool-fields tool-mock-fields"><label className="tool-mock-toggle"><input type="checkbox" checked={mock?.enabled ?? false} onChange={(event) => onUpdateToolMock(tool.id, mockText, event.target.checked)} />Use static mock result</label>{mock?.enabled && <label className="tool-mock-result">Mock result<textarea value={mockText} onChange={(event) => onUpdateToolMock(tool.id, event.target.value, true)} /></label>}</div>
+            <div className="tool-fields tool-mock-fields"><label className="tool-mock-toggle"><input type="checkbox" checked={mock?.enabled ?? false} onChange={(event) => onUpdateToolMock(tool.id, mockText, event.target.checked)} />Use static mock result</label>{mock?.enabled && <label className="tool-mock-result">Mock result<textarea value={mockText} onChange={(event) => onUpdateToolMock(tool.id, event.target.value, true)} /></label>}{mock?.enabled && commandServes && <p className="tool-mock-superseded">A command tool is allowed to answer {toolLabel} on this device, so this mock is not used.</p>}</div>
+            <CommandToolBindingEditor toolId={tool.id} toolLabel={toolLabel} commandTools={commandTools} />
           </article>;
         })}
       </div>

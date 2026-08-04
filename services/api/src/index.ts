@@ -1,3 +1,6 @@
+export * from "./command-tool-catalog-source.ts";
+export * from "./command-tool-execution.ts";
+export * from "./command-tool-runner.ts";
 export * from "./credential-store.ts";
 export * from "./inference-request.ts";
 export * from "./n8n-integration.ts";

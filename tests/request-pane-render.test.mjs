@@ -41,6 +41,14 @@ function toolsPane(overrides) {
     mockForTool: () => undefined,
     onUpdateToolMock: () => {},
     onRemoveRequestTool: () => {},
+    commandTools: {
+      availability: { kind: "unconfigured", variable: "INFERENCE_LENS_COMMAND_TOOLS" },
+      commands: [],
+      grantFor: () => undefined,
+      bindingFor: () => undefined,
+      grant() {},
+      revoke() {},
+    },
     ...overrides,
   };
 }
@@ -78,6 +86,14 @@ function requestComposer(overrides = {}) {
       mockForTool: () => undefined,
       updateToolMock: noop,
       removeRequestTool: noop,
+    },
+    commandTools: {
+      availability: { kind: "unconfigured", variable: "INFERENCE_LENS_COMMAND_TOOLS" },
+      commands: [],
+      grantFor: () => undefined,
+      bindingFor: () => undefined,
+      grant() {},
+      revoke() {},
     },
     templates: {
       templateWorkbench: { composerItems: [{ kind: "message", message: {

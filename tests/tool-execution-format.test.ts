@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { ToolExecutionRecord } from "../packages/core/src/run-kernel/index.ts";
+import type { ToolResult } from "../packages/core/src/run-kernel/index.ts";
 import {
+  describeSuppliedToolResult,
   describeToolExecution,
   latestToolExecution,
 } from "../app/tool-execution-format.client.ts";
@@ -121,4 +123,41 @@ test("a call reads its most recent execution, not its first", () => {
     "tool-execution_weather-1-2",
   );
   assert.equal(latestToolExecution([base], "tool-call_other"), undefined);
+});
+
+/**
+ * A failed execution and a supplied result are both true of one call when an
+ * executor fails and a human answers instead. The sentence has to lead with
+ * where the shown value came from: leading with the failure asserts that a
+ * timed-out command produced the text on screen.
+ */
+test("a hand-supplied answer after a failed execution says so first", () => {
+  const manual = {
+    id: "tool-result_1",
+    toolCallId: "tool-call_weather-1",
+    content: [{ type: "text", text: "Answered by hand" }],
+    resolution: { kind: "manual" },
+  } as ToolResult;
+  const timedOut: ToolExecutionRecord = {
+    ...base,
+    executor: { kind: "command", executorId: "weather", label: "Local weather script" },
+    status: "failed",
+    durationMs: 1_050,
+    failure: {
+      kind: "timeout",
+      message: "The command tool “Local weather script” did not finish within 1000ms and was stopped.",
+    },
+  };
+
+  const detail = describeSuppliedToolResult(manual, timedOut);
+  assert.ok(detail.startsWith("Supplied by hand."), detail);
+  assert.match(detail, /Timed out after running command tool “Local weather script”/);
+  assert.deepEqual(scanForPlaceholders(detail), []);
+
+  // A completed execution still speaks for itself: the result is its output.
+  assert.equal(
+    describeSuppliedToolResult(manual, base),
+    "Returned by mock “sunny default” in 3 ms.",
+  );
+  assert.equal(describeSuppliedToolResult(manual, undefined), "Supplied by hand.");
 });

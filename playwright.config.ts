@@ -1,7 +1,20 @@
+import { fileURLToPath } from "node:url";
+
 import { defineConfig, devices } from "@playwright/test";
 
 const appPort = 4300;
 const bufferedFixturePort = 44014;
+
+/**
+ * The only reason the suite's dev server can run anything at all.
+ *
+ * Command tools are declared by whoever runs the service, so the browser suite
+ * has to declare them too — and it declares exactly the fixtures in
+ * `tests/fixtures/command-tools`, never a shell.
+ */
+const commandToolCatalog = fileURLToPath(
+  new URL("./tests/fixtures/command-tools/catalog.json", import.meta.url),
+);
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -42,6 +55,7 @@ export default defineConfig({
         INFERENCE_LENS_MODEL: "",
         INFERENCE_LENS_N8N_BASE_URL: "",
         INFERENCE_LENS_N8N_API_KEY: "",
+        INFERENCE_LENS_COMMAND_TOOLS: commandToolCatalog,
       },
     },
     {

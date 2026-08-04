@@ -15,6 +15,7 @@ import type {
   RunReadinessAction,
 } from "../run-readiness.client";
 import type { ProjectTemplatesHandle } from "../templates/use-project-templates.client";
+import type { CommandToolsHandle } from "../tools/use-command-tools.client";
 import { EvaluationSuiteEditor } from "../evaluations/evaluation-suite-editor.client";
 import type { EvaluationSuiteExecutionActions } from "../evaluations/evaluation-suite-editor.client";
 import type { EvaluationSuiteHistoryHandle } from "../evaluations/evaluation-suite-history.client";
@@ -48,6 +49,8 @@ export interface RequestComposerProps {
     updateToolMock(id: ToolId, text: string, enabled: boolean): void;
     removeRequestTool(id: ToolId): void;
   };
+  /** The command-tool feature owner, for the tools tab's binding surface. */
+  commandTools: CommandToolsHandle;
   templates: ProjectTemplatesHandle;
   evaluations: EvaluationSuiteAuthoringHandle;
   evaluationExecution: EvaluationSuiteExecutionActions;
@@ -79,6 +82,7 @@ export interface RequestComposerProps {
 
 export function RequestComposer({
   requestDraft,
+  commandTools,
   templates,
   evaluations,
   evaluationExecution,
@@ -336,7 +340,7 @@ export function RequestComposer({
         ) : activeTab === "templates" ? (
           <ProjectTemplatesPane key={project?.projectId ?? "unsaved-project"} templates={project?.promptTemplates ?? []} connectionRequirements={project?.connectionRequirements ?? []} defaultConnectionRequirementId={project?.defaults.target.connectionRequirementId} usageCounts={templates.templateUsageCounts} itemCount={templates.activeProjectRevision?.items.length ?? requestDraft.messages.length} n8nImportDisabledReason={n8nImportDisabledReason} onOpenN8nImport={onOpenN8nImport} onCreate={templates.createProjectTemplate} onSave={templates.saveProjectTemplate} onRename={templates.renameProjectTemplate} onArchive={templates.archiveProjectTemplate} onRestore={templates.restoreProjectTemplate} onInsert={(...args) => { templates.insertProjectTemplate(...args); setTab("messages"); }} />
         ) : activeTab === "tools" ? (
-          <ToolsPane tools={requestDraft.tools} requestTools={requestDraft.requestTools} enabledToolIds={requestDraft.enabledToolIds} activeProfileName={activeProfile.name} toolsEnabled={settings.toolsEnabled} onOpenLibrary={onOpenToolLibrary} onOpenConnectionSettings={onOpenConnectionSettings} onAddTool={requestDraft.addTool} onRemoveTool={requestDraft.removeTool} onMoveTool={requestDraft.moveTool} onUpdateTool={requestDraft.updateTool} onSetToolEnabled={requestDraft.setToolEnabled} mockForTool={requestDraft.mockForTool} onUpdateToolMock={requestDraft.updateToolMock} onRemoveRequestTool={requestDraft.removeRequestTool} />
+          <ToolsPane tools={requestDraft.tools} requestTools={requestDraft.requestTools} enabledToolIds={requestDraft.enabledToolIds} activeProfileName={activeProfile.name} toolsEnabled={settings.toolsEnabled} onOpenLibrary={onOpenToolLibrary} onOpenConnectionSettings={onOpenConnectionSettings} onAddTool={requestDraft.addTool} onRemoveTool={requestDraft.removeTool} onMoveTool={requestDraft.moveTool} onUpdateTool={requestDraft.updateTool} onSetToolEnabled={requestDraft.setToolEnabled} mockForTool={requestDraft.mockForTool} onUpdateToolMock={requestDraft.updateToolMock} onRemoveRequestTool={requestDraft.removeRequestTool} commandTools={commandTools} />
         ) : (
           <EvaluationSuiteEditor
             authoring={evaluations}

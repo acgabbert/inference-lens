@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "commands": [
+    {
+      "id": "weather",
+      "label": "Local weather script",
+      "description": "Answers with a fixed reading for the requested city.",
+      "executable": "./weather.mjs"
+    },
+    {
+      "id": "slow-weather",
+      "label": "Weather script that hangs",
+      "executable": "./hang.mjs",
+      "timeoutMs": 1000
+    },
+    {
+      "id": "broken-weather",
+      "label": "Weather script that fails",
+      "executable": "./exit-nonzero.mjs"
+    }
+  ]
+}

@@ -31,15 +31,32 @@ import type {
  */
 
 /** Device-local configuration for one executor kind. */
-export type ToolBindingConfig = {
-  kind: "mock";
-  executorId: string;
-  label?: string;
-  result: {
-    content: ToolExecutionContentPart[];
-    isError?: boolean;
-  };
-};
+export type ToolBindingConfig =
+  | {
+      kind: "mock";
+      executorId: string;
+      label?: string;
+      result: {
+        content: ToolExecutionContentPart[];
+        isError?: boolean;
+      };
+    }
+  /**
+   * A command declared by whoever runs this service, referenced by id.
+   *
+   * The executable and its argument vector are deliberately absent: they live
+   * in the host's catalog, and a binding that carried them would let the page
+   * choose what runs. Referencing a declaration by id makes the operator's
+   * file the ceiling, and leaves the binding safe to keep in browser storage.
+   */
+  | {
+      kind: "command";
+      /** The declared command's id. Also the persisted executor identity. */
+      executorId: string;
+      label?: string;
+      /** When the user granted this tool the right to run that command. */
+      grantedAt: string;
+    };
 
 export type ToolBinding = ToolBindingConfig & { toolId: ToolId };
 
@@ -79,6 +96,16 @@ export function toolExecutorIdentity(
     case "mock":
       return {
         kind: "mock",
+        executorId: binding.executorId,
+        ...(binding.label === undefined ? {} : { label: binding.label }),
+      };
+    // The command id and its label are the operator's own words and travel;
+    // the executable path, its arguments, and the grant timestamp do not. A
+    // trace says which declared command answered, never where it lives on
+    // whichever machine happened to run it.
+    case "command":
+      return {
+        kind: "command",
         executorId: binding.executorId,
         ...(binding.label === undefined ? {} : { label: binding.label }),
       };

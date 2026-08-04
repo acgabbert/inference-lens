@@ -92,10 +92,22 @@ export function describeSuppliedToolResult(
   result: ToolResult | undefined,
   execution: ToolExecutionRecord | undefined,
 ): string {
-  if (execution && execution.status !== "executing") {
+  if (execution?.status === "completed") {
     return describeToolExecution(execution).detail;
   }
   if (!result) return "";
+  const supplied = describeResolution(result);
+  // A failed attempt and a supplied result can both be true of one call: an
+  // executor times out, a human answers instead. The value on screen came from
+  // the human, so that is said first — leading with the failure would imply the
+  // shown result came out of an execution that produced nothing. The attempt is
+  // still evidence, so it follows rather than disappearing.
+  return execution?.status === "failed"
+    ? `${supplied} ${describeToolExecution(execution).detail}`
+    : supplied;
+}
+
+function describeResolution(result: ToolResult): string {
   switch (result.resolution.kind) {
     case "manual":
       return "Supplied by hand.";

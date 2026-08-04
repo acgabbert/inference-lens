@@ -81,6 +81,17 @@ refused: moving a project between a hosted provider and a local server is
 ordinary, but sending a request somewhere the document does not describe should
 never be silent.
 
+Tool execution follows the same split, one layer down. A `ToolDefinition` is
+portable and travels in projects, plans, and traces; a `ToolBinding` says how
+that tool is served *on this device* and travels nowhere except as a secret-free
+executor identity. `packages/core` owns the executor contract, the command
+catalog schema, and the classification of a finished process; the host owns the
+only part that cannot be provider-neutral, which is spawning
+(`services/api/src/command-tool-runner.ts`, reached through
+`/api/tool-execution`). What may be spawned is declared by the operator rather
+than by the page — see [tool execution](TOOL_EXECUTION.md) and
+[command tools](COMMAND_TOOLS.md).
+
 `packages/core/src/run-trace.ts` owns the versioned diagnostic artifact
 boundary. It validates the file envelope, reconstructs canonical run state from
 the ordered event stream, rejects projections that disagree with those events,

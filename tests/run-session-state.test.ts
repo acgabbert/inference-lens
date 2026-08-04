@@ -7,8 +7,12 @@ import {
   executableBinding,
   isRetryableRunState,
   isTerminalRunState,
+  toolBindingFor,
+  toolBindingForMock,
   toolResultDraftsForState,
 } from "../app/run/run-session-state.client.ts";
+import type { ToolMock } from "../packages/core/src/project.ts";
+import type { ToolId } from "../packages/core/src/run-kernel/index.ts";
 
 test("classifies terminal and retryable session states", () => {
   const base = createRunState("run_policy");
@@ -35,33 +39,42 @@ test("classifies terminal and retryable session states", () => {
   assert.equal(isRetryableRunState(retryable), true);
 });
 
-test("derives manual and mocked drafts only for pending calls", () => {
-  const state = {
-    ...createRunState("run_drafts"),
-    status: {
-      kind: "awaiting_tool_results",
-      turnId: "turn_drafts",
-      pendingToolCallIds: ["tool-call_mock", "tool-call_manual"],
-    },
-    turns: [{
-      turnId: "turn_drafts",
-      attempts: [{
-        completedToolCalls: [
-          { id: "tool-call_mock", name: "weather", arguments: { text: "{}" } },
-          { id: "tool-call_manual", name: "time", arguments: { text: "{}" } },
-          { id: "tool-call_done", name: "time", arguments: { text: "{}" } },
-        ],
-      }],
+const weatherMock: ToolMock = {
+  id: "tool-mock_weather",
+  toolId: "tool_weather" as ToolId,
+  name: "weather",
+  enabled: true,
+  match: { kind: "always" },
+  result: { content: [{ type: "text", text: "sunny" }] },
+};
+
+const state = {
+  ...createRunState("run_drafts"),
+  status: {
+    kind: "awaiting_tool_results",
+    turnId: "turn_drafts",
+    pendingToolCallIds: ["tool-call_mock", "tool-call_manual"],
+  },
+  turns: [{
+    turnId: "turn_drafts",
+    attempts: [{
+      completedToolCalls: [
+        { id: "tool-call_mock", name: "weather", arguments: { text: "{}" } },
+        { id: "tool-call_manual", name: "time", arguments: { text: "{}" } },
+        { id: "tool-call_done", name: "time", arguments: { text: "{}" } },
+      ],
     }],
-  } as unknown as RunState;
-  const tools = [
-    { id: "tool_weather", name: "weather", inputSchema: {} },
-    { id: "tool_time", name: "time", inputSchema: {} },
-  ] as const;
+  }],
+} as unknown as RunState;
+
+const tools = [
+  { id: "tool_weather", name: "weather", inputSchema: {} },
+  { id: "tool_time", name: "time", inputSchema: {} },
+] as const;
+
+test("derives manual and mocked drafts only for pending calls", () => {
   const drafts = toolResultDraftsForState(state, tools, (id) =>
-    id === "tool_weather"
-      ? { id: "tool-mock_weather", toolId: id, name: "weather", enabled: true, match: { kind: "always" }, result: { content: [{ type: "text", text: "sunny" }] } }
-      : undefined,
+    toolBindingForMock(id, id === "tool_weather" ? weatherMock : undefined),
   );
   // The binding is what makes the submitted value an execution, so an edited
   // draft has to stop offering one — otherwise the trace would record that a
@@ -86,4 +99,45 @@ test("derives manual and mocked drafts only for pending calls", () => {
     },
     "tool-call_manual": { text: "", resolution: { kind: "manual" } },
   });
+});
+
+test("a command binding outranks an enabled mock, and prefills nothing", () => {
+  const commandBinding = {
+    toolId: "tool_weather" as ToolId,
+    kind: "command" as const,
+    executorId: "weather",
+    label: "Local weather script",
+    grantedAt: "2026-08-04T10:00:00.000Z",
+  };
+
+  // Both are configured. The grant is a deliberate act on this device; the
+  // mock arrived with the project and is often left switched on.
+  assert.deepEqual(
+    toolBindingFor("tool_weather" as ToolId, weatherMock, commandBinding),
+    commandBinding,
+  );
+  assert.equal(
+    toolBindingFor("tool_weather" as ToolId, weatherMock, undefined)?.kind,
+    "mock",
+  );
+
+  const drafts = toolResultDraftsForState(state, tools, (id) =>
+    id === "tool_weather" ? commandBinding : undefined,
+  );
+
+  // Nothing is prefilled: the command has not run. A placeholder here would be
+  // indistinguishable from a result it produced.
+  assert.deepEqual(drafts["tool-call_mock"], {
+    text: "",
+    prefilledText: "",
+    binding: commandBinding,
+    pendingExecutorLabel: "Local weather script",
+    resolution: { kind: "live", executorId: "weather" },
+  });
+  // An empty draft still executes; typing into it makes the answer the user's.
+  assert.equal(executableBinding(drafts["tool-call_mock"]!)?.kind, "command");
+  assert.equal(
+    executableBinding({ ...drafts["tool-call_mock"]!, text: "typed" }),
+    undefined,
+  );
 });
