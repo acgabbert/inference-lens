@@ -17,6 +17,7 @@ function plain(nodes: MarkdownInline[]): string {
         case "text":
           return node.text;
         case "code":
+        case "math":
           return node.text;
         default:
           return plain(node.children);
@@ -29,7 +30,7 @@ function blockText(block: MarkdownBlock): string {
   if (block.kind === "paragraph" || block.kind === "heading") {
     return plain(block.content);
   }
-  if (block.kind === "code") return block.text;
+  if (block.kind === "code" || block.kind === "math") return block.text;
   return "";
 }
 
@@ -237,4 +238,79 @@ test("terminates on pathological nesting", () => {
   const deep = `${">".repeat(64)} quoted`;
   assert.doesNotThrow(() => parseMarkdown(deep));
   assert.doesNotThrow(() => parseMarkdown(`${"- ".repeat(64)}item`));
+});
+
+test("captures display math verbatim instead of eating its delimiters", () => {
+  const [block] = parseMarkdown(String.raw`\[ E = mc^2 \]`);
+  assert.equal(block.kind, "math");
+  assert.equal(block.kind === "math" && block.text, "E = mc^2");
+  assert.equal(block.kind === "math" && block.open, false);
+});
+
+test("keeps TeX backslashes and subscripts inside display math", () => {
+  // `\\` is a line break and `_` a subscript; both are destroyed by the inline
+  // escape and emphasis rules, which is why math cannot be a paragraph.
+  const source = [
+    String.raw`\[`,
+    String.raw`\begin{align}`,
+    String.raw`a_1 &= b_1 \\`,
+    String.raw`a_2 &= b_2`,
+    String.raw`\end{align}`,
+    String.raw`\]`,
+  ].join("\n");
+  const [block] = parseMarkdown(source);
+  assert.equal(block.kind, "math");
+  assert.equal(
+    block.kind === "math" && block.text,
+    [
+      String.raw`\begin{align}`,
+      String.raw`a_1 &= b_1 \\`,
+      String.raw`a_2 &= b_2`,
+      String.raw`\end{align}`,
+    ].join("\n"),
+  );
+});
+
+test("an unterminated display-math opener stays open while streaming", () => {
+  const [block] = parseMarkdown(String.raw`\[` + "\na_1 = b_1");
+  assert.equal(block.kind, "math");
+  assert.equal(block.kind === "math" && block.open, true);
+  assert.equal(block.kind === "math" && block.text, "a_1 = b_1");
+});
+
+test("captures inline math verbatim inside a paragraph", () => {
+  const [block] = parseMarkdown(String.raw`The value \( x_1 + y_2 \) matters.`);
+  assert.equal(block.kind, "paragraph");
+  const kinds = block.kind === "paragraph"
+    ? block.content.map((node) => node.kind)
+    : [];
+  assert.deepEqual(kinds, ["text", "math", "text"]);
+  assert.equal(blockText(block), "The value x_1 + y_2 matters.");
+});
+
+test("an unclosed inline opener degrades to the pre-math escape behavior", () => {
+  // Not the raw `\(`: falling through to the escape rule is what keeps a
+  // streamed prefix identical to what this parser has always produced.
+  const [block] = parseMarkdown(String.raw`Consider \( x + y`);
+  assert.equal(blockText(block), "Consider ( x + y");
+});
+
+test("parses every prefix of a math-bearing response without throwing", () => {
+  const response = [
+    "Given the identity",
+    "",
+    String.raw`\[`,
+    String.raw`\frac{a}{b} = c`,
+    String.raw`\]`,
+    "",
+    String.raw`we get \( a = bc \) directly.`,
+  ].join("\n");
+
+  for (let length = 0; length <= response.length; length += 1) {
+    assert.doesNotThrow(() => parseMarkdown(response.slice(0, length)));
+  }
+  assert.deepEqual(
+    parseMarkdown(response).map((block) => block.kind),
+    ["paragraph", "math", "paragraph"],
+  );
 });

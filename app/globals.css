@@ -3729,6 +3729,47 @@ textarea {
   border-style: dashed;
 }
 
+/* Math is shown as source, never laid out. The delimiters stay visible so the
+   reader can tell this is unrendered notation rather than a failed formula. */
+.markdown-inline-math {
+  padding: 1px 5px;
+  border: 1px dotted var(--border-subtle);
+  border-radius: 5px;
+  background: var(--surface-inset);
+  font-family: var(--font-geist-mono), monospace;
+}
+
+.markdown-body .markdown-math {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 11px 13px;
+  overflow-x: auto;
+  border: 1px dotted var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface-inset);
+}
+
+.markdown-body .markdown-math pre {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  line-height: 1.62;
+}
+
+.markdown-math-delimiter {
+  flex: none;
+  color: var(--text-muted);
+  font-family: var(--font-geist-mono), monospace;
+  user-select: none;
+}
+
+.markdown-body .markdown-math.streaming {
+  border-style: dashed;
+}
+
 .markdown-table-scroll {
   margin: 0 0 12px;
   overflow-x: auto;

@@ -11,6 +11,23 @@ const providerDefaultAnswer = "Provider received no temperature override.";
 // Answers with the temperature it was actually sent, so a UI control that sets
 // one can be checked against the wire rather than against its own readout.
 const echoTemperatureModel = "echo-temperature-model";
+/**
+ * Answers with LaTeX in both delimiter forms. The subscripts and the `\\` line
+ * break are the payload: the inline escape and emphasis rules destroy exactly
+ * those characters, so a rendering that shows them back proves the math was
+ * captured verbatim rather than run through the ordinary inline parser.
+ */
+const mathModel = "math-output-model";
+const mathAnswer = [
+  String.raw`Given \( x_1 + y_2 \), we get:`,
+  "",
+  String.raw`\[`,
+  String.raw`\begin{align}`,
+  String.raw`a_1 &= b_1 \\`,
+  String.raw`a_2 &= b_2`,
+  String.raw`\end{align}`,
+  String.raw`\]`,
+].join("\n");
 
 async function readJson(request) {
   const chunks = [];
@@ -29,6 +46,7 @@ const server = createServer(async (request, response) => {
         { id: "buffered-test-model", object: "model" },
         { id: providerDefaultModel, object: "model" },
         { id: echoTemperatureModel, object: "model" },
+        { id: mathModel, object: "model" },
       ],
     }));
     return;
@@ -67,7 +85,9 @@ const server = createServer(async (request, response) => {
     ? providerDefaultAnswer
     : body.model === echoTemperatureModel
       ? `Provider received temperature ${"temperature" in body ? String(body.temperature) : "absent"}.`
-      : ordinaryAnswer;
+      : body.model === mathModel
+        ? mathAnswer
+        : ordinaryAnswer;
 
   response.writeHead(200, {
     "content-type": "application/json",
@@ -95,7 +115,9 @@ const server = createServer(async (request, response) => {
       ? "served provider-default response with no temperature override"
       : body.model === echoTemperatureModel
         ? `served echoed temperature ${"temperature" in body ? String(body.temperature) : "absent"}`
-        : "served buffered response with 4 input, 7 output, 11 total tokens",
+        : body.model === mathModel
+          ? "served LaTeX answer in both delimiter forms"
+          : "served buffered response with 4 input, 7 output, 11 total tokens",
   );
 });
 
