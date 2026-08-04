@@ -2,7 +2,8 @@
 
 Inference Lens keeps reusable tool definitions in a versioned, local registry.
 Registry data is separate from portable Project v8 files and never contains
-credentials or executor configuration.
+credentials or executor configuration. How a tool is *served* is a separate
+device-local binding; see [tool execution](TOOL_EXECUTION.md).
 
 Each registry tool owns a stable `registry-tool_*` identity. Attaching one
 creates a detached `ToolDefinition` snapshot with a fresh `tool_*` identity:

@@ -7,8 +7,16 @@
  * what the raw view shows anyway. Silent misrendering is the thing to avoid.
  *
  * Blocks: ATX headings, fenced code, indented code, ordered and unordered
- * lists (nested), blockquotes, GFM tables, thematic breaks, paragraphs.
- * Inline: code spans, strong, emphasis, inline links, backslash escapes.
+ * lists (nested), blockquotes, GFM tables, thematic breaks, math, paragraphs.
+ * Inline: code spans, strong, emphasis, inline links, math, backslash escapes.
+ *
+ * Math is captured verbatim, not laid out. `\[ … \]` and `\( … \)` keep their
+ * contents exactly as the model wrote them and no TeX is interpreted, so a
+ * renderer shows the source rather than a formula. This exists because the
+ * delimiters are otherwise eaten by the escape rule below — `[`, `]`, `(` and
+ * `)` are all escapable — which turned `\[ E = mc^2 \]` into `[ E = mc^2 ]`
+ * and lost the only signal that the span was math at all. Showing unlaid-out
+ * source is a gap; silently stripping the delimiters was misrendering.
  *
  * Not supported (rendered literally): setext headings, reference links and
  * definitions, autolinks, raw HTML, images, footnotes, task lists, lazy
@@ -23,6 +31,8 @@
 export type MarkdownInline =
   | { kind: "text"; text: string }
   | { kind: "code"; text: string }
+  /** Verbatim `\( … \)` source. Never laid out; `text` excludes the delimiters. */
+  | { kind: "math"; text: string }
   | { kind: "emphasis"; children: MarkdownInline[] }
   | { kind: "strong"; children: MarkdownInline[] }
   | { kind: "link"; href: string; children: MarkdownInline[] };
@@ -37,6 +47,12 @@ export type MarkdownBlock =
   | { kind: "paragraph"; content: MarkdownInline[] }
   | { kind: "heading"; level: number; content: MarkdownInline[] }
   | { kind: "code"; language?: string; text: string; open: boolean }
+  /**
+   * Verbatim `\[ … \]` source. `open` marks a block whose closer has not
+   * streamed in yet, mirroring how an unterminated fence stays an open code
+   * block rather than collapsing to literal backticks.
+   */
+  | { kind: "math"; text: string; open: boolean }
   | {
       kind: "list";
       ordered: boolean;
@@ -63,6 +79,8 @@ const BLOCKQUOTE = /^ {0,3}> ?/;
 const LIST_ITEM = /^( *)([-*+]|\d{1,9}[.)])( +|$)(.*)$/;
 const TABLE_DELIMITER = /^ {0,3}\|? *:?-+:? *(?:\| *:?-+:? *)*\|? *$/;
 const INDENTED_CODE = /^ {4}(.*)$/;
+/** Display math opening a block: `\[` alone on its line, or with content after it. */
+const MATH_BLOCK_OPEN = /^ {0,3}\\\[(.*)$/;
 
 export function parseMarkdown(source: string): MarkdownBlock[] {
   const lines = source.replaceAll("\r\n", "\n").replaceAll("\r", "\n").split("\n");
@@ -84,6 +102,12 @@ function parseBlocks(lines: string[], depth: number): MarkdownBlock[] {
     const fence = FENCE_OPEN.exec(line);
     if (fence) {
       index = readFencedCode(lines, index, fence, blocks);
+      continue;
+    }
+
+    const mathOpen = MATH_BLOCK_OPEN.exec(line);
+    if (mathOpen) {
+      index = readMathBlock(lines, index, mathOpen, blocks);
       continue;
     }
 
@@ -329,6 +353,54 @@ function readTable(
   return index;
 }
 
+/**
+ * Reads `\[ … \]` display math verbatim.
+ *
+ * Every line between the delimiters is taken exactly as written: no escape
+ * processing, no emphasis, no nested block parsing. That is the point — `\\`
+ * is a TeX line break inside an `align` environment, and `_` is a subscript,
+ * so running either through the inline rules corrupts the source. Blank lines
+ * are kept for the same reason, which is why this cannot be a paragraph.
+ */
+function readMathBlock(
+  lines: string[],
+  start: number,
+  open: RegExpExecArray,
+  blocks: MarkdownBlock[],
+): number {
+  const body: string[] = [];
+  const firstLine = open[1];
+  // `\[ x = 1 \]` closes on its own line; `\[` alone opens a multi-line block.
+  const closerOnFirstLine = firstLine.indexOf("\\]");
+  if (closerOnFirstLine !== -1) {
+    blocks.push({
+      kind: "math",
+      text: firstLine.slice(0, closerOnFirstLine).trim(),
+      open: false,
+    });
+    return start + 1;
+  }
+  if (firstLine.trim() !== "") body.push(firstLine.trim());
+
+  let index = start + 1;
+  let isOpen = true;
+  while (index < lines.length) {
+    const closer = lines[index].indexOf("\\]");
+    if (closer !== -1) {
+      const trailing = lines[index].slice(0, closer);
+      if (trailing.trim() !== "") body.push(trailing);
+      isOpen = false;
+      index += 1;
+      break;
+    }
+    body.push(lines[index]);
+    index += 1;
+  }
+
+  blocks.push({ kind: "math", text: body.join("\n"), open: isOpen });
+  return index;
+}
+
 function readParagraph(
   lines: string[],
   start: number,
@@ -353,6 +425,7 @@ function readParagraph(
 function startsNewBlock(lines: string[], index: number, depth: number): boolean {
   const line = lines[index];
   if (FENCE_OPEN.test(line)) return true;
+  if (MATH_BLOCK_OPEN.test(line)) return true;
   if (ATX_HEADING.test(line)) return true;
   if (THEMATIC_BREAK.test(line)) return true;
   if (depth < MAX_NESTING_DEPTH && BLOCKQUOTE.test(line)) return true;
@@ -410,6 +483,20 @@ export function parseInline(source: string): MarkdownInline[] {
   while (index < source.length) {
     const character = source[index];
 
+    // Tried before the escape rule, which would otherwise consume the `\(` and
+    // leave a bare paren. An unclosed opener falls through to that rule and
+    // still renders as `(`, exactly as it did before math was recognized — so a
+    // streamed prefix degrades to today's behavior rather than to something new.
+    if (character === "\\" && source[index + 1] === "(") {
+      const math = readInlineMath(source, index);
+      if (math) {
+        flush();
+        nodes.push({ kind: "math", text: math.text });
+        index = math.end;
+        continue;
+      }
+    }
+
     if (character === "\\" && ESCAPABLE.has(source[index + 1] ?? "")) {
       text += source[index + 1];
       index += 2;
@@ -452,6 +539,20 @@ export function parseInline(source: string): MarkdownInline[] {
 
   flush();
   return nodes;
+}
+
+/**
+ * Reads `\( … \)` verbatim from `start`, or returns null when the closer has
+ * not arrived. Null is what keeps a streaming prefix stable: like an unmatched
+ * code-span backtick, the opener stays literal until its closer exists.
+ */
+function readInlineMath(
+  source: string,
+  start: number,
+): { text: string; end: number } | null {
+  const closer = source.indexOf("\\)", start + 2);
+  if (closer === -1) return null;
+  return { text: source.slice(start + 2, closer).trim(), end: closer + 2 };
 }
 
 function readCodeSpan(

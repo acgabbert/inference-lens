@@ -169,7 +169,7 @@ export function SavedPromptDialog({
                 type="button"
                 onClick={() => selected && onConfirm(selected.templateId)}
               >
-                Use saved prompt
+                Start from saved prompt
               </button>
             </div>
           </>

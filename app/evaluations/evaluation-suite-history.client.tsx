@@ -2,8 +2,12 @@
 
 import { useState } from "react";
 
+import type { EvaluationBaseline } from "../../packages/core/src/evaluation-baselines.ts";
 import type { ExperimentHistoryItem } from "../../packages/core/src/experiment-history.ts";
-import type { ConversationRevisionId } from "../../packages/core/src/run-kernel";
+import type {
+  ConversationRevisionId,
+  EvaluationBaselineId,
+} from "../../packages/core/src/run-kernel";
 import {
   evaluationPassSummary,
   evaluationPassTone,
@@ -36,6 +40,21 @@ export interface EvaluationSuiteHistoryHandle {
   onExpand(): void;
   onRefresh(): void;
   onOpen(item: ExperimentHistoryItem): Promise<void>;
+  /**
+   * Named baselines for this suite, newest first. Absent when the project has
+   * no folder to write annotations to, which is what hides the pinning
+   * controls rather than a disabled button with nothing to explain it.
+   */
+  baselines?: EvaluationSuiteBaselinesHandle;
+}
+
+export interface EvaluationSuiteBaselinesHandle {
+  items: EvaluationBaseline[];
+  error?: string;
+  busy: boolean;
+  onPin(item: ExperimentHistoryItem, name: string): Promise<void>;
+  onUnpin(baselineId: EvaluationBaselineId): Promise<void>;
+  onCompare(baseline: EvaluationBaseline, candidate: ExperimentHistoryItem): Promise<void>;
 }
 
 function formatDate(value: string): string {
@@ -49,7 +68,24 @@ export function EvaluationSuiteHistory({ history }: { history: EvaluationSuiteHi
   const [expanded, setExpanded] = useState(false);
   const [pendingPlanFileName, setPendingPlanFileName] = useState<string>();
   const [openError, setOpenError] = useState<string>();
+  const [namingPlanFileName, setNamingPlanFileName] = useState<string>();
+  const [pinName, setPinName] = useState("");
+  const [baselineError, setBaselineError] = useState<string>();
+  const [comparisonSelection, setComparisonSelection] = useState<Record<string, string>>({});
   const busy = history.status === "idle" || history.status === "loading";
+  const baselines = history.baselines;
+
+  /** One reporting path for every baseline mutation, including comparison. */
+  async function act(operation: () => Promise<void>): Promise<void> {
+    setBaselineError(undefined);
+    try {
+      await operation();
+    } catch (error) {
+      setBaselineError(
+        error instanceof Error ? error.message : "That baseline action did not complete.",
+      );
+    }
+  }
 
   async function open(item: ExperimentHistoryItem): Promise<void> {
     setPendingPlanFileName(item.planFileName);
@@ -144,6 +180,20 @@ export function EvaluationSuiteHistory({ history }: { history: EvaluationSuiteHi
           </p>
         )}
 
+        {baselines?.error && (
+          <div className="run-history-notice error" role="alert">
+            <strong>Baselines unavailable</strong>
+            <span>{baselines.error}</span>
+          </div>
+        )}
+
+        {baselineError && (
+          <div className="run-history-notice error" role="alert">
+            <strong>Could not update baselines</strong>
+            <span>{baselineError}</span>
+          </div>
+        )}
+
         {history.executions.map((item) => {
           const drifted = Boolean(
             history.currentRevisionId &&
@@ -151,34 +201,157 @@ export function EvaluationSuiteHistory({ history }: { history: EvaluationSuiteHi
               item.evaluation.conversationRevisionId !== history.currentRevisionId,
           );
           const pending = item.planFileName === pendingPlanFileName;
+          const pinnedAs = baselines?.items.find(
+            (baseline) => baseline.experimentId === item.experimentId,
+          );
+          const comparable = (baselines?.items ?? []).filter(
+            (baseline) => baseline.experimentId !== item.experimentId,
+          );
           return (
-            <button
-              aria-busy={pending ? "true" : undefined}
-              className="evaluation-suite-history-item"
-              disabled={Boolean(pendingPlanFileName)}
-              key={item.planFileName}
-              type="button"
-              onClick={() => void open(item)}
-            >
-              <span className="evaluation-suite-history-item-heading">
-                <time dateTime={item.createdAt}>{formatDate(item.createdAt)}</time>
-                <span className={`evaluation-pass ${evaluationPassTone(item.evaluation)}`}>
-                  {evaluationPassSummary(item.evaluation)}
+            <div className="evaluation-suite-history-entry" key={item.planFileName}>
+              <button
+                aria-busy={pending ? "true" : undefined}
+                className="evaluation-suite-history-item"
+                disabled={Boolean(pendingPlanFileName)}
+                type="button"
+                onClick={() => void open(item)}
+              >
+                <span className="evaluation-suite-history-item-heading">
+                  <time dateTime={item.createdAt}>{formatDate(item.createdAt)}</time>
+                  <span className={`evaluation-pass ${evaluationPassTone(item.evaluation)}`}>
+                    {evaluationPassSummary(item.evaluation)}
+                  </span>
+                  <span className={`run-history-status ${item.lifecycle}`}>
+                    {pending ? "opening" : item.lifecycle}
+                  </span>
                 </span>
-                <span className={`run-history-status ${item.lifecycle}`}>
-                  {pending ? "opening" : item.lifecycle}
+                <span>
+                  {item.requested} planned {item.requested === 1 ? "run" : "runs"} ·{" "}
+                  {item.model}
                 </span>
-              </span>
-              <span>
-                {item.requested} planned {item.requested === 1 ? "run" : "runs"} ·{" "}
-                {item.model}
-              </span>
-              {drifted && (
-                <span className="evaluation-suite-history-drift">
-                  Ran against a different input revision
-                </span>
+                {drifted && (
+                  <span className="evaluation-suite-history-drift">
+                    Ran against a different input revision
+                  </span>
+                )}
+                {pinnedAs && (
+                  <span className="evaluation-suite-history-baseline">
+                    Baseline · {pinnedAs.name}
+                  </span>
+                )}
+              </button>
+
+              {baselines && (
+                <div className="evaluation-suite-history-actions">
+                  {pinnedAs ? (
+                    <button
+                      className="text-button"
+                      disabled={baselines.busy}
+                      type="button"
+                      onClick={() => void act(() => baselines.onUnpin(pinnedAs.baselineId))}
+                    >
+                      Unpin baseline
+                    </button>
+                  ) : namingPlanFileName === item.planFileName ? (
+                    <form
+                      className="evaluation-suite-history-pin-form"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void act(async () => {
+                          await baselines.onPin(item, pinName);
+                          setNamingPlanFileName(undefined);
+                          setPinName("");
+                        });
+                      }}
+                    >
+                      <label className="visually-hidden" htmlFor="evaluation-baseline-name">
+                        Baseline name
+                      </label>
+                      <input
+                        autoFocus
+                        id="evaluation-baseline-name"
+                        maxLength={80}
+                        placeholder="Name this baseline"
+                        value={pinName}
+                        onChange={(event) => setPinName(event.target.value)}
+                      />
+                      <button
+                        className="text-button"
+                        disabled={baselines.busy || !pinName.trim()}
+                        type="submit"
+                      >
+                        Save baseline
+                      </button>
+                      <button
+                        className="text-button"
+                        type="button"
+                        onClick={() => {
+                          setNamingPlanFileName(undefined);
+                          setBaselineError(undefined);
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </form>
+                  ) : (
+                    <button
+                      className="text-button"
+                      disabled={!item.evaluation || baselines.busy}
+                      type="button"
+                      onClick={() => {
+                        setBaselineError(undefined);
+                        setPinName("");
+                        setNamingPlanFileName(item.planFileName);
+                      }}
+                    >
+                      Pin as baseline…
+                    </button>
+                  )}
+
+                  {comparable.length > 0 && (
+                    <span className="evaluation-suite-history-compare">
+                      <label
+                        className="visually-hidden"
+                        htmlFor={`compare-${item.planFileName}`}
+                      >
+                        Compare against baseline
+                      </label>
+                      <select
+                        id={`compare-${item.planFileName}`}
+                        value={comparisonSelection[item.planFileName] ?? ""}
+                        onChange={(event) =>
+                          setComparisonSelection((current) => ({
+                            ...current,
+                            [item.planFileName]: event.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">Compare against…</option>
+                        {comparable.map((baseline) => (
+                          <option key={baseline.baselineId} value={baseline.baselineId}>
+                            {baseline.name}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        className="text-button"
+                        disabled={baselines.busy || !comparisonSelection[item.planFileName]}
+                        type="button"
+                        onClick={() => {
+                          const selected = comparable.find(
+                            (baseline) =>
+                              baseline.baselineId === comparisonSelection[item.planFileName],
+                          );
+                          if (selected) void act(() => baselines.onCompare(selected, item));
+                        }}
+                      >
+                        Compare
+                      </button>
+                    </span>
+                  )}
+                </div>
               )}
-            </button>
+            </div>
           );
         })}
       </div>

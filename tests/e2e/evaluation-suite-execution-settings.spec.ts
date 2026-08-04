@@ -80,10 +80,10 @@ async function openMappedEvaluations(page: Page, project: ProjectFile): Promise<
 }
 
 async function useSavedPrompt(page: Page, name: string): Promise<void> {
-  await page.getByRole("button", { name: "Use saved prompt…" }).click();
+  await page.getByRole("button", { name: "Start from saved prompt…" }).click();
   const dialog = page.getByRole("dialog", { name: "Start from saved prompt" });
   await dialog.getByRole("radio", { name }).check();
-  await dialog.getByRole("button", { name: "Use saved prompt" }).click();
+  await dialog.getByRole("button", { name: "Start from saved prompt" }).click();
   await expect(page.locator(".evaluation-authoring-notice")).toContainText(
     `Evaluation input now uses “${name}”`,
   );

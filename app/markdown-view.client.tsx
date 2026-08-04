@@ -93,6 +93,24 @@ function renderBlock(block: MarkdownBlock): ReactNode {
         </div>
       );
 
+    // Presented as source, because it is source. The `math` role tells a
+    // screen reader this is notation rather than prose, and the visible
+    // delimiters keep it honest that nothing was laid out.
+    case "math":
+      return (
+        <div
+          className={block.open ? "markdown-math streaming" : "markdown-math"}
+          role="math"
+          aria-label={`Math source: ${block.text}`}
+        >
+          <span className="markdown-math-delimiter" aria-hidden="true">{"\\["}</span>
+          <pre><code>{block.text}</code></pre>
+          {!block.open && (
+            <span className="markdown-math-delimiter" aria-hidden="true">{"\\]"}</span>
+          )}
+        </div>
+      );
+
     case "thematicBreak":
       return <hr />;
   }
@@ -133,6 +151,16 @@ function renderInlineNode(node: MarkdownInline): ReactNode {
       return node.text;
     case "code":
       return <code className="markdown-inline-code">{node.text}</code>;
+    case "math":
+      return (
+        <code
+          className="markdown-inline-math"
+          role="math"
+          aria-label={`Math source: ${node.text}`}
+        >
+          {node.text}
+        </code>
+      );
     case "strong":
       return <strong>{renderInline(node.children)}</strong>;
     case "emphasis":

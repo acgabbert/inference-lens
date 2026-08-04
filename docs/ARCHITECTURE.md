@@ -108,6 +108,16 @@ underlying exact request text remains unchanged in exchange evidence. Adding
 the comparison view therefore does not change the trace schema or its
 compatibility boundary.
 
+`packages/core/src/tool-execution.ts` owns the executor seam. A portable
+`ToolDefinition` describes a tool; a device-local `ToolBinding` says how it is
+served here, and only its secret-free `ToolExecutorIdentity` may be persisted.
+Executors return a normalized `ToolExecutionOutcome` that separates a tool that
+ran and reported an error from one that could not produce a result at all, and
+their evidence reaches the run model as `tool.execution_*` events reduced into
+`RunState.toolExecutions`. Core imports no protocol SDK — a contract test
+asserts it — so an executor's transport lives beside its binding, on the host
+side of the seam. See [tool execution](TOOL_EXECUTION.md).
+
 `packages/core/src/run-output.ts` owns the one canonical projection of what a
 run answered, and `packages/core/src/checks.ts` owns the provider-neutral
 deterministic-check vocabulary evaluated over it. Both are pure derivations
@@ -131,6 +141,7 @@ workflows.
 | Authored request messages, tools, and mocks | `useRequestDraft` |
 | Run validation and provider-neutral input derivation | `app/run/prepare-workbench-run.client.ts` |
 | Live coordination, retry, continuation, stop, diagnostics, and trace lifecycle | `app/run/use-run-session.client.ts` |
+| Tool-result drafts, mock bindings, and whether a draft is still an execution | `app/run/run-session-state.client.ts` |
 | Template-use state, immutable mutations, external-import application, and preview | `app/templates/use-project-templates.client.ts` |
 | Request-pane presentation and local navigation | `app/request/request-composer.client.tsx` |
 | Inference option-set presentation and its disclosure | `app/inference-settings-panel.client.tsx` |

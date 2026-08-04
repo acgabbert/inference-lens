@@ -11,6 +11,7 @@ import type {
 import { MarkdownView } from "./markdown-view.client";
 import { PaneTabs } from "./workbench-shell.client";
 import { ToolCallList, type ToolResultDraft } from "./tool-call-list.client";
+import { describeSuppliedToolResult, latestToolExecution } from "./tool-execution-format.client";
 import type { RunEmptyStatePresentation } from "./run-readiness.client";
 
 /** System and user messages are usually re-reads of what was already typed;
@@ -250,7 +251,14 @@ export function ResponseOutput({
                         </pre>
                       ))}
                       {message.role === "tool" && (
-                        <span className="transcript-tool-result">Tool result for {message.name ?? message.toolCallId}</span>
+                        <span className="transcript-tool-result">
+                          Tool result for {message.name ?? message.toolCallId}
+                          {" · "}
+                          {describeSuppliedToolResult(
+                            runState?.toolResults.find(({ toolCallId }) => toolCallId === message.toolCallId),
+                            latestToolExecution(runState?.toolExecutions ?? [], message.toolCallId),
+                          )}
+                        </span>
                       )}
                     </div>
                   )}
@@ -271,7 +279,7 @@ export function ResponseOutput({
           {(output || reasoning) && retryableFailure && <div className="waiting-for-answer run-failure-state" role="alert"><span className="failure-glyph" aria-hidden="true">!</span><div><h3>Attempt failed</h3><p>{retryableFailure.error.message}</p><button className="button secondary" type="button" onClick={onRetry}>Retry attempt</button></div></div>}
         </div>}
         {!terminal && <ToolCallList calls={completedToolCalls} toolResultDrafts={toolResultDrafts}
-          suppliedResults={runState?.toolResults ?? []} awaitingResults={awaitingResults}
+          suppliedResults={runState?.toolResults ?? []} toolExecutions={runState?.toolExecutions ?? []} awaitingResults={awaitingResults}
           onDraftChange={onToolResultDraftChange} onContinue={onContinue} />}
         {!outputFollowing && (output || reasoning) && <button className="jump-to-latest" type="button" onClick={onJumpToLatest}>Jump to latest ↓</button>}
       </div>

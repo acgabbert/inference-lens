@@ -394,7 +394,9 @@ test("a live repetition is never described as having lost its trace", async () =
     },
   );
 
-  assert.deepEqual(pendingLabels(streaming), ["Open when finished", "Waiting"]);
+  // Both labels name a state. "Running…" is the same word the evaluation
+  // results workspace uses for this state, into the same markup slot.
+  assert.deepEqual(pendingLabels(streaming), ["Running…", "Waiting"]);
   assert.doesNotMatch(streaming, /Trace missing/);
   assertNoBrokenValues(streaming);
 

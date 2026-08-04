@@ -1,10 +1,11 @@
 # Run trace format
 
-New traces use schema version 5. Versions 1 through 4 remain importable.
+New traces use schema version 6. Versions 1 through 5 remain importable.
 Versions 1 and 2 gain an empty `input.templateResolutions` collection during
 migration; Versions 1 through 3 gain `responseMode: "streaming"` on the run,
 turn events, and attempt projections. Version 5 replaces fragment-shaped
-template provenance with a non-empty ordered message list.
+template provenance with a non-empty ordered message list; Versions 1 through 5
+gain an empty `toolExecutions` collection during migration.
 
 ## Template provenance
 
@@ -30,7 +31,7 @@ accepted as a valid Inference Lens run. Version 1 and 2 compatibility remains
 unchanged because those formats contain no template provenance.
 
 Inference Lens run traces are immutable, credential-free diagnostic artifacts.
-Version 5 uses deterministic JSON and is stored as `traces/<runId>.json` when a
+Version 6 uses deterministic JSON and is stored as `traces/<runId>.json` when a
 run belongs to an open project folder. A terminal ad hoc run can be exported
 from the Project menu, and older traces can be imported for
 inspection.
@@ -102,16 +103,18 @@ and frame index. This keeps provider-native evidence available without making
 the reducer or UI depend on a provider's payload shape.
 
 The artifact also stores the immutable resolved input, ordered events, derived
-turn and attempt projections, tool results, terminal status, and timestamps.
+turn and attempt projections, tool executions, tool results, terminal status,
+and timestamps.
 Import reconstructs those projections from the event stream and rejects a file
 when the stored projections disagree.
 
 ## Compatibility and immutability
 
-The root `schemaVersion` is currently `5`. Version 1 is accepted with its
+The root `schemaVersion` is currently `6`. Version 1 is accepted with its
 original strict root schema; Version 2 adds the optional `branchedFrom` field,
 Version 3 adds required template provenance, Version 4 adds the required
-run-level response mode, and Version 5 stores template provenance as messages:
+run-level response mode, Version 5 stores template provenance as messages, and
+Version 6 adds the required `toolExecutions` collection. The response mode is:
 
 ```ts
 "streaming" | "buffered"
@@ -119,8 +122,17 @@ run-level response mode, and Version 5 stores template provenance as messages:
 
 The mode is copied into each provider-turn input, so retries and tool-driven
 continuation turns preserve how the run was executed. New serialization always
-writes Version 5. Unknown root fields, unsupported versions, invalid
-identifiers, non-contiguous event sequences, and unsafe run IDs are rejected.
+writes Version 6.
+
+`toolExecutions` is required rather than optional so that an artifact cannot be
+ambiguous between "this run executed no tools" and "this file predates the
+field": the former is an empty array, the latter is a Version 5 envelope. Each
+record names the executor that served a call by secret-free identity only —
+never its binding configuration. See
+[tool execution](TOOL_EXECUTION.md).
+
+Unknown root fields, unsupported versions, invalid identifiers, non-contiguous
+event sequences, and unsafe run IDs are rejected.
 
 Trace writes are write-once by run ID. Writing identical contents again is
 idempotent; writing different contents to an existing filename fails. Future

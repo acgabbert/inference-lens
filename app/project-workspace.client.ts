@@ -27,6 +27,13 @@ import type {
   ExperimentPlanV3,
 } from "../packages/core/src/experiment.ts";
 import {
+  EVALUATION_BASELINES_FILE_NAME,
+  emptyEvaluationBaselines,
+  parseEvaluationBaselinesJson,
+  serializeEvaluationBaselines,
+} from "../packages/core/src/evaluation-baselines.ts";
+import type { EvaluationBaselinesFileV1 } from "../packages/core/src/evaluation-baselines.ts";
+import {
   EXPERIMENTS_DIRECTORY_NAME,
   listExperimentArtifactsFromDirectory,
   readExperimentArtifactFromDirectory,
@@ -88,6 +95,9 @@ interface WorkspaceStorage {
   saveExperimentArtifact(fileName: string, contents: string): Promise<void>;
   listExperimentArtifacts(): Promise<StoredExperimentArtifactFile[]>;
   readExperimentArtifact(fileName: string): Promise<string>;
+  /** `null` when the project has never pinned a baseline. */
+  readEvaluationBaselines(): Promise<string | null>;
+  saveEvaluationBaselines(contents: string): Promise<void>;
 }
 
 export interface ProjectWorkspaceHandle {
@@ -225,6 +235,25 @@ function browserStorage(
     },
     async readExperimentArtifact(fileName: string): Promise<string> {
       return readExperimentArtifactFromDirectory(directory, fileName);
+    },
+    async readEvaluationBaselines(): Promise<string | null> {
+      try {
+        const fileHandle = await directory.getFileHandle(EVALUATION_BASELINES_FILE_NAME);
+        return await (await fileHandle.getFile()).text();
+      } catch (error) {
+        // A project that has pinned nothing has no file. That is the ordinary
+        // state, not a failure to report.
+        if (error instanceof DOMException && error.name === "NotFoundError") return null;
+        throw error;
+      }
+    },
+    async saveEvaluationBaselines(contents: string): Promise<void> {
+      const fileHandle = await directory.getFileHandle(EVALUATION_BASELINES_FILE_NAME, {
+        create: true,
+      });
+      const writable = await fileHandle.createWritable();
+      await writable.write(contents);
+      await writable.close();
     },
   };
 }
@@ -508,6 +537,17 @@ function nativeWorkspaceHandle(
           fileName: assertExperimentEntryName(fileName),
         });
       },
+      async readEvaluationBaselines(): Promise<string | null> {
+        return invokeNative<string | null>("read_evaluation_baselines", {
+          workspaceId: workspace.workspaceId,
+        });
+      },
+      async saveEvaluationBaselines(contents: string): Promise<void> {
+        await invokeNative("save_evaluation_baselines", {
+          workspaceId: workspace.workspaceId,
+          contents,
+        });
+      },
     },
   };
 }
@@ -621,6 +661,26 @@ export async function readExperimentArtifactWorkspace(
   fileName: string,
 ): Promise<string> {
   return handle.storage.readExperimentArtifact(fileName);
+}
+
+/**
+ * Reads the project's named evaluation baselines. A project that has never
+ * pinned one reads as empty; a file that exists but cannot be parsed throws,
+ * so a damaged annotation file is reported rather than quietly replaced on the
+ * next pin.
+ */
+export async function readEvaluationBaselinesWorkspace(
+  handle: ProjectWorkspaceHandle,
+): Promise<EvaluationBaselinesFileV1> {
+  const contents = await handle.storage.readEvaluationBaselines();
+  return contents === null ? emptyEvaluationBaselines() : parseEvaluationBaselinesJson(contents);
+}
+
+export async function saveEvaluationBaselinesWorkspace(
+  handle: ProjectWorkspaceHandle,
+  file: EvaluationBaselinesFileV1,
+): Promise<void> {
+  await handle.storage.saveEvaluationBaselines(serializeEvaluationBaselines(file));
 }
 
 /**

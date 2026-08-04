@@ -9,7 +9,7 @@ import { isSensitiveTemplateVariableName } from "./project.ts";
 import { stableJsonValue } from "./stable-json.ts";
 import { renderTemplateMessages } from "./template-engine.ts";
 
-export const RUN_TRACE_SCHEMA_VERSION = 5;
+export const RUN_TRACE_SCHEMA_VERSION = 6;
 export const RUN_TRACE_FILE_SUFFIX = ".json";
 
 /**
@@ -55,6 +55,9 @@ const traceEnvelopeBaseSchema = z
             "assistant.tool_call_delta",
             "usage.reported",
             "assistant.completed",
+            "tool.execution_started",
+            "tool.execution_completed",
+            "tool.execution_failed",
             "tool.result_supplied",
             "run.completed",
             "run.cancelled",
@@ -214,6 +217,27 @@ const traceV5EnvelopeSchema = traceEnvelopeBaseSchema
   })
   .strict();
 
+/**
+ * Version 6 adds tool-execution evidence. It is a required collection rather
+ * than an optional one so that an artifact cannot be ambiguous between "this
+ * run executed no tools" and "this file predates the field": the former is an
+ * empty array, the latter is a version-5 envelope.
+ */
+const traceV6EnvelopeSchema = traceEnvelopeBaseSchema
+  .extend({
+    schemaVersion: z.literal(6),
+    input: z
+      .object({
+        runId: z.string().regex(/^run_.+/),
+        templateResolutions: z.array(resolvedTemplateUseSchema),
+        responseMode: z.enum(["streaming", "buffered"]),
+      })
+      .passthrough(),
+    toolExecutions: z.array(z.unknown()),
+    branchedFrom: branchProvenanceSchema.optional(),
+  })
+  .strict();
+
 // Discriminated on the version so a rejection reports the offending field in
 // the matching envelope, rather than collapsing every branch's complaint into
 // one union error.
@@ -223,6 +247,7 @@ const traceEnvelopeSchema = z.discriminatedUnion("schemaVersion", [
   traceV3EnvelopeSchema,
   traceV4EnvelopeSchema,
   traceV5EnvelopeSchema,
+  traceV6EnvelopeSchema,
 ]);
 
 export function traceFileName(runId: RunId): string {
@@ -373,6 +398,13 @@ export function parseRunTraceFile(value: unknown): RunTrace {
       ),
     };
   }
+  if (envelope.schemaVersion < 6) {
+    trace = {
+      ...trace,
+      schemaVersion: RUN_TRACE_SCHEMA_VERSION,
+      toolExecutions: [],
+    };
+  }
   if (trace.runId !== trace.input.runId) {
     throw new RunTraceValidationError("Run trace input has a different run ID.");
   }
@@ -470,6 +502,7 @@ export function parseRunTraceFile(value: unknown): RunTrace {
     "status",
     "turns",
     "exchanges",
+    "toolExecutions",
     "toolResults",
     "startedAt",
     "endedAt",

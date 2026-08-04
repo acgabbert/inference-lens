@@ -314,7 +314,7 @@ export function EvaluationSuiteEditor({
                 <span>Evaluation input</span>
                 <strong>{authoring.selectedRevision ? revisionChoice(authoring.selectedRevision).label : "Input unavailable"}</strong>
                 <small>This suite keeps its own immutable input; changing Messages does not change it.</small>
-                <button className="button secondary" type="button" onClick={authoring.openSavedPromptPicker}>Use saved prompt…</button>
+                <button className="button secondary" type="button" onClick={authoring.openSavedPromptPicker}>Start from saved prompt…</button>
                 <details className="evaluation-input-picker">
                   <summary>Use a project revision…</summary>
                   <label>Existing project revision

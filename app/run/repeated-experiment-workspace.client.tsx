@@ -40,6 +40,12 @@ function rowStatus(
  * Neither is a missing trace, so both are named rather than falling through to
  * one — otherwise every ordinary repetition claims its evidence was lost for as
  * long as the provider call and the filesystem write take.
+ *
+ * Every label names the repetition's state. A running cell reads "Running…",
+ * matching the evaluation results workspace, which renders the same states into
+ * the same `repeated-experiment-row-pending` slot. It used to read "Open when
+ * finished", which was an instruction rather than a state and told the reader
+ * nothing the surrounding status pill did not already say.
  */
 function pendingLabel(
   status: string,
@@ -49,7 +55,7 @@ function pendingLabel(
   if (unreadable) return "Trace could not be read";
   if (status === "queued") return "Waiting";
   if (status === "not-run") return "Not run";
-  if (status === "running") return "Open when finished";
+  if (status === "running") return "Running…";
   // Terminal with no trace: still being written while this session drives the
   // experiment, genuinely absent once it no longer does.
   return isLive ? "Saving trace…" : "Trace missing";
