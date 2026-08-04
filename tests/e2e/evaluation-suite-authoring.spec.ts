@@ -17,7 +17,7 @@ import {
   serializeProjectFile,
 } from "../../packages/core/src/project";
 import type { ProjectFile } from "../../packages/core/src/project";
-import { seedProfile } from "./support";
+import { seedProfile, openMode } from "./support";
 
 const PROFILE_ENDPOINT = "http://127.0.0.1:44014/v1";
 
@@ -118,7 +118,7 @@ async function openProject(page: Page, project: ProjectFile, width: number) {
   await page.goto("/");
   await expect(page.locator(".topbar")).toContainText("Buffered fixture");
   await importProject(page, project);
-  await page.getByRole("tab", { name: /Evaluations/ }).click();
+  await openMode(page, "Evaluations");
 }
 
 test("every offered check kind is addable in the running editor", async ({ page }) => {

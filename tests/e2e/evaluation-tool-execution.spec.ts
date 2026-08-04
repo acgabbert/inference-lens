@@ -14,6 +14,7 @@ import {
   seedProfile,
   stubProjectDirectory,
   waitForHydration,
+  openMode,
 } from "./support";
 
 /**
@@ -134,7 +135,7 @@ async function openEvaluations(page: Page, project: ProjectFile): Promise<void> 
         menu.open = false;
       });
   });
-  await page.getByRole("tab", { name: /Evaluations/ }).click();
+  await openMode(page, "Evaluations");
 }
 
 test("an evaluation serves its suite's tool calls and checks the answer they produced", async ({

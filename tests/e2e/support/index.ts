@@ -151,6 +151,29 @@ export async function openInferenceSettings(
 }
 
 /**
+ * Switches the application mode and waits for the switch to actually take.
+ *
+ * The modes are top-level destinations, not tabs of a pane: each one owns its
+ * own layout and its own primary action, so a spec that wants the evaluation
+ * surface has to navigate rather than click a tab in the composer. Asserting on
+ * `aria-current` rather than on mode content is deliberate — it separates "the
+ * navigation happened" from "the destination rendered what I expected", so a
+ * failure in the second does not look like a failure in the first.
+ */
+export async function openMode(
+  page: Page,
+  mode: "Compose" | "Evaluations" | "Runs",
+): Promise<void> {
+  const strip = page.getByRole("navigation", { name: "Application mode" });
+  // Not `exact`: the Runs button also carries a "running" label while a batch
+  // is in flight, which is exactly when a spec is most likely to navigate.
+  const button = strip.getByRole("button", { name: mode });
+  await expect(button).toBeVisible();
+  await button.click();
+  await expect(button).toHaveAttribute("aria-current", "page");
+}
+
+/**
  * Closes the Project menu.
  *
  * It is a `<details>`, so Escape does not close it and a second click on the

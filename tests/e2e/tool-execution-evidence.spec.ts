@@ -148,7 +148,7 @@ test("a mocked tool call records who executed it, and the evidence survives the 
 }) => {
   await openFixtureProject(page);
 
-  await page.getByRole("button", { name: /^Run/ }).first().click();
+  await page.getByRole("button", { name: /^Run request/ }).first().click();
 
   const card = page.locator(".tool-call-card");
   await expect(card).toContainText("get_weather");
@@ -210,7 +210,7 @@ test("editing a mocked draft makes the result manual, and says so", async ({
   page,
 }) => {
   await openFixtureProject(page);
-  await page.getByRole("button", { name: /^Run/ }).first().click();
+  await page.getByRole("button", { name: /^Run request/ }).first().click();
 
   const card = page.locator(".tool-call-card");
   await expect(card.locator("textarea")).toHaveValue(mockText);
@@ -235,7 +235,7 @@ test("editing a mocked draft makes the result manual, and says so", async ({
 
 test("provenance carries no placeholder values", async ({ page }) => {
   await openFixtureProject(page);
-  await page.getByRole("button", { name: /^Run/ }).first().click();
+  await page.getByRole("button", { name: /^Run request/ }).first().click();
   await expect(page.locator(".tool-call-card")).toBeVisible();
   await page.getByRole("button", { name: "Supply results and continue" }).click();
   await expect(page.locator(".transcript-list")).toContainText("Chicago report");

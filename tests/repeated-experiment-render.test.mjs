@@ -630,7 +630,12 @@ test("a referenced trace that cannot be read is distinguished from one that neve
   assertNoBrokenValues(html);
 });
 
-test("workbench shell can expose Experiment as the contextual mobile pane", async () => {
+/**
+ * The panes used to be renamed by whatever had claimed them — Experiment,
+ * Evaluation, Preview. Results live in the Runs mode now, so each pane has one
+ * occupant and one name, and the shell offers no way to say otherwise.
+ */
+test("the Compose shell names its panes the same regardless of what they hold", async () => {
   const html = await render(
     "/app/workbench-shell.client.tsx",
     "WorkbenchShell",
@@ -640,11 +645,12 @@ test("workbench shell can expose Experiment as the contextual mobile pane", asyn
       inspect: "Selected inspection",
       view: "request",
       onViewChange() {},
-      requestLabel: "Experiment",
     },
   );
 
-  assert.match(html, /<button[^>]+class="active"[^>]*>Experiment<\/button>/);
+  assert.match(html, /<button[^>]+class="active"[^>]*>Request<\/button>/);
+  assert.match(html, /<button type="button">Response<\/button>/);
+  assert.doesNotMatch(html, /Experiment<\/button>/);
   assert.match(html, /Experiment summary/);
   assertNoBrokenValues(html);
 });

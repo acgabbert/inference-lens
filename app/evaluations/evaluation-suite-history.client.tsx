@@ -37,6 +37,14 @@ export interface EvaluationSuiteHistoryHandle {
    * finding from one that moved on its own.
    */
   currentRevisionId?: ConversationRevisionId;
+  /**
+   * Whether the disclosure is open. Owned by the route rather than by this
+   * component because the Evaluations mode unmounts when another mode is on
+   * screen: state kept here would silently collapse on the way back, which is
+   * exactly the loss the mode boundary is supposed to avoid.
+   */
+  expanded: boolean;
+  onExpandedChange(expanded: boolean): void;
   onExpand(): void;
   onRefresh(): void;
   onOpen(item: ExperimentHistoryItem): Promise<void>;
@@ -65,7 +73,7 @@ function formatDate(value: string): string {
 }
 
 export function EvaluationSuiteHistory({ history }: { history: EvaluationSuiteHistoryHandle }) {
-  const [expanded, setExpanded] = useState(false);
+  const expanded = history.expanded;
   const [pendingPlanFileName, setPendingPlanFileName] = useState<string>();
   const [openError, setOpenError] = useState<string>();
   const [namingPlanFileName, setNamingPlanFileName] = useState<string>();
@@ -107,7 +115,7 @@ export function EvaluationSuiteHistory({ history }: { history: EvaluationSuiteHi
       open={expanded}
       onToggle={(event) => {
         const open = event.currentTarget.open;
-        setExpanded(open);
+        history.onExpandedChange(open);
         if (open) history.onExpand();
       }}
     >

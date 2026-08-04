@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import {
   openInferenceSettings,
+  openMode,
   seedProfile,
   waitForHydration,
 } from "./support";
@@ -134,9 +135,10 @@ test("a repeated experiment freezes the settings its dialog was given, then repo
   await expect(record.locator(".temperature-control")).toHaveCount(0);
   await expect(record.getByLabel("Stream response")).toHaveCount(0);
 
-  // And the composer's own settings were never rewritten by the experiment. At
-  // this width the experiment holds the response pane, so the composer — and
-  // its own separately labelled panel — is still on screen beside it.
+  // And the composer's own settings were never rewritten by the experiment.
+  // Results are read in the Runs mode now, so reaching the composer's own
+  // separately labelled panel means going back to Compose for it.
+  await openMode(page, "Compose");
   const composer = await openInferenceSettings(page);
   await expect(composer.getByLabel("Model", { exact: true })).toHaveValue(
     "buffered-test-model",

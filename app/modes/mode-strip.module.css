@@ -1,0 +1,121 @@
+/*
+ * Scoped to the mode shell. New structure introduced by the UX overhaul is
+ * styled here rather than in `app/globals.css`, so the shell's layout cannot
+ * be reached by the global cascade and does not add to it. Existing feature
+ * styles are left where they are rather than rewritten to chase this.
+ *
+ * The control styling itself is not new: this deliberately matches the
+ * `.pane-tabs` segmented control the app already uses, because the overhaul
+ * changes information architecture, not the visual language.
+ */
+
+.strip {
+  min-width: 0;
+  padding: 3px;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border-default);
+  border-radius: 9px;
+  background: var(--surface-inset);
+}
+
+.mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--type-control);
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.mode:hover {
+  color: var(--text-primary);
+}
+
+.mode[aria-current="page"] {
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-control);
+}
+
+/*
+ * Results moved out of the pane the user was looking at, so both "a batch is
+ * running" and "a batch finished and you have not read it" have to be legible
+ * from wherever the user actually is. This dot carries both, and unlike the
+ * completion toast that arrives with the notification system, it does not
+ * expire — the toast is the interruption, this is the standing record.
+ *
+ * The finished tones are the evaluation vocabulary from
+ * `evaluation-history-format.client.ts`, so a batch cannot read as a success
+ * here and as a partial failure in the history list.
+ */
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--text-faint);
+}
+
+.running {
+  background: var(--warning);
+}
+
+.passed {
+  background: var(--accent-solid);
+}
+
+.partial {
+  background: var(--warning);
+}
+
+.failed {
+  background: var(--danger);
+}
+
+.neutral {
+  background: var(--text-faint);
+}
+
+/* Only the running dot pulses. A finished batch is a settled fact, and motion
+   would keep asking for attention that has nowhere further to go. */
+@media (prefers-reduced-motion: no-preference) {
+  .running {
+    animation: mode-strip-pulse 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes mode-strip-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/*
+ * Below 880px the topbar wraps and the strip takes the whole second row, so it
+ * stretches rather than sitting off to one side. 760px is the workbench's
+ * mobile breakpoint and the strip has to survive it intact — the modes are the
+ * only way out of a mode, so nothing here is allowed to truncate.
+ */
+@media (max-width: 880px) {
+  .strip {
+    order: 3;
+    flex-basis: 100%;
+    justify-content: stretch;
+  }
+
+  .mode {
+    flex: 1 1 0;
+    justify-content: center;
+    padding-inline: 9px;
+  }
+}

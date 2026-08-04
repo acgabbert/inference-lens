@@ -24,6 +24,7 @@ import {
   seedProfile,
   stubProjectDirectory,
   waitForHydration,
+  openMode,
 } from "./support";
 
 const PROJECT_NAME = "Evaluation dismissal fixture";
@@ -136,7 +137,7 @@ async function openDurableProject(page: Page, project: ProjectFile): Promise<voi
   await page.getByRole("button", { name: "Open project…" }).click();
   await expect(page.locator(".brand")).toContainText(PROJECT_NAME);
   await page.locator(".project-menu").evaluate((element) => element.removeAttribute("open"));
-  await page.getByRole("tab", { name: /Evaluations/ }).click();
+  await openMode(page, "Evaluations");
 }
 
 /** Opens the same suite from an imported file, which has nowhere to save. */
@@ -145,7 +146,7 @@ async function openUnsavedProject(page: Page, project: ProjectFile): Promise<voi
   await page.goto("/");
   await waitForHydration(page);
   await importProject(page, project, PROJECT_NAME);
-  await page.getByRole("tab", { name: /Evaluations/ }).click();
+  await openMode(page, "Evaluations");
 }
 
 async function runEvaluation(page: Page): Promise<void> {
@@ -168,11 +169,15 @@ test("a finished evaluation hands the pane back to the preview, and reopens from
   const results = page.locator(".evaluation-results-workspace");
   await expect(results).toContainText("Saved project evaluation");
 
-  // Without a way out, the finished batch owns the response pane for the rest
-  // of the session and the provider-input preview is unreachable.
+  // Releasing the batch empties the Runs mode, so it also has to put the user
+  // back where the batch was started rather than on a blank results surface.
   await results.getByRole("button", { name: "Back to editing" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(page.locator(".result").getByRole("heading", { name: "Provider input" }))
+  await expect(page.getByRole("navigation", { name: "Application mode" })
+    .getByRole("button", { name: "Evaluations" }))
+    .toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("complementary", { name: "Provider input" })
+    .getByRole("heading", { name: "Provider input" }))
     .toBeVisible();
   await expect(page.locator(".evaluation-preview-scroll"))
     .toContainText("Explain database migrations to engineers.");
@@ -188,17 +193,26 @@ test("a finished evaluation hands the pane back to the preview, and reopens from
   await expect(page.locator(".evaluation-results-workspace")).toContainText("2 / 2 passed");
 });
 
-test("focusing another case releases a finished evaluation from the pane", async ({ page }) => {
+/**
+ * The editor and the results no longer share a pane, so re-targeting the editor
+ * has no layout reason to discard a finished batch — and discarding one would
+ * destroy evidence on a path that never asked. This is the behaviour the mode
+ * boundary replaced, so it is asserted in the negative.
+ */
+test("focusing another case leaves a finished evaluation intact in the Runs mode", async ({ page }) => {
   await openDurableProject(page, runnableProject());
   await runEvaluation(page);
 
-  // The results describe the suite as it was run; pointing the editor at
-  // another case makes them the wrong occupant of the pane.
+  await openMode(page, "Evaluations");
   await page.locator(".evaluation-case-rail").getByRole("button", { name: "replication" }).click();
-  await expect(page.locator(".evaluation-results-workspace")).toHaveCount(0);
-  await expect(page.locator(".result .evaluation-preview-case")).toContainText("replication");
+  await expect(page.getByRole("complementary", { name: "Provider input" })
+    .locator(".evaluation-preview-case"))
+    .toContainText("replication");
   await expect(page.locator(".evaluation-preview-scroll"))
     .toContainText("Explain database replication to engineers.");
+
+  await openMode(page, "Runs");
+  await expect(page.locator(".evaluation-results-workspace")).toContainText("2 / 2 passed");
 });
 
 test("dismissing an unsaved evaluation is confirmed before its runs are lost", async ({ page }) => {
@@ -220,6 +234,7 @@ test("dismissing an unsaved evaluation is confirmed before its runs are lost", a
   await page.getByRole("dialog", { name: "Discard these evaluation results?" })
     .getByRole("button", { name: "Discard results" })
     .click();
-  await expect(page.locator(".result").getByRole("heading", { name: "Provider input" }))
+  await expect(page.getByRole("complementary", { name: "Provider input" })
+    .getByRole("heading", { name: "Provider input" }))
     .toBeVisible();
 });

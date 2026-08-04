@@ -5,7 +5,6 @@ import react from "@vitejs/plugin-react";
 import { JSDOM } from "jsdom";
 import { createServer } from "vite";
 import { uniqueViteCacheDir } from "./support/vite-cache-dir.mjs";
-import { evaluationFixture } from "./fixtures/evaluation-suite-authoring.mjs";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   url: "http://localhost",
@@ -80,17 +79,6 @@ function composerProps(overrides = {}) {
       clearImportNotice: noop,
     },
     project: null,
-    evaluations: {
-      project: null, selectedCaseIds: new Set(), repetitions: 1, candidates: [], diagnostics: [],
-      revisionChoices: [], savedPromptCandidates: [], savedPromptPickerOpen: false,
-      selectSuite: noop, selectRevision: noop, setCaseSelected: noop, focusCase: noop,
-      setRepetitions: noop, createSuite: noop, renameSuite: noop, deleteSuite: noop,
-      addInput: noop, renameInput: noop, deleteInput: noop, addCase: noop,
-      updateCase: noop, deleteCase: noop, addCheck: noop, updateCheck: noop, deleteCheck: noop,
-      openSavedPromptPicker: noop, closeSavedPromptPicker: noop,
-      startFromSavedPrompt: () => true, dismissNotice: noop,
-    },
-    evaluationExecution: { storage: "unsaved", running: false, onStart: noop },
     settings: {
       model: "fixture-model",
       temperature: 0.7,
@@ -113,26 +101,16 @@ function composerProps(overrides = {}) {
     onOpenToolLibrary: noop,
     onSaveParentTrace: noop,
     onDiscardPendingBranch: noop,
-    onActionContextChange: noop,
     ...overrides,
   };
 }
 
-test("reports evaluation action context when that tab owns the composer", async () => {
-  const contexts = [];
-  const view = await mount({ onActionContextChange: (context) => contexts.push(context) });
-  try {
-    assert.equal(contexts.at(-1), "ordinary");
-    await view.click(view.tab("Evaluations"));
-    assert.equal(contexts.at(-1), "evaluation");
-    await view.click(view.tab("Messages"));
-    assert.equal(contexts.at(-1), "ordinary");
-  } finally {
-    await view.close();
-  }
-});
-
-test("evaluation authoring does not show ordinary request readiness", async () => {
+/**
+ * Evaluations left the composer for their own mode. The composer used to blank
+ * the application's readiness policy on that tab, which is the disguise the
+ * mode shell removed — so the notice now belongs to every tab it can reach.
+ */
+test("the composer owns request tabs only, and states readiness on each of them", async () => {
   const view = await mount({
     readiness: {
       blocked: true,
@@ -144,38 +122,19 @@ test("evaluation authoring does not show ordinary request readiness", async () =
     },
   });
   try {
-    assert.match(view.container.textContent, /template variable still needs a value/i);
-
-    await view.click(view.tab("Evaluations"));
-
-    assert.doesNotMatch(view.container.textContent, /template variable still needs a value/i);
-    assert.match(view.container.textContent, /Open or save a project first/i);
-
-    await view.click(view.tab("Messages"));
-
-    assert.match(view.container.textContent, /template variable still needs a value/i);
-  } finally {
-    await view.close();
-  }
-});
-
-test("an empty saved-prompt picker opens the Prompt library", async () => {
-  const evaluations = evaluationFixture();
-  let pickerClosed = false;
-  evaluations.savedPromptCandidates = [];
-  evaluations.savedPromptPickerOpen = true;
-  evaluations.closeSavedPromptPicker = () => { pickerClosed = true; };
-  const view = await mount({ evaluations });
-  try {
-    await view.click(view.tab("Evaluations"));
-    const openTemplates = Array.from(view.container.querySelectorAll("button")).find(
-      (button) => button.textContent === "Open Templates",
+    assert.equal(view.tab("Evaluations"), undefined);
+    assert.deepEqual(
+      Array.from(view.container.querySelectorAll('[role="tab"]')).map((tab) =>
+        tab.textContent.replace(/\d+$/, ""),
+      ),
+      ["Messages", "Prompt library", "Tools"],
     );
-    assert.ok(openTemplates);
 
-    await view.click(openTemplates);
-    assert.equal(pickerClosed, true);
-    assert.equal(view.tab("Prompt library")?.getAttribute("aria-selected"), "true");
+    assert.match(view.container.textContent, /template variable still needs a value/i);
+    await view.click(view.tab("Tools"));
+    assert.match(view.container.textContent, /template variable still needs a value/i);
+    await view.click(view.tab("Prompt library"));
+    assert.match(view.container.textContent, /template variable still needs a value/i);
   } finally {
     await view.close();
   }

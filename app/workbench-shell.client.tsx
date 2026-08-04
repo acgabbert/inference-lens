@@ -20,8 +20,6 @@ type WorkbenchShellProps = {
   view: WorkbenchView;
   onViewChange: (view: WorkbenchView) => void;
   responseStatus?: string;
-  requestLabel?: string;
-  responseLabel?: string;
 };
 
 const SPLIT_STORAGE_KEY = "inference-lens:workbench-split:v1";
@@ -31,6 +29,13 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
 }
 
+/**
+ * The Compose mode's layout.
+ *
+ * It was the application's shell until the modes landed, which is why its pane
+ * labels used to be props: the panes held whatever had most recently claimed
+ * them. Each pane now has exactly one occupant, so the labels are constants.
+ */
 export function WorkbenchShell({
   request,
   response,
@@ -39,8 +44,6 @@ export function WorkbenchShell({
   view,
   onViewChange,
   responseStatus,
-  requestLabel = "Request",
-  responseLabel = "Response",
 }: WorkbenchShellProps) {
   const shellRef = useRef<HTMLElement>(null);
   const [requestWidth, setRequestWidth] = useState(48);
@@ -95,14 +98,14 @@ export function WorkbenchShell({
           type="button"
           onClick={() => onViewChange("request")}
         >
-          {requestLabel}
+          Request
         </button>
         <button
           className={visibleView === "response" ? "active" : undefined}
           type="button"
           onClick={() => onViewChange("response")}
         >
-          {responseLabel}
+          Response
           {responseStatus && (
             <span className={`mobile-status-dot ${responseStatus}`} />
           )}
