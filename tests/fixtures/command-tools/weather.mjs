@@ -2,7 +2,8 @@
 /**
  * Succeeds, and proves stdin arrived: the city in the answer comes from the
  * model's own arguments, so a run that never delivered them cannot produce
- * this text.
+ * this text. The payload version is reported for the same reason — a wire that
+ * claims to be versioned should have something reading the version.
  */
 const chunks = [];
 for await (const chunk of process.stdin) chunks.push(chunk);
@@ -16,7 +17,10 @@ try {
 process.stdout.write(
   JSON.stringify({
     content: [
-      { type: "text", text: `61F and drizzle in ${city}, measured by ${payload.tool}` },
+      {
+        type: "text",
+        text: `61F and drizzle in ${city}, measured by ${payload.tool} (v${payload.version ?? "?"})`,
+      },
     ],
   }),
 );

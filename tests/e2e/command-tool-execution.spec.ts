@@ -25,7 +25,7 @@ import {
  */
 
 const mockText = "72°F and clear";
-const commandText = "61F and drizzle in Chicago, measured by get_weather";
+const commandText = "61F and drizzle in Chicago, measured by get_weather (v1)";
 
 /**
  * A project whose one tool has an *enabled* mock.

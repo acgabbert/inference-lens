@@ -61,7 +61,7 @@ test("a successful command answers with what it read on stdin", async () => {
     content: [
       {
         type: "text",
-        text: "61F and drizzle in Chicago, measured by get_weather",
+        text: "61F and drizzle in Chicago, measured by get_weather (v1)",
       },
     ],
     isError: false,

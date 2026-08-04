@@ -88,7 +88,7 @@ test("a declared command runs and answers the call", async () => {
     content: [
       {
         type: "text",
-        text: "61F and drizzle in Boston, measured by get_weather",
+        text: "61F and drizzle in Boston, measured by get_weather (v1)",
       },
     ],
     isError: false,

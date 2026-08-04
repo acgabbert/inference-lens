@@ -82,12 +82,18 @@ with the project and is often left switched on.
 The executor writes one line of JSON to stdin and closes it:
 
 ```json
-{"tool":"get_weather","toolCallId":"tool-call_1","arguments":"{\"city\":\"Chicago\"}"}
+{"version":1,"tool":"get_weather","toolCallId":"tool-call_1","arguments":"{\"city\":\"Chicago\"}"}
 ```
 
 `arguments` is the model's own argument text, passed through byte for byte. A
 model that emits invalid JSON is a case worth debugging, so the tool sees
 exactly what the model produced rather than a repaired copy.
+
+`version` is the payload version, currently `1`. Fields may be added within a
+version; a change that moves or removes one increments it. A script that cares
+should check the version and refuse what it does not recognize, rather than
+misreading a field. Nothing else on this wire is versioned per-call — the
+catalog carries its own `schemaVersion`.
 
 With `resultFormat: "json"`, stdout must be a result envelope:
 

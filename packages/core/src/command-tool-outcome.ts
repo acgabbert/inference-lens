@@ -233,6 +233,14 @@ export function interpretCommandToolResult(
 }
 
 /**
+ * The version of the stdin payload below. A command that reads it can tell a
+ * payload it understands from one it does not, which is the only thing that
+ * makes this wire extensible: scripts are written by people who will not be
+ * rewriting them when a field is added.
+ */
+export const COMMAND_TOOL_STDIN_VERSION = 1;
+
+/**
  * What a command reads on stdin: the call's arguments, as the model produced
  * them, plus the tool's name so one executable can serve several tools.
  *
@@ -247,5 +255,5 @@ export interface CommandToolStdinPayload {
 }
 
 export function commandToolStdin(payload: CommandToolStdinPayload): string {
-  return `${JSON.stringify(payload)}\n`;
+  return `${JSON.stringify({ version: COMMAND_TOOL_STDIN_VERSION, ...payload })}\n`;
 }

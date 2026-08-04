@@ -3,6 +3,7 @@ import test from "node:test";
 
 import type { CommandToolDeclaration } from "../packages/core/src/command-tool-catalog.ts";
 import {
+  COMMAND_TOOL_STDIN_VERSION,
   commandToolStdin,
   interpretCommandToolResult,
 } from "../packages/core/src/command-tool-outcome.ts";
@@ -222,8 +223,23 @@ test("stdin carries the call verbatim", () => {
 
   assert.ok(stdin.endsWith("\n"));
   assert.deepEqual(JSON.parse(stdin), {
+    version: 1,
     tool: "get_weather",
     toolCallId: "tool-call_1",
     arguments: '{"city": "Chicago",}',
   });
+});
+
+/**
+ * The catalog is versioned and the payload should be too: a script written
+ * against v1 must be able to refuse a payload it does not understand rather
+ * than misreading a field that moved.
+ */
+test("stdin declares its payload version", () => {
+  const payload = JSON.parse(
+    commandToolStdin({ tool: "t", toolCallId: "tool-call_1", arguments: "{}" }),
+  );
+
+  assert.equal(payload.version, COMMAND_TOOL_STDIN_VERSION);
+  assert.equal(COMMAND_TOOL_STDIN_VERSION, 1);
 });
