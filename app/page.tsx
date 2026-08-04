@@ -24,6 +24,7 @@ import type {
   ConversationMessage,
   ConversationId,
   MessageId,
+  ToolDefinition,
 } from "../packages/core/src/run-kernel";
 import { buildChatCompletionsRequest } from "../packages/core/src/openai-compatible";
 import {
@@ -81,6 +82,7 @@ import {
 import { useRunSession } from "./run/use-run-session.client";
 import { toolBindingFor } from "./run/run-session-state.client";
 import { useCommandTools } from "./tools/use-command-tools.client";
+import { commandToolUnavailableMessage } from "./tools/command-tool-availability.client";
 import { useRepeatedExperimentSession } from "./run/use-repeated-experiment-session.client";
 import { RepeatedExperimentDialog } from "./run/repeated-experiment-dialog.client";
 import { RepeatedExperimentWorkspace } from "./run/repeated-experiment-workspace.client";
@@ -361,6 +363,8 @@ function HomeContent() {
   const repeatedExperiment = useRepeatedExperimentSession({
     transport: inferenceTransport,
     prepareCredential: credential.prepare,
+    bindingForTool: (toolId) =>
+      toolBindingFor(toolId, mockForTool(toolId), commandTools.bindingFor(toolId)),
     onTraceSaved() { setSavedRunVersion((current) => current + 1); },
     onError(message) { project.setError(message, { clearKind: true }); },
     onOpenTrace(trace, origin) { runSession.adoptTrace(trace, origin); },
@@ -451,6 +455,7 @@ function HomeContent() {
     enabledToolIds.includes(id),
   ).length;
   const selectedToolCount = selectedProjectToolCount + requestTools.length;
+  const unservableToolNames = unservableTools().map(({ name }) => name);
   const { discovery: activeModelDiscovery, loadModels } = useModelDiscovery({
     profileId: activeProfile.id,
     endpoint: activeProfile.endpoint,
@@ -779,11 +784,34 @@ function HomeContent() {
     await sessionStart;
   }
 
+  /**
+   * The exposed tools nothing on this device can serve.
+   *
+   * A batch answers its own tool calls, so a tool with no binding would stop
+   * every repetition at a call nobody is watching. This is the gate the plan
+   * calls "every exposed tool has an automatically resolvable binding" — mock
+   * or command; MCP will satisfy it later without changing this.
+   */
+  function unservableTools(): ToolDefinition[] {
+    return [...resolvedTools(), ...requestTools].filter(
+      ({ id }) => !toolBindingFor(id, mockForTool(id), commandTools.bindingFor(id)),
+    );
+  }
+
+  function unservableToolsMessage(unservable: readonly ToolDefinition[]): string {
+    const names = unservable.map(({ name }) => name).join(", ");
+    // The shell statement is inherited, not restated: a repetition that would
+    // run a command tool cannot run at all where nothing can spawn.
+    const shell = commandToolUnavailableMessage(commandTools);
+    return `A repeated experiment answers its own tool calls, and nothing on this device serves ${names}. Enable a mock or grant a command tool first.${shell ? ` ${shell}` : ""}`;
+  }
+
   function repeat(): void {
     evaluationExecution.clear();
     project.clearErrorKind();
-    if (selectedToolCount > 0) {
-      project.setError("Repeated experiments do not support tools yet. Run this request normally instead.");
+    const unservable = unservableTools();
+    if (unservable.length > 0) {
+      project.setError(unservableToolsMessage(unservable));
       return;
     }
     if (projectFile && mappedProfileId !== activeProfile.id) {
@@ -1155,11 +1183,11 @@ function HomeContent() {
         }
         runDisabled={Boolean(readiness?.blocked)}
         runDisabledReason={readiness?.blocked ? readiness.summary : undefined}
-        repeatDisabled={Boolean(readiness?.blocked) || selectedToolCount > 0}
+        repeatDisabled={Boolean(readiness?.blocked) || unservableToolNames.length > 0}
         repeatDisabledReason={readiness?.blocked
           ? readiness.summary
-          : selectedToolCount > 0
-            ? "Repeated experiments do not support tools yet."
+          : unservableToolNames.length > 0
+            ? `Nothing on this device serves ${unservableToolNames.join(", ")}.`
             : undefined}
         onChooseProfile={chooseProfile}
         onOpenConnections={() => setConnectionDrawerOpen(true)}
@@ -1532,6 +1560,7 @@ function HomeContent() {
               }),
           }}
           onCountChange={repeatedExperiment.setRepetitionCount}
+          onTurnCeilingChange={repeatedExperiment.setTurnCeiling}
           onSettingsChange={repeatedExperiment.updateSettings}
           onCancel={repeatedExperiment.dismissDialog}
           onConfirm={() => void repeatedExperiment.confirm(projectWorkspace)}

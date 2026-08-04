@@ -150,6 +150,7 @@ test("repeat confirmation exposes the frozen request, exact count, and sequentia
         targetName: "Fixture connection",
         requestSummary: "1 message",
         repetitionCount: 5,
+        toolBindings: [],
         commitPreparation() {},
       },
       settings: {
@@ -160,6 +161,7 @@ test("repeat confirmation exposes the frozen request, exact count, and sequentia
         onToggleFavoriteModel() {},
       },
       onCountChange() {},
+      onTurnCeilingChange() {},
       onSettingsChange() {},
       onCancel() {},
       onConfirm() {},
@@ -181,6 +183,85 @@ test("repeat confirmation exposes the frozen request, exact count, and sequentia
   assert.match(html, /Override temperature/);
   assert.match(html, /Stream response/);
   assert.match(html, /render-model/);
+  assertNoBrokenValues(html);
+});
+
+test("a tool-exposing confirmation names what will run and quotes a range, not a floor", async () => {
+  const frozenPlan = plan();
+  const weather = {
+    id: "tool_weather",
+    name: "get_weather",
+    description: "Looks up weather.",
+    inputSchema: { type: "object", properties: {} },
+  };
+  const lookup = {
+    id: "tool_lookup",
+    name: "lookup_city",
+    description: "Resolves a city.",
+    inputSchema: { type: "object", properties: {} },
+  };
+  frozenPlan.commonInput.tools = [weather, lookup];
+  frozenPlan.turnCeiling = 4;
+  const html = await render(
+    "/app/run/repeated-experiment-dialog.client.tsx",
+    "RepeatedExperimentDialog",
+    {
+      draft: {
+        plan: frozenPlan,
+        targetName: "Fixture connection",
+        requestSummary: "1 message",
+        repetitionCount: 5,
+        toolBindings: [
+          {
+            tool: weather,
+            binding: {
+              toolId: "tool_weather",
+              kind: "command",
+              executorId: "weather-script",
+              label: "Local weather script",
+              grantedAt: "2026-08-04T12:00:00.000Z",
+            },
+          },
+          {
+            tool: lookup,
+            binding: {
+              toolId: "tool_lookup",
+              kind: "mock",
+              executorId: "mock_city",
+              label: "sunny default",
+              result: { content: [{ type: "text", text: "Chicago" }] },
+            },
+          },
+        ],
+        commitPreparation() {},
+      },
+      settings: {
+        streamingAvailable: true,
+        modelDiscovery: null,
+        favoriteModels: [],
+        onLoadModels() {},
+        onToggleFavoriteModel() {},
+      },
+      onCountChange() {},
+      onTurnCeilingChange() {},
+      onSettingsChange() {},
+      onCancel() {},
+      onConfirm() {},
+    },
+  );
+
+  // The listing is the point: a grant survives a project re-import, and this is
+  // the last moment before it executes without anyone being asked again.
+  assert.match(html, /Tools served automatically/);
+  assert.match(html, /get_weather/);
+  assert.match(html, /command &quot;Local weather script&quot;/);
+  assert.match(html, /lookup_city/);
+  assert.match(html, /mock &quot;sunny default&quot;/);
+  // The old copy claimed 5 calls was the exact minimum. With tools it is a
+  // floor, and the ceiling is what bounds the other end.
+  assert.match(html, /Provider calls: 5–20/);
+  assert.doesNotMatch(html, /Minimum provider calls/);
+  assert.match(html, /aria-label="Max turns per repetition"/);
   assertNoBrokenValues(html);
 });
 

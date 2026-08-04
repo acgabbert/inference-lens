@@ -67,6 +67,13 @@ function rowMetrics(state: RunState | undefined): string | undefined {
   const values = [
     metrics.totalDurationMs === undefined ? undefined : formatDuration(metrics.totalDurationMs),
     metrics.usage.totalTokens === undefined ? undefined : `${formatTokens(metrics.usage.totalTokens)} tokens`,
+    // Only once a repetition took more than the single turn every no-tool run
+    // takes: "1 turn" on every row of an ordinary experiment is noise, while a
+    // row that reads 3 turns beside one that reads 2 is the finding.
+    metrics.turnCount > 1 ? `${metrics.turnCount} turns` : undefined,
+    metrics.toolCallCount > 0
+      ? `${metrics.toolCallCount} tool ${metrics.toolCallCount === 1 ? "call" : "calls"}`
+      : undefined,
   ].filter((value): value is string => value !== undefined);
   return values.length > 0 ? values.join(" · ") : undefined;
 }
@@ -250,6 +257,10 @@ export function RepeatedExperimentWorkspace({
           {range("Per-run output tokens", aggregate.reportedOutputTokens, formatTokens)}
           {aggregate.outputTokens.reportedRuns > 0 && <div><dt>Experiment output tokens</dt><dd>{formatTokens(aggregate.outputTokens.total)} across {aggregate.outputTokens.reportedRuns} runs</dd></div>}
           {range("Output throughput", aggregate.outputTokensPerSecond, formatRate)}
+          {aggregate.turnsPerRun.max !== undefined && aggregate.turnsPerRun.max > 1
+            && range("Turns per repetition", aggregate.turnsPerRun, (value) => String(value ?? ""))}
+          {aggregate.toolCallsPerRun.max !== undefined && aggregate.toolCallsPerRun.max > 0
+            && range("Tool calls per repetition", aggregate.toolCallsPerRun, (value) => String(value ?? ""))}
           {range("Output characters", aggregate.outputCharacterCount, (value) => value?.toLocaleString() ?? "")}
         </dl>
       </details>}

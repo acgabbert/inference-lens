@@ -29,6 +29,15 @@ const mathModel = "math-output-model";
  * and a hand-typed one are distinguishable in the output itself.
  */
 const toolCallingModel = "tool-calling-model";
+/**
+ * Never stops asking for the tool, however many results it is given.
+ *
+ * A model that eventually answers cannot demonstrate a turn ceiling: the run
+ * would end on its own and the bound would never be reached. This one makes the
+ * ceiling the only thing that can stop the loop, which is the situation the
+ * cost bound exists for.
+ */
+const loopingToolModel = "looping-tool-model";
 const toolName = "get_weather";
 const toolArguments = '{"city":"Chicago"}';
 const mathAnswer = [
@@ -61,6 +70,7 @@ const server = createServer(async (request, response) => {
         { id: echoTemperatureModel, object: "model" },
         { id: mathModel, object: "model" },
         { id: toolCallingModel, object: "model" },
+        { id: loopingToolModel, object: "model" },
       ],
     }));
     return;
@@ -95,7 +105,7 @@ const server = createServer(async (request, response) => {
     return;
   }
 
-  if (body.model === toolCallingModel) {
+  if (body.model === toolCallingModel || body.model === loopingToolModel) {
     const exposed = (body.tools ?? []).map((tool) => tool?.function?.name);
     if (!exposed.includes(toolName)) {
       response.writeHead(400, { "content-type": "application/json" });
@@ -106,12 +116,12 @@ const server = createServer(async (request, response) => {
       return;
     }
     const supplied = body.messages.filter(({ role }) => role === "tool");
-    const message = supplied.length === 0
+    const message = supplied.length === 0 || body.model === loopingToolModel
       ? {
           role: "assistant",
           content: null,
           tool_calls: [{
-            id: "call_weather_1",
+            id: `call_weather_${supplied.length + 1}`,
             type: "function",
             function: { name: toolName, arguments: toolArguments },
           }],
@@ -130,13 +140,13 @@ const server = createServer(async (request, response) => {
       choices: [{
         index: 0,
         message,
-        finish_reason: supplied.length === 0 ? "tool_calls" : "stop",
+        finish_reason: message.tool_calls ? "tool_calls" : "stop",
       }],
       usage: { prompt_tokens: 5, completion_tokens: 6, total_tokens: 11 },
     }));
     console.log(
-      supplied.length === 0
-        ? `served a ${toolName} call`
+      message.tool_calls
+        ? `served a ${toolName} call (${supplied.length} result(s) so far)`
         : `served an answer from ${supplied.length} tool result(s)`,
     );
     return;

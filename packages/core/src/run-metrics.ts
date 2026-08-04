@@ -78,6 +78,13 @@ export interface RunMetrics {
   usageCoverage: RunUsageCoverage;
   outputTokensPerSecond?: number;
   turnCount: number;
+  /**
+   * Tool calls the model asked for, summed over every attempt that completed
+   * one. Summed like usage rather than counted on the last attempt only: a
+   * retried attempt's calls were still generated, and the alternative would
+   * report zero for a run that asked for a tool and then failed.
+   */
+  toolCallCount: number;
   attemptCount: number;
   retryCount: number;
   eventCount: number;
@@ -318,6 +325,15 @@ export function runMetrics(state: RunState): RunMetrics {
 
   const turnCount = state.turns.length;
   const attemptCount = attempts.length;
+  const toolCallCount = state.turns.reduce(
+    (total, turn) =>
+      total +
+      turn.attempts.reduce(
+        (turnTotal, attempt) => turnTotal + (attempt.completedToolCalls?.length ?? 0),
+        0,
+      ),
+    0,
+  );
 
   return {
     runId: state.runId,
@@ -328,6 +344,7 @@ export function runMetrics(state: RunState): RunMetrics {
     usageCoverage: usageCoverage(attempts),
     outputTokensPerSecond: throughput(generatedTokens, outputSpanMs),
     turnCount,
+    toolCallCount,
     attemptCount,
     retryCount: Math.max(0, attemptCount - turnCount),
     eventCount: state.events.length,

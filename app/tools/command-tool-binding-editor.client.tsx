@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import type { CommandToolDeclaration } from "../../packages/core/src/command-tool-catalog.ts";
 import type { ToolId } from "../../packages/core/src/run-kernel/index.ts";
+import { commandToolUnavailableMessage } from "./command-tool-availability.client.ts";
 import type { CommandToolsHandle } from "./use-command-tools.client.ts";
 
 /**
@@ -33,26 +34,6 @@ function outputSentence(declaration: CommandToolDeclaration): string {
     : "Reads stdout as plain text, so it can never report a tool error.";
 }
 
-function unavailableMessage(
-  commandTools: CommandToolsHandle,
-): string | undefined {
-  const { availability } = commandTools;
-  switch (availability.kind) {
-    case "loading":
-      return "Checking what this device can run…";
-    case "unsupported-shell":
-      return "The desktop app cannot run command tools yet. They are spawned by the local Inference Lens service, which the desktop build does not have.";
-    case "unconfigured":
-      return `This service runs no command tools. Set ${availability.variable} to a command catalog to declare some.`;
-    case "invalid":
-      return availability.problem;
-    case "unreachable":
-      return `The local service could not be asked what it can run: ${availability.message}`;
-    case "ready":
-      return undefined;
-  }
-}
-
 export function CommandToolBindingEditor({
   toolId,
   toolLabel,
@@ -64,7 +45,7 @@ export function CommandToolBindingEditor({
     : undefined;
   const [selectedId, setSelectedId] = useState("");
   const selected = commandTools.commands.find(({ id }) => id === selectedId);
-  const unavailable = unavailableMessage(commandTools);
+  const unavailable = commandToolUnavailableMessage(commandTools);
 
   return (
     <div className="tool-fields tool-command-fields">

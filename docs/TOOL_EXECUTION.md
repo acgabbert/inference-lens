@@ -136,6 +136,38 @@ separate. `ToolResolution` says where a value came from in project terms
 (`mock`, `manual`, `replay`, `live`); the execution events say what ran, under
 which binding identity, and how long it took. They are joined by `toolCallId`.
 
+## Batches
+
+A repeated experiment answers its own tool calls. Nobody is watching a batch
+call by call, so the pause that serves as the approval gate in an interactive
+run cannot exist here — which is why a batch is gated on something stricter
+before it starts: **every exposed tool must already resolve to a binding on this
+device.** A batch that cannot serve one of its tools is refused rather than
+started, because the alternative is every repetition stopping at a question
+nobody will answer.
+
+The standing grant is the consent, and the confirmation dialog is where it is
+shown rather than re-asked: it lists each exposed tool and what will serve it
+(`get_weather` → mock "sunny default"). Grants are keyed by tool ID globally and
+survive a project re-import, so this listing is the point at which a stale one
+becomes visible — while a person answers each call it is inert, but automatic
+continuation executes it.
+
+Cost is bounded by a **turn ceiling** carried in the plan (`turnCeiling`,
+defaulting to five, editable before the batch starts). It counts provider turns,
+because that is what a provider bills, and the confirmation quotes the resulting
+range rather than the old exact count: with tools, one call per repetition is a
+floor. A repetition that is still asking for tools at its ceiling fails —
+`tool_error`, that repetition only, later repetitions unaffected, consistent with
+the rest of the batch's failure isolation. So does a repetition whose executor
+fails, whose tool has no binding, or which calls a tool the plan never exposed.
+No repetition may end waiting for a human.
+
+Bindings are joined at plan time and never written into the plan, exactly as
+`runtimeTarget` is: the plan snapshots portable descriptors and the device-local
+half travels nowhere. That is what lets MCP satisfy the same gate later without
+the controller changing.
+
 ## Shell parity
 
 Mock execution works in every shell — browser, self-hosted web service, and
@@ -144,6 +176,12 @@ an Inference Lens service to spawn through: the local web app and the
 self-hosted service, not a bare browser and not yet the desktop build. The UI
 names the reason it is unavailable rather than showing an empty picker, and
 [docs/COMMAND_TOOLS.md](COMMAND_TOOLS.md) states the matrix.
+
+That statement is inherited, not restated per feature.
+`commandToolUnavailableMessage` in `app/tools/command-tool-availability.client.ts`
+is the one sentence, and the batch gate appends it when a tool cannot be served,
+so the reason a tool cannot be bound and the reason a batch cannot start can
+never drift apart.
 
 ## The core boundary
 

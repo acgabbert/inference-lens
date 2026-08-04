@@ -93,6 +93,25 @@ export function toolBindingFor(
 }
 
 /**
+ * What a result served by this binding says about where its value came from.
+ *
+ * Shared by the interactive session and the batch controller so that one run
+ * cannot describe a mocked result differently from another. Provenance is
+ * project vocabulary and stays separate from the execution evidence beside it:
+ * this answers "where did this value come from", not "what ran".
+ */
+export function toolResolutionForBinding(
+  binding: ToolBinding,
+): ToolResult["resolution"] {
+  switch (binding.kind) {
+    case "mock":
+      return { kind: "mock", ruleId: binding.executorId };
+    case "command":
+      return { kind: "live", executorId: binding.executorId };
+  }
+}
+
+/**
  * The binding that may execute this draft, or nothing when the submitted value
  * is the user's rather than the executor's.
  */
@@ -154,10 +173,7 @@ export function toolResultDraftsForState(
             prefilledText: "",
             binding,
             pendingExecutorLabel: binding.label ?? binding.executorId,
-            resolution: {
-              kind: "live" as const,
-              executorId: binding.executorId,
-            },
+            resolution: toolResolutionForBinding(binding),
           },
         ];
       }
@@ -170,7 +186,7 @@ export function toolResultDraftsForState(
           text,
           prefilledText: text,
           binding,
-          resolution: { kind: "mock" as const, ruleId: binding.executorId },
+          resolution: toolResolutionForBinding(binding),
         },
       ];
     }),
