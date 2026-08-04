@@ -230,7 +230,7 @@ export interface ToolContentProjection {
  * tool that ran and reported an error: that is a completed execution carrying
  * `isError`, because the provider is entitled to see it and reason about it.
  *
- * The mock executor can only ever produce `rejected`. The rest exist from day
+ * The mock executor can only ever produce `cancelled`. The rest exist from day
  * one so that a transport-bearing executor — a command tool, an MCP client —
  * classifies into this vocabulary rather than reshaping it.
  */

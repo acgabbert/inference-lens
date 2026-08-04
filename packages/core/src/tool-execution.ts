@@ -131,13 +131,6 @@ export function projectToolExecutionContent(
   return { content, projection: { projectedParts } };
 }
 
-/** The single text value a supplied tool result carries for this execution. */
-export function toolExecutionResultText(
-  content: readonly MessageContentPart[],
-): string {
-  return content.map(({ text }) => text).join("");
-}
-
 /**
  * What the coordinator contributes to an execution. Declared structurally so
  * the batch controller can drive an execution through the same function the

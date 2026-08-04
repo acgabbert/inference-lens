@@ -29,6 +29,20 @@ export default defineConfig({
       url: `http://127.0.0.1:${appPort}`,
       reuseExistingServer: false,
       timeout: 30_000,
+      // A developer's repo-root `.env` must not decide what the suite sees.
+      // With a server-side endpoint configured, the app provisions a server
+      // default profile and shows the "Server default connection available"
+      // notice, whose overlay silently intercepts clicks in specs that seed
+      // their own profiles. Next.js leaves an already-set process variable
+      // alone, so declaring these empty here neutralizes the file for every
+      // machine rather than only the ones without an `.env`.
+      env: {
+        INFERENCE_LENS_API_ENDPOINT: "",
+        INFERENCE_LENS_API_KEY: "",
+        INFERENCE_LENS_MODEL: "",
+        INFERENCE_LENS_N8N_BASE_URL: "",
+        INFERENCE_LENS_N8N_API_KEY: "",
+      },
     },
     {
       command: `INFERENCE_LENS_BUFFERED_PORT=${bufferedFixturePort} npm run dev:buffered-provider`,
