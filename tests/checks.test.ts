@@ -309,6 +309,7 @@ function completedWithoutOutput(): RunState {
     events: [],
     turns: [],
     exchanges: {},
+    toolExecutions: [],
     toolResults: [],
     lastSequence: 0,
     startedAt: "2026-07-31T12:00:00.000Z",

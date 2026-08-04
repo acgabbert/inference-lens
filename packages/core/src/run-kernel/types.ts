@@ -22,6 +22,7 @@ export type EntityIdKind =
   | "tool-mock"
   | "tool-call"
   | "tool-result"
+  | "tool-execution"
   | "template"
   | "template-revision"
   | "template-use"
@@ -50,6 +51,7 @@ export type ToolId = EntityId<"tool">;
 export type ToolMockId = EntityId<"tool-mock">;
 export type ToolCallId = EntityId<"tool-call">;
 export type ToolResultId = EntityId<"tool-result">;
+export type ToolExecutionId = EntityId<"tool-execution">;
 export type PromptTemplateId = EntityId<"template">;
 export type PromptTemplateRevisionId = EntityId<"template-revision">;
 export type PromptTemplateUseId = EntityId<"template-use">;
@@ -169,6 +171,130 @@ export interface ToolResult {
   content: MessageContentPart[];
   resolution: ToolResolution;
   isError?: boolean;
+}
+
+/**
+ * What an executor may hand back. This union is deliberately wider than
+ * `MessageContentPart`, which stays text-only: a tool that returns an image or
+ * a resource must be able to say so, even while the provider-neutral message
+ * vocabulary cannot carry it. Everything outside `text` is projected to visible
+ * placeholder text before it reaches a provider or a trace, and the projection
+ * is recorded rather than performed silently.
+ */
+export interface ToolTextContent {
+  type: "text";
+  text: string;
+}
+
+export interface ToolImageContent {
+  type: "image";
+  mimeType: string;
+  /** Base64, held in memory only. Raw bytes never enter a RunTrace. */
+  data: string;
+}
+
+export interface ToolAudioContent {
+  type: "audio";
+  mimeType: string;
+  data: string;
+}
+
+export interface ToolResourceContent {
+  type: "resource";
+  uri: string;
+  mimeType?: string;
+  text?: string;
+}
+
+export type ToolExecutionContentPart =
+  | ToolTextContent
+  | ToolImageContent
+  | ToolAudioContent
+  | ToolResourceContent;
+
+/** One non-text part and the placeholder text that stood in for it. */
+export interface ToolContentProjectionNote {
+  type: Exclude<ToolExecutionContentPart["type"], "text">;
+  mimeType?: string;
+  uri?: string;
+  placeholder: string;
+}
+
+export interface ToolContentProjection {
+  /** Empty when the executor returned text only. */
+  projectedParts: ToolContentProjectionNote[];
+}
+
+/**
+ * Why an execution produced no result. These are deliberately distinct from a
+ * tool that ran and reported an error: that is a completed execution carrying
+ * `isError`, because the provider is entitled to see it and reason about it.
+ *
+ * The mock executor can only ever produce `rejected`. The rest exist from day
+ * one so that a transport-bearing executor — a command tool, an MCP client —
+ * classifies into this vocabulary rather than reshaping it.
+ */
+export type ToolExecutionFailureKind =
+  | "execution_failed"
+  | "invalid_result"
+  | "timeout"
+  | "cancelled"
+  | "rejected";
+
+export interface ToolExecutionFailure {
+  kind: ToolExecutionFailureKind;
+  message: string;
+  /** Secret-free detail the executor chose to surface. */
+  details?: JsonValue;
+}
+
+export type ToolExecutionOutcome =
+  | {
+      status: "completed";
+      content: ToolExecutionContentPart[];
+      isError: boolean;
+    }
+  | { status: "failed"; failure: ToolExecutionFailure };
+
+export type ToolExecutorKind = "mock" | "command" | "mcp";
+
+/**
+ * The only part of a binding that may be persisted. A binding holds device-local
+ * executor configuration — an executable path, an endpoint, a credential
+ * reference — and none of it belongs in a project, a plan, a result, or a
+ * trace. What does belong is the answer to "what served this call", which is
+ * exactly this shape.
+ */
+export interface ToolExecutorIdentity {
+  kind: ToolExecutorKind;
+  /** Stable and secret-free; safe to show beside a result and to serialize. */
+  executorId: string;
+  /** Human-readable binding name, when the binding has one. */
+  label?: string;
+}
+
+export type ToolExecutionStatus = "executing" | "completed" | "failed";
+
+/**
+ * Execution evidence for one tool call, reduced from the event stream the same
+ * way turns and exchanges are. A call may hold more than one record: a failed
+ * execution does not forbid another attempt.
+ */
+export interface ToolExecutionRecord {
+  id: ToolExecutionId;
+  turnId: TurnId;
+  toolCallId: ToolCallId;
+  executor: ToolExecutorIdentity;
+  status: ToolExecutionStatus;
+  startedAt: string;
+  startedElapsedMs: number;
+  endedAt?: string;
+  durationMs?: number;
+  /** The provider-visible text projection, present once completed. */
+  content?: MessageContentPart[];
+  projection?: ToolContentProjection;
+  isError?: boolean;
+  failure?: ToolExecutionFailure;
 }
 
 export interface RunPlan {
@@ -386,6 +512,29 @@ export type RunEvent = RunEventMetadata &
         source?: EventSource;
       } & AttemptEvent)
     | {
+        type: "tool.execution_started";
+        turnId: TurnId;
+        executionId: ToolExecutionId;
+        toolCallId: ToolCallId;
+        executor: ToolExecutorIdentity;
+      }
+    | {
+        type: "tool.execution_completed";
+        turnId: TurnId;
+        executionId: ToolExecutionId;
+        toolCallId: ToolCallId;
+        content: MessageContentPart[];
+        projection: ToolContentProjection;
+        isError: boolean;
+      }
+    | {
+        type: "tool.execution_failed";
+        turnId: TurnId;
+        executionId: ToolExecutionId;
+        toolCallId: ToolCallId;
+        failure: ToolExecutionFailure;
+      }
+    | {
         type: "tool.result_supplied";
         turnId: TurnId;
         result: ToolResult;
@@ -478,6 +627,7 @@ export interface RunState {
   events: RunEvent[];
   turns: ModelTurnState[];
   exchanges: Record<ExchangeId, ExchangeTrace>;
+  toolExecutions: ToolExecutionRecord[];
   toolResults: ToolResult[];
   lastSequence: number;
   startedAt?: string;
@@ -485,13 +635,14 @@ export interface RunState {
 }
 
 export interface RunTrace {
-  schemaVersion: 1 | 2 | 3 | 4 | 5;
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6;
   runId: RunId;
   input: ResolvedRunInput;
   status: TerminalRunStatus;
   events: RunEvent[];
   turns: ModelTurnState[];
   exchanges: Record<ExchangeId, ExchangeTrace>;
+  toolExecutions: ToolExecutionRecord[];
   toolResults: ToolResult[];
   startedAt: string;
   endedAt: string;

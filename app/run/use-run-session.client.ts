@@ -4,7 +4,9 @@ import { useMemo, useRef, useState } from "react";
 import type { CredentialSelection, ProviderTurnTransport } from "../../packages/contracts/src";
 import type { RichInferenceRequest } from "../../packages/core/src/types";
 import { createEntityId, createRunTrace, RunCoordinator, transcriptFromRunState } from "../../packages/core/src/run-kernel";
-import type { ProviderExecution, ResolvedRunInput, RunState, RunTrace, ToolDefinition, ToolResult } from "../../packages/core/src/run-kernel";
+import type { ProviderExecution, ResolvedRunInput, RunState, RunTrace, ToolCall, ToolDefinition, ToolResult } from "../../packages/core/src/run-kernel";
+import { executeToolCall } from "../../packages/core/src/tool-execution";
+import { createMockToolExecutor } from "../../packages/core/src/mock-tool-executor";
 import { parseRunTraceJson, runStateFromTrace, traceFileName } from "../../packages/core/src/run-trace";
 import { randomUUID } from "../../packages/core/src/random-id";
 import { recordDiagnostic, redactDiagnosticValue, startDiagnosticCapture } from "../diagnostics.client";
@@ -14,7 +16,7 @@ import { exportRunTraceFile, runTraceWorkspaceLocation, runTraceWorkspacePath, s
 import type { ProjectWorkspaceHandle } from "../project-workspace.client";
 import type { TraceStorageStatus } from "../response-output.client";
 import type { ParentTraceState } from "../run-trace-panel.client";
-import { isTerminalRunState, toolResultDraftsForState } from "./run-session-state.client";
+import { executableBinding, isTerminalRunState, pendingToolCalls, toolResultDraftsForState } from "./run-session-state.client";
 import type { ToolResultDraft } from "./run-session-state.client";
 
 type TraceOrigin = {
@@ -135,18 +137,89 @@ export function useRunSession(options: UseRunSessionOptions) {
     } finally { recordDiagnostic(capture, "client.stream_finished"); if (requestGenerationRef.current === generation) { abortRef.current = null; setIsRequestActive(false); } }
   }
 
+  /**
+   * Resolves one waiting call and supplies its result.
+   *
+   * Results are supplied one at a time rather than batched, so that a failed
+   * execution leaves the calls that already succeeded resolved. Batching would
+   * force those calls to execute a second time on the next attempt, which the
+   * run model correctly refuses.
+   */
+  async function resolveToolCall(
+    coordinator: RunCoordinator,
+    entry: { call: ToolCall; tool?: ToolDefinition },
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    const draft = toolResultDrafts[entry.call.id];
+    if (!draft) throw new Error(`Tool call ${entry.call.id} has no result.`);
+    const binding = entry.tool ? executableBinding(draft) : undefined;
+    let result: ToolResult;
+    if (binding) {
+      const attempt = await executeToolCall(
+        coordinator,
+        createMockToolExecutor(binding),
+        binding,
+        { toolCallId: entry.call.id, tool: entry.tool!, call: entry.call },
+        { signal },
+      );
+      replaceState(coordinator.state);
+      const execution = coordinator.state.toolExecutions.find(
+        ({ id }) => id === attempt.executionId,
+      );
+      if (attempt.outcome.status === "failed" || !execution?.content) {
+        // The call stays pending. Dropping the binding turns the draft back
+        // into an ordinary manual one, so a second attempt supplies the user's
+        // value instead of re-running an executor that just failed.
+        setToolResultDrafts((current) => {
+          const previous = current[entry.call.id];
+          return previous
+            ? { ...current, [entry.call.id]: { ...previous, binding: undefined, resolution: { kind: "manual" } } }
+            : current;
+        });
+        options.onError(
+          `${entry.call.name} could not be executed: ${
+            attempt.outcome.status === "failed"
+              ? attempt.outcome.failure.message
+              : "The executor returned no content."
+          } Supply a result by hand to continue.`,
+        );
+        return false;
+      }
+      result = {
+        id: createEntityId("tool-result", randomUUID()),
+        toolCallId: entry.call.id,
+        content: execution.content,
+        resolution: draft.resolution,
+        ...(execution.isError ? { isError: true } : {}),
+      };
+    } else {
+      result = {
+        id: createEntityId("tool-result", randomUUID()),
+        toolCallId: entry.call.id,
+        content: [{ type: "text", text: draft.text }],
+        resolution: { kind: "manual" },
+        ...(entry.tool ? {} : { isError: true }),
+      };
+    }
+    coordinator.supplyToolResults([result]);
+    replaceState(coordinator.state);
+    return true;
+  }
+
   async function continueRun(): Promise<void> {
     const coordinator = coordinatorRef.current;
     if (!coordinator || coordinator.state.status.kind !== "awaiting_tool_results") return;
-    const waiting = coordinator.state.status;
-    const calls = coordinator.state.turns.find(({ turnId }) => turnId === waiting.turnId)?.attempts.at(-1)?.completedToolCalls ?? [];
-    const byId = new Set(calls.map(({ id }) => id));
-    const results: ToolResult[] = waiting.pendingToolCallIds.map((toolCallId) => {
-      const draft = toolResultDrafts[toolCallId]; if (!draft) throw new Error(`Tool call ${toolCallId} has no result.`);
-      return { id: createEntityId("tool-result", randomUUID()), toolCallId, content: [{ type: "text", text: draft.text }], resolution: draft.resolution, ...(byId.has(toolCallId) ? {} : { isError: true }) };
-    });
-    coordinator.supplyToolResults(results); const command = coordinator.continue(); replaceState(coordinator.state); setToolResultDrafts({});
     const generation = ++requestGenerationRef.current; const controller = new AbortController(); abortRef.current = controller; options.onShowResponse(); setIsRequestActive(true);
+    try {
+      for (const entry of pendingToolCalls(coordinator.state, options.tools)) {
+        if (requestGenerationRef.current !== generation) return;
+        if (!(await resolveToolCall(coordinator, entry, controller.signal))) return;
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) { coordinator.fail({ code: "internal_error", message: error instanceof Error ? error.message : "A tool result could not be supplied." }); replaceState(coordinator.state); }
+      return;
+    } finally { if (requestGenerationRef.current === generation && coordinator.state.status.kind === "awaiting_tool_results") { abortRef.current = null; setIsRequestActive(false); } }
+    const command = coordinator.continue(); replaceState(coordinator.state); setToolResultDrafts({});
     const capture = diagnosticRef.current ?? startDiagnosticCapture(requestRef.current!); diagnosticRef.current = capture;
     try { await execute(command.execution, controller, generation, capture); }
     catch (error) { if (!controller.signal.aborted) { coordinator.fail({ code: "internal_error", message: error instanceof Error ? error.message : "Request failed." }); replaceState(coordinator.state); } }

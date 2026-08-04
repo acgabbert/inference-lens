@@ -4,6 +4,7 @@ import test from "node:test";
 import { createRunState } from "../packages/core/src/run-kernel/index.ts";
 import type { RunState } from "../packages/core/src/run-kernel/index.ts";
 import {
+  executableBinding,
   isRetryableRunState,
   isTerminalRunState,
   toolResultDraftsForState,
@@ -62,8 +63,27 @@ test("derives manual and mocked drafts only for pending calls", () => {
       ? { id: "tool-mock_weather", toolId: id, name: "weather", enabled: true, match: { kind: "always" }, result: { content: [{ type: "text", text: "sunny" }] } }
       : undefined,
   );
+  // The binding is what makes the submitted value an execution, so an edited
+  // draft has to stop offering one — otherwise the trace would record that a
+  // mock returned text the user typed.
+  const mocked = drafts["tool-call_mock"]!;
+  assert.equal(executableBinding(mocked)?.executorId, "tool-mock_weather");
+  assert.equal(executableBinding({ ...mocked, text: "rainy" }), undefined);
+  assert.equal(executableBinding(drafts["tool-call_manual"]!), undefined);
+
   assert.deepEqual(drafts, {
-    "tool-call_mock": { text: "sunny", resolution: { kind: "mock", ruleId: "tool-mock_weather" } },
+    "tool-call_mock": {
+      text: "sunny",
+      prefilledText: "sunny",
+      binding: {
+        toolId: "tool_weather",
+        kind: "mock",
+        executorId: "tool-mock_weather",
+        label: "weather",
+        result: { content: [{ type: "text", text: "sunny" }] },
+      },
+      resolution: { kind: "mock", ruleId: "tool-mock_weather" },
+    },
     "tool-call_manual": { text: "", resolution: { kind: "manual" } },
   });
 });

@@ -10,6 +10,8 @@ import type {
   ToolArguments,
   ToolCall,
   ToolCallAccumulator,
+  ToolCallId,
+  ToolExecutionRecord,
   ToolResult,
   ExchangeId,
 } from "./types.ts";
@@ -28,6 +30,7 @@ export function createRunState(runId: RunId): RunState {
     events: [],
     turns: [],
     exchanges: {},
+    toolExecutions: [],
     toolResults: [],
     lastSequence: -1,
   };
@@ -188,6 +191,70 @@ function pendingToolCallIds(
   return calls
     .map(({ id }) => id)
     .filter((toolCallId) => !resolved.has(toolCallId));
+}
+
+/**
+ * An execution may only start for a call the run is actually waiting on. The
+ * guard is shared by all three execution events so that a trace claiming an
+ * execution outside a tool pause is rejected rather than displayed.
+ */
+function assertAwaitingCall(
+  state: RunState,
+  event: { turnId: TurnId; toolCallId: ToolCallId },
+): void {
+  if (
+    state.status.kind !== "awaiting_tool_results" ||
+    state.status.turnId !== event.turnId
+  ) {
+    throw new RunInvariantError(
+      "Tool executions can only run for the waiting turn.",
+    );
+  }
+  if (!state.status.pendingToolCallIds.includes(event.toolCallId)) {
+    throw new RunInvariantError(
+      `Tool call ${event.toolCallId} is not awaiting a result.`,
+    );
+  }
+}
+
+function findExecution(
+  state: RunState,
+  event: { executionId: ToolExecutionRecord["id"]; toolCallId: ToolCallId },
+): ToolExecutionRecord {
+  const execution = state.toolExecutions.find(
+    ({ id }) => id === event.executionId,
+  );
+  if (!execution) {
+    throw new RunInvariantError(`Unknown tool execution ${event.executionId}.`);
+  }
+  if (execution.toolCallId !== event.toolCallId) {
+    throw new RunInvariantError(
+      `Tool execution ${event.executionId} belongs to ${execution.toolCallId}.`,
+    );
+  }
+  if (execution.status !== "executing") {
+    throw new RunInvariantError(
+      `Tool execution ${event.executionId} has already finished.`,
+    );
+  }
+  return execution;
+}
+
+function settleExecution(
+  state: RunState,
+  executionId: ToolExecutionRecord["id"],
+  event: { occurredAt: string; elapsedMs: number },
+  settle: (execution: ToolExecutionRecord) => ToolExecutionRecord,
+): ToolExecutionRecord[] {
+  return state.toolExecutions.map((execution) =>
+    execution.id === executionId
+      ? settle({
+          ...execution,
+          endedAt: event.occurredAt,
+          durationMs: Math.max(0, event.elapsedMs - execution.startedElapsedMs),
+        })
+      : execution,
+  );
 }
 
 export function reduceRunEvent(state: RunState, event: RunEvent): RunState {
@@ -561,6 +628,82 @@ export function reduceRunEvent(state: RunState, event: RunEvent): RunState {
       break;
     }
 
+    case "tool.execution_started": {
+      assertAwaitingCall(state, event);
+      if (state.toolExecutions.some(({ id }) => id === event.executionId)) {
+        throw new RunInvariantError(
+          `Duplicate tool execution id ${event.executionId}.`,
+        );
+      }
+      if (
+        state.toolExecutions.some(
+          (execution) =>
+            execution.toolCallId === event.toolCallId &&
+            execution.status !== "failed",
+        )
+      ) {
+        throw new RunInvariantError(
+          `Tool call ${event.toolCallId} is already being executed.`,
+        );
+      }
+      next = {
+        ...state,
+        toolExecutions: [
+          ...state.toolExecutions,
+          {
+            id: event.executionId,
+            turnId: event.turnId,
+            toolCallId: event.toolCallId,
+            executor: event.executor,
+            status: "executing",
+            startedAt: event.occurredAt,
+            startedElapsedMs: event.elapsedMs,
+          },
+        ],
+      };
+      break;
+    }
+
+    case "tool.execution_completed": {
+      assertAwaitingCall(state, event);
+      findExecution(state, event);
+      next = {
+        ...state,
+        toolExecutions: settleExecution(
+          state,
+          event.executionId,
+          event,
+          (execution) => ({
+            ...execution,
+            status: "completed",
+            content: event.content,
+            projection: event.projection,
+            isError: event.isError,
+          }),
+        ),
+      };
+      break;
+    }
+
+    case "tool.execution_failed": {
+      assertAwaitingCall(state, event);
+      findExecution(state, event);
+      next = {
+        ...state,
+        toolExecutions: settleExecution(
+          state,
+          event.executionId,
+          event,
+          (execution) => ({
+            ...execution,
+            status: "failed",
+            failure: event.failure,
+          }),
+        ),
+      };
+      break;
+    }
+
     case "tool.result_supplied": {
       if (
         state.status.kind !== "awaiting_tool_results" ||
@@ -584,6 +727,17 @@ export function reduceRunEvent(state: RunState, event: RunEvent): RunState {
       ) {
         throw new RunInvariantError(
           `Tool call ${event.result.toolCallId} already has a result.`,
+        );
+      }
+      if (
+        state.toolExecutions.some(
+          (execution) =>
+            execution.toolCallId === event.result.toolCallId &&
+            execution.status === "executing",
+        )
+      ) {
+        throw new RunInvariantError(
+          `Tool call ${event.result.toolCallId} is still executing.`,
         );
       }
       const toolResults = [...state.toolResults, event.result];
@@ -689,13 +843,14 @@ export function createRunTrace(
     );
   }
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     runId: state.runId,
     input: state.input,
     status: state.status,
     events: state.events,
     turns: state.turns,
     exchanges: state.exchanges,
+    toolExecutions: state.toolExecutions,
     toolResults: state.toolResults,
     startedAt: state.startedAt,
     endedAt: state.endedAt,

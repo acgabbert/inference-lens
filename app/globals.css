@@ -394,7 +394,9 @@ pre,
 .evaluation-regex-dialect > summary > span,
 .saved-prompt-list legend,
 .evaluation-preview-case,
-.evaluation-preflight-region h5 {
+.evaluation-preflight-region h5,
+.tool-call-provenance,
+.tool-call-projection {
   font-size: var(--type-metadata);
 }
 
@@ -3940,6 +3942,20 @@ textarea {
 
 .tool-call-card textarea {
   margin-top: 6px;
+}
+
+/* Provenance sits under the result, not beside the name: what produced a value
+   is read after the value, and it must stay legible when the card is narrow. */
+.tool-call-provenance,
+.tool-call-projection {
+  margin: 0;
+  padding: 0 12px 12px;
+  color: var(--text-muted);
+}
+
+.tool-call-projection {
+  padding-top: 0;
+  color: var(--warning);
 }
 
 .continue-tool-run {

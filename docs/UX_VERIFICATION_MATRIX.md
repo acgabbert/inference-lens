@@ -108,6 +108,7 @@ blocker rather than defaulting to the API key.
 | B4 | Retry, failure, cancel | Flaky (4010) | First attempt surfaces the 503 truthfully; retry streams `Recovered on retry.` Per-attempt labels are human-readable, not raw UUIDs. Cancel mid-stream leaves an honest terminal state. Reset the fixture between passes. |
 | B5 | Tool-result continuation | Echo (4012) | Response and inspector stay usable across turns. The echoed content confirms the serialized roles and ordering actually sent. |
 | B6 | Markdown while streaming | Markdown | Incremental parsing holds across chunk boundaries, and the finished transcript renders the same answer the same way. |
+| B7 | Tool-execution provenance | Buffered (`tool-calling-model`), project tool with an enabled mock | The run still pauses and still shows the prefilled draft; no provenance line appears until the draft is submitted. After **Supply results and continue**, the finished transcript reads `Tool result for get_weather · Returned by mock “<mock name>” in <n> ms.` Editing the draft first makes it read `· Supplied by hand.` instead, and the answer echoes the typed text. Committed as `tests/e2e/tool-execution-evidence.spec.ts`. |
 
 ## C. Inspection and reuse
 

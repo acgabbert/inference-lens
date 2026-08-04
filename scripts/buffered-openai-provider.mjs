@@ -18,6 +18,19 @@ const echoTemperatureModel = "echo-temperature-model";
  * captured verbatim rather than run through the ordinary inline parser.
  */
 const mathModel = "math-output-model";
+/**
+ * Emits one tool call, then answers using whatever result came back.
+ *
+ * Two things make this checkable rather than merely plausible. It refuses a
+ * request that does not actually carry `get_weather` in `tools`, so a run where
+ * the tool never reached the wire fails here instead of passing against an
+ * empty manifest. And the second turn echoes the tool message verbatim, so the
+ * final answer states exactly which executor produced the result — a mocked run
+ * and a hand-typed one are distinguishable in the output itself.
+ */
+const toolCallingModel = "tool-calling-model";
+const toolName = "get_weather";
+const toolArguments = '{"city":"Chicago"}';
 const mathAnswer = [
   String.raw`Given \( x_1 + y_2 \), we get:`,
   "",
@@ -47,6 +60,7 @@ const server = createServer(async (request, response) => {
         { id: providerDefaultModel, object: "model" },
         { id: echoTemperatureModel, object: "model" },
         { id: mathModel, object: "model" },
+        { id: toolCallingModel, object: "model" },
       ],
     }));
     return;
@@ -78,6 +92,53 @@ const server = createServer(async (request, response) => {
     response.end(JSON.stringify({
       error: "Expected the temperature field to be omitted.",
     }));
+    return;
+  }
+
+  if (body.model === toolCallingModel) {
+    const exposed = (body.tools ?? []).map((tool) => tool?.function?.name);
+    if (!exposed.includes(toolName)) {
+      response.writeHead(400, { "content-type": "application/json" });
+      response.end(JSON.stringify({
+        error: `Expected ${toolName} in tools; received ${JSON.stringify(exposed)}.`,
+      }));
+      console.log(`refused a tool-calling request without ${toolName}`);
+      return;
+    }
+    const supplied = body.messages.filter(({ role }) => role === "tool");
+    const message = supplied.length === 0
+      ? {
+          role: "assistant",
+          content: null,
+          tool_calls: [{
+            id: "call_weather_1",
+            type: "function",
+            function: { name: toolName, arguments: toolArguments },
+          }],
+        }
+      : {
+          role: "assistant",
+          content: `Chicago report: ${supplied.map(({ content }) => content).join(" ")}`,
+        };
+    response.writeHead(200, {
+      "content-type": "application/json",
+      "cache-control": "no-store",
+    });
+    response.end(JSON.stringify({
+      id: "chatcmpl-tool-calling-fixture",
+      object: "chat.completion",
+      choices: [{
+        index: 0,
+        message,
+        finish_reason: supplied.length === 0 ? "tool_calls" : "stop",
+      }],
+      usage: { prompt_tokens: 5, completion_tokens: 6, total_tokens: 11 },
+    }));
+    console.log(
+      supplied.length === 0
+        ? `served a ${toolName} call`
+        : `served an answer from ${supplied.length} tool result(s)`,
+    );
     return;
   }
 

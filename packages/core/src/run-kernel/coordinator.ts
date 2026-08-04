@@ -2,6 +2,7 @@ import { createRunEventFactory } from "./events.ts";
 import { createRunState, reduceRunEvent } from "./reducer.ts";
 import type {
   ConversationMessage,
+  MessageContentPart,
   ProviderExecution,
   ProviderTransportEvent,
   ProviderTurnInput,
@@ -10,6 +11,11 @@ import type {
   RunEvent,
   RunState,
   ToolCall,
+  ToolCallId,
+  ToolContentProjection,
+  ToolExecutionFailure,
+  ToolExecutionId,
+  ToolExecutorIdentity,
   ToolResult,
 } from "./types.ts";
 import { createEntityId } from "./types.ts";
@@ -244,6 +250,78 @@ export class RunCoordinator {
         message: "Provider turn ended before assistant completion.",
       }),
     ];
+  }
+
+  /**
+   * Opens execution evidence for one waiting call. The coordinator does not run
+   * the executor: callers await the executor and report its outcome back, the
+   * same division of labor as a provider turn. The execution ID is derived so
+   * that identical runs produce identical traces.
+   */
+  startToolExecution(input: {
+    toolCallId: ToolCallId;
+    executor: ToolExecutorIdentity;
+  }): { event: RunEvent; executionId: ToolExecutionId } {
+    const status = this.stateValue.status;
+    if (status.kind !== "awaiting_tool_results") {
+      throw new Error("This run is not awaiting tool results.");
+    }
+    const suffix = input.toolCallId.slice("tool-call_".length);
+    const previous = this.stateValue.toolExecutions.filter(
+      ({ toolCallId }) => toolCallId === input.toolCallId,
+    ).length;
+    const executionId = createEntityId(
+      "tool-execution",
+      `${suffix}-${previous + 1}`,
+    );
+    const event = this.apply(
+      this.eventFactory.create({
+        type: "tool.execution_started",
+        turnId: status.turnId,
+        executionId,
+        toolCallId: input.toolCallId,
+        executor: input.executor,
+      }),
+    );
+    return { event, executionId };
+  }
+
+  completeToolExecution(input: {
+    executionId: ToolExecutionId;
+    toolCallId: ToolCallId;
+    content: MessageContentPart[];
+    projection: ToolContentProjection;
+    isError: boolean;
+  }): RunEvent {
+    return this.apply(
+      this.eventFactory.create({
+        type: "tool.execution_completed",
+        turnId: this.awaitingTurnId(),
+        ...input,
+      }),
+    );
+  }
+
+  failToolExecution(input: {
+    executionId: ToolExecutionId;
+    toolCallId: ToolCallId;
+    failure: ToolExecutionFailure;
+  }): RunEvent {
+    return this.apply(
+      this.eventFactory.create({
+        type: "tool.execution_failed",
+        turnId: this.awaitingTurnId(),
+        ...input,
+      }),
+    );
+  }
+
+  private awaitingTurnId() {
+    const status = this.stateValue.status;
+    if (status.kind !== "awaiting_tool_results") {
+      throw new Error("This run is not awaiting tool results.");
+    }
+    return status.turnId;
   }
 
   supplyToolResults(results: ToolResult[]): RunEvent[] {
