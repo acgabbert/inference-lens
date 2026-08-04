@@ -11,6 +11,7 @@ import {
   importProject,
   seedProfile,
   waitForHydration,
+  openMode,
 } from "./support";
 
 const PROJECT_NAME = "Saved prompt preflight fixture";
@@ -68,7 +69,7 @@ async function openEvaluations(
   await page.goto("/");
   await waitForHydration(page);
   await importProject(page, project, expectedProjectName);
-  await page.getByRole("tab", { name: /Evaluations/ }).click();
+  await openMode(page, "Evaluations");
 }
 
 /** Creates a revision from the named saved prompt and waits for the notice. */
@@ -123,9 +124,10 @@ test("authoring from a saved prompt shows the exact resolved input it will run",
   await expected.fill("Buffered fixture");
   await expected.blur();
 
-  // The preview is the response pane's, not the editor's.
+  // The preview is its own region beside the editor, not part of the editor.
   const preview = page.locator(".evaluation-preview-scroll");
-  await expect(page.locator(".result").getByRole("heading", { name: "Provider input" }))
+  await expect(page.getByRole("complementary", { name: "Provider input" })
+    .getByRole("heading", { name: "Provider input" }))
     .toBeVisible();
 
   // Region 1 — revision provenance: open by default now that the pane has the
@@ -254,7 +256,7 @@ test("an empty saved-prompt picker opens the Prompt library", async ({ page }) =
 
   // The picker owner lives above the tab content. Returning to Evaluations must
   // not resurrect the dialog after its empty-state action navigated away.
-  await page.getByRole("tab", { name: /Evaluations/ }).click();
+  await openMode(page, "Evaluations");
   await expect(page.getByRole("dialog", { name: "Start from saved prompt" })).toHaveCount(0);
 });
 
@@ -268,14 +270,18 @@ test("the resolved-input regions stay inside a phone viewport", async ({ page })
   await page.getByRole("button", { name: "+ Add case", exact: true }).click();
   await page.getByLabel("Untitled case topic").fill("database migrations");
 
-  // On a phone the panes are tabs, and the response tab names itself Preview
-  // while an evaluation is being authored rather than showing a run status.
-  const previewTab = page.locator(".mobile-workbench-tabs").getByRole("button", { name: "Preview" });
-  await expect(previewTab).toBeVisible();
-  await previewTab.click();
-
+  // On a phone the Evaluations mode stacks: the provider input reads below the
+  // editor rather than borrowing a workbench tab from Compose, so it is reached
+  // by scrolling to it and not by a pane switch that no longer exists.
+  const previewPane = page.getByRole("complementary", { name: "Provider input" });
   const preview = page.locator(".evaluation-preview-scroll");
+  await previewPane.scrollIntoViewIfNeeded();
   await expect(preview.getByRole("region", { name: /^Resolved values for / })).toBeVisible();
+
+  // The mode strip must survive this width: it is the only way out of a mode.
+  await expect(page.getByRole("navigation", { name: "Application mode" })
+    .getByRole("button", { name: "Compose" }))
+    .toBeVisible();
 
   const layout = await page.evaluate(() => ({
     bodyWidth: document.body.scrollWidth,

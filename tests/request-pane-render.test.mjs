@@ -118,31 +118,6 @@ function requestComposer(overrides = {}) {
       clearImportNotice: noop,
     },
     project: null,
-    evaluations: {
-      project: null,
-      selectedCaseIds: new Set(),
-      repetitions: 1,
-      candidates: [],
-      diagnostics: [],
-      selectSuite: noop,
-      selectRevision: noop,
-      setCaseSelected: noop,
-      focusCase: noop,
-      setRepetitions: noop,
-      createSuite: noop,
-      renameSuite: noop,
-      deleteSuite: noop,
-      addInput: noop,
-      renameInput: noop,
-      deleteInput: noop,
-      addCase: noop,
-      updateCase: noop,
-      deleteCase: noop,
-      addCheck: noop,
-      updateCheck: noop,
-      deleteCheck: noop,
-    },
-    evaluationExecution: { storage: "unsaved", running: false, onStart: noop },
     settings: {
       model: "fixture-model",
       temperature: 0.7,
@@ -163,7 +138,6 @@ function requestComposer(overrides = {}) {
     onOpenToolLibrary: noop,
     onSaveParentTrace: noop,
     onDiscardPendingBranch: noop,
-    onActionContextChange: noop,
     onDestinationHandled: noop,
     ...overrides,
   };
@@ -177,7 +151,8 @@ test("the extracted composer renders request snapshots without a project", async
   );
 
   assert.match(html, /Request editor/);
-  assert.match(html, /Evaluations/);
+  // Evaluations are a mode, not a tab of the composer.
+  assert.doesNotMatch(html, /Evaluations/);
   assert.match(html, /Profile default/);
   assert.match(html, /Composer fixture message/);
   assert.match(html, /Open request composer in focus mode/);
@@ -194,7 +169,7 @@ test("the extracted composer renders request snapshots without a project", async
   assert.match(html, /No tools sent with this request/);
 });
 
-test("the topbar hides ordinary run actions in evaluation context", async () => {
+test("the topbar hides ordinary run actions outside the Compose mode", async () => {
   const noop = () => {};
   const profile = { id: "fixture", name: "Fixture", endpoint: "https://example.test/v1", model: "fixture-model" };
   const html = await render("/app/topbar.client.tsx", "Topbar", {
@@ -202,7 +177,8 @@ test("the topbar hides ordinary run actions in evaluation context", async () => 
     hasCredential: false, projectDirty: false, folderAccessAvailable: false,
     hasDiagnosticCapture: false, hasRunTrace: false, hasProjectWorkspace: false,
     runHistoryBlocked: false, isRequestActive: false, isExperimentActive: false,
-    actionContext: "evaluation", awaitingToolResults: false, retryableFailure: false,
+    mode: "evaluations", onModeChange: noop,
+    awaitingToolResults: false, retryableFailure: false,
     runDisabled: false, repeatDisabled: false,
     onChooseProfile: noop, onOpenConnections: noop, onNewProject: noop,
     onOpenProject: noop, onSaveProject: noop, onImportProject: noop,

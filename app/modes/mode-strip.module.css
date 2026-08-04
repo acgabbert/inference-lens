@@ -1,0 +1,94 @@
+/*
+ * Scoped to the mode shell. New structure introduced by the UX overhaul is
+ * styled here rather than in `app/globals.css`, so the shell's layout cannot
+ * be reached by the global cascade and does not add to it. Existing feature
+ * styles are left where they are rather than rewritten to chase this.
+ *
+ * The control styling itself is not new: this deliberately matches the
+ * `.pane-tabs` segmented control the app already uses, because the overhaul
+ * changes information architecture, not the visual language.
+ */
+
+.strip {
+  min-width: 0;
+  padding: 3px;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border-default);
+  border-radius: 9px;
+  background: var(--surface-inset);
+}
+
+.mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--type-control);
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.mode:hover {
+  color: var(--text-primary);
+}
+
+.mode[aria-current="page"] {
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-control);
+}
+
+/*
+ * Results moved out of the pane the user was looking at, so a batch running in
+ * another mode has to say so somewhere that does not expire. This dot is that
+ * marker. It is not the completion affordance — that is a notification-system
+ * concern and arrives with it.
+ */
+.busy {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--warning);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .busy {
+    animation: mode-strip-pulse 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes mode-strip-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/*
+ * Below 880px the topbar wraps and the strip takes the whole second row, so it
+ * stretches rather than sitting off to one side. 760px is the workbench's
+ * mobile breakpoint and the strip has to survive it intact — the modes are the
+ * only way out of a mode, so nothing here is allowed to truncate.
+ */
+@media (max-width: 880px) {
+  .strip {
+    order: 3;
+    flex-basis: 100%;
+    justify-content: stretch;
+  }
+
+  .mode {
+    flex: 1 1 0;
+    justify-content: center;
+    padding-inline: 9px;
+  }
+}

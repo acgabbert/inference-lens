@@ -14,6 +14,7 @@ import {
   openInferenceSettings,
   seedProfile,
   waitForHydration,
+  openMode,
 } from "./support";
 
 const REPETITIONS = 3;
@@ -166,7 +167,7 @@ test("the evaluation finished count advances mid-batch, not only at the end", as
   await page.goto("/");
   await waitForHydration(page);
   await importProject(page, project, PROJECT_NAME);
-  await page.getByRole("tab", { name: /Evaluations/ }).click();
+  await openMode(page, "Evaluations");
 
   await authorRunnableSuite(page);
   await (await openInferenceSettings(page, "Evaluation execution settings"))

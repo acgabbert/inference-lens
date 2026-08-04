@@ -465,14 +465,20 @@ label.file-button {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Three regions since the mode shell landed: brand, mode strip, run controls.
+   The strip styles itself (app/modes/mode-strip.module.css); what belongs here
+   is only the room the topbar makes for it, including the wrap to a second row
+   once the three cannot share one. */
 .topbar {
-  height: 72px;
+  min-height: 72px;
   padding: 0 24px;
   border-bottom: 1px solid var(--border-default);
   background: var(--surface-translucent);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
+  flex-wrap: nowrap;
   position: sticky;
   top: 0;
   z-index: 10;
@@ -6242,12 +6248,23 @@ main {
 }
 
 @media (max-width: 880px) {
+  /* Brand, mode strip, and run controls stop fitting on one line here. The
+     strip takes the second row rather than being truncated: it is the app's
+     navigation, and a mode you cannot see is a mode you cannot leave. */
   .topbar {
     padding-inline: 16px;
+    padding-block: 8px;
+    row-gap: 8px;
+    flex-wrap: wrap;
   }
 
   .brand p {
     display: none;
+  }
+
+  .brand {
+    min-width: 0;
+    flex: 1 1 auto;
   }
 
   .target-control {
@@ -6305,9 +6322,8 @@ main {
   }
 
   .topbar {
-    height: 64px;
     min-height: 64px;
-    padding: 0 12px;
+    padding-inline: 12px;
     align-items: center;
   }
 

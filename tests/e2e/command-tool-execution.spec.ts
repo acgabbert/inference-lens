@@ -163,7 +163,7 @@ test("a granted command answers the call, and the trace says which one", async (
   await openFixtureProject(page);
   await allowCommand(page, "Local weather script");
 
-  await page.getByRole("button", { name: /^Run/ }).first().click();
+  await page.getByRole("button", { name: /^Run request/ }).first().click();
 
   const card = page.locator(".tool-call-card");
   await expect(card).toContainText("get_weather");
@@ -218,7 +218,7 @@ test("a command that hangs times out, and the call stays answerable by hand", as
   await openFixtureProject(page);
   await allowCommand(page, "Weather script that hangs");
 
-  await page.getByRole("button", { name: /^Run/ }).first().click();
+  await page.getByRole("button", { name: /^Run request/ }).first().click();
   await expect(page.locator(".tool-call-card")).toBeVisible();
   await page.getByRole("button", { name: "Supply results and continue" }).click();
 

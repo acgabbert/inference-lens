@@ -19,7 +19,7 @@ import { createRunTrace } from "../../packages/core/src/run-kernel";
 import type { ResolvedRunInput } from "../../packages/core/src/run-kernel/types";
 import { serializeRunTrace } from "../../packages/core/src/run-trace";
 import { OPENAI_COMPATIBLE_CAPABILITIES } from "../../packages/core/src/types";
-import { stubProjectDirectory } from "./support";
+import { stubProjectDirectory, openMode } from "./support";
 
 /**
  * A project folder holding one evaluation suite and one finished execution of
@@ -161,7 +161,7 @@ async function openFixtureProject(page: Page): Promise<void> {
   await page.getByLabel("Project menu").click();
   await page.getByRole("button", { name: "Open project…" }).click();
   await expect(page.getByText(/Inspect every model run · Suite history fixture/)).toBeVisible();
-  await page.getByRole("tab", { name: /Evaluations/ }).click();
+  await openMode(page, "Evaluations");
 }
 
 /** Asserts `mark`'s rendered centre coincides with `box`'s, within a pixel. */

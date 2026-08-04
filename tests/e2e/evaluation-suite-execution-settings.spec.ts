@@ -13,6 +13,7 @@ import {
   openInferenceSettings,
   seedProfile,
   waitForHydration,
+  openMode,
 } from "./support";
 
 const PROJECT_NAME = "Evaluation execution fixture";
@@ -76,7 +77,7 @@ async function openMappedEvaluations(page: Page, project: ProjectFile): Promise<
   await page.goto("/");
   await waitForHydration(page);
   await importProject(page, project, PROJECT_NAME);
-  await page.getByRole("tab", { name: /Evaluations/ }).click();
+  await openMode(page, "Evaluations");
 }
 
 async function useSavedPrompt(page: Page, name: string): Promise<void> {
@@ -108,13 +109,14 @@ test("using a saved prompt moves the evaluation input and leaves Messages alone"
 
   // The composer is the whole point of the contract: before PR10a this flow
   // rewrote it. Its message must still be the project's own authored one.
+  await openMode(page, "Compose");
   await page.getByRole("tab", { name: /Messages/ }).click();
   const firstMessage = page.getByLabel("Message 1 content");
   await expect(firstMessage).toHaveValue("Hello");
   await expect(page.locator(".composer")).not.toContainText("Explain {{topic}}");
 
   // And returning finds the suite's own input still pinned.
-  await page.getByRole("tab", { name: /Evaluations/ }).click();
+  await openMode(page, "Evaluations");
   await expect(editor.locator(".evaluation-input-summary")).toContainText("Question · “Explain");
 });
 
@@ -159,6 +161,7 @@ test("suite execution settings reach the provider without changing Messages sett
   // trace moves the evaluation into the request pane, so return before asking
   // the composer anything.
   await page.getByRole("button", { name: "Back to evaluation" }).click();
+  await openMode(page, "Compose");
   await page.getByRole("tab", { name: /Messages/ }).click();
   await openInferenceSettings(page);
   await expect(page.locator(".temperature-control output")).toHaveText("0.4");
@@ -209,10 +212,11 @@ test("the execution slider sends the temperature it shows, and a favorite fills 
 
   // Favorites are the one list the field can offer honestly: they are ids this
   // device pinned, not a claim about what this target serves.
+  await openMode(page, "Compose");
   await page.getByRole("tab", { name: /Messages/ }).click();
   await (await openInferenceSettings(page)).getByLabel("Model", { exact: true }).click();
   await page.getByRole("button", { name: `Favorite ${ECHO_TEMPERATURE_MODEL}` }).click();
-  await page.getByRole("tab", { name: /Evaluations/ }).click();
+  await openMode(page, "Evaluations");
   await openInferenceSettings(page, "Evaluation execution settings");
 
   await model.fill("echo");
@@ -383,6 +387,7 @@ test("the suite's settings panel lays its controls out like the composer's", asy
   const suite = await settingsLayout(
     await openInferenceSettings(page, "Evaluation execution settings"),
   );
+  await openMode(page, "Compose");
   await page.getByRole("tab", { name: /Messages/ }).click();
   const composer = await settingsLayout(await openInferenceSettings(page));
 

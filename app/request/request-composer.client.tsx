@@ -16,14 +16,10 @@ import type {
 } from "../run-readiness.client";
 import type { ProjectTemplatesHandle } from "../templates/use-project-templates.client";
 import type { CommandToolsHandle } from "../tools/use-command-tools.client";
-import { EvaluationSuiteEditor } from "../evaluations/evaluation-suite-editor.client";
-import type { EvaluationSuiteExecutionActions } from "../evaluations/evaluation-suite-editor.client";
-import type { EvaluationSuiteHistoryHandle } from "../evaluations/evaluation-suite-history.client";
-import type { EvaluationSuiteAuthoringHandle } from "../evaluations/use-evaluation-suite-authoring.client";
 import { RequestSettings } from "./request-settings.client";
 import type { RequestSettingsProps } from "./request-settings.client";
 
-type RequestTab = "messages" | "templates" | "tools" | "evaluations";
+type RequestTab = "messages" | "templates" | "tools";
 
 type RequestPreview =
   | { body: unknown; messages: ConversationMessage[] }
@@ -52,11 +48,7 @@ export interface RequestComposerProps {
   /** The command-tool feature owner, for the tools tab's binding surface. */
   commandTools: CommandToolsHandle;
   templates: ProjectTemplatesHandle;
-  evaluations: EvaluationSuiteAuthoringHandle;
-  evaluationExecution: EvaluationSuiteExecutionActions;
-  /** Saved executions of the selected suite. Absent without a project folder. */
-  evaluationHistory?: EvaluationSuiteHistoryHandle;
-  project: Pick<ProjectFile, "projectId" | "promptTemplates" | "connectionRequirements" | "defaults" | "externalImports"> | null;
+  project:Pick<ProjectFile, "projectId" | "promptTemplates" | "connectionRequirements" | "defaults" | "externalImports"> | null;
   settings: RequestSettingsProps & {
     toolsEnabled: boolean;
   };
@@ -77,16 +69,12 @@ export interface RequestComposerProps {
   onOpenToolLibrary(): void;
   onSaveParentTrace(): void;
   onDiscardPendingBranch(): void;
-  onActionContextChange(context: "ordinary" | "evaluation"): void;
 }
 
 export function RequestComposer({
   requestDraft,
   commandTools,
   templates,
-  evaluations,
-  evaluationExecution,
-  evaluationHistory,
   project,
   settings,
   readiness,
@@ -102,7 +90,6 @@ export function RequestComposer({
   onOpenToolLibrary,
   onSaveParentTrace,
   onDiscardPendingBranch,
-  onActionContextChange,
 }: RequestComposerProps) {
   const [tab, setTab] = useState<RequestTab>("messages");
   // Collapsed by default: the settings summary says what the next run will
@@ -120,11 +107,6 @@ export function RequestComposer({
   const selectedToolCount = selectedProjectToolCount + requestDraft.requestTools.length;
   // A newly imported snapshot is always shown before its notice is dismissed.
   const activeTab = templates.importNotice ? "messages" : tab;
-
-  useEffect(() => {
-    onActionContextChange(activeTab === "evaluations" ? "evaluation" : "ordinary");
-    return () => onActionContextChange("ordinary");
-  }, [activeTab, onActionContextChange]);
 
   // Focus mode belongs to the messages tab. Leaving it drops the state here
   // rather than at each navigation call site, so a tab change from anywhere —
@@ -214,7 +196,6 @@ export function RequestComposer({
             { id: "messages", label: "Messages", count: requestDraft.messages.length },
             { id: "templates", label: "Prompt library", count: project?.promptTemplates.filter(({ archivedAt }) => !archivedAt).length ?? 0 },
             { id: "tools", label: "Tools", count: selectedToolCount },
-            { id: "evaluations", label: "Evaluations", count: evaluations.project?.evaluationSuites.length ?? 0 },
           ]}
         />
         {activeTab === "messages" ? (
@@ -236,9 +217,7 @@ export function RequestComposer({
           </button>
         ) : null}
       </div>
-      {activeTab !== "evaluations" && (
-        <RunReadinessNotice {...(readiness ? { readiness } : {})} onAction={routeReadinessAction} />
-      )}
+      <RunReadinessNotice {...(readiness ? { readiness } : {})} onAction={routeReadinessAction} />
       {templates.importNotice && (
         <div className="workbench-notice" role="status">
           <div className="workbench-notice-copy">
@@ -339,16 +318,8 @@ export function RequestComposer({
           </>
         ) : activeTab === "templates" ? (
           <ProjectTemplatesPane key={project?.projectId ?? "unsaved-project"} templates={project?.promptTemplates ?? []} connectionRequirements={project?.connectionRequirements ?? []} defaultConnectionRequirementId={project?.defaults.target.connectionRequirementId} usageCounts={templates.templateUsageCounts} itemCount={templates.activeProjectRevision?.items.length ?? requestDraft.messages.length} n8nImportDisabledReason={n8nImportDisabledReason} onOpenN8nImport={onOpenN8nImport} onCreate={templates.createProjectTemplate} onSave={templates.saveProjectTemplate} onRename={templates.renameProjectTemplate} onArchive={templates.archiveProjectTemplate} onRestore={templates.restoreProjectTemplate} onInsert={(...args) => { templates.insertProjectTemplate(...args); setTab("messages"); }} />
-        ) : activeTab === "tools" ? (
-          <ToolsPane tools={requestDraft.tools} requestTools={requestDraft.requestTools} enabledToolIds={requestDraft.enabledToolIds} activeProfileName={activeProfile.name} toolsEnabled={settings.toolsEnabled} onOpenLibrary={onOpenToolLibrary} onOpenConnectionSettings={onOpenConnectionSettings} onAddTool={requestDraft.addTool} onRemoveTool={requestDraft.removeTool} onMoveTool={requestDraft.moveTool} onUpdateTool={requestDraft.updateTool} onSetToolEnabled={requestDraft.setToolEnabled} mockForTool={requestDraft.mockForTool} onUpdateToolMock={requestDraft.updateToolMock} onRemoveRequestTool={requestDraft.removeRequestTool} commandTools={commandTools} />
         ) : (
-          <EvaluationSuiteEditor
-            authoring={evaluations}
-            execution={evaluationExecution}
-            {...(evaluationHistory ? { history: evaluationHistory } : {})}
-            modelFavorites={{ models: settings.favoriteModels, onToggle: settings.onToggleFavoriteModel }}
-            onOpenTemplates={() => setTab("templates")}
-          />
+          <ToolsPane tools={requestDraft.tools} requestTools={requestDraft.requestTools} enabledToolIds={requestDraft.enabledToolIds} activeProfileName={activeProfile.name} toolsEnabled={settings.toolsEnabled} onOpenLibrary={onOpenToolLibrary} onOpenConnectionSettings={onOpenConnectionSettings} onAddTool={requestDraft.addTool} onRemoveTool={requestDraft.removeTool} onMoveTool={requestDraft.moveTool} onUpdateTool={requestDraft.updateTool} onSetToolEnabled={requestDraft.setToolEnabled} mockForTool={requestDraft.mockForTool} onUpdateToolMock={requestDraft.updateToolMock} onRemoveRequestTool={requestDraft.removeRequestTool} commandTools={commandTools} />
         )}
       </div>
     </section>

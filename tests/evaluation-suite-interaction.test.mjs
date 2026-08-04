@@ -30,3 +30,33 @@ test("evaluation focus mode opens, traps the surface, and closes with Escape", a
     assert.equal(document.body.style.overflow, "");
   } finally { await act(async () => root.unmount()); container.remove(); await server.close(); }
 });
+
+/**
+ * The prompt library is in the Compose mode now, so the editor cannot select a
+ * tab to reach it. It closes its picker and reports the navigation upward; the
+ * route is what crosses the mode boundary.
+ */
+test("an empty saved-prompt picker closes and asks its owner for the prompt library", async () => {
+  const server = await createServer({ configFile: false, cacheDir: uniqueViteCacheDir(), root: process.cwd(), plugins: [react()], server: { middlewareMode: true, hmr: false, ws: false }, logLevel: "warn" });
+  const [{ createElement, act }, { createRoot }, { EvaluationSuiteEditor }] = await Promise.all([import("react"), import("react-dom/client"), server.ssrLoadModule("/app/evaluations/evaluation-suite-editor.client.tsx")]);
+  const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
+  let pickerClosed = false;
+  let templatesRequested = 0;
+  try {
+    const authoring = evaluationFixture();
+    authoring.savedPromptCandidates = [];
+    authoring.savedPromptPickerOpen = true;
+    authoring.closeSavedPromptPicker = () => { pickerClosed = true; };
+    await act(async () => root.render(createElement(EvaluationSuiteEditor, {
+      authoring,
+      onOpenTemplates: () => { templatesRequested += 1; },
+    })));
+    const openTemplates = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "Open Templates",
+    );
+    assert.ok(openTemplates);
+    await act(async () => openTemplates.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true })));
+    assert.equal(pickerClosed, true);
+    assert.equal(templatesRequested, 1);
+  } finally { await act(async () => root.unmount()); container.remove(); await server.close(); }
+});

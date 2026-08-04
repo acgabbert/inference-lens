@@ -60,7 +60,6 @@ import { RunTracePanel } from "./run-trace-panel.client";
 import { traceFileName } from "../packages/core/src/run-trace";
 import { RunHistoryDrawer } from "./run-history-drawer.client";
 import type { EvaluationSuiteHistoryHandle } from "./evaluations/evaluation-suite-history.client";
-import { EvaluationComparisonWorkspace } from "./evaluations/evaluation-comparison-workspace.client";
 import { useEvaluationBaselines } from "./evaluations/use-evaluation-baselines.client";
 import type {
   ProjectExperimentHistoryItem,
@@ -86,7 +85,6 @@ import { commandToolUnavailableMessage } from "./tools/command-tool-availability
 import { listExperimentToolBindings } from "./run/experiment-tool-bindings.client";
 import { useRepeatedExperimentSession } from "./run/use-repeated-experiment-session.client";
 import { RepeatedExperimentDialog } from "./run/repeated-experiment-dialog.client";
-import { RepeatedExperimentWorkspace } from "./run/repeated-experiment-workspace.client";
 import { useProjectTemplates } from "./templates/use-project-templates.client";
 import { RequestComposer } from "./request/request-composer.client";
 import { useEvaluationSuiteAuthoring } from "./evaluations/use-evaluation-suite-authoring.client";
@@ -96,9 +94,10 @@ import {
 } from "./evaluations/evaluation-start.client";
 import { useEvaluationExecutionSession } from "./evaluations/use-evaluation-execution-session.client";
 import { EvaluationStartDialog } from "./evaluations/evaluation-start-dialog.client";
-import { EvaluationResultsWorkspace } from "./evaluations/evaluation-results-workspace.client";
-import { EvaluationPreviewWorkspace } from "./evaluations/evaluation-case-preview.client";
 import type { EvaluationSuiteExecutionActions } from "./evaluations/evaluation-suite-editor.client";
+import type { AppMode } from "./modes/app-mode";
+import { EvaluationsMode } from "./modes/evaluations-mode.client";
+import { RunsMode } from "./modes/runs-mode.client";
 
 const inferenceTransport = createInferenceTransport();
 
@@ -234,12 +233,19 @@ function HomeContent() {
   // costs a full parse of every artifact in the project folder, so neither
   // surface being open means no listing happens at all.
   const [suiteHistoryRequested, setSuiteHistoryRequested] = useState(false);
+  // Separate from the latch above: the listing stays cached once requested, but
+  // the disclosure can be closed again, and it has to survive the Evaluations
+  // mode unmounting while another mode is on screen.
+  const [suiteHistoryExpanded, setSuiteHistoryExpanded] = useState(false);
   const [savedRunVersion, setSavedRunVersion] = useState(0);
   const clearTemplateOverridesRef = useRef<() => void>(() => {});
   const [workbenchView, setWorkbenchView] =
     useState<WorkbenchView>("request");
-  const [requestActionContext, setRequestActionContext] =
-    useState<"ordinary" | "evaluation">("ordinary");
+  // Navigation state, deliberately transient: a reload lands on Compose rather
+  // than reopening onto a project that may no longer hold what was selected.
+  // Each mode's sub-state lives in the feature hooks above this line, so
+  // switching modes and back is lossless for as long as the app is open.
+  const [mode, setMode] = useState<AppMode>("compose");
   const [traceOpen, setTraceOpen] = useState(false);
   const [outputFollowing, setOutputFollowing] = useState(true);
   const [markdownPreview, setMarkdownPreview] = useState(true);
@@ -492,6 +498,7 @@ function HomeContent() {
     clearPendingBranch: () => setBranchContext(null),
     requestConfirmation: setConfirmation,
     onImportApplied() {
+      setMode("compose");
       setWorkbenchView("request");
       setN8nImportOpen(false);
     },
@@ -500,10 +507,6 @@ function HomeContent() {
     project: projectFile,
     adoptProjectMutation: project.adoptProjectMutation,
     requestConfirmation: setConfirmation,
-    // Pointing the editor at a different suite, revision, or case means the
-    // finished results in the response pane describe something else, so they
-    // give the pane back to the provider-input preview.
-    onRetarget: () => releaseFinishedExperiment(),
   });
   const selectedEvaluationSuite = projectFile?.evaluationSuites.find(
     ({ id }) => id === evaluationAuthoring.suiteId,
@@ -855,7 +858,9 @@ function HomeContent() {
       clearRequestTools();
       runSession.reset();
       setTraceOpen(false);
-      setWorkbenchView("response");
+      // A batch's results are read in the Runs mode, so the batch opens there
+      // rather than displacing whatever the current pane was showing.
+      setMode("runs");
     });
   }
 
@@ -886,7 +891,7 @@ function HomeContent() {
     runSession.reset();
     repeatedExperiment.clear();
     setTraceOpen(false);
-    setWorkbenchView("response");
+    setMode("runs");
     void evaluationExecution.confirm(projectWorkspace);
   }
 
@@ -914,6 +919,8 @@ function HomeContent() {
     });
     repeatedExperiment.clear();
     evaluationExecution.clear();
+    // A single saved run reads in the response pane, which belongs to Compose.
+    setMode("compose");
     setRunHistoryOpen(false);
   }
   async function openHistoryExperiment(item: ProjectExperimentHistoryItem): Promise<void> {
@@ -928,7 +935,7 @@ function HomeContent() {
       evaluationExecution.clear();
     }
     runSession.reset();
-    setWorkbenchView("response");
+    setMode("runs");
     setRunHistoryOpen(false);
   }
   /**
@@ -939,7 +946,12 @@ function HomeContent() {
    */
   function dismissFinishedExperiment(kind: "evaluation" | "repeated"): void {
     const session = kind === "evaluation" ? evaluationExecution : repeatedExperiment;
-    const clear = session.clear;
+    // Releasing a batch leaves the Runs mode with nothing to show, so it also
+    // returns to wherever the batch was started from.
+    const clear = () => {
+      session.clear();
+      setMode(kind === "evaluation" ? "evaluations" : "compose");
+    };
     if (!session.execution || session.execution.storage === "durable") {
       clear();
       return;
@@ -952,18 +964,6 @@ function HomeContent() {
       destructive: true,
       onConfirm: clear,
     });
-  }
-  /**
-   * The same release, driven by authoring rather than by a button, so a
-   * re-target cannot discard unsaved evidence on a path the explicit dismiss
-   * would have confirmed. A running batch keeps the pane either way.
-   */
-  function releaseFinishedExperiment(): void {
-    if (evaluationExecution.execution && !evaluationExecution.isRunning) {
-      dismissFinishedExperiment("evaluation");
-    } else if (repeatedExperiment.execution && !repeatedExperiment.isRunning) {
-      dismissFinishedExperiment("repeated");
-    }
   }
   const runReachedTerminalStatus = Boolean(
     runState &&
@@ -1025,6 +1025,9 @@ function HomeContent() {
     if (destination.surface === "connections") {
       setConnectionDrawerOpen(true);
     } else {
+      // Every request-surface destination names a control in the composer, so
+      // the routing has to cross the mode boundary before it can focus one.
+      setMode("compose");
       setWorkbenchView("request");
     }
   }
@@ -1101,6 +1104,8 @@ function HomeContent() {
         ...(evaluationAuthoring.revisionId
           ? { currentRevisionId: evaluationAuthoring.revisionId }
           : {}),
+        expanded: suiteHistoryExpanded,
+        onExpandedChange: setSuiteHistoryExpanded,
         onExpand: () => {
           setSuiteHistoryRequested(true);
           evaluationBaselines.load();
@@ -1115,24 +1120,16 @@ function HomeContent() {
           onUnpin: (baselineId) => evaluationBaselines.unpin(baselineId),
           onCompare: async (baseline, candidate) => {
             await evaluationBaselines.compare(baseline, candidate);
-            // A comparison claims the response pane, so anything else holding
-            // it is released the same way opening a saved execution does.
+            // A comparison is a results surface, so anything else holding the
+            // Runs mode is released the same way opening a saved execution does.
             repeatedExperiment.clear();
             evaluationExecution.clear();
             runSession.reset();
-            setWorkbenchView("response");
+            setMode("runs");
           },
         },
       }
     : undefined;
-
-  // The provider-input preview only claims the response pane while an
-  // evaluation is being authored: a live or reopened execution keeps its
-  // results workspace, which is the same thing the pane branch below decides.
-  const evaluationPreviewInResponsePane =
-    requestActionContext === "evaluation" &&
-    !(evaluationExecution.execution && !evaluationExecution.execution.selectedRunId) &&
-    !(repeatedExperiment.execution && !repeatedExperiment.execution.selectedRunId);
 
   const onContextualRunShortcut = useEffectEvent((event: KeyboardEvent) => {
     if (!(event.metaKey || event.ctrlKey) || event.key !== "Enter") return;
@@ -1145,10 +1142,13 @@ function HomeContent() {
       repeatedExperiment.isRunning ||
       evaluationExecution.isRunning
     ) return;
-    if (requestActionContext === "evaluation") {
+    // Each mode's primary action is what the shortcut fires. Runs has none:
+    // it is where results are read, not where work is started.
+    if (mode === "evaluations") {
       if (!evaluationStartDisabledReason) startEvaluation();
       return;
     }
+    if (mode !== "compose") return;
     if (readiness?.blocked) return;
     if (runState?.status.kind === "paused" && runState.status.reason === "attempt_failed") {
       void retryRun();
@@ -1168,6 +1168,55 @@ function HomeContent() {
     }
     setProjectCreationMode("save");
   }
+
+  // The single-run response and its trace panel are one surface with one
+  // owner, mounted by Compose and reused by the Runs mode when a run is
+  // selected out of a batch. Composing them once here is what keeps the app
+  // from growing a second response implementation.
+  const responseSurface = (
+    <section className="result">
+      <ResponseOutput
+        output={output}
+        reasoning={reasoning}
+        status={status}
+        runState={runState}
+        isRequestActive={isRequestActive}
+        markdownPreview={markdownPreview}
+        outputFollowing={outputFollowing}
+        outputScrollRef={outputScrollRef}
+        completedToolCalls={completedToolCalls}
+        toolResultDrafts={toolResultDrafts}
+        traceStorage={traceStorage}
+        transcript={transcript}
+        nonBranchableMessageIds={nonBranchableMessageIds}
+        branchedFrom={visibleBranchProvenance}
+        emptyState={responseEmptyState}
+        onMarkdownPreviewChange={setMarkdownPreview}
+        onOutputScroll={updateOutputFollowState}
+        onJumpToLatest={jumpToLatestOutput}
+        onToolResultDraftChange={runSession.updateToolResultDraft}
+        onContinue={() => void continueRun()}
+        onRetry={() => void retryRun()}
+        onSaveTrace={() => void runSession.exportTrace()}
+        onEditFromHere={editFromHere}
+        onEmptyStateAction={() => {
+          if (responseEmptyState.action) {
+            resolveReadiness(responseEmptyState.action.destination);
+          }
+        }}
+      />
+    </section>
+  );
+  const traceSurface = (
+    <RunTracePanel
+      open={traceOpen}
+      runState={runState}
+      branchedFrom={visibleBranchProvenance}
+      parentTrace={parentTrace}
+      onLoadParentTrace={() => void runSession.loadParentTrace()}
+      onOpenChange={setTraceOpen}
+    />
+  );
 
   return (
     <main
@@ -1195,7 +1244,9 @@ function HomeContent() {
         runHistoryBlocked={(Boolean(runState) && !runReachedTerminalStatus) || repeatedExperiment.isRunning || evaluationExecution.isRunning}
         isRequestActive={isRequestActive}
         isExperimentActive={repeatedExperiment.isRunning || evaluationExecution.isRunning}
-        actionContext={requestActionContext}
+        mode={mode}
+        onModeChange={setMode}
+        busyModes={repeatedExperiment.isRunning || evaluationExecution.isRunning ? ["runs"] : []}
         awaitingToolResults={runState?.status.kind === "awaiting_tool_results"}
         retryableFailure={
           runState?.status.kind === "paused" &&
@@ -1372,44 +1423,20 @@ function HomeContent() {
         onSelectExperiment={(item) => openHistoryExperiment(item)}
       />
 
+      {mode === "compose" ? (
       <WorkbenchShell
         view={workbenchView}
         onViewChange={setWorkbenchView}
         inspectAvailable={Boolean(runState && runState.status.kind !== "not_started")}
-        {...(evaluationPreviewInResponsePane
-          ? {}
-          : { responseStatus: repeatedExperiment.isRunning || evaluationExecution.isRunning ? "running" : status })}
-        responseLabel={evaluationPreviewInResponsePane ? "Preview" : "Response"}
-        requestLabel={evaluationExecution.execution?.selectedRunId ? "Evaluation" : repeatedExperiment.execution?.selectedRunId ? "Experiment" : "Request"}
+        responseStatus={status}
         request={
-        evaluationExecution.execution?.selectedRunId ? <EvaluationResultsWorkspace
-          execution={evaluationExecution.execution}
-          placement="request"
-          onStop={evaluationExecution.cancel}
-          onOpenTrace={evaluationExecution.openTrace}
-          onReturnToEvaluation={() => {
-            evaluationExecution.returnToEvaluation();
-            setWorkbenchView("request");
-          }}
-        /> : repeatedExperiment.execution?.selectedRunId ? <RepeatedExperimentWorkspace
-          execution={repeatedExperiment.execution}
-          placement="request"
-          onStop={repeatedExperiment.cancel}
-          onOpenTrace={repeatedExperiment.openTrace}
-          onReturnToRequest={() => {
-            repeatedExperiment.returnToRequest();
-            setWorkbenchView("request");
-          }}
-        /> : <RequestComposer
+        <RequestComposer
           requestDraft={{
             messages, tools, requestTools, enabledToolIds, addTool, removeTool, moveTool, updateTool,
             setToolEnabled, mockForTool, updateToolMock, removeRequestTool,
           }}
           commandTools={commandTools}
           templates={projectTemplates}
-          evaluations={evaluationAuthoring}
-          evaluationExecution={evaluationExecutionActions}
-          {...(evaluationHistory ? { evaluationHistory } : {})}
           project={projectFile}
           settings={{
             model: activeModel,
@@ -1450,82 +1477,85 @@ function HomeContent() {
           onOpenToolLibrary={() => setToolRegistryOpen(true)}
           onSaveParentTrace={() => void runSession.exportTrace()}
           onDiscardPendingBranch={() => setBranchContext(null)}
-          onActionContextChange={setRequestActionContext}
         />
         }
-        response={
-        <section className="result">
-          {evaluationBaselines.comparison && !evaluationExecution.execution && !repeatedExperiment.execution ? <EvaluationComparisonWorkspace
-            loaded={evaluationBaselines.comparison}
-            onDismiss={evaluationBaselines.clearComparison}
-            onOpenTrace={(side, runId) => {
-              const trace = side.traces.get(runId);
-              if (!trace || !projectWorkspace) return;
-              runSession.adoptTrace(trace, {
-                workspace: projectWorkspace,
-                fileName: side.traceFileNames.get(runId) ?? traceFileName(runId),
-                source: "experiment",
-              });
-              setTraceOpen(true);
-              setWorkbenchView("inspect");
-            }}
-          /> : evaluationExecution.execution && !evaluationExecution.execution.selectedRunId ? <EvaluationResultsWorkspace
-            execution={evaluationExecution.execution}
-            onStop={evaluationExecution.cancel}
-            onOpenTrace={evaluationExecution.openTrace}
-            onDismiss={() => dismissFinishedExperiment("evaluation")}
-          /> : repeatedExperiment.execution && !repeatedExperiment.execution.selectedRunId ? <RepeatedExperimentWorkspace
-            execution={repeatedExperiment.execution}
-            onStop={repeatedExperiment.cancel}
-            onOpenTrace={repeatedExperiment.openTrace}
-            onDismiss={() => dismissFinishedExperiment("repeated")}
-          /> : evaluationPreviewInResponsePane ? <EvaluationPreviewWorkspace
-            authoring={evaluationAuthoring}
-            execution={evaluationExecutionActions}
-          /> : <ResponseOutput
-            output={output}
-            reasoning={reasoning}
-            status={status}
-            runState={runState}
-            isRequestActive={isRequestActive}
-            markdownPreview={markdownPreview}
-            outputFollowing={outputFollowing}
-            outputScrollRef={outputScrollRef}
-            completedToolCalls={completedToolCalls}
-            toolResultDrafts={toolResultDrafts}
-            traceStorage={traceStorage}
-            transcript={transcript}
-            nonBranchableMessageIds={nonBranchableMessageIds}
-            branchedFrom={visibleBranchProvenance}
-            emptyState={responseEmptyState}
-            onMarkdownPreviewChange={setMarkdownPreview}
-            onOutputScroll={updateOutputFollowState}
-            onJumpToLatest={jumpToLatestOutput}
-            onToolResultDraftChange={runSession.updateToolResultDraft}
-            onContinue={() => void continueRun()}
-            onRetry={() => void retryRun()}
-            onSaveTrace={() => void runSession.exportTrace()}
-            onEditFromHere={editFromHere}
-            onEmptyStateAction={() => {
-              if (responseEmptyState.action) {
-                resolveReadiness(responseEmptyState.action.destination);
-              }
-            }}
-          />}
-
-        </section>
-        }
-        inspect={
-          <RunTracePanel
-            open={traceOpen}
-            runState={runState}
-            branchedFrom={visibleBranchProvenance}
-            parentTrace={parentTrace}
-            onLoadParentTrace={() => void runSession.loadParentTrace()}
-            onOpenChange={setTraceOpen}
-          />
-        }
+        response={responseSurface}
+        inspect={traceSurface}
       />
+      ) : mode === "evaluations" ? (
+        <EvaluationsMode
+          authoring={evaluationAuthoring}
+          execution={evaluationExecutionActions}
+          {...(evaluationHistory ? { history: evaluationHistory } : {})}
+          modelFavorites={{
+            models: activeProfile.favoriteModels ?? [],
+            onToggle: (model) =>
+              updateActiveProfile({
+                favoriteModels: toggleFavoriteModel(activeProfile.favoriteModels, model),
+              }),
+          }}
+          onOpenTemplates={() =>
+            resolveReadiness({ surface: "request", tab: "templates", control: "prompt-library" })
+          }
+        />
+      ) : (
+        <RunsMode
+          {...(evaluationBaselines.comparison && !evaluationExecution.execution && !repeatedExperiment.execution
+            ? {
+                comparison: {
+                  loaded: evaluationBaselines.comparison,
+                  // Same rule as a dismissed batch: releasing the last thing in
+                  // the Runs mode returns to where it was started from.
+                  onDismiss: () => {
+                    evaluationBaselines.clearComparison();
+                    setMode("evaluations");
+                  },
+                  onOpenTrace: (side, runId) => {
+                    const trace = side.traces.get(runId);
+                    if (!trace || !projectWorkspace) return;
+                    runSession.adoptTrace(trace, {
+                      workspace: projectWorkspace,
+                      fileName: side.traceFileNames.get(runId) ?? traceFileName(runId),
+                      source: "experiment",
+                    });
+                    setTraceOpen(true);
+                    setMode("compose");
+                    setWorkbenchView("inspect");
+                  },
+                },
+              }
+            : {})}
+          {...(evaluationExecution.execution
+            ? {
+                evaluation: {
+                  execution: evaluationExecution.execution,
+                  onStop: evaluationExecution.cancel,
+                  onOpenTrace: evaluationExecution.openTrace,
+                  onReturnToList: evaluationExecution.returnToEvaluation,
+                  onDismiss: () => dismissFinishedExperiment("evaluation"),
+                },
+              }
+            : {})}
+          {...(repeatedExperiment.execution
+            ? {
+                repeated: {
+                  execution: repeatedExperiment.execution,
+                  onStop: repeatedExperiment.cancel,
+                  onOpenTrace: repeatedExperiment.openTrace,
+                  onReturnToList: repeatedExperiment.returnToRequest,
+                  onDismiss: () => dismissFinishedExperiment("repeated"),
+                },
+              }
+            : {})}
+          detail={
+            <>
+              {responseSurface}
+              {traceSurface}
+            </>
+          }
+          onStartSomething={() => setMode("evaluations")}
+        />
+      )}
       {toolRegistryOpen && (
         <ToolRegistryModal
           open

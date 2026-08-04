@@ -21,6 +21,7 @@ import {
   importProject,
   seedProfile,
   waitForHydration,
+  openMode,
 } from "./support";
 
 /**
@@ -95,19 +96,20 @@ async function openEvaluations(page: Page, width = 1440): Promise<void> {
   await page.goto("/");
   await waitForHydration(page);
   await importProject(page, projectWithTwoCases(), "Preview pane fixture");
-  await page.getByRole("tab", { name: /Evaluations/ }).click();
+  await openMode(page, "Evaluations");
 }
 
-test("the response pane shows the focused case's provider input while authoring", async ({ page }) => {
+test("the evaluation mode shows the focused case's provider input while authoring", async ({ page }) => {
   await openEvaluations(page);
-  const result = page.locator(".result");
+  const previewPane = page.getByRole("complementary", { name: "Provider input" });
   const preview = page.locator(".evaluation-preview-scroll");
 
-  // The pane belongs to the evaluation, not to a single run: "Live output" is
-  // the wrong occupant while there is nothing running.
-  await expect(result.getByRole("heading", { name: "Provider input" })).toBeVisible();
-  await expect(result).not.toContainText("Live output");
-  await expect(result.locator(".evaluation-preview-case")).toContainText("migrations");
+  // The preview has its own region beside the editor now. It no longer evicts
+  // the response pane to be seen, so the run output is not merely hidden behind
+  // it — Compose still owns it, and this mode does not render it at all.
+  await expect(previewPane.getByRole("heading", { name: "Provider input" })).toBeVisible();
+  await expect(page.locator(".result")).toHaveCount(0);
+  await expect(previewPane.locator(".evaluation-preview-case")).toContainText("migrations");
   await expect(preview).toContainText("Explain database migrations to engineers.");
 
   // Provenance and execution settings are readable without opening anything.
@@ -141,22 +143,31 @@ test("focusing another case re-targets the pane", async ({ page }) => {
   await expect(preview).toContainText("Explain database migrations to engineers.");
 
   await page.locator(".evaluation-case-rail").getByRole("button", { name: "replication" }).click();
-  await expect(page.locator(".result .evaluation-preview-case")).toContainText("replication");
+  await expect(
+    page.getByRole("complementary", { name: "Provider input" })
+      .locator(".evaluation-preview-case"),
+  ).toContainText("replication");
   await expect(preview.getByRole("region", { name: "Provider input for replication" }))
     .toContainText("Explain database replication to engineers.");
   await expect(preview).not.toContainText("database migrations");
 });
 
-test("leaving the Evaluations tab returns the pane to the run output", async ({ page }) => {
+/**
+ * The mode switch has to be lossless in both directions: Compose gets its
+ * response pane back untouched, and returning to Evaluations finds the same
+ * case still focused rather than a reset editor.
+ */
+test("leaving the Evaluations mode returns to the run output, and coming back keeps the case", async ({ page }) => {
   await openEvaluations(page);
-  await expect(page.locator(".result").getByRole("heading", { name: "Provider input" }))
-    .toBeVisible();
+  await page.locator(".evaluation-case-rail").getByRole("button", { name: "replication" }).click();
+  const previewPane = page.getByRole("complementary", { name: "Provider input" });
+  await expect(previewPane.locator(".evaluation-preview-case")).toContainText("replication");
 
-  await page.getByRole("tab", { name: /Messages/ }).click();
+  await openMode(page, "Compose");
   await expect(page.locator(".result")).toContainText("Live output");
   await expect(page.locator(".evaluation-preview-scroll")).toHaveCount(0);
 
-  await page.getByRole("tab", { name: /Evaluations/ }).click();
-  await expect(page.locator(".result").getByRole("heading", { name: "Provider input" }))
-    .toBeVisible();
+  await openMode(page, "Evaluations");
+  await expect(previewPane.getByRole("heading", { name: "Provider input" })).toBeVisible();
+  await expect(previewPane.locator(".evaluation-preview-case")).toContainText("replication");
 });

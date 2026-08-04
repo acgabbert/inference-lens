@@ -20,7 +20,7 @@ import { createRunTrace } from "../../packages/core/src/run-kernel";
 import type { ResolvedRunInput } from "../../packages/core/src/run-kernel/types";
 import { serializeRunTrace } from "../../packages/core/src/run-trace";
 import { OPENAI_COMPATIBLE_CAPABILITIES } from "../../packages/core/src/types";
-import { stubProjectDirectory } from "./support";
+import { stubProjectDirectory, openMode } from "./support";
 
 /**
  * Three executions of one two-case suite, chosen so every number on the
@@ -190,7 +190,7 @@ async function openFixtureProject(page: Page): Promise<void> {
   await page.getByLabel("Project menu").click();
   await page.getByRole("button", { name: "Open project…" }).click();
   await expect(page.getByText(/Inspect every model run · Baseline comparison fixture/)).toBeVisible();
-  await page.getByRole("tab", { name: /Evaluations/ }).click();
+  await openMode(page, "Evaluations");
   await page.locator(".evaluation-suite-history").getByText("Past executions").click();
   await expect(page.locator(".evaluation-suite-history-entry")).toHaveCount(3);
 }
