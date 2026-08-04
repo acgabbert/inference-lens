@@ -141,6 +141,10 @@ test("every offered check kind is addable in the running editor", async ({ page 
     "Maximum characters",
     "Maximum duration",
     "Maximum tokens",
+    "Called tool",
+    "Did not call tool",
+    "Tool call count",
+    "Tool call arguments",
   ]) {
     await page.getByLabel("New check kind").selectOption({ label });
     await page.getByRole("button", { name: "+ Add check" }).click();
@@ -161,9 +165,23 @@ test("every offered check kind is addable in the running editor", async ({ page 
       await expect(editor.locator(".evaluation-diagnostics"))
         .not.toContainText("needs a pattern");
     }
+    if (label === "Called tool") {
+      // An empty tool name is the same kind of accepted-but-incomplete draft
+      // as an empty regex pattern: the card exists, and preflight — not the
+      // add action — reports it until a tool name is filled in.
+      await expect(editor.locator(".evaluation-diagnostics"))
+        .toContainText("needs a tool name");
+      const toolName = editor.locator(".evaluation-check-card")
+        .filter({ hasText: "Called tool" })
+        .getByLabel("Tool name");
+      await toolName.fill("lookup");
+      await toolName.blur();
+      await expect(editor.locator(".evaluation-diagnostics"))
+        .not.toContainText("needs a tool name");
+    }
   }
   expect(failures).toEqual([]);
-  await expect(editor.locator(".evaluation-case-check-count")).toHaveText("7");
+  await expect(editor.locator(".evaluation-case-check-count")).toHaveText("11");
   await expect(editor).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
 });
 

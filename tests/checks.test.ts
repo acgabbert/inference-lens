@@ -300,6 +300,100 @@ function multiTurnRun(): RunState {
   ]);
 }
 
+/**
+ * One turn making three calls — two to the same tool, one with malformed
+ * (non-JSON-object) arguments — followed by an answering turn.
+ */
+function multiCallRun(): RunState {
+  const next = eventStream(runId);
+  const callA = createEntityId("tool-call", "lookup-a");
+  const callB = createEntityId("tool-call", "lookup-b");
+  const callC = createEntityId("tool-call", "notify");
+  return reduceAll([
+    next(0, { type: "run.started", input: resolvedInput }),
+    next(0, { type: "turn.started", turnId, attempt: 1, exchangeId, input: turnInput }),
+    next(10, { type: "exchange.requested", turnId, attempt: 1, exchangeId, request }),
+    next(20, {
+      type: "assistant.tool_call_delta",
+      turnId,
+      attempt: 1,
+      exchangeId,
+      toolCallId: callA,
+      index: 0,
+      nameDelta: "lookup",
+      argumentsDelta: '{"city":"Oslo"}',
+    }),
+    next(21, {
+      type: "assistant.tool_call_delta",
+      turnId,
+      attempt: 1,
+      exchangeId,
+      toolCallId: callB,
+      index: 1,
+      nameDelta: "lookup",
+      argumentsDelta: "not json",
+    }),
+    next(22, {
+      type: "assistant.tool_call_delta",
+      turnId,
+      attempt: 1,
+      exchangeId,
+      toolCallId: callC,
+      index: 2,
+      nameDelta: "notify",
+      argumentsDelta: '{"city":"Oslo","urgent":true}',
+    }),
+    next(30, {
+      type: "assistant.completed",
+      turnId,
+      attempt: 1,
+      exchangeId,
+      finishReason: { normalized: "tool_calls", raw: "tool_calls" },
+    }),
+    ...[callA, callB, callC].map((id, index) =>
+      next(40 + index, {
+        type: "tool.result_supplied" as const,
+        turnId,
+        result: {
+          id: createEntityId("tool-result", `result-${index}`),
+          toolCallId: id,
+          content: [{ type: "text" as const, text: "ok" }],
+          resolution: { kind: "manual" as const },
+        },
+      }),
+    ),
+    next(60, {
+      type: "turn.started",
+      turnId: secondTurnId,
+      attempt: 1,
+      exchangeId: secondExchangeId,
+      input: turnInput,
+    }),
+    next(70, {
+      type: "exchange.requested",
+      turnId: secondTurnId,
+      attempt: 1,
+      exchangeId: secondExchangeId,
+      request,
+    }),
+    next(80, {
+      type: "assistant.text_delta",
+      turnId: secondTurnId,
+      attempt: 1,
+      exchangeId: secondExchangeId,
+      text: "Done.",
+    }),
+    next(90, {
+      type: "assistant.completed",
+      turnId: secondTurnId,
+      attempt: 1,
+      exchangeId: secondExchangeId,
+      finishReason: { normalized: "stop", raw: "stop" },
+    }),
+    next(100, { type: "run.completed" }),
+  ]);
+}
+
 /** A terminal run whose evidence contains no completed assistant attempt. */
 function completedWithoutOutput(): RunState {
   return {
@@ -747,5 +841,88 @@ test("rejects unknown fields, unusable patterns, and repeated identities", () =>
         { checkId: "check_one", kind: "valid-json" },
       ]),
     /repeat check_one/,
+  );
+});
+
+test("matches called-tool and did-not-call-tool against any turn of the run", () => {
+  const state = multiTurnRun();
+
+  assert.equal(outcomeFor(state, { kind: "called-tool", toolName: "lookup" }).status, "passed");
+  assert.equal(outcomeFor(state, { kind: "called-tool", toolName: "unused" }).status, "failed");
+  assert.equal(outcomeFor(state, { kind: "did-not-call-tool", toolName: "lookup" }).status, "failed");
+  assert.equal(outcomeFor(state, { kind: "did-not-call-tool", toolName: "unused" }).status, "passed");
+
+  // A completed run with zero calls decides both directions; neither is undecidable.
+  const noCalls = completedRun({ text: "Hi" });
+  assert.equal(outcomeFor(noCalls, { kind: "called-tool", toolName: "lookup" }).status, "failed");
+  assert.equal(outcomeFor(noCalls, { kind: "did-not-call-tool", toolName: "lookup" }).status, "passed");
+});
+
+test("counts repeated tool calls against a comparator", () => {
+  const state = multiCallRun();
+
+  assert.equal(
+    outcomeFor(state, { kind: "tool-call-count", toolName: "lookup", count: 2, comparator: "exact" }).status,
+    "passed",
+  );
+  assert.equal(
+    outcomeFor(state, { kind: "tool-call-count", toolName: "lookup", count: 1, comparator: "at-least" }).status,
+    "passed",
+  );
+  assert.equal(
+    outcomeFor(state, { kind: "tool-call-count", toolName: "lookup", count: 1, comparator: "at-most" }).status,
+    "failed",
+  );
+  // Omitted toolName counts every call in the run, not only one tool's.
+  assert.equal(
+    outcomeFor(state, { kind: "tool-call-count", count: 3, comparator: "exact" }).status,
+    "passed",
+  );
+
+  const noCalls = completedRun({ text: "Hi" });
+  assert.equal(
+    outcomeFor(noCalls, { kind: "tool-call-count", count: 0, comparator: "exact" }).status,
+    "passed",
+  );
+});
+
+test("matches tool-call arguments by JSON subset, never by exact equality", () => {
+  const state = multiCallRun();
+
+  assert.equal(
+    outcomeFor(state, { kind: "tool-call-arguments", toolName: "notify", argumentsSubset: { city: "Oslo" } }).status,
+    "passed",
+  );
+  assert.equal(
+    outcomeFor(state, { kind: "tool-call-arguments", toolName: "notify", argumentsSubset: { city: "Bergen" } }).status,
+    "failed",
+  );
+  // A call with malformed (non-JSON-object) arguments can never satisfy an
+  // arguments check, even when another call to the same tool would.
+  assert.equal(
+    outcomeFor(state, { kind: "tool-call-arguments", toolName: "lookup", argumentsSubset: { city: "Oslo" } }).status,
+    "passed",
+  );
+  assert.equal(
+    outcomeFor(state, { kind: "tool-call-arguments", toolName: "unused", argumentsSubset: {} }).status,
+    "failed",
+  );
+});
+
+test("tool-call checks never return not-evaluated for a completed run", () => {
+  const state = completedRun({ text: "Hi" });
+  for (const definition of [
+    { kind: "called-tool", toolName: "lookup" },
+    { kind: "did-not-call-tool", toolName: "lookup" },
+    { kind: "tool-call-count", count: 0, comparator: "exact" },
+    { kind: "tool-call-arguments", toolName: "lookup", argumentsSubset: {} },
+  ] as const) {
+    assert.notEqual(outcomeFor(state, definition).status, "not-evaluated", definition.kind);
+  }
+
+  // Run failure/cancellation is still undecidable, same as every other kind.
+  assert.equal(
+    outcomeFor(failedRun(), { kind: "called-tool", toolName: "lookup" }).status,
+    "not-evaluated",
   );
 });

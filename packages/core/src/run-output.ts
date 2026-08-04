@@ -1,4 +1,4 @@
-import type { RunState } from "./run-kernel/types.ts";
+import type { RunState, ToolArguments } from "./run-kernel/types.ts";
 
 /**
  * The one canonical projection of what a run "answered".
@@ -38,4 +38,32 @@ export function finalAssistantOutput(state: RunState): string | undefined {
 /** Counts Unicode code points, so astral characters count once, not twice. */
 export function outputCharacterCount(output: string): number {
   return Array.from(output).length;
+}
+
+/** One tool call as the check vocabulary is allowed to see it: name and arguments only. */
+export interface ToolCallEvidence {
+  name: string;
+  arguments: ToolArguments;
+}
+
+/**
+ * The canonical projection of what a run called, in the order the provider
+ * emitted the calls: every turn, in order, every completed attempt's
+ * completed tool calls, in order. Retried attempts are excluded, mirroring
+ * `finalAssistantOutput` — the attempt that replaced them is the one the model
+ * finished, and its calls are the ones that actually reached an executor.
+ *
+ * An empty array is real evidence ("this run made no tool calls"), not a
+ * missing-evidence sentinel, so callers never need to distinguish it from
+ * "unknown" the way they must for `finalAssistantOutput`'s `undefined`.
+ */
+export function toolCallsInRun(state: RunState): ToolCallEvidence[] {
+  return state.turns.flatMap((turn) =>
+    turn.attempts.flatMap((attempt) =>
+      (attempt.completedToolCalls ?? []).map((call) => ({
+        name: call.name,
+        arguments: call.arguments,
+      })),
+    ),
+  );
 }
