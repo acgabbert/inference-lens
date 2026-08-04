@@ -248,6 +248,55 @@ test("the setup band says it can be shut, and shutting it gives the cases the he
   expect(after).toBeGreaterThan(before);
 });
 
+/**
+ * Shutting the setup band buys the cases height; it must not be what *gives*
+ * them a workable one. With the band open the workspace fed the header and the
+ * band their full content height and handed the cases whatever was left, which
+ * was 4px — the case editor's scroll pane collapsed to 32px around 309px of
+ * content, and every control in it rendered outside the clip.
+ *
+ * Height is the assertion because a collapsed pane defeats the usual ones:
+ * `toBeVisible` passes, the locator resolves, and the button reports itself
+ * visible, enabled, and stable right up to the click that never lands.
+ */
+test("the cases keep a workable height while the setup band is open", async ({ page }) => {
+  await openEvaluations(page, 1280);
+
+  const setup = page.getByRole("button", { name: /^Setup/ });
+  await expect(setup).toHaveAttribute("aria-expanded", "true");
+
+  const detail = page.locator(".evaluation-case-detail");
+  const paneHeight = await detail.evaluate((element) => element.clientHeight);
+  expect(paneHeight).toBeGreaterThanOrEqual(240);
+
+  // The band above is what yields the height, and it has to survive yielding
+  // it: a floor that works by clipping the band's own toggle out of its
+  // `overflow: hidden` box would trade this bug for an unreopenable band.
+  const toggleClipped = await setup.evaluate((element) => {
+    const band = element.parentElement!;
+    return element.getBoundingClientRect().height > band.getBoundingClientRect().height;
+  });
+  expect(toggleClipped).toBe(false);
+
+  // The click the CI failure died on: the button's own centre has to be what
+  // the page hit-tests there, not an ancestor showing through the clip.
+  const addCheck = detail.getByRole("button", { name: "+ Add check" });
+  await addCheck.scrollIntoViewIfNeeded();
+  const hitsItself = await addCheck.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const hit = document.elementFromPoint(
+      box.left + box.width / 2,
+      box.top + box.height / 2,
+    );
+    return Boolean(hit && element.contains(hit));
+  });
+  expect(hitsItself).toBe(true);
+
+  await expect(detail.locator(".evaluation-check-card")).toHaveCount(1);
+  await addCheck.click({ timeout: 5_000 });
+  await expect(detail.locator(".evaluation-check-card")).toHaveCount(2);
+});
+
 test("the reference answer sits below the checks and stays with its own case", async ({ page }) => {
   await openEvaluations(page, 1280);
 

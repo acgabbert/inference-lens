@@ -90,13 +90,29 @@
  * Three stacked regions rather than one long scroll. The setup band is bounded
  * and scrolls inside itself, so expanding it cannot push the case list and the
  * case editor off screen — which is the whole point of the re-lay.
+ *
+ * The cases row carries a floor rather than taking the remainder. As
+ * `minmax(0, 1fr)` it was last in line behind two content-sized rows: an open
+ * setup band left it 4px, and the case editor's controls rendered outside their
+ * own clip. The floor reverses that priority — the band yields first and
+ * scrolls inside itself, which is what it is capped and scrollable for.
  */
 .workspace {
   display: grid;
   min-height: 0;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  /* 360px is the region, not the editor: the cases heading, the portable-data
+     warning, and the gaps take ~80px of it before the case editor's own scroll
+     pane starts.
+     The band's track takes a `0` minimum so free space, not its content, is
+     what it gets. */
+  grid-template-rows: auto minmax(0, auto) minmax(360px, 1fr);
   gap: 14px;
   padding: 16px 18px;
+  /* Two floors and a header can exceed a short viewport. The region scrolls
+     when they do — clipping them instead is the failure this re-lay is fixing,
+     just moved down a row. */
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 /* No suite selected: nothing to stack, so the region just holds the empty
@@ -138,15 +154,28 @@
 /* --- Setup band ------------------------------------------------------- */
 
 .setup {
-  min-height: 0;
+  /* The toggle's own box: its line plus 12px of padding either side. The body
+     below shrinks to nothing and scrolls, but the control that reopens the band
+     is never what the cases' floor squeezes out of view — without this the band
+     collapses to 0 on a short viewport and `overflow: hidden` clips the toggle
+     away entirely. A `min-content` floor cannot say this: in a flex column it
+     resolves to the whole body, which puts the cases back off screen. */
+  min-height: 45px;
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border-default);
   border-radius: 14px;
   background: var(--surface-panel);
+  /* The band's track can now be shrunk to the cases' floor. Without this its
+     body would paint straight through the rounded border it is meant to sit
+     inside, over the region that took the height. */
+  overflow: hidden;
 }
 
 .setupToggle {
+  /* All of the band's shrink goes to its body. The control that reopens the
+     band cannot be the part that the cases' floor squeezes out of reach. */
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -208,12 +237,17 @@
 /*
  * Capped and scrollable: an author who opens the settings panel, the tool list,
  * and past executions at once still leaves the cases their height.
+ *
+ * `40vh` is the cap on a tall viewport, not the guarantee — on a short one the
+ * grid shrinks the band's track to hold the cases' floor, and `min-height: 0`
+ * is what lets this body shrink with it instead of forcing the track open.
  */
 .setupBody {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: 14px;
+  min-height: 0;
   max-height: 40vh;
   padding: 0 16px 16px;
   overflow: auto;
