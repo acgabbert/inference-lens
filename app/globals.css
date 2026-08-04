@@ -263,6 +263,9 @@ textarea,
 .repeated-experiment-metric-section h3,
 .repeat-experiment-tools h3,
 .repeat-experiment-tools li,
+.evaluation-tools-heading span,
+.evaluation-tools small,
+.evaluation-tool-list,
 .evaluation-portable-warning,
 .evaluation-empty-inline,
 .evaluation-regex-dialect,
@@ -6753,6 +6756,53 @@ main {
   overflow-wrap: anywhere;
   text-align: left;
   white-space: nowrap;
+}
+
+/* Tool exposure sits beside the settings disclosure rather than inside it: a
+   suite that runs tools is a different kind of evaluation, and what serves each
+   one is device-local context the suite never stores. */
+.evaluation-tools {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.evaluation-tools-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.evaluation-tools-heading span,
+.evaluation-tools small {
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.evaluation-tool-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-wrap: anywhere;
+}
+
+.evaluation-tool-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.evaluation-tool-list label {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.evaluation-tool-unbound {
+  color: var(--danger);
 }
 
 .evaluation-preflight label small,

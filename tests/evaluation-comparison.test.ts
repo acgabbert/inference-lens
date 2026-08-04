@@ -79,6 +79,7 @@ function projectFixture(cases: CaseFixture[], model = "confirmed-model"): Projec
         responseMode: "buffered",
         options: { temperature: 0.2 },
         repetitions: 1,
+        toolIds: [],
       },
       inputBindings: [{
         id: "evaluation-input_topic",

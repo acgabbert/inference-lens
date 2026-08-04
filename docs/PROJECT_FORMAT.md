@@ -2,7 +2,7 @@
 
 Inference Lens projects use a visible `<name>.inference-lens/` directory bundle
 containing one canonical, portable JSON document named `project.json`. New
-saves use schema version 8. Version 5, 6, and 7 projects are upgraded on load; earlier
+saves use schema version 9. Version 5, 6, 7, and 8 projects are upgraded on load; earlier
 project formats and the proof-of-concept request export remain unsupported.
 Every schema is strict, so a reader rejects a document it does not understand
 rather than guessing.
@@ -154,7 +154,7 @@ credential store, an environment variable, or session memory.
 
 ## Template authoring session
 
-The live Project v8 document is the canonical owner of template definitions and
+The live Project v9 document is the canonical owner of template definitions and
 authored conversation items. Opening the Templates workspace from an ad-hoc
 request materializes an untitled in-memory project; it does not create a
 machine-local template registry.
@@ -203,7 +203,8 @@ but execution preflight will not treat that as a runnable dataset.
 
 ### Suite-owned input and execution
 
-Project v8 gives every suite its own `input` and `execution`:
+Project v8 gives every suite its own `input` and `execution`; v9 adds its
+exposed tools and turn ceiling:
 
 ```json
 "input": { "kind": "conversation-revision", "conversationRevisionId": "revision_example" },
@@ -211,7 +212,9 @@ Project v8 gives every suite its own `input` and `execution`:
   "target": { "connectionRequirementId": "connection_default", "model": "example-model" },
   "responseMode": "buffered",
   "options": { "temperature": 0.4 },
-  "repetitions": 1
+  "repetitions": 1,
+  "toolIds": ["tool_weather"],
+  "turnCeiling": 5
 }
 ```
 
@@ -243,7 +246,24 @@ incomplete or extra case values, repeated identities, invalid checks, and
 secret-like target variable names. This prevents evaluation cases from becoming
 a portable secret store.
 
-Project v7 migrates to v8 by making each suite's borrowed context explicit: the
+`execution.toolIds` names project tools by ID, so exposure is portable and the
+descriptors stay single-source: the plan snapshots them at start, exactly as an
+ordinary run does. What *serves* each tool is device-local and joins at plan
+time as a binding, never entering the project. A suite may not name a tool the
+project does not have — the reference is validated like
+`defaults.enabledToolIds`, and deleting a tool withdraws it from every suite in
+the same mutation — and it may not name one twice.
+
+`execution.turnCeiling` bounds the provider turns one repetition may spend
+before it is failed, between 2 and 20. It is optional: an absent ceiling reads
+as the shared default of 5. It is authored on the suite rather than at
+confirmation because a repetition that reaches it fails, which makes the ceiling
+part of what produced a result.
+
+Project v8 migrates to v9 by exposing no tools and leaving the ceiling absent,
+so an upgraded suite runs exactly as it did — with no tools, no repetition can
+reach a second turn. Project v7 migrates to v8 by making each suite's borrowed
+context explicit: the
 project's default conversation revision becomes the suite input, and the
 project's default target and inference options are copied into the suite, with
 buffered delivery and one repetition. Copies are independent, so later changes
@@ -279,7 +299,7 @@ structure still arrives whole and ordered, because one use emits every message
 of its pinned revision. Authors add surrounding messages afterwards in Messages.
 
 Bindings, cases, and tools are untouched, other suites are untouched, and the
-project stays at schema version 8 — the shortcut writes nothing a v8 parser did
+project stays at schema version 9 — the shortcut writes nothing a v9 parser did
 not already accept. Because the new use has a new stable ID, existing suite
 bindings are never retargeted onto it: an identical template ID says nothing
 about whether a binding still resolves, so a suite that already has case inputs
@@ -324,7 +344,7 @@ Inference Lens refuses to overwrite it and asks the user to reopen the project.
 Completed, cancelled, and explicitly stopped runs are written as immutable
 `traces/<runId>.json` diagnostic artifacts. A repeated byte-identical write is
 allowed; different contents can never replace an existing run ID. These files
-are deliberately outside the Project v8 manifest contract, so adding or
+are deliberately outside the Project v9 manifest contract, so adding or
 removing a trace does not dirty authored project state. See
 [the run trace format](RUN_TRACE_FORMAT.md).
 

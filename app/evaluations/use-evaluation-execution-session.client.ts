@@ -11,11 +11,18 @@ import type { RunId, RunState, RunTrace } from "../../packages/core/src/run-kern
 import { runStateFromTrace, traceFileName } from "../../packages/core/src/run-trace.ts";
 import type { ProjectWorkspaceHandle } from "../project-workspace.client.ts";
 import { createExperimentWorkspacePersistence } from "../run/experiment-workspace-persistence.client.ts";
+import type { ExperimentToolBinding } from "../run/experiment-tool-bindings.client.ts";
 import { SequentialExperimentController } from "../run/sequential-experiment-controller.client.ts";
 
 export interface EvaluationExecutionDraft {
   plan: EvaluationExperimentPlanV3;
   targetName: string;
+  /**
+   * What will serve each tool the suite exposes, resolved when the draft was
+   * built. Shown at confirmation and joined to the controller at start, so the
+   * listing the author approved is the listing that executes.
+   */
+  toolBindings: ExperimentToolBinding[];
   /**
    * The same projected description the selector and preflight showed. It
    * already ends with the revision's creation time, so the draft carries no
@@ -88,6 +95,10 @@ export function useEvaluationExecutionSession(options: UseEvaluationExecutionSes
       plan: pending.plan,
       transport: options.transport,
       prepareCredential: options.prepareCredential,
+      // Device-local, never written into the durable plan — the same join the
+      // repeated experiment makes, so one suite is served identically here and
+      // nowhere else by accident.
+      toolBindings: pending.toolBindings.flatMap(({ binding }) => binding ? [binding] : []),
       ...persistence,
       onProgress(progress) {
         setExecution((current) => current?.plan.experimentId === pending.plan.experimentId

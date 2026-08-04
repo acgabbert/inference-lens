@@ -4,6 +4,7 @@ import test, { after } from "node:test";
 import react from "@vitejs/plugin-react";
 import { JSDOM } from "jsdom";
 import { createServer } from "vite";
+import { uniqueViteCacheDir } from "./support/vite-cache-dir.mjs";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   url: "http://localhost",
@@ -48,7 +49,7 @@ const templateResolution = {
 
 test("disclosure preserves the selected tab and tabs support arrow keys", async () => {
   const server = await createServer({
-    configFile: false,
+    configFile: false, cacheDir: uniqueViteCacheDir(),
     root: process.cwd(),
     plugins: [react()],
     server: { middlewareMode: true, hmr: false, ws: false },
@@ -130,7 +131,7 @@ test("disclosure preserves the selected tab and tabs support arrow keys", async 
 
 test("clearing the run retires the disclosure so the next run stays collapsed", async () => {
   const server = await createServer({
-    configFile: false,
+    configFile: false, cacheDir: uniqueViteCacheDir(),
     root: process.cwd(),
     plugins: [react()],
     server: { middlewareMode: true, hmr: false, ws: false },
@@ -191,7 +192,7 @@ test("clearing the run retires the disclosure so the next run stays collapsed", 
 
 test("falls back from a preserved Templates preference and restores it when available", async () => {
   const server = await createServer({
-    configFile: false,
+    configFile: false, cacheDir: uniqueViteCacheDir(),
     root: process.cwd(),
     plugins: [react()],
     server: { middlewareMode: true, hmr: false, ws: false },

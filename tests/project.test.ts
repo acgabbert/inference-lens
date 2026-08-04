@@ -87,6 +87,7 @@ function projectWithEvaluationSuite() {
         responseMode: "streaming",
         options: structuredClone(project.defaults.options),
         repetitions: 1,
+        toolIds: [],
       },
       inputBindings: [{
         id: "evaluation-input_topic",
@@ -120,7 +121,7 @@ function projectWithEvaluationSuite() {
   });
 }
 
-test("creates a strict, portable Project v8 document", () => {
+test("creates a strict, portable Project v9 document", () => {
   const project = createProjectFile({
     name: "Example",
     request,
@@ -147,8 +148,8 @@ test("creates a strict, portable Project v8 document", () => {
   assert.equal(projectDirectoryName("   "), "Untitled.inference-lens");
   assert.equal(projectExportFileName("Prompt Lab"), "Prompt Lab.project.json");
   assert.equal(projectExportFileName("CON"), "CON-project.project.json");
-  assert.equal(PROJECT_SCHEMA_VERSION, 8);
-  assert.equal(project.schemaVersion, 8);
+  assert.equal(PROJECT_SCHEMA_VERSION, 9);
+  assert.equal(project.schemaVersion, 9);
   assert.equal(project.projectId, "project_example");
   const draft = projectDraft(project);
   assert.deepEqual(projectDraft(project), {
@@ -172,7 +173,7 @@ test("creates a strict, portable Project v8 document", () => {
   });
   assert.deepEqual(project.externalImports, []);
   assert.deepEqual(project.evaluationSuites, []);
-  assert.equal(JSON.parse(serializeProjectFile(project)).schemaVersion, 8);
+  assert.equal(JSON.parse(serializeProjectFile(project)).schemaVersion, 9);
 });
 
 test("serialization is deterministic and ends with a newline", () => {
@@ -277,9 +278,9 @@ test("migrates Project v6 by adding an empty evaluation suite collection", () =>
     schemaVersion: 6,
   });
 
-  assert.equal(migrated.schemaVersion, 8);
+  assert.equal(migrated.schemaVersion, 9);
   assert.deepEqual(migrated.evaluationSuites, []);
-  assert.equal(JSON.parse(serializeProjectFile(migrated)).schemaVersion, 8);
+  assert.equal(JSON.parse(serializeProjectFile(migrated)).schemaVersion, 9);
 });
 
 test("migrates a populated Project v7 suite onto suite-owned input and execution", () => {
@@ -297,7 +298,7 @@ test("migrates a populated Project v7 suite onto suite-owned input and execution
   });
 
   const suite = migrated.evaluationSuites[0]!;
-  assert.equal(migrated.schemaVersion, 8);
+  assert.equal(migrated.schemaVersion, 9);
   assert.deepEqual(suite.input, {
     kind: "conversation-revision",
     conversationRevisionId: current.defaults.conversationRevisionId,
@@ -318,6 +319,77 @@ test("migrates a populated Project v7 suite onto suite-owned input and execution
   // The copies are independent of the project defaults they came from.
   suite.execution.target.model = "changed";
   assert.notEqual(migrated.defaults.target.model, "changed");
+});
+
+test("migrates a Project v8 suite by exposing no tools and inheriting the default ceiling", () => {
+  const current = projectWithEvaluationSuite();
+  const suite = current.evaluationSuites[0]!;
+  // The point of the destructure is what it drops: a v8 suite carried neither key.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { toolIds, turnCeiling, ...version8Execution } = suite.execution;
+  const migrated = parseProjectFile({
+    ...current,
+    schemaVersion: 8,
+    evaluationSuites: [{ ...suite, execution: version8Execution }],
+  });
+
+  assert.equal(migrated.schemaVersion, 9);
+  // An upgraded suite runs exactly as it did: no tools, so no repetition can
+  // reach a second turn and the absent ceiling is never consulted.
+  assert.deepEqual(migrated.evaluationSuites[0]!.execution.toolIds, []);
+  assert.equal(migrated.evaluationSuites[0]!.execution.turnCeiling, undefined);
+  assert.deepEqual(
+    { ...migrated.evaluationSuites[0]!.execution, toolIds: undefined },
+    { ...version8Execution, toolIds: undefined },
+  );
+});
+
+test("a suite cannot expose a tool the project does not have, or expose one twice", () => {
+  const project = projectWithEvaluationSuite();
+  const suite = project.evaluationSuites[0]!;
+  assert.throws(
+    () => parseProjectFile({
+      ...project,
+      evaluationSuites: [{
+        ...suite,
+        execution: { ...suite.execution, toolIds: ["tool_missing"] },
+      }],
+    }),
+    (error: unknown) =>
+      error instanceof ProjectValidationError &&
+      error.issues.some(({ message }) =>
+        message.includes('exposes tool "tool_missing", which does not exist')),
+  );
+  const withTool = parseProjectFile({
+    ...project,
+    tools: [{
+      id: "tool_weather",
+      name: "get_weather",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    }],
+    evaluationSuites: [{
+      ...suite,
+      execution: { ...suite.execution, toolIds: ["tool_weather"] },
+    }],
+  });
+  assert.deepEqual(withTool.evaluationSuites[0]!.execution.toolIds, ["tool_weather"]);
+  assert.throws(
+    () => parseProjectFile({
+      ...withTool,
+      evaluationSuites: [{
+        ...suite,
+        execution: { ...suite.execution, toolIds: ["tool_weather", "tool_weather"] },
+      }],
+    }),
+    ProjectValidationError,
+  );
+  // Deleting the tool withdraws it rather than leaving the project unsaveable.
+  const afterDelete = updateProjectDraft(withTool, {
+    ...projectDraft(withTool),
+    tools: [],
+    enabledToolIds: [],
+  });
+  assert.deepEqual(afterDelete.evaluationSuites[0]!.execution.toolIds, []);
 });
 
 test("stores ordered evaluation suites, cases, bindings, checks, and reference answers", () => {
@@ -601,7 +673,7 @@ test("migrates v5 fragments by duplicating templates used under different roles"
   };
 
   const migrated = parseProjectFile(legacy);
-  assert.equal(migrated.schemaVersion, 8);
+  assert.equal(migrated.schemaVersion, 9);
   assert.deepEqual(migrated.evaluationSuites, []);
   assert.equal(migrated.promptTemplates.length, 2);
   assert.deepEqual(

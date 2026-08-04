@@ -7,8 +7,15 @@ import type { EvaluationCase } from "../../packages/core/src/project";
 import type { EvaluationInputBinding } from "../../packages/core/src/evaluation-suites";
 import type { ConversationRevisionDescriptor } from "../../packages/core/src/conversation-revision-description";
 import type { InferenceOptions, ProviderProtocol } from "../../packages/core/src/run-kernel";
+import {
+  DEFAULT_EXPERIMENT_TURN_CEILING,
+  MAX_EXPERIMENT_TURN_CEILING,
+  MIN_EXPERIMENT_TURN_CEILING,
+} from "../../packages/core/src/experiment";
 import { FocusModeToggle, useFocusMode } from "../focus-mode.client";
 import { InferenceSettingsPanel } from "../inference-settings-panel.client";
+import { experimentToolBindingLabel } from "../run/experiment-tool-bindings.client";
+import type { ExperimentToolBinding } from "../run/experiment-tool-bindings.client";
 import { PaneEmptyState } from "../pane-empty-state.client";
 import { groupRevisionChoices, revisionChoice } from "./revision-choice.client";
 import { SavedPromptDialog } from "./saved-prompt-dialog.client";
@@ -206,6 +213,15 @@ export interface EvaluationSuiteExecutionActions {
   disabledReason?: string;
   running: boolean;
   onStart(): void;
+  /**
+   * What serves each of the project's tools on this device, supplied by the
+   * route. Which tools a suite exposes is portable content the suite owns;
+   * what answers them is device-local, so the editor renders the join without
+   * ever storing it.
+   */
+  toolBindings?: readonly ExperimentToolBinding[];
+  /** Why command tools cannot run in this shell, when that is the case. */
+  commandToolsUnavailableReason?: string;
 }
 
 /**
@@ -248,7 +264,18 @@ export function EvaluationSuiteEditor({
   const suite = project?.evaluationSuites.find(({ id }) => id === authoring.suiteId);
   const focusedCase = suite?.cases.find(({ id }) => id === authoring.focusedCaseId);
   const selectedCount = authoring.selectedCaseIds.size;
-  const batch = evaluationBatchGuardrail(selectedCount, authoring.repetitions);
+  const exposedToolIds = suite?.execution.toolIds ?? [];
+  const turnCeiling = suite?.execution.turnCeiling ?? DEFAULT_EXPERIMENT_TURN_CEILING;
+  const batch = evaluationBatchGuardrail(selectedCount, authoring.repetitions, {
+    exposedToolCount: exposedToolIds.length,
+    turnCeiling,
+  });
+  // A tool this suite exposes that nothing here can serve stops every
+  // repetition, so it is named while the suite is being authored rather than
+  // only at the moment someone tries to start it.
+  const unboundExposedTools = (execution?.toolBindings ?? []).filter(
+    ({ tool, binding }) => exposedToolIds.includes(tool.id) && !binding,
+  );
   const availableCandidates = authoring.candidates.filter((candidate) => !suite?.inputBindings.some((binding) => binding.target.templateUseId === candidate.templateUseId && binding.target.variableName === candidate.variableName));
   const revisionGroups = groupRevisionChoices(authoring.revisionChoices);
   const resolvableMissingInput = authoring.diagnostics.find(
@@ -264,7 +291,14 @@ export function EvaluationSuiteEditor({
   const deliveryIssue = suite && execution?.preview && suite.execution.responseMode === "streaming" && !execution.preview.streamingAvailable
     ? `This evaluation is set to Streaming, but ${execution.preview.targetName} cannot stream. Choose Buffered delivery.`
     : undefined;
-  const issueCount = authoring.diagnostics.length + (batch.error ? 1 : 0) + (deliveryIssue ? 1 : 0);
+  // Device-local, like the delivery issue above and unlike a preflight
+  // diagnostic: the suite is authored correctly, and this machine cannot run
+  // it. Counted as a setup issue so the preflight badge cannot read "Ready to
+  // run" beside a Start button that refuses.
+  const bindingIssue = unboundExposedTools.length > 0
+    ? `Nothing on this device serves ${unboundExposedTools.map(({ tool }) => tool.name).join(", ")}. Enable a mock or grant a command tool before starting.${execution?.commandToolsUnavailableReason ? ` ${execution.commandToolsUnavailableReason}` : ""}`
+    : undefined;
+  const issueCount = authoring.diagnostics.length + (batch.error ? 1 : 0) + (deliveryIssue ? 1 : 0) + (bindingIssue ? 1 : 0);
   // Named in the collapsed summary, so which connection a suite targets stays
   // readable without expanding the panel that chooses it.
   const connectionName = suite
@@ -370,10 +404,54 @@ export function EvaluationSuiteEditor({
                   control: <label className="inference-settings-count">Repetitions <input type="number" min="1" max={MAX_EVALUATION_REPETITIONS} step="1" value={authoring.repetitions} onChange={(event) => authoring.setRepetitions(Number(event.target.value))} /></label>,
                 }}
               />
+              {/* Exposure is portable suite content and what serves it is not,
+                  so the two are rendered together and stored apart. Outside the
+                  settings disclosure because a suite that runs tools is a
+                  different kind of evaluation, not a tweak to this one. */}
+              <div className="evaluation-tools">
+                <div className="evaluation-tools-heading">
+                  <strong>Tools</strong>
+                  <span>{exposedToolIds.length === 0 ? "None exposed" : `${exposedToolIds.length} exposed`}</span>
+                </div>
+                {project.tools.length === 0
+                  ? <small>This project defines no tools. Add one in the request composer’s Tools pane to expose it here.</small>
+                  : <ul className="evaluation-tool-list">
+                      {project.tools.map((tool) => {
+                        const exposed = exposedToolIds.includes(tool.id);
+                        const entry = execution?.toolBindings?.find(({ tool: candidate }) => candidate.id === tool.id);
+                        return (
+                          <li key={tool.id} className={exposed && entry && !entry.binding ? "evaluation-tool-unbound" : undefined}>
+                            <label>
+                              <input
+                                type="checkbox"
+                                checked={exposed}
+                                onChange={(event) => authoring.setToolExposed(tool.id, event.target.checked)}
+                              />
+                              <code>{tool.name}</code>
+                            </label>
+                            {exposed && entry && <span> → {experimentToolBindingLabel(entry)}</span>}
+                          </li>
+                        );
+                      })}
+                    </ul>}
+                {exposedToolIds.length > 0 && (
+                  <label className="inference-settings-count">Turn ceiling
+                    <input
+                      type="number"
+                      min={MIN_EXPERIMENT_TURN_CEILING}
+                      max={MAX_EXPERIMENT_TURN_CEILING}
+                      step="1"
+                      value={turnCeiling}
+                      onChange={(event) => authoring.setTurnCeiling(Number(event.target.value))}
+                    />
+                  </label>
+                )}
+                {exposedToolIds.length > 0 && <small>Each repetition answers its own tool calls and is failed if it reaches {turnCeiling} provider turns with calls outstanding.</small>}
+              </div>
               {/* Outside the panel deliberately: how many provider calls the
                   suite is about to make is the consequence of these settings,
                   and it must stay readable while the panel is collapsed. */}
-              <output><span>{selectedCount} selected</span> × <span>{authoring.repetitions} {authoring.repetitions === 1 ? "rep" : "reps"}</span> → <strong>{Number.isFinite(batch.plannedCalls) ? batch.plannedCalls.toLocaleString() : "Invalid"} runs</strong></output>
+              <output><span>{selectedCount} selected</span> × <span>{authoring.repetitions} {authoring.repetitions === 1 ? "rep" : "reps"}</span> → <strong>{Number.isFinite(batch.plannedCalls) ? batch.plannedCalls.toLocaleString() : "Invalid"} runs</strong>{exposedToolIds.length > 0 && Number.isFinite(batch.worstCaseCalls) && <span>, up to {batch.worstCaseCalls.toLocaleString()} provider calls</span>}</output>
             </div>
             {execution && <div className="evaluation-start-area"><button className="button primary" type="button" disabled={execution.running || Boolean(execution.disabledReason) || issueCount > 0} title={execution.disabledReason ?? batch.error} onClick={execution.onStart}>{execution.running ? "Evaluation running" : "Start evaluation…"}</button>
               {/* A disabled primary action must say why in text, not only in a
@@ -383,9 +461,10 @@ export function EvaluationSuiteEditor({
           </section>
           {batch.warning && <p className="evaluation-batch-warning" role="status"><strong>{batch.warning}</strong> Review the exact call count in confirmation before starting.</p>}
           {batch.error && <p className="evaluation-batch-warning error" role="alert">{batch.error}</p>}
-          {(authoring.diagnostics.length > 0 || deliveryIssue) && <ul className="evaluation-diagnostics">
+          {(authoring.diagnostics.length > 0 || deliveryIssue || bindingIssue) && <ul className="evaluation-diagnostics">
             {authoring.diagnostics.map((diagnostic, index) => <li key={`${diagnostic.code}-${index}`}>{diagnostic.message}</li>)}
             {deliveryIssue && <li key="delivery">{deliveryIssue}</li>}
+            {bindingIssue && <li key="binding">{bindingIssue}</li>}
           </ul>}
           {history && <EvaluationSuiteHistory history={history} />}
           {suggestedCandidate && <div className="evaluation-resolution-action" role="status"><div><strong>Add a case input for <code>{suggestedCandidate.variableName}</code></strong><span>Each case can then supply the missing value and clear this setup issue.</span></div><button className="button secondary" type="button" onClick={() => authoring.addInput(suggestedCandidate)}>+ Add case input</button></div>}

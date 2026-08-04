@@ -1,7 +1,8 @@
 export function evaluationFixture() {
   const noop = () => {};
   const project = {
-    schemaVersion: 8,
+    schemaVersion: 9,
+    tools: [],
     defaults: {
       conversationRevisionId: "revision_current",
       target: { connectionRequirementId: "connection_default", model: "buffered-test-model" },
@@ -24,6 +25,7 @@ export function evaluationFixture() {
         responseMode: "buffered",
         options: {},
         repetitions: 3,
+        toolIds: [],
       },
       inputBindings: [{ id: "evaluation-input_topic", name: "Topic", target: { kind: "template-variable", templateUseId: "template-use_question", variableName: "topic" } }],
       cases: [{ id: "evaluation-case_migrations", name: "Migrations", values: { "evaluation-input_topic": "database migrations" }, referenceAnswer: "Explain a safe rollout.", checks: [{ checkId: "check_contains", kind: "contains", value: "rollback" }] }],
@@ -99,7 +101,7 @@ export function evaluationFixture() {
     }],
     savedPromptPickerOpen: false,
     selectSuite: noop, selectRevision: noop, setCaseSelected: noop, focusCase: noop,
-    setRepetitions: noop, updateExecution: () => true, createSuite: noop, renameSuite: noop, deleteSuite: noop,
+    setRepetitions: noop, setToolExposed: noop, setTurnCeiling: noop, updateExecution: () => true, createSuite: noop, renameSuite: noop, deleteSuite: noop,
     addInput: noop, renameInput: noop, deleteInput: noop, addCase: noop,
     updateCase: noop, deleteCase: noop, addCheck: noop, updateCheck: noop, deleteCheck: noop,
     openSavedPromptPicker: noop, closeSavedPromptPicker: noop,

@@ -12,6 +12,11 @@ import { runMetrics } from "./run-metrics.ts";
 import { finalAssistantOutput, outputCharacterCount } from "./run-output.ts";
 import { stableJsonValue } from "./stable-json.ts";
 import { toolNameSchema } from "./tool-name.ts";
+import {
+  DEFAULT_EXPERIMENT_TURN_CEILING,
+  MAX_EXPERIMENT_TURN_CEILING,
+  MIN_EXPERIMENT_TURN_CEILING,
+} from "./turn-ceiling.ts";
 import type {
   ConversationMessage,
   ConversationRevisionId,
@@ -49,9 +54,11 @@ export const EXPERIMENT_RESULT_FILE_SUFFIX = ".result.json";
  * The minimum is two rather than one: a ceiling of one would expose tools and
  * then guarantee that every repetition asking for one fails.
  */
-export const DEFAULT_EXPERIMENT_TURN_CEILING = 5;
-export const MIN_EXPERIMENT_TURN_CEILING = 2;
-export const MAX_EXPERIMENT_TURN_CEILING = 20;
+export {
+  DEFAULT_EXPERIMENT_TURN_CEILING,
+  MAX_EXPERIMENT_TURN_CEILING,
+  MIN_EXPERIMENT_TURN_CEILING,
+} from "./turn-ceiling.ts";
 
 export class ExperimentValidationError extends Error {
   constructor(message: string) {

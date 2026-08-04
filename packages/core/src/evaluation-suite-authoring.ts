@@ -263,6 +263,9 @@ export function createEvaluationSuite(
         responseMode: "buffered",
         options: structuredClone(project.defaults.options),
         repetitions: 1,
+        // A new suite exposes nothing. Tool exposure is a deliberate act on the
+        // suite, never inherited from whatever the composer had switched on.
+        toolIds: [],
       },
       inputBindings: [],
       cases: [],

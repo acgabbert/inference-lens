@@ -3,6 +3,7 @@ import test, { after } from "node:test";
 import react from "@vitejs/plugin-react";
 import { JSDOM } from "jsdom";
 import { createServer } from "vite";
+import { uniqueViteCacheDir } from "./support/vite-cache-dir.mjs";
 import { evaluationFixture } from "./fixtures/evaluation-suite-authoring.mjs";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost" });
@@ -11,7 +12,7 @@ Object.defineProperty(globalThis, "navigator", { configurable: true, value: dom.
 after(() => dom.window.close());
 
 test("evaluation focus mode opens, traps the surface, and closes with Escape", async () => {
-  const server = await createServer({ configFile: false, root: process.cwd(), plugins: [react()], server: { middlewareMode: true, hmr: false, ws: false }, logLevel: "warn" });
+  const server = await createServer({ configFile: false, cacheDir: uniqueViteCacheDir(), root: process.cwd(), plugins: [react()], server: { middlewareMode: true, hmr: false, ws: false }, logLevel: "warn" });
   const [{ createElement, act }, { createRoot }, { EvaluationSuiteEditor }] = await Promise.all([import("react"), import("react-dom/client"), server.ssrLoadModule("/app/evaluations/evaluation-suite-editor.client.tsx")]);
   const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
   try {

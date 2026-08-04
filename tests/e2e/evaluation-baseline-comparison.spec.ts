@@ -61,6 +61,7 @@ function projectWithSuite(model: string): ProjectFile {
         responseMode: "buffered",
         options: {},
         repetitions: 1,
+        toolIds: [],
       },
       inputBindings: [],
       cases: [

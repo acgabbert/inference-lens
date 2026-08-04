@@ -55,6 +55,7 @@ function projectWithSuite() {
         responseMode: "buffered",
         options: {},
         repetitions: 1,
+        toolIds: [],
       },
       inputBindings: [],
       cases: [

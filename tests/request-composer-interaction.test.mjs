@@ -4,6 +4,7 @@ import test, { after } from "node:test";
 import react from "@vitejs/plugin-react";
 import { JSDOM } from "jsdom";
 import { createServer } from "vite";
+import { uniqueViteCacheDir } from "./support/vite-cache-dir.mjs";
 import { evaluationFixture } from "./fixtures/evaluation-suite-authoring.mjs";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
@@ -293,7 +294,7 @@ test("a readiness destination naming the model focuses it without disturbing the
 
 async function mount(overrides = {}) {
   const server = await createServer({
-    configFile: false,
+    configFile: false, cacheDir: uniqueViteCacheDir(),
     root: process.cwd(),
     plugins: [react()],
     server: { middlewareMode: true, hmr: false, ws: false },

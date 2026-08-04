@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import react from "@vitejs/plugin-react";
 import { createServer } from "vite";
+import { uniqueViteCacheDir } from "./support/vite-cache-dir.mjs";
 import { evaluationFixture } from "./fixtures/evaluation-suite-authoring.mjs";
 
 async function render(authoring, execution, history) {
-  const server = await createServer({ configFile: false, root: process.cwd(), plugins: [react()], server: { middlewareMode: true, hmr: false, ws: false }, logLevel: "warn" });
+  const server = await createServer({ configFile: false, cacheDir: uniqueViteCacheDir(), root: process.cwd(), plugins: [react()], server: { middlewareMode: true, hmr: false, ws: false }, logLevel: "warn" });
   try {
     const [{ EvaluationSuiteEditor }, { renderToStaticMarkup }, { createElement }] = await Promise.all([
       server.ssrLoadModule("/app/evaluations/evaluation-suite-editor.client.tsx"),
@@ -17,7 +18,7 @@ async function render(authoring, execution, history) {
 
 /** The preview is the response pane's occupant, so it renders on its own. */
 async function renderPreview(authoring, execution) {
-  const server = await createServer({ configFile: false, root: process.cwd(), plugins: [react()], server: { middlewareMode: true, hmr: false, ws: false }, logLevel: "warn" });
+  const server = await createServer({ configFile: false, cacheDir: uniqueViteCacheDir(), root: process.cwd(), plugins: [react()], server: { middlewareMode: true, hmr: false, ws: false }, logLevel: "warn" });
   try {
     const [{ EvaluationPreviewWorkspace }, { renderToStaticMarkup }, { createElement }] = await Promise.all([
       server.ssrLoadModule("/app/evaluations/evaluation-case-preview.client.tsx"),
@@ -82,8 +83,83 @@ test("shows an explicit error above the repetition maximum", async () => {
   assert.doesNotMatch(html, /Ready to run/);
 });
 
+test("the editor names what serves each exposed tool and bounds the worst case", async () => {
+  const authoring = evaluationFixture();
+  authoring.project.tools = [
+    { id: "tool_weather", name: "get_weather", inputSchema: { type: "object", properties: {} } },
+    { id: "tool_db", name: "query_db", inputSchema: { type: "object", properties: {} } },
+  ];
+  authoring.project.evaluationSuites[0].execution.toolIds = ["tool_weather", "tool_db"];
+  const html = await render(authoring, {
+    storage: "durable",
+    running: false,
+    onStart() {},
+    toolBindings: [
+      {
+        tool: authoring.project.tools[0],
+        binding: { toolId: "tool_weather", kind: "mock", executorId: "mock_sunny", label: "sunny default" },
+      },
+      { tool: authoring.project.tools[1] },
+    ],
+  });
+  assert.match(html, /2 exposed/);
+  assert.match(html, /mock &quot;sunny default&quot;/);
+  // The unbound one is named while the suite is authored, not only at start.
+  assert.match(html, /Nothing on this device serves query_db/);
+  // Floor and ceiling both stated: three repetitions, five turns each.
+  assert.match(html, /<strong>3 runs<\/strong>.*up to 15 provider calls/);
+  assert.match(html, /failed if it reaches 5 provider turns/);
+});
+
+test("a suite that exposes no tools shows neither a ceiling nor a call range", async () => {
+  const authoring = evaluationFixture();
+  authoring.project.tools = [
+    { id: "tool_weather", name: "get_weather", inputSchema: { type: "object", properties: {} } },
+  ];
+  const html = await render(authoring, { storage: "durable", running: false, onStart() {} });
+  assert.match(html, /None exposed/);
+  assert.doesNotMatch(html, /Turn ceiling/);
+  assert.doesNotMatch(html, /up to \d+ provider calls/);
+});
+
+test("evaluation confirmation lists the binding behind every tool it will serve", async () => {
+  const server = await createServer({ configFile: false, cacheDir: uniqueViteCacheDir(), root: process.cwd(), plugins: [react()], server: { middlewareMode: true, hmr: false, ws: false }, logLevel: "warn" });
+  try {
+    const [{ EvaluationStartDialog }, { renderToStaticMarkup }, { createElement }] = await Promise.all([
+      server.ssrLoadModule("/app/evaluations/evaluation-start-dialog.client.tsx"),
+      import("react-dom/server"), import("react"),
+    ]);
+    const html = renderToStaticMarkup(createElement(EvaluationStartDialog, {
+      draft: {
+        targetName: "Fixture profile",
+        revisionLabel: "Current · Aug 1, 12:00 PM",
+        storage: "durable",
+        toolBindings: [{
+          tool: { id: "tool_weather", name: "get_weather" },
+          binding: { toolId: "tool_weather", kind: "command", executorId: "weather", label: "Local weather script" },
+        }],
+        plan: {
+          repetitions: 2,
+          turnCeiling: 4,
+          cells: Array.from({ length: 4 }),
+          suite: { name: "Quality gate", conversationRevisionId: "revision_frozen", cases: [
+            { caseId: "evaluation-case_1", name: "Case 1", input: { target: { model: "fixture-model" } } },
+            { caseId: "evaluation-case_2", name: "Case 2", input: { target: { model: "fixture-model" } } },
+          ] },
+        },
+      },
+      onCancel() {}, onConfirm() {},
+    }));
+    assert.match(html, /Tools served automatically/);
+    assert.match(html, /command &quot;Local weather script&quot;/);
+    // The cost sentence is a range once a repetition can buy another turn.
+    assert.match(html, /4–16 — one per repetition, up to 4/);
+    assert.match(html, /Start 4 repetitions/);
+  } finally { await server.close(); }
+});
+
 test("evaluation confirmation names the frozen revision, target, cases, repetitions, calls, and storage", async () => {
-  const server = await createServer({ configFile: false, root: process.cwd(), plugins: [react()], server: { middlewareMode: true, hmr: false, ws: false }, logLevel: "warn" });
+  const server = await createServer({ configFile: false, cacheDir: uniqueViteCacheDir(), root: process.cwd(), plugins: [react()], server: { middlewareMode: true, hmr: false, ws: false }, logLevel: "warn" });
   try {
     const [{ EvaluationStartDialog }, { renderToStaticMarkup }, { createElement }] = await Promise.all([
       server.ssrLoadModule("/app/evaluations/evaluation-start-dialog.client.tsx"),
@@ -98,6 +174,7 @@ test("evaluation confirmation names the frozen revision, target, cases, repetiti
     const html = renderToStaticMarkup(createElement(EvaluationStartDialog, {
       draft: {
         targetName: "Fixture profile",
+        toolBindings: [],
         revisionLabel: "Current · Question · “Explain a topic.” · Aug 1, 12:00 PM",
         storage: "durable",
         plan: {

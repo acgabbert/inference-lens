@@ -19,7 +19,6 @@ import type {
   RunId,
   RunState,
   RunTrace,
-  ToolDefinition,
   ToolId,
 } from "../../packages/core/src/run-kernel/index.ts";
 import type { ToolBinding } from "../../packages/core/src/tool-execution.ts";
@@ -27,6 +26,8 @@ import { randomUUID } from "../../packages/core/src/random-id.ts";
 import { runStateFromTrace, traceFileName } from "../../packages/core/src/run-trace.ts";
 import type { ProjectWorkspaceHandle } from "../project-workspace.client.ts";
 import { createExperimentWorkspacePersistence } from "./experiment-workspace-persistence.client.ts";
+import { listExperimentToolBindings } from "./experiment-tool-bindings.client.ts";
+import type { ExperimentToolBinding } from "./experiment-tool-bindings.client.ts";
 import { SequentialExperimentController } from "./sequential-experiment-controller.client.ts";
 
 export const DEFAULT_REPETITION_COUNT = 5;
@@ -34,10 +35,7 @@ export const MIN_REPETITION_COUNT = 2;
 export const MAX_REPETITION_COUNT = 100;
 
 /** One exposed tool and what will answer it, for the confirmation listing. */
-export interface RepeatedExperimentToolBinding {
-  tool: ToolDefinition;
-  binding?: ToolBinding;
-}
+export type RepeatedExperimentToolBinding = ExperimentToolBinding;
 
 export interface RepeatedExperimentDraft {
   plan: RepeatedExperimentPlanV3;
@@ -185,10 +183,7 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
    */
   const listBindings = useCallback(
     (plan: RepeatedExperimentPlanV3): RepeatedExperimentToolBinding[] =>
-      plan.commonInput.tools.map((tool) => {
-        const binding = bindingForTool(tool.id);
-        return { tool, ...(binding ? { binding } : {}) };
-      }),
+      listExperimentToolBindings(plan.commonInput.tools, bindingForTool),
     [bindingForTool],
   );
 
