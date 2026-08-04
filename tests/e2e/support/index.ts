@@ -174,6 +174,44 @@ export async function openMode(
 }
 
 /**
+ * The primary action for the mode on screen. There is exactly one, and it lives
+ * in the topbar — Compose's `Run request` and Evaluations' `Start evaluation…`.
+ * Specs ask for it by mode rather than by label so that a spec reads as "the
+ * primary action is refused" rather than restating which button that is.
+ */
+export function primaryAction(page: Page, mode: "compose" | "evaluations"): Locator {
+  return page.getByRole("button", {
+    name: mode === "compose" ? /^Run request/ : /^Start evaluation…/,
+  });
+}
+
+/**
+ * The evaluation preflight chip, with its disclosure opened when it has one.
+ *
+ * The chip states the first blocker in visible text and holds the rest behind
+ * `Details`, so a spec that asserts on a specific issue has to expand it. The
+ * summary line is asserted directly — see `preflightSummary` — precisely
+ * because it is the part that must never need an expansion.
+ */
+export async function expandedPreflight(page: Page): Promise<Locator> {
+  const preflight = page.locator(".evaluation-preflight");
+  await expect(preflight).toBeVisible();
+  // Idempotent: `Details` is a toggle, so a spec that expands twice would
+  // otherwise shut the disclosure it just opened and assert against a chip
+  // holding only its summary.
+  const details = preflight.getByRole("button", { name: "Details" });
+  if (await details.count() > 0 && (await details.getAttribute("aria-expanded")) === "false") {
+    await details.click();
+  }
+  return preflight;
+}
+
+/** The always-visible reason line a disabled primary action points at. */
+export function preflightSummary(page: Page): Locator {
+  return page.locator("#evaluation-preflight-summary");
+}
+
+/**
  * Closes the Project menu.
  *
  * It is a `<details>`, so Escape does not close it and a second click on the

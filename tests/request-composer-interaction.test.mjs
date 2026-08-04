@@ -94,6 +94,7 @@ function composerProps(overrides = {}) {
       onToggleFavoriteModel: noop,
     },
     onReadinessAction: noop,
+    repeat: { disabled: false, onRepeat: noop },
     onDestinationHandled: noop,
     activeProfile: { name: "Fixture profile" },
     onOpenConnectionSettings: noop,
@@ -251,6 +252,12 @@ test("a readiness destination naming the model focuses it without disturbing the
   }
 });
 
+/**
+ * A Vite server holds the event loop open, so a mount that throws before it can
+ * hand back its `close` has to take the server down itself. Without this, one
+ * failing render leaks a live server and the file hangs instead of reporting
+ * the assertion that actually failed.
+ */
 async function mount(overrides = {}) {
   const server = await createServer({
     configFile: false, cacheDir: uniqueViteCacheDir(),
@@ -259,18 +266,31 @@ async function mount(overrides = {}) {
     server: { middlewareMode: true, hmr: false, ws: false },
     logLevel: "warn",
   });
-  const [{ createElement, act }, { createRoot }, { RequestComposer }] =
-    await Promise.all([
-      import("react"),
-      import("react-dom/client"),
-      server.ssrLoadModule("/app/request/request-composer.client.tsx"),
-    ]);
-  const container = document.createElement("div");
-  document.body.append(container);
-  const root = createRoot(container);
-  await act(async () => {
-    root.render(createElement(RequestComposer, composerProps(overrides)));
-  });
+  let createElement;
+  let act;
+  let container;
+  let root;
+  let RequestComposer;
+  try {
+    let createRoot;
+    [{ createElement, act }, { createRoot }, { RequestComposer }] =
+      await Promise.all([
+        import("react"),
+        import("react-dom/client"),
+        server.ssrLoadModule("/app/request/request-composer.client.tsx"),
+      ]);
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () => {
+      root.render(createElement(RequestComposer, composerProps(overrides)));
+    });
+  } catch (error) {
+    root?.unmount();
+    container?.remove();
+    await server.close();
+    throw error;
+  }
   return {
     container,
     /** Re-renders with new props, as the workbench does when a setting commits. */
@@ -309,9 +329,12 @@ async function mount(overrides = {}) {
       await act(() => new Promise((resolve) => window.setTimeout(resolve, 0)));
     },
     async close() {
-      await act(async () => root.unmount());
-      container.remove();
-      await server.close();
+      try {
+        await act(async () => root.unmount());
+        container.remove();
+      } finally {
+        await server.close();
+      }
     },
   };
 }

@@ -208,8 +208,6 @@ textarea,
 .diff-prompt,
 .diff-warning,
 .diff-absent,
-.run-readiness-summary > p,
-.run-readiness-why > p,
 .tools-tab-toolbar p,
 .side-drawer-header p,
 .run-history-empty p,
@@ -258,7 +256,6 @@ textarea,
 .run-history-toolbar,
 .mobile-workbench-tabs button,
 .trace-storage-icon,
-.run-readiness-glyph,
 .trace-chevron,
 .repeated-experiment-metric-section h3,
 .repeat-experiment-tools h3,
@@ -316,9 +313,6 @@ select,
 .pane-tabs button,
 .inference-settings-identity strong,
 .inference-settings-record dt,
-.run-readiness-summary strong,
-.run-readiness-why > summary,
-.run-readiness-facts dt,
 .streaming-control > span,
 .tools-tab-toolbar strong,
 .trace-toggle,
@@ -361,7 +355,6 @@ output,
 pre,
 .tab-count,
 .request-tool-line,
-.run-readiness-facts dd,
 .menu-heading small,
 .menu-option small,
 /* Sub-labels under a control label: metadata, so they stay smaller than the
@@ -393,7 +386,6 @@ pre,
 .failure-glyph,
 .template-library-tab,
 .template-library-archive-link,
-.run-readiness-why-mark,
 .evaluation-case-list-item button span,
 .evaluation-case-check-count,
 .evaluation-regex-dialect > summary > span,
@@ -3911,6 +3903,17 @@ textarea {
   color: var(--danger);
 }
 
+/* Retry and Discard used to be topbar neighbours, one reflex click apart and
+   nowhere near the error that decides between them. Here the message is above
+   them and only Retry looks like a button. */
+.run-failure-actions {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
 .reasoning-dot {
   width: 8px;
   height: 8px;
@@ -4035,8 +4038,14 @@ textarea {
   color: var(--warning);
 }
 
+/* Continue moved out of the topbar to the pause it acts on, so it has to stay
+   reachable once the call list is longer than the pane. Sticky rather than
+   fixed: it belongs to the scroller, and it releases with it. */
 .continue-tool-run {
+  position: sticky;
+  bottom: 0;
   justify-self: end;
+  z-index: 1;
 }
 
 .empty-state {
@@ -5217,90 +5226,11 @@ main {
   flex: 0 0 auto;
 }
 
-/* A disabled Run button can only carry a native tooltip, so the reason a run
-   is refused is stated in the request pane instead, with its fix attached. */
-.run-readiness {
+/* The blocker chip that replaced the standing readiness notice is scoped by
+   `blocker-chip.module.css`; only its placement in the request pane is global. */
+.run-readiness-slot {
   margin: 12px 20px 0;
-  padding: 9px 10px;
-  border: 1px solid var(--danger-border);
-  border-radius: 8px;
-  background: var(--danger-surface);
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
-}
-
-.run-readiness.advisory {
-  border-color: var(--warning-border);
-  background: var(--warning-surface);
-}
-
-.run-readiness-glyph {
-  width: 17px;
-  height: 17px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: var(--surface-raised);
-  color: var(--danger);
-  font-weight: 800;
-}
-
-.run-readiness.advisory .run-readiness-glyph {
-  color: var(--warning);
-}
-
-.run-readiness-copy {
-  min-width: 0;
-  flex: 1;
-}
-
-.run-readiness-summary {
-  line-height: 1.4;
-}
-
-.run-readiness-summary strong {
-  display: block;
-  color: var(--text-primary);
-}
-
-.run-readiness-summary > p {
-  display: block;
-  margin: 3px 0 0;
-  color: var(--text-secondary);
-}
-
-.run-readiness-why {
-  margin-top: 4px;
-}
-
-.run-readiness-why > summary {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--text-muted);
-  cursor: pointer;
-  list-style: none;
-  font-weight: 700;
-}
-
-.run-readiness-why > summary::-webkit-details-marker {
-  display: none;
-}
-
-.run-readiness-why[open] > summary {
-  color: var(--text-secondary);
-}
-
-.run-readiness-why-mark {
-  width: 13px;
-  height: 13px;
-  border: 1px solid var(--border-strong);
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  font-weight: 800;
+  container-type: inline-size;
 }
 
 /* The lowercase i's dot makes its optical center sit slightly below its box. */
@@ -5310,72 +5240,13 @@ main {
   transform: translateY(-0.5px);
 }
 
-.run-readiness-why > p {
-  margin: 5px 0 0;
-  color: var(--text-muted);
-  line-height: 1.5;
-}
-
-.run-readiness-facts {
-  margin: 6px 0 0;
-  display: grid;
-  gap: 3px;
-}
-
-.run-readiness-facts > div {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.run-readiness-facts dt {
-  flex: 0 0 auto;
-  color: var(--text-muted);
-  font-weight: 700;
-}
-
-.run-readiness-facts dd {
-  min-width: 0;
-  margin: 0;
-  overflow: hidden;
-  color: var(--text-primary);
-  font-family: var(--font-geist-mono), monospace;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.run-readiness-actions {
-  flex: 0 0 auto;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 7px;
-}
-
-.run-readiness-actions .button {
-  padding: 6px 9px;
-}
-
-@container (max-width: 520px) {
-  .run-readiness {
-    align-items: flex-start;
-    flex-wrap: wrap;
-  }
-
-  .run-readiness-actions {
-    width: 100%;
-    padding-left: 26px;
-    justify-content: flex-start;
-  }
-}
-
 .temperature-control .range-row {
   min-height: 36px;
 }
 
 /* These controls are mounted inside three different pages, so they carry their
    own panel scope rather than relying on source order. `label:not(.file-button)`
-   and the host page's own `label`/`input`/`output` rules — `.evaluation-preflight`
+   and the host page's own `label`/`input`/`output` rules — `.evaluation-setup`
    stacks labels and stretches inputs — match the bare class at equal specificity
    and win from further down the file, which stacked each checkbox above its text
    and flattened the temperature readout in the evaluation suite's mount. */
@@ -5396,8 +5267,8 @@ main {
 }
 
 /* The base `output` look is restated rather than inherited: a host page that
-   flattens its own outputs — `.evaluation-preflight-status` does, for its run
-   count — would otherwise take the field out from under the readout. */
+   flattens its own outputs — `.evaluation-preflight` does, for its run count —
+   would otherwise take the field out from under the readout. */
 .inference-settings .temperature-control output {
   min-width: 3rem;
   padding: 5px;
@@ -6634,14 +6505,30 @@ main {
   width: 100%;
 }
 
-/* Now the suite header's status line rather than a standing block: the state,
-   what a start would cost, and the primary action on one row. */
+/* Now a chip and its storage note rather than a standing block. The chip owns
+   the state, the reason, and the disclosure; this only places it and gives it
+   the container the chip's own narrow-width rule queries. */
 .evaluation-preflight {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  flex-wrap: wrap;
+  display: grid;
+  gap: 6px;
+  container-type: inline-size;
+}
+
+/* The plan line rides inside the chip, so the base `output` field look — a
+   border, a fill, a right-aligned readout — has to come back off it. */
+.evaluation-preflight output {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.evaluation-storage-note {
+  color: var(--text-muted);
+  line-height: 1.4;
 }
 
 .evaluation-preflight label {
@@ -6649,14 +6536,6 @@ main {
   flex-direction: column;
   gap: 5px;
   margin-bottom: 0;
-}
-
-.evaluation-preflight-status {
-  display: flex;
-  min-width: 0;
-  align-items: baseline;
-  gap: 10px;
-  flex-wrap: wrap;
 }
 
 .evaluation-setup label {
@@ -6741,16 +6620,6 @@ main {
   width: 132px;
 }
 
-.evaluation-preflight-status output {
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--text-muted);
-  overflow-wrap: anywhere;
-  text-align: left;
-}
-
 /* Tool exposure sits beside the settings disclosure rather than inside it: a
    suite that runs tools is a different kind of evaluation, and what serves each
    one is device-local context the suite never stores. */
@@ -6796,30 +6665,6 @@ main {
 
 .evaluation-tool-unbound {
   color: var(--danger);
-}
-
-.evaluation-preflight label small,
-.evaluation-start-area small {
-  color: var(--text-muted);
-  line-height: 1.4;
-}
-
-.evaluation-start-area {
-  display: flex !important;
-  flex-direction: row !important;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px !important;
-}
-
-.evaluation-start-area small {
-  min-width: 0;
-  max-width: 430px;
-  overflow-wrap: anywhere;
-}
-
-.evaluation-start-area small.evaluation-start-blocked {
-  color: var(--warning-strong);
 }
 
 /* The response pane is the surface here, so the preview is a plain stack of
@@ -6881,23 +6726,33 @@ main {
   margin: 0;
 }
 
+/* A pill has to be able to shrink and wrap. Endpoints are the long value here
+   and the column is narrow, so without this one URL runs past the panel edge
+   and is clipped rather than read — which is the one fact in this list nobody
+   can guess from the others. */
 .evaluation-provider-settings > div {
+  min-width: 0;
+  max-width: 100%;
   display: flex;
+  align-items: baseline;
   gap: 5px;
   padding: 5px 8px;
   border: 1px solid var(--border-default);
-  border-radius: 999px;
+  border-radius: 12px;
   background: var(--surface-sunken);
 }
 
 .evaluation-provider-settings dt {
+  flex: 0 0 auto;
   color: var(--text-muted);
 }
 
 .evaluation-provider-settings dd {
+  min-width: 0;
   margin: 0;
   color: var(--text-secondary);
   font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 .evaluation-provider-messages {
@@ -7339,13 +7194,6 @@ main {
 
 .evaluation-check-results li.failed strong {
   color: var(--danger);
-}
-
-.evaluation-diagnostics {
-  margin: -8px 0 0;
-  padding-left: 10px;
-  border-left: 3px solid var(--warning);
-  color: var(--text-muted);
 }
 
 .evaluation-section-heading h3,
@@ -7960,11 +7808,6 @@ main {
   .evaluation-batch-controls {
     align-items: flex-end;
     flex-wrap: wrap;
-  }
-
-  .evaluation-start-area {
-    align-items: flex-start;
-    flex-direction: column !important;
   }
 
   .evaluation-provider-target {

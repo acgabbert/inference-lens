@@ -24,6 +24,7 @@ import {
   openMode,
   seedProfile,
   waitForHydration,
+  primaryAction,
 } from "./support";
 
 /**
@@ -153,7 +154,7 @@ function runsDot(page: Page) {
 async function startEvaluation(page: Page): Promise<void> {
   const editor = page.locator(".evaluation-editor");
   await expect(editor).toContainText("Ready to run");
-  await editor.getByRole("button", { name: "Start evaluation…" }).click();
+  await primaryAction(page, "evaluations").click();
   await page.getByRole("dialog", { name: /Start “Topics”/ })
     .getByRole("button", { name: "Start 2 calls" })
     .click();

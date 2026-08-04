@@ -30,7 +30,15 @@ import {
   type EvaluationSuiteHistoryHandle,
 } from "./evaluation-suite-history.client";
 import { DisclosureChevron } from "./disclosure-chevron.client";
+import { BlockerChip } from "../blocker-chip.client";
 import styles from "./evaluation-surface.module.css";
+
+/**
+ * The id of the preflight chip's summary line. The Start button is in the
+ * topbar, so it points at this text rather than restating the reason in a
+ * tooltip no keyboard or touch author would ever see.
+ */
+export const EVALUATION_PREFLIGHT_SUMMARY_ID = "evaluation-preflight-summary";
 
 const checkKindLabels: Record<CheckKind, string> = {
   "exact-match": "Exact output",
@@ -371,7 +379,6 @@ export function EvaluationSuiteEditor({
   const bindingIssue = unboundExposedTools.length > 0
     ? `Nothing on this device serves ${unboundExposedTools.map(({ tool }) => tool.name).join(", ")}. Enable a mock or grant a command tool before starting.${execution?.commandToolsUnavailableReason ? ` ${execution.commandToolsUnavailableReason}` : ""}`
     : undefined;
-  const issueCount = authoring.diagnostics.length + (batch.error ? 1 : 0) + (deliveryIssue ? 1 : 0) + (bindingIssue ? 1 : 0);
   // Named in the collapsed summary, so which connection a suite targets stays
   // readable without expanding the panel that chooses it.
   const connectionName = suite
@@ -382,12 +389,22 @@ export function EvaluationSuiteEditor({
   // Everything that blocks a start, in one list. It renders in the suite
   // header rather than in the setup band, because the band collapses and a
   // blocked primary action must state its reason in visible text either way.
-  const issues = [
-    ...authoring.diagnostics.map((diagnostic, index) => ({ key: `${diagnostic.code}-${index}`, message: diagnostic.message })),
-    ...(batch.error ? [{ key: "batch", message: batch.error }] : []),
-    ...(deliveryIssue ? [{ key: "delivery", message: deliveryIssue }] : []),
-    ...(bindingIssue ? [{ key: "binding", message: bindingIssue }] : []),
+  //
+  // `execution.disabledReason` is the same policy read one step later, by the
+  // route that owns the connection and the session. It contributes only when
+  // the authoring-side list is empty, so a condition both of them see — an
+  // unbound tool, a batch over the maximum — is stated once rather than twice.
+  const authoredBlockers = [
+    ...authoring.diagnostics.map(({ message }) => message),
+    ...(batch.error ? [batch.error] : []),
+    ...(deliveryIssue ? [deliveryIssue] : []),
+    ...(bindingIssue ? [bindingIssue] : []),
   ];
+  const blockers = authoredBlockers.length > 0
+    ? authoredBlockers
+    : execution?.disabledReason
+      ? [execution.disabledReason]
+      : [];
   // What the band is hiding while it is shut. Every fact here changes what a
   // start would do, so none of them may need an expansion to be read.
   const setupSummary = suite
@@ -435,25 +452,32 @@ export function EvaluationSuiteEditor({
               <button className="text-button" type="button" onClick={authoring.dismissNotice}>Dismiss</button>
             </p>}
             {authoring.savedPromptError && !authoring.savedPromptPickerOpen && <p className="evaluation-field-error" role="alert">{authoring.savedPromptError}</p>}
+            {/* Preflight is the shared blocker chip, so the state of the
+                Start button in the topbar and the reason it is in that state
+                are one component with one policy behind it. The plan line
+                rides inside the chip because how many provider calls a start
+                would make is the other half of the same decision. */}
             <section className="evaluation-preflight" aria-label="Evaluation preflight">
-              <div className="evaluation-preflight-status">
-                <span className="eyebrow">Preflight</span>
-                <strong>{issueCount === 0 ? "Ready to run" : `${issueCount} setup ${issueCount === 1 ? "issue" : "issues"}`}</strong>
+              <BlockerChip
+                label="Evaluation preflight"
+                tone={blockers.length > 0 ? "blocked" : batch.warning ? "advisory" : "ready"}
+                {...(blockers.length > 0 ? { noun: { one: "setup issue", many: "setup issues" } } : {})}
+                summary={blockers[0] ?? batch.warning ?? "Ready to run"}
+                summaryId={EVALUATION_PREFLIGHT_SUMMARY_ID}
+                issues={blockers}
+                {...(batch.warning && blockers.length > 0
+                  ? { detail: `${batch.warning} Review the exact call count in confirmation before starting.` }
+                  : batch.warning
+                    ? { detail: "Review the exact call count in confirmation before starting." }
+                    : {})}
+              >
                 {/* Outside the setup band deliberately: how many provider calls
                     the suite is about to make is the consequence of settings
                     the band hides, and it must stay readable while it is shut. */}
                 <output><span>{selectedCount} selected</span> × <span>{authoring.repetitions} {authoring.repetitions === 1 ? "rep" : "reps"}</span> → <strong>{Number.isFinite(batch.plannedCalls) ? batch.plannedCalls.toLocaleString() : "Invalid"} runs</strong>{exposedToolIds.length > 0 && Number.isFinite(batch.worstCaseCalls) && <span>, up to {batch.worstCaseCalls.toLocaleString()} provider calls</span>}</output>
-              </div>
-              {execution && <div className="evaluation-start-area"><button className="button primary" type="button" disabled={execution.running || Boolean(execution.disabledReason) || issueCount > 0} title={execution.disabledReason ?? batch.error} onClick={execution.onStart}>{execution.running ? "Evaluation running" : "Start evaluation…"}</button>
-                {/* A disabled primary action must say why in text, not only in a
-                    tooltip a keyboard or touch author never sees. */}
-                {!execution.running && execution.disabledReason && authoring.diagnostics.length === 0 && <small className="evaluation-start-blocked">{execution.disabledReason}</small>}
-                <small>{execution.storage === "durable" ? "The plan, traces, and result will be saved in this project folder." : "Session evaluation: results will be lost when this session closes."}</small></div>}
+              </BlockerChip>
+              {execution && <small className="evaluation-storage-note">{execution.storage === "durable" ? "The plan, traces, and result will be saved in this project folder." : "Session evaluation: results will be lost when this session closes."}</small>}
             </section>
-            {batch.warning && <p className="evaluation-batch-warning" role="status"><strong>{batch.warning}</strong> Review the exact call count in confirmation before starting.</p>}
-            {issues.length > 0 && <ul className="evaluation-diagnostics">
-              {issues.map(({ key, message }) => <li key={key}>{message}</li>)}
-            </ul>}
             {suggestedCandidate && <div className="evaluation-resolution-action" role="status"><div><strong>Add a case input for <code>{suggestedCandidate.variableName}</code></strong><span>Each case can then supply the missing value and clear this setup issue.</span></div><button className="button secondary" type="button" onClick={() => authoring.addInput(suggestedCandidate)}>+ Add case input</button></div>}
           </header>
 

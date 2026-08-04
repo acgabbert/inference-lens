@@ -1,15 +1,26 @@
 "use client";
 
+import { BlockerChip } from "./blocker-chip.client";
 import type {
   RunReadiness,
   RunReadinessAction,
 } from "./run-readiness.client.ts";
 
 /**
- * States a blocked run where it is being composed. The Run button is in the
- * top bar, and a disabled button can carry only a native tooltip — invisible
- * until hovered and unreachable by keyboard — so the reason and its fix are
- * rendered in the request pane instead.
+ * The id of the chip's summary line. The Run button lives in the topbar, and a
+ * disabled button carries only a native tooltip — invisible on touch and
+ * unreachable from the keyboard — so the button points at this text instead of
+ * restating the reason itself.
+ */
+export const RUN_READINESS_SUMMARY_ID = "run-readiness-summary";
+
+/**
+ * Compose's readiness policy, rendered as the shared blocker chip.
+ *
+ * This file is the adapter and nothing else: it decides which part of a
+ * `RunReadiness` is the visible reason and which parts explain it. The
+ * headline is the reason, the primary action's own label is the fix, and the
+ * prose detail, the rule behind it, and the facts sit behind the disclosure.
  */
 interface RunReadinessNoticeProps {
   readiness?: RunReadiness;
@@ -23,56 +34,28 @@ export function RunReadinessNotice({
   if (!readiness) return null;
   const { blocked, headline, detail, explanation, facts, actions } = readiness;
   return (
-    <div
-      className={blocked ? "run-readiness blocked" : "run-readiness advisory"}
-      role={blocked ? "alert" : "status"}
-    >
-      <span className="run-readiness-glyph" aria-hidden="true">
-        {blocked ? "!" : <span className="info-mark-glyph">i</span>}
-      </span>
-      <div className="run-readiness-copy">
-        <div className="run-readiness-summary">
-          <strong>{headline}</strong>
-          <p>{detail}</p>
-        </div>
-        {explanation && (
-          // A disclosure rather than a title attribute: a native tooltip is
-          // invisible on touch and unreachable from the keyboard.
-          <details className="run-readiness-why">
-            <summary>
-              <span className="run-readiness-why-mark" aria-hidden="true">
-                <span className="info-mark-glyph">i</span>
-              </span>
-              Why
-            </summary>
-            <p>{explanation}</p>
-          </details>
-        )}
-        {facts.length > 0 && (
-          <dl className="run-readiness-facts">
-            {facts.map((fact) => (
-              <div key={`${fact.label}-${fact.value}`}>
-                <dt>{fact.label}</dt>
-                <dd>{fact.value}</dd>
-              </div>
-            ))}
-          </dl>
-        )}
-      </div>
-      {actions.length > 0 && (
-        <div className="run-readiness-actions">
-          {actions.map((action) => (
-            <button
-              className={action.primary ? "button primary" : "button secondary"}
-              key={action.kind}
-              type="button"
-              onClick={() => onAction(action)}
-            >
-              {action.label}
-            </button>
-          ))}
-        </div>
-      )}
+    <div className="run-readiness-slot">
+      <BlockerChip
+        label="Run readiness"
+        tone={blocked ? "blocked" : "advisory"}
+        // A refused run is a state the user arrives at, not one they author
+        // keystroke by keystroke, so it is announced assertively.
+        assertive
+        summary={headline}
+        summaryId={RUN_READINESS_SUMMARY_ID}
+        // Readiness reports the one condition to act on first, so the chip
+        // stands for exactly one thing however many rules were evaluated.
+        issues={[headline]}
+        detail={detail}
+        {...(explanation ? { explanation } : {})}
+        facts={facts}
+        actions={actions.map((action) => ({
+          key: action.kind,
+          label: action.label,
+          ...(action.primary ? { primary: true as const } : {}),
+          onSelect: () => onAction(action),
+        }))}
+      />
     </div>
   );
 }

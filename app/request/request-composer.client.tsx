@@ -53,6 +53,16 @@ export interface RequestComposerProps {
     toolsEnabled: boolean;
   };
   readiness?: RunReadiness;
+  /**
+   * Repeating the composed request. It is a second way to start work from this
+   * pane rather than the mode's primary action, so it renders beside the
+   * request it repeats instead of competing for the topbar's one primary slot.
+   */
+  repeat: {
+    disabled: boolean;
+    disabledReason?: string;
+    onRepeat(): void;
+  };
   pendingDestination?: ReadinessDestination;
   onReadinessAction(destination: ReadinessDestination): void;
   onDestinationHandled(): void;
@@ -78,6 +88,7 @@ export function RequestComposer({
   project,
   settings,
   readiness,
+  repeat,
   pendingDestination,
   onReadinessAction,
   onDestinationHandled,
@@ -198,11 +209,29 @@ export function RequestComposer({
             { id: "tools", label: "Tools", count: selectedToolCount },
           ]}
         />
-        {activeTab === "messages" ? (
-          <div className="request-header-actions">
+        <div className="request-header-actions">
+          {activeTab === "messages" ? (
             <button className="text-button header-text-action" onClick={templates.addComposerMessage}>
               + Add message
             </button>
+          ) : activeTab === "tools" ? (
+            <button className="text-button header-text-action" type="button" onClick={requestDraft.addTool}>
+              + Add tool
+            </button>
+          ) : null}
+          {/* On every tab, not only Messages: a repeat sends whatever the
+              composer currently holds, and which tab is open does not change
+              that. */}
+          <button
+            className="button secondary"
+            disabled={repeat.disabled}
+            title={repeat.disabled ? repeat.disabledReason : undefined}
+            type="button"
+            onClick={repeat.onRepeat}
+          >
+            Repeat…
+          </button>
+          {activeTab === "messages" && (
             <FocusModeToggle
               className="request-focus-toggle"
               open={requestFocusMode}
@@ -210,12 +239,8 @@ export function RequestComposer({
               toggleRef={focusToggleRef}
               onToggle={() => (requestFocusMode ? closeFocusMode() : setFocusMode(true))}
             />
-          </div>
-        ) : activeTab === "tools" ? (
-          <button className="text-button header-text-action" type="button" onClick={requestDraft.addTool}>
-            + Add tool
-          </button>
-        ) : null}
+          )}
+        </div>
       </div>
       <RunReadinessNotice {...(readiness ? { readiness } : {})} onAction={routeReadinessAction} />
       {templates.importNotice && (

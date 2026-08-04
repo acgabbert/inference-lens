@@ -15,6 +15,8 @@ import {
   stubProjectDirectory,
   waitForHydration,
   openMode,
+  primaryAction,
+  expandedPreflight,
 } from "./support";
 
 /**
@@ -152,7 +154,7 @@ test("an evaluation serves its suite's tool calls and checks the answer they pro
   await expect(editor).toContainText("up to 5 provider calls");
   await expect(editor).toContainText("Ready to run");
 
-  await editor.getByRole("button", { name: "Start evaluation…" }).click();
+  await primaryAction(page, "evaluations").click();
   const confirmation = page.getByRole("dialog", { name: /Start “Weather quality”/ });
   await expect(confirmation).toContainText("Tools served automatically");
   await expect(confirmation).toContainText('mock "sunny default"');
@@ -183,12 +185,15 @@ test("a suite whose tool nothing can serve is blocked before any provider call",
     "get_weather → nothing on this device",
   );
   await expect(editor).toContainText("1 setup issue");
-  await expect(editor.locator(".evaluation-diagnostics")).toContainText(
+  await expect(await expandedPreflight(page)).toContainText(
     "Nothing on this device serves get_weather",
   );
-  const start = editor.getByRole("button", { name: "Start evaluation…" });
+  const start = primaryAction(page, "evaluations");
   await expect(start).toBeDisabled();
-  await expect(editor).toContainText(
+  // Stated once. The start gate reaches the same conclusion in its own words,
+  // and the chip suppresses that copy rather than printing two sentences about
+  // one unbound tool.
+  await expect(editor).not.toContainText(
     "This suite exposes get_weather, and nothing on this device can serve it",
   );
   await expect(editor).not.toContainText("Ready to run");

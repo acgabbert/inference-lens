@@ -133,6 +133,7 @@ function requestComposer(overrides = {}) {
       onToggleFavoriteModel: noop,
     },
     onReadinessAction: noop,
+    repeat: { disabled: false, onRepeat: noop },
     activeProfile: { name: "Fixture profile" },
     onOpenConnectionSettings: noop,
     onOpenToolLibrary: noop,
@@ -179,14 +180,17 @@ test("the topbar hides ordinary run actions outside the Compose mode", async () 
     runHistoryBlocked: false, isRequestActive: false, isExperimentActive: false,
     mode: "evaluations", onModeChange: noop,
     awaitingToolResults: false, retryableFailure: false,
-    runDisabled: false, repeatDisabled: false,
+    runDisabled: false, evaluationStartDisabled: false,
     onChooseProfile: noop, onOpenConnections: noop, onNewProject: noop,
     onOpenProject: noop, onSaveProject: noop, onImportProject: noop,
     onExportProject: noop, onDownloadDiagnostics: noop, onDownloadRunTrace: noop,
     onImportRunTrace: noop, onOpenRunHistory: noop, onStop: noop,
-    onStopExperiment: noop, onRun: noop, onRepeat: noop, onContinue: noop, onRetry: noop,
+    onStopExperiment: noop, onRun: noop, onStartEvaluation: noop,
   });
-  assert.doesNotMatch(html, /Run request|Repeat…|Run new request/);
+  // One primary action, and it is this mode's own. Compose's run controls and
+  // the lifecycle actions that used to crowd beside them are all gone.
+  assert.match(html, /Start evaluation…/);
+  assert.doesNotMatch(html, /Run request|Repeat…|Run new request|Continue run|Retry|Discard failed run/);
 });
 
 test("the extracted composer keeps pending-branch and template-error text in the request pane", async () => {
@@ -282,16 +286,21 @@ test("a blocked run states its reason and its fix in the request pane", async ()
   );
 
   assert.match(html, /role="alert"/);
+  // The reason is visible text and the fix is the inline action's own label.
+  // Between them a blocked run is fully stated without hover, without a
+  // keyboard trip into a disclosure, and without a pointer at all.
+  assert.match(html, /1 blocker/);
   assert.match(html, /not connected to a local profile/);
-  assert.match(html, /https:\/\/api\.openai\.com\/v1/);
-  assert.match(html, /http:\/\/127\.0\.0\.1:8080\/v1/);
   assert.match(html, /Use &quot;Local llama&quot;/);
-  // The rule behind the block is held in a disclosure, not in the first line.
-  assert.match(html, /<details class="run-readiness-why"/);
-  assert.match(html, /A project never carries a credential\./);
+  // Everything that explains rather than resolves is behind the disclosure,
+  // which is what makes this a chip instead of the banner it replaced.
+  assert.match(html, /aria-expanded="false"[^>]*>Details</);
+  assert.doesNotMatch(html, /A project never carries a credential/);
+  assert.doesNotMatch(html, /https:\/\/api\.openai\.com\/v1/);
+  assert.doesNotMatch(html, /Choose another profile/);
 });
 
-test("a notice without an explanation renders no disclosure", async () => {
+test("an advisory reads as a note rather than a blocker", async () => {
   const html = await render(
     "/app/run-readiness-notice.client.tsx",
     "RunReadinessNotice",
@@ -308,7 +317,11 @@ test("a notice without an explanation renders no disclosure", async () => {
     },
   );
 
-  assert.doesNotMatch(html, /run-readiness-why/);
+  // Not an alert, and counted in the word for something the user may ignore.
+  assert.match(html, /role="status"/);
+  assert.match(html, /1 note/);
+  assert.match(html, /Running against a different endpoint/);
+  assert.doesNotMatch(html, /blocker/);
 });
 
 test("nothing renders when the run is ready", async () => {

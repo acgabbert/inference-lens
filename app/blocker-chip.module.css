@@ -1,0 +1,185 @@
+/*
+ * Scoped to the blocker chip, which is new structure introduced by the UX
+ * overhaul. It replaces the `.run-readiness` notice and the evaluation
+ * preflight badge, whose global rules go with them.
+ *
+ * The visual language is unchanged: the same danger and warning surfaces, the
+ * same glyph, the same fact list. What changes is that all of it now collapses
+ * to one line until asked to expand.
+ */
+
+.chip {
+  padding: 7px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--surface-inset);
+}
+
+.blocked {
+  border-color: var(--danger-border);
+  background: var(--danger-surface);
+}
+
+.advisory {
+  border-color: var(--warning-border);
+  background: var(--warning-surface);
+}
+
+.line {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 1.4;
+}
+
+.glyph {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  font-size: var(--type-compact);
+  font-weight: 800;
+}
+
+.blocked .glyph {
+  color: var(--danger);
+}
+
+.advisory .glyph {
+  color: var(--warning);
+}
+
+.ready .glyph {
+  color: var(--accent-solid);
+}
+
+.count {
+  flex: 0 0 auto;
+  color: var(--text-primary);
+  font-size: var(--type-control);
+  white-space: nowrap;
+}
+
+/* The reason. It may wrap, but it is never truncated and never hidden: this is
+   the visible text a refused primary action is required to state. */
+.summary {
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: var(--type-body);
+}
+
+.spacer {
+  flex: 1 1 auto;
+}
+
+.line .button {
+  flex: 0 0 auto;
+  padding: 6px 9px;
+}
+
+.toggle {
+  flex: 0 0 auto;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: var(--type-control);
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.toggle:hover {
+  color: var(--text-primary);
+}
+
+.body {
+  margin: 8px 0 0;
+  padding-left: 25px;
+  display: grid;
+  gap: 6px;
+}
+
+.detail {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--type-body);
+  line-height: 1.5;
+}
+
+.issues {
+  margin: 0;
+  padding-left: 16px;
+  display: grid;
+  gap: 3px;
+  color: var(--text-secondary);
+  font-size: var(--type-body);
+  line-height: 1.5;
+}
+
+.explanation {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--type-body);
+  line-height: 1.5;
+}
+
+.facts {
+  margin: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.facts > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.facts dt {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: var(--type-control);
+  font-weight: 700;
+}
+
+.facts dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: var(--type-metadata);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+/* Narrow enough that a one-line chip cannot hold its action too: the summary
+   takes the row and the controls drop below it, still without an expansion. */
+@container (max-width: 520px) {
+  .line {
+    flex-wrap: wrap;
+  }
+
+  .summary {
+    flex-basis: 100%;
+    padding-left: 25px;
+  }
+
+  .spacer {
+    display: none;
+  }
+}

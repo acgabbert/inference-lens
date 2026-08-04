@@ -25,6 +25,7 @@ import {
   stubProjectDirectory,
   waitForHydration,
   openMode,
+  primaryAction,
 } from "./support";
 
 const PROJECT_NAME = "Evaluation dismissal fixture";
@@ -152,7 +153,7 @@ async function openUnsavedProject(page: Page, project: ProjectFile): Promise<voi
 async function runEvaluation(page: Page): Promise<void> {
   const editor = page.locator(".evaluation-editor");
   await expect(editor).toContainText("Ready to run");
-  await editor.getByRole("button", { name: "Start evaluation…" }).click();
+  await primaryAction(page, "evaluations").click();
   await page.getByRole("dialog", { name: /Start “Topics”/ })
     .getByRole("button", { name: "Start 2 calls" })
     .click();

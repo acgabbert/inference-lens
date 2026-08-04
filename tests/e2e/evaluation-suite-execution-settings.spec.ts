@@ -14,6 +14,8 @@ import {
   seedProfile,
   waitForHydration,
   openMode,
+  primaryAction,
+  expandedPreflight,
 } from "./support";
 
 const PROJECT_NAME = "Evaluation execution fixture";
@@ -146,7 +148,7 @@ test("suite execution settings reach the provider without changing Messages sett
 
   const editor = page.locator(".evaluation-editor");
   await expect(editor).toContainText("Ready to run");
-  await editor.getByRole("button", { name: "Start evaluation…" }).click();
+  await primaryAction(page, "evaluations").click();
   const confirmation = page.getByRole("dialog", { name: /Start “Untitled evaluation”/ });
   await expect(confirmation).toContainText(PROVIDER_DEFAULT_MODEL);
   await confirmation.getByRole("button", { name: "Start 1 call" }).click();
@@ -198,7 +200,7 @@ test("the execution slider sends the temperature it shows, and a favorite fills 
   await expected.blur();
 
   await expect(editor).toContainText("Ready to run");
-  await editor.getByRole("button", { name: "Start evaluation…" }).click();
+  await primaryAction(page, "evaluations").click();
   await page.getByRole("dialog", { name: /Start “Untitled evaluation”/ })
     .getByRole("button", { name: "Start 1 call" }).click();
 
@@ -232,7 +234,7 @@ test("an empty regex is an accepted draft that preflight blocks until it has a p
   await authorSingleCase(page, "database migrations");
 
   const editor = page.locator(".evaluation-editor");
-  const start = editor.getByRole("button", { name: "Start evaluation…" });
+  const start = primaryAction(page, "evaluations");
   await page.getByLabel("New check kind").selectOption({ label: "Contains text" });
   await page.getByRole("button", { name: "+ Add check" }).click();
   const expected = editor.getByLabel("Expected text");
@@ -245,7 +247,7 @@ test("an empty regex is an accepted draft that preflight blocks until it has a p
   await page.getByLabel("New check kind").selectOption({ label: "Regex" });
   await page.getByRole("button", { name: "+ Add check" }).click();
   await expect(editor.locator(".evaluation-check-card")).toHaveCount(2);
-  await expect(editor.locator(".evaluation-diagnostics")).toContainText(
+  await expect(await expandedPreflight(page)).toContainText(
     'A regex check on case "Untitled case" needs a pattern.',
   );
   await expect(editor).toContainText("1 setup issue");
@@ -269,7 +271,7 @@ test("the missing-variable action adds the case input that clears the setup issu
   await page.getByRole("button", { name: "+ Add case", exact: true }).click();
 
   const editor = page.locator(".evaluation-editor");
-  await expect(editor.locator(".evaluation-diagnostics")).toContainText(
+  await expect(await expandedPreflight(page)).toContainText(
     "cannot resolve template variable",
   );
   const action = editor.locator(".evaluation-resolution-action");
@@ -278,9 +280,9 @@ test("the missing-variable action adds the case input that clears the setup issu
 
   // The binding alone does not clear the issue: a case still needs a value,
   // and preflight has to keep saying so until one is supplied.
-  await expect(editor.locator(".evaluation-diagnostics")).toContainText("has no value for input");
+  await expect(await expandedPreflight(page)).toContainText("has no value for input");
   await page.getByLabel("Untitled case topic").fill("database migrations");
-  const diagnostics = editor.locator(".evaluation-diagnostics");
+  const diagnostics = await expandedPreflight(page);
   await expect(diagnostics).not.toContainText("cannot resolve template variable");
   await expect(diagnostics).not.toContainText("has no value for input");
   await expect(editor.locator(".evaluation-resolution-action")).toHaveCount(0);
@@ -317,7 +319,7 @@ test("a run in progress reports running state and ticks the elapsed clock", asyn
   await (await openInferenceSettings(page, "Evaluation execution settings"))
     .getByLabel("Repetitions").fill("6");
 
-  await page.locator(".evaluation-editor").getByRole("button", { name: "Start evaluation…" }).click();
+  await primaryAction(page, "evaluations").click();
   await page.getByRole("dialog", { name: /Start “Untitled evaluation”/ })
     .getByRole("button", { name: "Start 6 calls" }).click();
 
