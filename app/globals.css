@@ -376,6 +376,9 @@ pre,
 .evaluation-suite-history-toolbar,
 .evaluation-suite-history-item time,
 .evaluation-suite-history-item > span,
+.evaluation-comparison-table small,
+.evaluation-comparison-reasons,
+.evaluation-comparison-checks span,
 .experiment-elapsed,
 .repeated-experiment-output-preview > span,
 .app-error-mark,
@@ -7438,6 +7441,115 @@ main {
 
 .evaluation-suite-history-drift {
   color: var(--text-faint);
+}
+
+.evaluation-suite-history-entry {
+  display: grid;
+  gap: 4px;
+}
+
+.evaluation-suite-history-baseline {
+  color: var(--accent-text);
+  font-weight: 700;
+}
+
+.evaluation-suite-history-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 0 2px 4px;
+}
+
+.evaluation-suite-history-pin-form,
+.evaluation-suite-history-compare {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.evaluation-suite-history-pin-form input,
+.evaluation-suite-history-compare select {
+  min-width: 0;
+  max-width: 190px;
+}
+
+/* Baseline comparison ---------------------------------------------------- */
+
+.evaluation-comparison-workspace {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: grid;
+  gap: 1rem;
+  align-content: start;
+  padding: 1.25rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.evaluation-comparison-drift {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface-translucent);
+}
+
+.evaluation-comparison-drift p {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.evaluation-comparison-table th,
+.evaluation-comparison-table td {
+  white-space: normal;
+  vertical-align: top;
+  text-align: left;
+}
+
+.evaluation-comparison-table tbody th {
+  display: table-cell;
+}
+
+.evaluation-comparison-table small {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-muted);
+}
+
+.evaluation-comparison-absent {
+  margin: 0;
+  color: var(--text-faint);
+}
+
+.evaluation-comparison-reasons {
+  color: var(--text-faint);
+}
+
+.evaluation-comparison-detail > td {
+  padding-bottom: 12px;
+}
+
+.evaluation-comparison-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.evaluation-comparison-checks {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.evaluation-comparison-checks span {
+  display: block;
+  color: var(--text-muted);
 }
 
 .evaluation-cases-workspace {

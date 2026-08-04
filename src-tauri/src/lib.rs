@@ -27,6 +27,7 @@ const PROJECT_FILE_NAME: &str = "project.json";
 const PROJECT_GITIGNORE_CONTENTS: &str = "*\n";
 const TRACES_DIRECTORY_NAME: &str = "traces";
 const EXPERIMENTS_DIRECTORY_NAME: &str = "experiments";
+const EVALUATION_BASELINES_FILE_NAME: &str = "evaluation-baselines.json";
 
 #[derive(Default)]
 struct ProjectWorkspaces(Mutex<HashMap<String, ProjectWorkspaceState>>);
@@ -245,7 +246,13 @@ fn selected_project_directory(app: &AppHandle) -> Result<Option<PathBuf>, String
 }
 
 fn write_project_manifest(directory: &Path, contents: &str) -> Result<(), String> {
-    let manifest = project_manifest_path(directory);
+    write_project_file(directory, &project_manifest_path(directory), contents)
+}
+
+/// Writes one file in the project root through a temporary file, so an
+/// interrupted save cannot leave a half-written file where a valid one was.
+fn write_project_file(directory: &Path, destination: &Path, contents: &str) -> Result<(), String> {
+    let manifest = destination.to_path_buf();
     let temporary = directory.join(format!(
         ".inference-lens-project-{}.tmp",
         uuid::Uuid::new_v4()
@@ -657,6 +664,48 @@ fn list_experiment_artifacts(
         .get(&workspace_id)
         .ok_or_else(|| command_error("This project folder is no longer open."))?;
     read_experiment_artifacts(&workspace.directory)
+}
+
+/// Named evaluation baselines: a mutable annotation file beside project.json.
+/// Absent is a normal state — a project that has pinned nothing has no file —
+/// so reading returns `None` rather than an error.
+#[tauri::command]
+fn read_evaluation_baselines(
+    workspaces: State<'_, ProjectWorkspaces>,
+    workspace_id: String,
+) -> Result<Option<String>, String> {
+    let workspaces = workspaces
+        .0
+        .lock()
+        .map_err(|_| command_error("Project workspace state is unavailable."))?;
+    let workspace = workspaces
+        .get(&workspace_id)
+        .ok_or_else(|| command_error("This project folder is no longer open."))?;
+    let path = workspace.directory.join(EVALUATION_BASELINES_FILE_NAME);
+    match fs::read_to_string(&path) {
+        Ok(contents) => Ok(Some(contents)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(format!(
+            "Could not read {EVALUATION_BASELINES_FILE_NAME}: {error}"
+        )),
+    }
+}
+
+#[tauri::command]
+fn save_evaluation_baselines(
+    workspaces: State<'_, ProjectWorkspaces>,
+    workspace_id: String,
+    contents: String,
+) -> Result<(), String> {
+    let workspaces = workspaces
+        .0
+        .lock()
+        .map_err(|_| command_error("Project workspace state is unavailable."))?;
+    let workspace = workspaces
+        .get(&workspace_id)
+        .ok_or_else(|| command_error("This project folder is no longer open."))?;
+    let destination = workspace.directory.join(EVALUATION_BASELINES_FILE_NAME);
+    write_project_file(&workspace.directory, &destination, &contents)
 }
 
 #[tauri::command]
@@ -1266,6 +1315,8 @@ pub fn run() {
             save_experiment_artifact,
             list_experiment_artifacts,
             read_experiment_artifact,
+            read_evaluation_baselines,
+            save_evaluation_baselines,
             export_run_trace,
         ])
         .run(tauri::generate_context!())

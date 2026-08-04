@@ -56,8 +56,11 @@ import { ResponseOutput } from "./response-output.client";
 import { WorkbenchShell } from "./workbench-shell.client";
 import type { WorkbenchView } from "./workbench-shell.client";
 import { RunTracePanel } from "./run-trace-panel.client";
+import { traceFileName } from "../packages/core/src/run-trace";
 import { RunHistoryDrawer } from "./run-history-drawer.client";
 import type { EvaluationSuiteHistoryHandle } from "./evaluations/evaluation-suite-history.client";
+import { EvaluationComparisonWorkspace } from "./evaluations/evaluation-comparison-workspace.client";
+import { useEvaluationBaselines } from "./evaluations/use-evaluation-baselines.client";
 import type {
   ProjectExperimentHistoryItem,
   ProjectRunHistoryItem,
@@ -287,6 +290,17 @@ function HomeContent() {
     runHistoryOpen || suiteHistoryRequested,
     savedRunVersion,
   );
+  // Named baselines are annotations over the same artifacts the history
+  // listing reads, so they share its reader rather than opening the folder a
+  // second time with its own idea of what is in it.
+  const evaluationBaselines = useEvaluationBaselines({
+    workspace: projectWorkspace,
+    readExperiment: runHistory.readExperiment,
+    findExperiment: (baseline) =>
+      runHistory.experiments.find(
+        (item) => item.experimentId === baseline.experimentId,
+      ),
+  });
   const {
     messages,
     tools,
@@ -1032,9 +1046,28 @@ function HomeContent() {
         ...(evaluationAuthoring.revisionId
           ? { currentRevisionId: evaluationAuthoring.revisionId }
           : {}),
-        onExpand: () => setSuiteHistoryRequested(true),
+        onExpand: () => {
+          setSuiteHistoryRequested(true);
+          evaluationBaselines.load();
+        },
         onRefresh: () => void runHistory.refresh(),
         onOpen: (item) => openHistoryExperiment(item),
+        baselines: {
+          items: evaluationBaselines.forSuite(selectedEvaluationSuite?.id),
+          ...(evaluationBaselines.error ? { error: evaluationBaselines.error } : {}),
+          busy: evaluationBaselines.comparing,
+          onPin: (item, name) => evaluationBaselines.pin(item, name),
+          onUnpin: (baselineId) => evaluationBaselines.unpin(baselineId),
+          onCompare: async (baseline, candidate) => {
+            await evaluationBaselines.compare(baseline, candidate);
+            // A comparison claims the response pane, so anything else holding
+            // it is released the same way opening a saved execution does.
+            repeatedExperiment.clear();
+            evaluationExecution.clear();
+            runSession.reset();
+            setWorkbenchView("response");
+          },
+        },
       }
     : undefined;
 
@@ -1366,7 +1399,21 @@ function HomeContent() {
         }
         response={
         <section className="result">
-          {evaluationExecution.execution && !evaluationExecution.execution.selectedRunId ? <EvaluationResultsWorkspace
+          {evaluationBaselines.comparison && !evaluationExecution.execution && !repeatedExperiment.execution ? <EvaluationComparisonWorkspace
+            loaded={evaluationBaselines.comparison}
+            onDismiss={evaluationBaselines.clearComparison}
+            onOpenTrace={(side, runId) => {
+              const trace = side.traces.get(runId);
+              if (!trace || !projectWorkspace) return;
+              runSession.adoptTrace(trace, {
+                workspace: projectWorkspace,
+                fileName: side.traceFileNames.get(runId) ?? traceFileName(runId),
+                source: "experiment",
+              });
+              setTraceOpen(true);
+              setWorkbenchView("inspect");
+            }}
+          /> : evaluationExecution.execution && !evaluationExecution.execution.selectedRunId ? <EvaluationResultsWorkspace
             execution={evaluationExecution.execution}
             onStop={evaluationExecution.cancel}
             onOpenTrace={evaluationExecution.openTrace}

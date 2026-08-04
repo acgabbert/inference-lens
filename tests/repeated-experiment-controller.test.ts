@@ -388,6 +388,8 @@ test("workspace persistence binds plans, terminal traces, and results to PR2 hel
       async saveExperimentArtifact(fileName, contents) { artifacts.set(fileName, contents); },
       async listExperimentArtifacts() { return []; },
       async readExperimentArtifact() { throw new Error("not used"); },
+      async readEvaluationBaselines() { return null; },
+      async saveEvaluationBaselines() {},
     },
   };
   const frozenPlan = plan(2);
