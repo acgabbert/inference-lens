@@ -4,6 +4,7 @@ import test, { after } from "node:test";
 import react from "@vitejs/plugin-react";
 import { JSDOM } from "jsdom";
 import { createServer } from "vite";
+import { uniqueViteCacheDir } from "./support/vite-cache-dir.mjs";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   url: "http://localhost",
@@ -105,7 +106,7 @@ function cardProps(overrides = {}) {
 async function mount(props, component = "TemplateUseCard") {
   let currentProps = props;
   const server = await createServer({
-    configFile: false,
+    configFile: false, cacheDir: uniqueViteCacheDir(),
     root: process.cwd(),
     plugins: [react()],
     server: { middlewareMode: true, hmr: false, ws: false },

@@ -3,10 +3,11 @@ import test from "node:test";
 
 import { chromium } from "@playwright/test";
 import { createServer } from "vite";
+import { uniqueViteCacheDir } from "./support/vite-cache-dir.mjs";
 
 test("runs the Vite-bundled Safe Regex v1 contract in Chromium", async (t) => {
   const server = await createServer({
-    configFile: false,
+    configFile: false, cacheDir: uniqueViteCacheDir(),
     root: process.cwd(),
     server: { host: "127.0.0.1", port: 0, strictPort: false, hmr: false },
     logLevel: "warn",

@@ -3,6 +3,7 @@ import test from "node:test";
 
 import react from "@vitejs/plugin-react";
 import { createServer } from "vite";
+import { uniqueViteCacheDir } from "./support/vite-cache-dir.mjs";
 
 /**
  * Renders the real drawer through Vite's SSR pipeline rather than asserting on
@@ -16,7 +17,7 @@ import { createServer } from "vite";
  */
 async function renderDrawer(props) {
   const server = await createServer({
-    configFile: false,
+    configFile: false, cacheDir: uniqueViteCacheDir(),
     root: process.cwd(),
     plugins: [react()],
     server: { middlewareMode: true, hmr: false, ws: false },

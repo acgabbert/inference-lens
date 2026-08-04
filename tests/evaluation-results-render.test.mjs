@@ -3,9 +3,10 @@ import test from "node:test";
 
 import react from "@vitejs/plugin-react";
 import { createServer } from "vite";
+import { uniqueViteCacheDir } from "./support/vite-cache-dir.mjs";
 
 async function fixture() {
-  const server = await createServer({ configFile: false, root: process.cwd(), plugins: [react()], server: { middlewareMode: true, hmr: false, ws: false }, logLevel: "warn" });
+  const server = await createServer({ configFile: false, cacheDir: uniqueViteCacheDir(), root: process.cwd(), plugins: [react()], server: { middlewareMode: true, hmr: false, ws: false }, logLevel: "warn" });
   const [projectCore, executionCore, experimentCore, kernel, types, component, reactServer, reactModule] = await Promise.all([
     server.ssrLoadModule("/packages/core/src/project.ts"),
     server.ssrLoadModule("/packages/core/src/evaluation-execution.ts"),
@@ -31,7 +32,7 @@ async function fixture() {
   project = projectCore.parseProjectFile({ ...project, evaluationSuites: [{
     id: "evaluation-suite_topics", name: "Topic quality",
     input: { kind: "conversation-revision", conversationRevisionId: project.defaults.conversationRevisionId },
-    execution: { target: { ...project.defaults.target, model: "fixture-model" }, responseMode: "buffered", options: {}, repetitions: 2 },
+    execution: { target: { ...project.defaults.target, model: "fixture-model" }, responseMode: "buffered", options: {}, repetitions: 2, toolIds: [] },
     inputBindings: [{ id: "evaluation-input_topic", name: "Topic", target: { kind: "template-variable", templateUseId: "template-use_question-use", variableName: "topic" } }],
     cases: [{ id: "evaluation-case_migrations", name: "Migrations", values: { "evaluation-input_topic": "database migrations" }, checks: [{ checkId: "check_mentions-rollback", kind: "contains", value: "rollback", label: "Mentions rollback" }] }],
   }] });

@@ -3,6 +3,7 @@ import test from "node:test";
 
 import react from "@vitejs/plugin-react";
 import { createServer } from "vite";
+import { uniqueViteCacheDir } from "./support/vite-cache-dir.mjs";
 
 /**
  * A brand-new project has no project-owned tool definitions. That must read
@@ -13,7 +14,7 @@ import { createServer } from "vite";
  */
 async function renderPane(props) {
   const server = await createServer({
-    configFile: false,
+    configFile: false, cacheDir: uniqueViteCacheDir(),
     root: process.cwd(),
     plugins: [react()],
     server: { middlewareMode: true, hmr: false, ws: false },

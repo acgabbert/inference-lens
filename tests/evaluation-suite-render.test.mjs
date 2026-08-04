@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import react from "@vitejs/plugin-react";
 import { createServer } from "vite";
+import { uniqueViteCacheDir } from "./support/vite-cache-dir.mjs";
 import { evaluationFixture } from "./fixtures/evaluation-suite-authoring.mjs";
 
 async function render(authoring, execution, history) {
-  const server = await createServer({ configFile: false, root: process.cwd(), plugins: [react()], server: { middlewareMode: true, hmr: false, ws: false }, logLevel: "warn" });
+  const server = await createServer({ configFile: false, cacheDir: uniqueViteCacheDir(), root: process.cwd(), plugins: [react()], server: { middlewareMode: true, hmr: false, ws: false }, logLevel: "warn" });
   try {
     const [{ EvaluationSuiteEditor }, { renderToStaticMarkup }, { createElement }] = await Promise.all([
       server.ssrLoadModule("/app/evaluations/evaluation-suite-editor.client.tsx"),
@@ -17,7 +18,7 @@ async function render(authoring, execution, history) {
 
 /** The preview is the response pane's occupant, so it renders on its own. */
 async function renderPreview(authoring, execution) {
-  const server = await createServer({ configFile: false, root: process.cwd(), plugins: [react()], server: { middlewareMode: true, hmr: false, ws: false }, logLevel: "warn" });
+  const server = await createServer({ configFile: false, cacheDir: uniqueViteCacheDir(), root: process.cwd(), plugins: [react()], server: { middlewareMode: true, hmr: false, ws: false }, logLevel: "warn" });
   try {
     const [{ EvaluationPreviewWorkspace }, { renderToStaticMarkup }, { createElement }] = await Promise.all([
       server.ssrLoadModule("/app/evaluations/evaluation-case-preview.client.tsx"),
@@ -122,7 +123,7 @@ test("a suite that exposes no tools shows neither a ceiling nor a call range", a
 });
 
 test("evaluation confirmation lists the binding behind every tool it will serve", async () => {
-  const server = await createServer({ configFile: false, root: process.cwd(), plugins: [react()], server: { middlewareMode: true, hmr: false, ws: false }, logLevel: "warn" });
+  const server = await createServer({ configFile: false, cacheDir: uniqueViteCacheDir(), root: process.cwd(), plugins: [react()], server: { middlewareMode: true, hmr: false, ws: false }, logLevel: "warn" });
   try {
     const [{ EvaluationStartDialog }, { renderToStaticMarkup }, { createElement }] = await Promise.all([
       server.ssrLoadModule("/app/evaluations/evaluation-start-dialog.client.tsx"),
@@ -158,7 +159,7 @@ test("evaluation confirmation lists the binding behind every tool it will serve"
 });
 
 test("evaluation confirmation names the frozen revision, target, cases, repetitions, calls, and storage", async () => {
-  const server = await createServer({ configFile: false, root: process.cwd(), plugins: [react()], server: { middlewareMode: true, hmr: false, ws: false }, logLevel: "warn" });
+  const server = await createServer({ configFile: false, cacheDir: uniqueViteCacheDir(), root: process.cwd(), plugins: [react()], server: { middlewareMode: true, hmr: false, ws: false }, logLevel: "warn" });
   try {
     const [{ EvaluationStartDialog }, { renderToStaticMarkup }, { createElement }] = await Promise.all([
       server.ssrLoadModule("/app/evaluations/evaluation-start-dialog.client.tsx"),

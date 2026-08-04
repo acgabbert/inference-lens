@@ -5,10 +5,11 @@ import react from "@vitejs/plugin-react";
 import { readFile } from "node:fs/promises";
 
 import { createServer } from "vite";
+import { uniqueViteCacheDir } from "./support/vite-cache-dir.mjs";
 
 async function renderImportModal() {
   const server = await createServer({
-    configFile: false,
+    configFile: false, cacheDir: uniqueViteCacheDir(),
     root: process.cwd(),
     plugins: [react()],
     server: { middlewareMode: true, hmr: false, ws: false },
@@ -35,7 +36,7 @@ async function renderImportModal() {
 
 async function renderExecutionLinkSelector() {
   const server = await createServer({
-    configFile: false,
+    configFile: false, cacheDir: uniqueViteCacheDir(),
     root: process.cwd(),
     plugins: [react()],
     server: { middlewareMode: true, hmr: false, ws: false },
