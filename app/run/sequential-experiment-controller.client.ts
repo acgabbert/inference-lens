@@ -1,5 +1,7 @@
 import type { CredentialSelection, ProviderTurnTransport } from "../../packages/contracts/src";
 import {
+  experimentExposedTools,
+  experimentTurnCeiling,
   materializeParsedExperimentCellInput,
   parseExperimentPlanFile,
   serializeParsedExperimentPlan,
@@ -12,9 +14,14 @@ import type {
 } from "../../packages/core/src/experiment.ts";
 import { RunCoordinator } from "../../packages/core/src/run-kernel/index.ts";
 import { createRunTrace } from "../../packages/core/src/run-kernel/reducer.ts";
+import { createEntityId } from "../../packages/core/src/run-kernel/types.ts";
 import type { RunState, RunTrace, TerminalRunStatus } from "../../packages/core/src/run-kernel/index.ts";
-import type { RunId } from "../../packages/core/src/run-kernel/types.ts";
+import type { ResolvedRunInput, RunId } from "../../packages/core/src/run-kernel/types.ts";
+import { executeToolCall, resolveToolBinding } from "../../packages/core/src/tool-execution.ts";
+import type { ToolBinding, ToolExecutor } from "../../packages/core/src/tool-execution.ts";
 import { driveProviderTurn } from "./provider-turn-driver.client.ts";
+import { pendingToolCalls, toolResolutionForBinding } from "./run-session-state.client.ts";
+import { createToolExecutor } from "./tool-executors.client.ts";
 
 export interface SequentialExperimentProgress {
   status: "running" | "completed" | "cancelled";
@@ -41,6 +48,17 @@ export interface SequentialExperimentControllerOptions {
    * no result is saved, leaving the durable plan as an interrupted experiment.
    */
   onTerminalTrace?(trace: RunTrace, cell: ExperimentCell): Promise<void> | void;
+  /**
+   * The device-local bindings that will serve this plan's exposed tools.
+   *
+   * Joined here rather than written into the plan, exactly as `runtimeTarget`
+   * is: the plan snapshots portable descriptors, and how a tool is served on
+   * this machine travels nowhere. Every exposed tool must appear here, which is
+   * what makes continuation automatic rather than a pause nobody can answer.
+   */
+  toolBindings?: readonly ToolBinding[];
+  /** Injected by tests; the app resolves a binding kind to its executor. */
+  createExecutor?(binding: ToolBinding): ToolExecutor;
 }
 
 function terminalStatus(state: RunState): TerminalRunStatus | undefined {
@@ -56,8 +74,12 @@ function terminalStatus(state: RunState): TerminalRunStatus | undefined {
 
 /**
  * Sequential, non-React execution owner for one already-frozen experiment plan.
- * It deliberately has no automatic retry or tool-result policy: a retryable
- * attempt is finalized as a failed ordinary run and the next cell proceeds.
+ *
+ * It deliberately has no automatic retry policy: a retryable attempt is
+ * finalized as a failed ordinary run and the next cell proceeds. Tool calls it
+ * does serve, but only from a binding that was resolvable before the first
+ * provider call — a repetition never stops to ask a person, because nobody is
+ * watching a batch call by call.
  */
 export class SequentialExperimentController {
   private readonly options: SequentialExperimentControllerOptions;
@@ -68,8 +90,13 @@ export class SequentialExperimentController {
   private running = false;
   private hasRun = false;
 
+  private readonly bindings: readonly ToolBinding[];
+  private readonly createExecutor: (binding: ToolBinding) => ToolExecutor;
+
   constructor(options: SequentialExperimentControllerOptions) {
     this.options = options;
+    this.bindings = options.toolBindings ?? [];
+    this.createExecutor = options.createExecutor ?? createToolExecutor;
   }
 
   get isRunning(): boolean {
@@ -90,11 +117,21 @@ export class SequentialExperimentController {
     // keeps durable and ad hoc experiments on the same validation boundary.
     const plan = parseExperimentPlanFile(this.options.plan);
     this.frozenPlan = plan;
-    const exposedTools = plan.kind === "repeated-request"
-      ? plan.commonInput.tools.length
-      : plan.suite.cases.reduce((count, evaluationCase) => count + evaluationCase.input.tools.length, 0);
-    if (exposedTools > 0) {
-      throw new Error("Experiments do not support exposed tools yet.");
+    // The gate is "every exposed tool can be resolved automatically", not "no
+    // tools". The caller's confirmation should have said the same thing already;
+    // this refuses out loud rather than starting a batch whose every repetition
+    // would stop at a call nobody is present to answer.
+    const unbound = experimentExposedTools(plan).filter(
+      (tool) => !resolveToolBinding(this.bindings, tool.id),
+    );
+    if (unbound.length > 0) {
+      throw new Error(
+        `No binding on this device can serve ${unbound
+          .map(({ name }) => name)
+          .join(", ")}. Bind or disable ${
+          unbound.length === 1 ? "that tool" : "those tools"
+        } before starting.`,
+      );
     }
 
     this.running = true;
@@ -150,38 +187,65 @@ export class SequentialExperimentController {
   ): Promise<void> {
     const input = materializeParsedExperimentCellInput(plan, cell);
     const coordinator = new RunCoordinator(input);
-    const command = coordinator.start();
+    let command = coordinator.start();
     const controller = new AbortController();
     this.activeAbortController = controller;
     this.states.set(input.runId, coordinator.state);
-    this.emitRunning(this.terminalCellCount(cells), cell.ordinal);
+    const notify = () => {
+      this.states.set(coordinator.state.runId, coordinator.state);
+      this.emitRunning(this.terminalCellCount(cells), cell.ordinal);
+    };
+    notify();
 
     if (this.cancellationRequested) {
       coordinator.cancel("Stopped by user.");
     } else {
-      const outcome = await driveProviderTurn({
-        coordinator,
-        execution: command.execution,
-        transport: this.options.transport,
-        prepareCredential: this.options.prepareCredential,
-        signal: controller.signal,
-        onStateChange: (state) => {
-          this.states.set(state.runId, state);
-          this.emitRunning(this.terminalCellCount(cells), cell.ordinal);
-        },
-      });
-      if (outcome === "aborted") {
-        // The supported transports emit a cancelled event before throwing when
-        // this controller's signal is aborted. Today this signal is aborted
-        // only by cancel(), so an aborted outcome intentionally ends the whole
-        // experiment. Revisit this if providers gain independent cancellation.
-        coordinator.cancel("Stopped by user.");
-        this.cancellationRequested = true;
-      } else if (outcome === "superseded") {
-        coordinator.fail({
-          code: "internal_error",
-          message: "The experiment request was superseded unexpectedly.",
+      const ceiling = experimentTurnCeiling(plan);
+      // One iteration per provider turn. A turn that ends awaiting tool results
+      // is served here and continued; anything else leaves the loop and is
+      // finalized below, so every exit path still produces a terminal trace.
+      for (;;) {
+        const outcome = await driveProviderTurn({
+          coordinator,
+          execution: command.execution,
+          transport: this.options.transport,
+          prepareCredential: this.options.prepareCredential,
+          signal: controller.signal,
+          onStateChange: (state) => {
+            this.states.set(state.runId, state);
+            this.emitRunning(this.terminalCellCount(cells), cell.ordinal);
+          },
         });
+        if (outcome === "aborted") {
+          // The supported transports emit a cancelled event before throwing when
+          // this controller's signal is aborted. Today this signal is aborted
+          // only by cancel(), so an aborted outcome intentionally ends the whole
+          // experiment. Revisit this if providers gain independent cancellation.
+          coordinator.cancel("Stopped by user.");
+          this.cancellationRequested = true;
+          break;
+        }
+        if (outcome === "superseded") {
+          coordinator.fail({
+            code: "internal_error",
+            message: "The experiment request was superseded unexpectedly.",
+          });
+          break;
+        }
+        if (coordinator.state.status.kind !== "awaiting_tool_results") break;
+        if (coordinator.state.turns.length >= ceiling) {
+          // The ceiling is the cost bound the confirmation quoted, so reaching
+          // it fails this repetition rather than buying another turn. D4: only
+          // this repetition.
+          coordinator.fail({
+            code: "tool_error",
+            message: `This repetition reached its ${ceiling}-turn ceiling with tool calls outstanding.`,
+          });
+          break;
+        }
+        if (!(await this.serveToolCalls(coordinator, input.tools, controller.signal, notify))) break;
+        command = coordinator.continue();
+        notify();
       }
     }
     if (this.activeAbortController === controller) this.activeAbortController = undefined;
@@ -190,15 +254,15 @@ export class SequentialExperimentController {
     if (coordinator.state.status.kind === "paused" && coordinator.state.status.reason === "attempt_failed") {
       coordinator.fail(coordinator.state.status.error);
     }
-    // D3: the UI blocks tool-bearing plans; retain a terminal trace if a provider
-    // nevertheless asks for a tool during this controller's execution.
+    // Every non-terminal exit above records its own failure first; this is the
+    // last-resort guard that a repetition can never be left waiting for a person.
     if (
       coordinator.state.status.kind === "awaiting_tool_results" ||
       coordinator.state.status.kind === "paused"
     ) {
       coordinator.fail({
         code: "tool_error",
-        message: "Experiments do not support manual tool handling.",
+        message: "The repetition ended waiting for a tool result nobody can supply.",
       });
     }
 
@@ -225,6 +289,76 @@ export class SequentialExperimentController {
         { cause: error },
       );
     }
+  }
+
+  /**
+   * Serves every call one waiting turn is holding, or fails this repetition.
+   *
+   * Results are supplied one call at a time, matching the interactive session:
+   * a failure partway through leaves the calls that already succeeded resolved,
+   * where batching would force them to execute a second time. Returning `false`
+   * means the run is already terminal — the caller must not continue it.
+   */
+  private async serveToolCalls(
+    coordinator: RunCoordinator,
+    tools: ResolvedRunInput["tools"],
+    signal: AbortSignal,
+    notify: () => void,
+  ): Promise<boolean> {
+    for (const { call, tool } of pendingToolCalls(coordinator.state, tools)) {
+      const binding = tool ? resolveToolBinding(this.bindings, tool.id) : undefined;
+      if (!tool || !binding) {
+        coordinator.fail({
+          code: "tool_error",
+          message: tool
+            ? `No binding on this device can serve ${call.name}.`
+            : `The model called ${call.name}, which this experiment does not expose.`,
+        });
+        return false;
+      }
+      const attempt = await executeToolCall(
+        coordinator,
+        this.createExecutor(binding),
+        binding,
+        { toolCallId: call.id, tool, call },
+        { signal },
+      );
+      notify();
+      if (this.cancellationRequested || signal.aborted) {
+        // A cancelled execution is the user stopping the batch, not a tool that
+        // misbehaved, and the cell has to say so.
+        coordinator.cancel("Stopped by user.");
+        this.cancellationRequested = true;
+        return false;
+      }
+      const execution = coordinator.state.toolExecutions.find(
+        ({ id }) => id === attempt.executionId,
+      );
+      if (attempt.outcome.status === "failed" || !execution?.content) {
+        coordinator.fail({
+          code: "tool_error",
+          message: `${call.name} could not be executed: ${
+            attempt.outcome.status === "failed"
+              ? attempt.outcome.failure.message
+              : "The executor returned no content."
+          }`,
+        });
+        return false;
+      }
+      coordinator.supplyToolResults([
+        {
+          // Derived rather than random, like the execution ID it answers, so
+          // that two runs of one plan produce comparable traces.
+          id: createEntityId("tool-result", call.id.slice("tool-call_".length)),
+          toolCallId: call.id,
+          content: execution.content,
+          resolution: toolResolutionForBinding(binding),
+          ...(execution.isError ? { isError: true as const } : {}),
+        },
+      ]);
+      notify();
+    }
+    return true;
   }
 
   private terminalCellCount(cells: ExperimentResultV3["cells"]): number {

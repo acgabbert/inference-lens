@@ -38,6 +38,21 @@ export const EXPERIMENT_SCHEMA_VERSION = 3;
 export const EXPERIMENT_PLAN_FILE_SUFFIX = ".plan.json";
 export const EXPERIMENT_RESULT_FILE_SUFFIX = ".result.json";
 
+/**
+ * How many provider turns one repetition may start.
+ *
+ * Turns rather than tool rounds, because the turn is what a provider bills and
+ * what a cost estimate is expressed in. Without exposed tools a repetition can
+ * never reach turn two, so the ceiling only becomes observable once tools are
+ * served automatically — which is exactly when a runaway loop can be paid for.
+ *
+ * The minimum is two rather than one: a ceiling of one would expose tools and
+ * then guarantee that every repetition asking for one fails.
+ */
+export const DEFAULT_EXPERIMENT_TURN_CEILING = 5;
+export const MIN_EXPERIMENT_TURN_CEILING = 2;
+export const MAX_EXPERIMENT_TURN_CEILING = 20;
+
 export class ExperimentValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -59,6 +74,16 @@ export interface RepeatedExperimentPlanV3 {
   kind: "repeated-request";
   createdAt: string;
   commonInput: Omit<ResolvedRunInput, "runId">;
+  /**
+   * Provider turns one repetition may start before it is failed.
+   *
+   * Optional so that plans written before automatic tool continuation still
+   * parse; absent reads as `DEFAULT_EXPERIMENT_TURN_CEILING`. It lives in the
+   * plan rather than beside it because it bounds what the repetitions may
+   * spend, and a plan re-read later has to say what bounded the run it
+   * describes.
+   */
+  turnCeiling?: number;
   cells: RepeatedExperimentCell[];
 }
 
@@ -95,6 +120,8 @@ export interface EvaluationExperimentPlanV3 {
   checkSchemaVersion: typeof CHECK_SCHEMA_VERSION;
   scoringPolicy: "strict";
   repetitions: number;
+  /** See `RepeatedExperimentPlanV3.turnCeiling`; the controller reads both. */
+  turnCeiling?: number;
   suite: {
     suiteId: EvaluationSuiteId;
     name: string;
@@ -197,6 +224,13 @@ export interface RepeatedExperimentAggregate {
   totalTokens: ExperimentUsageAggregate;
   outputTokens: ExperimentUsageAggregate;
   outputTokensPerSecond: ExperimentMetricRange;
+  /**
+   * Turn and tool-call variation across repetitions. Two repetitions of one
+   * frozen request that took a different number of turns did different work,
+   * which the token ranges alone can hide.
+   */
+  turnsPerRun: ExperimentMetricRange;
+  toolCallsPerRun: ExperimentMetricRange;
   distinctFinalAssistantOutputs: number;
   outputCharacterCount: ExperimentMetricRange;
 }
@@ -370,6 +404,12 @@ const experimentCellBaseSchema = z.object({
   runId: entityId("run"),
 });
 
+const turnCeilingSchema = z
+  .number()
+  .int()
+  .min(MIN_EXPERIMENT_TURN_CEILING)
+  .max(MAX_EXPERIMENT_TURN_CEILING);
+
 const planBaseSchema = z.object({
   experimentId: entityId("experiment"),
   createdAt: z.string().datetime(),
@@ -379,6 +419,7 @@ const repeatedPlanSchema = planBaseSchema.extend({
     schemaVersion: z.literal(EXPERIMENT_SCHEMA_VERSION),
     kind: z.literal("repeated-request"),
     commonInput: commonInputSchema,
+    turnCeiling: turnCeilingSchema.optional(),
     cells: z.array(experimentCellBaseSchema.strict()).min(2),
   })
   .strict();
@@ -408,6 +449,7 @@ const evaluationPlanSchema = planBaseSchema.extend({
   checkSchemaVersion: z.literal(CHECK_SCHEMA_VERSION),
   scoringPolicy: z.literal("strict"),
   repetitions: z.number().int().positive(),
+  turnCeiling: turnCeilingSchema.optional(),
   suite: z.object({
     suiteId: entityId("evaluation-suite"),
     name: z.string().trim().min(1),
@@ -683,6 +725,31 @@ export function serializeExperimentResult(
   return `${JSON.stringify(stableJsonValue(parseExperimentResultFile(result, plan)), null, 2)}\n`;
 }
 
+/** The cost bound this plan runs under, whether or not it recorded one. */
+export function experimentTurnCeiling(plan: ExperimentPlanV3): number {
+  return plan.turnCeiling ?? DEFAULT_EXPERIMENT_TURN_CEILING;
+}
+
+/**
+ * Every tool this plan exposes to the provider, deduplicated by tool ID.
+ *
+ * One list across both plan kinds, because everything that reads it — the start
+ * gate, the confirmation listing, the controller's binding check — asks the
+ * same question: what must be servable before this experiment is worth
+ * starting? An evaluation plan may expose a different set per case, so the
+ * union is what has to be satisfiable, not any one case's selection.
+ */
+export function experimentExposedTools(plan: ExperimentPlanV3): ToolDefinition[] {
+  const inputs = plan.kind === "repeated-request"
+    ? [plan.commonInput]
+    : plan.suite.cases.map(({ input }) => input);
+  const byId = new Map<ToolDefinition["id"], ToolDefinition>();
+  for (const input of inputs) {
+    for (const tool of input.tools) if (!byId.has(tool.id)) byId.set(tool.id, tool);
+  }
+  return [...byId.values()];
+}
+
 /** Materializes exactly one preallocated repetition without changing its frozen input. */
 export function materializeExperimentCellInput(
   plan: ExperimentPlanV3,
@@ -770,6 +837,8 @@ export function repeatedExperimentAggregate(
   const totalTokens: Array<number | undefined> = [];
   const outputTokens: Array<number | undefined> = [];
   const throughput: number[] = [];
+  const turns: number[] = [];
+  const toolCalls: number[] = [];
   const outputs: string[] = [];
 
   for (const cell of parsedPlan.cells) {
@@ -796,6 +865,8 @@ export function repeatedExperimentAggregate(
     totalTokens.push(metrics.usage.totalTokens);
     outputTokens.push(metrics.usage.outputTokens);
     if (metrics.outputTokensPerSecond !== undefined) throughput.push(metrics.outputTokensPerSecond);
+    turns.push(metrics.turnCount);
+    toolCalls.push(metrics.toolCallCount);
     if (state.status.kind === "completed") {
       const output = finalAssistantOutput(state);
       if (output !== undefined) outputs.push(output);
@@ -818,6 +889,8 @@ export function repeatedExperimentAggregate(
     totalTokens: usage(totalTokens),
     outputTokens: usage(outputTokens),
     outputTokensPerSecond: range(throughput),
+    turnsPerRun: range(turns),
+    toolCallsPerRun: range(toolCalls),
     distinctFinalAssistantOutputs: new Set(outputs).size,
     outputCharacterCount: range(outputs.map(outputCharacterCount)),
   };

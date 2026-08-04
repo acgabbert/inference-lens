@@ -4,7 +4,8 @@ import test from "node:test";
 import type { ProviderTurnStream, ProviderTurnTransport } from "../packages/contracts/src/inference.ts";
 import { OPENAI_COMPATIBLE_CAPABILITIES } from "../packages/core/src/types.ts";
 import type { RepeatedExperimentPlanV3 } from "../packages/core/src/experiment.ts";
-import type { ProviderTransportEvent, RunTrace } from "../packages/core/src/run-kernel/index.ts";
+import type { ProviderTransportEvent, RunTrace, ToolCallId } from "../packages/core/src/run-kernel/index.ts";
+import type { ToolBinding } from "../packages/core/src/tool-execution.ts";
 import { SequentialExperimentController } from "../app/run/sequential-experiment-controller.client.ts";
 import { createExperimentWorkspacePersistence } from "../app/run/experiment-workspace-persistence.client.ts";
 import type { ProjectWorkspaceHandle } from "../app/project-workspace.client.ts";
@@ -65,6 +66,53 @@ function transportFor(
       started.push(execution.runId);
       return { status: 200, headers: new Headers(), events: script(execution.runId, signal) };
     },
+  };
+}
+
+const weatherTool = {
+  id: "tool_weather" as const,
+  name: "get_weather",
+  description: "Looks up weather.",
+  inputSchema: { type: "object", properties: {} },
+};
+
+/** A plan exposing one tool, which the provider will be asked to call. */
+function toolPlan(count: number, turnCeiling?: number): RepeatedExperimentPlanV3 {
+  const frozen = plan(count);
+  frozen.commonInput.tools = [weatherTool];
+  if (turnCeiling !== undefined) frozen.turnCeiling = turnCeiling;
+  return frozen;
+}
+
+const mockBinding: ToolBinding = {
+  toolId: weatherTool.id,
+  kind: "mock",
+  executorId: "mock_sunny",
+  label: "sunny default",
+  result: { content: [{ type: "text", text: "sunny, 24C" }] },
+};
+
+/**
+ * Asks for one tool call per turn, up to `calls`, then answers. Counted per
+ * repetition: a shared counter would let cell 2 inherit cell 1's turns and
+ * quietly stop exercising continuation at all.
+ */
+function toolCalling(calls: number) {
+  const turns = new Map<string, number>();
+  return (runId: string): AsyncIterable<ProviderTransportEvent> => {
+    const turn = (turns.get(runId) ?? 0) + 1;
+    turns.set(runId, turn);
+    if (turn > calls) return events(completed("done"));
+    return events([
+      {
+        type: "tool_call_delta",
+        toolCallId: `tool-call_${runId}-${turn}` as ToolCallId,
+        index: 0,
+        nameDelta: weatherTool.name,
+        argumentsDelta: '{"city":"Chicago"}',
+      },
+      { type: "completed", finishReason: { normalized: "tool_calls" } },
+    ]);
   };
 }
 
@@ -371,6 +419,107 @@ test("a cancellation requested before run saves a cancelled no-provider result",
   assert.deepEqual(saved, ["plan", "result"]);
   assert.equal(result.status, "cancelled");
   assert.deepEqual(result.cells.map((cell) => cell.status), ["not-run", "not-run"]);
+});
+
+test("serves a tool call and continues the repetition to a real answer", async () => {
+  const started: string[] = [];
+  const traces: RunTrace[] = [];
+  const result = await new SequentialExperimentController({
+    plan: toolPlan(2),
+    transport: transportFor(toolCalling(1), started),
+    toolBindings: [mockBinding],
+    async prepareCredential() { return { kind: "none" }; },
+    onTerminalTrace(trace) { traces.push(trace); },
+  }).run();
+
+  assert.deepEqual(result.cells.map(({ status }) => status), ["completed", "completed"]);
+  // Two provider calls per repetition: the call, then the continuation.
+  assert.deepEqual(started, ["run_1", "run_1", "run_2", "run_2"]);
+  const trace = traces[0]!;
+  assert.equal(trace.turns.length, 2);
+  assert.equal(trace.turns[1]?.attempts[0]?.text, "done");
+  // The result the model saw came from the executor, and says so.
+  assert.equal(trace.toolResults[0]?.content[0]?.text, "sunny, 24C");
+  assert.deepEqual(trace.toolResults[0]?.resolution, { kind: "mock", ruleId: "mock_sunny" });
+  assert.equal(trace.toolExecutions[0]?.status, "completed");
+  assert.deepEqual(trace.toolExecutions[0]?.executor, {
+    kind: "mock",
+    executorId: "mock_sunny",
+    label: "sunny default",
+  });
+});
+
+test("a repetition that keeps calling tools fails at its ceiling without stopping the batch", async () => {
+  const started: string[] = [];
+  const traces: RunTrace[] = [];
+  // Cell 1 never stops asking; cell 2 asks once and then answers.
+  const endless = toolCalling(99);
+  const once = toolCalling(1);
+  const result = await new SequentialExperimentController({
+    plan: toolPlan(2, 3),
+    transport: transportFor((runId) => {
+      if (runId === "run_1") return endless(runId);
+      return once(runId);
+    }, started),
+    toolBindings: [mockBinding],
+    async prepareCredential() { return { kind: "none" }; },
+    onTerminalTrace(trace) { traces.push(trace); },
+  }).run();
+
+  assert.deepEqual(result.cells.map(({ status }) => status), ["failed", "completed"]);
+  // Three turns, not four: the ceiling is a bound on provider calls.
+  assert.deepEqual(started, ["run_1", "run_1", "run_1", "run_2", "run_2"]);
+  assert.equal(traces[0]?.turns.length, 3);
+  assert.match(
+    traces[0]?.status.kind === "failed" ? traces[0].status.error.message : "",
+    /reached its 3-turn ceiling/,
+  );
+  assert.equal(traces[1]?.status.kind, "completed");
+});
+
+test("an executor failure fails only its own repetition, and never answers for the tool", async () => {
+  const traces: RunTrace[] = [];
+  const failing: ToolBinding = {
+    ...mockBinding,
+    result: { content: [{ type: "text", text: "unused" }] },
+  };
+  const result = await new SequentialExperimentController({
+    plan: toolPlan(2),
+    transport: transportFor(toolCalling(1)),
+    toolBindings: [failing],
+    createExecutor: () => ({
+      kind: "mock",
+      async execute() {
+        throw new Error("the executor exploded");
+      },
+    }),
+    async prepareCredential() { return { kind: "none" }; },
+    onTerminalTrace(trace) { traces.push(trace); },
+  }).run();
+
+  assert.deepEqual(result.cells.map(({ status }) => status), ["failed", "failed"]);
+  assert.match(
+    traces[0]?.status.kind === "failed" ? traces[0].status.error.message : "",
+    /get_weather could not be executed: the executor exploded/,
+  );
+  // A failure must never fabricate a result: the call stayed unanswered.
+  assert.deepEqual(traces[0]?.toolResults, []);
+  assert.equal(traces[0]?.toolExecutions[0]?.status, "failed");
+});
+
+test("refuses to start when an exposed tool has no binding on this device", async () => {
+  let providerCalls = 0;
+  const controller = new SequentialExperimentController({
+    plan: toolPlan(2),
+    transport: transportFor(() => {
+      providerCalls += 1;
+      return events(completed("unexpected"));
+    }),
+    async prepareCredential() { return { kind: "none" }; },
+  });
+
+  await assert.rejects(() => controller.run(), /No binding on this device can serve get_weather/);
+  assert.equal(providerCalls, 0);
 });
 
 test("workspace persistence binds plans, terminal traces, and results to PR2 helpers", async () => {

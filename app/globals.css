@@ -261,6 +261,8 @@ textarea,
 .run-readiness-glyph,
 .trace-chevron,
 .repeated-experiment-metric-section h3,
+.repeat-experiment-tools h3,
+.repeat-experiment-tools li,
 .evaluation-portable-warning,
 .evaluation-empty-inline,
 .evaluation-regex-dialect,
@@ -2849,6 +2851,30 @@ output {
 
 .repeat-experiment-call-count {
   margin-top: 1rem !important;
+}
+
+.repeat-experiment-tools {
+  margin-top: 1rem;
+}
+
+.repeat-experiment-tools h3 {
+  margin: 0 0 0.35rem;
+}
+
+.repeat-experiment-tools ul {
+  display: grid;
+  gap: 0.25rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.repeat-experiment-tools li {
+  overflow-wrap: anywhere;
+}
+
+.repeat-experiment-tool-unbound {
+  color: var(--danger);
 }
 
 .repeated-experiment-dialog .inference-settings {

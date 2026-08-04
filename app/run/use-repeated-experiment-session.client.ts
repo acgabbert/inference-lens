@@ -3,6 +3,11 @@
 import { useCallback, useRef, useState } from "react";
 
 import type { CredentialSelection, ProviderTurnTransport } from "../../packages/contracts/src/index.ts";
+import {
+  DEFAULT_EXPERIMENT_TURN_CEILING,
+  MAX_EXPERIMENT_TURN_CEILING,
+  MIN_EXPERIMENT_TURN_CEILING,
+} from "../../packages/core/src/experiment.ts";
 import type {
   ExperimentPlanV3,
   ExperimentResultV3,
@@ -14,7 +19,10 @@ import type {
   RunId,
   RunState,
   RunTrace,
+  ToolDefinition,
+  ToolId,
 } from "../../packages/core/src/run-kernel/index.ts";
+import type { ToolBinding } from "../../packages/core/src/tool-execution.ts";
 import { randomUUID } from "../../packages/core/src/random-id.ts";
 import { runStateFromTrace, traceFileName } from "../../packages/core/src/run-trace.ts";
 import type { ProjectWorkspaceHandle } from "../project-workspace.client.ts";
@@ -25,11 +33,26 @@ export const DEFAULT_REPETITION_COUNT = 5;
 export const MIN_REPETITION_COUNT = 2;
 export const MAX_REPETITION_COUNT = 100;
 
+/** One exposed tool and what will answer it, for the confirmation listing. */
+export interface RepeatedExperimentToolBinding {
+  tool: ToolDefinition;
+  binding?: ToolBinding;
+}
+
 export interface RepeatedExperimentDraft {
   plan: RepeatedExperimentPlanV3;
   targetName: string;
   requestSummary: string;
   repetitionCount: number;
+  /**
+   * What will serve each exposed tool, resolved when the dialog opened.
+   *
+   * Shown because grants are keyed by tool ID globally and survive a project
+   * re-import: while a person answers each call, a stale grant is inert, but a
+   * batch executes it. The moment cost is confirmed is the cheapest place to
+   * notice that `get_weather` is about to run a command.
+   */
+  toolBindings: RepeatedExperimentToolBinding[];
   /** Applies the ordinary-run preparation effects only after confirmation. */
   commitPreparation(): void;
 }
@@ -82,6 +105,12 @@ export interface RepeatedExperimentExecution {
 export interface UseRepeatedExperimentSessionOptions {
   transport: ProviderTurnTransport;
   prepareCredential(): Promise<CredentialSelection>;
+  /**
+   * The device-local binding that serves one tool, composed by the route from
+   * this project's mocks and this device's command grants. This is where a
+   * portable plan is joined to how its tools are served here.
+   */
+  bindingForTool(toolId: ToolId): ToolBinding | undefined;
   onTraceSaved(): void;
   onError(message: string): void;
   onOpenTrace(trace: RunTrace, origin: { workspace: ProjectWorkspaceHandle | null; fileName: string; source: "experiment" }): void;
@@ -92,8 +121,20 @@ function normalizedCount(value: number): number {
   return Math.max(MIN_REPETITION_COUNT, Math.min(MAX_REPETITION_COUNT, Math.trunc(value)));
 }
 
+function normalizedCeiling(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_EXPERIMENT_TURN_CEILING;
+  return Math.max(
+    MIN_EXPERIMENT_TURN_CEILING,
+    Math.min(MAX_EXPERIMENT_TURN_CEILING, Math.trunc(value)),
+  );
+}
+
 /** Freezes the resolved semantic input and allocates every ordinary run before execution. */
-function planFor(input: ResolvedRunInput, repetitionCount: number): RepeatedExperimentPlanV3 {
+function planFor(
+  input: ResolvedRunInput,
+  repetitionCount: number,
+  turnCeiling: number,
+): RepeatedExperimentPlanV3 {
   const frozenInput = structuredClone(input);
   const { runId: discardedRunId, ...commonInput } = frozenInput;
   void discardedRunId;
@@ -104,6 +145,7 @@ function planFor(input: ResolvedRunInput, repetitionCount: number): RepeatedExpe
     kind: "repeated-request",
     createdAt: new Date().toISOString(),
     commonInput,
+    turnCeiling: normalizedCeiling(turnCeiling),
     cells: Array.from({ length: normalizedCount(repetitionCount) }, (_, index) => ({
       cellId: createEntityId("experiment-cell", randomUUID()),
       ordinal: index + 1,
@@ -122,6 +164,11 @@ function sampleInput(plan: RepeatedExperimentPlanV3): ResolvedRunInput {
   return { ...plan.commonInput, runId: plan.cells[0]!.runId };
 }
 
+/** The ceiling a draft plan already holds, carried across every re-plan. */
+function ceilingOf(plan: RepeatedExperimentPlanV3): number {
+  return plan.turnCeiling ?? DEFAULT_EXPERIMENT_TURN_CEILING;
+}
+
 /** Owns one repeated-experiment dialog, controller, live evidence, and result. */
 export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessionOptions) {
   const [draft, setDraft] = useState<RepeatedExperimentDraft>();
@@ -129,16 +176,34 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
   const [isRunning, setIsRunning] = useState(false);
   const controllerRef = useRef<SequentialExperimentController | undefined>(undefined);
 
+  const { bindingForTool } = options;
+
+  /**
+   * Resolves the exposed tools against this device once, when the dialog opens.
+   * A grant cannot be made while this modal is up, so the listing the user
+   * confirms is the listing the controller will join at start.
+   */
+  const listBindings = useCallback(
+    (plan: RepeatedExperimentPlanV3): RepeatedExperimentToolBinding[] =>
+      plan.commonInput.tools.map((tool) => {
+        const binding = bindingForTool(tool.id);
+        return { tool, ...(binding ? { binding } : {}) };
+      }),
+    [bindingForTool],
+  );
+
   const begin = useCallback((input: ResolvedRunInput, targetName: string, commitPreparation: () => void) => {
     const count = DEFAULT_REPETITION_COUNT;
+    const plan = planFor(input, count, DEFAULT_EXPERIMENT_TURN_CEILING);
     setDraft({
-      plan: planFor(input, count),
+      plan,
       targetName,
       requestSummary: requestSummary(input),
       repetitionCount: count,
+      toolBindings: listBindings(plan),
       commitPreparation,
     });
-  }, []);
+  }, [listBindings]);
 
   const setRepetitionCount = useCallback((value: number) => {
     setDraft((current) => {
@@ -146,8 +211,18 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
       const count = normalizedCount(value);
       return {
         ...current,
-        plan: planFor(sampleInput(current.plan), count),
+        plan: planFor(sampleInput(current.plan), count, ceilingOf(current.plan)),
         repetitionCount: count,
+      };
+    });
+  }, []);
+
+  const setTurnCeiling = useCallback((value: number) => {
+    setDraft((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        plan: planFor(sampleInput(current.plan), current.repetitionCount, normalizedCeiling(value)),
       };
     });
   }, []);
@@ -176,6 +251,7 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
             },
           },
           current.repetitionCount,
+          ceilingOf(current.plan),
         ),
       };
     });
@@ -213,6 +289,9 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
       plan: pending.plan,
       transport: options.transport,
       prepareCredential: options.prepareCredential,
+      // The plan-time join: portable descriptors in the plan, how they are
+      // served on this device beside it, never inside it.
+      toolBindings: pending.toolBindings.flatMap(({ binding }) => binding ? [binding] : []),
       ...persistence,
       onProgress(progress) {
         setExecution((current) => {
@@ -328,6 +407,7 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
     execution,
     begin,
     setRepetitionCount,
+    setTurnCeiling,
     updateSettings,
     dismissDialog,
     confirm,
