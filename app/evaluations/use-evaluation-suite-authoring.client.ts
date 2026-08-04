@@ -122,7 +122,11 @@ export type EvaluationCheckAuthoringField =
   | "trim-whitespace"
   | "negate"
   | "top-level"
-  | "limit";
+  | "limit"
+  | "tool-name"
+  | "count"
+  | "comparator"
+  | "arguments-subset";
 
 export interface EvaluationSuiteAuthoringError {
   message: string;

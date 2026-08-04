@@ -2,7 +2,8 @@
 
 import { useRef, useState } from "react";
 import { CHECK_KINDS } from "../../packages/core/src/checks";
-import type { CheckDefinition, CheckKind } from "../../packages/core/src/checks";
+import type { CheckDefinition, CheckKind, ToolCallCountComparator } from "../../packages/core/src/checks";
+import type { JsonObject } from "../../packages/core/src/run-kernel";
 import type { EvaluationCase } from "../../packages/core/src/project";
 import type { EvaluationInputBinding } from "../../packages/core/src/evaluation-suites";
 import type { ConversationRevisionDescriptor } from "../../packages/core/src/conversation-revision-description";
@@ -38,6 +39,10 @@ const checkKindLabels: Record<CheckKind, string> = {
   "max-output-characters": "Maximum characters",
   "max-duration-ms": "Maximum duration",
   "max-total-tokens": "Maximum tokens",
+  "called-tool": "Called tool",
+  "did-not-call-tool": "Did not call tool",
+  "tool-call-count": "Tool call count",
+  "tool-call-arguments": "Tool call arguments",
 };
 
 // Ordered by the vocabulary itself, so a new kind cannot be offered without a
@@ -143,6 +148,41 @@ function CheckEditor({ check, error, onCommit, onRemove }: {
         <label>Limit <input type="number" min="0" step="1" defaultValue={check.limit} onBlur={(event) => { if (!onCommit({ ...check, limit: Math.max(0, Math.floor(Number(event.target.value) || 0)) }, "limit")) event.currentTarget.value = String(check.limit); }} /></label>
       )}
       {error?.field === "limit" && <p className="evaluation-field-error" role="alert">{error.message}</p>}
+      {(check.kind === "called-tool" || check.kind === "did-not-call-tool" || check.kind === "tool-call-arguments") && (
+        <label>Tool name <input defaultValue={check.toolName} placeholder="get_weather" onBlur={(event) => { if (!onCommit({ ...check, toolName: event.target.value }, "tool-name")) event.currentTarget.value = check.toolName; }} /></label>
+      )}
+      {error?.field === "tool-name" && <p className="evaluation-field-error" role="alert">{error.message}</p>}
+      {check.kind === "tool-call-count" && (
+        <div className="evaluation-check-options">
+          <label>Tool name <input defaultValue={check.toolName ?? ""} placeholder="Any tool" onBlur={(event) => { if (!onCommit({ ...check, toolName: event.target.value || undefined }, "tool-name")) event.currentTarget.value = check.toolName ?? ""; }} /></label>
+          <label>Comparator <select defaultValue={check.comparator} onChange={(event) => { if (!onCommit({ ...check, comparator: event.target.value as ToolCallCountComparator }, "comparator")) event.currentTarget.value = check.comparator; }}><option value="exact">Exactly</option><option value="at-least">At least</option><option value="at-most">At most</option></select></label>
+          <label>Count <input type="number" min="0" step="1" defaultValue={check.count} onBlur={(event) => { if (!onCommit({ ...check, count: Math.max(0, Math.floor(Number(event.target.value) || 0)) }, "count")) event.currentTarget.value = String(check.count); }} /></label>
+        </div>
+      )}
+      {(error?.field === "comparator" || error?.field === "count") && <p className="evaluation-field-error" role="alert">{error.message}</p>}
+      {check.kind === "tool-call-arguments" && (
+        <label>Expected arguments (JSON subset)
+          <textarea
+            defaultValue={JSON.stringify(check.argumentsSubset, null, 2)}
+            rows={4}
+            onBlur={(event) => {
+              let parsed: JsonObject;
+              try {
+                const value = JSON.parse(event.target.value || "{}");
+                if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("not an object");
+                parsed = value as JsonObject;
+              } catch {
+                event.currentTarget.value = JSON.stringify(check.argumentsSubset, null, 2);
+                return;
+              }
+              if (!onCommit({ ...check, argumentsSubset: parsed }, "arguments-subset")) {
+                event.currentTarget.value = JSON.stringify(check.argumentsSubset, null, 2);
+              }
+            }}
+          />
+        </label>
+      )}
+      {error?.field === "arguments-subset" && <p className="evaluation-field-error" role="alert">{error.message}</p>}
     </article>
   );
 }

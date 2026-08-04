@@ -32,8 +32,8 @@ function matchedText(pattern: string, input: string, flags?: string): string | u
   return result.status === "matched" ? result.match.text : undefined;
 }
 
-test("Safe Regex v1 is check vocabulary version 2 with an explicit dialect", () => {
-  assert.equal(CHECK_SCHEMA_VERSION, 2);
+test("Safe Regex v1 ships in the check vocabulary with an explicit dialect", () => {
+  assert.ok(CHECK_SCHEMA_VERSION >= 2);
   assert.deepEqual(
     parseCheckDefinition({
       checkId: "check_safe_regex",

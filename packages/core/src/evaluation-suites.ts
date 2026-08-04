@@ -122,7 +122,11 @@ function unfinishedCheckText(check: CheckDefinition): boolean {
   return (
     (check.kind === "contains" || check.kind === "exact-match") &&
     check.value === ""
-  ) || (check.kind === "regex" && check.pattern === "");
+  ) || (check.kind === "regex" && check.pattern === "")
+    || (
+      (check.kind === "called-tool" || check.kind === "did-not-call-tool" || check.kind === "tool-call-arguments") &&
+      check.toolName === ""
+    );
 }
 
 /** Pure, provider-free authoring preflight for a selected suite and revision. */
@@ -176,7 +180,9 @@ export function evaluationSuitePreflight(
         checkId: check.checkId,
         message: check.kind === "regex"
           ? `A regex check on case "${evaluationCase.name}" needs a pattern.`
-          : `A ${check.kind} check on case "${evaluationCase.name}" has no expected text yet.`,
+          : check.kind === "called-tool" || check.kind === "did-not-call-tool" || check.kind === "tool-call-arguments"
+            ? `A ${check.kind} check on case "${evaluationCase.name}" needs a tool name.`
+            : `A ${check.kind} check on case "${evaluationCase.name}" has no expected text yet.`,
       });
     });
 

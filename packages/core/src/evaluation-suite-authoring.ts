@@ -429,6 +429,10 @@ export function defaultCheck(
     case "max-output-characters": return { checkId, kind: input.kind, limit: 1000 };
     case "max-duration-ms": return { checkId, kind: input.kind, limit: 30000 };
     case "max-total-tokens": return { checkId, kind: input.kind, limit: 1000 };
+    case "called-tool": return { checkId, kind: input.kind, toolName: "" };
+    case "did-not-call-tool": return { checkId, kind: input.kind, toolName: "" };
+    case "tool-call-count": return { checkId, kind: input.kind, count: 1, comparator: "at-least" };
+    case "tool-call-arguments": return { checkId, kind: input.kind, toolName: "", argumentsSubset: {} };
   }
 }
 

@@ -2,7 +2,8 @@ import { z } from "zod";
 
 import { runMetrics } from "./run-metrics.ts";
 import type { AttemptUsageCoverage } from "./run-metrics.ts";
-import { finalAssistantOutput, outputCharacterCount } from "./run-output.ts";
+import { finalAssistantOutput, outputCharacterCount, toolCallsInRun } from "./run-output.ts";
+import type { ToolCallEvidence } from "./run-output.ts";
 import {
   executeSafeRegex,
   SAFE_REGEX_SYNTAX,
@@ -12,6 +13,7 @@ import type {
   CheckId,
   EntityId,
   EntityIdKind,
+  JsonObject,
   JsonValue,
   RunState,
 } from "./run-kernel/types.ts";
@@ -24,7 +26,7 @@ import type {
  * Adding, removing, or changing the meaning of a kind requires bumping this
  * constant and the version of every container that stores checks.
  */
-export const CHECK_SCHEMA_VERSION = 2;
+export const CHECK_SCHEMA_VERSION = 3;
 
 export class CheckValidationError extends Error {
   constructor(message: string) {
@@ -46,6 +48,10 @@ export const CHECK_KINDS = [
   "max-output-characters",
   "max-duration-ms",
   "max-total-tokens",
+  "called-tool",
+  "did-not-call-tool",
+  "tool-call-count",
+  "tool-call-arguments",
 ] as const;
 
 export type CheckKind = (typeof CHECK_KINDS)[number];
@@ -121,6 +127,45 @@ export interface MaxTotalTokensCheck extends CheckDefinitionBase {
   limit: number;
 }
 
+/**
+ * Tool-call kinds match any turn of the run (D13): a call anywhere in the
+ * trace satisfies them, not only the last turn. `toolName` matches
+ * `ToolCall.name` exactly, the same provider-visible name an executor binds
+ * to — not a project `ToolId`, which a check definition never references.
+ */
+export interface CalledToolCheck extends CheckDefinitionBase {
+  kind: "called-tool";
+  toolName: string;
+}
+
+export interface DidNotCallToolCheck extends CheckDefinitionBase {
+  kind: "did-not-call-tool";
+  toolName: string;
+}
+
+export type ToolCallCountComparator = "exact" | "at-least" | "at-most";
+
+export interface ToolCallCountCheck extends CheckDefinitionBase {
+  kind: "tool-call-count";
+  /** Omitted counts every tool call in the run, regardless of name. */
+  toolName?: string;
+  count: number;
+  comparator: ToolCallCountComparator;
+}
+
+/**
+ * Matches when some call to `toolName` has parsed JSON-object arguments that
+ * are a superset of `argumentsSubset` (D13): every key in `argumentsSubset`
+ * must be present with an equal value, recursively for nested objects. Arrays
+ * compare by deep equality — arbitrary partial array matching is ambiguous.
+ * A call whose arguments never resolved to a JSON object cannot match.
+ */
+export interface ToolCallArgumentsCheck extends CheckDefinitionBase {
+  kind: "tool-call-arguments";
+  toolName: string;
+  argumentsSubset: JsonObject;
+}
+
 export type CheckDefinition =
   | ExactMatchCheck
   | ContainsCheck
@@ -128,7 +173,11 @@ export type CheckDefinition =
   | ValidJsonCheck
   | MaxOutputCharactersCheck
   | MaxDurationCheck
-  | MaxTotalTokensCheck;
+  | MaxTotalTokensCheck
+  | CalledToolCheck
+  | DidNotCallToolCheck
+  | ToolCallCountCheck
+  | ToolCallArgumentsCheck;
 
 /**
  * The outcome of one check against one run.
@@ -175,6 +224,13 @@ export interface RunCheckSubject {
   totalDurationMs?: number;
   totalTokenCoverage?: AttemptUsageCoverage;
   reportedTotalTokens?: number;
+  /**
+   * The canonical tool-call projection, always set for a completed run — an
+   * empty array means "no tool calls happened" and is real evidence, unlike
+   * this struct's other optional fields, whose absence means the provider
+   * never reported the quantity at all.
+   */
+  toolCalls?: ToolCallEvidence[];
 }
 
 function entityId<Kind extends EntityIdKind>(
@@ -201,6 +257,33 @@ const textComparison = {
 };
 
 const limit = z.number().int().nonnegative();
+
+const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
+const jsonObjectSchema = z.record(z.string(), jsonValueSchema) as z.ZodType<JsonObject>;
+
+const toolCallCountComparator = z.enum(["exact", "at-least", "at-most"]);
+
+const calledToolShape = { ...definitionBase, toolName: z.string() };
+const toolCallCountShape = {
+  ...definitionBase,
+  toolName: z.string().optional(),
+  count: z.number().int().nonnegative(),
+  comparator: toolCallCountComparator,
+};
+const toolCallArgumentsShape = {
+  ...definitionBase,
+  toolName: z.string(),
+  argumentsSubset: jsonObjectSchema,
+};
 
 export const checkDefinitionSchema: z.ZodType<CheckDefinition> = z
   .discriminatedUnion("kind", [
@@ -247,6 +330,10 @@ export const checkDefinitionSchema: z.ZodType<CheckDefinition> = z
     z
       .object({ ...definitionBase, kind: z.literal("max-total-tokens"), limit })
       .strict(),
+    z.object({ ...calledToolShape, kind: z.literal("called-tool") }).strict(),
+    z.object({ ...calledToolShape, kind: z.literal("did-not-call-tool") }).strict(),
+    z.object({ ...toolCallCountShape, kind: z.literal("tool-call-count") }).strict(),
+    z.object({ ...toolCallArgumentsShape, kind: z.literal("tool-call-arguments") }).strict(),
   ])
   .superRefine((definition, context) => {
     if (definition.kind !== "regex") return;
@@ -281,6 +368,10 @@ export const authoredCheckDefinitionSchema: z.ZodType<CheckDefinition> = z
     z.object({ ...definitionBase, kind: z.literal("max-output-characters"), limit }).strict(),
     z.object({ ...definitionBase, kind: z.literal("max-duration-ms"), limit }).strict(),
     z.object({ ...definitionBase, kind: z.literal("max-total-tokens"), limit }).strict(),
+    z.object({ ...calledToolShape, kind: z.literal("called-tool") }).strict(),
+    z.object({ ...calledToolShape, kind: z.literal("did-not-call-tool") }).strict(),
+    z.object({ ...toolCallCountShape, kind: z.literal("tool-call-count") }).strict(),
+    z.object({ ...toolCallArgumentsShape, kind: z.literal("tool-call-arguments") }).strict(),
   ])
   .superRefine((definition, context) => {
     if (definition.kind !== "regex" || definition.pattern === "") return;
@@ -357,6 +448,7 @@ export function runCheckSubject(state: RunState): RunCheckSubject {
     ...(hasCompleteTotalTokenUsage && metrics.usage.totalTokens !== undefined
       ? { reportedTotalTokens: metrics.usage.totalTokens }
       : {}),
+    toolCalls: toolCallsInRun(state),
   };
 }
 
@@ -411,6 +503,35 @@ function jsonTopLevel(value: unknown): string {
   if (value === null) return "null";
   if (Array.isArray(value)) return "array";
   return typeof value;
+}
+
+/**
+ * True when every key of `expected` is present in `actual` with an equal
+ * value. Nested objects recurse the same way; arrays and scalars compare by
+ * deep equality, since a partial match inside an array is ambiguous (which
+ * element? which order?).
+ */
+function jsonSubsetMatches(expected: JsonValue, actual: JsonValue): boolean {
+  if (
+    expected === null ||
+    typeof expected !== "object" ||
+    Array.isArray(expected) ||
+    actual === null ||
+    typeof actual !== "object" ||
+    Array.isArray(actual)
+  ) {
+    return JSON.stringify(expected) === JSON.stringify(actual);
+  }
+  return Object.entries(expected).every(([key, value]) =>
+    key in actual && jsonSubsetMatches(value, (actual as JsonObject)[key]),
+  );
+}
+
+function toolCallsNamed(
+  toolCalls: ToolCallEvidence[] | undefined,
+  toolName: string,
+): ToolCallEvidence[] {
+  return (toolCalls ?? []).filter((call) => call.name === toolName);
 }
 
 function evaluateOutputCheck(
@@ -599,6 +720,70 @@ export function evaluateCheck(
         totalTokens <= definition.limit
           ? undefined
           : `The run reported ${totalTokens} total tokens; the maximum is ${definition.limit}.`,
+      );
+    }
+    case "called-tool": {
+      const matches = toolCallsNamed(subject.toolCalls, definition.toolName);
+      return outcome(
+        { called: matches.length > 0, matchingCalls: matches.length },
+        matches.length > 0
+          ? undefined
+          : `The run did not call tool "${definition.toolName}".`,
+      );
+    }
+    case "did-not-call-tool": {
+      const matches = toolCallsNamed(subject.toolCalls, definition.toolName);
+      return outcome(
+        { called: matches.length > 0, matchingCalls: matches.length },
+        matches.length === 0
+          ? undefined
+          : `The run called tool "${definition.toolName}", which it must not call.`,
+      );
+    }
+    case "tool-call-count": {
+      const relevant = definition.toolName === undefined
+        ? (subject.toolCalls ?? [])
+        : toolCallsNamed(subject.toolCalls, definition.toolName);
+      const actual = relevant.length;
+      const satisfied = definition.comparator === "exact"
+        ? actual === definition.count
+        : definition.comparator === "at-least"
+          ? actual >= definition.count
+          : actual <= definition.count;
+      const comparatorWord = definition.comparator === "exact"
+        ? "exactly"
+        : definition.comparator === "at-least"
+          ? "at least"
+          : "at most";
+      const subjectNoun = definition.toolName
+        ? `calls to tool "${definition.toolName}"`
+        : "tool calls";
+      return outcome(
+        {
+          count: actual,
+          expected: definition.count,
+          comparator: definition.comparator,
+          ...(definition.toolName ? { toolName: definition.toolName } : {}),
+        },
+        satisfied
+          ? undefined
+          : `The run made ${actual} ${subjectNoun}; expected ${comparatorWord} ${definition.count}.`,
+      );
+    }
+    case "tool-call-arguments": {
+      const matches = toolCallsNamed(subject.toolCalls, definition.toolName);
+      const matched = matches.some(
+        (call) =>
+          call.arguments.parsed !== undefined &&
+          jsonSubsetMatches(definition.argumentsSubset, call.arguments.parsed),
+      );
+      return outcome(
+        { matched, calls: matches.length },
+        matched
+          ? undefined
+          : matches.length === 0
+            ? `The run did not call tool "${definition.toolName}".`
+            : `No call to tool "${definition.toolName}" had arguments matching the expected subset.`,
       );
     }
   }

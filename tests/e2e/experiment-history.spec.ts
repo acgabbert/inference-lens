@@ -55,7 +55,7 @@ function interruptedEvaluationPlan(): EvaluationExperimentPlanV3 {
     experimentId: createEntityId("experiment", "evaluation-browser-history"),
     kind: "evaluation",
     createdAt: "2026-07-31T12:30:00.000Z",
-    checkSchemaVersion: 2,
+    checkSchemaVersion: 3,
     scoringPolicy: "strict",
     repetitions: 1,
     suite: {

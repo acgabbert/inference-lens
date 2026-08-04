@@ -59,12 +59,22 @@ Missing usage stays missing. It is never substituted with zero.
 An available subtotal is only a lower bound, so partial attempt coverage cannot
 pass or fail a maximum-token check.
 
+Tool-call checks are never `not-evaluated` on evidence grounds: a completed run
+always has a tool-call projection, even when it is empty, because zero calls is
+itself a decidable answer to "did it call the tool." A call that never
+happened, or one whose arguments never matched, is a `failed` outcome, not an
+undecidable one — the same distinction `valid-json` already draws between "not
+JSON" (failed) and "the pattern was invalid" (not-evaluated).
+
 ## Vocabulary
 
-Seven kinds ship in v1. Four make a statement about the shape of the answer and
-accept `negate`, which asserts the opposite — "does not contain", "does not
-match", "is not JSON". Three are thresholds; their bound direction is already
-in the kind name, so they reject `negate` at parse time.
+Eleven kinds ship in v3. Four make a statement about the shape of the answer
+and accept `negate`, which asserts the opposite — "does not contain", "does
+not match", "is not JSON". Three are thresholds; their bound direction is
+already in the kind name, so they reject `negate` at parse time. Four assert
+on tool calls (see below); none of them accept `negate` — `called-tool` and
+`did-not-call-tool` already state both directions as separate kinds, and a
+negated count or argument match is not an assertion anyone means to write.
 
 | Kind | Parameters | Passes when |
 | --- | --- | --- |
@@ -75,6 +85,10 @@ in the kind name, so they reject `negate` at parse time.
 | `max-output-characters` | `limit` | Character count ≤ `limit` |
 | `max-duration-ms` | `limit` | Total run duration ≤ `limit` |
 | `max-total-tokens` | `limit` | Reported total tokens ≤ `limit` |
+| `called-tool` | `toolName` | Some turn of the run called `toolName` |
+| `did-not-call-tool` | `toolName` | No turn of the run called `toolName` |
+| `tool-call-count` | `toolName?`, `count`, `comparator` | The number of calls (to `toolName`, or to any tool when omitted) satisfies `comparator` against `count` |
+| `tool-call-arguments` | `toolName`, `argumentsSubset` | Some call to `toolName` has parsed JSON-object arguments that are a superset of `argumentsSubset` |
 
 Every maximum is inclusive at its exact edge.
 
@@ -160,6 +174,34 @@ would reject.
 JSON Schema is deliberately absent. It waits on choosing a real implementation
 and a supported draft rather than shipping an undocumented home-grown subset.
 
+### Tool calls
+
+`packages/core/src/run-output.ts` also owns the tool-call analogue of the
+canonical answer: `toolCallsInRun` projects every completed tool call from
+every completed attempt, in the order the provider emitted them, across the
+whole run. Unlike `finalAssistantOutput`, an empty projection is not a missing
+value — it is what "the run made no tool calls" looks like, so tool-call
+checks never return `not-evaluated` for a completed run.
+
+Matching is **any-turn**: a check passes if any call anywhere in the run
+satisfies it, not only the last turn or a specific one. Ordered-sequence
+matching (call A before call B) is deliberately deferred.
+
+`toolName` matches `ToolCall.name` exactly — the name a provider actually
+called, which is also what an executor binding resolves. A check never
+references a project `ToolId`; that association happens at plan time, the same
+way `execution.toolIds` does for suite-level tool exposure, not inside a check
+definition.
+
+`tool-call-arguments` matches when some call's `arguments.parsed` (the
+provider's arguments, decoded, only present when the complete value was a JSON
+object) is a **superset** of `argumentsSubset`: every key in the checked
+subset must appear in the call's arguments with an equal value, recursively
+into nested objects. Arrays and scalars compare by deep equality — partial
+matching inside an array is ambiguous (which element? which order?), so it is
+not attempted. A call whose arguments never resolved to a JSON object (`parsed`
+is absent) cannot satisfy an arguments check.
+
 ## Evidence
 
 A `passed` or `failed` outcome may carry `evidence`, and a `failed` outcome
@@ -180,9 +222,10 @@ quote the offending input inside it.
 Check definitions carry no `schemaVersion` of their own. They are always
 embedded in a versioned container — the project document, or an evaluation
 execution artifact — and that container's version is what a parser negotiates.
-`CHECK_SCHEMA_VERSION` records the vocabulary's version. Safe regex is version
-2 of that vocabulary. Adding, removing, or changing the meaning of a kind
-requires bumping it and the version of every container that stores checks.
+`CHECK_SCHEMA_VERSION` records the vocabulary's version. Safe regex was version
+2; the four tool-call kinds are version 3. Adding, removing, or changing the
+meaning of a kind requires bumping it and the version of every container that
+stores checks.
 
 Parsers reject unknown fields, unknown kinds, unsafe identifiers, `negate` on a
 threshold kind, unusable Safe regex definitions, and repeated check identities
