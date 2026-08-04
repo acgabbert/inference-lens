@@ -17,7 +17,14 @@ import {
   serializeProjectFile,
 } from "../../packages/core/src/project";
 import type { ProjectFile } from "../../packages/core/src/project";
-import { seedProfile, openMode } from "./support";
+import {
+  PROJECT_PROFILE_MAP_STORAGE_KEY,
+  seedProfile,
+  openMode,
+  primaryAction,
+  expandedPreflight,
+  preflightSummary,
+} from "./support";
 
 const PROFILE_ENDPOINT = "http://127.0.0.1:44014/v1";
 
@@ -108,11 +115,41 @@ async function importProject(page: Page, project: ProjectFile) {
   await page.locator(".project-menu").evaluate((element) => element.removeAttribute("open"));
 }
 
-async function openProject(page: Page, project: ProjectFile, width: number) {
+/**
+ * `mapped` decides whether preflight has a connection blocker to report.
+ *
+ * Most tests here author a suite into an unmapped project, which is fine
+ * because they assert on an authoring issue that outranks the connection. A
+ * test that claims preflight is *clean* has to say so, or it is asserting
+ * against a project that could never have run.
+ */
+async function openProject(
+  page: Page,
+  project: ProjectFile,
+  width: number,
+  { mapped = false }: { mapped?: boolean } = {},
+) {
   await seedProfile(page, {
     endpoint: PROFILE_ENDPOINT,
     instanceId: "profile-instance-buffered",
   });
+  if (mapped) {
+    await page.addInitScript(
+      ({ mapKey, projectId, instanceId }) => {
+        localStorage.setItem(
+          mapKey,
+          JSON.stringify({
+            [projectId]: { profileId: "buffered", profileInstanceId: instanceId },
+          }),
+        );
+      },
+      {
+        mapKey: PROJECT_PROFILE_MAP_STORAGE_KEY,
+        projectId: project.projectId,
+        instanceId: "profile-instance-buffered",
+      },
+    );
+  }
 
   await page.setViewportSize({ width, height: 900 });
   await page.goto("/");
@@ -155,28 +192,28 @@ test("every offered check kind is addable in the running editor", async ({ page 
       // An empty pattern is an accepted authoring draft: the card exists, and
       // preflight — not the add action — is what blocks the run until it is
       // filled in.
-      await expect(editor.locator(".evaluation-diagnostics"))
+      await expect(await expandedPreflight(page))
         .toContainText("needs a pattern");
       const pattern = editor.locator(".evaluation-check-card")
         .filter({ hasText: "RE2 syntax" })
         .getByLabel("Pattern");
       await pattern.fill("migration");
       await pattern.blur();
-      await expect(editor.locator(".evaluation-diagnostics"))
+      await expect(await expandedPreflight(page))
         .not.toContainText("needs a pattern");
     }
     if (label === "Called tool") {
       // An empty tool name is the same kind of accepted-but-incomplete draft
       // as an empty regex pattern: the card exists, and preflight — not the
       // add action — reports it until a tool name is filled in.
-      await expect(editor.locator(".evaluation-diagnostics"))
+      await expect(await expandedPreflight(page))
         .toContainText("needs a tool name");
       const toolName = editor.locator(".evaluation-check-card")
         .filter({ hasText: "Called tool" })
         .getByLabel("Tool name");
       await toolName.fill("lookup");
       await toolName.blur();
-      await expect(editor.locator(".evaluation-diagnostics"))
+      await expect(await expandedPreflight(page))
         .not.toContainText("needs a tool name");
     }
   }
@@ -201,29 +238,29 @@ test("the editor blocks an unbound template variable before evaluation starts", 
   await expect(page.getByLabel("Open evaluation editor in focus mode")).toHaveCount(0);
   await expect(editor).toContainText('Case "Untitled case" cannot resolve template variable "topic"');
   await expect(editor).toContainText("1 setup issue");
-  await expect(editor.getByRole("button", { name: "Start evaluation…" })).toBeDisabled();
+  await expect(primaryAction(page, "evaluations")).toBeDisabled();
 });
 
 test("a saved suite opens with every case selected and preflight clean", async ({ page }) => {
-  await openProject(page, projectWithSavedSuite(), 1440);
+  await openProject(page, projectWithSavedSuite(), 1440, { mapped: true });
   const editor = page.locator(".evaluation-editor");
 
   await expect(editor).toContainText("3 selected × 1 rep → 3 runs");
   await expect(editor).toContainText("Ready to run");
-  await expect(editor.locator(".evaluation-diagnostics")).toHaveCount(0);
+  await expect(preflightSummary(page)).toHaveText("Ready to run");
   await expect(page.locator(".evaluation-preview-scroll")
     .getByRole("region", { name: "Provider input for migrations" }))
     .toContainText("Explain database migrations to engineers.");
+  // The chip and its storage note both have to fit the column they are in; a
+  // preflight that overflows is one whose reason cannot be read.
   const layout = await editor.locator(".evaluation-preflight").evaluate((preflight) => {
-    const startArea = preflight.querySelector<HTMLElement>(".evaluation-start-area");
-    const note = startArea?.querySelector<HTMLElement>("small");
+    const note = preflight.querySelector<HTMLElement>(".evaluation-storage-note");
     return {
       preflightFits: preflight.scrollWidth <= preflight.clientWidth,
-      startAreaFits: Boolean(startArea && startArea.scrollWidth <= startArea.clientWidth),
       noteFits: Boolean(note && note.scrollWidth <= note.clientWidth),
     };
   });
-  expect(layout).toEqual({ preflightFits: true, startAreaFits: true, noteFits: true });
+  expect(layout).toEqual({ preflightFits: true, noteFits: true });
 
   // Narrowing the selection is explicit, and preflight follows it.
   await page.getByLabel("Select indexes").uncheck();
@@ -256,7 +293,7 @@ test("selecting a historical revision with no bound template use stays in the ed
   );
 
   await expect(editor).toBeVisible();
-  await expect(editor.locator(".evaluation-diagnostics")).toContainText(
+  await expect(await expandedPreflight(page)).toContainText(
     "Selected revision does not contain template use",
   );
   // The preview no longer collapses to one generic refusal: the binding that
@@ -331,7 +368,7 @@ test("preflight reports an unfinished check and an empty value", async ({ page }
   await page.getByLabel("Expected text").fill("");
   await page.getByLabel("Expected text").blur();
 
-  const diagnostics = editor.locator(".evaluation-diagnostics");
+  const diagnostics = await expandedPreflight(page);
   await expect(diagnostics).toContainText('Case "migrations" has no value for input "topic".');
   await expect(diagnostics).toContainText("has no expected text yet");
   await expect(editor).toContainText("2 setup issues");
@@ -356,7 +393,7 @@ test("starts contextually, confirms the frozen batch, and renders strict live ev
   await page.getByRole("button", { name: /close connections/i }).click();
   const editor = page.locator(".evaluation-editor");
   await expect(editor).toContainText("Ready to run");
-  const start = editor.getByRole("button", { name: "Start evaluation…" });
+  const start = primaryAction(page, "evaluations");
   await expect(start).toBeEnabled();
   await expect(page.locator(".topbar")).not.toContainText("Run request");
   await expect(page.locator(".topbar")).not.toContainText("Repeat…");

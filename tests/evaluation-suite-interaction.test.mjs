@@ -48,9 +48,10 @@ test("shutting the setup band hides its controls and keeps every fact a start de
     assert.match(header.textContent, /Selected revision no longer has topic/);
     assert.match(header.textContent, /1 selected/);
     assert.match(header.textContent, /3 runs/);
-    const start = header.querySelector(".evaluation-start-area button");
-    assert.ok(start);
-    assert.equal(start.disabled, true);
+    // The Start button is the topbar's. What the band owes it is the reason,
+    // in visible text, with an id the disabled button can point at.
+    assert.equal(header.querySelector("#evaluation-preflight-summary").textContent,
+      "Selected revision no longer has topic.");
 
     // The case list and the case editor are unaffected by the band either way.
     assert.ok(container.querySelector(".evaluation-case-rail"));

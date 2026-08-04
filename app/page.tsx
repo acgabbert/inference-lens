@@ -71,6 +71,7 @@ import {
 } from "./confirmation-dialog.client";
 import { runEmptyStatePresentation, runReadiness } from "./run-readiness.client";
 import type { ReadinessDestination } from "./run-readiness.client";
+import { RUN_READINESS_SUMMARY_ID } from "./run-readiness-notice.client";
 import type {
   ConfirmationDialogRequest,
 } from "./confirmation-dialog.client";
@@ -94,6 +95,7 @@ import {
 } from "./evaluations/evaluation-start.client";
 import { useEvaluationExecutionSession } from "./evaluations/use-evaluation-execution-session.client";
 import { EvaluationStartDialog } from "./evaluations/evaluation-start-dialog.client";
+import { EVALUATION_PREFLIGHT_SUMMARY_ID } from "./evaluations/evaluation-suite-editor.client";
 import type { EvaluationSuiteExecutionActions } from "./evaluations/evaluation-suite-editor.client";
 import { evaluationExperimentAggregate } from "../packages/core/src/experiment";
 import {
@@ -1273,6 +1275,7 @@ function HomeContent() {
         onToolResultDraftChange={runSession.updateToolResultDraft}
         onContinue={() => void continueRun()}
         onRetry={() => void retryRun()}
+        onDiscardFailedRun={stop}
         onSaveTrace={() => void runSession.exportTrace()}
         onEditFromHere={editFromHere}
         onEmptyStateAction={() => {
@@ -1332,13 +1335,9 @@ function HomeContent() {
           runState.status.reason === "attempt_failed"
         }
         runDisabled={Boolean(readiness?.blocked)}
-        runDisabledReason={readiness?.blocked ? readiness.summary : undefined}
-        repeatDisabled={Boolean(readiness?.blocked) || unservableToolNames.length > 0}
-        repeatDisabledReason={readiness?.blocked
-          ? readiness.summary
-          : unservableToolNames.length > 0
-            ? `Nothing on this device serves ${unservableToolNames.join(", ")}.`
-            : undefined}
+        runDisabledReasonId={RUN_READINESS_SUMMARY_ID}
+        evaluationStartDisabled={Boolean(evaluationStartDisabledReason)}
+        evaluationStartDisabledReasonId={EVALUATION_PREFLIGHT_SUMMARY_ID}
         onChooseProfile={chooseProfile}
         onOpenConnections={() => setConnectionDrawerOpen(true)}
         onNewProject={() => setProjectCreationMode("new")}
@@ -1359,9 +1358,7 @@ function HomeContent() {
         onStop={stop}
         onStopExperiment={evaluationExecution.isRunning ? evaluationExecution.cancel : repeatedExperiment.cancel}
         onRun={() => void run()}
-        onRepeat={repeat}
-        onContinue={() => void continueRun()}
-        onRetry={() => void retryRun()}
+        onStartEvaluation={startEvaluation}
       />
 
       {projectError && (
@@ -1538,6 +1535,15 @@ function HomeContent() {
               }),
           }}
           {...(readiness ? { readiness } : {})}
+          repeat={{
+            disabled: Boolean(readiness?.blocked) || unservableToolNames.length > 0,
+            ...(readiness?.blocked
+              ? { disabledReason: readiness.summary }
+              : unservableToolNames.length > 0
+                ? { disabledReason: `Nothing on this device serves ${unservableToolNames.join(", ")}.` }
+                : {}),
+            onRepeat: repeat,
+          }}
           pendingDestination={pendingReadinessDestination}
           onReadinessAction={resolveReadiness}
           onDestinationHandled={() => setPendingReadinessDestination(undefined)}

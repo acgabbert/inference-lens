@@ -31,9 +31,15 @@ interface TopbarProps {
   awaitingToolResults: boolean;
   retryableFailure: boolean;
   runDisabled: boolean;
-  runDisabledReason?: string;
-  repeatDisabled: boolean;
-  repeatDisabledReason?: string;
+  /**
+   * Id of the element that states, in visible text, why the run is refused.
+   * The reason itself is never carried by a `title` here: a native tooltip is
+   * invisible on touch and unreachable from the keyboard.
+   */
+  runDisabledReasonId?: string;
+  evaluationStartDisabled: boolean;
+  /** Same contract as `runDisabledReasonId`, for the Evaluations primary. */
+  evaluationStartDisabledReasonId?: string;
   onChooseProfile(profileId: string): void;
   onOpenConnections(): void;
   onNewProject(): void;
@@ -48,9 +54,7 @@ interface TopbarProps {
   onStop(): void;
   onStopExperiment(): void;
   onRun(): void;
-  onRepeat(): void;
-  onContinue(): void;
-  onRetry(): void;
+  onStartEvaluation(): void;
 }
 
 function closeContainingMenu(element: HTMLElement): void {
@@ -66,10 +70,11 @@ export function Topbar({
   hasProjectWorkspace,
   runHistoryBlocked,
   retryableFailure,
-  runDisabled, repeatDisabled, onChooseProfile, onOpenConnections, onNewProject, onOpenProject,
-  runDisabledReason, repeatDisabledReason,
+  runDisabled, onChooseProfile, onOpenConnections, onNewProject, onOpenProject,
+  runDisabledReasonId,
+  evaluationStartDisabled, evaluationStartDisabledReasonId,
   onSaveProject, onImportProject, onExportProject,
-  onDownloadDiagnostics, onStop, onStopExperiment, onRun, onRepeat, onContinue, onRetry,
+  onDownloadDiagnostics, onStop, onStopExperiment, onRun, onStartEvaluation,
   onDownloadRunTrace,
   onImportRunTrace,
   onOpenRunHistory,
@@ -92,7 +97,46 @@ export function Topbar({
           <div className="menu-group-heading">Run data</div>
           <button disabled={!hasProjectWorkspace || runHistoryBlocked} title={runHistoryBlocked ? "Finish or stop the current run before opening history." : undefined} type="button" onClick={(event) => { onOpenRunHistory(); closeContainingMenu(event.currentTarget); }}>Run history…</button><label className="menu-file-button">Import run trace…<input type="file" accept="application/json,.json" onChange={onImportRunTrace} /></label><button disabled={!hasRunTrace} type="button" onClick={onDownloadRunTrace}>Export run trace…</button><span className="menu-separator" /><button disabled={!hasDiagnosticCapture} type="button" onClick={onDownloadDiagnostics}>Download diagnostics</button>
         </div></details>
-        {isExperimentActive ? <button className="button stop" onClick={onStopExperiment}>Stop remaining</button> : isRequestActive ? <button className="button stop" onClick={onStop}>Stop</button> : mode !== "compose" ? null : awaitingToolResults ? <><button className="button stop" onClick={onStop}>Stop</button><button className="button primary" onClick={onContinue}>Continue run</button></> : retryableFailure ? <><button className="button stop" onClick={onStop}>Discard failed run</button><button className="button secondary" disabled={runDisabled} onClick={onRun} title={runDisabled ? runDisabledReason : undefined}>Run new request</button><button className="button secondary" disabled={repeatDisabled} onClick={onRepeat} title={repeatDisabled ? repeatDisabledReason : undefined}>Repeat…</button><button className="button primary" onClick={onRetry}>Retry <span className="shortcut">⌘↵</span></button></> : <><button className="button secondary" disabled={repeatDisabled} onClick={onRepeat} title={repeatDisabled ? repeatDisabledReason : undefined}>Repeat…</button><button className="button primary" disabled={runDisabled} onClick={onRun} title={runDisabled ? runDisabledReason : undefined}>Run request <span className="shortcut">⌘↵</span></button></>}
+        {/*
+          The topbar holds one primary action and `Stop`; nothing else. Which
+          primary it is comes from the mode, so the slot no longer changes
+          identity underneath a user mid-task. Run-lifecycle actions render at
+          the thing they act on instead: `Continue` at the tool-call pause,
+          `Retry` and `Discard failed run` on the failure card, `Repeat…` in
+          the request composer's header. `Stop` stays here because a running
+          batch or request is global state and has to be stoppable from any
+          mode.
+        */}
+        {isExperimentActive ? (
+          <button className="button stop" onClick={onStopExperiment}>Stop remaining</button>
+        ) : isRequestActive ? (
+          <button className="button stop" onClick={onStop}>Stop</button>
+        ) : mode === "compose" ? (
+          // A paused run owns its own way out. Offering a fresh request beside
+          // it would be a third exit from a state that already has two, and
+          // starting one would silently abandon the pause.
+          awaitingToolResults ? (
+            <button className="button stop" onClick={onStop}>Stop</button>
+          ) : retryableFailure ? null : (
+            <button
+              aria-describedby={runDisabled ? runDisabledReasonId : undefined}
+              className="button primary"
+              disabled={runDisabled}
+              onClick={onRun}
+            >
+              Run request <span className="shortcut">⌘↵</span>
+            </button>
+          )
+        ) : mode === "evaluations" ? (
+          <button
+            aria-describedby={evaluationStartDisabled ? evaluationStartDisabledReasonId : undefined}
+            className="button primary"
+            disabled={evaluationStartDisabled}
+            onClick={onStartEvaluation}
+          >
+            Start evaluation… <span className="shortcut">⌘↵</span>
+          </button>
+        ) : null}
       </div>
     </header>
   );

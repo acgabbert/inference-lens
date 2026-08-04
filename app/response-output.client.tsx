@@ -54,10 +54,53 @@ type ResponseOutputProps = {
   onToolResultDraftChange(callId: string, text: string): void;
   onContinue(): void;
   onRetry(): void;
+  /**
+   * Abandons a failed attempt and returns the composer to idle. Destructive,
+   * so it renders on the failure card next to the error that justifies it
+   * rather than in the topbar beside the control a user clicks by reflex.
+   */
+  onDiscardFailedRun(): void;
   onSaveTrace(): void;
   onEditFromHere(messageId: ConversationMessage["id"]): void;
   onEmptyStateAction(): void;
 };
+
+/**
+ * A failed attempt and everything that can be done about it, in one place.
+ *
+ * Both actions used to live in the topbar, where `Discard failed run` sat one
+ * button away from `Retry` — a destructive action beside the control the user
+ * reaches for by reflex, and neither of them next to the error message that
+ * explains which one to pick. Retry leads; discarding is offered as a text
+ * button, because it throws the attempt away.
+ */
+function RunFailureCard({
+  message,
+  onRetry,
+  onDiscard,
+}: {
+  message: string;
+  onRetry(): void;
+  onDiscard(): void;
+}) {
+  return (
+    <div className="waiting-for-answer run-failure-state" role="alert">
+      <span className="failure-glyph" aria-hidden="true">!</span>
+      <div>
+        <h3>Attempt failed</h3>
+        <p>{message}</p>
+        <div className="run-failure-actions">
+          <button className="button primary" type="button" onClick={onRetry}>
+            Retry attempt <span className="shortcut">⌘↵</span>
+          </button>
+          <button className="text-button" type="button" onClick={onDiscard}>
+            Discard failed run
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /** The response pane, excluding the independent trace panel below it. */
 export function ResponseOutput({
@@ -67,7 +110,7 @@ export function ResponseOutput({
   transcript, nonBranchableMessageIds, branchedFrom,
   emptyState,
   onMarkdownPreviewChange, onOutputScroll, onJumpToLatest,
-  onToolResultDraftChange, onContinue, onRetry,
+  onToolResultDraftChange, onContinue, onRetry, onDiscardFailedRun,
   onSaveTrace, onEditFromHere, onEmptyStateAction,
 }: ResponseOutputProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -271,12 +314,12 @@ export function ResponseOutput({
             : reasoning ? <div className="waiting-for-answer" aria-live="polite"><span className="reasoning-dot" aria-hidden="true" /><div><h3>Thinking…</h3><p>Reasoning received. The final answer will appear here.</p></div></div>
             : isRequestActive ? <div className="waiting-for-answer" role="status"><span className="reasoning-dot" aria-hidden="true" /><div><h3>Waiting for response…</h3><p>Request sent. The response will appear here.</p></div></div>
             : awaitingResults ? <div className="waiting-for-answer"><span className="reasoning-dot complete" aria-hidden="true" /><div><h3>Tool result needed</h3><p>Review the call below, supply its result, then continue.</p></div></div>
-            : retryableFailure ? <div className="waiting-for-answer run-failure-state" role="alert"><span className="failure-glyph" aria-hidden="true">!</span><div><h3>Attempt failed</h3><p>{retryableFailure.error.message}</p><button className="button secondary" type="button" onClick={onRetry}>Retry attempt</button></div></div>
+            : retryableFailure ? <RunFailureCard message={retryableFailure.error.message} onRetry={onRetry} onDiscard={onDiscardFailedRun} />
             : runState?.status.kind === "failed" ? <div className="waiting-for-answer run-failure-state" role="alert"><span className="failure-glyph" aria-hidden="true">!</span><div><h3>Request failed</h3><p>{runState.status.error.message}</p></div></div>
             : runState?.status.kind === "cancelled" ? <div className="waiting-for-answer"><span className="failure-glyph muted" aria-hidden="true">×</span><div><h3>Request stopped</h3><p>{runState.status.reason}</p></div></div>
             : <div className="empty-state"><span className="empty-glyph" aria-hidden="true">↗</span><h3>{emptyState.headline}</h3><p>{emptyState.detail}</p>{emptyState.action && <button className="button secondary" type="button" onClick={onEmptyStateAction}>{emptyState.action.label}</button>}</div>}
           {reasoning && <details className="reasoning-stream"><summary><span className={status === "running" ? "reasoning-dot" : "reasoning-dot complete"} aria-hidden="true" /><span>{status === "running" ? "Thinking…" : "Reasoning"}</span><span className="reasoning-stream-hint">Show</span></summary><p>{reasoning}</p></details>}
-          {(output || reasoning) && retryableFailure && <div className="waiting-for-answer run-failure-state" role="alert"><span className="failure-glyph" aria-hidden="true">!</span><div><h3>Attempt failed</h3><p>{retryableFailure.error.message}</p><button className="button secondary" type="button" onClick={onRetry}>Retry attempt</button></div></div>}
+          {(output || reasoning) && retryableFailure && <RunFailureCard message={retryableFailure.error.message} onRetry={onRetry} onDiscard={onDiscardFailedRun} />}
         </div>}
         {!terminal && <ToolCallList calls={completedToolCalls} toolResultDrafts={toolResultDrafts}
           suppliedResults={runState?.toolResults ?? []} toolExecutions={runState?.toolExecutions ?? []} awaitingResults={awaitingResults}

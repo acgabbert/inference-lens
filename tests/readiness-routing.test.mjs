@@ -28,6 +28,13 @@ Object.defineProperty(globalThis, "navigator", {
 
 after(() => dom.window.close());
 
+/**
+ * A Vite server holds the event loop open, so anything that throws between
+ * creating one and handing back its `close` has to take the server down on the
+ * way out. Without this, a single failing render does not report a failure —
+ * it leaks a live server and the whole file hangs until something kills it,
+ * which hides the real assertion behind a timeout.
+ */
 async function render(modulePath, component, props) {
   const server = await createServer({
     configFile: false, cacheDir: uniqueViteCacheDir(),
@@ -36,22 +43,35 @@ async function render(modulePath, component, props) {
     server: { middlewareMode: true, hmr: false, ws: false },
     logLevel: "warn",
   });
-  const [{ createElement }, { createRoot }, { act }, module] = await Promise.all([
-    import("react"),
-    import("react-dom/client"),
-    import("react"),
-    server.ssrLoadModule(modulePath),
-  ]);
-  const container = document.createElement("div");
-  document.body.append(container);
-  const root = createRoot(container);
-  await act(async () => root.render(createElement(module[component], props)));
+  let container;
+  let root;
+  try {
+    const [{ createElement }, { createRoot }, { act }, module] = await Promise.all([
+      import("react"),
+      import("react-dom/client"),
+      import("react"),
+      server.ssrLoadModule(modulePath),
+    ]);
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () => root.render(createElement(module[component], props)));
+  } catch (error) {
+    root?.unmount();
+    container?.remove();
+    await server.close();
+    throw error;
+  }
   return {
     container,
     async close() {
-      await act(async () => root.unmount());
-      container.remove();
-      await server.close();
+      const { act } = await import("react");
+      try {
+        await act(async () => root.unmount());
+        container.remove();
+      } finally {
+        await server.close();
+      }
     },
   };
 }
@@ -124,6 +144,7 @@ function composerProps(pendingDestination, onDestinationHandled) {
       onToggleFavoriteModel: noop,
     },
     activeProfile: { name: "Fixture" }, pendingDestination, onDestinationHandled,
+    repeat: { disabled: false, onRepeat: noop },
     onReadinessAction: noop, onOpenConnectionSettings: noop, onOpenToolLibrary: noop,
     onSaveParentTrace: noop, onDiscardPendingBranch: noop,
     onActionContextChange: noop,

@@ -12,6 +12,7 @@ import {
   seedProfile,
   waitForHydration,
   openMode,
+  primaryAction,
 } from "./support";
 
 const PROJECT_NAME = "Saved prompt preflight fixture";
@@ -176,7 +177,7 @@ test("authoring from a saved prompt shows the exact resolved input it will run",
   // goes through the buffered fixture deterministically.
   await mapConnection(page);
   await expect(editor).toContainText("Ready to run");
-  await editor.getByRole("button", { name: "Start evaluation…" }).click();
+  await primaryAction(page, "evaluations").click();
   const confirmation = page.getByRole("dialog", { name: /Start “Untitled evaluation”/ });
   await expect(confirmation).toContainText("Question · “Explain");
   await expect(confirmation).toContainText("1 planned");

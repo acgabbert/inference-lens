@@ -22,6 +22,8 @@ import {
   openMode,
   seedProfile,
   waitForHydration,
+  primaryAction,
+  preflightSummary,
 } from "./support";
 
 const PROJECT_NAME = "Full width evaluations";
@@ -177,14 +179,20 @@ test("expanding setup does not push the cases off screen", async ({ page }) => {
   await expect(setup).toHaveAttribute("aria-expanded", "false");
   await expect(page.locator(".evaluation-setup")).toHaveCount(0);
   await expect(setup).toContainText("buffered-test-model");
-  await expect(page.locator(".evaluation-preflight")).toContainText("Ready to run");
+  // The plan line stays readable with the band shut; the state beside it is
+  // blocked, because this fixture never mapped its connection.
   await expect(page.locator(".evaluation-preflight")).toContainText("6 selected × 1 rep → 6 runs");
+  await expect(page.locator(".evaluation-preflight")).not.toContainText("Ready to run");
   // This fixture imports a project without mapping its connection, so the start
   // is blocked. The reason must be readable text beside the disabled action
   // with the band shut — a tooltip alone is invisible to keyboard and touch.
-  await expect(page.getByRole("button", { name: "Start evaluation…" })).toBeDisabled();
-  await expect(page.locator(".evaluation-start-blocked"))
-    .toContainText("Map this project's connection to a local profile before starting.");
+  const start = primaryAction(page, "evaluations");
+  await expect(start).toBeDisabled();
+  // Visible text, not a tooltip, and the button points at it — so the reason is
+  // reachable by keyboard and by touch, not only by hovering a dead control.
+  await expect(preflightSummary(page))
+    .toHaveText("Map this project's connection to a local profile before starting.");
+  await expect(start).toHaveAttribute("aria-describedby", "evaluation-preflight-summary");
 });
 
 test("suites are a list, not a select, and no focus mode remains", async ({ page }) => {

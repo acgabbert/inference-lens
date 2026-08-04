@@ -15,6 +15,7 @@ import {
   seedProfile,
   waitForHydration,
   openMode,
+  primaryAction,
 } from "./support";
 
 const REPETITIONS = 3;
@@ -173,10 +174,7 @@ test("the evaluation finished count advances mid-batch, not only at the end", as
   await (await openInferenceSettings(page, "Evaluation execution settings"))
     .getByLabel("Repetitions")
     .fill(String(REPETITIONS));
-  await page
-    .locator(".evaluation-editor")
-    .getByRole("button", { name: "Start evaluation…" })
-    .click();
+  await primaryAction(page, "evaluations").click();
   await page
     .getByRole("dialog", { name: /Start “Untitled evaluation”/ })
     .getByRole("button", { name: `Start ${REPETITIONS} calls` })
@@ -200,4 +198,67 @@ test("the evaluation finished count advances mid-batch, not only at the end", as
     `${REPETITIONS} passed · 0 failed · 0 not evaluated`,
   );
   expect(await results.innerText()).not.toMatch(/NaN|Infinity|undefined/);
+});
+
+/**
+ * `Stop` is the one run control the topbar keeps in every mode, and D4 gives a
+ * reason that is testable rather than aesthetic: a running batch is global
+ * state, so wherever the user has navigated to, they must be able to end it.
+ *
+ * Results now live in their own mode, which makes this a real risk rather than
+ * a theoretical one — starting a batch and then walking to Compose is an
+ * ordinary thing to do, and it used to be the moment the stop control vanished.
+ */
+test("a running batch is stoppable from every mode", async ({ page }) => {
+  const releaseOne = await gateProviderCalls(page);
+  const project = fixtureProject();
+  await seedProfile(page, { instanceId: PROFILE_INSTANCE_ID });
+  await page.addInitScript(
+    ({ mapKey, projectId, instanceId }) => {
+      localStorage.setItem(
+        mapKey,
+        JSON.stringify({
+          [projectId]: { profileId: "buffered", profileInstanceId: instanceId },
+        }),
+      );
+    },
+    {
+      mapKey: PROJECT_PROFILE_MAP_STORAGE_KEY,
+      projectId: project.projectId,
+      instanceId: PROFILE_INSTANCE_ID,
+    },
+  );
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+  await waitForHydration(page);
+  await importProject(page, project, PROJECT_NAME);
+  await openMode(page, "Evaluations");
+  await authorRunnableSuite(page);
+  await (await openInferenceSettings(page, "Evaluation execution settings"))
+    .getByLabel("Repetitions")
+    .fill(String(REPETITIONS));
+  await primaryAction(page, "evaluations").click();
+  await page
+    .getByRole("dialog", { name: /Start “Untitled evaluation”/ })
+    .getByRole("button", { name: `Start ${REPETITIONS} calls` })
+    .click();
+
+  const stop = page.locator(".header-actions").getByRole("button", { name: "Stop remaining" });
+  await expect(stop).toBeVisible();
+
+  // The batch is genuinely mid-flight: one call is parked at the gate, so this
+  // is not asserting against a finished run that happens to still show a stop.
+  for (const mode of ["Compose", "Runs", "Evaluations"] as const) {
+    await openMode(page, mode);
+    await expect(stop, `Stop is unreachable from ${mode}`).toBeVisible();
+    // And it is still the only run control: Stop does not reintroduce the
+    // crowding the mode boundary removed.
+    expect(await page.locator(".header-actions > .button").allInnerTexts())
+      .toEqual(["Stop remaining"]);
+  }
+
+  await stop.click();
+  await releaseOne();
+  await expect(page.locator(".header-actions").getByRole("button", { name: "Stop remaining" }))
+    .toHaveCount(0);
 });

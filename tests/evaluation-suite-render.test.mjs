@@ -63,7 +63,9 @@ test("renders compact preflight and the focused case workspace", async () => {
   assert.match(html, /<details class="evaluation-reference-answer" open=""/);
   assert.match(html, /Reference answer<span>Written<\/span>/);
   assert.match(html, /aria-label="Evaluation cases"/);
-  assert.match(html, /Start evaluation…/);
+  // The Start button is the mode's primary action and lives in the topbar now,
+  // so the preflight band states readiness and never restates the control.
+  assert.doesNotMatch(html, /Start evaluation…/);
   assert.match(html, /suite keeps its own immutable input/i);
   assert.match(html, /plan, traces, and result will be saved/i);
   // The provider-input preview is the response pane's, not the editor's: the
