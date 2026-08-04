@@ -1,12 +1,32 @@
 /* Scoped layout for the Evaluations mode. See mode-strip.module.css. */
 
-.mode {
+.mode,
+.modeWithoutPreview {
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 30%);
   gap: 1px;
   background: var(--border-subtle);
   overflow: hidden;
+}
+
+.mode {
+  grid-template-columns: minmax(180px, 220px) minmax(0, 1fr) minmax(300px, 26%);
+}
+
+/*
+ * Put away, the provider input leaves a labelled edge rather than vanishing,
+ * so the way back is on screen and the case editor gets the width.
+ */
+.modeWithoutPreview {
+  grid-template-columns: minmax(180px, 220px) minmax(0, 1fr) auto;
+}
+
+.modeEmpty {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  overflow: auto;
+  background: var(--surface-base);
 }
 
 .editor,
@@ -19,14 +39,11 @@
 }
 
 /*
- * The editor sizes itself to its content and used to sit inside the request
- * pane's scroll container. It has no ancestor to borrow one from here, so the
- * mode supplies it — without this the suite list runs past the viewport and
- * its lower half is unreachable rather than merely below the fold.
+ * The workspace lays out its own regions and each of them scrolls internally,
+ * so this column only has to stop them from pushing the grid taller.
  */
 .editor {
-  overflow: auto;
-  overscroll-behavior: contain;
+  overflow: hidden;
 }
 
 /* The preview owns an inner scroll region (.evaluation-preview-scroll), so
@@ -35,19 +52,55 @@
   overflow: hidden;
 }
 
+.previewToggle {
+  align-self: flex-end;
+  margin: 8px 12px 0;
+  padding: 3px 8px;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  background: var(--surface-panel);
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.previewEdge {
+  padding: 12px 6px;
+  border: 0;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  writing-mode: vertical-rl;
+}
+
+.previewToggle:hover,
+.previewEdge:hover {
+  border-color: var(--accent-border);
+  color: var(--text-primary);
+}
+
 /*
- * Below the workbench's mobile breakpoint the provider input stacks under the
- * editor rather than competing with it for width. It is reference material for
- * the case being authored, so reading order is the right order.
+ * Below this width three columns stop being three columns. The suite list and
+ * the provider input both become bands stacked around the workspace, which is
+ * the only one that has to keep its height.
  */
 @media (max-width: 1100px) {
-  .mode {
+  .mode,
+  .modeWithoutPreview {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr) auto;
     overflow: auto;
   }
 
   .preview {
     max-height: 60vh;
+  }
+
+  .previewEdge {
+    writing-mode: horizontal-tb;
+    padding: 8px;
   }
 }

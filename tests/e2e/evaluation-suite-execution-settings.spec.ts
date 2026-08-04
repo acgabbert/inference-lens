@@ -421,13 +421,16 @@ test("preflight input and execution settings fit at desktop and phone widths", a
   // Both regions hold long text — a revision label and an endpoint-shaped model
   // — so overflow is the failure to watch. The settings summary is measured too,
   // because its value chips are the widest single line in the collapsed state.
-  const measure = () => page.locator(".evaluation-preflight").evaluate((preflight) => {
+  // The controls moved into the setup band; preflight itself is the header's
+  // status line, so both are measured.
+  const measure = () => page.locator(".evaluation-setup").evaluate((setup) => {
     const fits = (selector: string) => {
-      const element = preflight.querySelector<HTMLElement>(selector);
+      const element = setup.querySelector<HTMLElement>(selector);
       return Boolean(element && element.scrollWidth <= element.clientWidth);
     };
+    const preflight = document.querySelector<HTMLElement>(".evaluation-preflight");
     return {
-      preflightFits: preflight.scrollWidth <= preflight.clientWidth,
+      preflightFits: Boolean(preflight && preflight.scrollWidth <= preflight.clientWidth),
       summaryFits: fits(".evaluation-input-summary"),
       executionFits: fits(".inference-settings"),
       settingsSummaryFits: fits(".inference-settings-summary"),

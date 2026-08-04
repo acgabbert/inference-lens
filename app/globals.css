@@ -5396,7 +5396,7 @@ main {
 }
 
 /* The base `output` look is restated rather than inherited: a host page that
-   flattens its own outputs — `.evaluation-preflight-controls` does, for its run
+   flattens its own outputs — `.evaluation-preflight-status` does, for its run
    count — would otherwise take the field out from under the readout. */
 .inference-settings .temperature-control output {
   min-width: 3rem;
@@ -6587,22 +6587,13 @@ main {
   }
 }
 
-/* Evaluation suite authoring */
+/* Evaluation suite authoring.
+   Structure lives in evaluations/evaluation-surface.module.css; what remains
+   here is the leaf styling the re-lay did not need to rewrite. */
 .evaluation-editor {
   container-type: inline-size;
-  display: flex;
-  min-height: 100%;
-  flex-direction: column;
-  gap: 18px;
-  padding: 20px;
 }
 
-.evaluation-editor.evaluation-focus-mode {
-  overflow: auto;
-  padding: 24px clamp(20px, 4vw, 56px);
-}
-
-.evaluation-toolbar,
 .evaluation-section-heading,
 .evaluation-add-row,
 .evaluation-check-heading {
@@ -6612,17 +6603,8 @@ main {
   gap: 12px;
 }
 
-.evaluation-toolbar {
-  flex-wrap: wrap;
-}
-
-.evaluation-toolbar label {
-  flex: 1 1 260px;
-}
-
-.evaluation-toolbar select,
-.evaluation-preflight select,
-.evaluation-preflight input,
+.evaluation-setup select,
+.evaluation-setup input:not([type="checkbox"]),
 .evaluation-add-row select,
 .evaluation-case-detail input,
 .evaluation-case-detail textarea,
@@ -6630,12 +6612,11 @@ main {
   width: 100%;
 }
 
-.evaluation-cases,
 .evaluation-preflight {
   border: 1px solid var(--border-default);
   border-radius: 14px;
   background: var(--surface-panel);
-  padding: 16px;
+  padding: 12px 16px;
 }
 
 .evaluation-suite-rename {
@@ -6653,34 +6634,36 @@ main {
   width: 100%;
 }
 
+/* Now the suite header's status line rather than a standing block: the state,
+   what a start would cost, and the primary action on one row. */
 .evaluation-preflight {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 14px;
+  flex-wrap: wrap;
 }
 
-.evaluation-preflight-status,
 .evaluation-preflight label {
   display: flex;
   flex-direction: column;
   gap: 5px;
-}
-
-.evaluation-preflight label {
   margin-bottom: 0;
 }
 
 .evaluation-preflight-status {
-  flex-direction: row;
+  display: flex;
+  min-width: 0;
   align-items: baseline;
-  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
-.evaluation-preflight-controls {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-items: start;
-  gap: 14px;
+.evaluation-setup label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 0;
 }
 
 .evaluation-input-summary {
@@ -6706,30 +6689,25 @@ main {
   color: var(--text-muted);
 }
 
-.evaluation-input-picker {
-  margin-top: 10px;
-}
-
-.evaluation-input-summary > .button {
-  margin-top: 10px;
-}
-
-.evaluation-input-picker > summary {
-  width: fit-content;
-  color: var(--accent-text);
-  cursor: pointer;
-  font-weight: 700;
-}
-
-.evaluation-input-picker[open] {
+/* The picker is flat now: at full width it costs one row, and behind a summary
+   an author had to open something to discover the choice existed at all. */
+.evaluation-input-actions {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: end;
   gap: 10px;
+  margin-top: 10px;
 }
 
-.evaluation-input-picker[open] > summary {
-  grid-column: 1 / -1;
+.evaluation-input-picker {
+  min-width: 0;
+}
+
+@container (max-width: 620px) {
+  .evaluation-input-actions {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
 }
 
 .evaluation-resolution-action {
@@ -6763,15 +6741,14 @@ main {
   width: 132px;
 }
 
-.evaluation-preflight-controls output {
+.evaluation-preflight-status output {
   min-width: 0;
-  justify-self: start;
-  padding: 0 0 8px;
+  padding: 0;
   border: 0;
   background: transparent;
+  color: var(--text-muted);
   overflow-wrap: anywhere;
   text-align: left;
-  white-space: nowrap;
 }
 
 /* Tool exposure sits beside the settings disclosure rather than inside it: a
@@ -6828,14 +6805,11 @@ main {
 }
 
 .evaluation-start-area {
-  grid-column: 1 / -1;
   display: flex !important;
   flex-direction: row !important;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: flex-end;
   gap: 12px !important;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-default);
 }
 
 .evaluation-start-area small {
@@ -7702,17 +7676,8 @@ main {
   color: var(--text-muted);
 }
 
-.evaluation-cases-workspace {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(190px, 0.32fr) minmax(0, 1fr);
-  margin-top: 14px;
-  overflow: hidden;
-  border: 1px solid var(--border-default);
-  border-radius: 11px;
-  background: var(--surface-panel);
-}
-
+/* Column widths and scrolling belong to evaluation-surface.module.css; what
+   stays here is how the rail reads. */
 .evaluation-case-rail {
   min-width: 0;
   padding: 8px;
@@ -7839,6 +7804,52 @@ main {
   gap: 12px;
 }
 
+/* Below the checks and shut by default: an optional human note that nothing
+   scores should not hold the space the case's assertions want. */
+.evaluation-reference-answer > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-weight: 700;
+  list-style: none;
+}
+
+.evaluation-reference-answer > summary::-webkit-details-marker {
+  display: none;
+}
+
+.evaluation-reference-answer > summary > span {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.evaluation-reference-chevron {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  color: var(--text-muted);
+  line-height: 0;
+  transition: transform 120ms ease;
+}
+
+.evaluation-reference-chevron svg {
+  display: block;
+}
+
+.evaluation-reference-answer[open] > summary {
+  margin-bottom: 8px;
+}
+
+.evaluation-reference-answer[open] .evaluation-reference-chevron {
+  transform: rotate(180deg);
+}
+
 .evaluation-check-card {
   display: flex;
   flex-direction: column;
@@ -7928,20 +7939,8 @@ main {
 }
 
 @container (max-width: 720px) {
-  .evaluation-preflight-controls {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .evaluation-revision-picker {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .evaluation-input-picker[open] {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .evaluation-input-picker[open] > summary {
-    grid-column: 1;
   }
 
   .evaluation-resolution-action {
@@ -7963,10 +7962,6 @@ main {
     flex-wrap: wrap;
   }
 
-  .evaluation-preflight-controls output {
-    padding-bottom: 0;
-  }
-
   .evaluation-start-area {
     align-items: flex-start;
     flex-direction: column !important;
@@ -7975,22 +7970,14 @@ main {
   .evaluation-provider-target {
     text-align: left;
   }
-
-  .evaluation-cases-workspace {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .evaluation-case-rail {
-    max-height: 240px;
-    overflow-y: auto;
-    border-right: 0;
-    border-bottom: 1px solid var(--border-default);
-  }
 }
 
+/* Stacked by evaluation-surface.module.css below this width, so the rail is a
+   band above the case editor rather than a column beside it. */
 @media (max-width: 900px) {
-  .evaluation-editor {
-    padding: 14px;
+  .evaluation-case-rail {
+    border-right: 0;
+    border-bottom: 1px solid var(--border-default);
   }
 
   .evaluation-binding-row {

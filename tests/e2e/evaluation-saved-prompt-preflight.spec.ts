@@ -222,8 +222,7 @@ test("a second saved prompt warns about existing bindings and stays distinct in 
   await expect(preview).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
 
   // The earlier revision is still reachable and still described meaningfully,
-  // one disclosure away.
-  await editor.getByText("Use a project revision…").click();
+  // now without a disclosure in the way.
   await expect(
     editor.getByLabel("Existing project revision").locator("option"),
   ).toContainText([/Question/, /Safety policy/]);

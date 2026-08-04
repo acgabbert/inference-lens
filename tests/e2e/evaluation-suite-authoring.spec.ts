@@ -185,7 +185,7 @@ test("every offered check kind is addable in the running editor", async ({ page 
   await expect(editor).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
 });
 
-test("expanded editor blocks an unbound template variable before evaluation starts", async ({ page }) => {
+test("the editor blocks an unbound template variable before evaluation starts", async ({ page }) => {
   await openProject(page, baseProject(), 1440);
   const editor = page.locator(".evaluation-editor");
   await page.getByRole("button", { name: "Create evaluation suite" }).click();
@@ -196,11 +196,12 @@ test("expanded editor blocks an unbound template variable before evaluation star
   await expected.fill("topic");
   await expected.blur();
 
-  await page.getByLabel("Open evaluation editor in focus mode").click();
-  const expanded = page.getByRole("dialog", { name: "Evaluation editor focus mode" });
-  await expect(expanded).toContainText('Case "Untitled case" cannot resolve template variable "topic"');
-  await expect(expanded).toContainText("1 setup issue");
-  await expect(expanded.getByRole("button", { name: "Start evaluation…" })).toBeDisabled();
+  // No focus mode to open: the Evaluations mode is already the whole surface,
+  // and the blocker is stated where the blocked action is.
+  await expect(page.getByLabel("Open evaluation editor in focus mode")).toHaveCount(0);
+  await expect(editor).toContainText('Case "Untitled case" cannot resolve template variable "topic"');
+  await expect(editor).toContainText("1 setup issue");
+  await expect(editor.getByRole("button", { name: "Start evaluation…" })).toBeDisabled();
 });
 
 test("a saved suite opens with every case selected and preflight clean", async ({ page }) => {
@@ -248,9 +249,8 @@ test("selecting a historical revision with no bound template use stays in the ed
   await openProject(page, project, 1440);
   const editor = page.locator(".evaluation-editor");
 
-  // Historical revisions are deliberately secondary: the picker lives behind a
-  // disclosure so the suite's own input stays the headline.
-  await editor.getByText("Use a project revision…").click();
+  // The picker is flat now: at full width choosing a historical revision costs
+  // no disclosure, so it is selected directly.
   await editor.getByLabel("Existing project revision").selectOption(
     "revision_historical-before-template",
   );

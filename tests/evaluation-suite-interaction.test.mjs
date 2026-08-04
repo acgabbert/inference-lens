@@ -11,23 +11,50 @@ Object.assign(globalThis, { window: dom.window, document: dom.window.document, H
 Object.defineProperty(globalThis, "navigator", { configurable: true, value: dom.window.navigator });
 after(() => dom.window.close());
 
-test("evaluation focus mode opens, traps the surface, and closes with Escape", async () => {
+/**
+ * Collapsing the setup band is what buys the cases their height, so nothing a
+ * start depends on may be hidden with it: the preflight state, the planned run
+ * count, the blocker text, and the primary action all live in the suite header
+ * and stay put. That invariant is the reason the band is allowed to shut at all.
+ */
+test("shutting the setup band hides its controls and keeps every fact a start depends on", async () => {
   const server = await createServer({ configFile: false, cacheDir: uniqueViteCacheDir(), root: process.cwd(), plugins: [react()], server: { middlewareMode: true, hmr: false, ws: false }, logLevel: "warn" });
   const [{ createElement, act }, { createRoot }, { EvaluationSuiteEditor }] = await Promise.all([import("react"), import("react-dom/client"), server.ssrLoadModule("/app/evaluations/evaluation-suite-editor.client.tsx")]);
   const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
   try {
-    await act(async () => root.render(createElement(EvaluationSuiteEditor, { authoring: evaluationFixture() })));
-    const expand = container.querySelector('[aria-label="Open evaluation editor in focus mode"]');
-    assert.ok(expand);
-    await act(async () => expand.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true })));
-    await act(() => new Promise((resolve) => window.setTimeout(resolve, 0)));
-    const dialog = container.querySelector('[role="dialog"][aria-label="Evaluation editor focus mode"]');
-    assert.ok(dialog);
-    assert.equal(document.body.style.overflow, "hidden");
-    await act(async () => window.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
-    await act(() => new Promise((resolve) => window.setTimeout(resolve, 0)));
-    assert.equal(container.querySelector('[role="dialog"]'), null);
-    assert.equal(document.body.style.overflow, "");
+    const authoring = evaluationFixture();
+    authoring.diagnostics = [{ code: "missing-template-variable", message: "Selected revision no longer has topic." }];
+    await act(async () => root.render(createElement(EvaluationSuiteEditor, {
+      authoring,
+      execution: { storage: "durable", running: false, onStart() {} },
+    })));
+
+    const toggle = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent?.startsWith("Setup"),
+    );
+    assert.ok(toggle);
+    assert.equal(toggle.getAttribute("aria-expanded"), "true");
+    assert.ok(container.querySelector(".evaluation-setup"));
+
+    await act(async () => toggle.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true })));
+
+    assert.equal(toggle.getAttribute("aria-expanded"), "false");
+    assert.equal(container.querySelector(".evaluation-setup"), null);
+    // Shut, the band still names what it is holding.
+    assert.match(toggle.textContent, /Buffered fixture · buffered-test-model/);
+
+    const header = container.querySelector(".evaluation-preflight").parentElement;
+    assert.match(header.textContent, /1 setup issue/);
+    assert.match(header.textContent, /Selected revision no longer has topic/);
+    assert.match(header.textContent, /1 selected/);
+    assert.match(header.textContent, /3 runs/);
+    const start = header.querySelector(".evaluation-start-area button");
+    assert.ok(start);
+    assert.equal(start.disabled, true);
+
+    // The case list and the case editor are unaffected by the band either way.
+    assert.ok(container.querySelector(".evaluation-case-rail"));
+    assert.ok(container.querySelector(".evaluation-case-detail"));
   } finally { await act(async () => root.unmount()); container.remove(); await server.close(); }
 });
 
