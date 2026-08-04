@@ -1,6 +1,15 @@
 "use client";
 
-import type { EvaluationHistoryFacet } from "../../packages/core/src/experiment-history.ts";
+/**
+ * The scored part of an evaluation, whether it came from a history facet or
+ * from a live execution's aggregate. Both carry these fields; naming only what
+ * the tone rule reads keeps the live Runs indicator on the same vocabulary as
+ * the saved lists rather than growing a second one that could disagree.
+ */
+export interface EvaluationScore {
+  passed: boolean;
+  caseCounts: { total: number; passed: number; failed: number };
+}
 
 export type EvaluationPassTone =
   | "passed"
@@ -17,7 +26,7 @@ export type EvaluationPassTone =
  * `unscored` means the aggregate could not be derived, not that nothing passed.
  * A missing pass rate and a zero pass rate are different facts.
  */
-export function evaluationPassTone(facet?: EvaluationHistoryFacet): EvaluationPassTone {
+export function evaluationPassTone(facet?: EvaluationScore): EvaluationPassTone {
   if (!facet) return "unscored";
   if (facet.passed) return "passed";
   // An interrupted batch decides nothing: no case passed, but none failed
@@ -27,7 +36,7 @@ export function evaluationPassTone(facet?: EvaluationHistoryFacet): EvaluationPa
   return facet.caseCounts.passed > 0 ? "partial" : "failed";
 }
 
-export function evaluationPassSummary(facet?: EvaluationHistoryFacet): string {
+export function evaluationPassSummary(facet?: EvaluationScore): string {
   if (!facet) return "not scored";
   const { passed, total } = facet.caseCounts;
   return `${passed}/${total} ${total === 1 ? "case" : "cases"} passed`;

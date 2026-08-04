@@ -3,7 +3,7 @@
 import type { ChangeEvent } from "react";
 import type { StoredInferenceProfile } from "./profile-store.client";
 import { ModeStrip } from "./modes/mode-strip.client";
-import type { AppMode } from "./modes/app-mode";
+import type { AppMode, ModeIndicator } from "./modes/app-mode";
 
 interface TopbarProps {
   profiles: StoredInferenceProfile[];
@@ -26,8 +26,8 @@ interface TopbarProps {
    */
   mode: AppMode;
   onModeChange(mode: AppMode): void;
-  /** Modes with a batch still running, so the strip can say so. */
-  busyModes?: readonly AppMode[];
+  /** Per-mode running and unread-results state, shown on the strip. */
+  modeIndicators?: Partial<Record<AppMode, ModeIndicator>>;
   awaitingToolResults: boolean;
   retryableFailure: boolean;
   runDisabled: boolean;
@@ -61,7 +61,7 @@ function closeContainingMenu(element: HTMLElement): void {
 export function Topbar({
   profiles, activeProfile, activeModel, hasCredential, projectName, projectDirty,
   folderAccessAvailable, hasDiagnosticCapture, isRequestActive, isExperimentActive, awaitingToolResults,
-  mode, onModeChange, busyModes,
+  mode, onModeChange, modeIndicators,
   hasRunTrace,
   hasProjectWorkspace,
   runHistoryBlocked,
@@ -78,7 +78,7 @@ export function Topbar({
   return (
     <header className="topbar">
       <div className="brand"><span className="brand-mark" aria-hidden="true">IL</span><div><h1>Inference Lens</h1><p>Inspect every model run · {projectName ? `${projectName}${projectDirty ? " • Unsaved" : ""}` : "No project open"}</p></div></div>
-      <ModeStrip value={mode} onChange={onModeChange} {...(busyModes ? { busyModes } : {})} />
+      <ModeStrip value={mode} onChange={onModeChange} {...(modeIndicators ? { indicators: modeIndicators } : {})} />
       <div className="header-actions">
         <details className="header-menu target-menu"><summary aria-label={`Run target: ${profileName}, ${activeModel}`} className="target-control" title={`${profileName} · ${activeModel}`}><span className={hasCredential ? "connection-indicator ready" : "connection-indicator"} aria-hidden="true" /><span className="target-copy"><strong>{profileName}</strong><small>{activeModel}</small></span><span className="menu-chevron" aria-hidden="true">⌄</span></summary>
           <div className="menu-popover target-popover"><div className="menu-heading"><span>Run target</span><small>Local profiles</small></div><div className="profile-menu-list">{profiles.map((profile) => <button className={profile.id === activeProfile.id ? "menu-option selected" : "menu-option"} key={profile.id} type="button" onClick={(event) => { onChooseProfile(profile.id); closeContainingMenu(event.currentTarget); }}><span><strong>{profile.name || "Untitled profile"}</strong><small>{profile.endpoint}</small></span>{profile.id === activeProfile.id && <span aria-hidden="true">✓</span>}</button>)}</div><button className="menu-action" type="button" onClick={(event) => { onOpenConnections(); closeContainingMenu(event.currentTarget); }}>Manage connections<span aria-hidden="true">→</span></button></div>

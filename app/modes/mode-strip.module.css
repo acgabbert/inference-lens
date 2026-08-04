@@ -45,20 +45,47 @@
 }
 
 /*
- * Results moved out of the pane the user was looking at, so a batch running in
- * another mode has to say so somewhere that does not expire. This dot is that
- * marker. It is not the completion affordance — that is a notification-system
- * concern and arrives with it.
+ * Results moved out of the pane the user was looking at, so both "a batch is
+ * running" and "a batch finished and you have not read it" have to be legible
+ * from wherever the user actually is. This dot carries both, and unlike the
+ * completion toast that arrives with the notification system, it does not
+ * expire — the toast is the interruption, this is the standing record.
+ *
+ * The finished tones are the evaluation vocabulary from
+ * `evaluation-history-format.client.ts`, so a batch cannot read as a success
+ * here and as a partial failure in the history list.
  */
-.busy {
+.dot {
   width: 6px;
   height: 6px;
   border-radius: 999px;
+  background: var(--text-faint);
+}
+
+.running {
   background: var(--warning);
 }
 
+.passed {
+  background: var(--accent-solid);
+}
+
+.partial {
+  background: var(--warning);
+}
+
+.failed {
+  background: var(--danger);
+}
+
+.neutral {
+  background: var(--text-faint);
+}
+
+/* Only the running dot pulses. A finished batch is a settled fact, and motion
+   would keep asking for attention that has nowhere further to go. */
 @media (prefers-reduced-motion: no-preference) {
-  .busy {
+  .running {
     animation: mode-strip-pulse 1.6s ease-in-out infinite;
   }
 }

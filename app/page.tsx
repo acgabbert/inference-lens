@@ -95,7 +95,13 @@ import {
 import { useEvaluationExecutionSession } from "./evaluations/use-evaluation-execution-session.client";
 import { EvaluationStartDialog } from "./evaluations/evaluation-start-dialog.client";
 import type { EvaluationSuiteExecutionActions } from "./evaluations/evaluation-suite-editor.client";
-import type { AppMode } from "./modes/app-mode";
+import { evaluationExperimentAggregate } from "../packages/core/src/experiment";
+import {
+  evaluationPassSummary,
+  evaluationPassTone,
+} from "./evaluations/evaluation-history-format.client";
+import type { EvaluationPassTone } from "./evaluations/evaluation-history-format.client";
+import type { AppMode, ModeIndicator, ModeIndicatorTone } from "./modes/app-mode";
 import { EvaluationsMode } from "./modes/evaluations-mode.client";
 import { RunsMode } from "./modes/runs-mode.client";
 
@@ -108,6 +114,19 @@ const STREAMING_PREFERENCE_STORAGE_KEY =
 interface BranchContext extends WorkbenchBranchContext {
   parentTraceNeedsSaving: boolean;
 }
+
+/**
+ * `pending` and `unscored` both mean the batch decided nothing — interrupted,
+ * or an aggregate that could not be derived. Neither is a failure, so neither
+ * gets a failure colour on the strip.
+ */
+const indicatorToneForPassTone: Record<EvaluationPassTone, ModeIndicatorTone> = {
+  passed: "passed",
+  partial: "partial",
+  failed: "failed",
+  pending: "neutral",
+  unscored: "neutral",
+};
 
 function subscribeToDesktopRuntime(): () => void {
   return () => {};
@@ -246,6 +265,10 @@ function HomeContent() {
   // Each mode's sub-state lives in the feature hooks above this line, so
   // switching modes and back is lossless for as long as the app is open.
   const [mode, setMode] = useState<AppMode>("compose");
+  // The batch the user has actually looked at in Runs. Without this a finished
+  // batch is signalled only by the running dot disappearing, which is
+  // indistinguishable from nothing having happened.
+  const [viewedExperimentId, setViewedExperimentId] = useState<string>();
   const [traceOpen, setTraceOpen] = useState(false);
   const [outputFollowing, setOutputFollowing] = useState(true);
   const [markdownPreview, setMarkdownPreview] = useState(true);
@@ -965,6 +988,24 @@ function HomeContent() {
       onConfirm: clear,
     });
   }
+  const experimentActive = repeatedExperiment.isRunning || evaluationExecution.isRunning;
+  const openExperimentId =
+    evaluationExecution.execution?.plan.experimentId ??
+    repeatedExperiment.execution?.plan.experimentId;
+  // "Unread" is which batch was last seen, not a flag raised when one finishes.
+  // A flag would have to be lowered by an effect and would re-raise itself
+  // every time the user left Runs; identity cannot drift that way.
+  //
+  // Adjusted during render rather than in an effect, as the composer does for
+  // its focus mode: while Runs is on screen and nothing is still running, what
+  // it shows is by definition read, and the discarded state never reaches the
+  // DOM.
+  if (mode === "runs" && !experimentActive && openExperimentId !== viewedExperimentId) {
+    setViewedExperimentId(openExperimentId);
+  }
+  const runsUnread =
+    Boolean(openExperimentId) && !experimentActive && openExperimentId !== viewedExperimentId;
+
   const runReachedTerminalStatus = Boolean(
     runState &&
       ["completed", "cancelled", "failed"].includes(runState.status.kind),
@@ -1161,6 +1202,37 @@ function HomeContent() {
     return () => window.removeEventListener("keydown", onContextualRunShortcut);
   }, []);
 
+  /**
+   * What the Runs dot says. A running batch outranks an unread one because it
+   * is the thing still changing; an unread evaluation is coloured by its own
+   * pass rate, and anything that decided nothing — an interrupted batch, a
+   * repeated experiment, a comparison — stays neutral rather than borrowing a
+   * verdict it does not have.
+   */
+  function runsIndicator(): ModeIndicator | undefined {
+    if (experimentActive) return { tone: "running", label: "running" };
+    if (!runsUnread) return undefined;
+    const evaluation = evaluationExecution.execution;
+    if (evaluation && !evaluation.error) {
+      try {
+        const score = evaluationExperimentAggregate(
+          evaluation.plan,
+          evaluation.result,
+          evaluation.states,
+        );
+        return {
+          tone: indicatorToneForPassTone[evaluationPassTone(score)],
+          label: `finished, ${evaluationPassSummary(score)}, not yet viewed`,
+        };
+      } catch {
+        // An aggregate that cannot be derived is not a failed batch. The dot
+        // says there is something to read and lets the workspace explain it.
+        return { tone: "neutral", label: "finished, not yet viewed" };
+      }
+    }
+    return { tone: "neutral", label: "finished, not yet viewed" };
+  }
+
   function saveOrChooseProjectLocation(): void {
     if (projectWorkspace || !folderAccessAvailable) {
       void project.saveProject();
@@ -1246,7 +1318,10 @@ function HomeContent() {
         isExperimentActive={repeatedExperiment.isRunning || evaluationExecution.isRunning}
         mode={mode}
         onModeChange={setMode}
-        busyModes={repeatedExperiment.isRunning || evaluationExecution.isRunning ? ["runs"] : []}
+        modeIndicators={(() => {
+          const runs = runsIndicator();
+          return runs ? { runs } : {};
+        })()}
         awaitingToolResults={runState?.status.kind === "awaiting_tool_results"}
         retryableFailure={
           runState?.status.kind === "paused" &&

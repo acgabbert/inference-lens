@@ -38,6 +38,38 @@ const toolCallingModel = "tool-calling-model";
  * cost bound exists for.
  */
 const loopingToolModel = "looping-tool-model";
+/**
+ * Answers correctly, but slowly enough that a batch is still running while a
+ * spec navigates somewhere else.
+ *
+ * "The batch finished while you were looking at another mode" is not reachable
+ * against a fixture that answers instantly: the run is over before the click
+ * lands, and the spec would silently test the already-read path instead. The
+ * delay is per call, so a two-case batch takes roughly twice it.
+ */
+const slowModel = "slow-answer-model";
+const slowAnswerDelayMs = Number.parseInt(
+  process.env.INFERENCE_LENS_BUFFERED_SLOW_DELAY_MS ?? "700",
+  10,
+);
+/**
+ * As slow as `slowModel`, but answers with text the ordinary `contains` check
+ * will not match, so a batch can be made to finish *and* fail while a spec is
+ * somewhere else. Both dimensions are needed together: a fast failure is over
+ * before the navigation lands, and a slow success proves nothing about how a
+ * failure is reported.
+ */
+const slowFailingModel = "slow-failing-answer-model";
+/**
+ * Slow, and satisfies the check only for a prompt mentioning "migrations".
+ *
+ * A batch where some cases pass and some fail is the state a single "finished"
+ * signal reports most misleadingly, so it needs to be producible on purpose
+ * rather than only by accident.
+ */
+const slowPartialModel = "slow-partial-answer-model";
+const partialPassPhrase = "migrations";
+const failingAnswer = "This response deliberately mentions nothing expected.";
 const toolName = "get_weather";
 const toolArguments = '{"city":"Chicago"}';
 const mathAnswer = [
@@ -66,6 +98,9 @@ const server = createServer(async (request, response) => {
       object: "list",
       data: [
         { id: "buffered-test-model", object: "model" },
+        { id: slowModel, object: "model" },
+        { id: slowFailingModel, object: "model" },
+        { id: slowPartialModel, object: "model" },
         { id: providerDefaultModel, object: "model" },
         { id: echoTemperatureModel, object: "model" },
         { id: mathModel, object: "model" },
@@ -152,13 +187,26 @@ const server = createServer(async (request, response) => {
     return;
   }
 
+  const slowAnswer = body.model === slowModel
+    || body.model === slowFailingModel
+    || body.model === slowPartialModel;
+  if (slowAnswer) {
+    await new Promise((resolve) => setTimeout(resolve, slowAnswerDelayMs));
+  }
+
   const answer = body.model === providerDefaultModel
     ? providerDefaultAnswer
     : body.model === echoTemperatureModel
       ? `Provider received temperature ${"temperature" in body ? String(body.temperature) : "absent"}.`
       : body.model === mathModel
         ? mathAnswer
-        : ordinaryAnswer;
+        : body.model === slowFailingModel
+          ? failingAnswer
+          : body.model === slowPartialModel
+            ? (JSON.stringify(body.messages).includes(partialPassPhrase)
+                ? ordinaryAnswer
+                : failingAnswer)
+            : ordinaryAnswer;
 
   response.writeHead(200, {
     "content-type": "application/json",
@@ -188,7 +236,13 @@ const server = createServer(async (request, response) => {
         ? `served echoed temperature ${"temperature" in body ? String(body.temperature) : "absent"}`
         : body.model === mathModel
           ? "served LaTeX answer in both delimiter forms"
-          : "served buffered response with 4 input, 7 output, 11 total tokens",
+          : body.model === slowModel
+            ? `served a deliberately slow answer after ${slowAnswerDelayMs}ms`
+            : body.model === slowFailingModel
+              ? "served a slow answer that fails an ordinary contains check"
+              : body.model === slowPartialModel
+                ? `served a slow answer that passes only for "${partialPassPhrase}"`
+              : "served buffered response with 4 input, 7 output, 11 total tokens",
   );
 });
 
