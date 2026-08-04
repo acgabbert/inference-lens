@@ -396,7 +396,10 @@ pre,
 .evaluation-preview-case,
 .evaluation-preflight-region h5,
 .tool-call-provenance,
-.tool-call-projection {
+.tool-call-projection,
+.tool-call-pending-executor,
+.tool-command-fields p,
+.tool-mock-superseded {
   font-size: var(--type-metadata);
 }
 
@@ -2273,6 +2276,44 @@ output {
   background: var(--surface-raised);
 }
 
+.tool-command-fields {
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface-subtle);
+  gap: 8px;
+}
+
+.tool-command-fields p {
+  margin: 0;
+  display: grid;
+  gap: 6px;
+  color: var(--text-muted);
+}
+
+.tool-command-fields code {
+  padding: 7px 9px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--surface-inset);
+  color: var(--text-primary);
+  font-family: var(--font-geist-mono), monospace;
+  overflow-wrap: anywhere;
+}
+
+/* A grant is a permission, so the two states that mean "this is not what you
+   think it is" are marked rather than left to blend into ordinary help text. */
+.tool-command-missing,
+.tool-mock-superseded {
+  color: var(--warning);
+}
+
+.tool-command-fields button {
+  justify-self: start;
+}
+
+.tool-mock-superseded {
+  margin: 0;
+}
+
 .registry-backdrop {
   position: fixed;
   inset: 0;
@@ -3947,7 +3988,8 @@ textarea {
 /* Provenance sits under the result, not beside the name: what produced a value
    is read after the value, and it must stay legible when the card is narrow. */
 .tool-call-provenance,
-.tool-call-projection {
+.tool-call-projection,
+.tool-call-pending-executor {
   margin: 0;
   padding: 0 12px 12px;
   color: var(--text-muted);

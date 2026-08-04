@@ -88,6 +88,14 @@ function composerProps(pendingDestination, onDestinationHandled) {
       updateTool: noop, setToolEnabled: noop, mockForTool: () => undefined,
       updateToolMock: noop, removeRequestTool: noop,
     },
+    commandTools: {
+      availability: { kind: "unconfigured", variable: "INFERENCE_LENS_COMMAND_TOOLS" },
+      commands: [],
+      grantFor: () => undefined,
+      bindingFor: () => undefined,
+      grant() {},
+      revoke() {},
+    },
     templates: {
       templateWorkbench: { composerItems: [{ kind: "message", message: { id: "message_1", role: "user", content: [{ type: "text", text: "Hi" }] } }] },
       templateRunOverrides: {}, templateUsageCounts: new Map(), addComposerMessage: noop,

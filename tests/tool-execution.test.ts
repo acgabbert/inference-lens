@@ -133,6 +133,27 @@ test("a binding is projected to secret-free executor identity", () => {
   );
 });
 
+/**
+ * The command binding is the first one with something a portable artifact must
+ * never learn — when a human on this device allowed a local process to answer
+ * a model. The identity switch is written as a construction per kind so that
+ * such a field cannot travel by being forgotten.
+ */
+test("a command binding contributes its id and label, and nothing else", () => {
+  const identity = toolExecutorIdentity({
+    kind: "command",
+    executorId: "weather",
+    label: "Local weather script",
+    grantedAt: "2026-08-04T10:00:00.000Z",
+  });
+
+  assert.deepEqual(identity, {
+    kind: "command",
+    executorId: "weather",
+    label: "Local weather script",
+  });
+});
+
 test("non-text content becomes visible placeholder text, never a silent drop", () => {
   const projected = projectToolExecutionContent([
     { type: "text", text: "Here is the chart." },

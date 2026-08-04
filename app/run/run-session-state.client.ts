@@ -22,6 +22,14 @@ export type ToolResultDraft = {
    */
   binding?: ToolBinding;
   prefilledText?: string;
+  /**
+   * Named when submitting will *run* something instead of sending the text.
+   *
+   * A mock prefills its answer, so the box already shows what will be sent. An
+   * executor with a transport cannot: its answer does not exist yet. Without
+   * this, a command-served call looks exactly like a call nobody has answered.
+   */
+  pendingExecutorLabel?: string;
 };
 
 export function isTerminalRunState(state: RunState | null): boolean {
@@ -40,10 +48,10 @@ export function isRetryableRunState(state: RunState | null): boolean {
  * The device-local binding an enabled project mock stands for.
  *
  * Mocks live in the project because their *content* is authored material a
- * teammate should receive. The binding is derived rather than stored: there is
- * nothing device-local to remember yet, and a persisted registry holding
- * `{ kind: "mock" }` would have to be revised the moment a command tool needs
- * to keep an executable path out of the project.
+ * teammate should receive, and their binding stays derived rather than stored:
+ * there is nothing device-local about a mock to remember. The command grants
+ * in `app/tools/command-tool-bindings.client.ts` are the opposite case, which
+ * is why that registry is persisted and this one is not.
  */
 export function toolBindingForMock(
   toolId: ToolId,
@@ -65,6 +73,23 @@ export function toolBindingForMock(
         : { isError: mock.result.isError }),
     },
   };
+}
+
+/**
+ * The one binding that serves a tool, from everything that offers to.
+ *
+ * A granted command outranks an enabled mock. The mock is authored material
+ * that travels with the project and is often left switched on; the grant is a
+ * deliberate act on this device, naming this tool. Reading it the other way
+ * would let a teammate's saved mock quietly outrank a command the user just
+ * allowed — and the UI says which one will answer either way.
+ */
+export function toolBindingFor(
+  toolId: ToolId,
+  mock: ToolMock | undefined,
+  commandBinding: ToolBinding | undefined,
+): ToolBinding | undefined {
+  return commandBinding ?? toolBindingForMock(toolId, mock);
 }
 
 /**
@@ -100,21 +125,41 @@ export function pendingToolCalls(
 
 /**
  * Produces the editable result values for exactly the calls that are waiting.
- * A mock is selected by the immutable tool definition name, matching the
- * existing request-draft behavior; no mock or React state is mutated here.
+ *
+ * The session asks a single question — "what binding serves this tool?" — and
+ * the answer is composed by the route from the project's mocks and this
+ * device's command grants. Which kinds exist is not this module's business,
+ * which is what keeps a third kind from arriving here as another parameter.
  */
 export function toolResultDraftsForState(
   state: RunState,
   tools: readonly ToolDefinition[],
-  mockForTool: (toolId: ToolDefinition["id"]) => ToolMock | undefined,
+  bindingForTool: (toolId: ToolDefinition["id"]) => ToolBinding | undefined,
 ): Record<string, ToolResultDraft> {
   return Object.fromEntries(
     pendingToolCalls(state, tools).map(({ call, tool }) => {
-      const binding = tool
-        ? toolBindingForMock(tool.id, mockForTool(tool.id))
-        : undefined;
+      const binding = tool ? bindingForTool(tool.id) : undefined;
       if (!binding) {
         return [call.id, { text: "", resolution: { kind: "manual" as const } }];
+      }
+      if (binding.kind === "command") {
+        // Nothing to prefill: the command has not run, and inventing a
+        // placeholder would be indistinguishable from a result it produced.
+        // The empty draft still submits as an execution, and typing into it
+        // still makes the answer the user's.
+        return [
+          call.id,
+          {
+            text: "",
+            prefilledText: "",
+            binding,
+            pendingExecutorLabel: binding.label ?? binding.executorId,
+            resolution: {
+              kind: "live" as const,
+              executorId: binding.executorId,
+            },
+          },
+        ];
       }
       const text = binding.result.content
         .map((part) => (part.type === "text" ? part.text : ""))

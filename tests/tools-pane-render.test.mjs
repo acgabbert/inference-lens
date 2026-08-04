@@ -44,6 +44,14 @@ async function renderPane(props) {
         },
         onUpdateToolMock() {},
         onRemoveRequestTool() {},
+        commandTools: {
+          availability: { kind: "unconfigured", variable: "INFERENCE_LENS_COMMAND_TOOLS" },
+          commands: [],
+          grantFor: () => undefined,
+          bindingFor: () => undefined,
+          grant() {},
+          revoke() {},
+        },
         ...props,
       }),
     );

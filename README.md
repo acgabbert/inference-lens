@@ -16,6 +16,11 @@ Set `INFERENCE_LENS_API_ENDPOINT`, `INFERENCE_LENS_API_KEY`, and optionally
 environment variables take precedence. Restart the development server after
 changing `.env`.
 
+Set `INFERENCE_LENS_COMMAND_TOOLS` to a command catalog to let local
+executables answer tool calls; without it, nothing can be executed. See
+[the command tool guide](docs/COMMAND_TOOLS.md) for the catalog format, the
+stdin/stdout contract, and what a declared command can and cannot reach.
+
 In the UI, enter the provider base URL (for example, `https://api.openai.com/v1`), API key, model, and messages, then select **Run request**; unless the endpoint already ends with `/chat/completions`, the app appends that path. The key is used for the live request but excluded from exported project files and displayed diagnostics. Run `npm test` for the web build and TypeScript/runtime test suite, or use `npm run build` and `npm start` to run a production build locally.
 
 For a no-account, local end-to-end endpoint, see [the llama.cpp testing guide](docs/LLAMA_CPP_E2E.md). It covers a loopback-only server, direct curl checks, and the Inference Lens profile values.

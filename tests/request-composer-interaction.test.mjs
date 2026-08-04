@@ -51,6 +51,14 @@ function composerProps(overrides = {}) {
       updateToolMock: noop,
       removeRequestTool: noop,
     },
+    commandTools: {
+      availability: { kind: "unconfigured", variable: "INFERENCE_LENS_COMMAND_TOOLS" },
+      commands: [],
+      grantFor: () => undefined,
+      bindingFor: () => undefined,
+      grant() {},
+      revoke() {},
+    },
     templates: {
       templateWorkbench: { composerItems: [{ kind: "message", message }] },
       templateRunOverrides: {},

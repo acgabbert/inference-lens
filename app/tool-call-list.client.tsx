@@ -13,6 +13,8 @@ import {
 export type ToolResultDraft = {
   text: string;
   resolution: ToolResult["resolution"];
+  /** Set when continuing will run an executor rather than send this text. */
+  pendingExecutorLabel?: string;
 };
 
 interface ToolCallListProps {
@@ -57,9 +59,11 @@ export function ToolCallList({
               </div>
               <span className="provider-pill">
                 {provenance?.pill ??
-                  (draft?.resolution.kind === "mock"
-                    ? "Static mock"
-                    : supplied?.resolution.kind ?? "Manual")}
+                  (draft?.pendingExecutorLabel
+                    ? "Command tool"
+                    : draft?.resolution.kind === "mock"
+                      ? "Static mock"
+                      : supplied?.resolution.kind ?? "Manual")}
               </span>
             </div>
             <label>
@@ -80,6 +84,19 @@ export function ToolCallList({
                 <pre>{supplied.content.map(({ text }) => text).join("")}</pre>
               </label>
             ) : null}
+            {/*
+              An executor with a transport has nothing to prefill, so without
+              this the card is indistinguishable from a call waiting on a
+              human. Said before the run, not after: it is also the last point
+              at which the user can decide not to run it.
+            */}
+            {!provenance && draft?.pendingExecutorLabel && (
+              <p className="tool-call-pending-executor">
+                Continuing runs the command tool “{draft.pendingExecutorLabel}”
+                on this device. Type a result above to answer this call by hand
+                instead.
+              </p>
+            )}
             {provenance && (
               <p className="tool-call-provenance">{provenance.detail}</p>
             )}

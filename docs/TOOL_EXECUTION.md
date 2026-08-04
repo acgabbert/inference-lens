@@ -3,11 +3,12 @@
 Inference Lens can pause a run at a tool call. This document covers what
 happens when something actually serves that call, and where the evidence goes.
 
-Today the only executor is the project mock. The contract is deliberately wider
-than the mock needs, because the mock cannot falsify it: it has no transport, no
-timeout, and no asynchronous failure. A command-tool executor and an MCP client
-arrive later against this same seam, and the point of settling it now is that
-neither should be able to reshape it.
+There are two executors: the project mock, and
+[the command tool](COMMAND_TOOLS.md). The mock could not falsify this contract —
+it has no transport, no timeout, and no asynchronous failure — so the command
+tool is what actually tested it. The contract held: the command executor added a
+binding kind, an identity case, and a host module, and changed nothing in the
+run model. An MCP client arrives later against the same seam.
 
 ## Descriptor and binding
 
@@ -28,13 +29,23 @@ written as an explicit construction per binding kind rather than as a field
 deletion, so a binding kind added later cannot leak its configuration by
 default — it has to be given an identity there first.
 
-Bindings are currently **derived, not stored**. An enabled project mock stands
-for a mock binding (`toolBindingForMock` in
+A mock binding is **derived, not stored** (`toolBindingForMock` in
 `app/run/run-session-state.client.ts`). Mocks live in the project because their
 *content* is authored material a teammate should receive; there is nothing
-device-local about them to remember. A persisted binding registry arrives with
-the first executor that has device-local configuration worth keeping out of the
-project, which is the command-tool executor.
+device-local about them to remember.
+
+A command binding **is** stored, in
+`app/tools/command-tool-bindings.client.ts`: a grant of `toolId → commandId`
+with the moment it was made. What it deliberately does not store is the
+executable, its arguments, or its timeout — those live in the operator's catalog
+on the host, so the registry stays safe in browser storage and the page can
+never name what runs. `toolBindingFor` composes the two, and a grant on this
+device outranks a mock that arrived with the project.
+
+Where **timeout policy** lives follows from the same split. `executeToolCall`
+classifies only thrown errors, so a transport-bearing executor classifies its
+own timeouts; for command tools the value is declared per command in the
+catalog, beside the executable it bounds.
 
 ## Outcomes
 
@@ -106,10 +117,19 @@ prefilled draft. **The executor runs on submit, not on arrival.** The pause is
 the approval gate, and an executor with side effects must not run before a human
 approves it — which is the shape MCP's per-call approval needs.
 
+A mock prefills the draft with its answer. An executor with a transport cannot:
+its answer does not exist until it runs. So a command-served call shows an empty
+box and says what continuing will do, because otherwise it is indistinguishable
+from a call waiting on a person.
+
 A draft the user has typed into is a manual result. Its resolution becomes
 `{ kind: "manual" }` and no execution evidence is recorded, because a
 human-supplied result is not an execution and a trace claiming otherwise would
-assert that a mock returned text a person typed.
+assert that a mock returned text a person typed. The same rule catches the
+failure path: when an execution fails, the call stays pending and its draft
+becomes an ordinary manual one, so a second attempt sends the person's answer
+rather than re-running an executor that just failed. The transcript then leads
+with where the shown value came from and reports the failed attempt after it.
 
 Result provenance and execution evidence answer different questions and stay
 separate. `ToolResolution` says where a value came from in project terms
@@ -119,13 +139,21 @@ which binding identity, and how long it took. They are joined by `toolCallId`.
 ## Shell parity
 
 Mock execution works in every shell — browser, self-hosted web service, and
-Tauri — because it involves no transport. Executors that do involve one will not,
-and each must state where it works rather than degrading silently.
+Tauri — because it involves no transport. Command tools work only where there is
+an Inference Lens service to spawn through: the local web app and the
+self-hosted service, not a bare browser and not yet the desktop build. The UI
+names the reason it is unavailable rather than showing an empty picker, and
+[docs/COMMAND_TOOLS.md](COMMAND_TOOLS.md) states the matrix.
 
 ## The core boundary
 
-`packages/core` imports no protocol SDK, and `tests/core-dependencies.test.ts`
-asserts it. The claim that a command tool and an MCP client can be added without
+`packages/core` imports no protocol SDK and no host capability, and
+`tests/core-dependencies.test.ts` asserts both. The command tool is the working
+example: the catalog schema and the classification of a finished process are
+pure core modules, while spawning — the only part that cannot be — lives in
+`services/api/src/command-tool-runner.ts`.
+
+The claim that a command tool and an MCP client can be added without
 reshaping the run model is only true while the run model stays ignorant of every
 protocol: the moment core imports one, its types start describing that
 protocol's world and the next executor has to be bent to fit. An executor's
