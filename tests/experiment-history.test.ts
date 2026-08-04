@@ -174,6 +174,7 @@ function evaluationPlan(): EvaluationExperimentPlanV3 {
         responseMode: "buffered",
         options: {},
         repetitions: 2,
+        toolIds: [],
       },
       inputBindings: [],
       cases: [{

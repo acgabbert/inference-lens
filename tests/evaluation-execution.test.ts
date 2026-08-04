@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   evaluationExperimentAggregate,
+  experimentExposedTools,
   evaluationParsedExperimentAggregate,
   materializeExperimentCellInput,
   parseExperimentPlanJson,
@@ -67,6 +68,7 @@ function projectFixture(withChecks = true) {
         responseMode: "buffered",
         options: { temperature: 0.2, seed: 7 },
         repetitions: 2,
+        toolIds: [],
       },
       inputBindings: [{
         id: "evaluation-input_topic",
@@ -187,6 +189,65 @@ test("snapshots authored values, case overrides, and confirmation-time execution
     { ...first, runId: undefined },
     { ...parsed.suite.cases[0]!.input, runId: undefined },
   );
+});
+
+test("a suite's exposed tools are snapshotted into every case, with its turn ceiling", () => {
+  const initial = projectFixture();
+  const project = parseProjectFile({
+    ...initial,
+    tools: [
+      {
+        id: "tool_weather",
+        name: "get_weather",
+        description: "Current conditions",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      },
+      {
+        id: "tool_unused",
+        name: "query_db",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      },
+    ],
+    evaluationSuites: initial.evaluationSuites.map((suite) => ({
+      ...suite,
+      execution: { ...suite.execution, toolIds: ["tool_weather"], turnCeiling: 3 },
+    })),
+  });
+  const plan = createEvaluationExperimentPlan({
+    project,
+    suiteId: "evaluation-suite_topics",
+    selectedCaseIds: ["evaluation-case_migrations"],
+    createdAt: "2026-08-01T12:10:00.000Z",
+    createSuffix: (() => { let n = 0; return () => `tools-${++n}`; })(),
+    runtimeTarget: {
+      profileId: "profile_confirmed",
+      protocol: "openai-compatible-chat-completions",
+      endpoint: "https://provider.example.test/v1",
+      capabilities: OPENAI_COMPATIBLE_CAPABILITIES,
+    },
+  });
+  const parsed = parseExperimentPlanJson(serializeExperimentPlan(plan));
+  if (parsed.kind !== "evaluation") throw new Error("Expected evaluation plan.");
+  // Only the exposed descriptor, and the whole descriptor: the plan is what the
+  // provider will be sent, so a partial snapshot would be a different request.
+  assert.deepEqual(parsed.suite.cases[0]?.input.tools, [{
+    id: "tool_weather",
+    name: "get_weather",
+    description: "Current conditions",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+  }]);
+  assert.equal(parsed.turnCeiling, 3);
+  assert.deepEqual(
+    experimentExposedTools(parsed).map(({ name }) => name),
+    ["get_weather"],
+  );
+});
+
+test("a suite that exposes nothing produces a plan with no tools and no ceiling", () => {
+  const plan = planFixture();
+  assert.deepEqual(plan.suite.cases[0]?.input.tools, []);
+  assert.equal(plan.turnCeiling, undefined);
+  assert.deepEqual(experimentExposedTools(plan), []);
 });
 
 test("strict scoring keeps check failure distinct and fails the whole case and suite", () => {

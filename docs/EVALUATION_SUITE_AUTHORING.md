@@ -12,8 +12,8 @@ contains a bound use or variable. Empty suites remain valid authored state but
 cannot execute.
 
 A suite also owns its execution settings — connection requirement, model,
-delivery mode, inference options, and repetitions — and they are saved with the
-suite. Changing the evaluation's model or temperature therefore never edits the
+delivery mode, inference options, repetitions, the tools it exposes, and the
+turn ceiling those tools may spend — and they are saved with the suite. Changing the evaluation's model or temperature therefore never edits the
 composer's, and a suite reproduces the same batch wherever the project is
 opened. Only the device-local runtime target (profile, endpoint, protocol,
 capabilities) is supplied from outside; see
@@ -31,7 +31,10 @@ run the author described rather than an empty selection they must repair. The
 selection is session state and is not written to `project.json`.
 
 The case grid previews `selected cases × repetitions` without making provider
-calls. Case values, reference answers, and execution settings are stored in
+calls. A suite that exposes tools shows a range instead: one provider call per
+repetition, up to its turn ceiling if every repetition keeps calling tools. The
+25 / 100 / 1,000-call thresholds are applied to that worst case, because it is
+the number a confirmed batch may actually bill. Case values, reference answers, and execution settings are stored in
 `project.json`; the UI warns authors not to put credentials or secrets into this
 portable data.
 
@@ -113,9 +116,9 @@ provenance stay behind a disclosure:
    being silently dropped.
 3. **Resolved conversation** — the exact ordered roles and rendered text.
 4. **Execution settings** — connection, endpoint, protocol, model, delivery
-   mode, every populated inference option, and tools (`None`: evaluations send
-   no tools, so a tool selected in Messages neither travels with the plan nor
-   blocks the run).
+   mode, every populated inference option, and the tools the suite exposes
+   (`None` when it exposes none; a tool selected in Messages neither travels
+   with the plan nor blocks the run either way).
 
 Preflight, this preview, and `createEvaluationExperimentPlan` all resolve
 through one projection, `resolveEvaluationCase`, so the preview cannot drift
@@ -130,6 +133,32 @@ authored against and is reported when it disagrees with the evaluation's model,
 or when two pinned prompts recommend different models — a disagreement no single
 target can settle, since a provider call carries one model. It never selects or
 overrides the target.
+
+## Exposing tools
+
+A suite's **Tools** block lists every tool the project defines and checks the
+ones this suite exposes. Exposure is portable: it names project tool IDs, so a
+teammate who opens the project sees the same suite exposing the same tools. What
+*serves* each one is device-local — an enabled project mock or a command-tool
+grant on this machine — and the block shows that join beside each checked tool
+(`get_weather → mock "sunny default"`), without ever storing it.
+
+An evaluation answers its own tool calls, exactly as a repeated experiment does:
+nobody is watching a batch call by call, so a repetition never pauses for a
+person. Two consequences follow, and both are stated before anything is spent:
+
+- A tool nothing on this device can serve is a **setup issue**, counted in
+  preflight and repeated on the Start button. The suite is authored correctly;
+  this machine cannot run it. Command tools do not exist in a bare browser or in
+  the desktop build, and the same sentence the tools pane uses is appended here.
+- A repetition may spend more than one provider call. The **turn ceiling**
+  bounds it: a repetition still holding tool calls at the ceiling is failed with
+  a `tool_error`, which fails only that repetition, and the cost thresholds are
+  applied to `cases × repetitions × ceiling`.
+
+The start confirmation lists each exposed tool and what will serve it. That
+listing is the last point at which a stale grant can be noticed, because a
+granted command executes without asking again once a batch is running.
 
 ## Reviewing past executions
 

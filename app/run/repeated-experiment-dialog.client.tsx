@@ -15,13 +15,7 @@ import {
   MIN_EXPERIMENT_TURN_CEILING,
 } from "../../packages/core/src/experiment.ts";
 
-/** Names what will answer one exposed tool, or that nothing can. */
-function bindingLabel(entry: RepeatedExperimentDraft["toolBindings"][number]): string {
-  const { binding } = entry;
-  if (!binding) return "nothing on this device";
-  const name = binding.label ?? binding.executorId;
-  return binding.kind === "mock" ? `mock "${name}"` : `command "${name}"`;
-}
+import { experimentToolBindingLabel } from "./experiment-tool-bindings.client.ts";
 
 export function RepeatedExperimentDialog({
   draft,
@@ -136,7 +130,7 @@ export function RepeatedExperimentDialog({
             <ul>
               {draft.toolBindings.map(({ tool, binding }) => (
                 <li key={tool.id} className={binding ? undefined : "repeat-experiment-tool-unbound"}>
-                  <code>{tool.name}</code> → {bindingLabel({ tool, ...(binding ? { binding } : {}) })}
+                  <code>{tool.name}</code> → {experimentToolBindingLabel({ tool, ...(binding ? { binding } : {}) })}
                 </li>
               ))}
             </ul>

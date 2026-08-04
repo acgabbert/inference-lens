@@ -13,6 +13,10 @@ export type {
 } from "./evaluation-suites.ts";
 import { stableJsonValue } from "./stable-json.ts";
 import { toolNameSchema } from "./tool-name.ts";
+import {
+  MAX_EXPERIMENT_TURN_CEILING,
+  MIN_EXPERIMENT_TURN_CEILING,
+} from "./turn-ceiling.ts";
 
 import {
   authoredPromptFieldSchema,
@@ -68,7 +72,7 @@ export const PROJECT_DIRECTORY_SUFFIX = ".inference-lens";
 export const PROJECT_FILE_NAME = "project.json";
 export const PROJECT_EXPORT_FILE_SUFFIX = ".project.json";
 export const PROJECT_GITIGNORE_CONTENTS = "*\n";
-export const PROJECT_SCHEMA_VERSION = 8;
+export const PROJECT_SCHEMA_VERSION = 9;
 
 /**
  * Turns the portable project display name into one safe, visible directory
@@ -307,8 +311,28 @@ export interface ProjectFileV7 {
   defaults: ProjectDefaults;
 }
 
+/** A v8 suite: everything a v9 suite has except its exposed tools and ceiling. */
+export type EvaluationSuiteV8 = Omit<EvaluationSuite, "execution"> & {
+  execution: Omit<EvaluationSuite["execution"], "toolIds" | "turnCeiling">;
+};
+
 export interface ProjectFileV8 {
   schemaVersion: 8;
+  projectId: ProjectId;
+  name: string;
+  connectionRequirements: ConnectionRequirement[];
+  conversations: ProjectConversation[];
+  conversationRevisions: ProjectConversationRevision[];
+  tools: ToolDefinition[];
+  toolMocks: ToolMock[];
+  promptTemplates: PromptTemplate[];
+  externalImports: ExternalImportReceipt[];
+  evaluationSuites: EvaluationSuiteV8[];
+  defaults: ProjectDefaults;
+}
+
+export interface ProjectFileV9 {
+  schemaVersion: 9;
   projectId: ProjectId;
   name: string;
   connectionRequirements: ConnectionRequirement[];
@@ -322,7 +346,7 @@ export interface ProjectFileV8 {
   defaults: ProjectDefaults;
 }
 
-export type ProjectFile = ProjectFileV8;
+export type ProjectFile = ProjectFileV9;
 
 const entityId = <Kind extends Parameters<typeof createEntityId>[0]>(
   kind: Kind,
@@ -801,6 +825,35 @@ const evaluationSuiteSchema: z.ZodType<EvaluationSuite> = z
       responseMode: z.enum(["streaming", "buffered"]),
       options: inferenceOptionsSchema,
       repetitions: z.number().int().min(1).max(100),
+      toolIds: z.array(entityId("tool")),
+      turnCeiling: z
+        .number()
+        .int()
+        .min(MIN_EXPERIMENT_TURN_CEILING)
+        .max(MAX_EXPERIMENT_TURN_CEILING)
+        .optional(),
+    }).strict(),
+    inputBindings: z.array(evaluationInputBindingSchema),
+    cases: z.array(evaluationCaseSchema),
+  })
+  .strict();
+
+const legacyEvaluationSuiteV8Schema: z.ZodType<EvaluationSuiteV8> = z
+  .object({
+    id: entityId("evaluation-suite"),
+    name: z.string().trim().min(1),
+    input: z.object({
+      kind: z.literal("conversation-revision"),
+      conversationRevisionId: entityId("revision"),
+    }).strict(),
+    execution: z.object({
+      target: z.object({
+        connectionRequirementId: entityId("connection"),
+        model: z.string().trim().min(1),
+      }).strict(),
+      responseMode: z.enum(["streaming", "buffered"]),
+      options: inferenceOptionsSchema,
+      repetitions: z.number().int().min(1).max(100),
     }).strict(),
     inputBindings: z.array(evaluationInputBindingSchema),
     cases: z.array(evaluationCaseSchema),
@@ -870,6 +923,24 @@ const projectFileV7Schema: z.ZodType<ProjectFileV7> = z
   .superRefine(validateProjectReferences);
 
 const projectFileV8Schema: z.ZodType<ProjectFileV8> = z
+  .object({
+    schemaVersion: z.literal(8),
+    projectId: entityId("project"),
+    name: z.string().trim().min(1),
+    connectionRequirements: z.array(connectionRequirementSchema).min(1),
+    conversations: z.array(projectConversationSchema).min(1),
+    conversationRevisions: z.array(projectConversationRevisionSchema).min(1),
+    tools: z.array(toolDefinitionSchema),
+    toolMocks: z.array(toolMockSchema),
+    promptTemplates: z.array(promptTemplateSchema),
+    externalImports: z.array(externalImportReceiptSchema),
+    evaluationSuites: z.array(legacyEvaluationSuiteV8Schema),
+    defaults: projectDefaultsSchema,
+  })
+  .strict()
+  .superRefine(validateProjectReferences);
+
+const projectFileV9Schema: z.ZodType<ProjectFileV9> = z
   .object({
     schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
     projectId: entityId("project"),
@@ -1102,7 +1173,7 @@ function validateSharedProjectReferences(
 }
 
 function validateProjectReferences(
-  project: ProjectFileV6 | ProjectFileV7 | ProjectFileV8,
+  project: ProjectFileV6 | ProjectFileV7 | ProjectFileV8 | ProjectFileV9,
   context: z.RefinementCtx,
 ): void {
   validateSharedProjectReferences(
@@ -1371,7 +1442,7 @@ function validateProjectReferences(
 }
 
 function validateEvaluationSuites(
-  project: ProjectFileV7 | ProjectFileV8,
+  project: ProjectFileV7 | ProjectFileV8 | ProjectFileV9,
   templates: ReadonlyMap<PromptTemplateId, PromptTemplate>,
   context: z.RefinementCtx,
 ): void {
@@ -1389,9 +1460,10 @@ function validateEvaluationSuites(
   const inputIds = new Set<string>();
   const caseIds = new Set<string>();
   const checkIds = new Set<string>();
+  const projectToolIds = new Set(project.tools.map(({ id }) => id));
   project.evaluationSuites.forEach((suite, suiteIndex) => {
     const suitePath = ["evaluationSuites", suiteIndex];
-    if (project.schemaVersion === 8) {
+    if (project.schemaVersion === 8 || project.schemaVersion === 9) {
       const currentSuite = project.evaluationSuites[suiteIndex]!;
       requireReference(
         project.conversationRevisions.some(({ id }) => id === currentSuite.input.conversationRevisionId),
@@ -1403,6 +1475,26 @@ function validateEvaluationSuites(
         project.connectionRequirements.some(({ id }) => id === currentSuite.execution.target.connectionRequirementId),
         [...suitePath, "execution", "target", "connectionRequirementId"],
         "Evaluation execution references an unknown connection requirement.",
+        context,
+      );
+    }
+    if (project.schemaVersion === 9) {
+      // The same treatment `defaults.enabledToolIds` gets: a suite that names a
+      // deleted tool can never be saved or imported, so nothing downstream —
+      // preflight, plan snapshotting, the binding join — has to invent an
+      // answer for a descriptor that is not there.
+      const { toolIds } = project.evaluationSuites[suiteIndex]!.execution;
+      toolIds.forEach((id, index) =>
+        requireReference(
+          projectToolIds.has(id),
+          [...suitePath, "execution", "toolIds", index],
+          `Evaluation suite exposes tool "${id}", which does not exist.`,
+          context,
+        ),
+      );
+      addDuplicateIssues(
+        toolIds,
+        [...suitePath, "execution", "toolIds"],
         context,
       );
     }
@@ -1762,7 +1854,7 @@ function migrateProjectV6(project: ProjectFileV6): ProjectFileV7 {
 function migrateProjectV7(project: ProjectFileV7): ProjectFileV8 {
   return {
     ...project,
-    schemaVersion: PROJECT_SCHEMA_VERSION,
+    schemaVersion: 8,
     evaluationSuites: project.evaluationSuites.map((suite) => ({
       ...suite,
       input: {
@@ -1777,6 +1869,22 @@ function migrateProjectV7(project: ProjectFileV7): ProjectFileV8 {
         options: structuredClone(project.defaults.options),
         repetitions: 1,
       },
+    })),
+  };
+}
+
+/**
+ * A suite written before suites could expose tools exposed none, and inherits
+ * the default ceiling by leaving it absent — so an upgraded project runs
+ * exactly as it did, one turn per repetition.
+ */
+function migrateProjectV8(project: ProjectFileV8): ProjectFileV9 {
+  return {
+    ...project,
+    schemaVersion: PROJECT_SCHEMA_VERSION,
+    evaluationSuites: project.evaluationSuites.map((suite) => ({
+      ...suite,
+      execution: { ...structuredClone(suite.execution), toolIds: [] },
     })),
   };
 }
@@ -1819,7 +1927,19 @@ export function parseProjectFile(value: unknown): ProjectFile {
     }
     source = migrateProjectV7(previous.data);
   }
-  const parsed = projectFileV8Schema.safeParse(source);
+  if (
+    typeof source === "object" &&
+    source !== null &&
+    "schemaVersion" in source &&
+    source.schemaVersion === 8
+  ) {
+    const previous = projectFileV8Schema.safeParse(source);
+    if (!previous.success) {
+      throw new ProjectValidationError(previous.error.issues);
+    }
+    source = migrateProjectV8(previous.data);
+  }
+  const parsed = projectFileV9Schema.safeParse(source);
   if (!parsed.success) throw new ProjectValidationError(parsed.error.issues);
   return parsed.data;
 }
@@ -2276,10 +2396,26 @@ export function updateProjectDraft(
       ),
     ],
   );
+  // A deleted tool cannot be left named by a suite: the schema refuses a
+  // dangling exposure, so deleting a tool withdraws it from every suite that
+  // exposed it rather than making the project unsaveable from the tools pane.
+  const draftToolIds = new Set(draft.tools.map(({ id }) => id));
+  const evaluationSuites = project.evaluationSuites.map((suite) =>
+    suite.execution.toolIds.every((id) => draftToolIds.has(id))
+      ? suite
+      : {
+          ...suite,
+          execution: {
+            ...suite.execution,
+            toolIds: suite.execution.toolIds.filter((id) => draftToolIds.has(id)),
+          },
+        },
+  );
   return parseProjectFile({
     ...project,
     tools: draft.tools,
     toolMocks: draft.toolMocks,
+    evaluationSuites,
     conversationRevisions,
     externalImports: project.externalImports.filter(({ id }) =>
       referencedExternalImportIds.has(id),

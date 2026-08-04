@@ -87,6 +87,13 @@ export function createEvaluationExperimentPlan(
 
   const now = options.createdAt ?? new Date().toISOString();
   const suffix = options.createSuffix ?? randomUUID;
+  // Snapshotted in project order rather than selection order, so the provider
+  // sees the same list an ordinary run would send and two plans built from one
+  // suite are byte-comparable. A missing ID cannot occur: the project schema
+  // refuses to hold a suite that names a tool it does not have.
+  const exposedTools = project.tools
+    .filter(({ id }) => suite.execution.toolIds.includes(id))
+    .map((tool) => structuredClone(tool));
   const cases = selectedCases.map((evaluationCase) => {
     // The same projection the focused-case preview renders, so what an author
     // approved and what the plan freezes cannot disagree.
@@ -116,7 +123,7 @@ export function createEvaluationExperimentPlan(
         templateResolutions: resolved.templateResolutions,
         responseMode: suite.execution.responseMode,
         options: structuredClone(suite.execution.options),
-        tools: [],
+        tools: structuredClone(exposedTools),
         resolvedAt: now,
       },
     };
@@ -140,6 +147,12 @@ export function createEvaluationExperimentPlan(
     checkSchemaVersion: CHECK_SCHEMA_VERSION,
     scoringPolicy: "strict",
     repetitions: suite.execution.repetitions,
+    // Carried only when the suite authored one, so a plan built from a suite
+    // that never touched the control stays identical to the plans this
+    // evaluation produced before suites could expose tools at all.
+    ...(suite.execution.turnCeiling === undefined
+      ? {}
+      : { turnCeiling: suite.execution.turnCeiling }),
     suite: {
       suiteId: suite.id,
       name: suite.name,

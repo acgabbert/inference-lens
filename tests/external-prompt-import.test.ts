@@ -215,7 +215,7 @@ test("projects resolved snapshots into literal messages with durable receipts", 
   });
 
   assert.equal(base.externalImports.length, 0);
-  assert.equal(imported.project.schemaVersion, 8);
+  assert.equal(imported.project.schemaVersion, 9);
   assert.equal(imported.project.externalImports.length, 1);
   assert.equal(
     imported.project.externalImports[0]?.sourceDigest,

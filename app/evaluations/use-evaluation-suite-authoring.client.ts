@@ -39,7 +39,9 @@ import type {
   EvaluationInputBindingId,
   EvaluationSuiteId,
   PromptTemplateId,
+  ToolId,
 } from "../../packages/core/src/run-kernel";
+import { normalizedTurnCeiling } from "../../packages/core/src/turn-ceiling";
 import type { ConfirmationDialogRequest } from "../confirmation-dialog.client";
 
 /** A concise, dismissible confirmation that a project mutation landed. */
@@ -83,6 +85,10 @@ export interface EvaluationSuiteAuthoringHandle {
   setCaseSelected(id: EvaluationCaseId, selected: boolean): void;
   focusCase(id: EvaluationCaseId): void;
   setRepetitions(value: number): void;
+  /** Exposes or withdraws one project tool for the selected suite. */
+  setToolExposed(id: ToolId, exposed: boolean): void;
+  /** Provider turns one repetition may spend; clamped to the supported range. */
+  setTurnCeiling(value: number): void;
   updateExecution(execution: EvaluationSuite["execution"]): boolean;
   createSuite(): void;
   renameSuite(name: string): boolean;
@@ -355,6 +361,24 @@ export function useEvaluationSuiteAuthoring({
       commit((current) => updateEvaluationSuiteExecution(current, effectiveSuiteId, {
         ...suite.execution,
         repetitions: value,
+      }));
+    },
+    setToolExposed(id, exposed) {
+      if (!suite || !effectiveSuiteId) return;
+      const current = suite.execution.toolIds;
+      if (exposed === current.includes(id)) return;
+      commit((project) => updateEvaluationSuiteExecution(project, effectiveSuiteId, {
+        ...suite.execution,
+        toolIds: exposed
+          ? [...current, id]
+          : current.filter((toolId) => toolId !== id),
+      }));
+    },
+    setTurnCeiling(value) {
+      if (!suite || !effectiveSuiteId) return;
+      commit((project) => updateEvaluationSuiteExecution(project, effectiveSuiteId, {
+        ...suite.execution,
+        turnCeiling: normalizedTurnCeiling(value),
       }));
     },
     updateExecution(execution) {

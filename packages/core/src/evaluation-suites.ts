@@ -7,6 +7,7 @@ import type {
   EvaluationSuiteId,
   PromptTemplateUseId,
   InferenceOptions,
+  ToolId,
 } from "./run-kernel/types.ts";
 import type { CheckDefinition } from "./checks.ts";
 import { resolveEvaluationCase } from "./evaluation-case-resolution.ts";
@@ -50,6 +51,20 @@ export interface EvaluationSuite {
     responseMode: "streaming" | "buffered";
     options: InferenceOptions;
     repetitions: number;
+    /**
+     * Project tool IDs this suite exposes, per [D8]: a suite references
+     * portable descriptors, and the device-local binding that serves each one
+     * joins at plan time. Snapshotting the descriptors still happens at plan
+     * time, exactly as it does for an ordinary run.
+     */
+    toolIds: ToolId[];
+    /**
+     * Provider turns one repetition may spend before it is failed. Absent means
+     * the shared default. Authored here rather than at confirmation because a
+     * ceiling changes outcomes — a repetition that reaches it fails — and a
+     * suite owns everything its result depends on.
+     */
+    turnCeiling?: number;
   };
   inputBindings: EvaluationInputBinding[];
   cases: EvaluationCase[];

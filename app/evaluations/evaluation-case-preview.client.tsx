@@ -186,9 +186,11 @@ function ResolvedConversationRegion({ resolution, caseName }: {
 }
 
 /** Region 4: the connection, protocol, model, delivery, options, and tools. */
-function ExecutionSettingsRegion({ preview, caseName }: {
+function ExecutionSettingsRegion({ preview, caseName, toolNames }: {
   preview: NonNullable<EvaluationSuiteExecutionActions["preview"]>;
   caseName: string;
+  /** Exactly the descriptors this suite's plan will snapshot, in project order. */
+  toolNames: readonly string[];
 }) {
   const options = inferenceOptionRows(preview.options);
   return (
@@ -201,9 +203,9 @@ function ExecutionSettingsRegion({ preview, caseName }: {
         <div><dt>Model</dt><dd>{preview.model || "Not set"}</dd></div>
         <div><dt>Delivery</dt><dd>{preview.responseMode === "streaming" ? "Streaming" : "Buffered"}</dd></div>
         {options.map(({ label, value }) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
-        {/* Evaluations refuse to start while tools are selected, so this reads
-            None rather than listing a set the plan would not carry. */}
-        <div><dt>Tools</dt><dd>None</dd></div>
+        {/* The suite's own exposure, not the composer's: a tool switched on in
+            Messages neither travels with this plan nor blocks this run. */}
+        <div><dt>Tools</dt><dd>{toolNames.length === 0 ? "None" : toolNames.join(", ")}</dd></div>
       </dl>
     </section>
   );
@@ -257,7 +259,15 @@ export function EvaluationCasePreview({ evaluationCase, authoring, execution }: 
       {descriptor && <RevisionProvenanceRegion caseName={evaluationCase.name} descriptor={descriptor} />}
       <ResolvedValuesRegion caseName={evaluationCase.name} resolution={resolution} />
       <ResolvedConversationRegion caseName={evaluationCase.name} resolution={resolution} />
-      {execution?.preview && <ExecutionSettingsRegion caseName={evaluationCase.name} preview={execution.preview} />}
+      {execution?.preview && (
+        <ExecutionSettingsRegion
+          caseName={evaluationCase.name}
+          preview={execution.preview}
+          toolNames={project.tools
+            .filter(({ id }) => suite.execution.toolIds.includes(id))
+            .map(({ name }) => name)}
+        />
+      )}
     </section>
   );
 }

@@ -83,6 +83,7 @@ import { useRunSession } from "./run/use-run-session.client";
 import { toolBindingFor } from "./run/run-session-state.client";
 import { useCommandTools } from "./tools/use-command-tools.client";
 import { commandToolUnavailableMessage } from "./tools/command-tool-availability.client";
+import { listExperimentToolBindings } from "./run/experiment-tool-bindings.client";
 import { useRepeatedExperimentSession } from "./run/use-repeated-experiment-session.client";
 import { RepeatedExperimentDialog } from "./run/repeated-experiment-dialog.client";
 import { RepeatedExperimentWorkspace } from "./run/repeated-experiment-workspace.client";
@@ -873,6 +874,8 @@ function HomeContent() {
         profile: activeProfile,
         capabilities: activeCapabilities,
         durable: Boolean(projectWorkspace),
+        bindingForTool: (toolId) =>
+          toolBindingFor(toolId, mockForTool(toolId), commandTools.bindingFor(toolId)),
       }));
     } catch (error) {
       project.setError(error instanceof Error ? error.message : "Could not prepare the evaluation.");
@@ -1026,6 +1029,15 @@ function HomeContent() {
     }
   }
   const responseEmptyState = runEmptyStatePresentation(readiness);
+  // The device-local half of a suite's tool exposure, joined once for the three
+  // surfaces that need it: the editor's listing, the start gate, and the
+  // confirmation. Every project tool is resolved, not only the exposed ones, so
+  // the editor can say what a tool would be served by before it is checked.
+  const evaluationSuiteToolBindings = listExperimentToolBindings(
+    projectFile?.tools ?? [],
+    (toolId) => toolBindingFor(toolId, mockForTool(toolId), commandTools.bindingFor(toolId)),
+  );
+  const commandToolsUnavailableReason = commandToolUnavailableMessage(commandTools);
   const evaluationStartDisabledReason = evaluationStartReadiness({
     projectOpen: Boolean(projectFile),
     suiteSelected: Boolean(evaluationAuthoring.suiteId),
@@ -1036,7 +1048,13 @@ function HomeContent() {
     diagnostics: evaluationAuthoring.diagnostics,
     selectedCaseCount: evaluationAuthoring.selectedCaseIds.size,
     repetitions: selectedEvaluationSuite?.execution.repetitions ?? 1,
-    selectedToolCount: 0,
+    toolBindings: evaluationSuiteToolBindings
+      .filter(({ tool }) => selectedEvaluationSuite?.execution.toolIds.includes(tool.id))
+      .map(({ tool, binding }) => ({ name: tool.name, bound: Boolean(binding) })),
+    ...(commandToolsUnavailableReason ? { commandToolsUnavailableReason } : {}),
+    ...(selectedEvaluationSuite?.execution.turnCeiling === undefined
+      ? {}
+      : { turnCeiling: selectedEvaluationSuite.execution.turnCeiling }),
     connectionMapped: mappedProfileId === activeProfile.id,
     hasProjectMapping: Boolean(mappedProfileId),
     endpoint: activeProfile.endpoint,
@@ -1063,6 +1081,8 @@ function HomeContent() {
     },
     ...(evaluationStartDisabledReason ? { disabledReason: evaluationStartDisabledReason } : {}),
     onStart: startEvaluation,
+    toolBindings: evaluationSuiteToolBindings,
+    ...(commandToolsUnavailableReason ? { commandToolsUnavailableReason } : {}),
   };
 
   // Cross-feature adapter: saved executions are project-workspace evidence and

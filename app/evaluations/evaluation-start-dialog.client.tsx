@@ -2,8 +2,13 @@
 
 import { useEffect } from "react";
 
+import { DEFAULT_EXPERIMENT_TURN_CEILING } from "../../packages/core/src/experiment.ts";
+import { experimentToolBindingLabel } from "../run/experiment-tool-bindings.client.ts";
 import type { EvaluationExecutionDraft } from "./use-evaluation-execution-session.client.ts";
-import { LARGE_EVALUATION_BATCH_WARNING_THRESHOLD } from "./evaluation-batch.client.ts";
+import {
+  evaluationBatchGuardrail,
+  evaluationCallRange,
+} from "./evaluation-batch.client.ts";
 
 function caseSummary(draft: EvaluationExecutionDraft): string {
   const names = draft.plan.suite.cases.map(({ name }) => name);
@@ -33,6 +38,16 @@ export function EvaluationStartDialog({
 
   const target = draft.plan.suite.cases[0]!.input.target;
   const callCount = draft.plan.cells.length;
+  const turnCeiling = draft.plan.turnCeiling ?? DEFAULT_EXPERIMENT_TURN_CEILING;
+  const exposesTools = draft.toolBindings.length > 0;
+  // The same arithmetic the start gate applied, rather than a second estimate:
+  // the number a person authorizes here is the number that was checked against
+  // the safety maximum.
+  const guardrail = evaluationBatchGuardrail(
+    draft.plan.suite.cases.length,
+    draft.plan.repetitions,
+    { exposedToolCount: draft.toolBindings.length, turnCeiling },
+  );
   return (
     <div className="confirmation-backdrop" role="presentation">
       <section aria-labelledby="evaluation-start-title" aria-modal="true" className="confirmation-dialog evaluation-start-dialog" role="dialog">
@@ -44,13 +59,32 @@ export function EvaluationStartDialog({
           <div><dt>Target</dt><dd>{draft.targetName} · {target.model}</dd></div>
           <div><dt>Cases</dt><dd>{draft.plan.suite.cases.length} · {caseSummary(draft)}</dd></div>
           <div><dt>Repetitions</dt><dd>{draft.plan.repetitions} per case</dd></div>
-          <div><dt>Provider calls</dt><dd>{callCount.toLocaleString()} planned</dd></div>
+          <div><dt>Provider calls</dt><dd>{exposesTools
+            ? <>{evaluationCallRange(guardrail)} — one per repetition, up to {turnCeiling} if every repetition keeps calling tools</>
+            : <>{callCount.toLocaleString()} planned</>}</dd></div>
           <div><dt>Evidence</dt><dd>{draft.storage === "durable" ? "Saved to the open project folder" : "Session only — lost when this session closes"}</dd></div>
         </dl>
-        {callCount >= LARGE_EVALUATION_BATCH_WARNING_THRESHOLD && <p className="evaluation-batch-warning" role="alert"><strong>Large evaluation batch.</strong> This will make {callCount.toLocaleString()} sequential provider calls. The batch size will not be adjusted.</p>}
+        {exposesTools && (
+          /* What will run, at the moment cost is confirmed. An evaluation
+             answers its own tool calls, so this is the last point at which a
+             stale grant can be noticed before it executes unattended. */
+          <div className="repeat-experiment-tools">
+            <h3>Tools served automatically</h3>
+            <ul>
+              {draft.toolBindings.map(({ tool, binding }) => (
+                <li key={tool.id} className={binding ? undefined : "repeat-experiment-tool-unbound"}>
+                  <code>{tool.name}</code> → {experimentToolBindingLabel({ tool, ...(binding ? { binding } : {}) })}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {guardrail.warning && <p className="evaluation-batch-warning" role="alert"><strong>Large evaluation batch.</strong> {exposesTools
+          ? <>This will run {callCount.toLocaleString()} sequential repetitions, up to {guardrail.worstCaseCalls.toLocaleString()} provider calls if every one keeps calling tools.</>
+          : <>This will make {callCount.toLocaleString()} sequential provider calls.</>} The batch size will not be adjusted.</p>}
         <div className="confirmation-actions">
           <button className="button secondary" type="button" onClick={onCancel}>Cancel</button>
-          <button className="button primary" type="button" onClick={onConfirm}>Start {callCount.toLocaleString()} calls</button>
+          <button className="button primary" type="button" onClick={onConfirm}>Start {exposesTools ? `${callCount.toLocaleString()} repetitions` : `${callCount.toLocaleString()} calls`}</button>
         </div>
       </section>
     </div>
