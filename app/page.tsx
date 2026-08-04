@@ -256,6 +256,10 @@ function HomeContent() {
   // the disclosure can be closed again, and it has to survive the Evaluations
   // mode unmounting while another mode is on screen.
   const [suiteHistoryExpanded, setSuiteHistoryExpanded] = useState(false);
+  // The Evaluations mode's own open regions, held here for the same reason as
+  // the disclosure above: the mode unmounts whenever another one is on screen.
+  const [evaluationSetupOpen, setEvaluationSetupOpen] = useState(true);
+  const [evaluationPreviewOpen, setEvaluationPreviewOpen] = useState(true);
   const [savedRunVersion, setSavedRunVersion] = useState(0);
   const clearTemplateOverridesRef = useRef<() => void>(() => {});
   const [workbenchView, setWorkbenchView] =
@@ -1562,6 +1566,12 @@ function HomeContent() {
           authoring={evaluationAuthoring}
           execution={evaluationExecutionActions}
           {...(evaluationHistory ? { history: evaluationHistory } : {})}
+          layout={{
+            setupOpen: evaluationSetupOpen,
+            onSetupOpenChange: setEvaluationSetupOpen,
+            previewOpen: evaluationPreviewOpen,
+            onPreviewOpenChange: setEvaluationPreviewOpen,
+          }}
           modelFavorites={{
             models: activeProfile.favoriteModels ?? [],
             onToggle: (model) =>

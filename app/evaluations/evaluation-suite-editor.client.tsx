@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { CHECK_KINDS } from "../../packages/core/src/checks";
 import type { CheckDefinition, CheckKind, ToolCallCountComparator } from "../../packages/core/src/checks";
 import type { JsonObject } from "../../packages/core/src/run-kernel";
@@ -13,7 +13,6 @@ import {
   MAX_EXPERIMENT_TURN_CEILING,
   MIN_EXPERIMENT_TURN_CEILING,
 } from "../../packages/core/src/experiment";
-import { FocusModeToggle, useFocusMode } from "../focus-mode.client";
 import { InferenceSettingsPanel } from "../inference-settings-panel.client";
 import { experimentToolBindingLabel } from "../run/experiment-tool-bindings.client";
 import type { ExperimentToolBinding } from "../run/experiment-tool-bindings.client";
@@ -30,6 +29,7 @@ import {
   EvaluationSuiteHistory,
   type EvaluationSuiteHistoryHandle,
 } from "./evaluation-suite-history.client";
+import styles from "./evaluation-surface.module.css";
 
 const checkKindLabels: Record<CheckKind, string> = {
   "exact-match": "Exact output",
@@ -277,11 +277,22 @@ export interface ModelFavoritesHandle {
   onToggle(model: string): void;
 }
 
+/**
+ * Whether the suite's setup band is expanded. Owned by the route for the same
+ * reason the history disclosure is: the Evaluations mode unmounts when another
+ * mode is on screen, so state kept here would collapse on the way back.
+ */
+export interface EvaluationSetupDisclosure {
+  open: boolean;
+  onOpenChange(open: boolean): void;
+}
+
 export function EvaluationSuiteEditor({
   authoring,
   execution,
   history,
   modelFavorites,
+  setup,
   onOpenTemplates,
 }: {
   authoring: EvaluationSuiteAuthoringHandle;
@@ -289,17 +300,19 @@ export function EvaluationSuiteEditor({
   /** Saved executions of the selected suite, listed by the route. */
   history?: EvaluationSuiteHistoryHandle;
   modelFavorites?: ModelFavoritesHandle;
+  setup?: EvaluationSetupDisclosure;
   /** Request-composer navigation stays with its owner. */
   onOpenTemplates?(): void;
 }) {
-  const [focusMode, setFocusMode] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [candidateIndex, setCandidateIndex] = useState(0);
   const [renamingSuite, setRenamingSuite] = useState(false);
   const [suiteNameDraft, setSuiteNameDraft] = useState("");
-  const containerRef = useRef<HTMLElement>(null);
-  const focusToggleRef = useRef<HTMLButtonElement>(null);
-  const { close } = useFocusMode({ open: focusMode, setOpen: setFocusMode, containerRef, triggerRef: focusToggleRef, initialFocusSelector: "select" });
+  // Falls back to local state so the editor stays renderable on its own; the
+  // mode supplies the durable one.
+  const [localSetupOpen, setLocalSetupOpen] = useState(true);
+  const setupOpen = setup ? setup.open : localSetupOpen;
+  const setSetupOpen = setup ? setup.onOpenChange : setLocalSetupOpen;
   const project = authoring.project;
   const suite = project?.evaluationSuites.find(({ id }) => id === authoring.suiteId);
   const focusedCase = suite?.cases.find(({ id }) => id === authoring.focusedCaseId);
@@ -346,17 +359,30 @@ export function EvaluationSuiteEditor({
       ?? suite.execution.target.connectionRequirementId
     : undefined;
 
+  // Everything that blocks a start, in one list. It renders in the suite
+  // header rather than in the setup band, because the band collapses and a
+  // blocked primary action must state its reason in visible text either way.
+  const issues = [
+    ...authoring.diagnostics.map((diagnostic, index) => ({ key: `${diagnostic.code}-${index}`, message: diagnostic.message })),
+    ...(batch.error ? [{ key: "batch", message: batch.error }] : []),
+    ...(deliveryIssue ? [{ key: "delivery", message: deliveryIssue }] : []),
+    ...(bindingIssue ? [{ key: "binding", message: bindingIssue }] : []),
+  ];
+  // What the band is hiding while it is shut. Every fact here changes what a
+  // start would do, so none of them may need an expansion to be read.
+  const setupSummary = suite
+    ? [
+        connectionName,
+        suite.execution.target.model || "No model",
+        exposedToolIds.length === 0 ? "No tools" : `${exposedToolIds.length} exposed`,
+        `${authoring.repetitions} ${authoring.repetitions === 1 ? "rep" : "reps"}`,
+      ].filter(Boolean).join(" · ")
+    : "";
+
   if (!project) return <PaneEmptyState eyebrow="Evaluations" heading="Open or save a project first" detail="Evaluation suites are portable project content, so they need a project document." />;
 
   return (
-    <section ref={containerRef} role={focusMode ? "dialog" : undefined} aria-modal={focusMode ? "true" : undefined} aria-label={focusMode ? "Evaluation editor focus mode" : "Evaluation suites"} className={focusMode ? "evaluation-editor focus-mode-surface evaluation-focus-mode" : "evaluation-editor"}>
-      <div className="evaluation-toolbar">
-        <label>Suite <select aria-label="Evaluation suite" value={authoring.suiteId ?? ""} onChange={(event) => authoring.selectSuite(event.target.value as NonNullable<typeof authoring.suiteId>)}>{project.evaluationSuites.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}</select></label>
-        <button className="button secondary" type="button" onClick={authoring.createSuite}>+ New suite</button>
-        {suite && <button className="button secondary" type="button" onClick={() => { setSuiteNameDraft(suite.name); setRenamingSuite(true); }}>Rename</button>}
-        {suite && <button className="remove-button" type="button" onClick={authoring.deleteSuite}>Delete suite</button>}
-        <FocusModeToggle className="evaluation-focus-toggle" open={focusMode} subject="evaluation editor" toggleRef={focusToggleRef} onToggle={() => focusMode ? close() : setFocusMode(true)} />
-      </div>
+    <section aria-label="Evaluation suites" className={`evaluation-editor ${suite ? styles.workspace : styles.workspaceEmpty}`}>
       {!suite ? (
         <PaneEmptyState
           heading="No evaluation suites yet"
@@ -365,33 +391,68 @@ export function EvaluationSuiteEditor({
         />
       ) : (
         <>
-          {renamingSuite && <form className="evaluation-suite-rename" onSubmit={(event) => {
-            event.preventDefault();
-            if (authoring.renameSuite(suiteNameDraft)) setRenamingSuite(false);
-            else setSuiteNameDraft(suite.name);
-          }}>
-            <label>Suite name <input autoFocus value={suiteNameDraft} onChange={(event) => setSuiteNameDraft(event.target.value)} /></label>
-            <button className="button primary" type="submit">Save name</button>
-            <button className="text-button" type="button" onClick={() => setRenamingSuite(false)}>Cancel</button>
-          </form>}
-          {authoring.error?.target.kind === "suite-name" && <p className="evaluation-field-error" role="alert">{authoring.error.message}</p>}
-          {authoring.error?.target.kind === "editor" && <div className="template-diagnostic" role="alert">{authoring.error.message}</div>}
-          {authoring.notice && <p className="evaluation-authoring-notice" role="status">
-            <strong>Evaluation input now uses “{authoring.notice.templateName}”.</strong> It pins {authoring.notice.messageCount} {authoring.notice.messageCount === 1 ? "message" : "messages"} and {authoring.notice.variableCount === 0 ? "no variables" : `${authoring.notice.variableCount} ${authoring.notice.variableCount === 1 ? "variable" : "variables"}`}. Messages was not changed.
-            <button className="text-button" type="button" onClick={authoring.dismissNotice}>Dismiss</button>
-          </p>}
-          {authoring.savedPromptError && !authoring.savedPromptPickerOpen && <p className="evaluation-field-error" role="alert">{authoring.savedPromptError}</p>}
-          <section className="evaluation-preflight" aria-label="Evaluation preflight">
-            <div className="evaluation-preflight-status"><span className="eyebrow">Preflight</span><strong>{issueCount === 0 ? "Ready to run" : `${issueCount} setup ${issueCount === 1 ? "issue" : "issues"}`}</strong></div>
-            <div className="evaluation-preflight-controls">
+          <header className={styles.header}>
+            <div className={styles.identity}>
+              <span className="eyebrow">Evaluation suite</span>
+              <h2>{suite.name}</h2>
+              <span className={styles.identitySpacer} />
+              <button className="button secondary" type="button" onClick={() => { setSuiteNameDraft(suite.name); setRenamingSuite(true); }}>Rename</button>
+              <button className="remove-button" type="button" onClick={authoring.deleteSuite}>Delete suite</button>
+            </div>
+            {renamingSuite && <form className="evaluation-suite-rename" onSubmit={(event) => {
+              event.preventDefault();
+              if (authoring.renameSuite(suiteNameDraft)) setRenamingSuite(false);
+              else setSuiteNameDraft(suite.name);
+            }}>
+              <label>Suite name <input autoFocus value={suiteNameDraft} onChange={(event) => setSuiteNameDraft(event.target.value)} /></label>
+              <button className="button primary" type="submit">Save name</button>
+              <button className="text-button" type="button" onClick={() => setRenamingSuite(false)}>Cancel</button>
+            </form>}
+            {authoring.error?.target.kind === "suite-name" && <p className="evaluation-field-error" role="alert">{authoring.error.message}</p>}
+            {authoring.error?.target.kind === "editor" && <div className="template-diagnostic" role="alert">{authoring.error.message}</div>}
+            {authoring.notice && <p className="evaluation-authoring-notice" role="status">
+              <strong>Evaluation input now uses “{authoring.notice.templateName}”.</strong> It pins {authoring.notice.messageCount} {authoring.notice.messageCount === 1 ? "message" : "messages"} and {authoring.notice.variableCount === 0 ? "no variables" : `${authoring.notice.variableCount} ${authoring.notice.variableCount === 1 ? "variable" : "variables"}`}. Messages was not changed.
+              <button className="text-button" type="button" onClick={authoring.dismissNotice}>Dismiss</button>
+            </p>}
+            {authoring.savedPromptError && !authoring.savedPromptPickerOpen && <p className="evaluation-field-error" role="alert">{authoring.savedPromptError}</p>}
+            <section className="evaluation-preflight" aria-label="Evaluation preflight">
+              <div className="evaluation-preflight-status">
+                <span className="eyebrow">Preflight</span>
+                <strong>{issueCount === 0 ? "Ready to run" : `${issueCount} setup ${issueCount === 1 ? "issue" : "issues"}`}</strong>
+                {/* Outside the setup band deliberately: how many provider calls
+                    the suite is about to make is the consequence of settings
+                    the band hides, and it must stay readable while it is shut. */}
+                <output><span>{selectedCount} selected</span> × <span>{authoring.repetitions} {authoring.repetitions === 1 ? "rep" : "reps"}</span> → <strong>{Number.isFinite(batch.plannedCalls) ? batch.plannedCalls.toLocaleString() : "Invalid"} runs</strong>{exposedToolIds.length > 0 && Number.isFinite(batch.worstCaseCalls) && <span>, up to {batch.worstCaseCalls.toLocaleString()} provider calls</span>}</output>
+              </div>
+              {execution && <div className="evaluation-start-area"><button className="button primary" type="button" disabled={execution.running || Boolean(execution.disabledReason) || issueCount > 0} title={execution.disabledReason ?? batch.error} onClick={execution.onStart}>{execution.running ? "Evaluation running" : "Start evaluation…"}</button>
+                {/* A disabled primary action must say why in text, not only in a
+                    tooltip a keyboard or touch author never sees. */}
+                {!execution.running && execution.disabledReason && authoring.diagnostics.length === 0 && <small className="evaluation-start-blocked">{execution.disabledReason}</small>}
+                <small>{execution.storage === "durable" ? "The plan, traces, and result will be saved in this project folder." : "Session evaluation: results will be lost when this session closes."}</small></div>}
+            </section>
+            {batch.warning && <p className="evaluation-batch-warning" role="status"><strong>{batch.warning}</strong> Review the exact call count in confirmation before starting.</p>}
+            {issues.length > 0 && <ul className="evaluation-diagnostics">
+              {issues.map(({ key, message }) => <li key={key}>{message}</li>)}
+            </ul>}
+            {suggestedCandidate && <div className="evaluation-resolution-action" role="status"><div><strong>Add a case input for <code>{suggestedCandidate.variableName}</code></strong><span>Each case can then supply the missing value and clear this setup issue.</span></div><button className="button secondary" type="button" onClick={() => authoring.addInput(suggestedCandidate)}>+ Add case input</button></div>}
+          </header>
+
+          <div className={styles.setup}>
+            <button aria-expanded={setupOpen} className={styles.setupToggle} type="button" onClick={() => setSetupOpen(!setupOpen)}>
+              <strong>Setup</strong>
+              <span>{setupSummary}</span>
+            </button>
+            {setupOpen && <div className={`evaluation-setup ${styles.setupBody}`}>
               <div className="evaluation-input-summary">
                 <span>Evaluation input</span>
                 <strong>{authoring.selectedRevision ? revisionChoice(authoring.selectedRevision).label : "Input unavailable"}</strong>
                 <small>This suite keeps its own immutable input; changing Messages does not change it.</small>
-                <button className="button secondary" type="button" onClick={authoring.openSavedPromptPicker}>Start from saved prompt…</button>
-                <details className="evaluation-input-picker">
-                  <summary>Use a project revision…</summary>
-                  <label>Existing project revision
+                <div className="evaluation-input-actions">
+                  <button className="button secondary" type="button" onClick={authoring.openSavedPromptPicker}>Start from saved prompt…</button>
+                  {/* Flat, not a disclosure: at full width the revision picker
+                      costs one row, and hiding it behind a summary made an
+                      author open something to discover the choice existed. */}
+                  <label className="evaluation-input-picker">Existing project revision
                     <select value={authoring.revisionId} onChange={(event) => authoring.selectRevision(event.target.value as NonNullable<typeof authoring.revisionId>)}>
                     {revisionGroups.grouped ? (
                       <>
@@ -403,7 +464,7 @@ export function EvaluationSuiteEditor({
                     ) : authoring.revisionChoices.map(revisionOption)}
                     </select>
                   </label>
-                </details>
+                </div>
               </div>
               {/* Each edit commits, which the project's debounced auto-save
                   absorbs into one write. */}
@@ -488,42 +549,28 @@ export function EvaluationSuiteEditor({
                 )}
                 {exposedToolIds.length > 0 && <small>Each repetition answers its own tool calls and is failed if it reaches {turnCeiling} provider turns with calls outstanding.</small>}
               </div>
-              {/* Outside the panel deliberately: how many provider calls the
-                  suite is about to make is the consequence of these settings,
-                  and it must stay readable while the panel is collapsed. */}
-              <output><span>{selectedCount} selected</span> × <span>{authoring.repetitions} {authoring.repetitions === 1 ? "rep" : "reps"}</span> → <strong>{Number.isFinite(batch.plannedCalls) ? batch.plannedCalls.toLocaleString() : "Invalid"} runs</strong>{exposedToolIds.length > 0 && Number.isFinite(batch.worstCaseCalls) && <span>, up to {batch.worstCaseCalls.toLocaleString()} provider calls</span>}</output>
-            </div>
-            {execution && <div className="evaluation-start-area"><button className="button primary" type="button" disabled={execution.running || Boolean(execution.disabledReason) || issueCount > 0} title={execution.disabledReason ?? batch.error} onClick={execution.onStart}>{execution.running ? "Evaluation running" : "Start evaluation…"}</button>
-              {/* A disabled primary action must say why in text, not only in a
-                  tooltip a keyboard or touch author never sees. */}
-              {!execution.running && execution.disabledReason && authoring.diagnostics.length === 0 && <small className="evaluation-start-blocked">{execution.disabledReason}</small>}
-              <small>{execution.storage === "durable" ? "The plan, traces, and result will be saved in this project folder." : "Session evaluation: results will be lost when this session closes."}</small></div>}
-          </section>
-          {batch.warning && <p className="evaluation-batch-warning" role="status"><strong>{batch.warning}</strong> Review the exact call count in confirmation before starting.</p>}
-          {batch.error && <p className="evaluation-batch-warning error" role="alert">{batch.error}</p>}
-          {(authoring.diagnostics.length > 0 || deliveryIssue || bindingIssue) && <ul className="evaluation-diagnostics">
-            {authoring.diagnostics.map((diagnostic, index) => <li key={`${diagnostic.code}-${index}`}>{diagnostic.message}</li>)}
-            {deliveryIssue && <li key="delivery">{deliveryIssue}</li>}
-            {bindingIssue && <li key="binding">{bindingIssue}</li>}
-          </ul>}
-          {history && <EvaluationSuiteHistory history={history} />}
-          {suggestedCandidate && <div className="evaluation-resolution-action" role="status"><div><strong>Add a case input for <code>{suggestedCandidate.variableName}</code></strong><span>Each case can then supply the missing value and clear this setup issue.</span></div><button className="button secondary" type="button" onClick={() => authoring.addInput(suggestedCandidate)}>+ Add case input</button></div>}
+              {/* Suite-level, not per-case: binding a template variable changes
+                  what every case can vary, so it belongs with the rest of the
+                  suite's setup rather than above the dataset it applies to. */}
+              {(suite.inputBindings.length > 0 || availableCandidates.length > 0) && (
+                <div className="evaluation-input-manager">
+                  <div className="evaluation-input-manager-heading"><div><strong>Case inputs</strong><span>Bind template variables so cases can send different conversations.</span></div>{suite.inputBindings.length > 0 && <span>{suite.inputBindings.length} {suite.inputBindings.length === 1 ? "input" : "inputs"}</span>}</div>
+                  {suite.inputBindings.map((binding) => {
+                    const input = evaluationInputLabel(project, authoring.revisionId, binding);
+                    return <div className="evaluation-binding-row" key={binding.id}><div className="evaluation-binding-identity"><strong>{input.templateName}</strong><span><code>{input.variableName}</code> template variable</span></div><button className="remove-button" type="button" onClick={() => authoring.deleteInput(binding.id)}>Remove</button></div>;
+                  })}
+                  {availableCandidates.length > 0 && <div className="evaluation-add-row"><select aria-label="Template variable to bind" value={candidateIndex} onChange={(event) => setCandidateIndex(Number(event.target.value))}>{availableCandidates.map((candidate, index) => <option key={`${candidate.templateUseId}-${candidate.variableName}`} value={index}>{candidate.templateName} · {candidate.variableName}</option>)}</select><button className="button secondary" type="button" onClick={() => { const candidate = availableCandidates[candidateIndex]; if (candidate) authoring.addInput(candidate); setCandidateIndex(0); }}>+ Add case input</button></div>}
+                </div>
+              )}
+              {history && <EvaluationSuiteHistory history={history} />}
+            </div>}
+          </div>
 
-          <section className="evaluation-cases">
+          <section className={`evaluation-cases ${styles.cases}`}>
             <div className="evaluation-section-heading"><div><span className="eyebrow">Dataset</span><h3>Cases</h3></div><button className="button secondary" type="button" onClick={authoring.addCase}>+ Add case</button></div>
             <p className="evaluation-portable-warning">Case values are saved in portable project data. Do not enter credentials or secrets.</p>
-            {(suite.inputBindings.length > 0 || availableCandidates.length > 0) && (
-              <div className="evaluation-input-manager">
-                <div className="evaluation-input-manager-heading"><div><strong>Case inputs</strong><span>Bind template variables so cases can send different conversations.</span></div>{suite.inputBindings.length > 0 && <span>{suite.inputBindings.length} {suite.inputBindings.length === 1 ? "input" : "inputs"}</span>}</div>
-                {suite.inputBindings.map((binding) => {
-                  const input = evaluationInputLabel(project, authoring.revisionId, binding);
-                  return <div className="evaluation-binding-row" key={binding.id}><div className="evaluation-binding-identity"><strong>{input.templateName}</strong><span><code>{input.variableName}</code> template variable</span></div><button className="remove-button" type="button" onClick={() => authoring.deleteInput(binding.id)}>Remove</button></div>;
-                })}
-                {availableCandidates.length > 0 && <div className="evaluation-add-row"><select aria-label="Template variable to bind" value={candidateIndex} onChange={(event) => setCandidateIndex(Number(event.target.value))}>{availableCandidates.map((candidate, index) => <option key={`${candidate.templateUseId}-${candidate.variableName}`} value={index}>{candidate.templateName} · {candidate.variableName}</option>)}</select><button className="button secondary" type="button" onClick={() => { const candidate = availableCandidates[candidateIndex]; if (candidate) authoring.addInput(candidate); setCandidateIndex(0); }}>+ Add case input</button></div>}
-              </div>
-            )}
             {suite.cases.length === 0 ? <div className="evaluation-empty-inline">No cases yet. Empty suites can be saved but cannot run.</div> : (
-              <div className="evaluation-cases-workspace">
+              <div className={`evaluation-cases-workspace ${styles.casesWorkspace}`}>
                 <aside className="evaluation-case-rail" aria-label="Evaluation cases">
                   {suite.cases.map((evaluationCase) => {
                     const summaries = suite.inputBindings.map((binding) => evaluationCase.values[binding.id]?.trim()).filter(Boolean);

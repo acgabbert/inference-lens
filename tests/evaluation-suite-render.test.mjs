@@ -40,8 +40,15 @@ test("renders compact preflight and the focused case workspace", async () => {
   assert.match(html, /Contains text/);
   assert.match(html, /1 selected<\/span> × <span>3 reps<\/span> → <strong>3 runs/);
   assert.match(html, /Do not enter credentials or secrets/);
-  assert.match(html, /Open evaluation editor in focus mode/);
+  // The mode gives the editor the whole surface, so there is nothing left for a
+  // focus mode to expand into and it is gone.
+  assert.doesNotMatch(html, /focus mode/i);
   assert.match(html, /Ready to run/);
+  // The suite's identity is a heading now rather than an option in a select.
+  assert.match(html, /<h2>Topic quality<\/h2>/);
+  // Setup is a band that can be shut, so its summary states everything a start
+  // depends on: the connection, the model, tool exposure, and repetitions.
+  assert.match(html, /Buffered fixture · buffered-test-model · No tools · 3 reps/);
   assert.match(html, /aria-label="Evaluation cases"/);
   assert.match(html, /Start evaluation…/);
   assert.match(html, /suite keeps its own immutable input/i);
