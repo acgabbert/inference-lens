@@ -36,6 +36,13 @@ import { PaneTabs, ResizableTracePanel } from "./workbench-shell.client";
 
 type TraceTab = "events" | "metrics" | "resolution" | "compare";
 
+type DiffSelection = {
+  runId?: RunId;
+  left?: string | null;
+  right?: string | null;
+};
+type DiffSelectionKeys = { left?: string; right?: string };
+
 export interface ParentTraceState {
   status: "idle" | "loading" | "ready" | "error";
   trace?: RunTrace;
@@ -49,6 +56,58 @@ interface RunTracePanelProps {
   parentTrace: ParentTraceState;
   onLoadParentTrace(): void;
   onOpenChange(open: boolean): void;
+}
+
+/**
+ * Picks only relationships that the inspector can explain without pretending
+ * two ordinary turns replaced one another. The selected keys are local UI
+ * state, deliberately outside the RunTrace compatibility boundary.
+ */
+export function defaultAttemptDiffSelection(
+  current: ReturnType<typeof diffCandidates>,
+  parent: ReturnType<typeof diffCandidates>,
+): Pick<DiffSelection, "left" | "right"> {
+  for (let index = 0; index < current.length - 1; index += 1) {
+    const failed = current[index]!;
+    const retry = current[index + 1]!;
+    if (failed.status === "failed" && failed.turnId === retry.turnId) {
+      return { left: diffCandidateKey(failed), right: diffCandidateKey(retry) };
+    }
+  }
+
+  if (parent.length > 0 && current.length > 0) {
+    const parentCandidate =
+      [...parent].reverse().find((candidate) => candidate.status === "completed") ??
+      parent.at(-1);
+    const currentCandidate =
+      current.find((candidate) => candidate.turnIndex === parentCandidate?.turnIndex) ??
+      current[0];
+    if (parentCandidate && currentCandidate) {
+      return {
+        left: diffCandidateKey(parentCandidate),
+        right: diffCandidateKey(currentCandidate),
+      };
+    }
+  }
+
+  return {};
+}
+
+/** A stale control value must never create a self-comparison. */
+export function validAttemptDiffKeys(
+  selection: Pick<DiffSelection, "left" | "right">,
+  candidates: ReturnType<typeof diffCandidates>,
+): DiffSelectionKeys {
+  const known = new Set(candidates.map(diffCandidateKey));
+  const left =
+    selection.left !== null && selection.left !== undefined && known.has(selection.left)
+      ? selection.left
+      : undefined;
+  const right =
+    selection.right !== null && selection.right !== undefined && known.has(selection.right)
+      ? selection.right
+      : undefined;
+  return left && left === right ? { left, right: undefined } : { left, right };
 }
 
 function formatEvent(event: RunEvent): string {
@@ -278,16 +337,10 @@ export function RunTracePanel({
   onOpenChange,
 }: RunTracePanelProps) {
   const [tab, setTab] = useState<TraceTab>("events");
-  const [selection, setSelection] = useState<{
-    runId?: RunId;
-    left?: string | null;
-    right?: string | null;
-  }>({});
+  const [selection, setSelection] = useState<DiffSelection>({});
 
   const events = runState?.events ?? [];
   const templateResolutions = runState?.input?.templateResolutions ?? [];
-  const effectiveTab =
-    tab === "resolution" && templateResolutions.length === 0 ? "events" : tab;
   const metrics = useMemo(
     () => (runState ? runMetrics(runState) : null),
     [runState],
@@ -308,7 +361,7 @@ export function RunTracePanel({
     [parentTrace],
   );
   const currentCandidates = useMemo(
-    () => (runState ? diffCandidates(runState, "This run") : []),
+    () => (runState ? diffCandidates(runState, "Current run") : []),
     [runState],
   );
   const parentCandidates = useMemo(
@@ -319,20 +372,28 @@ export function RunTracePanel({
     () => [...currentCandidates, ...parentCandidates],
     [currentCandidates, parentCandidates],
   );
+  const hasAttemptDiff = currentCandidates.length >= 2 || Boolean(branchedFrom);
+  const effectiveTab =
+    tab === "resolution" && templateResolutions.length === 0
+      ? "events"
+      : tab === "compare" && !hasAttemptDiff
+        ? "events"
+        : tab;
   const selectionApplies = selection.runId === runState?.runId;
-  const defaultLeft =
-    currentCandidates.at(-2) ?? parentCandidates.at(-1);
-  const defaultRight = currentCandidates.at(-1);
-  const leftKey = selectionApplies
-    ? selection.left === null
-      ? undefined
-      : selection.left ?? (defaultLeft && diffCandidateKey(defaultLeft))
-    : defaultLeft && diffCandidateKey(defaultLeft);
-  const rightKey = selectionApplies
-    ? selection.right === null
-      ? undefined
-      : selection.right ?? (defaultRight && diffCandidateKey(defaultRight))
-    : defaultRight && diffCandidateKey(defaultRight);
+  const defaults = useMemo(
+    () => defaultAttemptDiffSelection(currentCandidates, parentCandidates),
+    [currentCandidates, parentCandidates],
+  );
+  const requestedSelection = selectionApplies
+    ? {
+        left: selection.left === null ? undefined : selection.left ?? defaults.left,
+        right: selection.right === null ? undefined : selection.right ?? defaults.right,
+      }
+    : defaults;
+  const { left: leftKey, right: rightKey } = validAttemptDiffKeys(
+    requestedSelection,
+    candidates,
+  );
 
   const diff = useMemo(() => {
     if (!leftKey || !rightKey || !runState) return null;
@@ -385,7 +446,7 @@ export function RunTracePanel({
                     },
                   ]
                 : []),
-              { id: "compare", label: "Compare" },
+              ...(hasAttemptDiff ? [{ id: "compare", label: "Attempt diff" }] : []),
             ]}
           />
         )

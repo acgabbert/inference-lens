@@ -36,11 +36,13 @@ export function diffCandidateKey(candidate: DiffCandidate): string {
 function CandidateSelect({
   side,
   value,
+  oppositeKey,
   candidates,
   onSelect,
 }: {
   side: "left" | "right";
   value?: string;
+  oppositeKey?: string;
   candidates: DiffCandidate[];
   onSelect(side: "left" | "right", key: string): void;
 }) {
@@ -49,10 +51,14 @@ function CandidateSelect({
     const key = `${candidate.runId}:${candidate.runLabel}`;
     groups.set(key, [...(groups.get(key) ?? []), candidate]);
   }
+  const selected = candidates.find((candidate) => diffCandidateKey(candidate) === value);
+  const label = selected
+    ? `${side === "left" ? "Attempt A" : "Attempt B"} · ${selected.runLabel === "Parent run" ? "Parent" : "Current"}`
+    : side === "left" ? "Attempt A" : "Attempt B";
 
   return (
     <label className="diff-picker">
-      <span>{side === "left" ? "Before" : "After"}</span>
+      <span>{label}</span>
       <select value={value ?? ""} onChange={(event) => onSelect(side, event.target.value)}>
         <option value="">Select an attempt</option>
         {[...groups.entries()].map(([groupKey, group]) => (
@@ -60,6 +66,7 @@ function CandidateSelect({
             {group.map((candidate) => (
               <option
                 key={diffCandidateKey(candidate)}
+                disabled={diffCandidateKey(candidate) === oppositeKey}
                 value={diffCandidateKey(candidate)}
               >
                 {attemptLabel(candidate)} · {candidate.status}
@@ -150,28 +157,36 @@ export function RunDiffView({
 
   return (
     <div className="run-diff">
+      <p className="diff-description">
+        Compare provider attempts from this run, or compare this branch with its parent.
+      </p>
       <div className="diff-controls">
         <CandidateSelect
           side="left"
           value={leftKey}
+          oppositeKey={rightKey}
           candidates={candidates}
           onSelect={onSelect}
         />
         <CandidateSelect
           side="right"
           value={rightKey}
+          oppositeKey={leftKey}
           candidates={candidates}
           onSelect={onSelect}
         />
         {parent.available && parent.status !== "ready" && (
-          <button
-            className="secondary diff-load-parent"
-            type="button"
-            disabled={parent.status === "loading"}
-            onClick={onLoadParent}
-          >
-            {parent.status === "loading" ? "Loading parent…" : "Load parent run"}
-          </button>
+          <div className="diff-parent-load">
+            <p>Parent/current comparison is available for parent run {parent.runId}.</p>
+            <button
+              className="secondary diff-load-parent"
+              type="button"
+              disabled={parent.status === "loading"}
+              onClick={onLoadParent}
+            >
+              {parent.status === "loading" ? "Loading parent…" : "Load parent run"}
+            </button>
+          </div>
         )}
       </div>
 
@@ -180,15 +195,19 @@ export function RunDiffView({
       )}
 
       {!diff ? (
-        <p className="diff-prompt">Choose a before and after attempt to compare.</p>
+        <p className="diff-prompt">Choose two different attempts to compare.</p>
       ) : (
         <>
           {diff.sameTurn && (
             <p className="diff-note">
-              Retries reuse the same immutable turn input, so an identical
-              request body is expected.
+              The request is identical because a retry reuses the same turn input;
+              inspect the error, output, timing, and usage differences below.
             </p>
           )}
+          {!diff.scalars.some((comparison) => comparison.changed) &&
+            !diff.sections.some((section) => section.status !== "identical" && section.status !== "absent") && (
+              <p className="diff-note">No captured differences between these attempts.</p>
+            )}
           <div className="run-metrics-table-scroll">
             <table className="run-metrics-table diff-scalars">
               <caption className="visually-hidden">Attempt scalar comparison</caption>
