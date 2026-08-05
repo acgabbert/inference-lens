@@ -39,6 +39,66 @@ test("discovers repeated variables once and retains every location", () => {
   assert.deepEqual(result.diagnostics, []);
 });
 
+test("canonicalizes permitted formatting whitespace without changing source spans", () => {
+  const text = "{{topic}}|{{ topic }}|{{\ttopic\t}}|{{\r\ntopic\r\n}}";
+  const result = renderTemplateText(text, { topic: "Ada" });
+
+  assert.equal(result.text, "Ada|Ada|Ada|Ada");
+  assert.deepEqual(result.diagnostics, []);
+  assert.deepEqual(result.occurrences, [
+    { name: "topic", location: { kind: "text" }, start: 0, end: 9 },
+    { name: "topic", location: { kind: "text" }, start: 10, end: 21 },
+    { name: "topic", location: { kind: "text" }, start: 22, end: 33 },
+    { name: "topic", location: { kind: "text" }, start: 34, end: 47 },
+  ]);
+  assert.deepEqual(
+    discoverTemplateVariables([{ role: "user", content: text }]).variables,
+    [{
+      name: "topic",
+      occurrences: [
+        {
+          name: "topic",
+          location: { kind: "message", messageIndex: 0, role: "user" },
+          start: 0,
+          end: 9,
+        },
+        {
+          name: "topic",
+          location: { kind: "message", messageIndex: 0, role: "user" },
+          start: 10,
+          end: 21,
+        },
+        {
+          name: "topic",
+          location: { kind: "message", messageIndex: 0, role: "user" },
+          start: 22,
+          end: 33,
+        },
+        {
+          name: "topic",
+          location: { kind: "message", messageIndex: 0, role: "user" },
+          start: 34,
+          end: 47,
+        },
+      ],
+    }],
+  );
+});
+
+test("rejects non-formatting and internal whitespace in native token bodies", () => {
+  const result = renderTemplateText(
+    "{{\u00a0topic\u00a0}} {{topic name}} {{\u2003topic}}",
+    {},
+  );
+
+  assert.deepEqual(
+    result.diagnostics.map((diagnostic) =>
+      diagnostic.code === "invalid-template-token" ? diagnostic.token : null,
+    ),
+    ["{{\u00a0topic\u00a0}}", "{{topic name}}", "{{\u2003topic}}"],
+  );
+});
+
 test("renders escapes, explicit empty values, and unmatched braces literally", () => {
   assert.deepEqual(
     renderTemplateText(
@@ -99,12 +159,12 @@ test("uses presence-based precedence and does not recursively render values", ()
 
 test("returns structured diagnostics for invalid and missing variables", () => {
   const result = renderTemplateText(
-    "{{ valid }} {{person.name}} {{missing}}",
+    "{{valid name}} {{person.name}} {{missing}}",
     {},
   );
   // Every unresolved token renders as itself, so the text is unchanged and the
   // caller still learns exactly what is unresolved.
-  assert.equal(result.text, "{{ valid }} {{person.name}} {{missing}}");
+  assert.equal(result.text, "{{valid name}} {{person.name}} {{missing}}");
   assert.deepEqual(
     result.diagnostics.map((diagnostic) => ({
       code: diagnostic.code,
@@ -112,7 +172,7 @@ test("returns structured diagnostics for invalid and missing variables", () => {
       ...("token" in diagnostic ? { token: diagnostic.token } : {}),
     })),
     [
-      { code: "invalid-template-token", token: "{{ valid }}" },
+      { code: "invalid-template-token", token: "{{valid name}}" },
       { code: "invalid-template-token", token: "{{person.name}}" },
       { code: "missing-template-variable", name: "missing" },
     ],

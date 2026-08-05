@@ -176,6 +176,50 @@ test("creates a strict, portable Project v9 document", () => {
   assert.equal(JSON.parse(serializeProjectFile(project)).schemaVersion, 9);
 });
 
+test("resolves native formatting-whitespace tokens without rewriting authored project JSON", () => {
+  let project = createProjectFile({
+    name: "Whitespace templates",
+    request,
+    idSuffix: "whitespace-templates",
+    createdAt: "2026-08-05T12:00:00.000Z",
+  });
+  project = createPromptTemplate(project, {
+    name: "Whitespace",
+    messages: [{
+      role: "user",
+      content: "{{topic}} / {{ topic }} / {{\r\ntopic\r\n}}",
+    }],
+    variableDefaults: { topic: "migration safety" },
+    idSuffix: "whitespace",
+    revisionIdSuffix: "whitespace-1",
+    createdAt: "2026-08-05T12:01:00.000Z",
+  });
+  project = insertPromptTemplateUse(project, {
+    conversationRevisionId: project.defaults.conversationRevisionId,
+    templateId: "template_whitespace",
+    idSuffix: "whitespace",
+    outputMessageIdSuffixes: ["whitespace"],
+  });
+
+  const serialized = serializeProjectFile(project);
+  const opened = parseProjectJson(serialized);
+  assert.equal(serializeProjectFile(opened), serialized);
+
+  const prepared = prepareProjectRevisionRun(
+    opened,
+    opened.conversationRevisions[0]!,
+  );
+  assert.equal(prepared.ok, true);
+  if (!prepared.ok) return;
+  assert.deepEqual(prepared.messages[2]?.content, [{
+    type: "text",
+    text: "migration safety / migration safety / migration safety",
+  }]);
+  assert.deepEqual(prepared.templateResolutions[0]?.values, {
+    topic: "migration safety",
+  });
+});
+
 test("serialization is deterministic and ends with a newline", () => {
   const project = createProjectFile({
     name: "Example",

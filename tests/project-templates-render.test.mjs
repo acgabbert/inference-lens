@@ -73,6 +73,35 @@ test("renders the project template library and revision defaults", async () => {
   assert.match(html, /Open prompt editor in focus mode/);
 });
 
+test("discovers a spaced native variable through the core template contract", async () => {
+  const whitespaceTemplate = {
+    ...template,
+    revisions: template.revisions.map((revision) => ({
+      ...revision,
+      messages: [{ role: "user", content: "Explain {{ topic }}." }],
+    })),
+  };
+  const html = await render("ProjectTemplatesPane", {
+    templates: [whitespaceTemplate],
+    connectionRequirements: [
+      { id: "connection_default", name: "Default connection" },
+    ],
+    defaultConnectionRequirementId: "connection_default",
+    usageCounts: new Map(),
+    itemCount: 0,
+    onOpenN8nImport: () => {},
+    onCreate: () => "template_new",
+    onSave: () => "template-revision_question-1",
+    onRename: () => true,
+    onArchive: () => {},
+    onRestore: () => {},
+    onInsert: () => {},
+  });
+
+  assert.match(html, /<code>\{\{topic\}\}<\/code>/);
+  assert.doesNotMatch(html, /Invalid template token/);
+});
+
 test("renders a multiline run value with save and reset actions", async () => {
   const html = await render("TemplateUseCard", {
     template,
