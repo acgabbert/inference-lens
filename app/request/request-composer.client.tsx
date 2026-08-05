@@ -173,8 +173,11 @@ export function RequestComposer({
     // opens its owner first, then this effect runs again against the mounted
     // control and focuses it.
     if (pendingDestination.control === "model" && !settingsOpen) {
-      setSettingsOpen(true);
-      return;
+      let cancelled = false;
+      queueMicrotask(() => {
+        if (!cancelled) setSettingsOpen(true);
+      });
+      return () => { cancelled = true; };
     }
     const target =
       pendingDestination.control === "model"

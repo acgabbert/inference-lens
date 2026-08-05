@@ -310,6 +310,10 @@ select,
 .pane-tabs button,
 .inference-settings-identity strong,
 .inference-settings-record dt,
+/* Model ids are control values, not body copy. Monospace's broad glyphs make
+   the global body-sized input treatment look especially loud. */
+.model-combobox input,
+.model-option,
 .streaming-control > span,
 .tools-tab-toolbar strong,
 .trace-toggle,
@@ -638,14 +642,6 @@ label.file-button {
 
 .model-combobox {
   position: relative;
-}
-
-/* Model ids are control values, not body copy. Monospace's broad glyphs make
-   the global body-sized input treatment look especially loud beside the
-   settings labels, so the picker owns the same compact role as other controls. */
-.model-combobox input,
-.model-option {
-  font-size: var(--type-control);
 }
 
 .model-combobox input {
