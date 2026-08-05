@@ -32,6 +32,7 @@ const commandToolCatalog = fileURLToPath(
 const themeSensitiveSpecs = [
   "control-affordance.spec.ts",
   "evaluation-suite-execution-settings.spec.ts",
+  "inference-settings-panel.spec.ts",
   "pr2-workbench.spec.ts",
 ];
 

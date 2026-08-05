@@ -119,6 +119,10 @@ test("the collapsed panel reports what the run will send, and expanding reveals 
   await expect(panel.getByLabel("Model", { exact: true })).toHaveValue(
     "buffered-test-model",
   );
+  await expect(panel.getByLabel("Model", { exact: true })).toHaveCSS(
+    "font-size",
+    "12px",
+  );
   await expect(
     panel.getByRole("button", { name: "Connection settings" }),
   ).toBeVisible();
