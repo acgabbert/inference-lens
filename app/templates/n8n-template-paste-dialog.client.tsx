@@ -74,7 +74,7 @@ export function N8nTemplatePasteDialog({
         <p>Names are suggestions. Expressions are not run, and conversion does not preserve their computation.</p>
         <label>Copied n8n content<textarea ref={sourceRef} rows={5} value={source} onChange={(event) => setSource(event.target.value)} /></label>
         {error && <div className="n8n-template-paste-error" role="alert">{error}</div>}
-        {analysis && <>
+        {analysis && source.trim().length > 0 && <>
           <div className="n8n-template-paste-preview" aria-label="Converted text preview">{result && result.ok ? result.content : source}</div>
           {mappings.map((mapping) => <div className="n8n-template-paste-mapping" key={mapping.id}>
             <code>{mapping.expressions.join(" · ")}</code>

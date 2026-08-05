@@ -2795,7 +2795,20 @@ output {
 .n8n-template-paste-mapping input { width: 100%; }
 .n8n-template-paste-review { font-weight: 650; }
 .n8n-template-paste-error { margin-top: 12px; color: var(--danger); }
-.n8n-template-paste-preference { display: block; margin-top: 16px; }
+.n8n-template-paste-dialog .n8n-template-paste-preference {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 16px 0 0;
+  cursor: pointer;
+}
+.n8n-template-paste-preference input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  flex: 0 0 auto;
+}
 .n8n-template-paste-dialog footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 
 .confirmation-dialog {

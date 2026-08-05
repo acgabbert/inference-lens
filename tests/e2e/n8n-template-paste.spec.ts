@@ -16,6 +16,28 @@ function pasteProject() {
   return project;
 }
 
+test("keeps the empty paste state compact and its suggestion toggle aligned", async ({ page }) => {
+  await seedProfile(page);
+  await page.goto("/");
+  await waitForHydration(page);
+  await importProject(page, pasteProject(), "n8n paste fixture");
+  await page.getByRole("tab", { name: /Prompts 1/ }).click();
+  await page.getByRole("button", { name: "Paste from n8n…" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Paste from n8n" });
+  await expect(dialog.getByLabel("Converted text preview")).toBeHidden();
+  const preference = dialog.getByText("Suggest this when n8n expressions are pasted");
+  const checkbox = dialog.getByRole("checkbox", { name: "Suggest this when n8n expressions are pasted" });
+  const preferenceBox = await preference.boundingBox();
+  const checkboxBox = await checkbox.boundingBox();
+  expect(preferenceBox).not.toBeNull();
+  expect(checkboxBox).not.toBeNull();
+  expect(checkboxBox!.width).toBeLessThanOrEqual(20);
+  expect(checkboxBox!.x).toBeCloseTo(preferenceBox!.x, 0);
+  expect(checkboxBox!.y).toBeGreaterThanOrEqual(preferenceBox!.y);
+  expect(checkboxBox!.y + checkboxBox!.height).toBeLessThanOrEqual(preferenceBox!.y + preferenceBox!.height);
+});
+
 test("converts explicit and ordinary n8n template paste without changing native text", async ({ page }) => {
   await seedProfile(page);
   await page.goto("/");
