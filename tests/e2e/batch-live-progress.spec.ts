@@ -125,13 +125,13 @@ function fixtureProject(): ProjectFile {
 /** Authors the smallest suite that can run: one bound input, one check. */
 async function authorRunnableSuite(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Create evaluation suite" }).click();
-  await page.getByRole("button", { name: "Start from saved prompt…" }).click();
-  const prompt = page.getByRole("dialog", { name: "Start from saved prompt" });
+  await page.getByRole("button", { name: "Start from prompt…" }).click();
+  const prompt = page.getByRole("dialog", { name: "Start from prompt" });
   await prompt.getByRole("radio", { name: "Question" }).check();
-  await prompt.getByRole("button", { name: "Start from saved prompt" }).click();
+  await prompt.getByRole("button", { name: "Start from prompt" }).click();
 
   await page
-    .getByLabel("Template variable to bind")
+    .getByLabel("Prompt variable to map")
     .selectOption({ label: "Question · topic" });
   await page.getByRole("button", { name: "+ Add case input" }).click();
   await page.getByRole("button", { name: "+ Add case", exact: true }).click();

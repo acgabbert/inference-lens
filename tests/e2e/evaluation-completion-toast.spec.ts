@@ -100,13 +100,13 @@ async function open(page: Page): Promise<void> {
  */
 async function authorRunnableSuite(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Create evaluation suite" }).click();
-  await page.getByRole("button", { name: "Start from saved prompt…" }).click();
-  const prompt = page.getByRole("dialog", { name: "Start from saved prompt" });
+  await page.getByRole("button", { name: "Start from prompt…" }).click();
+  const prompt = page.getByRole("dialog", { name: "Start from prompt" });
   await prompt.getByRole("radio", { name: "Question" }).check();
-  await prompt.getByRole("button", { name: "Start from saved prompt" }).click();
+  await prompt.getByRole("button", { name: "Start from prompt" }).click();
 
   await page
-    .getByLabel("Template variable to bind")
+    .getByLabel("Prompt variable to map")
     .selectOption({ label: "Question · topic" });
   await page.getByRole("button", { name: "+ Add case input" }).click();
   await page.getByRole("button", { name: "+ Add case", exact: true }).click();
@@ -189,10 +189,10 @@ test("no completion toast arrives while the results are already being watched", 
 /** Authors just enough to publish one plain, action-less confirmation. */
 async function publishPlainToast(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Create evaluation suite" }).click();
-  await page.getByRole("button", { name: "Start from saved prompt…" }).click();
-  const prompt = page.getByRole("dialog", { name: "Start from saved prompt" });
+  await page.getByRole("button", { name: "Start from prompt…" }).click();
+  const prompt = page.getByRole("dialog", { name: "Start from prompt" });
   await prompt.getByRole("radio", { name: "Question" }).check();
-  await prompt.getByRole("button", { name: "Start from saved prompt" }).click();
+  await prompt.getByRole("button", { name: "Start from prompt" }).click();
 }
 
 /**

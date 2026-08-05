@@ -2,6 +2,7 @@
 
 import type { ReactNode, RefObject } from "react";
 import { InferenceSettingsPanel } from "../inference-settings-panel.client";
+import type { InferenceSettingsValue } from "../inference-settings-panel.client";
 import type { ModelDiscoveryState } from "../use-model-discovery.client";
 
 /**
@@ -24,13 +25,15 @@ export interface RequestSettingsProps {
   onStreamingPreferenceChange(streaming: boolean): void;
   onLoadModels(force?: boolean): void;
   onToggleFavoriteModel(model: string): void;
+  /** Parent profile values while an open project owns the editable copy. */
+  inherited?: { label: string; value: InferenceSettingsValue };
 }
 
 interface RequestSettingsDisclosure {
   open: boolean;
   onOpenChange(open: boolean): void;
   /** Where these settings are saved, in the open project's terms. */
-  scopeNote: string;
+  scopeLabel: string;
   /** Stays reachable while the panel is collapsed. */
   action: ReactNode;
 }
@@ -55,7 +58,8 @@ export function RequestSettings({
   onToggleFavoriteModel,
   open,
   onOpenChange,
-  scopeNote,
+  scopeLabel,
+  inherited,
   action,
 }: RequestSettingsProps & RequestSettingsDisclosure) {
   return (
@@ -63,7 +67,8 @@ export function RequestSettings({
       idPrefix="request"
       label="Run settings"
       heading="Run settings"
-      scopeNote={scopeNote}
+      scopeLabel={scopeLabel}
+      {...(inherited ? { inherited } : {})}
       open={open}
       onOpenChange={onOpenChange}
       value={{ model, temperature, responseMode }}

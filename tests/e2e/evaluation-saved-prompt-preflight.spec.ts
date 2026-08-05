@@ -76,10 +76,10 @@ async function openEvaluations(
 
 /** Creates a revision from the named saved prompt and waits for the notice. */
 async function startFromSavedPrompt(page: Page, name: string): Promise<void> {
-  await page.getByRole("button", { name: "Start from saved prompt…" }).click();
-  const dialog = page.getByRole("dialog", { name: "Start from saved prompt" });
+  await page.getByRole("button", { name: "Start from prompt…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Start from prompt" });
   await dialog.getByRole("radio", { name }).check();
-  await dialog.getByRole("button", { name: "Start from saved prompt" }).click();
+  await dialog.getByRole("button", { name: "Start from prompt" }).click();
   await expect(toast(page, `Evaluation input now uses “${name}”`)).toBeVisible();
 }
 
@@ -101,13 +101,13 @@ test("authoring from a saved prompt shows the exact resolved input it will run",
 
   // The dialog describes the template's current immutable revision before it
   // creates anything, including which variables carry defaults.
-  await page.getByRole("button", { name: "Start from saved prompt…" }).click();
-  const dialog = page.getByRole("dialog", { name: "Start from saved prompt" });
+  await page.getByRole("button", { name: "Start from prompt…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Start from prompt" });
   await expect(dialog).toContainText("1 · user");
   await expect(dialog).toContainText("topic, audience (has default)");
   // No suite bindings exist yet, so nothing is at risk of being orphaned.
   await expect(dialog).not.toContainText("This suite already has case inputs");
-  await dialog.getByRole("button", { name: "Start from saved prompt" }).click();
+  await dialog.getByRole("button", { name: "Start from prompt" }).click();
   // The confirmation states both halves of the approved contract: the suite
   // input moved, and the Messages editor did not. It is a toast now — a
   // landed mutation needs no decision — so it is asserted immediately, before
@@ -116,7 +116,7 @@ test("authoring from a saved prompt shows the exact resolved input it will run",
   await expect(inputChanged).toBeVisible();
   await expect(inputChanged).toContainText("Messages was not changed");
 
-  await page.getByLabel("Template variable to bind").selectOption({ label: "Question · topic" });
+  await page.getByLabel("Prompt variable to map").selectOption({ label: "Question · topic" });
   await page.getByRole("button", { name: "+ Add case input" }).click();
   await page.getByRole("button", { name: "+ Add case", exact: true }).click();
   await page.getByLabel("Untitled case topic").fill("database migrations");
@@ -140,7 +140,7 @@ test("authoring from a saved prompt shows the exact resolved input it will run",
   // No "Current ·" prefix: the suite pins a revision of its own, and creating
   // it deliberately left the project's Messages revision where it was.
   await expect(provenance.locator(".evaluation-provenance-label")).not.toContainText("Current");
-  await expect(provenance).toContainText("pinned to the template’s current revision");
+  await expect(provenance).toContainText("pinned to the prompt’s current revision");
   await expect(provenance).toContainText("1 message");
   await expect(provenance.getByText("Stable identity")).toBeVisible();
 
@@ -151,7 +151,7 @@ test("authoring from a saved prompt shows the exact resolved input it will run",
   await expect(topicRow).toContainText("Case value · topic");
   const audienceRow = values.locator("tbody tr").filter({ hasText: "audience" });
   await expect(audienceRow).toContainText("engineers");
-  await expect(audienceRow).toContainText("Template default");
+  await expect(audienceRow).toContainText("Prompt default");
 
   // Region 3 — the exact ordered message the plan will snapshot.
   const conversation = preview.getByRole("region", { name: /^Resolved conversation for / });
@@ -196,18 +196,18 @@ test("a second saved prompt warns about existing bindings and stays distinct in 
 
   await page.getByRole("button", { name: "Create evaluation suite" }).click();
   await startFromSavedPrompt(page, "Question");
-  await page.getByLabel("Template variable to bind").selectOption({ label: "Question · topic" });
+  await page.getByLabel("Prompt variable to map").selectOption({ label: "Question · topic" });
   await page.getByRole("button", { name: "+ Add case input" }).click();
   await page.getByRole("button", { name: "+ Add case", exact: true }).click();
   await page.getByLabel("Untitled case topic").fill("database migrations");
 
   // The suite now has a binding, so creating another revision is warned about
   // before it happens: the new use gets a new stable ID and is not rewritten.
-  await page.getByRole("button", { name: "Start from saved prompt…" }).click();
-  const dialog = page.getByRole("dialog", { name: "Start from saved prompt" });
+  await page.getByRole("button", { name: "Start from prompt…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Start from prompt" });
   await dialog.getByRole("radio", { name: "Safety policy" }).check();
   await expect(dialog).toContainText("This suite already has case inputs");
-  await dialog.getByRole("button", { name: "Start from saved prompt" }).click();
+  await dialog.getByRole("button", { name: "Start from prompt" }).click();
 
   // The prompt-only child replaces rather than appends, so the earlier
   // question use is not carried along and its binding no longer resolves.
@@ -218,8 +218,8 @@ test("a second saved prompt warns about existing bindings and stays distinct in 
 
   const values = preview.getByRole("region", { name: /^Resolved values for / });
   await expect(values).toContainText("Case input “topic” has nowhere to go");
-  await expect(values).toContainText("revision has no such template use");
-  await expect(values).toContainText("Template default");
+  await expect(values).toContainText("revision has no such prompt use");
+  await expect(values).toContainText("Prompt default");
   await expect(editor).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
   await expect(preview).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
 
@@ -230,7 +230,7 @@ test("a second saved prompt warns about existing bindings and stays distinct in 
   ).toContainText([/Question/, /Safety policy/]);
 });
 
-test("an empty saved-prompt picker opens the Prompt library", async ({ page }) => {
+test("an empty saved-prompt picker opens the Prompts", async ({ page }) => {
   const project = createProjectFile({
     name: "No saved prompts",
     request: {
@@ -244,13 +244,13 @@ test("an empty saved-prompt picker opens the Prompt library", async ({ page }) =
   });
   await openEvaluations(page, project, 1440, "No saved prompts");
   await page.getByRole("button", { name: "Create evaluation suite" }).click();
-  await page.getByRole("button", { name: "Start from saved prompt…" }).click();
+  await page.getByRole("button", { name: "Start from prompt…" }).click();
 
-  const dialog = page.getByRole("dialog", { name: "Start from saved prompt" });
-  await expect(dialog).toContainText("no active saved prompts");
-  await dialog.getByRole("button", { name: "Open Templates" }).click();
+  const dialog = page.getByRole("dialog", { name: "Start from prompt" });
+  await expect(dialog).toContainText("no active prompts");
+  await dialog.getByRole("button", { name: "Open Prompts" }).click();
 
-  await expect(page.getByRole("tab", { name: /Prompt library/ })).toHaveAttribute(
+  await expect(page.getByRole("tab", { name: /Prompts/ })).toHaveAttribute(
     "aria-selected",
     "true",
   );
@@ -258,7 +258,7 @@ test("an empty saved-prompt picker opens the Prompt library", async ({ page }) =
   // The picker owner lives above the tab content. Returning to Evaluations must
   // not resurrect the dialog after its empty-state action navigated away.
   await openMode(page, "Evaluations");
-  await expect(page.getByRole("dialog", { name: "Start from saved prompt" })).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "Start from prompt" })).toHaveCount(0);
 });
 
 test("the resolved-input regions stay inside a phone viewport", async ({ page }) => {
@@ -266,7 +266,7 @@ test("the resolved-input regions stay inside a phone viewport", async ({ page })
 
   await page.getByRole("button", { name: "Create evaluation suite" }).click();
   await startFromSavedPrompt(page, "Question");
-  await page.getByLabel("Template variable to bind").selectOption({ label: "Question · topic" });
+  await page.getByLabel("Prompt variable to map").selectOption({ label: "Question · topic" });
   await page.getByRole("button", { name: "+ Add case input" }).click();
   await page.getByRole("button", { name: "+ Add case", exact: true }).click();
   await page.getByLabel("Untitled case topic").fill("database migrations");

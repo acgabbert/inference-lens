@@ -185,7 +185,7 @@ export function ProjectTemplatesPane({
       <aside className="template-sidebar">
         <div className="template-create-actions">
           <button className="button secondary" type="button" onClick={addTemplate}>
-            + Prompt
+            New prompt
           </button>
           <button
             className="button secondary template-import-action"
@@ -194,10 +194,10 @@ export function ProjectTemplatesPane({
             type="button"
             onClick={onOpenN8nImport}
           >
-            Import from n8n…
+            Import prompt from n8n…
           </button>
         </div>
-        <div className="template-library-filter" aria-label="Template status">
+        <div className="template-library-filter" aria-label="Prompt status">
           <button
             aria-pressed={libraryView === "active"}
             className={
@@ -230,7 +230,7 @@ export function ProjectTemplatesPane({
             <p className="template-empty">
               {libraryView === "active"
                 ? "Create a project-owned prompt."
-                : "Archived templates will appear here."}
+                : "Archived prompts will appear here."}
             </p>
           ) : (
             visibleTemplates.map((template) => (
@@ -264,20 +264,20 @@ export function ProjectTemplatesPane({
           <div className="template-empty-state">
             <h3>
               {libraryView === "active"
-                ? "No active project templates"
-                : "No archived templates"}
+                ? "No active project prompts"
+                : "No archived prompts"}
             </h3>
             <p>
               {libraryView === "active"
                 ? "Create a prompt to begin."
-                : "Templates you archive will remain available to historical conversations."}
+                : "Prompts you archive will remain available to historical conversations."}
             </p>
           </div>
         ) : (
           <>
             <header className="template-editor-header">
               <label className="template-name-field">
-                Template name
+                Prompt name
                 <input
                   disabled={readOnly}
                   value={name}
@@ -366,7 +366,7 @@ export function ProjectTemplatesPane({
                           )
                         }
                       >
-                        Save template
+                        Save prompt
                       </button>
                     )}
                     <button
@@ -401,7 +401,7 @@ export function ProjectTemplatesPane({
               <div className="template-notices">
                 {duplicateName && (
                   <div className="template-warning" role="status">
-                    Another template has this name. IDs keep the two definitions distinct.
+                    Another prompt has this name. IDs keep the two definitions distinct.
                   </div>
                 )}
                 {discovery.diagnostics.map((diagnostic) => (
@@ -413,9 +413,9 @@ export function ProjectTemplatesPane({
                   <div className="template-diagnostic" key={name}>
                     Secret-like variable <code>{`{{${name}}}`}</code> can never be
                     given a value: defaults, saved use values, and run-only
-                    overrides all reject it, so a conversation using this template
+                    overrides all reject it, so a conversation using this prompt
                     could not run. Rename it — credentials reach the provider
-                    through the connection profile, not through project templates.
+                    through the connection profile, not through project prompts.
                   </div>
                 ))}
               </div>
@@ -646,7 +646,7 @@ function TemplateMessagesEditor({
             <article className="template-message-editor message-card" key={index}>
               <div className="message-toolbar">
                 <select
-                  aria-label={`Template message ${index + 1} role`}
+                  aria-label={`Prompt message ${index + 1} role`}
                   disabled={disabled}
                   value={message.role}
                   onChange={(event) => updateMessage(index, { role: event.target.value as TemplateRole })}
@@ -656,8 +656,8 @@ function TemplateMessagesEditor({
                   <option value="assistant">Assistant</option>
                 </select>
                 {!disabled && <div className="template-message-actions">
-                  <button aria-label={`Move template message ${index + 1} up`} className="text-button" disabled={index === 0} type="button" onClick={() => moveMessage(index, -1)}>Up</button>
-                  <button aria-label={`Move template message ${index + 1} down`} className="text-button" disabled={index === messages.length - 1} type="button" onClick={() => moveMessage(index, 1)}>Down</button>
+                  <button aria-label={`Move prompt message ${index + 1} up`} className="text-button" disabled={index === 0} type="button" onClick={() => moveMessage(index, -1)}>Up</button>
+                  <button aria-label={`Move prompt message ${index + 1} down`} className="text-button" disabled={index === messages.length - 1} type="button" onClick={() => moveMessage(index, 1)}>Down</button>
                   {messages.length > 1 && (
                     <button
                       className="remove-button"
@@ -670,7 +670,7 @@ function TemplateMessagesEditor({
                 </div>}
               </div>
               <textarea
-                aria-label={`Template message ${index + 1} content`}
+                aria-label={`Prompt message ${index + 1} content`}
                 disabled={disabled}
                 rows={5}
                 value={message.content}
@@ -757,7 +757,7 @@ function TemplateContentPreview({
   view: "template" | "resolved";
 }) {
   return (
-    <div className="template-content-preview" aria-label={`${view} template preview`}>
+    <div className="template-content-preview" aria-label={`${view === "template" ? "prompt" : view} preview`}>
       {messages.map((message, messageIndex) => (
         <div className="template-preview-message" key={`${message.role}-${messageIndex}`}>
           <span className="eyebrow">{message.role}</span>
@@ -857,7 +857,7 @@ function TemplateUseCardRevision({
         : saved
           ? "Saved in project"
           : defaulted
-            ? "Template default"
+            ? "Prompt default"
             : "Needs a value",
       // A row that blocks the run is never collapsed by default and never
       // hidden by a filter: run readiness deep-links to exactly these fields,
@@ -925,7 +925,7 @@ function TemplateUseCardRevision({
       <header>
         <div>
           <div className="template-use-kicker">
-            <span className="eyebrow">Pinned template</span>
+            <span className="eyebrow">Pinned prompt</span>
             {uniqueDiagnostics.length > 0 && (
               <span className="template-issue-count" role="status">
                 {missingDiagnosticCount === uniqueDiagnostics.length
@@ -966,7 +966,7 @@ function TemplateUseCardRevision({
               onClick={() => setPreviewView("template")}
               type="button"
             >
-              Template
+              Prompt
             </button>
             <button
               aria-pressed={previewView === "resolved"}

@@ -76,7 +76,7 @@ test("an empty saved-prompt picker closes and asks its owner for the prompt libr
       onOpenTemplates: () => { templatesRequested += 1; },
     })));
     const openTemplates = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent === "Open Templates",
+      (button) => button.textContent === "Open Prompts",
     );
     assert.ok(openTemplates);
     await act(async () => openTemplates.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true })));

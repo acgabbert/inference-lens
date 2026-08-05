@@ -164,8 +164,8 @@ export function ToolRegistryModal({
             <span className="eyebrow">Local library</span>
             <h2 id="tool-registry-title">Local tool library</h2>
             <p>
-              Saved in this app and reusable across projects. Sent only after
-              you copy or attach it.
+              Available in this app and reusable across projects. It accompanies
+              a request only after you attach a copy.
             </p>
           </div>
           <button className="button secondary" type="button" onClick={onClose}>

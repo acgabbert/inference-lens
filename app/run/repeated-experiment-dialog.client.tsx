@@ -76,7 +76,15 @@ export function RepeatedExperimentDialog({
           idPrefix="experiment"
           label="Repeated experiment settings"
           heading="Experiment settings"
-          scopeNote="Frozen on start"
+          scopeLabel="Frozen on start"
+          inherited={{
+            label: "frozen request",
+            value: draft.inheritedSettings ?? {
+              model: draft.plan.commonInput.target.model,
+              temperature: draft.plan.commonInput.options.temperature,
+              responseMode: draft.plan.commonInput.responseMode,
+            },
+          }}
           open={settingsOpen}
           onOpenChange={setSettingsOpen}
           value={{

@@ -84,16 +84,16 @@ async function openMappedEvaluations(page: Page, project: ProjectFile): Promise<
 }
 
 async function useSavedPrompt(page: Page, name: string): Promise<void> {
-  await page.getByRole("button", { name: "Start from saved prompt…" }).click();
-  const dialog = page.getByRole("dialog", { name: "Start from saved prompt" });
+  await page.getByRole("button", { name: "Start from prompt…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Start from prompt" });
   await dialog.getByRole("radio", { name }).check();
-  await dialog.getByRole("button", { name: "Start from saved prompt" }).click();
+  await dialog.getByRole("button", { name: "Start from prompt" }).click();
   await expect(toast(page, `Evaluation input now uses “${name}”`)).toBeVisible();
 }
 
 /** Binds `topic` and authors one case that supplies it. */
 async function authorSingleCase(page: Page, value: string): Promise<void> {
-  await page.getByLabel("Template variable to bind").selectOption({ label: "Question · topic" });
+  await page.getByLabel("Prompt variable to map").selectOption({ label: "Question · topic" });
   await page.getByRole("button", { name: "+ Add case input" }).click();
   await page.getByRole("button", { name: "+ Add case", exact: true }).click();
   await page.getByLabel("Untitled case topic").fill(value);
@@ -144,6 +144,11 @@ test("suite execution settings reach the provider without changing Messages sett
   // showing the remembered value but nothing sends it.
   await executionSettings.getByLabel("Override temperature").uncheck();
   await expect(executionSettings.locator(".temperature-control")).toContainText("Provider default");
+  await expect(executionSettings.locator(".inference-settings-scope")).toHaveText(
+    "Saved with this suite",
+  );
+  await expect(executionSettings.getByRole("button", { name: "Revert model to project defaults" })).toBeVisible();
+  await expect(executionSettings.getByRole("button", { name: "Revert temperature to project defaults" })).toBeVisible();
 
   const editor = page.locator(".evaluation-editor");
   await expect(editor).toContainText("Ready to run");

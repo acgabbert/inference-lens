@@ -126,13 +126,13 @@ test("the composer owns request tabs only, and states readiness on each of them"
       Array.from(view.container.querySelectorAll('[role="tab"]')).map((tab) =>
         tab.textContent.replace(/\d+$/, ""),
       ),
-      ["Messages", "Prompt library", "Tools"],
+      ["Messages", "Prompts", "Tools"],
     );
 
     assert.match(view.container.textContent, /template variable still needs a value/i);
     await view.click(view.tab("Tools"));
     assert.match(view.container.textContent, /template variable still needs a value/i);
-    await view.click(view.tab("Prompt library"));
+    await view.click(view.tab("Prompts"));
     assert.match(view.container.textContent, /template variable still needs a value/i);
   } finally {
     await view.close();

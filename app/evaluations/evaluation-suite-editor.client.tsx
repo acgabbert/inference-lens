@@ -68,8 +68,8 @@ function evaluationInputLabel(
     item.kind === "template-use" && item.use.id === binding.target.templateUseId
   );
   const templateName = templateUse?.kind === "template-use"
-    ? project.promptTemplates.find(({ id }) => id === templateUse.use.templateId)?.name ?? "Template"
-    : "Template";
+    ? project.promptTemplates.find(({ id }) => id === templateUse.use.templateId)?.name ?? "Prompt"
+    : "Prompt";
   return {
     templateName,
     variableName: binding.target.variableName,
@@ -223,7 +223,7 @@ function CaseEditor({ evaluationCase, authoring }: {
       {authoring.error?.target.kind === "case-name" && authoring.error.target.caseId === evaluationCase.id && <p className="evaluation-field-error" role="alert">{authoring.error.message}</p>}
       {suite && suite.inputBindings.length > 0 && (
         <div className="evaluation-case-values">
-          <div><span className="eyebrow">Case inputs</span><p>Values inserted into this case’s bound template variables.</p></div>
+          <div><span className="eyebrow">Case inputs</span><p>Values inserted into this case’s prompt variables.</p></div>
           {suite.inputBindings.map((binding) => {
             const input = evaluationInputLabel(project!, authoring.revisionId, binding);
             return <label key={binding.id}>{input.label}
@@ -423,7 +423,7 @@ export function EvaluationSuiteEditor({
       {!suite ? (
         <PaneEmptyState
           heading="No evaluation suites yet"
-          detail="Create one to bind template variables, author cases, and add deterministic checks."
+          detail="Create one to map prompt variables, author cases, and add deterministic checks."
           action={{ label: "Create evaluation suite", onClick: authoring.createSuite }}
         />
       ) : (
@@ -493,7 +493,7 @@ export function EvaluationSuiteEditor({
                 <strong>{authoring.selectedRevision ? revisionChoice(authoring.selectedRevision).label : "Input unavailable"}</strong>
                 <small>This suite keeps its own immutable input; changing Messages does not change it.</small>
                 <div className="evaluation-input-actions">
-                  <button className="button secondary" type="button" onClick={authoring.openSavedPromptPicker}>Start from saved prompt…</button>
+                  <button className="button secondary" type="button" onClick={authoring.openSavedPromptPicker}>Start from prompt…</button>
                   {/* Flat, not a disclosure: at full width the revision picker
                       costs one row, and hiding it behind a summary made an
                       author open something to discover the choice existed. */}
@@ -517,7 +517,19 @@ export function EvaluationSuiteEditor({
                 idPrefix="evaluation"
                 label="Evaluation execution settings"
                 heading="Execution settings"
-                scopeNote="Saved with this suite"
+                scopeLabel="Saved with this suite"
+                inherited={{
+                  label: "project defaults",
+                  value: {
+                    model: project.defaults.target.model,
+                    // Isolated render fixtures may provide only the defaults
+                    // fields this editor used before inheritance markers. A
+                    // missing parent option means "provider default", exactly
+                    // the portable schema's meaning for absent temperature.
+                    temperature: project.defaults.options?.temperature,
+                    responseMode: "buffered",
+                  },
+                }}
                 open={settingsOpen}
                 onOpenChange={setSettingsOpen}
                 value={{
@@ -544,10 +556,32 @@ export function EvaluationSuiteEditor({
                       </select>
                     </label>
                   ),
+                  ...(suite.execution.target.connectionRequirementId !== project.defaults.target.connectionRequirementId
+                    ? {
+                        override: {
+                          inheritedFrom: "project defaults",
+                          onRevert: () => authoring.updateExecution({
+                            ...suite.execution,
+                            target: {
+                              ...suite.execution.target,
+                              connectionRequirementId: project.defaults.target.connectionRequirementId,
+                            },
+                          }),
+                        },
+                      }
+                    : {}),
                 }}
                 repetitions={{
                   summary: `${authoring.repetitions} ${authoring.repetitions === 1 ? "rep" : "reps"}`,
                   control: <label className="inference-settings-count">Repetitions <input type="number" min="1" max={MAX_EVALUATION_REPETITIONS} step="1" value={authoring.repetitions} onChange={(event) => authoring.setRepetitions(Number(event.target.value))} /></label>,
+                  ...(authoring.repetitions !== 1
+                    ? {
+                        override: {
+                          inheritedFrom: "suite default",
+                          onRevert: () => authoring.setRepetitions(1),
+                        },
+                      }
+                    : {}),
                 }}
               />
               {/* Exposure is portable suite content and what serves it is not,
@@ -599,12 +633,12 @@ export function EvaluationSuiteEditor({
                   suite's setup rather than above the dataset it applies to. */}
               {(suite.inputBindings.length > 0 || availableCandidates.length > 0) && (
                 <div className="evaluation-input-manager">
-                  <div className="evaluation-input-manager-heading"><div><strong>Case inputs</strong><span>Bind template variables so cases can send different conversations.</span></div>{suite.inputBindings.length > 0 && <span>{suite.inputBindings.length} {suite.inputBindings.length === 1 ? "input" : "inputs"}</span>}</div>
+                  <div className="evaluation-input-manager-heading"><div><strong>Case inputs</strong><span>Map prompt variables so cases can send different conversations.</span></div>{suite.inputBindings.length > 0 && <span>{suite.inputBindings.length} {suite.inputBindings.length === 1 ? "input" : "inputs"}</span>}</div>
                   {suite.inputBindings.map((binding) => {
                     const input = evaluationInputLabel(project, authoring.revisionId, binding);
-                    return <div className="evaluation-binding-row" key={binding.id}><div className="evaluation-binding-identity"><strong>{input.templateName}</strong><span><code>{input.variableName}</code> template variable</span></div><button className="remove-button" type="button" onClick={() => authoring.deleteInput(binding.id)}>Remove</button></div>;
+                    return <div className="evaluation-binding-row" key={binding.id}><div className="evaluation-binding-identity"><strong>{input.templateName}</strong><span><code>{input.variableName}</code> prompt variable</span></div><button className="remove-button" type="button" onClick={() => authoring.deleteInput(binding.id)}>Remove</button></div>;
                   })}
-                  {availableCandidates.length > 0 && <div className="evaluation-add-row"><select aria-label="Template variable to bind" value={candidateIndex} onChange={(event) => setCandidateIndex(Number(event.target.value))}>{availableCandidates.map((candidate, index) => <option key={`${candidate.templateUseId}-${candidate.variableName}`} value={index}>{candidate.templateName} · {candidate.variableName}</option>)}</select><button className="button secondary" type="button" onClick={() => { const candidate = availableCandidates[candidateIndex]; if (candidate) authoring.addInput(candidate); setCandidateIndex(0); }}>+ Add case input</button></div>}
+                  {availableCandidates.length > 0 && <div className="evaluation-add-row"><select aria-label="Prompt variable to map" value={candidateIndex} onChange={(event) => setCandidateIndex(Number(event.target.value))}>{availableCandidates.map((candidate, index) => <option key={`${candidate.templateUseId}-${candidate.variableName}`} value={index}>{candidate.templateName} · {candidate.variableName}</option>)}</select><button className="button secondary" type="button" onClick={() => { const candidate = availableCandidates[candidateIndex]; if (candidate) authoring.addInput(candidate); setCandidateIndex(0); }}>+ Add case input</button></div>}
                 </div>
               )}
               {history && <EvaluationSuiteHistory history={history} />}

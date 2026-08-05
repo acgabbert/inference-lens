@@ -93,10 +93,10 @@ export function runEmptyStatePresentation(
           : action?.destination.surface === "request" &&
               (action.destination.control === "template-use" ||
                 action.destination.control === "template-variable")
-            ? "Complete the named template inputs"
+            ? "Complete the named prompt inputs"
             : action?.destination.surface === "connections" &&
                 action.destination.control === "tools-capability"
-              ? "Allow tool calling or review selected tools"
+              ? "Allow tool calling or review attached tools"
               : readiness.headline;
   return { headline, detail: readiness.detail, ...(action ? { action } : {}) };
 }
@@ -266,7 +266,7 @@ export function runReadiness(
   if (templateResolutionError) {
     return {
       blocked: true,
-      headline: "This conversation's templates cannot be resolved",
+      headline: "This conversation's prompts cannot be resolved",
       detail: templateResolutionError,
       summary: templateResolutionError,
       facts: [],
@@ -291,17 +291,17 @@ export function runReadiness(
     return {
       blocked: true,
       headline: issues.allNamed
-        ? `${issues.total} template variable${one ? "" : "s"} still ${
+        ? `${issues.total} prompt variable${one ? "" : "s"} still ${
             one ? "needs" : "need"
           } a value`
-        : `${issues.total} template issue${one ? "" : "s"} ${
+        : `${issues.total} prompt issue${one ? "" : "s"} ${
             one ? "blocks" : "block"
           } this conversation`,
       detail:
         "Give each one a saved value or a run-only override on its card in the conversation.",
       explanation:
-        "A pinned template use is sent exactly as its revision resolves, so a variable with no value has nothing to send in its place.",
-      summary: "Resolve every template diagnostic before running.",
+        "A pinned prompt resolves exactly from its revision, so a variable with no value has nothing to take its place.",
+      summary: "Resolve every prompt diagnostic before running.",
       facts: [],
       actions: [
         {
@@ -328,15 +328,15 @@ export function runReadiness(
     const one = selectedToolCount === 1;
     return {
       blocked: true,
-      headline: `${selectedToolCount} selected ${
+      headline: `${selectedToolCount} attached ${
         one ? "tool cannot" : "tools cannot"
-      } be sent`,
-      detail: `Allow tool calling for "${profile}", or stop sending ${
-        one ? "the selected tool" : "the selected tools"
+      } reach the model`,
+      detail: `Allow tool calling for "${profile}", or detach ${
+        one ? "the tool" : "the tools"
       }.`,
       explanation:
         "A profile that disables tool calling cannot serialize tool definitions into its provider request.",
-      summary: `Allow tool calling or deselect ${
+      summary: `Allow tool calling or detach ${
         one ? "the tool" : "the tools"
       } before running.`,
       facts: [],
@@ -365,12 +365,12 @@ export function runReadiness(
   if (distinctTemplateTargets.size > 1) {
     return {
       blocked: false,
-      headline: "Templates recommend different run targets",
+      headline: "Prompts recommend different run targets",
       detail:
-        "This request uses the project’s selected model. Review the recommendations before relying on them.",
+        "This request uses the project’s current model. Review the recommendations before relying on them.",
       explanation:
         "One provider request can use only one model.",
-      summary: "Attached templates recommend different models.",
+      summary: "Pinned prompts recommend different models.",
       facts: [...distinctTemplateTargets.values()].map((target) => ({
         label: target.templateName,
         value: `${target.connectionRequirementName} · ${target.model}`,
@@ -378,7 +378,7 @@ export function runReadiness(
       actions: [
         {
           kind: "edit-template",
-          label: "Review templates",
+          label: "Review prompts",
           destination: { surface: "request", tab: "templates", control: "prompt-library" },
           primary: true,
         },
@@ -400,13 +400,13 @@ export function runReadiness(
     return {
       blocked: false,
       headline: `"${templateTarget.templateName}" recommends another model`,
-      detail: `This run will use ${activeProfileModel}; the template recommends ${templateTarget.model}.`,
+      detail: `This run will use ${activeProfileModel}; the prompt recommends ${templateTarget.model}.`,
       explanation:
-        "A recommendation records a template’s source target; it never changes the run target.",
-      summary: "A template recommends a different model.",
+        "A recommendation records a prompt’s source target; it never changes the run target.",
+      summary: "A prompt recommends a different model.",
       facts: [
         {
-          label: "Template recommends",
+          label: "Prompt recommends",
           value: `${templateTarget.connectionRequirementName} · ${templateTarget.model}`,
         },
         { label: "Run uses", value: activeProfileModel },
@@ -420,7 +420,7 @@ export function runReadiness(
         },
         {
           kind: "edit-template",
-          label: "Review template",
+          label: "Review prompt",
           destination: { surface: "request", tab: "templates", control: "prompt-library" },
         },
       ],

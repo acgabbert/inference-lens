@@ -137,7 +137,7 @@ test("starts as one user prompt and reveals message controls on demand", async (
   try {
     assert.ok(view.container.querySelector('textarea[aria-label="Prompt content"]'));
     assert.equal(
-      view.container.querySelectorAll('[aria-label^="Template message"][aria-label$="role"]').length,
+      view.container.querySelectorAll('[aria-label^="Prompt message"][aria-label$="role"]').length,
       0,
     );
     const addSystem = [...view.container.querySelectorAll("button")].find(
@@ -151,7 +151,7 @@ test("starts as one user prompt and reveals message controls on demand", async (
 
     await view.click(addSystem);
     const roleSelectors = view.container.querySelectorAll(
-      '[aria-label^="Template message"][aria-label$="role"]',
+      '[aria-label^="Prompt message"][aria-label$="role"]',
     );
     assert.equal(roleSelectors.length, 2);
     assert.deepEqual(
@@ -159,11 +159,11 @@ test("starts as one user prompt and reveals message controls on demand", async (
       ["system", "user"],
     );
     assert.equal(
-      view.container.querySelector('textarea[aria-label="Template message 1 content"]')?.value,
+      view.container.querySelector('textarea[aria-label="Prompt message 1 content"]')?.value,
       "",
     );
     assert.equal(
-      view.container.querySelector('textarea[aria-label="Template message 2 content"]')?.value,
+      view.container.querySelector('textarea[aria-label="Prompt message 2 content"]')?.value,
       "Explain {{topic}}.",
     );
 

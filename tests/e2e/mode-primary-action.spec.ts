@@ -147,7 +147,7 @@ test("Repeat moves to the composer header and stays on every request tab", async
 
   // It repeats whatever the composer holds, so which tab is open is irrelevant
   // to it — and it is never in the topbar, whose one slot belongs to the run.
-  for (const tab of ["Messages", "Prompt library", "Tools"]) {
+  for (const tab of ["Messages", "Prompts", "Tools"]) {
     await page.getByRole("tab", { name: new RegExp(`^${tab}`) }).click();
     await expect(repeat).toBeVisible();
   }

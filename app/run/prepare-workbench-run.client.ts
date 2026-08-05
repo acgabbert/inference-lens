@@ -109,7 +109,7 @@ export function prepareWorkbenchRun(
     return {
       ok: false,
       errorKind: "tools-disabled",
-      message: `This request includes ${selectedTools.length} selected ${
+      message: `This request has ${selectedTools.length} attached ${
         selectedTools.length === 1 ? "tool" : "tools"
       }, but profile "${snapshots.profileName || "Untitled profile"}" does not allow tool calling.`,
     };

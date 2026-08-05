@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
+import { createProjectFile } from "../../packages/core/src/project";
 
 import {
+  BUFFERED_FIXTURE_ENDPOINT,
+  importProject,
   openInferenceSettings,
   openMode,
   seedProfile,
@@ -9,6 +12,44 @@ import {
 
 /** The buffered fixture answers this model with the temperature it was sent. */
 const ECHO_TEMPERATURE_MODEL = "echo-temperature-model";
+
+test("project setting overrides are marked and revert one field at a time", async ({
+  page,
+}) => {
+  await seedProfile(page, { model: "profile-model", temperature: 0.3 });
+  await page.goto("/");
+  await waitForHydration(page);
+  const project = createProjectFile({
+    name: "Settings inheritance fixture",
+    request: {
+      provider: "openai-compatible",
+      endpoint: BUFFERED_FIXTURE_ENDPOINT,
+      model: "project-model",
+      temperature: 0.8,
+      messages: [{ role: "user", content: "Compare inherited settings." }],
+    },
+    idSuffix: "settings-inheritance",
+    createdAt: "2026-08-05T12:00:00.000Z",
+  });
+  await importProject(page, project, "Settings inheritance fixture");
+
+  const panel = await openInferenceSettings(page);
+  await expect(panel.locator(".inference-settings-scope")).toHaveText(
+    "Project settings",
+  );
+  await expect(panel.getByRole("button", { name: "Revert model to profile defaults" })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Revert temperature to profile defaults" })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Revert delivery to profile defaults" })).toHaveCount(0);
+
+  await panel.getByRole("button", { name: "Revert model to profile defaults" }).click();
+  await expect(panel.getByLabel("Model", { exact: true })).toHaveValue("profile-model");
+  await expect(panel.getByRole("button", { name: "Revert model to profile defaults" })).toHaveCount(0);
+  await expect(panel.locator(".temperature-control output")).toHaveText("0.8");
+
+  await panel.getByRole("button", { name: "Revert temperature to profile defaults" }).click();
+  await expect(panel.locator(".temperature-control output")).toHaveText("0.3");
+  await expect(panel.locator(".inference-settings-override")).toHaveCount(0);
+});
 
 test("the collapsed panel reports what the run will send, and expanding reveals the controls", async ({
   page,
@@ -73,7 +114,7 @@ test("the tool line stays readable while the panel is collapsed", async ({ page 
   // The tool line is a consequence of the settings rather than one of them, so
   // collapsing the panel must not take it with them.
   await expect(page.locator(".request-tool-line")).toContainText(
-    "No tools sent with this request.",
+    "No tools attached to this request.",
   );
   await expect(
     page.locator('[aria-label="Run settings"] .inference-settings-toggle'),

@@ -393,7 +393,9 @@ pre,
 .tool-call-projection,
 .tool-call-pending-executor,
 .tool-command-fields p,
-.tool-mock-superseded {
+.tool-mock-superseded,
+.inference-settings-scope,
+.inference-settings-override {
   font-size: var(--type-metadata);
 }
 
@@ -5011,8 +5013,13 @@ main {
   color: var(--text-secondary);
 }
 
-.inference-settings-identity small {
-  color: var(--text-muted);
+.inference-settings-scope {
+  padding: 2px 7px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  background: var(--surface-inset);
+  color: var(--text-secondary);
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -5073,9 +5080,23 @@ main {
   flex: 1 1 148px;
 }
 
-/* A repetition count is two or three digits wide however much room is left. */
-.inference-settings-grid > .inference-settings-count {
-  flex: 0 1 132px;
+.inference-settings-field {
+  display: grid;
+  align-content: end;
+  gap: 5px;
+}
+
+.inference-settings-override {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.inference-settings-override .text-button {
+  padding: 0;
 }
 
 .inference-settings-record {

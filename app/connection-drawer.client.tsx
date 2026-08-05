@@ -399,7 +399,7 @@ export function ConnectionDrawer({
           <span>
             Allow tool calling
             <small>
-              Send selected tool definitions with requests from this profile.
+              Allow attached tool definitions on requests from this profile.
             </small>
           </span>
         </label>
