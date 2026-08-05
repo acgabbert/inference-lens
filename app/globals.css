@@ -5314,9 +5314,12 @@ main {
   text-align: right;
 }
 
+.inference-settings label.streaming-control {
+  min-height: 36px;
+}
+
 .inference-settings label.streaming-control,
 .request-delivery-preference label.streaming-control {
-  min-height: 36px;
   display: flex;
   flex-direction: row;
   align-items: center;

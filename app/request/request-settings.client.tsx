@@ -118,11 +118,9 @@ export function RequestSettings({
           />
           <span>
             Stream response
-            <small>
-              {streamingAvailable
-                ? "Applies to this session; show output as the provider sends it."
-                : "Unavailable here; responses are buffered."}
-            </small>
+            {!streamingAvailable && (
+              <small>Unavailable here; responses are buffered.</small>
+            )}
           </span>
         </label>
       </section>
