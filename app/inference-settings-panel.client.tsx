@@ -31,6 +31,39 @@ export interface InferenceSettingsSlot {
   /** Compact value for the collapsed summary; omitted when there is none. */
   summary?: string;
   control: ReactNode;
+  /** Present when this surface-specific value differs from its parent scope. */
+  override?: InferenceSettingsOverride;
+}
+
+export interface InferenceSettingsOverride {
+  /** Human-readable parent scope, for example "project defaults". */
+  inheritedFrom: string;
+  onRevert(): void;
+}
+
+export interface InferenceSettingsInheritance {
+  /** Human-readable parent scope used by every per-field revert affordance. */
+  label: string;
+  value: InferenceSettingsValue;
+}
+
+function OverrideMarker({ field, override }: {
+  field: string;
+  override: InferenceSettingsOverride;
+}) {
+  return (
+    <span className="inference-settings-override">
+      <span>Overrides {override.inheritedFrom}</span>
+      <button
+        aria-label={`Revert ${field} to ${override.inheritedFrom}`}
+        className="text-button"
+        onClick={override.onRevert}
+        type="button"
+      >
+        Revert
+      </button>
+    </span>
+  );
 }
 
 export interface InferenceSettingsPanelProps {
@@ -44,8 +77,10 @@ export interface InferenceSettingsPanelProps {
   /** Accessible name for the region; distinguishes concurrent mounts. */
   label: string;
   heading: string;
-  /** Where these settings are saved, in the surface's own words. */
-  scopeNote?: string;
+  /** Where these settings are saved, rendered as a standing scope badge. */
+  scopeLabel: string;
+  /** Parent values for comparison and one-field revert; never persisted here. */
+  inherited?: InferenceSettingsInheritance;
   open: boolean;
   onOpenChange(open: boolean): void;
   value: InferenceSettingsValue;
@@ -70,6 +105,11 @@ export interface InferenceSettingsPanelProps {
   notes?: ReactNode;
   /** A control that stays reachable while the panel is collapsed. */
   action?: ReactNode;
+  /**
+   * Some callers own delivery independently of their persisted inference
+   * settings. They can render it beside this panel with its truthful scope.
+   */
+  showDelivery?: boolean;
 }
 
 function temperatureSummary(temperature: number | undefined): string {
@@ -106,7 +146,8 @@ export function InferenceSettingsPanel({
   idPrefix,
   label,
   heading,
-  scopeNote,
+  scopeLabel,
+  inherited,
   open,
   onOpenChange,
   value,
@@ -123,9 +164,25 @@ export function InferenceSettingsPanel({
   repetitions,
   notes,
   action,
+  showDelivery = true,
 }: InferenceSettingsPanelProps) {
   const scope = useId();
   const bodyId = `${idPrefix}-settings-body-${scope}`;
+  const modelOverridden = inherited && value.model !== inherited.value.model;
+  const temperatureOverridden = inherited && !Object.is(
+    value.temperature,
+    inherited.value.temperature,
+  );
+  const deliveryOverridden = showDelivery && inherited &&
+    value.responseMode !== inherited.value.responseMode;
+  const overrideCount = [modelOverridden, temperatureOverridden, deliveryOverridden]
+    .filter(Boolean)
+    .length;
+
+  function revertSharedField(field: keyof InferenceSettingsValue): void {
+    if (!inherited) return;
+    onChange({ ...value, [field]: inherited.value[field] });
+  }
 
   // The temperature the toggle restores. It lives here, in the part of the panel
   // that stays mounted, because the control that reads it is inside the
@@ -150,8 +207,9 @@ export function InferenceSettingsPanel({
     connection?.summary,
     readOnly ? value.model || "No model" : undefined,
     temperatureSummary(value.temperature),
-    deliverySummary(value.responseMode),
+    showDelivery ? deliverySummary(value.responseMode) : undefined,
     repetitions?.summary,
+    overrideCount > 0 ? `${overrideCount} ${overrideCount === 1 ? "override" : "overrides"}` : undefined,
   ].filter((fact): fact is string => Boolean(fact));
 
   return (
@@ -164,7 +222,7 @@ export function InferenceSettingsPanel({
             combobox that now sits between the identity and the facts. */}
         <span className="inference-settings-identity">
           <strong>{heading}</strong>
-          {scopeNote ? <small>{scopeNote}</small> : null}
+          <span className="inference-settings-scope">{scopeLabel}</span>
         </span>
         {readOnly ? null : (
           <ModelCombobox
@@ -179,6 +237,15 @@ export function InferenceSettingsPanel({
             onToggleFavoriteModel={(model) => onToggleFavoriteModel?.(model)}
           />
         )}
+        {!readOnly && open && modelOverridden ? (
+          <OverrideMarker
+            field="model"
+            override={{
+              inheritedFrom: inherited.label,
+              onRevert: () => revertSharedField("model"),
+            }}
+          />
+        ) : null}
         {/* One flex child so a squeezed summary wraps the trigger and the
             action to the next line together instead of stranding either. */}
         <span className="inference-settings-tail">
@@ -228,10 +295,12 @@ export function InferenceSettingsPanel({
                     : value.temperature.toFixed(1)}
                 </dd>
               </div>
-              <div>
-                <dt>Delivery</dt>
-                <dd>{deliverySummary(value.responseMode)}</dd>
-              </div>
+              {showDelivery ? (
+                <div>
+                  <dt>Delivery</dt>
+                  <dd>{deliverySummary(value.responseMode)}</dd>
+                </div>
+              ) : null}
               {repetitions?.summary ? (
                 <div>
                   <dt>Repetitions</dt>
@@ -241,13 +310,33 @@ export function InferenceSettingsPanel({
             </dl>
           ) : (
             <div className="inference-settings-grid">
-              {connection?.control}
-              <TemperatureControl
-                value={value.temperature}
-                rememberedOverride={rememberedTemperature}
-                onChange={(temperature) => onChange({ ...value, temperature })}
-              />
-              <label
+              {connection?.control ? (
+                <div className="inference-settings-field">
+                  {connection.control}
+                  {connection.override ? (
+                    <OverrideMarker field="connection" override={connection.override} />
+                  ) : null}
+                </div>
+              ) : null}
+              <div className="inference-settings-field">
+                <TemperatureControl
+                  value={value.temperature}
+                  rememberedOverride={rememberedTemperature}
+                  onChange={(temperature) => onChange({ ...value, temperature })}
+                />
+                {temperatureOverridden ? (
+                  <OverrideMarker
+                    field="temperature"
+                    override={{
+                      inheritedFrom: inherited.label,
+                      onRevert: () => revertSharedField("temperature"),
+                    }}
+                  />
+                ) : null}
+              </div>
+              {showDelivery ? (
+                <div className="inference-settings-field">
+                  <label
                 className={
                   streamingAvailable
                     ? "streaming-control"
@@ -280,8 +369,26 @@ export function InferenceSettingsPanel({
                       : "Unavailable here; responses are buffered."}
                   </small>
                 </span>
-              </label>
-              {repetitions?.control}
+                  </label>
+                  {deliveryOverridden ? (
+                    <OverrideMarker
+                      field="delivery"
+                      override={{
+                        inheritedFrom: inherited.label,
+                        onRevert: () => revertSharedField("responseMode"),
+                      }}
+                    />
+                  ) : null}
+                </div>
+              ) : null}
+              {repetitions?.control ? (
+                <div className="inference-settings-field">
+                  {repetitions.control}
+                  {repetitions.override ? (
+                    <OverrideMarker field="repetitions" override={repetitions.override} />
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           )}
           {notes}

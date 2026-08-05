@@ -47,6 +47,8 @@ interface TopbarProps {
   onSaveProject(): void;
   onImportProject(event: ChangeEvent<HTMLInputElement>): void;
   onExportProject(): void;
+  n8nImportDisabledReason?: string;
+  onOpenN8nImport(): void;
   onDownloadDiagnostics(): void;
   onDownloadRunTrace(): void;
   onImportRunTrace(event: ChangeEvent<HTMLInputElement>): void;
@@ -74,6 +76,7 @@ export function Topbar({
   runDisabledReasonId,
   evaluationStartDisabled, evaluationStartDisabledReasonId,
   onSaveProject, onImportProject, onExportProject,
+  n8nImportDisabledReason, onOpenN8nImport,
   onDownloadDiagnostics, onStop, onStopExperiment, onRun, onStartEvaluation,
   onDownloadRunTrace,
   onImportRunTrace,
@@ -91,7 +94,7 @@ export function Topbar({
         <details className="header-menu project-menu"><summary aria-label="Project menu" className="button secondary"><span className="project-menu-label">Project</span> <span className="menu-chevron">⌄</span></summary><div className="menu-popover project-popover">
           <div className="menu-group-heading">Project</div>
           {folderAccessAvailable && <><button type="button" onClick={(event) => { closeContainingMenu(event.currentTarget); onNewProject(); }}>New project</button><button type="button" onClick={(event) => { closeContainingMenu(event.currentTarget); onOpenProject(); }}>Open project…</button><span className="menu-separator" /></>}
-          <button type="button" onClick={(event) => { closeContainingMenu(event.currentTarget); onSaveProject(); }}>Save <kbd>⌘S</kbd></button><label className="menu-file-button">Import project…<input type="file" accept="application/json,.json" onChange={onImportProject} /></label><button type="button" onClick={onExportProject}>Export project…</button>
+          <button type="button" onClick={(event) => { closeContainingMenu(event.currentTarget); onSaveProject(); }}>Save <kbd>⌘S</kbd></button><label className="menu-file-button">Import project…<input type="file" accept="application/json,.json" onChange={onImportProject} /></label><button type="button" onClick={onExportProject}>Export project…</button><span className="menu-separator" /><button disabled={Boolean(n8nImportDisabledReason)} title={n8nImportDisabledReason} type="button" onClick={(event) => { onOpenN8nImport(); closeContainingMenu(event.currentTarget); }}>Import prompt from n8n…</button>
         </div></details>
         <details className="header-menu run-data-menu"><summary aria-label="Run data menu" className="button secondary"><span className="run-data-menu-label">Run data</span> <span className="menu-chevron">⌄</span></summary><div className="menu-popover project-popover run-data-popover">
           <div className="menu-group-heading">Run data</div>

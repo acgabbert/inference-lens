@@ -584,17 +584,17 @@ function HomeContent() {
     onImported({ name, template, variableCount }) {
       toasts.publish({
         key: "prompt-imported",
-        title: `Imported “${name}”${template ? " as a reusable template" : ""}`,
+        title: `Imported prompt “${name}”${template ? "" : " into Messages"}`,
         detail: template
           ? `${variableCount} ${variableCount === 1 ? "variable" : "variables"} imported from the saved execution.`
           : "Execution messages imported into the composer.",
         durableHome: template
-          ? "the template, in Compose → Templates"
+          ? "the prompt, in Compose → Prompts"
           : "the imported messages, in Compose → Messages",
         ...(template
           ? {
               action: {
-                label: "View template",
+                label: "View prompt",
                 onSelect: () =>
                   resolveReadiness({
                     surface: "request",
@@ -1529,6 +1529,11 @@ function HomeContent() {
       onOpenChange={setTraceOpen}
     />
   );
+  const n8nImportDisabledReason = branchContext
+    ? "Finish or discard the pending branch before importing a prompt."
+    : Boolean(runState) && !runReachedTerminalStatus
+      ? "Finish or stop the current run before importing a prompt."
+      : undefined;
 
   return (
     <main
@@ -1578,6 +1583,8 @@ function HomeContent() {
         onSaveProject={saveOrChooseProjectLocation}
         onImportProject={(event) => void project.importProject(event)}
         onExportProject={project.exportProject}
+        {...(n8nImportDisabledReason ? { n8nImportDisabledReason } : {})}
+        onOpenN8nImport={() => setN8nImportOpen(true)}
         onDownloadDiagnostics={downloadDiagnostics}
         onDownloadRunTrace={() => void runSession.exportTrace()}
         onImportRunTrace={(event) => {
@@ -1669,6 +1676,18 @@ function HomeContent() {
                   model,
                 ),
               }),
+            ...(projectFile
+              ? {
+                  inherited: {
+                    label: "profile defaults",
+                    value: {
+                      model: activeProfile.model,
+                      temperature: activeProfile.temperature,
+                      responseMode: activeResponseMode,
+                    },
+                  },
+                }
+              : {}),
           }}
           {...(readiness ? { readiness } : {})}
           repeat={{
@@ -1687,13 +1706,7 @@ function HomeContent() {
           activeProfile={activeProfile}
           {...(branchContext ? { pendingBranch: branchContext } : {})}
           {...(requestPreview ? { requestPreview } : {})}
-          n8nImportDisabledReason={
-            branchContext
-              ? "Finish or discard the pending branch before importing a prompt."
-              : Boolean(runState) && !runReachedTerminalStatus
-                ? "Finish or stop the current run before importing a prompt."
-                : undefined
-          }
+          {...(n8nImportDisabledReason ? { n8nImportDisabledReason } : {})}
           onOpenConnectionSettings={() => setConnectionDrawerOpen(true)}
           onOpenN8nImport={() => setN8nImportOpen(true)}
           onOpenToolLibrary={() => setToolRegistryOpen(true)}

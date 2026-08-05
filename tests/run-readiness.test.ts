@@ -155,7 +155,7 @@ test("a variable used in several messages is counted once", () => {
     ],
   });
 
-  assert.equal(readiness?.headline, "2 template variables still need a value");
+  assert.equal(readiness?.headline, "2 prompt variables still need a value");
 });
 
 test("the same variable name in two uses is two values to supply", () => {
@@ -167,7 +167,7 @@ test("the same variable name in two uses is two values to supply", () => {
     ],
   });
 
-  assert.equal(readiness?.headline, "2 template variables still need a value");
+  assert.equal(readiness?.headline, "2 prompt variables still need a value");
 });
 
 test("one unresolved variable reads in the singular", () => {
@@ -176,7 +176,7 @@ test("one unresolved variable reads in the singular", () => {
       ...ready,
       templateIssues: [{ templateUseId: "template-use_a", variableName: "topic" }],
     })?.headline,
-    "1 template variable still needs a value",
+    "1 prompt variable still needs a value",
   );
 });
 
@@ -217,7 +217,7 @@ test("a diagnostic naming no variable is reported as an issue, not a variable", 
     ],
   });
 
-  assert.equal(readiness?.headline, "2 template issues block this conversation");
+  assert.equal(readiness?.headline, "2 prompt issues block this conversation");
 });
 
 test("a mapped but mismatched endpoint advises without blocking the run", () => {
@@ -233,7 +233,7 @@ test("a mapped but mismatched endpoint advises without blocking the run", () => 
   ]);
 });
 
-test("selected tools block a profile that cannot send them", () => {
+test("attached tools block a profile that cannot serve them", () => {
   const readiness = runReadiness({
     ...ready,
     selectedToolCount: 2,
@@ -241,7 +241,7 @@ test("selected tools block a profile that cannot send them", () => {
   });
 
   assert.equal(readiness?.blocked, true);
-  assert.equal(readiness?.headline, "2 selected tools cannot be sent");
+  assert.equal(readiness?.headline, "2 attached tools cannot reach the model");
   assert.deepEqual(
     readiness?.actions.map(({ kind }) => kind),
     ["open-connections", "review-tools"],
@@ -306,7 +306,7 @@ test("tool capability block outranks an endpoint advisory", () => {
     toolsEnabled: false,
   });
 
-  assert.equal(readiness?.headline, "1 selected tool cannot be sent");
+  assert.equal(readiness?.headline, "1 attached tool cannot reach the model");
   assert.equal(readiness?.blocked, true);
 });
 

@@ -265,7 +265,7 @@ test("uses peer request, response, and inspect views on a narrow screen", async 
   await expect(projectPopover.getByText("Project", { exact: true })).toBeVisible();
   await expect(projectPopover).not.toContainText("Run history");
   await expect(projectPopover).not.toContainText("Local tool library");
-  await expect(projectPopover).not.toContainText("Import prompt from n8n");
+  await expect(projectPopover).toContainText("Import prompt from n8n");
   const projectPopoverBox = await projectPopover.boundingBox();
   expect(
     projectPopoverBox ? projectPopoverBox.x + projectPopoverBox.width : Infinity,
@@ -326,9 +326,9 @@ test("groups lifecycle and run-data actions by owner", async ({ page }) => {
   await page.goto("/");
   await waitForHydration(page);
 
-  await page.getByRole("tab", { name: "Prompt library" }).click();
+  await page.getByRole("tab", { name: "Prompts" }).click();
   await expect(
-    page.getByRole("button", { name: "Import from n8n…" }),
+    page.getByRole("button", { name: "Import prompt from n8n…" }),
   ).toBeVisible();
 
   await page.getByRole("tab", { name: "Tools" }).click();
@@ -341,6 +341,7 @@ test("groups lifecycle and run-data actions by owner", async ({ page }) => {
   await expect(projectMenu).toContainText("Project");
   await expect(projectMenu).toContainText("Import project");
   await expect(projectMenu).toContainText("Export project");
+  await expect(projectMenu).toContainText("Import prompt from n8n");
   await expect(projectMenu).not.toContainText("Run history");
   await expect(projectMenu).not.toContainText("Download diagnostics");
 

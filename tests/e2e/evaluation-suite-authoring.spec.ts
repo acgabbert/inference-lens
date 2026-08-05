@@ -164,7 +164,7 @@ test("every offered check kind is addable in the running editor", async ({ page 
   await expect(editor).toBeVisible();
 
   await page.getByRole("button", { name: "Create evaluation suite" }).click();
-  await page.getByLabel("Template variable to bind").selectOption({ label: "Question · topic" });
+  await page.getByLabel("Prompt variable to map").selectOption({ label: "Question · topic" });
   await page.getByRole("button", { name: "+ Add case input" }).click();
   await page.getByRole("button", { name: "+ Add case", exact: true }).click();
   await page.getByLabel("Untitled case topic").fill("database migrations");
@@ -302,7 +302,7 @@ test("selecting a historical revision with no bound template use stays in the ed
   const preview = page.locator(".evaluation-preview-scroll")
     .getByRole("region", { name: "Provider input for migrations" });
   await expect(preview).toContainText("Case input “topic” has nowhere to go");
-  await expect(preview).toContainText("revision has no such template use");
+  await expect(preview).toContainText("revision has no such prompt use");
   await expect(preview).toContainText("This revision resolves to no messages");
   await expect(editor).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
   await expect(preview).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
@@ -336,7 +336,7 @@ test("rejected suite and case names restore saved values with local errors", asy
   await openProject(page, baseProject(), 1440);
   const editor = page.locator(".evaluation-editor");
   await page.getByRole("button", { name: "Create evaluation suite" }).click();
-  await page.getByLabel("Template variable to bind").selectOption({ label: "Question · topic" });
+  await page.getByLabel("Prompt variable to map").selectOption({ label: "Question · topic" });
   await page.getByRole("button", { name: "+ Add case input" }).click();
   await page.getByRole("button", { name: "+ Add case", exact: true }).click();
   await page.getByLabel("Untitled case topic").fill("database migrations");

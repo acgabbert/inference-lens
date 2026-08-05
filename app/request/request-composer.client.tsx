@@ -117,6 +117,7 @@ export function RequestComposer({
   // send, which is what most visits to this pane need, and the message list
   // starts higher up for the visits that do not.
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [requestPreviewView, setRequestPreviewView] = useState<"resolved" | "raw">("resolved");
   const [focusMode, setFocusMode] = useState(false);
   const [focusModeTab, setFocusModeTab] = useState<RequestTab>("messages");
   const composerRef = useRef<HTMLElement>(null);
@@ -221,7 +222,7 @@ export function RequestComposer({
           onChange={(value) => setTab(value as RequestTab)}
           tabs={[
             { id: "messages", label: "Messages", count: requestDraft.messages.length },
-            { id: "templates", label: "Prompt library", count: project?.promptTemplates.filter(({ archivedAt }) => !archivedAt).length ?? 0 },
+            { id: "templates", label: "Prompts", count: project?.promptTemplates.filter(({ archivedAt }) => !archivedAt).length ?? 0 },
             { id: "tools", label: "Tools", count: selectedToolCount },
           ]}
         />
@@ -285,7 +286,7 @@ export function RequestComposer({
                 modelInputRef={modelRef}
                 open={settingsOpen}
                 onOpenChange={setSettingsOpen}
-                scopeNote={project ? "Project override" : "Profile default"}
+                scopeLabel={project ? "Project settings" : "Profile defaults"}
                 action={<button className="text-button" type="button" onClick={onOpenConnectionSettings}>Connection settings</button>}
               />
               {/* Outside the panel deliberately: how many tools accompany the
@@ -294,12 +295,12 @@ export function RequestComposer({
               <p className={selectedToolCount > 0 && !settings.toolsEnabled ? "request-tool-line blocked" : "request-tool-line"} role="status">
                 <span>
                   {selectedToolCount === 0
-                    ? "No tools sent with this request."
+                    ? "No tools attached to this request."
                     : !settings.toolsEnabled
-                      ? `${selectedToolCount} ${selectedToolCount === 1 ? "tool is" : "tools are"} selected, but this profile does not allow tool calling.`
+                      ? `${selectedToolCount} attached ${selectedToolCount === 1 ? "tool is" : "tools are"} unavailable because this profile does not allow tool calling.`
                       : requestDraft.requestTools.length > 0
-                        ? `${selectedToolCount} ${selectedToolCount === 1 ? "tool" : "tools"} sent, ${requestDraft.requestTools.length} only once.`
-                        : `${selectedToolCount} ${selectedToolCount === 1 ? "tool" : "tools"} sent with this request.`}
+                        ? `${selectedToolCount} ${selectedToolCount === 1 ? "tool" : "tools"} attached; ${requestDraft.requestTools.length} ${requestDraft.requestTools.length === 1 ? "is" : "are"} session-only.`
+                        : `${selectedToolCount} ${selectedToolCount === 1 ? "tool" : "tools"} attached to this request.`}
                 </span>
                 <button className="text-button" type="button" onClick={() => setTab("tools")}>
                   {selectedToolCount === 0 ? "Add tools" : "Review"}
@@ -340,7 +341,7 @@ export function RequestComposer({
                 </article>;
               })}
             </div>
-            {requestPreview && <details className="request-preview"><summary>Resolved request preview</summary>{"error" in requestPreview ? <div className="template-diagnostic">{requestPreview.error}</div> : <><>{(templates.templateWorkbench.resolution?.diagnostics.length ?? 0) > 0 && <div className="template-warning" role="status">Preview contains unresolved variables. Running is blocked until they have values.</div>}</><h3>Resolved messages</h3><div className="request-preview-messages">{requestPreview.messages.map((message, index) => <article className="request-preview-message" key={`${message.role}-${index}`}><span className="eyebrow">{message.role}</span><pre>{conversationMessageText(message)}</pre></article>)}</div><details className="request-preview-raw"><summary>Raw OpenAI-compatible request body</summary><pre>{JSON.stringify(requestPreview.body, null, 2)}</pre></details></>}</details>}
+            {requestPreview && <details className="request-preview"><summary>Resolved request preview</summary>{"error" in requestPreview ? <div className="template-diagnostic">{requestPreview.error}</div> : <><>{(templates.templateWorkbench.resolution?.diagnostics.length ?? 0) > 0 && <div className="template-warning" role="status">Preview contains unresolved variables. Running is blocked until they have values.</div>}</><div aria-label="Request preview view" className="request-preview-view-switch" role="tablist"><button aria-controls="request-preview-resolved" aria-selected={requestPreviewView === "resolved"} role="tab" type="button" onClick={() => setRequestPreviewView("resolved")}>Resolved</button><button aria-controls="request-preview-raw" aria-selected={requestPreviewView === "raw"} role="tab" type="button" onClick={() => setRequestPreviewView("raw")}>Raw</button></div>{requestPreviewView === "resolved" ? <section aria-label="Resolved request" id="request-preview-resolved" role="tabpanel"><h3>Resolved messages</h3><div className="request-preview-messages">{requestPreview.messages.map((message, index) => <article className="request-preview-message" key={`${message.role}-${index}`}><span className="eyebrow">{message.role}</span><pre>{conversationMessageText(message)}</pre></article>)}</div></section> : <section className="request-preview-raw" aria-label="Raw OpenAI-compatible request body" id="request-preview-raw" role="tabpanel"><h3>Raw OpenAI-compatible request body</h3><pre>{JSON.stringify(requestPreview.body, null, 2)}</pre></section>}</>}</details>}
           </>
         ) : activeTab === "templates" ? (
           <ProjectTemplatesPane key={project?.projectId ?? "unsaved-project"} templates={project?.promptTemplates ?? []} connectionRequirements={project?.connectionRequirements ?? []} defaultConnectionRequirementId={project?.defaults.target.connectionRequirementId} usageCounts={templates.templateUsageCounts} itemCount={templates.activeProjectRevision?.items.length ?? requestDraft.messages.length} n8nImportDisabledReason={n8nImportDisabledReason} onOpenN8nImport={onOpenN8nImport} onCreate={templates.createProjectTemplate} onSave={templates.saveProjectTemplate} onRename={templates.renameProjectTemplate} onArchive={templates.archiveProjectTemplate} onRestore={templates.restoreProjectTemplate} onInsert={(...args) => { templates.insertProjectTemplate(...args); setTab("messages"); }} />

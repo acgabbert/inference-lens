@@ -126,13 +126,13 @@ test("the composer owns request tabs only, and states readiness on each of them"
       Array.from(view.container.querySelectorAll('[role="tab"]')).map((tab) =>
         tab.textContent.replace(/\d+$/, ""),
       ),
-      ["Messages", "Prompt library", "Tools"],
+      ["Messages", "Prompts", "Tools"],
     );
 
     assert.match(view.container.textContent, /template variable still needs a value/i);
     await view.click(view.tab("Tools"));
     assert.match(view.container.textContent, /template variable still needs a value/i);
-    await view.click(view.tab("Prompt library"));
+    await view.click(view.tab("Prompts"));
     assert.match(view.container.textContent, /template variable still needs a value/i);
   } finally {
     await view.close();
@@ -202,13 +202,15 @@ test("the settings panel hides its controls behind a summary of what will be sen
     assert.ok(toggle);
     assert.equal(toggle.getAttribute("aria-expanded"), "false");
     // The model stays a live field in the summary row; collapsing hides only
-    // the secondary controls, whose values remain named as facts.
+    // the project-owned secondary controls, whose values remain named as facts.
+    // Delivery is a separate session preference and is asserted by the browser
+    // suite that exercises the complete request settings surface.
     const model = view.container.querySelector('[data-readiness-control="model"]');
     assert.equal(model?.value, "fixture-model");
     const facts = Array.from(
       view.container.querySelectorAll(".inference-settings-fact"),
     ).map((fact) => fact.textContent);
-    assert.deepEqual(facts, ["Temp 0.7", "Buffered"]);
+    assert.deepEqual(facts, ["Temp 0.7"]);
     assert.equal(
       view.container.querySelector('.temperature-control input[type="range"]'),
       null,

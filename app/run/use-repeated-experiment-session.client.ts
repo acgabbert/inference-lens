@@ -39,6 +39,8 @@ export type RepeatedExperimentToolBinding = ExperimentToolBinding;
 
 export interface RepeatedExperimentDraft {
   plan: RepeatedExperimentPlanV3;
+  /** Original request settings, retained only for per-field comparison/revert. */
+  inheritedSettings: RepeatedExperimentSettings;
   targetName: string;
   requestSummary: string;
   repetitionCount: number;
@@ -199,6 +201,11 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
     const plan = planFor(input, count, DEFAULT_EXPERIMENT_TURN_CEILING);
     setDraft({
       plan,
+      inheritedSettings: {
+        model: input.target.model,
+        temperature: input.options.temperature,
+        responseMode: input.responseMode,
+      },
       targetName,
       requestSummary: requestSummary(input),
       repetitionCount: count,

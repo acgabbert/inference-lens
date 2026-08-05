@@ -200,7 +200,7 @@ export function RepeatedExperimentWorkspace({
         idPrefix="experiment-record"
         label="Repeated experiment settings"
         heading="Experiment settings"
-        scopeNote="Frozen by this plan"
+        scopeLabel="Frozen by this plan"
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
         readOnly

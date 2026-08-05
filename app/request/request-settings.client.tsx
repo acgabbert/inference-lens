@@ -1,7 +1,8 @@
 "use client";
 
-import type { ReactNode, RefObject } from "react";
+import { Fragment, type ReactNode, type RefObject } from "react";
 import { InferenceSettingsPanel } from "../inference-settings-panel.client";
+import type { InferenceSettingsValue } from "../inference-settings-panel.client";
 import type { ModelDiscoveryState } from "../use-model-discovery.client";
 
 /**
@@ -24,13 +25,15 @@ export interface RequestSettingsProps {
   onStreamingPreferenceChange(streaming: boolean): void;
   onLoadModels(force?: boolean): void;
   onToggleFavoriteModel(model: string): void;
+  /** Parent profile values while an open project owns the editable copy. */
+  inherited?: { label: string; value: InferenceSettingsValue };
 }
 
 interface RequestSettingsDisclosure {
   open: boolean;
   onOpenChange(open: boolean): void;
   /** Where these settings are saved, in the open project's terms. */
-  scopeNote: string;
+  scopeLabel: string;
   /** Stays reachable while the panel is collapsed. */
   action: ReactNode;
 }
@@ -55,15 +58,18 @@ export function RequestSettings({
   onToggleFavoriteModel,
   open,
   onOpenChange,
-  scopeNote,
+  scopeLabel,
+  inherited,
   action,
 }: RequestSettingsProps & RequestSettingsDisclosure) {
   return (
+    <Fragment>
     <InferenceSettingsPanel
       idPrefix="request"
       label="Run settings"
       heading="Run settings"
-      scopeNote={scopeNote}
+      scopeLabel={scopeLabel}
+      {...(inherited ? { inherited } : {})}
       open={open}
       onOpenChange={onOpenChange}
       value={{ model, temperature, responseMode }}
@@ -75,6 +81,7 @@ export function RequestSettings({
         }
       }}
       streamingAvailable={streamingAvailable}
+      showDelivery={false}
       modelDiscovery={modelDiscovery}
       favoriteModels={favoriteModels}
       onLoadModels={onLoadModels}
@@ -83,5 +90,42 @@ export function RequestSettings({
       readinessTarget
       action={action}
     />
+    <section aria-label="Delivery preference" className="request-delivery-preference">
+      <span className="request-delivery-identity">
+        <strong>Delivery</strong>
+        <span className="inference-settings-scope">Session preference</span>
+        <span className="request-delivery-value">
+          {responseMode === "streaming" ? "Streaming" : "Buffered"}
+        </span>
+      </span>
+      <label
+        className={
+          streamingAvailable
+            ? "streaming-control"
+            : "streaming-control disabled"
+        }
+        title={
+          streamingAvailable
+            ? undefined
+            : "This connection does not support streaming responses."
+        }
+      >
+        <input
+          checked={responseMode === "streaming"}
+          disabled={!streamingAvailable}
+          onChange={(event) => onStreamingPreferenceChange(event.target.checked)}
+          type="checkbox"
+        />
+        <span>
+          Stream response
+          <small>
+            {streamingAvailable
+              ? "Applies to this session; show output as the provider sends it."
+              : "Unavailable here; responses are buffered."}
+          </small>
+        </span>
+      </label>
+    </section>
+    </Fragment>
   );
 }

@@ -552,7 +552,7 @@ export function N8nImportModal({
             <h2 id="n8n-import-title">Import from n8n</h2>
             <p>
               Select a saved execution, inspect its evidence, then import a
-              resolved snapshot or a reusable native template.
+              resolved snapshot or a reusable project prompt.
             </p>
           </div>
           <button
@@ -781,7 +781,7 @@ export function N8nImportModal({
                   </div>
                 ) : detailState === "loading" ? (
                   <div className="n8n-import-centered" role="status">
-                    Reconstructing saved prompt evidence…
+                    Reconstructing prompt evidence…
                   </div>
                 ) : selectedExtraction?.status === "unsupported" ? (
                   <div className="n8n-import-centered">
@@ -837,7 +837,7 @@ export function N8nImportModal({
                             }
                           />
                           <span>
-                            Record the source model as this template&rsquo;s
+                            Record the source model as this prompt&rsquo;s
                             recommended target
                           </span>
                         </label>
@@ -996,9 +996,9 @@ export function N8nImportModal({
               <p>
                 {candidate
                   ? templateImportable && resolvedImportable
-                    ? "Choose a reusable native template or the exact resolved execution snapshot."
+                    ? "Choose a reusable project prompt or the exact resolved execution snapshot."
                     : templateImportable
-                      ? "Import creates a reusable native template; unresolved values must be filled before running."
+                      ? "Import creates a reusable project prompt; unresolved values must be filled before running."
                       : resolvedImportable
                         ? "Import creates a child revision from the resolved execution snapshot."
                         : "This candidate has no safely importable prompt projection."
@@ -1019,7 +1019,7 @@ export function N8nImportModal({
                   type="button"
                   onClick={() => void importCandidate("reusable-template")}
                 >
-                  {importing ? "Importing…" : "Import reusable template"}
+                  {importing ? "Importing…" : "Import reusable prompt"}
                 </button>
               )}
               {resolvedImportable && (

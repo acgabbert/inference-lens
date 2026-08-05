@@ -144,17 +144,17 @@ test("the extracted composer renders request snapshots without a project", async
   assert.match(html, /Profile default/);
   assert.match(html, /Composer fixture message/);
   assert.match(html, /Open request composer in focus mode/);
-  // The settings panel starts collapsed: its summary reports every value the
-  // next run will send, and the controls themselves are not in the document
-  // until the panel is expanded.
+  // Project-backed settings start collapsed. Delivery remains visible because
+  // it is intentionally a separate session preference.
   assert.match(html, /fixture-model/);
   assert.match(html, /Temp 0\.7/);
   assert.match(html, /Buffered/);
-  assert.doesNotMatch(html, /Stream response/);
+  assert.match(html, /Session preference/);
+  assert.match(html, /Stream response/);
   assert.doesNotMatch(html, /Override temperature/);
   // The tool line stays outside the panel, so a blocked tool selection cannot
   // be hidden by collapsing it.
-  assert.match(html, /No tools sent with this request/);
+  assert.match(html, /No tools attached to this request/);
 });
 
 test("the topbar hides ordinary run actions outside the Compose mode", async () => {
@@ -170,7 +170,7 @@ test("the topbar hides ordinary run actions outside the Compose mode", async () 
     runDisabled: false, evaluationStartDisabled: false,
     onChooseProfile: noop, onOpenConnections: noop, onNewProject: noop,
     onOpenProject: noop, onSaveProject: noop, onImportProject: noop,
-    onExportProject: noop, onDownloadDiagnostics: noop, onDownloadRunTrace: noop,
+    onExportProject: noop, onOpenN8nImport: noop, onDownloadDiagnostics: noop, onDownloadRunTrace: noop,
     onImportRunTrace: noop, onOpenRunHistory: noop, onStop: noop,
     onStopExperiment: noop, onRun: noop, onStartEvaluation: noop,
   });
@@ -208,6 +208,25 @@ test("the extracted composer keeps pending-branch and template-error text in the
   assert.match(html, /The template variable topic is missing/);
 });
 
+test("the resolved request preview uses one disclosure without nesting details", async () => {
+  const html = await render(
+    "/app/request/request-composer.client.tsx",
+    "RequestComposer",
+    requestComposer({
+      requestPreview: {
+        messages: [{ role: "user", content: [{ type: "text", text: "Resolved fixture" }] }],
+        body: { model: "fixture-model", messages: [{ role: "user", content: "Resolved fixture" }] },
+      },
+    }),
+  );
+
+  assert.match(html, /Resolved request preview/);
+  assert.match(html, /role="tab"/);
+  assert.match(html, />Raw</);
+  assert.doesNotMatch(html, /Raw OpenAI-compatible request body/);
+  assert.equal((html.match(/<details/g) ?? []).length, 1);
+});
+
 test("the tool manifest lists both routes to a request in one place", async () => {
   const html = await render("/app/tools-pane.client.tsx", "ToolsPane", toolsPane({
     tools: [projectTool],
@@ -215,11 +234,13 @@ test("the tool manifest lists both routes to a request in one place", async () =
     requestTools: [oneShotTool],
   }));
 
-  assert.match(html, /2 tools will be sent/);
+  assert.match(html, /2 tools attached/);
   assert.match(html, /lookup_order/);
   assert.match(html, /scratch_pad/);
   assert.match(html, /tool-origin project/);
   assert.match(html, /tool-origin once/);
+  assert.equal((html.match(/>Detach</g) ?? []).length, 2);
+  assert.match(html, /aria-label="Detach scratch_pad from the next request"/);
 });
 
 test("an unselected project tool is counted out of the manifest", async () => {
@@ -228,10 +249,10 @@ test("an unselected project tool is counted out of the manifest", async () => {
     enabledToolIds: [],
   }));
 
-  assert.match(html, /No tools will be sent/);
+  assert.match(html, /No tools attached/);
   assert.doesNotMatch(html, /tool-origin project/);
   // The definition itself is still editable below the manifest.
-  assert.match(html, /Send with requests/);
+  assert.match(html, /Attach to requests/);
 });
 
 test("a profile that cannot call tools says so where the tools are listed", async () => {
@@ -242,8 +263,7 @@ test("a profile that cannot call tools says so where the tools are listed", asyn
   }));
 
   assert.match(html, /tool-manifest blocked/);
-  assert.match(html, /1 tool is selected/);
-  assert.doesNotMatch(html, /1 tool will be sent/);
+  assert.match(html, /1 tool is attached/);
   assert.match(html, /does not allow tool calling/);
   assert.match(html, /Allow tool calling/);
 });

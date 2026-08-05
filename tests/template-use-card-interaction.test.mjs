@@ -253,7 +253,7 @@ test("a large import opens only the variables that still need attention", async 
     const collapsed = view.row("locale");
     assert.match(collapsed.textContent, /\{\{locale\}\}/);
     assert.match(collapsed.textContent, /default locale/);
-    assert.match(collapsed.textContent, /Template default/);
+    assert.match(collapsed.textContent, /Prompt default/);
 
     // The prompt preview starts clamped rather than filling the card.
     const preview = view.container.querySelector(".template-preview-body");

@@ -393,7 +393,9 @@ pre,
 .tool-call-projection,
 .tool-call-pending-executor,
 .tool-command-fields p,
-.tool-mock-superseded {
+.tool-mock-superseded,
+.inference-settings-scope,
+.inference-settings-override {
   font-size: var(--type-metadata);
 }
 
@@ -1687,6 +1689,29 @@ output {
   margin: 12px 13px 6px;
 }
 
+.request-preview-view-switch {
+  display: flex;
+  gap: 4px;
+  margin: 12px 13px 0;
+}
+
+.request-preview-view-switch button {
+  padding: 4px 9px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--surface-panel);
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+}
+
+.request-preview-view-switch button[aria-selected="true"] {
+  border-color: var(--accent);
+  background: var(--surface-inset);
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
 .request-preview pre {
   max-height: 260px;
   margin: 0 13px 13px;
@@ -1728,13 +1753,6 @@ output {
 
 .request-preview-raw {
   margin: 0 13px 13px;
-}
-
-.request-preview-raw summary {
-  padding: 0 0 8px;
-  color: var(--text-muted);
-  font-weight: 700;
-  cursor: pointer;
 }
 
 .request-preview-raw pre {
@@ -5011,8 +5029,13 @@ main {
   color: var(--text-secondary);
 }
 
-.inference-settings-identity small {
-  color: var(--text-muted);
+.inference-settings-scope {
+  padding: 2px 7px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  background: var(--surface-inset);
+  color: var(--text-secondary);
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -5073,9 +5096,52 @@ main {
   flex: 1 1 148px;
 }
 
-/* A repetition count is two or three digits wide however much room is left. */
-.inference-settings-grid > .inference-settings-count {
-  flex: 0 1 132px;
+.inference-settings-field {
+  display: grid;
+  align-content: end;
+  gap: 5px;
+}
+
+.inference-settings-override {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.inference-settings-override .text-button {
+  padding: 0;
+}
+
+/* Delivery lives outside the project-backed settings disclosure: it is a
+   session preference, so its scope must not borrow the panel's project badge. */
+.request-delivery-preference {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 7px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 9px;
+  background: var(--surface-panel);
+}
+
+.request-delivery-identity {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--text-secondary);
+}
+
+.request-delivery-value {
+  color: var(--text-muted);
+}
+
+.request-delivery-preference .streaming-control {
+  margin-left: auto;
+  display: flex;
 }
 
 .inference-settings-record {
@@ -5187,7 +5253,8 @@ main {
   text-align: right;
 }
 
-.inference-settings label.streaming-control {
+.inference-settings label.streaming-control,
+.request-delivery-preference label.streaming-control {
   min-height: 36px;
   display: flex;
   flex-direction: row;
@@ -5197,23 +5264,28 @@ main {
   cursor: pointer;
 }
 
-.inference-settings .streaming-control input {
+.inference-settings .streaming-control input,
+.request-delivery-preference .streaming-control input {
   margin: 0;
   width: auto;
 }
 
 .inference-settings .streaming-control span,
-.inference-settings .streaming-control small {
+.inference-settings .streaming-control small,
+.request-delivery-preference .streaming-control span,
+.request-delivery-preference .streaming-control small {
   display: block;
 }
 
-.inference-settings .streaming-control small {
+.inference-settings .streaming-control small,
+.request-delivery-preference .streaming-control small {
   margin-top: 3px;
   color: var(--text-muted);
   line-height: 1.3;
 }
 
-.inference-settings .streaming-control.disabled {
+.inference-settings .streaming-control.disabled,
+.request-delivery-preference .streaming-control.disabled {
   cursor: not-allowed;
   opacity: 0.65;
 }

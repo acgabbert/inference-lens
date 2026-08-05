@@ -53,15 +53,18 @@ test("a project can use the provider default despite a mapped profile override",
   await waitForHydration(page, "Provider-default fixture");
   await importProject(page, project, "Provider-default project");
 
-  // Collapsed, the panel already reports what the run will send: the model in
-  // its always-visible field, the rest as summary chips.
+  // Collapsed, the project-owned panel reports its model and temperature. The
+  // session-owned delivery preference remains visible beside it.
   await expect(page.getByLabel("Model", { exact: true })).toHaveValue(
     "provider-default-temperature-model",
   );
   await expect(page.locator(".inference-settings-fact")).toHaveText([
     "Provider default temp",
-    "Buffered",
+    "1 override",
   ]);
+  await expect(
+    page.getByRole("region", { name: "Delivery preference" }),
+  ).toContainText("Buffered");
 
   await openInferenceSettings(page);
   const override = page.getByRole("checkbox", {

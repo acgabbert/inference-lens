@@ -90,11 +90,11 @@ export function SavedPromptDialog({
         role="dialog"
       >
         <span className="eyebrow">Evaluation input</span>
-        <h2 id="saved-prompt-title">Start from saved prompt</h2>
+        <h2 id="saved-prompt-title">Start from prompt</h2>
         {candidates.length === 0 ? (
           <>
             <p>
-              This project has no active saved prompts. Create one in the Templates editor, then
+              This project has no active prompts. Create one in Compose → Prompts, then
               start an evaluation from it.
             </p>
             <div className="confirmation-actions">
@@ -113,7 +113,7 @@ export function SavedPromptDialog({
                     onOpenTemplates();
                   }}
                 >
-                  Open Templates
+                  Open Prompts
                 </button>
               )}
             </div>
@@ -125,7 +125,7 @@ export function SavedPromptDialog({
               Surrounding messages are not copied, and the Messages editor is not changed.
             </p>
             <fieldset className="saved-prompt-list">
-              <legend>Active saved prompts</legend>
+              <legend>Active prompts</legend>
               {candidates.map((candidate) => (
                 <label
                   className={
@@ -169,7 +169,7 @@ export function SavedPromptDialog({
                 type="button"
                 onClick={() => selected && onConfirm(selected.templateId)}
               >
-                Start from saved prompt
+                Start from prompt
               </button>
             </div>
           </>

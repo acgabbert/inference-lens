@@ -25,7 +25,7 @@ test("renders compact preflight and the focused case workspace", async () => {
   assert.match(html, /Topic quality/);
   assert.match(html, /Case inputs/);
   assert.match(html, /Question/);
-  assert.match(html, /topic<\/code> template variable/);
+  assert.match(html, /topic<\/code> prompt variable/);
   assert.doesNotMatch(html, /template-use_question/);
   assert.doesNotMatch(html, /Input name Topic/);
   assert.match(html, /database migrations/);
@@ -276,7 +276,7 @@ test("contains provider preview errors for a historical revision missing a bound
   // The unsatisfiable binding is a visible row in the value table, not a
   // silently dropped override.
   assert.match(preview, /Case input “Topic” has nowhere to go/);
-  assert.match(preview, /revision has no such template use/);
+  assert.match(preview, /revision has no such prompt use/);
   assert.match(preview, /evaluation-value-missing/);
   assert.match(preview, /resolves to no messages/);
   assert.doesNotMatch(html, /NaN|Infinity|undefined|\[object Object\]/);
@@ -315,7 +315,7 @@ test("renders the four focused-case preflight regions from the shared resolution
     minute: "2-digit",
   });
   assert.ok(html.includes(`Current · Question · “Explain a topic.” · ${localRevisionTime}`));
-  assert.match(html, /pinned to the template’s current revision/);
+  assert.match(html, /pinned to the prompt’s current revision/);
   assert.match(html, /template-revision_question/);
   assert.match(html, /<summary>Stable identity<\/summary>/);
   assert.match(html, /revision_current/);
@@ -393,7 +393,7 @@ test("shows every value source and keeps a variable with no value visible as a s
 
   assert.match(html, /<td>Case value · Topic<\/td>/);
   assert.match(html, /<td>Authored use value<\/td>/);
-  assert.match(html, /<td>Template default<\/td>/);
+  assert.match(html, /<td>Prompt default<\/td>/);
   assert.match(html, /No value at any level/);
   assert.match(html, /<td>Setup error<\/td>/);
   assert.doesNotMatch(html, /NaN|Infinity|undefined|\[object Object\]/);

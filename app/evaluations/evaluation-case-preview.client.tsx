@@ -17,7 +17,7 @@ import type { EvaluationSuiteAuthoringHandle } from "./use-evaluation-suite-auth
 const valueSourceLabels: Record<EvaluationValueSource, string> = {
   case: "Case value",
   "authored-use": "Authored use value",
-  "template-default": "Template default",
+  "template-default": "Prompt default",
 };
 
 /**
@@ -70,8 +70,8 @@ function RevisionProvenanceRegion({ descriptor, caseName }: {
                   {use.messageCount} {use.messageCount === 1 ? "message" : "messages"}
                   {" · "}
                   {use.pinnedToCurrentTemplateRevision
-                    ? "pinned to the template’s current revision"
-                    : "pinned to an earlier template revision"}
+                    ? "pinned to the prompt’s current revision"
+                    : "pinned to an earlier prompt revision"}
                 </span>
               </li>
             ))}
@@ -106,7 +106,7 @@ function ResolvedValuesRegion({ resolution, caseName }: {
     <section className="evaluation-preflight-region" aria-label={`Resolved values for ${caseName}`}>
       <h5>Resolved values</h5>
       {resolution.variables.length === 0 && resolution.unresolvedBindings.length === 0 ? (
-        <p className="evaluation-empty-inline">This revision’s prompts have no template variables.</p>
+        <p className="evaluation-empty-inline">This revision’s prompts have no prompt variables.</p>
       ) : (
         // Wide content scrolls inside its own region rather than pushing the
         // pane past the viewport on a phone.
@@ -143,8 +143,8 @@ function ResolvedValuesRegion({ resolution, caseName }: {
                 <td><code>{binding.variableName}</code></td>
                 <td>Case input “{binding.inputName}” has nowhere to go</td>
                 <td>{binding.reason === "missing-template-use"
-                  ? "Setup error · revision has no such template use"
-                  : "Setup error · template use has no such variable"}</td>
+                  ? "Setup error · revision has no such prompt use"
+                  : "Setup error · prompt use has no such variable"}</td>
               </tr>
             ))}
           </tbody>
@@ -242,7 +242,7 @@ export function EvaluationCasePreview({ evaluationCase, authoring, execution }: 
     <section className="evaluation-provider-input" aria-label={`Provider input for ${evaluationCase.name}`}>
       {suite.inputBindings.length === 0
         ? <p className="evaluation-provider-sameness"><strong>All cases currently use this provider input.</strong> References and checks may still differ.</p>
-        : <p>This case replaces the bound template values in the saved revision. Repetitions resend this same resolved input; other cases can resolve to different messages.</p>}
+        : <p>This case replaces the prompt values in the saved revision. Repetitions resend this same resolved input; other cases can resolve to different messages.</p>}
       {/* Advisory, never blocking, and never applied: one revision can pin
           several prompts while a provider call carries exactly one model. */}
       {advisories && advisories.distinctTargets.length > 1 && (

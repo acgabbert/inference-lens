@@ -50,7 +50,7 @@ export function ToolsPane({
   return (
     <>
       <section
-        aria-label="Tool selection for this request"
+        aria-label="Tools attached to this request"
         className={`tool-manifest ${state}`}
         data-readiness-target="tool-manifest"
         tabIndex={-1}
@@ -60,21 +60,21 @@ export function ToolsPane({
             <span className="eyebrow">Next request</span>
             <strong>
               {selectedCount === 0
-                ? "No tools will be sent"
+                ? "No tools attached"
                 : state === "blocked"
                   ? `${selectedCount} ${
                       selectedCount === 1 ? "tool is" : "tools are"
-                    } selected`
+                    } attached`
                   : `${selectedCount} ${
                       selectedCount === 1 ? "tool" : "tools"
-                    } will be sent`}
+                    } attached`}
             </strong>
             <p>
               {state === "empty"
-                ? "Select a project tool or attach a one-shot library copy."
+                ? "Attach an available project tool or a session-only library copy."
                 : state === "blocked"
                   ? `Profile “${profileName}” does not allow tool calling, so none of these reach the model.`
-                  : "These definitions are sent with the request, in this order."}
+                  : "These definitions accompany the request in this order."}
             </p>
           </div>
           {state === "blocked" && (
@@ -97,12 +97,12 @@ export function ToolsPane({
                 </span>
                 <span className="tool-origin project">Project</span>
                 <button
-                  aria-label={`Stop sending ${tool.name || "this tool"}`}
+                  aria-label={`Detach ${tool.name || "this tool"}`}
                   className="text-button"
                   type="button"
                   onClick={() => onSetToolEnabled(tool.id, false)}
                 >
-                  Don’t send
+                  Detach
                 </button>
               </li>
             ))}
@@ -119,12 +119,12 @@ export function ToolsPane({
                   Once
                 </span>
                 <button
-                  aria-label={`Remove ${tool.name || "this tool"} from the next request`}
+                  aria-label={`Detach ${tool.name || "this tool"} from the next request`}
                   className="text-button"
                   type="button"
                   onClick={() => onRemoveRequestTool(tool.id)}
                 >
-                  Remove
+                  Detach
                 </button>
               </li>
             ))}
@@ -135,7 +135,7 @@ export function ToolsPane({
         <div>
           <span className="eyebrow">Project</span>
           <strong>Tool definitions</strong>
-          <p>Stored with this project; sent only when selected.</p>
+          <p>Available in this project; attached only when enabled below.</p>
         </div>
         <div className="tool-header-actions">
           <button className="text-button" type="button" onClick={onOpenLibrary}>Browse local library</button>
@@ -147,7 +147,7 @@ export function ToolsPane({
           <PaneEmptyState
             eyebrow="Project"
             heading="No project tools yet"
-            detail="Tool definitions are saved with this project and sent to the model only when selected."
+            detail="Tool definitions are available to this project and accompany a request only when attached."
             action={{ label: "+ Add project tool", onClick: onAddTool }}
           />
         ) : tools.map((tool, index) => {
@@ -159,7 +159,7 @@ export function ToolsPane({
           // from a transcript.
           const commandServes = Boolean(commandTools.bindingFor(tool.id));
           return <article className="tool-editor" key={tool.id}>
-            <div className="tool-editor-toolbar"><label className="tool-enabled"><input type="checkbox" checked={enabledToolIds.includes(tool.id)} onChange={(event) => onSetToolEnabled(tool.id, event.target.checked)} />Send with requests</label><div className="tool-reorder"><button aria-label={`Move ${toolLabel} earlier in the request`} className="text-button" disabled={index === 0} type="button" onClick={() => onMoveTool(tool.id, -1)}>↑</button><button aria-label={`Move ${toolLabel} later in the request`} className="text-button" disabled={index === tools.length - 1} type="button" onClick={() => onMoveTool(tool.id, 1)}>↓</button></div><button className="remove-button" type="button" onClick={() => onRemoveTool(tool.id)}>Remove</button></div>
+            <div className="tool-editor-toolbar"><label className="tool-enabled"><input type="checkbox" checked={enabledToolIds.includes(tool.id)} onChange={(event) => onSetToolEnabled(tool.id, event.target.checked)} />Attach to requests</label><div className="tool-reorder"><button aria-label={`Move ${toolLabel} earlier in the request`} className="text-button" disabled={index === 0} type="button" onClick={() => onMoveTool(tool.id, -1)}>↑</button><button aria-label={`Move ${toolLabel} later in the request`} className="text-button" disabled={index === tools.length - 1} type="button" onClick={() => onMoveTool(tool.id, 1)}>↓</button></div><button className="remove-button" type="button" onClick={() => onRemoveTool(tool.id)}>Remove</button></div>
             <ToolDefinitionEditor value={tool} onChange={(value) => onUpdateTool(tool.id, value)} />
             <div className="tool-fields tool-mock-fields"><label className="tool-mock-toggle"><input type="checkbox" checked={mock?.enabled ?? false} onChange={(event) => onUpdateToolMock(tool.id, mockText, event.target.checked)} />Use static mock result</label>{mock?.enabled && <label className="tool-mock-result">Mock result<textarea value={mockText} onChange={(event) => onUpdateToolMock(tool.id, event.target.value, true)} /></label>}{mock?.enabled && commandServes && <p className="tool-mock-superseded">A command tool is allowed to answer {toolLabel} on this device, so this mock is not used.</p>}</div>
             <CommandToolBindingEditor toolId={tool.id} toolLabel={toolLabel} commandTools={commandTools} />

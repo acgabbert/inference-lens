@@ -69,7 +69,7 @@ test("renders the project template library and revision defaults", async () => {
   assert.match(html, /Add to conversation/);
   assert.match(html, />Archive</);
   assert.match(html, /Archived <span>0<\/span>/);
-  assert.match(html, /Import from n8n…/);
+  assert.match(html, /Import prompt from n8n…/);
   assert.match(html, /Open prompt editor in focus mode/);
 });
 
@@ -217,7 +217,7 @@ test("labels non-current revisions without a Previous 0 state", async () => {
   assert.match(html, /Revision 2/);
   assert.match(
     html,
-    /disabled="" title="Finish the current run."[^>]*>Import from n8n…/,
+    /disabled="" title="Finish the current run."[^>]*>Import prompt from n8n…/,
   );
 });
 

@@ -291,7 +291,7 @@ export function useEvaluationSuiteAuthoring({
       setSavedPromptPickerOpen(false);
       onNotify?.({
         kind: "saved-prompt-revision",
-        templateName: candidate?.name ?? "Saved prompt",
+        templateName: candidate?.name ?? "Prompt",
         messageCount: candidate?.messageCount ?? 0,
         variableCount: candidate?.variables.length ?? 0,
       });
