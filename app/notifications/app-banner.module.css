@@ -1,0 +1,85 @@
+/*
+ * Scoped to the single banner slot. It replaces `.project-error` and the
+ * top-level `.workbench-notice` blocks in `app/globals.css`, whose rules go
+ * with them.
+ *
+ * The failure treatment is the old `.project-error` bar unchanged — same danger
+ * surface, same full-bleed rule under the topbar — because the overhaul changes
+ * which conditions earn this tier, not what it looks like. The advisory tone is
+ * new only in that an advisory now shares the slot instead of floating in its
+ * own corner stack.
+ */
+
+.banner {
+  /* The app shell is a flex column at desktop widths and the banner is one of
+     its fixed rows, the way `.project-error` was. It carries that here rather
+     than being named from `app/globals.css`, which cannot reach a scoped name. */
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 9px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  border-bottom: 1px solid var(--border-default);
+  background: var(--surface-inset);
+}
+
+.failure {
+  border-bottom-color: var(--danger-border);
+  background: var(--danger-surface);
+  color: var(--danger);
+}
+
+.advisory {
+  border-bottom-color: var(--warning-border);
+  background: var(--warning-surface);
+  color: var(--warning-strong);
+}
+
+.copy {
+  min-width: 0;
+  flex: 1 1 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.title {
+  font-size: var(--type-body);
+  line-height: 1.35;
+}
+
+.detail {
+  color: inherit;
+  font-size: var(--type-compact);
+  line-height: 1.45;
+  opacity: 0.85;
+}
+
+/* A displaced condition is counted, never dropped. Quiet, because it describes
+   what is *not* on screen. */
+.suppressed {
+  color: inherit;
+  font-size: var(--type-metadata);
+  opacity: 0.7;
+}
+
+.actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.actions .button {
+  padding: 6px 10px;
+}
+
+@media (max-width: 760px) {
+  .banner {
+    padding-inline: 16px;
+  }
+}

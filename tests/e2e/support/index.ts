@@ -212,6 +212,28 @@ export function preflightSummary(page: Page): Locator {
 }
 
 /**
+ * A toast by its title.
+ *
+ * Two traps live here. The first is that a toast **expires** — six seconds, or
+ * twelve when it carries an action — so an assertion placed after several
+ * seconds of other work is racing a timer, and the failure reads as "the
+ * feature did not fire" rather than "the spec was slow". Assert on the toast as
+ * the next thing after the action that publishes it.
+ *
+ * The second is that touching it **pauses** it: the region freezes every
+ * lifetime while it has hover or focus. That is what makes clicking a toast's
+ * action safe — but it also means a spec that hovers to inspect a toast has
+ * stopped the clock it is about to assert on, so `not.toBeVisible()` after a
+ * hover will never come true until the pointer leaves.
+ */
+export function toast(page: Page, title: string | RegExp): Locator {
+  return page
+    .getByRole("list", { name: "Notifications" })
+    .getByRole("listitem")
+    .filter({ hasText: title });
+}
+
+/**
  * Closes the Project menu.
  *
  * It is a `<details>`, so Escape does not close it and a second click on the

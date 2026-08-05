@@ -106,6 +106,11 @@ import type { EvaluationPassTone } from "./evaluations/evaluation-history-format
 import type { AppMode, ModeIndicator, ModeIndicatorTone } from "./modes/app-mode";
 import { EvaluationsMode } from "./modes/evaluations-mode.client";
 import { RunsMode } from "./modes/runs-mode.client";
+import { useToasts } from "./notifications/use-toasts.client";
+import { ToastRegion } from "./notifications/toast-region.client";
+import { AppBanner } from "./notifications/app-banner.client";
+import { chooseAppBanner } from "./notifications/banner-priority.client";
+import type { AppBanner as AppBannerCandidate } from "./notifications/banner-priority.client";
 
 const inferenceTransport = createInferenceTransport();
 
@@ -116,6 +121,20 @@ const STREAMING_PREFERENCE_STORAGE_KEY =
 interface BranchContext extends WorkbenchBranchContext {
   parentTraceNeedsSaving: boolean;
 }
+
+/**
+ * A batch that finished in this session and has not been announced yet.
+ *
+ * Held as a small queue rather than announced from the session hook directly:
+ * the hook reports completion in the same tick it stores the result, so the
+ * pass rate the toast wants is not readable until React has committed. The
+ * effect that drains this runs after that commit and derives the summary from
+ * the same execution state the Runs indicator reads, which is what keeps the
+ * two from disagreeing about the same batch.
+ */
+type FinishedBatch =
+  | { kind: "evaluation"; experimentId: string }
+  | { kind: "repeated"; experimentId: string; repetitions: number };
 
 /**
  * `pending` and `unscored` both mean the batch decided nothing — interrupted,
@@ -236,6 +255,12 @@ function HomeContent() {
     credential,
   } = useConnectionProfiles({ isDesktopRuntime });
   const originNotice = useInsecureOriginNotice(serverDefault.containerized);
+  // The transient tier. Publication is threaded into the feature hooks below as
+  // an ordinary callback, the same way `onError` and `onTraceSaved` already
+  // are, so every toast in the app has a reviewable path from cause to message.
+  const toasts = useToasts();
+  const finishedBatchesRef = useRef<FinishedBatch[]>([]);
+  const [finishedBatchCount, setFinishedBatchCount] = useState(0);
   const [toolRegistry, setToolRegistry] = useState<ToolRegistryV1>(
     emptyToolRegistry(),
   );
@@ -263,6 +288,11 @@ function HomeContent() {
   const [evaluationSetupOpen, setEvaluationSetupOpen] = useState(true);
   const [evaluationPreviewOpen, setEvaluationPreviewOpen] = useState(true);
   const [savedRunVersion, setSavedRunVersion] = useState(0);
+  // Bumped when an import lands in the composer's message list, so the composer
+  // returns to Messages and the newly imported snapshot is on screen. This used
+  // to ride on the presence of the import notice, which stopped being possible
+  // once that notice became a toast with no state behind it.
+  const [importedRevision, setImportedRevision] = useState(0);
   const clearTemplateOverridesRef = useRef<() => void>(() => {});
   const [workbenchView, setWorkbenchView] =
     useState<WorkbenchView>("request");
@@ -315,6 +345,17 @@ function HomeContent() {
       setSessionModel(draft.model);
       setSessionTemperature(draft.temperature);
       runSession.reset();
+    },
+    onSaved({ name, destination }) {
+      toasts.publish({
+        key: "project-saved",
+        title: `Saved “${name}”`,
+        detail:
+          destination === "folder"
+            ? "Written to the project folder."
+            : "Downloaded as a project file.",
+        durableHome: "the project name in the topbar, which drops its unsaved marker",
+      });
     },
   });
   const {
@@ -404,6 +445,10 @@ function HomeContent() {
     onTraceSaved() { setSavedRunVersion((current) => current + 1); },
     onError(message) { project.setError(message, { clearKind: true }); },
     onOpenTrace(trace, origin) { runSession.adoptTrace(trace, origin); },
+    onFinished({ experimentId, repetitions }) {
+      finishedBatchesRef.current.push({ kind: "repeated", experimentId, repetitions });
+      setFinishedBatchCount((current) => current + 1);
+    },
   });
   const evaluationExecution = useEvaluationExecutionSession({
     transport: inferenceTransport,
@@ -411,6 +456,10 @@ function HomeContent() {
     onTraceSaved() { setSavedRunVersion((current) => current + 1); },
     onError(message) { project.setError(message, { clearKind: true }); },
     onOpenTrace(trace, origin) { runSession.adoptTrace(trace, origin); },
+    onFinished({ experimentId }) {
+      finishedBatchesRef.current.push({ kind: "evaluation", experimentId });
+      setFinishedBatchCount((current) => current + 1);
+    },
   });
   const [sessionModel, setSessionModel] = useState<string>();
   const [sessionTemperature, setSessionTemperature] = useState<number>();
@@ -529,13 +578,51 @@ function HomeContent() {
     onImportApplied() {
       setMode("compose");
       setWorkbenchView("request");
+      setImportedRevision((current) => current + 1);
       setN8nImportOpen(false);
+    },
+    onImported({ name, template, variableCount }) {
+      toasts.publish({
+        key: "prompt-imported",
+        title: `Imported “${name}”${template ? " as a reusable template" : ""}`,
+        detail: template
+          ? `${variableCount} ${variableCount === 1 ? "variable" : "variables"} imported from the saved execution.`
+          : "Execution messages imported into the composer.",
+        durableHome: template
+          ? "the template, in Compose → Templates"
+          : "the imported messages, in Compose → Messages",
+        ...(template
+          ? {
+              action: {
+                label: "View template",
+                onSelect: () =>
+                  resolveReadiness({
+                    surface: "request",
+                    tab: "templates",
+                    control: "prompt-library",
+                  }),
+              },
+            }
+          : {}),
+      });
     },
   });
   const evaluationAuthoring = useEvaluationSuiteAuthoring({
     project: projectFile,
     adoptProjectMutation: project.adoptProjectMutation,
     requestConfirmation: setConfirmation,
+    onNotify({ templateName, messageCount, variableCount }) {
+      toasts.publish({
+        key: "evaluation-input-changed",
+        title: `Evaluation input now uses “${templateName}”`,
+        detail: `It pins ${messageCount} ${messageCount === 1 ? "message" : "messages"} and ${
+          variableCount === 0
+            ? "no variables"
+            : `${variableCount} ${variableCount === 1 ? "variable" : "variables"}`
+        }. Messages was not changed.`,
+        durableHome: "the suite's revision picker, which now names this prompt",
+      });
+    },
   });
   const selectedEvaluationSuite = projectFile?.evaluationSuites.find(
     ({ id }) => id === evaluationAuthoring.suiteId,
@@ -1239,6 +1326,152 @@ function HomeContent() {
     return { tone: "neutral", label: "finished, not yet viewed" };
   }
 
+  /**
+   * Tells the user a batch they started has finished, and offers the one
+   * click that gets them to it.
+   *
+   * This is the affordance the Runs mode was made conditional on: results no
+   * longer appear in the pane the user was looking at, so a batch that finishes
+   * while they are composing would otherwise be signalled only by a dot on the
+   * mode strip. Nothing here is the sole carrier — the dot is still there, and
+   * it does not expire — but the dot cannot interrupt and this can.
+   *
+   * Suppressed while Runs is already on screen: the results are being watched
+   * live, and an action that navigates to where the user already is would be a
+   * message about nothing.
+   */
+  const announceFinishedBatch = useEffectEvent((batch: FinishedBatch) => {
+    if (mode === "runs") return;
+    const viewResults = {
+      label: "View results",
+      onSelect: () => setMode("runs"),
+    };
+    if (batch.kind === "repeated") {
+      toasts.publish({
+        key: `batch-finished:${batch.experimentId}`,
+        title: "Repeated experiment finished",
+        detail: `${batch.repetitions} ${batch.repetitions === 1 ? "repetition" : "repetitions"} completed.`,
+        action: viewResults,
+        durableHome: "the Runs mode indicator, until the results are opened",
+      });
+      return;
+    }
+    const evaluation = evaluationExecution.execution;
+    let detail = "Every selected case has a verdict.";
+    if (evaluation?.plan.experimentId === batch.experimentId) {
+      try {
+        detail = `${evaluationPassSummary(
+          evaluationExperimentAggregate(evaluation.plan, evaluation.result, evaluation.states),
+        )}.`;
+      } catch {
+        // An aggregate that cannot be derived is not a failed batch. The toast
+        // says there is something to read and lets the workspace explain it.
+      }
+    }
+    toasts.publish({
+      key: `batch-finished:${batch.experimentId}`,
+      title: "Evaluation finished",
+      detail,
+      action: viewResults,
+      durableHome: "the Runs mode indicator, which also carries the pass rate",
+    });
+  });
+  // The counter is the trigger and the ref is the payload: draining the ref
+  // rather than clearing state keeps this effect from scheduling a render of
+  // its own, and makes a repeated invocation a no-op because the queue is
+  // already empty by then.
+  useEffect(() => {
+    finishedBatchesRef.current.splice(0).forEach(announceFinishedBatch);
+  }, [finishedBatchCount]);
+
+  /**
+   * The one banner slot, in priority order.
+   *
+   * A failure that refuses the user's work outranks an advisory about the
+   * environment, which outranks an offer they can take at leisure. Whichever
+   * loses is counted by `chooseAppBanner` rather than dropped, and returns to
+   * the slot on its own once what outranked it is resolved or dismissed.
+   */
+  function projectErrorBanner(): AppBannerCandidate | undefined {
+    if (!projectError) return undefined;
+    return {
+      id: "project-error",
+      tone: "failure",
+      title: projectError,
+      actions: [
+        ...(projectErrorKind === "workspace-reconnect"
+          ? [{
+              key: "reconnect",
+              label: "Reconnect",
+              primary: true,
+              onSelect: () => void project.reconnectProjectWorkspace(),
+            }]
+          : []),
+        ...(projectErrorKind === "tools-disabled"
+          ? [{
+              key: "connection-settings",
+              label: "Open connection settings",
+              primary: true,
+              onSelect: () => setConnectionDrawerOpen(true),
+            }]
+          : []),
+        { key: "dismiss", label: "Dismiss", onSelect: () => project.dismissError() },
+      ],
+    };
+  }
+
+  function insecureOriginBanner(): AppBannerCandidate | undefined {
+    const notice = originNotice.notice;
+    if (!notice) return undefined;
+    return {
+      id: "insecure-origin",
+      tone: "advisory",
+      title: notice.headline,
+      detail: notice.detail,
+      actions: [
+        ...(notice.suggestedUrl
+          ? [{
+              key: "open",
+              label: "Open it",
+              primary: true,
+              href: notice.suggestedUrl,
+              onSelect: originNotice.dismiss,
+            }]
+          : []),
+        { key: "dismiss", label: "Dismiss", onSelect: originNotice.dismiss },
+      ],
+    };
+  }
+
+  function serverDefaultBanner(): AppBannerCandidate | undefined {
+    if (!serverDefaultProfileNotice) return undefined;
+    return {
+      id: "server-default-profile",
+      tone: "advisory",
+      title: "Server default connection available",
+      detail:
+        "A profile using this server's configured endpoint was added to Connections.",
+      actions: [
+        { key: "use", label: "Use it", primary: true, onSelect: adoptServerDefaultProfile },
+        {
+          key: "review",
+          label: "Review",
+          onSelect: () => {
+            dismissServerDefaultProfileNotice();
+            setConnectionDrawerOpen(true);
+          },
+        },
+        { key: "dismiss", label: "Dismiss", onSelect: dismissServerDefaultProfileNotice },
+      ],
+    };
+  }
+
+  const appBanner = chooseAppBanner([
+    projectErrorBanner(),
+    insecureOriginBanner(),
+    serverDefaultBanner(),
+  ]);
+
   function saveOrChooseProjectLocation(): void {
     if (projectWorkspace || !folderAccessAvailable) {
       void project.saveProject();
@@ -1361,104 +1594,7 @@ function HomeContent() {
         onStartEvaluation={startEvaluation}
       />
 
-      {projectError && (
-        <div className="project-error" role="alert">
-          <span>{projectError}</span>
-          <div className="project-error-actions">
-            {projectErrorKind === "workspace-reconnect" && (
-              <button
-                type="button"
-                onClick={() => void project.reconnectProjectWorkspace()}
-              >
-                Reconnect
-              </button>
-            )}
-            {projectErrorKind === "tools-disabled" && (
-              <button
-                type="button"
-                onClick={() => setConnectionDrawerOpen(true)}
-              >
-                Open connection settings
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                project.dismissError();
-              }}
-            >
-              Dismiss
-            </button>
-          </div>
-        </div>
-      )}
-      {(serverDefaultProfileNotice || originNotice.notice) && (
-        <div className="workbench-notices">
-          {serverDefaultProfileNotice && (
-            <div className="workbench-notice" role="status">
-              <div className="workbench-notice-copy">
-                <strong>Server default connection available</strong>
-                <span>
-                  A profile using this server&apos;s configured endpoint was
-                  added to Connections.
-                </span>
-              </div>
-              <div className="workbench-notice-actions">
-                <button
-                  className="button primary"
-                  type="button"
-                  onClick={adoptServerDefaultProfile}
-                >
-                  Use it
-                </button>
-                <button
-                  className="button"
-                  type="button"
-                  onClick={() => {
-                    dismissServerDefaultProfileNotice();
-                    setConnectionDrawerOpen(true);
-                  }}
-                >
-                  Review
-                </button>
-                <button
-                  className="button"
-                  type="button"
-                  onClick={dismissServerDefaultProfileNotice}
-                >
-                  Dismiss
-                </button>
-              </div>
-            </div>
-          )}
-          {originNotice.notice && (
-            <div className="workbench-notice" role="status">
-              <div className="workbench-notice-copy">
-                <strong>{originNotice.notice.headline}</strong>
-                <span>{originNotice.notice.detail}</span>
-              </div>
-              <div className="workbench-notice-actions">
-                {originNotice.notice.suggestedUrl && (
-                  <a
-                    className="button primary"
-                    href={originNotice.notice.suggestedUrl}
-                    onClick={originNotice.dismiss}
-                  >
-                    Open it
-                  </a>
-                )}
-                <button
-                  className="button"
-                  type="button"
-                  onClick={originNotice.dismiss}
-                >
-                  Dismiss
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+      <AppBanner {...(appBanner ? { selection: appBanner } : {})} />
 
       <ConnectionDrawer
         open={connectionDrawerOpen}
@@ -1545,6 +1681,7 @@ function HomeContent() {
             onRepeat: repeat,
           }}
           pendingDestination={pendingReadinessDestination}
+          importedRevision={importedRevision}
           onReadinessAction={resolveReadiness}
           onDestinationHandled={() => setPendingReadinessDestination(undefined)}
           activeProfile={activeProfile}
@@ -1720,6 +1857,11 @@ function HomeContent() {
           onClose={() => setConfirmation(undefined)}
         />
       )}
+      <ToastRegion
+        toasts={toasts.toasts}
+        onDismiss={toasts.dismiss}
+        onPausedChange={toasts.setPaused}
+      />
     </main>
   );
 }

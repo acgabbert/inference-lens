@@ -1,0 +1,58 @@
+/*
+ * Scoped to the ambient tier. It replaces `.branch-pending`,
+ * `.repeated-experiment-notice`, and `.evaluation-authoring-notice` in
+ * `app/globals.css`, which were three different treatments of the same job:
+ * a sentence of standing state, sitting next to the thing it is about.
+ */
+
+.chip {
+  margin: 0;
+  padding: 8px 11px;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--surface-inset);
+  font-size: var(--type-compact);
+  line-height: 1.45;
+}
+
+.neutral {
+  color: var(--text-muted);
+}
+
+.advisory {
+  border-color: var(--warning-border);
+  background: var(--warning-surface);
+  color: var(--warning-strong);
+}
+
+.failure {
+  border-color: var(--danger-border);
+  background: var(--danger-surface);
+  color: var(--danger);
+}
+
+.label {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+}
+
+.advisory .label,
+.failure .label {
+  color: inherit;
+}
+
+.detail {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* Actions sit at the end of the line, not in a row of their own: a chip that
+   grew a second row would be a banner wearing a chip's clothes. */
+.chip .text-button {
+  flex: 0 0 auto;
+  margin-left: auto;
+}

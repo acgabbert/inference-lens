@@ -12,6 +12,7 @@ import { finalAssistantOutput } from "../../packages/core/src/run-output.ts";
 import { diffLines } from "../../packages/core/src/text-diff.ts";
 import type { EvaluationCaseId, RunId } from "../../packages/core/src/run-kernel/index.ts";
 import { formatTokens } from "../run-metrics-format.client.ts";
+import { StatusChip } from "../notifications/status-chip.client";
 import type {
   LoadedComparisonSide,
   LoadedEvaluationComparison,
@@ -318,10 +319,11 @@ export function EvaluationComparisonWorkspace({
       </header>
 
       {!comparison.sameSuite && (
-        <p className="repeated-experiment-notice" role="status">
-          These executions are of different suites. Cases still align by identity
-          where they share one, but the two suites are not the same question.
-        </p>
+        <StatusChip
+          tone="advisory"
+          label="Different suites"
+          detail="Cases still align by identity where they share one, but the two suites are not the same question."
+        />
       )}
 
       <section className="evaluation-results-summary" aria-label="Comparison summary">

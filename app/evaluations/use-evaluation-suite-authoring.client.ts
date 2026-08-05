@@ -44,7 +44,14 @@ import type {
 import { normalizedTurnCeiling } from "../../packages/core/src/turn-ceiling";
 import type { ConfirmationDialogRequest } from "../confirmation-dialog.client";
 
-/** A concise, dismissible confirmation that a project mutation landed. */
+/**
+ * A confirmation that a project mutation landed. Reported once, when it lands.
+ *
+ * This used to be dismissible state held here and rendered above the preflight
+ * chip, which put a message needing no decision into the layout of the surface
+ * the user was authoring in. It is a toast now; what it confirms stays visible
+ * in the revision picker, which is where the change actually shows.
+ */
 export interface EvaluationAuthoringNotice {
   kind: "saved-prompt-revision";
   templateName: string;
@@ -70,7 +77,6 @@ export interface EvaluationSuiteAuthoringHandle {
   savedPromptCandidates: SavedPromptCandidate[];
   savedPromptPickerOpen: boolean;
   savedPromptError?: string;
-  notice?: EvaluationAuthoringNotice;
   openSavedPromptPicker(): void;
   closeSavedPromptPicker(): void;
   /**
@@ -79,7 +85,6 @@ export interface EvaluationSuiteAuthoringHandle {
    * project mutation is rejected.
    */
   startFromSavedPrompt(templateId: PromptTemplateId): boolean;
-  dismissNotice(): void;
   selectSuite(id: EvaluationSuiteId): void;
   selectRevision(id: ConversationRevisionId): void;
   setCaseSelected(id: EvaluationCaseId, selected: boolean): void;
@@ -146,17 +151,12 @@ interface ScopedAuthoringError extends EvaluationSuiteAuthoringError {
 
 /**
  * Authoring a revision is a project-level mutation that does not require a
- * suite, so its error and its success notice are scoped to the project rather
- * than to the selected suite.
+ * suite, so its error is scoped to the project rather than to the selected
+ * suite.
  */
 interface ScopedProjectMessage {
   projectId: ProjectFile["projectId"];
   message: string;
-}
-
-interface ScopedNotice {
-  projectId: ProjectFile["projectId"];
-  notice: EvaluationAuthoringNotice;
 }
 
 function mutationErrorMessage(cause: unknown): string {
@@ -170,12 +170,15 @@ export interface UseEvaluationSuiteAuthoringInput {
   project: ProjectFile | null;
   adoptProjectMutation(project: ProjectFile): void;
   requestConfirmation?(request: ConfirmationDialogRequest): void;
+  /** Announces a landed authoring mutation the user should be told about. */
+  onNotify?(notice: EvaluationAuthoringNotice): void;
 }
 
 export function useEvaluationSuiteAuthoring({
   project,
   adoptProjectMutation,
   requestConfirmation,
+  onNotify,
 }: UseEvaluationSuiteAuthoringInput): EvaluationSuiteAuthoringHandle {
   const [suiteId, setSuiteId] = useState<EvaluationSuiteId>();
   // Undefined means "every case", so opening a saved suite previews the run the
@@ -186,7 +189,6 @@ export function useEvaluationSuiteAuthoring({
   const [storedError, setStoredError] = useState<ScopedAuthoringError>();
   const [savedPromptPickerOpen, setSavedPromptPickerOpen] = useState(false);
   const [storedPromptError, setStoredPromptError] = useState<ScopedProjectMessage>();
-  const [storedNotice, setStoredNotice] = useState<ScopedNotice>();
 
   const effectiveSuiteId = project?.evaluationSuites.some(({ id }) => id === suiteId)
     ? suiteId
@@ -270,9 +272,6 @@ export function useEvaluationSuiteAuthoring({
   const savedPromptError = storedPromptError && storedPromptError.projectId === project?.projectId
     ? storedPromptError.message
     : undefined;
-  const notice = storedNotice && storedNotice.projectId === project?.projectId
-    ? storedNotice.notice
-    : undefined;
 
   function startFromSavedPrompt(templateId: PromptTemplateId): boolean {
     if (!project || !effectiveSuiteId || !effectiveRevisionId) return false;
@@ -290,14 +289,11 @@ export function useEvaluationSuiteAuthoring({
       adoptProjectMutation(updated);
       setStoredPromptError(undefined);
       setSavedPromptPickerOpen(false);
-      setStoredNotice({
-        projectId: project.projectId,
-        notice: {
-          kind: "saved-prompt-revision",
-          templateName: candidate?.name ?? "Saved prompt",
-          messageCount: candidate?.messageCount ?? 0,
-          variableCount: candidate?.variables.length ?? 0,
-        },
+      onNotify?.({
+        kind: "saved-prompt-revision",
+        templateName: candidate?.name ?? "Saved prompt",
+        messageCount: candidate?.messageCount ?? 0,
+        variableCount: candidate?.variables.length ?? 0,
       });
       return true;
     } catch (cause) {
@@ -322,18 +318,15 @@ export function useEvaluationSuiteAuthoring({
     savedPromptCandidates: promptCandidates,
     savedPromptPickerOpen,
     ...(savedPromptError ? { savedPromptError } : {}),
-    ...(notice ? { notice } : {}),
     openSavedPromptPicker() { setStoredPromptError(undefined); setSavedPromptPickerOpen(true); },
     closeSavedPromptPicker() { setSavedPromptPickerOpen(false); setStoredPromptError(undefined); },
     startFromSavedPrompt,
-    dismissNotice() { setStoredNotice(undefined); },
     selectSuite(id) {
       setSuiteId(id); setFocusedCaseId(undefined); setSelection(undefined); setStoredError(undefined);
     },
     selectRevision(id) {
       if (!effectiveSuiteId) return;
       commit((current) => updateEvaluationSuiteInput(current, effectiveSuiteId, id));
-      setStoredNotice(undefined);
     },
     setCaseSelected(id, selected) {
       if (!project || !effectiveSuiteId) return;

@@ -10,6 +10,7 @@ import {
   BUFFERED_FIXTURE_ENDPOINT,
   importProject,
   seedProfile,
+  toast,
   waitForHydration,
   openMode,
   primaryAction,
@@ -79,9 +80,7 @@ async function startFromSavedPrompt(page: Page, name: string): Promise<void> {
   const dialog = page.getByRole("dialog", { name: "Start from saved prompt" });
   await dialog.getByRole("radio", { name }).check();
   await dialog.getByRole("button", { name: "Start from saved prompt" }).click();
-  await expect(page.locator(".evaluation-authoring-notice")).toContainText(
-    `Evaluation input now uses “${name}”`,
-  );
+  await expect(toast(page, `Evaluation input now uses “${name}”`)).toBeVisible();
 }
 
 async function mapConnection(page: Page): Promise<void> {
@@ -109,11 +108,13 @@ test("authoring from a saved prompt shows the exact resolved input it will run",
   // No suite bindings exist yet, so nothing is at risk of being orphaned.
   await expect(dialog).not.toContainText("This suite already has case inputs");
   await dialog.getByRole("button", { name: "Start from saved prompt" }).click();
-  // The notice states both halves of the approved contract: the suite input
-  // moved, and the Messages editor did not.
-  const notice = page.locator(".evaluation-authoring-notice");
-  await expect(notice).toContainText("Evaluation input now uses “Question”");
-  await expect(notice).toContainText("Messages was not changed");
+  // The confirmation states both halves of the approved contract: the suite
+  // input moved, and the Messages editor did not. It is a toast now — a
+  // landed mutation needs no decision — so it is asserted immediately, before
+  // its lifetime runs out.
+  const inputChanged = toast(page, "Evaluation input now uses “Question”");
+  await expect(inputChanged).toBeVisible();
+  await expect(inputChanged).toContainText("Messages was not changed");
 
   await page.getByLabel("Template variable to bind").selectOption({ label: "Question · topic" });
   await page.getByRole("button", { name: "+ Add case input" }).click();

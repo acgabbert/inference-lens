@@ -218,6 +218,19 @@ Each of these has silently shipped a green test that exercised nothing:
   results arrive has non-final geometry until the work finishes; a row is
   attached before its contents fill in. Wait for a completion signal — the
   absence of `Experiment progress`, for instance — not merely for a row.
+- **A toast expires while the spec is still walking to it.** Six seconds, or
+  twelve when it carries an action. A spec that publishes one, does three more
+  things, and then asserts is racing a timer, and the failure reads as "the
+  feature never fired". Assert with the `toast` driver as the next step after
+  the action that publishes it. The mirror-image trap: touching a toast
+  *pauses* it, so `not.toBeVisible()` after a `hover()` never comes true until
+  the pointer leaves.
+- **Time a batch's completion rather than waiting for it.** A completion toast
+  only appears if the batch finishes while the spec is looking somewhere else,
+  which is not a thing to hope for. Park every provider call
+  (`page.route("**" + INFERENCE_API_PATH)`) and release them one at a time, as
+  `evaluation-completion-toast.spec.ts` does — then "finished off-screen" is a
+  state the spec caused rather than one it happened to catch.
 
 ### Selectors worth knowing
 
@@ -239,6 +252,12 @@ These cost a round trip each to discover:
   way before reading.
 - **CSS uppercasing reaches `innerText`.** Status pills are
   `text-transform: uppercase`, so match `COMPLETED`, not `completed`.
+- **New surfaces are CSS Modules, so their class names are hashed.** Nothing may
+  locate the mode shells, the blocker chip, or the notification tiers by class.
+  Use the roles and names they publish — `Application mode` for the mode strip,
+  `Notifications` for the toast list — or the attributes put there for the
+  purpose, such as `[data-app-banner]`, which also names which condition holds
+  the single banner slot.
 
 ### Stub the folder picker to drive project-backed features
 

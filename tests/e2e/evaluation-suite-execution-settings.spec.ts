@@ -12,6 +12,7 @@ import {
   importProject,
   openInferenceSettings,
   seedProfile,
+  toast,
   waitForHydration,
   openMode,
   primaryAction,
@@ -87,9 +88,7 @@ async function useSavedPrompt(page: Page, name: string): Promise<void> {
   const dialog = page.getByRole("dialog", { name: "Start from saved prompt" });
   await dialog.getByRole("radio", { name }).check();
   await dialog.getByRole("button", { name: "Start from saved prompt" }).click();
-  await expect(page.locator(".evaluation-authoring-notice")).toContainText(
-    `Evaluation input now uses “${name}”`,
-  );
+  await expect(toast(page, `Evaluation input now uses “${name}”`)).toBeVisible();
 }
 
 /** Binds `topic` and authors one case that supplies it. */
