@@ -168,7 +168,14 @@ export function InferenceSettingsPanel({
 }: InferenceSettingsPanelProps) {
   const scope = useId();
   const bodyId = `${idPrefix}-settings-body-${scope}`;
-  const modelOverridden = inherited && value.model !== inherited.value.model;
+  // A connection profile may be an unfinished local draft with no model yet,
+  // while every portable project target requires a non-empty model id. Such a
+  // profile is useful as connection state but is not a valid inheritance
+  // source for this field, so do not offer an action that would cross that
+  // persistence boundary with an invalid value.
+  const inheritedModel = inherited?.value.model.trim();
+  const modelOverridden = inherited && Boolean(inheritedModel) &&
+    value.model !== inherited.value.model;
   const temperatureOverridden = inherited && !Object.is(
     value.temperature,
     inherited.value.temperature,
@@ -181,6 +188,7 @@ export function InferenceSettingsPanel({
 
   function revertSharedField(field: keyof InferenceSettingsValue): void {
     if (!inherited) return;
+    if (field === "model" && !inherited.value.model.trim()) return;
     onChange({ ...value, [field]: inherited.value[field] });
   }
 

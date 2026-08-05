@@ -57,6 +57,32 @@ test("project setting overrides are marked and revert one field at a time", asyn
   await expect(panel.locator(".inference-settings-override")).toHaveCount(0);
 });
 
+test("a project model cannot revert to a blank profile model", async ({ page }) => {
+  await seedProfile(page, { endpoint: "", model: "", name: "Blank connection" });
+  await page.goto("/");
+  await waitForHydration(page, "Blank connection");
+  const project = createProjectFile({
+    name: "Blank inheritance fixture",
+    request: {
+      provider: "openai-compatible",
+      endpoint: BUFFERED_FIXTURE_ENDPOINT,
+      model: "project-model",
+      messages: [{ role: "user", content: "Keep the valid project model." }],
+    },
+    idSuffix: "blank-model-inheritance",
+    createdAt: "2026-08-05T12:00:00.000Z",
+  });
+  await importProject(page, project, "Blank inheritance fixture");
+
+  const panel = await openInferenceSettings(page);
+  await expect(panel.getByLabel("Model", { exact: true })).toHaveValue(
+    "project-model",
+  );
+  await expect(
+    panel.getByRole("button", { name: "Revert model to profile defaults" }),
+  ).toHaveCount(0);
+});
+
 test("the collapsed panel reports what the run will send, and expanding reveals the controls", async ({
   page,
 }) => {
