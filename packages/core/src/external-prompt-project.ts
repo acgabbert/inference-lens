@@ -17,6 +17,11 @@ import type {
   PromptTemplateMessages,
 } from "./project.ts";
 import { createEntityId } from "./run-kernel/types.ts";
+import {
+  allocateN8nVariableName,
+  n8nExpressionIdentity,
+  suggestN8nExpressionName,
+} from "../../n8n/src/expression-naming.ts";
 import type {
   ConversationRevisionId,
   ExternalImportId,
@@ -163,40 +168,6 @@ function templateCollisionSafeSuffix(
   }
 }
 
-function inferredVariableName(expression: string): string | undefined {
-  const body = expression.startsWith("{{") && expression.endsWith("}}")
-    ? expression.slice(2, -2).trim()
-    : expression.trim();
-  const dot = /^\$json\.([A-Za-z_][A-Za-z0-9_]*)$/.exec(body)?.[1];
-  const bracket =
-    /^\$json\[\s*["']([A-Za-z_][A-Za-z0-9_]*)["']\s*\]$/.exec(body)?.[1];
-  // n8n expressions often reach a value through another node or a nested
-  // object. The final property is still a useful, readable native variable
-  // name even when the complete expression cannot be represented natively.
-  const terminalProperty =
-    /(?:\.|\[\s*["'])([A-Za-z_][A-Za-z0-9_]*)["']?\s*\]?\s*$/.exec(
-      body,
-    )?.[1];
-  const inferred = dot ?? bracket ?? terminalProperty;
-  return inferred && !isSensitiveTemplateVariableName(inferred)
-    ? inferred
-    : undefined;
-}
-
-function uniqueVariableName(preferred: string, used: Set<string>): string {
-  if (!used.has(preferred)) {
-    used.add(preferred);
-    return preferred;
-  }
-  for (let suffix = 2; ; suffix += 1) {
-    const candidate = `${preferred}_${suffix}`;
-    if (!used.has(candidate)) {
-      used.add(candidate);
-      return candidate;
-    }
-  }
-}
-
 /**
  * Groups bindings that should share one native template variable.
  *
@@ -211,7 +182,7 @@ function uniqueVariableName(preferred: string, used: Set<string>): string {
  * the import receipt either way.
  */
 function bindingKey(binding: ExpressionBinding): string {
-  return binding.expression;
+  return n8nExpressionIdentity(binding.expression).key;
 }
 
 export function projectExternalPromptTemplate(
@@ -226,21 +197,20 @@ export function projectExternalPromptTemplate(
 
   const usedNames = new Set<string>();
   const variableByExpression = new Map<string, string>();
-  let fallbackIndex = 0;
+  const fallbackIndex = { value: 0 };
   const variables = candidate.bindings.map((binding, bindingIndex) => {
     const key = bindingKey(binding);
     let variableName = variableByExpression.get(key);
     if (!variableName) {
-      const inferred = inferredVariableName(binding.expression);
-      if (inferred) {
-        variableName = uniqueVariableName(inferred, usedNames);
-      } else {
-        do {
-          fallbackIndex += 1;
-          variableName = `expression_${fallbackIndex}`;
-        } while (usedNames.has(variableName));
-        usedNames.add(variableName);
-      }
+      const suggestion = suggestN8nExpressionName(
+        binding.expression,
+        isSensitiveTemplateVariableName,
+      );
+      variableName = allocateN8nVariableName(
+        suggestion.name,
+        usedNames,
+        fallbackIndex,
+      );
       variableByExpression.set(key, variableName);
     }
     return {

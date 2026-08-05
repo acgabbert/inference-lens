@@ -36,7 +36,19 @@
       "name": "unterminated expression fails closed",
       "authored": "before {{ $json.topic",
       "expressions": [],
-      "invalid": true
+      "error": {
+        "offset": 7,
+        "reason": "Expression is missing its closing }} delimiter."
+      }
+    },
+    {
+      "name": "regular expression literals are rejected without a partial scan",
+      "authored": "{{ /}}/.test($json.topic) }}",
+      "expressions": [],
+      "error": {
+        "offset": 3,
+        "reason": "Regular expression literals are not supported in n8n expressions."
+      }
     }
   ]
 }

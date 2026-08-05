@@ -14,6 +14,16 @@ import type {
   N8nExecutionDetail,
   N8nWorkflowDetail,
 } from "./n8n-integration.ts";
+import {
+  scanN8nExpressionRegions,
+  type N8nExpressionScan,
+} from "../../../packages/n8n/src/expression-regions.ts";
+
+export { scanN8nExpressionRegions } from "../../../packages/n8n/src/expression-regions.ts";
+export type {
+  N8nExpressionRegion,
+  N8nExpressionScan,
+} from "../../../packages/n8n/src/expression-regions.ts";
 
 const BASIC_LLM_CHAIN_TYPE = "@n8n/n8n-nodes-langchain.chainLlm";
 const BASIC_LLM_CHAIN_VERSION = 1.9;
@@ -260,7 +270,34 @@ export interface N8nExpressionRegionScan {
  * understands strings, template literals, comments, and nested object braces;
  * malformed input fails closed instead of inventing a partial projection.
  */
-export function scanN8nExpressionRegions(
+function scanExpressionBindings(
+  authored: AuthoredPromptField,
+): N8nExpressionRegionScan {
+  if (authored.syntax !== "external-expression") {
+    return { bindings: [], invalid: false };
+  }
+  const contentStart = authored.contentSpan?.startOffset ?? 0;
+  const contentEnd = authored.contentSpan?.endOffset ?? authored.text.length;
+  const scan: N8nExpressionScan = scanN8nExpressionRegions(
+    authored.text.slice(contentStart, contentEnd),
+  );
+  if (!scan.ok) return { bindings: [], invalid: true };
+  return {
+    bindings: scan.regions.map((region) => ({
+      authoredPath: authored.path,
+      expression: region.expression,
+      source: {
+        kind: "expression-span",
+        startOffset: contentStart + region.startOffset,
+        endOffset: contentStart + region.endOffset,
+      },
+      status: "missing",
+    })),
+    invalid: false,
+  };
+}
+
+function legacyScanExpressionBindings(
   authored: AuthoredPromptField,
 ): N8nExpressionRegionScan {
   if (authored.syntax !== "external-expression") {
@@ -470,7 +507,7 @@ async function authoredOnlyCandidate(
     );
   }
   const authoredFields = Array.isArray(authored) ? authored : [authored];
-  const expressionScans = authoredFields.map(scanN8nExpressionRegions);
+  const expressionScans = authoredFields.map(scanExpressionBindings);
   if (expressionScans.some(({ invalid }) => invalid)) {
     warnings.push(
       warning(
@@ -780,7 +817,7 @@ const basicLlmChainExtractor: N8nPromptExtractor = {
         ? {}
         : { options: { temperature: effective.temperature } }),
     };
-    const expressionScan = scanN8nExpressionRegions(authored);
+    const expressionScan = scanExpressionBindings(authored);
     const semanticText = authored.text.slice(
       authored.contentSpan?.startOffset ?? 0,
       authored.contentSpan?.endOffset ?? authored.text.length,
@@ -854,7 +891,7 @@ function expressionEvidence(
   bindings: ExpressionBinding[];
   invalid: boolean;
 } {
-  const scans = authoredFields.map(scanN8nExpressionRegions);
+  const scans = authoredFields.map(scanExpressionBindings);
   const bindings = scans.flatMap((scan, fieldIndex) => {
     const authored = authoredFields[fieldIndex]!;
     const resolvedForRole = resolvedMessages.filter(

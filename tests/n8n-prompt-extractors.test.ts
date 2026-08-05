@@ -82,7 +82,7 @@ test("the fixture-proven multi-item Basic LLM Chain fails closed with authored p
       "simple={{topic}}\n" +
       "two={{first}}|{{second}}\n" +
       "compound={{expression_1}}\n" +
-      "nested={{expression_2}}\n" +
+      "nested={{topic_2}}\n" +
       "repeated={{first}}|{{repeat}}",
   );
   assert.deepEqual(projection.values, {});
@@ -393,21 +393,25 @@ test("scans fixture-backed n8n expression regions without evaluating JavaScript"
     cases: Array<{
       authored: string;
       expressions: string[];
-      invalid?: boolean;
+      error?: { offset: number; reason: string };
     }>;
   };
   for (const parserCase of fixture.cases) {
-    const scan = scanN8nExpressionRegions({
-      path: "parameters.text",
-      role: "user",
-      syntax: "external-expression",
-      text: parserCase.authored,
-    });
-    assert.equal(scan.invalid, parserCase.invalid ?? false);
-    assert.deepEqual(
-      scan.bindings.map(({ expression }) => expression),
-      parserCase.expressions,
-    );
+    const scan = scanN8nExpressionRegions(parserCase.authored);
+    if (parserCase.error) {
+      assert.deepEqual(scan, {
+        ok: false,
+        errorOffset: parserCase.error.offset,
+        reason: parserCase.error.reason,
+      });
+    } else {
+      assert.equal(scan.ok, true);
+      if (!scan.ok) continue;
+      assert.deepEqual(
+        scan.regions.map(({ expression }) => expression),
+        parserCase.expressions,
+      );
+    }
   }
 });
 
