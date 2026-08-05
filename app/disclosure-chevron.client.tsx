@@ -1,13 +1,10 @@
 "use client";
 
 /**
- * The affordance a native `details` marker — and a plain toggle button — is too
- * quiet to provide. Drawn rather than typed: U+2304's ink sits high in its em
- * box, which a bordered square exposes as an off-centre glyph. `currentColor`
- * keeps it on the theme tokens.
- *
- * The caller owns the box and the rotation, so open and closed stay the same
- * object turning rather than two glyphs swapping.
+ * Shared disclosure affordance. Drawn rather than typed because U+2304's ink
+ * sits high in its em box, which a bordered square exposes as off-centre.
+ * The caller owns the box and rotation so open and closed remain one object
+ * turning rather than two glyphs swapping.
  */
 export function DisclosureChevron({ className }: { className?: string }) {
   return (

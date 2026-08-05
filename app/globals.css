@@ -5009,59 +5009,18 @@ main {
   background: var(--surface-sunken);
 }
 
-.inference-settings-summary {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  padding: 5px 12px;
-}
-
-/* The model field earns the summary row's spare width: it is the setting these
-   surfaces change most often, which is why it is not behind the disclosure. */
-.inference-settings-summary .model-combobox {
-  /* Basis is the wrap threshold, not the width: it decides how narrow the pane
-     can get before the tail drops to its own line, and the 2× grow hands the
-     field most of the spare width once the line fits. */
-  flex: 2 1 180px;
-  min-width: 0;
-}
-
-/* The trigger and the surface's action travel as one unit: on a wide pane they
-   share the model's line, and squeezed they drop below it together instead of
-   stranding one of them. */
-.inference-settings-tail {
-  min-width: 0;
-  flex: 1 0 auto;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-}
-
-/* The row's context already says what the field is; the word stays for the
-   accessible name only. */
-.inference-settings-summary .model-combobox-label {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
 .inference-settings-toggle {
+  width: 100%;
   min-width: 0;
-  flex: 1 1 auto;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 6px 7px;
+  gap: 10px;
+  padding: 11px 13px;
   border: 0;
-  border-radius: 7px;
+  border-radius: 9px;
   background: transparent;
+  color: var(--text-primary);
+  font: inherit;
   text-align: left;
   cursor: pointer;
 }
@@ -5093,42 +5052,64 @@ main {
   letter-spacing: 0.06em;
 }
 
-/* The collapsed values wrap rather than truncate. A model id the reader cannot
-   finish reading is no better than one the panel hid. */
 .inference-settings-facts {
   min-width: 0;
+  flex: 1 1 auto;
   display: flex;
   align-items: baseline;
-  flex-wrap: wrap;
   gap: 4px 7px;
-}
-
-/* Expanded, the controls are the values; repeating them in the trigger reads as
-   a second, possibly stale copy. */
-.inference-settings.open .inference-settings-facts {
-  display: none;
+  overflow: hidden;
 }
 
 .inference-settings-fact {
+  min-width: 0;
   padding: 1px 8px;
   border: 1px solid var(--border-subtle);
   border-radius: 999px;
   color: var(--text-muted);
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.inference-settings .menu-chevron {
-  margin-left: auto;
+.inference-settings-chevron {
   flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
   color: var(--text-muted);
+  line-height: 0;
+  transform: rotate(180deg);
+  transition: transform 120ms ease;
 }
 
-.inference-settings.open .menu-chevron {
-  rotate: 180deg;
+.inference-settings-chevron svg {
+  display: block;
+}
+
+.inference-settings-toggle[aria-expanded="false"] .inference-settings-chevron {
+  transform: rotate(0deg);
+}
+
+.inference-settings-hint {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--text-muted);
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .inference-settings-body {
-  padding: 3px 12px 12px;
+  padding: 2px 13px 13px;
+}
+
+.inference-settings-actions {
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .inference-settings label {
@@ -6128,10 +6109,6 @@ main {
   .inference-settings-grid > * {
     flex-basis: calc(50% - 8px);
   }
-
-  .inference-settings-summary .model-combobox {
-    flex-basis: 100%;
-  }
 }
 
 @media (max-width: 880px) {
@@ -6171,25 +6148,12 @@ main {
     display: none;
   }
 
-  .inference-settings-grid > *,
-  .inference-settings-summary .model-combobox {
+  .inference-settings-grid > * {
     flex-basis: 100%;
   }
 
-  /* The summary is the only thing left worth keeping on one line here. */
-  .inference-settings-toggle {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .inference-settings .menu-chevron {
-    position: absolute;
-    right: 12px;
-  }
-
-  .inference-settings-summary {
-    position: relative;
+  .inference-settings-hint {
+    display: none;
   }
 }
 

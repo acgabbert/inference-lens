@@ -14,6 +14,7 @@ import {
   MIN_EXPERIMENT_TURN_CEILING,
 } from "../../packages/core/src/experiment";
 import { InferenceSettingsPanel } from "../inference-settings-panel.client";
+import { DisclosureChevron } from "../disclosure-chevron.client";
 import { experimentToolBindingLabel } from "../run/experiment-tool-bindings.client";
 import type { ExperimentToolBinding } from "../run/experiment-tool-bindings.client";
 import { PaneEmptyState } from "../pane-empty-state.client";
@@ -29,7 +30,6 @@ import {
   EvaluationSuiteHistory,
   type EvaluationSuiteHistoryHandle,
 } from "./evaluation-suite-history.client";
-import { DisclosureChevron } from "./disclosure-chevron.client";
 import { BlockerChip } from "../blocker-chip.client";
 import styles from "./evaluation-surface.module.css";
 

@@ -169,9 +169,13 @@ export function RequestComposer({
       });
       return () => { cancelled = true; };
     }
-    // The model field lives in the settings panel's always-visible summary
-    // row, so a destination that names it focuses directly — no disclosure
-    // needs to open first.
+    // The model field lives inside the settings disclosure. Readiness routing
+    // opens its owner first, then this effect runs again against the mounted
+    // control and focuses it.
+    if (pendingDestination.control === "model" && !settingsOpen) {
+      setSettingsOpen(true);
+      return;
+    }
     const target =
       pendingDestination.control === "model"
         ? modelRef.current
@@ -201,7 +205,7 @@ export function RequestComposer({
     target.scrollIntoView?.({ block: "center" });
     target.focus();
     onDestinationHandled();
-  }, [activeTab, onDestinationHandled, pendingDestination]);
+  }, [activeTab, onDestinationHandled, pendingDestination, settingsOpen]);
 
   return (
     <section

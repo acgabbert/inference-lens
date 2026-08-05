@@ -7,6 +7,7 @@ import {
   TemperatureControl,
 } from "./temperature-control.client";
 import type { ModelDiscoveryState } from "./use-model-discovery.client";
+import { DisclosureChevron } from "./disclosure-chevron.client";
 
 /**
  * The provider-neutral option set every run-driving surface owns a copy of. It
@@ -129,13 +130,6 @@ function deliverySummary(responseMode: "streaming" | "buffered"): string {
  * keeps its own persistence, because the same three fields are session state in
  * one place and portable project content in another.
  *
- * The model field is the one control that stays out of the disclosure: it is
- * the setting these surfaces change most often, so it lives in the summary row
- * as a live combobox while temperature, delivery, and the surface's own slots
- * collapse behind the chevron. A read-only mount reports the model as a fact
- * instead — a frozen plan's field would be an invitation to an edit that can
- * never be accepted.
- *
  * The disclosure is deliberately inline rather than floating. Two of the three
  * mounts sit inside `overflow: auto` panes and the third inside a modal, where
  * an anchored popover is either clipped or in the top layer above a dialog. The
@@ -209,11 +203,9 @@ export function InferenceSettingsPanel({
     }
   }
 
-  // The live combobox is the model's presence in an editable panel, so only a
-  // read-only mount reports it as a fact alongside the rest.
   const facts = [
     connection?.summary,
-    readOnly ? value.model || "No model" : undefined,
+    value.model || "No model",
     temperatureSummary(value.temperature),
     showDelivery ? deliverySummary(value.responseMode) : undefined,
     repetitions?.summary,
@@ -225,64 +217,32 @@ export function InferenceSettingsPanel({
       className={open ? "inference-settings open" : "inference-settings"}
       aria-label={label}
     >
-      <div className="inference-settings-summary">
-        {/* Outside the toggle: a button cannot wrap around the interactive
-            combobox that now sits between the identity and the facts. */}
+      <button
+        aria-controls={bodyId}
+        aria-expanded={open}
+        className="inference-settings-toggle"
+        onClick={() => onOpenChange(!open)}
+        type="button"
+      >
+        <DisclosureChevron className="inference-settings-chevron" />
         <span className="inference-settings-identity">
           <strong>{heading}</strong>
           <span className="inference-settings-scope">{scopeLabel}</span>
         </span>
-        {readOnly ? null : (
-          <ModelCombobox
-            idPrefix={`${idPrefix}-model`}
-            readinessTarget={readinessTarget}
-            {...(modelInputRef ? { inputRef: modelInputRef } : {})}
-            value={value.model}
-            onChange={(model) => onChange({ ...value, model })}
-            discovery={modelDiscovery}
-            onLoadModels={(force) => onLoadModels?.(force)}
-            favoriteModels={favoriteModels}
-            onToggleFavoriteModel={(model) => onToggleFavoriteModel?.(model)}
-          />
-        )}
-        {!readOnly && open && modelOverridden ? (
-          <OverrideMarker
-            field="model"
-            override={{
-              inheritedFrom: inherited.label,
-              onRevert: () => revertSharedField("model"),
-            }}
-          />
-        ) : null}
-        {/* One flex child so a squeezed summary wraps the trigger and the
-            action to the next line together instead of stranding either. */}
-        <span className="inference-settings-tail">
-          <button
-            aria-controls={bodyId}
-            aria-expanded={open}
-            aria-label={`${heading} controls`}
-            className="inference-settings-toggle"
-            onClick={() => onOpenChange(!open)}
-            type="button"
-          >
-            {/* The collapsed values are the reason this can be collapsed at
-                all, so they stay in the trigger rather than behind it. */}
-            <span className="inference-settings-facts">
-              {facts.map((fact) => (
-                <span className="inference-settings-fact" key={fact}>
-                  {fact}
-                </span>
-              ))}
+        <span className="inference-settings-facts">
+          {facts.map((fact) => (
+            <span className="inference-settings-fact" key={fact}>
+              {fact}
             </span>
-            <span aria-hidden="true" className="menu-chevron">
-              ⌄
-            </span>
-          </button>
-          {action}
+          ))}
         </span>
-      </div>
+        <span className="inference-settings-hint">
+          {open ? "Hide" : "Show settings"}
+        </span>
+      </button>
       {open ? (
         <div className="inference-settings-body" id={bodyId}>
+          {action ? <div className="inference-settings-actions">{action}</div> : null}
           {readOnly ? (
             <dl className="inference-settings-record">
               {connection?.summary ? (
@@ -318,6 +278,28 @@ export function InferenceSettingsPanel({
             </dl>
           ) : (
             <div className="inference-settings-grid">
+              <div className="inference-settings-field">
+                <ModelCombobox
+                  idPrefix={`${idPrefix}-model`}
+                  readinessTarget={readinessTarget}
+                  {...(modelInputRef ? { inputRef: modelInputRef } : {})}
+                  value={value.model}
+                  onChange={(model) => onChange({ ...value, model })}
+                  discovery={modelDiscovery}
+                  onLoadModels={(force) => onLoadModels?.(force)}
+                  favoriteModels={favoriteModels}
+                  onToggleFavoriteModel={(model) => onToggleFavoriteModel?.(model)}
+                />
+                {modelOverridden ? (
+                  <OverrideMarker
+                    field="model"
+                    override={{
+                      inheritedFrom: inherited.label,
+                      onRevert: () => revertSharedField("model"),
+                    }}
+                  />
+                ) : null}
+              </div>
               {connection?.control ? (
                 <div className="inference-settings-field">
                   {connection.control}

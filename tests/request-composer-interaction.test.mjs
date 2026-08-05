@@ -201,16 +201,16 @@ test("the settings panel hides its controls behind a summary of what will be sen
     const toggle = view.settingsToggle();
     assert.ok(toggle);
     assert.equal(toggle.getAttribute("aria-expanded"), "false");
-    // The model stays a live field in the summary row; collapsing hides only
-    // the project-owned secondary controls, whose values remain named as facts.
+    // Collapsing hides the project-owned controls while their values remain
+    // named as facts.
     // Delivery is a separate session preference and is asserted by the browser
     // suite that exercises the complete request settings surface.
     const model = view.container.querySelector('[data-readiness-control="model"]');
-    assert.equal(model?.value, "fixture-model");
+    assert.equal(model, null);
     const facts = Array.from(
       view.container.querySelectorAll(".inference-settings-fact"),
     ).map((fact) => fact.textContent);
-    assert.deepEqual(facts, ["Temp 0.7"]);
+    assert.deepEqual(facts, ["fixture-model", "Temp 0.7"]);
     assert.equal(
       view.container.querySelector('.temperature-control input[type="range"]'),
       null,
@@ -225,6 +225,10 @@ test("the settings panel hides its controls behind a summary of what will be sen
     assert.ok(
       view.container.querySelector('.temperature-control input[type="range"]'),
     );
+    assert.equal(
+      view.container.querySelector('[data-readiness-control="model"]')?.value,
+      "fixture-model",
+    );
 
     await view.click(toggle);
     assert.equal(view.container.querySelector(".inference-settings-body"), null);
@@ -233,18 +237,17 @@ test("the settings panel hides its controls behind a summary of what will be sen
   }
 });
 
-test("a readiness destination naming the model focuses it without disturbing the panel", async () => {
+test("a readiness destination naming the model opens its panel and focuses it", async () => {
   let handled = 0;
   const view = await mount({
     pendingDestination: { surface: "request", tab: "messages", control: "model" },
     onDestinationHandled: () => { handled += 1; },
   });
   try {
-    // The field lives in the always-visible summary row, so the destination
-    // focuses it directly and the disclosure stays collapsed.
+    // The destination opens the field's disclosure before focusing it.
     const input = view.container.querySelector('[data-readiness-control="model"]');
     assert.ok(input);
-    assert.equal(view.settingsToggle().getAttribute("aria-expanded"), "false");
+    assert.equal(view.settingsToggle().getAttribute("aria-expanded"), "true");
     assert.equal(document.activeElement, input);
     assert.equal(handled, 1);
   } finally {
