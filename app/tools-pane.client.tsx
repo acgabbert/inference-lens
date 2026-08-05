@@ -119,12 +119,12 @@ export function ToolsPane({
                   Once
                 </span>
                 <button
-                  aria-label={`Remove ${tool.name || "this tool"} from the next request`}
+                  aria-label={`Detach ${tool.name || "this tool"} from the next request`}
                   className="text-button"
                   type="button"
                   onClick={() => onRemoveRequestTool(tool.id)}
                 >
-                  Remove
+                  Detach
                 </button>
               </li>
             ))}

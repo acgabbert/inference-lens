@@ -144,13 +144,13 @@ test("the extracted composer renders request snapshots without a project", async
   assert.match(html, /Profile default/);
   assert.match(html, /Composer fixture message/);
   assert.match(html, /Open request composer in focus mode/);
-  // The settings panel starts collapsed: its summary reports every value the
-  // next run will send, and the controls themselves are not in the document
-  // until the panel is expanded.
+  // Project-backed settings start collapsed. Delivery remains visible because
+  // it is intentionally a separate session preference.
   assert.match(html, /fixture-model/);
   assert.match(html, /Temp 0\.7/);
   assert.match(html, /Buffered/);
-  assert.doesNotMatch(html, /Stream response/);
+  assert.match(html, /Session preference/);
+  assert.match(html, /Stream response/);
   assert.doesNotMatch(html, /Override temperature/);
   // The tool line stays outside the panel, so a blocked tool selection cannot
   // be hidden by collapsing it.
@@ -221,7 +221,9 @@ test("the resolved request preview uses one disclosure without nesting details",
   );
 
   assert.match(html, /Resolved request preview/);
-  assert.match(html, /Raw OpenAI-compatible request body/);
+  assert.match(html, /role="tab"/);
+  assert.match(html, />Raw</);
+  assert.doesNotMatch(html, /Raw OpenAI-compatible request body/);
   assert.equal((html.match(/<details/g) ?? []).length, 1);
 });
 
@@ -237,6 +239,8 @@ test("the tool manifest lists both routes to a request in one place", async () =
   assert.match(html, /scratch_pad/);
   assert.match(html, /tool-origin project/);
   assert.match(html, /tool-origin once/);
+  assert.equal((html.match(/>Detach</g) ?? []).length, 2);
+  assert.match(html, /aria-label="Detach scratch_pad from the next request"/);
 });
 
 test("an unselected project tool is counted out of the manifest", async () => {

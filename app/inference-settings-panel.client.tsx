@@ -105,6 +105,11 @@ export interface InferenceSettingsPanelProps {
   notes?: ReactNode;
   /** A control that stays reachable while the panel is collapsed. */
   action?: ReactNode;
+  /**
+   * Some callers own delivery independently of their persisted inference
+   * settings. They can render it beside this panel with its truthful scope.
+   */
+  showDelivery?: boolean;
 }
 
 function temperatureSummary(temperature: number | undefined): string {
@@ -159,6 +164,7 @@ export function InferenceSettingsPanel({
   repetitions,
   notes,
   action,
+  showDelivery = true,
 }: InferenceSettingsPanelProps) {
   const scope = useId();
   const bodyId = `${idPrefix}-settings-body-${scope}`;
@@ -167,8 +173,11 @@ export function InferenceSettingsPanel({
     value.temperature,
     inherited.value.temperature,
   );
-  const deliveryOverridden = inherited &&
+  const deliveryOverridden = showDelivery && inherited &&
     value.responseMode !== inherited.value.responseMode;
+  const overrideCount = [modelOverridden, temperatureOverridden, deliveryOverridden]
+    .filter(Boolean)
+    .length;
 
   function revertSharedField(field: keyof InferenceSettingsValue): void {
     if (!inherited) return;
@@ -198,8 +207,9 @@ export function InferenceSettingsPanel({
     connection?.summary,
     readOnly ? value.model || "No model" : undefined,
     temperatureSummary(value.temperature),
-    deliverySummary(value.responseMode),
+    showDelivery ? deliverySummary(value.responseMode) : undefined,
     repetitions?.summary,
+    overrideCount > 0 ? `${overrideCount} ${overrideCount === 1 ? "override" : "overrides"}` : undefined,
   ].filter((fact): fact is string => Boolean(fact));
 
   return (
@@ -285,10 +295,12 @@ export function InferenceSettingsPanel({
                     : value.temperature.toFixed(1)}
                 </dd>
               </div>
-              <div>
-                <dt>Delivery</dt>
-                <dd>{deliverySummary(value.responseMode)}</dd>
-              </div>
+              {showDelivery ? (
+                <div>
+                  <dt>Delivery</dt>
+                  <dd>{deliverySummary(value.responseMode)}</dd>
+                </div>
+              ) : null}
               {repetitions?.summary ? (
                 <div>
                   <dt>Repetitions</dt>
@@ -322,8 +334,9 @@ export function InferenceSettingsPanel({
                   />
                 ) : null}
               </div>
-              <div className="inference-settings-field">
-                <label
+              {showDelivery ? (
+                <div className="inference-settings-field">
+                  <label
                 className={
                   streamingAvailable
                     ? "streaming-control"
@@ -356,17 +369,18 @@ export function InferenceSettingsPanel({
                       : "Unavailable here; responses are buffered."}
                   </small>
                 </span>
-              </label>
-                {deliveryOverridden ? (
-                  <OverrideMarker
-                    field="delivery"
-                    override={{
-                      inheritedFrom: inherited.label,
-                      onRevert: () => revertSharedField("responseMode"),
-                    }}
-                  />
-                ) : null}
-              </div>
+                  </label>
+                  {deliveryOverridden ? (
+                    <OverrideMarker
+                      field="delivery"
+                      override={{
+                        inheritedFrom: inherited.label,
+                        onRevert: () => revertSharedField("responseMode"),
+                      }}
+                    />
+                  ) : null}
+                </div>
+              ) : null}
               {repetitions?.control ? (
                 <div className="inference-settings-field">
                   {repetitions.control}

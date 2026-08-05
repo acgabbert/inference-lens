@@ -269,7 +269,7 @@ export function ProjectTemplatesPane({
             </h3>
             <p>
               {libraryView === "active"
-                ? "Create a prompt to begin."
+                ? "Prompts are reusable, versioned messages saved with this project. Create one to begin."
                 : "Prompts you archive will remain available to historical conversations."}
             </p>
           </div>

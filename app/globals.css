@@ -1689,6 +1689,29 @@ output {
   margin: 12px 13px 6px;
 }
 
+.request-preview-view-switch {
+  display: flex;
+  gap: 4px;
+  margin: 12px 13px 0;
+}
+
+.request-preview-view-switch button {
+  padding: 4px 9px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--surface-panel);
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+}
+
+.request-preview-view-switch button[aria-selected="true"] {
+  border-color: var(--accent);
+  background: var(--surface-inset);
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
 .request-preview pre {
   max-height: 260px;
   margin: 0 13px 13px;
@@ -1730,13 +1753,6 @@ output {
 
 .request-preview-raw {
   margin: 0 13px 13px;
-}
-
-.request-preview-raw summary {
-  padding: 0 0 8px;
-  color: var(--text-muted);
-  font-weight: 700;
-  cursor: pointer;
 }
 
 .request-preview-raw pre {
@@ -5097,6 +5113,35 @@ main {
 
 .inference-settings-override .text-button {
   padding: 0;
+}
+
+/* Delivery lives outside the project-backed settings disclosure: it is a
+   session preference, so its scope must not borrow the panel's project badge. */
+.request-delivery-preference {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 7px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 9px;
+  background: var(--surface-panel);
+}
+
+.request-delivery-identity {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--text-secondary);
+}
+
+.request-delivery-value {
+  color: var(--text-muted);
+}
+
+.request-delivery-preference .streaming-control {
+  margin-left: auto;
+  display: flex;
 }
 
 .inference-settings-record {
