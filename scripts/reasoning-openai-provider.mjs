@@ -1,5 +1,7 @@
 import { createServer } from "node:http";
 
+import { stopOnSignal } from "./fixture-shutdown.mjs";
+
 const host = "127.0.0.1";
 const port = Number.parseInt(process.env.INFERENCE_LENS_REASONING_PORT ?? "4014", 10);
 const deltaMs = Number.parseInt(
@@ -97,6 +99,8 @@ const server = createServer(async (request, response) => {
     `streamed ${reasoningDeltas.length} reasoning deltas and ${answerDeltas.length} answer deltas`,
   );
 });
+
+stopOnSignal(server);
 
 server.listen(port, host, () => {
   console.log(`Reasoning provider listening at http://${host}:${port}/v1`);

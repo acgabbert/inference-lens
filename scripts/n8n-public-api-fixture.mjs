@@ -2,6 +2,8 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
 
+import { stopOnSignal } from "./fixture-shutdown.mjs";
+
 const host = "127.0.0.1";
 const port = Number.parseInt(
   process.env.INFERENCE_LENS_N8N_FIXTURE_PORT ?? "5680",
@@ -206,13 +208,8 @@ const server = createServer((request, response) => {
   sendJson(response, 404, { message: "Fixture resource not found." });
 });
 
+stopOnSignal(server);
+
 server.listen(port, host, () => {
   console.log(`n8n public API fixture listening at http://${host}:${port}`);
 });
-
-function stop() {
-  server.close(() => process.exit(0));
-}
-
-process.on("SIGINT", stop);
-process.on("SIGTERM", stop);

@@ -1,10 +1,8 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
 
-import react from "@vitejs/plugin-react";
 import { JSDOM } from "jsdom";
-import { createServer } from "vite";
-import { uniqueViteCacheDir } from "./support/vite-cache-dir.mjs";
+import { ssrLoadModule } from "./support/ssr.mjs";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   url: "http://localhost",
@@ -88,16 +86,9 @@ function execution() {
 }
 
 test("contextual experiment review can select another trace and return to the request", async () => {
-  const server = await createServer({
-    configFile: false, cacheDir: uniqueViteCacheDir(),
-    root: process.cwd(),
-    plugins: [react()],
-    server: { middlewareMode: true, hmr: false, ws: false },
-    logLevel: "warn",
-  });
   const [{ RepeatedExperimentWorkspace }, { createElement }, { createRoot }, { act }] =
     await Promise.all([
-      server.ssrLoadModule("/app/run/repeated-experiment-workspace.client.tsx"),
+      ssrLoadModule("/app/run/repeated-experiment-workspace.client.tsx"),
       import("react"),
       import("react-dom/client"),
       import("react"),
@@ -135,6 +126,5 @@ test("contextual experiment review can select another trace and return to the re
   } finally {
     await act(async () => root.unmount());
     container.remove();
-    await server.close();
   }
 });

@@ -14,6 +14,8 @@ jobs:
   web:
     name: Web
     runs-on: ubuntu-latest
+    # A hung test would otherwise run to GitHub's 6-hour default.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
@@ -36,6 +38,9 @@ jobs:
   e2e:
     name: End-to-end
     runs-on: ubuntu-latest
+    # Above playwright.config.ts's globalTimeout, so the suite's own bound
+    # fires first and leaves a report rather than the job being cut off.
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v7
 
@@ -67,6 +72,7 @@ jobs:
   desktop:
     name: Desktop host
     runs-on: macos-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
 

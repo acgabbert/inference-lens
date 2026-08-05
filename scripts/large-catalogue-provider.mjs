@@ -1,5 +1,7 @@
 import { createServer } from "node:http";
 
+import { stopOnSignal } from "./fixture-shutdown.mjs";
+
 // Exercises the model picker's favorites feature against a catalogue the
 // size OpenRouter actually returns (300+ models), where a flat list is
 // unusable. Chat completions are not the point of this fixture — it answers
@@ -112,6 +114,8 @@ const server = createServer(async (request, response) => {
   })}\n\n`);
   response.end("data: [DONE]\n\n");
 });
+
+stopOnSignal(server);
 
 server.listen(port, host, () => {
   console.log(

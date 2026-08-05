@@ -1,10 +1,8 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
 
-import react from "@vitejs/plugin-react";
 import { JSDOM } from "jsdom";
-import { createServer } from "vite";
-import { uniqueViteCacheDir } from "./support/vite-cache-dir.mjs";
+import { ssrLoadModule } from "./support/ssr.mjs";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   url: "http://localhost",
@@ -29,20 +27,12 @@ Object.defineProperty(globalThis, "navigator", {
 after(() => dom.window.close());
 
 /**
- * A Vite server holds the event loop open, so anything that throws between
- * creating one and handing back its `close` has to take the server down on the
- * way out. Without this, a single failing render does not report a failure —
- * it leaks a live server and the whole file hangs until something kills it,
- * which hides the real assertion behind a timeout.
+ * A render that throws still has to leave the document as it found it, or the
+ * next test mounts alongside the wreckage and its assertions read both. The SSR
+ * server is the file's, not this call's — `tests/support/ssr.mjs` opens it once
+ * and closes it once.
  */
 async function render(modulePath, component, props) {
-  const server = await createServer({
-    configFile: false, cacheDir: uniqueViteCacheDir(),
-    root: process.cwd(),
-    plugins: [react()],
-    server: { middlewareMode: true, hmr: false, ws: false },
-    logLevel: "warn",
-  });
   let container;
   let root;
   try {
@@ -50,7 +40,7 @@ async function render(modulePath, component, props) {
       import("react"),
       import("react-dom/client"),
       import("react"),
-      server.ssrLoadModule(modulePath),
+      ssrLoadModule(modulePath),
     ]);
     container = document.createElement("div");
     document.body.append(container);
@@ -59,19 +49,14 @@ async function render(modulePath, component, props) {
   } catch (error) {
     root?.unmount();
     container?.remove();
-    await server.close();
     throw error;
   }
   return {
     container,
     async close() {
       const { act } = await import("react");
-      try {
-        await act(async () => root.unmount());
-        container.remove();
-      } finally {
-        await server.close();
-      }
+      await act(async () => root.unmount());
+      container.remove();
     },
   };
 }

@@ -1,9 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import react from "@vitejs/plugin-react";
-import { createServer } from "vite";
-import { uniqueViteCacheDir } from "./support/vite-cache-dir.mjs";
+import { ssrLoadModule } from "./support/ssr.mjs";
 
 /**
  * Renders the real drawer through Vite's SSR pipeline rather than asserting on
@@ -16,33 +14,22 @@ import { uniqueViteCacheDir } from "./support/vite-cache-dir.mjs";
  * usage, one with no turns, one with no measured duration — are all covered.
  */
 async function renderDrawer(props) {
-  const server = await createServer({
-    configFile: false, cacheDir: uniqueViteCacheDir(),
-    root: process.cwd(),
-    plugins: [react()],
-    server: { middlewareMode: true, hmr: false, ws: false },
-    logLevel: "warn",
-  });
-  try {
-    const [{ RunHistoryDrawer }, { renderToStaticMarkup }, { createElement }] =
-      await Promise.all([
-        server.ssrLoadModule("/app/run-history-drawer.client.tsx"),
-        import("react-dom/server"),
-        import("react"),
-      ]);
-    return renderToStaticMarkup(
-      createElement(RunHistoryDrawer, {
-        open: true,
-        projectName: "demo-project",
-        onClose() {},
-        async onSelect() {},
-        async onSelectExperiment() {},
-        ...props,
-      }),
-    );
-  } finally {
-    await server.close();
-  }
+  const [{ RunHistoryDrawer }, { renderToStaticMarkup }, { createElement }] =
+    await Promise.all([
+      ssrLoadModule("/app/run-history-drawer.client.tsx"),
+      import("react-dom/server"),
+      import("react"),
+    ]);
+  return renderToStaticMarkup(
+    createElement(RunHistoryDrawer, {
+      open: true,
+      projectName: "demo-project",
+      onClose() {},
+      async onSelect() {},
+      async onSelectExperiment() {},
+      ...props,
+    }),
+  );
 }
 
 function historyState(overrides = {}) {

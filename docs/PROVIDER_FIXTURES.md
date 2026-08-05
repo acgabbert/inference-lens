@@ -96,9 +96,16 @@ npx playwright test --project=chromium-light          # one theme
 ```
 
 `playwright.config.ts` starts the dev server on port 4300 and the buffered
-fixture provider on 44014 for you, and runs every spec twice — once in
-`chromium-light` and once in `chromium-dark`. Do not start a dev server by hand
-for a Playwright run; the config owns that lifecycle.
+fixture provider on 44014 for you. Do not start a dev server by hand for a
+Playwright run; the config owns that lifecycle.
+
+Every spec runs in `chromium-light`. `chromium-dark` re-runs only the specs
+named in `themeSensitiveSpecs` — the ones that read resolved styles, where
+`light-dark()` tokens mean an assertion can hold in one scheme and not the
+other. A spec that asserts on text or roles cannot fail in dark for a reason
+light would not also catch, so running it twice bought nothing and cost about
+half the suite's wall clock. **If you add an assertion on `getComputedStyle`,
+add the spec to that list** — otherwise it is only ever checked in light.
 
 The suite is deliberately **not** part of `npm test`. Run both before opening a
 pull request.
@@ -336,12 +343,32 @@ difference.
 
 Theming is `light-dark()` tokens with no `prefers-color-scheme` blocks (see
 [THEMING.md](THEMING.md)), so `page.emulateMedia({ colorScheme: "dark" })` is
-enough to check the dark rendering. New CSS must draw its colors from the
-`:root` tokens; `tests/theme-tokens.test.ts` fails on any color literal outside
-that block.
+enough to check the dark rendering within a single spec. Only the specs listed
+in `themeSensitiveSpecs` are re-run wholesale in `chromium-dark`; add yours if
+it asserts on resolved styles.
+
+New CSS must draw its colors from the `:root` tokens;
+`tests/theme-tokens.test.ts` fails on any color literal outside that block.
 
 ## Cleaning up
 
 Fixtures and `npm run dev` are long-lived processes. Stop them when the check is
 finished — a stale fixture on port 4010 or 4011 will quietly serve a later
 session and make its results confusing.
+
+Every fixture arms `stopOnSignal` from `scripts/fixture-shutdown.mjs` before it
+listens, so `Ctrl-C` and Playwright's teardown both stop it promptly even with a
+client mid-request. A new fixture must do the same. The shape that looks correct
+and is not:
+
+```js
+process.on("SIGTERM", () => server.close(() => process.exit(0)));
+```
+
+`close()` stops the server accepting and then waits for open connections to end
+on their own. An SSE stream still being written never does, so the callback
+never runs, the fixture ignores SIGTERM, and it keeps its port until something
+SIGKILLs it — which surfaces one run later as a port-in-use error that names
+nothing. `stopOnSignal` calls `closeAllConnections()`, which is the part that
+makes the difference. `tests/fixture-shutdown.test.mjs` holds a request open
+against every fixture and asserts each one stops.

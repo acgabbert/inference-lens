@@ -1,31 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import react from "@vitejs/plugin-react";
-import { createServer } from "vite";
-import { uniqueViteCacheDir } from "./support/vite-cache-dir.mjs";
+import { ssrLoadModule } from "./support/ssr.mjs";
 import { evaluationFixture } from "./fixtures/evaluation-suite-authoring.mjs";
 
 async function render(authoring, execution, history) {
-  const server = await createServer({ configFile: false, cacheDir: uniqueViteCacheDir(), root: process.cwd(), plugins: [react()], server: { middlewareMode: true, hmr: false, ws: false }, logLevel: "warn" });
-  try {
-    const [{ EvaluationSuiteEditor }, { renderToStaticMarkup }, { createElement }] = await Promise.all([
-      server.ssrLoadModule("/app/evaluations/evaluation-suite-editor.client.tsx"),
-      import("react-dom/server"), import("react"),
-    ]);
-    return renderToStaticMarkup(createElement(EvaluationSuiteEditor, { authoring, execution, history }));
-  } finally { await server.close(); }
+  const [{ EvaluationSuiteEditor }, { renderToStaticMarkup }, { createElement }] = await Promise.all([
+    ssrLoadModule("/app/evaluations/evaluation-suite-editor.client.tsx"),
+    import("react-dom/server"), import("react"),
+  ]);
+  return renderToStaticMarkup(createElement(EvaluationSuiteEditor, { authoring, execution, history }));
 }
 
 /** The preview is the response pane's occupant, so it renders on its own. */
 async function renderPreview(authoring, execution) {
-  const server = await createServer({ configFile: false, cacheDir: uniqueViteCacheDir(), root: process.cwd(), plugins: [react()], server: { middlewareMode: true, hmr: false, ws: false }, logLevel: "warn" });
-  try {
-    const [{ EvaluationPreviewWorkspace }, { renderToStaticMarkup }, { createElement }] = await Promise.all([
-      server.ssrLoadModule("/app/evaluations/evaluation-case-preview.client.tsx"),
-      import("react-dom/server"), import("react"),
-    ]);
-    return renderToStaticMarkup(createElement(EvaluationPreviewWorkspace, { authoring, execution }));
-  } finally { await server.close(); }
+  const [{ EvaluationPreviewWorkspace }, { renderToStaticMarkup }, { createElement }] = await Promise.all([
+    ssrLoadModule("/app/evaluations/evaluation-case-preview.client.tsx"),
+    import("react-dom/server"), import("react"),
+  ]);
+  return renderToStaticMarkup(createElement(EvaluationPreviewWorkspace, { authoring, execution }));
 }
 
 test("renders compact preflight and the focused case workspace", async () => {
@@ -145,79 +137,73 @@ test("a suite that exposes no tools shows neither a ceiling nor a call range", a
 });
 
 test("evaluation confirmation lists the binding behind every tool it will serve", async () => {
-  const server = await createServer({ configFile: false, cacheDir: uniqueViteCacheDir(), root: process.cwd(), plugins: [react()], server: { middlewareMode: true, hmr: false, ws: false }, logLevel: "warn" });
-  try {
-    const [{ EvaluationStartDialog }, { renderToStaticMarkup }, { createElement }] = await Promise.all([
-      server.ssrLoadModule("/app/evaluations/evaluation-start-dialog.client.tsx"),
-      import("react-dom/server"), import("react"),
-    ]);
-    const html = renderToStaticMarkup(createElement(EvaluationStartDialog, {
-      draft: {
-        targetName: "Fixture profile",
-        revisionLabel: "Current · Aug 1, 12:00 PM",
-        storage: "durable",
-        toolBindings: [{
-          tool: { id: "tool_weather", name: "get_weather" },
-          binding: { toolId: "tool_weather", kind: "command", executorId: "weather", label: "Local weather script" },
-        }],
-        plan: {
-          repetitions: 2,
-          turnCeiling: 4,
-          cells: Array.from({ length: 4 }),
-          suite: { name: "Quality gate", conversationRevisionId: "revision_frozen", cases: [
-            { caseId: "evaluation-case_1", name: "Case 1", input: { target: { model: "fixture-model" } } },
-            { caseId: "evaluation-case_2", name: "Case 2", input: { target: { model: "fixture-model" } } },
-          ] },
-        },
+  const [{ EvaluationStartDialog }, { renderToStaticMarkup }, { createElement }] = await Promise.all([
+    ssrLoadModule("/app/evaluations/evaluation-start-dialog.client.tsx"),
+    import("react-dom/server"), import("react"),
+  ]);
+  const html = renderToStaticMarkup(createElement(EvaluationStartDialog, {
+    draft: {
+      targetName: "Fixture profile",
+      revisionLabel: "Current · Aug 1, 12:00 PM",
+      storage: "durable",
+      toolBindings: [{
+        tool: { id: "tool_weather", name: "get_weather" },
+        binding: { toolId: "tool_weather", kind: "command", executorId: "weather", label: "Local weather script" },
+      }],
+      plan: {
+        repetitions: 2,
+        turnCeiling: 4,
+        cells: Array.from({ length: 4 }),
+        suite: { name: "Quality gate", conversationRevisionId: "revision_frozen", cases: [
+          { caseId: "evaluation-case_1", name: "Case 1", input: { target: { model: "fixture-model" } } },
+          { caseId: "evaluation-case_2", name: "Case 2", input: { target: { model: "fixture-model" } } },
+        ] },
       },
-      onCancel() {}, onConfirm() {},
-    }));
-    assert.match(html, /Tools served automatically/);
-    assert.match(html, /command &quot;Local weather script&quot;/);
-    // The cost sentence is a range once a repetition can buy another turn.
-    assert.match(html, /4–16 — one per repetition, up to 4/);
-    assert.match(html, /Start 4 repetitions/);
-  } finally { await server.close(); }
+    },
+    onCancel() {}, onConfirm() {},
+  }));
+  assert.match(html, /Tools served automatically/);
+  assert.match(html, /command &quot;Local weather script&quot;/);
+  // The cost sentence is a range once a repetition can buy another turn.
+  assert.match(html, /4–16 — one per repetition, up to 4/);
+  assert.match(html, /Start 4 repetitions/);
 });
 
 test("evaluation confirmation names the frozen revision, target, cases, repetitions, calls, and storage", async () => {
-  const server = await createServer({ configFile: false, cacheDir: uniqueViteCacheDir(), root: process.cwd(), plugins: [react()], server: { middlewareMode: true, hmr: false, ws: false }, logLevel: "warn" });
-  try {
-    const [{ EvaluationStartDialog }, { renderToStaticMarkup }, { createElement }] = await Promise.all([
-      server.ssrLoadModule("/app/evaluations/evaluation-start-dialog.client.tsx"),
-      import("react-dom/server"), import("react"),
-    ]);
-    const target = { model: "fixture-model" };
-    const cases = Array.from({ length: 5 }, (_, index) => ({
-      caseId: `evaluation-case_${index + 1}`,
-      name: `Case ${index + 1}`,
-      input: { target },
-    }));
-    const html = renderToStaticMarkup(createElement(EvaluationStartDialog, {
-      draft: {
-        targetName: "Fixture profile",
-        toolBindings: [],
-        revisionLabel: "Current · Question · “Explain a topic.” · Aug 1, 12:00 PM",
-        storage: "durable",
-        plan: {
-          repetitions: 5,
-          cells: Array.from({ length: 25 }),
-          suite: { name: "Quality gate", conversationRevisionId: "revision_frozen", cases },
-        },
+  const [{ EvaluationStartDialog }, { renderToStaticMarkup }, { createElement }] = await Promise.all([
+    ssrLoadModule("/app/evaluations/evaluation-start-dialog.client.tsx"),
+    import("react-dom/server"), import("react"),
+  ]);
+  const target = { model: "fixture-model" };
+  const cases = Array.from({ length: 5 }, (_, index) => ({
+    caseId: `evaluation-case_${index + 1}`,
+    name: `Case ${index + 1}`,
+    input: { target },
+  }));
+  const html = renderToStaticMarkup(createElement(EvaluationStartDialog, {
+    draft: {
+      targetName: "Fixture profile",
+      toolBindings: [],
+      revisionLabel: "Current · Question · “Explain a topic.” · Aug 1, 12:00 PM",
+      storage: "durable",
+      plan: {
+        repetitions: 5,
+        cells: Array.from({ length: 25 }),
+        suite: { name: "Quality gate", conversationRevisionId: "revision_frozen", cases },
       },
-      onCancel() {}, onConfirm() {},
-    }));
-    assert.match(html, /revision_frozen/);
-    // Confirmation reuses the projected description rather than reformatting a
-    // raw timestamp, so it names the same revision preflight showed.
-    assert.match(html, /Current · Question · “Explain a topic\.” · Aug 1, 12:00 PM/);
-    assert.match(html, /Fixture profile · fixture-model/);
-    assert.match(html, /5 · Case 1, Case 2, Case 3, Case 4, Case 5/);
-    assert.match(html, /5 per case/);
-    assert.match(html, /25 planned/);
-    assert.match(html, /Saved to the open project folder/);
-    assert.match(html, /Large evaluation batch/);
-  } finally { await server.close(); }
+    },
+    onCancel() {}, onConfirm() {},
+  }));
+  assert.match(html, /revision_frozen/);
+  // Confirmation reuses the projected description rather than reformatting a
+  // raw timestamp, so it names the same revision preflight showed.
+  assert.match(html, /Current · Question · “Explain a topic\.” · Aug 1, 12:00 PM/);
+  assert.match(html, /Fixture profile · fixture-model/);
+  assert.match(html, /5 · Case 1, Case 2, Case 3, Case 4, Case 5/);
+  assert.match(html, /5 per case/);
+  assert.match(html, /25 planned/);
+  assert.match(html, /Saved to the open project folder/);
+  assert.match(html, /Large evaluation batch/);
 });
 
 test("renders revision incompatibility as a setup issue", async () => {
