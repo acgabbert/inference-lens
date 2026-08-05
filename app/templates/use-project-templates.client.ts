@@ -265,7 +265,33 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     const describe = (messages: PromptTemplateMessages) => messages.map(({ role, content: text }) => `${role}: ${text}`).join("\n");
     input.requestConfirmation({ title: `Update "${template.name}"?`, description: "The use will pin the latest immutable revision. Assignments for removed variables and its run-only overrides will be cleared.", confirmLabel: "Update to latest", details: [{ label: "From", value: pinned.id }, { label: "To", value: latest.id }, { label: "Variables", value: `${vars(pinned.messages)} → ${vars(latest.messages)}` }, { label: "Current content", value: describe(pinned.messages) }, { label: "Latest content", value: describe(latest.messages) }], onConfirm() { const { project, revisionId } = projectForUseMutation(); const count = latest.messages.length; const next = updatePromptTemplateUseToLatest(project, { conversationRevisionId: revisionId, templateUseId, newOutputMessageIdSuffixes: Array.from({ length: Math.max(0, count - item.use.outputMessageIds.length) }, () => randomUUID()) }); const overrides = { ...templateRunOverrides }; delete overrides[templateUseId]; setTemplateRunOverrides(overrides); adoptAuthoredProject(next, overrides); } });
   }
-  function detachTemplateUse(templateUseId: PromptTemplateUseId): void { input.requestConfirmation({ title: "Detach this template use?", description: "Its currently resolved values, including run-only overrides, will become ordinary literal messages with the same message IDs.", confirmLabel: "Detach", onConfirm() { const { project, revisionId } = projectForUseMutation(); const next = detachPromptTemplateUse(project, { conversationRevisionId: revisionId, templateUseId, runOverrides: templateRunOverrides }); const overrides = { ...templateRunOverrides }; delete overrides[templateUseId]; setTemplateRunOverrides(overrides); adoptAuthoredProject(next, overrides); } }); }
+  function detachTemplateUse(templateUseId: PromptTemplateUseId): void {
+    input.requestConfirmation({
+      title: "Detach this template use?",
+      description: "Its currently resolved values, including run-only overrides, will become ordinary literal messages with the same message IDs.",
+      confirmLabel: "Detach",
+      onConfirm() {
+        try {
+          const { project, revisionId } = projectForUseMutation();
+          const next = detachPromptTemplateUse(project, {
+            conversationRevisionId: revisionId,
+            templateUseId,
+            runOverrides: templateRunOverrides,
+          });
+          const overrides = { ...templateRunOverrides };
+          delete overrides[templateUseId];
+          setTemplateRunOverrides(overrides);
+          adoptAuthoredProject(next, overrides);
+        } catch (error) {
+          input.markProjectError(
+            error instanceof Error
+              ? error.message
+              : "Could not detach this template use.",
+          );
+        }
+      },
+    });
+  }
   function removeTemplateUse(templateUseId: PromptTemplateUseId): void { input.requestConfirmation({ title: "Remove this template use?", description: "The pinned use and all messages it generates will be removed from this conversation revision.", confirmLabel: "Remove use", destructive: true, onConfirm() { const { project, revisionId } = projectForUseMutation(); const next = removePromptTemplateUse(project, revisionId, templateUseId); const overrides = { ...templateRunOverrides }; delete overrides[templateUseId]; setTemplateRunOverrides(overrides); adoptAuthoredProject(next, overrides); } }); }
   async function importN8nPrompt(candidate: ExternalPromptCandidate, mode: "resolved-snapshot" | "reusable-template", { recommendModel }: { recommendModel: boolean }): Promise<void> {
     const imported = mode === "reusable-template" ? await importExternalPromptTemplateCandidate(input.ensureProjectDocument(), candidate, { recommendModel }) : await importExternalPromptCandidate(input.ensureProjectDocument(), candidate);
