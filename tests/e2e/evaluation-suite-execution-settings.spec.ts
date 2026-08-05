@@ -375,12 +375,29 @@ async function settingsLayout(panel: Locator) {
       return node ? getComputedStyle(node) : null;
     };
     const output = style(".temperature-control output");
-    const hint = style(".streaming-control small");
     return {
       temperature: checkboxLayout(".temperature-toggle"),
-      streaming: checkboxLayout(".streaming-control"),
       readout: output ? `${output.borderTopWidth}/${output.textAlign}` : "missing",
-      hint: hint ? `${hint.fontSize}/${hint.lineHeight}` : "missing",
+    };
+  });
+}
+
+async function deliveryLayout(container: Locator) {
+  return container.evaluate((element) => {
+    const label = element.querySelector<HTMLElement>(".streaming-control");
+    const input = label?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    const text = label?.querySelector<HTMLElement>("span");
+    const hint = label?.querySelector<HTMLElement>("small");
+    if (!label || !input || !text || !hint) {
+      return { streaming: "missing", hint: "missing" };
+    }
+    const box = input.getBoundingClientRect();
+    const words = text.getBoundingClientRect();
+    const beside = box.right <= words.left && box.bottom > words.top;
+    const hintStyle = getComputedStyle(hint);
+    return {
+      streaming: `${beside ? "beside" : "stacked"}/${box.width < 30 ? "compact" : "stretched"}`,
+      hint: `${hintStyle.fontSize}/${hintStyle.lineHeight}`,
     };
   });
 }
@@ -390,23 +407,30 @@ test("the suite's settings panel lays its controls out like the composer's", asy
   await page.getByRole("button", { name: "Create evaluation suite" }).click();
   await useSavedPrompt(page, "Question");
 
-  const suite = await settingsLayout(
-    await openInferenceSettings(page, "Evaluation execution settings"),
-  );
+  const suitePanel = await openInferenceSettings(page, "Evaluation execution settings");
+  const suite = await settingsLayout(suitePanel);
+  const suiteDelivery = await deliveryLayout(suitePanel);
   await openMode(page, "Compose");
   await page.getByRole("tab", { name: /Messages/ }).click();
   const composer = await settingsLayout(await openInferenceSettings(page));
+  const composerDelivery = await deliveryLayout(
+    page.getByRole("region", { name: "Delivery preference" }),
+  );
 
-  // The composer is the reference only because it is the mount no page rules
-  // reach; both are asserted absolutely so a regression there cannot make this
-  // pass by matching two broken layouts.
+  // The composer is the reference because it is the mount no evaluation-page
+  // rules reach. Delivery is session-scoped there, so compare its sibling
+  // region with the suite-owned delivery control separately. Every shape is
+  // also asserted absolutely so two broken layouts cannot agree and pass.
   expect(composer).toEqual({
     temperature: "beside/compact",
-    streaming: "beside/compact",
     readout: "1px/right",
-    hint: "11px/14.3px",
   });
   expect(suite).toEqual(composer);
+  expect(composerDelivery).toEqual({
+    streaming: "beside/compact",
+    hint: "11px/14.3px",
+  });
+  expect(suiteDelivery).toEqual(composerDelivery);
 });
 
 test("preflight input and execution settings fit at desktop and phone widths", async ({ page }) => {

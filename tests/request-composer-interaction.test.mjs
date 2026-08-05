@@ -202,13 +202,15 @@ test("the settings panel hides its controls behind a summary of what will be sen
     assert.ok(toggle);
     assert.equal(toggle.getAttribute("aria-expanded"), "false");
     // The model stays a live field in the summary row; collapsing hides only
-    // the secondary controls, whose values remain named as facts.
+    // the project-owned secondary controls, whose values remain named as facts.
+    // Delivery is a separate session preference and is asserted by the browser
+    // suite that exercises the complete request settings surface.
     const model = view.container.querySelector('[data-readiness-control="model"]');
     assert.equal(model?.value, "fixture-model");
     const facts = Array.from(
       view.container.querySelectorAll(".inference-settings-fact"),
     ).map((fact) => fact.textContent);
-    assert.deepEqual(facts, ["Temp 0.7", "Buffered"]);
+    assert.deepEqual(facts, ["Temp 0.7"]);
     assert.equal(
       view.container.querySelector('.temperature-control input[type="range"]'),
       null,

@@ -5253,7 +5253,8 @@ main {
   text-align: right;
 }
 
-.inference-settings label.streaming-control {
+.inference-settings label.streaming-control,
+.request-delivery-preference label.streaming-control {
   min-height: 36px;
   display: flex;
   flex-direction: row;
@@ -5263,23 +5264,28 @@ main {
   cursor: pointer;
 }
 
-.inference-settings .streaming-control input {
+.inference-settings .streaming-control input,
+.request-delivery-preference .streaming-control input {
   margin: 0;
   width: auto;
 }
 
 .inference-settings .streaming-control span,
-.inference-settings .streaming-control small {
+.inference-settings .streaming-control small,
+.request-delivery-preference .streaming-control span,
+.request-delivery-preference .streaming-control small {
   display: block;
 }
 
-.inference-settings .streaming-control small {
+.inference-settings .streaming-control small,
+.request-delivery-preference .streaming-control small {
   margin-top: 3px;
   color: var(--text-muted);
   line-height: 1.3;
 }
 
-.inference-settings .streaming-control.disabled {
+.inference-settings .streaming-control.disabled,
+.request-delivery-preference .streaming-control.disabled {
   cursor: not-allowed;
   opacity: 0.65;
 }
