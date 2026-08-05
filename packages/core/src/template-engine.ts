@@ -1,6 +1,18 @@
 import type { PromptTemplateMessages } from "./project.ts";
 
 export const TEMPLATE_VARIABLE_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+export const TEMPLATE_VARIABLE_TOKEN_BODY_PATTERN =
+  /^[ \t\r\n]*([A-Za-z_][A-Za-z0-9_]*)[ \t\r\n]*$/;
+
+/**
+ * Returns the canonical native variable name from one token body. Formatting
+ * whitespace is syntax, not part of the persisted variable identity.
+ */
+export function templateVariableNameFromTokenBody(
+  body: string,
+): string | undefined {
+  return TEMPLATE_VARIABLE_TOKEN_BODY_PATTERN.exec(body)?.[1];
+}
 
 export type TemplateContentLocation =
   | { kind: "text" }
@@ -115,8 +127,8 @@ function parseTemplateText(
 
     const end = close + 2;
     const token = text.slice(cursor, end);
-    const name = text.slice(cursor + 2, close);
-    if (!TEMPLATE_VARIABLE_NAME_PATTERN.test(name)) {
+    const name = templateVariableNameFromTokenBody(text.slice(cursor + 2, close));
+    if (!name) {
       diagnostics.push({
         code: "invalid-template-token",
         token,

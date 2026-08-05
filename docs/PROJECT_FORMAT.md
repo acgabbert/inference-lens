@@ -74,6 +74,21 @@ message. A newly created prompt begins as one user message; system instructions
 and additional messages expand that same structure. Inline
 prefix/template/suffix composition is not part of this format.
 
+### Native template variables
+
+Native template variables are substitution-only and use an ASCII identifier:
+`[A-Za-z_][A-Za-z0-9_]*`. ASCII spaces, tabs, carriage returns, and line feeds
+may surround that identifier inside a token, so `{{topic}}`, `{{ topic }}`, and
+`{{\n  topic\n}}` all refer to the same canonical variable, `topic`. The
+authored token bytes and source spans are retained; only rendering replaces the
+complete token. Whitespace outside a token remains literal prompt content.
+
+Other Unicode whitespace, empty bodies, internal whitespace, dotted names, and
+arbitrary expression bodies are invalid native tokens. This grammar expansion
+also applies to existing Project v9 content: opening a project with a previously
+invalid spaced token recognizes it as a native variable, but does not rewrite
+the project JSON or add a syntax-version field.
+
 Version 5 represented single-message prompts as role-less fragments and stored
 the role on each use. During migration a fragment becomes a one-message prompt.
 If one legacy template was used under several roles, the migration keeps the
