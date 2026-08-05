@@ -151,6 +151,7 @@ test("the extracted composer renders request snapshots without a project", async
   assert.match(html, /Buffered/);
   assert.match(html, /Session preference/);
   assert.match(html, /Stream response/);
+  assert.match(html, /class="request-settings-card"/);
   assert.doesNotMatch(html, /Override temperature/);
   // The tool line stays outside the panel, so a blocked tool selection cannot
   // be hidden by collapsing it.

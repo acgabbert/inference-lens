@@ -5019,6 +5019,17 @@ main {
    evaluation suite, and the repeated-experiment dialog. The disclosure is
    inline: two of those sit inside `overflow: auto` panes and the third inside a
    modal, where an anchored popover is either clipped or above a dialog. */
+.request-settings-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: 9px;
+  background: var(--surface-panel);
+}
+
+.request-settings-card > .inference-settings {
+  border: 0;
+  border-radius: 9px 9px 0 0;
+}
+
 .inference-settings {
   min-width: 0;
   border: 1px solid var(--border-subtle);
@@ -5178,9 +5189,8 @@ main {
   flex-wrap: wrap;
   gap: 8px 12px;
   padding: 7px 12px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 9px;
-  background: var(--surface-panel);
+  border-top: 1px solid var(--border-subtle);
+  background: transparent;
 }
 
 .request-delivery-identity {
