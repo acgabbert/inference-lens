@@ -106,7 +106,7 @@ test("the collapsed panel reports what the run will send, and expanding reveals 
   await expect(page.locator(".temperature-control")).toHaveCount(0);
   await expect(
     panel.getByRole("button", { name: "Connection settings" }),
-  ).toHaveCount(0);
+  ).toBeVisible();
   await expect(page.getByLabel("Stream response")).toBeVisible();
 
   await openInferenceSettings(page);
