@@ -126,7 +126,13 @@ test("keeps parser cases as UTF-16 source fixtures without evaluating them", asy
       (entry) => entry.name === "closing delimiter text inside string",
     ),
   );
-  assert.ok(fixture.cases.some((entry) => entry.invalid === true));
+  assert.ok(
+    fixture.cases.some(
+      (entry) =>
+        entry.error?.reason ===
+        "Expression is missing its closing }} delimiter.",
+    ),
+  );
 });
 
 test("AI Agent captures retain attributable resolved model input", async () => {
