@@ -6179,6 +6179,22 @@ main {
     flex-basis: 100%;
   }
 
+  /* Linux scrollbars leave this nested panel slightly narrower than macOS at
+     the same viewport. Give the identity and the value summaries separate
+     rows so neither has to force the other past the disclosure's edge. */
+  .inference-settings-toggle {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr);
+  }
+
+  .inference-settings-identity {
+    flex-wrap: wrap;
+  }
+
+  .inference-settings-facts {
+    grid-column: 1 / -1;
+  }
+
   .inference-settings-hint {
     display: none;
   }
