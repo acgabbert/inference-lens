@@ -4924,8 +4924,12 @@ main {
 .request-header {
   min-height: 78px;
   display: grid;
-  grid-template-columns: auto minmax(210px, 1fr) auto;
+  grid-template-columns: auto minmax(210px, 1fr);
   gap: 20px;
+}
+
+.request-header:has(.request-header-actions) {
+  grid-template-columns: auto minmax(210px, 1fr) auto;
 }
 
 .pane-tabs {
@@ -4984,6 +4988,25 @@ main {
 
 .request-focus-toggle {
   flex: 0 0 auto;
+}
+
+.request-composer-toolbar {
+  margin: 12px 20px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.request-composer-run-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.request-composer-toolbar + .message-list {
+  padding-top: 12px;
 }
 
 /* The composer's mount of the shared settings panel; the other surfaces place

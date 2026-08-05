@@ -230,12 +230,8 @@ export function RequestComposer({
             { id: "tools", label: "Tools", count: selectedToolCount },
           ]}
         />
-        <div className="request-header-actions">
-          {activeTab === "messages" ? (
-            <button className="text-button header-text-action" onClick={templates.addComposerMessage}>
-              + Add message
-            </button>
-          ) : activeTab === "tools" ? (
+        {activeTab !== "messages" ? <div className="request-header-actions">
+          {activeTab === "tools" ? (
             <button className="text-button header-text-action" type="button" onClick={requestDraft.addTool}>
               + Add tool
             </button>
@@ -252,16 +248,7 @@ export function RequestComposer({
           >
             Repeat…
           </button>
-          {activeTab === "messages" && (
-            <FocusModeToggle
-              className="request-focus-toggle"
-              open={requestFocusMode}
-              subject="request composer"
-              toggleRef={focusToggleRef}
-              onToggle={() => (requestFocusMode ? closeFocusMode() : setFocusMode(true))}
-            />
-          )}
-        </div>
+        </div> : null}
       </div>
       <RunReadinessNotice {...(readiness ? { readiness } : {})} onAction={routeReadinessAction} />
       {pendingBranch && (
@@ -310,6 +297,29 @@ export function RequestComposer({
                   {selectedToolCount === 0 ? "Add tools" : "Review"}
                 </button>
               </p>
+            </div>
+            <div className="request-composer-toolbar">
+              <button className="button secondary" type="button" onClick={templates.addComposerMessage}>
+                + Add message
+              </button>
+              <div className="request-composer-run-actions">
+                <button
+                  className="button secondary"
+                  disabled={repeat.disabled}
+                  title={repeat.disabled ? repeat.disabledReason : undefined}
+                  type="button"
+                  onClick={repeat.onRepeat}
+                >
+                  Repeat…
+                </button>
+                <FocusModeToggle
+                  className="request-focus-toggle"
+                  open={requestFocusMode}
+                  subject="request composer"
+                  toggleRef={focusToggleRef}
+                  onToggle={() => (requestFocusMode ? closeFocusMode() : setFocusMode(true))}
+                />
+              </div>
             </div>
             <div className="message-list">
               {templates.templateWorkbench.composerItems.map((item, index) => {
