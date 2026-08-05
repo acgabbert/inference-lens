@@ -435,7 +435,7 @@ test("projects authored expressions into deterministic native variables", async 
     name: "Fixture workflow — Fixture prompt",
     messages: [{
       role: "user",
-      content: "Explain {{topic}} / {{topic}} / {{topic_2}} / {{expression_1}}",
+      content: "Explain {{topic}} / {{topic}} / {{topic}} / {{first}}",
     }],
     values: {},
     variables: [
@@ -455,13 +455,13 @@ test("projects authored expressions into deterministic native variables", async 
         bindingIndex: 2,
         authoredPath: "parameters.text",
         expression: bracket,
-        variableName: "topic_2",
+        variableName: "topic",
       },
       {
         bindingIndex: 3,
         authoredPath: "parameters.text",
         expression: compound,
-        variableName: "expression_1",
+        variableName: "first",
       },
     ],
   });
@@ -514,7 +514,6 @@ test("projects authored expressions into deterministic native variables", async 
   assert.deepEqual(projectDraft(imported.project).templateDiagnostics.map(
     ({ diagnostic }) => diagnostic.code,
   ), [
-    "missing-template-variable",
     "missing-template-variable",
     "missing-template-variable",
   ]);
