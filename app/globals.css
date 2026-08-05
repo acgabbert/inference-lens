@@ -1701,27 +1701,13 @@ output {
   margin: 12px 13px 6px;
 }
 
-.request-preview-view-switch {
-  display: flex;
-  gap: 4px;
+.request-preview-tabs {
   margin: 12px 13px 0;
 }
 
-.request-preview-view-switch button {
-  padding: 4px 9px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 6px;
-  background: var(--surface-panel);
-  color: var(--text-muted);
-  cursor: pointer;
-  font: inherit;
-}
-
-.request-preview-view-switch button[aria-selected="true"] {
-  border-color: var(--accent);
-  background: var(--surface-inset);
-  color: var(--text-primary);
-  font-weight: 700;
+.request-preview-tabs .pane-tabs {
+  width: max-content;
+  justify-self: start;
 }
 
 .request-preview pre {

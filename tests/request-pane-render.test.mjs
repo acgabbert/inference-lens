@@ -223,6 +223,7 @@ test("the resolved request preview uses one disclosure without nesting details",
   assert.match(html, /Resolved request preview/);
   assert.match(html, /role="tab"/);
   assert.match(html, />Raw</);
+  assert.equal((html.match(/class="pane-tabs"/g) ?? []).length, 2);
   assert.doesNotMatch(html, /Raw OpenAI-compatible request body/);
   assert.equal((html.match(/<details/g) ?? []).length, 1);
 });
