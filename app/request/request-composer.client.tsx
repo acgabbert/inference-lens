@@ -169,9 +169,16 @@ export function RequestComposer({
       });
       return () => { cancelled = true; };
     }
-    // The model field lives in the settings panel's always-visible summary
-    // row, so a destination that names it focuses directly — no disclosure
-    // needs to open first.
+    // The model field lives inside the settings disclosure. Readiness routing
+    // opens its owner first, then this effect runs again against the mounted
+    // control and focuses it.
+    if (pendingDestination.control === "model" && !settingsOpen) {
+      let cancelled = false;
+      queueMicrotask(() => {
+        if (!cancelled) setSettingsOpen(true);
+      });
+      return () => { cancelled = true; };
+    }
     const target =
       pendingDestination.control === "model"
         ? modelRef.current
@@ -201,7 +208,7 @@ export function RequestComposer({
     target.scrollIntoView?.({ block: "center" });
     target.focus();
     onDestinationHandled();
-  }, [activeTab, onDestinationHandled, pendingDestination]);
+  }, [activeTab, onDestinationHandled, pendingDestination, settingsOpen]);
 
   return (
     <section
@@ -226,12 +233,8 @@ export function RequestComposer({
             { id: "tools", label: "Tools", count: selectedToolCount },
           ]}
         />
-        <div className="request-header-actions">
-          {activeTab === "messages" ? (
-            <button className="text-button header-text-action" onClick={templates.addComposerMessage}>
-              + Add message
-            </button>
-          ) : activeTab === "tools" ? (
+        {activeTab !== "messages" ? <div className="request-header-actions">
+          {activeTab === "tools" ? (
             <button className="text-button header-text-action" type="button" onClick={requestDraft.addTool}>
               + Add tool
             </button>
@@ -248,16 +251,7 @@ export function RequestComposer({
           >
             Repeat…
           </button>
-          {activeTab === "messages" && (
-            <FocusModeToggle
-              className="request-focus-toggle"
-              open={requestFocusMode}
-              subject="request composer"
-              toggleRef={focusToggleRef}
-              onToggle={() => (requestFocusMode ? closeFocusMode() : setFocusMode(true))}
-            />
-          )}
-        </div>
+        </div> : null}
       </div>
       <RunReadinessNotice {...(readiness ? { readiness } : {})} onAction={routeReadinessAction} />
       {pendingBranch && (
@@ -307,6 +301,29 @@ export function RequestComposer({
                 </button>
               </p>
             </div>
+            <div className="request-composer-toolbar">
+              <button className="button secondary" type="button" onClick={templates.addComposerMessage}>
+                + Add message
+              </button>
+              <div className="request-composer-run-actions">
+                <button
+                  className="button secondary"
+                  disabled={repeat.disabled}
+                  title={repeat.disabled ? repeat.disabledReason : undefined}
+                  type="button"
+                  onClick={repeat.onRepeat}
+                >
+                  Repeat…
+                </button>
+                <FocusModeToggle
+                  className="request-focus-toggle"
+                  open={requestFocusMode}
+                  subject="request composer"
+                  toggleRef={focusToggleRef}
+                  onToggle={() => (requestFocusMode ? closeFocusMode() : setFocusMode(true))}
+                />
+              </div>
+            </div>
             <div className="message-list">
               {templates.templateWorkbench.composerItems.map((item, index) => {
                 if (item.kind === "template-use") {
@@ -341,7 +358,7 @@ export function RequestComposer({
                 </article>;
               })}
             </div>
-            {requestPreview && <details className="request-preview"><summary>Resolved request preview</summary>{"error" in requestPreview ? <div className="template-diagnostic">{requestPreview.error}</div> : <><>{(templates.templateWorkbench.resolution?.diagnostics.length ?? 0) > 0 && <div className="template-warning" role="status">Preview contains unresolved variables. Running is blocked until they have values.</div>}</><div aria-label="Request preview view" className="request-preview-view-switch" role="tablist"><button aria-controls="request-preview-resolved" aria-selected={requestPreviewView === "resolved"} role="tab" type="button" onClick={() => setRequestPreviewView("resolved")}>Resolved</button><button aria-controls="request-preview-raw" aria-selected={requestPreviewView === "raw"} role="tab" type="button" onClick={() => setRequestPreviewView("raw")}>Raw</button></div>{requestPreviewView === "resolved" ? <section aria-label="Resolved request" id="request-preview-resolved" role="tabpanel"><h3>Resolved messages</h3><div className="request-preview-messages">{requestPreview.messages.map((message, index) => <article className="request-preview-message" key={`${message.role}-${index}`}><span className="eyebrow">{message.role}</span><pre>{conversationMessageText(message)}</pre></article>)}</div></section> : <section className="request-preview-raw" aria-label="Raw OpenAI-compatible request body" id="request-preview-raw" role="tabpanel"><h3>Raw OpenAI-compatible request body</h3><pre>{JSON.stringify(requestPreview.body, null, 2)}</pre></section>}</>}</details>}
+            {requestPreview && <details className="request-preview"><summary>Resolved request preview</summary>{"error" in requestPreview ? <div className="template-diagnostic">{requestPreview.error}</div> : <><>{(templates.templateWorkbench.resolution?.diagnostics.length ?? 0) > 0 && <div className="template-warning" role="status">Preview contains unresolved variables. Running is blocked until they have values.</div>}</><div className="request-preview-tabs"><PaneTabs idPrefix="request-preview" label="Request preview view" value={requestPreviewView} onChange={(value) => setRequestPreviewView(value as "resolved" | "raw")} tabs={[{ id: "resolved", label: "Resolved" }, { id: "raw", label: "Raw" }]} /></div>{requestPreviewView === "resolved" ? <section aria-label="Resolved request" aria-labelledby="request-preview-resolved-tab" id="request-preview-resolved-panel" role="tabpanel"><h3>Resolved messages</h3><div className="request-preview-messages">{requestPreview.messages.map((message, index) => <article className="request-preview-message" key={`${message.role}-${index}`}><span className="eyebrow">{message.role}</span><pre>{conversationMessageText(message)}</pre></article>)}</div></section> : <section className="request-preview-raw" aria-label="Raw OpenAI-compatible request body" aria-labelledby="request-preview-raw-tab" id="request-preview-raw-panel" role="tabpanel"><h3>Raw OpenAI-compatible request body</h3><pre>{JSON.stringify(requestPreview.body, null, 2)}</pre></section>}</>}</details>}
           </>
         ) : activeTab === "templates" ? (
           <ProjectTemplatesPane key={project?.projectId ?? "unsaved-project"} templates={project?.promptTemplates ?? []} connectionRequirements={project?.connectionRequirements ?? []} defaultConnectionRequirementId={project?.defaults.target.connectionRequirementId} usageCounts={templates.templateUsageCounts} itemCount={templates.activeProjectRevision?.items.length ?? requestDraft.messages.length} n8nImportDisabledReason={n8nImportDisabledReason} onOpenN8nImport={onOpenN8nImport} onCreate={templates.createProjectTemplate} onSave={templates.saveProjectTemplate} onRename={templates.renameProjectTemplate} onArchive={templates.archiveProjectTemplate} onRestore={templates.restoreProjectTemplate} onInsert={(...args) => { templates.insertProjectTemplate(...args); setTab("messages"); }} />

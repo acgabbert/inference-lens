@@ -19,6 +19,7 @@ import type { ProjectFile } from "../../packages/core/src/project";
 import {
   BUFFERED_FIXTURE_ENDPOINT,
   importProject,
+  openInferenceSettings,
   openMode,
   seedProfile,
   waitForHydration,
@@ -164,7 +165,7 @@ test("expanding setup does not push the cases off screen", async ({ page }) => {
   // Everything open at once: the settings panel, the past-executions
   // disclosure, and the band itself. This is the state that used to carry the
   // dataset below the fold.
-  await page.getByRole("button", { name: "Execution settings controls" }).click();
+  await openInferenceSettings(page, "Evaluation execution settings");
 
   const list = page.locator(".evaluation-case-rail");
   const detail = page.locator(".evaluation-case-detail");

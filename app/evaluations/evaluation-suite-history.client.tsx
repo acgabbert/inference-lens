@@ -12,7 +12,7 @@ import {
   evaluationPassSummary,
   evaluationPassTone,
 } from "./evaluation-history-format.client";
-import { DisclosureChevron } from "./disclosure-chevron.client";
+import { DisclosureChevron } from "../disclosure-chevron.client";
 
 /**
  * Past executions of the suite being authored.

@@ -57,6 +57,32 @@ test("project setting overrides are marked and revert one field at a time", asyn
   await expect(panel.locator(".inference-settings-override")).toHaveCount(0);
 });
 
+test("a project model cannot revert to a blank profile model", async ({ page }) => {
+  await seedProfile(page, { endpoint: "", model: "", name: "Blank connection" });
+  await page.goto("/");
+  await waitForHydration(page, "Blank connection");
+  const project = createProjectFile({
+    name: "Blank inheritance fixture",
+    request: {
+      provider: "openai-compatible",
+      endpoint: BUFFERED_FIXTURE_ENDPOINT,
+      model: "project-model",
+      messages: [{ role: "user", content: "Keep the valid project model." }],
+    },
+    idSuffix: "blank-model-inheritance",
+    createdAt: "2026-08-05T12:00:00.000Z",
+  });
+  await importProject(page, project, "Blank inheritance fixture");
+
+  const panel = await openInferenceSettings(page);
+  await expect(panel.getByLabel("Model", { exact: true })).toHaveValue(
+    "project-model",
+  );
+  await expect(
+    panel.getByRole("button", { name: "Revert model to profile defaults" }),
+  ).toHaveCount(0);
+});
+
 test("the collapsed panel reports what the run will send, and expanding reveals the controls", async ({
   page,
 }) => {
@@ -67,20 +93,20 @@ test("the collapsed panel reports what the run will send, and expanding reveals 
   const panel = page.locator('[aria-label="Run settings"]');
   const toggle = panel.locator(".inference-settings-toggle");
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
-  // The model outlives the disclosure: it stays a live field in the summary
-  // row, not a chip that collapsing could take away.
-  await expect(panel.getByLabel("Model", { exact: true })).toHaveValue(
-    "buffered-test-model",
-  );
-  // Every other value is named while collapsed. These are exact so a
+  // Every value is named while collapsed. These are exact so a
   // formatting regression cannot hide behind a substring match.
   await expect(panel.locator(".inference-settings-fact")).toHaveText([
+    "buffered-test-model",
     "Temp 0.3",
   ]);
   await expect(page.getByRole("region", { name: "Delivery preference" })).toContainText("Buffered");
   // Collapsed means project controls are absent, not merely hidden. Delivery
   // remains independently reachable because it is session-scoped.
+  await expect(panel.getByLabel("Model", { exact: true })).toHaveCount(0);
   await expect(page.locator(".temperature-control")).toHaveCount(0);
+  await expect(
+    panel.getByRole("button", { name: "Connection settings" }),
+  ).toHaveCount(0);
   await expect(page.getByLabel("Stream response")).toBeVisible();
 
   await openInferenceSettings(page);
@@ -93,12 +119,20 @@ test("the collapsed panel reports what the run will send, and expanding reveals 
   await expect(panel.getByLabel("Model", { exact: true })).toHaveValue(
     "buffered-test-model",
   );
+  await expect(panel.getByLabel("Model", { exact: true })).toHaveCSS(
+    "font-size",
+    "12px",
+  );
+  await expect(
+    panel.getByRole("button", { name: "Connection settings" }),
+  ).toBeVisible();
   await expect(panel.locator(".temperature-control output")).toHaveText("0.3");
 
   // An edit made while expanded is what the summary reports after collapsing.
   await panel.getByRole("slider", { name: "Temperature" }).fill("0.9");
   await toggle.click();
   await expect(panel.locator(".inference-settings-fact")).toHaveText([
+    "buffered-test-model",
     "Temp 0.9",
   ]);
 

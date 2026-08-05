@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, type ReactNode, type RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import { InferenceSettingsPanel } from "../inference-settings-panel.client";
 import type { InferenceSettingsValue } from "../inference-settings-panel.client";
 import type { ModelDiscoveryState } from "../use-model-discovery.client";
@@ -63,69 +63,69 @@ export function RequestSettings({
   action,
 }: RequestSettingsProps & RequestSettingsDisclosure) {
   return (
-    <Fragment>
-    <InferenceSettingsPanel
-      idPrefix="request"
-      label="Run settings"
-      heading="Run settings"
-      scopeLabel={scopeLabel}
-      {...(inherited ? { inherited } : {})}
-      open={open}
-      onOpenChange={onOpenChange}
-      value={{ model, temperature, responseMode }}
-      onChange={(next) => {
-        if (next.model !== model) onModelChange(next.model);
-        if (next.temperature !== temperature) onTemperatureChange(next.temperature);
-        if (next.responseMode !== responseMode) {
-          onStreamingPreferenceChange(next.responseMode === "streaming");
-        }
-      }}
-      streamingAvailable={streamingAvailable}
-      showDelivery={false}
-      modelDiscovery={modelDiscovery}
-      favoriteModels={favoriteModels}
-      onLoadModels={onLoadModels}
-      onToggleFavoriteModel={onToggleFavoriteModel}
-      {...(modelInputRef ? { modelInputRef } : {})}
-      readinessTarget
-      action={action}
-    />
-    <section aria-label="Delivery preference" className="request-delivery-preference">
-      <span className="request-delivery-identity">
-        <strong>Delivery</strong>
-        <span className="inference-settings-scope">Session preference</span>
-        <span className="request-delivery-value">
-          {responseMode === "streaming" ? "Streaming" : "Buffered"}
+    <section className="request-settings-card">
+      <InferenceSettingsPanel
+        idPrefix="request"
+        label="Run settings"
+        heading="Run settings"
+        scopeLabel={scopeLabel}
+        {...(inherited ? { inherited } : {})}
+        open={open}
+        onOpenChange={onOpenChange}
+        value={{ model, temperature, responseMode }}
+        onChange={(next) => {
+          if (next.model !== model) onModelChange(next.model);
+          if (next.temperature !== temperature) onTemperatureChange(next.temperature);
+          if (next.responseMode !== responseMode) {
+            onStreamingPreferenceChange(next.responseMode === "streaming");
+          }
+        }}
+        streamingAvailable={streamingAvailable}
+        showDelivery={false}
+        modelDiscovery={modelDiscovery}
+        favoriteModels={favoriteModels}
+        onLoadModels={onLoadModels}
+        onToggleFavoriteModel={onToggleFavoriteModel}
+        {...(modelInputRef ? { modelInputRef } : {})}
+        readinessTarget
+        action={action}
+      />
+      <section aria-label="Delivery preference" className="request-delivery-preference">
+        <span className="request-delivery-identity">
+          <strong>Delivery</strong>
+          <span className="inference-settings-scope">Session preference</span>
+          <span className="request-delivery-value">
+            {responseMode === "streaming" ? "Streaming" : "Buffered"}
+          </span>
         </span>
-      </span>
-      <label
-        className={
-          streamingAvailable
-            ? "streaming-control"
-            : "streaming-control disabled"
-        }
-        title={
-          streamingAvailable
-            ? undefined
-            : "This connection does not support streaming responses."
-        }
-      >
-        <input
-          checked={responseMode === "streaming"}
-          disabled={!streamingAvailable}
-          onChange={(event) => onStreamingPreferenceChange(event.target.checked)}
-          type="checkbox"
-        />
-        <span>
-          Stream response
-          <small>
-            {streamingAvailable
-              ? "Applies to this session; show output as the provider sends it."
-              : "Unavailable here; responses are buffered."}
-          </small>
-        </span>
-      </label>
+        <label
+          className={
+            streamingAvailable
+              ? "streaming-control"
+              : "streaming-control disabled"
+          }
+          title={
+            streamingAvailable
+              ? undefined
+              : "This connection does not support streaming responses."
+          }
+        >
+          <input
+            checked={responseMode === "streaming"}
+            disabled={!streamingAvailable}
+            onChange={(event) => onStreamingPreferenceChange(event.target.checked)}
+            type="checkbox"
+          />
+          <span>
+            Stream response
+            <small>
+              {streamingAvailable
+                ? "Applies to this session; show output as the provider sends it."
+                : "Unavailable here; responses are buffered."}
+            </small>
+          </span>
+        </label>
+      </section>
     </section>
-    </Fragment>
   );
 }

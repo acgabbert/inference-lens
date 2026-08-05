@@ -151,6 +151,7 @@ test("the extracted composer renders request snapshots without a project", async
   assert.match(html, /Buffered/);
   assert.match(html, /Session preference/);
   assert.match(html, /Stream response/);
+  assert.match(html, /class="request-settings-card"/);
   assert.doesNotMatch(html, /Override temperature/);
   // The tool line stays outside the panel, so a blocked tool selection cannot
   // be hidden by collapsing it.
@@ -223,6 +224,7 @@ test("the resolved request preview uses one disclosure without nesting details",
   assert.match(html, /Resolved request preview/);
   assert.match(html, /role="tab"/);
   assert.match(html, />Raw</);
+  assert.equal((html.match(/class="pane-tabs"/g) ?? []).length, 2);
   assert.doesNotMatch(html, /Raw OpenAI-compatible request body/);
   assert.equal((html.match(/<details/g) ?? []).length, 1);
 });

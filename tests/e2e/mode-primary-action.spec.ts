@@ -139,23 +139,31 @@ test("no run-lifecycle action is left in the topbar in any mode", async ({ page 
   expect(RUN_CONTROL_LABELS.length).toBe(9);
 });
 
-test("Repeat moves to the composer header and stays on every request tab", async ({ page }) => {
+test("Repeat stays on every request tab and Messages groups its editing actions", async ({ page }) => {
   await open(page);
 
+  const composer = page.locator(".composer");
   const composerHeader = page.locator(".request-header-actions");
-  const repeat = composerHeader.getByRole("button", { name: "Repeat…" });
+  const messageToolbar = page.locator(".request-composer-toolbar");
+
+  await expect(messageToolbar.getByRole("button", { name: "+ Add message" }))
+    .toBeVisible();
+  await expect(messageToolbar.getByRole("button", { name: "Repeat…" }))
+    .toBeVisible();
+  await expect(composerHeader).toHaveCount(0);
 
   // It repeats whatever the composer holds, so which tab is open is irrelevant
   // to it — and it is never in the topbar, whose one slot belongs to the run.
-  for (const tab of ["Messages", "Prompts", "Tools"]) {
+  for (const tab of ["Prompts", "Tools"]) {
     await page.getByRole("tab", { name: new RegExp(`^${tab}`) }).click();
-    await expect(repeat).toBeVisible();
+    await expect(composerHeader.getByRole("button", { name: "Repeat…" }))
+      .toBeVisible();
   }
   await expect(page.locator(".header-actions").getByRole("button", { name: "Repeat…" }))
     .toHaveCount(0);
 
-  await expect(repeat).toBeEnabled();
-  await repeat.click();
+  await expect(composer.getByRole("button", { name: "Repeat…" })).toBeEnabled();
+  await composer.getByRole("button", { name: "Repeat…" }).click();
   await expect(page.getByRole("dialog", { name: "Run this frozen request repeatedly" }))
     .toBeVisible();
 });

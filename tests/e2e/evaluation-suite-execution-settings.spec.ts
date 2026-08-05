@@ -463,7 +463,7 @@ test("preflight input and execution settings fit at desktop and phone widths", a
       preflightFits: Boolean(preflight && preflight.scrollWidth <= preflight.clientWidth),
       summaryFits: fits(".evaluation-input-summary"),
       executionFits: fits(".inference-settings"),
-      settingsSummaryFits: fits(".inference-settings-summary"),
+      settingsSummaryFits: fits(".inference-settings-toggle"),
       bodyFits: document.body.scrollWidth <= document.documentElement.clientWidth,
     };
   });
