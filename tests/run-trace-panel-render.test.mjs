@@ -73,8 +73,51 @@ test("omits template evidence when an older trace has no captured resolutions", 
   });
 
   assert.doesNotMatch(html, /run-details-resolution-tab/);
+  assert.doesNotMatch(html, /run-details-compare-tab/);
   assert.doesNotMatch(html, /project-template provenance/i);
   assert.match(html, /run-details-events-panel/);
+});
+
+test("attempt diff selection defaults only to a retry or parent/current pair", async () => {
+  const { defaultAttemptDiffSelection, validAttemptDiffKeys } =
+    await ssrLoadModule("/app/run-trace-panel.client.tsx");
+  const candidate = (runId, turnId, turnIndex, attempt, status) => ({
+    runId,
+    runLabel: runId === "parent" ? "Parent run" : "Current run",
+    turnId,
+    turnIndex,
+    attempt,
+    exchangeId: `${runId}-${turnId}-${attempt}`,
+    status,
+  });
+  const ordinaryTurns = [
+    candidate("current", "one", 1, 1, "completed"),
+    candidate("current", "two", 2, 1, "completed"),
+  ];
+  assert.deepEqual(defaultAttemptDiffSelection(ordinaryTurns, []), {});
+
+  const retry = [
+    candidate("current", "one", 1, 1, "failed"),
+    candidate("current", "one", 1, 2, "completed"),
+  ];
+  assert.deepEqual(defaultAttemptDiffSelection(retry, []), {
+    left: "current:current-one-1",
+    right: "current:current-one-2",
+  });
+
+  const parent = [candidate("parent", "one", 1, 1, "completed")];
+  const current = [candidate("current", "one", 1, 1, "completed")];
+  assert.deepEqual(defaultAttemptDiffSelection(current, parent), {
+    left: "parent:parent-one-1",
+    right: "current:current-one-1",
+  });
+  assert.deepEqual(
+    validAttemptDiffKeys(
+      { left: "current:current-one-1", right: "current:current-one-1" },
+      current,
+    ),
+    { left: "current:current-one-1", right: undefined },
+  );
 });
 
 test("formats the compact terminal summary and omits absent metrics", async () => {

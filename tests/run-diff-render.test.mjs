@@ -93,7 +93,10 @@ test("renders scalar changes, unified gutters, and evidence status", async () =>
   assert.match(html, /normalized JSON/);
   assert.match(html, /Neither attempt captured this evidence/);
   assert.match(html, /data-changed="true"/);
-  assert.match(html, /Retries reuse the same immutable turn input/);
+  assert.match(html, /The request is identical because a retry reuses the same turn input/);
+  assert.match(html, /Compare provider attempts from this run/);
+  assert.match(html, /Attempt A · Current/);
+  assert.match(html, /disabled=""/);
   for (const marker of ["undefined", "NaN", "Infinity", "[object Object]"]) {
     assert.doesNotMatch(html, new RegExp(marker.replace(/[[\]]/g, "\\$&")));
   }
