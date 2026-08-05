@@ -1,5 +1,7 @@
 import { createServer } from "node:http";
 
+import { stopOnSignal } from "./fixture-shutdown.mjs";
+
 const host = process.env.INFERENCE_LENS_N8N_ECHO_HOST ?? "127.0.0.1";
 const port = Number.parseInt(
   process.env.INFERENCE_LENS_N8N_ECHO_PORT ?? "4013",
@@ -118,13 +120,8 @@ const server = createServer(async (request, response) => {
   response.end("data: [DONE]\n\n");
 });
 
+stopOnSignal(server);
+
 server.listen(port, host, () => {
   console.log(`n8n fixture echo provider listening on ${host}:${port}`);
 });
-
-function stop() {
-  server.close(() => process.exit(0));
-}
-
-process.on("SIGINT", stop);
-process.on("SIGTERM", stop);

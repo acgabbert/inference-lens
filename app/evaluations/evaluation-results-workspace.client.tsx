@@ -10,6 +10,7 @@ import type { EvaluationRepetitionClassification } from "../../packages/core/src
 import type { RunId } from "../../packages/core/src/run-kernel/index.ts";
 import { formatTokens } from "../run-metrics-format.client.ts";
 import type { EvaluationExecution } from "./use-evaluation-execution-session.client.ts";
+import { StatusChip } from "../notifications/status-chip.client";
 
 const classificationLabels: Record<EvaluationRepetitionClassification, string> = {
   passed: "passed",
@@ -105,8 +106,8 @@ export function EvaluationResultsWorkspace({
       </header>
 
       {live && <progress aria-label="Evaluation progress" className="experiment-progress" max={live.requested} value={live.finished}>{live.finished} of {live.requested}</progress>}
-      {execution.storage === "unsaved" && <p className="repeated-experiment-notice" role="status">This evaluation is not saved and will be lost when this session closes.</p>}
-      {execution.error && <p className="repeated-experiment-notice error" role="alert">{execution.error}</p>}
+      {execution.storage === "unsaved" && <StatusChip tone="advisory" label="Session only" detail="This evaluation is not saved and will be lost when this session closes." />}
+      {execution.error && <StatusChip tone="failure" label="Interrupted" detail={execution.error} />}
 
       <section className="evaluation-results-summary" aria-label="As run summary">
         <div><span>Suite</span><strong>{aggregate.passed ? "Passed" : live ? "In progress" : "Did not pass"}</strong></div>

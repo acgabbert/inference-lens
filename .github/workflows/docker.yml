@@ -20,6 +20,8 @@ jobs:
   publish:
     name: Build image
     runs-on: ubuntu-latest
+    # arm64 is QEMU-emulated here, so this is the slowest job by design.
+    timeout-minutes: 60
     permissions:
       contents: read
       packages: write

@@ -59,6 +59,19 @@ export interface UseEvaluationExecutionSessionOptions {
   onTraceSaved(): void;
   onError(message: string): void;
   onOpenTrace(trace: RunTrace, origin: { workspace: ProjectWorkspaceHandle | null; fileName: string; source: "experiment" }): void;
+  /**
+   * A batch this session started has run to completion.
+   *
+   * Reported from here rather than derived by the route from the execution
+   * going quiet, because only this hook can tell a batch that just finished
+   * from a saved one that was reopened — both leave a settled execution with a
+   * result in it, and only one of them is news.
+   *
+   * Interruption is not completion and does not reach here: it goes to
+   * `onError`, and its explanation stays on the results surface where the
+   * evidence is.
+   */
+  onFinished?(outcome: { experimentId: string }): void;
 }
 
 /** Owns evaluation confirmation, controller progress, immutable evidence, and result review. */
@@ -135,6 +148,7 @@ export function useEvaluationExecutionSession(options: UseEvaluationExecutionSes
       setExecution((current) => current?.plan.experimentId === pending.plan.experimentId
         ? { ...current, result }
         : current);
+      options.onFinished?.({ experimentId: pending.plan.experimentId });
     } catch (error) {
       const message = error instanceof Error ? error.message : "The evaluation was interrupted.";
       setExecution((current) => current?.plan.experimentId === pending.plan.experimentId

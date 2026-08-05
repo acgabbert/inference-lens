@@ -1,0 +1,146 @@
+/*
+ * Scoped to the toast layer, which is new structure introduced by the UX
+ * overhaul's notification system. It replaces the bottom-right
+ * `.workbench-notices` stack in `app/globals.css`, whose global rules go with
+ * it — the surface treatment is deliberately the same, because what changed is
+ * which messages belong here, not how they look.
+ */
+
+.region {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 40;
+  max-width: min(420px, calc(100vw - 32px));
+  /* The container is always in the document so the live region inside it can
+     announce additions. Nothing in it may swallow a click meant for the app
+     underneath; the toasts themselves take pointer events back. */
+  pointer-events: none;
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.toast {
+  pointer-events: auto;
+  padding: 12px 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  border: 1px solid var(--border-strong);
+  border-left-width: 3px;
+  border-radius: 10px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-float);
+}
+
+.success {
+  border-left-color: var(--accent-solid);
+}
+
+.info {
+  border-left-color: var(--text-faint);
+}
+
+.copy {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.title {
+  color: var(--text-primary);
+  font-size: var(--type-body);
+  line-height: 1.35;
+}
+
+.detail {
+  color: var(--text-muted);
+  font-size: var(--type-compact);
+  line-height: 1.45;
+}
+
+.actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.actions .button {
+  padding: 6px 9px;
+  white-space: nowrap;
+}
+
+.dismiss {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: var(--type-body);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.dismiss:hover {
+  color: var(--text-primary);
+  background: var(--surface-inset);
+}
+
+/*
+ * Entry motion is opt-in. A reduced-motion reader gets every message with the
+ * same timing and no travel, rather than a shortened animation that still
+ * moves.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .toast {
+    animation: toast-enter 160ms ease-out;
+  }
+}
+
+@keyframes toast-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+ * On a phone the toasts take the width and sit above the workbench's own
+ * bottom furniture rather than pinning to a corner too narrow to hold a title
+ * and an action on one line.
+ */
+@media (max-width: 760px) {
+  .region {
+    right: 12px;
+    bottom: 12px;
+    left: 12px;
+    max-width: none;
+  }
+
+  .toast {
+    flex-wrap: wrap;
+  }
+
+  .actions {
+    margin-left: auto;
+  }
+}

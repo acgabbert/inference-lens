@@ -1,10 +1,8 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
 
-import react from "@vitejs/plugin-react";
 import { JSDOM } from "jsdom";
-import { createServer } from "vite";
-import { uniqueViteCacheDir } from "./support/vite-cache-dir.mjs";
+import { ssrLoadModule } from "./support/ssr.mjs";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   url: "http://localhost",
@@ -253,19 +251,12 @@ test("a readiness destination naming the model focuses it without disturbing the
 });
 
 /**
- * A Vite server holds the event loop open, so a mount that throws before it can
- * hand back its `close` has to take the server down itself. Without this, one
- * failing render leaks a live server and the file hangs instead of reporting
- * the assertion that actually failed.
+ * A mount that throws still has to leave the document as it found it, or the
+ * next test mounts alongside the wreckage and its assertions read both. The SSR
+ * server is the file's, not this call's — `tests/support/ssr.mjs` opens it once
+ * and closes it once.
  */
 async function mount(overrides = {}) {
-  const server = await createServer({
-    configFile: false, cacheDir: uniqueViteCacheDir(),
-    root: process.cwd(),
-    plugins: [react()],
-    server: { middlewareMode: true, hmr: false, ws: false },
-    logLevel: "warn",
-  });
   let createElement;
   let act;
   let container;
@@ -277,7 +268,7 @@ async function mount(overrides = {}) {
       await Promise.all([
         import("react"),
         import("react-dom/client"),
-        server.ssrLoadModule("/app/request/request-composer.client.tsx"),
+        ssrLoadModule("/app/request/request-composer.client.tsx"),
       ]);
     container = document.createElement("div");
     document.body.append(container);
@@ -288,7 +279,6 @@ async function mount(overrides = {}) {
   } catch (error) {
     root?.unmount();
     container?.remove();
-    await server.close();
     throw error;
   }
   return {
@@ -329,12 +319,8 @@ async function mount(overrides = {}) {
       await act(() => new Promise((resolve) => window.setTimeout(resolve, 0)));
     },
     async close() {
-      try {
-        await act(async () => root.unmount());
-        container.remove();
-      } finally {
-        await server.close();
-      }
+      await act(async () => root.unmount());
+      container.remove();
     },
   };
 }

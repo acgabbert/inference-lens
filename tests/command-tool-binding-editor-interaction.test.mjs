@@ -1,10 +1,8 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
 
-import react from "@vitejs/plugin-react";
 import { JSDOM } from "jsdom";
-import { createServer } from "vite";
-import { uniqueViteCacheDir } from "./support/vite-cache-dir.mjs";
+import { ssrLoadModule } from "./support/ssr.mjs";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   url: "http://localhost",
@@ -46,16 +44,9 @@ const weather = {
  * would pass every unit test in the tool track and still be the wrong thing.
  */
 async function withEditor({ commands = [weather], availability = { kind: "ready" }, initialGrants = [] }, run) {
-  const server = await createServer({
-    configFile: false, cacheDir: uniqueViteCacheDir(),
-    root: process.cwd(),
-    plugins: [react()],
-    server: { middlewareMode: true, hmr: false, ws: false },
-    logLevel: "warn",
-  });
   const [{ CommandToolBindingEditor }, { createElement, useState }, { createRoot }, { act }] =
     await Promise.all([
-      server.ssrLoadModule("/app/tools/command-tool-binding-editor.client.tsx"),
+      ssrLoadModule("/app/tools/command-tool-binding-editor.client.tsx"),
       import("react"),
       import("react-dom/client"),
       import("react"),
@@ -96,7 +87,6 @@ async function withEditor({ commands = [weather], availability = { kind: "ready"
   } finally {
     await act(async () => root.unmount());
     container.remove();
-    await server.close();
   }
 }
 

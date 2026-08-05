@@ -1,5 +1,7 @@
 import { createServer } from "node:http";
 
+import { stopOnSignal } from "./fixture-shutdown.mjs";
+
 const host = "127.0.0.1";
 const port = Number.parseInt(
   process.env.INFERENCE_LENS_BUFFERED_PORT ?? "4014",
@@ -245,6 +247,8 @@ const server = createServer(async (request, response) => {
               : "served buffered response with 4 input, 7 output, 11 total tokens",
   );
 });
+
+stopOnSignal(server);
 
 server.listen(port, host, () => {
   console.log(

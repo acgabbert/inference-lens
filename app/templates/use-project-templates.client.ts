@@ -55,6 +55,7 @@ import {
 } from "./project-template-policy";
 import { removeDraftMessage } from "../use-request-draft.client";
 
+/** What an external prompt import landed, reported once when it lands. */
 export interface ProjectTemplatesImportNotice {
   name: string;
   variableCount: number;
@@ -83,6 +84,14 @@ export interface UseProjectTemplatesInput {
   clearPendingBranch(): void;
   requestConfirmation(request: ConfirmationDialogRequest): void;
   onImportApplied(): void;
+  /**
+   * Announces a completed import. The outcome used to be held here as
+   * `importNotice` and rendered by the request composer, which meant a
+   * confirmation that needed no decision sat in the composer's layout until it
+   * was dismissed. It is a toast now, so this hook reports the event and keeps
+   * no state about it.
+   */
+  onImported(notice: ProjectTemplatesImportNotice): void;
 }
 
 export interface ProjectTemplatesHandle {
@@ -91,7 +100,6 @@ export interface ProjectTemplatesHandle {
   activeConnectionRequirement?: ProjectFile["connectionRequirements"][number];
   templateUsageCounts: Map<PromptTemplateId, number>;
   templateRunOverrides: TemplateRunOverrides;
-  importNotice?: ProjectTemplatesImportNotice;
   createProjectTemplate(name: string, messages: PromptTemplateMessages): PromptTemplateId;
   saveProjectTemplate(templateId: PromptTemplateId, name: string, messages: PromptTemplateMessages, defaults: Record<string, string>, recommendedTarget?: PromptTemplateRecommendedTarget): PromptTemplateRevisionId;
   /** Commits only the label, without touching revision content. Returns false (and leaves the project untouched) for a blank name. */
@@ -109,14 +117,12 @@ export interface ProjectTemplatesHandle {
   updateComposerMessage(id: MessageId, patch: { content?: ConversationMessage["content"]; role?: ConversationMessage["role"] }): void;
   removeComposerMessage(id: MessageId): void;
   importN8nPrompt(candidate: ExternalPromptCandidate, mode: "resolved-snapshot" | "reusable-template", options: { recommendModel: boolean }): Promise<void>;
-  clearImportNotice(): void;
   clearTransientOverrides(): void;
   markExecutedRevision(revisionId: ConversationRevisionId): void;
 }
 
 export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTemplatesHandle {
   const [templateRunOverrides, setTemplateRunOverrides] = useState<TemplateRunOverrides>({});
-  const [importNotice, setImportNotice] = useState<ProjectTemplatesImportNotice>();
   const executedRevisionIdsRef = useRef(new Set<ConversationRevisionId>());
   useEffect(() => {
     if (input.projectFile && !input.projectDirty) {
@@ -265,7 +271,7 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     const imported = mode === "reusable-template" ? await importExternalPromptTemplateCandidate(input.ensureProjectDocument(), candidate, { recommendModel }) : await importExternalPromptCandidate(input.ensureProjectDocument(), candidate);
     input.adoptProjectMutation(imported.project); input.replaceProjectDraft(projectDraft(imported.project)); setTemplateRunOverrides({}); input.clearPendingBranch(); input.onImportApplied();
     const receipt = imported.project.externalImports.find(({ id }) => id === imported.externalImportId);
-    setImportNotice({ name: candidate.invocation.name, variableCount: receipt?.projection.kind === "prompt-template" ? receipt.projection.variables.length : 0, template: mode === "reusable-template" });
+    input.onImported({ name: candidate.invocation.name, variableCount: receipt?.projection.kind === "prompt-template" ? receipt.projection.variables.length : 0, template: mode === "reusable-template" });
   }
-  return { templateWorkbench, activeProjectRevision, activeConnectionRequirement, templateUsageCounts, templateRunOverrides, importNotice, createProjectTemplate, saveProjectTemplate, renameProjectTemplate, archiveProjectTemplate, restoreProjectTemplate, insertProjectTemplate, updateTemplateUseValues, saveTemplateUseRunValue, updateTemplateUseOverride, updateTemplateUseToLatestRevision, detachTemplateUse, removeTemplateUse, addComposerMessage, updateComposerMessage, removeComposerMessage, importN8nPrompt, clearImportNotice: () => setImportNotice(undefined), clearTransientOverrides: () => setTemplateRunOverrides({}), markExecutedRevision: (id) => executedRevisionIdsRef.current.add(id) };
+  return { templateWorkbench, activeProjectRevision, activeConnectionRequirement, templateUsageCounts, templateRunOverrides, createProjectTemplate, saveProjectTemplate, renameProjectTemplate, archiveProjectTemplate, restoreProjectTemplate, insertProjectTemplate, updateTemplateUseValues, saveTemplateUseRunValue, updateTemplateUseOverride, updateTemplateUseToLatestRevision, detachTemplateUse, removeTemplateUse, addComposerMessage, updateComposerMessage, removeComposerMessage, importN8nPrompt, clearTransientOverrides: () => setTemplateRunOverrides({}), markExecutedRevision: (id) => executedRevisionIdsRef.current.add(id) };
 }

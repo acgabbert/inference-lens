@@ -96,9 +96,16 @@ npx playwright test --project=chromium-light          # one theme
 ```
 
 `playwright.config.ts` starts the dev server on port 4300 and the buffered
-fixture provider on 44014 for you, and runs every spec twice — once in
-`chromium-light` and once in `chromium-dark`. Do not start a dev server by hand
-for a Playwright run; the config owns that lifecycle.
+fixture provider on 44014 for you. Do not start a dev server by hand for a
+Playwright run; the config owns that lifecycle.
+
+Every spec runs in `chromium-light`. `chromium-dark` re-runs only the specs
+named in `themeSensitiveSpecs` — the ones that read resolved styles, where
+`light-dark()` tokens mean an assertion can hold in one scheme and not the
+other. A spec that asserts on text or roles cannot fail in dark for a reason
+light would not also catch, so running it twice bought nothing and cost about
+half the suite's wall clock. **If you add an assertion on `getComputedStyle`,
+add the spec to that list** — otherwise it is only ever checked in light.
 
 The suite is deliberately **not** part of `npm test`. Run both before opening a
 pull request.
@@ -218,6 +225,19 @@ Each of these has silently shipped a green test that exercised nothing:
   results arrive has non-final geometry until the work finishes; a row is
   attached before its contents fill in. Wait for a completion signal — the
   absence of `Experiment progress`, for instance — not merely for a row.
+- **A toast expires while the spec is still walking to it.** Six seconds, or
+  twelve when it carries an action. A spec that publishes one, does three more
+  things, and then asserts is racing a timer, and the failure reads as "the
+  feature never fired". Assert with the `toast` driver as the next step after
+  the action that publishes it. The mirror-image trap: touching a toast
+  *pauses* it, so `not.toBeVisible()` after a `hover()` never comes true until
+  the pointer leaves.
+- **Time a batch's completion rather than waiting for it.** A completion toast
+  only appears if the batch finishes while the spec is looking somewhere else,
+  which is not a thing to hope for. Park every provider call
+  (`page.route("**" + INFERENCE_API_PATH)`) and release them one at a time, as
+  `evaluation-completion-toast.spec.ts` does — then "finished off-screen" is a
+  state the spec caused rather than one it happened to catch.
 
 ### Selectors worth knowing
 
@@ -239,6 +259,12 @@ These cost a round trip each to discover:
   way before reading.
 - **CSS uppercasing reaches `innerText`.** Status pills are
   `text-transform: uppercase`, so match `COMPLETED`, not `completed`.
+- **New surfaces are CSS Modules, so their class names are hashed.** Nothing may
+  locate the mode shells, the blocker chip, or the notification tiers by class.
+  Use the roles and names they publish — `Application mode` for the mode strip,
+  `Notifications` for the toast list — or the attributes put there for the
+  purpose, such as `[data-app-banner]`, which also names which condition holds
+  the single banner slot.
 
 ### Stub the folder picker to drive project-backed features
 
@@ -317,12 +343,32 @@ difference.
 
 Theming is `light-dark()` tokens with no `prefers-color-scheme` blocks (see
 [THEMING.md](THEMING.md)), so `page.emulateMedia({ colorScheme: "dark" })` is
-enough to check the dark rendering. New CSS must draw its colors from the
-`:root` tokens; `tests/theme-tokens.test.ts` fails on any color literal outside
-that block.
+enough to check the dark rendering within a single spec. Only the specs listed
+in `themeSensitiveSpecs` are re-run wholesale in `chromium-dark`; add yours if
+it asserts on resolved styles.
+
+New CSS must draw its colors from the `:root` tokens;
+`tests/theme-tokens.test.ts` fails on any color literal outside that block.
 
 ## Cleaning up
 
 Fixtures and `npm run dev` are long-lived processes. Stop them when the check is
 finished — a stale fixture on port 4010 or 4011 will quietly serve a later
 session and make its results confusing.
+
+Every fixture arms `stopOnSignal` from `scripts/fixture-shutdown.mjs` before it
+listens, so `Ctrl-C` and Playwright's teardown both stop it promptly even with a
+client mid-request. A new fixture must do the same. The shape that looks correct
+and is not:
+
+```js
+process.on("SIGTERM", () => server.close(() => process.exit(0)));
+```
+
+`close()` stops the server accepting and then waits for open connections to end
+on their own. An SSE stream still being written never does, so the callback
+never runs, the fixture ignores SIGTERM, and it keeps its port until something
+SIGKILLs it — which surfaces one run later as a port-in-use error that names
+nothing. `stopOnSignal` calls `closeAllConnections()`, which is the part that
+makes the difference. `tests/fixture-shutdown.test.mjs` holds a request open
+against every fixture and asserts each one stops.

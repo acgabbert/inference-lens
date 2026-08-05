@@ -1,5 +1,7 @@
 import { createServer } from "node:http";
 
+import { stopOnSignal } from "./fixture-shutdown.mjs";
+
 const host = "127.0.0.1";
 const port = Number.parseInt(process.env.INFERENCE_LENS_FLAKY_PORT ?? "4010", 10);
 let chatRequestCount = 0;
@@ -79,6 +81,8 @@ const server = createServer(async (request, response) => {
   );
   response.end("data: [DONE]\n\n");
 });
+
+stopOnSignal(server);
 
 server.listen(port, host, () => {
   console.log(`Flaky OpenAI-compatible provider listening at http://${host}:${port}/v1`);

@@ -1,10 +1,8 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
 
-import react from "@vitejs/plugin-react";
 import { JSDOM } from "jsdom";
-import { createServer } from "vite";
-import { uniqueViteCacheDir } from "./support/vite-cache-dir.mjs";
+import { ssrLoadModule } from "./support/ssr.mjs";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   url: "http://localhost",
@@ -58,18 +56,11 @@ const templateTwo = {
 };
 
 async function mount(overrides = {}) {
-  const server = await createServer({
-    configFile: false, cacheDir: uniqueViteCacheDir(),
-    root: process.cwd(),
-    plugins: [react()],
-    server: { middlewareMode: true, hmr: false },
-    logLevel: "warn",
-  });
   const [{ createElement, act }, { createRoot }, { ProjectTemplatesPane }] =
     await Promise.all([
       import("react"),
       import("react-dom/client"),
-      server.ssrLoadModule("/app/project-templates-pane.client.tsx"),
+      ssrLoadModule("/app/project-templates-pane.client.tsx"),
     ]);
   const container = document.createElement("div");
   document.body.append(container);
@@ -137,7 +128,6 @@ async function mount(overrides = {}) {
     async close() {
       await act(async () => root.unmount());
       container.remove();
-      await server.close();
     },
   };
 }

@@ -1,5 +1,7 @@
 import { createServer } from "node:http";
 
+import { stopOnSignal } from "./fixture-shutdown.mjs";
+
 const host = "127.0.0.1";
 const port = Number.parseInt(process.env.INFERENCE_LENS_REPEAT_PORT ?? "4016", 10);
 let repetition = 0;
@@ -39,6 +41,8 @@ const server = createServer((request, response) => {
   response.end("data: [DONE]\n\n");
   console.log(answer);
 });
+
+stopOnSignal(server);
 
 server.listen(port, host, () => {
   console.log(`Repeated experiment fixture listening at http://${host}:${port}/v1`);

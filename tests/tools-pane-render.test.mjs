@@ -1,9 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import react from "@vitejs/plugin-react";
-import { createServer } from "vite";
-import { uniqueViteCacheDir } from "./support/vite-cache-dir.mjs";
+import { ssrLoadModule } from "./support/ssr.mjs";
 
 /**
  * A brand-new project has no project-owned tool definitions. That must read
@@ -13,52 +11,41 @@ import { uniqueViteCacheDir } from "./support/vite-cache-dir.mjs";
  * state actually reaches markup, not just that some prop was computed.
  */
 async function renderPane(props) {
-  const server = await createServer({
-    configFile: false, cacheDir: uniqueViteCacheDir(),
-    root: process.cwd(),
-    plugins: [react()],
-    server: { middlewareMode: true, hmr: false, ws: false },
-    logLevel: "warn",
-  });
-  try {
-    const [{ ToolsPane }, { renderToStaticMarkup }, { createElement }] =
-      await Promise.all([
-        server.ssrLoadModule("/app/tools-pane.client.tsx"),
-        import("react-dom/server"),
-        import("react"),
-      ]);
-    return renderToStaticMarkup(
-      createElement(ToolsPane, {
-        tools: [],
-        requestTools: [],
-        enabledToolIds: [],
-        activeProfileName: "Default",
-        toolsEnabled: true,
-        onOpenLibrary() {},
-        onOpenConnectionSettings() {},
-        onAddTool() {},
-        onRemoveTool() {},
-        onUpdateTool() {},
-        onSetToolEnabled() {},
-        mockForTool() {
-          return undefined;
-        },
-        onUpdateToolMock() {},
-        onRemoveRequestTool() {},
-        commandTools: {
-          availability: { kind: "unconfigured", variable: "INFERENCE_LENS_COMMAND_TOOLS" },
-          commands: [],
-          grantFor: () => undefined,
-          bindingFor: () => undefined,
-          grant() {},
-          revoke() {},
-        },
-        ...props,
-      }),
-    );
-  } finally {
-    await server.close();
-  }
+  const [{ ToolsPane }, { renderToStaticMarkup }, { createElement }] =
+    await Promise.all([
+      ssrLoadModule("/app/tools-pane.client.tsx"),
+      import("react-dom/server"),
+      import("react"),
+    ]);
+  return renderToStaticMarkup(
+    createElement(ToolsPane, {
+      tools: [],
+      requestTools: [],
+      enabledToolIds: [],
+      activeProfileName: "Default",
+      toolsEnabled: true,
+      onOpenLibrary() {},
+      onOpenConnectionSettings() {},
+      onAddTool() {},
+      onRemoveTool() {},
+      onUpdateTool() {},
+      onSetToolEnabled() {},
+      mockForTool() {
+        return undefined;
+      },
+      onUpdateToolMock() {},
+      onRemoveRequestTool() {},
+      commandTools: {
+        availability: { kind: "unconfigured", variable: "INFERENCE_LENS_COMMAND_TOOLS" },
+        commands: [],
+        grantFor: () => undefined,
+        bindingFor: () => undefined,
+        grant() {},
+        revoke() {},
+      },
+      ...props,
+    }),
+  );
 }
 
 function tool(overrides = {}) {

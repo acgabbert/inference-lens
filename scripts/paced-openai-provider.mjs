@@ -1,5 +1,7 @@
 import { createServer } from "node:http";
 
+import { stopOnSignal } from "./fixture-shutdown.mjs";
+
 /**
  * A fixture with deliberate, known timing. The stall before the first byte and
  * the fixed gap between content deltas make time-to-first-token and
@@ -98,6 +100,8 @@ const server = createServer(async (request, response) => {
       `expect roughly ${(words.length / (generationMs / 1000)).toFixed(1)} tok/s.`,
   );
 });
+
+stopOnSignal(server);
 
 server.listen(port, host, () => {
   console.log(`Paced OpenAI-compatible provider listening at http://${host}:${port}/v1`);

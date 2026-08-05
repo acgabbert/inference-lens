@@ -1,9 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
-import react from "@vitejs/plugin-react";
 import { JSDOM } from "jsdom";
-import { createServer } from "vite";
-import { uniqueViteCacheDir } from "./support/vite-cache-dir.mjs";
+import { ssrLoadModule } from "./support/ssr.mjs";
 import { evaluationFixture } from "./fixtures/evaluation-suite-authoring.mjs";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost" });
@@ -18,8 +16,7 @@ after(() => dom.window.close());
  * and stay put. That invariant is the reason the band is allowed to shut at all.
  */
 test("shutting the setup band hides its controls and keeps every fact a start depends on", async () => {
-  const server = await createServer({ configFile: false, cacheDir: uniqueViteCacheDir(), root: process.cwd(), plugins: [react()], server: { middlewareMode: true, hmr: false, ws: false }, logLevel: "warn" });
-  const [{ createElement, act }, { createRoot }, { EvaluationSuiteEditor }] = await Promise.all([import("react"), import("react-dom/client"), server.ssrLoadModule("/app/evaluations/evaluation-suite-editor.client.tsx")]);
+  const [{ createElement, act }, { createRoot }, { EvaluationSuiteEditor }] = await Promise.all([import("react"), import("react-dom/client"), ssrLoadModule("/app/evaluations/evaluation-suite-editor.client.tsx")]);
   const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
   try {
     const authoring = evaluationFixture();
@@ -56,7 +53,7 @@ test("shutting the setup band hides its controls and keeps every fact a start de
     // The case list and the case editor are unaffected by the band either way.
     assert.ok(container.querySelector(".evaluation-case-rail"));
     assert.ok(container.querySelector(".evaluation-case-detail"));
-  } finally { await act(async () => root.unmount()); container.remove(); await server.close(); }
+  } finally { await act(async () => root.unmount()); container.remove(); }
 });
 
 /**
@@ -65,8 +62,7 @@ test("shutting the setup band hides its controls and keeps every fact a start de
  * route is what crosses the mode boundary.
  */
 test("an empty saved-prompt picker closes and asks its owner for the prompt library", async () => {
-  const server = await createServer({ configFile: false, cacheDir: uniqueViteCacheDir(), root: process.cwd(), plugins: [react()], server: { middlewareMode: true, hmr: false, ws: false }, logLevel: "warn" });
-  const [{ createElement, act }, { createRoot }, { EvaluationSuiteEditor }] = await Promise.all([import("react"), import("react-dom/client"), server.ssrLoadModule("/app/evaluations/evaluation-suite-editor.client.tsx")]);
+  const [{ createElement, act }, { createRoot }, { EvaluationSuiteEditor }] = await Promise.all([import("react"), import("react-dom/client"), ssrLoadModule("/app/evaluations/evaluation-suite-editor.client.tsx")]);
   const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
   let pickerClosed = false;
   let templatesRequested = 0;
@@ -86,5 +82,5 @@ test("an empty saved-prompt picker closes and asks its owner for the prompt libr
     await act(async () => openTemplates.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true })));
     assert.equal(pickerClosed, true);
     assert.equal(templatesRequested, 1);
-  } finally { await act(async () => root.unmount()); container.remove(); await server.close(); }
+  } finally { await act(async () => root.unmount()); container.remove(); }
 });

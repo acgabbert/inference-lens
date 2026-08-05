@@ -91,6 +91,13 @@ export function useProjectWorkspace(input: {
   createProject(): ProjectFile;
   currentDraft(): UpdateProjectDraft;
   onApplyDraft(draft: ProjectDraft): void;
+  /**
+   * A save the user asked for landed. Deliberately not called by the auto-save
+   * loop below: auto-save is continuous and unremarkable, and confirming it
+   * every eight hundred milliseconds would train the user to ignore the only
+   * channel that also carries "your work did not reach the disk".
+   */
+  onSaved?(outcome: { name: string; destination: "folder" | "download" }): void;
 }): ProjectWorkspaceHandleState {
   const {
     activeProfile,
@@ -101,6 +108,7 @@ export function useProjectWorkspace(input: {
     createProject,
     currentDraft,
     onApplyDraft,
+    onSaved,
   } = input;
   const [projectFile, setProjectFile] = useState<ProjectFile | null>(null);
   const [projectWorkspace, setProjectWorkspace] =
@@ -498,6 +506,7 @@ export function useProjectWorkspace(input: {
           setProjectDirty(false);
           setProjectError(undefined);
           updateProjectErrorKind(undefined);
+          onSaved?.({ name: project.name, destination: "folder" });
         }
         return;
       }
@@ -520,6 +529,7 @@ export function useProjectWorkspace(input: {
       setProjectFile(project);
       setProjectDirty(false);
       setProjectError(undefined);
+      onSaved?.({ name: project.name, destination: "download" });
     } catch (error) {
       projectFailure(error, "Could not save the project.");
     }

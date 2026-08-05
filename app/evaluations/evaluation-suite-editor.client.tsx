@@ -447,10 +447,6 @@ export function EvaluationSuiteEditor({
             </form>}
             {authoring.error?.target.kind === "suite-name" && <p className="evaluation-field-error" role="alert">{authoring.error.message}</p>}
             {authoring.error?.target.kind === "editor" && <div className="template-diagnostic" role="alert">{authoring.error.message}</div>}
-            {authoring.notice && <p className="evaluation-authoring-notice" role="status">
-              <strong>Evaluation input now uses “{authoring.notice.templateName}”.</strong> It pins {authoring.notice.messageCount} {authoring.notice.messageCount === 1 ? "message" : "messages"} and {authoring.notice.variableCount === 0 ? "no variables" : `${authoring.notice.variableCount} ${authoring.notice.variableCount === 1 ? "variable" : "variables"}`}. Messages was not changed.
-              <button className="text-button" type="button" onClick={authoring.dismissNotice}>Dismiss</button>
-            </p>}
             {authoring.savedPromptError && !authoring.savedPromptPickerOpen && <p className="evaluation-field-error" role="alert">{authoring.savedPromptError}</p>}
             {/* Preflight is the shared blocker chip, so the state of the
                 Start button in the topbar and the reason it is in that state

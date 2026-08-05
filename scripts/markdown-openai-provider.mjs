@@ -1,5 +1,7 @@
 import { createServer } from "node:http";
 
+import { stopOnSignal } from "./fixture-shutdown.mjs";
+
 const host = "127.0.0.1";
 const port = Number.parseInt(process.env.INFERENCE_LENS_MARKDOWN_PORT ?? "4013", 10);
 const deltaMs = Number.parseInt(
@@ -88,6 +90,8 @@ const server = createServer(async (request, response) => {
   response.end("data: [DONE]\n\n");
   console.log(`streamed ${deltas.length} markdown deltas`);
 });
+
+stopOnSignal(server);
 
 server.listen(port, host, () => {
   console.log(`Markdown provider listening at http://${host}:${port}/v1`);

@@ -16,12 +16,35 @@ const commandToolCatalog = fileURLToPath(
   new URL("./tests/fixtures/command-tools/catalog.json", import.meta.url),
 );
 
+/**
+ * The specs whose assertions a colour scheme can actually change.
+ *
+ * These read resolved styles — `getComputedStyle` for a disabled control's
+ * colour and opacity, for a field's border before focus — and the tokens behind
+ * them are `light-dark()`, so "disabled reads as disabled" is a claim that has
+ * to hold in each scheme separately.
+ *
+ * Every other spec asserts on text and roles, which the scheme cannot affect.
+ * Running the whole suite twice cost about half the suite's wall clock and
+ * could not fail for a reason the light run would not also catch. A spec that
+ * starts reading resolved styles belongs on this list.
+ */
+const themeSensitiveSpecs = [
+  "control-affordance.spec.ts",
+  "evaluation-suite-execution-settings.spec.ts",
+  "pr2-workbench.spec.ts",
+];
+
 export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? "github" : "list",
+  // A backstop for the suite as a whole. Per-test timeouts bound a test that
+  // wedges; they do not bound a run that keeps starting new ones, and CI has no
+  // reason to sit on a job that has already been going for half an hour.
+  globalTimeout: 30 * 60 * 1000,
   use: {
     baseURL: `http://127.0.0.1:${appPort}`,
     trace: "on-first-retry",
@@ -33,6 +56,7 @@ export default defineConfig({
     },
     {
       name: "chromium-dark",
+      testMatch: themeSensitiveSpecs,
       use: { ...devices["Desktop Chrome"], colorScheme: "dark" },
     },
   ],

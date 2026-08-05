@@ -1,69 +1,44 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import react from "@vitejs/plugin-react";
-import { readFile } from "node:fs/promises";
-
-import { createServer } from "vite";
-import { uniqueViteCacheDir } from "./support/vite-cache-dir.mjs";
+import { ssrLoadModule } from "./support/ssr.mjs";
 
 async function renderImportModal() {
-  const server = await createServer({
-    configFile: false, cacheDir: uniqueViteCacheDir(),
-    root: process.cwd(),
-    plugins: [react()],
-    server: { middlewareMode: true, hmr: false, ws: false },
-    logLevel: "warn",
-  });
-  try {
-    const [{ N8nImportModal }, { renderToStaticMarkup }, { createElement }] =
-      await Promise.all([
-        server.ssrLoadModule("/app/n8n-import-modal.client.tsx"),
-        import("react-dom/server"),
-        import("react"),
-      ]);
-    return renderToStaticMarkup(
-      createElement(N8nImportModal, {
-        open: true,
-        onClose: () => {},
-        onImport: async () => {},
-      }),
-    );
-  } finally {
-    await server.close();
-  }
-}
-
-async function renderExecutionLinkSelector() {
-  const server = await createServer({
-    configFile: false, cacheDir: uniqueViteCacheDir(),
-    root: process.cwd(),
-    plugins: [react()],
-    server: { middlewareMode: true, hmr: false, ws: false },
-    logLevel: "warn",
-  });
-  try {
-    const [
-      { N8nExecutionLinkSelector },
-      { renderToStaticMarkup },
-      { createElement },
-    ] = await Promise.all([
-      server.ssrLoadModule("/app/n8n-import-modal.client.tsx"),
+  const [{ N8nImportModal }, { renderToStaticMarkup }, { createElement }] =
+    await Promise.all([
+      ssrLoadModule("/app/n8n-import-modal.client.tsx"),
       import("react-dom/server"),
       import("react"),
     ]);
-    return renderToStaticMarkup(
-      createElement(N8nExecutionLinkSelector, {
-        value:
-          "https://n8n.example/workflow/workflow_1/executions/execution_1",
-        loading: false,
-        onChange: () => {},
-        onSubmit: () => {},
-      }),
-    );
-  } finally {
-    await server.close();
-  }
+  return renderToStaticMarkup(
+    createElement(N8nImportModal, {
+      open: true,
+      onClose: () => {},
+      onImport: async () => {},
+    }),
+  );
+}
+
+async function renderExecutionLinkSelector() {
+  const [
+    { N8nExecutionLinkSelector },
+    { renderToStaticMarkup },
+    { createElement },
+  ] = await Promise.all([
+    ssrLoadModule("/app/n8n-import-modal.client.tsx"),
+    import("react-dom/server"),
+    import("react"),
+  ]);
+  return renderToStaticMarkup(
+    createElement(N8nExecutionLinkSelector, {
+      value:
+        "https://n8n.example/workflow/workflow_1/executions/execution_1",
+      loading: false,
+      onChange: () => {},
+      onSubmit: () => {},
+    }),
+  );
 }
 
 test("renders a focused and safe n8n import workspace shell", async () => {

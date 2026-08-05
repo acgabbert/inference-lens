@@ -16,6 +16,7 @@ import type {
 } from "../run-readiness.client";
 import type { ProjectTemplatesHandle } from "../templates/use-project-templates.client";
 import type { CommandToolsHandle } from "../tools/use-command-tools.client";
+import { StatusChip } from "../notifications/status-chip.client";
 import { RequestSettings } from "./request-settings.client";
 import type { RequestSettingsProps } from "./request-settings.client";
 
@@ -64,6 +65,13 @@ export interface RequestComposerProps {
     onRepeat(): void;
   };
   pendingDestination?: ReadinessDestination;
+  /**
+   * Bumped by the route when an imported prompt lands in the message list. The
+   * composer returns to Messages so the import is on screen — a rule that used
+   * to ride on the presence of the import notice, which is a toast now and
+   * holds no state to read.
+   */
+  importedRevision?: number;
   onReadinessAction(destination: ReadinessDestination): void;
   onDestinationHandled(): void;
   activeProfile: { name: string };
@@ -90,6 +98,7 @@ export function RequestComposer({
   readiness,
   repeat,
   pendingDestination,
+  importedRevision = 0,
   onReadinessAction,
   onDestinationHandled,
   activeProfile,
@@ -103,6 +112,7 @@ export function RequestComposer({
   onDiscardPendingBranch,
 }: RequestComposerProps) {
   const [tab, setTab] = useState<RequestTab>("messages");
+  const [shownImport, setShownImport] = useState(importedRevision);
   // Collapsed by default: the settings summary says what the next run will
   // send, which is what most visits to this pane need, and the message list
   // starts higher up for the visits that do not.
@@ -116,8 +126,14 @@ export function RequestComposer({
     requestDraft.enabledToolIds.includes(id),
   ).length;
   const selectedToolCount = selectedProjectToolCount + requestDraft.requestTools.length;
-  // A newly imported snapshot is always shown before its notice is dismissed.
-  const activeTab = templates.importNotice ? "messages" : tab;
+  // A newly imported snapshot is always shown. Adjusted during render rather
+  // than in an effect, as the focus-mode reset below is, so the tab the import
+  // replaced never reaches the DOM.
+  if (shownImport !== importedRevision) {
+    setShownImport(importedRevision);
+    if (tab !== "messages") setTab("messages");
+  }
+  const activeTab = tab;
 
   // Focus mode belongs to the messages tab. Leaving it drops the state here
   // rather than at each navigation call site, so a tab change from anywhere —
@@ -243,36 +259,21 @@ export function RequestComposer({
         </div>
       </div>
       <RunReadinessNotice {...(readiness ? { readiness } : {})} onAction={routeReadinessAction} />
-      {templates.importNotice && (
-        <div className="workbench-notice" role="status">
-          <div className="workbench-notice-copy">
-            <strong>
-              Imported &ldquo;{templates.importNotice.name}&rdquo;{templates.importNotice.template ? " as a reusable template" : ""}
-            </strong>
-            <span>
-              {templates.importNotice.template
-                ? `${templates.importNotice.variableCount} ${templates.importNotice.variableCount === 1 ? "variable" : "variables"} imported from the saved execution.`
-                : "Execution messages imported into the composer."}
-            </span>
-          </div>
-          <div className="workbench-notice-actions">
-            {templates.importNotice.template && (
-              <button className="button primary" type="button" onClick={() => { setTab("templates"); templates.clearImportNotice(); }}>
-                View template
-              </button>
-            )}
-            <button className="button" type="button" onClick={() => { setTab("messages"); templates.clearImportNotice(); }}>Dismiss</button>
-          </div>
-        </div>
-      )}
       {pendingBranch && (
-        <div className="branch-pending" role="status">
-          Branching from run <code>{pendingBranch.parentRunId}</code> at message <code>{pendingBranch.branchMessageId}</code>. Original trace unchanged.
-          {pendingBranch.parentTraceNeedsSaving && (
-            <button className="button secondary" type="button" onClick={onSaveParentTrace}>Save trace…</button>
-          )}
-          <button className="button secondary" type="button" onClick={onDiscardPendingBranch}>Discard branch</button>
-        </div>
+        <StatusChip
+          tone="advisory"
+          label="Pending branch"
+          detail={<>
+            Branching from run <code>{pendingBranch.parentRunId}</code> at message{" "}
+            <code>{pendingBranch.branchMessageId}</code>. The original trace is unchanged.
+          </>}
+          actions={[
+            ...(pendingBranch.parentTraceNeedsSaving
+              ? [{ key: "save-trace", label: "Save trace…", onSelect: onSaveParentTrace }]
+              : []),
+            { key: "discard", label: "Discard branch", onSelect: onDiscardPendingBranch },
+          ]}
+        />
       )}
 
       <div className="pane-scroll request-content">

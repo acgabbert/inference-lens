@@ -105,6 +105,6 @@ export function evaluationFixture() {
     addInput: noop, renameInput: noop, deleteInput: noop, addCase: noop,
     updateCase: noop, deleteCase: noop, addCheck: noop, updateCheck: noop, deleteCheck: noop,
     openSavedPromptPicker: noop, closeSavedPromptPicker: noop,
-    startFromSavedPrompt: () => true, dismissNotice: noop,
+    startFromSavedPrompt: () => true,
   };
 }

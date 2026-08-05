@@ -1,58 +1,34 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import react from "@vitejs/plugin-react";
-import { createServer } from "vite";
-import { uniqueViteCacheDir } from "./support/vite-cache-dir.mjs";
+import { ssrLoadModule } from "./support/ssr.mjs";
 
 async function renderTemplateProvenance(resolutions) {
-  const server = await createServer({
-    configFile: false, cacheDir: uniqueViteCacheDir(),
-    root: process.cwd(),
-    plugins: [react()],
-    server: { middlewareMode: true, hmr: false, ws: false },
-    logLevel: "warn",
-  });
-  try {
-    const [
-      { TemplateProvenance },
-      { renderToStaticMarkup },
-      { createElement },
-    ] = await Promise.all([
-      server.ssrLoadModule("/app/run-trace-panel.client.tsx"),
-      import("react-dom/server"),
-      import("react"),
-    ]);
-    return renderToStaticMarkup(
-      createElement(TemplateProvenance, { resolutions }),
-    );
-  } finally {
-    await server.close();
-  }
+  const [
+    { TemplateProvenance },
+    { renderToStaticMarkup },
+    { createElement },
+  ] = await Promise.all([
+    ssrLoadModule("/app/run-trace-panel.client.tsx"),
+    import("react-dom/server"),
+    import("react"),
+  ]);
+  return renderToStaticMarkup(
+    createElement(TemplateProvenance, { resolutions }),
+  );
 }
 
 async function renderComponent(component, props) {
-  const server = await createServer({
-    configFile: false, cacheDir: uniqueViteCacheDir(),
-    root: process.cwd(),
-    plugins: [react()],
-    server: { middlewareMode: true, hmr: false, ws: false },
-    logLevel: "warn",
-  });
-  try {
-    const [
-      module,
-      { renderToStaticMarkup },
-      { createElement },
-    ] = await Promise.all([
-      server.ssrLoadModule("/app/run-trace-panel.client.tsx"),
-      import("react-dom/server"),
-      import("react"),
-    ]);
-    return renderToStaticMarkup(createElement(module[component], props));
-  } finally {
-    await server.close();
-  }
+  const [
+    module,
+    { renderToStaticMarkup },
+    { createElement },
+  ] = await Promise.all([
+    ssrLoadModule("/app/run-trace-panel.client.tsx"),
+    import("react-dom/server"),
+    import("react"),
+  ]);
+  return renderToStaticMarkup(createElement(module[component], props));
 }
 
 test("renders self-contained template provenance in the evidence inspector", async () => {

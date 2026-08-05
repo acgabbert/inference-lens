@@ -192,7 +192,6 @@ textarea,
 .confirmation-dialog > p,
 .registry-header p,
 .registry-empty p,
-.branch-pending,
 .branch-provenance,
 .transcript-body > p,
 .output > p,
@@ -218,7 +217,6 @@ textarea,
   font-size: var(--type-body);
 }
 
-.project-error button,
 .model-option,
 .template-variable-row code,
 .template-use-variable code,
@@ -276,7 +274,6 @@ label:not(.file-button),
 label.file-button,
 select,
 .section-heading,
-.workbench-notice-copy strong,
 .template-insert-label,
 .template-preview-heading,
 .request-preview summary,
@@ -557,38 +554,6 @@ label.file-button {
   display: none;
 }
 
-.project-error {
-  min-height: 38px;
-  padding: 8px 24px;
-  border-bottom: 1px solid var(--danger-border);
-  background: var(--danger-surface);
-  color: var(--danger);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.project-error button {
-  border: 0;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  font-weight: 700;
-}
-
-.project-error-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex: 0 0 auto;
-}
-
-.project-error-actions button:first-child {
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
 .workspace {
   min-height: calc(100vh - 72px);
   display: grid;
@@ -834,48 +799,6 @@ select:disabled {
 
 .credential-status-error {
   color: var(--danger);
-}
-
-/* Advisories about the environment rather than the request: stacked out of the
-   way, never blocking, and dismissible. */
-.workbench-notices {
-  position: fixed;
-  right: 24px;
-  bottom: 24px;
-  z-index: 20;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  max-width: min(460px, calc(100vw - 32px));
-}
-
-.workbench-notice {
-  padding: 14px 16px;
-  border: 1px solid var(--border-strong);
-  border-radius: 10px;
-  background: var(--surface-raised);
-  box-shadow: var(--shadow-float);
-}
-
-.workbench-notice-copy strong,
-.workbench-notice-copy span {
-  display: block;
-}
-
-.workbench-notice-copy strong {
-}
-
-.workbench-notice-copy span {
-  margin-top: 3px;
-  color: var(--text-muted);
-  line-height: 1.45;
-}
-
-.workbench-notice-actions {
-  margin-top: 11px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
 }
 
 a.button {
@@ -2960,21 +2883,6 @@ output {
   gap: 0.6rem;
 }
 
-.repeated-experiment-notice {
-  margin: 0;
-  padding: 0.7rem 0.8rem;
-  border: 1px solid var(--border-default);
-  border-radius: 8px;
-  color: var(--text-muted);
-  background: var(--surface-translucent);
-}
-
-.repeated-experiment-notice.error {
-  border-color: var(--danger-border);
-  color: var(--danger);
-  background: var(--danger-surface);
-}
-
 .repeated-experiment-summary {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3554,18 +3462,11 @@ textarea {
   padding: 5px 9px;
 }
 
-.branch-pending,
 .branch-provenance {
   margin: 0.75rem 0;
   padding: 0.65rem 0.8rem;
   border-left: 3px solid var(--accent);
   background: color-mix(in srgb, var(--accent) 8%, transparent);
-}
-
-.branch-pending {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
 }
 
 .transcript-list {
@@ -4746,15 +4647,6 @@ pre {
 }
 
 @media (max-width: 720px) {
-  /* A floating notice can cover most of a phone viewport and intercept controls
-     after the page scrolls underneath it. Keep the same notice content and
-     actions, but let it occupy document space on narrow screens. */
-  .workbench-notices {
-    position: static;
-    max-width: none;
-    margin: 12px;
-  }
-
   .topbar {
     height: auto;
     padding: 13px 15px;
@@ -4845,7 +4737,6 @@ main {
 }
 
 .topbar,
-.project-error,
 .mobile-workbench-tabs {
   flex: 0 0 auto;
 }
@@ -6917,28 +6808,6 @@ main {
 
 .evaluation-revision-picker select {
   text-overflow: ellipsis;
-}
-
-.evaluation-authoring-notice {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 8px;
-  margin: -8px 0 0;
-  padding: 10px 12px;
-  border: 1px solid var(--border-default);
-  border-radius: 9px;
-  background: var(--surface-sunken);
-  color: var(--text-muted);
-  line-height: 1.45;
-}
-
-.evaluation-authoring-notice strong {
-  color: var(--text-secondary);
-}
-
-.evaluation-authoring-notice .text-button {
-  margin-left: auto;
 }
 
 .evaluation-start-dialog {

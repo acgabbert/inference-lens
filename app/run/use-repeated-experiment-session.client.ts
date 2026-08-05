@@ -112,6 +112,13 @@ export interface UseRepeatedExperimentSessionOptions {
   onTraceSaved(): void;
   onError(message: string): void;
   onOpenTrace(trace: RunTrace, origin: { workspace: ProjectWorkspaceHandle | null; fileName: string; source: "experiment" }): void;
+  /**
+   * A batch this session started has run to completion. Same contract as the
+   * evaluation session's: only this hook can distinguish a batch that just
+   * finished from a saved one that was reopened, and an interruption goes to
+   * `onError` rather than here.
+   */
+  onFinished?(outcome: { experimentId: string; repetitions: number }): void;
 }
 
 function normalizedCount(value: number): number {
@@ -328,6 +335,10 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
       setExecution((current) => current?.plan.experimentId === pending.plan.experimentId
         ? { ...current, result }
         : current);
+      options.onFinished?.({
+        experimentId: pending.plan.experimentId,
+        repetitions: pending.plan.cells.length,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : "The repeated experiment was interrupted.";
       setExecution((current) => current?.plan.experimentId === pending.plan.experimentId
