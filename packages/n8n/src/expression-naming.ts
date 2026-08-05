@@ -37,6 +37,10 @@ function referenceAt(value: string, start: number): { end: number; canonical: st
     const bracket = new RegExp(`^\\[\\s*["'](${identifier})["']\\s*\\]`).exec(rest);
     const match = dot ?? bracket;
     if (!match) break;
+    // A property immediately invoked as a method is part of the expression's
+    // computation, not a data-path terminal. Keeping the preceding path lets
+    // `$json.topic.toUpperCase()` recommend `topic`, never `toUpperCase`.
+    if (dot && rest[match[0].length] === "(") break;
     end += match[0].length;
   }
   const raw = value.slice(start, end);

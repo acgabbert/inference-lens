@@ -2758,6 +2758,59 @@ output {
   backdrop-filter: blur(4px);
 }
 
+.n8n-template-paste-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 65;
+  padding: 24px;
+  display: grid;
+  place-items: center;
+  background: var(--overlay-scrim);
+  backdrop-filter: blur(4px);
+}
+
+.n8n-template-paste-dialog {
+  width: min(680px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  padding: 22px;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-modal);
+}
+
+.n8n-template-paste-dialog h2 { margin: 5px 0 0; }
+.n8n-template-paste-dialog > p { color: var(--text-muted); line-height: 1.5; }
+.n8n-template-paste-dialog textarea { width: 100%; margin-top: 6px; }
+.n8n-template-paste-preview, .n8n-template-paste-mapping {
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+}
+.n8n-template-paste-preview { white-space: pre-wrap; background: var(--surface-subtle); }
+.n8n-template-paste-mapping { display: grid; gap: 7px; }
+.n8n-template-paste-mapping code { overflow-wrap: anywhere; }
+.n8n-template-paste-mapping input { width: 100%; }
+.n8n-template-paste-review { font-weight: 650; }
+.n8n-template-paste-error { margin-top: 12px; color: var(--danger); }
+.n8n-template-paste-dialog .n8n-template-paste-preference {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 16px 0 0;
+  cursor: pointer;
+}
+.n8n-template-paste-preference input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  flex: 0 0 auto;
+}
+.n8n-template-paste-dialog footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+
 .confirmation-dialog {
   width: min(560px, 100%);
   max-height: calc(100vh - 48px);
