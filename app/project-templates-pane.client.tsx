@@ -21,6 +21,9 @@ import {
   resolveTemplateValues,
 } from "../packages/core/src/template-engine";
 import { FocusModeToggle, useFocusMode } from "./focus-mode.client";
+import { N8nTemplatePasteDialog } from "./templates/n8n-template-paste-dialog.client";
+import { shouldSuggestN8nTemplatePaste } from "./templates/n8n-template-paste";
+import { n8nPasteSuggestionsEnabled, setN8nPasteSuggestionsEnabled } from "./templates/n8n-template-paste-preference.client";
 
 type TemplateRole = "system" | "user" | "assistant";
 
@@ -103,6 +106,12 @@ export function ProjectTemplatesPane({
   const [focusMode, setFocusMode] = useState(false);
   const editorRef = useRef<HTMLElement>(null);
   const focusToggleRef = useRef<HTMLButtonElement>(null);
+  const [n8nSuggestionsEnabled, setN8nSuggestionsEnabled] = useState(
+    () => typeof window === "undefined" ? true : n8nPasteSuggestionsEnabled(),
+  );
+  const [n8nPasteTarget, setN8nPasteTarget] = useState<undefined | {
+    messageIndex: number; start: number; end: number; source: string; pastedSource?: string; revisionId?: PromptTemplateRevisionId; textarea: HTMLTextAreaElement; automatic: boolean;
+  }>();
 
   const viewedRevision = selected?.revisions.find(
     ({ id }) => id === viewedRevisionId,
@@ -128,6 +137,23 @@ export function ProjectTemplatesPane({
   const sensitiveVariables = discovery.variables.filter(({ name }) =>
     isSensitiveTemplateVariableName(name),
   );
+  function updateN8nSuggestionsEnabled(enabled: boolean): void {
+    setN8nSuggestionsEnabled(enabled);
+    setN8nPasteSuggestionsEnabled(enabled);
+  }
+
+  function openN8nPaste(target: Omit<NonNullable<typeof n8nPasteTarget>, "revisionId">): void {
+    setN8nPasteTarget({ ...target, revisionId: viewedRevision?.id });
+  }
+
+  function insertAtN8nPasteTarget(content: string): void {
+    const target = n8nPasteTarget;
+    if (!target || viewedRevision?.id !== target.revisionId || messages[target.messageIndex]?.content !== target.source) return;
+    const next = `${target.source.slice(0, target.start)}${content}${target.source.slice(target.end)}`;
+    setMessages((current) => current.map((message, index) => index === target.messageIndex ? { ...message, content: next } : message) as PromptTemplateMessages);
+    setN8nPasteTarget(undefined);
+    queueMicrotask(() => { target.textarea.focus(); target.textarea.setSelectionRange(target.start + content.length, target.start + content.length); });
+  }
 
   const { close: closeFocusMode } = useFocusMode({
     open: focusMode,
@@ -432,6 +458,8 @@ export function ProjectTemplatesPane({
                   else closeFocusMode();
                 }}
                 onChange={setMessages}
+                n8nSuggestionsEnabled={n8nSuggestionsEnabled}
+                onOpenN8nPaste={openN8nPaste}
               />
 
               <aside className="template-variable-rail">
@@ -552,6 +580,15 @@ export function ProjectTemplatesPane({
           </>
         )}
       </section>
+      {n8nPasteTarget && <N8nTemplatePasteDialog
+        automatic={n8nPasteTarget.automatic}
+        initialSource={n8nPasteTarget.pastedSource ?? n8nPasteTarget.source.slice(n8nPasteTarget.start, n8nPasteTarget.end)}
+        suggestionsEnabled={n8nSuggestionsEnabled}
+        onSuggestionsEnabledChange={updateN8nSuggestionsEnabled}
+        onClose={() => setN8nPasteTarget(undefined)}
+        onInsert={insertAtN8nPasteTarget}
+        onPasteUnchanged={() => insertAtN8nPasteTarget(n8nPasteTarget.pastedSource ?? n8nPasteTarget.source.slice(n8nPasteTarget.start, n8nPasteTarget.end))}
+      />}
     </div>
   );
 }
@@ -563,6 +600,8 @@ function TemplateMessagesEditor({
   focusToggleRef,
   onFocusModeChange,
   onChange,
+  n8nSuggestionsEnabled,
+  onOpenN8nPaste,
 }: {
   messages: PromptTemplateMessages;
   disabled: boolean;
@@ -570,8 +609,22 @@ function TemplateMessagesEditor({
   focusToggleRef: React.RefObject<HTMLButtonElement | null>;
   onFocusModeChange(open: boolean): void;
   onChange(messages: PromptTemplateMessages): void;
+  n8nSuggestionsEnabled: boolean;
+  onOpenN8nPaste(target: { messageIndex: number; start: number; end: number; source: string; pastedSource?: string; textarea: HTMLTextAreaElement; automatic: boolean }): void;
 }) {
   const expanded = messages.length > 1 || messages[0].role !== "user";
+  const textareas = useRef(new Map<number, HTMLTextAreaElement>());
+
+  function targetFor(textarea: HTMLTextAreaElement, index: number, automatic: boolean, pastedSource?: string) {
+    return { messageIndex: index, start: textarea.selectionStart, end: textarea.selectionEnd, source: messages[index]!.content, pastedSource, textarea, automatic };
+  }
+
+  function pasteHandler(index: number, event: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const source = event.clipboardData.getData("text/plain");
+    if (!n8nSuggestionsEnabled || !source || !shouldSuggestN8nTemplatePaste(source)) return;
+    event.preventDefault();
+    onOpenN8nPaste(targetFor(event.currentTarget, index, true, source));
+  }
 
   function addMessage(role: TemplateRole = "user", index = messages.length): void {
     const next = [...messages];
@@ -603,6 +656,10 @@ function TemplateMessagesEditor({
       <div className="template-content-heading">
         <h3>Content</h3>
         <div className="template-content-actions">
+          {!disabled && <button className="button secondary" type="button" onClick={() => {
+            const textarea = document.activeElement instanceof HTMLTextAreaElement ? document.activeElement : textareas.current.get(0);
+            if (textarea) onOpenN8nPaste(targetFor(textarea, [...textareas.current.entries()].find(([, value]) => value === textarea)?.[0] ?? 0, false));
+          }}>Paste from n8n…</button>}
           <FocusModeToggle
             className="template-focus-toggle"
             open={focusMode}
@@ -620,6 +677,8 @@ function TemplateMessagesEditor({
             rows={9}
             value={messages[0].content}
             onChange={(event) => updateMessage(0, { content: event.target.value })}
+            onPaste={(event) => pasteHandler(0, event)}
+            ref={(element) => { if (element) textareas.current.set(0, element); else textareas.current.delete(0); }}
           />
           {!disabled && (
             <span className="template-simple-actions">
@@ -675,6 +734,8 @@ function TemplateMessagesEditor({
                 rows={5}
                 value={message.content}
                 onChange={(event) => updateMessage(index, { content: event.target.value })}
+                onPaste={(event) => pasteHandler(index, event)}
+                ref={(element) => { if (element) textareas.current.set(index, element); else textareas.current.delete(index); }}
               />
             </article>
           ))}
