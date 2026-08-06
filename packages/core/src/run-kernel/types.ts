@@ -30,6 +30,7 @@ export type EntityIdKind =
   | "experiment"
   | "experiment-cell"
   | "evaluation-suite"
+  | "evaluation-variant"
   | "evaluation-input"
   | "evaluation-case"
   | "evaluation-baseline"
@@ -59,6 +60,7 @@ export type ExternalImportId = EntityId<"external-import">;
 export type ExperimentId = EntityId<"experiment">;
 export type ExperimentCellId = EntityId<"experiment-cell">;
 export type EvaluationSuiteId = EntityId<"evaluation-suite">;
+export type EvaluationVariantId = EntityId<"evaluation-variant">;
 export type EvaluationInputBindingId = EntityId<"evaluation-input">;
 export type EvaluationCaseId = EntityId<"evaluation-case">;
 export type EvaluationBaselineId = EntityId<"evaluation-baseline">;

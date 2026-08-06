@@ -1,6 +1,6 @@
 # Evaluation suite authoring
 
-Evaluation suites are portable Project v8 content. The **Evaluations** tab in
+Evaluation suites are portable Project v10 content. The **Evaluations** tab in
 the Request pane owns suite, input, case, and deterministic-check editing. Its
 focus-mode control expands the same live editor to the full application surface.
 
@@ -11,9 +11,14 @@ variable names, and preflight reports when the suite's revision no longer
 contains a bound use or variable. Empty suites remain valid authored state but
 cannot execute.
 
-A suite also owns its execution settings — connection requirement, model,
-delivery mode, inference options, repetitions, the tools it exposes, and the
-turn ceiling those tools may spend — and they are saved with the suite. Changing the evaluation's model or temperature therefore never edits the
+A suite owns one base execution configuration and one or more named,
+portable **Configurations**. A configuration stores only sparse overrides for
+connection requirement, model, delivery mode, and inference options; absent
+fields inherit from the base, while `null` explicitly clears an optional
+inference option to use the provider default. A configuration's
+`providerOptions` replaces the base object rather than deep-merging it.
+Repetitions, exposed tools, and turn ceiling remain shared across every
+configuration. Changing the evaluation's model or temperature therefore never edits the
 composer's, and a suite reproduces the same batch wherever the project is
 opened. Only the device-local runtime target (profile, endpoint, protocol,
 capabilities) is supplied from outside; see

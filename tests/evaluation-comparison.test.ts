@@ -81,6 +81,7 @@ function projectFixture(cases: CaseFixture[], model = "confirmed-model"): Projec
         repetitions: 1,
         toolIds: [],
       },
+      variants: [{ id: "evaluation-variant_default", name: "Default", overrides: {} }],
       inputBindings: [{
         id: "evaluation-input_topic",
         name: "Topic",

@@ -1,7 +1,7 @@
 export function evaluationFixture() {
   const noop = () => {};
   const project = {
-    schemaVersion: 9,
+    schemaVersion: 10,
     tools: [],
     defaults: {
       conversationRevisionId: "revision_current",
@@ -27,6 +27,7 @@ export function evaluationFixture() {
         repetitions: 3,
         toolIds: [],
       },
+      variants: [{ id: "evaluation-variant_default", name: "Default", overrides: {} }],
       inputBindings: [{ id: "evaluation-input_topic", name: "Topic", target: { kind: "template-variable", templateUseId: "template-use_question", variableName: "topic" } }],
       cases: [{ id: "evaluation-case_migrations", name: "Migrations", values: { "evaluation-input_topic": "database migrations" }, referenceAnswer: "Explain a safe rollout.", checks: [{ checkId: "check_contains", kind: "contains", value: "rollback" }] }],
     }],

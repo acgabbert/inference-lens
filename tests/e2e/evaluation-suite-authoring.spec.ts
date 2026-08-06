@@ -275,6 +275,21 @@ test("a saved suite opens with every case selected and preflight clean", async (
   await expect(editor).toContainText("3 selected × 1 rep → 3 runs");
 });
 
+test("authors sparse named configurations and shows their effective settings", async ({ page }) => {
+  const project = projectWithSavedSuite();
+  await openProject(page, project, 1280, { mapped: true });
+
+  await page.getByRole("button", { name: "+ Add configuration" }).click();
+  const row = page.getByLabel("Configuration New configuration");
+  await row.getByLabel("Configuration delivery New configuration").selectOption("streaming");
+  await row.getByLabel("Configuration temperature New configuration").fill("0.1");
+  await row.getByLabel("Configuration name 2").fill("Fast model");
+
+  await expect(page.getByLabel("Configuration Fast model")).toContainText("Effective:");
+  await expect(page.getByLabel("Configuration Fast model")).toContainText("streaming");
+  await expect(page.getByText("Repetitions, turn ceiling, and exposed tools are shared across every configuration.")).toBeVisible();
+});
+
 test("selecting a historical revision with no bound template use stays in the editor", async ({ page }) => {
   const project = projectWithSavedSuite();
   project.conversationRevisions.unshift({

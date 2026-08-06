@@ -5,19 +5,25 @@ import {
   addEvaluationCase,
   addEvaluationCheck,
   addEvaluationInput,
+  addEvaluationVariant,
   createEvaluationSuite,
   evaluationBindingCandidates,
   evaluationSuitePreflight,
   defaultCheck,
   removeEvaluationInput,
+  removeEvaluationVariant,
+  reorderEvaluationVariant,
   updateEvaluationCase,
   updateEvaluationCheck,
+  updateEvaluationVariant,
 } from "../packages/core/src/evaluation-suite-authoring.ts";
+import { resolveEvaluationVariant } from "../packages/core/src/evaluation-suites.ts";
 import { CHECK_KINDS } from "../packages/core/src/checks.ts";
 import {
   createProjectFile,
   createPromptTemplate,
   insertPromptTemplateUse,
+  parseProjectFile,
 } from "../packages/core/src/project.ts";
 
 function fixture() {
@@ -47,6 +53,42 @@ function fixture() {
   });
   return project;
 }
+
+test("authors ordered sparse configurations with inherit, clear, and replacement semantics", () => {
+  let project = fixture();
+  const created = createEvaluationSuite(project, "Topics", () => "topics");
+  project = created.project;
+  const defaultVariant = project.evaluationSuites[0]!.variants[0]!;
+  assert.deepEqual(defaultVariant, { id: "evaluation-variant_evaluation-suite_topics-default", name: "Default", overrides: {} });
+
+  const added = addEvaluationVariant(project, created.suiteId, () => "fast");
+  project = updateEvaluationVariant(added.project, created.suiteId, added.variantId, {
+    name: "Fast",
+    overrides: { target: { model: "fast-model" }, options: { temperature: null, providerOptions: { tier: "fast" } } },
+  });
+  const suite = project.evaluationSuites[0]!;
+  const resolved = resolveEvaluationVariant(suite, suite.variants[1]!);
+  assert.equal(resolved.target.connectionRequirementId, suite.execution.target.connectionRequirementId);
+  assert.equal(resolved.target.model, "fast-model");
+  assert.equal(resolved.options.temperature, undefined);
+  assert.deepEqual(resolved.options.providerOptions, { tier: "fast" });
+
+  project = reorderEvaluationVariant(project, created.suiteId, added.variantId, 0);
+  assert.deepEqual(project.evaluationSuites[0]!.variants.map(({ name }) => name), ["Fast", "Default"]);
+  assert.throws(
+    () => updateEvaluationVariant(project, created.suiteId, defaultVariant.id, { name: " fast ", overrides: {} }),
+    /repeated within the suite/,
+  );
+  project = removeEvaluationVariant(project, created.suiteId, defaultVariant.id);
+  assert.throws(() => removeEvaluationVariant(project, created.suiteId, added.variantId), /needs at least one configuration/);
+  assert.throws(() => parseProjectFile({
+    ...project,
+    evaluationSuites: project.evaluationSuites.map((candidate) => ({
+      ...candidate,
+      variants: [{ ...candidate.variants[0]!, overrides: { target: { connectionRequirementId: "profile_local" as never } } }],
+    })),
+  }), /connection_/);
+});
 
 test("authors complete suite inputs, cases, and globally fresh checks", () => {
   let project = fixture();

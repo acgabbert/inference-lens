@@ -5,11 +5,13 @@ import type {
   EvaluationCase,
   EvaluationInputBinding,
   EvaluationSuite,
+  EvaluationVariant,
 } from "./evaluation-suites.ts";
 export type {
   EvaluationCase,
   EvaluationInputBinding,
   EvaluationSuite,
+  EvaluationVariant,
 } from "./evaluation-suites.ts";
 import { stableJsonValue } from "./stable-json.ts";
 import { toolNameSchema } from "./tool-name.ts";
@@ -72,7 +74,7 @@ export const PROJECT_DIRECTORY_SUFFIX = ".inference-lens";
 export const PROJECT_FILE_NAME = "project.json";
 export const PROJECT_EXPORT_FILE_SUFFIX = ".project.json";
 export const PROJECT_GITIGNORE_CONTENTS = "*\n";
-export const PROJECT_SCHEMA_VERSION = 9;
+export const PROJECT_SCHEMA_VERSION = 10;
 
 /**
  * Turns the portable project display name into one safe, visible directory
@@ -307,12 +309,12 @@ export interface ProjectFileV7 {
   toolMocks: ToolMock[];
   promptTemplates: PromptTemplate[];
   externalImports: ExternalImportReceipt[];
-  evaluationSuites: Array<Omit<EvaluationSuite, "input" | "execution">>;
+  evaluationSuites: Array<Omit<EvaluationSuite, "input" | "execution" | "variants">>;
   defaults: ProjectDefaults;
 }
 
 /** A v8 suite: everything a v9 suite has except its exposed tools and ceiling. */
-export type EvaluationSuiteV8 = Omit<EvaluationSuite, "execution"> & {
+export type EvaluationSuiteV8 = Omit<EvaluationSuite, "execution" | "variants"> & {
   execution: Omit<EvaluationSuite["execution"], "toolIds" | "turnCeiling">;
 };
 
@@ -331,8 +333,8 @@ export interface ProjectFileV8 {
   defaults: ProjectDefaults;
 }
 
-export interface ProjectFileV9 {
-  schemaVersion: 9;
+export interface ProjectFileV10 {
+  schemaVersion: 10;
   projectId: ProjectId;
   name: string;
   connectionRequirements: ConnectionRequirement[];
@@ -346,7 +348,7 @@ export interface ProjectFileV9 {
   defaults: ProjectDefaults;
 }
 
-export type ProjectFile = ProjectFileV9;
+export type ProjectFile = ProjectFileV10;
 
 const entityId = <Kind extends Parameters<typeof createEntityId>[0]>(
   kind: Kind,
@@ -809,6 +811,27 @@ const evaluationCaseSchema: z.ZodType<EvaluationCase> = z
   })
   .strict();
 
+const evaluationVariantOptionsSchema = z.object({
+  temperature: z.number().nullable().optional(),
+  maxOutputTokens: z.number().int().positive().nullable().optional(),
+  seed: z.number().int().nullable().optional(),
+  stop: z.array(z.string()).nullable().optional(),
+  providerOptions: jsonObjectSchema.nullable().optional(),
+}).strict();
+
+const evaluationVariantSchema: z.ZodType<EvaluationVariant> = z.object({
+  id: entityId("evaluation-variant"),
+  name: z.string().trim().min(1),
+  overrides: z.object({
+    target: z.object({
+      connectionRequirementId: entityId("connection").optional(),
+      model: z.string().trim().min(1).optional(),
+    }).strict().optional(),
+    responseMode: z.enum(["streaming", "buffered"]).optional(),
+    options: evaluationVariantOptionsSchema.optional(),
+  }).strict(),
+}).strict();
+
 const evaluationSuiteSchema: z.ZodType<EvaluationSuite> = z
   .object({
     id: entityId("evaluation-suite"),
@@ -833,6 +856,7 @@ const evaluationSuiteSchema: z.ZodType<EvaluationSuite> = z
         .max(MAX_EXPERIMENT_TURN_CEILING)
         .optional(),
     }).strict(),
+    variants: z.array(evaluationVariantSchema).min(1),
     inputBindings: z.array(evaluationInputBindingSchema),
     cases: z.array(evaluationCaseSchema),
   })
@@ -940,7 +964,7 @@ const projectFileV8Schema: z.ZodType<ProjectFileV8> = z
   .strict()
   .superRefine(validateProjectReferences);
 
-const projectFileV9Schema: z.ZodType<ProjectFileV9> = z
+const projectFileV10Schema: z.ZodType<ProjectFileV10> = z
   .object({
     schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
     projectId: entityId("project"),
@@ -1173,7 +1197,7 @@ function validateSharedProjectReferences(
 }
 
 function validateProjectReferences(
-  project: ProjectFileV6 | ProjectFileV7 | ProjectFileV8 | ProjectFileV9,
+  project: ProjectFileV6 | ProjectFileV7 | ProjectFileV8 | ProjectFileV10,
   context: z.RefinementCtx,
 ): void {
   validateSharedProjectReferences(
@@ -1442,7 +1466,7 @@ function validateProjectReferences(
 }
 
 function validateEvaluationSuites(
-  project: ProjectFileV7 | ProjectFileV8 | ProjectFileV9,
+  project: ProjectFileV7 | ProjectFileV8 | ProjectFileV10,
   templates: ReadonlyMap<PromptTemplateId, PromptTemplate>,
   context: z.RefinementCtx,
 ): void {
@@ -1463,7 +1487,7 @@ function validateEvaluationSuites(
   const projectToolIds = new Set(project.tools.map(({ id }) => id));
   project.evaluationSuites.forEach((suite, suiteIndex) => {
     const suitePath = ["evaluationSuites", suiteIndex];
-    if (project.schemaVersion === 8 || project.schemaVersion === 9) {
+    if (project.schemaVersion === 8 || project.schemaVersion === 10) {
       const currentSuite = project.evaluationSuites[suiteIndex]!;
       requireReference(
         project.conversationRevisions.some(({ id }) => id === currentSuite.input.conversationRevisionId),
@@ -1478,7 +1502,7 @@ function validateEvaluationSuites(
         context,
       );
     }
-    if (project.schemaVersion === 9) {
+    if (project.schemaVersion === 10) {
       // The same treatment `defaults.enabledToolIds` gets: a suite that names a
       // deleted tool can never be saved or imported, so nothing downstream —
       // preflight, plan snapshotting, the binding join — has to invent an
@@ -1497,6 +1521,22 @@ function validateEvaluationSuites(
         [...suitePath, "execution", "toolIds"],
         context,
       );
+      const variants = project.evaluationSuites[suiteIndex]!.variants;
+      const normalizedVariantNames = new Set<string>();
+      variants.forEach((variant, variantIndex) => {
+        const variantPath = [...suitePath, "variants", variantIndex];
+        const normalizedName = variant.name.trim().toLocaleLowerCase();
+        if (normalizedVariantNames.has(normalizedName)) {
+          context.addIssue({ code: "custom", path: [...variantPath, "name"], message: `Configuration name "${variant.name}" is repeated within the suite.` });
+        }
+        normalizedVariantNames.add(normalizedName);
+        const connectionRequirementId = variant.overrides.target?.connectionRequirementId;
+        if (connectionRequirementId) requireReference(
+          project.connectionRequirements.some(({ id }) => id === connectionRequirementId),
+          [...variantPath, "overrides", "target", "connectionRequirementId"],
+          "Configuration override references an unknown connection requirement.", context,
+        );
+      });
     }
     const localInputIds = new Set<string>();
     const inputNames = new Set<string>();
@@ -1878,68 +1918,27 @@ function migrateProjectV7(project: ProjectFileV7): ProjectFileV8 {
  * the default ceiling by leaving it absent — so an upgraded project runs
  * exactly as it did, one turn per repetition.
  */
-function migrateProjectV8(project: ProjectFileV8): ProjectFileV9 {
+function migrateProjectV8(project: ProjectFileV8): ProjectFileV10 {
   return {
     ...project,
     schemaVersion: PROJECT_SCHEMA_VERSION,
     evaluationSuites: project.evaluationSuites.map((suite) => ({
       ...suite,
       execution: { ...structuredClone(suite.execution), toolIds: [] },
+      variants: [{ id: createEntityId("evaluation-variant", `${suite.id}-default`), name: "Default", overrides: {} }],
     })),
   };
 }
 
 export function parseProjectFile(value: unknown): ProjectFile {
-  let source = value;
-  if (
-    typeof source === "object" &&
-    source !== null &&
-    "schemaVersion" in source &&
-    source.schemaVersion === 5
-  ) {
-    const legacy = projectFileV5Schema.safeParse(source);
-    if (!legacy.success) {
-      throw new ProjectValidationError(legacy.error.issues);
-    }
-    source = migrateProjectV5(legacy.data);
+  if (typeof value === "object" && value !== null && "schemaVersion" in value && value.schemaVersion !== PROJECT_SCHEMA_VERSION) {
+    throw new ProjectValidationError([{
+      code: "custom",
+      path: ["schemaVersion"],
+      message: `Project schema v${String(value.schemaVersion)} is unsupported. Open or export it with a v10-compatible Inference Lens build.`,
+    }]);
   }
-  if (
-    typeof source === "object" &&
-    source !== null &&
-    "schemaVersion" in source &&
-    source.schemaVersion === 6
-  ) {
-    const previous = projectFileV6Schema.safeParse(source);
-    if (!previous.success) {
-      throw new ProjectValidationError(previous.error.issues);
-    }
-    source = migrateProjectV6(previous.data);
-  }
-  if (
-    typeof source === "object" &&
-    source !== null &&
-    "schemaVersion" in source &&
-    source.schemaVersion === 7
-  ) {
-    const previous = projectFileV7Schema.safeParse(source);
-    if (!previous.success) {
-      throw new ProjectValidationError(previous.error.issues);
-    }
-    source = migrateProjectV7(previous.data);
-  }
-  if (
-    typeof source === "object" &&
-    source !== null &&
-    "schemaVersion" in source &&
-    source.schemaVersion === 8
-  ) {
-    const previous = projectFileV8Schema.safeParse(source);
-    if (!previous.success) {
-      throw new ProjectValidationError(previous.error.issues);
-    }
-    source = migrateProjectV8(previous.data);
-  }
-  const parsed = projectFileV9Schema.safeParse(source);
+  const parsed = projectFileV10Schema.safeParse(value);
   if (!parsed.success) throw new ProjectValidationError(parsed.error.issues);
   return parsed.data;
 }

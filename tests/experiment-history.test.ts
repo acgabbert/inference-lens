@@ -176,6 +176,7 @@ function evaluationPlan(): EvaluationExperimentPlanV3 {
         repetitions: 2,
         toolIds: [],
       },
+      variants: [{ id: "evaluation-variant_default", name: "Default", overrides: {} }],
       inputBindings: [],
       cases: [{
         id: "evaluation-case_migrations",

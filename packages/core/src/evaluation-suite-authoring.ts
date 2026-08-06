@@ -1,6 +1,6 @@
 import type { CheckDefinition, CheckKind } from "./checks.ts";
 import { evaluationSuitePreflight, templateUseVariableIndex } from "./evaluation-suites.ts";
-import type { EvaluationCase, EvaluationInputBinding, EvaluationSuite } from "./evaluation-suites.ts";
+import type { EvaluationCase, EvaluationInputBinding, EvaluationSuite, EvaluationVariant } from "./evaluation-suites.ts";
 import {
   createBranchRevision,
   insertPromptTemplateUse,
@@ -18,6 +18,7 @@ import type {
   EvaluationCaseId,
   EvaluationInputBindingId,
   EvaluationSuiteId,
+  EvaluationVariantId,
   PromptTemplateId,
   PromptTemplateRevisionId,
   PromptTemplateUseId,
@@ -267,6 +268,11 @@ export function createEvaluationSuite(
         // suite, never inherited from whatever the composer had switched on.
         toolIds: [],
       },
+      variants: [{
+        id: createEntityId("evaluation-variant", `${suiteId}-default`),
+        name: "Default",
+        overrides: {},
+      }],
       inputBindings: [],
       cases: [],
     }]),
@@ -290,6 +296,66 @@ export function updateEvaluationSuiteExecution(
   execution: EvaluationSuite["execution"],
 ): ProjectFile {
   return mapSuite(project, suiteId, (suite) => ({ ...suite, execution }));
+}
+
+export function addEvaluationVariant(
+  project: ProjectFile,
+  suiteId: EvaluationSuiteId,
+  suffix: IdSuffix = generatedSuffix,
+): { project: ProjectFile; variantId: EvaluationVariantId } {
+  const variantId = createEntityId("evaluation-variant", suffix());
+  const next = mapSuite(project, suiteId, (suite) => ({
+    ...suite,
+    variants: [...suite.variants, {
+      id: variantId,
+      name: uniqueName("New configuration", suite.variants.map(({ name }) => name)),
+      overrides: {},
+    }],
+  }));
+  return { project: next, variantId };
+}
+
+export function updateEvaluationVariant(
+  project: ProjectFile,
+  suiteId: EvaluationSuiteId,
+  variantId: EvaluationVariantId,
+  patch: Pick<EvaluationVariant, "name" | "overrides">,
+): ProjectFile {
+  return mapSuite(project, suiteId, (suite) => ({
+    ...suite,
+    variants: suite.variants.map((variant) => variant.id === variantId ? { ...variant, ...patch } : variant),
+  }));
+}
+
+export function reorderEvaluationVariant(
+  project: ProjectFile,
+  suiteId: EvaluationSuiteId,
+  variantId: EvaluationVariantId,
+  destinationIndex: number,
+): ProjectFile {
+  return mapSuite(project, suiteId, (suite) => {
+    const sourceIndex = suite.variants.findIndex(({ id }) => id === variantId);
+    if (sourceIndex < 0) return suite;
+    const variants = [...suite.variants];
+    const [variant] = variants.splice(sourceIndex, 1);
+    variants.splice(Math.max(0, Math.min(destinationIndex, variants.length)), 0, variant!);
+    return { ...suite, variants };
+  });
+}
+
+export function removeEvaluationVariant(
+  project: ProjectFile,
+  suiteId: EvaluationSuiteId,
+  variantId: EvaluationVariantId,
+): ProjectFile {
+  const suite = project.evaluationSuites.find(({ id }) => id === suiteId);
+  if (suite?.variants.length === 1 && suite.variants[0]?.id === variantId) {
+    throw new ProjectValidationError([{ code: "custom", path: ["evaluationSuites", suiteId, "variants"], message: "An evaluation suite needs at least one configuration." }]);
+  }
+  return mapSuite(project, suiteId, (current) => ({
+    ...current,
+    variants: current.variants.filter(({ id }) => id !== variantId),
+  }));
 }
 
 export function renameEvaluationSuite(

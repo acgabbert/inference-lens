@@ -70,6 +70,7 @@ function projectFixture(withChecks = true) {
         repetitions: 2,
         toolIds: [],
       },
+      variants: [{ id: "evaluation-variant_default", name: "Default", overrides: {} }],
       inputBindings: [{
         id: "evaluation-input_topic",
         name: "Topic",
