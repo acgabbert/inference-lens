@@ -63,6 +63,14 @@ test("a project can use the provider default despite a mapped profile override",
   await expect(
     page.getByRole("region", { name: "Delivery preference" }),
   ).toContainText("Buffered");
+  // In its one-line state, the toggle must not retain the height intended for
+  // its unavailable explanatory message; that would leave the label visibly
+  // top-aligned in the delivery row.
+  await expect(
+    page
+      .getByRole("region", { name: "Delivery preference" })
+      .locator(".streaming-control"),
+  ).toHaveCSS("min-height", "auto");
 
   const settings = await openInferenceSettings(page);
   await expect(settings.getByLabel("Model", { exact: true })).toHaveValue(

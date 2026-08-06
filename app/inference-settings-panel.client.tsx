@@ -217,32 +217,34 @@ export function InferenceSettingsPanel({
       className={open ? "inference-settings open" : "inference-settings"}
       aria-label={label}
     >
-      <button
-        aria-controls={bodyId}
-        aria-expanded={open}
-        className="inference-settings-toggle"
-        onClick={() => onOpenChange(!open)}
-        type="button"
-      >
-        <DisclosureChevron className="inference-settings-chevron" />
-        <span className="inference-settings-identity">
-          <strong>{heading}</strong>
-          <span className="inference-settings-scope">{scopeLabel}</span>
-        </span>
-        <span className="inference-settings-facts">
-          {facts.map((fact) => (
-            <span className="inference-settings-fact" key={fact}>
-              {fact}
-            </span>
-          ))}
-        </span>
-        <span className="inference-settings-hint">
-          {open ? "Hide" : "Show settings"}
-        </span>
-      </button>
+      <div className="inference-settings-header">
+        <button
+          aria-controls={bodyId}
+          aria-expanded={open}
+          className="inference-settings-toggle"
+          onClick={() => onOpenChange(!open)}
+          type="button"
+        >
+          <DisclosureChevron className="inference-settings-chevron" />
+          <span className="inference-settings-identity">
+            <strong>{heading}</strong>
+            <span className="inference-settings-scope">{scopeLabel}</span>
+          </span>
+          <span className="inference-settings-facts">
+            {facts.map((fact) => (
+              <span className="inference-settings-fact" key={fact}>
+                {fact}
+              </span>
+            ))}
+          </span>
+          <span className="inference-settings-hint">
+            {open ? "Hide" : "Show settings"}
+          </span>
+        </button>
+        {action ? <div className="inference-settings-actions">{action}</div> : null}
+      </div>
       {open ? (
         <div className="inference-settings-body" id={bodyId}>
-          {action ? <div className="inference-settings-actions">{action}</div> : null}
           {readOnly ? (
             <dl className="inference-settings-record">
               {connection?.summary ? (

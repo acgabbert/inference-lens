@@ -388,16 +388,17 @@ async function deliveryLayout(container: Locator) {
     const input = label?.querySelector<HTMLInputElement>('input[type="checkbox"]');
     const text = label?.querySelector<HTMLElement>("span");
     const hint = label?.querySelector<HTMLElement>("small");
-    if (!label || !input || !text || !hint) {
+    if (!label || !input || !text) {
       return { streaming: "missing", hint: "missing" };
     }
     const box = input.getBoundingClientRect();
     const words = text.getBoundingClientRect();
     const beside = box.right <= words.left && box.bottom > words.top;
-    const hintStyle = getComputedStyle(hint);
     return {
       streaming: `${beside ? "beside" : "stacked"}/${box.width < 30 ? "compact" : "stretched"}`,
-      hint: `${hintStyle.fontSize}/${hintStyle.lineHeight}`,
+      hint: hint
+        ? `${getComputedStyle(hint).fontSize}/${getComputedStyle(hint).lineHeight}`
+        : "none",
     };
   });
 }
@@ -428,9 +429,12 @@ test("the suite's settings panel lays its controls out like the composer's", asy
   expect(suite).toEqual(composer);
   expect(composerDelivery).toEqual({
     streaming: "beside/compact",
+    hint: "none",
+  });
+  expect(suiteDelivery).toEqual({
+    streaming: "beside/compact",
     hint: "11px/14.3px",
   });
-  expect(suiteDelivery).toEqual(composerDelivery);
 });
 
 test("preflight input and execution settings fit at desktop and phone widths", async ({ page }) => {
