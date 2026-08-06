@@ -387,7 +387,26 @@ export function ProjectTemplatesPane({
                 ) : (
                   <>
                     {readOnly ? (
-                      <span className="provider-pill">Read-only revision</span>
+                      <>
+                        <span className="provider-pill">Read-only revision</span>
+                        <div className="template-revision-edit-action">
+                          <button
+                            className="button secondary"
+                            type="button"
+                            onClick={() => {
+                              setCandidateSourceRevisionId(viewedRevision.id);
+                              setMessages(structuredClone(viewedRevision.messages));
+                              setDefaults({ ...viewedRevision.variableDefaults });
+                            }}
+                          >
+                            Edit as new revision
+                          </button>
+                          <small>
+                            Copies this revision into an editable draft. Nothing
+                            changes until you save.
+                          </small>
+                        </div>
+                      </>
                     ) : (
                       <button
                         className="button primary"
@@ -426,17 +445,6 @@ export function ProjectTemplatesPane({
                         Save prompt
                       </button>
                     )}
-                    {!archived && <button
-                      className="button secondary"
-                      type="button"
-                      onClick={() => {
-                        setCandidateSourceRevisionId(viewedRevision.id);
-                        setMessages(structuredClone(viewedRevision.messages));
-                        setDefaults({ ...viewedRevision.variableDefaults });
-                      }}
-                    >
-                      Create candidate from this revision
-                    </button>}
                     {!archived && viewedRevision && onEvaluateRevision && <button
                       className="button secondary"
                       type="button"

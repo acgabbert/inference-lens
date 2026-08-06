@@ -7,7 +7,7 @@ import {
 } from "../../packages/core/src/project";
 import { BUFFERED_FIXTURE_ENDPOINT, importProject, seedProfile, waitForHydration, openMode } from "./support";
 
-test("a historical prompt revision forks into a candidate and retains an exact revision diff", async ({ page }) => {
+test("a historical prompt revision can be edited into a new revision with an exact diff", async ({ page }) => {
   let project = createProjectFile({
     name: "Saved prompt revision fixture",
     request: {
@@ -43,9 +43,17 @@ test("a historical prompt revision forks into a candidate and retains an exact r
   await page.getByRole("tab", { name: /Prompts/ }).click();
 
   const editor = page.locator(".template-editor");
+  await expect(editor.getByRole("button", { name: "Edit as new revision" })).toHaveCount(0);
   await editor.locator(".template-revision-field select").selectOption(firstRevisionId);
   await expect(editor).toContainText("Read-only revision");
-  await editor.getByRole("button", { name: "Create candidate from this revision" }).click();
+  await expect(editor).toContainText(
+    "Copies this revision into an editable draft. Nothing changes until you save.",
+  );
+  await editor.getByRole("button", { name: "Edit as new revision" }).click();
+  await expect(editor.getByRole("button", { name: "Edit as new revision" })).toHaveCount(0);
+  await expect(editor).not.toContainText(
+    "Copies this revision into an editable draft. Nothing changes until you save.",
+  );
   await editor.getByLabel("Prompt content").fill("Triage {{incident}} for the on-call engineer.");
   await editor.getByLabel("{{incident}}").fill("database outage");
   await editor.getByRole("button", { name: "Save prompt" }).click();

@@ -331,6 +331,7 @@ output,
 .eyebrow,
 .template-list-item span,
 .template-variable-meta,
+.template-revision-edit-action small,
 .template-use-card small,
 .template-issue-count,
 .request-preview pre,
@@ -1147,6 +1148,19 @@ output {
   padding: 7px 10px;
   line-height: 1.2;
   white-space: nowrap;
+}
+
+.template-revision-edit-action {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+}
+
+.template-revision-edit-action small {
+  max-width: 230px;
+  color: var(--text-muted);
+  line-height: 1.35;
+  text-align: right;
 }
 
 .template-notices {
