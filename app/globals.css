@@ -1134,11 +1134,19 @@ output {
 .template-editor-actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
 .template-editor-actions .provider-pill {
   margin-bottom: 0;
+}
+
+.template-editor-actions .button {
+  padding: 7px 10px;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .template-notices {
@@ -1343,6 +1351,19 @@ output {
 
 .template-insert-bar .button {
   margin-bottom: 1px;
+}
+
+/* The action labels have substantial intrinsic width. Move them below the
+   metadata before their auto-sized grid column can collapse the name and
+   revision controls inside the resizable composer pane. */
+@container (max-width: 1120px) {
+  .template-editor-header {
+    grid-template-columns: minmax(160px, 1.4fr) minmax(160px, 1fr);
+  }
+
+  .template-editor-actions {
+    grid-column: 1 / -1;
+  }
 }
 
 @container (max-width: 545px) {
