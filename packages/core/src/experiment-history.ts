@@ -51,19 +51,21 @@ export interface EvaluationHistoryFacet {
   suiteId: EvaluationSuiteId;
   suiteName: string;
   conversationRevisionId: ConversationRevisionId;
-  passed: boolean;
-  caseCounts: { total: number; passed: number; failed: number };
+  variants: Array<{
+    variantId: import("./run-kernel/types.ts").EvaluationVariantId;
+    name: string;
+    model: string;
+    passed: boolean;
+    caseCounts: { total: number; passed: number; failed: number; incomplete: number };
+  }>;
 }
 
-export interface ExperimentHistoryItem {
+interface CommonExperimentHistoryFields {
   experimentId: ExperimentId;
-  kind: "repeated-request" | "evaluation";
-  evaluation?: EvaluationHistoryFacet;
   planFileName: string;
   resultFileName?: string;
   createdAt: string;
   endedAt?: string;
-  model: string;
   lifecycle: ExperimentLifecycle;
   requested: number;
   completed: number;
@@ -73,6 +75,18 @@ export interface ExperimentHistoryItem {
   missingTrace: number;
   cells: ExperimentHistoryCellReference[];
 }
+
+export interface RepeatedRequestHistoryItem extends CommonExperimentHistoryFields {
+  kind: "repeated-request";
+  model: string;
+}
+
+export interface EvaluationHistoryItem extends CommonExperimentHistoryFields {
+  kind: "evaluation";
+  evaluation: EvaluationHistoryFacet;
+}
+
+export type ExperimentHistoryItem = RepeatedRequestHistoryItem | EvaluationHistoryItem;
 
 export type ProjectHistoryEntry =
   | { kind: "experiment"; item: ExperimentHistoryItem }
@@ -190,8 +204,13 @@ export function loadProjectHistoryFiles(
           suiteId: plan.suite.suiteId,
           suiteName: plan.suite.name,
           conversationRevisionId: plan.suite.conversationRevisionId,
-          passed: assessment.passed,
-          caseCounts: assessment.caseCounts,
+          variants: assessment.variants.map((variant) => ({
+            variantId: variant.variant.variantId,
+            name: variant.variant.name,
+            model: variant.variant.target.model,
+            passed: variant.passed,
+            caseCounts: variant.caseCounts,
+          })),
         };
       } catch (error) {
         // Scoring a saved evaluation must not be able to hide it. The item
@@ -203,17 +222,12 @@ export function loadProjectHistoryFiles(
       }
     }
 
-    experiments.push({
+    const common = {
       experimentId: plan.experimentId,
-      kind: plan.kind,
-      ...(evaluation ? { evaluation } : {}),
       planFileName: planFile.fileName,
       ...(resultFileName ? { resultFileName } : {}),
       createdAt: plan.createdAt,
       ...(result ? { endedAt: result.endedAt } : {}),
-      model: plan.kind === "repeated-request"
-        ? plan.commonInput.target.model
-        : plan.suite.variants[0]!.target.model,
       lifecycle: aggregate.lifecycle,
       requested: aggregate.requested,
       completed: aggregate.completed,
@@ -222,7 +236,19 @@ export function loadProjectHistoryFiles(
       notRun: aggregate.notRun,
       missingTrace: aggregate.missingTrace,
       cells,
-    });
+    };
+    if (plan.kind === "repeated-request") {
+      experiments.push({ ...common, kind: "repeated-request", model: plan.commonInput.target.model });
+    } else if (evaluation) {
+      experiments.push({ ...common, kind: "evaluation", evaluation });
+    } else {
+      // A damaged aggregate remains reachable from history. The empty variant
+      // list says it could not be scored without inventing a scalar model.
+      experiments.push({ ...common, kind: "evaluation", evaluation: {
+        suiteId: plan.suite.suiteId, suiteName: plan.suite.name,
+        conversationRevisionId: plan.suite.conversationRevisionId, variants: [],
+      } });
+    }
   }
 
   for (const [experimentId, resultFile] of results) {

@@ -5,6 +5,7 @@ import {
   evaluationExperimentAggregate,
   experimentExposedTools,
   evaluationParsedExperimentAggregate,
+  evaluationVariantAssessment,
   materializeExperimentCellInput,
   parseExperimentPlanJson,
   serializeExperimentPlan,
@@ -278,20 +279,21 @@ test("strict scoring keeps check failure distinct and fails the whole case and s
     result,
     new Map([[first.runId, first], [second.runId, second]]),
   );
-  assert.equal(aggregate.passed, false);
-  assert.deepEqual(aggregate.caseCounts, { total: 1, passed: 0, failed: 1 });
-  assert.equal(aggregate.repetitionCounts.passed, 1);
-  assert.equal(aggregate.repetitionCounts["check-failed"], 1);
-  assert.deepEqual(aggregate.checkCounts, { total: 2, passed: 1, failed: 1, notEvaluated: 0 });
-  assert.deepEqual(aggregate.totalTokens, { reportedRuns: 1, total: 30 });
-  assert.deepEqual(aggregate.outputTokens, { reportedRuns: 1, total: 10 });
-  assert.equal(aggregate.cases[0]?.caseId, "evaluation-case_migrations" as EvaluationCaseId);
+  const assessment = aggregate.variants[0]!;
+  assert.equal(assessment.passed, false);
+  assert.deepEqual(assessment.caseCounts, { total: 1, passed: 0, failed: 1, incomplete: 0 });
+  assert.equal(assessment.repetitionCounts.passed, 1);
+  assert.equal(assessment.repetitionCounts["check-failed"], 1);
+  assert.deepEqual(assessment.checkCounts, { total: 2, passed: 1, failed: 1, notEvaluated: 0 });
+  assert.deepEqual(assessment.totalTokens, { reportedRuns: 1, total: 30 });
+  assert.deepEqual(assessment.outputTokens, { reportedRuns: 1, total: 10 });
+  assert.equal(assessment.cases[0]?.caseId, "evaluation-case_migrations" as EvaluationCaseId);
 });
 
 test("live evaluations do not report unstarted cases as failed", () => {
   const plan = planFixture();
   const aggregate = evaluationParsedExperimentAggregate(plan, undefined, new Map());
-  assert.deepEqual(aggregate.caseCounts, { total: 1, passed: 0, failed: 0 });
+  assert.deepEqual(aggregate.variants[0]?.caseCounts, { total: 1, passed: 0, failed: 0, incomplete: 1 });
 });
 
 test("missing traces and cancellation remain separate non-passing classifications", () => {
@@ -315,10 +317,95 @@ test("missing traces and cancellation remain separate non-passing classification
     result,
     new Map([[firstInput.runId, firstCoordinator.state]]),
   );
-  assert.equal(aggregate.repetitionCounts.cancelled, 1);
-  assert.equal(aggregate.repetitionCounts["missing-trace"], 1);
-  assert.equal(aggregate.checkCounts.notEvaluated, 2);
+  assert.equal(aggregate.variants[0]?.repetitionCounts.cancelled, 1);
+  assert.equal(aggregate.variants[0]?.repetitionCounts["trace-unavailable"], 1);
+  assert.equal(aggregate.variants[0]?.checkCounts.notEvaluated, 2);
   assert.equal(aggregate.lifecycle, "cancelled");
+});
+
+test("multi-variant assessment preserves order and isolates counts, metrics, and incomplete cases", () => {
+  const initial = projectFixture();
+  const sourceSuite = initial.evaluationSuites[0]!;
+  const project = parseProjectFile({
+    ...initial,
+    evaluationSuites: [{
+      ...sourceSuite,
+      variants: [
+        { id: "evaluation-variant_fast", name: "Fast", overrides: { target: { model: "fast-model" } } },
+        { id: "evaluation-variant_careful", name: "Careful", overrides: { target: { model: "careful-model" } } },
+      ],
+      cases: [
+        ...sourceSuite.cases,
+        {
+          ...sourceSuite.cases[0]!,
+          id: "evaluation-case_backups",
+          name: "Backups",
+          checks: sourceSuite.cases[0]!.checks.map((check) => ({
+            ...check,
+            checkId: "check_mentions-backup",
+          })),
+        },
+      ],
+    }],
+  });
+  let suffix = 0;
+  const plan = createEvaluationExperimentPlan({
+    project,
+    suiteId: "evaluation-suite_topics",
+    selectedCaseIds: ["evaluation-case_migrations", "evaluation-case_backups"],
+    selectedVariantIds: ["evaluation-variant_fast", "evaluation-variant_careful"],
+    createdAt: "2026-08-01T12:20:00.000Z",
+    createSuffix: () => `assessment-${++suffix}`,
+    runtimeTargets: {
+      "evaluation-variant_fast": {
+        profileId: "profile_fast", protocol: "openai-compatible-chat-completions",
+        endpoint: "https://fast.example.test/v1", capabilities: OPENAI_COMPATIBLE_CAPABILITIES,
+      },
+      "evaluation-variant_careful": {
+        profileId: "profile_careful", protocol: "openai-compatible-chat-completions",
+        endpoint: "https://careful.example.test/v1", capabilities: OPENAI_COMPATIBLE_CAPABILITIES,
+      },
+    },
+  });
+  const states = new Map();
+  for (const cell of plan.cells.filter(({ variantId }) => variantId === "evaluation-variant_fast")) {
+    const usage = cell.repetition === 1
+      ? { inputTokens: 10, outputTokens: 5, totalTokens: 15 }
+      : undefined;
+    const state = completed(materializeExperimentCellInput(plan, cell.cellId), "migration", usage);
+    states.set(state.runId, state);
+  }
+  const definiteFailure = plan.cells.find(
+    ({ variantId, caseId, repetition }) => variantId === "evaluation-variant_careful"
+      && caseId === "evaluation-case_migrations" && repetition === 1,
+  )!;
+  const failedCheckState = completed(
+    materializeExperimentCellInput(plan, definiteFailure.cellId),
+    "No matching text",
+    { inputTokens: 7, outputTokens: 4, totalTokens: 11 },
+  );
+  states.set(failedCheckState.runId, failedCheckState);
+  const result = {
+    schemaVersion: 4 as const,
+    experimentId: plan.experimentId,
+    status: "completed" as const,
+    endedAt: "2026-08-01T12:21:00.000Z",
+    cells: plan.cells.map((cell) => ({ cellId: cell.cellId, runId: cell.runId, status: "completed" as const })),
+  };
+
+  const aggregate = evaluationExperimentAggregate(plan, result, states);
+  assert.deepEqual(aggregate.variants.map(({ variant }) => variant.name), ["Fast", "Careful"]);
+  const fast = evaluationVariantAssessment(aggregate, "evaluation-variant_fast");
+  const careful = evaluationVariantAssessment(aggregate, "evaluation-variant_careful");
+  assert.deepEqual(fast.caseCounts, { total: 2, passed: 2, failed: 0, incomplete: 0 });
+  assert.deepEqual(careful.caseCounts, { total: 2, passed: 0, failed: 1, incomplete: 1 });
+  assert.equal(fast.repetitionCounts.passed, 4);
+  assert.equal(careful.repetitionCounts["check-failed"], 1);
+  assert.equal(careful.repetitionCounts["trace-unavailable"], 3);
+  assert.deepEqual(fast.totalTokens, { reportedRuns: 2, total: 30 });
+  assert.deepEqual(careful.totalTokens, { reportedRuns: 1, total: 11 });
+  assert.equal(fast.totalDurationMs.count, 4);
+  assert.equal(careful.totalDurationMs.count, 1);
 });
 
 test("the shared sequential controller executes evaluation cells as ordinary runs", async () => {

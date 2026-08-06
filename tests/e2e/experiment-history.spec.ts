@@ -282,7 +282,7 @@ async function expectInterruptedEvaluation(page: Page): Promise<void> {
   await expect(workspace).toContainText("As run · 1 cases · 1 repetition");
   await expect(workspace).toContainText("0 / 1 passed");
   await expect(workspace).toContainText("1 not evaluated");
-  await expect(workspace).toContainText("Not run");
+  await expect(workspace).toContainText("Trace absent");
   await expect(workspace.locator(".run-history-status").first()).toHaveText("interrupted");
   await expect(workspace).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
 }

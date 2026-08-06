@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import type { EvaluationBaseline } from "../../packages/core/src/evaluation-baselines.ts";
-import type { ExperimentHistoryItem } from "../../packages/core/src/experiment-history.ts";
+import type { EvaluationHistoryItem } from "../../packages/core/src/experiment-history.ts";
 import type {
   ConversationRevisionId,
   EvaluationBaselineId,
@@ -29,7 +29,7 @@ import { DisclosureChevron } from "../disclosure-chevron.client";
 export interface EvaluationSuiteHistoryHandle {
   status: "idle" | "loading" | "loaded" | "failed";
   /** Executions of the selected suite across every input revision, newest first. */
-  executions: ExperimentHistoryItem[];
+  executions: EvaluationHistoryItem[];
   error?: string;
   /**
    * The revision the suite currently authors against. Executions recorded
@@ -48,7 +48,7 @@ export interface EvaluationSuiteHistoryHandle {
   onExpandedChange(expanded: boolean): void;
   onExpand(): void;
   onRefresh(): void;
-  onOpen(item: ExperimentHistoryItem): Promise<void>;
+  onOpen(item: EvaluationHistoryItem): Promise<void>;
   /**
    * Named baselines for this suite, newest first. Absent when the project has
    * no folder to write annotations to, which is what hides the pinning
@@ -61,9 +61,9 @@ export interface EvaluationSuiteBaselinesHandle {
   items: EvaluationBaseline[];
   error?: string;
   busy: boolean;
-  onPin(item: ExperimentHistoryItem, name: string): Promise<void>;
+  onPin(item: EvaluationHistoryItem, name: string): Promise<void>;
   onUnpin(baselineId: EvaluationBaselineId): Promise<void>;
-  onCompare(baseline: EvaluationBaseline, candidate: ExperimentHistoryItem): Promise<void>;
+  onCompare(baseline: EvaluationBaseline, candidate: EvaluationHistoryItem): Promise<void>;
 }
 
 function formatDate(value: string): string {
@@ -96,7 +96,7 @@ export function EvaluationSuiteHistory({ history }: { history: EvaluationSuiteHi
     }
   }
 
-  async function open(item: ExperimentHistoryItem): Promise<void> {
+  async function open(item: EvaluationHistoryItem): Promise<void> {
     setPendingPlanFileName(item.planFileName);
     setOpenError(undefined);
     try {
@@ -214,8 +214,12 @@ export function EvaluationSuiteHistory({ history }: { history: EvaluationSuiteHi
               >
                 <span className="evaluation-suite-history-item-heading">
                   <time dateTime={item.createdAt}>{formatDate(item.createdAt)}</time>
-                  <span className={`evaluation-pass ${evaluationPassTone(item.evaluation)}`}>
-                    {evaluationPassSummary(item.evaluation)}
+                  <span className={`evaluation-pass ${evaluationPassTone(item.evaluation.variants[0])}`}>
+                    {item.evaluation.variants.length === 0
+                      ? evaluationPassSummary(undefined)
+                      : item.evaluation.variants.length === 1
+                        ? evaluationPassSummary(item.evaluation.variants[0])
+                        : `${item.evaluation.variants.length} configurations`}
                   </span>
                   <span className={`run-history-status ${item.lifecycle}`}>
                     {pending ? "opening" : item.lifecycle}
@@ -223,7 +227,7 @@ export function EvaluationSuiteHistory({ history }: { history: EvaluationSuiteHi
                 </span>
                 <span>
                   {item.requested} planned {item.requested === 1 ? "run" : "runs"} ·{" "}
-                  {item.model}
+                  {item.evaluation.variants.map((variant) => `${variant.name} · ${variant.model}`).join("; ") || "not scored"}
                 </span>
                 {drifted && (
                   <span className="evaluation-suite-history-drift">

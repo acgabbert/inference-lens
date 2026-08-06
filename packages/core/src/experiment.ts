@@ -193,7 +193,7 @@ export type EvaluationRepetitionClassification =
   | "run-failed"
   | "cancelled"
   | "not-run"
-  | "missing-trace";
+  | "trace-unavailable";
 
 export interface EvaluationRepetitionAssessment {
   cellId: ExperimentCellId;
@@ -210,15 +210,31 @@ export interface EvaluationCaseAssessment {
   repetitions: EvaluationRepetitionAssessment[];
 }
 
-export interface EvaluationAggregate {
+export interface EvaluationCaseCounts {
+  total: number;
+  passed: number;
+  failed: number;
+  incomplete: number;
+}
+
+/** One configuration's independently-scored view of an evaluation bakeoff. */
+export interface EvaluationVariantAssessment {
+  variant: EvaluationVariantSnapshotV4;
   lifecycle: ExperimentLifecycle;
   passed: boolean;
   cases: EvaluationCaseAssessment[];
-  caseCounts: { total: number; passed: number; failed: number };
+  caseCounts: EvaluationCaseCounts;
   repetitionCounts: Record<EvaluationRepetitionClassification, number>;
   checkCounts: { total: number; passed: number; failed: number; notEvaluated: number };
+  totalDurationMs: ExperimentMetricRange;
   totalTokens: ExperimentUsageAggregate;
   outputTokens: ExperimentUsageAggregate;
+}
+
+/** Ordered results for the immutable configuration snapshots in a plan. */
+export interface EvaluationBakeoffAssessment {
+  lifecycle: ExperimentLifecycle;
+  variants: EvaluationVariantAssessment[];
 }
 
 export type ExperimentLifecycle = "interrupted" | "completed" | "cancelled";
@@ -964,7 +980,7 @@ export function evaluationExperimentAggregate(
   plan: EvaluationExperimentPlanV4,
   result: ExperimentResultV4 | undefined,
   states: ReadonlyMap<RunId, RunState> = new Map(),
-): EvaluationAggregate {
+): EvaluationBakeoffAssessment {
   const parsed = parseExperimentPlanFile(plan);
   if (parsed.kind !== "evaluation") {
     throw new ExperimentValidationError("Evaluation aggregates require an evaluation plan.");
@@ -981,109 +997,101 @@ export function evaluationParsedExperimentAggregate(
   plan: EvaluationExperimentPlanV4,
   result: ExperimentResultV4 | undefined,
   states: ReadonlyMap<RunId, RunState> = new Map(),
-): EvaluationAggregate {
+): EvaluationBakeoffAssessment {
   const parsed = plan;
   const parsedResult = result ? parseExperimentResultFile(result, parsed) : undefined;
   const dispositions = new Map(parsedResult?.cells.map((cell) => [cell.cellId, cell]));
   const cases = new Map(parsed.suite.cases.map((evaluationCase) => [evaluationCase.caseId, evaluationCase]));
-  const assessments = new Map<EvaluationCaseId, EvaluationRepetitionAssessment[]>();
-  const repetitionCounts: Record<EvaluationRepetitionClassification, number> = {
-    passed: 0,
-    "check-failed": 0,
-    "not-evaluated": 0,
-    "run-failed": 0,
-    cancelled: 0,
-    "not-run": 0,
-    "missing-trace": 0,
-  };
-  const checkCounts = { total: 0, passed: 0, failed: 0, notEvaluated: 0 };
-  const totalTokenValues: Array<number | undefined> = [];
-  const outputTokenValues: Array<number | undefined> = [];
-
-  for (const cell of parsed.cells) {
-    const evaluationCase = cases.get(cell.caseId)!;
-    const disposition = dispositions.get(cell.cellId);
-    const state = states.get(cell.runId);
-    checkCounts.total += evaluationCase.checks.length;
-    let classification: EvaluationRepetitionClassification;
-    let checks: CheckResult[] = [];
-
-    if (disposition?.status === "not-run" || (!disposition && !state)) {
-      classification = "not-run";
-      checkCounts.notEvaluated += evaluationCase.checks.length;
-    } else if (!state) {
-      classification = "missing-trace";
-      checkCounts.notEvaluated += evaluationCase.checks.length;
-    } else if (state.status.kind === "failed") {
-      classification = "run-failed";
-      checks = evaluateChecks(state, evaluationCase.checks);
-    } else if (state.status.kind === "cancelled") {
-      classification = "cancelled";
-      checks = evaluateChecks(state, evaluationCase.checks);
-    } else if (state.status.kind !== "completed") {
-      classification = "not-evaluated";
-      checkCounts.notEvaluated += evaluationCase.checks.length;
-    } else {
-      checks = evaluateChecks(state, evaluationCase.checks);
-      const summary = checkOutcomeSummary(checks);
-      classification = summary.notEvaluated > 0
-        ? "not-evaluated"
-        : summary.failed > 0
-          ? "check-failed"
-          : "passed";
-    }
-
-    if (checks.length > 0) {
-      const summary = checkOutcomeSummary(checks);
-      checkCounts.passed += summary.passed;
-      checkCounts.failed += summary.failed;
-      checkCounts.notEvaluated += summary.notEvaluated;
-    }
-    if (state && ["completed", "failed", "cancelled"].includes(state.status.kind)) {
-      const metrics = runMetrics(state);
-      totalTokenValues.push(metrics.usage.totalTokens);
-      outputTokenValues.push(metrics.usage.outputTokens);
-    }
-    repetitionCounts[classification] += 1;
-    const repetition: EvaluationRepetitionAssessment = {
-      cellId: cell.cellId,
-      runId: cell.runId,
-      repetition: cell.repetition,
-      classification,
-      checks,
+  const lifecycle = experimentLifecycle(parsed, parsedResult);
+  const variants = parsed.suite.variants.map((variant): EvaluationVariantAssessment => {
+    const assessments = new Map<EvaluationCaseId, EvaluationRepetitionAssessment[]>();
+    const repetitionCounts: Record<EvaluationRepetitionClassification, number> = {
+      passed: 0, "check-failed": 0, "not-evaluated": 0, "run-failed": 0,
+      cancelled: 0, "not-run": 0, "trace-unavailable": 0,
     };
-    assessments.set(cell.caseId, [...(assessments.get(cell.caseId) ?? []), repetition]);
-  }
+    const checkCounts = { total: 0, passed: 0, failed: 0, notEvaluated: 0 };
+    const durations: number[] = [];
+    const totalTokenValues: Array<number | undefined> = [];
+    const outputTokenValues: Array<number | undefined> = [];
 
-  const caseAssessments = parsed.suite.cases.map((evaluationCase): EvaluationCaseAssessment => {
-    const repetitions = assessments.get(evaluationCase.caseId) ?? [];
+    for (const cell of parsed.cells.filter((candidate) => candidate.variantId === variant.variantId)) {
+      const evaluationCase = cases.get(cell.caseId)!;
+      const disposition = dispositions.get(cell.cellId);
+      const state = states.get(cell.runId);
+      checkCounts.total += evaluationCase.checks.length;
+      let classification: EvaluationRepetitionClassification;
+      let checks: CheckResult[] = [];
+      if (disposition?.status === "not-run") {
+        classification = "not-run";
+        checkCounts.notEvaluated += evaluationCase.checks.length;
+      } else if (!state) {
+        classification = parsedResult ? "trace-unavailable" : "not-evaluated";
+        checkCounts.notEvaluated += evaluationCase.checks.length;
+      } else if (state.status.kind === "failed") {
+        classification = "run-failed";
+        checks = evaluateChecks(state, evaluationCase.checks);
+      } else if (state.status.kind === "cancelled") {
+        classification = "cancelled";
+        checks = evaluateChecks(state, evaluationCase.checks);
+      } else if (state.status.kind !== "completed") {
+        classification = "not-evaluated";
+        checkCounts.notEvaluated += evaluationCase.checks.length;
+      } else {
+        checks = evaluateChecks(state, evaluationCase.checks);
+        const summary = checkOutcomeSummary(checks);
+        classification = summary.notEvaluated > 0 ? "not-evaluated" : summary.failed > 0 ? "check-failed" : "passed";
+      }
+      if (checks.length > 0) {
+        const summary = checkOutcomeSummary(checks);
+        checkCounts.passed += summary.passed;
+        checkCounts.failed += summary.failed;
+        checkCounts.notEvaluated += summary.notEvaluated;
+      }
+      if (state && ["completed", "failed", "cancelled"].includes(state.status.kind)) {
+        const metrics = runMetrics(state);
+        totalTokenValues.push(metrics.usage.totalTokens);
+        outputTokenValues.push(metrics.usage.outputTokens);
+        if (state.status.kind === "completed" && metrics.totalDurationMs !== undefined) durations.push(metrics.totalDurationMs);
+      }
+      repetitionCounts[classification] += 1;
+      assessments.set(cell.caseId, [...(assessments.get(cell.caseId) ?? []), {
+        cellId: cell.cellId, runId: cell.runId, repetition: cell.repetition, classification, checks,
+      }]);
+    }
+    const caseAssessments = parsed.suite.cases.map((evaluationCase): EvaluationCaseAssessment => {
+      const repetitions = assessments.get(evaluationCase.caseId) ?? [];
+      return {
+        caseId: evaluationCase.caseId,
+        name: evaluationCase.name,
+        passed: repetitions.length > 0 && repetitions.every(({ classification }) => classification === "passed"),
+        repetitions,
+      };
+    });
+    const passed = caseAssessments.filter((assessment) => assessment.passed).length;
+    const failed = caseAssessments.filter(({ passed: casePassed, repetitions }) =>
+      !casePassed && repetitions.some(({ classification }) => ["check-failed", "run-failed", "cancelled"].includes(classification)),
+    ).length;
     return {
-      caseId: evaluationCase.caseId,
-      name: evaluationCase.name,
-      passed: repetitions.length > 0 && repetitions.every(({ classification }) => classification === "passed"),
-      repetitions,
+      variant,
+      lifecycle,
+      passed: caseAssessments.length > 0 && passed === caseAssessments.length,
+      cases: caseAssessments,
+      caseCounts: { total: caseAssessments.length, passed, failed, incomplete: caseAssessments.length - passed - failed },
+      repetitionCounts,
+      checkCounts,
+      totalDurationMs: range(durations),
+      totalTokens: usage(totalTokenValues),
+      outputTokens: usage(outputTokenValues),
     };
   });
-  const passedCases = caseAssessments.filter(({ passed }) => passed).length;
-  const terminalCases = caseAssessments.filter(({ repetitions }) =>
-    repetitions.every(({ classification }) => ![
-      "not-evaluated",
-      "not-run",
-      "missing-trace",
-    ].includes(classification)),
-  ).length;
-  return {
-    lifecycle: experimentLifecycle(parsed, parsedResult),
-    passed: caseAssessments.length > 0 && passedCases === caseAssessments.length,
-    cases: caseAssessments,
-    caseCounts: {
-      total: caseAssessments.length,
-      passed: passedCases,
-      failed: terminalCases - passedCases,
-    },
-    repetitionCounts,
-    checkCounts,
-    totalTokens: usage(totalTokenValues),
-    outputTokens: usage(outputTokenValues),
-  };
+  return { lifecycle, variants };
+}
+
+export function evaluationVariantAssessment(
+  aggregate: EvaluationBakeoffAssessment,
+  variantId: EvaluationVariantId,
+): EvaluationVariantAssessment {
+  const assessment = aggregate.variants.find((item) => item.variant.variantId === variantId);
+  if (!assessment) throw new ExperimentValidationError(`Unknown evaluation configuration ${variantId}.`);
+  return assessment;
 }
