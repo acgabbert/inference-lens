@@ -7,7 +7,8 @@ import type {
   EvaluationExperimentPlanV3,
   ExperimentResultV3,
 } from "../../packages/core/src/experiment.ts";
-import type { RunId, RunState, RunTrace } from "../../packages/core/src/run-kernel/index.ts";
+import type { ResolvedRunInput, RunId, RunState, RunTrace } from "../../packages/core/src/run-kernel/index.ts";
+import type { EvaluationVariantId } from "../../packages/core/src/run-kernel/types.ts";
 import { runStateFromTrace, traceFileName } from "../../packages/core/src/run-trace.ts";
 import type { ProjectWorkspaceHandle } from "../project-workspace.client.ts";
 import { createExperimentWorkspacePersistence } from "../run/experiment-workspace-persistence.client.ts";
@@ -16,7 +17,7 @@ import { SequentialExperimentController } from "../run/sequential-experiment-con
 
 export interface EvaluationExecutionDraft {
   plan: EvaluationExperimentPlanV3;
-  targetName: string;
+  targetNames: Readonly<Record<EvaluationVariantId, string>>;
   /**
    * What will serve each tool the suite exposes, resolved when the draft was
    * built. Shown at confirmation and joined to the controller at start, so the
@@ -55,7 +56,7 @@ export interface EvaluationExecution {
 
 export interface UseEvaluationExecutionSessionOptions {
   transport: ProviderTurnTransport;
-  prepareCredential(): Promise<CredentialSelection>;
+  prepareCredential(target: ResolvedRunInput["target"]): Promise<CredentialSelection>;
   onTraceSaved(): void;
   onError(message: string): void;
   onOpenTrace(trace: RunTrace, origin: { workspace: ProjectWorkspaceHandle | null; fileName: string; source: "experiment" }): void;

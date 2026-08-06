@@ -81,7 +81,8 @@ function drawerProps(onDestinationHandled) {
     serverDefault: { loaded: true, containerized: false, configured: false },
     isDesktopRuntime: false, onSelectProfile() {}, onAddProfile() {},
     onDeleteProfile() {}, onUpdateProfile() {}, onCapabilityChange() {},
-    onMapProfile() {}, onDestinationHandled,
+    connectionRequirements: [], mappedProfileIds: {},
+    onMapProfile() {}, onUpdateProjectEndpoint() {}, onDestinationHandled,
   };
 }
 
@@ -154,7 +155,7 @@ test("the connection owner focuses the project mapping control", async () => {
   let acknowledgements = 0;
   const view = await render("/app/connection-drawer.client.tsx", "ConnectionDrawer", {
     ...drawerProps(() => { acknowledgements += 1; }),
-    connectionRequirement: { id: "connection_1", name: "Fixture", endpoint: "http://localhost/v1" },
+    connectionRequirements: [{ id: "connection_1", name: "Fixture", endpoint: "http://localhost/v1" }],
     pendingDestination: { surface: "connections", control: "project-mapping" },
   });
   try {

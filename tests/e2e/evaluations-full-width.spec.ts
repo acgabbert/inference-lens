@@ -182,7 +182,7 @@ test("expanding setup does not push the cases off screen", async ({ page }) => {
   await expect(setup).toContainText("buffered-test-model");
   // The plan line stays readable with the band shut; the state beside it is
   // blocked, because this fixture never mapped its connection.
-  await expect(page.locator(".evaluation-preflight")).toContainText("6 selected × 1 rep → 6 runs");
+  await expect(page.locator(".evaluation-preflight")).toContainText("6 cases × 1 configuration × 1 rep → 6 runs");
   await expect(page.locator(".evaluation-preflight")).not.toContainText("Ready to run");
   // This fixture imports a project without mapping its connection, so the start
   // is blocked. The reason must be readable text beside the disabled action
@@ -192,7 +192,7 @@ test("expanding setup does not push the cases off screen", async ({ page }) => {
   // Visible text, not a tooltip, and the button points at it — so the reason is
   // reachable by keyboard and by touch, not only by hovering a dead control.
   await expect(preflightSummary(page))
-    .toHaveText("Map this project's connection to a local profile before starting.");
+    .toHaveText("Map “Default connection” to a local profile for configuration “Default”.");
   await expect(start).toHaveAttribute("aria-describedby", "evaluation-preflight-summary");
 });
 

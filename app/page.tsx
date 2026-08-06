@@ -11,6 +11,7 @@ import type {
   ProviderCapabilities,
   RichInferenceRequest,
 } from "../packages/core/src/types";
+import { resolveProviderCapabilities } from "../packages/core/src/types";
 import {
   createProjectFile,
   updateConnectionRequirementEndpoint,
@@ -92,6 +93,7 @@ import { useEvaluationSuiteAuthoring } from "./evaluations/use-evaluation-suite-
 import {
   createEvaluationStartDraft,
   evaluationStartReadiness,
+  resolveEvaluationLocalTargets,
 } from "./evaluations/evaluation-start.client";
 import { useEvaluationExecutionSession } from "./evaluations/use-evaluation-execution-session.client";
 import { EvaluationStartDialog } from "./evaluations/evaluation-start-dialog.client";
@@ -364,7 +366,7 @@ function HomeContent() {
     projectDirty,
     projectError,
     projectErrorKind,
-    mappedProfileId,
+    mappedProfileIds,
   } = project;
   const runHistory = useProjectRunHistory(
     projectWorkspace,
@@ -452,7 +454,13 @@ function HomeContent() {
   });
   const evaluationExecution = useEvaluationExecutionSession({
     transport: inferenceTransport,
-    prepareCredential: credential.prepare,
+    prepareCredential(target) {
+      const profile = profiles.find(
+        ({ id }) => createEntityId("profile", id) === target.profileId,
+      );
+      if (!profile) return Promise.reject(new Error(`No mapped profile exists for ${target.profileId}.`));
+      return credential.prepareForProfile(profile.id, target.endpoint);
+    },
     onTraceSaved() { setSavedRunVersion((current) => current + 1); },
     onError(message) { project.setError(message, { clearKind: true }); },
     onOpenTrace(trace, origin) { runSession.adoptTrace(trace, origin); },
@@ -766,12 +774,9 @@ function HomeContent() {
     }
   }
 
-  /** Selecting a profile also satisfies an open project's connection mapping. */
   function chooseProfile(profileId: string): void {
-    const profile = profiles.find(({ id }) => id === profileId);
-    if (!profile) return;
+    if (!profiles.some(({ id }) => id === profileId)) return;
     selectProfile(profileId);
-    project.mapProfile(profile);
   }
 
   /**
@@ -806,10 +811,11 @@ function HomeContent() {
    * project file and the previous value is not recoverable from the UI, so the
    * old and new endpoints are put side by side before the write.
    */
-  function confirmUpdateProjectEndpoint(): void {
-    const requirement = projectTemplates.activeConnectionRequirement;
-    if (!requirement) return;
-    const endpoint = activeProfile.endpoint;
+  function confirmUpdateProjectEndpoint(requirementId: string): void {
+    const requirement = projectFile?.connectionRequirements.find(({ id }) => id === requirementId);
+    const mappedProfile = profiles.find(({ id }) => id === mappedProfileIds[requirementId]);
+    if (!requirement || !mappedProfile) return;
+    const endpoint = mappedProfile.endpoint;
     setConfirmation({
       title: "Update the project's declared endpoint?",
       description:
@@ -852,6 +858,8 @@ function HomeContent() {
     repeatedExperiment.clear();
     evaluationExecution.clear();
     project.clearErrorKind();
+    const activeRequirementId = projectTemplates.activeConnectionRequirement?.id;
+    const mappedProfileId = activeRequirementId ? mappedProfileIds[activeRequirementId] : undefined;
     if (projectFile && mappedProfileId !== activeProfile.id) {
       project.setError(
         mappedProfileId
@@ -934,6 +942,8 @@ function HomeContent() {
       project.setError(unservableToolsMessage(unservable));
       return;
     }
+    const activeRequirementId = projectTemplates.activeConnectionRequirement?.id;
+    const mappedProfileId = activeRequirementId ? mappedProfileIds[activeRequirementId] : undefined;
     if (projectFile && mappedProfileId !== activeProfile.id) {
       project.setError(
         mappedProfileId
@@ -993,8 +1003,13 @@ function HomeContent() {
         suiteId: selectedEvaluationSuite.id,
         selectedCaseIds: [...evaluationAuthoring.selectedCaseIds],
         selectedVariantIds: [...evaluationAuthoring.selectedVariantIds],
-        profile: activeProfile,
-        capabilities: activeCapabilities,
+        profiles: profiles.map((profile) => ({
+          id: profile.id,
+          name: profile.name,
+          endpoint: profile.endpoint,
+          capabilities: resolveProviderCapabilities(profile.provider, profile.capabilityOverrides),
+        })),
+        mappedProfileIds,
         durable: Boolean(projectWorkspace),
         bindingForTool: (toolId) =>
           toolBindingFor(toolId, mockForTool(toolId), commandTools.bindingFor(toolId)),
@@ -1108,7 +1123,9 @@ function HomeContent() {
   const composerItems = projectTemplates.templateWorkbench.composerItems;
   const readiness = runReadiness({
     projectOpen: Boolean(projectFile),
-    connectionMapped: mappedProfileId === activeProfile.id,
+    connectionMapped: projectTemplates.activeConnectionRequirement
+      ? mappedProfileIds[projectTemplates.activeConnectionRequirement.id] === activeProfile.id
+      : true,
     activeProfileName: activeProfile.name,
     activeProfileEndpoint: activeProfile.endpoint,
     activeProfileModel: activeModel,
@@ -1176,6 +1193,21 @@ function HomeContent() {
     (toolId) => toolBindingFor(toolId, mockForTool(toolId), commandTools.bindingFor(toolId)),
   );
   const commandToolsUnavailableReason = commandToolUnavailableMessage(commandTools);
+  const evaluationLocalProfiles = profiles.map((profile) => ({
+    id: profile.id,
+    name: profile.name,
+    endpoint: profile.endpoint,
+    capabilities: resolveProviderCapabilities(profile.provider, profile.capabilityOverrides),
+  }));
+  const evaluationLocalTargets = projectFile && selectedEvaluationSuite
+    ? resolveEvaluationLocalTargets({
+        project: projectFile,
+        suiteId: selectedEvaluationSuite.id,
+        selectedVariantIds: [...evaluationAuthoring.selectedVariantIds],
+        profiles: evaluationLocalProfiles,
+        mappedProfileIds,
+      })
+    : [];
   const evaluationStartDisabledReason = evaluationStartReadiness({
     projectOpen: Boolean(projectFile),
     suiteSelected: Boolean(evaluationAuthoring.suiteId),
@@ -1194,12 +1226,7 @@ function HomeContent() {
     ...(selectedEvaluationSuite?.execution.turnCeiling === undefined
       ? {}
       : { turnCeiling: selectedEvaluationSuite.execution.turnCeiling }),
-    connectionMapped: mappedProfileId === activeProfile.id,
-    hasProjectMapping: Boolean(mappedProfileId),
-    endpoint: activeProfile.endpoint,
-    model: selectedEvaluationSuite?.execution.target.model ?? "",
-    responseMode: selectedEvaluationSuite?.execution.responseMode ?? "buffered",
-    streamingAvailable: activeCapabilities.streaming,
+    targets: evaluationLocalTargets,
     activityInProgress: isRequestActive || repeatedExperiment.isRunning || evaluationExecution.isRunning,
   }).blockedReason;
 
@@ -1210,13 +1237,19 @@ function HomeContent() {
     storage: projectWorkspace ? "durable" : "unsaved",
     running: evaluationExecution.isRunning,
     preview: {
-      targetName: activeProfile.name || "Untitled profile",
-      endpoint: activeProfile.endpoint,
-      protocol: "openai-compatible-chat-completions",
-      model: selectedEvaluationSuite?.execution.target.model ?? "",
-      responseMode: selectedEvaluationSuite?.execution.responseMode ?? "buffered",
-      options: selectedEvaluationSuite?.execution.options ?? {},
-      streamingAvailable: activeCapabilities.streaming,
+      targets: evaluationLocalTargets.map((target) => ({
+        variantId: target.variantId,
+        variantName: target.variantName,
+        requirementName: target.requirementName,
+        ...(target.profile
+          ? { targetName: target.profile.name || "Untitled profile", endpoint: target.profile.endpoint }
+          : {}),
+        protocol: "openai-compatible-chat-completions",
+        model: target.model,
+        responseMode: target.responseMode,
+        options: target.options,
+        streamingAvailable: target.profile?.capabilities.streaming ?? false,
+      })),
     },
     ...(evaluationStartDisabledReason ? { disabledReason: evaluationStartDisabledReason } : {}),
     onStart: startEvaluation,
@@ -1616,17 +1649,17 @@ function HomeContent() {
         isDesktopRuntime={isDesktopRuntime}
         onSelectProfile={chooseProfile}
         onAddProfile={() => {
-          const profile = addProfile();
-          project.mapProfile(profile);
+          addProfile();
         }}
         onDeleteProfile={confirmDeleteActiveProfile}
         deleteProfileRefusal={activeProfileDeletionRefusal}
         onUpdateProfile={updateActiveProfile}
         onCapabilityChange={changeCapability}
-        connectionRequirement={projectTemplates.activeConnectionRequirement}
-        mappedProfileId={mappedProfileId}
-        onMapProfile={() => {
-          project.mapActiveProfile();
+        connectionRequirements={projectFile?.connectionRequirements}
+        mappedProfileIds={mappedProfileIds}
+        onMapProfile={(requirementId, profileId) => {
+          const profile = profiles.find(({ id }) => id === profileId);
+          if (profile) project.mapProfile(requirementId, profile);
         }}
         onUpdateProjectEndpoint={confirmUpdateProjectEndpoint}
         pendingDestination={pendingReadinessDestination}

@@ -170,7 +170,7 @@ test("moving a project's declared endpoint reaches the project file", async ({
   await expect(mapping).toContainText("Connection mapping required");
   await expect(mapping).toContainText(DECLARED_ENDPOINT);
 
-  await mapping.getByRole("button", { name: /use .* for this project/i }).click();
+  await mapping.getByRole("combobox").selectOption("buffered");
   await expect(mapping).toContainText("Mapped to a different endpoint");
   await expect(mapping).toContainText(PROFILE_ENDPOINT);
 

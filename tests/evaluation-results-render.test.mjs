@@ -30,6 +30,7 @@ async function fixture() {
     id: "evaluation-suite_topics", name: "Topic quality",
     input: { kind: "conversation-revision", conversationRevisionId: project.defaults.conversationRevisionId },
     execution: { target: { ...project.defaults.target, model: "fixture-model" }, responseMode: "buffered", options: {}, repetitions: 2, toolIds: [] },
+    variants: [{ id: "evaluation-variant_default", name: "Default", overrides: {} }],
     inputBindings: [{ id: "evaluation-input_topic", name: "Topic", target: { kind: "template-variable", templateUseId: "template-use_question-use", variableName: "topic" } }],
     cases: [{ id: "evaluation-case_migrations", name: "Migrations", values: { "evaluation-input_topic": "database migrations" }, checks: [{ checkId: "check_mentions-rollback", kind: "contains", value: "rollback", label: "Mentions rollback" }] }],
   }] });
@@ -73,7 +74,7 @@ test("renders strict as-run case, repetition, check, usage, and evidence results
   const first = completedState(fx, fx.plan.cells[0], "Include a rollback plan.", { inputTokens: 4, outputTokens: 5, totalTokens: 9 });
   const second = completedState(fx, fx.plan.cells[1], "Use backups.");
   const states = new Map([[first.runId, first], [second.runId, second]]);
-  const result = { schemaVersion: 3, experimentId: fx.plan.experimentId, status: "completed", endedAt: "2026-08-01T12:11:00.000Z", cells: fx.plan.cells.map((cell) => ({ cellId: cell.cellId, runId: cell.runId, status: "completed" })) };
+  const result = { schemaVersion: 4, experimentId: fx.plan.experimentId, status: "completed", endedAt: "2026-08-01T12:11:00.000Z", cells: fx.plan.cells.map((cell) => ({ cellId: cell.cellId, runId: cell.runId, status: "completed" })) };
   const html = fx.renderToStaticMarkup(fx.createElement(fx.EvaluationResultsWorkspace, {
     execution: { plan: fx.plan, result, storage: "durable", workspace: null, states, traces: new Map([[first.runId, {}], [second.runId, {}]]), traceFileNames: new Map(), unreadableTraces: new Map(), selectedRunId: null },
     onStop() {}, onOpenTrace() {},

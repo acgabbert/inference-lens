@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { evaluationStartReadiness } from "../app/evaluations/evaluation-start.client.ts";
+import type { EvaluationResolvedLocalTarget } from "../app/evaluations/evaluation-start.client.ts";
+import { OPENAI_COMPATIBLE_CAPABILITIES } from "../packages/core/src/types.ts";
 
 const ready = {
   projectOpen: true,
@@ -12,24 +14,33 @@ const ready = {
   selectedCaseCount: 1,
   repetitions: 1,
   toolBindings: [],
-  connectionMapped: true,
-  hasProjectMapping: true,
-  endpoint: "https://provider.example.test/v1",
-  model: "test-model",
-  responseMode: "streaming" as const,
-  streamingAvailable: true,
+  targets: [{
+    variantId: "evaluation-variant_default" as const,
+    variantName: "Default",
+    requirementId: "connection_default",
+    requirementName: "Default provider",
+    model: "test-model",
+    responseMode: "streaming" as const,
+    options: {},
+    profile: {
+      id: "profile-1",
+      name: "Fixture profile",
+      endpoint: "https://provider.example.test/v1",
+      capabilities: { ...OPENAI_COMPATIBLE_CAPABILITIES, tools: true },
+    },
+  }],
   activityInProgress: false,
 };
 
 test("evaluation start readiness is ready only after every start gate passes", () => {
   assert.deepEqual(evaluationStartReadiness(ready), {});
   assert.deepEqual(
-    evaluationStartReadiness({ ...ready, endpoint: "  " }),
-    { blockedReason: "Enter an endpoint before starting." },
+    evaluationStartReadiness({ ...ready, targets: ready.targets.map((target) => ({ ...target, profile: { ...target.profile, endpoint: "  " } })) }),
+    { blockedReason: "The profile mapped to configuration “Default” needs an endpoint." },
   );
   assert.deepEqual(
-    evaluationStartReadiness({ ...ready, model: "" }),
-    { blockedReason: "Enter a model before starting." },
+    evaluationStartReadiness({ ...ready, targets: ready.targets.map((target) => ({ ...target, model: "" })) }),
+    { blockedReason: "Configuration “Default” needs a model." },
   );
   assert.deepEqual(
     evaluationStartReadiness({ ...ready, activityInProgress: true }),
@@ -86,8 +97,33 @@ test("evaluation start readiness preserves the ordered authoring and connection 
         "This evaluation exposes tools, so each of its 250 repetitions may spend up to 5 provider turns — 1,250 calls against a safety maximum of 1,000. Reduce the cases, the repetitions, or the turn ceiling.",
     },
   );
+  const unmappedTargets: EvaluationResolvedLocalTarget[] = structuredClone(ready.targets);
+  delete unmappedTargets[0]!.profile;
   assert.deepEqual(
-    evaluationStartReadiness({ ...ready, connectionMapped: false, hasProjectMapping: false }),
-    { blockedReason: "Map this project's connection to a local profile before starting." },
+    evaluationStartReadiness({ ...ready, targets: unmappedTargets }),
+    { blockedReason: "Map “Default provider” to a local profile for configuration “Default”." },
+  );
+});
+
+test("every selected configuration is checked against its own mapped capabilities", () => {
+  assert.deepEqual(
+    evaluationStartReadiness({
+      ...ready,
+      targets: [
+        ...ready.targets,
+        {
+          ...ready.targets[0],
+          variantId: "evaluation-variant_second" as const,
+          variantName: "Buffered only",
+          profile: {
+            ...ready.targets[0].profile,
+            id: "profile-2",
+            name: "Buffered fixture",
+            capabilities: { ...ready.targets[0].profile.capabilities, streaming: false },
+          },
+        },
+      ],
+    }),
+    { blockedReason: "Configuration “Buffered only” uses streaming, but Buffered fixture cannot stream. Choose buffered delivery." },
   );
 });

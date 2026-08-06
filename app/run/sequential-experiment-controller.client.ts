@@ -137,8 +137,22 @@ export class SequentialExperimentController {
     }
     // A bakeoff is all-or-nothing at its paid boundary. Resolve every distinct
     // local target now, before persisting a plan or starting its first cell.
-    for (const cell of plan.cells) {
-      const target = materializeParsedExperimentCellInput(plan, cell).target;
+    const preflightInputs = plan.cells.map((cell) =>
+      materializeParsedExperimentCellInput(plan, cell)
+    );
+    for (const input of preflightInputs) {
+      const { target } = input;
+      if (!target.endpoint.trim() || !target.model.trim()) {
+        throw new Error(`Configuration target ${target.profileId} is incomplete.`);
+      }
+      if (input.responseMode === "streaming" && !target.capabilities.streaming) {
+        throw new Error(`Configuration target ${target.profileId} does not support streaming.`);
+      }
+      if (input.tools.length > 0 && !target.capabilities.tools) {
+        throw new Error(`Configuration target ${target.profileId} does not support exposed tools.`);
+      }
+    }
+    for (const { target } of preflightInputs) {
       const key = `${target.profileId}\u0000${target.endpoint}`;
       if (!this.credentials.has(key)) {
         this.credentials.set(key, await this.options.prepareCredential(target));

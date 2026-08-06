@@ -80,6 +80,10 @@ const weatherTool = {
 function toolPlan(count: number, turnCeiling?: number): RepeatedExperimentPlanV3 {
   const frozen = plan(count);
   frozen.commonInput.tools = [weatherTool];
+  frozen.commonInput.target.capabilities = {
+    ...frozen.commonInput.target.capabilities,
+    tools: true,
+  };
   if (turnCeiling !== undefined) frozen.turnCeiling = turnCeiling;
   return frozen;
 }

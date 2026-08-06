@@ -60,6 +60,8 @@ function drawer(overrides) {
     onDeleteProfile: () => {},
     onUpdateProfile: () => {},
     onCapabilityChange: () => {},
+    connectionRequirements: [],
+    mappedProfileIds: {},
     onMapProfile: () => {},
     onUpdateProjectEndpoint: () => {},
     ...overrides,
@@ -213,8 +215,8 @@ test("a mapped project running elsewhere offers to move its declaration", async 
     DRAWER,
     "ConnectionDrawer",
     drawer({
-      connectionRequirement: requirement,
-      mappedProfileId: "openai-compatible",
+      connectionRequirements: [requirement],
+      mappedProfileIds: { connection_local: "openai-compatible" },
     }),
   );
 
@@ -227,7 +229,7 @@ test("an unmapped project cannot move its declaration yet", async () => {
   const html = await render(
     DRAWER,
     "ConnectionDrawer",
-    drawer({ connectionRequirement: requirement }),
+    drawer({ connectionRequirements: [requirement] }),
   );
 
   // The mismatch may simply be the wrong profile selected, so the answer
@@ -237,21 +239,23 @@ test("an unmapped project cannot move its declaration yet", async () => {
   assert.doesNotMatch(html, /to expect this endpoint/);
 });
 
-test("a project mapped to a profile that is not active still offers the mapping", async () => {
-  // The run path refuses a mapping the active profile does not satisfy, so the
-  // control that resolves it has to stay offered rather than reading as done.
+test("a project mapping names its own profile independently of the active editor profile", async () => {
   const html = await render(
     DRAWER,
     "ConnectionDrawer",
     drawer({
-      connectionRequirement: requirement,
-      mappedProfileId: "profile-elsewhere",
+      profiles: [
+        drawer({}).activeProfile,
+        { ...drawer({}).activeProfile, id: "profile-elsewhere", name: "Elsewhere", endpoint: requirement.endpoint },
+      ],
+      connectionRequirements: [requirement],
+      mappedProfileIds: { connection_local: "profile-elsewhere" },
     }),
   );
 
-  assert.match(html, /Connection mapping required/);
+  assert.match(html, /Project connection mapped/);
   assert.match(html, /data-readiness-control="project-mapping"/);
-  assert.doesNotMatch(html, /Project connection mapped/);
+  assert.match(html, /Elsewhere/);
 });
 
 test("a mapped project already dialing its declared endpoint says nothing to fix", async () => {
@@ -259,11 +263,11 @@ test("a mapped project already dialing its declared endpoint says nothing to fix
     DRAWER,
     "ConnectionDrawer",
     drawer({
-      connectionRequirement: {
+      connectionRequirements: [{
         ...requirement,
         endpoint: "https://api.openai.com/v1",
-      },
-      mappedProfileId: "openai-compatible",
+      }],
+      mappedProfileIds: { connection_local: "openai-compatible" },
       activeProfile: { endpoint: "https://api.openai.com/v1/chat/completions" },
     }),
   );

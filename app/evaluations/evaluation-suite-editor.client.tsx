@@ -113,7 +113,7 @@ function ConfigurationRow({
         ? variant.overrides.responseMode === undefined
         : variant.overrides.options?.temperature === undefined;
   const update = (patch: EvaluationVariant["overrides"]) => authoring.updateVariant(variant.id, { name: variant.name, overrides: patch });
-  return <article className="evaluation-check-card" aria-label={`Configuration ${variant.name}`}>
+  return <article className="evaluation-configuration-card" aria-label={`Configuration ${variant.name}`}>
     <div className="evaluation-check-heading"><strong>Configuration {index + 1}</strong><div>
       <label title={`Include ${variant.name} in this evaluation`}><input aria-label={`Include configuration ${variant.name}`} type="checkbox" checked={authoring.selectedVariantIds.has(variant.id)} onChange={(event) => authoring.setVariantSelected(variant.id, event.target.checked)} /> Include</label>
       {index > 0 && <button className="text-button" type="button" onClick={() => authoring.moveVariant(variant.id, index - 1)}>Move up</button>}
@@ -311,13 +311,18 @@ export interface EvaluationSuiteExecutionActions {
    * execution state rather than portable evaluation content.
    */
   preview?: {
-    targetName: string;
-    endpoint: string;
-    protocol: ProviderProtocol;
-    model: string;
-    responseMode: "streaming" | "buffered";
-    options: InferenceOptions;
-    streamingAvailable: boolean;
+    targets: readonly {
+      variantId: string;
+      variantName: string;
+      requirementName: string;
+      targetName?: string;
+      endpoint?: string;
+      protocol: ProviderProtocol;
+      model: string;
+      responseMode: "streaming" | "buffered";
+      options: InferenceOptions;
+      streamingAvailable: boolean;
+    }[];
   };
   disabledReason?: string;
   running: boolean;
@@ -411,8 +416,11 @@ export function EvaluationSuiteEditor({
   // The suite owns its delivery mode, but whether that mode can be served is a
   // property of the connection this device resolves. Preflight is where the two
   // meet, so it must not report "Ready to run" for a mode that cannot execute.
-  const deliveryIssue = suite && execution?.preview && suite.execution.responseMode === "streaming" && !execution.preview.streamingAvailable
-    ? `This evaluation is set to Streaming, but ${execution.preview.targetName} cannot stream. Choose Buffered delivery.`
+  const unavailableStreamingTarget = execution?.preview?.targets.find(
+    ({ responseMode, streamingAvailable }) => responseMode === "streaming" && !streamingAvailable,
+  );
+  const deliveryIssue = unavailableStreamingTarget
+    ? `Configuration “${unavailableStreamingTarget.variantName}” is set to Streaming, but ${unavailableStreamingTarget.targetName ?? "its mapped profile"} cannot stream. Choose Buffered delivery.`
     : undefined;
   // Device-local, like the delivery issue above and unlike a preflight
   // diagnostic: the suite is authored correctly, and this machine cannot run
@@ -512,7 +520,7 @@ export function EvaluationSuiteEditor({
                 {/* Outside the setup band deliberately: how many provider calls
                     the suite is about to make is the consequence of settings
                     the band hides, and it must stay readable while it is shut. */}
-                <output><span>{selectedCount} selected</span> × <span>{authoring.repetitions} {authoring.repetitions === 1 ? "rep" : "reps"}</span> → <strong>{Number.isFinite(batch.plannedCalls) ? batch.plannedCalls.toLocaleString() : "Invalid"} runs</strong>{exposedToolIds.length > 0 && Number.isFinite(batch.worstCaseCalls) && <span>, up to {batch.worstCaseCalls.toLocaleString()} provider calls</span>}</output>
+                <output><span>{selectedCount} {selectedCount === 1 ? "case" : "cases"}</span> × <span>{selectedVariantCount} {selectedVariantCount === 1 ? "configuration" : "configurations"}</span> × <span>{authoring.repetitions} {authoring.repetitions === 1 ? "rep" : "reps"}</span> → <strong>{Number.isFinite(batch.plannedCalls) ? batch.plannedCalls.toLocaleString() : "Invalid"} runs</strong>{exposedToolIds.length > 0 && Number.isFinite(batch.worstCaseCalls) && <span>, up to {batch.worstCaseCalls.toLocaleString()} provider calls</span>}</output>
               </BlockerChip>
               {execution && <small className="evaluation-storage-note">{execution.storage === "durable" ? "The plan, traces, and result will be saved in this project folder." : "Session evaluation: results will be lost when this session closes."}</small>}
             </section>
@@ -557,6 +565,13 @@ export function EvaluationSuiteEditor({
                 <div className="evaluation-section-heading"><div><span className="eyebrow">Configurations</span><h3>Compare named configurations</h3></div><button className="button secondary" type="button" onClick={authoring.addVariant}>+ Add configuration</button></div>
                 <p className="evaluation-portable-warning">Each configuration stores only its overrides. Repetitions, turn ceiling, and exposed tools are shared across every configuration.</p>
                 {suite.variants.map((variant, index) => <ConfigurationRow key={variant.id} variant={variant} suite={suite} project={project} authoring={authoring} index={index} />)}
+                {execution?.preview && <ul className="evaluation-configuration-targets" aria-label="Resolved local configuration targets">
+                  {execution.preview.targets.map((target) => <li key={target.variantId}>
+                    <strong>{target.variantName}</strong>: {target.targetName
+                      ? <>{target.targetName} · <code>{target.endpoint}</code> · {target.model} · {target.responseMode}</>
+                      : <>Map {target.requirementName} to a local profile</>}
+                  </li>)}
+                </ul>}
               </section>
               {/* Each edit commits, which the project's debounced auto-save
                   absorbs into one write. */}
@@ -591,7 +606,9 @@ export function EvaluationSuiteEditor({
                   options: { ...suite.execution.options, temperature: next.temperature },
                 })}
                 // Discovery is deliberately absent here; see ModelFavoritesHandle.
-                streamingAvailable={execution ? Boolean(execution.preview?.streamingAvailable) : true}
+                streamingAvailable={execution
+                  ? execution.preview?.targets.every(({ streamingAvailable }) => streamingAvailable) ?? true
+                  : true}
                 favoriteModels={modelFavorites?.models ?? []}
                 onToggleFavoriteModel={(model) => modelFavorites?.onToggle(model)}
                 connection={{

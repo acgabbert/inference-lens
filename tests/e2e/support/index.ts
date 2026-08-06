@@ -16,6 +16,8 @@ export const PROFILE_STORAGE_KEY = "inference-lens:inference-profiles:v1";
 export const STREAMING_STORAGE_KEY = "inference-lens:streaming-preference:v1";
 export const PROJECT_PROFILE_MAP_STORAGE_KEY =
   "inference-lens:project-profile-map:v2";
+export const PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY =
+  "inference-lens:project-profile-map:v3";
 
 /** The buffered fixture provider started by playwright.config.ts. */
 export const BUFFERED_FIXTURE_ENDPOINT = "http://127.0.0.1:44014/v1";
@@ -38,6 +40,37 @@ export interface SeedProfileOptions {
    * them and the assertion passes against an empty manifest.
    */
   capabilityOverrides?: Record<string, boolean>;
+}
+
+export interface SeededProfile extends SeedProfileOptions {
+  id: string;
+  instanceId: string;
+}
+
+/** Seeds several profiles without selecting or mapping any project requirement. */
+export async function seedProfiles(
+  page: Page,
+  profiles: readonly SeededProfile[],
+  activeProfileId: string,
+  streaming: "buffered" | "stream" = "buffered",
+): Promise<void> {
+  await page.addInitScript(({ profileKey, streamingKey, profiles, activeProfileId, streaming }) => {
+    localStorage.setItem(profileKey, JSON.stringify({
+      profiles: profiles.map((profile) => ({
+        id: profile.id,
+        instanceId: profile.instanceId,
+        name: profile.name ?? "Buffered fixture",
+        provider: "openai-compatible",
+        endpoint: profile.endpoint ?? "",
+        model: profile.model ?? "buffered-test-model",
+        ...(profile.temperature === undefined ? {} : { temperature: profile.temperature }),
+        ...(profile.favoriteModels ? { favoriteModels: profile.favoriteModels } : {}),
+        ...(profile.capabilityOverrides ? { capabilityOverrides: profile.capabilityOverrides } : {}),
+      })),
+      activeProfileId,
+    }));
+    localStorage.setItem(streamingKey, streaming);
+  }, { profileKey: PROFILE_STORAGE_KEY, streamingKey: STREAMING_STORAGE_KEY, profiles, activeProfileId, streaming });
 }
 
 /**

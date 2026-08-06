@@ -349,3 +349,102 @@ test("the shared sequential controller executes evaluation cells as ordinary run
   assert.deepEqual(started, plan.cells.map(({ runId }) => runId));
   assert.deepEqual(traces, started);
 });
+
+test("the controller prepares each configuration target before deterministic execution", async () => {
+  const initial = projectFixture();
+  const secondRequirement = {
+    ...initial.connectionRequirements[0]!,
+    id: "connection_second" as const,
+    name: "Second provider",
+    endpoint: "https://second.example.test/v1",
+  };
+  const project = parseProjectFile({
+    ...initial,
+    connectionRequirements: [...initial.connectionRequirements, secondRequirement],
+    evaluationSuites: initial.evaluationSuites.map((suite) => ({
+      ...suite,
+      execution: { ...suite.execution, repetitions: 1 },
+      variants: [
+        { id: "evaluation-variant_first", name: "First", overrides: { target: { model: "first-model" } } },
+        { id: "evaluation-variant_second", name: "Second", overrides: { target: { connectionRequirementId: secondRequirement.id, model: "second-model" } } },
+      ],
+    })),
+  });
+  let suffix = 0;
+  const plan = createEvaluationExperimentPlan({
+    project,
+    suiteId: "evaluation-suite_topics",
+    selectedCaseIds: ["evaluation-case_migrations"],
+    selectedVariantIds: ["evaluation-variant_first", "evaluation-variant_second"],
+    createSuffix: () => `multi-${++suffix}`,
+    runtimeTargets: {
+      "evaluation-variant_first": {
+        profileId: "profile_first",
+        protocol: "openai-compatible-chat-completions",
+        endpoint: "https://first.example.test/v1",
+        capabilities: OPENAI_COMPATIBLE_CAPABILITIES,
+      },
+      "evaluation-variant_second": {
+        profileId: "profile_second",
+        protocol: "openai-compatible-chat-completions",
+        endpoint: secondRequirement.endpoint,
+        capabilities: OPENAI_COMPATIBLE_CAPABILITIES,
+      },
+    },
+  });
+  const prepared: string[] = [];
+  const started: string[] = [];
+  const models: string[] = [];
+  const transport: ProviderTurnTransport = {
+    async discoverModels() { return { models: [] }; },
+    async executeTurn({ execution }) {
+      started.push(execution.runId);
+      models.push(execution.input.target.model);
+      return {
+        status: 200,
+        headers: new Headers(),
+        events: (async function* () {
+          yield { type: "text_delta" as const, text: "migration" };
+          yield { type: "completed" as const, finishReason: { normalized: "stop" as const } };
+        })(),
+      };
+    },
+  };
+  await new SequentialExperimentController({
+    plan,
+    transport,
+    async prepareCredential(target) {
+      prepared.push(`${target.profileId} ${target.endpoint}`);
+      return { kind: "none" };
+    },
+  }).run();
+
+  assert.deepEqual(prepared, [
+    "profile_first https://first.example.test/v1",
+    "profile_second https://second.example.test/v1",
+  ]);
+  assert.deepEqual(started, plan.cells.map(({ runId }) => runId));
+  assert.deepEqual(models, ["first-model", "second-model"]);
+});
+
+test("an unservable configuration refuses the whole batch before credentials, persistence, or traffic", async () => {
+  const source = planFixture(1);
+  const plan = structuredClone(source);
+  plan.suite.variants[0]!.responseMode = "streaming";
+  plan.suite.variants[0]!.target.capabilities.streaming = false;
+  let credentialCalls = 0;
+  let saved = false;
+  let providerCalls = 0;
+  await assert.rejects(() => new SequentialExperimentController({
+    plan,
+    transport: {
+      async discoverModels() { return { models: [] }; },
+      async executeTurn() { providerCalls += 1; throw new Error("should not run"); },
+    },
+    async prepareCredential() { credentialCalls += 1; return { kind: "none" }; },
+    async savePlan() { saved = true; },
+  }).run(), /does not support streaming/);
+  assert.equal(credentialCalls, 0);
+  assert.equal(saved, false);
+  assert.equal(providerCalls, 0);
+});

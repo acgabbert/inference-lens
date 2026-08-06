@@ -88,8 +88,8 @@ async function mapConnection(page: Page): Promise<void> {
   await page.getByRole("button", { name: /manage connections/i }).click();
   await page
     .locator(".connection-mapping")
-    .getByRole("button", { name: /use .* for this project/i })
-    .click();
+    .getByRole("combobox")
+    .selectOption("buffered");
   await page.getByRole("button", { name: /close connections/i }).click();
 }
 
@@ -159,6 +159,7 @@ test("authoring from a saved prompt shows the exact resolved input it will run",
   await expect(conversation).toContainText("Explain database migrations to engineers.");
 
   // Region 4 — the target and settings that go with it, also open by default.
+  await mapConnection(page);
   const settings = preview.getByRole("region", { name: /^Execution settings for / });
   await expect(settings).toContainText("Buffered fixture");
   await expect(settings).toContainText(BUFFERED_FIXTURE_ENDPOINT);
@@ -176,7 +177,6 @@ test("authoring from a saved prompt shows the exact resolved input it will run",
 
   // Confirmation names the same revision the same way, then the run itself
   // goes through the buffered fixture deterministically.
-  await mapConnection(page);
   await expect(editor).toContainText("Ready to run");
   await primaryAction(page, "evaluations").click();
   const confirmation = page.getByRole("dialog", { name: /Start “Untitled evaluation”/ });

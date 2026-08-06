@@ -245,7 +245,7 @@ test("a saved suite opens with every case selected and preflight clean", async (
   await openProject(page, projectWithSavedSuite(), 1440, { mapped: true });
   const editor = page.locator(".evaluation-editor");
 
-  await expect(editor).toContainText("3 selected × 1 rep → 3 runs");
+  await expect(editor).toContainText("3 cases × 1 configuration × 1 rep → 3 runs");
   await expect(editor).toContainText("Ready to run");
   await expect(preflightSummary(page)).toHaveText("Ready to run");
   await expect(page.locator(".evaluation-preview-scroll")
@@ -264,7 +264,7 @@ test("a saved suite opens with every case selected and preflight clean", async (
 
   // Narrowing the selection is explicit, and preflight follows it.
   await page.getByLabel("Select indexes").uncheck();
-  await expect(editor).toContainText("2 selected × 1 rep → 2 runs");
+  await expect(editor).toContainText("2 cases × 1 configuration × 1 rep → 2 runs");
   await expect(editor).toContainText("Ready to run");
 
   // Explicit UI selection belongs to the open project, even when a replacement
@@ -272,7 +272,7 @@ test("a saved suite opens with every case selected and preflight clean", async (
   const replacement = projectWithSavedSuite();
   replacement.projectId = "project_replacement";
   await importProject(page, replacement);
-  await expect(editor).toContainText("3 selected × 1 rep → 3 runs");
+  await expect(editor).toContainText("3 cases × 1 configuration × 1 rep → 3 runs");
 });
 
 test("authors sparse named configurations and shows their effective settings", async ({ page }) => {
@@ -285,8 +285,9 @@ test("authors sparse named configurations and shows their effective settings", a
   await row.getByLabel("Configuration temperature New configuration").fill("0.1");
   await row.getByLabel("Configuration name 2").fill("Fast model");
 
-  await expect(page.getByLabel("Configuration Fast model")).toContainText("Effective:");
-  await expect(page.getByLabel("Configuration Fast model")).toContainText("streaming");
+  const fastModel = page.getByRole("article", { name: "Configuration Fast model" });
+  await expect(fastModel).toContainText("Effective:");
+  await expect(fastModel).toContainText("streaming");
   await expect(page.getByText("Repetitions, turn ceiling, and exposed tools are shared across every configuration.")).toBeVisible();
 });
 
@@ -404,7 +405,7 @@ test("starts contextually, confirms the frozen batch, and renders strict live ev
   await openProject(page, projectWithRunnableSuite(), 1440);
   await page.getByLabel(/^Run target:/).click();
   await page.getByRole("button", { name: /manage connections/i }).click();
-  await page.locator(".connection-mapping").getByRole("button", { name: /use .* for this project/i }).click();
+  await page.locator(".connection-mapping").getByRole("combobox").selectOption("buffered");
   await page.getByRole("button", { name: /close connections/i }).click();
   const editor = page.locator(".evaluation-editor");
   await expect(editor).toContainText("Ready to run");

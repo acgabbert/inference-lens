@@ -96,6 +96,8 @@ export interface ProfileCredentialHandle {
   /** Surfaces failures inline; use `prepare` when the caller needs the result. */
   commit(): void;
   prepare(): Promise<CredentialSelection>;
+  /** Resolves a mapped profile without changing which profile the drawer edits. */
+  prepareForProfile(profileId: string, endpoint: string): Promise<CredentialSelection>;
 }
 
 export interface ConnectionProfilesHandle {
@@ -480,40 +482,62 @@ export function useConnectionProfiles(input: {
    * the host cannot bind to this endpoint's origin yields no credential rather
    * than being sent anyway.
    */
-  async function prepareCredential(): Promise<CredentialSelection> {
+  async function prepareCredentialForProfile(
+    profileId: string,
+    endpoint: string,
+  ): Promise<CredentialSelection> {
+    const profile = profilesRef.current.find(({ id }) => id === profileId);
+    if (!profile || profile.endpoint !== endpoint) {
+      throw new Error(`The mapped connection profile ${profileId} changed before the evaluation started.`);
+    }
+    const draft = sessionCredentialsRef.current.get(profileId) ?? "";
     if (!isDesktopRuntime) {
-      return resolveWebCredentialSelection(webCredentialMode, credentialDraft);
+      const mode = webCredentialModesRef.current.get(profileId) ??
+        (serverDefault.configured && profile.credentialRef === SERVER_DEFAULT_CREDENTIAL_REF
+          ? "environment-default"
+          : "none");
+      return resolveWebCredentialSelection(mode, draft);
     }
     const status = await desktopCredentialStore.status(
-      activeProfile.id,
-      activeProfile.endpoint,
+      profileId,
+      endpoint,
     );
     if (!status.canPersist) {
-      setCredentialStatus(status);
-      setCredentialError(undefined);
-      return credentialDraft.trim()
-        ? { kind: "provided" as const, apiKey: credentialDraft }
+      if (profileId === activeProfile.id) {
+        setCredentialStatus(status);
+        setCredentialError(undefined);
+      }
+      return draft.trim()
+        ? { kind: "provided" as const, apiKey: draft }
         : { kind: "none" as const };
     }
-    if (credentialDraft.trim()) {
+    if (draft.trim()) {
       await desktopCredentialStore.save(
-        activeProfile.id,
-        activeProfile.endpoint,
-        credentialDraft,
+        profileId,
+        endpoint,
+        draft,
       );
     }
     const storedStatus = await desktopCredentialStore.status(
-      activeProfile.id,
-      activeProfile.endpoint,
+      profileId,
+      endpoint,
     );
     if (!storedStatus.isApprovedForEndpoint) {
-      setCredentialStatus(storedStatus);
-      setCredentialError(undefined);
+      if (profileId === activeProfile.id) {
+        setCredentialStatus(storedStatus);
+        setCredentialError(undefined);
+      }
       return { kind: "none" as const };
     }
-    setCredentialStatus(storedStatus);
-    setCredentialError(undefined);
-    return { kind: "native-keychain" as const, profileId: activeProfile.id };
+    if (profileId === activeProfile.id) {
+      setCredentialStatus(storedStatus);
+      setCredentialError(undefined);
+    }
+    return { kind: "native-keychain" as const, profileId };
+  }
+
+  async function prepareCredential(): Promise<CredentialSelection> {
+    return prepareCredentialForProfile(activeProfile.id, activeProfile.endpoint);
   }
 
   function commitCredential(): void {
@@ -562,6 +586,7 @@ export function useConnectionProfiles(input: {
       setWebMode: setWebCredentialModeForActiveProfile,
       commit: commitCredential,
       prepare: prepareCredential,
+      prepareForProfile: prepareCredentialForProfile,
     },
   };
 }
