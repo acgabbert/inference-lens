@@ -10,6 +10,7 @@ import type {
   PromptTemplateMessages,
   PromptTemplateRecommendedTarget,
   PromptTemplateUse,
+  EvaluationSuite,
 } from "../packages/core/src/project";
 import { isSensitiveTemplateVariableName } from "../packages/core/src/project";
 import type {
@@ -48,6 +49,8 @@ interface ProjectTemplatesPaneProps {
   onArchive(templateId: PromptTemplateId, onArchived?: () => void): void;
   onRestore(templateId: PromptTemplateId): void;
   onInsert(templateId: PromptTemplateId, itemIndex: number): void;
+  compatibleEvaluationSuitesByTemplate?: ReadonlyMap<PromptTemplateId, readonly EvaluationSuite[]>;
+  onEvaluateRevision?(templateId: PromptTemplateId, revisionId: PromptTemplateRevisionId, suiteId?: EvaluationSuite["id"]): void;
 }
 
 function newPrompt(): PromptTemplateMessages {
@@ -72,6 +75,8 @@ export function ProjectTemplatesPane({
   onArchive,
   onRestore,
   onInsert,
+  compatibleEvaluationSuitesByTemplate = new Map(),
+  onEvaluateRevision,
 }: ProjectTemplatesPaneProps) {
   const activeTemplates = templates.filter(({ archivedAt }) => !archivedAt);
   const archivedTemplates = templates.filter(({ archivedAt }) => archivedAt);
@@ -119,10 +124,14 @@ export function ProjectTemplatesPane({
   const [n8nPasteTarget, setN8nPasteTarget] = useState<undefined | {
     messageIndex: number; start: number; end: number; source: string; pastedSource?: string; revisionId?: PromptTemplateRevisionId; textarea: HTMLTextAreaElement; automatic: boolean;
   }>();
+  const [evaluateRequest, setEvaluateRequest] = useState<undefined | { templateId: PromptTemplateId; revisionId: PromptTemplateRevisionId }>();
 
   const viewedRevision = selected?.revisions.find(
     ({ id }) => id === viewedRevisionId,
   ) ?? initialRevision;
+  const compatibleEvaluationSuites = selected
+    ? compatibleEvaluationSuitesByTemplate.get(selected.id) ?? []
+    : [];
   const archived = Boolean(selected?.archivedAt);
   const readOnly = Boolean(
     selected &&
@@ -428,6 +437,15 @@ export function ProjectTemplatesPane({
                     >
                       Create candidate from this revision
                     </button>}
+                    {!archived && viewedRevision && onEvaluateRevision && <button
+                      className="button secondary"
+                      type="button"
+                      onClick={() => {
+                        setEvaluateRequest({ templateId: selected.id, revisionId: viewedRevision.id });
+                      }}
+                    >
+                      Evaluate this revision…
+                    </button>}
                     <button
                       className="button secondary"
                       type="button"
@@ -654,6 +672,16 @@ export function ProjectTemplatesPane({
         onInsert={insertAtN8nPasteTarget}
         onPasteUnchanged={() => insertAtN8nPasteTarget(n8nPasteTarget.pastedSource ?? n8nPasteTarget.source.slice(n8nPasteTarget.start, n8nPasteTarget.end))}
       />}
+      {evaluateRequest && <div aria-label="Evaluate prompt revision" aria-modal="true" className="confirmation-dialog-backdrop" role="dialog">
+        <section className="confirmation-dialog">
+          <h2>Evaluate this revision</h2>
+          <p>Choose a compatible suite to keep its cases, checks, and configurations, or start a new suite. Messages will not change.</p>
+          {compatibleEvaluationSuites.length > 0 && <div className="confirmation-dialog-actions">
+            {compatibleEvaluationSuites.map((suite) => <button className="button secondary" key={suite.id} type="button" onClick={() => { onEvaluateRevision?.(evaluateRequest.templateId, evaluateRequest.revisionId, suite.id); setEvaluateRequest(undefined); }}>Use {suite.name}</button>)}
+          </div>}
+          <div className="confirmation-dialog-actions"><button className="button primary" type="button" onClick={() => { onEvaluateRevision?.(evaluateRequest.templateId, evaluateRequest.revisionId); setEvaluateRequest(undefined); }}>Create new suite</button><button className="button secondary" type="button" onClick={() => setEvaluateRequest(undefined)}>Cancel</button></div>
+        </section>
+      </div>}
     </div>
   );
 }

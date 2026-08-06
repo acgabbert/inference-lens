@@ -397,6 +397,14 @@ export function EvaluationSuiteEditor({
   const setSetupOpen = setup ? setup.onOpenChange : setLocalSetupOpen;
   const project = authoring.project;
   const suite = project?.evaluationSuites.find(({ id }) => id === authoring.suiteId);
+  const selectedInputRevision = project?.conversationRevisions.find(({ id }) => id === authoring.revisionId);
+  const stalePromptUses = selectedInputRevision?.items.flatMap((item) => {
+    if (item.kind !== "template-use") return [];
+    const template = project?.promptTemplates.find(({ id }) => id === item.use.templateId);
+    return template && template.currentRevisionId !== item.use.templateRevisionId
+      ? [{ templateUseId: item.use.id, templateName: template.name }]
+      : [];
+  }) ?? [];
   const focusedCase = suite?.cases.find(({ id }) => id === authoring.focusedCaseId);
   const selectedCount = authoring.selectedCaseIds.size;
   const selectedVariantCount = authoring.selectedVariantIds.size;
@@ -568,6 +576,12 @@ export function EvaluationSuiteEditor({
                     </select>
                   </label>
                 </div>
+                {stalePromptUses.length > 0 && <div className="evaluation-resolution-action" role="status">
+                  <div><strong>{stalePromptUses.length === 1 ? `“${stalePromptUses[0]!.templateName}” has a newer prompt revision` : `${stalePromptUses.length} pinned prompts have newer revisions`}</strong><span>Retargeting creates a new evaluation input revision. Cases, checks, and configurations stay unchanged.</span></div>
+                  <div className="evaluation-input-actions">
+                    {stalePromptUses.map((use) => <button className="button secondary" key={use.templateUseId} type="button" onClick={() => authoring.useCurrentPromptRevision(use.templateUseId)}>Use current {use.templateName} revision</button>)}
+                  </div>
+                </div>}
               </div>
               <section className="evaluation-configurations" aria-label="Configurations">
                 <div className="evaluation-section-heading"><div><span className="eyebrow">Configurations</span><h3>Compare named configurations</h3></div><button className="button secondary" type="button" onClick={authoring.addVariant}>+ Add configuration</button></div>

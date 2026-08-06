@@ -1738,6 +1738,11 @@ function HomeContent() {
           commandTools={commandTools}
           templates={projectTemplates}
           project={projectFile}
+          onEvaluatePromptRevision={(templateId, revisionId, suiteId) => {
+            if (!evaluationAuthoring.evaluatePromptRevision(templateId, revisionId, suiteId)) return;
+            setMode("evaluations");
+            setEvaluationSetupOpen(true);
+          }}
           settings={{
             model: activeModel,
             temperature: activeTemperature,

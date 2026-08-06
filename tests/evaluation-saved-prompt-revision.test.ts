@@ -15,6 +15,7 @@ import {
 } from "../packages/core/src/conversation-revision-description.ts";
 import {
   archivePromptTemplate,
+  appendPromptTemplateRevision,
   createProjectFile,
   createPromptTemplate,
   insertPromptTemplateUse,
@@ -22,6 +23,7 @@ import {
   parseProjectFile,
   ProjectValidationError,
   resolveProjectRevisionMessages,
+  retargetPromptTemplateUseRevision,
   serializeProjectFile,
 } from "../packages/core/src/project.ts";
 import type { ProjectFile } from "../packages/core/src/project.ts";
@@ -66,6 +68,50 @@ function fixture(): ProjectFile {
     idSuffix: "existing-use",
   });
 }
+
+test("retargeting keeps the template-use and suite bindings stable in an immutable child", () => {
+  let project = fixture();
+  const parentRevisionId = project.defaults.conversationRevisionId;
+  const suite = createEvaluationSuite(project, "Topics", () => "topics");
+  project = suite.project;
+  const input = addEvaluationInput(project, suite.suiteId, {
+    templateUseId: "template-use_existing-use",
+    variableName: "topic",
+  }, () => "topic");
+  project = input.project;
+  project = appendPromptTemplateRevision(project, {
+    templateId: "template_question",
+    messages: [
+      { role: "system", content: "Use short examples." },
+      { role: "user", content: "Explain {{topic}}." },
+    ],
+    variableDefaults: {},
+    idSuffix: "question-v2",
+    createdAt: "2026-08-03T10:00:00.000Z",
+  });
+
+  const retargeted = retargetPromptTemplateUseRevision(project, {
+    parentRevisionId,
+    templateUseId: "template-use_existing-use",
+    templateRevisionId: "template-revision_question-v2",
+    revisionIdSuffix: "question-v2-input",
+    outputMessageIdSuffixes: ["v2-system", "v2-user"],
+    createdAt: "2026-08-03T10:01:00.000Z",
+  });
+  const child = retargeted.project.conversationRevisions.find(({ id }) => id === retargeted.conversationRevisionId)!;
+  const use = child.items.find((item) => item.kind === "template-use");
+
+  assert.equal(retargeted.project.defaults.conversationRevisionId, parentRevisionId);
+  assert.equal(child.parentRevisionId, parentRevisionId);
+  assert.equal(use?.kind, "template-use");
+  assert.equal(use?.kind === "template-use" && use.use.id, "template-use_existing-use");
+  assert.equal(use?.kind === "template-use" && use.use.templateRevisionId, "template-revision_question-v2");
+  assert.deepEqual(use?.kind === "template-use" && use.use.values, {});
+  assert.deepEqual(use?.kind === "template-use" && use.use.outputMessageIds, ["message_v2-system", "message_v2-user"]);
+  assert.equal(project.conversationRevisions.find(({ id }) => id === parentRevisionId)!.items.find((item) => item.kind === "template-use")?.kind, "template-use");
+  assert.equal(retargeted.project.evaluationSuites[0]!.inputBindings[0]!.target.templateUseId, "template-use_existing-use");
+  assert.equal(resolveProjectRevisionMessages(retargeted.project, child).length, 3);
+});
 
 test("creates a prompt-only child revision that pins the template's current immutable revision", () => {
   const project = fixture();

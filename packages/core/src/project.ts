@@ -2846,6 +2846,82 @@ export interface UpdatePromptTemplateUseToLatestOptions {
   newOutputMessageIdSuffixes?: string[];
 }
 
+/**
+ * Appends a child conversation revision which pins one existing template use
+ * to a different immutable prompt revision.
+ *
+ * This is deliberately distinct from `updatePromptTemplateUseToLatest`: that
+ * operation edits a draft conversation in place, whereas evaluation retargets
+ * must preserve their parent input as evidence.  The template-use ID remains
+ * stable so authored evaluation bindings continue to identify the same input
+ * slot.  Values for variables no longer declared by the new prompt are
+ * intentionally discarded; preflight subsequently reports any bindings whose
+ * variables disappeared rather than trying to remap them.
+ */
+export interface RetargetPromptTemplateUseRevisionOptions {
+  parentRevisionId: ConversationRevisionId;
+  templateUseId: PromptTemplateUseId;
+  templateRevisionId: PromptTemplateRevisionId;
+  revisionIdSuffix?: string;
+  outputMessageIdSuffixes?: string[];
+  createdAt?: string;
+}
+
+export function retargetPromptTemplateUseRevision(
+  project: ProjectFile,
+  {
+    parentRevisionId,
+    templateUseId,
+    templateRevisionId,
+    revisionIdSuffix = randomUUID(),
+    outputMessageIdSuffixes,
+    createdAt = new Date().toISOString(),
+  }: RetargetPromptTemplateUseRevisionOptions,
+): { project: ProjectFile; conversationRevisionId: ConversationRevisionId } {
+  const parent = project.conversationRevisions.find(({ id }) => id === parentRevisionId);
+  if (!parent) {
+    throw new ProjectValidationError([{ code: "custom", path: ["conversationRevisions", parentRevisionId], message: "The conversation revision to retarget does not exist." }]);
+  }
+  const { itemIndex, item } = findTemplateUseItem(parent, templateUseId);
+  const template = project.promptTemplates.find(({ id }) => id === item.use.templateId);
+  const target = template?.revisions.find(({ id }) => id === templateRevisionId);
+  if (!template || !target) {
+    throw new ProjectValidationError([{ code: "custom", path: ["promptTemplates", item.use.templateId, "revisions", templateRevisionId], message: "The prompt revision to retarget does not exist." }]);
+  }
+  if (outputMessageIdSuffixes && outputMessageIdSuffixes.length !== target.messages.length) {
+    throw new ProjectValidationError([{ code: "custom", path: ["outputMessageIdSuffixes"], message: `Retargeting this use requires ${target.messages.length} output message ID suffix${target.messages.length === 1 ? "" : "es"}.` }]);
+  }
+  const variableNames = new Set(discoverTemplateVariables(target.messages).variables.map(({ name }) => name));
+  const outputMessageIds = Array.from({ length: target.messages.length }, (_, index) =>
+    createEntityId("message", outputMessageIdSuffixes?.[index] ?? `${revisionIdSuffix}-${index + 1}`),
+  );
+  const use: PromptTemplateUse = {
+    id: item.use.id,
+    templateId: item.use.templateId,
+    templateRevisionId: target.id,
+    values: Object.fromEntries(Object.entries(item.use.values).filter(([name]) => variableNames.has(name))),
+    outputMessageIds,
+  };
+  const conversationRevisionId = createEntityId("revision", revisionIdSuffix);
+  const child: ProjectConversationRevision = {
+    id: conversationRevisionId,
+    conversationId: parent.conversationId,
+    parentRevisionId: parent.id,
+    items: [
+      ...structuredClone(parent.items.slice(0, itemIndex)),
+      { kind: "template-use", use },
+      ...structuredClone(parent.items.slice(itemIndex + 1)),
+    ],
+    createdAt,
+  };
+  return {
+    // Unlike a composer branch, a suite retarget must never move the active
+    // Messages revision. The caller owns selecting the child for its suite.
+    project: parseProjectFile({ ...project, conversationRevisions: [...project.conversationRevisions, child] }),
+    conversationRevisionId,
+  };
+}
+
 export function updatePromptTemplateUseToLatest(
   project: ProjectFile,
   {
