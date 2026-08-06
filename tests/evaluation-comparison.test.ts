@@ -4,6 +4,7 @@ import test from "node:test";
 import { createEvaluationExperimentPlan } from "../packages/core/src/evaluation-execution.ts";
 import { alignSuiteSnapshots } from "../packages/core/src/evaluation-suite-alignment.ts";
 import { compareEvaluationExecutions } from "../packages/core/src/evaluation-comparison.ts";
+import type { EvaluationComparisonInput } from "../packages/core/src/evaluation-comparison.ts";
 import {
   materializeExperimentCellInput,
   type EvaluationExperimentPlanV3,
@@ -164,6 +165,18 @@ function execute(
   };
 }
 
+function comparisonInput(
+  plan: EvaluationExperimentPlanV3,
+  run: { result: ExperimentResultV3; states: Map<RunId, RunState> },
+): EvaluationComparisonInput {
+  return {
+    experimentId: plan.experimentId,
+    plan,
+    variantId: plan.suite.variants[0]!.variantId,
+    ...run,
+  };
+}
+
 const migrations: CaseFixture = {
   id: "evaluation-case_migrations",
   name: "Migrations",
@@ -202,8 +215,8 @@ test("a changed input value is an incompatible case, not a regression", () => {
   const baselineRun = execute(baseline, { [migrations.id]: "Plan the migration." });
   const candidateRun = execute(candidate, { [migrations.id]: "Nothing relevant." });
   const comparison = compareEvaluationExecutions(
-    { experimentId: baseline.experimentId, plan: baseline, ...baselineRun },
-    { experimentId: candidate.experimentId, plan: candidate, ...candidateRun },
+    comparisonInput(baseline, baselineRun),
+    comparisonInput(candidate, candidateRun),
   );
   assert.equal(comparison.cases[0]?.alignment, "incompatible");
   assert.deepEqual(comparison.cases[0]?.reasons, ["values-changed"]);
@@ -223,8 +236,8 @@ test("a flipped case reads as a regression and its counterpart as a fix", () => 
     [backups.id]: "Keep a backup.",
   });
   const comparison = compareEvaluationExecutions(
-    { experimentId: baseline.experimentId, plan: baseline, ...baselineRun },
-    { experimentId: candidate.experimentId, plan: candidate, ...candidateRun },
+    comparisonInput(baseline, baselineRun),
+    comparisonInput(candidate, candidateRun),
   );
   assert.deepEqual(
     comparison.cases.map(({ name, delta }) => [name, delta]),
@@ -254,8 +267,8 @@ test("a missing trace is reported on its side rather than dropped from the denom
     { skipRunIds: [missingRunId] },
   );
   const comparison = compareEvaluationExecutions(
-    { experimentId: baseline.experimentId, plan: baseline, ...baselineRun },
-    { experimentId: candidate.experimentId, plan: candidate, ...candidateRun },
+    comparisonInput(baseline, baselineRun),
+    comparisonInput(candidate, candidateRun),
   );
   const backupsCase = comparison.cases.find(({ name }) => name === "Backups");
   assert.equal(backupsCase?.candidate?.missingTrace, 1);
@@ -275,13 +288,48 @@ test("a changed target model is drift context, not case incompatibility", () => 
   const baselineRun = execute(baseline, { [migrations.id]: "Plan the migration." });
   const candidateRun = execute(candidate, { [migrations.id]: "Nothing relevant." });
   const comparison = compareEvaluationExecutions(
-    { experimentId: baseline.experimentId, plan: baseline, ...baselineRun },
-    { experimentId: candidate.experimentId, plan: candidate, ...candidateRun },
+    comparisonInput(baseline, baselineRun),
+    comparisonInput(candidate, candidateRun),
   );
   assert.deepEqual(comparison.drift.model, { baseline: "model-a", candidate: "model-b" });
   assert.equal(comparison.drift.any, true);
   assert.equal(comparison.cases[0]?.alignment, "aligned");
   assert.equal(comparison.cases[0]?.delta, "regressed");
+});
+
+test("comparison selects explicit variant slices from one bakeoff", () => {
+  const project = projectFixture([migrations], "model-a");
+  const suite = project.evaluationSuites[0]!;
+  suite.variants = [
+    { id: "evaluation-variant_a", name: "Model A", overrides: {} },
+    { id: "evaluation-variant_b", name: "Model B", overrides: { target: { model: "model-b" } } },
+  ];
+  const plan = createEvaluationExperimentPlan({
+    project,
+    suiteId: suite.id,
+    selectedCaseIds: [migrations.id as never],
+    selectedVariantIds: ["evaluation-variant_a", "evaluation-variant_b"],
+    createdAt: "2026-08-01T16:00:00.000Z",
+    createSuffix: (() => { let index = 0; return () => `multi-${++index}`; })(),
+    runtimeTargets: {
+      "evaluation-variant_a": {
+        profileId: "profile_a", protocol: "openai-compatible-chat-completions",
+        endpoint: "https://confirmed.example.test/v1", capabilities: OPENAI_COMPATIBLE_CAPABILITIES,
+      },
+      "evaluation-variant_b": {
+        profileId: "profile_b", protocol: "openai-compatible-chat-completions",
+        endpoint: "https://confirmed.example.test/v1", capabilities: OPENAI_COMPATIBLE_CAPABILITIES,
+      },
+    },
+  });
+  const run = execute(plan, { [migrations.id]: "Plan the migration." });
+  const comparison = compareEvaluationExecutions(
+    { experimentId: plan.experimentId, plan, variantId: "evaluation-variant_a", ...run },
+    { experimentId: plan.experimentId, plan, variantId: "evaluation-variant_b", ...run },
+  );
+  assert.equal(comparison.baseline.variantName, "Model A");
+  assert.equal(comparison.candidate.variantName, "Model B");
+  assert.deepEqual(comparison.drift.model, { baseline: "model-a", candidate: "model-b" });
 });
 
 test("per-check tallies align by check identity across both sides", () => {
@@ -290,8 +338,8 @@ test("per-check tallies align by check identity across both sides", () => {
   const baselineRun = execute(baseline, { [migrations.id]: "Plan the migration." });
   const candidateRun = execute(candidate, { [migrations.id]: "Nothing relevant." });
   const comparison = compareEvaluationExecutions(
-    { experimentId: baseline.experimentId, plan: baseline, ...baselineRun },
-    { experimentId: candidate.experimentId, plan: candidate, ...candidateRun },
+    comparisonInput(baseline, baselineRun),
+    comparisonInput(candidate, candidateRun),
   );
   const check = comparison.cases[0]?.checks[0];
   assert.equal(check?.status, "aligned");

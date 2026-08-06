@@ -6,6 +6,7 @@ import type {
   EntityIdKind,
   EvaluationBaselineId,
   EvaluationSuiteId,
+  EvaluationVariantId,
   ExperimentId,
 } from "./run-kernel/types.ts";
 
@@ -25,19 +26,20 @@ import type {
  */
 
 export const EVALUATION_BASELINES_FILE_NAME = "evaluation-baselines.json";
-export const EVALUATION_BASELINES_SCHEMA_VERSION = 1;
+export const EVALUATION_BASELINES_SCHEMA_VERSION = 2;
 export const EVALUATION_BASELINE_NAME_MAX_LENGTH = 80;
 
 export interface EvaluationBaseline {
   baselineId: EvaluationBaselineId;
   suiteId: EvaluationSuiteId;
   experimentId: ExperimentId;
+  variantId: EvaluationVariantId;
   name: string;
   pinnedAt: string;
 }
 
-export interface EvaluationBaselinesFileV1 {
-  schemaVersion: 1;
+export interface EvaluationBaselinesFileV2 {
+  schemaVersion: 2;
   baselines: EvaluationBaseline[];
 }
 
@@ -47,7 +49,7 @@ export class EvaluationBaselineError extends Error {
     | "empty-name"
     | "name-too-long"
     | "duplicate-name"
-    | "duplicate-experiment"
+    | "duplicate-experiment-variant"
     | "unknown-baseline";
 
   constructor(code: EvaluationBaselineError["code"], message: string) {
@@ -71,12 +73,13 @@ const baselineSchema: z.ZodType<EvaluationBaseline> = z
     baselineId: entityId("evaluation-baseline"),
     suiteId: entityId("evaluation-suite"),
     experimentId: entityId("experiment"),
+    variantId: entityId("evaluation-variant"),
     name: z.string().min(1).max(EVALUATION_BASELINE_NAME_MAX_LENGTH),
     pinnedAt: z.iso.datetime({ offset: true }),
   })
   .strict();
 
-const fileSchema: z.ZodType<EvaluationBaselinesFileV1> = z
+const fileSchema: z.ZodType<EvaluationBaselinesFileV2> = z
   .object({
     schemaVersion: z.literal(EVALUATION_BASELINES_SCHEMA_VERSION),
     baselines: z.array(baselineSchema),
@@ -96,7 +99,7 @@ const fileSchema: z.ZodType<EvaluationBaselinesFileV1> = z
     });
   });
 
-export function emptyEvaluationBaselines(): EvaluationBaselinesFileV1 {
+export function emptyEvaluationBaselines(): EvaluationBaselinesFileV2 {
   return { schemaVersion: EVALUATION_BASELINES_SCHEMA_VERSION, baselines: [] };
 }
 
@@ -105,7 +108,7 @@ export function emptyEvaluationBaselines(): EvaluationBaselinesFileV1 {
  * something to discard silently: the caller reports the damaged file and
  * leaves it alone instead of overwriting it on the next pin.
  */
-export function parseEvaluationBaselines(value: unknown): EvaluationBaselinesFileV1 {
+export function parseEvaluationBaselines(value: unknown): EvaluationBaselinesFileV2 {
   const parsed = fileSchema.safeParse(value);
   if (!parsed.success) {
     throw new EvaluationBaselineError(
@@ -116,7 +119,7 @@ export function parseEvaluationBaselines(value: unknown): EvaluationBaselinesFil
   return parsed.data;
 }
 
-export function parseEvaluationBaselinesJson(contents: string): EvaluationBaselinesFileV1 {
+export function parseEvaluationBaselinesJson(contents: string): EvaluationBaselinesFileV2 {
   let value: unknown;
   try {
     value = JSON.parse(contents);
@@ -129,13 +132,13 @@ export function parseEvaluationBaselinesJson(contents: string): EvaluationBaseli
   return parseEvaluationBaselines(value);
 }
 
-export function serializeEvaluationBaselines(file: EvaluationBaselinesFileV1): string {
+export function serializeEvaluationBaselines(file: EvaluationBaselinesFileV2): string {
   return `${JSON.stringify(stableJsonValue(parseEvaluationBaselines(file)), null, 2)}\n`;
 }
 
 /** Baselines pinned for one suite, most recently pinned first. */
 export function suiteEvaluationBaselines(
-  file: EvaluationBaselinesFileV1,
+  file: EvaluationBaselinesFileV2,
   suiteId: EvaluationSuiteId,
 ): EvaluationBaseline[] {
   return file.baselines
@@ -156,7 +159,7 @@ function normalizeName(name: string): string {
 }
 
 function assertNameAvailable(
-  file: EvaluationBaselinesFileV1,
+  file: EvaluationBaselinesFileV2,
   suiteId: EvaluationSuiteId,
   name: string,
   exceptBaselineId?: EvaluationBaselineId,
@@ -190,26 +193,29 @@ export interface PinEvaluationBaselineOptions {
   baselineId: EvaluationBaselineId;
   suiteId: EvaluationSuiteId;
   experimentId: ExperimentId;
+  variantId: EvaluationVariantId;
   name: string;
   pinnedAt: string;
 }
 
 export function pinEvaluationBaseline(
-  file: EvaluationBaselinesFileV1,
+  file: EvaluationBaselinesFileV2,
   options: PinEvaluationBaselineOptions,
-): EvaluationBaselinesFileV1 {
+): EvaluationBaselinesFileV2 {
   const name = assertNameAvailable(file, options.suiteId, options.name);
-  // One execution, one name. Two names for the same evidence would make a
-  // comparison picker offer the same comparison twice under different labels.
+  // One configuration slice, one name. Different variants from the same
+  // bakeoff are distinct evidence and may both be pinned.
   if (
     file.baselines.some(
       (baseline) =>
-        baseline.suiteId === options.suiteId && baseline.experimentId === options.experimentId,
+        baseline.suiteId === options.suiteId &&
+        baseline.experimentId === options.experimentId &&
+        baseline.variantId === options.variantId,
     )
   ) {
     throw new EvaluationBaselineError(
-      "duplicate-experiment",
-      "This execution is already pinned as a baseline.",
+      "duplicate-experiment-variant",
+      "This configuration is already pinned as a baseline.",
     );
   }
   return {
@@ -219,10 +225,10 @@ export function pinEvaluationBaseline(
 }
 
 export function renameEvaluationBaseline(
-  file: EvaluationBaselinesFileV1,
+  file: EvaluationBaselinesFileV2,
   baselineId: EvaluationBaselineId,
   name: string,
-): EvaluationBaselinesFileV1 {
+): EvaluationBaselinesFileV2 {
   const existing = file.baselines.find((baseline) => baseline.baselineId === baselineId);
   if (!existing) {
     throw new EvaluationBaselineError("unknown-baseline", "That baseline no longer exists.");
@@ -237,9 +243,9 @@ export function renameEvaluationBaseline(
 }
 
 export function unpinEvaluationBaseline(
-  file: EvaluationBaselinesFileV1,
+  file: EvaluationBaselinesFileV2,
   baselineId: EvaluationBaselineId,
-): EvaluationBaselinesFileV1 {
+): EvaluationBaselinesFileV2 {
   return {
     ...file,
     baselines: file.baselines.filter((baseline) => baseline.baselineId !== baselineId),

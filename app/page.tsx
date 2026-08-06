@@ -1287,10 +1287,10 @@ function HomeContent() {
           items: evaluationBaselines.forSuite(selectedEvaluationSuite?.id),
           ...(evaluationBaselines.error ? { error: evaluationBaselines.error } : {}),
           busy: evaluationBaselines.comparing,
-          onPin: (item, name) => evaluationBaselines.pin(item, name),
+          onPin: (item, variantId, name) => evaluationBaselines.pin(item, variantId, name),
           onUnpin: (baselineId) => evaluationBaselines.unpin(baselineId),
-          onCompare: async (baseline, candidate) => {
-            await evaluationBaselines.compare(baseline, candidate);
+          onCompare: async (baseline, candidate, candidateVariantId) => {
+            await evaluationBaselines.compare(baseline, candidate, candidateVariantId);
             // A comparison is a results surface, so anything else holding the
             // Runs mode is released the same way opening a saved execution does.
             repeatedExperiment.clear();

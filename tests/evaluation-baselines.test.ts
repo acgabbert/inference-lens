@@ -20,6 +20,7 @@ function pinned() {
     baselineId: "evaluation-baseline_first",
     suiteId,
     experimentId: "experiment_one",
+    variantId: "evaluation-variant_default",
     name: "  Before   refactor ",
     pinnedAt: "2026-08-01T12:00:00.000Z",
   });
@@ -27,6 +28,7 @@ function pinned() {
     baselineId: "evaluation-baseline_second",
     suiteId,
     experimentId: "experiment_two",
+    variantId: "evaluation-variant_default",
     name: "After refactor",
     pinnedAt: "2026-08-02T12:00:00.000Z",
   });
@@ -54,10 +56,22 @@ test("names stay unambiguous within a suite and each execution pins once", () =>
         baselineId: "evaluation-baseline_third",
         suiteId,
         experimentId: "experiment_three",
+        variantId: "evaluation-variant_default",
         name: "after refactor",
         pinnedAt: "2026-08-03T12:00:00.000Z",
       }),
     (error: EvaluationBaselineError) => error.code === "duplicate-name",
+  );
+  assert.equal(
+    pinEvaluationBaseline(file, {
+      baselineId: "evaluation-baseline_variant-b",
+      suiteId,
+      experimentId: "experiment_two",
+      variantId: "evaluation-variant_b",
+      name: "Model B",
+      pinnedAt: "2026-08-03T12:00:00.000Z",
+    }).baselines.length,
+    3,
   );
   assert.throws(
     () =>
@@ -65,10 +79,11 @@ test("names stay unambiguous within a suite and each execution pins once", () =>
         baselineId: "evaluation-baseline_third",
         suiteId,
         experimentId: "experiment_two",
+        variantId: "evaluation-variant_default",
         name: "Another name",
         pinnedAt: "2026-08-03T12:00:00.000Z",
       }),
-    (error: EvaluationBaselineError) => error.code === "duplicate-experiment",
+    (error: EvaluationBaselineError) => error.code === "duplicate-experiment-variant",
   );
   assert.throws(
     () =>
@@ -76,6 +91,7 @@ test("names stay unambiguous within a suite and each execution pins once", () =>
         baselineId: "evaluation-baseline_third",
         suiteId,
         experimentId: "experiment_three",
+        variantId: "evaluation-variant_default",
         name: "   ",
         pinnedAt: "2026-08-03T12:00:00.000Z",
       }),
@@ -87,6 +103,7 @@ test("names stay unambiguous within a suite and each execution pins once", () =>
       baselineId: "evaluation-baseline_third",
       suiteId: "evaluation-suite_other",
       experimentId: "experiment_two",
+      variantId: "evaluation-variant_default",
       name: "After refactor",
       pinnedAt: "2026-08-03T12:00:00.000Z",
     }).baselines.length,
@@ -116,19 +133,20 @@ test("a damaged baselines file is reported rather than silently emptied", () => 
     (error: EvaluationBaselineError) => error.code === "invalid-file",
   );
   assert.throws(
-    () => parseEvaluationBaselinesJson(JSON.stringify({ schemaVersion: 2, baselines: [] })),
+    () => parseEvaluationBaselinesJson(JSON.stringify({ schemaVersion: 1, baselines: [] })),
     (error: EvaluationBaselineError) => error.code === "invalid-file",
   );
   assert.throws(
     () =>
       parseEvaluationBaselinesJson(
         JSON.stringify({
-          schemaVersion: 1,
+          schemaVersion: 2,
           baselines: [
             {
               baselineId: "evaluation-baseline_a",
               suiteId,
               experimentId: "experiment_one",
+              variantId: "evaluation-variant_default",
               name: "One",
               pinnedAt: "2026-08-01T12:00:00.000Z",
             },
@@ -136,6 +154,7 @@ test("a damaged baselines file is reported rather than silently emptied", () => 
               baselineId: "evaluation-baseline_a",
               suiteId,
               experimentId: "experiment_two",
+              variantId: "evaluation-variant_default",
               name: "Two",
               pinnedAt: "2026-08-01T12:00:00.000Z",
             },

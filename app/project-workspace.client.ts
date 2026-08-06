@@ -32,7 +32,7 @@ import {
   parseEvaluationBaselinesJson,
   serializeEvaluationBaselines,
 } from "../packages/core/src/evaluation-baselines.ts";
-import type { EvaluationBaselinesFileV1 } from "../packages/core/src/evaluation-baselines.ts";
+import type { EvaluationBaselinesFileV2 } from "../packages/core/src/evaluation-baselines.ts";
 import {
   EXPERIMENTS_DIRECTORY_NAME,
   listExperimentArtifactsFromDirectory,
@@ -671,14 +671,14 @@ export async function readExperimentArtifactWorkspace(
  */
 export async function readEvaluationBaselinesWorkspace(
   handle: ProjectWorkspaceHandle,
-): Promise<EvaluationBaselinesFileV1> {
+): Promise<EvaluationBaselinesFileV2> {
   const contents = await handle.storage.readEvaluationBaselines();
   return contents === null ? emptyEvaluationBaselines() : parseEvaluationBaselinesJson(contents);
 }
 
 export async function saveEvaluationBaselinesWorkspace(
   handle: ProjectWorkspaceHandle,
-  file: EvaluationBaselinesFileV1,
+  file: EvaluationBaselinesFileV2,
 ): Promise<void> {
   await handle.storage.saveEvaluationBaselines(serializeEvaluationBaselines(file));
 }

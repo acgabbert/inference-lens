@@ -10,7 +10,7 @@ import type {
 } from "../../packages/core/src/evaluation-comparison.ts";
 import { finalAssistantOutput } from "../../packages/core/src/run-output.ts";
 import { diffLines } from "../../packages/core/src/text-diff.ts";
-import type { EvaluationCaseId, RunId } from "../../packages/core/src/run-kernel/index.ts";
+import type { EvaluationCaseId, EvaluationVariantId, RunId } from "../../packages/core/src/run-kernel/index.ts";
 import { formatTokens } from "../run-metrics-format.client.ts";
 import { StatusChip } from "../notifications/status-chip.client";
 import type {
@@ -143,20 +143,24 @@ function OutputDiff({
   caseId,
   baseline,
   candidate,
+  baselineVariantId,
+  candidateVariantId,
 }: {
   caseId: EvaluationCaseId;
   baseline: LoadedComparisonSide;
   candidate: LoadedComparisonSide;
+  baselineVariantId: EvaluationVariantId;
+  candidateVariantId: EvaluationVariantId;
 }) {
-  const output = (side: LoadedComparisonSide): string | undefined => {
+  const output = (side: LoadedComparisonSide, variantId: EvaluationVariantId): string | undefined => {
     const cell = side.plan.cells.find(
-      (item) => item.caseId === caseId && item.repetition === 1,
+      (item) => item.caseId === caseId && item.variantId === variantId && item.repetition === 1,
     );
     const state = cell ? side.states.get(cell.runId) : undefined;
     return state ? finalAssistantOutput(state) : undefined;
   };
-  const left = output(baseline);
-  const right = output(candidate);
+  const left = output(baseline, baselineVariantId);
+  const right = output(candidate, candidateVariantId);
   const diff = useMemo(() => diffLines(left ?? "", right ?? ""), [left, right]);
 
   if (left === undefined || right === undefined) {
@@ -206,14 +210,15 @@ function CaseRow({
   onOpenTrace(side: LoadedComparisonSide, runId: RunId): void;
 }) {
   const [open, setOpen] = useState(false);
-  const firstRun = (side: LoadedComparisonSide): RunId | undefined => {
+  const firstRun = (side: LoadedComparisonSide, variantId: EvaluationVariantId): RunId | undefined => {
     const cell = side.plan.cells.find(
-      (item) => item.caseId === comparison.caseId && item.repetition === 1,
+      (item) =>
+        item.caseId === comparison.caseId && item.variantId === variantId && item.repetition === 1,
     );
     return cell && side.traces.has(cell.runId) ? cell.runId : undefined;
   };
-  const baselineRun = firstRun(loaded.baseline);
-  const candidateRun = firstRun(loaded.candidate);
+  const baselineRun = firstRun(loaded.baseline, loaded.comparison.baseline.variantId);
+  const candidateRun = firstRun(loaded.candidate, loaded.comparison.candidate.variantId);
 
   return (
     <>
@@ -266,6 +271,8 @@ function CaseRow({
               baseline={loaded.baseline}
               candidate={loaded.candidate}
               caseId={comparison.caseId}
+              baselineVariantId={loaded.comparison.baseline.variantId}
+              candidateVariantId={loaded.comparison.candidate.variantId}
             />
             <ul className="evaluation-comparison-checks">
               {comparison.checks.map((check) => (
@@ -307,8 +314,8 @@ export function EvaluationComparisonWorkspace({
           <span className="eyebrow">Baseline comparison</span>
           <h2>{loaded.candidate.plan.suite.name}</h2>
           <p>
-            {loaded.baselineName} ({formatDate(loaded.baseline.plan.createdAt)}) compared with{" "}
-            {formatDate(loaded.candidate.plan.createdAt)}
+            {loaded.baselineName} · {comparison.baseline.variantName} ({formatDate(loaded.baseline.plan.createdAt)}) compared with{" "}
+            {comparison.candidate.variantName} · {formatDate(loaded.candidate.plan.createdAt)}
           </p>
         </div>
         <div className="evaluation-results-actions">
