@@ -654,7 +654,6 @@ function HomeContent() {
     const suiteId = evaluationAuthoring.suiteId;
     const caseId = evaluationAuthoring.focusedCaseId;
     if (!projectWorkspace || !suiteId || !caseId) {
-      setCaseSource(undefined);
       return;
     }
     let current = true;
@@ -1836,7 +1835,9 @@ function HomeContent() {
           onOpenTemplates={() =>
             resolveReadiness({ surface: "request", tab: "templates", control: "prompt-library" })
           }
-          {...(caseSource ? { caseSource } : {})}
+          {...(projectWorkspace && evaluationAuthoring.suiteId && evaluationAuthoring.focusedCaseId && caseSource
+            ? { caseSource }
+            : {})}
           onOpenSourceTrace={(source) => {
             if (!projectWorkspace) return;
             void readRunTraceWorkspace(projectWorkspace, traceFileName(source.runId))
