@@ -22,6 +22,7 @@ import type {
   EvaluationCaseId,
   EvaluationSuiteId,
   EvaluationVariantId,
+  ExperimentCellId,
   ExperimentId,
   RunId,
   RunState,
@@ -77,6 +78,18 @@ export interface EvaluationCheckComparison extends AlignedCheck {
   candidate?: { passed: number; failed: number; notEvaluated: number };
 }
 
+/**
+ * The two immutable cells at one repetition number. This is deliberately
+ * evidence-level data rather than another aggregate: a case can regress only
+ * on one repetition, and the reader must be able to open that exact pair.
+ */
+export interface EvaluationRepetitionComparison {
+  repetition: number;
+  delta: CaseOutcomeDelta;
+  baseline?: { cellId: ExperimentCellId; runId: RunId; classification: EvaluationRepetitionClassification };
+  candidate?: { cellId: ExperimentCellId; runId: RunId; classification: EvaluationRepetitionClassification };
+}
+
 export interface EvaluationCaseComparison {
   caseId: EvaluationCaseId;
   name: string;
@@ -85,6 +98,7 @@ export interface EvaluationCaseComparison {
   delta: CaseOutcomeDelta;
   baseline?: EvaluationCaseSideSummary;
   candidate?: EvaluationCaseSideSummary;
+  repetitions: EvaluationRepetitionComparison[];
   checks: EvaluationCheckComparison[];
 }
 
@@ -336,6 +350,47 @@ function delta(
   return candidate.passed ? "fixed" : "regressed";
 }
 
+function repetitionComparisons(
+  alignment: SuiteAlignmentStatus,
+  baseline: EvaluationCaseAssessment | undefined,
+  candidate: EvaluationCaseAssessment | undefined,
+): EvaluationRepetitionComparison[] {
+  const baselineByNumber = new Map(baseline?.repetitions.map((item) => [item.repetition, item]) ?? []);
+  const candidateByNumber = new Map(candidate?.repetitions.map((item) => [item.repetition, item]) ?? []);
+  const numbers = new Set([...baselineByNumber.keys(), ...candidateByNumber.keys()]);
+  return [...numbers].sort((left, right) => left - right).map((repetition) => {
+    const baselineItem = baselineByNumber.get(repetition);
+    const candidateItem = candidateByNumber.get(repetition);
+    const baselineSide = baselineItem && {
+      cellId: baselineItem.cellId,
+      runId: baselineItem.runId,
+      classification: baselineItem.classification,
+    };
+    const candidateSide = candidateItem && {
+      cellId: candidateItem.cellId,
+      runId: candidateItem.runId,
+      classification: candidateItem.classification,
+    };
+    const repetitionDelta = !baselineSide
+      ? "candidate-only"
+      : !candidateSide
+        ? "baseline-only"
+        : alignment === "incompatible"
+          ? "incomparable"
+          : baselineSide.classification === "passed" && candidateSide.classification === "passed"
+            ? "unchanged-pass"
+            : baselineSide.classification !== "passed" && candidateSide.classification !== "passed"
+              ? "unchanged-fail"
+              : candidateSide.classification === "passed" ? "fixed" : "regressed";
+    return {
+      repetition,
+      delta: repetitionDelta,
+      ...(baselineSide ? { baseline: baselineSide } : {}),
+      ...(candidateSide ? { candidate: candidateSide } : {}),
+    };
+  });
+}
+
 export function compareEvaluationExecutions(
   baselineInput: EvaluationComparisonInput,
   candidateInput: EvaluationComparisonInput,
@@ -358,6 +413,7 @@ export function compareEvaluationExecutions(
       delta: delta(aligned.status, baselineSide, candidateSide),
       ...(baselineSide ? { baseline: baselineSide } : {}),
       ...(candidateSide ? { candidate: candidateSide } : {}),
+      repetitions: repetitionComparisons(aligned.status, baselineAssessment, candidateAssessment),
       checks: aligned.checks.map((check): EvaluationCheckComparison => {
         const baselineTally = checkTally(baselineAssessment, check.checkId);
         const candidateTally = checkTally(candidateAssessment, check.checkId);

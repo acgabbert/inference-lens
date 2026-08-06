@@ -103,6 +103,7 @@ import {
 import { useEvaluationExecutionSession } from "./evaluations/use-evaluation-execution-session.client";
 import { EvaluationStartDialog } from "./evaluations/evaluation-start-dialog.client";
 import { PromoteTraceToCaseDialog } from "./evaluations/promote-trace-to-case-dialog.client";
+import type { EvaluationComparisonReturnTarget } from "./evaluations/evaluation-comparison-workspace.client";
 import { EVALUATION_PREFLIGHT_SUMMARY_ID } from "./evaluations/evaluation-suite-editor.client";
 import type { EvaluationSuiteExecutionActions } from "./evaluations/evaluation-suite-editor.client";
 import { evaluationExperimentAggregate } from "../packages/core/src/experiment";
@@ -314,6 +315,11 @@ function HomeContent() {
   // indistinguishable from nothing having happened.
   const [viewedExperimentId, setViewedExperimentId] = useState<string>();
   const [traceOpen, setTraceOpen] = useState(false);
+  // A comparison is unmounted while its evidence is read in Compose. Retain
+  // this tiny target at the route boundary so closing that trace returns to
+  // the same case and repetition instead of silently resetting to repetition 1.
+  const [comparisonReturnTarget, setComparisonReturnTarget] = useState<EvaluationComparisonReturnTarget>();
+  const [comparisonTraceOpen, setComparisonTraceOpen] = useState(false);
   const [promotion, setPromotion] = useState<{ trace: RunTrace; experimentCellId?: string }>();
   const [caseSource, setCaseSource] = useState<EvaluationCaseSource>();
   const [outputFollowing, setOutputFollowing] = useState(true);
@@ -1606,7 +1612,13 @@ function HomeContent() {
       branchedFrom={visibleBranchProvenance}
       parentTrace={parentTrace}
       onLoadParentTrace={() => void runSession.loadParentTrace()}
-      onOpenChange={setTraceOpen}
+      onOpenChange={(open) => {
+        setTraceOpen(open);
+        if (!open && comparisonTraceOpen) {
+          setComparisonTraceOpen(false);
+          setMode("runs");
+        }
+      }}
       {...(projectFile ? { onPromoteTrace: (trace: RunTrace) => setPromotion({ trace }) } : {})}
     />
   );
@@ -1849,11 +1861,14 @@ function HomeContent() {
                   // the Runs mode returns to where it was started from.
                   onDismiss: () => {
                     evaluationBaselines.clearComparison();
+                    setComparisonReturnTarget(undefined);
                     setMode("evaluations");
                   },
-                  onOpenTrace: (side, runId) => {
+                  onOpenTrace: (side, runId, target) => {
                     const trace = side.traces.get(runId);
                     if (!trace || !projectWorkspace) return;
+                    setComparisonReturnTarget(target);
+                    setComparisonTraceOpen(true);
                     runSession.adoptTrace(trace, {
                       workspace: projectWorkspace,
                       fileName: side.traceFileNames.get(runId) ?? traceFileName(runId),
@@ -1863,6 +1878,9 @@ function HomeContent() {
                     setMode("compose");
                     setWorkbenchView("inspect");
                   },
+                  onPromoteCandidate: (trace, experimentCellId) => setPromotion({ trace, experimentCellId }),
+                  ...(comparisonReturnTarget ? { returnTarget: comparisonReturnTarget } : {}),
+                  onReturnTargetChange: setComparisonReturnTarget,
                 },
               }
             : {})}

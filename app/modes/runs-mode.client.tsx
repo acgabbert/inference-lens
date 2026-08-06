@@ -1,9 +1,10 @@
 "use client";
 
 import type { ReactNode } from "react";
-import type { RunId, RunTrace } from "../../packages/core/src/run-kernel";
+import type { ExperimentCellId, RunId, RunTrace } from "../../packages/core/src/run-kernel";
 import { PaneEmptyState } from "../pane-empty-state.client";
 import { EvaluationComparisonWorkspace } from "../evaluations/evaluation-comparison-workspace.client";
+import type { EvaluationComparisonReturnTarget } from "../evaluations/evaluation-comparison-workspace.client";
 import type {
   LoadedComparisonSide,
   LoadedEvaluationComparison,
@@ -17,8 +18,11 @@ import styles from "./runs-mode.module.css";
 interface RunsModeProps {
   comparison?: {
     loaded: LoadedEvaluationComparison;
-    onOpenTrace(side: LoadedComparisonSide, runId: RunId): void;
+    onOpenTrace(side: LoadedComparisonSide, runId: RunId, target: EvaluationComparisonReturnTarget): void;
+    onPromoteCandidate(trace: RunTrace, experimentCellId: ExperimentCellId): void;
     onDismiss(): void;
+    returnTarget?: EvaluationComparisonReturnTarget;
+    onReturnTargetChange(target?: EvaluationComparisonReturnTarget): void;
   };
   evaluation?: {
     execution: EvaluationExecution;
@@ -89,7 +93,10 @@ export function RunsMode({
     <EvaluationComparisonWorkspace
       loaded={comparison.loaded}
       onOpenTrace={comparison.onOpenTrace}
+      onPromoteCandidate={comparison.onPromoteCandidate}
       onDismiss={comparison.onDismiss}
+      returnTarget={comparison.returnTarget}
+      onReturnTargetChange={comparison.onReturnTargetChange}
     />
   ) : null;
 

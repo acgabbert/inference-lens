@@ -346,3 +346,45 @@ test("per-check tallies align by check identity across both sides", () => {
   assert.deepEqual(check?.baseline, { passed: 1, failed: 0, notEvaluated: 0 });
   assert.deepEqual(check?.candidate, { passed: 0, failed: 1, notEvaluated: 0 });
 });
+
+test("repetition evidence preserves a regression that occurs only in repetition two", () => {
+  const project = projectFixture([migrations]);
+  project.evaluationSuites[0]!.execution.repetitions = 2;
+  const createPlan = (suffix: string) => createEvaluationExperimentPlan({
+    project,
+    suiteId: "evaluation-suite_topics",
+    selectedCaseIds: [migrations.id as never],
+    createdAt: "2026-08-01T17:00:00.000Z",
+    createSuffix: (() => { let index = 0; return () => `${suffix}-${++index}`; })(),
+    runtimeTarget: {
+      profileId: "profile_confirmed",
+      protocol: "openai-compatible-chat-completions",
+      endpoint: "https://confirmed.example.test/v1",
+      capabilities: OPENAI_COMPATIBLE_CAPABILITIES,
+    },
+  });
+  const baseline = createPlan("baseline-repetition");
+  const candidate = createPlan("candidate-repetition");
+  const run = (plan: EvaluationExperimentPlanV3, output: (repetition: number) => string) => {
+    const states = new Map<RunId, RunState>();
+    for (const cell of plan.cells) {
+      states.set(cell.runId, completed(materializeExperimentCellInput(plan, cell.cellId), output(cell.repetition)));
+    }
+    return {
+      result: {
+        schemaVersion: 4 as const, experimentId: plan.experimentId, status: "completed" as const,
+        endedAt: "2026-08-01T17:01:00.000Z",
+        cells: plan.cells.map((cell) => ({ cellId: cell.cellId, runId: cell.runId, status: "completed" as const })),
+      },
+      states,
+    };
+  };
+  const comparison = compareEvaluationExecutions(
+    comparisonInput(baseline, run(baseline, () => "Plan the migration.")),
+    comparisonInput(candidate, run(candidate, (repetition) => repetition === 2 ? "Nothing relevant." : "Plan the migration.")),
+  );
+  assert.deepEqual(
+    comparison.cases[0]?.repetitions.map(({ repetition, delta }) => [repetition, delta]),
+    [[1, "unchanged-pass"], [2, "regressed"]],
+  );
+});

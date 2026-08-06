@@ -60,7 +60,7 @@ function projectWithSuite(model: string): ProjectFile {
         target: { ...initial.defaults.target, model },
         responseMode: "buffered",
         options: {},
-        repetitions: 1,
+        repetitions: 2,
         toolIds: [],
       },
       inputBindings: [],
@@ -110,8 +110,8 @@ interface ExecutionFixture {
   model: string;
   createdAt: string;
   idPrefix: string;
-  /** One output per case, in suite order. */
-  outputs: [string, string];
+  /** One output per case × repetition, in authored cell order. */
+  outputs: [string, string, string, string];
   /** Case ids whose trace is deliberately absent from the folder. */
   withoutTraces?: string[];
 }
@@ -169,19 +169,19 @@ async function openFixtureProject(page: Page): Promise<void> {
         model: "baseline-model",
         createdAt: "2026-08-02T12:00:00.000Z",
         idPrefix: "baseline",
-        outputs: ["Database migrations need a plan.", "Take a backup."],
+        outputs: ["Database migrations need a plan.", "Database migrations need a plan.", "Take a backup.", "Take a backup."],
       }),
       ...executionFiles({
         model: "candidate-model",
         createdAt: "2026-08-02T13:00:00.000Z",
         idPrefix: "candidate",
-        outputs: ["Take a backup.", "Plan the rollback."],
+        outputs: ["Database migrations need a plan.", "Take a backup.", "Plan the rollback.", "Plan the rollback."],
       }),
       ...executionFiles({
         model: "partial-model",
         createdAt: "2026-08-02T14:00:00.000Z",
         idPrefix: "partial",
-        outputs: ["Database migrations need a plan.", "Take a backup."],
+        outputs: ["Database migrations need a plan.", "Database migrations need a plan.", "Take a backup.", "Take a backup."],
         withoutTraces: ["evaluation-case_rollbacks"],
       }),
     },
@@ -252,6 +252,37 @@ test("a pinned baseline separates a regression from a fix and names the drift", 
   await expect(workspace).toContainText("1 / 2 passed");
 });
 
+test("a repetition-two regression opens paired evidence, returns to it, and promotes the candidate input", async ({ page }) => {
+  await openFixtureProject(page);
+  await pinBaseline(page);
+  const candidate = entry(page, "candidate-model");
+  await candidate.getByLabel("Compare against baseline").selectOption({ label: "Before the model swap" });
+  await candidate.getByRole("button", { name: "Compare" }).click();
+
+  const comparison = page.getByRole("region", { name: "Evaluation comparison" });
+  await comparison.getByRole("button", { name: "Mentions migrations" }).click();
+  const detail = comparison.locator(".evaluation-comparison-detail");
+  await expect(detail.getByRole("button", { name: /Repetition 2 · regressed/ })).toHaveAttribute("aria-pressed", "true");
+
+  await detail.getByRole("button", { name: "Open baseline trace" }).click();
+  await expect(page.getByText("Database migrations need a plan.")).toBeVisible();
+  await page.getByRole("button", { name: "Run details" }).click();
+  await expect(comparison).toBeVisible();
+  await expect(comparison.getByRole("button", { name: "Mentions migrations" })).toHaveAttribute("aria-expanded", "true");
+  await expect(comparison.getByRole("button", { name: /Repetition 2 · regressed/ })).toHaveAttribute("aria-pressed", "true");
+
+  await comparison.locator(".evaluation-comparison-detail").getByRole("button", { name: "Open candidate trace" }).click();
+  await expect(page.getByText("Take a backup.")).toBeVisible();
+  await page.getByRole("button", { name: "Run details" }).click();
+  await expect(comparison).toBeVisible();
+
+  await comparison.locator(".evaluation-comparison-detail").getByRole("button", { name: "Promote candidate input to case…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Promote to case" });
+  await dialog.getByLabel("Case name").fill("Candidate repetition two");
+  await dialog.getByRole("button", { name: "Promote case" }).click();
+  await expect(page.getByRole("region", { name: "Evaluation suites" }).getByRole("heading", { name: "Candidate repetition two" })).toBeVisible();
+});
+
 test("a case whose trace is missing is reported, not dropped from the comparison", async ({ page }) => {
   await openFixtureProject(page);
   await pinBaseline(page);
@@ -269,7 +300,7 @@ test("a case whose trace is missing is reported, not dropped from the comparison
   const rows = comparison.locator(".evaluation-comparison-table tbody tr");
   await expect(rows.filter({ hasText: "Mentions migrations" })).toContainText("unchanged");
   const missing = rows.filter({ hasText: "Mentions rollbacks" });
-  await expect(missing).toContainText("1 trace missing");
+  await expect(missing).toContainText("2 trace missing");
   await expect(comparison).toContainText("1/2 → 1/2");
   await expect(comparison).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
 });
