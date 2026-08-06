@@ -150,7 +150,7 @@ function execute(
   }
   return {
     result: {
-      schemaVersion: 3,
+      schemaVersion: 4,
       experimentId: plan.experimentId,
       status: "completed",
       endedAt: "2026-08-01T12:30:00.000Z",

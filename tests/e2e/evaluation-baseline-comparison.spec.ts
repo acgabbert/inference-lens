@@ -64,6 +64,7 @@ function projectWithSuite(model: string): ProjectFile {
         toolIds: [],
       },
       inputBindings: [],
+      variants: [{ id: "evaluation-variant_default", name: "Default", overrides: {} }],
       cases: [
         {
           id: "evaluation-case_migrations",
@@ -142,7 +143,7 @@ function executionFiles(fixture: ExecutionFixture): Record<string, string> {
     traces.push([`traces/${state.runId}.json`, serializeRunTrace(createRunTrace(state))]);
   });
   const result: ExperimentResultV3 = {
-    schemaVersion: 3,
+    schemaVersion: 4,
     experimentId: plan.experimentId,
     status: "completed",
     endedAt: fixture.createdAt,

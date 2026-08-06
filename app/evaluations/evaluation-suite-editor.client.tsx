@@ -115,6 +115,7 @@ function ConfigurationRow({
   const update = (patch: EvaluationVariant["overrides"]) => authoring.updateVariant(variant.id, { name: variant.name, overrides: patch });
   return <article className="evaluation-check-card" aria-label={`Configuration ${variant.name}`}>
     <div className="evaluation-check-heading"><strong>Configuration {index + 1}</strong><div>
+      <label title={`Include ${variant.name} in this evaluation`}><input aria-label={`Include configuration ${variant.name}`} type="checkbox" checked={authoring.selectedVariantIds.has(variant.id)} onChange={(event) => authoring.setVariantSelected(variant.id, event.target.checked)} /> Include</label>
       {index > 0 && <button className="text-button" type="button" onClick={() => authoring.moveVariant(variant.id, index - 1)}>Move up</button>}
       {index < suite.variants.length - 1 && <button className="text-button" type="button" onClick={() => authoring.moveVariant(variant.id, index + 1)}>Move down</button>}
       <button className="remove-button" type="button" onClick={() => authoring.deleteVariant(variant.id)}>Delete</button>
@@ -385,9 +386,10 @@ export function EvaluationSuiteEditor({
   const suite = project?.evaluationSuites.find(({ id }) => id === authoring.suiteId);
   const focusedCase = suite?.cases.find(({ id }) => id === authoring.focusedCaseId);
   const selectedCount = authoring.selectedCaseIds.size;
+  const selectedVariantCount = authoring.selectedVariantIds.size;
   const exposedToolIds = suite?.execution.toolIds ?? [];
   const turnCeiling = suite?.execution.turnCeiling ?? DEFAULT_EXPERIMENT_TURN_CEILING;
-  const batch = evaluationBatchGuardrail(selectedCount, authoring.repetitions, {
+  const batch = evaluationBatchGuardrail(selectedCount, selectedVariantCount, authoring.repetitions, {
     exposedToolCount: exposedToolIds.length,
     turnCeiling,
   });

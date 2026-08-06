@@ -1,10 +1,12 @@
 import type { ProviderCapabilities } from "../../packages/core/src/types.ts";
 import { createEvaluationExperimentPlan } from "../../packages/core/src/evaluation-execution.ts";
+import { resolveEvaluationVariant } from "../../packages/core/src/evaluation-suites.ts";
 import type { ProjectFile } from "../../packages/core/src/project.ts";
 import { createEntityId } from "../../packages/core/src/run-kernel/types.ts";
 import type {
   EvaluationCaseId,
   EvaluationSuiteId,
+  EvaluationVariantId,
   ToolId,
 } from "../../packages/core/src/run-kernel/types.ts";
 import { experimentExposedTools } from "../../packages/core/src/experiment.ts";
@@ -21,6 +23,7 @@ export interface EvaluationStartReadinessInput {
   revisionAvailable: boolean;
   diagnostics: readonly { message: string }[];
   selectedCaseCount: number;
+  selectedVariantCount?: number;
   repetitions: number;
   /** The suite's exposed tools and what will serve each one on this device. */
   toolBindings: readonly { name: string; bound: boolean }[];
@@ -51,7 +54,9 @@ export function evaluationStartReadiness(
     return { blockedReason: "The selected conversation revision no longer exists." };
   }
   if (input.diagnostics[0]) return { blockedReason: input.diagnostics[0].message };
-  const batch = evaluationBatchGuardrail(input.selectedCaseCount, input.repetitions, {
+  const selectedVariantCount = input.selectedVariantCount ?? 1;
+  if (selectedVariantCount === 0) return { blockedReason: "Select at least one configuration before starting." };
+  const batch = evaluationBatchGuardrail(input.selectedCaseCount, selectedVariantCount, input.repetitions, {
     exposedToolCount: input.toolBindings.length,
     ...(input.turnCeiling === undefined ? {} : { turnCeiling: input.turnCeiling }),
   });
@@ -90,6 +95,7 @@ export interface EvaluationStartDraftInput {
   project: ProjectFile;
   suiteId: EvaluationSuiteId;
   selectedCaseIds: readonly EvaluationCaseId[];
+  selectedVariantIds: readonly EvaluationVariantId[];
   profile: { id: string; name: string; endpoint: string };
   capabilities: ProviderCapabilities;
   durable: boolean;
@@ -100,6 +106,7 @@ export interface EvaluationStartDraftInput {
 /** Snapshots cross-feature route inputs into the draft owned by evaluation execution. */
 export function createEvaluationStartDraft(input: EvaluationStartDraftInput) {
   const suite = input.project.evaluationSuites.find(({ id }) => id === input.suiteId);
+  if (!suite) throw new Error("The selected evaluation suite no longer exists.");
   const revision = input.project.conversationRevisions.find(({ id }) => id === suite?.input.conversationRevisionId);
   if (!revision) throw new Error("The selected conversation revision no longer exists.");
   // Confirmation names the revision the same way the selector and preflight did,
@@ -107,16 +114,31 @@ export function createEvaluationStartDraft(input: EvaluationStartDraftInput) {
   const revisionLabel = revisionChoice(
     describeConversationRevision(input.project, revision),
   ).label;
+  const selectedVariants = suite.variants.filter(({ id }) => input.selectedVariantIds.includes(id));
+  if (selectedVariants.length !== input.selectedVariantIds.length) {
+    throw new Error("A selected evaluation configuration no longer exists.");
+  }
+  // The workspace currently owns one project-to-profile mapping. A variant
+  // that names another portable requirement must wait for that mapping surface
+  // rather than silently reusing the active profile.
+  const unmapped = selectedVariants.find((variant) =>
+    resolveEvaluationVariant(suite, variant).target.connectionRequirementId !== suite.execution.target.connectionRequirementId,
+  );
+  if (unmapped) {
+    throw new Error(`Configuration “${unmapped.name}” needs a different local connection mapping before this bakeoff can start.`);
+  }
+  const runtimeTarget = {
+    profileId: createEntityId("profile", input.profile.id),
+    protocol: "openai-compatible-chat-completions" as const,
+    endpoint: input.profile.endpoint,
+    capabilities: input.capabilities,
+  };
   const plan = createEvaluationExperimentPlan({
     project: input.project,
     suiteId: input.suiteId,
     selectedCaseIds: input.selectedCaseIds,
-    runtimeTarget: {
-        profileId: createEntityId("profile", input.profile.id),
-        protocol: "openai-compatible-chat-completions",
-        endpoint: input.profile.endpoint,
-        capabilities: input.capabilities,
-    },
+    selectedVariantIds: input.selectedVariantIds,
+    runtimeTargets: Object.fromEntries(selectedVariants.map(({ id }) => [id, runtimeTarget])) as Record<EvaluationVariantId, typeof runtimeTarget>,
   });
   return {
     revisionLabel,

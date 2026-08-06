@@ -39,7 +39,7 @@ function plan(): RepeatedExperimentPlanV3 {
   const { runId: sourceRunId, ...commonInput } = input;
   assert.equal(sourceRunId, "run_source");
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     experimentId: "experiment_example",
     kind: "repeated-request",
     createdAt: "2026-07-30T12:00:01.000Z",
@@ -95,16 +95,16 @@ test("serializes repeat plans deterministically and materializes only the cell r
   );
 });
 
-test("rejects pre-v3 experiment artifacts instead of migrating them", () => {
+test("rejects pre-v4 experiment artifacts instead of migrating them", () => {
   const legacy = JSON.parse(serializeExperimentPlan(plan()));
   legacy.schemaVersion = 2;
   assert.throws(
     () => parseExperimentPlanJson(JSON.stringify(legacy)),
-    /Version 2 is unsupported; expected Version 3/,
+    /Version 2 is unsupported; expected Version 4/,
   );
 });
 
-test("rejects legacy fragment provenance inside a Version 3 plan", () => {
+test("rejects legacy fragment provenance inside a Version 4 plan", () => {
   const mislabelled = JSON.parse(serializeExperimentPlan(plan()));
   mislabelled.commonInput.templateResolutions = [{
     templateUseId: "template-use_legacy",
@@ -118,7 +118,7 @@ test("rejects legacy fragment provenance inside a Version 3 plan", () => {
     fragmentRole: "user",
   }];
 
-  assert.equal(mislabelled.schemaVersion, 3);
+  assert.equal(mislabelled.schemaVersion, 4);
   assert.throws(
     () => parseExperimentPlanJson(JSON.stringify(mislabelled)),
     ExperimentValidationError,
@@ -150,7 +150,7 @@ test("rejects unknown fields, duplicate identities, and credential-like provider
 test("validates result identity and planned references exactly", () => {
   const source = plan();
   const result: ExperimentResultV3 = {
-    schemaVersion: 3,
+    schemaVersion: 4,
     experimentId: source.experimentId,
     status: "cancelled",
     endedAt: "2026-07-30T12:01:00.000Z",
@@ -175,7 +175,7 @@ test("projects interrupted and missing-trace evidence without fabricating result
   const firstInput = materializeExperimentCellInput(source, "experiment-cell_first");
   const first = completedState(firstInput, "Hi 👋");
   const result: ExperimentResultV3 = {
-    schemaVersion: 3,
+    schemaVersion: 4,
     experimentId: source.experimentId,
     status: "completed",
     endedAt: "2026-07-30T12:01:00.000Z",

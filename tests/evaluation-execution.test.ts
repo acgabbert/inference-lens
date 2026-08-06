@@ -178,9 +178,9 @@ test("snapshots authored values, case overrides, and confirmation-time execution
   if (parsed.kind !== "evaluation") throw new Error("Expected evaluation plan.");
   assert.equal(parsed.cells.length, 2);
   assert.deepEqual(parsed.cells.map(({ repetition }) => repetition), [1, 2]);
-  assert.equal(parsed.suite.cases[0]?.input.target.model, "confirmed-model");
-  assert.equal(parsed.suite.cases[0]?.input.responseMode, "buffered");
-  assert.deepEqual(parsed.suite.cases[0]?.input.options, { seed: 7, temperature: 0.2 });
+  assert.equal(parsed.suite.variants[0]?.target.model, "confirmed-model");
+  assert.equal(parsed.suite.variants[0]?.responseMode, "buffered");
+  assert.deepEqual(parsed.suite.variants[0]?.options, { seed: 7, temperature: 0.2 });
   assert.equal(parsed.suite.cases[0]?.input.templateResolutions[0]?.values.style, "authored");
   assert.equal(parsed.suite.cases[0]?.input.templateResolutions[0]?.values.topic, "database migrations");
   assert.equal(parsed.suite.cases[0]?.input.messages.at(-1)?.content[0]?.text, "Explain database migrations in a authored style.");
@@ -188,7 +188,7 @@ test("snapshots authored values, case overrides, and confirmation-time execution
   assert.equal(first.runId, parsed.cells[0]?.runId);
   assert.deepEqual(
     { ...first, runId: undefined },
-    { ...parsed.suite.cases[0]!.input, runId: undefined },
+    { ...parsed.suite.cases[0]!.input, ...parsed.suite.variants[0]!, tools: parsed.suite.tools, runId: undefined },
   );
 });
 
@@ -231,7 +231,7 @@ test("a suite's exposed tools are snapshotted into every case, with its turn cei
   if (parsed.kind !== "evaluation") throw new Error("Expected evaluation plan.");
   // Only the exposed descriptor, and the whole descriptor: the plan is what the
   // provider will be sent, so a partial snapshot would be a different request.
-  assert.deepEqual(parsed.suite.cases[0]?.input.tools, [{
+  assert.deepEqual(parsed.suite.tools, [{
     id: "tool_weather",
     name: "get_weather",
     description: "Current conditions",
@@ -246,7 +246,7 @@ test("a suite's exposed tools are snapshotted into every case, with its turn cei
 
 test("a suite that exposes nothing produces a plan with no tools and no ceiling", () => {
   const plan = planFixture();
-  assert.deepEqual(plan.suite.cases[0]?.input.tools, []);
+  assert.deepEqual(plan.suite.tools, []);
   assert.equal(plan.turnCeiling, undefined);
   assert.deepEqual(experimentExposedTools(plan), []);
 });
@@ -263,7 +263,7 @@ test("strict scoring keeps check failure distinct and fails the whole case and s
     "Use backups.",
   );
   const result = {
-    schemaVersion: 3 as const,
+    schemaVersion: 4 as const,
     experimentId: plan.experimentId,
     status: "completed" as const,
     endedAt: "2026-08-01T12:11:00.000Z",
@@ -301,7 +301,7 @@ test("missing traces and cancellation remain separate non-passing classification
   firstCoordinator.start();
   firstCoordinator.cancel("Stopped");
   const result = {
-    schemaVersion: 3 as const,
+    schemaVersion: 4 as const,
     experimentId: plan.experimentId,
     status: "cancelled" as const,
     endedAt: "2026-08-01T12:11:00.000Z",

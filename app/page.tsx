@@ -992,6 +992,7 @@ function HomeContent() {
         project: projectFile,
         suiteId: selectedEvaluationSuite.id,
         selectedCaseIds: [...evaluationAuthoring.selectedCaseIds],
+        selectedVariantIds: [...evaluationAuthoring.selectedVariantIds],
         profile: activeProfile,
         capabilities: activeCapabilities,
         durable: Boolean(projectWorkspace),
@@ -1184,6 +1185,7 @@ function HomeContent() {
     )),
     diagnostics: evaluationAuthoring.diagnostics,
     selectedCaseCount: evaluationAuthoring.selectedCaseIds.size,
+    selectedVariantCount: evaluationAuthoring.selectedVariantIds.size,
     repetitions: selectedEvaluationSuite?.execution.repetitions ?? 1,
     toolBindings: evaluationSuiteToolBindings
       .filter(({ tool }) => selectedEvaluationSuite?.execution.toolIds.includes(tool.id))

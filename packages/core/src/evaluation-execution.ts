@@ -1,14 +1,15 @@
 import { CHECK_SCHEMA_VERSION } from "./checks.ts";
 import { parseExperimentPlanFile } from "./experiment.ts";
-import type { EvaluationExperimentPlanV3 } from "./experiment.ts";
+import type { EvaluationExperimentPlanV4 } from "./experiment.ts";
 import { resolveEvaluationCase } from "./evaluation-case-resolution.ts";
-import { evaluationSuitePreflight } from "./evaluation-suites.ts";
+import { evaluationSuitePreflight, resolveEvaluationVariant } from "./evaluation-suites.ts";
 import type { ProjectFile } from "./project.ts";
 import { randomUUID } from "./random-id.ts";
 import { createEntityId } from "./run-kernel/types.ts";
 import type {
   EvaluationCaseId,
   EvaluationSuiteId,
+  EvaluationVariantId,
   ResolvedRunInput,
 } from "./run-kernel/types.ts";
 
@@ -26,8 +27,11 @@ export interface CreateEvaluationPlanOptions {
   project: ProjectFile;
   suiteId: EvaluationSuiteId;
   selectedCaseIds: readonly EvaluationCaseId[];
-  /** Device-local target resolution; authored model and options come only from the suite. */
-  runtimeTarget: Omit<ResolvedRunInput["target"], "model">;
+  selectedVariantIds?: readonly EvaluationVariantId[];
+  /** Device-local target resolution keyed by selected authored configuration. */
+  runtimeTargets?: Readonly<Record<EvaluationVariantId, Omit<ResolvedRunInput["target"], "model">>>;
+  /** @deprecated Callers must resolve every selected configuration in runtimeTargets. */
+  runtimeTarget?: Omit<ResolvedRunInput["target"], "model">;
   createdAt?: string;
   createSuffix?: () => string;
 }
@@ -39,7 +43,7 @@ export interface CreateEvaluationPlanOptions {
  */
 export function createEvaluationExperimentPlan(
   options: CreateEvaluationPlanOptions,
-): EvaluationExperimentPlanV3 {
+): EvaluationExperimentPlanV4 {
   const {
     project,
     suiteId,
@@ -84,6 +88,20 @@ export function createEvaluationExperimentPlan(
       message: "One or more selected evaluation cases no longer exist.",
     }]);
   }
+  const selectedVariants = new Set(options.selectedVariantIds ?? suite.variants.map(({ id }) => id));
+  const variants = suite.variants.filter(({ id }) => selectedVariants.has(id));
+  if (variants.length === 0) {
+    throw new EvaluationSetupError([{
+      code: "empty-configuration-selection",
+      message: "Select at least one evaluation configuration before starting.",
+    }]);
+  }
+  if (variants.length !== selectedVariants.size) {
+    throw new EvaluationSetupError([{
+      code: "unknown-configuration",
+      message: "One or more selected evaluation configurations no longer exist.",
+    }]);
+  }
 
   const now = options.createdAt ?? new Date().toISOString();
   const suffix = options.createSuffix ?? randomUUID;
@@ -115,32 +133,43 @@ export function createEvaluationExperimentPlan(
       input: {
         conversationId: revision.conversationId,
         conversationRevisionId: revision.id,
-        target: {
-          ...structuredClone(options.runtimeTarget),
-          model: suite.execution.target.model,
-        },
         messages: resolved.messages,
         templateResolutions: resolved.templateResolutions,
-        responseMode: suite.execution.responseMode,
-        options: structuredClone(suite.execution.options),
-        tools: structuredClone(exposedTools),
         resolvedAt: now,
       },
     };
   });
+  const variantSnapshots = variants.map((variant) => {
+    const effective = resolveEvaluationVariant(suite, variant);
+    const runtimeTarget = options.runtimeTargets?.[variant.id] ?? options.runtimeTarget;
+    if (!runtimeTarget) {
+      throw new EvaluationSetupError([{
+        code: "missing-runtime-target",
+        message: `Configuration “${variant.name}” does not have a resolved local connection.`,
+      }]);
+    }
+    return {
+      variantId: variant.id,
+      name: variant.name,
+      target: { ...structuredClone(runtimeTarget), model: effective.target.model },
+      responseMode: effective.responseMode,
+      options: structuredClone(effective.options),
+    };
+  });
 
   let ordinal = 0;
-  const cells = cases.flatMap((evaluationCase) =>
+  const cells = cases.flatMap((evaluationCase) => variantSnapshots.flatMap((variant) =>
     Array.from({ length: suite.execution.repetitions }, (_, index) => ({
       cellId: createEntityId("experiment-cell", suffix()),
       ordinal: ++ordinal,
       runId: createEntityId("run", suffix()),
       caseId: evaluationCase.caseId,
+      variantId: variant.variantId,
       repetition: index + 1,
     })),
-  );
-  const plan: EvaluationExperimentPlanV3 = {
-    schemaVersion: 3,
+  ));
+  const plan: EvaluationExperimentPlanV4 = {
+    schemaVersion: 4,
     experimentId: createEntityId("experiment", suffix()),
     kind: "evaluation",
     createdAt: now,
@@ -158,7 +187,9 @@ export function createEvaluationExperimentPlan(
       name: suite.name,
       conversationRevisionId: revision.id,
       inputBindings: structuredClone(suite.inputBindings),
+      tools: structuredClone(exposedTools),
       cases,
+      variants: variantSnapshots,
     },
     cells,
   };

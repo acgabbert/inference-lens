@@ -14,7 +14,7 @@ import { stubProjectDirectory } from "./support";
 function interruptedPlan(): RepeatedExperimentPlanV3 {
   const createdAt = "2026-07-31T12:00:00.000Z";
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     experimentId: createEntityId("experiment", "browser-history"),
     kind: "repeated-request",
     createdAt,
@@ -51,7 +51,7 @@ function interruptedEvaluationPlan(): EvaluationExperimentPlanV3 {
   const repeated = interruptedPlan();
   const caseId = createEntityId("evaluation-case", "browser-history");
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     experimentId: createEntityId("experiment", "evaluation-browser-history"),
     kind: "evaluation",
     createdAt: "2026-07-31T12:30:00.000Z",
@@ -63,12 +63,26 @@ function interruptedEvaluationPlan(): EvaluationExperimentPlanV3 {
       name: "History quality gate",
       conversationRevisionId: repeated.commonInput.conversationRevisionId,
       inputBindings: [],
+      tools: [],
       cases: [{
         caseId,
         name: "Saved case",
         values: {},
         checks: [{ checkId: createEntityId("check", "browser-history"), kind: "valid-json" }],
-        input: repeated.commonInput,
+        input: {
+          conversationId: repeated.commonInput.conversationId,
+          conversationRevisionId: repeated.commonInput.conversationRevisionId,
+          messages: repeated.commonInput.messages,
+          templateResolutions: repeated.commonInput.templateResolutions,
+          resolvedAt: repeated.commonInput.resolvedAt,
+        },
+      }],
+      variants: [{
+        variantId: createEntityId("evaluation-variant", "browser-history"),
+        name: "Default",
+        target: repeated.commonInput.target,
+        responseMode: repeated.commonInput.responseMode,
+        options: repeated.commonInput.options,
       }],
     },
     cells: [{
@@ -76,6 +90,7 @@ function interruptedEvaluationPlan(): EvaluationExperimentPlanV3 {
       ordinal: 1,
       runId: createEntityId("run", "evaluation-browser-history-1"),
       caseId,
+      variantId: createEntityId("evaluation-variant", "browser-history"),
       repetition: 1,
     }],
   };

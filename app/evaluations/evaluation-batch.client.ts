@@ -44,10 +44,16 @@ export function evaluationCallRange(guardrail: EvaluationBatchGuardrail): string
  */
 export function evaluationBatchGuardrail(
   selectedCases: number,
-  repetitions: number,
-  tools: Pick<EvaluationBatchInput, "exposedToolCount" | "turnCeiling"> = {},
+  selectedVariantsOrRepetitions: number,
+  repetitionsOrTools?: number | Pick<EvaluationBatchInput, "exposedToolCount" | "turnCeiling">,
+  maybeTools: Pick<EvaluationBatchInput, "exposedToolCount" | "turnCeiling"> = {},
 ): EvaluationBatchGuardrail {
-  const plannedCalls = selectedCases * repetitions;
+  // The two-argument form is retained only for callers outside evaluation
+  // configuration selection; it means one selected configuration.
+  const selectedVariants = typeof repetitionsOrTools === "number" ? selectedVariantsOrRepetitions : 1;
+  const repetitions = typeof repetitionsOrTools === "number" ? repetitionsOrTools : selectedVariantsOrRepetitions;
+  const tools = typeof repetitionsOrTools === "number" ? maybeTools : repetitionsOrTools ?? {};
+  const plannedCalls = selectedCases * selectedVariants * repetitions;
   const ceiling = (tools.exposedToolCount ?? 0) > 0
     ? tools.turnCeiling ?? DEFAULT_EXPERIMENT_TURN_CEILING
     : 1;
