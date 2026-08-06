@@ -168,6 +168,45 @@ test("leaving a mode and returning preserves what was being worked on", async ({
   await expect(page.locator(".evaluation-suite-history")).toHaveAttribute("open", "");
 });
 
+test("non-compose modes fill the remaining viewport height", async ({ page }) => {
+  await open(page);
+  await importProject(page, createProjectFile({
+    name: "Empty mode layout fixture",
+    request: {
+      provider: "openai-compatible",
+      endpoint: BUFFERED_FIXTURE_ENDPOINT,
+      model: "buffered-test-model",
+      messages: [{ role: "user", content: "Measure the empty mode layout." }],
+    },
+    idSuffix: "empty-mode-layout",
+    createdAt: "2026-08-06T12:00:00.000Z",
+  }), "Empty mode layout fixture");
+
+  await openMode(page, "Evaluations");
+  const evaluationsLayout = await page.locator(".evaluation-editor").evaluate((editor) => {
+    const root = editor.parentElement?.parentElement;
+    const main = editor.closest("main");
+    if (!root || !main) throw new Error("Evaluation mode layout root is missing");
+    return {
+      rootBottom: root.getBoundingClientRect().bottom,
+      mainBottom: main.getBoundingClientRect().bottom,
+    };
+  });
+  expect(evaluationsLayout.rootBottom).toBeCloseTo(evaluationsLayout.mainBottom, 0);
+
+  await openMode(page, "Runs");
+  const runsLayout = await page.locator(".pane-empty-state").evaluate((emptyState) => {
+    const root = emptyState.parentElement?.parentElement;
+    const main = emptyState.closest("main");
+    if (!root || !main) throw new Error("Runs mode layout root is missing");
+    return {
+      rootBottom: root.getBoundingClientRect().bottom,
+      mainBottom: main.getBoundingClientRect().bottom,
+    };
+  });
+  expect(runsLayout.rootBottom).toBeCloseTo(runsLayout.mainBottom, 0);
+});
+
 // 760 is the workbench's mobile breakpoint and 880 is where the topbar wraps;
 // the modes are the only way out of a mode, so none of these may truncate it.
 for (const width of [320, 390, 760, 880, 1440]) {
