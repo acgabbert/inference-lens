@@ -9,6 +9,7 @@ import type {
 import { EvaluationSuiteRail } from "../evaluations/evaluation-suite-rail.client";
 import type { EvaluationSuiteHistoryHandle } from "../evaluations/evaluation-suite-history.client";
 import type { EvaluationSuiteAuthoringHandle } from "../evaluations/use-evaluation-suite-authoring.client";
+import type { EvaluationCaseSource } from "../../packages/core/src/evaluation-case-sources";
 import { PaneEmptyState } from "../pane-empty-state.client";
 import styles from "./evaluations-mode.module.css";
 
@@ -33,6 +34,8 @@ interface EvaluationsModeProps {
   modelFavorites?: ModelFavoritesHandle;
   /** Leaves this mode for the request composer's prompt library. */
   onOpenTemplates(): void;
+  caseSource?: EvaluationCaseSource;
+  onOpenSourceTrace?(source: EvaluationCaseSource): void;
 }
 
 /**
@@ -51,6 +54,8 @@ export function EvaluationsMode({
   layout,
   modelFavorites,
   onOpenTemplates,
+  caseSource,
+  onOpenSourceTrace,
 }: EvaluationsModeProps) {
   const project = authoring.project;
   if (!project) {
@@ -82,6 +87,8 @@ export function EvaluationsMode({
           {...(modelFavorites ? { modelFavorites } : {})}
           setup={{ open: layout.setupOpen, onOpenChange: layout.onSetupOpenChange }}
           onOpenTemplates={onOpenTemplates}
+          {...(caseSource ? { caseSource } : {})}
+          {...(onOpenSourceTrace ? { onOpenSourceTrace } : {})}
         />
       </div>
       {layout.previewOpen ? (

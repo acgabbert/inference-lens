@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import {
+  createRunTrace,
+} from "../packages/core/src/run-kernel";
 import type {
   RedactedProviderRequest,
   ResolvedTemplateUse,
@@ -56,6 +59,7 @@ interface RunTracePanelProps {
   parentTrace: ParentTraceState;
   onLoadParentTrace(): void;
   onOpenChange(open: boolean): void;
+  onPromoteTrace?(trace: RunTrace): void;
 }
 
 /**
@@ -335,6 +339,7 @@ export function RunTracePanel({
   parentTrace,
   onLoadParentTrace,
   onOpenChange,
+  onPromoteTrace,
 }: RunTracePanelProps) {
   const [tab, setTab] = useState<TraceTab>("events");
   const [selection, setSelection] = useState<DiffSelection>({});
@@ -426,7 +431,12 @@ export function RunTracePanel({
     <ResizableTracePanel
       open={open}
       onOpenChange={onOpenChange}
-      summary={<RunInspectionSummary summary={summary} />}
+      summary={<>
+        <RunInspectionSummary summary={summary} />
+        {onPromoteTrace && runState && ["completed", "failed", "cancelled"].includes(runState.status.kind) && (
+          <button className="text-button" type="button" onClick={() => onPromoteTrace(createRunTrace(runState, { branchedFrom }))}>Promote to case…</button>
+        )}
+      </>}
       tabs={
         open && (
           <PaneTabs
