@@ -241,7 +241,6 @@ test("an evaluation row reports its strict pass rate, not its run status", async
     resultFileName: "experiment_eval.result.json",
     createdAt: "2026-07-25T14:00:00.000Z",
     endedAt: "2026-07-25T14:01:00.000Z",
-    model: "eval-model",
     lifecycle: "completed",
     requested: 4,
     completed: 4,
@@ -254,8 +253,13 @@ test("an evaluation row reports its strict pass rate, not its run status", async
       suiteId: "evaluation-suite_topics",
       suiteName: "Topics",
       conversationRevisionId: "revision_one",
-      passed: false,
-      caseCounts: { total: 3, passed: 1, failed: 2 },
+      variants: [{
+        variantId: "evaluation-variant_default",
+        name: "Default",
+        model: "eval-model",
+        passed: false,
+        caseCounts: { total: 3, passed: 1, failed: 2, incomplete: 0 },
+      }],
     },
   };
   const html = await renderDrawer({
@@ -277,7 +281,6 @@ test("an evaluation that could not be scored says so rather than reporting zero 
         kind: "evaluation",
         planFileName: "experiment_unscored.plan.json",
         createdAt: "2026-07-25T15:00:00.000Z",
-        model: "eval-model",
         lifecycle: "interrupted",
         requested: 2,
         completed: 0,
@@ -286,6 +289,12 @@ test("an evaluation that could not be scored says so rather than reporting zero 
         notRun: 2,
         missingTrace: 0,
         cells: [],
+        evaluation: {
+          suiteId: "evaluation-suite_topics",
+          suiteName: "Topics",
+          conversationRevisionId: "revision_one",
+          variants: [],
+        },
       }],
     }),
   });

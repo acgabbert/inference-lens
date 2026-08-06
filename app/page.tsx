@@ -381,7 +381,8 @@ function HomeContent() {
     readExperiment: runHistory.readExperiment,
     findExperiment: (baseline) =>
       runHistory.experiments.find(
-        (item) => item.experimentId === baseline.experimentId,
+        (item): item is Extract<typeof item, { kind: "evaluation" }> =>
+          item.kind === "evaluation" && item.experimentId === baseline.experimentId,
       ),
   });
   const {
@@ -1267,7 +1268,8 @@ function HomeContent() {
     ? {
         status: runHistory.status,
         executions: runHistory.experiments.filter(
-          (item) => item.evaluation?.suiteId === selectedEvaluationSuite?.id,
+          (item): item is Extract<typeof item, { kind: "evaluation" }> =>
+            item.kind === "evaluation" && item.evaluation.suiteId === selectedEvaluationSuite?.id,
         ),
         ...(runHistory.error ? { error: runHistory.error } : {}),
         ...(evaluationAuthoring.revisionId
@@ -1348,10 +1350,13 @@ function HomeContent() {
           evaluation.result,
           evaluation.states,
         );
-        return {
-          tone: indicatorToneForPassTone[evaluationPassTone(score)],
-          label: `finished, ${evaluationPassSummary(score)}, not yet viewed`,
-        };
+        const active = score.variants[0];
+        return active ? {
+          tone: indicatorToneForPassTone[evaluationPassTone(active)],
+          label: score.variants.length === 1
+            ? `finished, ${evaluationPassSummary(active)}, not yet viewed`
+            : `finished, ${active.variant.name}: ${evaluationPassSummary(active)}, not yet viewed`,
+        } : { tone: "neutral", label: "finished, not yet viewed" };
       } catch {
         // An aggregate that cannot be derived is not a failed batch. The dot
         // says there is something to read and lets the workspace explain it.
@@ -1395,9 +1400,10 @@ function HomeContent() {
     let detail = "Every selected case has a verdict.";
     if (evaluation?.plan.experimentId === batch.experimentId) {
       try {
-        detail = `${evaluationPassSummary(
-          evaluationExperimentAggregate(evaluation.plan, evaluation.result, evaluation.states),
-        )}.`;
+        const assessment = evaluationExperimentAggregate(evaluation.plan, evaluation.result, evaluation.states);
+        detail = assessment.variants.length
+          ? `${assessment.variants.map((variant) => `${variant.variant.name}: ${evaluationPassSummary(variant)}`).join(" · ")}.`
+          : detail;
       } catch {
         // An aggregate that cannot be derived is not a failed batch. The toast
         // says there is something to read and lets the workspace explain it.

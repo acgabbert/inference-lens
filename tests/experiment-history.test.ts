@@ -148,7 +148,7 @@ function completedTraceSource(value: RepeatedExperimentPlanV3, ordinal: number) 
   };
 }
 
-function evaluationPlan(): EvaluationExperimentPlanV3 {
+function evaluationPlan(variantCount = 1): EvaluationExperimentPlanV3 {
   const initial = createProjectFile({
     name: "Evaluation history",
     idSuffix: "evaluation-history",
@@ -176,7 +176,12 @@ function evaluationPlan(): EvaluationExperimentPlanV3 {
         repetitions: 2,
         toolIds: [],
       },
-      variants: [{ id: "evaluation-variant_default", name: "Default", overrides: {} }],
+      variants: variantCount === 1
+        ? [{ id: "evaluation-variant_default", name: "Default", overrides: {} }]
+        : [
+            { id: "evaluation-variant_first", name: "First", overrides: { target: { model: "first-model" } } },
+            { id: "evaluation-variant_second", name: "Second", overrides: { target: { model: "second-model" } } },
+          ],
       inputBindings: [],
       cases: [{
         id: "evaluation-case_migrations",
@@ -198,12 +203,18 @@ function evaluationPlan(): EvaluationExperimentPlanV3 {
     selectedCaseIds: ["evaluation-case_migrations"],
     createdAt: "2026-08-01T12:10:00.000Z",
     createSuffix: () => `history-${++suffix}`,
-    runtimeTarget: {
+    ...(variantCount === 1 ? { runtimeTarget: {
       profileId: "profile_confirmed",
-      protocol: "openai-compatible-chat-completions",
+      protocol: "openai-compatible-chat-completions" as const,
       endpoint: "https://provider.example.test/v1",
       capabilities: OPENAI_COMPATIBLE_CAPABILITIES,
-    },
+    } } : {
+      selectedVariantIds: ["evaluation-variant_first", "evaluation-variant_second"],
+      runtimeTargets: {
+        "evaluation-variant_first": { profileId: "profile_first", protocol: "openai-compatible-chat-completions" as const, endpoint: "https://first.example.test/v1", capabilities: OPENAI_COMPATIBLE_CAPABILITIES },
+        "evaluation-variant_second": { profileId: "profile_second", protocol: "openai-compatible-chat-completions" as const, endpoint: "https://second.example.test/v1", capabilities: OPENAI_COMPATIBLE_CAPABILITIES },
+      },
+    }),
   });
 }
 
@@ -379,12 +390,49 @@ test("an evaluation carries its suite identity and strict pass rate, not its run
   assert.equal(item?.evaluation?.suiteId, "evaluation-suite_topics");
   assert.equal(item?.evaluation?.suiteName, "Topics");
   assert.equal(item?.evaluation?.conversationRevisionId, value.suite.conversationRevisionId);
-  assert.equal(item?.evaluation?.passed, false);
-  assert.deepEqual(item?.evaluation?.caseCounts, { total: 1, passed: 0, failed: 1 });
+  assert.equal(item?.evaluation?.variants[0]?.passed, false);
+  assert.deepEqual(item?.evaluation?.variants[0]?.caseCounts, { total: 1, passed: 0, failed: 1, incomplete: 0 });
   assert.equal(loaded.failures.length, 0);
+});
+
+test("evaluation history preserves ordered independent summaries for every configuration", () => {
+  const value = evaluationPlan(2);
+  const states = value.cells.map((cell) => completed(
+    materializeExperimentCellInput(value, cell.cellId),
+    cell.variantId === "evaluation-variant_first" ? "migration" : "no match",
+  ));
+  const result: ExperimentResultV3 = {
+    schemaVersion: 4,
+    experimentId: value.experimentId,
+    status: "completed",
+    endedAt: "2026-08-01T12:11:00.000Z",
+    cells: value.cells.map((cell) => ({ cellId: cell.cellId, runId: cell.runId, status: "completed" })),
+  };
+  const loaded = loadProjectHistoryFiles(
+    states.map((state) => ({
+      fileName: `${state.runId}.json`,
+      contents: serializeRunTrace(createRunTrace(state)),
+    })),
+    [
+      { fileName: `${value.experimentId}.plan.json`, contents: serializeExperimentPlan(value) },
+      { fileName: `${value.experimentId}.result.json`, contents: serializeExperimentResult(result, value) },
+    ],
+  );
+
+  const item = loaded.experiments[0];
+  assert.equal(item?.kind, "evaluation");
+  if (item?.kind !== "evaluation") assert.fail("Expected evaluation history item.");
+  assert.deepEqual(item.evaluation.variants.map(({ name, model, passed }) => ({ name, model, passed })), [
+    { name: "First", model: "first-model", passed: true },
+    { name: "Second", model: "second-model", passed: false },
+  ]);
+  assert.deepEqual(item.evaluation.variants.map(({ caseCounts }) => caseCounts), [
+    { total: 1, passed: 1, failed: 0, incomplete: 0 },
+    { total: 1, passed: 0, failed: 1, incomplete: 0 },
+  ]);
 });
 
 test("a repeated experiment carries no evaluation facet", () => {
   const loaded = loadProjectHistoryFiles([], [planSource(plan("no-facet"))]);
-  assert.equal(loaded.experiments[0]?.evaluation, undefined);
+  assert.equal(loaded.experiments[0]?.kind, "repeated-request");
 });

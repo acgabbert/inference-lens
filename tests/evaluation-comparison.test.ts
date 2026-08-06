@@ -263,7 +263,7 @@ test("a missing trace is reported on its side rather than dropped from the denom
   assert.equal(backupsCase?.delta, "regressed");
   // The case is still counted on both sides: two cases in, two cases out.
   assert.equal(comparison.candidate.caseCounts.total, 2);
-  assert.equal(comparison.candidate.repetitionCounts["missing-trace"], 1);
+  assert.equal(comparison.candidate.repetitionCounts["trace-unavailable"], 1);
   // Its checks are not evaluated rather than silently absent.
   assert.equal(backupsCase?.candidate?.checkCounts.total, 1);
   assert.equal(backupsCase?.candidate?.checkCounts.notEvaluated, 1);

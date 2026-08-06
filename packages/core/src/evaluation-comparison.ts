@@ -1,6 +1,7 @@
 import {
   evaluationParsedExperimentAggregate,
-  type EvaluationAggregate,
+  evaluationVariantAssessment,
+  type EvaluationBakeoffAssessment,
   type EvaluationCaseAssessment,
   type EvaluationExperimentPlanV3,
   type EvaluationRepetitionClassification,
@@ -115,10 +116,10 @@ export interface EvaluationExecutionDrift {
 export interface EvaluationComparisonSideSummary {
   experimentId: ExperimentId;
   createdAt: string;
-  lifecycle: EvaluationAggregate["lifecycle"];
+  lifecycle: EvaluationBakeoffAssessment["lifecycle"];
   passed: boolean;
-  caseCounts: EvaluationAggregate["caseCounts"];
-  checkCounts: EvaluationAggregate["checkCounts"];
+  caseCounts: import("./experiment.ts").EvaluationCaseCounts;
+  checkCounts: import("./experiment.ts").EvaluationVariantAssessment["checkCounts"];
   repetitionCounts: Record<EvaluationRepetitionClassification, number>;
   totalTokens: ExperimentUsageAggregate;
   outputTokens: ExperimentUsageAggregate;
@@ -166,7 +167,8 @@ function sameJson(left: unknown, right: unknown): boolean {
 interface SideDerivation {
   input: EvaluationComparisonInput;
   states: ReadonlyMap<RunId, RunState>;
-  aggregate: EvaluationAggregate;
+  aggregate: EvaluationBakeoffAssessment;
+  variant: import("./experiment.ts").EvaluationVariantAssessment;
   assessments: Map<EvaluationCaseId, EvaluationCaseAssessment>;
 }
 
@@ -176,11 +178,19 @@ function derive(input: EvaluationComparisonInput): SideDerivation {
   }
   const states = input.states ?? new Map<RunId, RunState>();
   const aggregate = evaluationParsedExperimentAggregate(input.plan, input.result, states);
+  // Baselines v1 identify an execution, not a variant. Preserve that legacy
+  // boundary through PR3 by choosing its authored first slice exactly once;
+  // PR4 replaces this selection with the variant ID stored by baselines v2.
+  const variant = evaluationVariantAssessment(
+    aggregate,
+    input.plan.suite.variants[0]!.variantId,
+  );
   return {
     input,
     states,
     aggregate,
-    assessments: new Map(aggregate.cases.map((item) => [item.caseId, item])),
+    variant,
+    assessments: new Map(variant.cases.map((item) => [item.caseId, item])),
   };
 }
 
@@ -208,7 +218,7 @@ function caseSide(
   let missingTrace = 0;
   let notRun = 0;
   for (const repetition of assessment.repetitions) {
-    if (repetition.classification === "missing-trace") missingTrace += 1;
+    if (repetition.classification === "trace-unavailable") missingTrace += 1;
     if (repetition.classification === "not-run") notRun += 1;
     checkCounts.total += planCase?.checks.length ?? 0;
     for (const check of repetition.checks) {
@@ -250,27 +260,22 @@ function checkTally(
 
 function sideSummary(side: SideDerivation): EvaluationComparisonSideSummary {
   const values: number[] = [];
-  for (const assessment of side.aggregate.cases) values.push(...durations(side, assessment));
+  for (const assessment of side.variant.cases) values.push(...durations(side, assessment));
   return {
     experimentId: side.input.experimentId,
     createdAt: side.input.plan.createdAt,
     lifecycle: side.aggregate.lifecycle,
-    passed: side.aggregate.passed,
-    caseCounts: side.aggregate.caseCounts,
-    checkCounts: side.aggregate.checkCounts,
-    repetitionCounts: side.aggregate.repetitionCounts,
-    totalTokens: side.aggregate.totalTokens,
-    outputTokens: side.aggregate.outputTokens,
+    passed: side.variant.passed,
+    caseCounts: side.variant.caseCounts,
+    checkCounts: side.variant.checkCounts,
+    repetitionCounts: side.variant.repetitionCounts,
+    totalTokens: side.variant.totalTokens,
+    outputTokens: side.variant.outputTokens,
     totalDurationMs: range(values),
   };
 }
 
-/**
- * The suite's execution settings are identical across its cases by
- * construction. PR2 has no comparison picker yet, so the first authored
- * configuration is the temporary representative until variant-slice
- * comparisons land in PR4.
- */
+/** Baselines v1 compares the same authored-first slice selected by `derive`. */
 function executionDrift(
   baseline: EvaluationExperimentPlanV3,
   candidate: EvaluationExperimentPlanV3,

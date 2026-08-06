@@ -16,7 +16,7 @@ import {
   type EvaluationComparison,
 } from "../../packages/core/src/evaluation-comparison.ts";
 import type { EvaluationExperimentPlanV3 } from "../../packages/core/src/experiment.ts";
-import type { ExperimentHistoryItem } from "../../packages/core/src/experiment-history.ts";
+import type { EvaluationHistoryItem } from "../../packages/core/src/experiment-history.ts";
 import type {
   EvaluationBaselineId,
   EvaluationSuiteId,
@@ -36,7 +36,7 @@ import type { OpenedProjectExperiment } from "../use-project-run-history.client.
 
 /** One side of a loaded comparison, kept so a reader can open its evidence. */
 export interface LoadedComparisonSide {
-  item: ExperimentHistoryItem;
+  item: EvaluationHistoryItem;
   plan: EvaluationExperimentPlanV3;
   traces: ReadonlyMap<RunId, RunTrace>;
   traceFileNames: ReadonlyMap<RunId, string>;
@@ -57,9 +57,9 @@ export interface EvaluationBaselinesSession {
   baselines: EvaluationBaseline[];
   forSuite(suiteId: EvaluationSuiteId | undefined): EvaluationBaseline[];
   load(): void;
-  pin(item: ExperimentHistoryItem, name: string): Promise<void>;
+  pin(item: EvaluationHistoryItem, name: string): Promise<void>;
   unpin(baselineId: EvaluationBaselineId): Promise<void>;
-  compare(baseline: EvaluationBaseline, candidate: ExperimentHistoryItem): Promise<void>;
+  compare(baseline: EvaluationBaseline, candidate: EvaluationHistoryItem): Promise<void>;
   comparing: boolean;
   comparison?: LoadedEvaluationComparison;
   clearComparison(): void;
@@ -80,9 +80,9 @@ interface HeldComparison {
 export interface UseEvaluationBaselinesOptions {
   workspace: ProjectWorkspaceHandle | null;
   /** The same reader project history uses, so both surfaces see one folder. */
-  readExperiment(item: ExperimentHistoryItem): Promise<OpenedProjectExperiment>;
+  readExperiment(item: EvaluationHistoryItem): Promise<OpenedProjectExperiment>;
   /** Resolves a pinned baseline's experiment back to a listed history item. */
-  findExperiment(baseline: EvaluationBaseline): ExperimentHistoryItem | undefined;
+  findExperiment(baseline: EvaluationBaseline): EvaluationHistoryItem | undefined;
 }
 
 function message(error: unknown, fallback: string): string {
@@ -91,7 +91,7 @@ function message(error: unknown, fallback: string): string {
 }
 
 function side(
-  item: ExperimentHistoryItem,
+  item: EvaluationHistoryItem,
   opened: OpenedProjectExperiment,
 ): LoadedComparisonSide {
   if (opened.plan.kind !== "evaluation") {
@@ -170,9 +170,8 @@ export function useEvaluationBaselines(
   );
 
   const pin = useCallback(
-    async (item: ExperimentHistoryItem, name: string): Promise<void> => {
-      const suiteId = item.evaluation?.suiteId;
-      if (!suiteId) throw new Error("Only an evaluation execution can be a baseline.");
+    async (item: EvaluationHistoryItem, name: string): Promise<void> => {
+      const suiteId = item.evaluation.suiteId;
       await write(
         pinEvaluationBaseline(file, {
           baselineId: createEntityId("evaluation-baseline", randomUUID()),
@@ -196,7 +195,7 @@ export function useEvaluationBaselines(
   );
 
   const compare = useCallback(
-    async (baseline: EvaluationBaseline, candidate: ExperimentHistoryItem): Promise<void> => {
+    async (baseline: EvaluationBaseline, candidate: EvaluationHistoryItem): Promise<void> => {
       const baselineItem = findExperiment(baseline);
       if (!baselineItem) {
         throw new Error(

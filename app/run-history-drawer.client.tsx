@@ -79,11 +79,12 @@ function experimentMeta(item: ProjectExperimentHistoryItem): string {
   // describe the runs and hide the result, so run-status counts stay with
   // repeated experiments only.
   if (item.kind === "evaluation") {
-    const cases = item.evaluation?.caseCounts.total;
+    const cases = item.evaluation.variants[0]?.caseCounts.total;
+    const models = item.evaluation.variants.map((variant) => variant.model);
     return [
       ...(cases === undefined ? [] : [`${cases} ${cases === 1 ? "case" : "cases"}`]),
       `${item.requested} planned ${item.requested === 1 ? "run" : "runs"}`,
-      item.model,
+      models.length > 0 ? models.join(", ") : "unscored",
     ].join(" · ");
   }
   const outcomes = [
@@ -251,12 +252,16 @@ export function RunHistoryDrawer({
                   <span className="run-history-item-heading">
                     <strong>
                       {item.kind === "evaluation"
-                        ? `Evaluation · ${item.evaluation?.suiteName ?? item.model}`
+                        ? `Evaluation · ${item.evaluation.suiteName}`
                         : `Repeated experiment · ${item.model}`}
                     </strong>
                     {item.kind === "evaluation" && (
-                      <span className={`evaluation-pass ${evaluationPassTone(item.evaluation)}`}>
-                        {evaluationPassSummary(item.evaluation)}
+                      <span className={`evaluation-pass ${evaluationPassTone(item.evaluation.variants[0])}`}>
+                        {item.evaluation.variants.length === 0
+                          ? evaluationPassSummary(undefined)
+                          : item.evaluation.variants.length === 1
+                            ? evaluationPassSummary(item.evaluation.variants[0])
+                            : `${item.evaluation.variants.length} configurations`}
                       </span>
                     )}
                     <span className={`run-history-status ${item.lifecycle}`}>

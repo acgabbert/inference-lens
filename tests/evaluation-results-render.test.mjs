@@ -60,10 +60,12 @@ test("renders live evaluation progress with the active case and repetition", asy
     execution: { plan: fx.plan, storage: "unsaved", workspace: null, states: new Map(), live: { startedAtMs: Date.now(), requested: 2, finished: 0, currentOrdinal: 1 }, traces: new Map(), traceFileNames: new Map(), unreadableTraces: new Map(), selectedRunId: null },
     onStop() {}, onOpenTrace() {},
   }));
-  assert.match(html, /0 of 2 finished · Migrations, repetition 1/);
+  assert.match(html, /0 of 2 finished · Migrations, Default, repetition 1/);
   assert.match(html, /Evaluation progress/);
-  assert.match(html, /Running…/);
-  assert.match(html, /In progress/);
+  assert.match(html, /Pending while this run is active/);
+  assert.match(html, /Pending until this run starts/);
+  assert.match(html, /run-history-status running">In progress/);
+  assert.match(html, /run-history-status queued">queued/);
   assert.doesNotMatch(html, /Open when finished|Did not pass/);
   assert.match(html, /not saved and will be lost/);
   assert.doesNotMatch(html, /NaN|Infinity|undefined|\[object Object\]/);
@@ -80,11 +82,34 @@ test("renders strict as-run case, repetition, check, usage, and evidence results
     onStop() {}, onOpenTrace() {},
   }));
   assert.match(html, /As run · 1 cases · 2 repetitions/);
-  assert.match(html, /Did not pass/);
-  assert.match(html, /1 \/ 1 passed|0 \/ 1 passed/);
+  assert.match(html, /did not pass/);
+  assert.match(html, /<strong>0 \/ 1 passed<\/strong><small>0%/);
   assert.match(html, /Mentions rollback/);
   assert.match(html, /check failed/);
-  assert.match(html, /9 tokens · 1\/2 runs reported/);
+  assert.match(html, /<strong>9 tokens · 1\/2 runs reported<\/strong>/);
+  assert.equal((html.match(/Response and trace available/g) ?? []).length, 2);
   assert.equal((html.match(/Open Response &amp; Inspect/g) ?? []).length, 2);
   assert.doesNotMatch(html, /NaN|Infinity|undefined|\[object Object\]/);
+});
+
+test("projects readable, unreadable, absent, and not-created evidence independently", async () => {
+  const fx = await fixture();
+  const cell = fx.plan.cells[0];
+  const state = completedState(fx, cell, "Include a rollback plan.");
+  const base = { runId: cell.runId, classification: "passed" };
+
+  assert.equal(fx.evaluationEvidenceReachability(base, {
+    states: new Map([[cell.runId, state]]),
+    traces: new Map([[cell.runId, {}]]),
+    unreadableTraces: new Map(),
+  }).kind, "readable");
+  assert.deepEqual(fx.evaluationEvidenceReachability(base, {
+    states: new Map(), traces: new Map(), unreadableTraces: new Map([[cell.runId, "invalid JSON"]]),
+  }), { kind: "unreadable", reason: "invalid JSON" });
+  assert.deepEqual(fx.evaluationEvidenceReachability(base, {
+    states: new Map(), traces: new Map(), unreadableTraces: new Map(),
+  }), { kind: "absent" });
+  assert.deepEqual(fx.evaluationEvidenceReachability({ ...base, classification: "not-run" }, {
+    states: new Map(), traces: new Map(), unreadableTraces: new Map(),
+  }), { kind: "not-created" });
 });

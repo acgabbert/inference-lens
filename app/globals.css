@@ -376,6 +376,7 @@ pre,
 .evaluation-suite-history-item time,
 .evaluation-suite-history-item > span,
 .evaluation-comparison-table small,
+.evaluation-configuration-table thead th,
 .evaluation-comparison-reasons,
 .evaluation-comparison-checks span,
 .experiment-elapsed,
@@ -7198,6 +7199,62 @@ main {
   color: var(--text-muted);
 }
 
+.evaluation-configuration-table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  background: var(--surface-translucent);
+}
+
+.evaluation-configuration-table {
+  width: 100%;
+  min-width: 920px;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.evaluation-configuration-table th,
+.evaluation-configuration-table td {
+  padding: 0.7rem 0.8rem;
+  border-bottom: 1px solid var(--border-default);
+  vertical-align: middle;
+}
+
+.evaluation-configuration-table thead th {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.evaluation-configuration-table tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
+.evaluation-configuration-table tbody tr.selected {
+  background: var(--accent-soft);
+}
+
+.evaluation-configuration-table tbody th button {
+  display: grid;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.evaluation-configuration-table small,
+.evaluation-configuration-table td > strong {
+  display: block;
+}
+
+.evaluation-configuration-table small {
+  margin-top: 0.18rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 .evaluation-case-results,
 .evaluation-repetition-results {
   display: grid;
@@ -7245,9 +7302,86 @@ main {
   margin-top: 0.85rem;
 }
 
-.evaluation-repetition-result.active {
+.evaluation-repetition-result.running {
   border-color: var(--accent-border);
   background: var(--accent-soft);
+}
+
+.evaluation-repetition-result.queued {
+  border-style: dashed;
+  background: var(--surface-translucent);
+}
+
+.evaluation-evidence-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--border-default);
+}
+
+.evaluation-evidence-row > span,
+.evaluation-evidence-row small {
+  display: block;
+}
+
+.evaluation-evidence-row small {
+  margin-top: 0.15rem;
+  color: var(--text-muted);
+}
+
+.evaluation-evidence-row.unreadable,
+.evaluation-evidence-row.absent,
+.evaluation-evidence-row.not-created {
+  color: var(--text-secondary);
+}
+
+.evaluation-compare-output {
+  justify-self: start;
+}
+
+.evaluation-output-comparison-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.evaluation-output-comparison-card {
+  min-width: 0;
+  padding: 0.8rem;
+  border: 1px solid var(--border-default);
+  border-radius: 9px;
+  background: var(--surface-translucent);
+}
+
+.evaluation-output-comparison-card h3 {
+  margin: 0.2rem 0 0.7rem;
+}
+
+.evaluation-output-comparison-card dl,
+.evaluation-output-comparison-card dl > div {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.evaluation-output-comparison-card dl {
+  margin: 0;
+  gap: 0.55rem;
+}
+
+.evaluation-output-comparison-card dl > div {
+  grid-template-columns: minmax(70px, 0.35fr) minmax(0, 1fr);
+}
+
+.evaluation-output-comparison-card dt {
+  color: var(--text-muted);
+}
+
+.evaluation-output-comparison-card dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .evaluation-check-results {
@@ -7907,6 +8041,10 @@ main {
   }
 
   .evaluation-results-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .evaluation-output-comparison-cards {
     grid-template-columns: 1fr;
   }
 }
