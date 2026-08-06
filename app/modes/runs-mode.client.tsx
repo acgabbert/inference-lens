@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import type { RunId } from "../../packages/core/src/run-kernel";
+import type { RunId, RunTrace } from "../../packages/core/src/run-kernel";
 import { PaneEmptyState } from "../pane-empty-state.client";
 import { EvaluationComparisonWorkspace } from "../evaluations/evaluation-comparison-workspace.client";
 import type {
@@ -24,6 +24,7 @@ interface RunsModeProps {
     execution: EvaluationExecution;
     onStop(): void;
     onOpenTrace(runId: RunId): void;
+    onPromoteTrace?(trace: RunTrace, experimentCellId: string): void;
     onReturnToList(): void;
     onDismiss(): void;
   };
@@ -71,6 +72,7 @@ export function RunsMode({
       placement={showDetail ? "request" : "response"}
       onStop={evaluation.onStop}
       onOpenTrace={evaluation.onOpenTrace}
+      onPromoteTrace={evaluation.onPromoteTrace}
       onReturnToEvaluation={evaluation.onReturnToList}
       onDismiss={evaluation.onDismiss}
     />

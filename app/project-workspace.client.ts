@@ -34,6 +34,13 @@ import {
 } from "../packages/core/src/evaluation-baselines.ts";
 import type { EvaluationBaselinesFileV2 } from "../packages/core/src/evaluation-baselines.ts";
 import {
+  EVALUATION_CASE_SOURCES_FILE_NAME,
+  emptyEvaluationCaseSources,
+  parseEvaluationCaseSourcesJson,
+  serializeEvaluationCaseSources,
+} from "../packages/core/src/evaluation-case-sources.ts";
+import type { EvaluationCaseSourcesFileV1 } from "../packages/core/src/evaluation-case-sources.ts";
+import {
   EXPERIMENTS_DIRECTORY_NAME,
   listExperimentArtifactsFromDirectory,
   readExperimentArtifactFromDirectory,
@@ -98,6 +105,9 @@ interface WorkspaceStorage {
   /** `null` when the project has never pinned a baseline. */
   readEvaluationBaselines(): Promise<string | null>;
   saveEvaluationBaselines(contents: string): Promise<void>;
+  /** Optional local annotations connecting authored cases to captured evidence. */
+  readEvaluationCaseSources(): Promise<string | null>;
+  saveEvaluationCaseSources(contents: string): Promise<void>;
 }
 
 export interface ProjectWorkspaceHandle {
@@ -251,6 +261,21 @@ function browserStorage(
       const fileHandle = await directory.getFileHandle(EVALUATION_BASELINES_FILE_NAME, {
         create: true,
       });
+      const writable = await fileHandle.createWritable();
+      await writable.write(contents);
+      await writable.close();
+    },
+    async readEvaluationCaseSources(): Promise<string | null> {
+      try {
+        const fileHandle = await directory.getFileHandle(EVALUATION_CASE_SOURCES_FILE_NAME);
+        return await (await fileHandle.getFile()).text();
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "NotFoundError") return null;
+        throw error;
+      }
+    },
+    async saveEvaluationCaseSources(contents: string): Promise<void> {
+      const fileHandle = await directory.getFileHandle(EVALUATION_CASE_SOURCES_FILE_NAME, { create: true });
       const writable = await fileHandle.createWritable();
       await writable.write(contents);
       await writable.close();
@@ -548,6 +573,17 @@ function nativeWorkspaceHandle(
           contents,
         });
       },
+      async readEvaluationCaseSources(): Promise<string | null> {
+        return invokeNative<string | null>("read_evaluation_case_sources", {
+          workspaceId: workspace.workspaceId,
+        });
+      },
+      async saveEvaluationCaseSources(contents: string): Promise<void> {
+        await invokeNative("save_evaluation_case_sources", {
+          workspaceId: workspace.workspaceId,
+          contents,
+        });
+      },
     },
   };
 }
@@ -681,6 +717,21 @@ export async function saveEvaluationBaselinesWorkspace(
   file: EvaluationBaselinesFileV2,
 ): Promise<void> {
   await handle.storage.saveEvaluationBaselines(serializeEvaluationBaselines(file));
+}
+
+/** Like baselines, a missing source file is ordinary; a damaged file is surfaced. */
+export async function readEvaluationCaseSourcesWorkspace(
+  handle: ProjectWorkspaceHandle,
+): Promise<EvaluationCaseSourcesFileV1> {
+  const contents = await handle.storage.readEvaluationCaseSources();
+  return contents === null ? emptyEvaluationCaseSources() : parseEvaluationCaseSourcesJson(contents);
+}
+
+export async function saveEvaluationCaseSourcesWorkspace(
+  handle: ProjectWorkspaceHandle,
+  file: EvaluationCaseSourcesFileV1,
+): Promise<void> {
+  await handle.storage.saveEvaluationCaseSources(serializeEvaluationCaseSources(file));
 }
 
 /**

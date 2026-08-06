@@ -22,6 +22,8 @@ import {
 } from "../packages/core/src/run-kernel";
 import type {
   RunState,
+  RunTrace,
+  ExperimentCellId,
   ConversationMessage,
   ConversationId,
   MessageId,
@@ -35,7 +37,9 @@ import {
 import { AppErrorBoundary } from "./app-error-boundary.client";
 import { useInsecureOriginNotice } from "./use-insecure-origin.client";
 import { randomUUID } from "../packages/core/src/random-id.ts";
-import { projectFolderAccessAvailable } from "./project-workspace.client";
+import { projectFolderAccessAvailable, readEvaluationCaseSourcesWorkspace, saveEvaluationCaseSourcesWorkspace } from "./project-workspace.client";
+import { promoteTraceToEvaluationCase } from "../packages/core/src/evaluation-case-promotion.ts";
+import { upsertEvaluationCaseSource } from "../packages/core/src/evaluation-case-sources.ts";
 import { emptyToolRegistry } from "../packages/core/src/tool-registry";
 import type {
   ToolRegistryV1,
@@ -97,6 +101,7 @@ import {
 } from "./evaluations/evaluation-start.client";
 import { useEvaluationExecutionSession } from "./evaluations/use-evaluation-execution-session.client";
 import { EvaluationStartDialog } from "./evaluations/evaluation-start-dialog.client";
+import { PromoteTraceToCaseDialog } from "./evaluations/promote-trace-to-case-dialog.client";
 import { EVALUATION_PREFLIGHT_SUMMARY_ID } from "./evaluations/evaluation-suite-editor.client";
 import type { EvaluationSuiteExecutionActions } from "./evaluations/evaluation-suite-editor.client";
 import { evaluationExperimentAggregate } from "../packages/core/src/experiment";
@@ -308,6 +313,7 @@ function HomeContent() {
   // indistinguishable from nothing having happened.
   const [viewedExperimentId, setViewedExperimentId] = useState<string>();
   const [traceOpen, setTraceOpen] = useState(false);
+  const [promotion, setPromotion] = useState<{ trace: RunTrace; experimentCellId?: string }>();
   const [outputFollowing, setOutputFollowing] = useState(true);
   const [markdownPreview, setMarkdownPreview] = useState(true);
   const [markdownPreviewLoaded, setMarkdownPreviewLoaded] = useState(false);
@@ -1813,6 +1819,7 @@ function HomeContent() {
                   execution: evaluationExecution.execution,
                   onStop: evaluationExecution.cancel,
                   onOpenTrace: evaluationExecution.openTrace,
+                  onPromoteTrace: (trace, experimentCellId) => setPromotion({ trace, experimentCellId }),
                   onReturnToList: evaluationExecution.returnToEvaluation,
                   onDismiss: () => dismissFinishedExperiment("evaluation"),
                 },
@@ -1903,6 +1910,37 @@ function HomeContent() {
           draft={evaluationExecution.draft}
           onCancel={evaluationExecution.dismissDialog}
           onConfirm={confirmEvaluation}
+        />
+      )}
+      {promotion && projectFile && (
+        <PromoteTraceToCaseDialog
+          project={projectFile}
+          trace={promotion.trace}
+          onCancel={() => setPromotion(undefined)}
+          onPromote={(suiteId, name) => {
+            try {
+              const promoted = promoteTraceToEvaluationCase(projectFile, { suiteId, trace: promotion.trace, name });
+              project.adoptProjectMutation(promoted.project);
+              evaluationAuthoring.selectSuite(suiteId);
+              evaluationAuthoring.focusCase(promoted.caseId);
+              setPromotion(undefined);
+              setMode("evaluations");
+              toasts.publish({ key: "evaluation-case-promoted", title: `Promoted “${name.trim()}” to a case`, detail: "Checks still need to be authored.", durableHome: "the evaluation suite’s focused case" });
+              if (projectWorkspace) void (async () => {
+                try {
+                  const sources = await readEvaluationCaseSourcesWorkspace(projectWorkspace);
+                  await saveEvaluationCaseSourcesWorkspace(projectWorkspace, upsertEvaluationCaseSource(sources, {
+                    suiteId, caseId: promoted.caseId, runId: promotion.trace.runId, capturedAt: new Date().toISOString(),
+                    ...(promotion.experimentCellId ? { experimentCellId: promotion.experimentCellId as ExperimentCellId } : {}),
+                  }));
+                } catch {
+                  toasts.publish({ key: "evaluation-case-source-unsaved", title: "Case promoted, but source link was not saved", detail: "The portable case is safe; reopen the trace if you need to keep its evidence link.", durableHome: "the promoted case, which remains valid without the local annotation" });
+                }
+              })();
+            } catch (error) {
+              toasts.publish({ key: "evaluation-case-promotion-failed", title: "Could not promote trace", detail: error instanceof Error ? error.message : "The trace could not be promoted.", durableHome: "the evaluation result evidence" });
+            }
+          }}
         />
       )}
       {confirmation && (
