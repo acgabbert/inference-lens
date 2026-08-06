@@ -7,6 +7,7 @@ import type { EvaluationHistoryItem } from "../../packages/core/src/experiment-h
 import type {
   ConversationRevisionId,
   EvaluationBaselineId,
+  EvaluationVariantId,
 } from "../../packages/core/src/run-kernel";
 import {
   evaluationPassSummary,
@@ -61,9 +62,13 @@ export interface EvaluationSuiteBaselinesHandle {
   items: EvaluationBaseline[];
   error?: string;
   busy: boolean;
-  onPin(item: EvaluationHistoryItem, name: string): Promise<void>;
+  onPin(item: EvaluationHistoryItem, variantId: EvaluationVariantId, name: string): Promise<void>;
   onUnpin(baselineId: EvaluationBaselineId): Promise<void>;
-  onCompare(baseline: EvaluationBaseline, candidate: EvaluationHistoryItem): Promise<void>;
+  onCompare(
+    baseline: EvaluationBaseline,
+    candidate: EvaluationHistoryItem,
+    candidateVariantId: EvaluationVariantId,
+  ): Promise<void>;
 }
 
 function formatDate(value: string): string {
@@ -79,8 +84,10 @@ export function EvaluationSuiteHistory({ history }: { history: EvaluationSuiteHi
   const [openError, setOpenError] = useState<string>();
   const [namingPlanFileName, setNamingPlanFileName] = useState<string>();
   const [pinName, setPinName] = useState("");
+  const [pinVariantId, setPinVariantId] = useState<Record<string, string>>({});
   const [baselineError, setBaselineError] = useState<string>();
   const [comparisonSelection, setComparisonSelection] = useState<Record<string, string>>({});
+  const [candidateVariantSelection, setCandidateVariantSelection] = useState<Record<string, string>>({});
   const busy = history.status === "idle" || history.status === "loading";
   const baselines = history.baselines;
 
@@ -197,11 +204,15 @@ export function EvaluationSuiteHistory({ history }: { history: EvaluationSuiteHi
               item.evaluation.conversationRevisionId !== history.currentRevisionId,
           );
           const pending = item.planFileName === pendingPlanFileName;
-          const pinnedAs = baselines?.items.find(
+          const pinnedAs = (baselines?.items ?? []).filter(
             (baseline) => baseline.experimentId === item.experimentId,
           );
+          const candidateVariants = item.evaluation.variants;
+          const selectedCandidateVariantId =
+            candidateVariantSelection[item.planFileName] ?? candidateVariants[0]?.variantId ?? "";
           const comparable = (baselines?.items ?? []).filter(
-            (baseline) => baseline.experimentId !== item.experimentId,
+            (baseline) =>
+              baseline.experimentId !== item.experimentId || baseline.variantId !== selectedCandidateVariantId,
           );
           return (
             <div className="evaluation-suite-history-entry" key={item.planFileName}>
@@ -234,31 +245,35 @@ export function EvaluationSuiteHistory({ history }: { history: EvaluationSuiteHi
                     Ran against a different input revision
                   </span>
                 )}
-                {pinnedAs && (
-                  <span className="evaluation-suite-history-baseline">
-                    Baseline · {pinnedAs.name}
+                {pinnedAs.map((baseline) => (
+                  <span className="evaluation-suite-history-baseline" key={baseline.baselineId}>
+                    Baseline · {baseline.name} · {item.evaluation.variants.find((variant) => variant.variantId === baseline.variantId)?.name ?? "missing configuration"}
                   </span>
-                )}
+                ))}
               </button>
 
               {baselines && (
                 <div className="evaluation-suite-history-actions">
-                  {pinnedAs ? (
+                  {pinnedAs.map((baseline) => (
                     <button
                       className="text-button"
                       disabled={baselines.busy}
+                      key={baseline.baselineId}
                       type="button"
-                      onClick={() => void act(() => baselines.onUnpin(pinnedAs.baselineId))}
+                      onClick={() => void act(() => baselines.onUnpin(baseline.baselineId))}
                     >
-                      Unpin baseline
+                      Unpin {item.evaluation.variants.find((variant) => variant.variantId === baseline.variantId)?.name ?? "configuration"} baseline
                     </button>
-                  ) : namingPlanFileName === item.planFileName ? (
+                  ))}
+                  {namingPlanFileName === item.planFileName ? (
                     <form
                       className="evaluation-suite-history-pin-form"
                       onSubmit={(event) => {
                         event.preventDefault();
                         void act(async () => {
-                          await baselines.onPin(item, pinName);
+                          const variantId = pinVariantId[item.planFileName] ?? candidateVariants[0]?.variantId;
+                          if (!variantId) throw new Error("This evaluation has no configuration to pin.");
+                          await baselines.onPin(item, variantId as EvaluationVariantId, pinName);
                           setNamingPlanFileName(undefined);
                           setPinName("");
                         });
@@ -275,6 +290,18 @@ export function EvaluationSuiteHistory({ history }: { history: EvaluationSuiteHi
                         value={pinName}
                         onChange={(event) => setPinName(event.target.value)}
                       />
+                      <label className="visually-hidden" htmlFor={`pin-variant-${item.planFileName}`}>
+                        Configuration to pin
+                      </label>
+                      <select
+                        id={`pin-variant-${item.planFileName}`}
+                        value={pinVariantId[item.planFileName] ?? candidateVariants[0]?.variantId ?? ""}
+                        onChange={(event) => setPinVariantId((current) => ({ ...current, [item.planFileName]: event.target.value }))}
+                      >
+                        {candidateVariants.map((variant) => (
+                          <option key={variant.variantId} value={variant.variantId}>{variant.name} · {variant.model}</option>
+                        ))}
+                      </select>
                       <button
                         className="text-button"
                         disabled={baselines.busy || !pinName.trim()}
@@ -293,7 +320,9 @@ export function EvaluationSuiteHistory({ history }: { history: EvaluationSuiteHi
                         Cancel
                       </button>
                     </form>
-                  ) : (
+                  ) : candidateVariants.some(
+                    (variant) => !pinnedAs.some((baseline) => baseline.variantId === variant.variantId),
+                  ) && (
                     <button
                       className="text-button"
                       disabled={!item.evaluation || baselines.busy}
@@ -310,6 +339,18 @@ export function EvaluationSuiteHistory({ history }: { history: EvaluationSuiteHi
 
                   {comparable.length > 0 && (
                     <span className="evaluation-suite-history-compare">
+                      <label className="visually-hidden" htmlFor={`candidate-variant-${item.planFileName}`}>
+                        Candidate configuration
+                      </label>
+                      <select
+                        id={`candidate-variant-${item.planFileName}`}
+                        value={selectedCandidateVariantId}
+                        onChange={(event) => setCandidateVariantSelection((current) => ({ ...current, [item.planFileName]: event.target.value }))}
+                      >
+                        {candidateVariants.map((variant) => (
+                          <option key={variant.variantId} value={variant.variantId}>{variant.name} · {variant.model}</option>
+                        ))}
+                      </select>
                       <label
                         className="visually-hidden"
                         htmlFor={`compare-${item.planFileName}`}
@@ -329,7 +370,7 @@ export function EvaluationSuiteHistory({ history }: { history: EvaluationSuiteHi
                         <option value="">Compare against…</option>
                         {comparable.map((baseline) => (
                           <option key={baseline.baselineId} value={baseline.baselineId}>
-                            {baseline.name}
+                            {baseline.name} · {history.executions.find((execution) => execution.experimentId === baseline.experimentId)?.evaluation.variants.find((variant) => variant.variantId === baseline.variantId)?.name ?? "missing configuration"}
                           </option>
                         ))}
                       </select>
@@ -342,7 +383,9 @@ export function EvaluationSuiteHistory({ history }: { history: EvaluationSuiteHi
                             (baseline) =>
                               baseline.baselineId === comparisonSelection[item.planFileName],
                           );
-                          if (selected) void act(() => baselines.onCompare(selected, item));
+                          if (selected && selectedCandidateVariantId) {
+                            void act(() => baselines.onCompare(selected, item, selectedCandidateVariantId as EvaluationVariantId));
+                          }
                         }}
                       >
                         Compare

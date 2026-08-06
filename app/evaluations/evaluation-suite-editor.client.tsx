@@ -5,6 +5,7 @@ import { CHECK_KINDS } from "../../packages/core/src/checks";
 import type { CheckDefinition, CheckKind, ToolCallCountComparator } from "../../packages/core/src/checks";
 import type { JsonObject } from "../../packages/core/src/run-kernel";
 import type { EvaluationCase } from "../../packages/core/src/project";
+import type { EvaluationCaseSource } from "../../packages/core/src/evaluation-case-sources";
 import { resolveEvaluationVariant } from "../../packages/core/src/evaluation-suites";
 import type { EvaluationInputBinding, EvaluationVariant } from "../../packages/core/src/evaluation-suites";
 import type { ConversationRevisionDescriptor } from "../../packages/core/src/conversation-revision-description";
@@ -237,9 +238,11 @@ function CheckEditor({ check, error, onCommit, onRemove }: {
   );
 }
 
-function CaseEditor({ evaluationCase, authoring }: {
+function CaseEditor({ evaluationCase, authoring, source, onOpenSourceTrace }: {
   evaluationCase: EvaluationCase;
   authoring: EvaluationSuiteAuthoringHandle;
+  source?: EvaluationCaseSource;
+  onOpenSourceTrace?(source: EvaluationCaseSource): void;
 }) {
   const [newKind, setNewKind] = useState<CheckKind>("contains");
   // Seeded from the case rather than driven by it: a controlled `open` would
@@ -262,6 +265,7 @@ function CaseEditor({ evaluationCase, authoring }: {
         if (!authoring.renameCase(evaluationCase.id, event.target.value)) event.currentTarget.value = evaluationCase.name;
       }} /></label>
       {authoring.error?.target.kind === "case-name" && authoring.error.target.caseId === evaluationCase.id && <p className="evaluation-field-error" role="alert">{authoring.error.message}</p>}
+      {source && onOpenSourceTrace && <button className="text-button" type="button" onClick={() => onOpenSourceTrace(source)}>Open source trace</button>}
       {suite && suite.inputBindings.length > 0 && (
         <div className="evaluation-case-values">
           <div><span className="eyebrow">Case inputs</span><p>Values inserted into this case’s prompt variables.</p></div>
@@ -368,6 +372,8 @@ export function EvaluationSuiteEditor({
   modelFavorites,
   setup,
   onOpenTemplates,
+  caseSource,
+  onOpenSourceTrace,
 }: {
   authoring: EvaluationSuiteAuthoringHandle;
   execution?: EvaluationSuiteExecutionActions;
@@ -377,6 +383,8 @@ export function EvaluationSuiteEditor({
   setup?: EvaluationSetupDisclosure;
   /** Request-composer navigation stays with its owner. */
   onOpenTemplates?(): void;
+  caseSource?: EvaluationCaseSource;
+  onOpenSourceTrace?(source: EvaluationCaseSource): void;
 }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [candidateIndex, setCandidateIndex] = useState(0);
@@ -389,6 +397,14 @@ export function EvaluationSuiteEditor({
   const setSetupOpen = setup ? setup.onOpenChange : setLocalSetupOpen;
   const project = authoring.project;
   const suite = project?.evaluationSuites.find(({ id }) => id === authoring.suiteId);
+  const selectedInputRevision = project?.conversationRevisions.find(({ id }) => id === authoring.revisionId);
+  const stalePromptUses = selectedInputRevision?.items.flatMap((item) => {
+    if (item.kind !== "template-use") return [];
+    const template = project?.promptTemplates.find(({ id }) => id === item.use.templateId);
+    return template && template.currentRevisionId !== item.use.templateRevisionId
+      ? [{ templateUseId: item.use.id, templateName: template.name }]
+      : [];
+  }) ?? [];
   const focusedCase = suite?.cases.find(({ id }) => id === authoring.focusedCaseId);
   const selectedCount = authoring.selectedCaseIds.size;
   const selectedVariantCount = authoring.selectedVariantIds.size;
@@ -560,6 +576,12 @@ export function EvaluationSuiteEditor({
                     </select>
                   </label>
                 </div>
+                {stalePromptUses.length > 0 && <div className="evaluation-resolution-action" role="status">
+                  <div><strong>{stalePromptUses.length === 1 ? `“${stalePromptUses[0]!.templateName}” has a newer prompt revision` : `${stalePromptUses.length} pinned prompts have newer revisions`}</strong><span>Retargeting creates a new evaluation input revision. Cases, checks, and configurations stay unchanged.</span></div>
+                  <div className="evaluation-input-actions">
+                    {stalePromptUses.map((use) => <button className="button secondary" key={use.templateUseId} type="button" onClick={() => authoring.useCurrentPromptRevision(use.templateUseId)}>Use current {use.templateName} revision</button>)}
+                  </div>
+                </div>}
               </div>
               <section className="evaluation-configurations" aria-label="Configurations">
                 <div className="evaluation-section-heading"><div><span className="eyebrow">Configurations</span><h3>Compare named configurations</h3></div><button className="button secondary" type="button" onClick={authoring.addVariant}>+ Add configuration</button></div>
@@ -728,7 +750,7 @@ export function EvaluationSuiteEditor({
                     instance, and the uncontrolled fields — the case name and
                     the reference answer — keep the previous case's edited
                     text while the heading says otherwise. */}
-                {focusedCase && <CaseEditor key={focusedCase.id} evaluationCase={focusedCase} authoring={authoring} />}
+                {focusedCase && <CaseEditor key={focusedCase.id} evaluationCase={focusedCase} authoring={authoring} {...(caseSource?.caseId === focusedCase.id ? { source: caseSource, onOpenSourceTrace } : {})} />}
               </div>
             )}
           </section>

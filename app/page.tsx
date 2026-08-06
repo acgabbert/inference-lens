@@ -22,6 +22,8 @@ import {
 } from "../packages/core/src/run-kernel";
 import type {
   RunState,
+  RunTrace,
+  ExperimentCellId,
   ConversationMessage,
   ConversationId,
   MessageId,
@@ -35,7 +37,10 @@ import {
 import { AppErrorBoundary } from "./app-error-boundary.client";
 import { useInsecureOriginNotice } from "./use-insecure-origin.client";
 import { randomUUID } from "../packages/core/src/random-id.ts";
-import { projectFolderAccessAvailable } from "./project-workspace.client";
+import { projectFolderAccessAvailable, readEvaluationCaseSourcesWorkspace, readRunTraceWorkspace, saveEvaluationCaseSourcesWorkspace } from "./project-workspace.client";
+import { promoteTraceToEvaluationCase } from "../packages/core/src/evaluation-case-promotion.ts";
+import { upsertEvaluationCaseSource } from "../packages/core/src/evaluation-case-sources.ts";
+import type { EvaluationCaseSource } from "../packages/core/src/evaluation-case-sources.ts";
 import { emptyToolRegistry } from "../packages/core/src/tool-registry";
 import type {
   ToolRegistryV1,
@@ -58,7 +63,7 @@ import { ResponseOutput } from "./response-output.client";
 import { WorkbenchShell } from "./workbench-shell.client";
 import type { WorkbenchView } from "./workbench-shell.client";
 import { RunTracePanel } from "./run-trace-panel.client";
-import { traceFileName } from "../packages/core/src/run-trace";
+import { parseRunTraceJson, traceFileName } from "../packages/core/src/run-trace";
 import { RunHistoryDrawer } from "./run-history-drawer.client";
 import type { EvaluationSuiteHistoryHandle } from "./evaluations/evaluation-suite-history.client";
 import { useEvaluationBaselines } from "./evaluations/use-evaluation-baselines.client";
@@ -97,6 +102,8 @@ import {
 } from "./evaluations/evaluation-start.client";
 import { useEvaluationExecutionSession } from "./evaluations/use-evaluation-execution-session.client";
 import { EvaluationStartDialog } from "./evaluations/evaluation-start-dialog.client";
+import { PromoteTraceToCaseDialog } from "./evaluations/promote-trace-to-case-dialog.client";
+import type { EvaluationComparisonReturnTarget } from "./evaluations/evaluation-comparison-workspace.client";
 import { EVALUATION_PREFLIGHT_SUMMARY_ID } from "./evaluations/evaluation-suite-editor.client";
 import type { EvaluationSuiteExecutionActions } from "./evaluations/evaluation-suite-editor.client";
 import { evaluationExperimentAggregate } from "../packages/core/src/experiment";
@@ -308,6 +315,13 @@ function HomeContent() {
   // indistinguishable from nothing having happened.
   const [viewedExperimentId, setViewedExperimentId] = useState<string>();
   const [traceOpen, setTraceOpen] = useState(false);
+  // A comparison is unmounted while its evidence is read in Compose. Retain
+  // this tiny target at the route boundary so closing that trace returns to
+  // the same case and repetition instead of silently resetting to repetition 1.
+  const [comparisonReturnTarget, setComparisonReturnTarget] = useState<EvaluationComparisonReturnTarget>();
+  const [comparisonTraceOpen, setComparisonTraceOpen] = useState(false);
+  const [promotion, setPromotion] = useState<{ trace: RunTrace; experimentCellId?: string }>();
+  const [caseSource, setCaseSource] = useState<EvaluationCaseSource>();
   const [outputFollowing, setOutputFollowing] = useState(true);
   const [markdownPreview, setMarkdownPreview] = useState(true);
   const [markdownPreviewLoaded, setMarkdownPreviewLoaded] = useState(false);
@@ -636,6 +650,36 @@ function HomeContent() {
   const selectedEvaluationSuite = projectFile?.evaluationSuites.find(
     ({ id }) => id === evaluationAuthoring.suiteId,
   );
+  useEffect(() => {
+    const suiteId = evaluationAuthoring.suiteId;
+    const caseId = evaluationAuthoring.focusedCaseId;
+    if (!projectWorkspace || !suiteId || !caseId) {
+      return;
+    }
+    let current = true;
+    void readEvaluationCaseSourcesWorkspace(projectWorkspace)
+      .then(async (file) => {
+        const source = file.sources.find((item) => item.suiteId === suiteId && item.caseId === caseId);
+        if (!source) return undefined;
+        const trace = parseRunTraceJson(await readRunTraceWorkspace(projectWorkspace, traceFileName(source.runId)));
+        if (trace.runId !== source.runId) throw new Error("The source annotation points to a different trace.");
+        return source;
+      })
+      .then((source) => {
+        if (current) setCaseSource(source);
+      })
+      .catch((error) => {
+        if (!current) return;
+        setCaseSource(undefined);
+        toasts.publish({
+          key: "evaluation-case-source-unreadable",
+          title: "Case source link is unavailable",
+          detail: error instanceof Error ? error.message : "The local source annotation or its trace could not be read.",
+          durableHome: "the portable case, which remains valid without local evidence",
+        });
+      });
+    return () => { current = false; };
+  }, [evaluationAuthoring.focusedCaseId, evaluationAuthoring.suiteId, projectFile, projectWorkspace, toasts.publish]);
   useEffect(() => {
     clearTemplateOverridesRef.current = projectTemplates.clearTransientOverrides;
   }, [projectTemplates.clearTransientOverrides]);
@@ -1287,10 +1331,10 @@ function HomeContent() {
           items: evaluationBaselines.forSuite(selectedEvaluationSuite?.id),
           ...(evaluationBaselines.error ? { error: evaluationBaselines.error } : {}),
           busy: evaluationBaselines.comparing,
-          onPin: (item, name) => evaluationBaselines.pin(item, name),
+          onPin: (item, variantId, name) => evaluationBaselines.pin(item, variantId, name),
           onUnpin: (baselineId) => evaluationBaselines.unpin(baselineId),
-          onCompare: async (baseline, candidate) => {
-            await evaluationBaselines.compare(baseline, candidate);
+          onCompare: async (baseline, candidate, candidateVariantId) => {
+            await evaluationBaselines.compare(baseline, candidate, candidateVariantId);
             // A comparison is a results surface, so anything else holding the
             // Runs mode is released the same way opening a saved execution does.
             repeatedExperiment.clear();
@@ -1567,7 +1611,14 @@ function HomeContent() {
       branchedFrom={visibleBranchProvenance}
       parentTrace={parentTrace}
       onLoadParentTrace={() => void runSession.loadParentTrace()}
-      onOpenChange={setTraceOpen}
+      onOpenChange={(open) => {
+        setTraceOpen(open);
+        if (!open && comparisonTraceOpen) {
+          setComparisonTraceOpen(false);
+          setMode("runs");
+        }
+      }}
+      {...(projectFile ? { onPromoteTrace: (trace: RunTrace) => setPromotion({ trace }) } : {})}
     />
   );
   const n8nImportDisabledReason = branchContext
@@ -1698,6 +1749,11 @@ function HomeContent() {
           commandTools={commandTools}
           templates={projectTemplates}
           project={projectFile}
+          onEvaluatePromptRevision={(templateId, revisionId, suiteId) => {
+            if (!evaluationAuthoring.evaluatePromptRevision(templateId, revisionId, suiteId)) return;
+            setMode("evaluations");
+            setEvaluationSetupOpen(true);
+          }}
           settings={{
             model: activeModel,
             temperature: activeTemperature,
@@ -1779,6 +1835,22 @@ function HomeContent() {
           onOpenTemplates={() =>
             resolveReadiness({ surface: "request", tab: "templates", control: "prompt-library" })
           }
+          {...(projectWorkspace && evaluationAuthoring.suiteId && evaluationAuthoring.focusedCaseId && caseSource
+            ? { caseSource }
+            : {})}
+          onOpenSourceTrace={(source) => {
+            if (!projectWorkspace) return;
+            void readRunTraceWorkspace(projectWorkspace, traceFileName(source.runId))
+              .then((contents) => {
+                const trace = parseRunTraceJson(contents);
+                if (trace.runId !== source.runId) throw new Error("The saved source trace contains a different run.");
+                runSession.adoptTrace(trace, { workspace: projectWorkspace, fileName: traceFileName(source.runId) });
+                setTraceOpen(true);
+                setMode("compose");
+                setWorkbenchView("inspect");
+              })
+              .catch((error) => toasts.publish({ key: "evaluation-case-source-open-failed", title: "Could not open source trace", detail: error instanceof Error ? error.message : "The saved source trace could not be read.", durableHome: "the case remains valid without its optional source annotation" }));
+          }}
         />
       ) : (
         <RunsMode
@@ -1790,11 +1862,14 @@ function HomeContent() {
                   // the Runs mode returns to where it was started from.
                   onDismiss: () => {
                     evaluationBaselines.clearComparison();
+                    setComparisonReturnTarget(undefined);
                     setMode("evaluations");
                   },
-                  onOpenTrace: (side, runId) => {
+                  onOpenTrace: (side, runId, target) => {
                     const trace = side.traces.get(runId);
                     if (!trace || !projectWorkspace) return;
+                    setComparisonReturnTarget(target);
+                    setComparisonTraceOpen(true);
                     runSession.adoptTrace(trace, {
                       workspace: projectWorkspace,
                       fileName: side.traceFileNames.get(runId) ?? traceFileName(runId),
@@ -1804,6 +1879,9 @@ function HomeContent() {
                     setMode("compose");
                     setWorkbenchView("inspect");
                   },
+                  onPromoteCandidate: (trace, experimentCellId) => setPromotion({ trace, experimentCellId }),
+                  ...(comparisonReturnTarget ? { returnTarget: comparisonReturnTarget } : {}),
+                  onReturnTargetChange: setComparisonReturnTarget,
                 },
               }
             : {})}
@@ -1813,6 +1891,7 @@ function HomeContent() {
                   execution: evaluationExecution.execution,
                   onStop: evaluationExecution.cancel,
                   onOpenTrace: evaluationExecution.openTrace,
+                  onPromoteTrace: (trace, experimentCellId) => setPromotion({ trace, experimentCellId }),
                   onReturnToList: evaluationExecution.returnToEvaluation,
                   onDismiss: () => dismissFinishedExperiment("evaluation"),
                 },
@@ -1903,6 +1982,39 @@ function HomeContent() {
           draft={evaluationExecution.draft}
           onCancel={evaluationExecution.dismissDialog}
           onConfirm={confirmEvaluation}
+        />
+      )}
+      {promotion && projectFile && (
+        <PromoteTraceToCaseDialog
+          project={projectFile}
+          trace={promotion.trace}
+          onCancel={() => setPromotion(undefined)}
+          onPromote={(suiteId, name) => {
+            try {
+              const promoted = promoteTraceToEvaluationCase(projectFile, { suiteId, trace: promotion.trace, name });
+              project.adoptProjectMutation(promoted.project);
+              evaluationAuthoring.selectSuite(suiteId);
+              evaluationAuthoring.focusCase(promoted.caseId);
+              setPromotion(undefined);
+              setMode("evaluations");
+              toasts.publish({ key: "evaluation-case-promoted", title: `Promoted “${name.trim()}” to a case`, detail: "Checks still need to be authored.", durableHome: "the evaluation suite’s focused case" });
+              if (projectWorkspace) void (async () => {
+                try {
+                  const sources = await readEvaluationCaseSourcesWorkspace(projectWorkspace);
+                  const source = {
+                    suiteId, caseId: promoted.caseId, runId: promotion.trace.runId, capturedAt: new Date().toISOString(),
+                    ...(promotion.experimentCellId ? { experimentCellId: promotion.experimentCellId as ExperimentCellId } : {}),
+                  };
+                  await saveEvaluationCaseSourcesWorkspace(projectWorkspace, upsertEvaluationCaseSource(sources, source));
+                  setCaseSource(source);
+                } catch {
+                  toasts.publish({ key: "evaluation-case-source-unsaved", title: "Case promoted, but source link was not saved", detail: "The portable case is safe; reopen the trace if you need to keep its evidence link.", durableHome: "the promoted case, which remains valid without the local annotation" });
+                }
+              })();
+            } catch (error) {
+              toasts.publish({ key: "evaluation-case-promotion-failed", title: "Could not promote trace", detail: error instanceof Error ? error.message : "The trace could not be promoted.", durableHome: "the evaluation result evidence" });
+            }
+          }}
         />
       )}
       {confirmation && (

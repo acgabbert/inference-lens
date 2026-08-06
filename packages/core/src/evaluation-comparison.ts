@@ -21,6 +21,8 @@ import { stableJsonValue } from "./stable-json.ts";
 import type {
   EvaluationCaseId,
   EvaluationSuiteId,
+  EvaluationVariantId,
+  ExperimentCellId,
   ExperimentId,
   RunId,
   RunState,
@@ -38,6 +40,7 @@ import type {
 export interface EvaluationComparisonInput {
   experimentId: ExperimentId;
   plan: EvaluationExperimentPlanV3;
+  variantId: EvaluationVariantId;
   result?: ExperimentResultV3;
   states?: ReadonlyMap<RunId, RunState>;
 }
@@ -75,6 +78,18 @@ export interface EvaluationCheckComparison extends AlignedCheck {
   candidate?: { passed: number; failed: number; notEvaluated: number };
 }
 
+/**
+ * The two immutable cells at one repetition number. This is deliberately
+ * evidence-level data rather than another aggregate: a case can regress only
+ * on one repetition, and the reader must be able to open that exact pair.
+ */
+export interface EvaluationRepetitionComparison {
+  repetition: number;
+  delta: CaseOutcomeDelta;
+  baseline?: { cellId: ExperimentCellId; runId: RunId; classification: EvaluationRepetitionClassification };
+  candidate?: { cellId: ExperimentCellId; runId: RunId; classification: EvaluationRepetitionClassification };
+}
+
 export interface EvaluationCaseComparison {
   caseId: EvaluationCaseId;
   name: string;
@@ -83,6 +98,7 @@ export interface EvaluationCaseComparison {
   delta: CaseOutcomeDelta;
   baseline?: EvaluationCaseSideSummary;
   candidate?: EvaluationCaseSideSummary;
+  repetitions: EvaluationRepetitionComparison[];
   checks: EvaluationCheckComparison[];
 }
 
@@ -115,6 +131,8 @@ export interface EvaluationExecutionDrift {
 
 export interface EvaluationComparisonSideSummary {
   experimentId: ExperimentId;
+  variantId: EvaluationVariantId;
+  variantName: string;
   createdAt: string;
   lifecycle: EvaluationBakeoffAssessment["lifecycle"];
   passed: boolean;
@@ -178,13 +196,7 @@ function derive(input: EvaluationComparisonInput): SideDerivation {
   }
   const states = input.states ?? new Map<RunId, RunState>();
   const aggregate = evaluationParsedExperimentAggregate(input.plan, input.result, states);
-  // Baselines v1 identify an execution, not a variant. Preserve that legacy
-  // boundary through PR3 by choosing its authored first slice exactly once;
-  // PR4 replaces this selection with the variant ID stored by baselines v2.
-  const variant = evaluationVariantAssessment(
-    aggregate,
-    input.plan.suite.variants[0]!.variantId,
-  );
+  const variant = evaluationVariantAssessment(aggregate, input.variantId);
   return {
     input,
     states,
@@ -263,6 +275,8 @@ function sideSummary(side: SideDerivation): EvaluationComparisonSideSummary {
   for (const assessment of side.variant.cases) values.push(...durations(side, assessment));
   return {
     experimentId: side.input.experimentId,
+    variantId: side.variant.variant.variantId,
+    variantName: side.variant.variant.name,
     createdAt: side.input.plan.createdAt,
     lifecycle: side.aggregate.lifecycle,
     passed: side.variant.passed,
@@ -275,19 +289,18 @@ function sideSummary(side: SideDerivation): EvaluationComparisonSideSummary {
   };
 }
 
-/** Baselines v1 compares the same authored-first slice selected by `derive`. */
 function executionDrift(
-  baseline: EvaluationExperimentPlanV3,
-  candidate: EvaluationExperimentPlanV3,
+  baseline: SideDerivation,
+  candidate: SideDerivation,
 ): EvaluationExecutionDrift {
-  const baselineInput = baseline.suite.variants[0];
-  const candidateInput = candidate.suite.variants[0];
+  const baselineInput = baseline.variant.variant;
+  const candidateInput = candidate.variant.variant;
   const drift: EvaluationExecutionDrift = { any: false };
 
-  if (baseline.suite.conversationRevisionId !== candidate.suite.conversationRevisionId) {
+  if (baseline.input.plan.suite.conversationRevisionId !== candidate.input.plan.suite.conversationRevisionId) {
     drift.inputRevision = {
-      baseline: baseline.suite.conversationRevisionId,
-      candidate: candidate.suite.conversationRevisionId,
+      baseline: baseline.input.plan.suite.conversationRevisionId,
+      candidate: candidate.input.plan.suite.conversationRevisionId,
     };
   }
   if (baselineInput && candidateInput) {
@@ -311,13 +324,13 @@ function executionDrift(
     }
     if (!sameJson(baselineInput.options, candidateInput.options)) drift.optionsChanged = true;
   }
-  if (baseline.repetitions !== candidate.repetitions) {
-    drift.repetitions = { baseline: baseline.repetitions, candidate: candidate.repetitions };
+  if (baseline.input.plan.repetitions !== candidate.input.plan.repetitions) {
+    drift.repetitions = { baseline: baseline.input.plan.repetitions, candidate: candidate.input.plan.repetitions };
   }
-  if (baseline.checkSchemaVersion !== candidate.checkSchemaVersion) {
+  if (baseline.input.plan.checkSchemaVersion !== candidate.input.plan.checkSchemaVersion) {
     drift.checkSchemaVersion = {
-      baseline: baseline.checkSchemaVersion,
-      candidate: candidate.checkSchemaVersion,
+      baseline: baseline.input.plan.checkSchemaVersion,
+      candidate: candidate.input.plan.checkSchemaVersion,
     };
   }
   drift.any = Object.keys(drift).length > 1;
@@ -335,6 +348,47 @@ function delta(
   if (baseline.passed && candidate.passed) return "unchanged-pass";
   if (!baseline.passed && !candidate.passed) return "unchanged-fail";
   return candidate.passed ? "fixed" : "regressed";
+}
+
+function repetitionComparisons(
+  alignment: SuiteAlignmentStatus,
+  baseline: EvaluationCaseAssessment | undefined,
+  candidate: EvaluationCaseAssessment | undefined,
+): EvaluationRepetitionComparison[] {
+  const baselineByNumber = new Map(baseline?.repetitions.map((item) => [item.repetition, item]) ?? []);
+  const candidateByNumber = new Map(candidate?.repetitions.map((item) => [item.repetition, item]) ?? []);
+  const numbers = new Set([...baselineByNumber.keys(), ...candidateByNumber.keys()]);
+  return [...numbers].sort((left, right) => left - right).map((repetition) => {
+    const baselineItem = baselineByNumber.get(repetition);
+    const candidateItem = candidateByNumber.get(repetition);
+    const baselineSide = baselineItem && {
+      cellId: baselineItem.cellId,
+      runId: baselineItem.runId,
+      classification: baselineItem.classification,
+    };
+    const candidateSide = candidateItem && {
+      cellId: candidateItem.cellId,
+      runId: candidateItem.runId,
+      classification: candidateItem.classification,
+    };
+    const repetitionDelta = !baselineSide
+      ? "candidate-only"
+      : !candidateSide
+        ? "baseline-only"
+        : alignment === "incompatible"
+          ? "incomparable"
+          : baselineSide.classification === "passed" && candidateSide.classification === "passed"
+            ? "unchanged-pass"
+            : baselineSide.classification !== "passed" && candidateSide.classification !== "passed"
+              ? "unchanged-fail"
+              : candidateSide.classification === "passed" ? "fixed" : "regressed";
+    return {
+      repetition,
+      delta: repetitionDelta,
+      ...(baselineSide ? { baseline: baselineSide } : {}),
+      ...(candidateSide ? { candidate: candidateSide } : {}),
+    };
+  });
 }
 
 export function compareEvaluationExecutions(
@@ -359,6 +413,7 @@ export function compareEvaluationExecutions(
       delta: delta(aligned.status, baselineSide, candidateSide),
       ...(baselineSide ? { baseline: baselineSide } : {}),
       ...(candidateSide ? { candidate: candidateSide } : {}),
+      repetitions: repetitionComparisons(aligned.status, baselineAssessment, candidateAssessment),
       checks: aligned.checks.map((check): EvaluationCheckComparison => {
         const baselineTally = checkTally(baselineAssessment, check.checkId);
         const candidateTally = checkTally(candidateAssessment, check.checkId);
@@ -384,7 +439,7 @@ export function compareEvaluationExecutions(
     sameSuite,
     baseline: sideSummary(baseline),
     candidate: sideSummary(candidate),
-    drift: executionDrift(baseline.input.plan, candidate.input.plan),
+    drift: executionDrift(baseline, candidate),
     cases,
     counts,
   };

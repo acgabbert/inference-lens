@@ -9,7 +9,7 @@ import {
   suiteEvaluationBaselines,
   unpinEvaluationBaseline,
   type EvaluationBaseline,
-  type EvaluationBaselinesFileV1,
+  type EvaluationBaselinesFileV2,
 } from "../../packages/core/src/evaluation-baselines.ts";
 import {
   compareEvaluationExecutions,
@@ -20,6 +20,7 @@ import type { EvaluationHistoryItem } from "../../packages/core/src/experiment-h
 import type {
   EvaluationBaselineId,
   EvaluationSuiteId,
+  EvaluationVariantId,
   RunId,
   RunState,
   RunTrace,
@@ -57,9 +58,13 @@ export interface EvaluationBaselinesSession {
   baselines: EvaluationBaseline[];
   forSuite(suiteId: EvaluationSuiteId | undefined): EvaluationBaseline[];
   load(): void;
-  pin(item: EvaluationHistoryItem, name: string): Promise<void>;
+  pin(item: EvaluationHistoryItem, variantId: EvaluationVariantId, name: string): Promise<void>;
   unpin(baselineId: EvaluationBaselineId): Promise<void>;
-  compare(baseline: EvaluationBaseline, candidate: EvaluationHistoryItem): Promise<void>;
+  compare(
+    baseline: EvaluationBaseline,
+    candidate: EvaluationHistoryItem,
+    candidateVariantId: EvaluationVariantId,
+  ): Promise<void>;
   comparing: boolean;
   comparison?: LoadedEvaluationComparison;
   clearComparison(): void;
@@ -68,7 +73,7 @@ export interface EvaluationBaselinesSession {
 interface LoadedBaselines {
   workspace: ProjectWorkspaceHandle;
   status: "loading" | "loaded" | "failed";
-  file: EvaluationBaselinesFileV1;
+  file: EvaluationBaselinesFileV2;
   error?: string;
 }
 
@@ -161,7 +166,7 @@ export function useEvaluationBaselines(
   }, [active, file, workspace]);
 
   const write = useCallback(
-    async (next: EvaluationBaselinesFileV1): Promise<void> => {
+    async (next: EvaluationBaselinesFileV2): Promise<void> => {
       if (!workspace) throw new Error("Open a project folder to pin a baseline.");
       await saveEvaluationBaselinesWorkspace(workspace, next);
       setLoaded({ workspace, status: "loaded", file: next });
@@ -170,13 +175,14 @@ export function useEvaluationBaselines(
   );
 
   const pin = useCallback(
-    async (item: EvaluationHistoryItem, name: string): Promise<void> => {
+    async (item: EvaluationHistoryItem, variantId: EvaluationVariantId, name: string): Promise<void> => {
       const suiteId = item.evaluation.suiteId;
       await write(
         pinEvaluationBaseline(file, {
           baselineId: createEntityId("evaluation-baseline", randomUUID()),
           suiteId,
           experimentId: item.experimentId,
+          variantId,
           name,
           pinnedAt: new Date().toISOString(),
         }),
@@ -195,15 +201,22 @@ export function useEvaluationBaselines(
   );
 
   const compare = useCallback(
-    async (baseline: EvaluationBaseline, candidate: EvaluationHistoryItem): Promise<void> => {
+    async (
+      baseline: EvaluationBaseline,
+      candidate: EvaluationHistoryItem,
+      candidateVariantId: EvaluationVariantId,
+    ): Promise<void> => {
       const baselineItem = findExperiment(baseline);
       if (!baselineItem) {
         throw new Error(
           `The execution pinned as "${baseline.name}" is no longer in this project folder.`,
         );
       }
-      if (baselineItem.experimentId === candidate.experimentId) {
-        throw new Error("Choose a candidate other than the baseline itself.");
+      if (
+        baselineItem.experimentId === candidate.experimentId &&
+        baseline.variantId === candidateVariantId
+      ) {
+        throw new Error("Choose a candidate configuration other than the baseline itself.");
       }
       if (!workspace) throw new Error("The project folder is no longer open.");
       setComparing(true);
@@ -224,12 +237,14 @@ export function useEvaluationBaselines(
               {
                 experimentId: baselineSide.plan.experimentId,
                 plan: baselineSide.plan,
+                variantId: baseline.variantId,
                 ...(baselineOpened.result ? { result: baselineOpened.result } : {}),
                 states: baselineSide.states,
               },
               {
                 experimentId: candidateSide.plan.experimentId,
                 plan: candidateSide.plan,
+                variantId: candidateVariantId,
                 ...(candidateOpened.result ? { result: candidateOpened.result } : {}),
                 states: candidateSide.states,
               },

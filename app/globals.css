@@ -331,6 +331,7 @@ output,
 .eyebrow,
 .template-list-item span,
 .template-variable-meta,
+.template-revision-edit-action small,
 .template-use-card small,
 .template-issue-count,
 .request-preview pre,
@@ -1134,11 +1135,32 @@ output {
 .template-editor-actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
 .template-editor-actions .provider-pill {
   margin-bottom: 0;
+}
+
+.template-editor-actions .button {
+  padding: 7px 10px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.template-revision-edit-action {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+}
+
+.template-revision-edit-action small {
+  max-width: 230px;
+  color: var(--text-muted);
+  line-height: 1.35;
+  text-align: right;
 }
 
 .template-notices {
@@ -1343,6 +1365,19 @@ output {
 
 .template-insert-bar .button {
   margin-bottom: 1px;
+}
+
+/* The action labels have substantial intrinsic width. Move them below the
+   metadata before their auto-sized grid column can collapse the name and
+   revision controls inside the resizable composer pane. */
+@container (max-width: 1120px) {
+  .template-editor-header {
+    grid-template-columns: minmax(160px, 1.4fr) minmax(160px, 1fr);
+  }
+
+  .template-editor-actions {
+    grid-column: 1 / -1;
+  }
 }
 
 @container (max-width: 545px) {
@@ -4501,6 +4536,86 @@ textarea {
 }
 
 /* Attempt comparison */
+
+.template-revision-diff {
+  margin: 0 20px 20px;
+  padding: 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 9px;
+  background: var(--surface-subtle);
+}
+
+.template-revision-diff-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.template-revision-diff-heading h3,
+.template-revision-diff-body h4 {
+  margin: 2px 0 0;
+}
+
+.template-revision-diff-heading label {
+  display: grid;
+  gap: 5px;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.template-revision-diff-heading select {
+  min-width: 180px;
+}
+
+.template-revision-diff-body {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.template-diff-message {
+  margin-top: 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.template-diff-message summary {
+  padding: 8px 10px;
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+.template-diff-message .diff-code {
+  margin: 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.template-diff-defaults {
+  display: grid;
+  gap: 5px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.template-diff-defaults li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--text-secondary);
+}
+
+.template-diff-defaults li span {
+  color: var(--text-muted);
+  font-family: var(--font-geist-mono), monospace;
+}
+
+.template-diff-provenance {
+  margin: 0;
+  color: var(--text-muted);
+}
 
 .run-diff {
   padding: 16px 20px 20px;

@@ -141,6 +141,8 @@ export interface CreateRevisionFromSavedPromptOptions {
    */
   parentRevisionId: ConversationRevisionId;
   templateId: PromptTemplateId;
+  /** Defaults to the current prompt revision; library actions can pin history. */
+  templateRevisionId?: PromptTemplateRevisionId;
   revisionIdSuffix?: string;
   templateUseIdSuffix?: string;
   createdAt?: string;
@@ -174,6 +176,7 @@ export function createRevisionFromSavedPrompt(
   {
     parentRevisionId,
     templateId,
+    templateRevisionId,
     revisionIdSuffix = randomUUID(),
     templateUseIdSuffix = randomUUID(),
     createdAt = new Date().toISOString(),
@@ -208,6 +211,7 @@ export function createRevisionFromSavedPrompt(
     project: insertPromptTemplateUse(evaluationBranch, {
       conversationRevisionId,
       templateId,
+      ...(templateRevisionId ? { templateRevisionId } : {}),
       idSuffix: templateUseIdSuffix,
     }),
     conversationRevisionId,

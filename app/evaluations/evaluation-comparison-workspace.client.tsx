@@ -10,7 +10,7 @@ import type {
 } from "../../packages/core/src/evaluation-comparison.ts";
 import { finalAssistantOutput } from "../../packages/core/src/run-output.ts";
 import { diffLines } from "../../packages/core/src/text-diff.ts";
-import type { EvaluationCaseId, RunId } from "../../packages/core/src/run-kernel/index.ts";
+import type { EvaluationCaseId, EvaluationVariantId, ExperimentCellId, RunId, RunTrace } from "../../packages/core/src/run-kernel/index.ts";
 import { formatTokens } from "../run-metrics-format.client.ts";
 import { StatusChip } from "../notifications/status-chip.client";
 import type {
@@ -44,6 +44,12 @@ const reasonLabels = {
   "reference-answer-changed": "reference answer changed",
   "checks-changed": "checks changed",
 } as const;
+
+/** Transient navigation state retained while an evidence trace is open. */
+export interface EvaluationComparisonReturnTarget {
+  caseId: EvaluationCaseId;
+  repetition: number;
+}
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat(undefined, {
@@ -134,42 +140,47 @@ function SideCell({ summary }: { summary?: EvaluationCaseSideSummary }) {
 }
 
 /**
- * The first repetition of one case on each side, diffed. Repetition 1 is the
- * stated choice rather than a "representative" one: with repetitions > 1 a
- * model's output varies by design, so the diff is evidence to read, not proof
- * that the case changed. The case's own outcome above is that.
+ * One explicitly selected repetition pair, diffed. Repetition-level evidence
+ * is never silently substituted with repetition 1: a regression can be real
+ * in only one sampled run.
  */
 function OutputDiff({
   caseId,
+  repetition,
   baseline,
   candidate,
+  baselineVariantId,
+  candidateVariantId,
 }: {
   caseId: EvaluationCaseId;
+  repetition: number;
   baseline: LoadedComparisonSide;
   candidate: LoadedComparisonSide;
+  baselineVariantId: EvaluationVariantId;
+  candidateVariantId: EvaluationVariantId;
 }) {
-  const output = (side: LoadedComparisonSide): string | undefined => {
+  const output = (side: LoadedComparisonSide, variantId: EvaluationVariantId): string | undefined => {
     const cell = side.plan.cells.find(
-      (item) => item.caseId === caseId && item.repetition === 1,
+      (item) => item.caseId === caseId && item.variantId === variantId && item.repetition === repetition,
     );
     const state = cell ? side.states.get(cell.runId) : undefined;
     return state ? finalAssistantOutput(state) : undefined;
   };
-  const left = output(baseline);
-  const right = output(candidate);
+  const left = output(baseline, baselineVariantId);
+  const right = output(candidate, candidateVariantId);
   const diff = useMemo(() => diffLines(left ?? "", right ?? ""), [left, right]);
 
   if (left === undefined || right === undefined) {
     return (
       <p className="evaluation-comparison-absent">
         {left === undefined && right === undefined
-          ? "Neither execution has a readable first repetition for this case."
-          : `Only the ${left === undefined ? "candidate" : "baseline"} has a readable first repetition, so there is nothing to diff.`}
+          ? `Neither execution has a readable repetition ${repetition} for this case.`
+          : `Only the ${left === undefined ? "candidate" : "baseline"} has a readable repetition ${repetition}, so there is nothing to diff.`}
       </p>
     );
   }
   if (diff.identical) {
-    return <p className="evaluation-comparison-absent">The first repetitions produced identical output.</p>;
+    return <p className="evaluation-comparison-absent">The selected repetitions produced identical output.</p>;
   }
   return (
     <>
@@ -200,30 +211,53 @@ function CaseRow({
   comparison,
   loaded,
   onOpenTrace,
+  onPromoteCandidate,
+  returnTarget,
+  onReturnTargetChange,
 }: {
   comparison: EvaluationCaseComparison;
   loaded: LoadedEvaluationComparison;
-  onOpenTrace(side: LoadedComparisonSide, runId: RunId): void;
+  onOpenTrace(side: LoadedComparisonSide, runId: RunId, target: EvaluationComparisonReturnTarget): void;
+  onPromoteCandidate(trace: RunTrace, experimentCellId: ExperimentCellId): void;
+  returnTarget?: EvaluationComparisonReturnTarget;
+  onReturnTargetChange(target?: EvaluationComparisonReturnTarget): void;
 }) {
-  const [open, setOpen] = useState(false);
-  const firstRun = (side: LoadedComparisonSide): RunId | undefined => {
-    const cell = side.plan.cells.find(
-      (item) => item.caseId === comparison.caseId && item.repetition === 1,
-    );
-    return cell && side.traces.has(cell.runId) ? cell.runId : undefined;
-  };
-  const baselineRun = firstRun(loaded.baseline);
-  const candidateRun = firstRun(loaded.candidate);
+  const preferredRepetition = comparison.repetitions.find(({ delta }) => delta === "regressed")?.repetition
+    ?? comparison.repetitions.find(({ baseline, candidate }) => baseline && candidate)?.repetition
+    ?? comparison.repetitions[0]?.repetition;
+  const restored = returnTarget?.caseId === comparison.caseId ? returnTarget.repetition : undefined;
+  const [open, setOpen] = useState(Boolean(restored));
+  const [selectedRepetition, setSelectedRepetition] = useState(restored ?? preferredRepetition);
+  const effectiveOpen = open || restored !== undefined;
+  const effectiveRepetition = restored ?? selectedRepetition;
+  const selected = comparison.repetitions.find(({ repetition }) => repetition === effectiveRepetition);
+  const target = effectiveRepetition === undefined ? undefined : { caseId: comparison.caseId, repetition: effectiveRepetition };
+  const readableTrace = (side: LoadedComparisonSide, runId: RunId | undefined): RunTrace | undefined =>
+    runId ? side.traces.get(runId) : undefined;
+  const baselineTrace = readableTrace(loaded.baseline, selected?.baseline?.runId);
+  const candidateTrace = readableTrace(loaded.candidate, selected?.candidate?.runId);
+
+  function selectRepetition(repetition: number): void {
+    setSelectedRepetition(repetition);
+    onReturnTargetChange({ caseId: comparison.caseId, repetition });
+  }
 
   return (
     <>
       <tr data-delta={comparison.delta}>
         <th scope="row">
           <button
-            aria-expanded={open}
+            aria-expanded={effectiveOpen}
             className="text-button"
             type="button"
-            onClick={() => setOpen((current) => !current)}
+            onClick={() => {
+              if (effectiveOpen) {
+                setOpen(false);
+                onReturnTargetChange(undefined);
+              } else {
+                setOpen(true);
+              }
+            }}
           >
             {comparison.name}
           </button>
@@ -241,31 +275,63 @@ function CaseRow({
           </span>
         </td>
       </tr>
-      {open && (
+      {effectiveOpen && (
         <tr className="evaluation-comparison-detail">
           <td colSpan={4}>
             <div className="evaluation-comparison-detail-actions">
               <button
                 className="text-button"
-                disabled={!baselineRun}
+                disabled={!baselineTrace || !target}
                 type="button"
-                onClick={() => baselineRun && onOpenTrace(loaded.baseline, baselineRun)}
+                onClick={() => baselineTrace && target && onOpenTrace(loaded.baseline, baselineTrace.runId, target)}
               >
                 Open baseline trace
               </button>
               <button
                 className="text-button"
-                disabled={!candidateRun}
+                disabled={!candidateTrace || !target}
                 type="button"
-                onClick={() => candidateRun && onOpenTrace(loaded.candidate, candidateRun)}
+                onClick={() => candidateTrace && target && onOpenTrace(loaded.candidate, candidateTrace.runId, target)}
               >
                 Open candidate trace
               </button>
+              {comparison.delta === "regressed" && candidateTrace && selected?.candidate && (
+                <button
+                  className="text-button"
+                  type="button"
+                  onClick={() => onPromoteCandidate(candidateTrace, selected.candidate!.cellId)}
+                >
+                  Promote candidate input to case…
+                </button>
+              )}
             </div>
+            <div aria-label="Repetition evidence" className="evaluation-comparison-repetitions">
+              {comparison.repetitions.map((item) => (
+                <button
+                  aria-pressed={item.repetition === effectiveRepetition}
+                  className="text-button"
+                  key={item.repetition}
+                  type="button"
+                  onClick={() => selectRepetition(item.repetition)}
+                >
+                  Repetition {item.repetition} · {item.baseline && item.candidate
+                    ? deltaLabels[item.delta]
+                    : item.baseline ? "baseline only" : "candidate only"}
+                </button>
+              ))}
+            </div>
+            {selected && (!selected.baseline || !selected.candidate) && (
+              <p className="evaluation-comparison-absent">
+                Repetition {selected.repetition} is unmatched: it exists only in the {selected.baseline ? "baseline" : "candidate"} execution.
+              </p>
+            )}
             <OutputDiff
               baseline={loaded.baseline}
               candidate={loaded.candidate}
               caseId={comparison.caseId}
+              repetition={effectiveRepetition ?? 1}
+              baselineVariantId={loaded.comparison.baseline.variantId}
+              candidateVariantId={loaded.comparison.candidate.variantId}
             />
             <ul className="evaluation-comparison-checks">
               {comparison.checks.map((check) => (
@@ -293,11 +359,17 @@ function CaseRow({
 export function EvaluationComparisonWorkspace({
   loaded,
   onOpenTrace,
+  onPromoteCandidate,
   onDismiss,
+  returnTarget,
+  onReturnTargetChange,
 }: {
   loaded: LoadedEvaluationComparison;
-  onOpenTrace(side: LoadedComparisonSide, runId: RunId): void;
+  onOpenTrace(side: LoadedComparisonSide, runId: RunId, target: EvaluationComparisonReturnTarget): void;
+  onPromoteCandidate(trace: RunTrace, experimentCellId: ExperimentCellId): void;
   onDismiss(): void;
+  returnTarget?: EvaluationComparisonReturnTarget;
+  onReturnTargetChange(target?: EvaluationComparisonReturnTarget): void;
 }) {
   const { comparison } = loaded;
   return (
@@ -307,8 +379,8 @@ export function EvaluationComparisonWorkspace({
           <span className="eyebrow">Baseline comparison</span>
           <h2>{loaded.candidate.plan.suite.name}</h2>
           <p>
-            {loaded.baselineName} ({formatDate(loaded.baseline.plan.createdAt)}) compared with{" "}
-            {formatDate(loaded.candidate.plan.createdAt)}
+            {loaded.baselineName} · {comparison.baseline.variantName} ({formatDate(loaded.baseline.plan.createdAt)}) compared with{" "}
+            {comparison.candidate.variantName} · {formatDate(loaded.candidate.plan.createdAt)}
           </p>
         </div>
         <div className="evaluation-results-actions">
@@ -370,6 +442,9 @@ export function EvaluationComparisonWorkspace({
                 key={item.caseId}
                 loaded={loaded}
                 onOpenTrace={onOpenTrace}
+                onPromoteCandidate={onPromoteCandidate}
+                returnTarget={returnTarget}
+                onReturnTargetChange={onReturnTargetChange}
               />
             ))}
           </tbody>

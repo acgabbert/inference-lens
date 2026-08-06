@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import type { ConversationMessage, ToolDefinition, ToolId } from "../../packages/core/src/run-kernel";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ConversationMessage, PromptTemplateId, PromptTemplateRevisionId, ToolDefinition, ToolId } from "../../packages/core/src/run-kernel";
 import type { ProjectFile, ToolMock } from "../../packages/core/src/project";
 import { conversationMessageText } from "../conversation-display";
 import { PaneTabs } from "../workbench-shell.client";
@@ -49,7 +49,8 @@ export interface RequestComposerProps {
   /** The command-tool feature owner, for the tools tab's binding surface. */
   commandTools: CommandToolsHandle;
   templates: ProjectTemplatesHandle;
-  project:Pick<ProjectFile, "projectId" | "promptTemplates" | "connectionRequirements" | "defaults" | "externalImports"> | null;
+  project:Pick<ProjectFile, "projectId" | "promptTemplates" | "connectionRequirements" | "defaults" | "externalImports" | "conversationRevisions" | "evaluationSuites"> | null;
+  onEvaluatePromptRevision?(templateId: PromptTemplateId, revisionId: PromptTemplateRevisionId, suiteId?: ProjectFile["evaluationSuites"][number]["id"]): void;
   settings: RequestSettingsProps & {
     toolsEnabled: boolean;
   };
@@ -94,6 +95,7 @@ export function RequestComposer({
   commandTools,
   templates,
   project,
+  onEvaluatePromptRevision,
   settings,
   readiness,
   repeat,
@@ -120,6 +122,19 @@ export function RequestComposer({
   const [requestPreviewView, setRequestPreviewView] = useState<"resolved" | "raw">("resolved");
   const [focusMode, setFocusMode] = useState(false);
   const [focusModeTab, setFocusModeTab] = useState<RequestTab>("messages");
+  const compatibleEvaluationSuitesByTemplate = useMemo(() => {
+    const result = new Map<PromptTemplateId, ProjectFile["evaluationSuites"]>();
+    if (!project) return result;
+    (project.evaluationSuites ?? []).forEach((suite) => {
+      const revision = project.conversationRevisions?.find(({ id }) => id === suite.input.conversationRevisionId);
+      revision?.items.forEach((item) => {
+        if (item.kind !== "template-use") return;
+        const current = result.get(item.use.templateId) ?? [];
+        result.set(item.use.templateId, [...current, suite]);
+      });
+    });
+    return result;
+  }, [project]);
   const composerRef = useRef<HTMLElement>(null);
   const focusToggleRef = useRef<HTMLButtonElement>(null);
   const modelRef = useRef<HTMLInputElement>(null);
@@ -361,7 +376,7 @@ export function RequestComposer({
             {requestPreview && <details className="request-preview"><summary>Resolved request preview</summary>{"error" in requestPreview ? <div className="template-diagnostic">{requestPreview.error}</div> : <><>{(templates.templateWorkbench.resolution?.diagnostics.length ?? 0) > 0 && <div className="template-warning" role="status">Preview contains unresolved variables. Running is blocked until they have values.</div>}</><div className="request-preview-tabs"><PaneTabs idPrefix="request-preview" label="Request preview view" value={requestPreviewView} onChange={(value) => setRequestPreviewView(value as "resolved" | "raw")} tabs={[{ id: "resolved", label: "Resolved" }, { id: "raw", label: "Raw" }]} /></div>{requestPreviewView === "resolved" ? <section aria-label="Resolved request" aria-labelledby="request-preview-resolved-tab" id="request-preview-resolved-panel" role="tabpanel"><h3>Resolved messages</h3><div className="request-preview-messages">{requestPreview.messages.map((message, index) => <article className="request-preview-message" key={`${message.role}-${index}`}><span className="eyebrow">{message.role}</span><pre>{conversationMessageText(message)}</pre></article>)}</div></section> : <section className="request-preview-raw" aria-label="Raw OpenAI-compatible request body" aria-labelledby="request-preview-raw-tab" id="request-preview-raw-panel" role="tabpanel"><h3>Raw OpenAI-compatible request body</h3><pre>{JSON.stringify(requestPreview.body, null, 2)}</pre></section>}</>}</details>}
           </>
         ) : activeTab === "templates" ? (
-          <ProjectTemplatesPane key={project?.projectId ?? "unsaved-project"} templates={project?.promptTemplates ?? []} connectionRequirements={project?.connectionRequirements ?? []} defaultConnectionRequirementId={project?.defaults.target.connectionRequirementId} usageCounts={templates.templateUsageCounts} itemCount={templates.activeProjectRevision?.items.length ?? requestDraft.messages.length} n8nImportDisabledReason={n8nImportDisabledReason} onOpenN8nImport={onOpenN8nImport} onCreate={templates.createProjectTemplate} onSave={templates.saveProjectTemplate} onRename={templates.renameProjectTemplate} onArchive={templates.archiveProjectTemplate} onRestore={templates.restoreProjectTemplate} onInsert={(...args) => { templates.insertProjectTemplate(...args); setTab("messages"); }} />
+          <ProjectTemplatesPane key={project?.projectId ?? "unsaved-project"} templates={project?.promptTemplates ?? []} connectionRequirements={project?.connectionRequirements ?? []} defaultConnectionRequirementId={project?.defaults.target.connectionRequirementId} usageCounts={templates.templateUsageCounts} itemCount={templates.activeProjectRevision?.items.length ?? requestDraft.messages.length} n8nImportDisabledReason={n8nImportDisabledReason} onOpenN8nImport={onOpenN8nImport} onCreate={templates.createProjectTemplate} onSave={templates.saveProjectTemplate} onRename={templates.renameProjectTemplate} onArchive={templates.archiveProjectTemplate} onRestore={templates.restoreProjectTemplate} onInsert={(...args) => { templates.insertProjectTemplate(...args); setTab("messages"); }} compatibleEvaluationSuitesByTemplate={compatibleEvaluationSuitesByTemplate} {...(onEvaluatePromptRevision ? { onEvaluateRevision: onEvaluatePromptRevision } : {})} />
         ) : (
           <ToolsPane tools={requestDraft.tools} requestTools={requestDraft.requestTools} enabledToolIds={requestDraft.enabledToolIds} activeProfileName={activeProfile.name} toolsEnabled={settings.toolsEnabled} onOpenLibrary={onOpenToolLibrary} onOpenConnectionSettings={onOpenConnectionSettings} onAddTool={requestDraft.addTool} onRemoveTool={requestDraft.removeTool} onMoveTool={requestDraft.moveTool} onUpdateTool={requestDraft.updateTool} onSetToolEnabled={requestDraft.setToolEnabled} mockForTool={requestDraft.mockForTool} onUpdateToolMock={requestDraft.updateToolMock} onRemoveRequestTool={requestDraft.removeRequestTool} commandTools={commandTools} />
         )}

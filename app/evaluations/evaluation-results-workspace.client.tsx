@@ -17,6 +17,7 @@ import type {
   EvaluationVariantId,
   RunId,
   RunState,
+  RunTrace,
 } from "../../packages/core/src/run-kernel/index.ts";
 import { StatusChip } from "../notifications/status-chip.client";
 import { formatTokens } from "../run-metrics-format.client.ts";
@@ -110,6 +111,7 @@ export function EvaluationResultsWorkspace({
   execution,
   onStop,
   onOpenTrace,
+  onPromoteTrace,
   placement = "response",
   onReturnToEvaluation,
   onDismiss,
@@ -117,6 +119,7 @@ export function EvaluationResultsWorkspace({
   execution: EvaluationExecution;
   onStop(): void;
   onOpenTrace(runId: RunId): void;
+  onPromoteTrace?(trace: RunTrace, experimentCellId: string): void;
   placement?: "request" | "response";
   onReturnToEvaluation?(): void;
   /**
@@ -317,6 +320,10 @@ export function EvaluationResultsWorkspace({
                       <div className={`evaluation-evidence-row ${overlay ?? reachability.kind}`}>
                         <span><strong>Evidence</strong><small>{overlay ? overlay === "running" ? "Running… · Pending while this run is active" : "Queued · Pending until this run starts" : evidenceLabel(reachability)}</small></span>
                         {!overlay && reachability.kind === "readable" && <button className="text-button" type="button" onClick={() => onOpenTrace(repetition.runId)}>Open Response &amp; Inspect</button>}
+                        {!overlay && reachability.kind === "readable" && onPromoteTrace && <button className="text-button" type="button" onClick={() => {
+                          const trace = execution.traces.get(repetition.runId);
+                          if (trace) onPromoteTrace(trace, repetition.cellId);
+                        }}>Promote to case…</button>}
                       </div>
                       {aggregate.variants.length > 1 && <button className="text-button evaluation-compare-output" type="button" onClick={() => {
                         const index = aggregate.variants.findIndex(({ variant }) => variant.variantId === activeVariant.variant.variantId);

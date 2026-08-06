@@ -10,6 +10,7 @@ import type {
   PromptTemplateMessages,
   PromptTemplateRecommendedTarget,
   PromptTemplateUse,
+  EvaluationSuite,
 } from "../packages/core/src/project";
 import { isSensitiveTemplateVariableName } from "../packages/core/src/project";
 import type {
@@ -20,6 +21,7 @@ import {
   discoverTemplateVariables,
   resolveTemplateValues,
 } from "../packages/core/src/template-engine";
+import { diffPromptTemplateRevisions } from "../packages/core/src/prompt-template-revision-diff";
 import { FocusModeToggle, useFocusMode } from "./focus-mode.client";
 import { N8nTemplatePasteDialog } from "./templates/n8n-template-paste-dialog.client";
 import { shouldSuggestN8nTemplatePaste } from "./templates/n8n-template-paste";
@@ -47,6 +49,8 @@ interface ProjectTemplatesPaneProps {
   onArchive(templateId: PromptTemplateId, onArchived?: () => void): void;
   onRestore(templateId: PromptTemplateId): void;
   onInsert(templateId: PromptTemplateId, itemIndex: number): void;
+  compatibleEvaluationSuitesByTemplate?: ReadonlyMap<PromptTemplateId, readonly EvaluationSuite[]>;
+  onEvaluateRevision?(templateId: PromptTemplateId, revisionId: PromptTemplateRevisionId, suiteId?: EvaluationSuite["id"]): void;
 }
 
 function newPrompt(): PromptTemplateMessages {
@@ -71,6 +75,8 @@ export function ProjectTemplatesPane({
   onArchive,
   onRestore,
   onInsert,
+  compatibleEvaluationSuitesByTemplate = new Map(),
+  onEvaluateRevision,
 }: ProjectTemplatesPaneProps) {
   const activeTemplates = templates.filter(({ archivedAt }) => !archivedAt);
   const archivedTemplates = templates.filter(({ archivedAt }) => archivedAt);
@@ -85,6 +91,12 @@ export function ProjectTemplatesPane({
   const initialRevision = selected ? currentRevision(selected) : undefined;
   const [viewedRevisionId, setViewedRevisionId] =
     useState<PromptTemplateRevisionId | undefined>(initialRevision?.id);
+  const [candidateSourceRevisionId, setCandidateSourceRevisionId] =
+    useState<PromptTemplateRevisionId | undefined>();
+  const [comparedRevisionId, setComparedRevisionId] =
+    useState<PromptTemplateRevisionId | undefined>(
+      selected?.revisions[selected.revisions.indexOf(initialRevision!) - 1]?.id,
+    );
   const [name, setName] = useState(selected?.name ?? "");
   const [messages, setMessages] = useState<PromptTemplateMessages>(
     initialRevision ? structuredClone(initialRevision.messages) : newPrompt(),
@@ -112,15 +124,25 @@ export function ProjectTemplatesPane({
   const [n8nPasteTarget, setN8nPasteTarget] = useState<undefined | {
     messageIndex: number; start: number; end: number; source: string; pastedSource?: string; revisionId?: PromptTemplateRevisionId; textarea: HTMLTextAreaElement; automatic: boolean;
   }>();
+  const [evaluateRequest, setEvaluateRequest] = useState<undefined | { templateId: PromptTemplateId; revisionId: PromptTemplateRevisionId }>();
 
   const viewedRevision = selected?.revisions.find(
     ({ id }) => id === viewedRevisionId,
   ) ?? initialRevision;
+  const compatibleEvaluationSuites = selected
+    ? compatibleEvaluationSuitesByTemplate.get(selected.id) ?? []
+    : [];
   const archived = Boolean(selected?.archivedAt);
   const readOnly = Boolean(
     selected &&
-      (archived || viewedRevision?.id !== selected.currentRevisionId),
+      (archived || (viewedRevision?.id !== selected.currentRevisionId && !candidateSourceRevisionId)),
   );
+  const comparedRevision = selected?.revisions.find(
+    ({ id }) => id === comparedRevisionId,
+  );
+  const revisionDiff = viewedRevision && comparedRevision
+    ? diffPromptTemplateRevisions(comparedRevision, viewedRevision)
+    : undefined;
   const discovery = useMemo(
     () => discoverTemplateVariables(messages),
     [messages],
@@ -167,6 +189,8 @@ export function ProjectTemplatesPane({
     const revision = currentRevision(template);
     setSelectedId(template.id);
     setViewedRevisionId(revision.id);
+    setCandidateSourceRevisionId(undefined);
+    setComparedRevisionId(template.revisions.at(-2)?.id);
     setName(template.name);
     setMessages(structuredClone(revision.messages));
     setDefaults({ ...revision.variableDefaults });
@@ -189,6 +213,10 @@ export function ProjectTemplatesPane({
     const revision = selected.revisions.find(({ id }) => id === revisionId);
     if (!revision) return;
     setViewedRevisionId(revision.id);
+    setCandidateSourceRevisionId(undefined);
+    setComparedRevisionId(
+      selected.revisions[selected.revisions.indexOf(revision) - 1]?.id,
+    );
     setMessages(structuredClone(revision.messages));
     setDefaults({ ...revision.variableDefaults });
   }
@@ -199,6 +227,8 @@ export function ProjectTemplatesPane({
     setLibraryView("active");
     setSelectedId(id);
     setViewedRevisionId(undefined);
+    setCandidateSourceRevisionId(undefined);
+    setComparedRevisionId(undefined);
     setName("Untitled prompt");
     setMessages(structuredClone(messages));
     setDefaults({});
@@ -357,7 +387,26 @@ export function ProjectTemplatesPane({
                 ) : (
                   <>
                     {readOnly ? (
-                      <span className="provider-pill">Read-only revision</span>
+                      <>
+                        <span className="provider-pill">Read-only revision</span>
+                        <div className="template-revision-edit-action">
+                          <button
+                            className="button secondary"
+                            type="button"
+                            onClick={() => {
+                              setCandidateSourceRevisionId(viewedRevision.id);
+                              setMessages(structuredClone(viewedRevision.messages));
+                              setDefaults({ ...viewedRevision.variableDefaults });
+                            }}
+                          >
+                            Edit as new revision
+                          </button>
+                          <small>
+                            Copies this revision into an editable draft. Nothing
+                            changes until you save.
+                          </small>
+                        </div>
+                      </>
                     ) : (
                       <button
                         className="button primary"
@@ -367,9 +416,8 @@ export function ProjectTemplatesPane({
                           sensitiveVariables.length > 0
                         }
                         type="button"
-                        onClick={() =>
-                          setViewedRevisionId(
-                            onSave(
+                        onClick={() => {
+                          const saved = onSave(
                               selected.id,
                               name,
                               messages,
@@ -388,13 +436,24 @@ export function ProjectTemplatesPane({
                                     model: recommendedModel.trim(),
                                   }
                                 : undefined,
-                            ),
-                          )
-                        }
+                            );
+                          setCandidateSourceRevisionId(undefined);
+                          setViewedRevisionId(saved);
+                          setComparedRevisionId(viewedRevision.id);
+                        }}
                       >
                         Save prompt
                       </button>
                     )}
+                    {!archived && viewedRevision && onEvaluateRevision && <button
+                      className="button secondary"
+                      type="button"
+                      onClick={() => {
+                        setEvaluateRequest({ templateId: selected.id, revisionId: viewedRevision.id });
+                      }}
+                    >
+                      Evaluate this revision…
+                    </button>}
                     <button
                       className="button secondary"
                       type="button"
@@ -552,6 +611,38 @@ export function ProjectTemplatesPane({
               </aside>
             </div>
 
+            <section className="template-revision-diff" aria-label="Revision diff">
+              <div className="template-revision-diff-heading">
+                <div>
+                  <span className="eyebrow">Revision history</span>
+                  <h3>Revision diff</h3>
+                </div>
+                <label>
+                  Compare this revision with
+                  <select
+                    value={comparedRevision?.id ?? ""}
+                    disabled={selected.revisions.length < 2}
+                    onChange={(event) =>
+                      setComparedRevisionId(event.target.value as PromptTemplateRevisionId)
+                    }
+                  >
+                    {selected.revisions.filter(({ id }) => id !== viewedRevision.id).map((revision) => (
+                      <option key={revision.id} value={revision.id}>
+                        Revision {selected.revisions.indexOf(revision) + 1}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              {!revisionDiff ? (
+                <p className="template-empty">Save another revision to compare this prompt’s message and default history.</p>
+              ) : revisionDiff.identical ? (
+                <p className="template-empty">These revisions have identical messages, defaults, and import provenance.</p>
+              ) : (
+                <RevisionDiffView diff={revisionDiff} />
+              )}
+            </section>
+
             {!archived && <footer className="template-insert-bar">
               <span className="template-insert-label">Pin into the conversation</span>
               <label>
@@ -589,8 +680,38 @@ export function ProjectTemplatesPane({
         onInsert={insertAtN8nPasteTarget}
         onPasteUnchanged={() => insertAtN8nPasteTarget(n8nPasteTarget.pastedSource ?? n8nPasteTarget.source.slice(n8nPasteTarget.start, n8nPasteTarget.end))}
       />}
+      {evaluateRequest && <div aria-label="Evaluate prompt revision" aria-modal="true" className="confirmation-dialog-backdrop" role="dialog">
+        <section className="confirmation-dialog">
+          <h2>Evaluate this revision</h2>
+          <p>Choose a compatible suite to keep its cases, checks, and configurations, or start a new suite. Messages will not change.</p>
+          {compatibleEvaluationSuites.length > 0 && <div className="confirmation-dialog-actions">
+            {compatibleEvaluationSuites.map((suite) => <button className="button secondary" key={suite.id} type="button" onClick={() => { onEvaluateRevision?.(evaluateRequest.templateId, evaluateRequest.revisionId, suite.id); setEvaluateRequest(undefined); }}>Use {suite.name}</button>)}
+          </div>}
+          <div className="confirmation-dialog-actions"><button className="button primary" type="button" onClick={() => { onEvaluateRevision?.(evaluateRequest.templateId, evaluateRequest.revisionId); setEvaluateRequest(undefined); }}>Create new suite</button><button className="button secondary" type="button" onClick={() => setEvaluateRequest(undefined)}>Cancel</button></div>
+        </section>
+      </div>}
     </div>
   );
+}
+
+function RevisionDiffView({ diff }: { diff: ReturnType<typeof diffPromptTemplateRevisions> }) {
+  const changedMessages = diff.messages.filter(({ status }) => status !== "identical");
+  const changedDefaults = diff.variableDefaults.filter(({ status }) => status !== "identical");
+  return <div className="template-revision-diff-body">
+    {changedMessages.length > 0 && <section>
+      <h4>Messages</h4>
+      {changedMessages.map((message) => <details className="template-diff-message" key={message.index} open>
+        <summary>Message {message.index + 1} · {message.status}{message.roleChanged ? ` · ${message.before!.role} → ${message.after!.role}` : ""}</summary>
+        {message.content.truncated && <p className="diff-warning">This message exceeded the 4,000-line limit. Showing a whole-block replacement.</p>}
+        <pre className="diff-code">{message.content.lines.map((line, index) => <span className={`diff-line ${line.kind}`} key={`${line.kind}-${index}`}><span className="diff-gutter" aria-hidden="true">{line.kind === "added" ? "+" : line.kind === "removed" ? "−" : " "}</span><span>{line.text || " "}</span></span>)}</pre>
+      </details>)}
+    </section>}
+    {changedDefaults.length > 0 && <section>
+      <h4>Variable defaults</h4>
+      <ul className="template-diff-defaults">{changedDefaults.map((value) => <li key={value.name}><code>{`{{${value.name}}}`}</code> · {value.status}<span>{value.before ?? "No default"} → {value.after ?? "No default"}</span></li>)}</ul>
+    </section>}
+    {diff.importProvenance.status !== "identical" && <p className="template-diff-provenance">Import provenance {diff.importProvenance.status}: {diff.importProvenance.beforePresent ? "imported" : "not imported"} → {diff.importProvenance.afterPresent ? "imported" : "not imported"}.</p>}
+  </div>;
 }
 
 function TemplateMessagesEditor({

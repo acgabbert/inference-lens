@@ -34,7 +34,10 @@ import { describeConversationRevisions } from "../../packages/core/src/conversat
 import type { ConversationRevisionDescriptor } from "../../packages/core/src/conversation-revision-description";
 import { resolveEvaluationCase } from "../../packages/core/src/evaluation-case-resolution";
 import type { EvaluationCaseResolution } from "../../packages/core/src/evaluation-case-resolution";
-import { ProjectValidationError } from "../../packages/core/src/project";
+import {
+  ProjectValidationError,
+  retargetPromptTemplateUseRevision,
+} from "../../packages/core/src/project";
 import type { EvaluationSuite, ProjectFile } from "../../packages/core/src/project";
 import type { EvaluationVariant } from "../../packages/core/src/evaluation-suites";
 import type {
@@ -45,6 +48,8 @@ import type {
   EvaluationSuiteId,
   EvaluationVariantId,
   PromptTemplateId,
+  PromptTemplateRevisionId,
+  PromptTemplateUseId,
   ToolId,
 } from "../../packages/core/src/run-kernel";
 import { normalizedTurnCeiling } from "../../packages/core/src/turn-ceiling";
@@ -92,6 +97,10 @@ export interface EvaluationSuiteAuthoringHandle {
    * project mutation is rejected.
    */
   startFromSavedPrompt(templateId: PromptTemplateId): boolean;
+  /** Retargets the selected suite to a child revision pinned to this prompt's current revision. */
+  useCurrentPromptRevision(templateUseId: PromptTemplateUseId): boolean;
+  /** Opens a prompt revision in a compatible suite, or creates a new suite for it. */
+  evaluatePromptRevision(templateId: PromptTemplateId, templateRevisionId: PromptTemplateRevisionId, suiteId?: EvaluationSuiteId): boolean;
   selectSuite(id: EvaluationSuiteId): void;
   selectRevision(id: ConversationRevisionId): void;
   setCaseSelected(id: EvaluationCaseId, selected: boolean): void;
@@ -329,6 +338,68 @@ export function useEvaluationSuiteAuthoring({
     }
   }
 
+  function useCurrentPromptRevision(templateUseId: PromptTemplateUseId): boolean {
+    if (!project || !effectiveSuiteId || !effectiveRevisionId) return false;
+    const revision = project.conversationRevisions.find(({ id }) => id === effectiveRevisionId);
+    const item = revision?.items.find(
+      (candidate) => candidate.kind === "template-use" && candidate.use.id === templateUseId,
+    );
+    const template = item && item.kind === "template-use"
+      ? project.promptTemplates.find(({ id }) => id === item.use.templateId)
+      : undefined;
+    if (!item || item.kind !== "template-use" || !template) {
+      setStoredPromptError({ projectId: project.projectId, message: "That prompt use is no longer available in this evaluation input." });
+      return false;
+    }
+    try {
+      const retargeted = retargetPromptTemplateUseRevision(project, {
+        parentRevisionId: effectiveRevisionId,
+        templateUseId,
+        templateRevisionId: template.currentRevisionId,
+      });
+      adoptProjectMutation(updateEvaluationSuiteInput(retargeted.project, effectiveSuiteId, retargeted.conversationRevisionId));
+      setStoredPromptError(undefined);
+      return true;
+    } catch (cause) {
+      setStoredPromptError({ projectId: project.projectId, message: mutationErrorMessage(cause) });
+      return false;
+    }
+  }
+
+  function evaluatePromptRevision(templateId: PromptTemplateId, templateRevisionId: PromptTemplateRevisionId, requestedSuiteId?: EvaluationSuiteId): boolean {
+    if (!project) return false;
+    try {
+      const requestedSuite = requestedSuiteId && project.evaluationSuites.find(({ id }) => id === requestedSuiteId);
+      if (requestedSuite) {
+        const parentRevisionId = requestedSuite.input.conversationRevisionId;
+        const parent = project.conversationRevisions.find(({ id }) => id === parentRevisionId);
+        const use = parent?.items.find((item) => item.kind === "template-use" && item.use.templateId === templateId);
+        if (!use || use.kind !== "template-use") throw new Error("That suite does not use this saved prompt in its selected input.");
+        const retargeted = retargetPromptTemplateUseRevision(project, {
+          parentRevisionId,
+          templateUseId: use.use.id,
+          templateRevisionId,
+        });
+        adoptProjectMutation(updateEvaluationSuiteInput(retargeted.project, requestedSuite.id, retargeted.conversationRevisionId));
+        setSuiteId(requestedSuite.id);
+      } else {
+        const createdSuite = createEvaluationSuite(project, "Evaluation from prompt");
+        const createdInput = createRevisionFromSavedPrompt(createdSuite.project, {
+          parentRevisionId: project.defaults.conversationRevisionId,
+          templateId,
+          templateRevisionId,
+        });
+        adoptProjectMutation(updateEvaluationSuiteInput(createdInput.project, createdSuite.suiteId, createdInput.conversationRevisionId));
+        setSuiteId(createdSuite.suiteId);
+      }
+      setSelection(undefined); setVariantSelection(undefined); setFocusedCaseId(undefined); setStoredPromptError(undefined);
+      return true;
+    } catch (cause) {
+      setStoredPromptError({ projectId: project.projectId, message: mutationErrorMessage(cause) });
+      return false;
+    }
+  }
+
   return {
     project,
     ...(effectiveSuiteId ? { suiteId: effectiveSuiteId } : {}),
@@ -349,6 +420,8 @@ export function useEvaluationSuiteAuthoring({
     openSavedPromptPicker() { setStoredPromptError(undefined); setSavedPromptPickerOpen(true); },
     closeSavedPromptPicker() { setSavedPromptPickerOpen(false); setStoredPromptError(undefined); },
     startFromSavedPrompt,
+    useCurrentPromptRevision,
+    evaluatePromptRevision,
     selectSuite(id) {
       setSuiteId(id); setFocusedCaseId(undefined); setSelection(undefined); setStoredError(undefined);
     },
