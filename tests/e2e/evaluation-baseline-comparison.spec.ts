@@ -213,7 +213,7 @@ test("a pinned baseline separates a regression from a fix and names the drift", 
   await pinBaseline(page);
 
   const candidate = entry(page, "candidate-model");
-  await candidate.getByLabel("Compare against baseline").selectOption({ label: "Before the model swap" });
+  await candidate.getByLabel("Compare against baseline").selectOption({ label: "Before the model swap · Default" });
   await candidate.getByRole("button", { name: "Compare" }).click();
 
   const comparison = page.getByRole("region", { name: "Evaluation comparison" });
@@ -256,7 +256,7 @@ test("a repetition-two regression opens paired evidence, returns to it, and prom
   await openFixtureProject(page);
   await pinBaseline(page);
   const candidate = entry(page, "candidate-model");
-  await candidate.getByLabel("Compare against baseline").selectOption({ label: "Before the model swap" });
+  await candidate.getByLabel("Compare against baseline").selectOption({ label: "Before the model swap · Default" });
   await candidate.getByRole("button", { name: "Compare" }).click();
 
   const comparison = page.getByRole("region", { name: "Evaluation comparison" });
@@ -265,15 +265,15 @@ test("a repetition-two regression opens paired evidence, returns to it, and prom
   await expect(detail.getByRole("button", { name: /Repetition 2 · regressed/ })).toHaveAttribute("aria-pressed", "true");
 
   await detail.getByRole("button", { name: "Open baseline trace" }).click();
-  await expect(page.getByText("Database migrations need a plan.")).toBeVisible();
-  await page.getByRole("button", { name: "Run details" }).click();
+  await expect(page.getByText("Database migrations need a plan.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Run details", exact: true }).click();
   await expect(comparison).toBeVisible();
   await expect(comparison.getByRole("button", { name: "Mentions migrations" })).toHaveAttribute("aria-expanded", "true");
   await expect(comparison.getByRole("button", { name: /Repetition 2 · regressed/ })).toHaveAttribute("aria-pressed", "true");
 
   await comparison.locator(".evaluation-comparison-detail").getByRole("button", { name: "Open candidate trace" }).click();
-  await expect(page.getByText("Take a backup.")).toBeVisible();
-  await page.getByRole("button", { name: "Run details" }).click();
+  await expect(page.getByText("Take a backup.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Run details", exact: true }).click();
   await expect(comparison).toBeVisible();
 
   await comparison.locator(".evaluation-comparison-detail").getByRole("button", { name: "Promote candidate input to case…" }).click();
@@ -288,7 +288,7 @@ test("a case whose trace is missing is reported, not dropped from the comparison
   await pinBaseline(page);
 
   const partial = entry(page, "partial-model");
-  await partial.getByLabel("Compare against baseline").selectOption({ label: "Before the model swap" });
+  await partial.getByLabel("Compare against baseline").selectOption({ label: "Before the model swap · Default" });
   await partial.getByRole("button", { name: "Compare" }).click();
 
   const comparison = page.getByRole("region", { name: "Evaluation comparison" });
