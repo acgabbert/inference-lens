@@ -725,7 +725,9 @@ fn read_evaluation_case_sources(
     match fs::read_to_string(&path) {
         Ok(contents) => Ok(Some(contents)),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(format!("Could not read {EVALUATION_CASE_SOURCES_FILE_NAME}: {error}")),
+        Err(error) => Err(format!(
+            "Could not read {EVALUATION_CASE_SOURCES_FILE_NAME}: {error}"
+        )),
     }
 }
 
