@@ -640,6 +640,26 @@ label.file-button {
   padding: 0;
 }
 
+.project-connection-mappings {
+  display: grid;
+  gap: 8px;
+  margin: -7px 0 17px;
+}
+
+.project-connection-mappings > small {
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.project-connection-mappings .connection-mapping {
+  margin: 0;
+}
+
+.project-connection-mappings label,
+.project-connection-mappings select {
+  width: 100%;
+}
+
 .model-combobox {
   position: relative;
 }
@@ -6782,6 +6802,29 @@ main {
   margin: 0;
 }
 
+.evaluation-configuration-preview {
+  display: grid;
+  gap: 7px;
+}
+
+.evaluation-configuration-preview + .evaluation-configuration-preview {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.evaluation-configuration-targets {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text-muted);
+}
+
+.evaluation-configuration-targets li {
+  overflow-wrap: anywhere;
+}
+
 /* A pill has to be able to shrink and wrap. Endpoints are the long value here
    and the column is narrow, so without this one URL runs past the panel edge
    and is clipped rather than read — which is the one fact in this list nobody
@@ -7732,7 +7775,8 @@ main {
   transform: rotate(180deg);
 }
 
-.evaluation-check-card {
+.evaluation-check-card,
+.evaluation-configuration-card {
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -7742,7 +7786,8 @@ main {
   padding: 12px;
 }
 
-.evaluation-check-card label {
+.evaluation-check-card label,
+.evaluation-configuration-card label {
   display: flex;
   flex-direction: column;
   gap: 5px;

@@ -58,6 +58,7 @@ function projectWithSuite() {
         toolIds: [],
       },
       inputBindings: [],
+      variants: [{ id: "evaluation-variant_default", name: "Default", overrides: {} }],
       cases: [
         {
           id: "evaluation-case_migrations",
@@ -129,7 +130,7 @@ function historyFixture() {
     return { fileName: `${state.runId}.json`, contents: serializeRunTrace(createRunTrace(state)) };
   });
   const result: ExperimentResultV3 = {
-    schemaVersion: 3,
+    schemaVersion: 4,
     experimentId: plan.experimentId,
     status: "completed",
     endedAt: "2026-08-02T12:01:00.000Z",

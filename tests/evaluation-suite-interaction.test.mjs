@@ -43,7 +43,7 @@ test("shutting the setup band hides its controls and keeps every fact a start de
     const header = container.querySelector(".evaluation-preflight").parentElement;
     assert.match(header.textContent, /1 setup issue/);
     assert.match(header.textContent, /Selected revision no longer has topic/);
-    assert.match(header.textContent, /1 selected/);
+    assert.match(header.textContent, /1 case × 1 configuration × 3 reps/);
     assert.match(header.textContent, /3 runs/);
     // The Start button is the topbar's. What the band owes it is the reason,
     // in visible text, with an id the disabled button can point at.

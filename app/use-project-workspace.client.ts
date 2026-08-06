@@ -27,8 +27,9 @@ import type {
 } from "./project-workspace.client.ts";
 import {
   prunedProjectProfileMap,
+  readLegacyProjectProfileMap,
   readProjectProfileMap,
-  resolveMappedProfile,
+  resolveMappedProfiles,
   withMappedProfile,
   withoutMappedProfile,
   writeProjectProfileMap,
@@ -51,7 +52,8 @@ export interface ProjectWorkspaceHandleState {
   projectDirty: boolean;
   projectError?: string;
   projectErrorKind?: ProjectErrorKind;
-  mappedProfileId?: string;
+  /** Device-local profile ids keyed by portable connection requirement id. */
+  mappedProfileIds: Readonly<Record<string, string>>;
   markDirty(): void;
   setError(message: string | undefined, options?: { clearKind?: boolean }): void;
   clearErrorKind(): void;
@@ -62,8 +64,7 @@ export interface ProjectWorkspaceHandleState {
   currentProjectDocument(): ProjectFile;
   materializeProject(): ProjectFile;
   adoptProjectMutation(project: ProjectFile): void;
-  mapProfile(profile: ProfileIdentity): void;
-  mapActiveProfile(): void;
+  mapProfile(requirementId: string, profile: ProfileIdentity): void;
   unmapProfile(profileId: string): void;
   newProjectFolder(options: ProjectCreationOptions): Promise<void>;
   openProjectWorkspace(): Promise<void>;
@@ -117,7 +118,7 @@ export function useProjectWorkspace(input: {
   const [projectError, setProjectError] = useState<string>();
   const [projectErrorKind, setProjectErrorKind] = useState<ProjectErrorKind>();
   const projectErrorKindRef = useRef<ProjectErrorKind | undefined>(undefined);
-  const [mappedProfileId, setMappedProfileId] = useState<string>();
+  const [mappedProfileIds, setMappedProfileIds] = useState<Record<string, string>>({});
   const [projectChangeVersion, setProjectChangeVersion] = useState(0);
   const projectChangeVersionRef = useRef(0);
   const projectWorkspaceRef = useRef<ProjectWorkspaceHandle | null>(null);
@@ -223,8 +224,9 @@ export function useProjectWorkspace(input: {
     advanceProjectChangeVersion();
     setProjectFile(project);
     setCurrentWorkspace(null);
-    setMappedProfileId(activeProfile.id);
-    rememberMappedProfile(project.projectId, activeProfile);
+    const requirementId = project.defaults.target.connectionRequirementId;
+    setMappedProfileIds({ [requirementId]: activeProfile.id });
+    rememberMappedProfile(project.projectId, requirementId, activeProfile);
     setProjectDirty(true);
     dismissError();
     return project;
@@ -244,12 +246,14 @@ export function useProjectWorkspace(input: {
    */
   function rememberMappedProfile(
     projectId: string,
+    requirementId: string,
     profile: ProfileIdentity,
   ): void {
     writeProjectProfileMap(
       withMappedProfile(
         prunedProjectProfileMap(readProjectProfileMap(), profilesRef.current),
         projectId,
+        requirementId,
         profile,
       ),
     );
@@ -259,24 +263,34 @@ export function useProjectWorkspace(input: {
     return profilesRef.current.find(({ id }) => id === profileId);
   }
 
-  function storedMappedProfile(project: ProjectFile): string | undefined {
-    return resolveMappedProfile(
-      readProjectProfileMap(),
+  function storedMappedProfiles(project: ProjectFile): Record<string, string> {
+    let map = readProjectProfileMap();
+    const baseRequirementId = project.defaults.target.connectionRequirementId;
+    // V2 had one project-wide mapping. Its only sound destination is the base
+    // requirement that all pre-variant execution used. Other requirements stay
+    // explicitly unmapped.
+    if (!map[project.projectId]?.[baseRequirementId]) {
+      const legacy = readLegacyProjectProfileMap()[project.projectId];
+      if (legacy) {
+        map = withMappedProfile(map, project.projectId, baseRequirementId, {
+          id: legacy.profileId,
+          instanceId: legacy.profileInstanceId,
+        });
+        writeProjectProfileMap(map);
+      }
+    }
+    return resolveMappedProfiles(
+      map,
       project.projectId,
       profilesRef.current,
     );
   }
 
-  function mapProfile(profile: ProfileIdentity): void {
+  function mapProfile(requirementId: string, profile: ProfileIdentity): void {
     if (!projectFile) return;
-    setMappedProfileId(profile.id);
-    rememberMappedProfile(projectFile.projectId, profile);
-  }
-
-  function mapActiveProfile(): void {
-    if (!projectFile) return;
-    setMappedProfileId(activeProfile.id);
-    rememberMappedProfile(projectFile.projectId, activeProfile);
+    if (!projectFile.connectionRequirements.some(({ id }) => id === requirementId)) return;
+    setMappedProfileIds((current) => ({ ...current, [requirementId]: profile.id }));
+    rememberMappedProfile(projectFile.projectId, requirementId, profile);
     setProjectError(undefined);
   }
 
@@ -288,9 +302,9 @@ export function useProjectWorkspace(input: {
    * of them and a stored id is never reissued.
    */
   function unmapProfile(profileId: string): void {
-    setMappedProfileId((current) =>
-      current === profileId ? undefined : current,
-    );
+    setMappedProfileIds((current) => Object.fromEntries(
+      Object.entries(current).filter(([, mappedId]) => mappedId !== profileId),
+    ));
     writeProjectProfileMap(
       withoutMappedProfile(readProjectProfileMap(), profileId),
     );
@@ -313,9 +327,12 @@ export function useProjectWorkspace(input: {
     profileId?: string,
   ): void {
     const draft = projectDraft(project);
-    const resolvedProfileId = profileId ?? storedMappedProfile(project);
-    const resolvedProfile = resolvedProfileId
-      ? profileIdentity(resolvedProfileId)
+    const baseRequirementId = project.defaults.target.connectionRequirementId;
+    const resolvedMappings = profileId
+      ? { ...storedMappedProfiles(project), [baseRequirementId]: profileId }
+      : storedMappedProfiles(project);
+    const resolvedProfile = resolvedMappings[baseRequirementId]
+      ? profileIdentity(resolvedMappings[baseRequirementId]!)
       : undefined;
     // Profile selection is part of adopting the project, not a later effect.
     // React batches the two state owners into the same committed render.
@@ -326,9 +343,9 @@ export function useProjectWorkspace(input: {
     setCurrentWorkspace(workspace);
     onApplyDraft(draft);
     if (profileId && resolvedProfile) {
-      rememberMappedProfile(project.projectId, resolvedProfile);
+      rememberMappedProfile(project.projectId, baseRequirementId, resolvedProfile);
     }
-    setMappedProfileId(resolvedProfile?.id);
+    setMappedProfileIds(resolvedMappings);
     setProjectDirty(false);
     dismissError();
   }
@@ -520,7 +537,7 @@ export function useProjectWorkspace(input: {
           applyProjectDocument(
             opened.project,
             opened.handle,
-            mappedProfileId ?? activeProfile.id,
+            mappedProfileIds[project.defaults.target.connectionRequirementId] ?? activeProfile.id,
           );
         }
         return;
@@ -562,7 +579,7 @@ export function useProjectWorkspace(input: {
     projectDirty,
     projectError,
     projectErrorKind,
-    mappedProfileId,
+    mappedProfileIds,
     markDirty,
     setError,
     clearErrorKind,
@@ -574,7 +591,6 @@ export function useProjectWorkspace(input: {
     materializeProject,
     adoptProjectMutation,
     mapProfile,
-    mapActiveProfile,
     unmapProfile,
     newProjectFolder,
     openProjectWorkspace,

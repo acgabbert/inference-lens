@@ -5,6 +5,7 @@ import type {
   EvaluationCaseId,
   EvaluationInputBindingId,
   EvaluationSuiteId,
+  EvaluationVariantId,
   PromptTemplateUseId,
   InferenceOptions,
   ToolId,
@@ -31,6 +32,54 @@ export interface EvaluationCase {
   values: Record<EvaluationInputBindingId, string>;
   checks: CheckDefinition[];
   referenceAnswer?: string;
+}
+
+/** Sparse portable changes to a suite's base execution configuration. */
+export interface EvaluationVariant {
+  id: EvaluationVariantId;
+  name: string;
+  overrides: {
+    target?: Partial<Pick<EvaluationSuite["execution"]["target"], "connectionRequirementId" | "model">>;
+    responseMode?: EvaluationSuite["execution"]["responseMode"];
+    options?: {
+      temperature?: number | null;
+      maxOutputTokens?: number | null;
+      seed?: number | null;
+      stop?: string[] | null;
+      providerOptions?: InferenceOptions["providerOptions"] | null;
+    };
+  };
+}
+
+export type ResolvedEvaluationVariantExecution = Pick<EvaluationSuite["execution"], "target" | "responseMode" | "options">;
+
+/**
+ * Resolves the one-level sparse override contract. Option fields inherit
+ * individually; a present providerOptions object replaces the base object.
+ */
+export function resolveEvaluationVariant(
+  suite: Pick<EvaluationSuite, "execution">,
+  variant: EvaluationVariant,
+): ResolvedEvaluationVariantExecution {
+  const optionOverrides = variant.overrides.options ?? {};
+  const resolveOption = <Key extends keyof InferenceOptions>(key: Key) => {
+    const value = optionOverrides[key];
+    return value === null ? undefined : value ?? suite.execution.options[key];
+  };
+  return {
+    target: {
+      connectionRequirementId: variant.overrides.target?.connectionRequirementId ?? suite.execution.target.connectionRequirementId,
+      model: variant.overrides.target?.model ?? suite.execution.target.model,
+    },
+    responseMode: variant.overrides.responseMode ?? suite.execution.responseMode,
+    options: {
+      ...(resolveOption("temperature") === undefined ? {} : { temperature: resolveOption("temperature") }),
+      ...(resolveOption("maxOutputTokens") === undefined ? {} : { maxOutputTokens: resolveOption("maxOutputTokens") }),
+      ...(resolveOption("seed") === undefined ? {} : { seed: resolveOption("seed") }),
+      ...(resolveOption("stop") === undefined ? {} : { stop: structuredClone(resolveOption("stop")) }),
+      ...(resolveOption("providerOptions") === undefined ? {} : { providerOptions: structuredClone(resolveOption("providerOptions")) }),
+    },
+  };
 }
 
 /** Authored, provider-neutral evaluation content. */
@@ -66,6 +115,8 @@ export interface EvaluationSuite {
      */
     turnCeiling?: number;
   };
+  /** At least one named configuration; the base execution remains the editing anchor. */
+  variants: EvaluationVariant[];
   inputBindings: EvaluationInputBinding[];
   cases: EvaluationCase[];
 }

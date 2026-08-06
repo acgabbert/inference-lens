@@ -12,7 +12,7 @@ import type { ProjectWorkspaceHandle } from "../app/project-workspace.client.ts"
 
 function plan(count: number): RepeatedExperimentPlanV3 {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     experimentId: "experiment_controller",
     kind: "repeated-request",
     createdAt: "2026-07-30T12:00:00.000Z",
@@ -80,6 +80,10 @@ const weatherTool = {
 function toolPlan(count: number, turnCeiling?: number): RepeatedExperimentPlanV3 {
   const frozen = plan(count);
   frozen.commonInput.tools = [weatherTool];
+  frozen.commonInput.target.capabilities = {
+    ...frozen.commonInput.target.capabilities,
+    tools: true,
+  };
   if (turnCeiling !== undefined) frozen.turnCeiling = turnCeiling;
   return frozen;
 }
@@ -171,11 +175,11 @@ test("finalizes a retryable failure and continues later cells", async () => {
   assert.equal(traces[1]?.turns[0]?.attempts.length, 1);
 });
 
-test("continues after credential failures before and after an earlier terminal cell", async () => {
+test("refuses the whole batch when credential preflight fails", async () => {
   let credentialAttempt = 0;
   const started: string[] = [];
   const traces: RunTrace[] = [];
-  const result = await new SequentialExperimentController({
+  await assert.rejects(() => new SequentialExperimentController({
     plan: plan(3),
     transport: transportFor((runId) => events(completed(runId)), started),
     async prepareCredential() {
@@ -184,11 +188,10 @@ test("continues after credential failures before and after an earlier terminal c
       return { kind: "none" };
     },
     onTerminalTrace(trace) { traces.push(trace); },
-  }).run();
+  }).run(), /Credential unavailable/);
 
-  assert.deepEqual(started, ["run_2"]);
-  assert.deepEqual(result.cells.map(({ status }) => status), ["failed", "completed", "failed"]);
-  assert.deepEqual(traces.map((trace) => trace.status.kind), ["failed", "completed", "failed"]);
+  assert.deepEqual(started, []);
+  assert.deepEqual(traces, []);
 });
 
 test("cancels a streamed cell, preserves its ordinary trace, and marks later cells not run", async () => {

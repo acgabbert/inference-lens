@@ -192,21 +192,23 @@ function ExecutionSettingsRegion({ preview, caseName, toolNames }: {
   /** Exactly the descriptors this suite's plan will snapshot, in project order. */
   toolNames: readonly string[];
 }) {
-  const options = inferenceOptionRows(preview.options);
   return (
     <section className="evaluation-preflight-region" aria-label={`Execution settings for ${caseName}`}>
       <h5>Execution settings</h5>
-      <dl className="evaluation-provider-settings">
-        <div><dt>Connection</dt><dd>{preview.targetName}</dd></div>
-        <div><dt>Endpoint</dt><dd><code>{preview.endpoint || "Not set"}</code></dd></div>
-        <div><dt>Protocol</dt><dd>{preview.protocol}</dd></div>
-        <div><dt>Model</dt><dd>{preview.model || "Not set"}</dd></div>
-        <div><dt>Delivery</dt><dd>{preview.responseMode === "streaming" ? "Streaming" : "Buffered"}</dd></div>
-        {options.map(({ label, value }) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
-        {/* The suite's own exposure, not the composer's: a tool switched on in
-            Messages neither travels with this plan nor blocks this run. */}
-        <div><dt>Tools</dt><dd>{toolNames.length === 0 ? "None" : toolNames.join(", ")}</dd></div>
-      </dl>
+      {preview.targets.map((target) => <div className="evaluation-configuration-preview" key={target.variantId}>
+        <strong>{target.variantName}</strong>
+        <dl className="evaluation-provider-settings">
+          <div><dt>Connection</dt><dd>{target.targetName ?? `Map ${target.requirementName}`}</dd></div>
+          <div><dt>Endpoint</dt><dd><code>{target.endpoint || "Not mapped"}</code></dd></div>
+          <div><dt>Protocol</dt><dd>{target.protocol}</dd></div>
+          <div><dt>Model</dt><dd>{target.model || "Not set"}</dd></div>
+          <div><dt>Delivery</dt><dd>{target.responseMode === "streaming" ? "Streaming" : "Buffered"}</dd></div>
+          {inferenceOptionRows(target.options).map(({ label, value }) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
+          {/* The suite's own exposure, not the composer's: a tool switched on in
+              Messages neither travels with this plan nor blocks this run. */}
+          <div><dt>Tools</dt><dd>{toolNames.length === 0 ? "None" : toolNames.join(", ")}</dd></div>
+        </dl>
+      </div>)}
     </section>
   );
 }
@@ -231,10 +233,11 @@ export function EvaluationCasePreview({ evaluationCase, authoring, execution }: 
   const descriptor = authoring.selectedRevision;
   if (!project || !suite || !revision || !resolution) return null;
 
-  const advisories = execution?.preview
+  const firstTarget = execution?.preview?.targets[0];
+  const advisories = firstTarget
     ? promptTargetAdvisories(project, revision, {
         connectionRequirementId: suite.execution.target.connectionRequirementId,
-        model: execution.preview.model,
+        model: firstTarget.model,
       })
     : undefined;
 
@@ -292,9 +295,9 @@ export function EvaluationPreviewWorkspace({ authoring, execution }: {
         {focusedCase && (
           <div className="result-header-controls">
             <span className="evaluation-preview-case">{focusedCase.name}</span>
-            {execution?.preview && (
+            {execution?.preview?.targets[0] && (
               <span className="evaluation-provider-target">
-                {execution.preview.targetName} · {execution.preview.model}
+                {execution.preview.targets.length} {execution.preview.targets.length === 1 ? "configuration" : "configurations"} · {execution.preview.targets.map(({ model }) => model).join(", ")}
               </span>
             )}
           </div>

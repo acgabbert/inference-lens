@@ -1,7 +1,7 @@
 export function evaluationFixture() {
   const noop = () => {};
   const project = {
-    schemaVersion: 9,
+    schemaVersion: 10,
     tools: [],
     defaults: {
       conversationRevisionId: "revision_current",
@@ -27,6 +27,7 @@ export function evaluationFixture() {
         repetitions: 3,
         toolIds: [],
       },
+      variants: [{ id: "evaluation-variant_default", name: "Default", overrides: {} }],
       inputBindings: [{ id: "evaluation-input_topic", name: "Topic", target: { kind: "template-variable", templateUseId: "template-use_question", variableName: "topic" } }],
       cases: [{ id: "evaluation-case_migrations", name: "Migrations", values: { "evaluation-input_topic": "database migrations" }, referenceAnswer: "Explain a safe rollout.", checks: [{ checkId: "check_contains", kind: "contains", value: "rollback" }] }],
     }],
@@ -57,6 +58,7 @@ export function evaluationFixture() {
     suiteId: "evaluation-suite_topics",
     revisionId: "revision_current",
     selectedCaseIds: new Set(["evaluation-case_migrations"]),
+    selectedVariantIds: new Set(["evaluation-variant_default"]),
     focusedCaseId: "evaluation-case_migrations",
     repetitions: 3,
     candidates: [{ templateUseId: "template-use_question", templateName: "Question", variableName: "audience" }],
@@ -100,9 +102,10 @@ export function evaluationFixture() {
       variables: [{ name: "topic", hasDefault: true, defaultValue: "a topic" }],
     }],
     savedPromptPickerOpen: false,
-    selectSuite: noop, selectRevision: noop, setCaseSelected: noop, focusCase: noop,
+    selectSuite: noop, selectRevision: noop, setCaseSelected: noop, setVariantSelected: noop, focusCase: noop,
     setRepetitions: noop, setToolExposed: noop, setTurnCeiling: noop, updateExecution: () => true, createSuite: noop, renameSuite: noop, deleteSuite: noop,
     addInput: noop, renameInput: noop, deleteInput: noop, addCase: noop,
+    addVariant: noop, renameVariant: () => true, updateVariant: () => true, moveVariant: noop, removeVariant: noop,
     updateCase: noop, deleteCase: noop, addCheck: noop, updateCheck: noop, deleteCheck: noop,
     openSavedPromptPicker: noop, closeSavedPromptPicker: noop,
     startFromSavedPrompt: () => true,

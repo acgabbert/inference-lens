@@ -81,6 +81,7 @@ function fixtureProject(options: { mocked: boolean }): ProjectFile {
         toolIds: [TOOL_ID],
       },
       inputBindings: [],
+      variants: [{ id: "evaluation-variant_default", name: "Default", overrides: {} }],
       cases: [{
         id: "evaluation-case_chicago",
         name: "Chicago",

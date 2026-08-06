@@ -139,7 +139,7 @@ function experimentPlan(): RepeatedExperimentPlanV3 {
   const { runId: sourceRunId, ...commonInput } = input;
   assert.equal(sourceRunId, "run_workspace-experiment-source");
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     experimentId: "experiment_workspace",
     kind: "repeated-request",
     createdAt: "2026-07-30T12:00:01.000Z",
@@ -216,7 +216,7 @@ test("browser creation can deliberately leave a project visible to Git", async (
   );
 });
 
-test("opening a Project v6 workspace migrates in memory without rewriting it", async () => {
+test("opening a Project v6 workspace refuses the unsupported artifact without rewriting it", async () => {
   const writes: string[] = [];
   const directory = new MemoryDirectory("Legacy.inference-lens", writes);
   const current = project();
@@ -230,11 +230,7 @@ test("opening a Project v6 workspace migrates in memory without rewriting it", a
   manifest.contents = originalContents;
   directory.entries.set("project.json", manifest);
 
-  const opened = await withDirectoryPicker(directory, () => openProjectFolder());
-
-  assert.ok(opened);
-  assert.equal(opened.project.schemaVersion, 9);
-  assert.deepEqual(opened.project.evaluationSuites, []);
+  await assert.rejects(() => withDirectoryPicker(directory, () => openProjectFolder()), /unsupported/);
   assert.equal(manifest.contents, originalContents);
   assert.deepEqual(writes, []);
 });

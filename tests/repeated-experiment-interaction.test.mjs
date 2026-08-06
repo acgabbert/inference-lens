@@ -25,7 +25,7 @@ after(() => dom.window.close());
 
 function execution() {
   const plan = {
-    schemaVersion: 3,
+    schemaVersion: 4,
     experimentId: "experiment_interaction",
     kind: "repeated-request",
     createdAt: "2026-07-31T12:00:00.000Z",
@@ -68,7 +68,7 @@ function execution() {
     states: new Map(),
     unreadableTraces: new Map(),
     result: {
-      schemaVersion: 3,
+      schemaVersion: 4,
       experimentId: plan.experimentId,
       status: "completed",
       endedAt: "2026-07-31T12:01:00.000Z",

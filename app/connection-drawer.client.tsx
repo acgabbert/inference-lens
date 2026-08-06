@@ -65,18 +65,12 @@ interface ConnectionDrawerProps {
   deleteProfileRefusal?: string;
   onUpdateProfile(patch: StoredInferenceProfilePatch): void;
   onCapabilityChange(key: keyof ProviderCapabilities, enabled: boolean): void;
-  /** Present only while a project declares a connection to satisfy. */
-  connectionRequirement?: ConnectionRequirement;
-  /**
-   * The profile this device runs the open project against, which is not always
-   * the active one — a profile can become active without being mapped. The
-   * mapping reads as satisfied only when the two agree, the same condition the
-   * run path enforces, so the control that resolves a divergence stays offered.
-   */
-  mappedProfileId?: string;
-  onMapProfile(): void;
+  /** Portable requirements in the open project and their device-local joins. */
+  connectionRequirements?: readonly ConnectionRequirement[];
+  mappedProfileIds: Readonly<Record<string, string>>;
+  onMapProfile(requirementId: string, profileId: string): void;
   /** Re-points the project's declared connection at the mapped profile. */
-  onUpdateProjectEndpoint(): void;
+  onUpdateProjectEndpoint(requirementId: string): void;
   pendingDestination?: ReadinessDestination;
   onDestinationHandled(): void;
 }
@@ -87,71 +81,69 @@ interface ConnectionDrawerProps {
  * moved between a hosted provider and a local server is the normal case — so
  * the mismatch is reported rather than refused.
  */
-function ConnectionMapping({
-  requirement,
-  activeProfile,
-  mapped,
+function ConnectionMappings({
+  requirements,
+  profiles,
+  mappedProfileIds,
   onMapProfile,
   onUpdateProjectEndpoint,
-  mapButtonRef,
-  projectEndpointButtonRef,
+  mappingRefs,
+  endpointRefs,
 }: {
-  requirement: ConnectionRequirement;
-  activeProfile: StoredInferenceProfile;
-  mapped: boolean;
-  onMapProfile(): void;
-  onUpdateProjectEndpoint(): void;
-  mapButtonRef: RefObject<HTMLButtonElement | null>;
-  projectEndpointButtonRef: RefObject<HTMLButtonElement | null>;
+  requirements: readonly ConnectionRequirement[];
+  profiles: readonly StoredInferenceProfile[];
+  mappedProfileIds: Readonly<Record<string, string>>;
+  onMapProfile(requirementId: string, profileId: string): void;
+  onUpdateProjectEndpoint(requirementId: string): void;
+  mappingRefs: RefObject<Map<string, HTMLSelectElement>>;
+  endpointRefs: RefObject<Map<string, HTMLButtonElement>>;
 }) {
-  const profileName = activeProfile.name.trim() || "the selected profile";
-  const mismatched = !sameChatCompletionsTarget(
-    activeProfile.endpoint,
-    requirement.endpoint,
-  );
   return (
-    <div
-      className={
-        mapped && !mismatched
-          ? "connection-mapping mapped"
-          : "connection-mapping"
-      }
-    >
-      <strong>
-        {!mapped
-          ? "Connection mapping required"
-          : mismatched
-            ? "Mapped to a different endpoint"
-            : "Project connection mapped"}
-      </strong>
-      <span>
-        Project expects <code>{requirement.endpoint}</code>
-      </span>
-      {mismatched && (
-        <span>
-          {mapped ? "Requests go to" : "This profile calls"}{" "}
-          <code>{activeProfile.endpoint}</code>
-        </span>
-      )}
-      {!mapped && (
-        <button ref={mapButtonRef} className="text-button" data-readiness-control="project-mapping" type="button" onClick={onMapProfile}>
-          Use {profileName} for this project
-        </button>
-      )}
-      {/* Offered only once a profile is mapped and still disagrees. Before
-          that the mismatch may just be the wrong profile selected, and
-          rewriting the shared project file would be the wrong answer. */}
-      {mapped && mismatched && (
-        <button
-          ref={projectEndpointButtonRef}
-          className="text-button"
-          data-readiness-control="project-endpoint"
-          type="button"
-          onClick={onUpdateProjectEndpoint}
-        >
-          Update &ldquo;{requirement.name}&rdquo; to expect this endpoint
-        </button>
-      )}
+    <div className="project-connection-mappings">
+      <div className="section-heading"><span>Project mappings</span><span>{requirements.length}</span></div>
+      <small>Each portable connection requirement maps explicitly to one profile on this device.</small>
+      {requirements.map((requirement) => {
+        const mappedProfile = profiles.find(({ id }) => id === mappedProfileIds[requirement.id]);
+        const mismatched = mappedProfile
+          ? !sameChatCompletionsTarget(mappedProfile.endpoint, requirement.endpoint)
+          : false;
+        return (
+          <div className={`connection-mapping${mappedProfile && !mismatched ? " mapped" : ""}`} key={requirement.id}>
+            <strong>{!mappedProfile ? "Connection mapping required" : mismatched ? "Mapped to a different endpoint" : "Project connection mapped"}</strong>
+            <label>{requirement.name}
+              <select
+                ref={(element) => {
+                  if (element) mappingRefs.current.set(requirement.id, element);
+                  else mappingRefs.current.delete(requirement.id);
+                }}
+                aria-label={`Profile for ${requirement.name}`}
+                data-readiness-control="project-mapping"
+                value={mappedProfile?.id ?? ""}
+                onChange={(event) => onMapProfile(requirement.id, event.target.value)}
+              >
+                <option value="" disabled>Choose a local profile</option>
+                {profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name || "Untitled profile"}</option>)}
+              </select>
+            </label>
+            <span>Project expects <code>{requirement.endpoint}</code></span>
+            {mappedProfile && mismatched && <>
+              <span>Requests go to <code>{mappedProfile.endpoint}</code></span>
+              <button
+                ref={(element) => {
+                  if (element) endpointRefs.current.set(requirement.id, element);
+                  else endpointRefs.current.delete(requirement.id);
+                }}
+                className="text-button"
+                data-readiness-control="project-endpoint"
+                type="button"
+                onClick={() => onUpdateProjectEndpoint(requirement.id)}
+              >
+                Update &ldquo;{requirement.name}&rdquo; to expect this endpoint
+              </button>
+            </>}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -177,8 +169,8 @@ export function ConnectionDrawer({
   deleteProfileRefusal,
   onUpdateProfile,
   onCapabilityChange,
-  connectionRequirement,
-  mappedProfileId,
+  connectionRequirements = [],
+  mappedProfileIds,
   onMapProfile,
   onUpdateProjectEndpoint,
   pendingDestination,
@@ -187,8 +179,8 @@ export function ConnectionDrawer({
   const profileRef = useRef<HTMLSelectElement>(null);
   const endpointRef = useRef<HTMLInputElement>(null);
   const toolsCapabilityRef = useRef<HTMLInputElement>(null);
-  const mapButtonRef = useRef<HTMLButtonElement>(null);
-  const projectEndpointButtonRef = useRef<HTMLButtonElement>(null);
+  const mappingRefs = useRef(new Map<string, HTMLSelectElement>());
+  const projectEndpointRefs = useRef(new Map<string, HTMLButtonElement>());
   const keychainActive = isDesktopRuntime && credential.status.canPersist;
   const serverDefaultActive =
     !isDesktopRuntime && activeProfile.credentialRef === "environment-default";
@@ -212,14 +204,16 @@ export function ConnectionDrawer({
       profile: profileRef.current,
       endpoint: endpointRef.current,
       "tools-capability": toolsCapabilityRef.current,
-      "project-mapping": mapButtonRef.current,
-      "project-endpoint": projectEndpointButtonRef.current,
+      "project-mapping": connectionRequirements
+        .map(({ id }) => mappingRefs.current.get(id))
+        .find((element) => element?.value === "") ?? mappingRefs.current.values().next().value,
+      "project-endpoint": projectEndpointRefs.current.values().next().value,
     }[pendingDestination.control];
     if (!target) return;
     target.scrollIntoView?.({ block: "center" });
     target.focus();
     onDestinationHandled();
-  }, [onDestinationHandled, open, pendingDestination]);
+  }, [connectionRequirements, onDestinationHandled, open, pendingDestination]);
 
   return (
     <SideDrawer
@@ -265,15 +259,15 @@ export function ConnectionDrawer({
             Delete
           </button>
         </div>
-        {connectionRequirement && (
-          <ConnectionMapping
-            requirement={connectionRequirement}
-            activeProfile={activeProfile}
-            mapped={mappedProfileId === activeProfile.id}
+        {connectionRequirements.length > 0 && (
+          <ConnectionMappings
+            requirements={connectionRequirements}
+            profiles={profiles}
+            mappedProfileIds={mappedProfileIds}
             onMapProfile={onMapProfile}
             onUpdateProjectEndpoint={onUpdateProjectEndpoint}
-            mapButtonRef={mapButtonRef}
-            projectEndpointButtonRef={projectEndpointButtonRef}
+            mappingRefs={mappingRefs}
+            endpointRefs={projectEndpointRefs}
           />
         )}
         <label>

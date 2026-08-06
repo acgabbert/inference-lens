@@ -6,6 +6,7 @@ import {
   addEvaluationCase,
   addEvaluationCheck,
   addEvaluationInput,
+  addEvaluationVariant,
   createEvaluationSuite,
   createRevisionFromSavedPrompt,
   evaluationBindingCandidates,
@@ -14,6 +15,8 @@ import {
   removeEvaluationCheck,
   removeEvaluationInput,
   removeEvaluationSuite,
+  removeEvaluationVariant,
+  reorderEvaluationVariant,
   renameEvaluationInput,
   renameEvaluationSuite,
   savedPromptCandidates,
@@ -21,6 +24,7 @@ import {
   updateEvaluationCheck,
   updateEvaluationSuiteExecution,
   updateEvaluationSuiteInput,
+  updateEvaluationVariant,
 } from "../../packages/core/src/evaluation-suite-authoring";
 import type {
   NewEvaluationCheck,
@@ -32,12 +36,14 @@ import { resolveEvaluationCase } from "../../packages/core/src/evaluation-case-r
 import type { EvaluationCaseResolution } from "../../packages/core/src/evaluation-case-resolution";
 import { ProjectValidationError } from "../../packages/core/src/project";
 import type { EvaluationSuite, ProjectFile } from "../../packages/core/src/project";
+import type { EvaluationVariant } from "../../packages/core/src/evaluation-suites";
 import type {
   CheckId,
   ConversationRevisionId,
   EvaluationCaseId,
   EvaluationInputBindingId,
   EvaluationSuiteId,
+  EvaluationVariantId,
   PromptTemplateId,
   ToolId,
 } from "../../packages/core/src/run-kernel";
@@ -64,6 +70,7 @@ export interface EvaluationSuiteAuthoringHandle {
   suiteId?: EvaluationSuiteId;
   revisionId?: ConversationRevisionId;
   selectedCaseIds: ReadonlySet<EvaluationCaseId>;
+  selectedVariantIds: ReadonlySet<EvaluationVariantId>;
   focusedCaseId?: EvaluationCaseId;
   repetitions: number;
   candidates: ReturnType<typeof evaluationBindingCandidates>;
@@ -88,6 +95,7 @@ export interface EvaluationSuiteAuthoringHandle {
   selectSuite(id: EvaluationSuiteId): void;
   selectRevision(id: ConversationRevisionId): void;
   setCaseSelected(id: EvaluationCaseId, selected: boolean): void;
+  setVariantSelected(id: EvaluationVariantId, selected: boolean): void;
   focusCase(id: EvaluationCaseId): void;
   setRepetitions(value: number): void;
   /** Exposes or withdraws one project tool for the selected suite. */
@@ -95,6 +103,10 @@ export interface EvaluationSuiteAuthoringHandle {
   /** Provider turns one repetition may spend; clamped to the supported range. */
   setTurnCeiling(value: number): void;
   updateExecution(execution: EvaluationSuite["execution"]): boolean;
+  addVariant(): void;
+  updateVariant(id: EvaluationVariantId, patch: Pick<EvaluationVariant, "name" | "overrides">): boolean;
+  moveVariant(id: EvaluationVariantId, destinationIndex: number): void;
+  deleteVariant(id: EvaluationVariantId): void;
   createSuite(): void;
   renameSuite(name: string): boolean;
   deleteSuite(): void;
@@ -144,6 +156,12 @@ interface ScopedCaseSelection {
   caseIds: ReadonlySet<EvaluationCaseId>;
 }
 
+interface ScopedVariantSelection {
+  projectId: ProjectFile["projectId"];
+  suiteId: EvaluationSuiteId;
+  variantIds: ReadonlySet<EvaluationVariantId>;
+}
+
 interface ScopedAuthoringError extends EvaluationSuiteAuthoringError {
   projectId: ProjectFile["projectId"];
   suiteId: EvaluationSuiteId;
@@ -185,6 +203,7 @@ export function useEvaluationSuiteAuthoring({
   // author actually described rather than an empty selection they must repair.
   // It narrows to an explicit set the first time a checkbox is touched.
   const [selection, setSelection] = useState<ScopedCaseSelection>();
+  const [variantSelection, setVariantSelection] = useState<ScopedVariantSelection>();
   const [focusedCaseId, setFocusedCaseId] = useState<EvaluationCaseId>();
   const [storedError, setStoredError] = useState<ScopedAuthoringError>();
   const [savedPromptPickerOpen, setSavedPromptPickerOpen] = useState(false);
@@ -204,6 +223,14 @@ export function useEvaluationSuiteAuthoring({
   const effectiveSelectedCaseIds = explicitSelection
     ? new Set([...explicitSelection].filter((id) => validCaseIds.has(id)))
     : validCaseIds;
+  const validVariantIds = new Set(suite?.variants.map(({ id }) => id) ?? []);
+  const explicitVariantSelection = variantSelection &&
+    variantSelection.projectId === project?.projectId && variantSelection.suiteId === effectiveSuiteId
+    ? variantSelection.variantIds
+    : undefined;
+  const effectiveSelectedVariantIds = explicitVariantSelection
+    ? new Set([...explicitVariantSelection].filter((id) => validVariantIds.has(id)))
+    : validVariantIds;
   const effectiveFocusedCaseId = focusedCaseId && validCaseIds.has(focusedCaseId)
     ? focusedCaseId
     : suite?.cases[0]?.id;
@@ -307,6 +334,7 @@ export function useEvaluationSuiteAuthoring({
     ...(effectiveSuiteId ? { suiteId: effectiveSuiteId } : {}),
     ...(effectiveRevisionId ? { revisionId: effectiveRevisionId } : {}),
     selectedCaseIds: effectiveSelectedCaseIds,
+    selectedVariantIds: effectiveSelectedVariantIds,
     ...(effectiveFocusedCaseId ? { focusedCaseId: effectiveFocusedCaseId } : {}),
     repetitions: suite?.execution.repetitions ?? 1,
     candidates,
@@ -337,6 +365,16 @@ export function useEvaluationSuiteAuthoring({
         const next = new Set(currentIds);
         if (selected) next.add(id); else next.delete(id);
         return { projectId: project.projectId, suiteId: effectiveSuiteId, caseIds: next };
+      });
+    },
+    setVariantSelected(id, selected) {
+      if (!project || !effectiveSuiteId) return;
+      setVariantSelection((current) => {
+        const currentIds = current?.projectId === project.projectId && current.suiteId === effectiveSuiteId
+          ? current.variantIds : validVariantIds;
+        const next = new Set(currentIds);
+        if (selected) next.add(id); else next.delete(id);
+        return { projectId: project.projectId, suiteId: effectiveSuiteId, variantIds: next };
       });
     },
     focusCase(id) {
@@ -371,6 +409,29 @@ export function useEvaluationSuiteAuthoring({
       return effectiveSuiteId
         ? commit((current) => updateEvaluationSuiteExecution(current, effectiveSuiteId, execution))
         : false;
+    },
+    addVariant() {
+      if (!effectiveSuiteId || !project) return;
+      try {
+        adoptProjectMutation(addEvaluationVariant(project, effectiveSuiteId).project);
+        setStoredError(undefined);
+      } catch (cause) {
+        setStoredError({ projectId: project.projectId, suiteId: effectiveSuiteId, target: { kind: "editor" }, message: mutationErrorMessage(cause) });
+      }
+    },
+    updateVariant(id, patch) {
+      return effectiveSuiteId
+        ? commit((current) => updateEvaluationVariant(current, effectiveSuiteId, id, patch))
+        : false;
+    },
+    moveVariant(id, destinationIndex) {
+      if (effectiveSuiteId) commit((current) => reorderEvaluationVariant(current, effectiveSuiteId, id, destinationIndex));
+    },
+    deleteVariant(id) {
+      if (!effectiveSuiteId) return;
+      const variant = suite?.variants.find((candidate) => candidate.id === id);
+      const remove = () => commit((current) => removeEvaluationVariant(current, effectiveSuiteId, id));
+      confirmOrRun({ title: `Delete “${variant?.name ?? "configuration"}”?`, description: "This configuration will no longer be available for future evaluations.", confirmLabel: "Delete configuration", destructive: true }, remove);
     },
     createSuite() {
       if (!project) return;

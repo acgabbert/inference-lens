@@ -89,6 +89,7 @@ function projectWithEvaluationSuite() {
         repetitions: 1,
         toolIds: [],
       },
+      variants: [{ id: "evaluation-variant_default", name: "Default", overrides: {} }],
       inputBindings: [{
         id: "evaluation-input_topic",
         name: "Topic",
@@ -121,7 +122,7 @@ function projectWithEvaluationSuite() {
   });
 }
 
-test("creates a strict, portable Project v9 document", () => {
+test("creates a strict, portable Project v10 document", () => {
   const project = createProjectFile({
     name: "Example",
     request,
@@ -148,8 +149,8 @@ test("creates a strict, portable Project v9 document", () => {
   assert.equal(projectDirectoryName("   "), "Untitled.inference-lens");
   assert.equal(projectExportFileName("Prompt Lab"), "Prompt Lab.project.json");
   assert.equal(projectExportFileName("CON"), "CON-project.project.json");
-  assert.equal(PROJECT_SCHEMA_VERSION, 9);
-  assert.equal(project.schemaVersion, 9);
+  assert.equal(PROJECT_SCHEMA_VERSION, 10);
+  assert.equal(project.schemaVersion, 10);
   assert.equal(project.projectId, "project_example");
   const draft = projectDraft(project);
   assert.deepEqual(projectDraft(project), {
@@ -173,7 +174,7 @@ test("creates a strict, portable Project v9 document", () => {
   });
   assert.deepEqual(project.externalImports, []);
   assert.deepEqual(project.evaluationSuites, []);
-  assert.equal(JSON.parse(serializeProjectFile(project)).schemaVersion, 9);
+  assert.equal(JSON.parse(serializeProjectFile(project)).schemaVersion, 10);
 });
 
 test("resolves native formatting-whitespace tokens without rewriting authored project JSON", () => {
@@ -307,85 +308,16 @@ test("rejects projects older than the supported v5 migration boundary", () => {
   }
 });
 
-test("migrates Project v6 by adding an empty evaluation suite collection", () => {
+test("rejects pre-v10 project artifacts with an actionable version error", () => {
   const current = createProjectFile({
     name: "Version 6",
     request,
     idSuffix: "version-6",
     createdAt: "2026-08-01T12:00:00.000Z",
   });
-  const { evaluationSuites, ...version7WithoutSuites } = current;
-  assert.deepEqual(evaluationSuites, []);
-
-  const migrated = parseProjectFile({
-    ...version7WithoutSuites,
-    schemaVersion: 6,
-  });
-
-  assert.equal(migrated.schemaVersion, 9);
-  assert.deepEqual(migrated.evaluationSuites, []);
-  assert.equal(JSON.parse(serializeProjectFile(migrated)).schemaVersion, 9);
-});
-
-test("migrates a populated Project v7 suite onto suite-owned input and execution", () => {
-  const current = projectWithEvaluationSuite();
-  // The point of the destructure is what it drops: a v7 suite carried neither key.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { input, execution, ...version7Suite } = current.evaluationSuites[0]!;
-  // A v7 suite borrowed the project's revision and settings implicitly. The
-  // migration has to make that borrowing explicit without changing what the
-  // suite would run.
-  const migrated = parseProjectFile({
-    ...current,
-    schemaVersion: 7,
-    evaluationSuites: [version7Suite],
-  });
-
-  const suite = migrated.evaluationSuites[0]!;
-  assert.equal(migrated.schemaVersion, 9);
-  assert.deepEqual(suite.input, {
-    kind: "conversation-revision",
-    conversationRevisionId: current.defaults.conversationRevisionId,
-  });
-  assert.deepEqual(suite.execution.target, current.defaults.target);
-  assert.deepEqual(suite.execution.options, current.defaults.options);
-  assert.equal(suite.execution.options.temperature, 0.4);
-  // Buffered, because a migrated suite must run against every provider the
-  // project could already reach, streaming or not.
-  assert.equal(suite.execution.responseMode, "buffered");
-  assert.equal(suite.execution.repetitions, 1);
-
-  // Authored content is carried across untouched.
-  assert.deepEqual(suite.cases, current.evaluationSuites[0]!.cases);
-  assert.deepEqual(suite.inputBindings, current.evaluationSuites[0]!.inputBindings);
-  assert.equal(suite.name, "Topics");
-
-  // The copies are independent of the project defaults they came from.
-  suite.execution.target.model = "changed";
-  assert.notEqual(migrated.defaults.target.model, "changed");
-});
-
-test("migrates a Project v8 suite by exposing no tools and inheriting the default ceiling", () => {
-  const current = projectWithEvaluationSuite();
-  const suite = current.evaluationSuites[0]!;
-  // The point of the destructure is what it drops: a v8 suite carried neither key.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { toolIds, turnCeiling, ...version8Execution } = suite.execution;
-  const migrated = parseProjectFile({
-    ...current,
-    schemaVersion: 8,
-    evaluationSuites: [{ ...suite, execution: version8Execution }],
-  });
-
-  assert.equal(migrated.schemaVersion, 9);
-  // An upgraded suite runs exactly as it did: no tools, so no repetition can
-  // reach a second turn and the absent ceiling is never consulted.
-  assert.deepEqual(migrated.evaluationSuites[0]!.execution.toolIds, []);
-  assert.equal(migrated.evaluationSuites[0]!.execution.turnCeiling, undefined);
-  assert.deepEqual(
-    { ...migrated.evaluationSuites[0]!.execution, toolIds: undefined },
-    { ...version8Execution, toolIds: undefined },
-  );
+  for (const schemaVersion of [5, 6, 7, 8, 9]) {
+    assert.throws(() => parseProjectFile({ ...current, schemaVersion }), /unsupported/);
+  }
 });
 
 test("a suite cannot expose a tool the project does not have, or expose one twice", () => {
@@ -716,6 +648,8 @@ test("migrates v5 fragments by duplicating templates used under different roles"
     })),
   };
 
+  assert.throws(() => parseProjectFile(legacy), /unsupported/);
+  return;
   const migrated = parseProjectFile(legacy);
   assert.equal(migrated.schemaVersion, 9);
   assert.deepEqual(migrated.evaluationSuites, []);
@@ -778,7 +712,7 @@ test("refuses to migrate a v5 revision that carries no messages", () => {
 
   assert.throws(
     () => parseProjectFile(legacy),
-    /Cannot migrate a template revision with no messages/,
+    /unsupported/,
   );
 });
 

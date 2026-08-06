@@ -25,6 +25,7 @@ import type {
   EvaluationCaseId,
   EvaluationInputBindingId,
   EvaluationSuiteId,
+  EvaluationVariantId,
   ExperimentCellId,
   ExperimentId,
   InferenceOptions,
@@ -39,7 +40,7 @@ import type {
   PromptTemplateUseId,
 } from "./run-kernel/types.ts";
 
-export const EXPERIMENT_SCHEMA_VERSION = 3;
+export const EXPERIMENT_SCHEMA_VERSION = 4;
 export const EXPERIMENT_PLAN_FILE_SUFFIX = ".plan.json";
 export const EXPERIMENT_RESULT_FILE_SUFFIX = ".result.json";
 
@@ -75,8 +76,8 @@ export interface ExperimentCellBase {
 
 export type RepeatedExperimentCell = ExperimentCellBase;
 
-export interface RepeatedExperimentPlanV3 {
-  schemaVersion: 3;
+export interface RepeatedExperimentPlanV4 {
+  schemaVersion: 4;
   experimentId: ExperimentId;
   kind: "repeated-request";
   createdAt: string;
@@ -104,43 +105,62 @@ export interface EvaluationInputBindingSnapshot {
   };
 }
 
-export interface EvaluationCaseSnapshot {
+export interface EvaluationCaseSnapshotV4 {
   caseId: EvaluationCaseId;
   name: string;
   values: Record<EvaluationInputBindingId, string>;
   checks: CheckDefinition[];
   referenceAnswer?: string;
-  /** Fully resolved authored input. A cell adds only its preallocated run ID. */
-  input: Omit<ResolvedRunInput, "runId">;
+  input: Pick<ResolvedRunInput,
+    "conversationId" | "conversationRevisionId" | "messages" | "templateResolutions" | "resolvedAt"
+  >;
 }
 
-export interface EvaluationExperimentCell extends ExperimentCellBase {
+export interface EvaluationVariantSnapshotV4 {
+  variantId: EvaluationVariantId;
+  name: string;
+  target: ResolvedRunInput["target"];
+  responseMode: ResolvedRunInput["responseMode"];
+  options: InferenceOptions;
+}
+
+export interface EvaluationExperimentCellV4 extends ExperimentCellBase {
   caseId: EvaluationCaseId;
+  variantId: EvaluationVariantId;
   repetition: number;
 }
 
-export interface EvaluationExperimentPlanV3 {
-  schemaVersion: 3;
+export interface EvaluationExperimentPlanV4 {
+  schemaVersion: 4;
   experimentId: ExperimentId;
   kind: "evaluation";
   createdAt: string;
   checkSchemaVersion: typeof CHECK_SCHEMA_VERSION;
   scoringPolicy: "strict";
   repetitions: number;
-  /** See `RepeatedExperimentPlanV3.turnCeiling`; the controller reads both. */
+  /** See `RepeatedExperimentPlanV4.turnCeiling`; the controller reads both. */
   turnCeiling?: number;
   suite: {
     suiteId: EvaluationSuiteId;
     name: string;
     conversationRevisionId: ConversationRevisionId;
     inputBindings: EvaluationInputBindingSnapshot[];
-    cases: EvaluationCaseSnapshot[];
+    tools: ToolDefinition[];
+    cases: EvaluationCaseSnapshotV4[];
+    variants: EvaluationVariantSnapshotV4[];
   };
-  cells: EvaluationExperimentCell[];
+  cells: EvaluationExperimentCellV4[];
 }
 
-export type ExperimentPlanV3 = RepeatedExperimentPlanV3 | EvaluationExperimentPlanV3;
-export type ExperimentCell = RepeatedExperimentCell | EvaluationExperimentCell;
+export type ExperimentPlanV4 = RepeatedExperimentPlanV4 | EvaluationExperimentPlanV4;
+export type ExperimentCell = RepeatedExperimentCell | EvaluationExperimentCellV4;
+// Source-level aliases keep feature owners compiling while they adopt the v4
+// snapshot shape. They never accept or emit a v3 artifact.
+export type RepeatedExperimentPlanV3 = RepeatedExperimentPlanV4;
+export type EvaluationExperimentPlanV3 = EvaluationExperimentPlanV4;
+export type ExperimentPlanV3 = ExperimentPlanV4;
+export type ExperimentResultV3 = ExperimentResultV4;
+export type EvaluationCaseSnapshot = EvaluationCaseSnapshotV4;
 
 export interface ExperimentTerminalCellResult {
   cellId: ExperimentCellId;
@@ -158,8 +178,8 @@ export type ExperimentCellResult =
   | ExperimentTerminalCellResult
   | ExperimentNotRunCellResult;
 
-export interface ExperimentResultV3 {
-  schemaVersion: 3;
+export interface ExperimentResultV4 {
+  schemaVersion: 4;
   experimentId: ExperimentId;
   status: "completed" | "cancelled";
   endedAt: string;
@@ -447,7 +467,21 @@ const evaluationCaseSnapshotSchema = z.object({
   values: z.record(entityId("evaluation-input"), z.string()),
   checks: z.array(checkDefinitionSchema).min(1),
   referenceAnswer: z.string().optional(),
-  input: commonInputSchema,
+  input: commonInputSchema.pick({
+    conversationId: true,
+    conversationRevisionId: true,
+    messages: true,
+    templateResolutions: true,
+    resolvedAt: true,
+  }),
+}).strict();
+
+const evaluationVariantSnapshotSchema = z.object({
+  variantId: entityId("evaluation-variant"),
+  name: z.string().trim().min(1),
+  target: commonInputBaseSchema.shape.target,
+  responseMode: z.enum(["streaming", "buffered"]),
+  options: inferenceOptionsSchema,
 }).strict();
 
 const evaluationPlanSchema = planBaseSchema.extend({
@@ -462,15 +496,18 @@ const evaluationPlanSchema = planBaseSchema.extend({
     name: z.string().trim().min(1),
     conversationRevisionId: entityId("revision"),
     inputBindings: z.array(evaluationInputBindingSchema),
+    tools: z.array(toolDefinitionSchema),
     cases: z.array(evaluationCaseSnapshotSchema).min(1),
+    variants: z.array(evaluationVariantSnapshotSchema).min(1),
   }).strict(),
   cells: z.array(experimentCellBaseSchema.extend({
     caseId: entityId("evaluation-case"),
+    variantId: entityId("evaluation-variant"),
     repetition: z.number().int().positive(),
   }).strict()).min(1),
 }).strict();
 
-const planSchema: z.ZodType<ExperimentPlanV3> = z.discriminatedUnion("kind", [
+const planSchema: z.ZodType<ExperimentPlanV4> = z.discriminatedUnion("kind", [
   repeatedPlanSchema,
   evaluationPlanSchema,
 ]);
@@ -519,13 +556,17 @@ function parseWith<T>(schema: z.ZodType<T>, value: unknown, label: string): T {
   return parsed.data;
 }
 
-function planInputs(plan: ExperimentPlanV3): Array<Omit<ResolvedRunInput, "runId">> {
+function planInputs(plan: ExperimentPlanV4): Array<Omit<ResolvedRunInput, "runId">> {
   return plan.kind === "repeated-request"
     ? [plan.commonInput]
-    : plan.suite.cases.map(({ input }) => input);
+    : plan.suite.variants.map((variant) => ({
+        ...plan.suite.cases[0]!.input,
+        ...variant,
+        tools: plan.suite.tools,
+      }));
 }
 
-function assertNoSensitiveProviderOptions(plan: ExperimentPlanV3): void {
+function assertNoSensitiveProviderOptions(plan: ExperimentPlanV4): void {
   function inspect(value: JsonValue | undefined, path: string): void {
     if (!value || typeof value !== "object" || Array.isArray(value)) return;
     for (const [key, nested] of Object.entries(value)) {
@@ -539,7 +580,7 @@ function assertNoSensitiveProviderOptions(plan: ExperimentPlanV3): void {
   }
 
   planInputs(plan).forEach((input, inputIndex) => {
-    const prefix = plan.kind === "repeated-request" ? "commonInput" : `suite.cases.${inputIndex}.input`;
+    const prefix = plan.kind === "repeated-request" ? "commonInput" : `suite.variants.${inputIndex}`;
     inspect(input.options.providerOptions, `${prefix}.options.providerOptions`);
     input.tools.forEach((tool, toolIndex) =>
       inspect(tool.providerOptions, `${prefix}.tools.${toolIndex}.providerOptions`),
@@ -547,7 +588,7 @@ function assertNoSensitiveProviderOptions(plan: ExperimentPlanV3): void {
   });
 }
 
-function assertPlanReferences(plan: ExperimentPlanV3): void {
+function assertPlanReferences(plan: ExperimentPlanV4): void {
   const cellIds = new Set<string>();
   const runIds = new Set<string>();
   plan.cells.forEach((cell, index) => {
@@ -569,7 +610,7 @@ function assertPlanReferences(plan: ExperimentPlanV3): void {
   if (bindingIds.size !== plan.suite.inputBindings.length) {
     throw new ExperimentValidationError("Evaluation input binding identities must be unique.");
   }
-  const cases = new Map<EvaluationCaseId, EvaluationCaseSnapshot>();
+  const cases = new Map<EvaluationCaseId, EvaluationCaseSnapshotV4>();
   plan.suite.cases.forEach((evaluationCase) => {
     if (cases.has(evaluationCase.caseId)) {
       throw new ExperimentValidationError(`Evaluation repeats case ${evaluationCase.caseId}.`);
@@ -583,22 +624,31 @@ function assertPlanReferences(plan: ExperimentPlanV3): void {
     }
     cases.set(evaluationCase.caseId, evaluationCase);
   });
-  if (plan.cells.length !== plan.suite.cases.length * plan.repetitions) {
-    throw new ExperimentValidationError("Evaluation cells must include every planned case repetition exactly once.");
+  const variants = new Map<EvaluationVariantId, EvaluationVariantSnapshotV4>();
+  plan.suite.variants.forEach((variant) => {
+    if (variants.has(variant.variantId)) {
+      throw new ExperimentValidationError(`Evaluation repeats configuration ${variant.variantId}.`);
+    }
+    variants.set(variant.variantId, variant);
+  });
+  if (plan.cells.length !== plan.suite.cases.length * plan.suite.variants.length * plan.repetitions) {
+    throw new ExperimentValidationError("Evaluation cells must include every planned case, configuration, and repetition exactly once.");
   }
   plan.suite.cases.forEach((evaluationCase, caseIndex) => {
-    for (let repetition = 1; repetition <= plan.repetitions; repetition += 1) {
-      const cell = plan.cells[caseIndex * plan.repetitions + repetition - 1];
-      if (cell?.caseId !== evaluationCase.caseId || cell.repetition !== repetition) {
-        throw new ExperimentValidationError("Evaluation cells must retain suite case order and contiguous one-based repetitions.");
+    plan.suite.variants.forEach((variant, variantIndex) => {
+      for (let repetition = 1; repetition <= plan.repetitions; repetition += 1) {
+        const cell = plan.cells[(caseIndex * plan.suite.variants.length + variantIndex) * plan.repetitions + repetition - 1];
+        if (cell?.caseId !== evaluationCase.caseId || cell.variantId !== variant.variantId || cell.repetition !== repetition) {
+          throw new ExperimentValidationError("Evaluation cells must retain case, configuration, and contiguous one-based repetition order.");
+        }
       }
-    }
+    });
   });
 }
 
 function assertResultReferences(
-  result: ExperimentResultV3,
-  plan: ExperimentPlanV3,
+  result: ExperimentResultV4,
+  plan: ExperimentPlanV4,
 ): void {
   if (result.experimentId !== plan.experimentId) {
     throw new ExperimentValidationError("Experiment result belongs to a different experiment.");
@@ -661,7 +711,7 @@ export function experimentArtifactIdentity(fileName: string): {
   };
 }
 
-export function parseExperimentPlanFile(value: unknown): ExperimentPlanV3 {
+export function parseExperimentPlanFile(value: unknown): ExperimentPlanV4 {
   const version = unsupportedPlanVersionSchema.safeParse(value);
   if (version.success && version.data.schemaVersion !== EXPERIMENT_SCHEMA_VERSION) {
     throw new ExperimentValidationError(
@@ -674,7 +724,7 @@ export function parseExperimentPlanFile(value: unknown): ExperimentPlanV3 {
   return plan;
 }
 
-export function parseExperimentPlanJson(contents: string): ExperimentPlanV3 {
+export function parseExperimentPlanJson(contents: string): ExperimentPlanV4 {
   try {
     return parseExperimentPlanFile(JSON.parse(contents));
   } catch (error) {
@@ -685,8 +735,8 @@ export function parseExperimentPlanJson(contents: string): ExperimentPlanV3 {
 
 export function parseExperimentResultFile(
   value: unknown,
-  plan: ExperimentPlanV3,
-): ExperimentResultV3 {
+  plan: ExperimentPlanV4,
+): ExperimentResultV4 {
   const parsedPlan = parseExperimentPlanFile(plan);
   const version = unsupportedPlanVersionSchema.safeParse(value);
   if (version.success && version.data.schemaVersion !== EXPERIMENT_SCHEMA_VERSION) {
@@ -694,15 +744,15 @@ export function parseExperimentResultFile(
       `Experiment result schema Version ${version.data.schemaVersion} is unsupported; expected Version ${EXPERIMENT_SCHEMA_VERSION}.`,
     );
   }
-  const result = parseWith(resultSchema, value, "experiment result") as ExperimentResultV3;
+  const result = parseWith(resultSchema, value, "experiment result") as ExperimentResultV4;
   assertResultReferences(result, parsedPlan);
   return result;
 }
 
 export function parseExperimentResultJson(
   contents: string,
-  plan: ExperimentPlanV3,
-): ExperimentResultV3 {
+  plan: ExperimentPlanV4,
+): ExperimentResultV4 {
   let value: unknown;
   try {
     value = JSON.parse(contents);
@@ -712,7 +762,7 @@ export function parseExperimentResultJson(
   return parseExperimentResultFile(value, plan);
 }
 
-export function serializeExperimentPlan(plan: ExperimentPlanV3): string {
+export function serializeExperimentPlan(plan: ExperimentPlanV4): string {
   return serializeParsedExperimentPlan(parseExperimentPlanFile(plan));
 }
 
@@ -721,19 +771,19 @@ export function serializeExperimentPlan(plan: ExperimentPlanV3): string {
  * This is useful to execution owners that must validate an ad hoc plan before
  * starting, but must not re-parse the full frozen input for every cell.
  */
-export function serializeParsedExperimentPlan(plan: ExperimentPlanV3): string {
+export function serializeParsedExperimentPlan(plan: ExperimentPlanV4): string {
   return `${JSON.stringify(stableJsonValue(plan), null, 2)}\n`;
 }
 
 export function serializeExperimentResult(
-  result: ExperimentResultV3,
-  plan: ExperimentPlanV3,
+  result: ExperimentResultV4,
+  plan: ExperimentPlanV4,
 ): string {
   return `${JSON.stringify(stableJsonValue(parseExperimentResultFile(result, plan)), null, 2)}\n`;
 }
 
 /** The cost bound this plan runs under, whether or not it recorded one. */
-export function experimentTurnCeiling(plan: ExperimentPlanV3): number {
+export function experimentTurnCeiling(plan: ExperimentPlanV4): number {
   return plan.turnCeiling ?? DEFAULT_EXPERIMENT_TURN_CEILING;
 }
 
@@ -746,10 +796,10 @@ export function experimentTurnCeiling(plan: ExperimentPlanV3): number {
  * starting? An evaluation plan may expose a different set per case, so the
  * union is what has to be satisfiable, not any one case's selection.
  */
-export function experimentExposedTools(plan: ExperimentPlanV3): ToolDefinition[] {
+export function experimentExposedTools(plan: ExperimentPlanV4): ToolDefinition[] {
   const inputs = plan.kind === "repeated-request"
     ? [plan.commonInput]
-    : plan.suite.cases.map(({ input }) => input);
+    : [{ tools: plan.suite.tools }];
   const byId = new Map<ToolDefinition["id"], ToolDefinition>();
   for (const input of inputs) {
     for (const tool of input.tools) if (!byId.has(tool.id)) byId.set(tool.id, tool);
@@ -759,7 +809,7 @@ export function experimentExposedTools(plan: ExperimentPlanV3): ToolDefinition[]
 
 /** Materializes exactly one preallocated repetition without changing its frozen input. */
 export function materializeExperimentCellInput(
-  plan: ExperimentPlanV3,
+  plan: ExperimentPlanV4,
   cellId: ExperimentCellId,
 ): ResolvedRunInput {
   const parsed = parseExperimentPlanFile(plan);
@@ -774,7 +824,7 @@ export function materializeExperimentCellInput(
  * or parse first.
  */
 export function materializeParsedExperimentCellInput(
-  plan: ExperimentPlanV3,
+  plan: ExperimentPlanV4,
   cell: ExperimentCell,
 ): ResolvedRunInput {
   const plannedCell = plan.cells.find((candidate) => candidate.cellId === cell.cellId);
@@ -784,16 +834,18 @@ export function materializeParsedExperimentCellInput(
   if (plan.kind === "repeated-request") {
     return { ...plan.commonInput, runId: plannedCell.runId };
   }
-  const evaluationCell = plannedCell as EvaluationExperimentCell;
+  const evaluationCell = plannedCell as EvaluationExperimentCellV4;
   const evaluationCase = plan.suite.cases.find(({ caseId }) => caseId === evaluationCell.caseId);
   if (!evaluationCase) throw new ExperimentValidationError(`Unknown evaluation case ${evaluationCell.caseId}.`);
-  return { ...evaluationCase.input, runId: plannedCell.runId };
+  const variant = plan.suite.variants.find(({ variantId }) => variantId === evaluationCell.variantId);
+  if (!variant) throw new ExperimentValidationError(`Unknown evaluation configuration ${evaluationCell.variantId}.`);
+  return { ...evaluationCase.input, ...variant, tools: plan.suite.tools, runId: plannedCell.runId };
 }
 
 /** A plan with no result survived an interrupted application session. */
 export function experimentLifecycle(
-  _plan: ExperimentPlanV3,
-  result?: ExperimentResultV3,
+  _plan: ExperimentPlanV4,
+  result?: ExperimentResultV4,
 ): ExperimentLifecycle {
   return result ? result.status : "interrupted";
 }
@@ -823,8 +875,8 @@ export { finalAssistantOutput } from "./run-output.ts";
  * metrics or successful repetitions.
  */
 export function repeatedExperimentAggregate(
-  plan: RepeatedExperimentPlanV3,
-  result: ExperimentResultV3 | undefined,
+  plan: RepeatedExperimentPlanV4,
+  result: ExperimentResultV4 | undefined,
   states: ReadonlyMap<RunId, RunState> = new Map(),
 ): RepeatedExperimentAggregate {
   const parsedPlan = parseExperimentPlanFile(plan);
@@ -909,8 +961,8 @@ export function repeatedExperimentAggregate(
  * pass only when all required lower-level evidence passes.
  */
 export function evaluationExperimentAggregate(
-  plan: EvaluationExperimentPlanV3,
-  result: ExperimentResultV3 | undefined,
+  plan: EvaluationExperimentPlanV4,
+  result: ExperimentResultV4 | undefined,
   states: ReadonlyMap<RunId, RunState> = new Map(),
 ): EvaluationAggregate {
   const parsed = parseExperimentPlanFile(plan);
@@ -926,8 +978,8 @@ export function evaluationExperimentAggregate(
  * snapshot while streamed state changes without re-validating every case input.
  */
 export function evaluationParsedExperimentAggregate(
-  plan: EvaluationExperimentPlanV3,
-  result: ExperimentResultV3 | undefined,
+  plan: EvaluationExperimentPlanV4,
+  result: ExperimentResultV4 | undefined,
   states: ReadonlyMap<RunId, RunState> = new Map(),
 ): EvaluationAggregate {
   const parsed = plan;

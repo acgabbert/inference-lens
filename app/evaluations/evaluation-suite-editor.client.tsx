@@ -5,7 +5,8 @@ import { CHECK_KINDS } from "../../packages/core/src/checks";
 import type { CheckDefinition, CheckKind, ToolCallCountComparator } from "../../packages/core/src/checks";
 import type { JsonObject } from "../../packages/core/src/run-kernel";
 import type { EvaluationCase } from "../../packages/core/src/project";
-import type { EvaluationInputBinding } from "../../packages/core/src/evaluation-suites";
+import { resolveEvaluationVariant } from "../../packages/core/src/evaluation-suites";
+import type { EvaluationInputBinding, EvaluationVariant } from "../../packages/core/src/evaluation-suites";
 import type { ConversationRevisionDescriptor } from "../../packages/core/src/conversation-revision-description";
 import type { InferenceOptions, ProviderProtocol } from "../../packages/core/src/run-kernel";
 import {
@@ -88,6 +89,46 @@ function revisionOption(descriptor: ConversationRevisionDescriptor) {
       {choice.label}
     </option>
   );
+}
+
+function ConfigurationRow({
+  variant,
+  suite,
+  project,
+  authoring,
+  index,
+}: {
+  variant: EvaluationVariant;
+  suite: NonNullable<EvaluationSuiteAuthoringHandle["project"]>["evaluationSuites"][number];
+  project: NonNullable<EvaluationSuiteAuthoringHandle["project"]>;
+  authoring: EvaluationSuiteAuthoringHandle;
+  index: number;
+}) {
+  const effective = resolveEvaluationVariant(suite, variant);
+  const inherited = (field: "connection" | "model" | "delivery" | "temperature") => field === "connection"
+    ? variant.overrides.target?.connectionRequirementId === undefined
+    : field === "model"
+      ? variant.overrides.target?.model === undefined
+      : field === "delivery"
+        ? variant.overrides.responseMode === undefined
+        : variant.overrides.options?.temperature === undefined;
+  const update = (patch: EvaluationVariant["overrides"]) => authoring.updateVariant(variant.id, { name: variant.name, overrides: patch });
+  return <article className="evaluation-configuration-card" aria-label={`Configuration ${variant.name}`}>
+    <div className="evaluation-check-heading"><strong>Configuration {index + 1}</strong><div>
+      <label title={`Include ${variant.name} in this evaluation`}><input aria-label={`Include configuration ${variant.name}`} type="checkbox" checked={authoring.selectedVariantIds.has(variant.id)} onChange={(event) => authoring.setVariantSelected(variant.id, event.target.checked)} /> Include</label>
+      {index > 0 && <button className="text-button" type="button" onClick={() => authoring.moveVariant(variant.id, index - 1)}>Move up</button>}
+      {index < suite.variants.length - 1 && <button className="text-button" type="button" onClick={() => authoring.moveVariant(variant.id, index + 1)}>Move down</button>}
+      <button className="remove-button" type="button" onClick={() => authoring.deleteVariant(variant.id)}>Delete</button>
+    </div></div>
+    <label>Name <input aria-label={`Configuration name ${index + 1}`} value={variant.name} onChange={(event) => authoring.updateVariant(variant.id, { name: event.target.value, overrides: variant.overrides })} /></label>
+    <div className="evaluation-settings-grid">
+      <label>Connection <select aria-label={`Configuration connection ${variant.name}`} value={effective.target.connectionRequirementId} onChange={(event) => update({ ...variant.overrides, target: { ...variant.overrides.target, connectionRequirementId: event.target.value as typeof effective.target.connectionRequirementId } })}>{project.connectionRequirements.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}</select><small>{inherited("connection") ? "Inherits suite connection" : "Overrides suite connection"}</small></label>
+      <label>Model <input aria-label={`Configuration model ${variant.name}`} value={effective.target.model} onChange={(event) => update({ ...variant.overrides, target: { ...variant.overrides.target, model: event.target.value } })} /><small>{inherited("model") ? "Inherits suite model" : "Overrides suite model"}</small></label>
+      <label>Delivery <select aria-label={`Configuration delivery ${variant.name}`} value={effective.responseMode} onChange={(event) => update({ ...variant.overrides, responseMode: event.target.value as typeof effective.responseMode })}><option value="buffered">Buffered</option><option value="streaming">Streaming</option></select><small>{inherited("delivery") ? "Inherits suite delivery" : "Overrides suite delivery"}</small></label>
+      <label>Temperature <input aria-label={`Configuration temperature ${variant.name}`} type="number" step="0.1" value={effective.options.temperature ?? ""} onChange={(event) => update({ ...variant.overrides, options: { ...variant.overrides.options, temperature: event.target.value === "" ? null : Number(event.target.value) } })} /><small>{inherited("temperature") ? "Inherits suite option" : variant.overrides.options?.temperature === null ? "Uses provider default" : "Overrides suite option"}</small></label>
+    </div>
+    <p className="evaluation-portable-warning">Effective: {project.connectionRequirements.find(({ id }) => id === effective.target.connectionRequirementId)?.name ?? effective.target.connectionRequirementId} · {effective.target.model} · {effective.responseMode} · temperature {effective.options.temperature ?? "provider default"} · max output {effective.options.maxOutputTokens ?? "provider default"} · seed {effective.options.seed ?? "provider default"} · stop {effective.options.stop?.join(", ") || "provider default"} · provider options {effective.options.providerOptions ? "set" : "provider default"}</p>
+  </article>;
 }
 
 function CheckEditor({ check, error, onCommit, onRemove }: {
@@ -270,13 +311,18 @@ export interface EvaluationSuiteExecutionActions {
    * execution state rather than portable evaluation content.
    */
   preview?: {
-    targetName: string;
-    endpoint: string;
-    protocol: ProviderProtocol;
-    model: string;
-    responseMode: "streaming" | "buffered";
-    options: InferenceOptions;
-    streamingAvailable: boolean;
+    targets: readonly {
+      variantId: string;
+      variantName: string;
+      requirementName: string;
+      targetName?: string;
+      endpoint?: string;
+      protocol: ProviderProtocol;
+      model: string;
+      responseMode: "streaming" | "buffered";
+      options: InferenceOptions;
+      streamingAvailable: boolean;
+    }[];
   };
   disabledReason?: string;
   running: boolean;
@@ -345,9 +391,10 @@ export function EvaluationSuiteEditor({
   const suite = project?.evaluationSuites.find(({ id }) => id === authoring.suiteId);
   const focusedCase = suite?.cases.find(({ id }) => id === authoring.focusedCaseId);
   const selectedCount = authoring.selectedCaseIds.size;
+  const selectedVariantCount = authoring.selectedVariantIds.size;
   const exposedToolIds = suite?.execution.toolIds ?? [];
   const turnCeiling = suite?.execution.turnCeiling ?? DEFAULT_EXPERIMENT_TURN_CEILING;
-  const batch = evaluationBatchGuardrail(selectedCount, authoring.repetitions, {
+  const batch = evaluationBatchGuardrail(selectedCount, selectedVariantCount, authoring.repetitions, {
     exposedToolCount: exposedToolIds.length,
     turnCeiling,
   });
@@ -369,8 +416,11 @@ export function EvaluationSuiteEditor({
   // The suite owns its delivery mode, but whether that mode can be served is a
   // property of the connection this device resolves. Preflight is where the two
   // meet, so it must not report "Ready to run" for a mode that cannot execute.
-  const deliveryIssue = suite && execution?.preview && suite.execution.responseMode === "streaming" && !execution.preview.streamingAvailable
-    ? `This evaluation is set to Streaming, but ${execution.preview.targetName} cannot stream. Choose Buffered delivery.`
+  const unavailableStreamingTarget = execution?.preview?.targets.find(
+    ({ responseMode, streamingAvailable }) => responseMode === "streaming" && !streamingAvailable,
+  );
+  const deliveryIssue = unavailableStreamingTarget
+    ? `Configuration “${unavailableStreamingTarget.variantName}” is set to Streaming, but ${unavailableStreamingTarget.targetName ?? "its mapped profile"} cannot stream. Choose Buffered delivery.`
     : undefined;
   // Device-local, like the delivery issue above and unlike a preflight
   // diagnostic: the suite is authored correctly, and this machine cannot run
@@ -470,7 +520,7 @@ export function EvaluationSuiteEditor({
                 {/* Outside the setup band deliberately: how many provider calls
                     the suite is about to make is the consequence of settings
                     the band hides, and it must stay readable while it is shut. */}
-                <output><span>{selectedCount} selected</span> × <span>{authoring.repetitions} {authoring.repetitions === 1 ? "rep" : "reps"}</span> → <strong>{Number.isFinite(batch.plannedCalls) ? batch.plannedCalls.toLocaleString() : "Invalid"} runs</strong>{exposedToolIds.length > 0 && Number.isFinite(batch.worstCaseCalls) && <span>, up to {batch.worstCaseCalls.toLocaleString()} provider calls</span>}</output>
+                <output><span>{selectedCount} {selectedCount === 1 ? "case" : "cases"}</span> × <span>{selectedVariantCount} {selectedVariantCount === 1 ? "configuration" : "configurations"}</span> × <span>{authoring.repetitions} {authoring.repetitions === 1 ? "rep" : "reps"}</span> → <strong>{Number.isFinite(batch.plannedCalls) ? batch.plannedCalls.toLocaleString() : "Invalid"} runs</strong>{exposedToolIds.length > 0 && Number.isFinite(batch.worstCaseCalls) && <span>, up to {batch.worstCaseCalls.toLocaleString()} provider calls</span>}</output>
               </BlockerChip>
               {execution && <small className="evaluation-storage-note">{execution.storage === "durable" ? "The plan, traces, and result will be saved in this project folder." : "Session evaluation: results will be lost when this session closes."}</small>}
             </section>
@@ -511,6 +561,18 @@ export function EvaluationSuiteEditor({
                   </label>
                 </div>
               </div>
+              <section className="evaluation-configurations" aria-label="Configurations">
+                <div className="evaluation-section-heading"><div><span className="eyebrow">Configurations</span><h3>Compare named configurations</h3></div><button className="button secondary" type="button" onClick={authoring.addVariant}>+ Add configuration</button></div>
+                <p className="evaluation-portable-warning">Each configuration stores only its overrides. Repetitions, turn ceiling, and exposed tools are shared across every configuration.</p>
+                {suite.variants.map((variant, index) => <ConfigurationRow key={variant.id} variant={variant} suite={suite} project={project} authoring={authoring} index={index} />)}
+                {execution?.preview && <ul className="evaluation-configuration-targets" aria-label="Resolved local configuration targets">
+                  {execution.preview.targets.map((target) => <li key={target.variantId}>
+                    <strong>{target.variantName}</strong>: {target.targetName
+                      ? <>{target.targetName} · <code>{target.endpoint}</code> · {target.model} · {target.responseMode}</>
+                      : <>Map {target.requirementName} to a local profile</>}
+                  </li>)}
+                </ul>}
+              </section>
               {/* Each edit commits, which the project's debounced auto-save
                   absorbs into one write. */}
               <InferenceSettingsPanel
@@ -544,7 +606,9 @@ export function EvaluationSuiteEditor({
                   options: { ...suite.execution.options, temperature: next.temperature },
                 })}
                 // Discovery is deliberately absent here; see ModelFavoritesHandle.
-                streamingAvailable={execution ? Boolean(execution.preview?.streamingAvailable) : true}
+                streamingAvailable={execution
+                  ? execution.preview?.targets.every(({ streamingAvailable }) => streamingAvailable) ?? true
+                  : true}
                 favoriteModels={modelFavorites?.models ?? []}
                 onToggleFavoriteModel={(model) => modelFavorites?.onToggle(model)}
                 connection={{

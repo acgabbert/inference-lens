@@ -81,6 +81,7 @@ function projectFixture(cases: CaseFixture[], model = "confirmed-model"): Projec
         repetitions: 1,
         toolIds: [],
       },
+      variants: [{ id: "evaluation-variant_default", name: "Default", overrides: {} }],
       inputBindings: [{
         id: "evaluation-input_topic",
         name: "Topic",
@@ -149,7 +150,7 @@ function execute(
   }
   return {
     result: {
-      schemaVersion: 3,
+      schemaVersion: 4,
       experimentId: plan.experimentId,
       status: "completed",
       endedAt: "2026-08-01T12:30:00.000Z",

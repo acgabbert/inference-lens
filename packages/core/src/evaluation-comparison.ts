@@ -267,17 +267,16 @@ function sideSummary(side: SideDerivation): EvaluationComparisonSideSummary {
 
 /**
  * The suite's execution settings are identical across its cases by
- * construction — `createEvaluationExperimentPlan` copies one `execution` into
- * every case input — so the first case is a faithful representative, the same
- * assumption project history already makes when it reports an experiment's
- * model.
+ * construction. PR2 has no comparison picker yet, so the first authored
+ * configuration is the temporary representative until variant-slice
+ * comparisons land in PR4.
  */
 function executionDrift(
   baseline: EvaluationExperimentPlanV3,
   candidate: EvaluationExperimentPlanV3,
 ): EvaluationExecutionDrift {
-  const baselineInput = baseline.suite.cases[0]?.input;
-  const candidateInput = candidate.suite.cases[0]?.input;
+  const baselineInput = baseline.suite.variants[0];
+  const candidateInput = candidate.suite.variants[0];
   const drift: EvaluationExecutionDrift = { any: false };
 
   if (baseline.suite.conversationRevisionId !== candidate.suite.conversationRevisionId) {

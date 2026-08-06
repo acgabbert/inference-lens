@@ -70,6 +70,7 @@ function projectFixture(withChecks = true) {
         repetitions: 2,
         toolIds: [],
       },
+      variants: [{ id: "evaluation-variant_default", name: "Default", overrides: {} }],
       inputBindings: [{
         id: "evaluation-input_topic",
         name: "Topic",
@@ -177,9 +178,9 @@ test("snapshots authored values, case overrides, and confirmation-time execution
   if (parsed.kind !== "evaluation") throw new Error("Expected evaluation plan.");
   assert.equal(parsed.cells.length, 2);
   assert.deepEqual(parsed.cells.map(({ repetition }) => repetition), [1, 2]);
-  assert.equal(parsed.suite.cases[0]?.input.target.model, "confirmed-model");
-  assert.equal(parsed.suite.cases[0]?.input.responseMode, "buffered");
-  assert.deepEqual(parsed.suite.cases[0]?.input.options, { seed: 7, temperature: 0.2 });
+  assert.equal(parsed.suite.variants[0]?.target.model, "confirmed-model");
+  assert.equal(parsed.suite.variants[0]?.responseMode, "buffered");
+  assert.deepEqual(parsed.suite.variants[0]?.options, { seed: 7, temperature: 0.2 });
   assert.equal(parsed.suite.cases[0]?.input.templateResolutions[0]?.values.style, "authored");
   assert.equal(parsed.suite.cases[0]?.input.templateResolutions[0]?.values.topic, "database migrations");
   assert.equal(parsed.suite.cases[0]?.input.messages.at(-1)?.content[0]?.text, "Explain database migrations in a authored style.");
@@ -187,7 +188,7 @@ test("snapshots authored values, case overrides, and confirmation-time execution
   assert.equal(first.runId, parsed.cells[0]?.runId);
   assert.deepEqual(
     { ...first, runId: undefined },
-    { ...parsed.suite.cases[0]!.input, runId: undefined },
+    { ...parsed.suite.cases[0]!.input, ...parsed.suite.variants[0]!, tools: parsed.suite.tools, runId: undefined },
   );
 });
 
@@ -230,7 +231,7 @@ test("a suite's exposed tools are snapshotted into every case, with its turn cei
   if (parsed.kind !== "evaluation") throw new Error("Expected evaluation plan.");
   // Only the exposed descriptor, and the whole descriptor: the plan is what the
   // provider will be sent, so a partial snapshot would be a different request.
-  assert.deepEqual(parsed.suite.cases[0]?.input.tools, [{
+  assert.deepEqual(parsed.suite.tools, [{
     id: "tool_weather",
     name: "get_weather",
     description: "Current conditions",
@@ -245,7 +246,7 @@ test("a suite's exposed tools are snapshotted into every case, with its turn cei
 
 test("a suite that exposes nothing produces a plan with no tools and no ceiling", () => {
   const plan = planFixture();
-  assert.deepEqual(plan.suite.cases[0]?.input.tools, []);
+  assert.deepEqual(plan.suite.tools, []);
   assert.equal(plan.turnCeiling, undefined);
   assert.deepEqual(experimentExposedTools(plan), []);
 });
@@ -262,7 +263,7 @@ test("strict scoring keeps check failure distinct and fails the whole case and s
     "Use backups.",
   );
   const result = {
-    schemaVersion: 3 as const,
+    schemaVersion: 4 as const,
     experimentId: plan.experimentId,
     status: "completed" as const,
     endedAt: "2026-08-01T12:11:00.000Z",
@@ -300,7 +301,7 @@ test("missing traces and cancellation remain separate non-passing classification
   firstCoordinator.start();
   firstCoordinator.cancel("Stopped");
   const result = {
-    schemaVersion: 3 as const,
+    schemaVersion: 4 as const,
     experimentId: plan.experimentId,
     status: "cancelled" as const,
     endedAt: "2026-08-01T12:11:00.000Z",
@@ -347,4 +348,103 @@ test("the shared sequential controller executes evaluation cells as ordinary run
   assert.equal(result.status, "completed");
   assert.deepEqual(started, plan.cells.map(({ runId }) => runId));
   assert.deepEqual(traces, started);
+});
+
+test("the controller prepares each configuration target before deterministic execution", async () => {
+  const initial = projectFixture();
+  const secondRequirement = {
+    ...initial.connectionRequirements[0]!,
+    id: "connection_second" as const,
+    name: "Second provider",
+    endpoint: "https://second.example.test/v1",
+  };
+  const project = parseProjectFile({
+    ...initial,
+    connectionRequirements: [...initial.connectionRequirements, secondRequirement],
+    evaluationSuites: initial.evaluationSuites.map((suite) => ({
+      ...suite,
+      execution: { ...suite.execution, repetitions: 1 },
+      variants: [
+        { id: "evaluation-variant_first", name: "First", overrides: { target: { model: "first-model" } } },
+        { id: "evaluation-variant_second", name: "Second", overrides: { target: { connectionRequirementId: secondRequirement.id, model: "second-model" } } },
+      ],
+    })),
+  });
+  let suffix = 0;
+  const plan = createEvaluationExperimentPlan({
+    project,
+    suiteId: "evaluation-suite_topics",
+    selectedCaseIds: ["evaluation-case_migrations"],
+    selectedVariantIds: ["evaluation-variant_first", "evaluation-variant_second"],
+    createSuffix: () => `multi-${++suffix}`,
+    runtimeTargets: {
+      "evaluation-variant_first": {
+        profileId: "profile_first",
+        protocol: "openai-compatible-chat-completions",
+        endpoint: "https://first.example.test/v1",
+        capabilities: OPENAI_COMPATIBLE_CAPABILITIES,
+      },
+      "evaluation-variant_second": {
+        profileId: "profile_second",
+        protocol: "openai-compatible-chat-completions",
+        endpoint: secondRequirement.endpoint,
+        capabilities: OPENAI_COMPATIBLE_CAPABILITIES,
+      },
+    },
+  });
+  const prepared: string[] = [];
+  const started: string[] = [];
+  const models: string[] = [];
+  const transport: ProviderTurnTransport = {
+    async discoverModels() { return { models: [] }; },
+    async executeTurn({ execution }) {
+      started.push(execution.runId);
+      models.push(execution.input.target.model);
+      return {
+        status: 200,
+        headers: new Headers(),
+        events: (async function* () {
+          yield { type: "text_delta" as const, text: "migration" };
+          yield { type: "completed" as const, finishReason: { normalized: "stop" as const } };
+        })(),
+      };
+    },
+  };
+  await new SequentialExperimentController({
+    plan,
+    transport,
+    async prepareCredential(target) {
+      prepared.push(`${target.profileId} ${target.endpoint}`);
+      return { kind: "none" };
+    },
+  }).run();
+
+  assert.deepEqual(prepared, [
+    "profile_first https://first.example.test/v1",
+    "profile_second https://second.example.test/v1",
+  ]);
+  assert.deepEqual(started, plan.cells.map(({ runId }) => runId));
+  assert.deepEqual(models, ["first-model", "second-model"]);
+});
+
+test("an unservable configuration refuses the whole batch before credentials, persistence, or traffic", async () => {
+  const source = planFixture(1);
+  const plan = structuredClone(source);
+  plan.suite.variants[0]!.responseMode = "streaming";
+  plan.suite.variants[0]!.target.capabilities.streaming = false;
+  let credentialCalls = 0;
+  let saved = false;
+  let providerCalls = 0;
+  await assert.rejects(() => new SequentialExperimentController({
+    plan,
+    transport: {
+      async discoverModels() { return { models: [] }; },
+      async executeTurn() { providerCalls += 1; throw new Error("should not run"); },
+    },
+    async prepareCredential() { credentialCalls += 1; return { kind: "none" }; },
+    async savePlan() { saved = true; },
+  }).run(), /does not support streaming/);
+  assert.equal(credentialCalls, 0);
+  assert.equal(saved, false);
+  assert.equal(providerCalls, 0);
 });

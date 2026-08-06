@@ -213,7 +213,7 @@ export function loadProjectHistoryFiles(
       ...(result ? { endedAt: result.endedAt } : {}),
       model: plan.kind === "repeated-request"
         ? plan.commonInput.target.model
-        : plan.suite.cases[0]!.input.target.model,
+        : plan.suite.variants[0]!.target.model,
       lifecycle: aggregate.lifecycle,
       requested: aggregate.requested,
       completed: aggregate.completed,

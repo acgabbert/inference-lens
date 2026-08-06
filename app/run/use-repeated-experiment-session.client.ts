@@ -147,7 +147,7 @@ function planFor(
   void discardedRunId;
   const experimentId = createEntityId("experiment", randomUUID());
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     experimentId,
     kind: "repeated-request",
     createdAt: new Date().toISOString(),

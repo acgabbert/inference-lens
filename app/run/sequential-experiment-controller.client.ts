@@ -9,8 +9,8 @@ import {
 } from "../../packages/core/src/experiment.ts";
 import type {
   ExperimentCell,
-  ExperimentPlanV3,
-  ExperimentResultV3,
+  ExperimentPlanV4,
+  ExperimentResultV4,
 } from "../../packages/core/src/experiment.ts";
 import { RunCoordinator } from "../../packages/core/src/run-kernel/index.ts";
 import { createRunTrace } from "../../packages/core/src/run-kernel/reducer.ts";
@@ -34,13 +34,14 @@ export interface SequentialExperimentProgress {
 }
 
 export interface SequentialExperimentControllerOptions {
-  plan: ExperimentPlanV3;
+  plan: ExperimentPlanV4;
   transport: ProviderTurnTransport;
-  prepareCredential(): Promise<CredentialSelection>;
+  /** Resolves and verifies a local credential before any provider traffic. */
+  prepareCredential(target: ResolvedRunInput["target"]): Promise<CredentialSelection>;
   /** Must durably save the plan before resolving. Omit for an ad hoc session experiment. */
-  savePlan?(plan: ExperimentPlanV3, serialized: string): Promise<void>;
+  savePlan?(plan: ExperimentPlanV4, serialized: string): Promise<void>;
   /** Must durably save the final result before resolving. Omit for an ad hoc session experiment. */
-  saveResult?(result: ExperimentResultV3, serialized: string): Promise<void>;
+  saveResult?(result: ExperimentResultV4, serialized: string): Promise<void>;
   onProgress?(progress: SequentialExperimentProgress): void;
   /**
    * Invoked exactly once for every started cell after it reaches a terminal state.
@@ -85,7 +86,8 @@ export class SequentialExperimentController {
   private readonly options: SequentialExperimentControllerOptions;
   private readonly states = new Map<RunId, RunState>();
   private activeAbortController: AbortController | undefined;
-  private frozenPlan: ExperimentPlanV3 | undefined;
+  private frozenPlan: ExperimentPlanV4 | undefined;
+  private readonly credentials = new Map<string, CredentialSelection>();
   private cancellationRequested = false;
   private running = false;
   private hasRun = false;
@@ -110,7 +112,7 @@ export class SequentialExperimentController {
     this.activeAbortController?.abort();
   }
 
-  async run(): Promise<ExperimentResultV3> {
+  async run(): Promise<ExperimentResultV4> {
     if (this.running) throw new Error("The experiment is already running.");
     if (this.hasRun) throw new Error("The experiment has already run.");
     // Parse before any observable work, including optional persistence. This
@@ -133,6 +135,29 @@ export class SequentialExperimentController {
         } before starting.`,
       );
     }
+    // A bakeoff is all-or-nothing at its paid boundary. Resolve every distinct
+    // local target now, before persisting a plan or starting its first cell.
+    const preflightInputs = plan.cells.map((cell) =>
+      materializeParsedExperimentCellInput(plan, cell)
+    );
+    for (const input of preflightInputs) {
+      const { target } = input;
+      if (!target.endpoint.trim() || !target.model.trim()) {
+        throw new Error(`Configuration target ${target.profileId} is incomplete.`);
+      }
+      if (input.responseMode === "streaming" && !target.capabilities.streaming) {
+        throw new Error(`Configuration target ${target.profileId} does not support streaming.`);
+      }
+      if (input.tools.length > 0 && !target.capabilities.tools) {
+        throw new Error(`Configuration target ${target.profileId} does not support exposed tools.`);
+      }
+    }
+    for (const { target } of preflightInputs) {
+      const key = `${target.profileId}\u0000${target.endpoint}`;
+      if (!this.credentials.has(key)) {
+        this.credentials.set(key, await this.options.prepareCredential(target));
+      }
+    }
 
     this.running = true;
     try {
@@ -141,7 +166,7 @@ export class SequentialExperimentController {
       if (this.options.savePlan) await this.options.savePlan(plan, serializedPlan);
       this.hasRun = true;
 
-      const cells: ExperimentResultV3["cells"] = [];
+      const cells: ExperimentResultV4["cells"] = [];
       this.emitRunning(cells.length);
       for (const cell of plan.cells) {
         if (this.cancellationRequested) break;
@@ -156,8 +181,8 @@ export class SequentialExperimentController {
         }
       }
 
-      const result: ExperimentResultV3 = {
-        schemaVersion: 3,
+      const result: ExperimentResultV4 = {
+        schemaVersion: 4,
         experimentId: plan.experimentId,
         status: cancelled ? "cancelled" : "completed",
         endedAt: new Date().toISOString(),
@@ -182,8 +207,8 @@ export class SequentialExperimentController {
 
   private async runCell(
     cell: ExperimentCell,
-    cells: ExperimentResultV3["cells"],
-    plan: ExperimentPlanV3,
+    cells: ExperimentResultV4["cells"],
+    plan: ExperimentPlanV4,
   ): Promise<void> {
     const input = materializeParsedExperimentCellInput(plan, cell);
     const coordinator = new RunCoordinator(input);
@@ -209,7 +234,7 @@ export class SequentialExperimentController {
           coordinator,
           execution: command.execution,
           transport: this.options.transport,
-          prepareCredential: this.options.prepareCredential,
+          prepareCredential: () => this.credentialFor(input.target),
           signal: controller.signal,
           onStateChange: (state) => {
             this.states.set(state.runId, state);
@@ -291,6 +316,12 @@ export class SequentialExperimentController {
     }
   }
 
+  private credentialFor(target: ResolvedRunInput["target"]): Promise<CredentialSelection> {
+    const credential = this.credentials.get(`${target.profileId}\u0000${target.endpoint}`);
+    if (!credential) return Promise.reject(new Error(`No prepared credential exists for ${target.profileId}.`));
+    return Promise.resolve(credential);
+  }
+
   /**
    * Serves every call one waiting turn is holding, or fails this repetition.
    *
@@ -361,7 +392,7 @@ export class SequentialExperimentController {
     return true;
   }
 
-  private terminalCellCount(cells: ExperimentResultV3["cells"]): number {
+  private terminalCellCount(cells: ExperimentResultV4["cells"]): number {
     return cells.filter((cell) => cell.status !== "not-run").length;
   }
 

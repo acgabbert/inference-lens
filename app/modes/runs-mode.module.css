@@ -1,6 +1,7 @@
 /* Scoped layout for the Runs mode. See mode-strip.module.css. */
 
 .mode {
+  flex: 1 1 auto;
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr);

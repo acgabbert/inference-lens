@@ -30,7 +30,7 @@ test("renders compact preflight and the focused case workspace", async () => {
   assert.doesNotMatch(html, /Input name Topic/);
   assert.match(html, /database migrations/);
   assert.match(html, /Contains text/);
-  assert.match(html, /1 selected<\/span> × <span>3 reps<\/span> → <strong>3 runs/);
+  assert.match(html, /1 case<\/span> × <span>1 configuration<\/span> × <span>3 reps<\/span> → <strong>3 runs/);
   assert.match(html, /Do not enter credentials or secrets/);
   // The mode gives the editor the whole surface, so there is nothing left for a
   // focus mode to expand into and it is gone.
@@ -143,7 +143,7 @@ test("evaluation confirmation lists the binding behind every tool it will serve"
   ]);
   const html = renderToStaticMarkup(createElement(EvaluationStartDialog, {
     draft: {
-      targetName: "Fixture profile",
+      targetNames: { "evaluation-variant_default": "Fixture profile" },
       revisionLabel: "Current · Aug 1, 12:00 PM",
       storage: "durable",
       toolBindings: [{
@@ -154,7 +154,7 @@ test("evaluation confirmation lists the binding behind every tool it will serve"
         repetitions: 2,
         turnCeiling: 4,
         cells: Array.from({ length: 4 }),
-        suite: { name: "Quality gate", conversationRevisionId: "revision_frozen", cases: [
+        suite: { name: "Quality gate", conversationRevisionId: "revision_frozen", variants: [{ variantId: "evaluation-variant_default", name: "Default", target: { endpoint: "https://provider.test/v1", model: "fixture-model" }, responseMode: "buffered" }], cases: [
           { caseId: "evaluation-case_1", name: "Case 1", input: { target: { model: "fixture-model" } } },
           { caseId: "evaluation-case_2", name: "Case 2", input: { target: { model: "fixture-model" } } },
         ] },
@@ -182,14 +182,14 @@ test("evaluation confirmation names the frozen revision, target, cases, repetiti
   }));
   const html = renderToStaticMarkup(createElement(EvaluationStartDialog, {
     draft: {
-      targetName: "Fixture profile",
+      targetNames: { "evaluation-variant_default": "Fixture profile" },
       toolBindings: [],
       revisionLabel: "Current · Question · “Explain a topic.” · Aug 1, 12:00 PM",
       storage: "durable",
       plan: {
         repetitions: 5,
         cells: Array.from({ length: 25 }),
-        suite: { name: "Quality gate", conversationRevisionId: "revision_frozen", cases },
+        suite: { name: "Quality gate", conversationRevisionId: "revision_frozen", variants: [{ variantId: "evaluation-variant_default", name: "Default", target: { endpoint: "https://provider.test/v1", model: "fixture-model" }, responseMode: "buffered" }], cases },
       },
     },
     onCancel() {}, onConfirm() {},
@@ -198,7 +198,7 @@ test("evaluation confirmation names the frozen revision, target, cases, repetiti
   // Confirmation reuses the projected description rather than reformatting a
   // raw timestamp, so it names the same revision preflight showed.
   assert.match(html, /Current · Question · “Explain a topic\.” · Aug 1, 12:00 PM/);
-  assert.match(html, /Fixture profile · fixture-model/);
+  assert.match(html, /Fixture profile · https:\/\/provider\.test\/v1 · fixture-model · buffered/);
   assert.match(html, /5 · Case 1, Case 2, Case 3, Case 4, Case 5/);
   assert.match(html, /5 per case/);
   assert.match(html, /25 planned/);
@@ -289,14 +289,18 @@ test("renders the four focused-case preflight regions from the shared resolution
     storage: "durable",
     running: false,
     onStart() {},
-    preview: {
+    preview: { targets: [{
+      variantId: "evaluation-variant_default",
+      variantName: "Default",
+      requirementName: "Buffered fixture",
       targetName: "Buffered fixture",
       endpoint: "http://127.0.0.1:44014/v1",
       protocol: "openai-compatible-chat-completions",
       model: "buffered-test-model",
       responseMode: "buffered",
       options: { temperature: 0.4, maxOutputTokens: 256, stop: ["</end>"] },
-    },
+      streamingAvailable: true,
+    }] },
   });
 
   // The pane names itself and the case it is showing, so an author reading the
@@ -413,14 +417,18 @@ test("marks a disagreeing prompt target recommendation as advisory without chang
     storage: "durable",
     running: false,
     onStart() {},
-    preview: {
+    preview: { targets: [{
+      variantId: "evaluation-variant_default",
+      variantName: "Default",
+      requirementName: "Research cluster",
       targetName: "Buffered fixture",
       endpoint: "http://127.0.0.1:44014/v1",
       protocol: "openai-compatible-chat-completions",
       model: "buffered-test-model",
       responseMode: "buffered",
       options: { temperature: 0.4 },
-    },
+      streamingAvailable: true,
+    }] },
   };
   const preview = await renderPreview(authoring, execution);
 

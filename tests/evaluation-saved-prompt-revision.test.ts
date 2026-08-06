@@ -209,7 +209,7 @@ test("unresolved template variables are valid authored state, and the project st
   });
 
   assert.equal(created.project.schemaVersion, PROJECT_SCHEMA_VERSION);
-  assert.equal(created.project.schemaVersion, 9);
+  assert.equal(created.project.schemaVersion, 10);
   // `topic` has no value at any level; that is authoring in progress, not a
   // document the parser may reject.
   const serialized = serializeProjectFile(created.project);

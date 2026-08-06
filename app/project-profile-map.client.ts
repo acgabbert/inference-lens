@@ -1,16 +1,9 @@
 "use client";
 
-const STORAGE_KEY = "inference-lens:project-profile-map:v2";
+const STORAGE_KEY = "inference-lens:project-profile-map:v3";
+const LEGACY_STORAGE_KEY = "inference-lens:project-profile-map:v2";
 
-/**
- * Which local connection profile this device runs a given project against.
- *
- * The portable project file names only its connection *requirements*, so it
- * stays shareable and secret-free. The choice of local profile is a property of
- * this device, and lives here instead. Recorded as an object rather than a bare
- * profile id so a later per-connection-requirement mapping is an added field
- * rather than a stored-format migration.
- */
+/** One explicit device-local resolution of a portable connection requirement. */
 export interface ProjectProfileMapping {
   profileId: string;
   profileInstanceId: string;
@@ -21,8 +14,20 @@ export interface ProfileIdentity {
   instanceId: string;
 }
 
-/** Keyed by the project file's `projectId`, which travels inside the file. */
-export type ProjectProfileMap = Record<string, ProjectProfileMapping>;
+/**
+ * Project id → connection requirement id → local profile identity.
+ *
+ * Requirement ids are portable, while the mapped identities stay on this
+ * device. A newly-authored requirement therefore starts unmapped instead of
+ * inheriting a profile the user chose for a different provider boundary.
+ */
+export type ProjectProfileMap = Record<
+  string,
+  Record<string, ProjectProfileMapping>
+>;
+
+/** The v2 shape had one undifferentiated mapping per project. */
+export type LegacyProjectProfileMap = Record<string, ProjectProfileMapping>;
 
 function isMapping(value: unknown): value is ProjectProfileMapping {
   if (!value || typeof value !== "object") return false;
@@ -33,88 +38,117 @@ function isMapping(value: unknown): value is ProjectProfileMapping {
   );
 }
 
+function cleanMapping(mapping: ProjectProfileMapping): ProjectProfileMapping {
+  return {
+    profileId: mapping.profileId,
+    profileInstanceId: mapping.profileInstanceId,
+  };
+}
+
 export function parseProjectProfileMap(value: unknown): ProjectProfileMap {
   if (!value || typeof value !== "object") return {};
   const map: ProjectProfileMap = {};
-  for (const [projectId, mapping] of Object.entries(value)) {
-    if (isMapping(mapping)) {
-      map[projectId] = {
-        profileId: mapping.profileId,
-        profileInstanceId: mapping.profileInstanceId,
-      };
+  for (const [projectId, projectMappings] of Object.entries(value)) {
+    if (!projectMappings || typeof projectMappings !== "object") continue;
+    const parsed: Record<string, ProjectProfileMapping> = {};
+    for (const [requirementId, mapping] of Object.entries(projectMappings)) {
+      if (isMapping(mapping)) parsed[requirementId] = cleanMapping(mapping);
     }
+    if (Object.keys(parsed).length > 0) map[projectId] = parsed;
   }
   return map;
 }
 
-/**
- * The mapped profile, or undefined when the project has never been mapped on
- * this device or names a different instance of a reused profile id.
- */
-export function resolveMappedProfile(
+export function parseLegacyProjectProfileMap(
+  value: unknown,
+): LegacyProjectProfileMap {
+  if (!value || typeof value !== "object") return {};
+  const map: LegacyProjectProfileMap = {};
+  for (const [projectId, mapping] of Object.entries(value)) {
+    if (isMapping(mapping)) map[projectId] = cleanMapping(mapping);
+  }
+  return map;
+}
+
+/** Resolves every valid mapping for one project, dropping stale identities. */
+export function resolveMappedProfiles(
   map: ProjectProfileMap,
   projectId: string,
   profiles: readonly ProfileIdentity[],
+): Record<string, string> {
+  const resolved: Record<string, string> = {};
+  for (const [requirementId, mapped] of Object.entries(map[projectId] ?? {})) {
+    if (profiles.some(({ id, instanceId }) =>
+      id === mapped.profileId && instanceId === mapped.profileInstanceId
+    )) {
+      resolved[requirementId] = mapped.profileId;
+    }
+  }
+  return resolved;
+}
+
+export function resolveMappedProfile(
+  map: ProjectProfileMap,
+  projectId: string,
+  requirementId: string,
+  profiles: readonly ProfileIdentity[],
 ): string | undefined {
-  const mapped = map[projectId];
-  return mapped &&
-      profiles.some(
-        ({ id, instanceId }) =>
-          id === mapped.profileId && instanceId === mapped.profileInstanceId,
-      )
-    ? mapped.profileId
-    : undefined;
+  return resolveMappedProfiles(map, projectId, profiles)[requirementId];
 }
 
 export function withMappedProfile(
   map: ProjectProfileMap,
   projectId: string,
+  requirementId: string,
   profile: ProfileIdentity,
 ): ProjectProfileMap {
   return {
     ...map,
     [projectId]: {
-      profileId: profile.id,
-      profileInstanceId: profile.instanceId,
+      ...map[projectId],
+      [requirementId]: {
+        profileId: profile.id,
+        profileInstanceId: profile.instanceId,
+      },
     },
   };
 }
 
-/**
- * Every project mapped to `profileId` released at once. A deleted profile takes
- * its mappings with it, so the entries cannot outlive what they name even for
- * projects that are not currently open.
- */
+/** Releases every requirement on every project that names a deleted profile. */
 export function withoutMappedProfile(
   map: ProjectProfileMap,
   profileId: string,
 ): ProjectProfileMap {
-  return Object.fromEntries(
-    Object.entries(map).filter(([, mapping]) => mapping.profileId !== profileId),
-  );
+  const next: ProjectProfileMap = {};
+  for (const [projectId, mappings] of Object.entries(map)) {
+    const retained = Object.fromEntries(
+      Object.entries(mappings).filter(([, mapping]) =>
+        mapping.profileId !== profileId
+      ),
+    );
+    if (Object.keys(retained).length > 0) next[projectId] = retained;
+  }
+  return next;
 }
 
-/**
- * Drops entries naming profiles this device no longer has, bounding a map that
- * otherwise gains an entry for every project ever opened. Applied on write, so
- * pruning never costs a read the user is waiting on.
- */
+/** Drops mappings naming profile instances this device no longer has. */
 export function prunedProjectProfileMap(
   map: ProjectProfileMap,
   profiles: readonly ProfileIdentity[],
 ): ProjectProfileMap {
-  // An empty profile list means the caller has none to check against, not that
-  // every mapping is stale. Wiping the map on it would lose real choices.
   if (profiles.length === 0) return map;
-  return Object.fromEntries(
-    Object.entries(map).filter(([, mapping]) =>
-      profiles.some(
-        ({ id, instanceId }) =>
-          id === mapping.profileId &&
-          instanceId === mapping.profileInstanceId,
+  const next: ProjectProfileMap = {};
+  for (const [projectId, mappings] of Object.entries(map)) {
+    const retained = Object.fromEntries(
+      Object.entries(mappings).filter(([, mapping]) =>
+        profiles.some(({ id, instanceId }) =>
+          id === mapping.profileId && instanceId === mapping.profileInstanceId
+        )
       ),
-    ),
-  );
+    );
+    if (Object.keys(retained).length > 0) next[projectId] = retained;
+  }
+  return next;
 }
 
 export function readProjectProfileMap(): ProjectProfileMap {
@@ -122,6 +156,17 @@ export function readProjectProfileMap(): ProjectProfileMap {
   try {
     return parseProjectProfileMap(
       JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null"),
+    );
+  } catch {
+    return {};
+  }
+}
+
+export function readLegacyProjectProfileMap(): LegacyProjectProfileMap {
+  if (typeof window === "undefined") return {};
+  try {
+    return parseLegacyProjectProfileMap(
+      JSON.parse(window.localStorage.getItem(LEGACY_STORAGE_KEY) ?? "null"),
     );
   } catch {
     return {};

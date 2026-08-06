@@ -36,7 +36,7 @@ export function EvaluationStartDialog({
     };
   }, [onCancel]);
 
-  const target = draft.plan.suite.cases[0]!.input.target;
+  const targets = draft.plan.suite.variants;
   const callCount = draft.plan.cells.length;
   const turnCeiling = draft.plan.turnCeiling ?? DEFAULT_EXPERIMENT_TURN_CEILING;
   const exposesTools = draft.toolBindings.length > 0;
@@ -45,6 +45,7 @@ export function EvaluationStartDialog({
   // the safety maximum.
   const guardrail = evaluationBatchGuardrail(
     draft.plan.suite.cases.length,
+    draft.plan.suite.variants.length,
     draft.plan.repetitions,
     { exposedToolCount: draft.toolBindings.length, turnCeiling },
   );
@@ -56,9 +57,9 @@ export function EvaluationStartDialog({
         <p>Each selected case is resolved from the frozen project revision and runs sequentially. Composer-only values are not included.</p>
         <dl className="confirmation-details evaluation-start-details">
           <div><dt>Revision</dt><dd>{draft.revisionLabel} <code>{draft.plan.suite.conversationRevisionId}</code></dd></div>
-          <div><dt>Target</dt><dd>{draft.targetName} · {target.model}</dd></div>
+          <div><dt>Configurations</dt><dd>{targets.map(({ variantId, name, target, responseMode }) => `${name}: ${draft.targetNames[variantId]} · ${target.endpoint} · ${target.model} · ${responseMode}`).join("; ")}</dd></div>
           <div><dt>Cases</dt><dd>{draft.plan.suite.cases.length} · {caseSummary(draft)}</dd></div>
-          <div><dt>Repetitions</dt><dd>{draft.plan.repetitions} per case</dd></div>
+          <div><dt>Repetitions</dt><dd>{draft.plan.repetitions} per case and configuration</dd></div>
           <div><dt>Provider calls</dt><dd>{exposesTools
             ? <>{evaluationCallRange(guardrail)} — one per repetition, up to {turnCeiling} if every repetition keeps calling tools</>
             : <>{callCount.toLocaleString()} planned</>}</dd></div>
