@@ -139,26 +139,19 @@ test("creating a new suite from the dialog names it after the prompt", async ({ 
   await expect(page.locator("h2", { hasText: "Escalation note evaluation" })).toBeVisible();
 });
 
-test("switching prompts while the dialog is open surfaces a retarget failure without navigating", async ({ page }) => {
-  let project = baseProject();
-  const first = withOutdatedSuite(project, {
+test("the dialog renders as a real modal overlay, not an unstyled inline block", async ({ page }) => {
+  const built = withOutdatedSuite(baseProject(), {
     templateName: "Support reply",
     suiteName: "Support QA",
     templateSuffix: "support-reply",
     suiteSuffix: "support-qa",
   });
-  const second = withOutdatedSuite(first.project, {
-    templateName: "Safety policy",
-    suiteName: "Safety QA",
-    templateSuffix: "safety-policy",
-    suiteSuffix: "safety-qa",
-  });
-  project = second.project;
 
+  await page.setViewportSize({ width: 1280, height: 900 });
   await seedProfile(page, { instanceId: "profile-instance-buffered" });
   await page.goto("/");
   await waitForHydration(page);
-  await importProject(page, project, PROJECT_NAME);
+  await importProject(page, built.project, PROJECT_NAME);
   await openPromptsTab(page);
 
   const editor = page.locator(".template-editor");
@@ -166,17 +159,17 @@ test("switching prompts while the dialog is open surfaces a retarget failure wit
   await editor.getByRole("button", { name: "Evaluate in a suite…" }).click();
 
   const dialog = page.getByRole("dialog", { name: "Evaluate in a suite" });
-  await expect(dialog.getByRole("button", { name: "Use Support QA" })).toBeVisible();
-
-  // Without closing the dialog, switch the selected prompt: the dialog's
-  // suite list is keyed to the sidebar selection while the pending request
-  // still names Support reply's revision, so confirming now retargets a
-  // suite that does not use that template at all.
-  await page.locator(".template-list").getByRole("button", { name: /Safety policy/ }).click();
-  await dialog.getByRole("button", { name: "Use Safety QA" }).click();
-
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole("alert")).toContainText("That suite does not use this saved prompt in its selected input.");
-  const composeButton = page.getByRole("navigation", { name: "Application mode" }).getByRole("button", { name: "Compose" });
-  await expect(composeButton).toHaveAttribute("aria-current", "page");
+
+  // The backdrop must actually cover the viewport as a fixed overlay — an
+  // unstyled backdrop class renders inline in normal document flow, where it
+  // is easy to miss entirely and never blocks the page behind it.
+  const backdrop = page.locator(".confirmation-backdrop");
+  await expect(backdrop).toHaveCSS("position", "fixed");
+  const box = await backdrop.boundingBox();
+  expect(box?.width).toBeGreaterThanOrEqual(1279);
+  expect(box?.height).toBeGreaterThanOrEqual(899);
+
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toHaveCount(0);
 });

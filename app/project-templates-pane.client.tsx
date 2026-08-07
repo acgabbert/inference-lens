@@ -697,8 +697,8 @@ export function ProjectTemplatesPane({
         onInsert={insertAtN8nPasteTarget}
         onPasteUnchanged={() => insertAtN8nPasteTarget(n8nPasteTarget.pastedSource ?? n8nPasteTarget.source.slice(n8nPasteTarget.start, n8nPasteTarget.end))}
       />}
-      {evaluateRequest && <div aria-label="Evaluate in a suite" aria-modal="true" className="confirmation-dialog-backdrop" role="dialog">
-        <section className="confirmation-dialog">
+      {evaluateRequest && <div className="confirmation-backdrop" role="presentation">
+        <section aria-label="Evaluate in a suite" aria-modal="true" className="confirmation-dialog" role="dialog">
           <h2>Evaluate in a suite</h2>
           <p>Choose a compatible suite to keep its cases, checks, and configurations, or start a new suite. Messages will not change. Nothing runs until you start the evaluation.</p>
           {evaluateRevisionError && <div className="template-diagnostic" role="alert">{evaluateRevisionError}</div>}
