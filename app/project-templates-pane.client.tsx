@@ -22,7 +22,8 @@ import {
   resolveTemplateValues,
 } from "../packages/core/src/template-engine";
 import { diffPromptTemplateRevisions } from "../packages/core/src/prompt-template-revision-diff";
-import { describeCompatibleSuiteRevision } from "./templates/prompt-revision-label";
+import { describeCompatibleSuiteRevision, promptRevisionLabel, summarizeRevisionDiff } from "./templates/prompt-revision-label";
+import { DisclosureChevron } from "./disclosure-chevron.client";
 import { FocusModeToggle, useFocusMode } from "./focus-mode.client";
 import { N8nTemplatePasteDialog } from "./templates/n8n-template-paste-dialog.client";
 import { shouldSuggestN8nTemplatePaste } from "./templates/n8n-template-paste";
@@ -141,6 +142,10 @@ export function ProjectTemplatesPane({
     messageIndex: number; start: number; end: number; source: string; pastedSource?: string; revisionId?: PromptTemplateRevisionId; textarea: HTMLTextAreaElement; automatic: boolean;
   }>();
   const [evaluateRequest, setEvaluateRequest] = useState<undefined | { templateId: PromptTemplateId; revisionId: PromptTemplateRevisionId }>();
+  // Open by default when browsing a historical revision (that's why the user
+  // navigated here); collapsed while the current draft is being edited. A
+  // save forces it open once, so the diff can confirm what just changed.
+  const [diffOpen, setDiffOpen] = useState(false);
 
   const viewedRevision = selected?.revisions.find(
     ({ id }) => id === viewedRevisionId,
@@ -207,6 +212,7 @@ export function ProjectTemplatesPane({
     setViewedRevisionId(revision.id);
     setCandidateSourceRevisionId(undefined);
     setComparedRevisionId(template.revisions.at(-2)?.id);
+    setDiffOpen(false);
     setName(template.name);
     setMessages(structuredClone(revision.messages));
     setDefaults({ ...revision.variableDefaults });
@@ -233,6 +239,7 @@ export function ProjectTemplatesPane({
     setComparedRevisionId(
       selected.revisions[selected.revisions.indexOf(revision) - 1]?.id,
     );
+    setDiffOpen(revision.id !== selected.currentRevisionId);
     setMessages(structuredClone(revision.messages));
     setDefaults({ ...revision.variableDefaults });
   }
@@ -245,6 +252,7 @@ export function ProjectTemplatesPane({
     setViewedRevisionId(undefined);
     setCandidateSourceRevisionId(undefined);
     setComparedRevisionId(undefined);
+    setDiffOpen(false);
     setName("Untitled prompt");
     setMessages(structuredClone(messages));
     setDefaults({});
@@ -376,9 +384,7 @@ export function ProjectTemplatesPane({
                 >
                   {[...selected.revisions].reverse().map((revision) => (
                     <option key={revision.id} value={revision.id}>
-                      {revision.id === selected.currentRevisionId
-                        ? "Current"
-                        : `Revision ${selected.revisions.indexOf(revision) + 1}`}
+                      {promptRevisionLabel(selected, revision.id)}
                       {" · "}
                       {new Date(revision.createdAt).toLocaleString()}
                     </option>
@@ -411,6 +417,7 @@ export function ProjectTemplatesPane({
                             type="button"
                             onClick={() => {
                               setCandidateSourceRevisionId(viewedRevision.id);
+                              setDiffOpen(false);
                               setMessages(structuredClone(viewedRevision.messages));
                               setDefaults({ ...viewedRevision.variableDefaults });
                             }}
@@ -456,6 +463,7 @@ export function ProjectTemplatesPane({
                           setCandidateSourceRevisionId(undefined);
                           setViewedRevisionId(saved);
                           setComparedRevisionId(viewedRevision.id);
+                          setDiffOpen(true);
                         }}
                       >
                         Save prompt
@@ -630,11 +638,23 @@ export function ProjectTemplatesPane({
 
             <section className="template-revision-diff" aria-label="Revision diff">
               <div className="template-revision-diff-heading">
-                <div>
-                  <span className="eyebrow">Revision history</span>
-                  <h3>Revision diff</h3>
-                </div>
-                <label>
+                <button
+                  aria-expanded={diffOpen}
+                  className="evaluation-section-toggle"
+                  type="button"
+                  onClick={() => setDiffOpen(!diffOpen)}
+                >
+                  <DisclosureChevron className="evaluation-section-chevron" />
+                  <span className="eyebrow">Revision diff</span>
+                  <span className="evaluation-section-facts">
+                    {!comparedRevision
+                      ? "Save another revision to compare"
+                      : `vs ${promptRevisionLabel(selected, comparedRevision.id)}${revisionDiff ? ` — ${summarizeRevisionDiff(revisionDiff)}` : ""}`}
+                  </span>
+                </button>
+              </div>
+              {diffOpen && <>
+                <label className="template-revision-diff-compare">
                   Compare this revision with
                   <select
                     value={comparedRevision?.id ?? ""}
@@ -645,19 +665,19 @@ export function ProjectTemplatesPane({
                   >
                     {selected.revisions.filter(({ id }) => id !== viewedRevision.id).map((revision) => (
                       <option key={revision.id} value={revision.id}>
-                        Revision {selected.revisions.indexOf(revision) + 1}
+                        {promptRevisionLabel(selected, revision.id)}
                       </option>
                     ))}
                   </select>
                 </label>
-              </div>
-              {!revisionDiff ? (
-                <p className="template-empty">Save another revision to compare this prompt’s message and default history.</p>
-              ) : revisionDiff.identical ? (
-                <p className="template-empty">These revisions have identical messages, defaults, and import provenance.</p>
-              ) : (
-                <RevisionDiffView diff={revisionDiff} />
-              )}
+                {!revisionDiff ? (
+                  <p className="template-empty">Save another revision to compare this prompt’s message and default history.</p>
+                ) : revisionDiff.identical ? (
+                  <p className="template-empty">These revisions have identical messages, defaults, and import provenance.</p>
+                ) : (
+                  <RevisionDiffView diff={revisionDiff} />
+                )}
+              </>}
             </section>
 
             {!archived && <footer className="template-insert-bar">

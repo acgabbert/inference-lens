@@ -1,5 +1,6 @@
 import type { PromptTemplate } from "../../packages/core/src/project";
 import type { PromptTemplateRevisionId } from "../../packages/core/src/run-kernel";
+import type { PromptTemplateRevisionDiff } from "../../packages/core/src/prompt-template-revision-diff";
 
 /** "Current" for the template's live revision, otherwise its 1-based position. */
 export function promptRevisionLabel(
@@ -35,4 +36,20 @@ export function describeCompatibleSuiteRevision(
     pinnedLabel: promptRevisionLabel(template, pinnedRevisionId),
     targetLabel: promptRevisionLabel(template, targetRevisionId),
   };
+}
+
+/** "identical" or a comma-joined count of what changed, for a diff disclosure's collapsed summary. */
+export function summarizeRevisionDiff(diff: PromptTemplateRevisionDiff): string {
+  if (diff.identical) return "identical";
+  const messageChanges = diff.messages.filter(({ status }) => status !== "identical").length;
+  const defaultChanges = diff.variableDefaults.filter(({ status }) => status !== "identical").length;
+  const parts: string[] = [];
+  if (messageChanges > 0) {
+    parts.push(`${messageChanges} message change${messageChanges === 1 ? "" : "s"}`);
+  }
+  if (defaultChanges > 0) {
+    parts.push(`${defaultChanges} default change${defaultChanges === 1 ? "" : "s"}`);
+  }
+  if (diff.importProvenance.status !== "identical") parts.push("import link changed");
+  return parts.join(", ");
 }

@@ -43,23 +43,36 @@ test("a historical prompt revision can be edited into a new revision with an exa
   await page.getByRole("tab", { name: /Prompts/ }).click();
 
   const editor = page.locator(".template-editor");
+  const diff = editor.getByRole("region", { name: "Revision diff" });
+  const diffToggle = diff.getByRole("button", { name: /Revision diff/ });
+
   await expect(editor.getByRole("button", { name: "Edit as new revision" })).toHaveCount(0);
+  // Editing the current draft: the diff starts collapsed, not competing with the editor.
+  await expect(diffToggle).toHaveAttribute("aria-expanded", "false");
+
   await editor.locator(".template-revision-field select").selectOption(firstRevisionId);
   await expect(editor).toContainText("Read-only revision");
   await expect(editor).toContainText(
     "Copies this revision into an editable draft. Nothing changes until you save.",
   );
+  // Browsing a historical revision is history-inspection intent: opens by default.
+  await expect(diffToggle).toHaveAttribute("aria-expanded", "true");
+
   await editor.getByRole("button", { name: "Edit as new revision" }).click();
   await expect(editor.getByRole("button", { name: "Edit as new revision" })).toHaveCount(0);
   await expect(editor).not.toContainText(
     "Copies this revision into an editable draft. Nothing changes until you save.",
   );
+  // Editing state collapses it again.
+  await expect(diffToggle).toHaveAttribute("aria-expanded", "false");
+
   await editor.getByLabel("Prompt content").fill("Triage {{incident}} for the on-call engineer.");
   await editor.getByLabel("{{incident}}").fill("database outage");
   await editor.getByRole("button", { name: "Save prompt" }).click();
 
-  const diff = editor.getByRole("region", { name: "Revision diff" });
-  await expect(diff).toContainText("Revision diff");
+  // A save forces the diff open once, to confirm what just changed.
+  await expect(diffToggle).toHaveAttribute("aria-expanded", "true");
+  await expect(diffToggle).toContainText("vs Revision 1");
   await expect(diff).toContainText("Triage {{incident}}.");
   await expect(diff).toContainText("Triage {{incident}} for the on-call engineer.");
   await expect(diff).toContainText("timeout → database outage");
