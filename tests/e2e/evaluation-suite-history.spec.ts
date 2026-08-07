@@ -165,15 +165,35 @@ async function openFixtureProject(page: Page): Promise<void> {
   await openMode(page, "Evaluations");
 }
 
-/** Asserts `mark`'s rendered centre coincides with `box`'s, within a pixel. */
-async function expectCentred(box: Locator, mark: Locator): Promise<void> {
-  const outer = await box.boundingBox();
-  const inner = await mark.boundingBox();
-  if (!outer || !inner) throw new Error("chevron is not rendered");
-  expect(Math.abs((inner.x + inner.width / 2) - (outer.x + outer.width / 2)))
-    .toBeLessThanOrEqual(1);
-  expect(Math.abs((inner.y + inner.height / 2) - (outer.y + outer.height / 2)))
-    .toBeLessThanOrEqual(1);
+/**
+ * Asserts the drawn mark's rendered centre coincides with its box's, within a
+ * pixel.
+ *
+ * Both rectangles are read in a single evaluation on purpose. Opening the
+ * disclosure starts the artifact projection, so two sequential
+ * `boundingBox()` round trips can straddle the render that lists the runs and
+ * report a whole-row layout shift as a centring failure — the two samples
+ * describe the same element at two different moments rather than two elements
+ * at one.
+ */
+async function expectCentred(box: Locator): Promise<void> {
+  const offset = await box.evaluate((outer) => {
+    const inner = outer.querySelector("svg");
+    if (!inner) return null;
+    const outerBox = outer.getBoundingClientRect();
+    const innerBox = inner.getBoundingClientRect();
+    return {
+      x: Math.abs(
+        innerBox.x + innerBox.width / 2 - (outerBox.x + outerBox.width / 2),
+      ),
+      y: Math.abs(
+        innerBox.y + innerBox.height / 2 - (outerBox.y + outerBox.height / 2),
+      ),
+    };
+  });
+  if (!offset) throw new Error("chevron is not rendered");
+  expect(offset.x).toBeLessThanOrEqual(1);
+  expect(offset.y).toBeLessThanOrEqual(1);
 }
 
 test("past executions of the authored suite open from the suite editor", async ({ page }) => {
@@ -200,10 +220,10 @@ test("past executions of the authored suite open from the suite editor", async (
   const chevronBox = section.locator(".evaluation-suite-history-chevron");
   const chevronMark = chevronBox.locator("svg");
   await expect(chevronMark).toBeVisible();
-  await expectCentred(chevronBox, chevronMark);
+  await expectCentred(chevronBox);
 
   await section.getByText("Past executions").click();
-  await expectCentred(chevronBox, chevronMark);
+  await expectCentred(chevronBox);
   await expect(section).toContainText("1 saved execution of this suite");
   await expect(section).toContainText("Hide");
   await expect(items).toHaveCount(1);
