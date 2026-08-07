@@ -258,7 +258,6 @@ textarea,
 .repeated-experiment-metric-section h3,
 .repeat-experiment-tools h3,
 .repeat-experiment-tools li,
-.evaluation-tools-heading span,
 .evaluation-tools small,
 .evaluation-tool-list,
 .evaluation-portable-warning,
@@ -6825,6 +6824,53 @@ main {
   width: 132px;
 }
 
+/* Shared by the Configurations and Tools disclosures inside evaluation setup:
+   chevron, name, and a collapsed-state summary in one row, same idiom as the
+   Setup band's own toggle one level up. */
+.evaluation-section-toggle {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.evaluation-section-chevron {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  color: var(--text-muted);
+  line-height: 0;
+  transition: transform 120ms ease;
+}
+
+.evaluation-section-chevron svg {
+  display: block;
+}
+
+.evaluation-section-toggle[aria-expanded="true"] .evaluation-section-chevron {
+  transform: rotate(180deg);
+}
+
+.evaluation-section-facts {
+  min-width: 0;
+  overflow: hidden;
+  margin-left: auto;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Tool exposure sits beside the settings disclosure rather than inside it: a
    suite that runs tools is a different kind of evaluation, and what serves each
    one is device-local context the suite never stores. */
@@ -6834,14 +6880,6 @@ main {
   align-content: start;
 }
 
-.evaluation-tools-heading {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.evaluation-tools-heading span,
 .evaluation-tools small {
   color: var(--text-muted);
   line-height: 1.4;
