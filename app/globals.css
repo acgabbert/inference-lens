@@ -5282,13 +5282,23 @@ main {
   overflow: hidden;
 }
 
+/* Short facts keep their words; the first one — the model id, or the
+   connection a suite targets — gives way for them. Sharing the shortfall
+   evenly turns "Temp 0.3" and "Buffered" into ellipses too, which costs the
+   row every value it exists to report, and an id is the one fact here still
+   recognisable from its head. */
 .inference-settings-fact {
   min-width: 0;
+  flex: 0 0 auto;
   padding: 0;
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.inference-settings-fact:first-child {
+  flex: 0 1 auto;
 }
 
 .inference-settings-fact + .inference-settings-fact::before {
@@ -5376,32 +5386,19 @@ main {
   padding: 0;
 }
 
-/* Delivery lives outside the project-backed settings disclosure: it is a
-   session preference, so its scope must not borrow the panel's project badge. */
-.request-delivery-preference {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-sm) var(--space-md);
-  padding: var(--space-xs) var(--space-md);
-  border-top: 1px solid var(--border-subtle);
-  background: transparent;
+/* The model field states the panel's persisted scope while the disclosure is
+   open, because the composer's panel mixes scopes: model and temperature are
+   saved where the badge says, delivery is only a session preference. It is
+   lifted onto the field's own label line rather than given a row, so naming
+   the scope costs the open panel no height. */
+.inference-settings-field-scoped {
+  position: relative;
 }
 
-.request-delivery-identity {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-sm);
-  color: var(--text-secondary);
-}
-
-.request-delivery-value {
-  color: var(--text-muted);
-}
-
-.request-delivery-preference .streaming-control {
-  margin-left: auto;
-  display: flex;
+.inference-settings-field-scope {
+  position: absolute;
+  top: 0;
+  right: 0;
 }
 
 .inference-settings-record {
@@ -5515,10 +5512,6 @@ main {
 
 .inference-settings label.streaming-control {
   min-height: 36px;
-}
-
-.inference-settings label.streaming-control,
-.request-delivery-preference label.streaming-control {
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -5527,28 +5520,23 @@ main {
   cursor: pointer;
 }
 
-.inference-settings .streaming-control input,
-.request-delivery-preference .streaming-control input {
+.inference-settings .streaming-control input {
   margin: 0;
   width: auto;
 }
 
 .inference-settings .streaming-control span,
-.inference-settings .streaming-control small,
-.request-delivery-preference .streaming-control span,
-.request-delivery-preference .streaming-control small {
+.inference-settings .streaming-control small {
   display: block;
 }
 
-.inference-settings .streaming-control small,
-.request-delivery-preference .streaming-control small {
+.inference-settings .streaming-control small {
   margin-top: var(--space-3xs);
   color: var(--text-muted);
   line-height: var(--leading-tight);
 }
 
-.inference-settings .streaming-control.disabled,
-.request-delivery-preference .streaming-control.disabled {
+.inference-settings .streaming-control.disabled {
   cursor: not-allowed;
   opacity: 0.65;
 }

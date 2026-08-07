@@ -201,16 +201,18 @@ test("the settings panel hides its controls behind a summary of what will be sen
     const toggle = view.settingsToggle();
     assert.ok(toggle);
     assert.equal(toggle.getAttribute("aria-expanded"), "false");
-    // Collapsing hides the project-owned controls while their values remain
-    // named as facts.
-    // Delivery is a separate session preference and is asserted by the browser
-    // suite that exercises the complete request settings surface.
+    // Collapsing hides every control, delivery included, while their values
+    // remain named as facts.
     const model = view.container.querySelector('[data-readiness-control="model"]');
     assert.equal(model, null);
     const facts = Array.from(
       view.container.querySelectorAll(".inference-settings-fact"),
     ).map((fact) => fact.textContent);
-    assert.deepEqual(facts, ["fixture-model", "Temp 0.7"]);
+    assert.deepEqual(facts, ["fixture-model", "Temp 0.7", "Buffered"]);
+    assert.equal(
+      view.container.querySelector('.streaming-control input[type="checkbox"]'),
+      null,
+    );
     assert.equal(
       view.container.querySelector('.temperature-control input[type="range"]'),
       null,

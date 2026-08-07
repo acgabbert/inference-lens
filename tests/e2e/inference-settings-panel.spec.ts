@@ -35,17 +35,27 @@ test("project setting overrides are marked and revert one field at a time", asyn
 
   const collapsedPanel = page.locator('[aria-label="Run settings"]');
   await expect(collapsedPanel.locator(".inference-settings-fact").filter({ hasText: "2 overrides" })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Delivery preference" })).toContainText(
-    "Session preference",
-  );
+  // Collapsed, the header badge summarises where the panel saves.
+  await expect(
+    collapsedPanel.locator(".inference-settings-header .inference-settings-scope"),
+  ).toHaveText("Project settings");
 
   const panel = await openInferenceSettings(page);
-  await expect(panel.locator(".inference-settings-scope")).toHaveText(
-    "Project settings",
-  );
+  // Open, the badge moves onto the field that actually carries that scope.
+  // Model and temperature are saved with the project; delivery below them is
+  // only a session preference, so the header must not keep a badge that would
+  // read as covering it — and must not print the same badge twice.
+  await expect(
+    panel.locator(".inference-settings-field-scope"),
+  ).toHaveText("Project settings");
+  await expect(
+    panel.locator(".inference-settings-header .inference-settings-scope"),
+  ).toHaveClass(/visually-hidden/);
   await expect(panel.getByRole("button", { name: "Revert model to profile defaults" })).toBeVisible();
   await expect(panel.getByRole("button", { name: "Revert temperature to profile defaults" })).toBeVisible();
-  await expect(panel.getByLabel("Stream response")).toHaveCount(0);
+  // The badge must not have been absorbed into the field's accessible name.
+  await expect(panel.getByLabel("Model", { exact: true })).toBeVisible();
+  await expect(panel.getByLabel("Stream response")).toBeVisible();
 
   await panel.getByRole("button", { name: "Revert model to profile defaults" }).click();
   await expect(panel.getByLabel("Model", { exact: true })).toHaveValue("profile-model");
@@ -98,23 +108,25 @@ test("the collapsed panel reports what the run will send, and expanding reveals 
   await expect(panel.locator(".inference-settings-fact")).toHaveText([
     "buffered-test-model",
     "Temp 0.3",
+    "Buffered",
   ]);
-  await expect(page.getByRole("region", { name: "Delivery preference" })).toContainText("Buffered");
-  // Collapsed means project controls are absent, not merely hidden. Delivery
-  // remains independently reachable because it is session-scoped.
+  // Collapsed means the controls are absent, not merely hidden. Delivery is
+  // one of them now: it is summarised here rather than sitting outside.
   await expect(panel.getByLabel("Model", { exact: true })).toHaveCount(0);
   await expect(page.locator(".temperature-control")).toHaveCount(0);
+  await expect(page.getByLabel("Stream response")).toHaveCount(0);
+  // Connection settings stays out of the disclosure: it opens another
+  // surface rather than setting a value this panel sends.
   await expect(
     panel.getByRole("button", { name: "Connection settings" }),
   ).toBeVisible();
-  await expect(page.getByLabel("Stream response")).toBeVisible();
 
   await openInferenceSettings(page);
   // The global `label:not(.file-button)` rule outranks a bare class selector,
   // so these labels must win specificity or their checkboxes stack above the
   // text instead of sitting beside it.
   await expect(panel.locator(".temperature-toggle")).toHaveCSS("display", "flex");
-  await expect(page.getByRole("region", { name: "Delivery preference" }).locator(".streaming-control")).toHaveCSS("display", "flex");
+  await expect(panel.locator(".streaming-control")).toHaveCSS("display", "flex");
   await expect(page.getByLabel("Stream response")).not.toBeChecked();
   await expect(panel.getByLabel("Model", { exact: true })).toHaveValue(
     "buffered-test-model",
@@ -134,6 +146,7 @@ test("the collapsed panel reports what the run will send, and expanding reveals 
   await expect(panel.locator(".inference-settings-fact")).toHaveText([
     "buffered-test-model",
     "Temp 0.9",
+    "Buffered",
   ]);
 
   // And the collapsed panel is not a stale snapshot: the run honours it.

@@ -144,13 +144,12 @@ test("the extracted composer renders request snapshots without a project", async
   assert.match(html, /Profile default/);
   assert.match(html, /Composer fixture message/);
   assert.match(html, /Open request composer in focus mode/);
-  // Project-backed settings start collapsed. Delivery remains visible because
-  // it is intentionally a separate session preference.
+  // The settings panel starts collapsed: every value it will send is named,
+  // delivery included, and none of the controls are rendered.
   assert.match(html, /fixture-model/);
   assert.match(html, /Temp 0\.7/);
   assert.match(html, /Buffered/);
-  assert.match(html, /Session preference/);
-  assert.match(html, /Stream response/);
+  assert.doesNotMatch(html, /Stream response/);
   assert.match(html, /class="request-settings-card"/);
   assert.doesNotMatch(html, /Override temperature/);
   // The tool line stays outside the panel, so a blocked tool selection cannot
