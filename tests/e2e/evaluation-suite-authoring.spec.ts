@@ -288,7 +288,6 @@ test("authors sparse named configurations and shows their effective settings", a
   const fastModel = page.getByRole("article", { name: "Configuration Fast model" });
   await expect(fastModel).toContainText("Effective:");
   await expect(fastModel).toContainText("streaming");
-  await expect(page.getByText("Repetitions, turn ceiling, and exposed tools are shared across every configuration.")).toBeVisible();
 });
 
 test("selecting a historical revision with no bound template use stays in the editor", async ({ page }) => {

@@ -6757,19 +6757,8 @@ main {
   background: var(--surface-sunken);
 }
 
-.evaluation-input-summary > span,
-.evaluation-input-summary > strong,
-.evaluation-input-summary > small {
+.evaluation-input-summary > span {
   display: block;
-}
-
-.evaluation-input-summary > strong {
-  margin-top: 4px;
-}
-
-.evaluation-input-summary > small {
-  margin-top: 3px;
-  color: var(--text-muted);
 }
 
 /* The picker is flat now: at full width it costs one row, and behind a summary
@@ -6812,6 +6801,19 @@ main {
 .evaluation-resolution-action span {
   margin-top: 3px;
   color: var(--text-muted);
+}
+
+/* One fact, one normal-weight action: the stale-revision banner does not
+   need the warning card treatment the resolution action otherwise gets. */
+.evaluation-resolution-action-compact {
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+.evaluation-resolution-action-compact span {
+  margin-top: 0;
+  color: var(--text-primary);
 }
 
 .evaluation-batch-controls {
@@ -7578,30 +7580,10 @@ main {
   margin: 2px 0 0;
 }
 
-.evaluation-input-manager {
+/* No card: a bindings list is a compact row group under a plain eyebrow
+   label, not a nested surface competing with Configurations and Tools. */
+.evaluation-input-bindings {
   margin-top: 14px;
-  padding: 12px;
-  border: 1px solid var(--border-default);
-  border-radius: 10px;
-  background: var(--surface-sunken);
-}
-
-.evaluation-input-manager-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.evaluation-input-manager-heading strong,
-.evaluation-input-manager-heading span {
-  display: block;
-}
-
-.evaluation-input-manager-heading div > span,
-.evaluation-input-manager-heading > span {
-  margin-top: 3px;
-  color: var(--text-muted);
 }
 
 .evaluation-binding-row {

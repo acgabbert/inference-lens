@@ -147,7 +147,6 @@ function ConfigurationsSection({
         <button className="button secondary" type="button" onClick={() => { authoring.addVariant(); setOpen(true); }}>+ Add configuration</button>
       </div>
       {open && <>
-        <p className="evaluation-portable-warning">Each configuration stores only its overrides. Repetitions, turn ceiling, and exposed tools are shared across every configuration.</p>
         {suite.variants.map((variant, index) => <ConfigurationRow key={variant.id} variant={variant} suite={suite} project={project} authoring={authoring} index={index} />)}
         {preview && <ul className="evaluation-configuration-targets" aria-label="Resolved local configuration targets">
           {preview.targets.map((target) => <li key={target.variantId}>
@@ -268,7 +267,10 @@ function ConfigurationRow({
       <label>Delivery <select aria-label={`Configuration delivery ${variant.name}`} value={effective.responseMode} onChange={(event) => update({ ...variant.overrides, responseMode: event.target.value as typeof effective.responseMode })}><option value="buffered">Buffered</option><option value="streaming">Streaming</option></select><small>{inherited("delivery") ? "Inherits suite delivery" : "Overrides suite delivery"}</small></label>
       <label>Temperature <input aria-label={`Configuration temperature ${variant.name}`} type="number" step="0.1" value={effective.options.temperature ?? ""} onChange={(event) => update({ ...variant.overrides, options: { ...variant.overrides.options, temperature: event.target.value === "" ? null : Number(event.target.value) } })} /><small>{inherited("temperature") ? "Inherits suite option" : variant.overrides.options?.temperature === null ? "Uses provider default" : "Overrides suite option"}</small></label>
     </div>
-    <p className="evaluation-portable-warning">Effective: {project.connectionRequirements.find(({ id }) => id === effective.target.connectionRequirementId)?.name ?? effective.target.connectionRequirementId} · {effective.target.model} · {effective.responseMode} · temperature {effective.options.temperature ?? "provider default"} · max output {effective.options.maxOutputTokens ?? "provider default"} · seed {effective.options.seed ?? "provider default"} · stop {effective.options.stop?.join(", ") || "provider default"} · provider options {effective.options.providerOptions ? "set" : "provider default"}</p>
+    {/* The per-field captions above already say what is inherited versus
+        overridden; this line only earns its place once an override exists,
+        because before that it restates the captions in one denser sentence. */}
+    {hasVariantOverride(variant.overrides) && <p className="evaluation-portable-warning">Effective: {project.connectionRequirements.find(({ id }) => id === effective.target.connectionRequirementId)?.name ?? effective.target.connectionRequirementId} · {effective.target.model} · {effective.responseMode} · temperature {effective.options.temperature ?? "provider default"} · max output {effective.options.maxOutputTokens ?? "provider default"} · seed {effective.options.seed ?? "provider default"} · stop {effective.options.stop?.join(", ") || "provider default"} · provider options {effective.options.providerOptions ? "set" : "provider default"}</p>}
   </article>;
 }
 
@@ -696,8 +698,6 @@ export function EvaluationSuiteEditor({
             {setupOpen && <div className={`evaluation-setup ${styles.setupBody}`}>
               <div className="evaluation-input-summary">
                 <span>Evaluation input</span>
-                <strong>{authoring.selectedRevision ? revisionChoice(authoring.selectedRevision).label : "Input unavailable"}</strong>
-                <small>This suite keeps its own immutable input; changing Messages does not change it.</small>
                 {authoring.promptPinNotice && <div className="evaluation-resolution-action" role="status">
                   <div><strong>Input pinned to {authoring.promptPinNotice.promptName} · {authoring.promptPinNotice.revisionLabel}</strong></div>
                   <button className="button secondary" type="button" onClick={authoring.dismissPromptPinNotice} aria-label="Dismiss">Dismiss</button>
@@ -706,25 +706,23 @@ export function EvaluationSuiteEditor({
                   <button className="button secondary" type="button" onClick={authoring.openSavedPromptPicker}>Start from prompt…</button>
                   {/* Flat, not a disclosure: at full width the revision picker
                       costs one row, and hiding it behind a summary made an
-                      author open something to discover the choice existed. */}
-                  <label className="evaluation-input-picker">Existing project revision
-                    <select value={authoring.revisionId} onChange={(event) => authoring.selectRevision(event.target.value as NonNullable<typeof authoring.revisionId>)}>
-                    {revisionGroups.grouped ? (
-                      <>
-                        {/* Incompatible revisions stay selectable: choosing one is how an
-                            author sees and repairs a historical incompatibility. */}
-                        {revisionGroups.compatible.length > 0 && <optgroup label="Compatible revisions">{revisionGroups.compatible.map(revisionOption)}</optgroup>}
-                        {revisionGroups.other.length > 0 && <optgroup label="Other revisions">{revisionGroups.other.map(revisionOption)}</optgroup>}
-                      </>
-                    ) : authoring.revisionChoices.map(revisionOption)}
-                    </select>
-                  </label>
+                      author open something to discover the choice existed.
+                      The selected option is the fact; no separate label or
+                      bold restatement duplicates it. */}
+                  <select className="evaluation-input-picker" aria-label="Existing project revision" value={authoring.revisionId} onChange={(event) => authoring.selectRevision(event.target.value as NonNullable<typeof authoring.revisionId>)}>
+                  {revisionGroups.grouped ? (
+                    <>
+                      {/* Incompatible revisions stay selectable: choosing one is how an
+                          author sees and repairs a historical incompatibility. */}
+                      {revisionGroups.compatible.length > 0 && <optgroup label="Compatible revisions">{revisionGroups.compatible.map(revisionOption)}</optgroup>}
+                      {revisionGroups.other.length > 0 && <optgroup label="Other revisions">{revisionGroups.other.map(revisionOption)}</optgroup>}
+                    </>
+                  ) : authoring.revisionChoices.map(revisionOption)}
+                  </select>
                 </div>
-                {stalePromptUses.length > 0 && <div className="evaluation-resolution-action" role="status">
-                  <div><strong>{stalePromptUses.length === 1 ? `“${stalePromptUses[0]!.templateName}” has a newer prompt revision` : `${stalePromptUses.length} pinned prompts have newer revisions`}</strong><span>Evaluating this revision will keep this suite&rsquo;s cases, checks, and configurations; Messages will not change.</span></div>
-                  <div className="evaluation-input-actions">
-                    {stalePromptUses.map((use) => <button className="button secondary" key={use.templateUseId} type="button" onClick={() => authoring.useCurrentPromptRevision(use.templateUseId)}>Evaluate current {use.templateName} revision</button>)}
-                  </div>
+                {stalePromptUses.length > 0 && <div className="evaluation-resolution-action evaluation-resolution-action-compact" role="status">
+                  <span>{stalePromptUses.length === 1 ? `Newer revision of “${stalePromptUses[0]!.templateName}” exists` : `${stalePromptUses.length} pinned prompts have newer revisions`}</span>
+                  {stalePromptUses.map((use) => <button className="text-button" key={use.templateUseId} type="button" onClick={() => authoring.useCurrentPromptRevision(use.templateUseId)}>Use current {use.templateName} revision</button>)}
                 </div>}
               </div>
               <ConfigurationsSection
@@ -823,10 +821,14 @@ export function EvaluationSuiteEditor({
               />
               {/* Suite-level, not per-case: binding a template variable changes
                   what every case can vary, so it belongs with the rest of the
-                  suite's setup rather than above the dataset it applies to. */}
+                  suite's setup rather than above the dataset it applies to.
+                  "Prompt variables" so this stays distinct from the case
+                  editor's "Case inputs", which supplies the values these
+                  bindings only name. One compact row per binding, no
+                  surrounding card. */}
               {(suite.inputBindings.length > 0 || availableCandidates.length > 0) && (
-                <div className="evaluation-input-manager">
-                  <div className="evaluation-input-manager-heading"><div><strong>Case inputs</strong><span>Map prompt variables so cases can send different conversations.</span></div>{suite.inputBindings.length > 0 && <span>{suite.inputBindings.length} {suite.inputBindings.length === 1 ? "input" : "inputs"}</span>}</div>
+                <div className="evaluation-input-bindings">
+                  <span className="eyebrow">Prompt variables</span>
                   {suite.inputBindings.map((binding) => {
                     const input = evaluationInputLabel(project, authoring.revisionId, binding);
                     return <div className="evaluation-binding-row" key={binding.id}><div className="evaluation-binding-identity"><strong>{input.templateName}</strong><span><code>{input.variableName}</code> prompt variable</span></div><button className="remove-button" type="button" onClick={() => authoring.deleteInput(binding.id)}>Remove</button></div>;
@@ -834,7 +836,6 @@ export function EvaluationSuiteEditor({
                   {availableCandidates.length > 0 && <div className="evaluation-add-row"><select aria-label="Prompt variable to map" value={candidateIndex} onChange={(event) => setCandidateIndex(Number(event.target.value))}>{availableCandidates.map((candidate, index) => <option key={`${candidate.templateUseId}-${candidate.variableName}`} value={index}>{candidate.templateName} · {candidate.variableName}</option>)}</select><button className="button secondary" type="button" onClick={() => { const candidate = availableCandidates[candidateIndex]; if (candidate) authoring.addInput(candidate); setCandidateIndex(0); }}>+ Add case input</button></div>}
                 </div>
               )}
-              {history && <EvaluationSuiteHistory history={history} />}
             </div>}
           </div>
 
@@ -871,6 +872,11 @@ export function EvaluationSuiteEditor({
               </div>
             )}
           </section>
+
+          {/* A sibling of Cases, not part of Setup: evidence about past runs
+              is not a decision about the next one, and the setup band should
+              not carry its weight while collapsed. */}
+          {history && <EvaluationSuiteHistory history={history} />}
         </>
       )}
       {authoring.savedPromptPickerOpen && (

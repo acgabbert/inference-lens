@@ -23,6 +23,10 @@ async function renderPreview(authoring, execution) {
 test("renders compact preflight and the focused case workspace", async () => {
   const html = await render(evaluationFixture(), { storage: "durable", running: false, onStart() {} });
   assert.match(html, /Topic quality/);
+  // "Prompt variables" (setup band, maps the variable) is a different heading
+  // from "Case inputs" (case editor, supplies this case's value) even though
+  // both concern the same binding.
+  assert.match(html, /Prompt variables/);
   assert.match(html, /Case inputs/);
   assert.match(html, /Question/);
   assert.match(html, /topic<\/code> prompt variable/);
@@ -58,13 +62,22 @@ test("renders compact preflight and the focused case workspace", async () => {
   // The Start button is the mode's primary action and lives in the topbar now,
   // so the preflight band states readiness and never restates the control.
   assert.doesNotMatch(html, /Start evaluation…/);
-  assert.match(html, /suite keeps its own immutable input/i);
+  // The immutable-input guarantee lives on the "Evaluate in a suite…" dialog
+  // that precedes a retarget, not as permanent chrome in the setup band.
+  assert.doesNotMatch(html, /suite keeps its own immutable input/i);
   assert.match(html, /plan, traces, and result will be saved/i);
   // The provider-input preview is the response pane's, not the editor's: the
   // editor keeps the controls, the pane shows what they resolve to.
   assert.doesNotMatch(html, /Provider input/);
   assert.doesNotMatch(html, /Explain database migrations\./);
   assert.doesNotMatch(html, /other cases can resolve to different messages/i);
+  // The revision select's own selected option carries the input fact now; no
+  // separate bold restatement duplicates it above the picker.
+  assert.doesNotMatch(html, /<strong>Current<\/strong>/);
+  assert.match(html, /aria-label="Existing project revision"/);
+  // The single default configuration has no override, so the per-field
+  // captions carry the decision and the denser "Effective:" line stays out.
+  assert.doesNotMatch(html, /Effective:/);
 });
 
 test("warns without resizing large batches and names session-only evidence", async () => {
@@ -85,7 +98,35 @@ test("explains when cases do not vary provider input", async () => {
   assert.match(preview, /All cases currently use this provider input/);
   assert.match(preview, /References and checks may still differ/);
   const html = await render(authoring);
-  assert.doesNotMatch(html, /evaluation-input-manager/);
+  assert.doesNotMatch(html, /evaluation-input-bindings/);
+  assert.doesNotMatch(html, /Prompt variables/);
+});
+
+test("a configuration with an override shows the Effective line; the unmodified default does not", async () => {
+  const authoring = evaluationFixture();
+  const html = await render(authoring, { storage: "durable", running: false, onStart() {} });
+  assert.doesNotMatch(html, /Effective:/);
+
+  authoring.project.evaluationSuites[0].variants[0].overrides = { target: { model: "gpt-fast" } };
+  const overriddenHtml = await render(authoring, { storage: "durable", running: false, onStart() {} });
+  assert.match(overriddenHtml, /Effective:/);
+});
+
+test("names a newer prompt revision in one line rather than restating the retarget guarantee", async () => {
+  const authoring = evaluationFixture();
+  authoring.project.promptTemplates[0].currentRevisionId = "template-revision_question_v2";
+  authoring.project.promptTemplates[0].revisions.push({
+    id: "template-revision_question_v2",
+    createdAt: "2026-08-02T12:00:00.000Z",
+    messages: [{ role: "user", content: "Explain {{topic}} carefully." }],
+    variableDefaults: { topic: "a topic" },
+  });
+  const html = await render(authoring, { storage: "durable", running: false, onStart() {} });
+  assert.match(html, /Newer revision of “Question” exists/);
+  assert.match(html, /Use current Question revision/);
+  // The "keep cases, checks, and configurations" guarantee lives on the
+  // "Evaluate in a suite…" dialog that precedes this action, not repeated here.
+  assert.doesNotMatch(html, /keep this suite.s cases, checks, and configurations/i);
 });
 
 test("shows an explicit error above the repetition maximum", async () => {
@@ -496,6 +537,11 @@ test("past executions are offered in the editor and stay collapsed until asked f
   // Scoped to this disclosure's own hint: the setup band above it is a second
   // disclosure, and it is open, so a bare />Hide</ now matches that one.
   assert.doesNotMatch(html, /evaluation-suite-history-hint">Hide</);
+  // A sibling of Cases below the setup band, not evidence buried inside it:
+  // the setup band closes over its own markup before Cases even starts.
+  const setupCloseAt = html.indexOf("evaluation-cases ");
+  const historyAt = html.indexOf("evaluation-suite-history");
+  assert.ok(setupCloseAt > 0 && historyAt > setupCloseAt, "history renders after the Cases section");
 });
 
 test("the editor omits past executions entirely without a project folder", async () => {
