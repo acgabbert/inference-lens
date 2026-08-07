@@ -53,26 +53,19 @@ test("a project can use the provider default despite a mapped profile override",
   await waitForHydration(page, "Provider-default fixture");
   await importProject(page, project, "Provider-default project");
 
-  // Collapsed, the project-owned panel reports its model and temperature. The
-  // session-owned delivery preference remains visible in the same card.
+  // Collapsed, the panel reports every value it will send, delivery included:
+  // the controls are hidden but nothing about the next run is.
   await expect(page.locator(".inference-settings-fact")).toHaveText([
     "provider-default-temperature-model",
     "Provider default temp",
+    "Buffered",
     "1 override",
   ]);
-  await expect(
-    page.getByRole("region", { name: "Delivery preference" }),
-  ).toContainText("Buffered");
-  // In its one-line state, the toggle must not retain the height intended for
-  // its unavailable explanatory message; that would leave the label visibly
-  // top-aligned in the delivery row.
-  await expect(
-    page
-      .getByRole("region", { name: "Delivery preference" })
-      .locator(".streaming-control"),
-  ).toHaveCSS("min-height", "auto");
+  // Collapsed means the delivery control is absent, not merely hidden.
+  await expect(page.getByLabel("Stream response")).toHaveCount(0);
 
   const settings = await openInferenceSettings(page);
+  await expect(settings.getByLabel("Stream response")).toBeVisible();
   await expect(settings.getByLabel("Model", { exact: true })).toHaveValue(
     "provider-default-temperature-model",
   );

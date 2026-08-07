@@ -81,7 +81,7 @@ export function RequestSettings({
           }
         }}
         streamingAvailable={streamingAvailable}
-        showDelivery={false}
+        scopeOnModelField
         modelDiscovery={modelDiscovery}
         favoriteModels={favoriteModels}
         onLoadModels={onLoadModels}
@@ -90,40 +90,6 @@ export function RequestSettings({
         readinessTarget
         action={action}
       />
-      <section aria-label="Delivery preference" className="request-delivery-preference">
-        <span className="request-delivery-identity">
-          <strong>Delivery</strong>
-          <span className="inference-settings-scope">Session preference</span>
-          <span className="request-delivery-value">
-            {responseMode === "streaming" ? "Streaming" : "Buffered"}
-          </span>
-        </span>
-        <label
-          className={
-            streamingAvailable
-              ? "streaming-control"
-              : "streaming-control disabled"
-          }
-          title={
-            streamingAvailable
-              ? undefined
-              : "This connection does not support streaming responses."
-          }
-        >
-          <input
-            checked={responseMode === "streaming"}
-            disabled={!streamingAvailable}
-            onChange={(event) => onStreamingPreferenceChange(event.target.checked)}
-            type="checkbox"
-          />
-          <span>
-            Stream response
-            {!streamingAvailable && (
-              <small>Unavailable here; responses are buffered.</small>
-            )}
-          </span>
-        </label>
-      </section>
     </section>
   );
 }

@@ -111,6 +111,14 @@ export interface InferenceSettingsPanelProps {
    * settings. They can render it beside this panel with its truthful scope.
    */
   showDelivery?: boolean;
+  /**
+   * Moves the scope badge onto the model field while the panel is open, for a
+   * caller whose panel mixes scopes: the composer saves model and temperature
+   * with the open project but keeps delivery to the session. Badging the one
+   * field that carries the persisted scope says that without annotating every
+   * control. The header keeps the badge while collapsed, where it summarises.
+   */
+  scopeOnModelField?: boolean;
 }
 
 function temperatureSummary(temperature: number | undefined): string {
@@ -159,6 +167,7 @@ export function InferenceSettingsPanel({
   notes,
   action,
   showDelivery = true,
+  scopeOnModelField = false,
 }: InferenceSettingsPanelProps) {
   const scope = useId();
   const bodyId = `${idPrefix}-settings-body-${scope}`;
@@ -228,7 +237,17 @@ export function InferenceSettingsPanel({
           <DisclosureChevron className="inference-settings-chevron" />
           <span className="inference-settings-identity">
             <strong>{heading}</strong>
-            <span className="inference-settings-scope">{scopeLabel}</span>
+            {/* Open, the badge moves to the field it describes; it stays
+                audible here so the scope is not visual-only for a reader. */}
+            <span
+              className={
+                scopeOnModelField && open
+                  ? "inference-settings-scope visually-hidden"
+                  : "inference-settings-scope"
+              }
+            >
+              {scopeLabel}
+            </span>
           </span>
           <span className="inference-settings-facts">
             {facts.map((fact) => (
@@ -280,7 +299,21 @@ export function InferenceSettingsPanel({
             </dl>
           ) : (
             <div className="inference-settings-grid">
-              <div className="inference-settings-field">
+              <div
+                className={
+                  scopeOnModelField
+                    ? "inference-settings-field inference-settings-field-scoped"
+                    : "inference-settings-field"
+                }
+              >
+                {/* Outside the field's own `label`, deliberately: nested in it,
+                    the badge becomes part of the label text that locates this
+                    control, and the field stops being reachable as "Model". */}
+                {scopeOnModelField ? (
+                  <span className="inference-settings-scope inference-settings-field-scope">
+                    {scopeLabel}
+                  </span>
+                ) : null}
                 <ModelCombobox
                   idPrefix={`${idPrefix}-model`}
                   readinessTarget={readinessTarget}

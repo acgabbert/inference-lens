@@ -413,31 +413,27 @@ test("the suite's settings panel lays its controls out like the composer's", asy
   const suiteDelivery = await deliveryLayout(suitePanel);
   await openMode(page, "Compose");
   await page.getByRole("tab", { name: /Messages/ }).click();
-  const composer = await settingsLayout(await openInferenceSettings(page));
-  const composerDelivery = await deliveryLayout(
-    page.getByRole("region", { name: "Delivery preference" }),
-  );
+  const composerPanel = await openInferenceSettings(page);
+  const composer = await settingsLayout(composerPanel);
+  const composerDelivery = await deliveryLayout(composerPanel);
 
   // The composer is the reference because it is the mount no evaluation-page
-  // rules reach. Delivery is session-scoped there, so compare its sibling
-  // region with the suite-owned delivery control separately. Every shape is
-  // also asserted absolutely so two broken layouts cannot agree and pass.
+  // rules reach. Delivery now lives inside both panels, so it is compared the
+  // same way. Every shape is also asserted absolutely so two broken layouts
+  // cannot agree and pass.
   expect(composer).toEqual({
     temperature: "beside/compact",
     readout: "1px/right",
   });
   expect(suite).toEqual(composer);
-  expect(composerDelivery).toEqual({
-    streaming: "beside/compact",
-    hint: "none",
-  });
   // 11px metadata at --leading-tight (1.35). The pair is asserted rather than
   // the ratio alone: the hint sitting a tier too large is the regression this
   // catches, and it would survive a correct line height.
-  expect(suiteDelivery).toEqual({
+  expect(composerDelivery).toEqual({
     streaming: "beside/compact",
     hint: "11px/14.85px",
   });
+  expect(suiteDelivery).toEqual(composerDelivery);
 });
 
 test("preflight input and execution settings fit at desktop and phone widths", async ({ page }) => {
