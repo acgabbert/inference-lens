@@ -33,48 +33,33 @@ A green suite proves a derivation is correct. It does not prove the result
 reaches the screen in a usable form, and it cannot exercise provider behavior
 the tests fabricate.
 
-For anything a user reads or a provider drives, run it:
+So when a change alters what a user reads or how a provider drives the app,
+drive the browser with the committed Playwright suite rather than stopping at a
+green unit run. [`tests/e2e/README.md`](tests/e2e/README.md) has the mechanics —
+how to invoke it, the shared drivers, the fixture rules — and
+[the provider fixture guide](docs/PROVIDER_FIXTURES.md) has the traps that
+produce a *passing* test which exercised nothing. Neither is repeated here.
 
-- **Drive the browser with the committed Playwright suite: `npm run test:e2e`.**
-  `npm run test:e2e` starts loopback services. In execution environments known
-  to block socket binding, run it with host-network/out-of-sandbox permission
-  on the first attempt. Do not first start a dev server or run Playwright
-  installation separately.
-  Add a spec under `tests/e2e/` rather than writing a throwaway driver script,
-  and import the shared drivers from `tests/e2e/support/` — `seedProfile`,
-  `waitForHydration`, `importProject`, `stubProjectDirectory` — instead of
-  re-deriving them. The config starts the dev server and the buffered fixture
-  itself, so do not start one by hand for a Playwright run. Read
-  [the provider fixture guide](docs/PROVIDER_FIXTURES.md) first: it lists the
-  traps that produce a *passing* test which exercised nothing.
-- Prefer a local fixture over a hosted account. When the situation under test is
-  a specific failure, a specific timing, or a specific payload, write a fixture
-  that produces it deterministically rather than waiting for a real provider to
-  cooperate.
-- Choose fixture values you can predict the correct output from, so the UI's
-  numbers can be checked rather than merely eyeballed for plausibility.
-- Assert on rendered text, not only on screenshots. Scanning a numeric UI for
-  `NaN`, `Infinity`, and `undefined` catches formatting and divide-by-zero bugs
-  that unit tests pass straight through.
-- Stop long-lived fixtures and dev servers when the check is finished.
+Scope the run to the change. Iterate against the affected spec
+(`npm run test:e2e -- tests/e2e/<name>.spec.ts`), then run the full suite once
+before handing the work back. A change with no user-visible surface — a pure
+type refactor, a docs edit, build configuration — needs no browser run at all;
+say that rather than spending one to prove it.
 
-Report what was actually run. If a check was skipped or a fixture could not
-reproduce the situation, say so rather than implying broader coverage. Naming a
-spec is a report; "verified the app" is not.
+Report what was actually run. If a check was skipped, or a fixture could not
+reproduce the situation, or a spec covers only part of what changed, say so
+rather than implying broader coverage. Naming a spec is a report; "verified the
+app" is not. Close out with what you could not check yourself and what is worth
+the user's own eyes — that is a complement to running it, never a substitute
+for it.
 
-A new regression test must be shown to fail without the fix. A test written
-against already-fixed code proves only that it passes today.
+Write the regression test before the fix and run it red, rather than
+implementing first and then unwinding the change to manufacture a failure.
+Reserve stash-and-rerun for cases where the observable shape genuinely could
+not be known before building it — and when a test could not be shown to fail,
+say so instead of implying it was.
 
-## Keep n8n work API-first and collaborative
-
-Browser-driven n8n UI work is unusually expensive. For n8n investigation,
-fixture capture, and verification:
-
-- Prefer the documented public API and the repository's read-only n8n probe
-  scripts whenever they can answer the question.
-- Do not use browser automation or the browser skill for n8n.
-- When an action requires the n8n UI, give the user the exact value or steps to
-  enter. Let the user perform the action, then continue from the execution ID,
-  output, screenshot, or other result they provide.
-- Never expose the n8n API key or private instance topology in chat, logs, or
-  committed fixtures. Continue using ignored environment and staging files.
+A red run must be red for the right reason. Assert on the actual incorrect
+value, and check that the failure output shows it; a spec that fails because
+of a bad selector, a hydration race, or a fixture that never loaded is not
+evidence of anything.
