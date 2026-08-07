@@ -431,9 +431,12 @@ test("the suite's settings panel lays its controls out like the composer's", asy
     streaming: "beside/compact",
     hint: "none",
   });
+  // 11px metadata at --leading-tight (1.35). The pair is asserted rather than
+  // the ratio alone: the hint sitting a tier too large is the regression this
+  // catches, and it would survive a correct line height.
   expect(suiteDelivery).toEqual({
     streaming: "beside/compact",
-    hint: "11px/14.3px",
+    hint: "11px/14.85px",
   });
 });
 

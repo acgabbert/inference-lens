@@ -16,12 +16,12 @@
      than being named from `app/globals.css`, which cannot reach a scoped name. */
   flex: 0 0 auto;
   min-height: 38px;
-  padding: 9px 24px;
+  padding: var(--space-sm) var(--space-2xl);
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 8px 16px;
+  gap: var(--space-sm) var(--space-lg);
   border-bottom: 1px solid var(--border-default);
   background: var(--surface-inset);
 }
@@ -43,18 +43,18 @@
   flex: 1 1 320px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-3xs);
 }
 
 .title {
   font-size: var(--type-body);
-  line-height: 1.35;
+  line-height: var(--leading-tight);
 }
 
 .detail {
   color: inherit;
   font-size: var(--type-compact);
-  line-height: 1.45;
+  line-height: var(--leading-normal);
   opacity: 0.85;
 }
 
@@ -71,15 +71,15 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-sm);
 }
 
 .actions .button {
-  padding: 6px 10px;
+  padding: var(--space-xs) var(--space-sm);
 }
 
 @media (max-width: 760px) {
   .banner {
-    padding-inline: 16px;
+    padding-inline: var(--space-lg);
   }
 }
