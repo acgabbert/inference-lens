@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createProjectFile, createPromptTemplate, appendPromptTemplateRevision } from "../packages/core/src/project.ts";
-import { describeCompatibleSuiteRevision, promptRevisionLabel } from "../app/templates/prompt-revision-label.ts";
+import { diffPromptTemplateRevisions } from "../packages/core/src/prompt-template-revision-diff.ts";
+import { describeCompatibleSuiteRevision, promptRevisionLabel, summarizeRevisionDiff } from "../app/templates/prompt-revision-label.ts";
 
 function projectWithTemplate() {
   const base = createProjectFile({
@@ -57,4 +58,18 @@ test("describeCompatibleSuiteRevision reports 'unknown' when the template is abs
   const [, second] = template.revisions;
   const state = describeCompatibleSuiteRevision(undefined, second!.id, second!.id);
   assert.deepEqual(state, { kind: "unknown" });
+});
+
+test("summarizeRevisionDiff reports 'identical' for a no-op comparison", () => {
+  const { template } = projectWithTemplate();
+  const [first] = template.revisions;
+  const diff = diffPromptTemplateRevisions(first!, first!);
+  assert.equal(summarizeRevisionDiff(diff), "identical");
+});
+
+test("summarizeRevisionDiff counts message and default changes", () => {
+  const { template } = projectWithTemplate();
+  const [first, second] = template.revisions;
+  const diff = diffPromptTemplateRevisions(first!, second!);
+  assert.equal(summarizeRevisionDiff(diff), "1 message change");
 });
