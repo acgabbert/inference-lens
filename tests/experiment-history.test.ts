@@ -436,3 +436,37 @@ test("a repeated experiment carries no evaluation facet", () => {
   const loaded = loadProjectHistoryFiles([], [planSource(plan("no-facet"))]);
   assert.equal(loaded.experiments[0]?.kind, "repeated-request");
 });
+
+test("a saved reassessment beside a plan and result is neither paired nor reported as damage", () => {
+  const value = plan("reassessed");
+  const result: ExperimentResultV3 = {
+    schemaVersion: 4,
+    experimentId: value.experimentId,
+    status: "completed",
+    endedAt: "2026-07-31T12:01:00.000Z",
+    cells: value.cells.map((cell) => ({
+      cellId: cell.cellId,
+      runId: cell.runId,
+      status: "completed",
+    })),
+  };
+  const loaded = loadProjectHistoryFiles([], [
+    planSource(value),
+    {
+      fileName: `${value.experimentId}.result.json`,
+      contents: serializeExperimentResult(result, value),
+    },
+    // Assessments share the experiments directory. The projection must not
+    // misfile one as this experiment's result, and an unreadable one must not
+    // surface as a failure here — history reads plans and results only.
+    {
+      fileName: "evaluation-assessment_corrected.assessment.json",
+      contents: "{\"schemaVersion\":1}\n",
+    },
+  ]);
+
+  assert.equal(loaded.entries.length, 1);
+  assert.equal(loaded.experiments.length, 1);
+  assert.equal(loaded.experiments[0]?.lifecycle, "completed");
+  assert.equal(loaded.failures.length, 0);
+});

@@ -313,27 +313,40 @@ fn write_run_trace(directory: &Path, run_id: &str, contents: &str) -> Result<(),
     })
 }
 
-fn is_safe_experiment_id(experiment_id: &str) -> bool {
-    let Some(suffix) = experiment_id.strip_prefix("experiment_") else {
+fn is_safe_entity_id(entity_id: &str, prefix: &str) -> bool {
+    let Some(suffix) = entity_id.strip_prefix(prefix) else {
         return false;
     };
     suffix
         .chars()
         .next()
         .is_some_and(|character| character.is_ascii_alphanumeric())
-        && !experiment_id.contains("..")
-        && experiment_id
+        && !entity_id.contains("..")
+        && suffix
             .chars()
             .all(|character| character.is_ascii_alphanumeric() || "._-".contains(character))
 }
 
+fn is_safe_experiment_id(experiment_id: &str) -> bool {
+    is_safe_entity_id(experiment_id, "experiment_")
+}
+
+fn is_safe_evaluation_assessment_id(assessment_id: &str) -> bool {
+    is_safe_entity_id(assessment_id, "evaluation-assessment_")
+}
+
 /// Mirrors `isExperimentEntryName` in `packages/core/src/experiment.ts`.
+///
+/// Reassessments are named by assessment ID, not experiment ID, so the
+/// assessment suffix validates a different prefix than the other two.
 fn is_experiment_entry_name(file_name: &str) -> bool {
     [".plan.json", ".result.json"].iter().any(|suffix| {
         file_name
             .strip_suffix(suffix)
             .is_some_and(is_safe_experiment_id)
-    })
+    }) || file_name
+        .strip_suffix(".assessment.json")
+        .is_some_and(is_safe_evaluation_assessment_id)
 }
 
 fn write_experiment_artifact(
@@ -1589,6 +1602,57 @@ mod tests {
             "{\"schemaVersion\":1,\"changed\":true}\n",
         )
         .is_err());
+    }
+
+    #[test]
+    fn writes_reassessments_under_the_same_immutable_contract() {
+        let directory = TemporaryProjectDirectory::new();
+        write_experiment_artifact(
+            &directory.0,
+            "evaluation-assessment_corrected.assessment.json",
+            "{\"schemaVersion\":1}\n",
+        )
+        .expect("write assessment");
+        write_experiment_artifact(
+            &directory.0,
+            "evaluation-assessment_corrected.assessment.json",
+            "{\"schemaVersion\":1}\n",
+        )
+        .expect("idempotent assessment write");
+        assert!(write_experiment_artifact(
+            &directory.0,
+            "evaluation-assessment_corrected.assessment.json",
+            "{\"schemaVersion\":1,\"changed\":true}\n",
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn mirrors_the_typescript_artifact_name_grammar() {
+        for accepted in [
+            "experiment_first.plan.json",
+            "experiment_first.result.json",
+            "experiment_first.v2.plan.json",
+            "evaluation-assessment_corrected.assessment.json",
+            "evaluation-assessment_corrected.v2.assessment.json",
+        ] {
+            assert!(is_experiment_entry_name(accepted), "{accepted} should be accepted");
+        }
+        for refused in [
+            // Each suffix is bound to the entity kind that names it.
+            "experiment_first.assessment.json",
+            "evaluation-assessment_corrected.plan.json",
+            "evaluation-assessment_corrected.result.json",
+            "../evaluation-assessment_corrected.assessment.json",
+            "evaluation-assessment_../secret.assessment.json",
+            "evaluation-assessment_.assessment.json",
+            "evaluation_assessment_corrected.assessment.json",
+            "evaluation-assessmentcorrected.assessment.json",
+            "assessment.json",
+            "notes.json",
+        ] {
+            assert!(!is_experiment_entry_name(refused), "{refused} should be refused");
+        }
     }
 
     #[test]

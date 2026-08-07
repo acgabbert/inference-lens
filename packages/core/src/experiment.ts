@@ -22,6 +22,7 @@ import type {
   ConversationRevisionId,
   EntityId,
   EntityIdKind,
+  EvaluationAssessmentId,
   EvaluationCaseId,
   EvaluationInputBindingId,
   EvaluationSuiteId,
@@ -43,6 +44,14 @@ import type {
 export const EXPERIMENT_SCHEMA_VERSION = 4;
 export const EXPERIMENT_PLAN_FILE_SUFFIX = ".plan.json";
 export const EXPERIMENT_RESULT_FILE_SUFFIX = ".result.json";
+/**
+ * Reassessments live beside the plan and result they reinterpret, so they
+ * inherit the same immutable, write-once storage contract on both shells.
+ * The name carries only the assessment ID: the artifact's own `experimentId`
+ * field is authoritative, and an experiment ID may legally contain `.`, which
+ * leaves a two-ID name with no unambiguous split point.
+ */
+export const EVALUATION_ASSESSMENT_FILE_SUFFIX = ".assessment.json";
 
 /**
  * How many provider turns one repetition may start.
@@ -703,7 +712,7 @@ export function experimentResultFileName(experimentId: ExperimentId): string {
 }
 
 export function isExperimentEntryName(fileName: string): boolean {
-  return /^(?:experiment_[A-Za-z0-9][A-Za-z0-9._-]*\.(?:plan|result)\.json)$/.test(fileName)
+  return /^(?:experiment_[A-Za-z0-9][A-Za-z0-9._-]*\.(?:plan|result)\.json|evaluation-assessment_[A-Za-z0-9][A-Za-z0-9._-]*\.assessment\.json)$/.test(fileName)
     && !fileName.includes("..");
 }
 
@@ -714,16 +723,33 @@ export function assertExperimentEntryName(fileName: string): string {
   return fileName;
 }
 
-export function experimentArtifactIdentity(fileName: string): {
-  experimentId: ExperimentId;
-  kind: "plan" | "result";
-} {
+/**
+ * A union rather than an optional field, so every reader of the experiments
+ * directory has to say what an assessment is instead of silently treating it
+ * as a plan or a result.
+ */
+export type ExperimentArtifactIdentity =
+  | { kind: "plan"; experimentId: ExperimentId }
+  | { kind: "result"; experimentId: ExperimentId }
+  | { kind: "assessment"; assessmentId: EvaluationAssessmentId };
+
+export function experimentArtifactIdentity(fileName: string): ExperimentArtifactIdentity {
   const safeName = assertExperimentEntryName(fileName);
-  const kind = safeName.endsWith(EXPERIMENT_PLAN_FILE_SUFFIX) ? "plan" : "result";
-  const suffix = kind === "plan" ? EXPERIMENT_PLAN_FILE_SUFFIX : EXPERIMENT_RESULT_FILE_SUFFIX;
+  if (safeName.endsWith(EVALUATION_ASSESSMENT_FILE_SUFFIX)) {
+    return {
+      kind: "assessment",
+      assessmentId: safeName.slice(0, -EVALUATION_ASSESSMENT_FILE_SUFFIX.length) as EvaluationAssessmentId,
+    };
+  }
+  if (safeName.endsWith(EXPERIMENT_PLAN_FILE_SUFFIX)) {
+    return {
+      kind: "plan",
+      experimentId: safeName.slice(0, -EXPERIMENT_PLAN_FILE_SUFFIX.length) as ExperimentId,
+    };
+  }
   return {
-    experimentId: safeName.slice(0, -suffix.length) as ExperimentId,
-    kind,
+    kind: "result",
+    experimentId: safeName.slice(0, -EXPERIMENT_RESULT_FILE_SUFFIX.length) as ExperimentId,
   };
 }
 

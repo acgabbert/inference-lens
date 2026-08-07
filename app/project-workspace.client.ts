@@ -27,6 +27,13 @@ import type {
   ExperimentPlanV3,
 } from "../packages/core/src/experiment.ts";
 import {
+  evaluationAssessmentFileName,
+  parseEvaluationAssessmentJson,
+  serializeEvaluationAssessment,
+} from "../packages/core/src/evaluation-assessment.ts";
+import type { EvaluationAssessmentV1 } from "../packages/core/src/evaluation-assessment.ts";
+import type { EvaluationAssessmentId } from "../packages/core/src/run-kernel/types.ts";
+import {
   EVALUATION_BASELINES_FILE_NAME,
   emptyEvaluationBaselines,
   parseEvaluationBaselinesJson,
@@ -684,6 +691,33 @@ export async function saveExperimentResultWorkspace(
     experimentResultFileName(result.experimentId),
     serializeExperimentResult(result, plan),
   );
+}
+
+/**
+ * Reassessments need no new storage API and no new Tauri command: they live in
+ * the experiments directory, so they inherit its write-once, reject-a-different-
+ * rewrite contract on both shells for free.
+ */
+export async function saveEvaluationAssessmentWorkspace(
+  handle: ProjectWorkspaceHandle,
+  assessment: EvaluationAssessmentV1,
+  plan: ExperimentPlanV3,
+): Promise<void> {
+  await handle.storage.saveExperimentArtifact(
+    evaluationAssessmentFileName(assessment.assessmentId),
+    serializeEvaluationAssessment(assessment, plan),
+  );
+}
+
+export async function readEvaluationAssessmentWorkspace(
+  handle: ProjectWorkspaceHandle,
+  assessmentId: EvaluationAssessmentId,
+  plan: ExperimentPlanV3,
+): Promise<EvaluationAssessmentV1> {
+  const contents = await handle.storage.readExperimentArtifact(
+    evaluationAssessmentFileName(assessmentId),
+  );
+  return parseEvaluationAssessmentJson(contents, plan);
 }
 
 export async function listExperimentArtifactsWorkspace(
