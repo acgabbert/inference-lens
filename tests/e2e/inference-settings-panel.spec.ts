@@ -115,11 +115,11 @@ test("the collapsed panel reports what the run will send, and expanding reveals 
   await expect(panel.getByLabel("Model", { exact: true })).toHaveCount(0);
   await expect(page.locator(".temperature-control")).toHaveCount(0);
   await expect(page.getByLabel("Stream response")).toHaveCount(0);
-  // Connection settings stays out of the disclosure: it opens another
-  // surface rather than setting a value this panel sends.
+  // Connection settings is not here at all, collapsed or open. It configures
+  // the profile rather than this request, and its home is the Run target menu.
   await expect(
     panel.getByRole("button", { name: "Connection settings" }),
-  ).toBeVisible();
+  ).toHaveCount(0);
 
   await openInferenceSettings(page);
   // The global `label:not(.file-button)` rule outranks a bare class selector,
@@ -137,7 +137,7 @@ test("the collapsed panel reports what the run will send, and expanding reveals 
   );
   await expect(
     panel.getByRole("button", { name: "Connection settings" }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(panel.locator(".temperature-control output")).toHaveText("0.3");
 
   // An edit made while expanded is what the summary reports after collapsing.
@@ -172,6 +172,30 @@ test("the tool line stays readable while the panel is collapsed", async ({ page 
   await expect(
     page.locator('[aria-label="Run settings"] .inference-settings-toggle'),
   ).toHaveAttribute("aria-expanded", "false");
+});
+
+test("connection settings are reached from the Run target menu, not the composer", async ({
+  page,
+}) => {
+  await seedProfile(page);
+  await page.goto("/");
+  await waitForHydration(page);
+
+  // Nothing in the composer offers the drawer while nothing is wrong: the
+  // profile's transport is not a per-request decision.
+  await expect(
+    page.locator(".composer").getByRole("button", { name: "Connection settings" }),
+  ).toHaveCount(0);
+
+  // The durable home is the menu that already names the profile being run.
+  await page.getByLabel(/^Run target:/).click();
+  await page.getByRole("button", { name: /manage connections/i }).click();
+  const connections = page.getByRole("dialog", { name: "Connections" });
+  await expect(connections).toBeVisible();
+  // The drawer opened onto the profile the menu named, not some other one.
+  await expect(connections.getByRole("textbox", { name: "Endpoint" })).toHaveValue(
+    BUFFERED_FIXTURE_ENDPOINT,
+  );
 });
 
 test("a repeated experiment freezes the settings its dialog was given, then reports them as a record", async ({

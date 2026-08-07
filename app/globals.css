@@ -5342,13 +5342,6 @@ main {
   border-top: 1px solid var(--border-subtle);
 }
 
-.inference-settings-actions {
-  display: flex;
-  align-items: center;
-  flex: 0 0 auto;
-  padding: 0 var(--space-md) 0 0;
-}
-
 .inference-settings label {
   margin: 0;
 }
@@ -6375,19 +6368,6 @@ main {
   .inference-settings-toggle {
     display: grid;
     grid-template-columns: 20px minmax(0, 1fr);
-  }
-
-  .inference-settings-header {
-    flex-wrap: wrap;
-  }
-
-  .inference-settings-toggle {
-    flex-basis: 100%;
-  }
-
-  .inference-settings-actions {
-    margin: calc(-1 * var(--space-2xs)) 0 0 auto;
-    padding: 0 var(--space-md) var(--space-md);
   }
 
   .inference-settings-identity {
