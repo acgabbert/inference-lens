@@ -20,30 +20,42 @@ Required environment:
   INFERENCE_LENS_N8N_API_KEY   Public API key
 `;
 
-try {
-  const argumentsMap = parseCliArguments(process.argv.slice(2));
-  const workflowId = oneArgument(argumentsMap, "--workflow-id");
-  const executionIds = manyArguments(argumentsMap, "--execution-id");
-  const captureName = oneArgument(argumentsMap, "--capture-name");
-  const baseUrl = normalizeN8nBaseUrl(
-    process.env.INFERENCE_LENS_N8N_BASE_URL,
-  );
-  const apiKey = process.env.INFERENCE_LENS_N8N_API_KEY;
+export async function main({
+  argv = process.argv.slice(2),
+  env = process.env,
+  stdout = process.stdout,
+  stderr = process.stderr,
+  capture = captureN8nContract,
+} = {}) {
+  try {
+    const argumentsMap = parseCliArguments(argv);
+    const workflowId = oneArgument(argumentsMap, "--workflow-id");
+    const executionIds = manyArguments(argumentsMap, "--execution-id");
+    const captureName = oneArgument(argumentsMap, "--capture-name");
+    const baseUrl = normalizeN8nBaseUrl(
+      env.INFERENCE_LENS_N8N_BASE_URL,
+    );
+    const apiKey = env.INFERENCE_LENS_N8N_API_KEY;
 
-  const directory = await captureN8nContract({
-    baseUrl,
-    apiKey,
-    workflowId,
-    executionIds,
-    captureName,
-  });
-  console.log(`Raw capture written to ${directory}`);
-} catch (error) {
-  const message =
-    error instanceof N8nContractError
-      ? error.message
-      : "Unexpected n8n contract probe failure.";
-  console.error(message);
-  console.error(usage);
-  process.exitCode = 1;
+    const directory = await capture({
+      baseUrl,
+      apiKey,
+      workflowId,
+      executionIds,
+      captureName,
+    });
+    stdout.write(`Raw capture written to ${directory}\n`);
+    return 0;
+  } catch (error) {
+    const message =
+      error instanceof N8nContractError
+        ? error.message
+        : "Unexpected n8n contract probe failure.";
+    stderr.write(`${message}\n${usage}`);
+    return 1;
+  }
+}
+
+if (import.meta.main) {
+  process.exitCode = await main();
 }

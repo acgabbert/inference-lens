@@ -36,6 +36,10 @@ the tests fabricate.
 For anything a user reads or a provider drives, run it:
 
 - **Drive the browser with the committed Playwright suite: `npm run test:e2e`.**
+  `npm run test:e2e` starts loopback services. In execution environments known
+  to block socket binding, run it with host-network/out-of-sandbox permission
+  on the first attempt. Do not first start a dev server or run Playwright
+  installation separately.
   Add a spec under `tests/e2e/` rather than writing a throwaway driver script,
   and import the shared drivers from `tests/e2e/support/` — `seedProfile`,
   `waitForHydration`, `importProject`, `stubProjectDirectory` — instead of
