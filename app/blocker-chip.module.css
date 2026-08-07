@@ -9,9 +9,9 @@
  */
 
 .chip {
-  padding: 7px 10px;
+  padding: var(--space-xs) var(--space-sm);
   border: 1px solid var(--border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--surface-inset);
 }
 
@@ -29,8 +29,8 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  line-height: 1.4;
+  gap: var(--space-sm);
+  line-height: var(--leading-tight);
 }
 
 .glyph {
@@ -79,14 +79,14 @@
 
 .line .button {
   flex: 0 0 auto;
-  padding: 6px 9px;
+  padding: var(--space-xs) var(--space-sm);
 }
 
 .toggle {
   flex: 0 0 auto;
-  padding: 6px 8px;
+  padding: var(--space-xs) var(--space-sm);
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-muted);
   font-family: inherit;
@@ -101,46 +101,46 @@
 }
 
 .body {
-  margin: 8px 0 0;
-  padding-left: 25px;
+  margin: var(--space-sm) 0 0;
+  padding-left: var(--space-2xl);
   display: grid;
-  gap: 6px;
+  gap: var(--space-xs);
 }
 
 .detail {
   margin: 0;
   color: var(--text-secondary);
   font-size: var(--type-body);
-  line-height: 1.5;
+  line-height: var(--leading-normal);
 }
 
 .issues {
   margin: 0;
-  padding-left: 16px;
+  padding-left: var(--space-lg);
   display: grid;
-  gap: 3px;
+  gap: var(--space-3xs);
   color: var(--text-secondary);
   font-size: var(--type-body);
-  line-height: 1.5;
+  line-height: var(--leading-normal);
 }
 
 .explanation {
   margin: 0;
   color: var(--text-muted);
   font-size: var(--type-body);
-  line-height: 1.5;
+  line-height: var(--leading-normal);
 }
 
 .facts {
   margin: 0;
   display: grid;
-  gap: 3px;
+  gap: var(--space-3xs);
 }
 
 .facts > div {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--space-sm);
 }
 
 .facts dt {
@@ -164,7 +164,7 @@
 .actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 7px;
+  gap: var(--space-xs);
 }
 
 /* Narrow enough that a one-line chip cannot hold its action too: the summary
@@ -176,7 +176,7 @@
 
   .summary {
     flex-basis: 100%;
-    padding-left: 25px;
+    padding-left: var(--space-2xl);
   }
 
   .spacer {

@@ -56,10 +56,10 @@
 
 .previewToggle {
   align-self: flex-end;
-  margin: 8px 12px 0;
-  padding: 3px 8px;
+  margin: var(--space-sm) var(--space-md) 0;
+  padding: var(--space-3xs) var(--space-sm);
   border: 1px solid var(--border-default);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--surface-panel);
   color: var(--text-muted);
   cursor: pointer;
@@ -68,7 +68,7 @@
 }
 
 .previewEdge {
-  padding: 12px 6px;
+  padding: var(--space-md) var(--space-xs);
   border: 0;
   background: var(--surface-sunken);
   color: var(--text-muted);
@@ -103,6 +103,6 @@
 
   .previewEdge {
     writing-mode: horizontal-tb;
-    padding: 8px;
+    padding: var(--space-sm);
   }
 }
