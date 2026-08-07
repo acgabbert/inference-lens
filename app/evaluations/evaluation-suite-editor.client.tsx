@@ -92,6 +92,146 @@ function revisionOption(descriptor: ConversationRevisionDescriptor) {
   );
 }
 
+function hasVariantOverride(overrides: EvaluationVariant["overrides"]): boolean {
+  return (
+    overrides.target?.connectionRequirementId !== undefined ||
+    overrides.target?.model !== undefined ||
+    overrides.responseMode !== undefined ||
+    Object.keys(overrides.options ?? {}).length > 0
+  );
+}
+
+function configurationsSummary(variants: readonly EvaluationVariant[]): string {
+  if (variants.length === 1) {
+    const only = variants[0]!;
+    return `1 configuration (${only.name}${hasVariantOverride(only.overrides) ? "" : ", inherits everything"})`;
+  }
+  return `${variants.length} configurations: ${variants.map(({ name }) => name).join(", ")}`;
+}
+
+/**
+ * Collapsed unless there is more than one configuration or any of them
+ * overrides the suite's shared execution — the one case where the concept
+ * can stay out of the way of a first suite's setup.
+ */
+function ConfigurationsSection({
+  suite,
+  project,
+  authoring,
+  preview,
+}: {
+  suite: NonNullable<EvaluationSuiteAuthoringHandle["project"]>["evaluationSuites"][number];
+  project: NonNullable<EvaluationSuiteAuthoringHandle["project"]>;
+  authoring: EvaluationSuiteAuthoringHandle;
+  preview?: EvaluationSuiteExecutionActions["preview"];
+}) {
+  const [open, setOpen] = useState(
+    suite.variants.length > 1 || suite.variants.some(({ overrides }) => hasVariantOverride(overrides)),
+  );
+  return (
+    <section className="evaluation-configurations" aria-label="Configurations">
+      <div className="evaluation-section-heading">
+        <button
+          aria-expanded={open}
+          className="evaluation-section-toggle"
+          type="button"
+          onClick={() => setOpen(!open)}
+        >
+          <DisclosureChevron className="evaluation-section-chevron" />
+          <span className="eyebrow">Configurations</span>
+          <span className="evaluation-section-facts">{configurationsSummary(suite.variants)}</span>
+        </button>
+        {/* Opens the disclosure along with adding the row: a row an author
+            just asked for is never left hidden behind the summary they were
+            trying to get past. */}
+        <button className="button secondary" type="button" onClick={() => { authoring.addVariant(); setOpen(true); }}>+ Add configuration</button>
+      </div>
+      {open && <>
+        <p className="evaluation-portable-warning">Each configuration stores only its overrides. Repetitions, turn ceiling, and exposed tools are shared across every configuration.</p>
+        {suite.variants.map((variant, index) => <ConfigurationRow key={variant.id} variant={variant} suite={suite} project={project} authoring={authoring} index={index} />)}
+        {preview && <ul className="evaluation-configuration-targets" aria-label="Resolved local configuration targets">
+          {preview.targets.map((target) => <li key={target.variantId}>
+            <strong>{target.variantName}</strong>: {target.targetName
+              ? <>{target.targetName} · <code>{target.endpoint}</code> · {target.model} · {target.responseMode}</>
+              : <>Map {target.requirementName} to a local profile</>}
+          </li>)}
+        </ul>}
+      </>}
+    </section>
+  );
+}
+
+/**
+ * Collapsed unless the suite already exposes a tool — an evaluation that
+ * exists to test tool use should not have to open a disclosure to see that
+ * about itself.
+ */
+function ToolsSection({
+  project,
+  authoring,
+  exposedToolIds,
+  turnCeiling,
+  toolBindings,
+}: {
+  project: NonNullable<EvaluationSuiteAuthoringHandle["project"]>;
+  authoring: EvaluationSuiteAuthoringHandle;
+  exposedToolIds: readonly string[];
+  turnCeiling: number;
+  toolBindings?: EvaluationSuiteExecutionActions["toolBindings"];
+}) {
+  const [open, setOpen] = useState(exposedToolIds.length > 0);
+  return (
+    <div className="evaluation-tools">
+      <button
+        aria-expanded={open}
+        className="evaluation-section-toggle"
+        type="button"
+        onClick={() => setOpen(!open)}
+      >
+        <DisclosureChevron className="evaluation-section-chevron" />
+        <strong>Tools</strong>
+        <span className="evaluation-section-facts">{exposedToolIds.length === 0 ? "None exposed" : `${exposedToolIds.length} exposed`}</span>
+      </button>
+      {open && <>
+        {project.tools.length === 0
+          ? <small>This project defines no tools. Add one in the request composer’s Tools pane to expose it here.</small>
+          : <ul className="evaluation-tool-list">
+              {project.tools.map((tool) => {
+                const exposed = exposedToolIds.includes(tool.id);
+                const entry = toolBindings?.find(({ tool: candidate }) => candidate.id === tool.id);
+                return (
+                  <li key={tool.id} className={exposed && entry && !entry.binding ? "evaluation-tool-unbound" : undefined}>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={exposed}
+                        onChange={(event) => authoring.setToolExposed(tool.id, event.target.checked)}
+                      />
+                      <code>{tool.name}</code>
+                    </label>
+                    {exposed && entry && <span> → {experimentToolBindingLabel(entry)}</span>}
+                  </li>
+                );
+              })}
+            </ul>}
+        {exposedToolIds.length > 0 && (
+          <label className="inference-settings-count">Turn ceiling
+            <input
+              type="number"
+              min={MIN_EXPERIMENT_TURN_CEILING}
+              max={MAX_EXPERIMENT_TURN_CEILING}
+              step="1"
+              value={turnCeiling}
+              onChange={(event) => authoring.setTurnCeiling(Number(event.target.value))}
+            />
+          </label>
+        )}
+        {exposedToolIds.length > 0 && <small>Each repetition answers its own tool calls and is failed if it reaches {turnCeiling} provider turns with calls outstanding.</small>}
+      </>}
+    </div>
+  );
+}
+
 function ConfigurationRow({
   variant,
   suite,
@@ -587,18 +727,13 @@ export function EvaluationSuiteEditor({
                   </div>
                 </div>}
               </div>
-              <section className="evaluation-configurations" aria-label="Configurations">
-                <div className="evaluation-section-heading"><div><span className="eyebrow">Configurations</span><h3>Compare named configurations</h3></div><button className="button secondary" type="button" onClick={authoring.addVariant}>+ Add configuration</button></div>
-                <p className="evaluation-portable-warning">Each configuration stores only its overrides. Repetitions, turn ceiling, and exposed tools are shared across every configuration.</p>
-                {suite.variants.map((variant, index) => <ConfigurationRow key={variant.id} variant={variant} suite={suite} project={project} authoring={authoring} index={index} />)}
-                {execution?.preview && <ul className="evaluation-configuration-targets" aria-label="Resolved local configuration targets">
-                  {execution.preview.targets.map((target) => <li key={target.variantId}>
-                    <strong>{target.variantName}</strong>: {target.targetName
-                      ? <>{target.targetName} · <code>{target.endpoint}</code> · {target.model} · {target.responseMode}</>
-                      : <>Map {target.requirementName} to a local profile</>}
-                  </li>)}
-                </ul>}
-              </section>
+              <ConfigurationsSection
+                key={suite.id}
+                suite={suite}
+                project={project}
+                authoring={authoring}
+                {...(execution?.preview ? { preview: execution.preview } : {})}
+              />
               {/* Each edit commits, which the project's debounced auto-save
                   absorbs into one write. */}
               <InferenceSettingsPanel
@@ -678,46 +813,14 @@ export function EvaluationSuiteEditor({
                   so the two are rendered together and stored apart. Outside the
                   settings disclosure because a suite that runs tools is a
                   different kind of evaluation, not a tweak to this one. */}
-              <div className="evaluation-tools">
-                <div className="evaluation-tools-heading">
-                  <strong>Tools</strong>
-                  <span>{exposedToolIds.length === 0 ? "None exposed" : `${exposedToolIds.length} exposed`}</span>
-                </div>
-                {project.tools.length === 0
-                  ? <small>This project defines no tools. Add one in the request composer’s Tools pane to expose it here.</small>
-                  : <ul className="evaluation-tool-list">
-                      {project.tools.map((tool) => {
-                        const exposed = exposedToolIds.includes(tool.id);
-                        const entry = execution?.toolBindings?.find(({ tool: candidate }) => candidate.id === tool.id);
-                        return (
-                          <li key={tool.id} className={exposed && entry && !entry.binding ? "evaluation-tool-unbound" : undefined}>
-                            <label>
-                              <input
-                                type="checkbox"
-                                checked={exposed}
-                                onChange={(event) => authoring.setToolExposed(tool.id, event.target.checked)}
-                              />
-                              <code>{tool.name}</code>
-                            </label>
-                            {exposed && entry && <span> → {experimentToolBindingLabel(entry)}</span>}
-                          </li>
-                        );
-                      })}
-                    </ul>}
-                {exposedToolIds.length > 0 && (
-                  <label className="inference-settings-count">Turn ceiling
-                    <input
-                      type="number"
-                      min={MIN_EXPERIMENT_TURN_CEILING}
-                      max={MAX_EXPERIMENT_TURN_CEILING}
-                      step="1"
-                      value={turnCeiling}
-                      onChange={(event) => authoring.setTurnCeiling(Number(event.target.value))}
-                    />
-                  </label>
-                )}
-                {exposedToolIds.length > 0 && <small>Each repetition answers its own tool calls and is failed if it reaches {turnCeiling} provider turns with calls outstanding.</small>}
-              </div>
+              <ToolsSection
+                key={suite.id}
+                project={project}
+                authoring={authoring}
+                exposedToolIds={exposedToolIds}
+                turnCeiling={turnCeiling}
+                {...(execution?.toolBindings ? { toolBindings: execution.toolBindings } : {})}
+              />
               {/* Suite-level, not per-case: binding a template variable changes
                   what every case can vary, so it belongs with the rest of the
                   suite's setup rather than above the dataset it applies to. */}
@@ -736,9 +839,19 @@ export function EvaluationSuiteEditor({
           </div>
 
           <section className={`evaluation-cases ${styles.cases}`}>
-            <div className="evaluation-section-heading"><div><span className="eyebrow">Dataset</span><h3>Cases</h3></div><button className="button secondary" type="button" onClick={authoring.addCase}>+ Add case</button></div>
+            <div className="evaluation-section-heading"><div><span className="eyebrow">Dataset</span><h3>Cases</h3></div>{suite.cases.length > 0 && <button className="button secondary" type="button" onClick={authoring.addCase}>+ Add case</button>}</div>
             <p className="evaluation-portable-warning">Case values are saved in portable project data. Do not enter credentials or secrets.</p>
-            {suite.cases.length === 0 ? <div className="evaluation-empty-inline">No cases yet. Empty suites can be saved but cannot run.</div> : (
+            {suite.cases.length === 0 ? (
+              // The primary next step for a fresh suite, not a peer of the
+              // setup band above it: nothing here can run until a case
+              // exists, so this is where the empty-suite author's attention
+              // belongs.
+              <PaneEmptyState
+                heading="No cases yet"
+                detail="A case supplies input values and the checks that score them. Empty suites can be saved but cannot run."
+                action={{ label: "+ Add case", onClick: authoring.addCase }}
+              />
+            ) : (
               <div className={`evaluation-cases-workspace ${styles.casesWorkspace}`}>
                 <aside className="evaluation-case-rail" aria-label="Evaluation cases">
                   {suite.cases.map((evaluationCase) => {
