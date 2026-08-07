@@ -54,6 +54,7 @@ import type {
 } from "../../packages/core/src/run-kernel";
 import { normalizedTurnCeiling } from "../../packages/core/src/turn-ceiling";
 import type { ConfirmationDialogRequest } from "../confirmation-dialog.client";
+import { promptRevisionLabel } from "../templates/prompt-revision-label";
 
 /**
  * A confirmation that a project mutation landed. Reported once, when it lands.
@@ -68,6 +69,18 @@ export interface EvaluationAuthoringNotice {
   templateName: string;
   messageCount: number;
   variableCount: number;
+}
+
+/**
+ * Session-only arrival confirmation for evaluatePromptRevision, rendered
+ * inline in the suite editor's input summary rather than as a toast: the
+ * thing it confirms (which revision the input now pins) stays on screen
+ * where the user lands, so the confirmation sits next to the fact it names.
+ */
+export interface EvaluationPromptPinNotice {
+  suiteId: EvaluationSuiteId;
+  promptName: string;
+  revisionLabel: string;
 }
 
 export interface EvaluationSuiteAuthoringHandle {
@@ -101,6 +114,11 @@ export interface EvaluationSuiteAuthoringHandle {
   useCurrentPromptRevision(templateUseId: PromptTemplateUseId): boolean;
   /** Opens a prompt revision in a compatible suite, or creates a new suite for it. */
   evaluatePromptRevision(templateId: PromptTemplateId, templateRevisionId: PromptTemplateRevisionId, suiteId?: EvaluationSuiteId): boolean;
+  /** Clears a stale savedPromptError, e.g. when the prompt-library dialog reopens for a different prompt. */
+  dismissPromptError(): void;
+  /** Set once evaluatePromptRevision lands on the selected suite; cleared on dismissal or suite change. */
+  promptPinNotice?: EvaluationPromptPinNotice;
+  dismissPromptPinNotice(): void;
   selectSuite(id: EvaluationSuiteId): void;
   selectRevision(id: ConversationRevisionId): void;
   setCaseSelected(id: EvaluationCaseId, selected: boolean): void;
@@ -217,6 +235,7 @@ export function useEvaluationSuiteAuthoring({
   const [storedError, setStoredError] = useState<ScopedAuthoringError>();
   const [savedPromptPickerOpen, setSavedPromptPickerOpen] = useState(false);
   const [storedPromptError, setStoredPromptError] = useState<ScopedProjectMessage>();
+  const [promptPin, setPromptPin] = useState<{ projectId: ProjectFile["projectId"] } & EvaluationPromptPinNotice>();
 
   const effectiveSuiteId = project?.evaluationSuites.some(({ id }) => id === suiteId)
     ? suiteId
@@ -308,6 +327,11 @@ export function useEvaluationSuiteAuthoring({
   const savedPromptError = storedPromptError && storedPromptError.projectId === project?.projectId
     ? storedPromptError.message
     : undefined;
+  const promptPinNotice = promptPin &&
+    promptPin.projectId === project?.projectId &&
+    promptPin.suiteId === effectiveSuiteId
+    ? promptPin
+    : undefined;
 
   function startFromSavedPrompt(templateId: PromptTemplateId): boolean {
     if (!project || !effectiveSuiteId || !effectiveRevisionId) return false;
@@ -368,8 +392,11 @@ export function useEvaluationSuiteAuthoring({
 
   function evaluatePromptRevision(templateId: PromptTemplateId, templateRevisionId: PromptTemplateRevisionId, requestedSuiteId?: EvaluationSuiteId): boolean {
     if (!project) return false;
+    const template = project.promptTemplates.find(({ id }) => id === templateId);
+    const revisionLabel = template ? promptRevisionLabel(template, templateRevisionId) : "this revision";
     try {
       const requestedSuite = requestedSuiteId && project.evaluationSuites.find(({ id }) => id === requestedSuiteId);
+      let landedSuiteId: EvaluationSuiteId;
       if (requestedSuite) {
         const parentRevisionId = requestedSuite.input.conversationRevisionId;
         const parent = project.conversationRevisions.find(({ id }) => id === parentRevisionId);
@@ -381,17 +408,24 @@ export function useEvaluationSuiteAuthoring({
           templateRevisionId,
         });
         adoptProjectMutation(updateEvaluationSuiteInput(retargeted.project, requestedSuite.id, retargeted.conversationRevisionId));
-        setSuiteId(requestedSuite.id);
+        landedSuiteId = requestedSuite.id;
       } else {
-        const createdSuite = createEvaluationSuite(project, "Evaluation from prompt");
+        const createdSuite = createEvaluationSuite(project, template ? `${template.name} evaluation` : "Evaluation from prompt");
         const createdInput = createRevisionFromSavedPrompt(createdSuite.project, {
           parentRevisionId: project.defaults.conversationRevisionId,
           templateId,
           templateRevisionId,
         });
         adoptProjectMutation(updateEvaluationSuiteInput(createdInput.project, createdSuite.suiteId, createdInput.conversationRevisionId));
-        setSuiteId(createdSuite.suiteId);
+        landedSuiteId = createdSuite.suiteId;
       }
+      setSuiteId(landedSuiteId);
+      setPromptPin({
+        projectId: project.projectId,
+        suiteId: landedSuiteId,
+        promptName: template?.name ?? "Prompt",
+        revisionLabel,
+      });
       setSelection(undefined); setVariantSelection(undefined); setFocusedCaseId(undefined); setStoredPromptError(undefined);
       return true;
     } catch (cause) {
@@ -422,8 +456,11 @@ export function useEvaluationSuiteAuthoring({
     startFromSavedPrompt,
     useCurrentPromptRevision,
     evaluatePromptRevision,
+    dismissPromptError() { setStoredPromptError(undefined); },
+    ...(promptPinNotice ? { promptPinNotice } : {}),
+    dismissPromptPinNotice() { setPromptPin(undefined); },
     selectSuite(id) {
-      setSuiteId(id); setFocusedCaseId(undefined); setSelection(undefined); setStoredError(undefined);
+      setSuiteId(id); setFocusedCaseId(undefined); setSelection(undefined); setStoredError(undefined); setPromptPin(undefined);
     },
     selectRevision(id) {
       if (!effectiveSuiteId) return;

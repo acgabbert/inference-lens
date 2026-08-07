@@ -1750,10 +1750,18 @@ function HomeContent() {
           templates={projectTemplates}
           project={projectFile}
           onEvaluatePromptRevision={(templateId, revisionId, suiteId) => {
-            if (!evaluationAuthoring.evaluatePromptRevision(templateId, revisionId, suiteId)) return;
+            const succeeded = evaluationAuthoring.evaluatePromptRevision(templateId, revisionId, suiteId);
+            if (!succeeded) return false;
             setMode("evaluations");
             setEvaluationSetupOpen(true);
+            return true;
           }}
+          onOpenEvaluationSuite={(suiteId) => {
+            evaluationAuthoring.selectSuite(suiteId);
+            setMode("evaluations");
+          }}
+          evaluateRevisionError={evaluationAuthoring.savedPromptError}
+          onDismissEvaluateRevisionError={evaluationAuthoring.dismissPromptError}
           settings={{
             model: activeModel,
             temperature: activeTemperature,
