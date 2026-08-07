@@ -22,12 +22,19 @@ import {
   resolveTemplateValues,
 } from "../packages/core/src/template-engine";
 import { diffPromptTemplateRevisions } from "../packages/core/src/prompt-template-revision-diff";
+import { describeCompatibleSuiteRevision } from "./templates/prompt-revision-label";
 import { FocusModeToggle, useFocusMode } from "./focus-mode.client";
 import { N8nTemplatePasteDialog } from "./templates/n8n-template-paste-dialog.client";
 import { shouldSuggestN8nTemplatePaste } from "./templates/n8n-template-paste";
 import { n8nPasteSuggestionsEnabled, setN8nPasteSuggestionsEnabled } from "./templates/n8n-template-paste-preference.client";
 
 type TemplateRole = "system" | "user" | "assistant";
+
+export interface CompatibleEvaluationSuite {
+  suite: EvaluationSuite;
+  /** The template revision this suite's currently pinned input uses. */
+  pinnedRevisionId: PromptTemplateRevisionId;
+}
 
 interface ProjectTemplatesPaneProps {
   templates: PromptTemplate[];
@@ -49,8 +56,14 @@ interface ProjectTemplatesPaneProps {
   onArchive(templateId: PromptTemplateId, onArchived?: () => void): void;
   onRestore(templateId: PromptTemplateId): void;
   onInsert(templateId: PromptTemplateId, itemIndex: number): void;
-  compatibleEvaluationSuitesByTemplate?: ReadonlyMap<PromptTemplateId, readonly EvaluationSuite[]>;
-  onEvaluateRevision?(templateId: PromptTemplateId, revisionId: PromptTemplateRevisionId, suiteId?: EvaluationSuite["id"]): void;
+  compatibleEvaluationSuitesByTemplate?: ReadonlyMap<PromptTemplateId, readonly CompatibleEvaluationSuite[]>;
+  /** Returns false on a rejected mutation so the dialog stays open and shows evaluateRevisionError. */
+  onEvaluateRevision?(templateId: PromptTemplateId, revisionId: PromptTemplateRevisionId, suiteId?: EvaluationSuite["id"]): boolean;
+  /** Opens an already-compatible suite without retargeting it. */
+  onOpenEvaluationSuite?(suiteId: EvaluationSuite["id"]): void;
+  /** The error from the most recent evaluate-in-a-suite attempt, if any. */
+  evaluateRevisionError?: string;
+  onDismissEvaluateRevisionError?(): void;
 }
 
 function newPrompt(): PromptTemplateMessages {
@@ -77,6 +90,9 @@ export function ProjectTemplatesPane({
   onInsert,
   compatibleEvaluationSuitesByTemplate = new Map(),
   onEvaluateRevision,
+  onOpenEvaluationSuite,
+  evaluateRevisionError,
+  onDismissEvaluateRevisionError,
 }: ProjectTemplatesPaneProps) {
   const activeTemplates = templates.filter(({ archivedAt }) => !archivedAt);
   const archivedTemplates = templates.filter(({ archivedAt }) => archivedAt);
@@ -129,7 +145,7 @@ export function ProjectTemplatesPane({
   const viewedRevision = selected?.revisions.find(
     ({ id }) => id === viewedRevisionId,
   ) ?? initialRevision;
-  const compatibleEvaluationSuites = selected
+  const compatibleEvaluationSuiteEntries = selected
     ? compatibleEvaluationSuitesByTemplate.get(selected.id) ?? []
     : [];
   const archived = Boolean(selected?.archivedAt);
@@ -449,10 +465,11 @@ export function ProjectTemplatesPane({
                       className="button secondary"
                       type="button"
                       onClick={() => {
+                        onDismissEvaluateRevisionError?.();
                         setEvaluateRequest({ templateId: selected.id, revisionId: viewedRevision.id });
                       }}
                     >
-                      Evaluate this revision…
+                      Evaluate in a suite…
                     </button>}
                     <button
                       className="button secondary"
@@ -680,14 +697,41 @@ export function ProjectTemplatesPane({
         onInsert={insertAtN8nPasteTarget}
         onPasteUnchanged={() => insertAtN8nPasteTarget(n8nPasteTarget.pastedSource ?? n8nPasteTarget.source.slice(n8nPasteTarget.start, n8nPasteTarget.end))}
       />}
-      {evaluateRequest && <div aria-label="Evaluate prompt revision" aria-modal="true" className="confirmation-dialog-backdrop" role="dialog">
+      {evaluateRequest && <div aria-label="Evaluate in a suite" aria-modal="true" className="confirmation-dialog-backdrop" role="dialog">
         <section className="confirmation-dialog">
-          <h2>Evaluate this revision</h2>
-          <p>Choose a compatible suite to keep its cases, checks, and configurations, or start a new suite. Messages will not change.</p>
-          {compatibleEvaluationSuites.length > 0 && <div className="confirmation-dialog-actions">
-            {compatibleEvaluationSuites.map((suite) => <button className="button secondary" key={suite.id} type="button" onClick={() => { onEvaluateRevision?.(evaluateRequest.templateId, evaluateRequest.revisionId, suite.id); setEvaluateRequest(undefined); }}>Use {suite.name}</button>)}
+          <h2>Evaluate in a suite</h2>
+          <p>Choose a compatible suite to keep its cases, checks, and configurations, or start a new suite. Messages will not change. Nothing runs until you start the evaluation.</p>
+          {evaluateRevisionError && <div className="template-diagnostic" role="alert">{evaluateRevisionError}</div>}
+          {compatibleEvaluationSuiteEntries.length > 0 && <div className="confirmation-dialog-actions confirmation-dialog-suite-rows">
+            {compatibleEvaluationSuiteEntries.map(({ suite, pinnedRevisionId }) => {
+              const state = describeCompatibleSuiteRevision(selected, pinnedRevisionId, evaluateRequest.revisionId);
+              const description = state.kind === "current"
+                ? "already pinned to this revision"
+                : state.kind === "outdated"
+                  ? `currently ${state.pinnedLabel} → will pin ${state.targetLabel}`
+                  : "pinned revision unavailable";
+              return <div className="confirmation-dialog-suite-row" key={suite.id}>
+                <span><strong>{suite.name}</strong> — {description}</span>
+                <button
+                  className="button secondary"
+                  type="button"
+                  onClick={() => {
+                    if (state.kind === "current") {
+                      onOpenEvaluationSuite?.(suite.id);
+                      setEvaluateRequest(undefined);
+                      return;
+                    }
+                    if (onEvaluateRevision?.(evaluateRequest.templateId, evaluateRequest.revisionId, suite.id) ?? true) {
+                      setEvaluateRequest(undefined);
+                    }
+                  }}
+                >
+                  {state.kind === "current" ? "Open" : `Use ${suite.name}`}
+                </button>
+              </div>;
+            })}
           </div>}
-          <div className="confirmation-dialog-actions"><button className="button primary" type="button" onClick={() => { onEvaluateRevision?.(evaluateRequest.templateId, evaluateRequest.revisionId); setEvaluateRequest(undefined); }}>Create new suite</button><button className="button secondary" type="button" onClick={() => setEvaluateRequest(undefined)}>Cancel</button></div>
+          <div className="confirmation-dialog-actions"><button className="button primary" type="button" onClick={() => { if (onEvaluateRevision?.(evaluateRequest.templateId, evaluateRequest.revisionId) ?? true) setEvaluateRequest(undefined); }}>Create new suite</button><button className="button secondary" type="button" onClick={() => { onDismissEvaluateRevisionError?.(); setEvaluateRequest(undefined); }}>Cancel</button></div>
         </section>
       </div>}
     </div>

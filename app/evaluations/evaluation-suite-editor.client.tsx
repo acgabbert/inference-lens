@@ -558,6 +558,10 @@ export function EvaluationSuiteEditor({
                 <span>Evaluation input</span>
                 <strong>{authoring.selectedRevision ? revisionChoice(authoring.selectedRevision).label : "Input unavailable"}</strong>
                 <small>This suite keeps its own immutable input; changing Messages does not change it.</small>
+                {authoring.promptPinNotice && <div className="evaluation-resolution-action" role="status">
+                  <div><strong>Input pinned to {authoring.promptPinNotice.promptName} · {authoring.promptPinNotice.revisionLabel}</strong></div>
+                  <button className="button secondary" type="button" onClick={authoring.dismissPromptPinNotice} aria-label="Dismiss">Dismiss</button>
+                </div>}
                 <div className="evaluation-input-actions">
                   <button className="button secondary" type="button" onClick={authoring.openSavedPromptPicker}>Start from prompt…</button>
                   {/* Flat, not a disclosure: at full width the revision picker
@@ -577,9 +581,9 @@ export function EvaluationSuiteEditor({
                   </label>
                 </div>
                 {stalePromptUses.length > 0 && <div className="evaluation-resolution-action" role="status">
-                  <div><strong>{stalePromptUses.length === 1 ? `“${stalePromptUses[0]!.templateName}” has a newer prompt revision` : `${stalePromptUses.length} pinned prompts have newer revisions`}</strong><span>Retargeting creates a new evaluation input revision. Cases, checks, and configurations stay unchanged.</span></div>
+                  <div><strong>{stalePromptUses.length === 1 ? `“${stalePromptUses[0]!.templateName}” has a newer prompt revision` : `${stalePromptUses.length} pinned prompts have newer revisions`}</strong><span>Evaluating this revision will keep this suite&rsquo;s cases, checks, and configurations; Messages will not change.</span></div>
                   <div className="evaluation-input-actions">
-                    {stalePromptUses.map((use) => <button className="button secondary" key={use.templateUseId} type="button" onClick={() => authoring.useCurrentPromptRevision(use.templateUseId)}>Use current {use.templateName} revision</button>)}
+                    {stalePromptUses.map((use) => <button className="button secondary" key={use.templateUseId} type="button" onClick={() => authoring.useCurrentPromptRevision(use.templateUseId)}>Evaluate current {use.templateName} revision</button>)}
                   </div>
                 </div>}
               </div>
