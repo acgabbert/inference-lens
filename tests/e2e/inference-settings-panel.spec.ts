@@ -174,6 +174,40 @@ test("the tool line stays readable while the panel is collapsed", async ({ page 
   ).toHaveAttribute("aria-expanded", "false");
 });
 
+test("the topbar names the connection it carries and never a model", async ({
+  page,
+}) => {
+  await seedProfile(page, { model: "topbar-should-not-show-me" });
+  await page.goto("/");
+  await waitForHydration(page);
+
+  // A bare profile name reads as a heading. The caption is what makes it read
+  // as the selected value of something.
+  const control = page.getByLabel(/^Run target:/);
+  await expect(control).toContainText("Connection");
+  await expect(control).toContainText("Buffered fixture");
+
+  // Model is per-request in Compose and per-configuration in Evaluations, so
+  // the topbar states none in any mode rather than a copy that can go stale.
+  for (const mode of ["Compose", "Evaluations", "Runs"] as const) {
+    await openMode(page, mode);
+    await expect(page.locator(".topbar")).not.toContainText(
+      "topbar-should-not-show-me",
+    );
+  }
+
+  // Open is a distinct state from hover, so the control reads as the menu
+  // trigger it is rather than as a status card.
+  await openMode(page, "Compose");
+  await expect(page.locator(".target-menu")).not.toHaveAttribute("open", "");
+  await control.click();
+  await expect(page.locator(".target-menu")).toHaveAttribute("open", "");
+  // The popover confirms the active profile before a reader hunts for the tick.
+  await expect(page.locator(".target-popover .menu-heading")).toContainText(
+    "Buffered fixture",
+  );
+});
+
 test("connection settings are reached from the Run target menu, not the composer", async ({
   page,
 }) => {

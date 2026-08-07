@@ -161,7 +161,7 @@ test("the topbar hides ordinary run actions outside the Compose mode", async () 
   const noop = () => {};
   const profile = { id: "fixture", name: "Fixture", endpoint: "https://example.test/v1", model: "fixture-model" };
   const html = await render("/app/topbar.client.tsx", "Topbar", {
-    profiles: [profile], activeProfile: profile, activeModel: profile.model,
+    profiles: [profile], activeProfile: profile,
     hasCredential: false, projectDirty: false, folderAccessAvailable: false,
     hasDiagnosticCapture: false, hasRunTrace: false, hasProjectWorkspace: false,
     runHistoryBlocked: false, isRequestActive: false, isExperimentActive: false,
@@ -178,6 +178,32 @@ test("the topbar hides ordinary run actions outside the Compose mode", async () 
   // the lifecycle actions that used to crowd beside them are all gone.
   assert.match(html, /Start evaluation…/);
   assert.doesNotMatch(html, /Run request|Repeat…|Run new request|Continue run|Retry|Discard failed run/);
+});
+
+test("the topbar target control names the connection and states no model", async () => {
+  const noop = () => {};
+  const profile = { id: "fixture", name: "Server default", endpoint: "https://example.test/v1", model: "google/gemma-4-26b" };
+  const html = await render("/app/topbar.client.tsx", "Topbar", {
+    profiles: [profile], activeProfile: profile,
+    hasCredential: true, projectDirty: false, folderAccessAvailable: false,
+    hasDiagnosticCapture: false, hasRunTrace: false, hasProjectWorkspace: false,
+    runHistoryBlocked: false, isRequestActive: false, isExperimentActive: false,
+    mode: "evaluations", onModeChange: noop,
+    awaitingToolResults: false, retryableFailure: false,
+    runDisabled: false, evaluationStartDisabled: false,
+    onChooseProfile: noop, onOpenConnections: noop, onNewProject: noop,
+    onOpenProject: noop, onSaveProject: noop, onImportProject: noop,
+    onExportProject: noop, onOpenN8nImport: noop, onDownloadDiagnostics: noop, onDownloadRunTrace: noop,
+    onImportRunTrace: noop, onOpenRunHistory: noop, onStop: noop,
+    onStopExperiment: noop, onRun: noop, onStartEvaluation: noop,
+  });
+  // The caption is what makes the profile name read as a chosen value, and the
+  // credential dot's meaning is stated rather than left to colour alone.
+  assert.match(html, /class="target-caption"[^>]*>Connection</);
+  assert.match(html, /aria-label="Run target: Server default, credential set"/);
+  // A model in the topbar would contradict the run this mode's primary action
+  // starts: Evaluations resolves its model per configuration, never from here.
+  assert.doesNotMatch(html, /gemma/);
 });
 
 test("the extracted composer keeps pending-branch and template-error text in the request pane", async () => {
