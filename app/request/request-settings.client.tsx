@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode, RefObject } from "react";
+import type { RefObject } from "react";
 import { InferenceSettingsPanel } from "../inference-settings-panel.client";
 import type { InferenceSettingsValue } from "../inference-settings-panel.client";
 import type { ModelDiscoveryState } from "../use-model-discovery.client";
@@ -34,8 +34,6 @@ interface RequestSettingsDisclosure {
   onOpenChange(open: boolean): void;
   /** Where these settings are saved, in the open project's terms. */
   scopeLabel: string;
-  /** Stays reachable while the panel is collapsed. */
-  action: ReactNode;
 }
 
 /**
@@ -60,7 +58,6 @@ export function RequestSettings({
   onOpenChange,
   scopeLabel,
   inherited,
-  action,
 }: RequestSettingsProps & RequestSettingsDisclosure) {
   return (
     <section className="request-settings-card">
@@ -88,7 +85,6 @@ export function RequestSettings({
         onToggleFavoriteModel={onToggleFavoriteModel}
         {...(modelInputRef ? { modelInputRef } : {})}
         readinessTarget
-        action={action}
       />
     </section>
   );

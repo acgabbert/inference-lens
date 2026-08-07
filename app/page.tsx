@@ -1642,7 +1642,6 @@ function HomeContent() {
       <Topbar
         profiles={profiles}
         activeProfile={activeProfile}
-        activeModel={activeModel}
         hasCredential={credential.hasCredential}
         projectName={projectFile?.name}
         projectDirty={projectDirty}

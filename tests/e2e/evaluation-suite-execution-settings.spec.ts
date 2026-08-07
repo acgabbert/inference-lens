@@ -169,10 +169,13 @@ test("suite execution settings reach the provider without changing Messages sett
   await page.getByRole("button", { name: "Back to evaluation" }).click();
   await openMode(page, "Compose");
   await page.getByRole("tab", { name: /Messages/ }).click();
-  await openInferenceSettings(page);
+  const composerSettings = await openInferenceSettings(page);
   await expect(page.locator(".temperature-control output")).toHaveText("0.4");
-  await expect(page.locator(".topbar")).toContainText("buffered-test-model");
-  await expect(page.locator(".topbar")).not.toContainText(PROVIDER_DEFAULT_MODEL);
+  // The composer's own panel is where its model is stated. The topbar carries
+  // only the connection, so it cannot answer whose model this is.
+  const composerModel = composerSettings.getByLabel("Model", { exact: true });
+  await expect(composerModel).toHaveValue("buffered-test-model");
+  await expect(composerModel).not.toHaveValue(PROVIDER_DEFAULT_MODEL);
 });
 
 test("the execution slider sends the temperature it shows, and a favorite fills the model", async ({ page }) => {

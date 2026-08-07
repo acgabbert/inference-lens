@@ -305,7 +305,6 @@ export function RequestComposer({
                 open={settingsOpen}
                 onOpenChange={setSettingsOpen}
                 scopeLabel={project ? "Project settings" : "Profile defaults"}
-                action={<button className="text-button" type="button" onClick={onOpenConnectionSettings}>Connection settings</button>}
               />
               {/* Outside the panel deliberately: how many tools accompany the
                   request is not one of the inference options, and its blocked

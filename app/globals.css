@@ -437,7 +437,8 @@ pre,
 .tool-command-fields p,
 .tool-mock-superseded,
 .inference-settings-scope,
-.inference-settings-override {
+.inference-settings-override,
+.target-caption {
   font-size: var(--type-metadata);
 }
 
@@ -5342,13 +5343,6 @@ main {
   border-top: 1px solid var(--border-subtle);
 }
 
-.inference-settings-actions {
-  display: flex;
-  align-items: center;
-  flex: 0 0 auto;
-  padding: 0 var(--space-md) 0 0;
-}
-
 .inference-settings label {
   margin: 0;
 }
@@ -5785,10 +5779,21 @@ main {
   cursor: pointer;
 }
 
-.target-control:hover,
-.header-menu[open] > .target-control {
+.target-control:hover {
   border-color: var(--border-strong);
   background: var(--surface-hover);
+}
+
+/* Open reads as pressed, not merely hovered, so the control is legible as the
+   menu trigger it is rather than as a status card that happens to react. */
+.header-menu[open] > .target-control {
+  border-color: var(--accent-solid);
+  background: var(--surface-hover);
+  box-shadow: inset 0 0 0 1px var(--accent-solid);
+}
+
+.header-menu[open] > .target-control .menu-chevron {
+  transform: rotate(180deg);
 }
 
 .connection-indicator {
@@ -5809,7 +5814,7 @@ main {
 }
 
 .target-copy strong,
-.target-copy small {
+.target-caption {
   overflow: hidden;
   display: block;
   text-overflow: ellipsis;
@@ -5820,14 +5825,16 @@ main {
   color: var(--text-primary);
 }
 
-.target-copy small {
-  margin-top: var(--space-3xs);
-  color: var(--text-muted);
-  font-family: var(--font-geist-mono), monospace;
+.target-caption {
+  color: var(--text-faint);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .menu-chevron {
   color: var(--text-faint);
+  transition: transform 120ms ease;
 }
 
 .menu-popover {
@@ -6377,19 +6384,6 @@ main {
     grid-template-columns: 20px minmax(0, 1fr);
   }
 
-  .inference-settings-header {
-    flex-wrap: wrap;
-  }
-
-  .inference-settings-toggle {
-    flex-basis: 100%;
-  }
-
-  .inference-settings-actions {
-    margin: calc(-1 * var(--space-2xs)) 0 0 auto;
-    padding: 0 var(--space-md) var(--space-md);
-  }
-
   .inference-settings-identity {
     flex-wrap: wrap;
   }
@@ -6444,10 +6438,6 @@ main {
   .target-control {
     width: 155px;
     min-width: 130px;
-  }
-
-  .target-copy small {
-    display: none;
   }
 
   .project-menu > summary,

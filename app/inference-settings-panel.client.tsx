@@ -104,8 +104,6 @@ export interface InferenceSettingsPanelProps {
   repetitions?: InferenceSettingsSlot;
   /** Lines the surface shows under the controls, such as its planned run count. */
   notes?: ReactNode;
-  /** A control that stays reachable while the panel is collapsed. */
-  action?: ReactNode;
   /**
    * Some callers own delivery independently of their persisted inference
    * settings. They can render it beside this panel with its truthful scope.
@@ -165,7 +163,6 @@ export function InferenceSettingsPanel({
   connection,
   repetitions,
   notes,
-  action,
   showDelivery = true,
   scopeOnModelField = false,
 }: InferenceSettingsPanelProps) {
@@ -260,7 +257,6 @@ export function InferenceSettingsPanel({
             {open ? "Hide" : "Show settings"}
           </span>
         </button>
-        {action ? <div className="inference-settings-actions">{action}</div> : null}
       </div>
       {open ? (
         <div className="inference-settings-body" id={bodyId}>
