@@ -95,6 +95,7 @@ import { RepeatedExperimentDialog } from "./run/repeated-experiment-dialog.clien
 import { useProjectTemplates } from "./templates/use-project-templates.client";
 import { RequestComposer } from "./request/request-composer.client";
 import { useEvaluationSuiteAuthoring } from "./evaluations/use-evaluation-suite-authoring.client";
+import { useEvaluationReassessment } from "./evaluations/use-evaluation-reassessment.client";
 import {
   createEvaluationStartDraft,
   evaluationStartReadiness,
@@ -483,6 +484,14 @@ function HomeContent() {
       finishedBatchesRef.current.push({ kind: "evaluation", experimentId });
       setFinishedBatchCount((current) => current + 1);
     },
+  });
+  // Reinterpreting a finished evaluation is its own feature with its own state,
+  // so the route only joins it to the execution it reads and the project it can
+  // write a correction into.
+  const evaluationReassessment = useEvaluationReassessment({
+    ...(evaluationExecution.execution ? { execution: evaluationExecution.execution } : {}),
+    project: projectFile,
+    adoptProjectMutation: project.adoptProjectMutation,
   });
   const [sessionModel, setSessionModel] = useState<string>();
   const [sessionTemperature, setSessionTemperature] = useState<number>();
@@ -1901,6 +1910,7 @@ function HomeContent() {
                   onPromoteTrace: (trace, experimentCellId) => setPromotion({ trace, experimentCellId }),
                   onReturnToList: evaluationExecution.returnToEvaluation,
                   onDismiss: () => dismissFinishedExperiment("evaluation"),
+                  reassessment: evaluationReassessment,
                 },
               }
             : {})}

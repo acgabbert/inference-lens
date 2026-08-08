@@ -338,12 +338,15 @@ test("a rejected check edit stays local and restores the saved value", async ({ 
   await expect(regexCard).toContainText("RE2 syntax");
   await regexCard.getByLabel("About RE2 syntax").click();
   await expect(regexCard.getByText("Lookarounds and backreferences aren’t supported.")).toBeVisible();
+  // A new regex check starts case-insensitive, so the value a rejected edit
+  // restores is the default it was created with rather than an empty field.
   const flags = regexCard.getByLabel("Flags");
+  await expect(flags).toHaveValue("i");
   await flags.fill("g");
   await flags.blur();
 
   await expect(regexCard.getByRole("alert")).toContainText("Safe regex flags must be a unique subset of ims");
-  await expect(flags).toHaveValue("");
+  await expect(flags).toHaveValue("i");
   await expect(editor.locator(".evaluation-suite-rename + [role=alert]")).toHaveCount(0);
 });
 

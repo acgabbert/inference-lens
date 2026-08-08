@@ -240,6 +240,18 @@ export interface EvaluationVariantAssessment {
   outputTokens: ExperimentUsageAggregate;
 }
 
+/**
+ * Replacement criteria for one re-derivation, keyed by the execution's own
+ * stable case identity.
+ *
+ * A plain map rather than a saved artifact on purpose: the same override serves
+ * a never-persisted preview against the current authored suite and a saved
+ * reassessment read back from disk, and the scoring aggregate has no business
+ * knowing which of those it was handed. A case the map omits keeps the
+ * execution's own checks, so correcting one case never blanks the others.
+ */
+export type EvaluationCriteriaOverride = ReadonlyMap<EvaluationCaseId, readonly CheckDefinition[]>;
+
 /** Ordered results for the immutable configuration snapshots in a plan. */
 export interface EvaluationBakeoffAssessment {
   lifecycle: ExperimentLifecycle;
@@ -1018,16 +1030,33 @@ export function evaluationExperimentAggregate(
  * Derives an evaluation aggregate from a plan already accepted by
  * `parseExperimentPlanFile`. Render paths can retain this trusted immutable
  * snapshot while streamed state changes without re-validating every case input.
+ *
+ * `criteria` replaces the plan's own checks for the cases it names, which is
+ * the whole of what reassessing a saved output means: outcomes are never
+ * persisted, so a reinterpretation is this same pure function with one argument
+ * substituted. Omitting it derives the immutable "As run" reading, so a caller
+ * that does not opt in cannot be shown a reinterpretation by accident.
  */
 export function evaluationParsedExperimentAggregate(
   plan: EvaluationExperimentPlanV4,
   result: ExperimentResultV4 | undefined,
   states: ReadonlyMap<RunId, RunState> = new Map(),
+  criteria?: EvaluationCriteriaOverride,
 ): EvaluationBakeoffAssessment {
   const parsed = plan;
   const parsedResult = result ? parseExperimentResultFile(result, parsed) : undefined;
   const dispositions = new Map(parsedResult?.cells.map((cell) => [cell.cellId, cell]));
-  const cases = new Map(parsed.suite.cases.map((evaluationCase) => [evaluationCase.caseId, evaluationCase]));
+  // Resolved once, ahead of scoring, so the check denominator and the outcomes
+  // counted into it can never come from two different check sets.
+  const effectiveChecks = new Map(parsed.suite.cases.map((evaluationCase) => {
+    const replacement = criteria?.get(evaluationCase.caseId);
+    if (replacement && replacement.length === 0) {
+      throw new ExperimentValidationError(
+        `Replacement criteria for case ${evaluationCase.caseId} contain no checks; strict scoring over zero checks has no meaning.`,
+      );
+    }
+    return [evaluationCase.caseId, replacement ?? evaluationCase.checks] as const;
+  }));
   const lifecycle = experimentLifecycle(parsed, parsedResult);
   const variants = parsed.suite.variants.map((variant): EvaluationVariantAssessment => {
     const assessments = new Map<EvaluationCaseId, EvaluationRepetitionAssessment[]>();
@@ -1041,29 +1070,29 @@ export function evaluationParsedExperimentAggregate(
     const outputTokenValues: Array<number | undefined> = [];
 
     for (const cell of parsed.cells.filter((candidate) => candidate.variantId === variant.variantId)) {
-      const evaluationCase = cases.get(cell.caseId)!;
+      const caseChecks = effectiveChecks.get(cell.caseId)!;
       const disposition = dispositions.get(cell.cellId);
       const state = states.get(cell.runId);
-      checkCounts.total += evaluationCase.checks.length;
+      checkCounts.total += caseChecks.length;
       let classification: EvaluationRepetitionClassification;
       let checks: CheckResult[] = [];
       if (disposition?.status === "not-run") {
         classification = "not-run";
-        checkCounts.notEvaluated += evaluationCase.checks.length;
+        checkCounts.notEvaluated += caseChecks.length;
       } else if (!state) {
         classification = parsedResult ? "trace-unavailable" : "not-evaluated";
-        checkCounts.notEvaluated += evaluationCase.checks.length;
+        checkCounts.notEvaluated += caseChecks.length;
       } else if (state.status.kind === "failed") {
         classification = "run-failed";
-        checks = evaluateChecks(state, evaluationCase.checks);
+        checks = evaluateChecks(state, caseChecks);
       } else if (state.status.kind === "cancelled") {
         classification = "cancelled";
-        checks = evaluateChecks(state, evaluationCase.checks);
+        checks = evaluateChecks(state, caseChecks);
       } else if (state.status.kind !== "completed") {
         classification = "not-evaluated";
-        checkCounts.notEvaluated += evaluationCase.checks.length;
+        checkCounts.notEvaluated += caseChecks.length;
       } else {
-        checks = evaluateChecks(state, evaluationCase.checks);
+        checks = evaluateChecks(state, caseChecks);
         const summary = checkOutcomeSummary(checks);
         classification = summary.notEvaluated > 0 ? "not-evaluated" : summary.failed > 0 ? "check-failed" : "passed";
       }

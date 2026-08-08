@@ -3,7 +3,7 @@ import { z } from "zod";
 import { CHECK_SCHEMA_VERSION, checkDefinitionSchema } from "./checks.ts";
 import type { CheckDefinition } from "./checks.ts";
 import { EVALUATION_ASSESSMENT_FILE_SUFFIX } from "./experiment.ts";
-import type { ExperimentPlanV4 } from "./experiment.ts";
+import type { EvaluationCriteriaOverride, ExperimentPlanV4 } from "./experiment.ts";
 import { stableJsonValue } from "./stable-json.ts";
 import type {
   EntityId,
@@ -185,6 +185,76 @@ export function parseEvaluationAssessmentJson(
     throw new EvaluationAssessmentError("Reassessment is not valid JSON.");
   }
   return parseEvaluationAssessmentFile(value, plan);
+}
+
+/**
+ * Projects a saved reassessment into the override the scoring aggregate takes.
+ *
+ * The projection lives here rather than in `experiment.ts` so the aggregate
+ * never learns that a storage artifact exists: the same override shape also
+ * carries the current-criteria preview, which is deliberately never persisted.
+ */
+export function evaluationAssessmentCriteria(
+  assessment: EvaluationAssessmentV1,
+): EvaluationCriteriaOverride {
+  return new Map(assessment.cases.map(({ caseId, checks }) => [caseId, checks]));
+}
+
+export interface NewEvaluationAssessment {
+  assessmentId: EvaluationAssessmentId;
+  name: string;
+  createdAt: string;
+  /** Replacement checks per case; entries matching the plan are dropped. */
+  criteria: EvaluationCriteriaOverride;
+}
+
+/**
+ * Builds the artifact for a correction the author has previewed.
+ *
+ * Only cases whose checks actually differ from the execution's are carried. A
+ * reassessment that restated every case identically would be a full copy of the
+ * plan's criteria masquerading as a correction, and re-reading it later could
+ * not tell which case the author meant to change. For the same reason a
+ * reassessment that changes nothing at all is refused rather than saved empty:
+ * "As run" already names that interpretation, and it costs no file.
+ */
+export function createEvaluationAssessment(
+  input: NewEvaluationAssessment,
+  plan: ExperimentPlanV4,
+): EvaluationAssessmentV1 {
+  if (plan.kind !== "evaluation") {
+    throw new EvaluationAssessmentError(
+      "Only an evaluation experiment can be reassessed; a repeated-request experiment has no checks.",
+    );
+  }
+  const cases: EvaluationAssessmentCase[] = [];
+  for (const evaluationCase of plan.suite.cases) {
+    const replacement = input.criteria.get(evaluationCase.caseId);
+    if (!replacement || sameChecks(replacement, evaluationCase.checks)) continue;
+    cases.push({ caseId: evaluationCase.caseId, checks: [...replacement] });
+  }
+  if (cases.length === 0) {
+    throw new EvaluationAssessmentError(
+      "This reassessment matches the execution's own criteria, so there is nothing to save.",
+    );
+  }
+  return parseEvaluationAssessmentFile(
+    {
+      schemaVersion: EVALUATION_ASSESSMENT_SCHEMA_VERSION,
+      assessmentId: input.assessmentId,
+      experimentId: plan.experimentId,
+      name: input.name.trim(),
+      createdAt: input.createdAt,
+      checkSchemaVersion: CHECK_SCHEMA_VERSION,
+      scoringPolicy: "strict",
+      cases,
+    },
+    plan,
+  );
+}
+
+function sameChecks(left: readonly CheckDefinition[], right: readonly CheckDefinition[]): boolean {
+  return JSON.stringify(stableJsonValue(left)) === JSON.stringify(stableJsonValue(right));
 }
 
 export function serializeEvaluationAssessment(
