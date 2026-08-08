@@ -1636,7 +1636,10 @@ mod tests {
             "evaluation-assessment_corrected.assessment.json",
             "evaluation-assessment_corrected.v2.assessment.json",
         ] {
-            assert!(is_experiment_entry_name(accepted), "{accepted} should be accepted");
+            assert!(
+                is_experiment_entry_name(accepted),
+                "{accepted} should be accepted"
+            );
         }
         for refused in [
             // Each suffix is bound to the entity kind that names it.
@@ -1651,7 +1654,10 @@ mod tests {
             "assessment.json",
             "notes.json",
         ] {
-            assert!(!is_experiment_entry_name(refused), "{refused} should be refused");
+            assert!(
+                !is_experiment_entry_name(refused),
+                "{refused} should be refused"
+            );
         }
     }
 
