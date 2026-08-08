@@ -81,13 +81,6 @@ function DriftList({ drift }: { drift: EvaluationExecutionDrift }) {
       String(drift.repetitions.candidate),
     ]);
   }
-  if (drift.checkSchemaVersion) {
-    rows.push([
-      "Check vocabulary",
-      `Version ${drift.checkSchemaVersion.baseline}`,
-      `Version ${drift.checkSchemaVersion.candidate}`,
-    ]);
-  }
   if (rows.length === 0) return null;
 
   return (

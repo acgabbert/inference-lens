@@ -11,6 +11,7 @@ import type {
 } from "../evaluations/use-evaluation-baselines.client";
 import { EvaluationResultsWorkspace } from "../evaluations/evaluation-results-workspace.client";
 import type { EvaluationExecution } from "../evaluations/use-evaluation-execution-session.client";
+import type { EvaluationReassessmentHandle } from "../evaluations/use-evaluation-reassessment.client";
 import { RepeatedExperimentWorkspace } from "../run/repeated-experiment-workspace.client";
 import type { RepeatedExperimentExecution } from "../run/use-repeated-experiment-session.client";
 import styles from "./runs-mode.module.css";
@@ -31,6 +32,8 @@ interface RunsModeProps {
     onPromoteTrace?(trace: RunTrace, experimentCellId: string): void;
     onReturnToList(): void;
     onDismiss(): void;
+    /** Which interpretation the results are read under; see the owner hook. */
+    reassessment?: EvaluationReassessmentHandle;
   };
   repeated?: {
     execution: RepeatedExperimentExecution;
@@ -79,6 +82,7 @@ export function RunsMode({
       onPromoteTrace={evaluation.onPromoteTrace}
       onReturnToEvaluation={evaluation.onReturnToList}
       onDismiss={evaluation.onDismiss}
+      reassessment={evaluation.reassessment}
     />
   ) : repeated ? (
     <RepeatedExperimentWorkspace

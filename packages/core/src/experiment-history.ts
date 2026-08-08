@@ -125,8 +125,13 @@ export function loadProjectHistoryFiles(
       failures.push({ fileName: file.fileName, message: "The experiment artifact filename is invalid." });
       continue;
     }
-    const { experimentId, kind } = experimentArtifactIdentity(file.fileName);
-    (kind === "plan" ? plans : results).set(experimentId, file);
+    const identity = experimentArtifactIdentity(file.fileName);
+    // Saved reassessments share the experiments directory. They are neither a
+    // plan nor a result, and an execution with no reassessment is the normal
+    // case, so an assessment is skipped here rather than reported as damage.
+    // The interpretation surface loads them by name when one is selected.
+    if (identity.kind === "assessment") continue;
+    (identity.kind === "plan" ? plans : results).set(identity.experimentId, file);
   }
 
   const experiments: ExperimentHistoryItem[] = [];

@@ -22,6 +22,8 @@ import type {
 import { StatusChip } from "../notifications/status-chip.client";
 import { formatTokens } from "../run-metrics-format.client.ts";
 import { SideDrawer } from "../workbench-shell.client.tsx";
+import { EvaluationReassessmentDrawer } from "./evaluation-reassessment-drawer.client.tsx";
+import type { EvaluationReassessmentHandle } from "./use-evaluation-reassessment.client.ts";
 import type { EvaluationExecution } from "./use-evaluation-execution-session.client.ts";
 
 const classificationLabels: Record<EvaluationRepetitionClassification, string> = {
@@ -115,6 +117,7 @@ export function EvaluationResultsWorkspace({
   placement = "response",
   onReturnToEvaluation,
   onDismiss,
+  reassessment,
 }: {
   execution: EvaluationExecution;
   onStop(): void;
@@ -122,6 +125,13 @@ export function EvaluationResultsWorkspace({
   onPromoteTrace?(trace: RunTrace, experimentCellId: string): void;
   placement?: "request" | "response";
   onReturnToEvaluation?(): void;
+  /**
+   * Which interpretation the outcomes below are derived under.
+   *
+   * Optional because a live batch has nothing to reinterpret yet: absent, this
+   * surface reads exactly as it always has, which is the As run reading.
+   */
+  reassessment?: EvaluationReassessmentHandle;
   /**
    * Hands the response pane back to the suite editor's provider-input preview.
    * Offered only once the batch is finished: a saved evaluation reopens from
@@ -138,10 +148,18 @@ export function EvaluationResultsWorkspace({
     if (plan.kind !== "evaluation") throw new Error("Expected an evaluation plan.");
     return plan;
   }, [execution.plan]);
+  const criteria = reassessment?.criteria;
   const aggregate = useMemo(
-    () => evaluationParsedExperimentAggregate(parsedPlan, execution.result, execution.states),
-    [parsedPlan, execution.result, execution.states],
+    () => evaluationParsedExperimentAggregate(
+      parsedPlan,
+      execution.result,
+      execution.states,
+      criteria,
+    ),
+    [parsedPlan, execution.result, execution.states, criteria],
   );
+  const interpretation = reassessment?.selected;
+  const reinterpreted = Boolean(interpretation && interpretation.id.kind !== "as-run");
   const selectedVariantId = aggregate.variants.some(
     ({ variant }) => variant.variantId === activeVariantId,
   )
@@ -213,10 +231,28 @@ export function EvaluationResultsWorkspace({
           <h2>{execution.plan.suite.name}</h2>
           <p>{live
             ? <>{live.finished} of {live.requested} finished{activeCase && activeCell ? ` · ${activeCase.name}, ${parsedPlan.suite.variants.find(({ variantId }) => variantId === activeCell.variantId)?.name ?? "Configuration"}, repetition ${activeCell.repetition}` : " · Preparing"} · {elapsedTime(nowMs - live.startedAtMs)} elapsed</>
-            : <>As run · {execution.plan.suite.cases.length} cases · {execution.plan.repetitions} {execution.plan.repetitions === 1 ? "repetition" : "repetitions"}</>}</p>
+            : <>{interpretation?.name ?? "As run"} · {execution.plan.suite.cases.length} cases · {execution.plan.repetitions} {execution.plan.repetitions === 1 ? "repetition" : "repetitions"}</>}</p>
         </div>
         <div className="evaluation-results-actions">
           <span className={`run-history-status ${lifecycle}`}>{lifecycle}</span>
+          {reassessment?.available && reassessment.interpretations.length > 1 && (
+            <label className="evaluation-interpretation-select">
+              Reading
+              <select
+                value={reassessment.selected.value}
+                onChange={(event) => reassessment.select(event.target.value)}
+              >
+                {reassessment.interpretations.map((option) => (
+                  <option key={option.value} value={option.value}>{option.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
+          {reassessment?.available && (
+            <button className="button" type="button" onClick={reassessment.openEditor}>
+              Re-evaluate saved outputs…
+            </button>
+          )}
           {live && <button className="button stop" type="button" onClick={onStop}>Stop remaining</button>}
           {placement === "request" && onReturnToEvaluation && <button className="button" type="button" onClick={onReturnToEvaluation}>Back to evaluation</button>}
           {placement === "response" && !live && onDismiss && <button className="button" type="button" onClick={onDismiss}>Back to editing</button>}
@@ -226,8 +262,37 @@ export function EvaluationResultsWorkspace({
       {live && <progress aria-label="Evaluation progress" className="experiment-progress" max={live.requested} value={live.finished}>{live.finished} of {live.requested}</progress>}
       {execution.storage === "unsaved" && <StatusChip tone="advisory" label="Session only" detail="This evaluation is not saved and will be lost when this session closes." />}
       {execution.error && <StatusChip tone="failure" label="Interrupted" detail={execution.error} />}
+      {/*
+        * Persistent, not dismissible. A pass rate with no visible interpretation
+        * is the exact failure this feature was designed against: every number
+        * below is re-derived from unchanged evidence under criteria that are not
+        * the ones this batch ran with.
+        */}
+      {reinterpreted && interpretation && (
+        <StatusChip
+          tone="advisory"
+          label={interpretation.preview ? "Preview interpretation" : "Saved reinterpretation"}
+          detail={`Outcomes below are re-derived under “${interpretation.name}”, not the criteria this evaluation ran with. No saved output changed.${interpretation.preview ? " This reading is not saved." : ""}`}
+        />
+      )}
+      {reassessment?.error && (
+        <StatusChip
+          tone="failure"
+          label="Reassessment"
+          detail={reassessment.error}
+          actions={[{ key: "dismiss", label: "Dismiss", onSelect: reassessment.dismissError }]}
+        />
+      )}
+      {reassessment?.notice && (
+        <StatusChip
+          tone="neutral"
+          label="Reassessment"
+          detail={reassessment.notice}
+          actions={[{ key: "dismiss", label: "Dismiss", onSelect: reassessment.dismissNotice }]}
+        />
+      )}
 
-      <div aria-label="As run summary" className="evaluation-configuration-table-scroll" role="region">
+      <div aria-label={reinterpreted && interpretation ? `${interpretation.name} summary` : "As run summary"} className="evaluation-configuration-table-scroll" role="region">
         <table className="evaluation-configuration-table" aria-label="Configuration results">
           <thead>
             <tr>
@@ -281,6 +346,9 @@ export function EvaluationResultsWorkspace({
       {activeVariant && <div className="evaluation-case-results">
         {activeVariant.cases.map((caseAssessment) => {
           const planCase = execution.plan.suite.cases.find(({ caseId }) => caseId === caseAssessment.caseId)!;
+          // Labels and the check count follow the interpretation being read, so
+          // a replaced check is never described by the definition it replaced.
+          const caseChecks = criteria?.get(caseAssessment.caseId) ?? planCase.checks;
           const caseCells = execution.plan.cells.filter(
             ({ caseId, variantId }) => caseId === caseAssessment.caseId && variantId === activeVariant.variant.variantId,
           );
@@ -303,7 +371,7 @@ export function EvaluationResultsWorkspace({
                   : current.filter((caseId) => caseId !== caseAssessment.caseId));
               }}
             >
-              <summary><span><strong>{caseAssessment.name}</strong><small>{planCase.checks.length} {planCase.checks.length === 1 ? "check" : "checks"} · {caseAssessment.repetitions.length} {caseAssessment.repetitions.length === 1 ? "repetition" : "repetitions"}</small></span><span className={`run-history-status ${caseAssessment.passed ? "completed" : caseLiveStatus ?? "failed"}`}>{caseAssessment.passed ? "passed" : caseLiveStatus ?? "did not pass"}</span></summary>
+              <summary><span><strong>{caseAssessment.name}</strong><small>{caseChecks.length} {caseChecks.length === 1 ? "check" : "checks"} · {caseAssessment.repetitions.length} {caseAssessment.repetitions.length === 1 ? "repetition" : "repetitions"}</small></span><span className={`run-history-status ${caseAssessment.passed ? "completed" : caseLiveStatus ?? "failed"}`}>{caseAssessment.passed ? "passed" : caseLiveStatus ?? "did not pass"}</span></summary>
               <div className="evaluation-repetition-results">
                 {caseAssessment.repetitions.map((repetition) => {
                   const cell = caseCells.find(({ cellId }) => cellId === repetition.cellId)!;
@@ -314,7 +382,7 @@ export function EvaluationResultsWorkspace({
                     <article className={overlay ? `evaluation-repetition-result ${overlay}` : "evaluation-repetition-result"} key={repetition.cellId}>
                       <div className="evaluation-repetition-heading"><strong>Repetition {repetition.repetition}</strong><span className={`run-history-status ${presentation}`}>{overlay === "running" && <span className="experiment-row-activity-dot" aria-hidden="true" />}{overlay ?? classificationLabels[repetition.classification]}</span></div>
                       {repetition.checks.length > 0 && <ul className="evaluation-check-results">{repetition.checks.map((result) => {
-                        const definition = planCase.checks.find(({ checkId }) => checkId === result.checkId);
+                        const definition = caseChecks.find(({ checkId }) => checkId === result.checkId);
                         return <li className={result.outcome.status} key={result.checkId}><strong>{definition?.label ?? result.kind}</strong><span>{checkMessage(result.outcome)}</span></li>;
                       })}</ul>}
                       <div className={`evaluation-evidence-row ${overlay ?? reachability.kind}`}>
@@ -366,6 +434,8 @@ export function EvaluationResultsWorkspace({
           {!outputDiff && <p className="evaluation-comparison-absent">A line diff needs readable output on both sides.</p>}
         </>}
       </SideDrawer>
+
+      {reassessment?.available && <EvaluationReassessmentDrawer handle={reassessment} />}
     </section>
   );
 }

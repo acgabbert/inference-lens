@@ -1,7 +1,10 @@
 import type { CheckDefinition } from "./checks.ts";
-import type { EvaluationCaseSnapshot } from "./experiment.ts";
 import { stableJsonValue } from "./stable-json.ts";
-import type { CheckId, EvaluationCaseId } from "./run-kernel/types.ts";
+import type {
+  CheckId,
+  EvaluationCaseId,
+  EvaluationInputBindingId,
+} from "./run-kernel/types.ts";
 
 /**
  * Aligns two evaluation suite snapshots by stable identity.
@@ -62,9 +65,25 @@ export interface SuiteAlignment {
   counts: SuiteAlignmentCounts;
 }
 
-/** The subset of a suite snapshot alignment reads. */
+/**
+ * The subset of a suite snapshot alignment reads.
+ *
+ * Stated structurally rather than as `EvaluationCaseSnapshot[]` so an authored
+ * suite in `project.json` can be aligned against an execution's plan without
+ * first being given a resolved input it does not have. Alignment is about
+ * identity and criteria; resolved input is execution, and reading none of it
+ * here is what keeps that true.
+ */
+export interface AlignableCase {
+  caseId: EvaluationCaseId;
+  name: string;
+  values: Readonly<Record<EvaluationInputBindingId, string>>;
+  checks?: readonly CheckDefinition[];
+  referenceAnswer?: string;
+}
+
 export interface AlignableSuiteSnapshot {
-  cases: readonly EvaluationCaseSnapshot[];
+  cases: readonly AlignableCase[];
 }
 
 function sameJson(left: unknown, right: unknown): boolean {
@@ -116,8 +135,8 @@ function alignChecks(
 }
 
 function caseReasons(
-  baseline: EvaluationCaseSnapshot,
-  candidate: EvaluationCaseSnapshot,
+  baseline: AlignableCase,
+  candidate: AlignableCase,
   checks: readonly AlignedCheck[],
 ): SuiteAlignmentReason[] {
   const reasons: SuiteAlignmentReason[] = [];

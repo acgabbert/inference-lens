@@ -17,6 +17,7 @@ import {
 } from "../../packages/core/src/experiment";
 import { InferenceSettingsPanel } from "../inference-settings-panel.client";
 import { DisclosureChevron } from "../disclosure-chevron.client";
+import { EditableTitle } from "../editable-title.client";
 import { experimentToolBindingLabel } from "../run/experiment-tool-bindings.client";
 import type { ExperimentToolBinding } from "../run/experiment-tool-bindings.client";
 import { PaneEmptyState } from "../pane-empty-state.client";
@@ -402,10 +403,7 @@ function CaseEditor({ evaluationCase, authoring, source, onOpenSourceTrace }: {
     : undefined;
   return (
     <section className="evaluation-case-detail" aria-label={`Edit ${evaluationCase.name}`}>
-      <div className="evaluation-section-heading"><div><span className="eyebrow">Focused case</span><h3>{evaluationCase.name}</h3></div><button className="remove-button" type="button" onClick={() => authoring.deleteCase(evaluationCase.id)}>Delete case</button></div>
-      <label>Case name <input aria-label={`Case name ${evaluationCase.name}`} defaultValue={evaluationCase.name} onBlur={(event) => {
-        if (!authoring.renameCase(evaluationCase.id, event.target.value)) event.currentTarget.value = evaluationCase.name;
-      }} /></label>
+      <div className="evaluation-section-heading"><div><span className="eyebrow">Focused case</span><EditableTitle label="Case name" value={evaluationCase.name} onCommit={(name) => authoring.renameCase(evaluationCase.id, name)} /></div><button className="remove-button" type="button" onClick={() => authoring.deleteCase(evaluationCase.id)}>Delete case</button></div>
       {authoring.error?.target.kind === "case-name" && authoring.error.target.caseId === evaluationCase.id && <p className="evaluation-field-error" role="alert">{authoring.error.message}</p>}
       {source && onOpenSourceTrace && <button className="text-button" type="button" onClick={() => onOpenSourceTrace(source)}>Open source trace</button>}
       {suite && suite.inputBindings.length > 0 && (
@@ -530,8 +528,6 @@ export function EvaluationSuiteEditor({
 }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [candidateIndex, setCandidateIndex] = useState(0);
-  const [renamingSuite, setRenamingSuite] = useState(false);
-  const [suiteNameDraft, setSuiteNameDraft] = useState("");
   // Falls back to local state so the editor stays renderable on its own; the
   // mode supplies the durable one.
   const [localSetupOpen, setLocalSetupOpen] = useState(true);
@@ -639,21 +635,13 @@ export function EvaluationSuiteEditor({
           <header className={styles.header}>
             <div className={styles.identity}>
               <span className="eyebrow">Evaluation suite</span>
-              <h2>{suite.name}</h2>
+              {/* Keyed by the suite: the rail switches which suite this header
+                  describes without remounting, and a draft must not follow. */}
+              <EditableTitle key={suite.id} heading="h2" label="Suite name" value={suite.name} onCommit={authoring.renameSuite} />
               <span className={styles.identitySpacer} />
-              <button className="button secondary" type="button" onClick={() => { setSuiteNameDraft(suite.name); setRenamingSuite(true); }}>Rename</button>
               <button className="remove-button" type="button" onClick={authoring.deleteSuite}>Delete suite</button>
             </div>
-            {renamingSuite && <form className="evaluation-suite-rename" onSubmit={(event) => {
-              event.preventDefault();
-              if (authoring.renameSuite(suiteNameDraft)) setRenamingSuite(false);
-              else setSuiteNameDraft(suite.name);
-            }}>
-              <label>Suite name <input autoFocus value={suiteNameDraft} onChange={(event) => setSuiteNameDraft(event.target.value)} /></label>
-              <button className="button primary" type="submit">Save name</button>
-              <button className="text-button" type="button" onClick={() => setRenamingSuite(false)}>Cancel</button>
-            </form>}
-            {authoring.error?.target.kind === "suite-name" && <p className="evaluation-field-error" role="alert">{authoring.error.message}</p>}
+            {authoring.error?.target.kind === "suite-name" && <p className="evaluation-field-error evaluation-suite-name-error" role="alert">{authoring.error.message}</p>}
             {authoring.error?.target.kind === "editor" && <div className="template-diagnostic" role="alert">{authoring.error.message}</div>}
             {authoring.savedPromptError && !authoring.savedPromptPickerOpen && <p className="evaluation-field-error" role="alert">{authoring.savedPromptError}</p>}
             {/* Preflight is the shared blocker chip, so the state of the
