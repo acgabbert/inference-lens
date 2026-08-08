@@ -347,10 +347,10 @@ test("a rejected check edit stays local and restores the saved value", async ({ 
 
   await expect(regexCard.getByRole("alert")).toContainText("Safe regex flags must be a unique subset of ims");
   await expect(flags).toHaveValue("i");
-  await expect(editor.locator(".evaluation-suite-rename + [role=alert]")).toHaveCount(0);
+  await expect(editor.locator(".evaluation-suite-name-error")).toHaveCount(0);
 });
 
-test("rejected suite and case names restore saved values with local errors", async ({ page }) => {
+test("rejected suite and case names keep the draft open with local errors", async ({ page }) => {
   await openProject(page, baseProject(), 1440);
   const editor = page.locator(".evaluation-editor");
   await page.getByRole("button", { name: "Create evaluation suite" }).click();
@@ -359,18 +359,24 @@ test("rejected suite and case names restore saved values with local errors", asy
   await page.getByRole("button", { name: "+ Add case", exact: true }).click();
   await page.getByLabel("Untitled case topic").fill("database migrations");
 
-  await page.getByRole("button", { name: "Rename" }).click();
-  const suiteName = page.getByLabel("Suite name");
+  await page.getByRole("button", { name: "Edit suite name" }).click();
+  const suiteName = page.getByLabel("Suite name", { exact: true });
   await suiteName.fill("   ");
-  await page.getByRole("button", { name: "Save name" }).click();
-  await expect(suiteName).toHaveValue("Untitled evaluation");
-  await expect(editor.locator(".evaluation-suite-rename + .evaluation-field-error"))
+  await page.getByRole("button", { name: "Save suite name" }).click();
+  // The rejected draft is what the author still has to fix, so it stays in the
+  // open editor rather than being replaced by the name they were changing.
+  await expect(suiteName).toHaveValue("   ");
+  await expect(editor.locator(".evaluation-suite-name-error"))
     .toContainText("expected string to have >=1 characters");
+  // Discarding is the way back to the saved name.
+  await page.getByRole("button", { name: "Discard suite name change" }).click();
+  await expect(editor.locator("h2")).toHaveText("Untitled evaluation");
 
-  const caseName = page.getByLabel("Case name Untitled case");
+  await page.getByRole("button", { name: "Edit case name" }).click();
+  const caseName = page.getByLabel("Case name", { exact: true });
   await caseName.fill("   ");
   await caseName.blur();
-  await expect(caseName).toHaveValue("Untitled case");
+  await expect(caseName).toHaveValue("   ");
   await expect(editor.locator(".evaluation-case-detail > .evaluation-field-error"))
     .toContainText("expected string to have >=1 characters");
 

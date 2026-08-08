@@ -6706,21 +6706,6 @@ main {
   padding: var(--space-md) var(--space-lg);
 }
 
-.evaluation-suite-rename {
-  display: flex;
-  align-items: center;
-  gap: var(--space-md);
-}
-
-.evaluation-suite-rename label {
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-.evaluation-suite-rename input {
-  width: 100%;
-}
-
 /* Now a chip and its storage note rather than a standing block. The chip owns
    the state, the reason, and the disclosure; this only places it and gives it
    the container the chip's own narrow-width rule queries. */
