@@ -136,6 +136,16 @@ export function useProjectWorkspace(input: {
     profilesRef.current = profiles;
   }, [profiles]);
 
+  useEffect(() => {
+    if (!projectDirty) return;
+    function warnBeforeUnload(event: BeforeUnloadEvent): void {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [projectDirty]);
+
   function advanceProjectChangeVersion(): number {
     autoSaveWindowStartedAtRef.current ??= Date.now();
     projectChangeVersionRef.current += 1;

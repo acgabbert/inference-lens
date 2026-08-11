@@ -31,6 +31,7 @@ import {
   serializeProjectFile,
   setPromptTemplateCurrentRevision,
   setPromptTemplateRecommendedTarget,
+  updatePromptTemplateDraft,
   updateConnectionRequirementEndpoint,
   updateProjectDraft,
   updatePromptTemplateUseToLatest,
@@ -998,6 +999,54 @@ test("creates immutable template revisions, finds uses, and rejects unsafe remov
   assert.deepEqual(
     removed.promptTemplates[0]?.revisions.map(({ id }) => id),
     ["template-revision_question-1"],
+  );
+});
+
+test("persists a mutable prompt draft separately from named immutable revisions", () => {
+  const project = createPromptTemplate(
+    createProjectFile({
+      name: "Prompt drafts",
+      request,
+      idSuffix: "prompt-drafts",
+      createdAt: "2026-08-11T12:00:00.000Z",
+    }),
+    {
+      name: "Question",
+      messages: [{ role: "user", content: "Explain {{topic}}." }],
+      variableDefaults: { topic: "branching" },
+      idSuffix: "question-draft",
+      revisionIdSuffix: "question-draft-1",
+      createdAt: "2026-08-11T12:01:00.000Z",
+    },
+  );
+
+  const drafted = updatePromptTemplateDraft(project, {
+    templateId: "template_question-draft",
+    sourceRevisionId: "template-revision_question-draft-1",
+    messages: [{ role: "user", content: "Explain {{topic}} clearly." }],
+    variableDefaults: { topic: "autosave" },
+  });
+  const parsedDraft = parseProjectJson(serializeProjectFile(drafted));
+  assert.deepEqual(parsedDraft.promptTemplates[0]?.draft, {
+    sourceRevisionId: "template-revision_question-draft-1",
+    messages: [{ role: "user", content: "Explain {{topic}} clearly." }],
+    variableDefaults: { topic: "autosave" },
+  });
+  assert.equal(parsedDraft.promptTemplates[0]?.revisions.length, 1);
+
+  const checkpoint = appendPromptTemplateRevision(drafted, {
+    templateId: "template_question-draft",
+    messages: drafted.promptTemplates[0]!.draft!.messages,
+    variableDefaults: drafted.promptTemplates[0]!.draft!.variableDefaults,
+    name: "Clarify the request",
+    idSuffix: "question-draft-2",
+    createdAt: "2026-08-11T12:02:00.000Z",
+  });
+  assert.equal(checkpoint.promptTemplates[0]?.draft, undefined);
+  assert.equal(checkpoint.promptTemplates[0]?.revisions.at(-1)?.name, "Clarify the request");
+  assert.equal(
+    checkpoint.promptTemplates[0]?.revisions[0]?.messages[0]?.content,
+    "Explain {{topic}}.",
   );
 });
 

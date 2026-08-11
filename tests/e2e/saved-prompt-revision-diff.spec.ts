@@ -68,7 +68,7 @@ test("a historical prompt revision can be edited into a new revision with an exa
 
   await editor.getByLabel("Prompt content").fill("Triage {{incident}} for the on-call engineer.");
   await editor.getByLabel("{{incident}}").fill("database outage");
-  await editor.getByRole("button", { name: "Save prompt" }).click();
+  await editor.getByRole("button", { name: "Create revision" }).click();
 
   // A save forces the diff open once, to confirm what just changed.
   await expect(diffToggle).toHaveAttribute("aria-expanded", "true");
@@ -80,6 +80,62 @@ test("a historical prompt revision can be edited into a new revision with an exa
   await editor.locator(".template-revision-field select").selectOption(firstRevisionId);
   await expect(editor.getByLabel("Prompt content")).toHaveValue("Triage {{incident}}.");
   await expect(editor.getByLabel("{{incident}}")).toHaveValue("timeout");
+});
+
+test("prompt drafts and checkpoint names survive library navigation", async ({ page }) => {
+  let project = createProjectFile({
+    name: "Saved prompt autosave fixture",
+    request: {
+      provider: "openai-compatible",
+      endpoint: BUFFERED_FIXTURE_ENDPOINT,
+      model: "buffered-test-model",
+      messages: [{ role: "user", content: "Hello" }],
+    },
+    idSuffix: "saved-prompt-autosave",
+    createdAt: "2026-08-11T12:00:00.000Z",
+  });
+  project = createPromptTemplate(project, {
+    name: "Incident triage",
+    messages: [{ role: "user", content: "Triage {{incident}}." }],
+    variableDefaults: { incident: "timeout" },
+    idSuffix: "autosave-triage",
+    revisionIdSuffix: "autosave-triage-1",
+    createdAt: "2026-08-11T12:00:01.000Z",
+  });
+  project = createPromptTemplate(project, {
+    name: "Summary",
+    messages: [{ role: "user", content: "Summarize this." }],
+    idSuffix: "autosave-summary",
+    revisionIdSuffix: "autosave-summary-1",
+    createdAt: "2026-08-11T12:00:02.000Z",
+  });
+
+  await seedProfile(page, { instanceId: "profile-instance-buffered" });
+  await page.goto("/");
+  await waitForHydration(page);
+  await importProject(page, project, "Saved prompt autosave fixture");
+  await openMode(page, "Compose");
+  await page.getByRole("tab", { name: /Prompts/ }).click();
+
+  const editor = page.locator(".template-editor");
+  await editor.getByLabel("Prompt content").fill("Triage {{incident}} without jargon.");
+  await editor.getByLabel("{{incident}}").fill("database outage");
+  await editor.getByLabel("Revision name").fill("Make triage concise");
+  await expect(editor).toContainText("Draft kept in this session");
+
+  await page.locator(".template-list-item", { hasText: "Summary" }).click();
+  await page.locator(".template-list-item", { hasText: "Incident triage" }).click();
+
+  await expect(editor.locator(".template-revision-field select")).toHaveValue("draft");
+  await expect(editor.getByLabel("Prompt content")).toHaveValue("Triage {{incident}} without jargon.");
+  await expect(editor.getByLabel("{{incident}}")).toHaveValue("database outage");
+  await expect(editor.getByLabel("Revision name")).toHaveValue("Make triage concise");
+
+  await editor.getByRole("button", { name: "Create revision" }).click();
+  await expect(editor.locator(".template-revision-field select option").first()).toContainText(
+    "Make triage concise",
+  );
+  await expect(editor.locator(".template-revision-field select")).not.toHaveValue("draft");
 });
 
 test("the prompt header keeps its metadata controls usable beside revision actions", async ({ page }) => {

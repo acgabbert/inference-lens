@@ -1193,6 +1193,34 @@ output {
   gap: var(--space-2xs);
 }
 
+.template-revision-create-action {
+  display: grid;
+  grid-template-columns: minmax(170px, 230px) auto;
+  align-items: end;
+  gap: var(--space-2xs) var(--space-sm);
+}
+
+.template-revision-create-action label {
+  display: grid;
+  gap: var(--space-2xs);
+}
+
+.template-revision-create-action .field-optional {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.template-draft-status {
+  grid-column: 1 / -1;
+  color: var(--text-muted);
+  line-height: var(--leading-tight);
+  text-align: right;
+}
+
+.template-draft-status.error {
+  color: var(--danger);
+}
+
 .template-revision-edit-action small {
   max-width: 230px;
   color: var(--text-muted);

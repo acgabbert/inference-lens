@@ -1757,6 +1757,13 @@ function HomeContent() {
           commandTools={commandTools}
           templates={projectTemplates}
           project={projectFile}
+          projectPersistenceStatus={
+            projectErrorKind === "auto-save"
+              ? "error"
+              : !projectWorkspace
+                ? projectDirty ? "session" : "saved"
+                : projectDirty ? "saving" : "saved"
+          }
           onEvaluatePromptRevision={(templateId, revisionId, suiteId) => {
             const succeeded = evaluationAuthoring.evaluatePromptRevision(templateId, revisionId, suiteId);
             if (!succeeded) return false;
