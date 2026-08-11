@@ -4,6 +4,7 @@ import test from "node:test";
 import { createProjectFile, projectDraft } from "../packages/core/src/project.ts";
 import {
   projectForTemplateMutation,
+  templateRunOverridesAfterRevisionUpdate,
   templateRunOverridesAfterSave,
   templateRunOverridesAfterUpdate,
 } from "../app/templates/project-template-policy.ts";
@@ -79,4 +80,26 @@ test("keeps transient template overrides separate and removes saved empty overri
     templateRunOverridesAfterSave(updated, "template-use_first", {}),
     { "template-use_second": { audience: "team" } },
   );
+});
+
+test("retains transient values declared by a newly pinned prompt and drops removed variables", () => {
+  const initial = {
+    "template-use_first": { topic: "database rollback", obsolete: "old value" },
+    "template-use_second": { audience: "team" },
+  };
+
+  const updated = templateRunOverridesAfterRevisionUpdate(
+    initial,
+    "template-use_first",
+    [{ role: "user", content: "Investigate {{topic}} for {{new_audience}}." }],
+  );
+
+  assert.deepEqual(updated, {
+    "template-use_first": { topic: "database rollback" },
+    "template-use_second": { audience: "team" },
+  });
+  assert.deepEqual(initial["template-use_first"], {
+    topic: "database rollback",
+    obsolete: "old value",
+  });
 });
