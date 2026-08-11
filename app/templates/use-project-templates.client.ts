@@ -50,6 +50,7 @@ import {
 } from "./project-template-workbench.client";
 import {
   projectForTemplateMutation,
+  templateRunOverridesAfterRevisionUpdate,
   templateRunOverridesAfterSave,
   templateRunOverridesAfterUpdate,
 } from "./project-template-policy";
@@ -263,7 +264,7 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     const pinned = template.revisions.find(({ id }) => id === item.use.templateRevisionId)!; const latest = template.revisions.find(({ id }) => id === template.currentRevisionId)!;
     const vars = (messages: PromptTemplateMessages) => discoverTemplateVariables(messages).variables.map(({ name }) => name).join(", ") || "none";
     const describe = (messages: PromptTemplateMessages) => messages.map(({ role, content: text }) => `${role}: ${text}`).join("\n");
-    input.requestConfirmation({ title: `Update "${template.name}"?`, description: "The use will pin the latest immutable revision. Assignments for removed variables and its run-only overrides will be cleared.", confirmLabel: "Update to latest", details: [{ label: "From", value: pinned.id }, { label: "To", value: latest.id }, { label: "Variables", value: `${vars(pinned.messages)} → ${vars(latest.messages)}` }, { label: "Current content", value: describe(pinned.messages) }, { label: "Latest content", value: describe(latest.messages) }], onConfirm() { const { project, revisionId } = projectForUseMutation(); const count = latest.messages.length; const next = updatePromptTemplateUseToLatest(project, { conversationRevisionId: revisionId, templateUseId, newOutputMessageIdSuffixes: Array.from({ length: Math.max(0, count - item.use.outputMessageIds.length) }, () => randomUUID()) }); const overrides = { ...templateRunOverrides }; delete overrides[templateUseId]; setTemplateRunOverrides(overrides); adoptAuthoredProject(next, overrides); } });
+    input.requestConfirmation({ title: `Update "${template.name}"?`, description: "The use will pin the latest immutable revision. Values for variables that still exist will be kept; assignments and session overrides for removed variables will be cleared.", confirmLabel: "Update to latest", details: [{ label: "From", value: pinned.id }, { label: "To", value: latest.id }, { label: "Variables", value: `${vars(pinned.messages)} → ${vars(latest.messages)}` }, { label: "Current content", value: describe(pinned.messages) }, { label: "Latest content", value: describe(latest.messages) }], onConfirm() { const { project, revisionId } = projectForUseMutation(); const count = latest.messages.length; const next = updatePromptTemplateUseToLatest(project, { conversationRevisionId: revisionId, templateUseId, newOutputMessageIdSuffixes: Array.from({ length: Math.max(0, count - item.use.outputMessageIds.length) }, () => randomUUID()) }); const overrides = templateRunOverridesAfterRevisionUpdate(templateRunOverrides, templateUseId, latest.messages); setTemplateRunOverrides(overrides); adoptAuthoredProject(next, overrides); } });
   }
   function detachTemplateUse(templateUseId: PromptTemplateUseId): void {
     input.requestConfirmation({
