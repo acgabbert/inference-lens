@@ -1,0 +1,142 @@
+/*
+ * The reassessment drawer: correcting the criteria a finished evaluation is
+ * read under.
+ *
+ * Structure only, per the overhaul's CSS strategy. Buttons, field chrome, and
+ * status colouring stay on the global leaf classes this drawer shares with the
+ * suite editor, so a correction reads like authoring rather than like a
+ * different product.
+ */
+
+.drawer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xl);
+}
+
+.empty {
+  color: var(--text-muted);
+}
+
+.check {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+}
+
+.check header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.check header small {
+  color: var(--text-muted);
+}
+
+.check textarea {
+  font-family: var(--font-geist-mono), monospace;
+}
+
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  color: var(--text-secondary);
+}
+
+.error {
+  color: var(--danger);
+}
+
+.carried ul,
+.drift ul,
+.flips {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+  margin: var(--space-sm) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.carried li,
+.drift li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  color: var(--text-secondary);
+}
+
+.carried li small,
+.drift li small {
+  color: var(--text-muted);
+  text-align: right;
+}
+
+/*
+ * A flip is read as a direction, so the row is coloured by where it lands
+ * rather than by severity: a check that starts passing under a correction is
+ * as much news as one that starts failing.
+ */
+.flips li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: var(--space-2xs) var(--space-xs);
+  border-radius: var(--radius-xs);
+  background: var(--surface-inset);
+}
+
+.flips li:global(.passed) {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.flips li:global(.failed) {
+  background: var(--danger-surface);
+  color: var(--danger);
+}
+
+.flips li:global(.not-evaluated),
+.flips li:global(.absent) {
+  background: var(--warning-surface);
+  color: var(--warning-strong);
+}
+
+.flips li span {
+  color: inherit;
+  text-align: right;
+}
+
+.counts {
+  margin-top: var(--space-sm);
+  color: var(--text-muted);
+}
+
+.preview,
+.commit,
+.drift,
+.carried {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.commit button {
+  align-self: flex-start;
+}
+
+.hint {
+  color: var(--text-muted);
+  line-height: var(--leading-normal);
+}
