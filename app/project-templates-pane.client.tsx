@@ -43,6 +43,7 @@ interface ProjectTemplatesPaneProps {
   defaultConnectionRequirementId?: ConnectionRequirement["id"];
   usageCounts: ReadonlyMap<PromptTemplateId, number>;
   itemCount: number;
+  persistenceStatus?: "saving" | "saved" | "session" | "error";
   n8nImportDisabledReason?: string;
   onOpenN8nImport(): void;
   onCreate(name: string, messages: PromptTemplateMessages): PromptTemplateId;
@@ -52,7 +53,19 @@ interface ProjectTemplatesPaneProps {
     messages: PromptTemplateMessages,
     defaults: Record<string, string>,
     recommendedTarget?: PromptTemplateRecommendedTarget,
+    revisionName?: string,
   ): PromptTemplateRevisionId;
+  onDraftChange(
+    templateId: PromptTemplateId,
+    sourceRevisionId: PromptTemplateRevisionId,
+    messages: PromptTemplateMessages,
+    defaults: Record<string, string>,
+    revisionName?: string,
+  ): void;
+  onRecommendedTargetChange(
+    templateId: PromptTemplateId,
+    recommendedTarget?: PromptTemplateRecommendedTarget,
+  ): void;
   onRename(templateId: PromptTemplateId, name: string): boolean;
   onArchive(templateId: PromptTemplateId, onArchived?: () => void): void;
   onRestore(templateId: PromptTemplateId): void;
@@ -81,10 +94,13 @@ export function ProjectTemplatesPane({
   defaultConnectionRequirementId,
   usageCounts,
   itemCount,
+  persistenceStatus = "saved",
   n8nImportDisabledReason,
   onOpenN8nImport,
   onCreate,
   onSave,
+  onDraftChange,
+  onRecommendedTargetChange,
   onRename,
   onArchive,
   onRestore,
@@ -109,18 +125,23 @@ export function ProjectTemplatesPane({
   const [viewedRevisionId, setViewedRevisionId] =
     useState<PromptTemplateRevisionId | undefined>(initialRevision?.id);
   const [candidateSourceRevisionId, setCandidateSourceRevisionId] =
-    useState<PromptTemplateRevisionId | undefined>();
+    useState<PromptTemplateRevisionId | undefined>(selected?.draft?.sourceRevisionId);
   const [comparedRevisionId, setComparedRevisionId] =
     useState<PromptTemplateRevisionId | undefined>(
       selected?.revisions[selected.revisions.indexOf(initialRevision!) - 1]?.id,
     );
   const [name, setName] = useState(selected?.name ?? "");
   const [messages, setMessages] = useState<PromptTemplateMessages>(
-    initialRevision ? structuredClone(initialRevision.messages) : newPrompt(),
+    selected?.draft
+      ? structuredClone(selected.draft.messages)
+      : initialRevision ? structuredClone(initialRevision.messages) : newPrompt(),
   );
   const [defaults, setDefaults] = useState<Record<string, string>>(
-    initialRevision ? { ...initialRevision.variableDefaults } : {},
+    selected?.draft
+      ? { ...selected.draft.variableDefaults }
+      : initialRevision ? { ...initialRevision.variableDefaults } : {},
   );
+  const [revisionName, setRevisionName] = useState(selected?.draft?.revisionName ?? "");
   const [recommendedModel, setRecommendedModel] = useState(
     selected?.recommendedTarget?.model ?? "",
   );
@@ -180,6 +201,37 @@ export function ProjectTemplatesPane({
   const sensitiveVariables = discovery.variables.filter(({ name }) =>
     isSensitiveTemplateVariableName(name),
   );
+  const draftChanged = Boolean(
+    viewedRevision && (
+      JSON.stringify(messages) !== JSON.stringify(viewedRevision.messages) ||
+      JSON.stringify(defaults) !== JSON.stringify(viewedRevision.variableDefaults)
+    ),
+  );
+
+  function persistDraft(
+    nextMessages: PromptTemplateMessages,
+    nextDefaults: Record<string, string>,
+    nextRevisionName = revisionName,
+  ): void {
+    if (!selected || !viewedRevision) return;
+    const sourceRevisionId = candidateSourceRevisionId ?? viewedRevision.id;
+    const variables = new Set(discoverTemplateVariables(nextMessages).variables.map(({ name }) => name));
+    const filteredDefaults = Object.fromEntries(
+      Object.entries(nextDefaults).filter(([key]) => variables.has(key)),
+    );
+    const matchesSource =
+      JSON.stringify(nextMessages) === JSON.stringify(viewedRevision.messages) &&
+      JSON.stringify(filteredDefaults) === JSON.stringify(viewedRevision.variableDefaults) &&
+      !nextRevisionName;
+    setCandidateSourceRevisionId(matchesSource ? undefined : sourceRevisionId);
+    onDraftChange(
+      selected.id,
+      sourceRevisionId,
+      nextMessages,
+      filteredDefaults,
+      nextRevisionName,
+    );
+  }
   function updateN8nSuggestionsEnabled(enabled: boolean): void {
     setN8nSuggestionsEnabled(enabled);
     setN8nPasteSuggestionsEnabled(enabled);
@@ -209,13 +261,15 @@ export function ProjectTemplatesPane({
   function selectTemplate(template: PromptTemplate): void {
     const revision = currentRevision(template);
     setSelectedId(template.id);
-    setViewedRevisionId(revision.id);
-    setCandidateSourceRevisionId(undefined);
+    const draft = template.draft;
+    setViewedRevisionId(draft?.sourceRevisionId ?? revision.id);
+    setCandidateSourceRevisionId(draft?.sourceRevisionId);
     setComparedRevisionId(template.revisions.at(-2)?.id);
     setDiffOpen(false);
     setName(template.name);
-    setMessages(structuredClone(revision.messages));
-    setDefaults({ ...revision.variableDefaults });
+    setMessages(structuredClone(draft?.messages ?? revision.messages));
+    setDefaults({ ...(draft?.variableDefaults ?? revision.variableDefaults) });
+    setRevisionName(draft?.revisionName ?? "");
     setRecommendedModel(template.recommendedTarget?.model ?? "");
     setRecommendedConnectionRequirementId(
       template.recommendedTarget?.connectionRequirementId ??
@@ -242,6 +296,17 @@ export function ProjectTemplatesPane({
     setDiffOpen(revision.id !== selected.currentRevisionId);
     setMessages(structuredClone(revision.messages));
     setDefaults({ ...revision.variableDefaults });
+    setRevisionName("");
+  }
+
+  function selectDraft(): void {
+    if (!selected?.draft) return;
+    setViewedRevisionId(selected.draft.sourceRevisionId);
+    setCandidateSourceRevisionId(selected.draft.sourceRevisionId);
+    setDiffOpen(false);
+    setMessages(structuredClone(selected.draft.messages));
+    setDefaults({ ...selected.draft.variableDefaults });
+    setRevisionName(selected.draft.revisionName ?? "");
   }
 
   function addTemplate(): void {
@@ -256,6 +321,7 @@ export function ProjectTemplatesPane({
     setName("Untitled prompt");
     setMessages(structuredClone(messages));
     setDefaults({});
+    setRevisionName("");
     setRecommendedModel("");
     setRecommendedConnectionRequirementId(defaultConnectionRequirementId);
   }
@@ -361,30 +427,34 @@ export function ProjectTemplatesPane({
                 <input
                   disabled={readOnly}
                   value={name}
-                  onChange={(event) => setName(event.target.value)}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    setName(next);
+                    if (selected && next.trim()) onRename(selected.id, next.trim());
+                  }}
                   onBlur={(event) => {
-                    // The name is the one field that persists on its own: it
-                    // is metadata, not revision content, so committing it
-                    // does not mint a new revision the way "Save template"
-                    // does. A blank name is left uncommitted for the user to
-                    // fix rather than silently reverted or saved empty.
+                    // Non-blank keystrokes already persist so navigating or
+                    // closing does not lose them; blur only normalizes display.
                     const trimmed = event.target.value.trim();
-                    if (!selected || !trimmed || trimmed === selected.name) return;
-                    onRename(selected.id, trimmed);
+                    if (trimmed) setName(trimmed);
                   }}
                 />
               </label>
               <label className="template-revision-field">
                 Revision
                 <select
-                  value={viewedRevision.id}
-                  onChange={(event) =>
-                    selectRevision(event.target.value as PromptTemplateRevisionId)
-                  }
+                  value={candidateSourceRevisionId ? "draft" : viewedRevision.id}
+                  onChange={(event) => event.target.value === "draft"
+                    ? selectDraft()
+                    : selectRevision(event.target.value as PromptTemplateRevisionId)}
                 >
+                  {(selected.draft || candidateSourceRevisionId) && (
+                    <option value="draft">Draft · autosaved</option>
+                  )}
                   {[...selected.revisions].reverse().map((revision) => (
                     <option key={revision.id} value={revision.id}>
                       {promptRevisionLabel(selected, revision.id)}
+                      {revision.name ? ` — ${revision.name}` : ""}
                       {" · "}
                       {new Date(revision.createdAt).toLocaleString()}
                     </option>
@@ -431,16 +501,31 @@ export function ProjectTemplatesPane({
                         </div>
                       </>
                     ) : (
-                      <button
-                        className="button primary"
-                        disabled={
-                          !name.trim() ||
-                          discovery.diagnostics.length > 0 ||
-                          sensitiveVariables.length > 0
-                        }
-                        type="button"
-                        onClick={() => {
-                          const saved = onSave(
+                      <div className="template-revision-create-action">
+                        <label>
+                          Revision name <span className="field-optional">Optional</span>
+                          <input
+                            aria-label="Revision name"
+                            placeholder="What changed?"
+                            value={revisionName}
+                            onChange={(event) => {
+                              const next = event.target.value;
+                              setRevisionName(next);
+                              persistDraft(messages, defaults, next);
+                            }}
+                          />
+                        </label>
+                        <button
+                          className="button primary"
+                          disabled={
+                            !draftChanged ||
+                            !name.trim() ||
+                            discovery.diagnostics.length > 0 ||
+                            sensitiveVariables.length > 0
+                          }
+                          type="button"
+                          onClick={() => {
+                            const saved = onSave(
                               selected.id,
                               name,
                               messages,
@@ -459,15 +544,27 @@ export function ProjectTemplatesPane({
                                     model: recommendedModel.trim(),
                                   }
                                 : undefined,
+                              revisionName,
                             );
-                          setCandidateSourceRevisionId(undefined);
-                          setViewedRevisionId(saved);
-                          setComparedRevisionId(viewedRevision.id);
-                          setDiffOpen(true);
-                        }}
-                      >
-                        Save prompt
-                      </button>
+                            setCandidateSourceRevisionId(undefined);
+                            setViewedRevisionId(saved);
+                            setComparedRevisionId(viewedRevision.id);
+                            setRevisionName("");
+                            setDiffOpen(true);
+                          }}
+                        >
+                          Create revision
+                        </button>
+                        <small aria-live="polite" className={`template-draft-status ${persistenceStatus}`}>
+                          {persistenceStatus === "saving"
+                            ? "Saving draft…"
+                            : persistenceStatus === "error"
+                              ? "Draft save failed — your changes remain in this session."
+                              : persistenceStatus === "session"
+                                ? "Draft kept in this session. Save the project to keep it after closing."
+                                : "Draft autosaved."}
+                        </small>
+                      </div>
                     )}
                     {!archived && viewedRevision && onEvaluateRevision && <button
                       className="button secondary"
@@ -541,7 +638,10 @@ export function ProjectTemplatesPane({
                   if (open) setFocusMode(true);
                   else closeFocusMode();
                 }}
-                onChange={setMessages}
+                onChange={(next) => {
+                  setMessages(next);
+                  persistDraft(next, defaults);
+                }}
                 n8nSuggestionsEnabled={n8nSuggestionsEnabled}
                 onOpenN8nPaste={openN8nPaste}
               />
@@ -560,11 +660,16 @@ export function ProjectTemplatesPane({
                   <select
                     disabled={readOnly || connectionRequirements.length === 0}
                     value={recommendedConnectionRequirementId ?? ""}
-                    onChange={(event) =>
-                      setRecommendedConnectionRequirementId(
-                        event.target.value as ConnectionRequirement["id"],
-                      )
-                    }
+                    onChange={(event) => {
+                      const next = event.target.value as ConnectionRequirement["id"];
+                      setRecommendedConnectionRequirementId(next);
+                      onRecommendedTargetChange(
+                        selected.id,
+                        recommendedModel.trim()
+                          ? { connectionRequirementId: next, model: recommendedModel.trim() }
+                          : undefined,
+                      );
+                    }}
                   >
                     {connectionRequirements.map((requirement) => (
                       <option key={requirement.id} value={requirement.id}>
@@ -580,7 +685,16 @@ export function ProjectTemplatesPane({
                     disabled={readOnly}
                     placeholder="No recommendation"
                     value={recommendedModel}
-                    onChange={(event) => setRecommendedModel(event.target.value)}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      setRecommendedModel(next);
+                      onRecommendedTargetChange(
+                        selected.id,
+                        next.trim() && recommendedConnectionRequirementId
+                          ? { connectionRequirementId: recommendedConnectionRequirementId, model: next.trim() }
+                          : undefined,
+                      );
+                    }}
                   />
                 </label>
                 <div className="template-rail-heading">
@@ -603,12 +717,11 @@ export function ProjectTemplatesPane({
                             disabled={readOnly}
                             placeholder="No default"
                             value={assigned ? defaults[variable.name] : ""}
-                            onChange={(event) =>
-                              setDefaults((current) => ({
-                                ...current,
-                                [variable.name]: event.target.value,
-                              }))
-                            }
+                            onChange={(event) => {
+                              const next = { ...defaults, [variable.name]: event.target.value };
+                              setDefaults(next);
+                              persistDraft(messages, next);
+                            }}
                           />
                         </label>
                         <div className="template-variable-meta">
@@ -617,13 +730,12 @@ export function ProjectTemplatesPane({
                             <button
                               className="text-button"
                               type="button"
-                              onClick={() =>
-                                setDefaults((current) => {
-                                  const next = { ...current };
-                                  delete next[variable.name];
-                                  return next;
-                                })
-                              }
+                              onClick={() => {
+                                const next = { ...defaults };
+                                delete next[variable.name];
+                                setDefaults(next);
+                                persistDraft(messages, next);
+                              }}
                             >
                               Remove default
                             </button>

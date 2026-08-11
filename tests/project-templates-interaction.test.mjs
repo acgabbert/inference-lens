@@ -75,6 +75,8 @@ async function mount(overrides = {}) {
         itemCount: 0,
         onOpenN8nImport: noop,
         onCreate: () => "template_new",
+        onDraftChange: noop,
+        onRecommendedTargetChange: noop,
         onSave: () => template.currentRevisionId,
         onRename: () => true,
         onArchive: (templateId, onArchived) => onArchived?.(),
@@ -106,8 +108,11 @@ async function mount(overrides = {}) {
     },
     async type(input, value) {
       await act(async () => {
+        const prototype = input instanceof dom.window.HTMLTextAreaElement
+          ? dom.window.HTMLTextAreaElement.prototype
+          : dom.window.HTMLInputElement.prototype;
         const setter = Object.getOwnPropertyDescriptor(
-          dom.window.HTMLInputElement.prototype,
+          prototype,
           "value",
         ).set;
         setter.call(input, value);
@@ -278,7 +283,7 @@ test("focus mode traps keyboard focus within the editor", async () => {
   }
 });
 
-test("commits a renamed template on blur without requiring Save template", async () => {
+test("persists a renamed template as it is typed without requiring a revision", async () => {
   const renamed = [];
   const view = await mount({
     onRename: (templateId, name) => {
@@ -318,6 +323,59 @@ test("does not commit an unchanged or blank name on blur", async () => {
     await view.type(nameInput, "   ");
     await view.blur(nameInput);
     assert.deepEqual(renamed, []);
+  } finally {
+    await view.close();
+  }
+});
+
+test("persists prompt content as a draft before navigating to another prompt", async () => {
+  const drafts = [];
+  const view = await mount({
+    templates: [template, templateTwo],
+    onDraftChange: (...args) => drafts.push(args),
+  });
+  try {
+    const content = view.container.querySelector('textarea[aria-label="Prompt content"]');
+    await view.type(content, "Explain {{topic}} without jargon.");
+    await view.click([...view.container.querySelectorAll(".template-list-item")].find(
+      (button) => button.textContent.includes("Summary"),
+    ));
+
+    assert.equal(drafts.length, 1);
+    assert.equal(drafts[0][0], "template_question");
+    assert.equal(drafts[0][1], "template-revision_question-1");
+    assert.equal(drafts[0][2][0].content, "Explain {{topic}} without jargon.");
+  } finally {
+    await view.close();
+  }
+});
+
+test("creates a checkpoint with an optional revision name", async () => {
+  const saves = [];
+  const view = await mount({
+    templates: [{
+      ...template,
+      draft: {
+        sourceRevisionId: template.currentRevisionId,
+        messages: [{ role: "user", content: "Explain {{topic}} clearly." }],
+        variableDefaults: { topic: "branching" },
+      },
+    }],
+    onSave: (...args) => {
+      saves.push(args);
+      return "template-revision_question-2";
+    },
+  });
+  try {
+    const revisionName = view.container.querySelector('input[aria-label="Revision name"]');
+    assert.ok(revisionName);
+    await view.type(revisionName, "Clarify the request");
+    await view.click([...view.container.querySelectorAll("button")].find(
+      (button) => button.textContent.trim() === "Create revision",
+    ));
+
+    assert.equal(saves.length, 1);
+    assert.equal(saves[0].at(-1), "Clarify the request");
   } finally {
     await view.close();
   }

@@ -171,9 +171,22 @@ export interface PromptTemplateRecommendedTarget {
 export interface PromptTemplateRevision {
   id: PromptTemplateRevisionId;
   createdAt: string;
+  /** An optional author-supplied checkpoint label. */
+  name?: string;
   messages: PromptTemplateMessages;
   variableDefaults: Record<string, string>;
   externalImportId?: ExternalImportId;
+}
+
+/**
+ * Mutable prompt authoring state. Revisions remain immutable pins; this draft
+ * is the portable working copy that project auto-save may update continuously.
+ */
+export interface PromptTemplateDraft {
+  sourceRevisionId: PromptTemplateRevisionId;
+  revisionName?: string;
+  messages: PromptTemplateMessages;
+  variableDefaults: Record<string, string>;
 }
 
 export interface PromptTemplate {
@@ -187,6 +200,7 @@ export interface PromptTemplate {
    */
   archivedAt?: string;
   recommendedTarget?: PromptTemplateRecommendedTarget;
+  draft?: PromptTemplateDraft;
   revisions: PromptTemplateRevision[];
 }
 
@@ -545,6 +559,7 @@ const promptTemplateRevisionSchema: z.ZodType<PromptTemplateRevision> = z
   .object({
     id: entityId("template-revision"),
     createdAt: z.iso.datetime({ offset: true }),
+    name: z.string().trim().min(1).optional(),
     messages: z
       .array(
         z
@@ -560,6 +575,27 @@ const promptTemplateRevisionSchema: z.ZodType<PromptTemplateRevision> = z
       z.string(),
     ),
     externalImportId: entityId("external-import").optional(),
+  })
+  .strict();
+
+const promptTemplateDraftSchema: z.ZodType<PromptTemplateDraft> = z
+  .object({
+    sourceRevisionId: entityId("template-revision"),
+    revisionName: z.string().optional(),
+    messages: z
+      .array(
+        z
+          .object({
+            role: z.enum(["system", "user", "assistant"]),
+            content: z.string(),
+          })
+          .strict(),
+      )
+      .min(1) as unknown as z.ZodType<PromptTemplateMessages>,
+    variableDefaults: z.record(
+      z.string().regex(variableName, "Invalid template variable name."),
+      z.string(),
+    ),
   })
   .strict();
 
@@ -600,6 +636,7 @@ const promptTemplateSchema: z.ZodType<PromptTemplate> = z
     currentRevisionId: entityId("template-revision"),
     archivedAt: z.iso.datetime({ offset: true }).optional(),
     recommendedTarget: promptTemplateRecommendedTargetSchema.optional(),
+    draft: promptTemplateDraftSchema.optional(),
     revisions: z.array(promptTemplateRevisionSchema).min(1),
   })
   .strict();
@@ -1161,6 +1198,23 @@ function validateSharedProjectReferences(
       "Current template revision does not belong to this template.",
       context,
     );
+    if (template.draft) {
+      requireReference(
+        localRevisionIds.has(template.draft.sourceRevisionId),
+        ["promptTemplates", templateIndex, "draft", "sourceRevisionId"],
+        "Prompt draft source revision does not belong to this template.",
+        context,
+      );
+      Object.keys(template.draft.variableDefaults).forEach((name) => {
+        if (sensitiveFieldNames.has(normalizedFieldName(name))) {
+          context.addIssue({
+            code: "custom",
+            path: ["promptTemplates", templateIndex, "draft", "variableDefaults", name],
+            message: "Secret values cannot have portable template defaults.",
+          });
+        }
+      });
+    }
     template.revisions.forEach((revision, revisionIndex) => {
       Object.keys(revision.variableDefaults).forEach((name) => {
         if (sensitiveFieldNames.has(normalizedFieldName(name))) {
@@ -1985,6 +2039,9 @@ const preferredFieldOrder = new Map(
     "currentRevisionId",
     "archivedAt",
     "recommendedTarget",
+    "draft",
+    "sourceRevisionId",
+    "revisionName",
     "revisions",
     "templateId",
     "templateRevisionId",
@@ -3142,6 +3199,7 @@ export interface AppendPromptTemplateRevisionOptions {
   templateId: PromptTemplateId;
   messages: PromptTemplateMessages;
   variableDefaults?: Record<string, string>;
+  name?: string;
   idSuffix?: string;
   createdAt?: string;
 }
@@ -3152,6 +3210,7 @@ export function appendPromptTemplateRevision(
     templateId,
     messages,
     variableDefaults = {},
+    name,
     idSuffix = randomUUID(),
     createdAt = new Date().toISOString(),
   }: AppendPromptTemplateRevisionOptions,
@@ -3183,6 +3242,7 @@ export function appendPromptTemplateRevision(
   const revision: PromptTemplateRevision = {
     id: createEntityId("template-revision", idSuffix),
     createdAt,
+    ...(name?.trim() ? { name: name.trim() } : {}),
     messages: structuredClone(messages),
     variableDefaults: { ...variableDefaults },
   };
@@ -3190,7 +3250,64 @@ export function appendPromptTemplateRevision(
   promptTemplates[templateIndex] = {
     ...template,
     currentRevisionId: revision.id,
+    draft: undefined,
     revisions: [...template.revisions, revision],
+  };
+  return parseProjectFile({ ...project, promptTemplates });
+}
+
+export interface UpdatePromptTemplateDraftOptions {
+  templateId: PromptTemplateId;
+  sourceRevisionId: PromptTemplateRevisionId;
+  revisionName?: string;
+  messages: PromptTemplateMessages;
+  variableDefaults?: Record<string, string>;
+}
+
+/** Persists a working copy without changing any immutable revision or pin. */
+export function updatePromptTemplateDraft(
+  project: ProjectFile,
+  {
+    templateId,
+    sourceRevisionId,
+    revisionName,
+    messages,
+    variableDefaults = {},
+  }: UpdatePromptTemplateDraftOptions,
+): ProjectFile {
+  const templateIndex = project.promptTemplates.findIndex(({ id }) => id === templateId);
+  if (templateIndex < 0) {
+    throw new ProjectValidationError([{
+      code: "custom",
+      path: ["promptTemplates", templateId],
+      message: "Template does not exist.",
+    }]);
+  }
+  const template = project.promptTemplates[templateIndex]!;
+  const source = template.revisions.find(({ id }) => id === sourceRevisionId);
+  if (!source) {
+    throw new ProjectValidationError([{
+      code: "custom",
+      path: ["promptTemplates", templateId, "draft", "sourceRevisionId"],
+      message: "Prompt draft source revision does not exist.",
+    }]);
+  }
+  const matchesSource =
+    JSON.stringify(stableJsonValue(source.messages)) === JSON.stringify(stableJsonValue(messages)) &&
+    JSON.stringify(stableJsonValue(source.variableDefaults)) === JSON.stringify(stableJsonValue(variableDefaults));
+  const promptTemplates = [...project.promptTemplates];
+  promptTemplates[templateIndex] = {
+    ...template,
+    ...(matchesSource && !revisionName
+      ? { draft: undefined }
+      : {
+          draft: {
+            sourceRevisionId,
+            ...(revisionName ? { revisionName } : {}),
+            messages: structuredClone(messages),
+            variableDefaults: { ...variableDefaults },
+          },
+        }),
   };
   return parseProjectFile({ ...project, promptTemplates });
 }
