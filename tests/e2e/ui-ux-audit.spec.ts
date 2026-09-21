@@ -109,7 +109,7 @@ test("audit: layout and evaluation overview at desktop and narrow widths", async
   await page.addInitScript(({key, id, req}) => localStorage.setItem(key, JSON.stringify({[id]:{[req]:{profileId:"buffered",profileInstanceId:"profile-instance-ux"}}})), {key:PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY,id:project.projectId,req:project.defaults.target.connectionRequirementId});
   await stubProjectDirectory(page, {name:"ux-review.inference-lens",files:{"project.json":serializeProjectFile(project)},directories:["traces","experiments"]});
   await page.goto("/"); await waitForHydration(page);
-  await page.getByLabel("Project menu").click(); await page.getByRole("button", {name:"Open project…"}).click(); await expect(page.locator(".brand")).toContainText(project.name);
+  await page.getByLabel("Project menu").click(); await page.getByRole("button", {name:"Open project folder…"}).click(); await expect(page.locator(".brand")).toContainText(project.name);
   for (const width of [1440, 1280, 880, 390, 320]) {
     await page.setViewportSize({width,height:900});
     await openMode(page,"Compose"); await page.getByRole("tab",{name:/Prompts/}).click();

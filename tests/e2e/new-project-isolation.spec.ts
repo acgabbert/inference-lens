@@ -39,7 +39,7 @@ test("a new project does not inherit the open project's saved prompts", async ({
   await importProject(page, existing, "Existing project");
 
   await page.getByLabel("Project menu").click();
-  await page.getByRole("button", { name: "New project", exact: true }).click();
+  await page.getByRole("button", { name: "New project folder…", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Create an Inference Lens project" });
   await dialog.getByLabel("Project name").fill("Fresh project");
   await dialog.getByRole("button", { name: "Choose location…" }).click();

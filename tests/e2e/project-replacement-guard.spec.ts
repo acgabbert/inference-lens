@@ -102,14 +102,14 @@ test("open and new use the same replacement guard", async ({ page }) => {
   await page.getByLabel("Prompt content", { exact: true }).fill("Unsaved open guard");
 
   await page.getByLabel("Project menu").click();
-  await page.getByRole("button", { name: "Open project…", exact: true }).click();
+  await page.getByRole("button", { name: "Open project folder…", exact: true }).click();
   const decision = page.getByRole("dialog", { name: "Save changes before switching projects?" });
   await expect(decision).toContainText("the selected project folder");
   await decision.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page.locator(".brand")).toContainText("Original project");
 
   await page.getByLabel("Project menu").click();
-  await page.getByRole("button", { name: "New project", exact: true }).click();
+  await page.getByRole("button", { name: "New project folder…", exact: true }).click();
   const create = page.getByRole("dialog", { name: "Create an Inference Lens project" });
   await create.getByLabel("Project name").fill("Fresh project");
   await create.getByRole("button", { name: "Choose location…" }).click();
@@ -118,7 +118,7 @@ test("open and new use the same replacement guard", async ({ page }) => {
   await expect(page.locator(".brand")).toContainText("Original project");
 
   await page.getByLabel("Project menu").click();
-  await page.getByRole("button", { name: "Open project…", exact: true }).click();
+  await page.getByRole("button", { name: "Open project folder…", exact: true }).click();
   await decision.getByRole("button", { name: "Discard and switch", exact: true }).click();
   await expect(page.locator(".brand")).toContainText("Folder replacement");
 });
@@ -135,7 +135,7 @@ test("save and switch persists the draft before importing", async ({ page }) => 
   await page.goto("/");
   await waitForHydration(page);
   await page.getByLabel("Project menu").click();
-  await page.getByRole("button", { name: "Open project…", exact: true }).click();
+  await page.getByRole("button", { name: "Open project folder…", exact: true }).click();
   await expect(page.locator(".brand")).toContainText("Folder original");
   await page.getByRole("tab", { name: /Prompts/ }).click();
   await page.getByLabel("Prompt content", { exact: true }).fill("Saved before switching");
@@ -155,7 +155,7 @@ test("save and switch persists the draft before importing", async ({ page }) => 
   await expect(page.locator(".brand")).toContainText("Imported replacement");
 
   await page.getByLabel("Project menu").click();
-  await page.getByRole("button", { name: "Open project…", exact: true }).click();
+  await page.getByRole("button", { name: "Open project folder…", exact: true }).click();
   await expect(page.locator(".brand")).toContainText("Folder original");
   await page.getByRole("tab", { name: /Prompts/ }).click();
   await expect(page.getByLabel("Prompt content", { exact: true })).toHaveValue(
@@ -209,7 +209,7 @@ test("a failed save keeps the current project and replacement decision", async (
   await page.goto("/");
   await waitForHydration(page);
   await page.getByLabel("Project menu").click();
-  await page.getByRole("button", { name: "Open project…", exact: true }).click();
+  await page.getByRole("button", { name: "Open project folder…", exact: true }).click();
   await expect(page.locator(".brand")).toContainText("Failing folder");
   await page.getByRole("tab", { name: /Prompts/ }).click();
   await page.getByLabel("Prompt content", { exact: true }).fill("Unsaved after failure");

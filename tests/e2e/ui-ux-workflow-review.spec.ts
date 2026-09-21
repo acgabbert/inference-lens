@@ -30,7 +30,7 @@ async function setup(page: Page, folder = false) {
   await page.goto("/"); await waitForHydration(page);
   if (folder) {
     await page.getByLabel("Project menu").click();
-    await page.getByRole("button", { name: "Open project…", exact: true }).click();
+    await page.getByRole("button", { name: "Open project folder…", exact: true }).click();
     await expect(page.locator(".brand")).toContainText(project.name);
   } else await importProject(page, project, project.name);
   return project;
@@ -77,20 +77,20 @@ test("review: direct prompt reuse reaches a real request then an empty Runs dest
   await capture(page, "07-imported-project-runs-history-disabled");
 });
 
-test("review: project Save uses New project copy and export preserves a draft", async ({ page }) => {
+test("review: project Save explains its destination and export preserves a draft", async ({ page }) => {
   await setup(page);
   await page.getByRole("tab", { name: /Prompts/ }).click();
   await page.getByLabel("Prompt content", { exact: true }).fill("PORTABLE DRAFT: keep this text.");
   await page.getByLabel("Project menu").click();
   await capture(page, "08-project-menu");
   await page.getByRole("button", { name: /^Save/ }).click();
-  const dialog = page.getByRole("dialog", { name: "Create an Inference Lens project" });
-  await expect(dialog).toContainText("New project");
+  const dialog = page.getByRole("dialog", { name: "Save this project" });
+  await expect(dialog).toContainText("current prompts and settings will be saved there");
   await capture(page, "09-save-opens-create-dialog");
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await page.getByLabel("Project menu").click();
   const download = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Export project…", exact: true }).click();
+  await page.getByRole("button", { name: "Export JSON copy…", exact: true }).click();
   await (await download).saveAs(`${OUT}/exported-project.json`);
   await expect(page.locator(".brand")).toContainText("Unsaved");
   const exported = parseProjectJson(await readFile(`${OUT}/exported-project.json`, "utf8"));
@@ -101,8 +101,9 @@ test("review: project Save uses New project copy and export preserves a draft", 
   await page.getByRole("tab", { name: /Prompts/ }).click();
   await expect(page.getByLabel("Prompt content", { exact: true })).toHaveValue("PORTABLE DRAFT: keep this text.");
   await expect(page.locator(".brand")).not.toContainText("Unsaved");
-  // A clean JSON import claims autosave despite having no writable folder.
-  await expect(page.locator(".template-editor")).toContainText("Draft autosaved.");
+  await expect(page.locator(".template-editor")).toContainText(
+    "Draft kept in this session. Save the project to keep it after closing.",
+  );
   await capture(page, "10-export-import-retained-draft");
 });
 
@@ -146,7 +147,7 @@ test("review: folder autosave survives reopen and ordinary runs are in the histo
   // the reopen assertion before the asynchronous folder read completes.
   await importProject(page, fixture("Temporary other project"), "Temporary other project");
   await page.getByLabel("Project menu").click();
-  await page.getByRole("button", { name: "Open project…", exact: true }).click();
+  await page.getByRole("button", { name: "Open project folder…", exact: true }).click();
   await expect(page.locator(".brand")).toContainText("Daily triage");
   await page.getByRole("tab", { name: /Prompts/ }).click();
   await expect(page.getByLabel("Prompt content", { exact: true })).toHaveValue("FOLDER DRAFT: retained after reopen.");

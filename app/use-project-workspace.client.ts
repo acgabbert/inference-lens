@@ -41,6 +41,17 @@ export type ProjectErrorKind =
   | "tools-disabled"
   | "workspace-reconnect";
 
+/**
+ * User-facing persistence state for the open project. A JSON import has no
+ * writable destination even when its in-memory document is clean, so it stays
+ * `session` until a folder workspace is explicitly attached.
+ */
+export type ProjectStorageState =
+  | { kind: "session" }
+  | { kind: "saving"; displayPath: string }
+  | { kind: "saved"; displayPath: string }
+  | { kind: "error"; displayPath: string };
+
 const PROJECT_AUTO_SAVE_DELAY_MS = 800;
 const PROJECT_AUTO_SAVE_MAX_WAIT_MS = 5_000;
 const PROJECT_AUTO_SAVE_RETRY_BASE_MS = 2_000;
@@ -50,6 +61,7 @@ export interface ProjectWorkspaceHandleState {
   projectFile: ProjectFile | null;
   projectWorkspace: ProjectWorkspaceHandle | null;
   projectDirty: boolean;
+  projectStorageState?: ProjectStorageState;
   projectError?: string;
   projectErrorKind?: ProjectErrorKind;
   /** Device-local profile ids keyed by portable connection requirement id. */
@@ -694,6 +706,7 @@ export function useProjectWorkspace(input: {
             opened.handle,
             mappedProfileIds[project.defaults.target.connectionRequirementId] ?? activeProfile.id,
           );
+          onSaved?.({ name: opened.project.name, destination: "folder" });
         }
         return;
       }
@@ -738,6 +751,15 @@ export function useProjectWorkspace(input: {
     projectFile,
     projectWorkspace,
     projectDirty,
+    projectStorageState: projectFile
+      ? !projectWorkspace
+        ? { kind: "session" }
+        : projectErrorKind === "auto-save"
+          ? { kind: "error", displayPath: projectWorkspace.displayPath }
+          : projectDirty
+            ? { kind: "saving", displayPath: projectWorkspace.displayPath }
+            : { kind: "saved", displayPath: projectWorkspace.displayPath }
+      : undefined,
     projectError,
     projectErrorKind,
     mappedProfileIds,

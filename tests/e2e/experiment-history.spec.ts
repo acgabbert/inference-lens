@@ -291,7 +291,7 @@ test("opens an interrupted experiment from grouped browser history", async ({ pa
   await installProjectFolderFixture(page);
   await page.goto("/");
   await page.getByLabel("Project menu").click();
-  await page.getByRole("button", { name: "Open project…" }).click();
+  await page.getByRole("button", { name: "Open project folder…" }).click();
   // The topbar renders the project name inside its subtitle line, so this
   // asserts on the line that actually carries it rather than on a node whose
   // whole text is the name.
@@ -306,7 +306,7 @@ test("opens an interrupted experiment from grouped desktop history", async ({ pa
   await installNativeWorkspaceFixture(page);
   await page.goto("/");
   await page.getByLabel("Project menu").click();
-  await page.getByRole("button", { name: "Open project…" }).click();
+  await page.getByRole("button", { name: "Open project folder…" }).click();
   await expect(page.getByText(/Inspect every model run · Experiment history fixture/))
     .toBeVisible();
 

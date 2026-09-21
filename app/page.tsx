@@ -398,6 +398,7 @@ function HomeContent() {
     projectFile,
     projectWorkspace,
     projectDirty,
+    projectStorageState,
     projectError,
     projectErrorKind,
     mappedProfileIds,
@@ -1689,6 +1690,7 @@ function HomeContent() {
         hasCredential={credential.hasCredential}
         projectName={projectFile?.name}
         projectDirty={projectDirty}
+        {...(projectStorageState ? { projectStorageState } : {})}
         folderAccessAvailable={folderAccessAvailable}
         hasDiagnosticCapture={hasDiagnosticCapture}
         hasRunTrace={runReachedTerminalStatus}
@@ -1802,7 +1804,7 @@ function HomeContent() {
             projectErrorKind === "auto-save"
               ? "error"
               : !projectWorkspace
-                ? projectDirty ? "session" : "saved"
+                ? "session"
                 : projectDirty ? "saving" : "saved"
           }
           onEvaluatePromptRevision={(templateId, revisionId, suiteId) => {
@@ -2023,7 +2025,17 @@ function HomeContent() {
                   submitLabel: "Save and switch…",
                 },
               }
-            : {})}
+            : projectCreationMode === "save"
+              ? {
+                  copy: {
+                    eyebrow: "Save project",
+                    title: "Save this project",
+                    description:
+                      "Choose a folder for this project. Its current prompts and settings will be saved there.",
+                    submitLabel: "Save to folder…",
+                  },
+                }
+              : {})}
           onClose={() => setProjectCreationMode(undefined)}
           onCreate={(options) => {
             if (projectCreationMode === "new") {

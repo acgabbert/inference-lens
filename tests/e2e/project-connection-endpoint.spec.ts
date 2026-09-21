@@ -207,7 +207,7 @@ test("moving a project's declared endpoint reaches the project file", async ({
     document.querySelector<HTMLDetailsElement>(".project-menu")!.open = true;
   });
   const downloadStarted = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Export project…" }).click();
+  await page.getByRole("button", { name: "Export JSON copy…" }).click();
   const download = await downloadStarted;
   const stream = await download.createReadStream();
   expect(stream).not.toBeNull();
