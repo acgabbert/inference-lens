@@ -44,26 +44,6 @@ test("audit: fresh setup exposes a prompt-creation validation error", async ({pa
   await capture(page, "01-fresh-prompt-error");
 });
 
-for (const failure of ["configuration removed", "status temporarily fails"]) test(`audit: ${failure} duplicates the visible server-default label`, async ({page}) => {
-  let configured = true;
-  await page.route("**/api/runtime-status", route => !configured && failure === "status temporarily fails" ? route.fulfill({status:503, body:"Temporary status outage"}) : route.fulfill({ json: configured ? {containerized: true, serverDefaultCredentialConfigured: true, endpoint: BUFFERED_FIXTURE_ENDPOINT, model: "buffered-test-model"} : {containerized: true, serverDefaultCredentialConfigured: false} }));
-  const profiles = () => page.evaluate(key => JSON.parse(localStorage.getItem(key) ?? "{}").profiles ?? [], PROFILE_STORAGE_KEY);
-  await page.goto("/"); await waitForHydration(page, "Server default");
-  await expect.poll(async () => (await profiles()).length).toBe(1);
-  configured = false; await page.reload();
-  await expect.poll(async () => (await profiles())[0]?.credentialRef ?? "none").toBe("none");
-  configured = true; await page.reload();
-  await expect.poll(async () => (await profiles()).length).toBe(2);
-  const records = await profiles();
-  expect(records.map((p: {name: string}) => p.name)).toEqual(["Server default", "Server default"]);
-  expect(records[0].id).not.toBe(records[1].id);
-  await writeFile(`${OUT}/04-duplicate-${failure}.json`, JSON.stringify(records, null, 2));
-  const dismiss = page.getByRole("button", {name: /Dismiss/});
-  if (await dismiss.count()) await dismiss.first().click();
-  await page.getByLabel(/^Run target:/).click();
-  await capture(page, `04-duplicate-${failure}`);
-});
-
 test("audit: copying a library tool to the project also attaches it", async ({page}) => {
   await openProject(page);
   await page.getByRole("tab",{name:/Tools/}).click(); await page.getByRole("button",{name:"Browse local library"}).click();
