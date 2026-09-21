@@ -296,6 +296,7 @@ export async function importProject(
   page: Page,
   project: ProjectFile,
   expectedName: string,
+  options?: { replaceDirty: "discard" },
 ): Promise<void> {
   await page.getByLabel("Project menu").click();
   await page.setInputFiles(
@@ -306,6 +307,12 @@ export async function importProject(
       buffer: Buffer.from(serializeProjectFile(project)),
     },
   );
+  if (options?.replaceDirty === "discard") {
+    await page
+      .getByRole("dialog", { name: "Save changes before switching projects?" })
+      .getByRole("button", { name: "Discard and switch", exact: true })
+      .click();
+  }
   await expect(page.locator(".brand")).toContainText(expectedName);
   await closeProjectMenu(page);
 }
@@ -317,6 +324,8 @@ export interface ProjectDirectoryFixture {
   files: Record<string, string>;
   /** Paths that must exist as empty directories, e.g. "traces". */
   directories?: string[];
+  /** Deterministic write failure used to prove save-before-switch safety. */
+  writeError?: string;
 }
 
 /**
@@ -351,6 +360,7 @@ export async function stubProjectDirectory(
         });
       }
       async createWritable() {
+        if (tree.writeError) throw new Error(tree.writeError);
         return {
           write: async (value: string) => {
             this.contents = value;

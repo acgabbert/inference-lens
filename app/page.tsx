@@ -53,6 +53,7 @@ import {
 import { ToolRegistryModal } from "./tool-registry-modal.client";
 import { N8nImportModal } from "./n8n-import-modal.client";
 import { ProjectCreationDialog } from "./project-creation-dialog.client";
+import { ProjectReplacementDialog } from "./project-replacement-dialog.client";
 import { useModelDiscovery } from "./use-model-discovery.client";
 import { useConnectionProfiles } from "./use-connection-profiles.client";
 import { toggleFavoriteModel } from "./profile-store.client";
@@ -281,7 +282,7 @@ function HomeContent() {
   const [confirmation, setConfirmation] =
     useState<ConfirmationDialogRequest>();
   const [projectCreationMode, setProjectCreationMode] =
-    useState<"new" | "save">();
+    useState<"new" | "save" | "save-before-switch">();
   const [connectionDrawerOpen, setConnectionDrawerOpen] = useState(false);
   const [pendingReadinessDestination, setPendingReadinessDestination] =
     useState<ReadinessDestination>();
@@ -1996,16 +1997,46 @@ function HomeContent() {
               ? "Untitled Inference Lens project"
               : projectFile?.name ?? "Untitled Inference Lens project"
           }
+          {...(projectCreationMode === "save-before-switch"
+            ? {
+                copy: {
+                  eyebrow: "Save before switching",
+                  title: "Save the current project",
+                  description:
+                    "Choose a folder for the current project. Inference Lens will switch projects only after the save succeeds.",
+                  submitLabel: "Save and switch…",
+                },
+              }
+            : {})}
           onClose={() => setProjectCreationMode(undefined)}
           onCreate={(options) => {
             if (projectCreationMode === "new") {
               void project.newProjectFolder(options);
+            } else if (projectCreationMode === "save-before-switch") {
+              void project.saveAndContinueProjectReplacement(options);
             } else {
               void project.saveProject(options);
             }
           }}
         />
       )}
+      {project.pendingProjectReplacement &&
+        projectCreationMode !== "save-before-switch" && (
+          <ProjectReplacementDialog
+            replacement={project.pendingProjectReplacement}
+            onCancel={project.cancelProjectReplacement}
+            onDiscard={() =>
+              void project.discardAndContinueProjectReplacement()
+            }
+            onSave={() => {
+              if (project.pendingProjectReplacement?.saveNeedsLocation) {
+                setProjectCreationMode("save-before-switch");
+              } else {
+                void project.saveAndContinueProjectReplacement();
+              }
+            }}
+          />
+        )}
       {repeatedExperiment.draft && (
         <RepeatedExperimentDialog
           draft={repeatedExperiment.draft}

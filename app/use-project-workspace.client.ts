@@ -54,6 +54,7 @@ export interface ProjectWorkspaceHandleState {
   projectErrorKind?: ProjectErrorKind;
   /** Device-local profile ids keyed by portable connection requirement id. */
   mappedProfileIds: Readonly<Record<string, string>>;
+  pendingProjectReplacement?: PendingProjectReplacement;
   markDirty(): void;
   setError(message: string | undefined, options?: { clearKind?: boolean }): void;
   clearErrorKind(): void;
@@ -72,6 +73,24 @@ export interface ProjectWorkspaceHandleState {
   saveProject(options?: ProjectCreationOptions): Promise<void>;
   exportProject(): void;
   importProject(event: ChangeEvent<HTMLInputElement>): Promise<void>;
+  cancelProjectReplacement(): void;
+  discardAndContinueProjectReplacement(): Promise<void>;
+  saveAndContinueProjectReplacement(
+    options?: ProjectCreationOptions,
+  ): Promise<void>;
+}
+
+export interface PendingProjectReplacement {
+  currentProjectName: string;
+  nextProjectName: string;
+  saveNeedsLocation: boolean;
+  saving: boolean;
+  error?: string;
+}
+
+interface QueuedProjectReplacement {
+  perform(): Promise<void>;
+  fallbackError: string;
 }
 
 /**
@@ -123,6 +142,8 @@ export function useProjectWorkspace(input: {
   const projectErrorKindRef = useRef<ProjectErrorKind | undefined>(undefined);
   const [mappedProfileIds, setMappedProfileIds] = useState<Record<string, string>>({});
   const [projectChangeVersion, setProjectChangeVersion] = useState(0);
+  const [pendingProjectReplacement, setPendingProjectReplacement] =
+    useState<PendingProjectReplacement>();
   const projectChangeVersionRef = useRef(0);
   const projectWorkspaceRef = useRef<ProjectWorkspaceHandle | null>(null);
   const workspaceSaveTailRef = useRef<Promise<void>>(Promise.resolve());
@@ -134,6 +155,8 @@ export function useProjectWorkspace(input: {
   // Read inside asynchronous adoption paths, which must see the profiles the
   // device has now rather than the ones it had when the operation started.
   const profilesRef = useRef(profiles);
+  const queuedProjectReplacementRef =
+    useRef<QueuedProjectReplacement | null>(null);
 
   useEffect(() => {
     profilesRef.current = profiles;
@@ -477,6 +500,117 @@ export function useProjectWorkspace(input: {
     setProjectError(error instanceof Error ? error.message : fallback);
   }
 
+  async function performProjectReplacement(
+    replacement: QueuedProjectReplacement,
+  ): Promise<void> {
+    try {
+      await replacement.perform();
+    } catch (error) {
+      projectFailure(error, replacement.fallbackError);
+    }
+  }
+
+  function requestProjectReplacement(
+    nextProjectName: string,
+    replacement: QueuedProjectReplacement,
+  ): void {
+    if (!projectFile || !projectDirty) {
+      void performProjectReplacement(replacement);
+      return;
+    }
+    queuedProjectReplacementRef.current = replacement;
+    setPendingProjectReplacement({
+      currentProjectName: projectFile.name,
+      nextProjectName,
+      saveNeedsLocation: folderAccessAvailable && !projectWorkspace,
+      saving: false,
+    });
+  }
+
+  function cancelProjectReplacement(): void {
+    queuedProjectReplacementRef.current = null;
+    setPendingProjectReplacement(undefined);
+  }
+
+  async function continueProjectReplacement(): Promise<void> {
+    const replacement = queuedProjectReplacementRef.current;
+    if (!replacement) return;
+    queuedProjectReplacementRef.current = null;
+    setPendingProjectReplacement(undefined);
+    await performProjectReplacement(replacement);
+  }
+
+  async function discardAndContinueProjectReplacement(): Promise<void> {
+    await continueProjectReplacement();
+  }
+
+  async function saveAndContinueProjectReplacement(
+    options?: ProjectCreationOptions,
+  ): Promise<void> {
+    const replacement = queuedProjectReplacementRef.current;
+    if (!replacement || !projectFile) return;
+    if (folderAccessAvailable && !projectWorkspace && !options) return;
+
+    setPendingProjectReplacement((current) =>
+      current ? { ...current, saving: true, error: undefined } : current,
+    );
+    try {
+      const project = currentProjectDocument();
+      if (projectWorkspace) {
+        const workspace = projectWorkspace;
+        const version = projectChangeVersionRef.current;
+        await writeProjectWorkspace(workspace, project);
+        if (
+          projectWorkspaceRef.current !== workspace ||
+          projectChangeVersionRef.current !== version
+        ) {
+          throw new Error(
+            "The project changed while it was being saved. Review the latest changes and try again.",
+          );
+        }
+        autoSaveWindowStartedAtRef.current = null;
+        autoSaveFailureCountRef.current = 0;
+        autoSaveRetryNotBeforeRef.current = 0;
+        setProjectFile(project);
+        setProjectDirty(false);
+        setProjectError(undefined);
+        updateProjectErrorKind(undefined);
+        onSaved?.({ name: project.name, destination: "folder" });
+      } else if (folderAccessAvailable) {
+        const named = namedProject(project, options!);
+        const opened = await createProjectFolder(named, options!);
+        if (!opened) {
+          setPendingProjectReplacement((current) =>
+            current ? { ...current, saving: false } : current,
+          );
+          return;
+        }
+        applyProjectDocument(
+          opened.project,
+          opened.handle,
+          mappedProfileIds[project.defaults.target.connectionRequirementId] ??
+            activeProfile.id,
+        );
+        onSaved?.({ name: opened.project.name, destination: "folder" });
+      } else {
+        downloadProjectFile(project);
+        setProjectFile(project);
+        setProjectDirty(false);
+        setProjectError(undefined);
+        updateProjectErrorKind(undefined);
+        onSaved?.({ name: project.name, destination: "download" });
+      }
+      await continueProjectReplacement();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Could not save the project.";
+      projectFailure(error, "Could not save the project.");
+      setPendingProjectReplacement((current) =>
+        current ? { ...current, saving: false, error: message } : current,
+      );
+    }
+  }
+
   function namedProject(
     project: ProjectFile,
     options: ProjectCreationOptions,
@@ -488,27 +622,29 @@ export function useProjectWorkspace(input: {
   }
 
   async function newProjectFolder(options: ProjectCreationOptions): Promise<void> {
-    try {
-      const project = namedProject(
-        projectFile ? createFreshProject() : currentProjectDocument(),
-        options,
-      );
-      const opened = await createProjectFolder(project, options);
-      if (opened) {
-        applyProjectDocument(opened.project, opened.handle, activeProfile.id);
-      }
-    } catch (error) {
-      projectFailure(error, "Could not create the project folder.");
-    }
+    const project = namedProject(
+      projectFile ? createFreshProject() : currentProjectDocument(),
+      options,
+    );
+    requestProjectReplacement(project.name, {
+      fallbackError: "Could not create the project folder.",
+      async perform() {
+        const opened = await createProjectFolder(project, options);
+        if (opened) {
+          applyProjectDocument(opened.project, opened.handle, activeProfile.id);
+        }
+      },
+    });
   }
 
   async function openProjectWorkspace(): Promise<void> {
-    try {
-      const opened = await openProjectFolder();
-      if (opened) applyProjectDocument(opened.project, opened.handle);
-    } catch (error) {
-      projectFailure(error, "Could not open the project folder.");
-    }
+    requestProjectReplacement("the selected project folder", {
+      fallbackError: "Could not open the project folder.",
+      async perform() {
+        const opened = await openProjectFolder();
+        if (opened) applyProjectDocument(opened.project, opened.handle);
+      },
+    });
   }
 
   async function reconnectProjectWorkspace(): Promise<void> {
@@ -584,7 +720,13 @@ export function useProjectWorkspace(input: {
     const file = event.target.files?.[0];
     if (!file) return;
     try {
-      applyProjectDocument(parseProjectJson(await file.text()), null);
+      const imported = parseProjectJson(await file.text());
+      requestProjectReplacement(imported.name, {
+        fallbackError: "Could not import the project.",
+        async perform() {
+          applyProjectDocument(imported, null);
+        },
+      });
     } catch (error) {
       projectFailure(error, "Could not import the project.");
     } finally {
@@ -599,6 +741,7 @@ export function useProjectWorkspace(input: {
     projectError,
     projectErrorKind,
     mappedProfileIds,
+    pendingProjectReplacement,
     markDirty,
     setError,
     clearErrorKind,
@@ -617,5 +760,8 @@ export function useProjectWorkspace(input: {
     saveProject,
     exportProject,
     importProject,
+    cancelProjectReplacement,
+    discardAndContinueProjectReplacement,
+    saveAndContinueProjectReplacement,
   };
 }
