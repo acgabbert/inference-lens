@@ -56,7 +56,11 @@ interface ProjectTemplatesPaneProps {
   onRename(templateId: PromptTemplateId, name: string): boolean;
   onArchive(templateId: PromptTemplateId, onArchived?: () => void): void;
   onRestore(templateId: PromptTemplateId): void;
-  onInsert(templateId: PromptTemplateId, itemIndex: number): void;
+  onInsert(
+    templateId: PromptTemplateId,
+    revisionId: PromptTemplateRevisionId,
+    itemIndex: number,
+  ): void;
   compatibleEvaluationSuitesByTemplate?: ReadonlyMap<PromptTemplateId, readonly CompatibleEvaluationSuite[]>;
   /** Returns false on a rejected mutation so the dialog stays open and shows evaluateRevisionError. */
   onEvaluateRevision?(templateId: PromptTemplateId, revisionId: PromptTemplateRevisionId, suiteId?: EvaluationSuite["id"]): boolean;
@@ -699,10 +703,16 @@ export function ProjectTemplatesPane({
                 className="button primary"
                 type="button"
                 onClick={() =>
-                  onInsert(selected.id, Math.min(insertionIndex, itemCount))
+                  onInsert(
+                    selected.id,
+                    viewedRevision.id,
+                    Math.min(insertionIndex, itemCount),
+                  )
                 }
               >
-                Add to conversation
+                {viewedRevision.id === selected.currentRevisionId
+                  ? "Add to conversation"
+                  : `Use ${promptRevisionLabel(selected, viewedRevision.id)}`}
               </button>
             </footer>}
           </>
@@ -1172,6 +1182,9 @@ function TemplateUseCardRevision({
         <div>
           <div className="template-use-kicker">
             <span className="eyebrow">Pinned prompt</span>
+            <span className="provider-pill">
+              {promptRevisionLabel(template, revision.id)}
+            </span>
             {uniqueDiagnostics.length > 0 && (
               <span className="template-issue-count" role="status">
                 {missingDiagnosticCount === uniqueDiagnostics.length

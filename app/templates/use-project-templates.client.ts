@@ -106,7 +106,11 @@ export interface ProjectTemplatesHandle {
   renameProjectTemplate(templateId: PromptTemplateId, name: string): boolean;
   archiveProjectTemplate(templateId: PromptTemplateId, onArchived?: () => void): void;
   restoreProjectTemplate(templateId: PromptTemplateId): void;
-  insertProjectTemplate(templateId: PromptTemplateId, itemIndex: number): void;
+  insertProjectTemplate(
+    templateId: PromptTemplateId,
+    templateRevisionId: PromptTemplateRevisionId,
+    itemIndex: number,
+  ): void;
   updateTemplateUseValues(templateUseId: PromptTemplateUseId, values: Record<string, string>): void;
   saveTemplateUseRunValue(templateUseId: PromptTemplateUseId, values: Record<string, string>, useOverrides: Record<string, string>): void;
   updateTemplateUseOverride(templateUseId: PromptTemplateUseId, values: Record<string, string>): void;
@@ -206,9 +210,18 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
   function restoreProjectTemplate(templateId: PromptTemplateId): void {
     adoptAuthoredProject(restorePromptTemplate(input.ensureProjectDocument(), templateId));
   }
-  function insertProjectTemplate(templateId: PromptTemplateId, itemIndex: number): void {
+  function insertProjectTemplate(
+    templateId: PromptTemplateId,
+    templateRevisionId: PromptTemplateRevisionId,
+    itemIndex: number,
+  ): void {
     const { project, revisionId } = projectForUseMutation();
-    adoptAuthoredProject(insertPromptTemplateUse(project, { conversationRevisionId: revisionId, templateId, itemIndex }));
+    adoptAuthoredProject(insertPromptTemplateUse(project, {
+      conversationRevisionId: revisionId,
+      templateId,
+      templateRevisionId,
+      itemIndex,
+    }));
   }
   function updateTemplateUseValues(templateUseId: PromptTemplateUseId, values: Record<string, string>): void {
     const { project, revisionId } = projectForUseMutation();

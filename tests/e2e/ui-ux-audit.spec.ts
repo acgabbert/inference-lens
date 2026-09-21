@@ -55,18 +55,6 @@ test("audit: prompt draft is lost when changing the request tab", async ({page})
   await capture(page, "02-unsaved-prompt-after");
 });
 
-test("audit: a historical revision is displayed but the latest revision is inserted", async ({page}) => {
-  const project = projectFixture(); await openProject(page, project);
-  await page.getByRole("tab", {name: /Prompts/}).click();
-  await page.locator(".template-revision-field select").selectOption(project.promptTemplates[0]!.revisions[0]!.id);
-  await expect(page.getByLabel("Prompt content", {exact: true})).toHaveValue("OLD REVISION: Triage {{incident}}.");
-  await capture(page, "03-historical-before-insert");
-  await page.getByRole("button", {name: "Add to conversation", exact: true}).click();
-  await expect(page.locator(".template-use-card")).toContainText("LATEST REVISION:");
-  await expect(page.locator(".template-use-card")).not.toContainText("OLD REVISION:");
-  await capture(page, "03-historical-after-insert");
-});
-
 for (const failure of ["configuration removed", "status temporarily fails"]) test(`audit: ${failure} duplicates the visible server-default label`, async ({page}) => {
   let configured = true;
   await page.route("**/api/runtime-status", route => !configured && failure === "status temporarily fails" ? route.fulfill({status:503, body:"Temporary status outage"}) : route.fulfill({ json: configured ? {containerized: true, serverDefaultCredentialConfigured: true, endpoint: BUFFERED_FIXTURE_ENDPOINT, model: "buffered-test-model"} : {containerized: true, serverDefaultCredentialConfigured: false} }));
@@ -102,18 +90,6 @@ test("audit: saving the project does not commit the visible prompt draft", async
   await capture(page,"11-project-saved-but-prompt-draft");
   await page.getByRole("tab",{name:/Messages/}).click(); await page.getByRole("tab",{name:/Prompts/}).click();
   await expect(page.getByLabel("Prompt content",{exact:true})).toHaveValue("LATEST REVISION: Triage {{incident}} carefully.");
-});
-
-test("audit: shortcut starts the background request while editing in the tool library", async ({page}) => {
-  await openProject(page);
-  await page.getByRole("tab",{name:/Tools/}).click(); await page.getByRole("button",{name:"Browse local library"}).click();
-  const dialog = page.getByRole("dialog",{name:"Local tool library"});
-  await dialog.getByRole("button",{name:"+ New library tool"}).click();
-  await dialog.getByLabel("Function name",{exact:true}).fill("editing_a_library_definition");
-  await dialog.getByLabel("Function name",{exact:true}).press("ControlOrMeta+Enter");
-  await expect(page.locator(".transcript-list")).toContainText("Buffered fixture response: 2 + 2 = 4.");
-  await expect(dialog).toBeVisible();
-  await capture(page,"12-background-run-through-modal");
 });
 
 test("audit: copying a library tool to the project also attaches it", async ({page}) => {

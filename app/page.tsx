@@ -20,6 +20,7 @@ import {
   createEntityId,
   createSingleTurnRunExecution,
 } from "../packages/core/src/run-kernel";
+import { modalOwnsKeyboardCommands } from "./keyboard-command-scope.client";
 import type {
   RunState,
   RunTrace,
@@ -1350,6 +1351,7 @@ function HomeContent() {
     if (!(event.metaKey || event.ctrlKey) || event.key !== "Enter") return;
     event.preventDefault();
     if (
+      modalOwnsKeyboardCommands() ||
       confirmation ||
       repeatedExperiment.draft ||
       evaluationExecution.draft ||
