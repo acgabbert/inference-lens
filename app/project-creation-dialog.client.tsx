@@ -8,10 +8,17 @@ export function ProjectCreationDialog({
   initialName,
   onClose,
   onCreate,
+  copy,
 }: {
   initialName: string;
   onClose(): void;
   onCreate(options: ProjectCreationOptions): void;
+  copy?: {
+    eyebrow: string;
+    title: string;
+    description: string;
+    submitLabel: string;
+  };
 }) {
   const [name, setName] = useState(initialName);
   const [protectFromGit, setProtectFromGit] = useState(true);
@@ -44,11 +51,11 @@ export function ProjectCreationDialog({
           onCreate({ name: name.trim(), protectFromGit });
         }}
       >
-        <span className="eyebrow">New project</span>
-        <h2 id="project-creation-title">Create an Inference Lens project</h2>
-        <p>
-          Name the project, then choose its parent folder.
-        </p>
+        <span className="eyebrow">{copy?.eyebrow ?? "New project"}</span>
+        <h2 id="project-creation-title">
+          {copy?.title ?? "Create an Inference Lens project"}
+        </h2>
+        <p>{copy?.description ?? "Name the project, then choose its parent folder."}</p>
         <label className="project-creation-name">
           <span>Project name</span>
           <input
@@ -76,7 +83,7 @@ export function ProjectCreationDialog({
             Cancel
           </button>
           <button className="button primary" disabled={!valid} type="submit">
-            Choose location…
+            {copy?.submitLabel ?? "Choose location…"}
           </button>
         </div>
       </form>

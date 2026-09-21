@@ -2960,6 +2960,10 @@ output {
   line-height: var(--leading-normal);
 }
 
+.confirmation-dialog > .project-replacement-error {
+  color: var(--danger);
+}
+
 .confirmation-dialog-suite-rows {
   display: flex;
   flex-direction: column;
