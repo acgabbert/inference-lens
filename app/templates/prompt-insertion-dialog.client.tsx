@@ -72,7 +72,7 @@ export function PromptInsertionDialog({
       <section
         aria-labelledby="prompt-insertion-title"
         aria-modal="true"
-        className="confirmation-dialog prompt-insertion-dialog"
+        className={`confirmation-dialog prompt-insertion-dialog${templates.length > 0 ? " has-templates" : ""}`}
         role="dialog"
       >
         <span className="eyebrow">Current conversation</span>
@@ -91,86 +91,88 @@ export function PromptInsertionDialog({
           </>
         ) : (
           <>
-            <p>Choose the exact immutable revision and where it belongs in this conversation.</p>
-            <label className="prompt-insertion-search">
-              Search prompts
-              <input
-                autoFocus
-                type="search"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-              />
-            </label>
-            <div className="prompt-insertion-workspace">
-              <fieldset className="saved-prompt-list">
-                <legend>Active saved prompts</legend>
-                {visibleTemplates.length === 0 ? (
-                  <p className="template-empty">No prompts match “{query.trim()}”.</p>
-                ) : visibleTemplates.map((template) => (
-                  <label
-                    className={template.id === visibleSelection?.id
-                      ? "saved-prompt-option selected"
-                      : "saved-prompt-option"}
-                    key={template.id}
-                  >
-                    <input
-                      checked={template.id === visibleSelection?.id}
-                      name="conversation-prompt"
-                      type="radio"
-                      value={template.id}
-                      onChange={() => chooseTemplate(template)}
-                    />
-                    <strong>{template.name}</strong>
-                  </label>
-                ))}
-              </fieldset>
-              {visibleSelection && revision && (
-                <section className="prompt-insertion-selection" aria-label="Prompt selection">
-                  <div className="prompt-insertion-controls">
-                    <label>
-                      Revision
-                      <select
-                        value={revision.id}
-                        onChange={(event) => setRevisionId(event.target.value as PromptTemplateRevisionId)}
-                      >
-                        {[...visibleSelection.revisions].reverse().map((candidate) => (
-                          <option key={candidate.id} value={candidate.id}>
-                            {promptRevisionLabel(visibleSelection, candidate.id)}
-                            {candidate.name ? ` — ${candidate.name}` : ""}
-                          </option>
-                        ))}
-                      </select>
+            <div className="prompt-insertion-body">
+              <p>Choose the exact immutable revision and where it belongs in this conversation.</p>
+              <label className="prompt-insertion-search">
+                Search prompts
+                <input
+                  autoFocus
+                  type="search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                />
+              </label>
+              <div className="prompt-insertion-workspace">
+                <fieldset className="saved-prompt-list">
+                  <legend>Active saved prompts</legend>
+                  {visibleTemplates.length === 0 ? (
+                    <p className="template-empty">No prompts match “{query.trim()}”.</p>
+                  ) : visibleTemplates.map((template) => (
+                    <label
+                      className={template.id === visibleSelection?.id
+                        ? "saved-prompt-option selected"
+                        : "saved-prompt-option"}
+                      key={template.id}
+                    >
+                      <input
+                        checked={template.id === visibleSelection?.id}
+                        name="conversation-prompt"
+                        type="radio"
+                        value={template.id}
+                        onChange={() => chooseTemplate(template)}
+                      />
+                      <strong>{template.name}</strong>
                     </label>
-                    <label>
-                      Position
-                      <select value={Math.min(itemIndex, itemCount)} onChange={(event) => setItemIndex(Number(event.target.value))}>
-                        {Array.from({ length: itemCount + 1 }, (_, index) => (
-                          <option key={index} value={index}>
-                            {index === 0 ? "At start" : index === itemCount ? "At end" : `After item ${index}`}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                  <div className="prompt-insertion-preview">
-                    <span className="eyebrow">Preview</span>
-                    {revision.messages.map((message, index) => (
-                      <article key={`${message.role}-${index}`}>
-                        <strong>{message.role}</strong>
-                        <pre>{message.content}</pre>
-                      </article>
-                    ))}
-                  </div>
-                  <p className="prompt-insertion-variable-summary">
-                    {(() => {
-                      const variables = discoverTemplateVariables(revision.messages).variables;
-                      return variables.length === 0
-                        ? "No values required."
-                        : `${variables.length} ${variables.length === 1 ? "value" : "values"} to review after insertion.`;
-                    })()}
-                  </p>
-                </section>
-              )}
+                  ))}
+                </fieldset>
+                {visibleSelection && revision && (
+                  <section className="prompt-insertion-selection" aria-label="Prompt selection">
+                    <div className="prompt-insertion-controls">
+                      <label>
+                        Revision
+                        <select
+                          value={revision.id}
+                          onChange={(event) => setRevisionId(event.target.value as PromptTemplateRevisionId)}
+                        >
+                          {[...visibleSelection.revisions].reverse().map((candidate) => (
+                            <option key={candidate.id} value={candidate.id}>
+                              {promptRevisionLabel(visibleSelection, candidate.id)}
+                              {candidate.name ? ` — ${candidate.name}` : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Position
+                        <select value={Math.min(itemIndex, itemCount)} onChange={(event) => setItemIndex(Number(event.target.value))}>
+                          {Array.from({ length: itemCount + 1 }, (_, index) => (
+                            <option key={index} value={index}>
+                              {index === 0 ? "At start" : index === itemCount ? "At end" : `After item ${index}`}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                    <div className="prompt-insertion-preview">
+                      <span className="eyebrow">Preview</span>
+                      {revision.messages.map((message, index) => (
+                        <article key={`${message.role}-${index}`}>
+                          <strong>{message.role}</strong>
+                          <pre>{message.content}</pre>
+                        </article>
+                      ))}
+                    </div>
+                    <p className="prompt-insertion-variable-summary">
+                      {(() => {
+                        const variables = discoverTemplateVariables(revision.messages).variables;
+                        return variables.length === 0
+                          ? "No values required."
+                          : `${variables.length} ${variables.length === 1 ? "value" : "values"} to review after insertion.`;
+                      })()}
+                    </p>
+                  </section>
+                )}
+              </div>
             </div>
             <div className="confirmation-actions">
               <button className="button secondary" type="button" onClick={onCancel}>Cancel</button>

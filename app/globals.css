@@ -7254,6 +7254,17 @@ main {
 .prompt-insertion-dialog {
   width: min(780px, 100%);
   max-height: min(88vh, 820px);
+}
+
+.prompt-insertion-dialog.has-templates {
+  height: min(88vh, 820px);
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  overflow: hidden;
+}
+
+.prompt-insertion-body {
+  min-height: 0;
   overflow-y: auto;
 }
 
@@ -7291,6 +7302,7 @@ main {
 
 .prompt-insertion-controls label {
   min-width: 0;
+  margin-bottom: 0;
 }
 
 .prompt-insertion-controls select {

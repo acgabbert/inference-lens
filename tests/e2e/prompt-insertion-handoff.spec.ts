@@ -38,7 +38,7 @@ function fixture() {
   );
   project = appendPromptTemplateRevision(project, {
     templateId: project.promptTemplates[0]!.id,
-    messages: [{ role: "user", content: "CURRENT REVISION: diagnose {{incident}}." }],
+    messages: [{ role: "user", content: `CURRENT REVISION: diagnose {{incident}}.\n${"Preview detail.\n".repeat(120)}` }],
     variableDefaults: {},
     idSuffix: "incident-triage-2",
     createdAt: "2026-09-21T12:02:00.000Z",
@@ -81,4 +81,21 @@ test("Messages inserts a searched exact prompt revision at the chosen position",
   await expect(items.first()).toContainText("Revision 1");
   await expect(items.first()).toContainText("ORIGINAL REVISION: investigate {{incident}}.");
   await expect(items.first().locator('textarea[data-template-variable="incident"]')).toBeFocused();
+});
+
+test("Messages keeps the saved-prompt control labels compact", async ({ page }) => {
+  const dialog = page.getByRole("dialog", { name: "Insert saved prompt" });
+  await page.getByRole("button", { name: "Insert saved prompt…" }).click();
+
+  await dialog.getByLabel("Revision").selectOption("template-revision_incident-triage-2");
+  await expect(dialog.getByLabel("Revision").locator(".."))
+    .toHaveCSS("margin-bottom", "0px");
+});
+
+test("Messages keeps the insertion action visible with a long prompt preview", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 640 });
+  const dialog = page.getByRole("dialog", { name: "Insert saved prompt" });
+  await page.getByRole("button", { name: "Insert saved prompt…" }).click();
+
+  await expect(dialog.getByRole("button", { name: "Insert prompt", exact: true })).toBeInViewport();
 });
