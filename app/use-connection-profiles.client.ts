@@ -253,14 +253,16 @@ export function useConnectionProfiles(input: {
         const response = await fetch("/api/runtime-status");
         if (response.ok) status = parseRuntimeStatus(await response.json());
       } catch {
-        // An unreachable status route means only that there is no server
-        // configuration to adopt; the UI stays fully usable without one.
+        // The UI stays fully usable when the status route is unreachable, but
+        // the absence of an answer is not evidence that configuration was
+        // removed. Keep the last stored managed profile intact.
       }
+      if (!status) return;
       setServerDefault({
         loaded: true,
-        containerized: status?.containerized ?? false,
-        configured: status?.configured ?? false,
-        ...(status?.endpoint ? { endpoint: status.endpoint } : {}),
+        containerized: status.containerized,
+        configured: status.configured,
+        ...(status.endpoint ? { endpoint: status.endpoint } : {}),
       });
       reconcileRef.current(status);
     })();
@@ -318,7 +320,7 @@ export function useConnectionProfiles(input: {
    * leave behind a profile that is permanently endpoint-locked and fails every
    * request against a credential that no longer exists.
    */
-  function reconcileServerDefaultProfile(status: RuntimeStatus | undefined): void {
+  function reconcileServerDefaultProfile(status: RuntimeStatus): void {
     const current = profilesRef.current;
     const existing = current.find(
       ({ credentialRef }) => credentialRef === SERVER_DEFAULT_CREDENTIAL_REF,
