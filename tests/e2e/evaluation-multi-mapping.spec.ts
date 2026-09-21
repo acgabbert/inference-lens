@@ -105,7 +105,7 @@ async function openProject(page: Page): Promise<void> {
 }
 
 async function openMappings(page: Page) {
-  await page.getByLabel(/^Run target:/).click();
+  await page.locator(".target-menu summary").click();
   await page.getByRole("button", { name: /manage connections/i }).click();
   return page.getByRole("dialog", { name: "Connections" });
 }

@@ -199,7 +199,7 @@ test("the idle response derives its next action from readiness", () => {
   const blocked = runReadiness({ ...ready, activeProfileModel: "" });
   assert.deepEqual(runEmptyStatePresentation(blocked), {
     headline: "Choose a model",
-    detail: 'Choose one in Connections — the picker lists what this provider serves.',
+    detail: 'Choose one in Messages — the picker lists what this provider serves.',
     action: blocked?.actions[0],
   });
   assert.deepEqual(runEmptyStatePresentation(undefined), {

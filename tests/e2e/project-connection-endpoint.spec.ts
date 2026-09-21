@@ -9,7 +9,9 @@ import {
   BUFFERED_FIXTURE_ENDPOINT as PROFILE_ENDPOINT,
   PROFILE_STORAGE_KEY,
   PROJECT_PROFILE_MAP_STORAGE_KEY,
+  PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY,
   STREAMING_STORAGE_KEY,
+  seedProfiles,
 } from "./support";
 
 
@@ -133,14 +135,118 @@ test("adopting a mapped project activates the exact mapped profile instance", as
     },
   );
 
-  await expect(page.getByLabel(/^Run target:/)).toHaveAccessibleName(
-    /Buffered mapped fixture/,
+  await expect(page.locator(".target-menu summary")).toHaveAccessibleName(
+    /Project connection: Buffered mapped fixture/,
   );
   await expect(page.getByRole("button", { name: /run current conversation/i })).toBeEnabled();
   await page.getByRole("button", { name: /run current conversation/i }).click();
   await expect(page.locator(".response-pane")).toContainText(
     "Buffered fixture response: 2 + 2 = 4.",
   );
+});
+
+test("choosing a project connection remaps the request target", async ({ page }) => {
+  const project = createProjectFile({
+    name: "Project target fixture",
+    request: {
+      provider: "openai-compatible",
+      endpoint: "http://127.0.0.1:1/v1",
+      model: "buffered-test-model",
+      messages: [{ role: "user", content: "Use the project connection" }],
+      temperature: 0.4,
+    },
+    idSuffix: "project-target",
+    createdAt: "2026-09-21T18:00:00.000Z",
+  });
+  const requirementId = project.defaults.target.connectionRequirementId;
+  await seedProfiles(
+    page,
+    [
+      {
+        id: "original",
+        instanceId: "profile-instance-original",
+        name: "Original project connection",
+        endpoint: "http://127.0.0.1:1/v1",
+      },
+      {
+        id: "buffered",
+        instanceId: "profile-instance-buffered",
+        name: "Buffered replacement",
+        endpoint: PROFILE_ENDPOINT,
+      },
+    ],
+    "original",
+  );
+  await page.addInitScript(
+    ({ mapKey, projectId, requirementId }) => {
+      localStorage.setItem(
+        mapKey,
+        JSON.stringify({
+          [projectId]: {
+            [requirementId]: {
+              profileId: "original",
+              profileInstanceId: "profile-instance-original",
+            },
+          },
+        }),
+      );
+    },
+    {
+      mapKey: PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY,
+      projectId: project.projectId,
+      requirementId,
+    },
+  );
+
+  await page.goto("/");
+  await expect(page.locator(".topbar")).toContainText("Original project connection");
+  await page.getByLabel("Project menu").click();
+  await page.setInputFiles(
+    '.project-popover:not(.run-data-popover) input[type="file"]',
+    {
+      name: "project-target.project.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(serializeProjectFile(project)),
+    },
+  );
+
+  const target = page.locator(".target-menu summary");
+  await expect(target).toHaveAccessibleName(/Original project connection/);
+  await target.click();
+  await page
+    .getByRole("button", { name: /^(Use )?Buffered replacement/ })
+    .click();
+
+  await expect(
+    page.getByRole("button", { name: /run current conversation/i }),
+  ).toBeEnabled();
+  await expect(target).toHaveAccessibleName(
+    /Project connection: Buffered replacement/,
+  );
+  await target.click();
+  await page.getByRole("button", { name: /Manage connections/i }).click();
+  const connections = page.getByRole("dialog", {
+    name: "Connections",
+    exact: true,
+  });
+  await connections.locator(".profile-row select").selectOption("original");
+  await connections.getByRole("button", { name: "Close Connections" }).click();
+  await expect(target).toHaveAccessibleName(
+    /Project connection: Buffered replacement/,
+  );
+  await expect(
+    page.getByRole("button", { name: /run current conversation/i }),
+  ).toBeEnabled();
+  await page.getByRole("button", { name: /run current conversation/i }).click();
+  await expect(page.locator(".response-pane")).toContainText(
+    "Buffered fixture response: 2 + 2 = 4.",
+  );
+
+  await target.click();
+  await page.getByRole("button", { name: /Manage connections/i }).click();
+  await expect(
+    page.getByLabel(`Profile for ${project.connectionRequirements[0]!.name}`),
+  ).toHaveValue("buffered");
 });
 
 test("moving a project's declared endpoint reaches the project file", async ({
@@ -164,7 +270,7 @@ test("moving a project's declared endpoint reaches the project file", async ({
   await expect(page.locator(".brand")).toContainText("Endpoint move fixture");
   await page.keyboard.press("Escape");
 
-  await page.getByLabel(/^Run target:/).click();
+  await page.locator(".target-menu summary").click();
   await page.getByRole("button", { name: /manage connections/i }).click();
   const mapping = page.locator(".connection-mapping");
   await expect(mapping).toContainText("Connection mapping required");

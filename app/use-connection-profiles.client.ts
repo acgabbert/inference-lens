@@ -110,6 +110,8 @@ export interface ConnectionProfilesHandle {
   selectProfile(profileId: string): void;
   /** Returns the new profile, which is also made active. */
   addProfile(): StoredInferenceProfile;
+  /** Updates one profile without changing which profile the drawer edits. */
+  updateProfile(profileId: string, patch: StoredInferenceProfilePatch): void;
   updateActiveProfile(patch: StoredInferenceProfilePatch): void;
   /** Absent when the active profile can be deleted; otherwise why it cannot. */
   activeProfileDeletionRefusal?: string;
@@ -404,12 +406,19 @@ export function useConnectionProfiles(input: {
     }
   }
 
-  function updateActiveProfile(patch: StoredInferenceProfilePatch): void {
+  function updateProfile(
+    profileId: string,
+    patch: StoredInferenceProfilePatch,
+  ): void {
     setProfiles((current) =>
       current.map((profile) =>
-        profile.id === activeProfile.id ? { ...profile, ...patch } : profile,
+        profile.id === profileId ? { ...profile, ...patch } : profile,
       ),
     );
+  }
+
+  function updateActiveProfile(patch: StoredInferenceProfilePatch): void {
+    updateProfile(activeProfile.id, patch);
   }
 
   function addProfile(): StoredInferenceProfile {
@@ -560,6 +569,7 @@ export function useConnectionProfiles(input: {
     capabilities,
     selectProfile: setActiveProfileId,
     addProfile,
+    updateProfile,
     updateActiveProfile,
     ...(activeProfileDeletionRefusal ? { activeProfileDeletionRefusal } : {}),
     removeActiveProfile,

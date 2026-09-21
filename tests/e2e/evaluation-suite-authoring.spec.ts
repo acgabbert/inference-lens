@@ -411,7 +411,7 @@ test("keeps the evaluations tab within the viewport on a phone", async ({ page }
 
 test("starts contextually, confirms the frozen batch, and renders strict live evidence", async ({ page }) => {
   await openProject(page, projectWithRunnableSuite(), 1440);
-  await page.getByLabel(/^Run target:/).click();
+  await page.locator(".target-menu summary").click();
   await page.getByRole("button", { name: /manage connections/i }).click();
   await page.locator(".connection-mapping").getByRole("combobox").selectOption("buffered");
   await page.getByRole("button", { name: /close connections/i }).click();

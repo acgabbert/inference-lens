@@ -27,7 +27,7 @@ async function openProject(page: Page, project = projectFixture(), tools = false
   await importProject(page, project, project.name);
 }
 async function connections(page: Page) {
-  await page.getByLabel(/^Run target:/).click();
+  await page.locator(".target-menu summary").click();
   await page.getByRole("button", {name: "Manage connections"}).click();
   return page.getByRole("dialog", {name: "Connections", exact: true});
 }
@@ -61,15 +61,17 @@ test("audit: copying a library tool to the project also attaches it", async ({pa
   await capture(page,"13-copy-attached-and-blocked");
 });
 
-test("audit: choosing a second connection leaves the project mapped to the first", async ({page}) => {
+test("audit: choosing a second project connection updates its mapping", async ({page}) => {
   const project = projectFixture();
   await seedProfiles(page, [{id: "a", instanceId: "ia", name: "Local model A", endpoint: BUFFERED_FIXTURE_ENDPOINT}, {id: "b", instanceId: "ib", name: "Local model B", endpoint: "http://127.0.0.1:44015/v1", model: "flaky-test-model"}], "a");
   await page.addInitScript(({key, projectId, requirementId}) => localStorage.setItem(key, JSON.stringify({[projectId]: {[requirementId]: {profileId:"a", profileInstanceId:"ia"}}})), {key: PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY, projectId: project.projectId, requirementId: project.defaults.target.connectionRequirementId});
   await page.goto("/"); await waitForHydration(page, "Local model A"); await importProject(page, project, project.name);
-  await page.getByLabel(/^Run target:/).click(); await page.getByRole("button", {name: /Local model B/}).click();
-  await expect(page.getByRole("button", {name: /^Run current conversation/})).toBeDisabled();
-  await capture(page, "05-selected-but-blocked");
-  await connections(page); await capture(page, "05-connections-and-mappings");
+  await page.locator(".target-menu summary").click(); await page.getByRole("button", {name: /Local model B/}).click();
+  await expect(page.getByRole("button", {name: /^Run current conversation/})).toBeEnabled();
+  await expect(page.locator(".target-menu summary")).toHaveAccessibleName(/Project connection: Local model B/);
+  const drawer = await connections(page);
+  await expect(drawer.getByLabel(`Profile for ${project.connectionRequirements[0]!.name}`)).toHaveValue("b");
+  await capture(page, "05-project-connection-remapped");
 });
 
 test("audit: review tool configuration and manual continuation with a mock", async ({page}) => {

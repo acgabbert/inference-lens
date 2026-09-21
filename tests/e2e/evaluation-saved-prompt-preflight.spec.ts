@@ -84,7 +84,7 @@ async function startFromSavedPrompt(page: Page, name: string): Promise<void> {
 }
 
 async function mapConnection(page: Page): Promise<void> {
-  await page.getByLabel(/^Run target:/).click();
+  await page.locator(".target-menu summary").click();
   await page.getByRole("button", { name: /manage connections/i }).click();
   await page
     .locator(".connection-mapping")
