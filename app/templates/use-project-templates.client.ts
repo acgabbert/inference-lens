@@ -8,6 +8,7 @@ import {
   detachPromptTemplateUse,
   findPromptTemplateUsages,
   insertPromptTemplateUse,
+  isEmptyEditableConversationDraft,
   projectDraft,
   removePromptTemplateUse,
   renamePromptTemplate,
@@ -119,6 +120,7 @@ export interface ProjectTemplatesHandle {
     templateId: PromptTemplateId,
     templateRevisionId: PromptTemplateRevisionId,
     itemIndex: number,
+    replaceEmptyDraft?: boolean,
   ): void;
   updateTemplateUseValues(templateUseId: PromptTemplateUseId, values: Record<string, string>): void;
   saveTemplateUseRunValue(templateUseId: PromptTemplateUseId, values: Record<string, string>, useOverrides: Record<string, string>): void;
@@ -412,6 +414,7 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     templateId: PromptTemplateId,
     templateRevisionId: PromptTemplateRevisionId,
     itemIndex: number,
+    replaceEmptyDraft = false,
   ): void {
     const { project, revisionId } = projectForUseMutation();
     adoptAuthoredProject(insertPromptTemplateUse(project, {
@@ -419,6 +422,7 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
       templateId,
       templateRevisionId,
       itemIndex,
+      replaceEmptyDraft,
     }));
   }
   function updateTemplateUseValues(templateUseId: PromptTemplateUseId, values: Record<string, string>): void {

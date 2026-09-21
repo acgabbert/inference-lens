@@ -16,6 +16,7 @@ import type {
   RunReadinessAction,
 } from "../run-readiness.client";
 import type { ProjectTemplatesHandle } from "../templates/use-project-templates.client";
+import { isEmptyEditableConversationDraft } from "../../packages/core/src/project";
 import type { CommandToolsHandle } from "../tools/use-command-tools.client";
 import { StatusChip } from "../notifications/status-chip.client";
 import { PromptInsertionDialog } from "../templates/prompt-insertion-dialog.client";
@@ -424,13 +425,14 @@ export function RequestComposer({
           templates={libraryTemplates.filter(({ archivedAt, id }) =>
             !archivedAt && !sessionTemplateIds.has(id))}
           itemCount={templates.activeProjectRevision?.items.length ?? requestDraft.messages.length}
+          replaceEmptyDraft={isEmptyEditableConversationDraft(templates.templateWorkbench.composerItems)}
           onCancel={() => setPromptInsertionOpen(false)}
           onOpenPrompts={() => {
             setPromptInsertionOpen(false);
             setTab("templates");
           }}
-          onInsert={(templateId, revisionId, itemIndex) => {
-            templates.insertProjectTemplate(templateId, revisionId, itemIndex);
+          onInsert={(templateId, revisionId, itemIndex, replaceEmptyDraft) => {
+            templates.insertProjectTemplate(templateId, revisionId, itemIndex, replaceEmptyDraft);
             setPromptInsertionOpen(false);
             setPendingInsertedIndex(itemIndex);
           }}
