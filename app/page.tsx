@@ -96,6 +96,7 @@ import { RepeatedExperimentDialog } from "./run/repeated-experiment-dialog.clien
 import { useProjectTemplates } from "./templates/use-project-templates.client";
 import { RequestComposer } from "./request/request-composer.client";
 import { useEvaluationSuiteAuthoring } from "./evaluations/use-evaluation-suite-authoring.client";
+import { useEvaluationReassessment } from "./evaluations/use-evaluation-reassessment.client";
 import {
   createEvaluationStartDraft,
   evaluationStartReadiness,
@@ -329,12 +330,27 @@ function HomeContent() {
   const [streamingPreferred, setStreamingPreferred] = useState(true);
   const [streamingPreferenceLoaded, setStreamingPreferenceLoaded] =
     useState(false);
+  const streamingPreferenceChangedRef = useRef(false);
   const project = useProjectWorkspace({
     activeProfile,
     profiles,
     profilesLoaded,
     onActivateProfile: selectProfile,
     folderAccessAvailable,
+    createFreshProject() {
+      return createProjectFile({
+        name: "Untitled Inference Lens project",
+        request: {
+          provider: "openai-compatible",
+          endpoint: activeProfile.endpoint,
+          model: activeProfile.model,
+          messages: createInitialMessages(chooseDefaultUserPrompt()),
+          temperature: activeProfile.temperature,
+          responseMode: activeResponseMode,
+          capabilities: activeCapabilities,
+        },
+      });
+    },
     createProject() {
       return createProjectFile({
         name: "Untitled Inference Lens project",
@@ -485,6 +501,14 @@ function HomeContent() {
       setFinishedBatchCount((current) => current + 1);
     },
   });
+  // Reinterpreting a finished evaluation is its own feature with its own state,
+  // so the route only joins it to the execution it reads and the project it can
+  // write a correction into.
+  const evaluationReassessment = useEvaluationReassessment({
+    ...(evaluationExecution.execution ? { execution: evaluationExecution.execution } : {}),
+    project: projectFile,
+    adoptProjectMutation: project.adoptProjectMutation,
+  });
   const [sessionModel, setSessionModel] = useState<string>();
   const [sessionTemperature, setSessionTemperature] = useState<number>();
   const adHocConversationIdRef = useRef<ConversationId | null>(null);
@@ -525,7 +549,9 @@ function HomeContent() {
       const saved = window.localStorage.getItem(
         STREAMING_PREFERENCE_STORAGE_KEY,
       );
-      if (saved === "buffered") setStreamingPreferred(false);
+      if (!streamingPreferenceChangedRef.current && saved === "buffered") {
+        setStreamingPreferred(false);
+      }
       setStreamingPreferenceLoaded(true);
     }, 0);
     return () => window.clearTimeout(preferenceId);
@@ -546,6 +572,11 @@ function HomeContent() {
       streamingPreferred ? "streaming" : "buffered",
     );
   }, [streamingPreferred, streamingPreferenceLoaded]);
+
+  function changeStreamingPreference(streaming: boolean): void {
+    streamingPreferenceChangedRef.current = true;
+    setStreamingPreferred(streaming);
+  }
 
   useEffect(() => {
     if (!toolRegistryLoaded) return;
@@ -1750,6 +1781,13 @@ function HomeContent() {
           commandTools={commandTools}
           templates={projectTemplates}
           project={projectFile}
+          projectPersistenceStatus={
+            projectErrorKind === "auto-save"
+              ? "error"
+              : !projectWorkspace
+                ? projectDirty ? "session" : "saved"
+                : projectDirty ? "saving" : "saved"
+          }
           onEvaluatePromptRevision={(templateId, revisionId, suiteId) => {
             const succeeded = evaluationAuthoring.evaluatePromptRevision(templateId, revisionId, suiteId);
             if (!succeeded) return false;
@@ -1773,7 +1811,7 @@ function HomeContent() {
             favoriteModels: activeProfile.favoriteModels ?? [],
             onModelChange: setEditorModel,
             onTemperatureChange: setEditorTemperature,
-            onStreamingPreferenceChange: setStreamingPreferred,
+            onStreamingPreferenceChange: changeStreamingPreference,
             onLoadModels: (force) => void loadModels(force),
             onToggleFavoriteModel: (model) =>
               updateActiveProfile({
@@ -1903,6 +1941,7 @@ function HomeContent() {
                   onPromoteTrace: (trace, experimentCellId) => setPromotion({ trace, experimentCellId }),
                   onReturnToList: evaluationExecution.returnToEvaluation,
                   onDismiss: () => dismissFinishedExperiment("evaluation"),
+                  reassessment: evaluationReassessment,
                 },
               }
             : {})}
@@ -1952,7 +1991,11 @@ function HomeContent() {
       )}
       {projectCreationMode && (
         <ProjectCreationDialog
-          initialName={projectFile?.name ?? "Untitled Inference Lens project"}
+          initialName={
+            projectCreationMode === "new"
+              ? "Untitled Inference Lens project"
+              : projectFile?.name ?? "Untitled Inference Lens project"
+          }
           onClose={() => setProjectCreationMode(undefined)}
           onCreate={(options) => {
             if (projectCreationMode === "new") {

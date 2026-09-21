@@ -40,8 +40,10 @@ test("renders compact preflight and the focused case workspace", async () => {
   // focus mode to expand into and it is gone.
   assert.doesNotMatch(html, /focus mode/i);
   assert.match(html, /Ready to run/);
-  // The suite's identity is a heading now rather than an option in a select.
-  assert.match(html, /<h2>Topic quality<\/h2>/);
+  // The suite's identity is a heading now rather than an option in a select,
+  // and it is the editable title, so the heading carries that component's class.
+  assert.match(html, /<h2 class="[^"]*_heading[^"]*">Topic quality<\/h2>/);
+  assert.match(html, /aria-label="Edit suite name"/);
   // Setup is a band that can be shut, so its summary states everything a start
   // depends on: the connection, the model, tool exposure, and repetitions.
   assert.match(html, /Buffered fixture · buffered-test-model · No tools · 3 reps/);

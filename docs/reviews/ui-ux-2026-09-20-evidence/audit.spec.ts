@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
-import { createProjectFile, createPromptTemplate, appendPromptTemplateRevision, serializeProjectFile, parseProjectFile } from "../../packages/core/src/project";
-import { BUFFERED_FIXTURE_ENDPOINT, PROFILE_STORAGE_KEY, PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY, seedProfile, seedProfiles, waitForHydration, importProject, openMode, stubProjectDirectory } from "./support";
+import { createProjectFile, createPromptTemplate, appendPromptTemplateRevision, serializeProjectFile, parseProjectFile } from "../../../packages/core/src/project";
+import { BUFFERED_FIXTURE_ENDPOINT, PROFILE_STORAGE_KEY, PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY, seedProfile, seedProfiles, waitForHydration, importProject, openMode, stubProjectDirectory } from "../../../tests/e2e/support";
 
 // One-off characterization for the review; assertions describe observed behavior,
 // not the desired regression contract. Removed after collecting review evidence.

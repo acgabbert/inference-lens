@@ -34,6 +34,9 @@ export interface EvaluationBindingCandidate {
 
 type NonRegexCheckKind = Exclude<CheckKind, "regex">;
 
+/** What a regex check starts with when the author does not say. See `defaultCheck`. */
+export const DEFAULT_REGEX_CHECK_FLAGS = "i";
+
 /** The complete information required before a check enters portable project data. */
 export type NewEvaluationCheck =
   | { kind: NonRegexCheckKind }
@@ -488,13 +491,21 @@ export function defaultCheck(
   switch (input.kind) {
     case "exact-match": return { checkId, kind: input.kind, value: "" };
     case "contains": return { checkId, kind: input.kind, value: "" };
-    case "regex": return {
-      checkId,
-      kind: input.kind,
-      syntax: "re2",
-      pattern: input.pattern ?? "",
-      ...(input.flags ? { flags: input.flags } : {}),
-    };
+    case "regex": {
+      // Case-insensitive by default. A new regex check is nearly always written
+      // against one sample of model output, and matching that sample's exact
+      // capitalization is the most common way an authored check silently never
+      // matches again. An author who means case to matter clears the flag; an
+      // explicit `flags: ""` from a caller still means none.
+      const flags = input.flags ?? DEFAULT_REGEX_CHECK_FLAGS;
+      return {
+        checkId,
+        kind: input.kind,
+        syntax: "re2",
+        pattern: input.pattern ?? "",
+        ...(flags ? { flags } : {}),
+      };
+    }
     case "valid-json": return { checkId, kind: input.kind, topLevel: "any" };
     case "max-output-characters": return { checkId, kind: input.kind, limit: 1000 };
     case "max-duration-ms": return { checkId, kind: input.kind, limit: 30000 };

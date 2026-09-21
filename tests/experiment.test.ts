@@ -3,7 +3,9 @@ import test from "node:test";
 
 import {
   ExperimentValidationError,
+  experimentArtifactIdentity,
   experimentLifecycle,
+  isExperimentEntryName,
   materializeExperimentCellInput,
   parseExperimentPlanJson,
   parseExperimentResultJson,
@@ -197,4 +199,54 @@ test("projects interrupted and missing-trace evidence without fabricating result
   assert.equal(aggregate.distinctFinalAssistantOutputs, 1);
   assert.deepEqual(aggregate.outputCharacterCount, { count: 1, min: 4, median: 4, max: 4 });
   assert.equal(experimentLifecycle(source), "interrupted");
+});
+
+test("names the three experiment artifact kinds and refuses lookalikes", () => {
+  for (const accepted of [
+    "experiment_first.plan.json",
+    "experiment_first.result.json",
+    "experiment_first.v2.plan.json",
+    "evaluation-assessment_corrected.assessment.json",
+    "evaluation-assessment_corrected.v2.assessment.json",
+  ]) {
+    assert.equal(isExperimentEntryName(accepted), true, `${accepted} should be accepted`);
+  }
+
+  for (const refused of [
+    // Each kind is bound to the entity that names it, so a plan cannot borrow
+    // an assessment ID and an assessment cannot borrow an experiment ID.
+    "experiment_first.assessment.json",
+    "evaluation-assessment_corrected.plan.json",
+    "evaluation-assessment_corrected.result.json",
+    // Path traversal and near misses on the suffix or prefix.
+    "../evaluation-assessment_corrected.assessment.json",
+    "evaluation-assessment_../secret.assessment.json",
+    "evaluation-assessment_corrected.assessment.json.bak",
+    "evaluation-assessment_.assessment.json",
+    "evaluation_assessment_corrected.assessment.json",
+    "evaluation-assessmentcorrected.assessment.json",
+    "assessment.json",
+    "notes.json",
+  ]) {
+    assert.equal(isExperimentEntryName(refused), false, `${refused} should be refused`);
+  }
+});
+
+test("reports artifact identity as a union so an assessment is never read as a result", () => {
+  assert.deepEqual(experimentArtifactIdentity("experiment_first.plan.json"), {
+    kind: "plan",
+    experimentId: "experiment_first",
+  });
+  assert.deepEqual(experimentArtifactIdentity("experiment_first.result.json"), {
+    kind: "result",
+    experimentId: "experiment_first",
+  });
+  assert.deepEqual(
+    experimentArtifactIdentity("evaluation-assessment_corrected.assessment.json"),
+    { kind: "assessment", assessmentId: "evaluation-assessment_corrected" },
+  );
+  assert.throws(
+    () => experimentArtifactIdentity("experiment_first.assessment.json"),
+    ExperimentValidationError,
+  );
 });

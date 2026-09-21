@@ -44,17 +44,6 @@ test("audit: fresh setup exposes a prompt-creation validation error", async ({pa
   await capture(page, "01-fresh-prompt-error");
 });
 
-test("audit: prompt draft is lost when changing the request tab", async ({page}) => {
-  await openProject(page);
-  await page.getByRole("tab", {name: /Prompts/}).click();
-  await page.getByLabel("Prompt content", {exact: true}).fill("UNSAVED DRAFT: do not lose this edit");
-  await capture(page, "02-unsaved-prompt-before");
-  await page.getByRole("tab", {name: /Tools/}).click();
-  await page.getByRole("tab", {name: /Prompts/}).click();
-  await expect(page.getByLabel("Prompt content", {exact: true})).toHaveValue("LATEST REVISION: Triage {{incident}} carefully.");
-  await capture(page, "02-unsaved-prompt-after");
-});
-
 for (const failure of ["configuration removed", "status temporarily fails"]) test(`audit: ${failure} duplicates the visible server-default label`, async ({page}) => {
   let configured = true;
   await page.route("**/api/runtime-status", route => !configured && failure === "status temporarily fails" ? route.fulfill({status:503, body:"Temporary status outage"}) : route.fulfill({ json: configured ? {containerized: true, serverDefaultCredentialConfigured: true, endpoint: BUFFERED_FIXTURE_ENDPOINT, model: "buffered-test-model"} : {containerized: true, serverDefaultCredentialConfigured: false} }));
@@ -73,23 +62,6 @@ for (const failure of ["configuration removed", "status temporarily fails"]) tes
   if (await dismiss.count()) await dismiss.first().click();
   await page.getByLabel(/^Run target:/).click();
   await capture(page, `04-duplicate-${failure}`);
-});
-
-test("audit: saving the project does not commit the visible prompt draft", async ({page}) => {
-  const project = projectFixture();
-  await seedProfile(page);
-  await stubProjectDirectory(page, {name:"ux-save.inference-lens", files:{"project.json":serializeProjectFile(project)}});
-  await page.goto("/"); await waitForHydration(page);
-  await page.getByLabel("Project menu").click(); await page.getByRole("button",{name:"Open project…"}).click();
-  await expect(page.locator(".brand")).toContainText(project.name);
-  await page.getByRole("tab",{name:/Prompts/}).click();
-  await page.getByLabel("Prompt content",{exact:true}).fill("DRAFT THAT CMD-S SHOULD PRESERVE");
-  await expect(page.locator(".brand")).not.toContainText("Unsaved");
-  await page.getByLabel("Prompt content",{exact:true}).press("ControlOrMeta+s");
-  await expect(page.getByRole("list",{name:"Notifications"})).toContainText("Saved “UX review project”");
-  await capture(page,"11-project-saved-but-prompt-draft");
-  await page.getByRole("tab",{name:/Messages/}).click(); await page.getByRole("tab",{name:/Prompts/}).click();
-  await expect(page.getByLabel("Prompt content",{exact:true})).toHaveValue("LATEST REVISION: Triage {{incident}} carefully.");
 });
 
 test("audit: copying a library tool to the project also attaches it", async ({page}) => {

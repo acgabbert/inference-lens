@@ -16,6 +16,7 @@ import {
 } from "../packages/core/src/run-trace.ts";
 import type { RunTrace } from "../packages/core/src/run-kernel/index.ts";
 import {
+  EVALUATION_ASSESSMENT_FILE_SUFFIX,
   assertExperimentEntryName,
   experimentPlanFileName,
   experimentResultFileName,
@@ -26,6 +27,13 @@ import type {
   ExperimentResultV3,
   ExperimentPlanV3,
 } from "../packages/core/src/experiment.ts";
+import {
+  evaluationAssessmentFileName,
+  parseEvaluationAssessmentJson,
+  serializeEvaluationAssessment,
+} from "../packages/core/src/evaluation-assessment.ts";
+import type { EvaluationAssessmentV1 } from "../packages/core/src/evaluation-assessment.ts";
+import type { EvaluationAssessmentId } from "../packages/core/src/run-kernel/types.ts";
 import {
   EVALUATION_BASELINES_FILE_NAME,
   emptyEvaluationBaselines,
@@ -684,6 +692,88 @@ export async function saveExperimentResultWorkspace(
     experimentResultFileName(result.experimentId),
     serializeExperimentResult(result, plan),
   );
+}
+
+/**
+ * Reassessments need no new storage API and no new Tauri command: they live in
+ * the experiments directory, so they inherit its write-once, reject-a-different-
+ * rewrite contract on both shells for free.
+ */
+export async function saveEvaluationAssessmentWorkspace(
+  handle: ProjectWorkspaceHandle,
+  assessment: EvaluationAssessmentV1,
+  plan: ExperimentPlanV3,
+): Promise<void> {
+  await handle.storage.saveExperimentArtifact(
+    evaluationAssessmentFileName(assessment.assessmentId),
+    serializeEvaluationAssessment(assessment, plan),
+  );
+}
+
+export async function readEvaluationAssessmentWorkspace(
+  handle: ProjectWorkspaceHandle,
+  assessmentId: EvaluationAssessmentId,
+  plan: ExperimentPlanV3,
+): Promise<EvaluationAssessmentV1> {
+  const contents = await handle.storage.readExperimentArtifact(
+    evaluationAssessmentFileName(assessmentId),
+  );
+  return parseEvaluationAssessmentJson(contents, plan);
+}
+
+export interface LoadedEvaluationAssessments {
+  assessments: EvaluationAssessmentV1[];
+  /** A damaged reassessment names itself rather than disappearing from the list. */
+  failures: Array<{ fileName: string; message: string }>;
+}
+
+/**
+ * Reads every saved reinterpretation of one execution.
+ *
+ * Listing already returns artifact contents, so this needs no second read and
+ * no index: the artifact's own `experimentId` is what decides whether it
+ * belongs to this execution, which is exactly why the file name does not carry
+ * one.
+ */
+export async function listEvaluationAssessmentsWorkspace(
+  handle: ProjectWorkspaceHandle,
+  plan: ExperimentPlanV3,
+): Promise<LoadedEvaluationAssessments> {
+  const files = await handle.storage.listExperimentArtifacts();
+  const assessments: EvaluationAssessmentV1[] = [];
+  const failures: LoadedEvaluationAssessments["failures"] = [];
+  for (const file of files) {
+    if (!file.fileName.endsWith(EVALUATION_ASSESSMENT_FILE_SUFFIX)) continue;
+    let assessment: EvaluationAssessmentV1;
+    try {
+      assessment = parseEvaluationAssessmentJson(file.contents, plan);
+    } catch (error) {
+      // A reassessment of a different execution is not damage — it is simply
+      // not ours, and `parseEvaluationAssessmentJson` cannot tell us which
+      // without reading the field itself.
+      const experimentId = assessmentExperimentId(file.contents);
+      if (experimentId !== undefined && experimentId !== plan.experimentId) continue;
+      failures.push({
+        fileName: file.fileName,
+        message: error instanceof Error ? error.message : "The reassessment could not be read.",
+      });
+      continue;
+    }
+    assessments.push(assessment);
+  }
+  assessments.sort((left, right) => left.createdAt < right.createdAt ? -1 : left.createdAt > right.createdAt ? 1 : 0);
+  return { assessments, failures };
+}
+
+/** Best-effort ownership read, used only to route a parse failure. */
+function assessmentExperimentId(contents: string): string | undefined {
+  try {
+    const value: unknown = JSON.parse(contents);
+    const experimentId = (value as { experimentId?: unknown } | null)?.experimentId;
+    return typeof experimentId === "string" ? experimentId : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function listExperimentArtifactsWorkspace(

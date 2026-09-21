@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Inference Lens",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "app.inferencelens.desktop",
   "build": {
     "beforeDevCommand": "npm run dev:tauri",
@@ -23,6 +23,9 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["app", "dmg"]
+    "targets": [
+      "app",
+      "dmg"
+    ]
   }
 }

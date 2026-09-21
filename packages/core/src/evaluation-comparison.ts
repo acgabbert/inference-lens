@@ -124,7 +124,10 @@ export interface EvaluationExecutionDrift {
   /** `true` when the serialized inference options differ in any way. */
   optionsChanged?: boolean;
   repetitions?: EvaluationDriftField<number>;
-  checkSchemaVersion?: EvaluationDriftField<number>;
+  // No `checkSchemaVersion` field: the plan pins it as a `z.literal`, so both
+  // sides must equal this build's version to have parsed at all. A version
+  // range — and the drift reporting it would justify — arrives with the PR
+  // that next bumps the check vocabulary.
   /** Convenience for callers that only need "is there anything to show". */
   any: boolean;
 }
@@ -326,12 +329,6 @@ function executionDrift(
   }
   if (baseline.input.plan.repetitions !== candidate.input.plan.repetitions) {
     drift.repetitions = { baseline: baseline.input.plan.repetitions, candidate: candidate.input.plan.repetitions };
-  }
-  if (baseline.input.plan.checkSchemaVersion !== candidate.input.plan.checkSchemaVersion) {
-    drift.checkSchemaVersion = {
-      baseline: baseline.input.plan.checkSchemaVersion,
-      candidate: candidate.input.plan.checkSchemaVersion,
-    };
   }
   drift.any = Object.keys(drift).length > 1;
   return drift;

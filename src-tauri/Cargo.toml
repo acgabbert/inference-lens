@@ -1,6 +1,6 @@
 [package]
 name = "inference-lens"
-version = "0.1.0"
+version = "0.2.0"
 description = "A local workbench for inspecting model runs."
 authors = ["Inference Lens contributors"]
 edition = "2021"

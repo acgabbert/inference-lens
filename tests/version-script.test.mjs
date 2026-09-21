@@ -34,6 +34,11 @@ async function versionFixture(t) {
   return root;
 }
 
+function nextPatchVersion(version) {
+  const [major, minor, patch] = version.split(".");
+  return `${major}.${minor}.${Number(patch) + 1}`;
+}
+
 test("accepts stable and prerelease release tags", () => {
   assert.deepEqual(parseReleaseTag("v0.1.0"), {
     baseVersion: "0.1.0",
@@ -65,14 +70,16 @@ test("rejects tags that could otherwise publish an invalid latest image", () => 
 
 test("checks every project version location and release-tag base", async (t) => {
   const root = await versionFixture(t);
-  assert.equal(await checkProjectVersion({ root }), "0.1.0");
+  const version = await checkProjectVersion({ root });
+  const nextVersion = nextPatchVersion(version);
+  assert.match(version, /^\d+\.\d+\.\d+$/);
   assert.equal(
-    await checkProjectVersion({ root, tag: "v0.1.0-rc.1" }),
-    "0.1.0",
+    await checkProjectVersion({ root, tag: `v${version}-rc.1` }),
+    version,
   );
   await assert.rejects(
-    checkProjectVersion({ root, tag: "v0.2.0" }),
-    /tag v0\.2\.0.*project manifests use 0\.1\.0/,
+    checkProjectVersion({ root, tag: `v${nextVersion}` }),
+    new RegExp(`tag v${nextVersion.replaceAll(".", "\\.")}.*project manifests use ${version.replaceAll(".", "\\.")}`),
   );
 
   const lockPath = path.join(root, "package-lock.json");
@@ -87,17 +94,19 @@ test("checks every project version location and release-tag base", async (t) => 
 
 test("bumps manifests and generated lockfile metadata together", async (t) => {
   const root = await versionFixture(t);
-  assert.deepEqual(await bumpProjectVersion("0.2.0", { root }), {
-    previousVersion: "0.1.0",
-    version: "0.2.0",
+  const previousVersion = await checkProjectVersion({ root });
+  const version = nextPatchVersion(previousVersion);
+  assert.deepEqual(await bumpProjectVersion(version, { root }), {
+    previousVersion,
+    version,
   });
-  assert.equal(await checkProjectVersion({ root }), "0.2.0");
+  assert.equal(await checkProjectVersion({ root }), version);
   assert.equal(
-    await checkProjectVersion({ root, tag: "v0.2.0-rc.1" }),
-    "0.2.0",
+    await checkProjectVersion({ root, tag: `v${version}-rc.1` }),
+    version,
   );
   await assert.rejects(
-    bumpProjectVersion("0.2.0", { root }),
+    bumpProjectVersion(version, { root }),
     /must be greater than current version/,
   );
 });

@@ -34,6 +34,7 @@ export type EntityIdKind =
   | "evaluation-input"
   | "evaluation-case"
   | "evaluation-baseline"
+  | "evaluation-assessment"
   | "check";
 
 export type EntityId<Kind extends EntityIdKind> = `${Kind}_${string}`;
@@ -64,6 +65,7 @@ export type EvaluationVariantId = EntityId<"evaluation-variant">;
 export type EvaluationInputBindingId = EntityId<"evaluation-input">;
 export type EvaluationCaseId = EntityId<"evaluation-case">;
 export type EvaluationBaselineId = EntityId<"evaluation-baseline">;
+export type EvaluationAssessmentId = EntityId<"evaluation-assessment">;
 export type CheckId = EntityId<"check">;
 
 export function createEntityId<Kind extends EntityIdKind>(

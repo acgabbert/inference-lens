@@ -1,0 +1,76 @@
+/* Display and edit are the same box at the same size: the pencil swaps a
+   heading for a field in place, so anything that differs between the two
+   states is a jump the author sees as the row resizing under their cursor. */
+.title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2xs);
+  font-weight: 700;
+  line-height: var(--leading-tight);
+}
+
+/* The unstyled h2/h3 defaults these replace were em multiples of the body
+   size — the only headings in the surface not on the semantic scale. */
+.h2 {
+  font-size: var(--type-page-heading);
+}
+
+.h3 {
+  font-size: var(--type-section-heading);
+}
+
+.title .heading {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.title .input {
+  min-width: 0;
+  /* Grows with the row rather than filling it: the save and discard controls
+     sit at the end of the name, where the author's eye already is. */
+  flex: 0 1 auto;
+  width: 22ch;
+  padding: var(--space-3xs) var(--space-2xs);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-panel);
+  color: inherit;
+  font: inherit;
+}
+
+.title .input:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: -1px;
+}
+
+.title .input[aria-invalid] {
+  border-color: var(--danger);
+}
+
+.edit,
+.action {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-3xs);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-muted);
+  line-height: 0;
+  cursor: pointer;
+}
+
+.edit:hover,
+.action:hover,
+.edit:focus-visible,
+.action:focus-visible {
+  background: var(--accent-soft);
+  color: var(--accent);
+}

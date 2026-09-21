@@ -152,6 +152,16 @@ test("an empty regex enters authored state instead of being required by the add 
   assert.equal(check.kind === "regex" ? check.pattern : undefined, "");
 });
 
+test("a new regex check is case-insensitive unless the caller says otherwise", () => {
+  const byDefault = defaultCheck({ kind: "regex" }, () => "default-flags");
+  assert.equal(byDefault.kind === "regex" ? byDefault.flags : undefined, "i");
+  const explicit = defaultCheck({ kind: "regex", flags: "m" }, () => "explicit-flags");
+  assert.equal(explicit.kind === "regex" ? explicit.flags : undefined, "m");
+  // An explicit empty string is a caller asking for none, not an omission.
+  const none = defaultCheck({ kind: "regex", flags: "" }, () => "no-flags");
+  assert.equal(none.kind === "regex" ? none.flags : undefined, undefined);
+});
+
 test("preflight reports unfinished checks and empty values for selected cases only", () => {
   let project = fixture();
   const revisionId = project.defaults.conversationRevisionId;
