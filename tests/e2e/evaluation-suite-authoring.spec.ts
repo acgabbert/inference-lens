@@ -419,7 +419,7 @@ test("starts contextually, confirms the frozen batch, and renders strict live ev
   await expect(editor).toContainText("Ready to run");
   const start = primaryAction(page, "evaluations");
   await expect(start).toBeEnabled();
-  await expect(page.locator(".topbar")).not.toContainText("Run request");
+  await expect(page.locator(".topbar")).not.toContainText("Run current conversation");
   await expect(page.locator(".topbar")).not.toContainText("Repeat…");
 
   await start.focus();

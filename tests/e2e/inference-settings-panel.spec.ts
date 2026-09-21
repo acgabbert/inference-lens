@@ -150,7 +150,7 @@ test("the collapsed panel reports what the run will send, and expanding reveals 
   ]);
 
   // And the collapsed panel is not a stale snapshot: the run honours it.
-  await page.getByRole("button", { name: /run request/i }).click();
+  await page.getByRole("button", { name: /run current conversation/i }).click();
   await expect(page.locator(".response-pane")).toContainText(
     "Buffered fixture response: 2 + 2 = 4.",
   );

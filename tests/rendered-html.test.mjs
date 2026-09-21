@@ -72,7 +72,7 @@ test("standalone Node server renders the Inference Lens workbench", async (t) =>
   const html = await response.text();
   assert.match(html, /<title>Inference Lens — Inspect Every Model Run<\/title>/i);
   assert.match(html, /Inspect every model run/);
-  assert.match(html, /Run request/);
+  assert.match(html, /Run current conversation/);
   assert.match(html, /Download diagnostics/);
   assert.match(html, /Run history/);
   assert.match(html, /Prompts/);

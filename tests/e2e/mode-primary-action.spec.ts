@@ -33,7 +33,7 @@ import {
 
 /** Every control the topbar may render in its run-control slot. */
 const RUN_CONTROL_LABELS = [
-  /^Run request/,
+  /^Run current conversation/,
   /^Start evaluation…/,
   /^Stop$/,
   /^Stop remaining$/,
@@ -101,7 +101,7 @@ test("each mode shows exactly its own primary action and nothing else", async ({
   await open(page);
 
   // Compose: one button, and it is the run.
-  expect(await runControls(page)).toEqual(["Run request ⌘↵"]);
+  expect(await runControls(page)).toEqual(["Run current conversation ⌘↵"]);
   await expect(primaryAction(page, "compose")).toBeVisible();
   await expect(primaryAction(page, "evaluations")).toHaveCount(0);
 
@@ -147,6 +147,8 @@ test("Repeat stays on every request tab and Messages groups its editing actions"
   const messageToolbar = page.locator(".request-composer-toolbar");
 
   await expect(messageToolbar.getByRole("button", { name: "+ Add message" }))
+    .toBeVisible();
+  await expect(messageToolbar.getByRole("button", { name: "Insert saved prompt…" }))
     .toBeVisible();
   await expect(messageToolbar.getByRole("button", { name: "Repeat…" }))
     .toBeVisible();

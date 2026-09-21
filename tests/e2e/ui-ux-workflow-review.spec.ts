@@ -36,13 +36,13 @@ async function setup(page: Page, folder = false) {
   return project;
 }
 
-test("review: Run request in the prompt editor sends the hidden conversation", async ({ page }) => {
+test("review: the prompt editor's run action sends the current conversation", async ({ page }) => {
   await setup(page);
   await capture(page, "01-imported-compose");
   await page.getByRole("tab", { name: /Prompts/ }).click();
   await page.getByLabel("Prompt content", { exact: true }).fill("VISIBLE DRAFT: diagnose the current incident.");
   await capture(page, "02-prompt-edit-before-run");
-  await page.getByRole("button", { name: /^Run request/ }).click();
+  await page.getByRole("button", { name: /^Run current conversation/ }).click();
   await expect(page.locator(".response-pane")).toContainText("Buffered fixture response");
   await page.getByRole("button", { name: "Run details", exact: true }).click();
   await page.getByRole("tab", { name: /^Events/ }).click();
@@ -52,20 +52,19 @@ test("review: Run request in the prompt editor sends the hidden conversation", a
   await capture(page, "03-prompt-run-sent-conversation");
 });
 
-test("review: prompt reuse reaches a real request then an empty Runs destination", async ({ page }) => {
+test("review: direct prompt reuse reaches a real request then an empty Runs destination", async ({ page }) => {
   await setup(page);
-  await page.getByRole("tab", { name: /Prompts/ }).click();
-  const insert = page.getByRole("button", { name: "Add to conversation", exact: true });
-  await expect(insert).not.toBeInViewport();
-  await insert.scrollIntoViewIfNeeded();
+  await page.getByRole("button", { name: "Insert saved prompt…" }).click();
+  const picker = page.getByRole("dialog", { name: "Insert saved prompt" });
+  await expect(picker.getByText("Incident triage", { exact: true })).toBeVisible();
   await capture(page, "04-insertion-below-metadata");
-  await insert.click();
+  await picker.getByRole("button", { name: "Insert prompt", exact: true }).click();
   const use = page.locator(".template-use-card");
   await expect(use).toContainText("SAVED PROMPT");
   await use.locator(".template-use-variable summary").click();
   await use.locator('textarea[data-template-variable="incident"]').fill("database outage");
   await capture(page, "05-inserted-prompt-values");
-  await page.getByRole("button", { name: /^Run request/ }).click();
+  await page.getByRole("button", { name: /^Run current conversation/ }).click();
   await expect(page.locator(".response-pane")).toContainText("Buffered fixture response");
   await page.getByRole("button", { name: "Run details", exact: true }).click();
   await page.getByRole("tab", { name: /^Events/ }).click();
@@ -152,7 +151,7 @@ test("review: folder autosave survives reopen and ordinary runs are in the histo
   await page.getByRole("tab", { name: /Prompts/ }).click();
   await expect(page.getByLabel("Prompt content", { exact: true })).toHaveValue("FOLDER DRAFT: retained after reopen.");
   await page.getByRole("button", { name: "Create revision and add", exact: true }).click();
-  await page.getByRole("button", { name: /^Run request/ }).click();
+  await page.getByRole("button", { name: /^Run current conversation/ }).click();
   await expect(page.locator(".response-pane")).toContainText("Buffered fixture response");
   await openMode(page, "Runs");
   await expect(page.getByText("No results open", { exact: true })).toBeVisible();

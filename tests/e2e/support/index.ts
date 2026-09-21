@@ -208,13 +208,13 @@ export async function openMode(
 
 /**
  * The primary action for the mode on screen. There is exactly one, and it lives
- * in the topbar — Compose's `Run request` and Evaluations' `Start evaluation…`.
+ * in the topbar — Compose's `Run current conversation` and Evaluations' `Start evaluation…`.
  * Specs ask for it by mode rather than by label so that a spec reads as "the
  * primary action is refused" rather than restating which button that is.
  */
 export function primaryAction(page: Page, mode: "compose" | "evaluations"): Locator {
   return page.getByRole("button", {
-    name: mode === "compose" ? /^Run request/ : /^Start evaluation…/,
+    name: mode === "compose" ? /^Run current conversation/ : /^Start evaluation…/,
   });
 }
 

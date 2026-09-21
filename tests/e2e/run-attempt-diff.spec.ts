@@ -12,7 +12,7 @@ test("a retry defaults to distinct attempts and explains identical request evide
   await page.goto("/");
   await waitForHydration(page, "Flaky fixture");
 
-  await page.getByRole("button", { name: /run request/i }).click();
+  await page.getByRole("button", { name: /run current conversation/i }).click();
   await expect(page.getByRole("button", { name: /^Retry attempt/ })).toBeVisible();
   await page.getByRole("button", { name: /^Retry attempt/ }).click();
   await expect(page.locator(".response-pane")).toContainText("Recovered on retry.");

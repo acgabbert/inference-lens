@@ -20,7 +20,7 @@ test("LaTeX in model output renders as verbatim source, not stripped delimiters"
   await waitForHydration(page);
 
   await page.getByLabel("Message 1 content").fill("Show me the identity");
-  await page.getByRole("button", { name: "Run request ⌘↵" }).click();
+  await page.getByRole("button", { name: "Run current conversation ⌘↵" }).click();
 
   const output = page.locator(".markdown-body").first();
   await expect(output).toBeVisible();

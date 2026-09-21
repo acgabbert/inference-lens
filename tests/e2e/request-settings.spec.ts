@@ -101,7 +101,7 @@ test("a project can use the provider default despite a mapped profile override",
     "Provider default temp",
   );
 
-  await page.getByRole("button", { name: /run request/i }).click();
+  await page.getByRole("button", { name: /run current conversation/i }).click();
   await expect(page.locator(".response-pane")).toContainText(
     "Provider received no temperature override.",
   );
