@@ -66,7 +66,7 @@ test("an ordinary source trace promotes exact values and remains openable from i
   await page.goto("/");
   await waitForHydration(page);
   await page.getByLabel("Project menu").click();
-  await page.getByRole("button", { name: "Open project…" }).click();
+  await page.getByRole("button", { name: "Open project folder…" }).click();
   await expect(page.locator(".brand")).toContainText("Promotion browser fixture");
   await page.getByLabel("Run data menu").click();
   await page.getByRole("button", { name: "Run history…" }).click();

@@ -135,7 +135,7 @@ async function openDurableProject(page: Page, project: ProjectFile): Promise<voi
   await page.goto("/");
   await waitForHydration(page);
   await page.getByLabel("Project menu").click();
-  await page.getByRole("button", { name: "Open project…" }).click();
+  await page.getByRole("button", { name: "Open project folder…" }).click();
   await expect(page.locator(".brand")).toContainText(PROJECT_NAME);
   await page.locator(".project-menu").evaluate((element) => element.removeAttribute("open"));
   await openMode(page, "Evaluations");

@@ -139,7 +139,7 @@ async function openResults(page: Page): Promise<void> {
   await page.goto("/");
   await waitForHydration(page);
   await page.getByLabel("Project menu").click();
-  await page.getByRole("button", { name: "Open project…" }).click();
+  await page.getByRole("button", { name: "Open project folder…" }).click();
   await expect(page.getByText(/Inspect every model run · Configuration results fixture/)).toBeVisible();
   await openMode(page, "Evaluations");
   const history = page.locator(".evaluation-suite-history");

@@ -2,6 +2,7 @@
 
 import type { ChangeEvent } from "react";
 import type { StoredInferenceProfile } from "./profile-store.client";
+import type { ProjectStorageState } from "./use-project-workspace.client";
 import { ModeStrip } from "./modes/mode-strip.client";
 import type { AppMode, ModeIndicator } from "./modes/app-mode";
 
@@ -11,6 +12,7 @@ interface TopbarProps {
   hasCredential: boolean;
   projectName?: string;
   projectDirty: boolean;
+  projectStorageState?: ProjectStorageState;
   folderAccessAvailable: boolean;
   hasDiagnosticCapture: boolean;
   hasRunTrace: boolean;
@@ -65,6 +67,7 @@ function closeContainingMenu(element: HTMLElement): void {
 /** Application menus and the current run controls. */
 export function Topbar({
   profiles, activeProfile, hasCredential, projectName, projectDirty,
+  projectStorageState,
   folderAccessAvailable, hasDiagnosticCapture, isRequestActive, isExperimentActive, awaitingToolResults,
   mode, onModeChange, modeIndicators,
   hasRunTrace,
@@ -85,9 +88,20 @@ export function Topbar({
   // The dot's meaning is credential state, which no one can read off a colour.
   // It travels in the accessible name so the control is not visual-only.
   const credentialState = hasCredential ? "credential set" : "no credential";
+  const projectStorageLabel = !projectStorageState
+    ? undefined
+    : projectStorageState.kind === "session"
+      ? folderAccessAvailable
+        ? "Session only — save to a folder to keep changes"
+        : "Session only — export a JSON copy to keep changes"
+      : projectStorageState.kind === "saving"
+        ? `Saving to ${projectStorageState.displayPath}…`
+        : projectStorageState.kind === "error"
+          ? "Save failed — retry from Project"
+          : `Saved to ${projectStorageState.displayPath}`;
   return (
     <header className="topbar">
-      <div className="brand"><span className="brand-mark" aria-hidden="true">IL</span><div><h1>Inference Lens</h1><p>Inspect every model run · {projectName ? `${projectName}${projectDirty ? " • Unsaved" : ""}` : "No project open"}</p></div></div>
+      <div className="brand"><span className="brand-mark" aria-hidden="true">IL</span><div><h1>Inference Lens</h1><p>Inspect every model run · {projectName ? <><strong>{projectName}</strong>{projectDirty ? " · Unsaved" : ""}{projectStorageLabel ? ` · ${projectStorageLabel}` : ""}</> : "No project open"}</p></div></div>
       <ModeStrip value={mode} onChange={onModeChange} {...(modeIndicators ? { indicators: modeIndicators } : {})} />
       <div className="header-actions">
         {/*
@@ -106,8 +120,8 @@ export function Topbar({
         </details>
         <details className="header-menu project-menu"><summary aria-label="Project menu" className="button secondary"><span className="project-menu-label">Project</span> <span className="menu-chevron">⌄</span></summary><div className="menu-popover project-popover">
           <div className="menu-group-heading">Project</div>
-          {folderAccessAvailable && <><button type="button" onClick={(event) => { closeContainingMenu(event.currentTarget); onNewProject(); }}>New project</button><button type="button" onClick={(event) => { closeContainingMenu(event.currentTarget); onOpenProject(); }}>Open project…</button><span className="menu-separator" /></>}
-          <button type="button" onClick={(event) => { closeContainingMenu(event.currentTarget); onSaveProject(); }}>Save <kbd>⌘S</kbd></button><label className="menu-file-button">Import project…<input type="file" accept="application/json,.json" onChange={onImportProject} /></label><button type="button" onClick={onExportProject}>Export project…</button><span className="menu-separator" /><button disabled={Boolean(n8nImportDisabledReason)} title={n8nImportDisabledReason} type="button" onClick={(event) => { onOpenN8nImport(); closeContainingMenu(event.currentTarget); }}>Import prompt from n8n…</button>
+          {folderAccessAvailable && <><button type="button" onClick={(event) => { closeContainingMenu(event.currentTarget); onNewProject(); }}>New project folder…</button><button type="button" onClick={(event) => { closeContainingMenu(event.currentTarget); onOpenProject(); }}>Open project folder…</button><span className="menu-separator" /></>}
+          <button type="button" onClick={(event) => { closeContainingMenu(event.currentTarget); onSaveProject(); }}>{hasProjectWorkspace ? "Save now" : folderAccessAvailable ? "Save project to folder…" : "Download project JSON…"} <kbd>⌘S</kbd></button><label className="menu-file-button">Import project JSON…<input type="file" accept="application/json,.json" onChange={onImportProject} /></label><button type="button" onClick={(event) => { closeContainingMenu(event.currentTarget); onExportProject(); }}>Export JSON copy…</button><span className="menu-separator" /><button disabled={Boolean(n8nImportDisabledReason)} title={n8nImportDisabledReason} type="button" onClick={(event) => { onOpenN8nImport(); closeContainingMenu(event.currentTarget); }}>Import prompt from n8n…</button>
         </div></details>
         <details className="header-menu run-data-menu"><summary aria-label="Run data menu" className="button secondary"><span className="run-data-menu-label">Run data</span> <span className="menu-chevron">⌄</span></summary><div className="menu-popover project-popover run-data-popover">
           <div className="menu-group-heading">Run data</div>

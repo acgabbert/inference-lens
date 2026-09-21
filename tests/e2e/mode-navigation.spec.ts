@@ -111,7 +111,7 @@ async function openFromFolder(page: Page): Promise<void> {
   await page.goto("/");
   await waitForHydration(page);
   await page.getByLabel("Project menu").click();
-  await page.getByRole("button", { name: "Open project…" }).click();
+  await page.getByRole("button", { name: "Open project folder…" }).click();
   await expect(page.locator(".brand")).toContainText("Mode navigation fixture");
   await page.locator(".project-menu").evaluate((element) => element.removeAttribute("open"));
 }

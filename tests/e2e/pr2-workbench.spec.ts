@@ -339,8 +339,8 @@ test("groups lifecycle and run-data actions by owner", async ({ page }) => {
   await page.getByLabel("Project menu").click();
   const projectMenu = page.locator(".project-menu .project-popover");
   await expect(projectMenu).toContainText("Project");
-  await expect(projectMenu).toContainText("Import project");
-  await expect(projectMenu).toContainText("Export project");
+  await expect(projectMenu).toContainText("Import project JSON");
+  await expect(projectMenu).toContainText("Export JSON copy");
   await expect(projectMenu).toContainText("Import prompt from n8n");
   await expect(projectMenu).not.toContainText("Run history");
   await expect(projectMenu).not.toContainText("Download diagnostics");

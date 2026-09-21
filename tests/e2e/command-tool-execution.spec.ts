@@ -109,7 +109,7 @@ async function openFixtureProject(page: Page): Promise<void> {
   await page.goto("/");
   await waitForHydration(page);
   await page.getByLabel("Project menu").click();
-  await page.getByRole("button", { name: "Open project…" }).click();
+  await page.getByRole("button", { name: "Open project folder…" }).click();
   await expect(page.locator(".brand")).toContainText("Command tool fixture");
   await page.evaluate(() => {
     document
