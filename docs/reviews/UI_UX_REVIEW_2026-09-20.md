@@ -1,6 +1,6 @@
 # UI/UX usability review and proposed implementation plan
 
-**Reviewed:** September 20, 2026 · **Source baseline:** `50f48b7`  
+**Reviewed:** September 20, 2026 · **Source baseline:** `50f48b7`
 **Scope:** Whole-app usability review, with extra weight on reusing prompts and configuring tools, as requested. Assessment only; no product changes made.
 
 ## Assessment
