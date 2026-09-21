@@ -82,6 +82,54 @@ test("a historical prompt revision can be edited into a new revision with an exa
   await expect(editor.getByLabel("{{incident}}")).toHaveValue("timeout");
 });
 
+test("using a historical prompt pins the revision being viewed", async ({ page }) => {
+  let project = createProjectFile({
+    name: "Historical prompt use fixture",
+    request: {
+      provider: "openai-compatible",
+      endpoint: BUFFERED_FIXTURE_ENDPOINT,
+      model: "buffered-test-model",
+      messages: [{ role: "user", content: "Hello" }],
+    },
+    idSuffix: "historical-prompt-use",
+    createdAt: "2026-08-06T12:00:00.000Z",
+  });
+  project = createPromptTemplate(project, {
+    name: "Incident triage",
+    messages: [{ role: "user", content: "OLD REVISION: Triage {{incident}}." }],
+    variableDefaults: { incident: "timeout" },
+    idSuffix: "triage-use",
+    createdAt: "2026-08-06T12:00:01.000Z",
+  });
+  const firstRevisionId = project.promptTemplates[0]!.currentRevisionId;
+  project = appendPromptTemplateRevision(project, {
+    templateId: project.promptTemplates[0]!.id,
+    messages: [{ role: "user", content: "LATEST REVISION: Triage {{incident}} carefully." }],
+    variableDefaults: { incident: "latency" },
+    createdAt: "2026-08-06T12:00:02.000Z",
+    idSuffix: "triage-use-2",
+  });
+
+  await seedProfile(page, { instanceId: "profile-instance-buffered" });
+  await page.goto("/");
+  await waitForHydration(page);
+  await importProject(page, project, "Historical prompt use fixture");
+  await openMode(page, "Compose");
+  await page.getByRole("tab", { name: /Prompts/ }).click();
+
+  const editor = page.locator(".template-editor");
+  await editor.locator(".template-revision-field select").selectOption(firstRevisionId);
+  await expect(editor.getByLabel("Prompt content")).toHaveValue(
+    "OLD REVISION: Triage {{incident}}.",
+  );
+  await editor.getByRole("button", { name: "Use Revision 1" }).click();
+
+  const use = page.locator(".template-use-card");
+  await expect(use).toContainText("Revision 1");
+  await expect(use).toContainText("OLD REVISION: Triage");
+  await expect(use).not.toContainText("LATEST REVISION: Triage");
+});
+
 test("prompt drafts and checkpoint names survive library navigation", async ({ page }) => {
   let project = createProjectFile({
     name: "Saved prompt autosave fixture",
