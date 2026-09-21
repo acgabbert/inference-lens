@@ -221,6 +221,15 @@ export function ProjectTemplatesPane({
       JSON.stringify(defaults) !== JSON.stringify(viewedRevision.variableDefaults)
     ),
   );
+  const canCreateRevision = Boolean(
+    selected &&
+      viewedRevision &&
+      !readOnly &&
+      draftChanged &&
+      name.trim() &&
+      discovery.diagnostics.length === 0 &&
+      sensitiveVariables.length === 0,
+  );
 
   function persistDraft(
     nextMessages: PromptTemplateMessages,
@@ -249,6 +258,32 @@ export function ProjectTemplatesPane({
   function updateN8nSuggestionsEnabled(enabled: boolean): void {
     setN8nSuggestionsEnabled(enabled);
     setN8nPasteSuggestionsEnabled(enabled);
+  }
+
+  function createRevision(): void {
+    if (!selected || !viewedRevision || !canCreateRevision) return;
+    const saved = onSave(
+      selected.id,
+      name,
+      messages,
+      Object.fromEntries(
+        discovery.variables.flatMap(({ name }) =>
+          Object.hasOwn(defaults, name) ? [[name, defaults[name]!]] : [],
+        ),
+      ),
+      recommendedModel.trim() && recommendedConnectionRequirementId
+        ? {
+            connectionRequirementId: recommendedConnectionRequirementId,
+            model: recommendedModel.trim(),
+          }
+        : undefined,
+      revisionName,
+    );
+    setCandidateSourceRevisionId(undefined);
+    setViewedRevisionId(saved);
+    setComparedRevisionId(viewedRevision.id);
+    setRevisionName("");
+    setDiffOpen(true);
   }
 
   function openN8nPaste(target: Omit<NonNullable<typeof n8nPasteTarget>, "revisionId">): void {
@@ -419,6 +454,21 @@ export function ProjectTemplatesPane({
         className={focusMode ? "template-editor focus-mode-surface template-editor-focus-mode" : "template-editor"}
         ref={editorRef}
         role={focusMode ? "dialog" : undefined}
+        onKeyDown={(event) => {
+          if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "s") {
+            return;
+          }
+          // A clean prompt has nothing for this owner to save, so the project
+          // command remains available from the same focused control.
+          if (!draftChanged) return;
+          // Save belongs to the focused authoring surface. Letting this bubble
+          // to the route would write the project while leaving the visible
+          // working copy as a draft, which makes the command's success
+          // message promise more than the action did.
+          event.preventDefault();
+          event.stopPropagation();
+          createRevision();
+        }}
       >
         {!selected || !viewedRevision ? (
           <div className="template-empty-state">
@@ -531,41 +581,9 @@ export function ProjectTemplatesPane({
                         </label>
                         <button
                           className="button primary"
-                          disabled={
-                            !draftChanged ||
-                            !name.trim() ||
-                            discovery.diagnostics.length > 0 ||
-                            sensitiveVariables.length > 0
-                          }
+                          disabled={!canCreateRevision}
                           type="button"
-                          onClick={() => {
-                            const saved = onSave(
-                              selected.id,
-                              name,
-                              messages,
-                              Object.fromEntries(
-                                discovery.variables.flatMap(({ name }) =>
-                                  Object.hasOwn(defaults, name)
-                                    ? [[name, defaults[name]!]]
-                                    : [],
-                                ),
-                              ),
-                              recommendedModel.trim() &&
-                                recommendedConnectionRequirementId
-                                ? {
-                                    connectionRequirementId:
-                                      recommendedConnectionRequirementId,
-                                    model: recommendedModel.trim(),
-                                  }
-                                : undefined,
-                              revisionName,
-                            );
-                            setCandidateSourceRevisionId(undefined);
-                            setViewedRevisionId(saved);
-                            setComparedRevisionId(viewedRevision.id);
-                            setRevisionName("");
-                            setDiffOpen(true);
-                          }}
+                          onClick={createRevision}
                         >
                           Create revision
                         </button>
