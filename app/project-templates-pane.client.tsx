@@ -42,6 +42,7 @@ interface ProjectTemplatesPaneProps {
   connectionRequirements: ConnectionRequirement[];
   defaultConnectionRequirementId?: ConnectionRequirement["id"];
   usageCounts: ReadonlyMap<PromptTemplateId, number>;
+  sessionTemplateIds?: ReadonlySet<PromptTemplateId>;
   itemCount: number;
   persistenceStatus?: "saving" | "saved" | "session" | "error";
   n8nImportDisabledReason?: string;
@@ -54,7 +55,7 @@ interface ProjectTemplatesPaneProps {
     defaults: Record<string, string>,
     recommendedTarget?: PromptTemplateRecommendedTarget,
     revisionName?: string,
-  ): PromptTemplateRevisionId;
+  ): PromptTemplateRevisionId | undefined;
   onSaveAndInsert(
     templateId: PromptTemplateId,
     name: string,
@@ -63,7 +64,7 @@ interface ProjectTemplatesPaneProps {
     recommendedTarget: PromptTemplateRecommendedTarget | undefined,
     revisionName: string | undefined,
     itemIndex: number,
-  ): PromptTemplateRevisionId;
+  ): PromptTemplateRevisionId | undefined;
   onDraftChange(
     templateId: PromptTemplateId,
     sourceRevisionId: PromptTemplateRevisionId,
@@ -106,6 +107,7 @@ export function ProjectTemplatesPane({
   connectionRequirements = [],
   defaultConnectionRequirementId,
   usageCounts,
+  sessionTemplateIds = new Set(),
   itemCount,
   persistenceStatus = "saved",
   n8nImportDisabledReason,
@@ -189,6 +191,7 @@ export function ProjectTemplatesPane({
     ? compatibleEvaluationSuitesByTemplate.get(selected.id) ?? []
     : [];
   const archived = Boolean(selected?.archivedAt);
+  const sessionOwned = Boolean(selected && sessionTemplateIds.has(selected.id));
   const readOnly = Boolean(
     selected &&
       (archived || (viewedRevision?.id !== selected.currentRevisionId && !candidateSourceRevisionId)),
@@ -225,7 +228,7 @@ export function ProjectTemplatesPane({
     selected &&
       viewedRevision &&
       !readOnly &&
-      draftChanged &&
+      (sessionOwned || draftChanged) &&
       name.trim() &&
       discovery.diagnostics.length === 0 &&
       sensitiveVariables.length === 0,
@@ -237,6 +240,17 @@ export function ProjectTemplatesPane({
     nextRevisionName = revisionName,
   ): void {
     if (!selected || !viewedRevision) return;
+    if (sessionOwned) {
+      setCandidateSourceRevisionId(undefined);
+      onDraftChange(
+        selected.id,
+        viewedRevision.id,
+        nextMessages,
+        nextDefaults,
+        nextRevisionName,
+      );
+      return;
+    }
     const sourceRevisionId = candidateSourceRevisionId ?? viewedRevision.id;
     const variables = new Set(discoverTemplateVariables(nextMessages).variables.map(({ name }) => name));
     const filteredDefaults = Object.fromEntries(
@@ -279,6 +293,7 @@ export function ProjectTemplatesPane({
         : undefined,
       revisionName,
     );
+    if (!saved) return;
     setCandidateSourceRevisionId(undefined);
     setViewedRevisionId(saved);
     setComparedRevisionId(viewedRevision.id);
@@ -458,9 +473,10 @@ export function ProjectTemplatesPane({
           if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "s") {
             return;
           }
-          // A clean prompt has nothing for this owner to save, so the project
-          // command remains available from the same focused control.
-          if (!draftChanged) return;
+          // A clean project-backed prompt has nothing for this owner to save,
+          // so the project command remains available from the same focused
+          // control. A session prompt still needs materializing into a project.
+          if (!draftChanged && !sessionOwned) return;
           // Save belongs to the focused authoring surface. Letting this bubble
           // to the route would write the project while leaving the visible
           // working copy as a draft, which makes the command's success
@@ -507,15 +523,18 @@ export function ProjectTemplatesPane({
               <label className="template-revision-field">
                 Revision
                 <select
+                  disabled={sessionOwned}
                   value={candidateSourceRevisionId ? "draft" : viewedRevision.id}
                   onChange={(event) => event.target.value === "draft"
                     ? selectDraft()
                     : selectRevision(event.target.value as PromptTemplateRevisionId)}
                 >
-                  {(selected.draft || candidateSourceRevisionId) && (
+                  {sessionOwned ? (
+                    <option value={viewedRevision.id}>Session draft</option>
+                  ) : (selected.draft || candidateSourceRevisionId) && (
                     <option value="draft">Draft · autosaved</option>
                   )}
-                  {[...selected.revisions].reverse().map((revision) => (
+                  {!sessionOwned && [...selected.revisions].reverse().map((revision) => (
                     <option key={revision.id} value={revision.id}>
                       {promptRevisionLabel(selected, revision.id)}
                       {revision.name ? ` — ${revision.name}` : ""}
@@ -585,10 +604,12 @@ export function ProjectTemplatesPane({
                           type="button"
                           onClick={createRevision}
                         >
-                          Create revision
+                          {sessionOwned ? "Save to project" : "Create revision"}
                         </button>
                         <small aria-live="polite" className={`template-draft-status ${persistenceStatus}`}>
-                          {persistenceStatus === "saving"
+                          {sessionOwned
+                            ? "Session draft — not saved after closing."
+                            : persistenceStatus === "saving"
                             ? "Saving draft…"
                             : persistenceStatus === "error"
                               ? "Draft save failed — your changes remain in this session."
@@ -598,7 +619,7 @@ export function ProjectTemplatesPane({
                         </small>
                       </div>
                     )}
-                    {!archived && viewedRevision && onEvaluateRevision && <button
+                    {!sessionOwned && !archived && viewedRevision && onEvaluateRevision && <button
                       className="button secondary"
                       type="button"
                       onClick={() => {
@@ -608,7 +629,7 @@ export function ProjectTemplatesPane({
                     >
                       Evaluate in a suite…
                     </button>}
-                    <button
+                    {!sessionOwned && <button
                       className="button secondary"
                       type="button"
                       onClick={() => {
@@ -628,7 +649,7 @@ export function ProjectTemplatesPane({
                       }}
                     >
                       Archive
-                    </button>
+                    </button>}
                   </>
                 )}
               </div>
@@ -780,7 +801,7 @@ export function ProjectTemplatesPane({
               </aside>
             </div>
 
-            <section className="template-revision-diff" aria-label="Revision diff">
+            {!sessionOwned && <section className="template-revision-diff" aria-label="Revision diff">
               <div className="template-revision-diff-heading">
                 <button
                   aria-expanded={diffOpen}
@@ -822,7 +843,7 @@ export function ProjectTemplatesPane({
                   <RevisionDiffView diff={revisionDiff} />
                 )}
               </>}
-            </section>
+            </section>}
 
             {!archived && <footer className="template-insert-bar">
               <span className="template-insert-label">Pin into the conversation</span>
@@ -842,7 +863,7 @@ export function ProjectTemplatesPane({
               <button
                 className="button primary"
                 disabled={
-                  draftChanged && (
+                  (sessionOwned || draftChanged) && (
                     !name.trim() ||
                     discovery.diagnostics.length > 0 ||
                     sensitiveVariables.length > 0
@@ -851,7 +872,7 @@ export function ProjectTemplatesPane({
                 type="button"
                 onClick={() => {
                   const itemIndex = Math.min(insertionIndex, itemCount);
-                  if (!draftChanged) {
+                  if (!draftChanged && !sessionOwned) {
                     onInsert(selected.id, viewedRevision.id, itemIndex);
                     return;
                   }
@@ -877,6 +898,7 @@ export function ProjectTemplatesPane({
                     revisionName || undefined,
                     itemIndex,
                   );
+                  if (!saved) return;
                   setCandidateSourceRevisionId(undefined);
                   setViewedRevisionId(saved);
                   setComparedRevisionId(viewedRevision.id);
@@ -884,7 +906,9 @@ export function ProjectTemplatesPane({
                   setDiffOpen(true);
                 }}
               >
-                {draftChanged
+                {sessionOwned
+                  ? "Save to project and add"
+                  : draftChanged
                   ? "Create revision and add"
                   : viewedRevision.id === selected.currentRevisionId
                     ? "Add to conversation"

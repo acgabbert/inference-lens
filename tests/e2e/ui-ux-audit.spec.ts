@@ -32,14 +32,16 @@ async function connections(page: Page) {
   return page.getByRole("dialog", {name: "Connections", exact: true});
 }
 
-test("audit: fresh setup exposes a prompt-creation validation error", async ({page}) => {
+test("audit: fresh setup keeps a prompt draft before inference is configured", async ({page}) => {
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.goto("/");
   await expect.poll(() => page.evaluate(key => Boolean(localStorage.getItem(key)), PROFILE_STORAGE_KEY)).toBe(true);
   await capture(page, "01-first-run");
   await page.getByRole("tab", {name: /Prompts/}).click();
   await page.getByRole("button", {name: "New prompt", exact: true}).click();
-  await expect.poll(() => errors.join("\n")).toContain("Invalid Inference Lens project");
+  await expect(page.getByLabel("Prompt content")).toBeVisible();
+  await expect(page.getByText("Session draft — not saved after closing.")).toBeVisible();
+  expect(errors).toEqual([]);
   await writeFile(`${OUT}/01-fresh-error.json`, JSON.stringify(errors, null, 2));
   await capture(page, "01-fresh-prompt-error");
 });
