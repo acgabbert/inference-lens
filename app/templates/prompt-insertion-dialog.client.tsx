@@ -13,6 +13,7 @@ import { promptRevisionLabel } from "./prompt-revision-label";
 export function PromptInsertionDialog({
   templates,
   itemCount,
+  replaceEmptyDraft,
   onCancel,
   onInsert,
   onOpenPrompts,
@@ -24,7 +25,9 @@ export function PromptInsertionDialog({
     templateId: PromptTemplateId,
     revisionId: PromptTemplateRevisionId,
     itemIndex: number,
+    replaceEmptyDraft: boolean,
   ): void;
+  replaceEmptyDraft: boolean;
   onOpenPrompts(): void;
 }) {
   const [query, setQuery] = useState("");
@@ -35,7 +38,7 @@ export function PromptInsertionDialog({
   const [revisionId, setRevisionId] = useState<PromptTemplateRevisionId | undefined>(
     selectedTemplate?.currentRevisionId,
   );
-  const [itemIndex, setItemIndex] = useState(itemCount);
+  const [itemIndex, setItemIndex] = useState(replaceEmptyDraft ? 0 : itemCount);
   const visibleTemplates = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase();
     return normalized
@@ -92,7 +95,9 @@ export function PromptInsertionDialog({
         ) : (
           <>
             <div className="prompt-insertion-body">
-              <p>Choose the exact immutable revision and where it belongs in this conversation.</p>
+              <p>{replaceEmptyDraft
+                ? "The empty draft will be replaced."
+                : "Choose the exact immutable revision and where it belongs in this conversation."}</p>
               <label className="prompt-insertion-search">
                 Search prompts
                 <input
@@ -142,16 +147,16 @@ export function PromptInsertionDialog({
                           ))}
                         </select>
                       </label>
-                      <label>
-                        Position
-                        <select value={Math.min(itemIndex, itemCount)} onChange={(event) => setItemIndex(Number(event.target.value))}>
-                          {Array.from({ length: itemCount + 1 }, (_, index) => (
-                            <option key={index} value={index}>
-                              {index === 0 ? "At start" : index === itemCount ? "At end" : `After item ${index}`}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
+                      {!replaceEmptyDraft && <label>
+                          Position
+                          <select value={Math.min(itemIndex, itemCount)} onChange={(event) => setItemIndex(Number(event.target.value))}>
+                            {Array.from({ length: itemCount + 1 }, (_, index) => (
+                              <option key={index} value={index}>
+                                {index === 0 ? "At start" : index === itemCount ? "At end" : `After item ${index}`}
+                              </option>
+                            ))}
+                          </select>
+                        </label>}
                     </div>
                     <div className="prompt-insertion-preview">
                       <span className="eyebrow">Preview</span>
@@ -183,7 +188,8 @@ export function PromptInsertionDialog({
                 onClick={() => visibleSelection && revision && onInsert(
                   visibleSelection.id,
                   revision.id,
-                  Math.min(itemIndex, itemCount),
+                  replaceEmptyDraft ? 0 : Math.min(itemIndex, itemCount),
+                  replaceEmptyDraft,
                 )}
               >
                 Insert prompt

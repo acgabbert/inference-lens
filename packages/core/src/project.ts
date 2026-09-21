@@ -2771,8 +2771,24 @@ export interface InsertPromptTemplateUseOptions {
   templateRevisionId?: PromptTemplateRevisionId;
   values?: Record<string, string>;
   itemIndex?: number;
+  /** Replaces only an entirely blank, ordinary draft; otherwise inserts normally. */
+  replaceEmptyDraft?: boolean;
   idSuffix?: string;
   outputMessageIdSuffixes?: string[];
+}
+
+/** A conservative persistence boundary for replacing a composer placeholder. */
+export function isEmptyEditableConversationDraft(
+  items: readonly ProjectConversationItem[],
+): boolean {
+  return items.length > 0 && items.every((item) =>
+    item.kind === "message"
+    && item.message.role !== "tool"
+    && (!("toolCalls" in item.message) || !item.message.toolCalls?.length)
+    && item.message.content.every((part) =>
+      part.type === "text" && part.text.trim().length === 0,
+    ),
+  );
 }
 
 export function insertPromptTemplateUse(
@@ -2783,6 +2799,7 @@ export function insertPromptTemplateUse(
     templateRevisionId,
     values = {},
     itemIndex,
+    replaceEmptyDraft = false,
     idSuffix = randomUUID(),
     outputMessageIdSuffixes,
   }: InsertPromptTemplateUseOptions,
@@ -2839,7 +2856,9 @@ export function insertPromptTemplateUse(
     project,
     conversationRevisionId,
     (items) => {
-      const insertionIndex = itemIndex ?? items.length;
+      const replacesEmptyDraft = replaceEmptyDraft
+        && isEmptyEditableConversationDraft(items);
+      const insertionIndex = replacesEmptyDraft ? 0 : itemIndex ?? items.length;
       if (insertionIndex < 0 || insertionIndex > items.length) {
         throw new ProjectValidationError([
           {
@@ -2849,10 +2868,11 @@ export function insertPromptTemplateUse(
           },
         ]);
       }
+      const retainedItems = replacesEmptyDraft ? [] : items;
       return [
-        ...items.slice(0, insertionIndex),
+        ...retainedItems.slice(0, insertionIndex),
         { kind: "template-use", use },
-        ...items.slice(insertionIndex),
+        ...retainedItems.slice(insertionIndex),
       ];
     },
   );

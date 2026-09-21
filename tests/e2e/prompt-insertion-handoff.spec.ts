@@ -52,6 +52,29 @@ function fixture() {
   });
 }
 
+function emptyDraftFixture() {
+  return createPromptTemplate(
+    createProjectFile({
+      name: "Empty prompt insertion fixture",
+      request: {
+        provider: "openai-compatible",
+        endpoint: BUFFERED_FIXTURE_ENDPOINT,
+        model: "buffered-test-model",
+        messages: [{ role: "user", content: "" }],
+      },
+      idSuffix: "empty-prompt-insertion",
+      createdAt: "2026-09-21T12:00:00.000Z",
+    }),
+    {
+      name: "Fresh start",
+      messages: [{ role: "user", content: "Start from the saved prompt." }],
+      idSuffix: "fresh-start",
+      revisionIdSuffix: "fresh-start-1",
+      createdAt: "2026-09-21T12:01:00.000Z",
+    },
+  );
+}
+
 test.beforeEach(async ({ page }) => {
   await seedProfile(page);
   await page.goto("/");
@@ -98,4 +121,18 @@ test("Messages keeps the insertion action visible with a long prompt preview", a
   await page.getByRole("button", { name: "Insert saved prompt…" }).click();
 
   await expect(dialog.getByRole("button", { name: "Insert prompt", exact: true })).toBeInViewport();
+});
+
+test("Messages replaces an entirely empty draft with the saved prompt", async ({ page }) => {
+  await importProject(page, emptyDraftFixture(), "Empty prompt insertion fixture");
+  await page.getByRole("button", { name: "Insert saved prompt…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Insert saved prompt" });
+
+  await expect(dialog.getByText("The empty draft will be replaced.")).toBeVisible();
+  await dialog.getByRole("button", { name: "Insert prompt", exact: true }).click();
+
+  const items = page.locator(".message-list > article");
+  await expect(items).toHaveCount(1);
+  await expect(items.first()).toHaveClass(/template-use-card/);
+  await expect(items.first()).toContainText("Start from the saved prompt.");
 });
