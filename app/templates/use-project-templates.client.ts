@@ -21,6 +21,7 @@ import {
 import type {
   ProjectConversationItem,
   ProjectFile,
+  PromptTemplate,
   PromptTemplateMessages,
   PromptTemplateRecommendedTarget,
   TemplateRunOverrides,
@@ -94,9 +95,12 @@ export interface UseProjectTemplatesInput {
    * no state about it.
    */
   onImported(notice: ProjectTemplatesImportNotice): void;
+  onSessionPromptNeedsProject(message: string): void;
 }
 
 export interface ProjectTemplatesHandle {
+  libraryTemplates: PromptTemplate[];
+  sessionTemplateIds: ReadonlySet<PromptTemplateId>;
   templateWorkbench: ReturnType<typeof projectTemplateWorkbenchView>;
   activeProjectRevision?: ProjectFile["conversationRevisions"][number];
   activeConnectionRequirement?: ProjectFile["connectionRequirements"][number];
@@ -105,8 +109,8 @@ export interface ProjectTemplatesHandle {
   createProjectTemplate(name: string, messages: PromptTemplateMessages): PromptTemplateId;
   updateProjectTemplateDraft(templateId: PromptTemplateId, sourceRevisionId: PromptTemplateRevisionId, messages: PromptTemplateMessages, defaults: Record<string, string>, revisionName?: string): void;
   updateProjectTemplateRecommendedTarget(templateId: PromptTemplateId, recommendedTarget?: PromptTemplateRecommendedTarget): void;
-  saveProjectTemplate(templateId: PromptTemplateId, name: string, messages: PromptTemplateMessages, defaults: Record<string, string>, recommendedTarget?: PromptTemplateRecommendedTarget, revisionName?: string): PromptTemplateRevisionId;
-  saveAndInsertProjectTemplate(templateId: PromptTemplateId, name: string, messages: PromptTemplateMessages, defaults: Record<string, string>, recommendedTarget: PromptTemplateRecommendedTarget | undefined, revisionName: string | undefined, itemIndex: number): PromptTemplateRevisionId;
+  saveProjectTemplate(templateId: PromptTemplateId, name: string, messages: PromptTemplateMessages, defaults: Record<string, string>, recommendedTarget?: PromptTemplateRecommendedTarget, revisionName?: string): PromptTemplateRevisionId | undefined;
+  saveAndInsertProjectTemplate(templateId: PromptTemplateId, name: string, messages: PromptTemplateMessages, defaults: Record<string, string>, recommendedTarget: PromptTemplateRecommendedTarget | undefined, revisionName: string | undefined, itemIndex: number): PromptTemplateRevisionId | undefined;
   /** Commits only the label, without touching revision content. Returns false (and leaves the project untouched) for a blank name. */
   renameProjectTemplate(templateId: PromptTemplateId, name: string): boolean;
   archiveProjectTemplate(templateId: PromptTemplateId, onArchived?: () => void): void;
@@ -132,6 +136,7 @@ export interface ProjectTemplatesHandle {
 
 export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTemplatesHandle {
   const [templateRunOverrides, setTemplateRunOverrides] = useState<TemplateRunOverrides>({});
+  const [sessionTemplates, setSessionTemplates] = useState<PromptTemplate[]>([]);
   const executedRevisionIdsRef = useRef(new Set<ConversationRevisionId>());
   useEffect(() => {
     if (input.projectFile && !input.projectDirty) {
@@ -155,6 +160,13 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
   input.projectFile?.promptTemplates.forEach((template) => {
     templateUsageCounts.set(template.id, findPromptTemplateUsages(input.projectFile!, template.id).length);
   });
+  const sessionTemplateIds = new Set(sessionTemplates.map(({ id }) => id));
+  const libraryTemplates = [
+    ...(input.projectFile?.promptTemplates ?? []),
+    ...sessionTemplates.filter(
+      ({ id }) => !input.projectFile?.promptTemplates.some((template) => template.id === id),
+    ),
+  ];
 
   function adoptAuthoredProject(project: ProjectFile, overrides = templateRunOverrides): void {
     input.adoptProjectMutation(project);
@@ -171,10 +183,49 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
 
   function createProjectTemplate(name: string, messages: PromptTemplateMessages): PromptTemplateId {
     const suffix = randomUUID();
+    if (!input.projectFile) {
+      const id = createEntityId("template", suffix);
+      const revisionId = createEntityId("template-revision", `${suffix}-1`);
+      setSessionTemplates((current) => [
+        ...current,
+        {
+          id,
+          name,
+          currentRevisionId: revisionId,
+          revisions: [{
+            id: revisionId,
+            createdAt: new Date().toISOString(),
+            messages: structuredClone(messages),
+            variableDefaults: {},
+          }],
+        },
+      ]);
+      return id;
+    }
     adoptAuthoredProject(createPromptTemplate(input.ensureProjectDocument(), { name, messages, idSuffix: suffix, revisionIdSuffix: `${suffix}-1` }));
     return createEntityId("template", suffix);
   }
   function updateProjectTemplateDraft(templateId: PromptTemplateId, sourceRevisionId: PromptTemplateRevisionId, messages: PromptTemplateMessages, defaults: Record<string, string>, revisionName?: string): void {
+    if (sessionTemplateIds.has(templateId)) {
+      setSessionTemplates((current) => current.map((template) =>
+        template.id !== templateId
+          ? template
+          : {
+              ...template,
+              revisions: template.revisions.map((revision) =>
+                revision.id !== sourceRevisionId
+                  ? revision
+                  : {
+                      ...revision,
+                      ...(revisionName ? { name: revisionName } : { name: undefined }),
+                      messages: structuredClone(messages),
+                      variableDefaults: { ...defaults },
+                    },
+              ),
+            },
+      ));
+      return;
+    }
     adoptAuthoredProject(updatePromptTemplateDraft(input.ensureProjectDocument(), {
       templateId,
       sourceRevisionId,
@@ -184,16 +235,119 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     }));
   }
   function updateProjectTemplateRecommendedTarget(templateId: PromptTemplateId, recommendedTarget?: PromptTemplateRecommendedTarget): void {
+    if (sessionTemplateIds.has(templateId)) {
+      setSessionTemplates((current) => current.map((template) =>
+        template.id === templateId
+          ? {
+              ...template,
+              ...(recommendedTarget
+                ? { recommendedTarget }
+                : { recommendedTarget: undefined }),
+            }
+          : template,
+      ));
+      return;
+    }
     adoptAuthoredProject(setPromptTemplateRecommendedTarget(input.ensureProjectDocument(), templateId, recommendedTarget));
   }
-  function saveProjectTemplate(templateId: PromptTemplateId, name: string, messages: PromptTemplateMessages, defaults: Record<string, string>, recommendedTarget?: PromptTemplateRecommendedTarget, revisionName?: string): PromptTemplateRevisionId {
+  function reportSessionProjectRequirement(): undefined {
+    const message = "Set a valid endpoint and model to save this prompt to a project. Your session draft is still here.";
+    input.markProjectError(message);
+    input.onSessionPromptNeedsProject(message);
+    return undefined;
+  }
+  function materializeSessionTemplate(
+    templateId: PromptTemplateId,
+    name: string,
+    messages: PromptTemplateMessages,
+    defaults: Record<string, string>,
+    recommendedTarget?: PromptTemplateRecommendedTarget,
+    revisionName?: string,
+  ): { project: ProjectFile; revisionId: PromptTemplateRevisionId } | undefined {
+    const sessionTemplate = sessionTemplates.find(({ id }) => id === templateId);
+    if (!sessionTemplate) return undefined;
+    let project: ProjectFile;
+    try {
+      project = input.ensureProjectDocument();
+    } catch {
+      return reportSessionProjectRequirement();
+    }
+    const suffix = templateId.replace(/^template_/, "");
+    const revisionSuffix = sessionTemplate.currentRevisionId.replace(/^template-revision_/, "");
+    project = createPromptTemplate(project, {
+      name,
+      messages,
+      variableDefaults: defaults,
+      recommendedTarget,
+      idSuffix: suffix,
+      revisionIdSuffix: revisionSuffix,
+    });
+    if (revisionName) {
+      project = {
+        ...project,
+        promptTemplates: project.promptTemplates.map((template) =>
+          template.id === templateId
+            ? {
+                ...template,
+                revisions: template.revisions.map((revision) =>
+                  revision.id === sessionTemplate.currentRevisionId
+                    ? { ...revision, name: revisionName }
+                    : revision,
+                ),
+              }
+            : template,
+        ),
+      };
+    }
+    return { project, revisionId: sessionTemplate.currentRevisionId };
+  }
+  function finishSessionTemplate(templateId: PromptTemplateId): void {
+    setSessionTemplates((current) => current.filter(({ id }) => id !== templateId));
+  }
+  function saveProjectTemplate(templateId: PromptTemplateId, name: string, messages: PromptTemplateMessages, defaults: Record<string, string>, recommendedTarget?: PromptTemplateRecommendedTarget, revisionName?: string): PromptTemplateRevisionId | undefined {
+    if (sessionTemplateIds.has(templateId)) {
+      const materialized = materializeSessionTemplate(
+        templateId,
+        name,
+        messages,
+        defaults,
+        recommendedTarget,
+        revisionName,
+      );
+      if (!materialized) return undefined;
+      adoptAuthoredProject(materialized.project);
+      finishSessionTemplate(templateId);
+      return materialized.revisionId;
+    }
     let next = renamePromptTemplate(input.ensureProjectDocument(), templateId, name);
     next = setPromptTemplateRecommendedTarget(next, templateId, recommendedTarget);
     next = appendPromptTemplateRevision(next, { templateId, messages, variableDefaults: defaults, name: revisionName });
     adoptAuthoredProject(next);
     return next.promptTemplates.find(({ id }) => id === templateId)!.currentRevisionId;
   }
-  function saveAndInsertProjectTemplate(templateId: PromptTemplateId, name: string, messages: PromptTemplateMessages, defaults: Record<string, string>, recommendedTarget: PromptTemplateRecommendedTarget | undefined, revisionName: string | undefined, itemIndex: number): PromptTemplateRevisionId {
+  function saveAndInsertProjectTemplate(templateId: PromptTemplateId, name: string, messages: PromptTemplateMessages, defaults: Record<string, string>, recommendedTarget: PromptTemplateRecommendedTarget | undefined, revisionName: string | undefined, itemIndex: number): PromptTemplateRevisionId | undefined {
+    if (sessionTemplateIds.has(templateId)) {
+      const materialized = materializeSessionTemplate(
+        templateId,
+        name,
+        messages,
+        defaults,
+        recommendedTarget,
+        revisionName,
+      );
+      if (!materialized) return undefined;
+      const revision = materialized.project.conversationRevisions.find(
+        ({ id }) => id === materialized.project.defaults.conversationRevisionId,
+      )!;
+      const next = insertPromptTemplateUse(materialized.project, {
+        conversationRevisionId: revision.id,
+        templateId,
+        itemIndex,
+      });
+      adoptAuthoredProject(next);
+      finishSessionTemplate(templateId);
+      return materialized.revisionId;
+    }
     const { project, revisionId: conversationRevisionId } = projectForUseMutation();
     let next = renamePromptTemplate(project, templateId, name);
     next = setPromptTemplateRecommendedTarget(next, templateId, recommendedTarget);
@@ -220,6 +374,12 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
   function renameProjectTemplate(templateId: PromptTemplateId, name: string): boolean {
     const trimmed = name.trim();
     if (!trimmed) return false;
+    if (sessionTemplateIds.has(templateId)) {
+      setSessionTemplates((current) => current.map((template) =>
+        template.id === templateId ? { ...template, name: trimmed } : template,
+      ));
+      return true;
+    }
     const project = input.ensureProjectDocument();
     const template = project.promptTemplates.find(({ id }) => id === templateId);
     if (!template || template.name === trimmed) return true;
@@ -350,5 +510,5 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     const receipt = imported.project.externalImports.find(({ id }) => id === imported.externalImportId);
     input.onImported({ name: candidate.invocation.name, variableCount: receipt?.projection.kind === "prompt-template" ? receipt.projection.variables.length : 0, template: mode === "reusable-template" });
   }
-  return { templateWorkbench, activeProjectRevision, activeConnectionRequirement, templateUsageCounts, templateRunOverrides, createProjectTemplate, updateProjectTemplateDraft, updateProjectTemplateRecommendedTarget, saveProjectTemplate, saveAndInsertProjectTemplate, renameProjectTemplate, archiveProjectTemplate, restoreProjectTemplate, insertProjectTemplate, updateTemplateUseValues, saveTemplateUseRunValue, updateTemplateUseOverride, updateTemplateUseToLatestRevision, detachTemplateUse, removeTemplateUse, addComposerMessage, updateComposerMessage, removeComposerMessage, importN8nPrompt, clearTransientOverrides: () => setTemplateRunOverrides({}), markExecutedRevision: (id) => executedRevisionIdsRef.current.add(id) };
+  return { libraryTemplates, sessionTemplateIds, templateWorkbench, activeProjectRevision, activeConnectionRequirement, templateUsageCounts, templateRunOverrides, createProjectTemplate, updateProjectTemplateDraft, updateProjectTemplateRecommendedTarget, saveProjectTemplate, saveAndInsertProjectTemplate, renameProjectTemplate, archiveProjectTemplate, restoreProjectTemplate, insertProjectTemplate, updateTemplateUseValues, saveTemplateUseRunValue, updateTemplateUseOverride, updateTemplateUseToLatestRevision, detachTemplateUse, removeTemplateUse, addComposerMessage, updateComposerMessage, removeComposerMessage, importN8nPrompt, clearTransientOverrides: () => setTemplateRunOverrides({}), markExecutedRevision: (id) => executedRevisionIdsRef.current.add(id) };
 }

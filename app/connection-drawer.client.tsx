@@ -73,6 +73,7 @@ interface ConnectionDrawerProps {
   onUpdateProjectEndpoint(requirementId: string): void;
   pendingDestination?: ReadinessDestination;
   onDestinationHandled(): void;
+  authoringNotice?: string;
 }
 
 /**
@@ -175,6 +176,7 @@ export function ConnectionDrawer({
   onUpdateProjectEndpoint,
   pendingDestination,
   onDestinationHandled,
+  authoringNotice,
 }: ConnectionDrawerProps) {
   const profileRef = useRef<HTMLSelectElement>(null);
   const endpointRef = useRef<HTMLInputElement>(null);
@@ -223,6 +225,11 @@ export function ConnectionDrawer({
       onClose={onClose}
     >
       <div className="configuration">
+        {authoringNotice && (
+          <div className="template-warning" role="status">
+            {authoringNotice}
+          </div>
+        )}
         <div className="section-heading">
           <span>Connection</span>
           <span className="provider-pill">OpenAI compatible</span>

@@ -284,6 +284,8 @@ function HomeContent() {
   const [projectCreationMode, setProjectCreationMode] =
     useState<"new" | "save" | "save-before-switch">();
   const [connectionDrawerOpen, setConnectionDrawerOpen] = useState(false);
+  const [sessionPromptProjectNotice, setSessionPromptProjectNotice] =
+    useState<string>();
   const [pendingReadinessDestination, setPendingReadinessDestination] =
     useState<ReadinessDestination>();
   const [runHistoryOpen, setRunHistoryOpen] = useState(false);
@@ -660,6 +662,14 @@ function HomeContent() {
               },
             }
           : {}),
+      });
+    },
+    onSessionPromptNeedsProject(message) {
+      setSessionPromptProjectNotice(message);
+      setConnectionDrawerOpen(true);
+      setPendingReadinessDestination({
+        surface: "connections",
+        control: "endpoint",
       });
     },
   });
@@ -1730,7 +1740,10 @@ function HomeContent() {
 
       <ConnectionDrawer
         open={connectionDrawerOpen}
-        onClose={() => setConnectionDrawerOpen(false)}
+        onClose={() => {
+          setConnectionDrawerOpen(false);
+          setSessionPromptProjectNotice(undefined);
+        }}
         profiles={profiles}
         activeProfile={activeProfile}
         capabilities={activeCapabilities}
@@ -1754,6 +1767,9 @@ function HomeContent() {
         onUpdateProjectEndpoint={confirmUpdateProjectEndpoint}
         pendingDestination={pendingReadinessDestination}
         onDestinationHandled={() => setPendingReadinessDestination(undefined)}
+        {...(sessionPromptProjectNotice
+          ? { authoringNotice: sessionPromptProjectNotice }
+          : {})}
       />
 
       <RunHistoryDrawer
