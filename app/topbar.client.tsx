@@ -140,7 +140,7 @@ export function Topbar({
               disabled={runDisabled}
               onClick={onRun}
             >
-              Run request <span className="shortcut">⌘↵</span>
+              Run current conversation <span className="shortcut">⌘↵</span>
             </button>
           )
         ) : mode === "evaluations" ? (

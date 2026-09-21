@@ -75,8 +75,8 @@ test("renders the buffered fixture transcript and exact token totals", async ({ 
   await page.goto("/");
   await waitForHydration(page);
 
-  await expect(page.getByRole("button", { name: /run request/i })).toBeEnabled();
-  await page.getByRole("button", { name: /run request/i }).click();
+  await expect(page.getByRole("button", { name: /run current conversation/i })).toBeEnabled();
+  await page.getByRole("button", { name: /run current conversation/i }).click();
 
   const response = page.locator(".response-pane");
   await expect(response).toContainText("Buffered fixture response: 2 + 2 = 4.");
@@ -99,7 +99,7 @@ test("retires previous run details when a repeated experiment starts", async ({ 
   await page.goto("/");
   await waitForHydration(page);
 
-  await page.getByRole("button", { name: /run request/i }).click();
+  await page.getByRole("button", { name: /run current conversation/i }).click();
   await expect(page.locator(".response-pane")).toContainText(
     "Buffered fixture response: 2 + 2 = 4.",
   );
@@ -287,7 +287,7 @@ test("uses peer request, response, and inspect views on a narrow screen", async 
   await expect(page.locator(".response-view")).toBeVisible();
   await expect(page.locator(".inspect-view")).toBeHidden();
 
-  await page.getByRole("button", { name: /run request/i }).click();
+  await page.getByRole("button", { name: /run current conversation/i }).click();
   await expect(page.locator(".response-pane")).toContainText(
     "Buffered fixture response: 2 + 2 = 4.",
   );

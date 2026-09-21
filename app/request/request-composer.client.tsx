@@ -18,6 +18,7 @@ import type {
 import type { ProjectTemplatesHandle } from "../templates/use-project-templates.client";
 import type { CommandToolsHandle } from "../tools/use-command-tools.client";
 import { StatusChip } from "../notifications/status-chip.client";
+import { PromptInsertionDialog } from "../templates/prompt-insertion-dialog.client";
 import { RequestSettings } from "./request-settings.client";
 import type { RequestSettingsProps } from "./request-settings.client";
 
@@ -133,6 +134,8 @@ export function RequestComposer({
   const [requestPreviewView, setRequestPreviewView] = useState<"resolved" | "raw">("resolved");
   const [focusMode, setFocusMode] = useState(false);
   const [focusModeTab, setFocusModeTab] = useState<RequestTab>("messages");
+  const [promptInsertionOpen, setPromptInsertionOpen] = useState(false);
+  const [pendingInsertedIndex, setPendingInsertedIndex] = useState<number>();
   const compatibleEvaluationSuitesByTemplate = useMemo(() => {
     const result = new Map<PromptTemplateId, CompatibleEvaluationSuite[]>();
     if (!project) return result;
@@ -177,6 +180,22 @@ export function RequestComposer({
   }
 
   const requestFocusMode = focusMode && activeTab === "messages";
+
+  useEffect(() => {
+    if (pendingInsertedIndex === undefined) return;
+    const frame = requestAnimationFrame(() => {
+      const inserted = composerRef.current?.querySelector(".message-list")?.children
+        .item(pendingInsertedIndex) as HTMLElement | null;
+      if (!inserted) return;
+      const target = inserted.matches(".unresolved")
+        ? inserted.querySelector<HTMLTextAreaElement>('textarea[data-template-variable]') ?? inserted
+        : inserted;
+      target.scrollIntoView({ block: "center" });
+      target.focus();
+      setPendingInsertedIndex(undefined);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [pendingInsertedIndex, templates.templateWorkbench.composerItems]);
 
   const { close: closeFocusMode } = useFocusMode({
     open: requestFocusMode,
@@ -331,9 +350,14 @@ export function RequestComposer({
               </p>
             </div>
             <div className="request-composer-toolbar">
-              <button className="button secondary" type="button" onClick={templates.addComposerMessage}>
-                + Add message
-              </button>
+              <div className="request-composer-edit-actions">
+                <button className="button secondary" type="button" onClick={templates.addComposerMessage}>
+                  + Add message
+                </button>
+                <button className="button secondary" type="button" onClick={() => setPromptInsertionOpen(true)}>
+                  Insert saved prompt…
+                </button>
+              </div>
               <div className="request-composer-run-actions">
                 <button
                   className="button secondary"
@@ -395,6 +419,23 @@ export function RequestComposer({
           <ToolsPane tools={requestDraft.tools} requestTools={requestDraft.requestTools} enabledToolIds={requestDraft.enabledToolIds} activeProfileName={activeProfile.name} toolsEnabled={settings.toolsEnabled} onOpenLibrary={onOpenToolLibrary} onOpenConnectionSettings={onOpenConnectionSettings} onAddTool={requestDraft.addTool} onRemoveTool={requestDraft.removeTool} onMoveTool={requestDraft.moveTool} onUpdateTool={requestDraft.updateTool} onSetToolEnabled={requestDraft.setToolEnabled} mockForTool={requestDraft.mockForTool} onUpdateToolMock={requestDraft.updateToolMock} onRemoveRequestTool={requestDraft.removeRequestTool} commandTools={commandTools} />
         )}
       </div>
+      {promptInsertionOpen && (
+        <PromptInsertionDialog
+          templates={libraryTemplates.filter(({ archivedAt, id }) =>
+            !archivedAt && !sessionTemplateIds.has(id))}
+          itemCount={templates.activeProjectRevision?.items.length ?? requestDraft.messages.length}
+          onCancel={() => setPromptInsertionOpen(false)}
+          onOpenPrompts={() => {
+            setPromptInsertionOpen(false);
+            setTab("templates");
+          }}
+          onInsert={(templateId, revisionId, itemIndex) => {
+            templates.insertProjectTemplate(templateId, revisionId, itemIndex);
+            setPromptInsertionOpen(false);
+            setPendingInsertedIndex(itemIndex);
+          }}
+        />
+      )}
     </section>
   );
 }

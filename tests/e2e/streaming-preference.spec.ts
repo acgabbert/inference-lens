@@ -48,7 +48,7 @@ test("a user change wins over a pending streaming preference load", async ({ pag
   const outgoing = page.waitForRequest((request) =>
     new URL(request.url()).pathname === "/api/inference",
   );
-  await page.getByRole("button", { name: /run request/i }).click();
+  await page.getByRole("button", { name: /run current conversation/i }).click();
   const body = (await outgoing).postDataJSON() as {
     execution: { input: { responseMode: string } };
   };

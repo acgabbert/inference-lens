@@ -136,8 +136,8 @@ test("adopting a mapped project activates the exact mapped profile instance", as
   await expect(page.getByLabel(/^Run target:/)).toHaveAccessibleName(
     /Buffered mapped fixture/,
   );
-  await expect(page.getByRole("button", { name: /run request/i })).toBeEnabled();
-  await page.getByRole("button", { name: /run request/i }).click();
+  await expect(page.getByRole("button", { name: /run current conversation/i })).toBeEnabled();
+  await page.getByRole("button", { name: /run current conversation/i }).click();
   await expect(page.locator(".response-pane")).toContainText(
     "Buffered fixture response: 2 + 2 = 4.",
   );

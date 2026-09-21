@@ -53,7 +53,7 @@ test("parameters reach the provider in the authored order, not alphabetically", 
   await addToolWithParameters(page, ["zulu", "alpha"]);
   await page.getByLabel("Function name").first().fill("ordered_tool");
 
-  await page.getByRole("button", { name: /run request/i }).click();
+  await page.getByRole("button", { name: /run current conversation/i }).click();
   await expect(page.locator(".response-pane")).toContainText(
     "Buffered fixture response",
   );
@@ -78,7 +78,7 @@ test("moving a parameter up changes the order sent to the provider", async ({
   const names = page.locator(".tool-editor .schema-property input").first();
   await expect(names).toHaveValue("second_param");
 
-  await page.getByRole("button", { name: /run request/i }).click();
+  await page.getByRole("button", { name: /run current conversation/i }).click();
   await expect(page.locator(".response-pane")).toContainText(
     "Buffered fixture response",
   );
@@ -110,7 +110,7 @@ test("moving a tool down changes its position in the tools array sent", async ({
     page.locator(".tool-editor").nth(0).getByLabel("Function name"),
   ).toHaveValue("tool_late");
 
-  await page.getByRole("button", { name: /run request/i }).click();
+  await page.getByRole("button", { name: /run current conversation/i }).click();
   await expect(page.locator(".response-pane")).toContainText(
     "Buffered fixture response",
   );

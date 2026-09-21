@@ -17,7 +17,7 @@ test("the sent request can be copied for comparison against another client", asy
   await page.goto("/");
   await waitForHydration(page);
 
-  await page.getByRole("button", { name: /run request/i }).click();
+  await page.getByRole("button", { name: /run current conversation/i }).click();
   await expect(page.locator(".response-pane")).toContainText(
     "Buffered fixture response",
   );

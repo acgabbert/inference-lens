@@ -177,7 +177,7 @@ test("the topbar hides ordinary run actions outside the Compose mode", async () 
   // One primary action, and it is this mode's own. Compose's run controls and
   // the lifecycle actions that used to crowd beside them are all gone.
   assert.match(html, /Start evaluation…/);
-  assert.doesNotMatch(html, /Run request|Repeat…|Run new request|Continue run|Retry|Discard failed run/);
+  assert.doesNotMatch(html, /Run current conversation|Repeat…|Run new request|Continue run|Retry|Discard failed run/);
 });
 
 test("the topbar target control names the connection and states no model", async () => {

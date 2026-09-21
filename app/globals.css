@@ -429,6 +429,7 @@ pre,
 .evaluation-case-check-count,
 .evaluation-regex-dialect > summary > span,
 .saved-prompt-list legend,
+.prompt-insertion-preview strong,
 .evaluation-preview-case,
 .evaluation-preflight-region h5,
 .tool-call-provenance,
@@ -5223,6 +5224,13 @@ main {
   gap: var(--space-sm) var(--space-lg);
 }
 
+.request-composer-edit-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
 .request-composer-run-actions {
   display: flex;
   align-items: center;
@@ -7241,6 +7249,98 @@ main {
   width: min(680px, 100%);
   max-height: min(86vh, 760px);
   overflow-y: auto;
+}
+
+.prompt-insertion-dialog {
+  width: min(780px, 100%);
+  max-height: min(88vh, 820px);
+  overflow-y: auto;
+}
+
+.prompt-insertion-search {
+  display: grid;
+  gap: var(--space-2xs);
+  margin-top: var(--space-lg);
+}
+
+.prompt-insertion-workspace {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.72fr) minmax(0, 1.28fr);
+  gap: var(--space-md);
+  margin-top: var(--space-md);
+}
+
+.prompt-insertion-workspace .saved-prompt-list {
+  align-content: start;
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+.prompt-insertion-selection {
+  display: grid;
+  align-content: start;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.prompt-insertion-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(128px, 0.55fr);
+  gap: var(--space-sm);
+}
+
+.prompt-insertion-controls label {
+  min-width: 0;
+}
+
+.prompt-insertion-controls select {
+  width: 100%;
+}
+
+.prompt-insertion-preview {
+  display: grid;
+  gap: var(--space-xs);
+  padding: var(--space-md);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+.prompt-insertion-preview article {
+  min-width: 0;
+}
+
+.prompt-insertion-preview article + article {
+  padding-top: var(--space-xs);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.prompt-insertion-preview strong {
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.prompt-insertion-preview pre {
+  margin: var(--space-3xs) 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.prompt-insertion-variable-summary {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+@media (max-width: 640px) {
+  .prompt-insertion-workspace,
+  .prompt-insertion-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .prompt-insertion-workspace .saved-prompt-list {
+    max-height: 180px;
+  }
 }
 
 .saved-prompt-list {

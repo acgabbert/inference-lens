@@ -57,7 +57,7 @@ test("audit: copying a library tool to the project also attaches it", async ({pa
   await capture(page,"13-library-copy");
   await dialog.getByRole("button",{name:"Close",exact:true}).click();
   await expect(page.getByLabel("Attach to requests")).toBeChecked();
-  await expect(page.getByRole("button",{name:/^Run request/})).toBeDisabled();
+  await expect(page.getByRole("button",{name:/^Run current conversation/})).toBeDisabled();
   await capture(page,"13-copy-attached-and-blocked");
 });
 
@@ -67,7 +67,7 @@ test("audit: choosing a second connection leaves the project mapped to the first
   await page.addInitScript(({key, projectId, requirementId}) => localStorage.setItem(key, JSON.stringify({[projectId]: {[requirementId]: {profileId:"a", profileInstanceId:"ia"}}})), {key: PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY, projectId: project.projectId, requirementId: project.defaults.target.connectionRequirementId});
   await page.goto("/"); await waitForHydration(page, "Local model A"); await importProject(page, project, project.name);
   await page.getByLabel(/^Run target:/).click(); await page.getByRole("button", {name: /Local model B/}).click();
-  await expect(page.getByRole("button", {name: /^Run request/})).toBeDisabled();
+  await expect(page.getByRole("button", {name: /^Run current conversation/})).toBeDisabled();
   await capture(page, "05-selected-but-blocked");
   await connections(page); await capture(page, "05-connections-and-mappings");
 });
@@ -79,7 +79,7 @@ test("audit: review tool configuration and manual continuation with a mock", asy
   await page.getByRole("tab", {name: /Tools/}).click(); await capture(page, "06-tool-configuration");
   await page.getByRole("button", {name: "Browse local library"}).click(); await capture(page, "06-tool-library");
   await page.getByRole("dialog", {name: "Local tool library"}).getByRole("button", {name: "Close", exact: true}).click();
-  await page.getByRole("button", {name: /^Run request/}).click();
+  await page.getByRole("button", {name: /^Run current conversation/}).click();
   await expect(page.locator(".tool-call-card textarea")).toHaveValue("72 degrees and clear");
   await capture(page, "06-tool-paused-with-mock");
   await page.getByRole("button", {name: "Supply results and continue"}).click();
