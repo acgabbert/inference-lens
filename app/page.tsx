@@ -1213,6 +1213,10 @@ function HomeContent() {
     runState &&
       ["completed", "cancelled", "failed"].includes(runState.status.kind),
   );
+  const runHistoryBlocked =
+    (Boolean(runState) && !runReachedTerminalStatus) ||
+    repeatedExperiment.isRunning ||
+    evaluationExecution.isRunning;
   const requestPreview = templateRequestPreview();
   const composerItems = projectTemplates.templateWorkbench.composerItems;
   const readiness = runReadiness({
@@ -1703,7 +1707,7 @@ function HomeContent() {
         hasDiagnosticCapture={hasDiagnosticCapture}
         hasRunTrace={runReachedTerminalStatus}
         hasProjectWorkspace={Boolean(projectWorkspace)}
-        runHistoryBlocked={(Boolean(runState) && !runReachedTerminalStatus) || repeatedExperiment.isRunning || evaluationExecution.isRunning}
+        runHistoryBlocked={runHistoryBlocked}
         isRequestActive={isRequestActive}
         isExperimentActive={repeatedExperiment.isRunning || evaluationExecution.isRunning}
         mode={mode}
@@ -1992,6 +1996,30 @@ function HomeContent() {
               {traceSurface}
             </>
           }
+          {...(runState && runState.status.kind !== "not_started"
+            ? {
+                currentRequest: {
+                  onOpen: () => {
+                    setMode("compose");
+                    setWorkbenchView("response");
+                  },
+                },
+              }
+            : {})}
+          {...(projectWorkspace
+            ? {
+                savedHistory: {
+                  disabled: runHistoryBlocked,
+                  ...(runHistoryBlocked
+                    ? {
+                        disabledReason:
+                          "Finish or stop the current run before opening history.",
+                      }
+                    : {}),
+                  onOpen: () => setRunHistoryOpen(true),
+                },
+              }
+            : {})}
           onStartSomething={() => setMode("evaluations")}
         />
       )}
