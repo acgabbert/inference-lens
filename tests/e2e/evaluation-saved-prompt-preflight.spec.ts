@@ -271,9 +271,9 @@ test("the resolved-input regions stay inside a phone viewport", async ({ page })
   await page.getByRole("button", { name: "+ Add case", exact: true }).click();
   await page.getByLabel("Untitled case topic").fill("database migrations");
 
-  // On a phone the Evaluations mode stacks: the provider input reads below the
-  // editor rather than borrowing a workbench tab from Compose, so it is reached
-  // by scrolling to it and not by a pane switch that no longer exists.
+  // Constrained widths prioritize editing. Opening provider input is explicit;
+  // once open it stacks below the editor and remains inside the viewport.
+  await page.getByRole("button", { name: "Show provider input" }).click();
   const previewPane = page.getByRole("complementary", { name: "Provider input" });
   const preview = page.locator(".evaluation-preview-scroll");
   await previewPane.scrollIntoViewIfNeeded();

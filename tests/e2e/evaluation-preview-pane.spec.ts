@@ -122,6 +122,24 @@ test("the evaluation mode shows the focused case's provider input while authorin
   await expect(preview).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
 });
 
+test("a constrained desktop opens on editing and preserves an explicit preview choice", async ({ page }) => {
+  await openEvaluations(page, 880);
+
+  const editor = page.locator(".evaluation-editor");
+  const previewPane = page.getByRole("complementary", { name: "Provider input" });
+  await expect(editor.getByLabel("migrations topic")).toBeVisible();
+  await expect(previewPane).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Show provider input" })).toBeVisible();
+
+  await editor.getByLabel("migrations topic").fill("schema drift");
+  await page.getByRole("button", { name: "Show provider input" }).click();
+  await expect(previewPane).toContainText("Explain schema drift to engineers.");
+
+  await openMode(page, "Compose");
+  await openMode(page, "Evaluations");
+  await expect(previewPane).toContainText("Explain schema drift to engineers.");
+});
+
 test("editing a case input updates the resolved conversation in the pane", async ({ page }) => {
   await openEvaluations(page);
   const preview = page.locator(".evaluation-preview-scroll");
