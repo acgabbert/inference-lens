@@ -247,7 +247,7 @@ export function runReadiness(
     return {
       blocked: true,
       headline: `"${profile}" has no model selected`,
-      detail: "Choose one in Connections — the picker lists what this provider serves.",
+      detail: "Choose one in Messages — the picker lists what this provider serves.",
       explanation:
         "A profile prefilled from a server's configuration names the provider but not always a model, and guessing one would send a name the provider has probably never heard of.",
       summary: "Choose a model for this profile before running.",

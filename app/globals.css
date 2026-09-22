@@ -5923,6 +5923,14 @@ main {
   letter-spacing: 0.06em;
 }
 
+.menu-context {
+  margin: 0;
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  line-height: var(--leading-normal);
+}
+
 .profile-menu-list {
   max-height: 240px;
   overflow: auto;

@@ -9,6 +9,8 @@ import type { AppMode, ModeIndicator } from "./modes/app-mode";
 interface TopbarProps {
   profiles: StoredInferenceProfile[];
   activeProfile: StoredInferenceProfile;
+  /** Portable requirement this chooser remaps while a project is open. */
+  projectConnectionName?: string;
   hasCredential: boolean;
   projectName?: string;
   projectDirty: boolean;
@@ -66,7 +68,7 @@ function closeContainingMenu(element: HTMLElement): void {
 
 /** Application menus and the current run controls. */
 export function Topbar({
-  profiles, activeProfile, hasCredential, projectName, projectDirty,
+  profiles, activeProfile, projectConnectionName, hasCredential, projectName, projectDirty,
   projectStorageState,
   folderAccessAvailable, hasDiagnosticCapture, isRequestActive, isExperimentActive, awaitingToolResults,
   mode, onModeChange, modeIndicators,
@@ -88,6 +90,10 @@ export function Topbar({
   // The dot's meaning is credential state, which no one can read off a colour.
   // It travels in the accessible name so the control is not visual-only.
   const credentialState = hasCredential ? "credential set" : "no credential";
+  const targetCaption = projectConnectionName ? "Project connection" : "Connection";
+  const targetAccessibleName = projectConnectionName
+    ? `${targetCaption}: ${profileName}`
+    : `Run target: ${profileName}, ${credentialState}`;
   const projectStorageLabel = !projectStorageState
     ? undefined
     : projectStorageState.kind === "session"
@@ -115,8 +121,8 @@ export function Topbar({
           The static `Connection` caption is what makes the profile name read as
           a chosen value rather than a heading.
         */}
-        <details className="header-menu target-menu"><summary aria-label={`Run target: ${profileName}, ${credentialState}`} className="target-control" title={profileName}><span className={hasCredential ? "connection-indicator ready" : "connection-indicator"} aria-hidden="true" /><span className="target-copy"><small className="target-caption" aria-hidden="true">Connection</small><strong>{profileName}</strong></span><span className="menu-chevron" aria-hidden="true">⌄</span></summary>
-          <div className="menu-popover target-popover"><div className="menu-heading"><span>Connection</span><small>{profileName}</small></div><div className="profile-menu-list">{profiles.map((profile) => <button className={profile.id === activeProfile.id ? "menu-option selected" : "menu-option"} key={profile.id} type="button" onClick={(event) => { onChooseProfile(profile.id); closeContainingMenu(event.currentTarget); }}><span><strong>{profile.name || "Untitled profile"}</strong><small>{profile.endpoint}</small></span>{profile.id === activeProfile.id && <span aria-hidden="true">✓</span>}</button>)}</div><button className="menu-action" type="button" onClick={(event) => { onOpenConnections(); closeContainingMenu(event.currentTarget); }}>Manage connections<span aria-hidden="true">→</span></button></div>
+        <details className="header-menu target-menu"><summary aria-label={targetAccessibleName} className="target-control" title={profileName}><span className={projectConnectionName || hasCredential ? "connection-indicator ready" : "connection-indicator"} aria-hidden="true" /><span className="target-copy"><small className="target-caption" aria-hidden="true">{targetCaption}</small><strong>{profileName}</strong></span><span className="menu-chevron" aria-hidden="true">⌄</span></summary>
+          <div className="menu-popover target-popover"><div className="menu-heading"><span>{targetCaption}</span><small>{projectConnectionName ?? profileName}</small></div>{projectConnectionName && <p className="menu-context">Choose the local profile used by {projectConnectionName} in this project, including evaluations that share it.</p>}<div className="profile-menu-list">{profiles.map((profile) => <button aria-label={projectConnectionName ? `Use ${profile.name || "Untitled profile"} for ${projectConnectionName}` : undefined} className={profile.id === activeProfile.id ? "menu-option selected" : "menu-option"} key={profile.id} type="button" onClick={(event) => { onChooseProfile(profile.id); closeContainingMenu(event.currentTarget); }}><span><strong>{profile.name || "Untitled profile"}</strong><small>{profile.endpoint}</small></span>{profile.id === activeProfile.id && <span aria-hidden="true">✓</span>}</button>)}</div><button className="menu-action" type="button" onClick={(event) => { onOpenConnections(); closeContainingMenu(event.currentTarget); }}>Manage connections<span aria-hidden="true">→</span></button></div>
         </details>
         <details className="header-menu project-menu"><summary aria-label="Project menu" className="button secondary"><span className="project-menu-label">Project</span> <span className="menu-chevron">⌄</span></summary><div className="menu-popover project-popover">
           <div className="menu-group-heading">Project</div>

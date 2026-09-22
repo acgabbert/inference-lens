@@ -256,6 +256,7 @@ function HomeContent() {
     capabilities: activeCapabilities,
     selectProfile,
     addProfile,
+    updateProfile,
     updateActiveProfile,
     activeProfileDeletionRefusal,
     removeActiveProfile,
@@ -403,6 +404,23 @@ function HomeContent() {
     projectErrorKind,
     mappedProfileIds,
   } = project;
+  const requestConnectionRequirement = projectFile?.connectionRequirements.find(
+    ({ id }) => id === projectFile.defaults.target.connectionRequirementId,
+  );
+  const mappedRequestProfile = requestConnectionRequirement
+    ? profiles.find(
+        ({ id }) => id === mappedProfileIds[requestConnectionRequirement.id],
+      )
+    : undefined;
+  // A project's device-local mapping owns execution. The active profile only
+  // owns which definition the Connections drawer is editing.
+  const requestProfile = projectFile
+    ? mappedRequestProfile ?? activeProfile
+    : activeProfile;
+  const requestCapabilities = resolveProviderCapabilities(
+    requestProfile.provider,
+    requestProfile.capabilityOverrides,
+  );
   const runHistory = useProjectRunHistory(
     projectWorkspace,
     runHistoryOpen || suiteHistoryRequested,
@@ -455,7 +473,8 @@ function HomeContent() {
   const commandTools = useCommandTools();
   const runSession = useRunSession({
     transport: inferenceTransport,
-    prepareCredential: credential.prepare,
+    prepareCredential: () =>
+      credential.prepareForProfile(requestProfile.id, requestProfile.endpoint),
     tools,
     bindingForTool: (toolId) =>
       toolBindingFor(toolId, mockForTool(toolId), commandTools.bindingFor(toolId)),
@@ -477,7 +496,8 @@ function HomeContent() {
     hasDiagnosticCapture, visibleBranchProvenance, parentTrace, transcript } = runSession;
   const repeatedExperiment = useRepeatedExperimentSession({
     transport: inferenceTransport,
-    prepareCredential: credential.prepare,
+    prepareCredential: () =>
+      credential.prepareForProfile(requestProfile.id, requestProfile.endpoint),
     bindingForTool: (toolId) =>
       toolBindingFor(toolId, mockForTool(toolId), commandTools.bindingFor(toolId)),
     onTraceSaved() { setSavedRunVersion((current) => current + 1); },
@@ -587,12 +607,12 @@ function HomeContent() {
     writeToolRegistry(toolRegistry);
   }, [toolRegistry, toolRegistryLoaded]);
 
-  const activeModel = sessionModel ?? activeProfile.model;
+  const activeModel = sessionModel ?? requestProfile.model;
   const activeTemperature = projectFile
     ? sessionTemperature
-    : activeProfile.temperature;
+    : requestProfile.temperature;
   const activeResponseMode =
-    streamingPreferred && activeCapabilities.streaming
+    streamingPreferred && requestCapabilities.streaming
       ? "streaming"
       : "buffered";
   const selectedProjectToolCount = tools.filter(({ id }) =>
@@ -601,11 +621,12 @@ function HomeContent() {
   const selectedToolCount = selectedProjectToolCount + requestTools.length;
   const unservableToolNames = unservableTools().map(({ name }) => name);
   const { discovery: activeModelDiscovery, loadModels } = useModelDiscovery({
-    profileId: activeProfile.id,
-    endpoint: activeProfile.endpoint,
-    capabilities: activeCapabilities,
+    profileId: requestProfile.id,
+    endpoint: requestProfile.endpoint,
+    capabilities: requestCapabilities,
     transport: inferenceTransport,
-    prepareCredential: credential.prepare,
+    prepareCredential: () =>
+      credential.prepareForProfile(requestProfile.id, requestProfile.endpoint),
   });
 
   function ensureProjectDocument() {
@@ -771,12 +792,12 @@ function HomeContent() {
   function currentRequest(): RichInferenceRequest {
     return {
       provider: "openai-compatible",
-      endpoint: activeProfile.endpoint,
+      endpoint: requestProfile.endpoint,
       model: activeModel,
       messages,
       temperature: activeTemperature,
       responseMode: activeResponseMode,
-      capabilities: activeCapabilities,
+      capabilities: requestCapabilities,
     };
   }
 
@@ -864,7 +885,11 @@ function HomeContent() {
   }
 
   function chooseProfile(profileId: string): void {
-    if (!profiles.some(({ id }) => id === profileId)) return;
+    const profile = profiles.find(({ id }) => id === profileId);
+    if (!profile) return;
+    if (requestConnectionRequirement) {
+      project.mapProfile(requestConnectionRequirement.id, profile);
+    }
     selectProfile(profileId);
   }
 
@@ -947,24 +972,14 @@ function HomeContent() {
     repeatedExperiment.clear();
     evaluationExecution.clear();
     project.clearErrorKind();
-    const activeRequirementId = projectTemplates.activeConnectionRequirement?.id;
-    const mappedProfileId = activeRequirementId ? mappedProfileIds[activeRequirementId] : undefined;
-    if (projectFile && mappedProfileId !== activeProfile.id) {
-      project.setError(
-        mappedProfileId
-          ? "Activate this project's mapped connection before running."
-          : "Map this project's connection to a local profile before running.",
-      );
-      return;
-    }
     const requestSnapshot = currentRequest();
     const prepared = prepareWorkbenchRun({
       request: requestSnapshot,
       project: projectFile ?? undefined,
       projectTools: resolvedTools(),
       requestTools,
-      capabilities: activeCapabilities,
-      profileName: activeProfile.name,
+      capabilities: requestCapabilities,
+      profileName: requestProfile.name,
       branchContext: branchContext ?? undefined,
       templateRunOverrides: projectTemplates.templateRunOverrides,
       adHocConversationId: adHocConversationIdRef.current ?? undefined,
@@ -991,7 +1006,7 @@ function HomeContent() {
       ...requestSnapshot,
       messages: input.messages,
     };
-    input.target.profileId = createEntityId("profile", activeProfile.id);
+    input.target.profileId = createEntityId("profile", requestProfile.id);
     const sessionStart = runSession.start(input, {
       request,
       workspace: projectWorkspace,
@@ -1031,24 +1046,14 @@ function HomeContent() {
       project.setError(unservableToolsMessage(unservable));
       return;
     }
-    const activeRequirementId = projectTemplates.activeConnectionRequirement?.id;
-    const mappedProfileId = activeRequirementId ? mappedProfileIds[activeRequirementId] : undefined;
-    if (projectFile && mappedProfileId !== activeProfile.id) {
-      project.setError(
-        mappedProfileId
-          ? "Activate this project's mapped connection before running."
-          : "Map this project's connection to a local profile before running.",
-      );
-      return;
-    }
     const requestSnapshot = currentRequest();
     const prepared = prepareWorkbenchRun({
       request: requestSnapshot,
       project: projectFile ?? undefined,
       projectTools: resolvedTools(),
       requestTools,
-      capabilities: activeCapabilities,
-      profileName: activeProfile.name,
+      capabilities: requestCapabilities,
+      profileName: requestProfile.name,
       branchContext: branchContext ?? undefined,
       templateRunOverrides: projectTemplates.templateRunOverrides,
       adHocConversationId: adHocConversationIdRef.current ?? undefined,
@@ -1062,10 +1067,10 @@ function HomeContent() {
       ...prepared.input,
       target: {
         ...prepared.input.target,
-        profileId: createEntityId("profile", activeProfile.id),
+        profileId: createEntityId("profile", requestProfile.id),
       },
     };
-    repeatedExperiment.begin(input, activeProfile.name || "Untitled profile", () => {
+    repeatedExperiment.begin(input, requestProfile.name || "Untitled profile", () => {
       if (prepared.projectMutation) project.adoptBranchRevision(prepared.projectMutation);
       if (prepared.executedRevisionId) projectTemplates.markExecutedRevision(prepared.executedRevisionId);
       if (prepared.adHocConversationId) adHocConversationIdRef.current = prepared.adHocConversationId;
@@ -1213,13 +1218,13 @@ function HomeContent() {
   const readiness = runReadiness({
     projectOpen: Boolean(projectFile),
     connectionMapped: projectTemplates.activeConnectionRequirement
-      ? mappedProfileIds[projectTemplates.activeConnectionRequirement.id] === activeProfile.id
+      ? Boolean(mappedRequestProfile)
       : true,
-    activeProfileName: activeProfile.name,
-    activeProfileEndpoint: activeProfile.endpoint,
+    activeProfileName: requestProfile.name,
+    activeProfileEndpoint: requestProfile.endpoint,
     activeProfileModel: activeModel,
     selectedToolCount,
-    toolsEnabled: activeCapabilities.tools,
+    toolsEnabled: requestCapabilities.tools,
     ...(projectTemplates.activeConnectionRequirement
       ? {
           requiredEndpoint: projectTemplates.activeConnectionRequirement.endpoint,
@@ -1686,7 +1691,10 @@ function HomeContent() {
     >
       <Topbar
         profiles={profiles}
-        activeProfile={activeProfile}
+        activeProfile={requestProfile}
+        {...(requestConnectionRequirement
+          ? { projectConnectionName: requestConnectionRequirement.name }
+          : {})}
         hasCredential={credential.hasCredential}
         projectName={projectFile?.name}
         projectDirty={projectDirty}
@@ -1752,7 +1760,7 @@ function HomeContent() {
         credential={credential}
         serverDefault={serverDefault}
         isDesktopRuntime={isDesktopRuntime}
-        onSelectProfile={chooseProfile}
+        onSelectProfile={selectProfile}
         onAddProfile={() => {
           addProfile();
         }}
@@ -1764,7 +1772,10 @@ function HomeContent() {
         mappedProfileIds={mappedProfileIds}
         onMapProfile={(requirementId, profileId) => {
           const profile = profiles.find(({ id }) => id === profileId);
-          if (profile) project.mapProfile(requirementId, profile);
+          if (profile) {
+            project.mapProfile(requirementId, profile);
+            selectProfile(profile.id);
+          }
         }}
         onUpdateProjectEndpoint={confirmUpdateProjectEndpoint}
         pendingDestination={pendingReadinessDestination}
@@ -1824,18 +1835,18 @@ function HomeContent() {
             model: activeModel,
             temperature: activeTemperature,
             responseMode: activeResponseMode,
-            streamingAvailable: activeCapabilities.streaming,
-            toolsEnabled: activeCapabilities.tools,
+            streamingAvailable: requestCapabilities.streaming,
+            toolsEnabled: requestCapabilities.tools,
             modelDiscovery: activeModelDiscovery,
-            favoriteModels: activeProfile.favoriteModels ?? [],
+            favoriteModels: requestProfile.favoriteModels ?? [],
             onModelChange: setEditorModel,
             onTemperatureChange: setEditorTemperature,
             onStreamingPreferenceChange: changeStreamingPreference,
             onLoadModels: (force) => void loadModels(force),
             onToggleFavoriteModel: (model) =>
-              updateActiveProfile({
+              updateProfile(requestProfile.id, {
                 favoriteModels: toggleFavoriteModel(
-                  activeProfile.favoriteModels,
+                  requestProfile.favoriteModels,
                   model,
                 ),
               }),
@@ -1844,8 +1855,8 @@ function HomeContent() {
                   inherited: {
                     label: "profile defaults",
                     value: {
-                      model: activeProfile.model,
-                      temperature: activeProfile.temperature,
+                      model: requestProfile.model,
+                      temperature: requestProfile.temperature,
                       responseMode: activeResponseMode,
                     },
                   },
@@ -1866,7 +1877,7 @@ function HomeContent() {
           importedRevision={importedRevision}
           onReadinessAction={resolveReadiness}
           onDestinationHandled={() => setPendingReadinessDestination(undefined)}
-          activeProfile={activeProfile}
+          activeProfile={requestProfile}
           {...(branchContext ? { pendingBranch: branchContext } : {})}
           {...(requestPreview ? { requestPreview } : {})}
           {...(n8nImportDisabledReason ? { n8nImportDisabledReason } : {})}
@@ -2069,14 +2080,14 @@ function HomeContent() {
         <RepeatedExperimentDialog
           draft={repeatedExperiment.draft}
           settings={{
-            streamingAvailable: activeCapabilities.streaming,
+            streamingAvailable: requestCapabilities.streaming,
             modelDiscovery: activeModelDiscovery,
-            favoriteModels: activeProfile.favoriteModels ?? [],
+            favoriteModels: requestProfile.favoriteModels ?? [],
             onLoadModels: (force) => void loadModels(force),
             onToggleFavoriteModel: (model) =>
-              updateActiveProfile({
+              updateProfile(requestProfile.id, {
                 favoriteModels: toggleFavoriteModel(
-                  activeProfile.favoriteModels,
+                  requestProfile.favoriteModels,
                   model,
                 ),
               }),
