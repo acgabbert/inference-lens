@@ -195,7 +195,7 @@ export async function openInferenceSettings(
  */
 export async function openMode(
   page: Page,
-  mode: "Compose" | "Evaluations" | "Runs",
+  mode: "Compose" | "Prompts" | "Evaluations" | "Runs",
 ): Promise<void> {
   const strip = page.getByRole("navigation", { name: "Application mode" });
   // Not `exact`: the Runs button also carries a "running" label while a batch

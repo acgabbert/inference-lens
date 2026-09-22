@@ -37,7 +37,7 @@ test("audit: fresh setup keeps a prompt draft before inference is configured", a
   await page.goto("/");
   await expect.poll(() => page.evaluate(key => Boolean(localStorage.getItem(key)), PROFILE_STORAGE_KEY)).toBe(true);
   await capture(page, "01-first-run");
-  await page.getByRole("tab", {name: /Prompts/}).click();
+  await openMode(page, "Prompts");
   await page.getByRole("button", {name: "New prompt", exact: true}).click();
   await expect(page.getByLabel("Prompt content")).toBeVisible();
   await expect(page.getByText("Session draft — not saved after closing.")).toBeVisible();
@@ -114,7 +114,7 @@ test("audit: layout and evaluation overview at desktop and narrow widths", async
   await page.getByLabel("Project menu").click(); await page.getByRole("button", {name:"Open project folder…"}).click(); await expect(page.locator(".brand")).toContainText(project.name);
   for (const width of [1440, 1280, 880, 390, 320]) {
     await page.setViewportSize({width,height:900});
-    await openMode(page,"Compose"); await page.getByRole("tab",{name:/Prompts/}).click();
+    await openMode(page,"Prompts");
     await capture(page, `09-prompts-${width}`);
     await openMode(page,"Evaluations"); await capture(page,`09-evaluations-${width}`);
   }

@@ -250,10 +250,11 @@ test("an empty saved-prompt picker opens the Prompts", async ({ page }) => {
   await expect(dialog).toContainText("no active prompts");
   await dialog.getByRole("button", { name: "Open Prompts" }).click();
 
-  await expect(page.getByRole("tab", { name: /Prompts/ })).toHaveAttribute(
-    "aria-selected",
-    "true",
+  await expect(page.getByRole("button", { name: "Prompts", exact: true })).toHaveAttribute(
+    "aria-current",
+    "page",
   );
+  await expect(page.locator(".templates-workspace")).toBeFocused();
 
   // The picker owner lives above the tab content. Returning to Evaluations must
   // not resurrect the dialog after its empty-state action navigated away.

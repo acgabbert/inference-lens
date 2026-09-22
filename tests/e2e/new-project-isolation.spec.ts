@@ -45,8 +45,7 @@ test("a new project does not inherit the open project's saved prompts", async ({
   await dialog.getByRole("button", { name: "Choose location…" }).click();
 
   await expect(page.locator(".topbar")).toContainText("Fresh project");
-  await openMode(page, "Compose");
-  await page.getByRole("tab", { name: "Prompts 0" }).click();
+  await openMode(page, "Prompts");
   await expect(page.getByRole("heading", { name: "No active project prompts" })).toBeVisible();
   await expect(page.getByText("Existing saved prompt", { exact: true })).toHaveCount(0);
 });

@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import {
   BUFFERED_FIXTURE_ENDPOINT,
+  openMode,
   PROFILE_STORAGE_KEY,
   waitForHydration,
 } from "./support";
@@ -20,7 +21,7 @@ test("a fresh user can author a session prompt before configuring inference", as
     )
     .toBe(true);
 
-  await page.getByRole("tab", { name: /Prompts/ }).click();
+  await openMode(page, "Prompts");
   await page.getByRole("button", { name: "New prompt", exact: true }).click();
 
   await expect(page.getByLabel("Prompt name")).toHaveValue("Untitled prompt");
@@ -28,8 +29,8 @@ test("a fresh user can author a session prompt before configuring inference", as
   await expect(page.getByText("Session draft — not saved after closing.")).toBeVisible();
   expect(pageErrors).toEqual([]);
 
-  await page.getByRole("tab", { name: /Messages/ }).click();
-  await page.getByRole("tab", { name: /Prompts/ }).click();
+  await openMode(page, "Compose");
+  await openMode(page, "Prompts");
   await expect(page.getByLabel("Prompt content")).toHaveValue(
     "Summarize {{topic}} for a new user.",
   );
@@ -47,11 +48,11 @@ test("a fresh user can author a session prompt before configuring inference", as
 
   await connections.getByLabel("Endpoint", { exact: true }).fill(BUFFERED_FIXTURE_ENDPOINT);
   await connections.getByRole("button", { name: "Close Connections" }).click();
-  await page.getByRole("tab", { name: /Messages/ }).click();
+  await openMode(page, "Compose");
   await page.getByRole("button", { name: /Run settings/ }).click();
   await page.getByRole("combobox", { name: "Model" }).fill("buffered-test-model");
   await page.getByRole("combobox", { name: "Model" }).press("Escape");
-  await page.getByRole("tab", { name: /Prompts/ }).click();
+  await openMode(page, "Prompts");
 
   await expect(page.getByLabel("Prompt content")).toHaveValue(
     "Summarize {{topic}} for a new user.",

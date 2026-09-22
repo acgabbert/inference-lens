@@ -96,7 +96,8 @@ function composerProps(overrides = {}) {
     onDestinationHandled: noop,
     activeProfile: { name: "Fixture profile" },
     onOpenConnectionSettings: noop,
-    onOpenN8nImport: noop,
+    onOpenPrompts: noop,
+    onEditPromptSource: noop,
     onOpenToolLibrary: noop,
     onSaveParentTrace: noop,
     onDiscardPendingBranch: noop,
@@ -105,7 +106,7 @@ function composerProps(overrides = {}) {
 }
 
 /**
- * Evaluations left the composer for their own mode. The composer used to blank
+ * Evaluations and Prompts left the composer for their own modes. The composer used to blank
  * the application's readiness policy on that tab, which is the disguise the
  * mode shell removed — so the notice now belongs to every tab it can reach.
  */
@@ -126,13 +127,11 @@ test("the composer owns request tabs only, and states readiness on each of them"
       Array.from(view.container.querySelectorAll('[role="tab"]')).map((tab) =>
         tab.textContent.replace(/\d+$/, ""),
       ),
-      ["Messages", "Prompts", "Tools"],
+      ["Messages", "Tools"],
     );
 
     assert.match(view.container.textContent, /template variable still needs a value/i);
     await view.click(view.tab("Tools"));
-    assert.match(view.container.textContent, /template variable still needs a value/i);
-    await view.click(view.tab("Prompts"));
     assert.match(view.container.textContent, /template variable still needs a value/i);
   } finally {
     await view.close();

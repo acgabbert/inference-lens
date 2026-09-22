@@ -67,9 +67,8 @@ function withOutdatedSuite(
   return { project: next, templateId: template.id, suiteId: created.suiteId };
 }
 
-async function openPromptsTab(page: Page): Promise<void> {
-  await openMode(page, "Compose");
-  await page.getByRole("tab", { name: /Prompts/ }).click();
+async function openPromptsWorkspace(page: Page): Promise<void> {
+  await openMode(page, "Prompts");
 }
 
 test("evaluate-in-a-suite dialog states the pinned revision, and arrival confirms the pin", async ({ page }) => {
@@ -84,7 +83,7 @@ test("evaluate-in-a-suite dialog states the pinned revision, and arrival confirm
   await page.goto("/");
   await waitForHydration(page);
   await importProject(page, built.project, PROJECT_NAME);
-  await openPromptsTab(page);
+  await openPromptsWorkspace(page);
 
   const editor = page.locator(".template-editor");
   await page.locator(".template-list").getByRole("button", { name: /Support reply/ }).click();
@@ -102,7 +101,7 @@ test("evaluate-in-a-suite dialog states the pinned revision, and arrival confirm
 
   // The suite now pins the current revision: reopening the dialog on the same
   // revision must offer Open (a plain navigation), not another retarget.
-  await openPromptsTab(page);
+  await openPromptsWorkspace(page);
   await page.locator(".template-list").getByRole("button", { name: /Support reply/ }).click();
   await editor.getByRole("button", { name: "Evaluate in a suite…" }).click();
   await expect(dialog.getByText("Support QA — already pinned to this revision")).toBeVisible();
@@ -124,7 +123,7 @@ test("creating a new suite from the dialog names it after the prompt", async ({ 
   await page.goto("/");
   await waitForHydration(page);
   await importProject(page, project, PROJECT_NAME);
-  await openPromptsTab(page);
+  await openPromptsWorkspace(page);
 
   const editor = page.locator(".template-editor");
   await page.locator(".template-list").getByRole("button", { name: /Escalation note/ }).click();
@@ -152,7 +151,7 @@ test("the dialog renders as a real modal overlay, not an unstyled inline block",
   await page.goto("/");
   await waitForHydration(page);
   await importProject(page, built.project, PROJECT_NAME);
-  await openPromptsTab(page);
+  await openPromptsWorkspace(page);
 
   const editor = page.locator(".template-editor");
   await page.locator(".template-list").getByRole("button", { name: /Support reply/ }).click();

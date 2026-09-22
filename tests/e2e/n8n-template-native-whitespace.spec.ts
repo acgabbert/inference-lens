@@ -4,7 +4,7 @@ import {
   createProjectFile,
   createPromptTemplate,
 } from "../../packages/core/src/project";
-import { importProject, seedProfile, waitForHydration } from "./support";
+import { importProject, openMode, seedProfile, waitForHydration } from "./support";
 
 function whitespaceTemplateProject() {
   let project = createProjectFile({
@@ -44,7 +44,7 @@ test("renders and resolves compact, spaced, and multiline native variables as on
     "Whitespace template fixture",
   );
 
-  await page.getByRole("tab", { name: /Prompts 1/ }).click();
+  await openMode(page, "Prompts");
   const editor = page.locator(".template-content-editor");
   await expect(editor.getByLabel("Prompt content")).toHaveValue(
     // Textareas expose CRLF-authored values with normalized LF line endings.

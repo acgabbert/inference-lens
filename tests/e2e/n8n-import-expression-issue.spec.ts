@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { extractN8nPromptCandidates } from "../../services/api/src/n8n-prompt-extractors.ts";
-import { seedProfile, waitForHydration } from "./support";
+import { openMode, seedProfile, waitForHydration } from "./support";
 
 test("keeps a specific n8n expression issue visible beside the import action", async ({ page }) => {
   const fixtureRoot = path.resolve(
@@ -74,7 +74,7 @@ test("keeps a specific n8n expression issue visible beside the import action", a
   await seedProfile(page);
   await page.goto("/");
   await waitForHydration(page);
-  await page.getByRole("tab", { name: "Prompts" }).click();
+  await openMode(page, "Prompts");
   await page.getByRole("button", { name: "Import prompt from n8n…" }).click();
 
   const dialog = page.getByRole("dialog", { name: "Import from n8n" });
