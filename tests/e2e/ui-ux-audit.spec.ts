@@ -87,7 +87,7 @@ test("audit: review tool configuration and manual continuation with a mock", asy
   await page.getByRole("button", {name: "Supply results and continue"}).click();
   await expect(page.locator(".transcript-list")).toContainText("Chicago report: 72 degrees and clear");
   await capture(page, "06-tool-completed");
-  await openMode(page, "Runs"); await expect(page.getByText("No results open", {exact:true})).toBeVisible();
+  await openMode(page, "Runs"); await expect(page.getByRole("button", {name: "View current response", exact:true})).toBeVisible();
   await capture(page, "07-runs-after-completed-run");
 });
 

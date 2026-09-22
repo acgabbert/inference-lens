@@ -49,6 +49,19 @@ interface RunsModeProps {
    * would give the app a second response surface.
    */
   detail?: ReactNode;
+  /**
+   * An ordinary request keeps rendering in Compose's response surface. Runs
+   * owns the route back to it, not another copy of that surface.
+   */
+  currentRequest?: {
+    onOpen(): void;
+  };
+  /** Saved evidence exists only for a folder-backed project. */
+  savedHistory?: {
+    disabled: boolean;
+    disabledReason?: string;
+    onOpen(): void;
+  };
   /** Where an empty Runs mode sends someone who has nothing to look at yet. */
   onStartSomething(): void;
 }
@@ -64,6 +77,8 @@ export function RunsMode({
   evaluation,
   repeated,
   detail,
+  currentRequest,
+  savedHistory,
   onStartSomething,
 }: RunsModeProps) {
   // Mirrors the precedence the two-pane shell resolved by nesting: a live or
@@ -110,10 +125,49 @@ export function RunsMode({
         <div className={styles.empty}>
           <PaneEmptyState
             eyebrow="Runs"
-            heading="No results open"
-            detail="Evaluation batches, repeated experiments, and baseline comparisons open here. Start one, or reopen a saved batch from run history."
-            action={{ label: "Go to Evaluations", onClick: onStartSomething }}
+            heading={currentRequest ? "Current request result" : "No results open"}
+            detail={
+              currentRequest
+                ? "The latest ordinary request is still available in Compose."
+                : "Ordinary request results appear here after a run. You can also browse saved project evidence or start an evaluation."
+            }
+            {...(currentRequest
+              ? {
+                  action: {
+                    label: "View current response",
+                    onClick: currentRequest.onOpen,
+                  },
+                }
+              : {})}
           />
+          <nav aria-label="Run destinations" className={styles.destinations}>
+            {savedHistory ? (
+              <div className={styles.destination}>
+                <button
+                  className="button secondary"
+                  disabled={savedHistory.disabled}
+                  title={savedHistory.disabledReason}
+                  type="button"
+                  onClick={savedHistory.onOpen}
+                >
+                  Open saved run history
+                </button>
+                <small>
+                  Browse ordinary runs, repeated experiments, and evaluations saved in this project folder.
+                </small>
+              </div>
+            ) : (
+              <p className={styles.historyNote}>
+                Save this project to a folder to build a browsable run history.
+              </p>
+            )}
+            <div className={styles.destination}>
+              <button className="button secondary" type="button" onClick={onStartSomething}>
+                Go to Evaluations
+              </button>
+              <small>Start a batch or open a comparison in Runs.</small>
+            </div>
+          </nav>
         </div>
       </div>
     );
