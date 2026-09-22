@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { createProjectFile, createPromptTemplate } from "../../packages/core/src/project";
-import { importProject, seedProfile, waitForHydration } from "./support";
+import { importProject, openMode, seedProfile, waitForHydration } from "./support";
 
 function pasteProject() {
   let project = createProjectFile({
@@ -21,7 +21,7 @@ test("keeps the empty paste state compact and its suggestion toggle aligned", as
   await page.goto("/");
   await waitForHydration(page);
   await importProject(page, pasteProject(), "n8n paste fixture");
-  await page.getByRole("tab", { name: /Prompts 1/ }).click();
+  await openMode(page, "Prompts");
   await page.getByRole("button", { name: "Paste from n8n…" }).click();
 
   const dialog = page.getByRole("dialog", { name: "Paste from n8n" });
@@ -43,7 +43,7 @@ test("converts explicit and ordinary n8n template paste without changing native 
   await page.goto("/");
   await waitForHydration(page);
   await importProject(page, pasteProject(), "n8n paste fixture");
-  await page.getByRole("tab", { name: /Prompts 1/ }).click();
+  await openMode(page, "Prompts");
   const content = page.getByLabel("Prompt content");
 
   await content.focus();

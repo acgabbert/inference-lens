@@ -10,10 +10,11 @@
  * Mode selection is deliberately transient — it is navigation state, not
  * product data, so it is neither persisted nor written to a project.
  */
-export type AppMode = "compose" | "evaluations" | "runs";
+export type AppMode = "compose" | "prompts" | "evaluations" | "runs";
 
 export const APP_MODES: readonly { id: AppMode; label: string }[] = [
   { id: "compose", label: "Compose" },
+  { id: "prompts", label: "Prompts" },
   { id: "evaluations", label: "Evaluations" },
   { id: "runs", label: "Runs" },
 ];

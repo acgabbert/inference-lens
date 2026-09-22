@@ -39,8 +39,7 @@ test("a historical prompt revision can be edited into a new revision with an exa
   await page.goto("/");
   await waitForHydration(page);
   await importProject(page, project, "Saved prompt revision fixture");
-  await openMode(page, "Compose");
-  await page.getByRole("tab", { name: /Prompts/ }).click();
+  await openMode(page, "Prompts");
 
   const editor = page.locator(".template-editor");
   const diff = editor.getByRole("region", { name: "Revision diff" });
@@ -114,8 +113,7 @@ test("using a historical prompt pins the revision being viewed", async ({ page }
   await page.goto("/");
   await waitForHydration(page);
   await importProject(page, project, "Historical prompt use fixture");
-  await openMode(page, "Compose");
-  await page.getByRole("tab", { name: /Prompts/ }).click();
+  await openMode(page, "Prompts");
 
   const editor = page.locator(".template-editor");
   await editor.locator(".template-revision-field select").selectOption(firstRevisionId);
@@ -162,8 +160,7 @@ test("prompt drafts and checkpoint names survive library navigation", async ({ p
   await page.goto("/");
   await waitForHydration(page);
   await importProject(page, project, "Saved prompt autosave fixture");
-  await openMode(page, "Compose");
-  await page.getByRole("tab", { name: /Prompts/ }).click();
+  await openMode(page, "Prompts");
 
   const editor = page.locator(".template-editor");
   await editor.getByLabel("Prompt content").fill("Triage {{incident}} without jargon.");
@@ -210,8 +207,7 @@ test("adding an autosaved prompt draft creates and pins that draft", async ({ pa
   await page.goto("/");
   await waitForHydration(page);
   await importProject(page, project, "Saved prompt insertion fixture");
-  await openMode(page, "Compose");
-  await page.getByRole("tab", { name: /Prompts/ }).click();
+  await openMode(page, "Prompts");
 
   const editor = page.locator(".template-editor");
   await editor.getByLabel("Prompt content").fill("The autosaved draft content");
@@ -254,8 +250,7 @@ test("the prompt header keeps its metadata controls usable beside revision actio
   await page.goto("/");
   await waitForHydration(page);
   await importProject(page, project, "Saved prompt header fixture");
-  await openMode(page, "Compose");
-  await page.getByRole("tab", { name: /Prompts/ }).click();
+  await openMode(page, "Prompts");
 
   const editor = page.locator(".template-editor");
   const header = editor.locator(".template-editor-header");

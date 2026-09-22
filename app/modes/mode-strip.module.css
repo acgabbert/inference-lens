@@ -101,12 +101,13 @@
 }
 
 /*
- * Below 880px the topbar wraps and the strip takes the whole second row, so it
- * stretches rather than sitting off to one side. 760px is the workbench's
- * mobile breakpoint and the strip has to survive it intact — the modes are the
- * only way out of a mode, so nothing here is allowed to truncate.
+ * At a standard 1280px desktop viewport four destinations no longer fit beside
+ * the project and run controls. The topbar wraps and the strip takes the whole
+ * second row, so it stretches rather than overlapping either neighbour. 760px
+ * is the workbench's mobile breakpoint and the strip has to survive it intact —
+ * the modes are the only way out of a mode, so nothing here may truncate.
  */
-@media (max-width: 880px) {
+@media (max-width: 1320px) {
   .strip {
     order: 3;
     flex-basis: 100%;

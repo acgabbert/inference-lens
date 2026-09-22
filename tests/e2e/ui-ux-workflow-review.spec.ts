@@ -36,12 +36,13 @@ async function setup(page: Page, folder = false) {
   return project;
 }
 
-test("review: the prompt editor's run action sends the current conversation", async ({ page }) => {
+test("review: leaving prompt authoring to run sends the current conversation", async ({ page }) => {
   await setup(page);
   await capture(page, "01-imported-compose");
-  await page.getByRole("tab", { name: /Prompts/ }).click();
+  await openMode(page, "Prompts");
   await page.getByLabel("Prompt content", { exact: true }).fill("VISIBLE DRAFT: diagnose the current incident.");
   await capture(page, "02-prompt-edit-before-run");
+  await openMode(page, "Compose");
   await page.getByRole("button", { name: /^Run current conversation/ }).click();
   await expect(page.locator(".response-pane")).toContainText("Buffered fixture response");
   await page.getByRole("button", { name: "Run details", exact: true }).click();
@@ -78,7 +79,7 @@ test("review: direct prompt reuse reaches a real request and remains discoverabl
 
 test("review: project Save explains its destination and export preserves a draft", async ({ page }) => {
   await setup(page);
-  await page.getByRole("tab", { name: /Prompts/ }).click();
+  await openMode(page, "Prompts");
   await page.getByLabel("Prompt content", { exact: true }).fill("PORTABLE DRAFT: keep this text.");
   await page.getByLabel("Project menu").click();
   await capture(page, "08-project-menu");
@@ -97,7 +98,7 @@ test("review: project Save explains its destination and export preserves a draft
   // Export leaves its menu open. Close it before the shared import driver.
   await page.getByLabel("Project menu").click();
   await importProject(page, exported, exported.name, { replaceDirty: "discard" });
-  await page.getByRole("tab", { name: /Prompts/ }).click();
+  await openMode(page, "Prompts");
   await expect(page.getByLabel("Prompt content", { exact: true })).toHaveValue("PORTABLE DRAFT: keep this text.");
   await expect(page.locator(".brand")).not.toContainText("Unsaved");
   await expect(page.locator(".template-editor")).toContainText(
@@ -108,7 +109,7 @@ test("review: project Save explains its destination and export preserves a draft
 
 test("review: importing another project asks before replacing an unsaved prompt", async ({ page }) => {
   const original = await setup(page);
-  await page.getByRole("tab", { name: /Prompts/ }).click();
+  await openMode(page, "Prompts");
   await page.getByLabel("Prompt content", { exact: true }).fill("UNSAVED WORK: do not discard silently.");
   await expect(page.locator(".brand")).toContainText("Unsaved");
   await page.getByLabel("Project menu").click();
@@ -131,14 +132,14 @@ test("review: importing another project asks before replacing an unsaved prompt"
   await expect(page.locator(".brand")).toContainText("Other project");
   await closeProjectMenu(page);
   await importProject(page, original, original.name);
-  await page.getByRole("tab", { name: /Prompts/ }).click();
+  await openMode(page, "Prompts");
   await expect(page.getByLabel("Prompt content", { exact: true })).toHaveValue("SAVED PROMPT: investigate {{incident}}.");
   await capture(page, "11-unsaved-draft-replaced");
 });
 
 test("review: folder autosave survives reopen and ordinary runs are in the history menu", async ({ page }) => {
   await setup(page, true);
-  await page.getByRole("tab", { name: /Prompts/ }).click();
+  await openMode(page, "Prompts");
   await page.getByLabel("Prompt content", { exact: true }).fill("FOLDER DRAFT: retained after reopen.");
   await expect(page.locator(".template-editor")).toContainText("Draft autosaved.");
   await expect(page.locator(".brand")).not.toContainText("Unsaved");
@@ -148,7 +149,7 @@ test("review: folder autosave survives reopen and ordinary runs are in the histo
   await page.getByLabel("Project menu").click();
   await page.getByRole("button", { name: "Open project folder…", exact: true }).click();
   await expect(page.locator(".brand")).toContainText("Daily triage");
-  await page.getByRole("tab", { name: /Prompts/ }).click();
+  await openMode(page, "Prompts");
   await expect(page.getByLabel("Prompt content", { exact: true })).toHaveValue("FOLDER DRAFT: retained after reopen.");
   await page.getByRole("button", { name: "Create revision and add", exact: true }).click();
   await page.getByRole("button", { name: /^Run current conversation/ }).click();

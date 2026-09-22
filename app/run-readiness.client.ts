@@ -26,10 +26,14 @@ export type ReadinessDestination =
     }
   | {
       surface: "request";
-      tab: "messages" | "templates" | "tools";
-      control: "model" | "template-use" | "template-variable" | "tool-manifest" | "prompt-library";
+      tab: "messages" | "tools";
+      control: "model" | "template-use" | "template-variable" | "tool-manifest";
       entityId?: string;
       fieldName?: string;
+    }
+  | {
+      surface: "prompts";
+      control: "prompt-library";
     };
 
 export interface RunReadinessAction {
@@ -379,7 +383,7 @@ export function runReadiness(
         {
           kind: "edit-template",
           label: "Review prompts",
-          destination: { surface: "request", tab: "templates", control: "prompt-library" },
+          destination: { surface: "prompts", control: "prompt-library" },
           primary: true,
         },
         {
@@ -421,7 +425,7 @@ export function runReadiness(
         {
           kind: "edit-template",
           label: "Review prompt",
-          destination: { surface: "request", tab: "templates", control: "prompt-library" },
+          destination: { surface: "prompts", control: "prompt-library" },
         },
       ],
     };

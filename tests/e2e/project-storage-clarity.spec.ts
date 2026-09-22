@@ -6,6 +6,7 @@ import {
 } from "../../packages/core/src/project";
 import {
   importProject,
+  openMode,
   seedProfile,
   stubProjectDirectory,
   waitForHydration,
@@ -44,7 +45,7 @@ test("an imported JSON project stays visibly session-only until saved to a folde
   const brand = page.locator(".brand");
   await expect(brand).toContainText("Session only — save to a folder to keep changes");
 
-  await page.getByRole("tab", { name: /Prompts/ }).click();
+  await openMode(page, "Prompts");
   await expect(page.locator(".template-editor")).toContainText(
     "Draft kept in this session. Save the project to keep it after closing.",
   );
@@ -79,7 +80,7 @@ test("folder-backed edits expose saving and save-failure states", async ({ page 
 
   const brand = page.locator(".brand");
   await expect(brand).toContainText("Saved to storage-clarity.inference-lens");
-  await page.getByRole("tab", { name: /Prompts/ }).click();
+  await openMode(page, "Prompts");
   await page.getByLabel("Prompt content", { exact: true }).fill("This write will fail.");
   await expect(brand).toContainText("Saving to storage-clarity.inference-lens…");
   await expect(brand).toContainText("Save failed — retry from Project", { timeout: 5_000 });

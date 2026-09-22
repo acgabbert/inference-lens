@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   ConnectionRequirement,
@@ -92,6 +92,19 @@ interface ProjectTemplatesPaneProps {
   /** The error from the most recent evaluate-in-a-suite attempt, if any. */
   evaluateRevisionError?: string;
   onDismissEvaluateRevisionError?(): void;
+  navigationTarget?: {
+    key: number;
+    templateId: PromptTemplateId;
+    revisionId?: PromptTemplateRevisionId;
+  };
+  onSelectionChange?(
+    templateId: PromptTemplateId,
+    revisionId?: PromptTemplateRevisionId,
+  ): void;
+  focusRequested?: boolean;
+  onFocusHandled?(): void;
+  returnLabel?: string;
+  onReturn?(): void;
 }
 
 function newPrompt(): PromptTemplateMessages {
@@ -126,38 +139,67 @@ export function ProjectTemplatesPane({
   onOpenEvaluationSuite,
   evaluateRevisionError,
   onDismissEvaluateRevisionError,
+  navigationTarget,
+  onSelectionChange,
+  focusRequested = false,
+  onFocusHandled,
+  returnLabel,
+  onReturn,
 }: ProjectTemplatesPaneProps) {
   const activeTemplates = templates.filter(({ archivedAt }) => !archivedAt);
   const archivedTemplates = templates.filter(({ archivedAt }) => archivedAt);
-  const [libraryView, setLibraryView] = useState<"active" | "archived">("active");
+  const targetedTemplate = navigationTarget
+    ? templates.find(({ id }) => id === navigationTarget.templateId)
+    : undefined;
+  const [libraryView, setLibraryView] = useState<"active" | "archived">(
+    targetedTemplate?.archivedAt ? "archived" : "active",
+  );
   const visibleTemplates =
     libraryView === "active" ? activeTemplates : archivedTemplates;
-  const initialTemplate = activeTemplates[0];
+  const initialTemplate = targetedTemplate ?? activeTemplates[0];
+  const targetedRevision = navigationTarget?.revisionId
+    ? targetedTemplate?.revisions.find(({ id }) => id === navigationTarget.revisionId)
+    : undefined;
+  const initialViewedRevision = targetedRevision ?? (
+    initialTemplate ? currentRevision(initialTemplate) : undefined
+  );
   const [selectedId, setSelectedId] = useState<PromptTemplateId | undefined>(
     initialTemplate?.id,
   );
   const selected = visibleTemplates.find(({ id }) => id === selectedId);
   const initialRevision = selected ? currentRevision(selected) : undefined;
   const [viewedRevisionId, setViewedRevisionId] =
-    useState<PromptTemplateRevisionId | undefined>(initialRevision?.id);
+    useState<PromptTemplateRevisionId | undefined>(initialViewedRevision?.id);
   const [candidateSourceRevisionId, setCandidateSourceRevisionId] =
-    useState<PromptTemplateRevisionId | undefined>(selected?.draft?.sourceRevisionId);
+    useState<PromptTemplateRevisionId | undefined>(
+      targetedRevision ? undefined : selected?.draft?.sourceRevisionId,
+    );
   const [comparedRevisionId, setComparedRevisionId] =
     useState<PromptTemplateRevisionId | undefined>(
-      selected?.revisions[selected.revisions.indexOf(initialRevision!) - 1]?.id,
+      selected && initialViewedRevision
+        ? selected.revisions[
+            selected.revisions.indexOf(initialViewedRevision) - 1
+          ]?.id
+        : undefined,
     );
   const [name, setName] = useState(selected?.name ?? "");
   const [messages, setMessages] = useState<PromptTemplateMessages>(
-    selected?.draft
+    !targetedRevision && selected?.draft
       ? structuredClone(selected.draft.messages)
-      : initialRevision ? structuredClone(initialRevision.messages) : newPrompt(),
+      : initialViewedRevision
+        ? structuredClone(initialViewedRevision.messages)
+        : newPrompt(),
   );
   const [defaults, setDefaults] = useState<Record<string, string>>(
-    selected?.draft
+    !targetedRevision && selected?.draft
       ? { ...selected.draft.variableDefaults }
-      : initialRevision ? { ...initialRevision.variableDefaults } : {},
+      : initialViewedRevision
+        ? { ...initialViewedRevision.variableDefaults }
+        : {},
   );
-  const [revisionName, setRevisionName] = useState(selected?.draft?.revisionName ?? "");
+  const [revisionName, setRevisionName] = useState(
+    targetedRevision ? "" : selected?.draft?.revisionName ?? "",
+  );
   const [recommendedModel, setRecommendedModel] = useState(
     selected?.recommendedTarget?.model ?? "",
   );
@@ -182,7 +224,20 @@ export function ProjectTemplatesPane({
   // Open by default when browsing a historical revision (that's why the user
   // navigated here); collapsed while the current draft is being edited. A
   // save forces it open once, so the diff can confirm what just changed.
-  const [diffOpen, setDiffOpen] = useState(false);
+  const [diffOpen, setDiffOpen] = useState(
+    Boolean(
+      targetedRevision &&
+        targetedTemplate &&
+        targetedRevision.id !== targetedTemplate.currentRevisionId,
+    ),
+  );
+  const workspaceRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!focusRequested) return;
+    workspaceRef.current?.focus();
+    onFocusHandled?.();
+  }, [focusRequested, onFocusHandled]);
 
   const viewedRevision = selected?.revisions.find(
     ({ id }) => id === viewedRevisionId,
@@ -299,6 +354,7 @@ export function ProjectTemplatesPane({
     setComparedRevisionId(viewedRevision.id);
     setRevisionName("");
     setDiffOpen(true);
+    onSelectionChange?.(selected.id, saved);
   }
 
   function openN8nPaste(target: Omit<NonNullable<typeof n8nPasteTarget>, "revisionId">): void {
@@ -339,6 +395,7 @@ export function ProjectTemplatesPane({
       template.recommendedTarget?.connectionRequirementId ??
         defaultConnectionRequirementId,
     );
+    onSelectionChange?.(template.id, draft ? undefined : revision.id);
   }
 
   function selectLibraryView(view: "active" | "archived"): void {
@@ -361,6 +418,7 @@ export function ProjectTemplatesPane({
     setMessages(structuredClone(revision.messages));
     setDefaults({ ...revision.variableDefaults });
     setRevisionName("");
+    onSelectionChange?.(selected.id, revision.id);
   }
 
   function selectDraft(): void {
@@ -371,6 +429,7 @@ export function ProjectTemplatesPane({
     setMessages(structuredClone(selected.draft.messages));
     setDefaults({ ...selected.draft.variableDefaults });
     setRevisionName(selected.draft.revisionName ?? "");
+    onSelectionChange?.(selected.id);
   }
 
   function addTemplate(): void {
@@ -388,11 +447,20 @@ export function ProjectTemplatesPane({
     setRevisionName("");
     setRecommendedModel("");
     setRecommendedConnectionRequirementId(defaultConnectionRequirementId);
+    onSelectionChange?.(id);
   }
 
   return (
-    <div className="templates-workspace" data-readiness-target="prompt-library" tabIndex={-1}>
+    <div
+      className="templates-workspace"
+      data-readiness-target="prompt-library"
+      ref={workspaceRef}
+      tabIndex={-1}
+    >
       <aside className="template-sidebar">
+        {onReturn && <button className="text-button template-return-action" type="button" onClick={onReturn}>
+          ← {returnLabel ?? "Back"}
+        </button>}
         <div className="template-create-actions">
           <button className="button secondary" type="button" onClick={addTemplate}>
             New prompt
@@ -1164,6 +1232,7 @@ interface TemplateUseCardProps {
     runOverrides: Record<string, string>,
   ): void;
   onRunOverridesChange(values: Record<string, string>): void;
+  onEditSource(): void;
   onUpdateLatest(): void;
   onDetach(): void;
   onRemove(): void;
@@ -1262,6 +1331,7 @@ function TemplateUseCardRevision({
   onSaveValues,
   onSaveRunValue,
   onRunOverridesChange,
+  onEditSource,
   onUpdateLatest,
   onDetach,
   onRemove,
@@ -1401,6 +1471,9 @@ function TemplateUseCardRevision({
           )}
         </div>
         <div className="template-use-actions">
+          <button className="button secondary" type="button" onClick={onEditSource}>
+            Edit source
+          </button>
           {newerRevision && (
             <button className="button secondary" type="button" onClick={onUpdateLatest}>
               Review latest

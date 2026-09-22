@@ -8,6 +8,7 @@ import {
 import {
   closeProjectMenu,
   importProject,
+  openMode,
   seedProfile,
   stubProjectDirectory,
   waitForHydration,
@@ -45,7 +46,7 @@ test("import asks before replacing unsaved project work", async ({ page }) => {
   await waitForHydration(page);
   await importProject(page, original, original.name);
 
-  await page.getByRole("tab", { name: /Prompts/ }).click();
+  await openMode(page, "Prompts");
   const prompt = page.getByLabel("Prompt content", { exact: true });
   await prompt.fill("Unsaved prompt that must survive cancellation");
   await expect(page.locator(".brand")).toContainText("Unsaved");
@@ -80,7 +81,7 @@ test("import asks before replacing unsaved project work", async ({ page }) => {
   await decision.getByRole("button", { name: "Discard and switch", exact: true }).click();
 
   await expect(page.locator(".brand")).toContainText("Replacement project");
-  await page.getByRole("tab", { name: /Prompts/ }).click();
+  await openMode(page, "Prompts");
   await expect(page.getByLabel("Prompt content", { exact: true })).toHaveValue(
     "Replacement saved prompt",
   );
@@ -98,7 +99,7 @@ test("open and new use the same replacement guard", async ({ page }) => {
   await page.goto("/");
   await waitForHydration(page);
   await importProject(page, original, original.name);
-  await page.getByRole("tab", { name: /Prompts/ }).click();
+  await openMode(page, "Prompts");
   await page.getByLabel("Prompt content", { exact: true }).fill("Unsaved open guard");
 
   await page.getByLabel("Project menu").click();
@@ -137,7 +138,7 @@ test("save and switch persists the draft before importing", async ({ page }) => 
   await page.getByLabel("Project menu").click();
   await page.getByRole("button", { name: "Open project folder…", exact: true }).click();
   await expect(page.locator(".brand")).toContainText("Folder original");
-  await page.getByRole("tab", { name: /Prompts/ }).click();
+  await openMode(page, "Prompts");
   await page.getByLabel("Prompt content", { exact: true }).fill("Saved before switching");
 
   await page.getByLabel("Project menu").click();
@@ -157,7 +158,7 @@ test("save and switch persists the draft before importing", async ({ page }) => 
   await page.getByLabel("Project menu").click();
   await page.getByRole("button", { name: "Open project folder…", exact: true }).click();
   await expect(page.locator(".brand")).toContainText("Folder original");
-  await page.getByRole("tab", { name: /Prompts/ }).click();
+  await openMode(page, "Prompts");
   await expect(page.getByLabel("Prompt content", { exact: true })).toHaveValue(
     "Saved before switching",
   );
@@ -172,7 +173,7 @@ test("an imported project chooses a save location before switching", async ({ pa
   await page.goto("/");
   await waitForHydration(page);
   await importProject(page, original, original.name);
-  await page.getByRole("tab", { name: /Prompts/ }).click();
+  await openMode(page, "Prompts");
   await page.getByLabel("Prompt content", { exact: true }).fill("Draft saved to a new folder");
   await page.getByLabel("Project menu").click();
   await page.setInputFiles(
@@ -211,7 +212,7 @@ test("a failed save keeps the current project and replacement decision", async (
   await page.getByLabel("Project menu").click();
   await page.getByRole("button", { name: "Open project folder…", exact: true }).click();
   await expect(page.locator(".brand")).toContainText("Failing folder");
-  await page.getByRole("tab", { name: /Prompts/ }).click();
+  await openMode(page, "Prompts");
   await page.getByLabel("Prompt content", { exact: true }).fill("Unsaved after failure");
 
   await page.getByLabel("Project menu").click();

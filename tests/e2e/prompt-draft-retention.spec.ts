@@ -47,7 +47,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/");
   await waitForHydration(page);
   await importProject(page, promptProject(), "Prompt draft retention");
-  await page.getByRole("tab", { name: /Prompts/ }).click();
+  await openMode(page, "Prompts");
 });
 
 test("keeps the exact prompt draft across request navigation", async ({ page }) => {
@@ -56,12 +56,12 @@ test("keeps the exact prompt draft across request navigation", async ({ page }) 
 
   await expect(page.locator(".brand")).toContainText("Unsaved");
   await openMode(page, "Evaluations");
-  await openMode(page, "Compose");
-  await page.getByRole("tab", { name: /Prompts/ }).click();
+  await openMode(page, "Prompts");
   await expect(content).toHaveValue("SESSION DRAFT: keep {{incident}} exactly");
 
+  await openMode(page, "Compose");
   await page.getByRole("tab", { name: /Tools/ }).click();
-  await page.getByRole("tab", { name: /Prompts/ }).click();
+  await openMode(page, "Prompts");
 
   await expect(content).toHaveValue("SESSION DRAFT: keep {{incident}} exactly");
   await expect(page.locator(".template-revision-field select")).toHaveValue("draft");

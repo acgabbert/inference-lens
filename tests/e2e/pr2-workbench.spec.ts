@@ -9,7 +9,7 @@ import type {
 } from "../../packages/core/src/run-kernel/types";
 import { createRunTrace } from "../../packages/core/src/run-kernel/reducer";
 import { serializeRunTrace } from "../../packages/core/src/run-trace";
-import { seedProfile } from "./support";
+import { openMode, seedProfile } from "./support";
 
 async function waitForHydration(page: Page) {
   // The seeded profile's name can only come from localStorage, so unlike the
@@ -326,11 +326,12 @@ test("groups lifecycle and run-data actions by owner", async ({ page }) => {
   await page.goto("/");
   await waitForHydration(page);
 
-  await page.getByRole("tab", { name: "Prompts" }).click();
+  await openMode(page, "Prompts");
   await expect(
     page.getByRole("button", { name: "Import prompt from n8n…" }),
   ).toBeVisible();
 
+  await openMode(page, "Compose");
   await page.getByRole("tab", { name: "Tools" }).click();
   await expect(
     page.getByRole("button", { name: "Browse local library" }),

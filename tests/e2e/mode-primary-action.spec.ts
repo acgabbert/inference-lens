@@ -139,7 +139,7 @@ test("no run-lifecycle action is left in the topbar in any mode", async ({ page 
   expect(RUN_CONTROL_LABELS.length).toBe(9);
 });
 
-test("Repeat stays on every request tab and Messages groups its editing actions", async ({ page }) => {
+test("Repeat stays on the request tabs and Messages groups its editing actions", async ({ page }) => {
   await open(page);
 
   const composer = page.locator(".composer");
@@ -156,7 +156,7 @@ test("Repeat stays on every request tab and Messages groups its editing actions"
 
   // It repeats whatever the composer holds, so which tab is open is irrelevant
   // to it — and it is never in the topbar, whose one slot belongs to the run.
-  for (const tab of ["Prompts", "Tools"]) {
+  for (const tab of ["Tools"]) {
     await page.getByRole("tab", { name: new RegExp(`^${tab}`) }).click();
     await expect(composerHeader.getByRole("button", { name: "Repeat…" }))
       .toBeVisible();

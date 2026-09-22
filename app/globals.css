@@ -560,6 +560,24 @@ label.file-button {
   gap: var(--space-sm);
 }
 
+@media (max-width: 1320px) {
+  /* Four peer destinations plus the project/run controls no longer fit on one
+     line at the standard 1280px desktop viewport. Keep each control's hit
+     target intact and give navigation a dedicated row before flex items can
+     overlap and intercept one another. */
+  .topbar {
+    padding-inline: var(--space-lg);
+    padding-block: var(--space-sm);
+    row-gap: var(--space-sm);
+    flex-wrap: wrap;
+  }
+
+  .brand {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+}
+
 .button {
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
@@ -1015,6 +1033,31 @@ output {
   min-height: 100%;
   display: grid;
   grid-template-columns: 158px minmax(0, 1fr);
+}
+
+.prompt-mode-workspace {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--surface-panel);
+}
+
+.prompt-mode-workspace .templates-workspace {
+  height: 100%;
+  min-height: 0;
+  grid-template-columns: minmax(210px, 18vw) minmax(0, 1fr);
+}
+
+.prompt-mode-workspace .template-sidebar,
+.prompt-mode-workspace .template-editor {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.template-return-action {
+  margin-bottom: var(--space-sm);
 }
 
 .template-sidebar {

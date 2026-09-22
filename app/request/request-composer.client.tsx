@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { ConversationMessage, PromptTemplateId, PromptTemplateRevisionId, ToolDefinition, ToolId } from "../../packages/core/src/run-kernel";
-import type { EvaluationSuite, ProjectFile, ToolMock } from "../../packages/core/src/project";
+import { useEffect, useRef, useState } from "react";
+import type { ConversationMessage, PromptTemplateId, PromptTemplateRevisionId, PromptTemplateUseId, ToolDefinition, ToolId } from "../../packages/core/src/run-kernel";
+import type { ProjectFile, ToolMock } from "../../packages/core/src/project";
 import { conversationMessageText } from "../conversation-display";
 import { PaneTabs } from "../workbench-shell.client";
-import { ProjectTemplatesPane, TemplateUseCard } from "../project-templates-pane.client";
-import type { CompatibleEvaluationSuite } from "../project-templates-pane.client";
+import { TemplateUseCard } from "../project-templates-pane.client";
 import { ToolsPane } from "../tools-pane.client";
 import { RunReadinessNotice } from "../run-readiness-notice.client";
 import { FocusModeToggle, useFocusMode } from "../focus-mode.client";
@@ -23,7 +22,7 @@ import { PromptInsertionDialog } from "../templates/prompt-insertion-dialog.clie
 import { RequestSettings } from "./request-settings.client";
 import type { RequestSettingsProps } from "./request-settings.client";
 
-type RequestTab = "messages" | "templates" | "tools";
+type RequestTab = "messages" | "tools";
 
 type RequestPreview =
   | { body: unknown; messages: ConversationMessage[] }
@@ -52,14 +51,7 @@ export interface RequestComposerProps {
   /** The command-tool feature owner, for the tools tab's binding surface. */
   commandTools: CommandToolsHandle;
   templates: ProjectTemplatesHandle;
-  project:Pick<ProjectFile, "projectId" | "promptTemplates" | "connectionRequirements" | "defaults" | "externalImports" | "conversationRevisions" | "evaluationSuites"> | null;
-  projectPersistenceStatus?: "saving" | "saved" | "session" | "error";
-  onEvaluatePromptRevision?(templateId: PromptTemplateId, revisionId: PromptTemplateRevisionId, suiteId?: ProjectFile["evaluationSuites"][number]["id"]): boolean;
-  /** Opens an already-compatible suite without retargeting it. */
-  onOpenEvaluationSuite?(suiteId: EvaluationSuite["id"]): void;
-  /** The error from the most recent evaluate-in-a-suite attempt, if any. */
-  evaluateRevisionError?: string;
-  onDismissEvaluateRevisionError?(): void;
+  project:Pick<ProjectFile, "promptTemplates" | "externalImports"> | null;
   settings: RequestSettingsProps & {
     toolsEnabled: boolean;
   };
@@ -91,9 +83,13 @@ export interface RequestComposerProps {
     parentTraceNeedsSaving: boolean;
   };
   requestPreview?: RequestPreview;
-  n8nImportDisabledReason?: string;
   onOpenConnectionSettings(): void;
-  onOpenN8nImport(): void;
+  onOpenPrompts(): void;
+  onEditPromptSource(
+    useId: PromptTemplateUseId,
+    templateId: PromptTemplateId,
+    revisionId: PromptTemplateRevisionId,
+  ): void;
   onOpenToolLibrary(): void;
   onSaveParentTrace(): void;
   onDiscardPendingBranch(): void;
@@ -104,11 +100,6 @@ export function RequestComposer({
   commandTools,
   templates,
   project,
-  projectPersistenceStatus,
-  onEvaluatePromptRevision,
-  onOpenEvaluationSuite,
-  evaluateRevisionError,
-  onDismissEvaluateRevisionError,
   settings,
   readiness,
   repeat,
@@ -119,9 +110,9 @@ export function RequestComposer({
   activeProfile,
   pendingBranch,
   requestPreview,
-  n8nImportDisabledReason,
   onOpenConnectionSettings,
-  onOpenN8nImport,
+  onOpenPrompts,
+  onEditPromptSource,
   onOpenToolLibrary,
   onSaveParentTrace,
   onDiscardPendingBranch,
@@ -137,19 +128,6 @@ export function RequestComposer({
   const [focusModeTab, setFocusModeTab] = useState<RequestTab>("messages");
   const [promptInsertionOpen, setPromptInsertionOpen] = useState(false);
   const [pendingInsertedIndex, setPendingInsertedIndex] = useState<number>();
-  const compatibleEvaluationSuitesByTemplate = useMemo(() => {
-    const result = new Map<PromptTemplateId, CompatibleEvaluationSuite[]>();
-    if (!project) return result;
-    (project.evaluationSuites ?? []).forEach((suite) => {
-      const revision = project.conversationRevisions?.find(({ id }) => id === suite.input.conversationRevisionId);
-      revision?.items.forEach((item) => {
-        if (item.kind !== "template-use") return;
-        const current = result.get(item.use.templateId) ?? [];
-        result.set(item.use.templateId, [...current, { suite, pinnedRevisionId: item.use.templateRevisionId }]);
-      });
-    });
-    return result;
-  }, [project]);
   // Runtime fixture handles and older embedders may not yet expose the
   // session-aware library snapshot. Project prompts remain a safe fallback.
   const libraryTemplates = templates.libraryTemplates ?? project?.promptTemplates ?? [];
@@ -236,11 +214,7 @@ export function RequestComposer({
           ? composerRef.current?.querySelector<HTMLElement>(
               '[data-readiness-target="tool-manifest"]',
             ) ?? null
-          : pendingDestination.control === "prompt-library"
-            ? composerRef.current?.querySelector<HTMLElement>(
-                '[data-readiness-target="prompt-library"]',
-              ) ?? null
-            : pendingDestination.entityId
+          : pendingDestination.entityId
               ? pendingDestination.control === "template-variable" && pendingDestination.fieldName
                 ? composerRef.current?.querySelector<HTMLTextAreaElement>(
                     `[data-template-use-id="${pendingDestination.entityId}"] textarea[data-template-variable="${pendingDestination.fieldName}"]`,
@@ -279,7 +253,6 @@ export function RequestComposer({
           onChange={(value) => setTab(value as RequestTab)}
           tabs={[
             { id: "messages", label: "Messages", count: requestDraft.messages.length },
-            { id: "templates", label: "Prompts", count: libraryTemplates.filter(({ archivedAt }) => !archivedAt).length },
             { id: "tools", label: "Tools", count: selectedToolCount },
           ]}
         />
@@ -390,6 +363,7 @@ export function RequestComposer({
                     onSaveValues={(values) => templates.updateTemplateUseValues(item.use.id, values)}
                     onSaveRunValue={(values, runOverrides) => templates.saveTemplateUseRunValue(item.use.id, values, runOverrides)}
                     onRunOverridesChange={(values) => templates.updateTemplateUseOverride(item.use.id, values)}
+                    onEditSource={() => onEditPromptSource(item.use.id, item.use.templateId, item.use.templateRevisionId)}
                     onUpdateLatest={() => templates.updateTemplateUseToLatestRevision(item.use.id)}
                     onDetach={() => templates.detachTemplateUse(item.use.id)}
                     onRemove={() => templates.removeTemplateUse(item.use.id)} />;
@@ -414,8 +388,6 @@ export function RequestComposer({
             </div>
             {requestPreview && <details className="request-preview"><summary>Resolved request preview</summary>{"error" in requestPreview ? <div className="template-diagnostic">{requestPreview.error}</div> : <><>{(templates.templateWorkbench.resolution?.diagnostics.length ?? 0) > 0 && <div className="template-warning" role="status">Preview contains unresolved variables. Running is blocked until they have values.</div>}</><div className="request-preview-tabs"><PaneTabs idPrefix="request-preview" label="Request preview view" value={requestPreviewView} onChange={(value) => setRequestPreviewView(value as "resolved" | "raw")} tabs={[{ id: "resolved", label: "Resolved" }, { id: "raw", label: "Raw" }]} /></div>{requestPreviewView === "resolved" ? <section aria-label="Resolved request" aria-labelledby="request-preview-resolved-tab" id="request-preview-resolved-panel" role="tabpanel"><h3>Resolved messages</h3><div className="request-preview-messages">{requestPreview.messages.map((message, index) => <article className="request-preview-message" key={`${message.role}-${index}`}><span className="eyebrow">{message.role}</span><pre>{conversationMessageText(message)}</pre></article>)}</div></section> : <section className="request-preview-raw" aria-label="Raw OpenAI-compatible request body" aria-labelledby="request-preview-raw-tab" id="request-preview-raw-panel" role="tabpanel"><h3>Raw OpenAI-compatible request body</h3><pre>{JSON.stringify(requestPreview.body, null, 2)}</pre></section>}</>}</details>}
           </>
-        ) : activeTab === "templates" ? (
-          <ProjectTemplatesPane key={project?.projectId ?? "unsaved-project"} templates={libraryTemplates} sessionTemplateIds={sessionTemplateIds} connectionRequirements={project?.connectionRequirements ?? []} defaultConnectionRequirementId={project?.defaults.target.connectionRequirementId} usageCounts={templates.templateUsageCounts} itemCount={templates.activeProjectRevision?.items.length ?? requestDraft.messages.length} persistenceStatus={projectPersistenceStatus} n8nImportDisabledReason={n8nImportDisabledReason} onOpenN8nImport={onOpenN8nImport} onCreate={templates.createProjectTemplate} onDraftChange={templates.updateProjectTemplateDraft} onRecommendedTargetChange={templates.updateProjectTemplateRecommendedTarget} onSave={templates.saveProjectTemplate} onSaveAndInsert={(...args) => { const revisionId = templates.saveAndInsertProjectTemplate(...args); if (revisionId) setTab("messages"); return revisionId; }} onRename={templates.renameProjectTemplate} onArchive={templates.archiveProjectTemplate} onRestore={templates.restoreProjectTemplate} onInsert={(...args) => { templates.insertProjectTemplate(...args); setTab("messages"); }} compatibleEvaluationSuitesByTemplate={compatibleEvaluationSuitesByTemplate} {...(onEvaluatePromptRevision ? { onEvaluateRevision: onEvaluatePromptRevision } : {})} {...(onOpenEvaluationSuite ? { onOpenEvaluationSuite } : {})} {...(evaluateRevisionError ? { evaluateRevisionError } : {})} {...(onDismissEvaluateRevisionError ? { onDismissEvaluateRevisionError } : {})} />
         ) : (
           <ToolsPane tools={requestDraft.tools} requestTools={requestDraft.requestTools} enabledToolIds={requestDraft.enabledToolIds} activeProfileName={activeProfile.name} toolsEnabled={settings.toolsEnabled} onOpenLibrary={onOpenToolLibrary} onOpenConnectionSettings={onOpenConnectionSettings} onAddTool={requestDraft.addTool} onRemoveTool={requestDraft.removeTool} onMoveTool={requestDraft.moveTool} onUpdateTool={requestDraft.updateTool} onSetToolEnabled={requestDraft.setToolEnabled} mockForTool={requestDraft.mockForTool} onUpdateToolMock={requestDraft.updateToolMock} onRemoveRequestTool={requestDraft.removeRequestTool} commandTools={commandTools} />
         )}
@@ -429,7 +401,7 @@ export function RequestComposer({
           onCancel={() => setPromptInsertionOpen(false)}
           onOpenPrompts={() => {
             setPromptInsertionOpen(false);
-            setTab("templates");
+            onOpenPrompts();
           }}
           onInsert={(templateId, revisionId, itemIndex, replaceEmptyDraft) => {
             templates.insertProjectTemplate(templateId, revisionId, itemIndex, replaceEmptyDraft);
