@@ -47,6 +47,8 @@ type ResponseOutputProps = {
   transcript: TranscriptEntry[];
   nonBranchableMessageIds: ReadonlySet<ConversationMessage["id"]>;
   branchedFrom?: RunTrace["branchedFrom"];
+  /** Historical evidence is rendered by this same surface without mutation controls. */
+  readOnly?: boolean;
   emptyState: RunEmptyStatePresentation;
   onMarkdownPreviewChange(markdown: boolean): void;
   onOutputScroll(): void;
@@ -108,6 +110,7 @@ export function ResponseOutput({
   outputFollowing, outputScrollRef, completedToolCalls, toolResultDrafts,
   traceStorage,
   transcript, nonBranchableMessageIds, branchedFrom,
+  readOnly = false,
   emptyState,
   onMarkdownPreviewChange, onOutputScroll, onJumpToLatest,
   onToolResultDraftChange, onContinue, onRetry, onDiscardFailedRun,
@@ -244,22 +247,24 @@ export function ResponseOutput({
                     {!isOpen && (
                       <span className="transcript-preview">{previewText(message)}</span>
                     )}
-                    <button
-                      className="button secondary transcript-edit"
-                      type="button"
-                      disabled={nonBranchableMessageIds.has(message.id)}
-                      title={
-                        nonBranchableMessageIds.has(message.id)
-                          ? "A message-set template is atomic. Branch after its final message or detach it first."
-                          : undefined
-                      }
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onEditFromHere(message.id);
-                      }}
-                    >
-                      Edit from here
-                    </button>
+                    {!readOnly && (
+                      <button
+                        className="button secondary transcript-edit"
+                        type="button"
+                        disabled={nonBranchableMessageIds.has(message.id)}
+                        title={
+                          nonBranchableMessageIds.has(message.id)
+                            ? "A message-set template is atomic. Branch after its final message or detach it first."
+                            : undefined
+                        }
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onEditFromHere(message.id);
+                        }}
+                      >
+                        Edit from here
+                      </button>
+                    )}
                   </div>
                   {isOpen && (
                     <div className="transcript-body" id={bodyId}>

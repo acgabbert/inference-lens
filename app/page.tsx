@@ -19,6 +19,7 @@ import {
 import {
   createEntityId,
   createSingleTurnRunExecution,
+  transcriptFromRunState,
 } from "../packages/core/src/run-kernel";
 import { modalOwnsKeyboardCommands } from "./keyboard-command-scope.client";
 import type {
@@ -68,7 +69,7 @@ import { ResponseOutput } from "./response-output.client";
 import { WorkbenchShell } from "./workbench-shell.client";
 import type { WorkbenchView } from "./workbench-shell.client";
 import { RunTracePanel } from "./run-trace-panel.client";
-import { parseRunTraceJson, traceFileName } from "../packages/core/src/run-trace";
+import { parseRunTraceJson, runStateFromTrace, traceFileName } from "../packages/core/src/run-trace";
 import { RunHistoryDrawer } from "./run-history-drawer.client";
 import type { EvaluationSuiteHistoryHandle } from "./evaluations/evaluation-suite-history.client";
 import { useEvaluationBaselines } from "./evaluations/use-evaluation-baselines.client";
@@ -91,6 +92,8 @@ import {
   type WorkbenchBranchContext,
 } from "./run/prepare-workbench-run.client";
 import { useRunSession } from "./run/use-run-session.client";
+import { RunEvidenceDetail } from "./run/run-evidence-detail.client";
+import { useRunsNavigation } from "./run/use-runs-navigation.client";
 import { toolBindingFor } from "./run/run-session-state.client";
 import { useCommandTools } from "./tools/use-command-tools.client";
 import { commandToolUnavailableMessage } from "./tools/command-tool-availability.client";
@@ -446,7 +449,7 @@ function HomeContent() {
   );
   const runHistory = useProjectRunHistory(
     projectWorkspace,
-    runHistoryOpen || suiteHistoryRequested,
+    runHistoryOpen || suiteHistoryRequested || mode === "runs",
     savedRunVersion,
   );
   // Named baselines are annotations over the same artifacts the history
@@ -517,6 +520,10 @@ function HomeContent() {
   });
   const { runState, isRequestActive, toolResultDrafts, traceStorage,
     hasDiagnosticCapture, visibleBranchProvenance, parentTrace, transcript } = runSession;
+  const runsNavigation = useRunsNavigation({
+    ...(projectFile ? { projectId: projectFile.projectId } : {}),
+    readTrace: runHistory.readTrace,
+  });
   const repeatedExperiment = useRepeatedExperimentSession({
     transport: inferenceTransport,
     prepareCredential: () =>
@@ -1029,6 +1036,7 @@ function HomeContent() {
       messages: input.messages,
     };
     input.target.profileId = createEntityId("profile", requestProfile.id);
+    runsNavigation.selectCurrent(input.runId);
     const sessionStart = runSession.start(input, {
       request,
       workspace: projectWorkspace,
@@ -1171,6 +1179,23 @@ function HomeContent() {
     setMode("compose");
     setRunHistoryOpen(false);
   }
+  function branchFromHistoryTrace(trace: RunTrace): void {
+    const savedTranscript = transcriptFromRunState(runStateFromTrace(trace));
+    const branchMessage = savedTranscript.at(-1)?.message;
+    if (!branchMessage) {
+      project.setError("This saved trace has no message to branch from.");
+      return;
+    }
+    resetMessages(structuredClone(savedTranscript.map(({ message }) => message)));
+    setBranchContext({
+      parentRunId: trace.runId,
+      parentConversationRevisionId: trace.input.conversationRevisionId,
+      branchMessageId: branchMessage.id,
+      parentTraceNeedsSaving: false,
+    });
+    setMode("compose");
+    setWorkbenchView("request");
+  }
   async function openHistoryExperiment(item: ProjectExperimentHistoryItem): Promise<void> {
     const workspace = projectWorkspace;
     if (!workspace) throw new Error("The project folder is no longer open.");
@@ -1182,7 +1207,7 @@ function HomeContent() {
       repeatedExperiment.openSaved(opened, workspace);
       evaluationExecution.clear();
     }
-    runSession.reset();
+    runsNavigation.selectExperiment(item);
     setMode("runs");
     setRunHistoryOpen(false);
   }
@@ -1311,6 +1336,9 @@ function HomeContent() {
       setPromptNavigationTarget((current) =>
         current ? { ...current, returnTarget: undefined } : current,
       );
+    }
+    if (nextMode === "runs" && !runsNavigation.selection && runState) {
+      runsNavigation.selectCurrent(runState.runId);
     }
     setMode(nextMode);
   }
@@ -2115,6 +2143,45 @@ function HomeContent() {
         />
       ) : (
         <RunsMode
+          browser={{
+            ...(projectFile ? { projectId: projectFile.projectId } : {}),
+            ...(runState?.input
+              ? {
+                  currentRun: {
+                    runId: runState.runId,
+                    model: runState.input.target.model,
+                    status: runState.status.kind,
+                    ...(runState.startedAt ? { startedAt: runState.startedAt } : {}),
+                  },
+                }
+              : {}),
+            ...(projectWorkspace ? { history: runHistory } : {}),
+            ...(runsNavigation.selection ? { selection: runsNavigation.selection } : {}),
+            filter: runsNavigation.filter,
+            scrollTop: runsNavigation.scrollTop,
+            ...(runsNavigation.selection?.kind === "current-run" && runState?.runId === runsNavigation.selection.runId
+              ? { selectedEvidence: responseSurface }
+              : runsNavigation.inspection?.status === "ready" && runsNavigation.inspection.trace
+                ? {
+                    selectedEvidence: (
+                      <RunEvidenceDetail
+                        trace={runsNavigation.inspection.trace}
+                        fileName={runsNavigation.inspection.selection.fileName}
+                        onBranch={branchFromHistoryTrace}
+                      />
+                    ),
+                  }
+                : {}),
+            ...(runsNavigation.inspection?.status === "loading" ? { loading: true } : {}),
+            ...(runsNavigation.inspection?.status === "error" && runsNavigation.inspection.error
+              ? { error: runsNavigation.inspection.error }
+              : {}),
+            onFilterChange: runsNavigation.setFilter,
+            onScrollTopChange: runsNavigation.setScrollTop,
+            onSelectCurrent: runsNavigation.selectCurrent,
+            onSelectRun: (item) => void runsNavigation.selectSavedRun(item),
+            onSelectExperiment: (item) => void openHistoryExperiment(item),
+          }}
           {...(evaluationBaselines.comparison && !evaluationExecution.execution && !repeatedExperiment.execution
             ? {
                 comparison: {
@@ -2176,16 +2243,6 @@ function HomeContent() {
               {traceSurface}
             </>
           }
-          {...(runState && runState.status.kind !== "not_started"
-            ? {
-                currentRequest: {
-                  onOpen: () => {
-                    setMode("compose");
-                    setWorkbenchView("response");
-                  },
-                },
-              }
-            : {})}
           {...(projectWorkspace
             ? {
                 savedHistory: {

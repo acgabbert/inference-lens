@@ -4,6 +4,9 @@ import {
   createProjectFile,
   serializeProjectFile,
 } from "../../packages/core/src/project";
+import { RunCoordinator, createRunTrace } from "../../packages/core/src/run-kernel";
+import { createResolvedRunInput } from "../../packages/core/src/run-kernel/run-execution";
+import { serializeRunTrace } from "../../packages/core/src/run-trace";
 import {
   BUFFERED_FIXTURE_ENDPOINT,
   importProject,
@@ -61,21 +64,46 @@ test("Runs links back to the current ordinary request result", async ({ page }) 
   await expect(page.locator(".response-pane")).toContainText("Buffered fixture response");
 
   await openMode(page, "Runs");
-  await expect(page.getByRole("heading", { name: "Current request result" })).toBeVisible();
-  await page.getByRole("button", { name: "View current response", exact: true }).click();
-
   await expect(
     page.getByRole("navigation", { name: "Application mode" })
-      .getByRole("button", { name: "Compose" }),
+      .getByRole("button", { name: "Runs" }),
   ).toHaveAttribute("aria-current", "page");
-  await expect(page.locator(".response-pane")).toContainText("Buffered fixture response");
+  await expect(page.getByRole("region", { name: "Selected run evidence" }))
+    .toContainText("Buffered fixture response");
 });
 
-test("Runs opens the saved history of a folder-backed project", async ({ page }) => {
+test("Runs inspects saved evidence without replacing the Compose draft", async ({ page }) => {
+  await page.setViewportSize({ width: 880, height: 720 });
   const fixture = await seedMappedProject(page);
+  const input = createResolvedRunInput({
+    provider: "openai-compatible",
+    endpoint: BUFFERED_FIXTURE_ENDPOINT,
+    model: "saved-history-model",
+    messages: [{ role: "user", content: "Saved evidence request" }],
+  }, {
+    conversationId: fixture.conversations[0]!.id,
+    conversationRevisionId: fixture.defaults.conversationRevisionId,
+  }, [], [], "saved-history", "2026-09-21T21:00:00.000Z");
+  const coordinator = new RunCoordinator(input);
+  const { execution } = coordinator.start();
+  coordinator.accept({
+    type: "text_delta",
+    text: "Saved evidence response",
+    source: { exchangeId: execution.exchangeId, frameIndex: 0 },
+  });
+  coordinator.accept({
+    type: "completed",
+    finishReason: { normalized: "stop" },
+    source: { exchangeId: execution.exchangeId, frameIndex: 0 },
+  });
+  coordinator.finishTurnStream();
+  const trace = createRunTrace(coordinator.state);
   await stubProjectDirectory(page, {
     name: "run-discovery.inference-lens",
-    files: { "project.json": serializeProjectFile(fixture) },
+    files: {
+      "project.json": serializeProjectFile(fixture),
+      [`traces/${trace.runId}.json`]: serializeRunTrace(trace),
+    },
     directories: ["traces", "experiments"],
   });
   await page.goto("/");
@@ -85,8 +113,33 @@ test("Runs opens the saved history of a folder-backed project", async ({ page })
   await expect(page.locator(".brand")).toContainText("Run discovery fixture");
 
   await openMode(page, "Runs");
-  await page.getByRole("button", { name: "Open saved run history", exact: true }).click();
+  const list = page.getByRole("navigation", { name: "Run evidence" });
+  await expect(list.getByRole("button", { name: /saved-history-model/i })).toBeVisible();
+  await list.getByRole("button", { name: /saved-history-model/i }).click();
+  await expect(page.getByRole("region", { name: "Selected run evidence" }))
+    .toContainText("Saved evidence response");
+  const listBox = await list.boundingBox();
+  const detailBox = await page.getByRole("region", { name: "Selected run evidence" }).boundingBox();
+  expect(listBox).not.toBeNull();
+  expect(detailBox).not.toBeNull();
+  expect(listBox!.x + listBox!.width).toBeLessThanOrEqual(detailBox!.x + 1);
+  expect(detailBox!.width).toBeGreaterThan(400);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await expect(page.getByRole("region", { name: "Selected run evidence" })
+    .getByRole("button", { name: "Edit from here" })).toHaveCount(0);
 
-  await expect(page.getByRole("heading", { name: "Run history" })).toBeVisible();
-  await expect(page.getByText("No saved evidence yet", { exact: true })).toBeVisible();
+  await openMode(page, "Compose");
+  await expect(page.getByLabel("Message 1 content")).toHaveValue("Make this result easy to find.");
+  await expect(page.locator(".response-pane")).not.toContainText("Saved evidence response");
+
+  await openMode(page, "Runs");
+  await expect(page.getByRole("region", { name: "Selected run evidence" }))
+    .toContainText("Saved evidence response");
+  await page.getByRole("button", { name: "Branch from this run" }).click();
+  await expect(
+    page.getByRole("navigation", { name: "Application mode" })
+      .getByRole("button", { name: "Compose" }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(page.getByLabel("Message 1 content")).toHaveValue("Saved evidence request");
+  await expect(page.getByLabel("Message 2 content")).toHaveValue("Saved evidence response");
 });
