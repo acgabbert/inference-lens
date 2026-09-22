@@ -1,5 +1,7 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
+
 import { EvaluationPreviewWorkspace } from "../evaluations/evaluation-case-preview.client";
 import { EvaluationSuiteEditor } from "../evaluations/evaluation-suite-editor.client";
 import type {
@@ -22,8 +24,24 @@ import styles from "./evaluations-mode.module.css";
 export interface EvaluationsLayoutHandle {
   setupOpen: boolean;
   onSetupOpenChange(open: boolean): void;
-  previewOpen: boolean;
-  onPreviewOpenChange(open: boolean): void;
+  previewPreference: "auto" | "open" | "closed";
+  onPreviewPreferenceChange(preference: "open" | "closed"): void;
+}
+
+const constrainedPreviewQuery = "(max-width: 1100px)";
+
+function subscribeToConstrainedPreview(change: () => void): () => void {
+  const media = window.matchMedia(constrainedPreviewQuery);
+  media.addEventListener("change", change);
+  return () => media.removeEventListener("change", change);
+}
+
+function constrainedPreviewSnapshot(): boolean {
+  return window.matchMedia(constrainedPreviewQuery).matches;
+}
+
+function serverConstrainedPreviewSnapshot(): boolean {
+  return false;
 }
 
 interface EvaluationsModeProps {
@@ -58,6 +76,14 @@ export function EvaluationsMode({
   onOpenSourceTrace,
 }: EvaluationsModeProps) {
   const project = authoring.project;
+  const constrainedPreview = useSyncExternalStore(
+    subscribeToConstrainedPreview,
+    constrainedPreviewSnapshot,
+    serverConstrainedPreviewSnapshot,
+  );
+  const previewOpen = layout.previewPreference === "auto"
+    ? !constrainedPreview
+    : layout.previewPreference === "open";
   if (!project) {
     return (
       <div className={styles.modeEmpty}>
@@ -71,7 +97,7 @@ export function EvaluationsMode({
   }
 
   return (
-    <div className={layout.previewOpen ? styles.mode : styles.modeWithoutPreview}>
+    <div className={previewOpen ? styles.mode : styles.modeWithoutPreview}>
       <EvaluationSuiteRail
         suites={project.evaluationSuites}
         {...(authoring.suiteId ? { selectedId: authoring.suiteId } : {})}
@@ -91,12 +117,12 @@ export function EvaluationsMode({
           {...(onOpenSourceTrace ? { onOpenSourceTrace } : {})}
         />
       </div>
-      {layout.previewOpen ? (
+      {previewOpen ? (
         <aside aria-label="Provider input" className={styles.preview}>
           <button
             className={styles.previewToggle}
             type="button"
-            onClick={() => layout.onPreviewOpenChange(false)}
+            onClick={() => layout.onPreviewPreferenceChange("closed")}
           >
             Hide provider input
           </button>
@@ -107,7 +133,7 @@ export function EvaluationsMode({
           aria-expanded="false"
           className={styles.previewEdge}
           type="button"
-          onClick={() => layout.onPreviewOpenChange(true)}
+          onClick={() => layout.onPreviewPreferenceChange("open")}
         >
           Show provider input
         </button>

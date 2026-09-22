@@ -301,7 +301,8 @@ function HomeContent() {
   // The Evaluations mode's own open regions, held here for the same reason as
   // the disclosure above: the mode unmounts whenever another one is on screen.
   const [evaluationSetupOpen, setEvaluationSetupOpen] = useState(true);
-  const [evaluationPreviewOpen, setEvaluationPreviewOpen] = useState(true);
+  const [evaluationPreviewPreference, setEvaluationPreviewPreference] =
+    useState<"auto" | "open" | "closed">("auto");
   const [savedRunVersion, setSavedRunVersion] = useState(0);
   // Bumped when an import lands in the composer's message list, so the composer
   // returns to Messages and the newly imported snapshot is on screen. This used
@@ -1903,8 +1904,8 @@ function HomeContent() {
           layout={{
             setupOpen: evaluationSetupOpen,
             onSetupOpenChange: setEvaluationSetupOpen,
-            previewOpen: evaluationPreviewOpen,
-            onPreviewOpenChange: setEvaluationPreviewOpen,
+            previewPreference: evaluationPreviewPreference,
+            onPreviewPreferenceChange: setEvaluationPreviewPreference,
           }}
           modelFavorites={{
             models: activeProfile.favoriteModels ?? [],
