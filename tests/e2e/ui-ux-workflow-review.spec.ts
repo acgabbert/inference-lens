@@ -72,8 +72,9 @@ test("review: direct prompt reuse reaches a real request and remains discoverabl
   await expect(page.locator(".request-evidence").first()).toContainText("SAVED PROMPT: investigate database outage.");
   await capture(page, "06-reused-prompt-result");
   await openMode(page, "Runs");
-  await expect(page.getByRole("button", { name: "View current response", exact: true })).toBeVisible();
-  await expect(page.getByText("Save this project to a folder to build a browsable run history.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Run evidence" })).toContainText("Current session");
+  await expect(page.getByRole("region", { name: "Selected run evidence" }))
+    .toContainText("Buffered fixture response");
   await capture(page, "07-imported-project-runs-history-disabled");
 });
 
@@ -155,10 +156,10 @@ test("review: folder autosave survives reopen and ordinary runs are in the histo
   await page.getByRole("button", { name: /^Run current conversation/ }).click();
   await expect(page.locator(".response-pane")).toContainText("Buffered fixture response");
   await openMode(page, "Runs");
-  await page.getByRole("button", { name: "Open saved run history", exact: true }).click();
-  await expect(page.locator(".run-history-item")).toHaveCount(1);
+  await expect(page.locator(".runs-evidence-item")).toHaveCount(1);
+  await expect(page.locator(".runs-evidence-item")).toContainText("Saved to folder");
   await capture(page, "12-folder-run-history");
-  await page.locator(".run-history-item").click();
-  await expect(page.locator(".response-pane")).toContainText("Buffered fixture response");
+  await expect(page.getByRole("region", { name: "Selected run evidence" }))
+    .toContainText("Buffered fixture response");
   await capture(page, "13-reopened-ordinary-run");
 });

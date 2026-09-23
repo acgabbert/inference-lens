@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import type { ExperimentCellId, RunId, RunTrace } from "../../packages/core/src/run-kernel";
+import type { ExperimentCellId, RunId, RunState, RunTrace } from "../../packages/core/src/run-kernel";
 import { PaneEmptyState } from "../pane-empty-state.client";
 import { EvaluationComparisonWorkspace } from "../evaluations/evaluation-comparison-workspace.client";
 import type { EvaluationComparisonReturnTarget } from "../evaluations/evaluation-comparison-workspace.client";
@@ -14,9 +14,35 @@ import type { EvaluationExecution } from "../evaluations/use-evaluation-executio
 import type { EvaluationReassessmentHandle } from "../evaluations/use-evaluation-reassessment.client";
 import { RepeatedExperimentWorkspace } from "../run/repeated-experiment-workspace.client";
 import type { RepeatedExperimentExecution } from "../run/use-repeated-experiment-session.client";
+import {
+  RunsEvidenceList,
+  type RunsHistoryFilter,
+  type RunsSelection,
+} from "../run/runs-evidence-list.client";
+import type {
+  ProjectExperimentHistoryItem,
+  ProjectRunHistoryItem,
+  ProjectRunHistoryState,
+} from "../use-project-run-history.client";
 import styles from "./runs-mode.module.css";
 
 interface RunsModeProps {
+  browser?: {
+    projectId?: string;
+    currentRun?: { runId: RunId; model: string; status: RunState["status"]["kind"]; startedAt?: string };
+    history?: ProjectRunHistoryState;
+    selection?: RunsSelection;
+    filter: RunsHistoryFilter;
+    scrollTop: number;
+    selectedEvidence?: ReactNode;
+    loading?: boolean;
+    error?: string;
+    onFilterChange(filter: RunsHistoryFilter): void;
+    onScrollTopChange(scrollTop: number): void;
+    onSelectCurrent(runId: RunId): void;
+    onSelectRun(item: ProjectRunHistoryItem): void;
+    onSelectExperiment(item: ProjectExperimentHistoryItem): void;
+  };
   comparison?: {
     loaded: LoadedEvaluationComparison;
     onOpenTrace(side: LoadedComparisonSide, runId: RunId, target: EvaluationComparisonReturnTarget): void;
@@ -73,6 +99,7 @@ interface RunsModeProps {
  * identities. Here they are the only thing on screen.
  */
 export function RunsMode({
+  browser,
   comparison,
   evaluation,
   repeated,
@@ -119,7 +146,19 @@ export function RunsMode({
     />
   ) : null;
 
-  if (!results) {
+  const browserDetail = browser?.selectedEvidence ? (
+    <section aria-label="Selected run evidence" className={styles.results}>
+      {browser.selectedEvidence}
+    </section>
+  ) : browser?.loading ? (
+    <div className={styles.empty} role="status">Loading saved evidence…</div>
+  ) : browser?.error ? (
+    <div className={styles.empty} role="alert">
+      <PaneEmptyState eyebrow="Runs" heading="Evidence unavailable" detail={browser.error} />
+    </div>
+  ) : null;
+
+  if (!results && !browser) {
     return (
       <div className={styles.mode}>
         <div className={styles.empty}>
@@ -174,15 +213,43 @@ export function RunsMode({
   }
 
   return (
-    <div className={showDetail ? `${styles.mode} ${styles.withDetail}` : styles.mode}>
-      <section aria-label="Run results" className={styles.results}>
-        {results}
-      </section>
-      {showDetail && (
-        <section aria-label="Selected run" className={styles.detail}>
-          {detail}
-        </section>
+    <div className={browser ? `${styles.mode} ${styles.withBrowser}` : styles.mode}>
+      {browser && (
+        <RunsEvidenceList
+          {...(browser.projectId ? { projectId: browser.projectId } : {})}
+          {...(browser.currentRun ? { currentRun: browser.currentRun } : {})}
+          {...(browser.history ? { history: browser.history } : {})}
+          {...(browser.selection ? { selection: browser.selection } : {})}
+          filter={browser.filter}
+          scrollTop={browser.scrollTop}
+          onFilterChange={browser.onFilterChange}
+          onScrollTopChange={browser.onScrollTopChange}
+          onSelectCurrent={browser.onSelectCurrent}
+          onSelectRun={browser.onSelectRun}
+          onSelectExperiment={browser.onSelectExperiment}
+        />
       )}
+      <div className={showDetail && !browserDetail ? `${styles.content} ${styles.withDetail}` : styles.content}>
+        {browserDetail ?? (results ? (
+          <section aria-label="Run results" className={styles.results}>
+            {results}
+          </section>
+        ) : (
+          <div className={styles.empty}>
+            <PaneEmptyState
+              eyebrow="Runs"
+              heading="No results open"
+              detail="Ordinary request results appear here after a run. You can also browse saved project evidence or start an evaluation."
+              action={{ label: "Go to Evaluations", onClick: onStartSomething }}
+            />
+          </div>
+        ))}
+        {showDetail && !browserDetail && (
+          <section aria-label="Selected run" className={styles.detail}>
+            {detail}
+          </section>
+        )}
+      </div>
     </div>
   );
 }
