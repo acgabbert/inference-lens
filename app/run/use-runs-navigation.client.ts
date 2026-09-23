@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
 import type { RunId, RunTrace } from "../../packages/core/src/run-kernel";
 import type {
@@ -32,23 +32,16 @@ export function useRunsNavigation({
   const [filter, setFilter] = useState<RunsHistoryFilter>("all");
   const [scrollTop, setScrollTop] = useState(0);
   const [inspection, setInspection] = useState<RunsInspection>();
-  const generationRef = useRef(0);
+  const [navigationProjectId, setNavigationProjectId] = useState(projectId);
 
-  useEffect(() => {
-    if (
-      selection &&
-      selection.kind !== "current-run" &&
-      selection.projectId !== projectId
-    ) {
-      generationRef.current += 1;
-      setSelection(undefined);
-      setInspection(undefined);
-      setScrollTop(0);
-    }
-  }, [projectId, selection]);
+  if (navigationProjectId !== projectId) {
+    setNavigationProjectId(projectId);
+    setSelection(undefined);
+    setInspection(undefined);
+    setScrollTop(0);
+  }
 
   function selectCurrent(runId: RunId): void {
-    generationRef.current += 1;
     setInspection(undefined);
     setSelection({ kind: "current-run", runId });
   }
@@ -61,29 +54,40 @@ export function useRunsNavigation({
       runId: item.summary.runId,
       fileName: item.fileName,
     };
-    const generation = ++generationRef.current;
     setSelection(next);
     setInspection({ selection: next, status: "loading" });
     try {
       const trace = await readTrace(item.fileName);
-      if (generation !== generationRef.current) return;
       if (trace.runId !== item.summary.runId) {
         throw new Error("The saved trace now contains a different run.");
       }
-      setInspection({ selection: next, status: "ready", trace });
+      setInspection((current) =>
+        current?.selection.projectId === next.projectId &&
+        current.selection.runId === next.runId &&
+        current.selection.fileName === next.fileName
+          ? { selection: next, status: "ready", trace }
+          : current,
+      );
     } catch (error) {
-      if (generation !== generationRef.current) return;
-      setInspection({
-        selection: next,
-        status: "error",
-        error: error instanceof Error ? error.message : "The saved trace could not be read.",
-      });
+      setInspection((current) =>
+        current?.selection.projectId === next.projectId &&
+        current.selection.runId === next.runId &&
+        current.selection.fileName === next.fileName
+          ? {
+              selection: next,
+              status: "error",
+              error:
+                error instanceof Error
+                  ? error.message
+                  : "The saved trace could not be read.",
+            }
+          : current,
+      );
     }
   }
 
   function selectExperiment(item: ProjectExperimentHistoryItem): void {
     if (!projectId) return;
-    generationRef.current += 1;
     setInspection(undefined);
     setSelection({ kind: "experiment", projectId, experimentId: item.experimentId });
   }
