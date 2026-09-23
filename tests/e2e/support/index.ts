@@ -269,9 +269,9 @@ export function toast(page: Page, title: string | RegExp): Locator {
 /**
  * Closes the Project menu.
  *
- * It is a `<details>`, so Escape does not close it and a second click on the
- * summary toggles it back open. Left open it overlays the request pane and
- * swallows clicks meant for the controls underneath.
+ * Most tests should dismiss it through the UI. This helper remains useful for
+ * import drivers that set a hidden file input directly and therefore do not
+ * produce the pointer or keyboard event that ordinarily closes the menu.
  */
 export async function closeProjectMenu(page: Page): Promise<void> {
   await page.evaluate(() => {

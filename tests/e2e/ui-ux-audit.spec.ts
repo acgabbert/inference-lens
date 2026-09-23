@@ -93,13 +93,13 @@ test("audit: review tool configuration and manual continuation with a mock", asy
   await capture(page, "07-runs-after-completed-run");
 });
 
-test("audit: menus ignore Escape and the library modal does not receive focus", async ({page}) => {
+test("audit: menus dismiss predictably while library modal focus remains characterized", async ({page}) => {
   await openProject(page);
   await page.getByLabel("Project menu").click(); await page.keyboard.press("Escape");
-  await expect(page.locator("details.project-menu")).toHaveAttribute("open", "");
+  await expect(page.locator("details.project-menu")).not.toHaveAttribute("open", "");
   await page.getByLabel("Run data menu").click();
-  await capture(page, "08-overlapping-menus");
-  await page.getByLabel("Run data menu").click(); await page.getByLabel("Project menu").click();
+  await page.getByLabel("Project menu").click();
+  await expect(page.locator("details.run-data-menu")).not.toHaveAttribute("open", "");
   await page.getByRole("tab", {name: /Tools/}).click(); await page.getByRole("button", {name: "Browse local library"}).click();
   const focus = await page.evaluate(() => ({tag:document.activeElement?.tagName, text:document.activeElement?.textContent, insideDialog: Boolean(document.activeElement?.closest('[role="dialog"]'))}));
   expect(focus.insideDialog).toBe(false);

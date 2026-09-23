@@ -1,6 +1,6 @@
 "use client";
 
-import type { ChangeEvent } from "react";
+import { type ChangeEvent, useEffect, useRef } from "react";
 import type { StoredInferenceProfile } from "./profile-store.client";
 import type { ProjectStorageState } from "./use-project-workspace.client";
 import { ModeStrip } from "./modes/mode-strip.client";
@@ -86,6 +86,7 @@ export function Topbar({
   onImportRunTrace,
   onOpenRunHistory,
 }: TopbarProps) {
+  const topbarRef = useRef<HTMLElement>(null);
   const profileName = activeProfile.name || "Untitled profile";
   // The dot's meaning is credential state, which no one can read off a colour.
   // It travels in the accessible name so the control is not visual-only.
@@ -105,8 +106,50 @@ export function Topbar({
         : projectStorageState.kind === "error"
           ? "Save failed — retry from Project"
           : `Saved to ${projectStorageState.displayPath}`;
+
+  useEffect(() => {
+    const topbar = topbarRef.current;
+    if (!topbar) return;
+    const menus = Array.from(
+      topbar.querySelectorAll<HTMLDetailsElement>("details.header-menu"),
+    );
+
+    const closeMenus = (except?: HTMLDetailsElement) => {
+      for (const menu of menus) {
+        if (menu !== except) menu.open = false;
+      }
+    };
+    const handleToggle = (event: Event) => {
+      const menu = event.currentTarget as HTMLDetailsElement;
+      if (menu.open) closeMenus(menu);
+    };
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && !menus.some((menu) => menu.contains(target))) {
+        closeMenus();
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      const openMenu = menus.find((menu) => menu.open);
+      if (!openMenu) return;
+      event.preventDefault();
+      openMenu.open = false;
+      openMenu.querySelector<HTMLElement>("summary")?.focus();
+    };
+
+    for (const menu of menus) menu.addEventListener("toggle", handleToggle);
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      for (const menu of menus) menu.removeEventListener("toggle", handleToggle);
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
+
   return (
-    <header className="topbar">
+    <header className="topbar" ref={topbarRef}>
       <div className="brand"><span className="brand-mark" aria-hidden="true">IL</span><div><h1>Inference Lens</h1><p>Inspect every model run · {projectName ? <><strong>{projectName}</strong>{projectDirty ? " · Unsaved" : ""}{projectStorageLabel ? ` · ${projectStorageLabel}` : ""}</> : "No project open"}</p></div></div>
       <ModeStrip value={mode} onChange={onModeChange} {...(modeIndicators ? { indicators: modeIndicators } : {})} />
       <div className="header-actions">
