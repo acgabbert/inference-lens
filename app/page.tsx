@@ -96,6 +96,7 @@ import { RunEvidenceDetail } from "./run/run-evidence-detail.client";
 import { useRunsNavigation } from "./run/use-runs-navigation.client";
 import { toolBindingFor } from "./run/run-session-state.client";
 import { useCommandTools } from "./tools/use-command-tools.client";
+import { useMcpConsents } from "./tools/use-mcp-consents.client";
 import { commandToolUnavailableMessage } from "./tools/command-tool-availability.client";
 import { listExperimentToolBindings } from "./run/experiment-tool-bindings.client";
 import { useRepeatedExperimentSession } from "./run/use-repeated-experiment-session.client";
@@ -499,13 +500,13 @@ function HomeContent() {
   // joined with the project's mocks below: what serves a tool is one question,
   // and the run session must not have to ask it twice.
   const commandTools = useCommandTools();
+  const mcpConsents = useMcpConsents();
   const runSession = useRunSession({
     transport: inferenceTransport,
     prepareCredential: () =>
       credential.prepareForProfile(requestProfile.id, requestProfile.endpoint),
-    tools,
-    bindingForTool: (toolId) =>
-      toolBindingFor(toolId, mockForTool(toolId), commandTools.bindingFor(toolId)),
+    bindingForTool: (tool) =>
+      toolBindingFor(tool.id, mockForTool(tool.id), commandTools.bindingFor(tool.id), mcpConsents.bindingFor(tool)),
     readTrace: runHistory.readTrace,
     onShowResponse() {
       setWorkbenchView("response");
@@ -1750,6 +1751,8 @@ function HomeContent() {
         onOutputScroll={updateOutputFollowState}
         onJumpToLatest={jumpToLatestOutput}
         onToolResultDraftChange={runSession.updateToolResultDraft}
+        onApproveMcp={runSession.approveMcpCall}
+        onRejectMcp={runSession.rejectMcpCall}
         onContinue={() => void continueRun()}
         onRetry={() => void retryRun()}
         onDiscardFailedRun={stop}
@@ -1941,6 +1944,7 @@ function HomeContent() {
             attachMcpToolToProject, attachMcpToolToRequest,
           }}
           commandTools={commandTools}
+          mcpConsents={mcpConsents}
           templates={projectTemplates}
           project={projectFile}
           settings={{

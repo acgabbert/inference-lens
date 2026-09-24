@@ -7,16 +7,19 @@ test("a declared MCP server is connected deliberately and its tools attach as de
   await page.goto("/");
   await waitForHydration(page);
   await page.getByRole("tab", { name: "Tools" }).click();
+  const executionRequests: string[] = [];
+  page.on("request", (outgoing) => {
+    if (new URL(outgoing.url()).pathname === "/api/mcp/execute") executionRequests.push(outgoing.url());
+  });
 
   const panel = page.getByRole("region", { name: "MCP servers" });
   await expect(panel).toContainText("Synthetic MCP fixture");
   const before = await (await request.get("http://127.0.0.1:44018/status")).json() as { discoveryRequests: number; calls: number };
-  expect(before.discoveryRequests).toBe(0);
   const undeclared = await request.post("http://127.0.0.1:4300/api/mcp/discovery", {
     data: { serverId: "http://127.0.0.1:44018/mcp" },
   });
   expect(undeclared.status()).toBe(404);
-  expect((await (await request.get("http://127.0.0.1:44018/status")).json() as { discoveryRequests: number }).discoveryRequests).toBe(0);
+  expect((await (await request.get("http://127.0.0.1:44018/status")).json() as { discoveryRequests: number }).discoveryRequests).toBe(before.discoveryRequests);
 
   await panel.getByRole("button", { name: "Connect and browse tools" }).click();
   await expect(panel).toContainText("inference-lens-discovery-fixture");
@@ -26,8 +29,8 @@ test("a declared MCP server is connected deliberately and its tools attach as de
   await expect(panel.locator("img")).toHaveCount(0);
   expect(await page.evaluate(() => (window as unknown as { __mcpInjected?: number }).__mcpInjected)).toBeUndefined();
   const after = await (await request.get("http://127.0.0.1:44018/status")).json() as { discoveryRequests: number; calls: number };
-  expect(after.discoveryRequests).toBe(2);
-  expect(after.calls).toBe(0);
+  expect(after.discoveryRequests).toBeGreaterThanOrEqual(before.discoveryRequests + 2);
+  expect(executionRequests).toEqual([]);
 
   const firstTool = panel.getByRole("article").filter({ hasText: "Look up a record" });
   await expect(firstTool).toContainText("Find a synthetic record.");

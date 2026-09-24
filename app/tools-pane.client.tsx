@@ -8,6 +8,8 @@ import { CommandToolBindingEditor } from "./tools/command-tool-binding-editor.cl
 import type { CommandToolsHandle } from "./tools/use-command-tools.client";
 import type { McpDiscoveredTool } from "../packages/contracts/src/mcp-discovery.ts";
 import { McpDiscoveryPanel } from "./tools/mcp-discovery-panel.client";
+import { McpConsentEditor } from "./tools/mcp-consent-editor.client";
+import type { McpConsentsHandle } from "./tools/use-mcp-consents.client";
 
 interface ToolsPaneProps {
   tools: ToolDefinition[];
@@ -27,6 +29,7 @@ interface ToolsPaneProps {
   onRemoveRequestTool(id: ToolId): void;
   /** What this device may run, and what each tool has been allowed to run. */
   commandTools: CommandToolsHandle;
+  mcpConsents?: McpConsentsHandle;
   onAttachMcpToProject(tool: McpDiscoveredTool, name: string): string | undefined;
   onAttachMcpToRequest(tool: McpDiscoveredTool, name: string): string | undefined;
 }
@@ -41,7 +44,7 @@ interface ToolsPaneProps {
 export function ToolsPane({
   tools, requestTools, enabledToolIds, activeProfileName, toolsEnabled,
   onOpenLibrary, onOpenConnectionSettings, onAddTool, onRemoveTool, onMoveTool, onUpdateTool,
-  onSetToolEnabled, mockForTool, onUpdateToolMock, onRemoveRequestTool, commandTools,
+  onSetToolEnabled, mockForTool, onUpdateToolMock, onRemoveRequestTool, commandTools, mcpConsents,
   onAttachMcpToProject, onAttachMcpToRequest,
 }: ToolsPaneProps) {
   const selectedProjectTools = tools.filter(({ id }) =>
@@ -133,6 +136,7 @@ export function ToolsPane({
                 >
                   Detach
                 </button>
+                {tool.source?.kind === "mcp" && mcpConsents && <McpConsentEditor tool={tool} consents={mcpConsents} />}
               </li>
             ))}
           </ul>
@@ -165,12 +169,14 @@ export function ToolsPane({
           // beside the one that will not is cheaper than a user discovering it
           // from a transcript.
           const commandServes = Boolean(commandTools.bindingFor(tool.id));
+          const mcpServes = Boolean(mcpConsents?.bindingFor(tool));
           return <article className="tool-editor" key={tool.id}>
             <div className="tool-editor-toolbar"><label className="tool-enabled"><input type="checkbox" checked={enabledToolIds.includes(tool.id)} onChange={(event) => onSetToolEnabled(tool.id, event.target.checked)} />Attach to requests</label><div className="tool-reorder"><button aria-label={`Move ${toolLabel} earlier in the request`} className="text-button" disabled={index === 0} type="button" onClick={() => onMoveTool(tool.id, -1)}>↑</button><button aria-label={`Move ${toolLabel} later in the request`} className="text-button" disabled={index === tools.length - 1} type="button" onClick={() => onMoveTool(tool.id, 1)}>↓</button></div><button className="remove-button" type="button" onClick={() => onRemoveTool(tool.id)}>Remove</button></div>
             <ToolDefinitionEditor value={tool} onChange={(value) => onUpdateTool(tool.id, value)} />
             {tool.source?.kind === "mcp" && <p>MCP snapshot of <code>{tool.source.remoteToolName}</code> · fingerprint <code>{tool.source.discoveryFingerprint.slice(0, 12)}</code>. Editing this definition detaches its source receipt.</p>}
-            <div className="tool-fields tool-mock-fields"><label className="tool-mock-toggle"><input type="checkbox" checked={mock?.enabled ?? false} onChange={(event) => onUpdateToolMock(tool.id, mockText, event.target.checked)} />Use static mock result</label>{mock?.enabled && <label className="tool-mock-result">Mock result<textarea value={mockText} onChange={(event) => onUpdateToolMock(tool.id, event.target.value, true)} /></label>}{mock?.enabled && commandServes && <p className="tool-mock-superseded">A command tool is allowed to answer {toolLabel} on this device, so this mock is not used.</p>}</div>
-            <CommandToolBindingEditor toolId={tool.id} toolLabel={toolLabel} commandTools={commandTools} />
+            <div className="tool-fields tool-mock-fields"><label className="tool-mock-toggle"><input type="checkbox" checked={mock?.enabled ?? false} onChange={(event) => onUpdateToolMock(tool.id, mockText, event.target.checked)} />Use static mock result</label>{mock?.enabled && <label className="tool-mock-result">Mock result<textarea value={mockText} onChange={(event) => onUpdateToolMock(tool.id, event.target.value, true)} /></label>}{mock?.enabled && (commandServes || mcpServes) && <p className="tool-mock-superseded">{mcpServes ? "MCP" : "A command tool"} is allowed to answer {toolLabel} on this device, so this mock is not used.</p>}</div>
+            <CommandToolBindingEditor toolId={tool.id} toolLabel={toolLabel} commandTools={commandTools} supersededByMcp={mcpServes} />
+            {tool.source?.kind === "mcp" && mcpConsents && <McpConsentEditor tool={tool} consents={mcpConsents} />}
           </article>;
         })}
       </div>

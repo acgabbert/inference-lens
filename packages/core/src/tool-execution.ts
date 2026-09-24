@@ -56,6 +56,15 @@ export type ToolBindingConfig =
       label?: string;
       /** When the user granted this tool the right to run that command. */
       grantedAt: string;
+    }
+  | {
+      kind: "mcp";
+      executorId: string;
+      label?: string;
+      serverId: string;
+      remoteToolName: string;
+      discoveryFingerprint: string;
+      mode: "ask" | "automatic";
     };
 
 export type ToolBinding = ToolBindingConfig & { toolId: ToolId };
@@ -106,6 +115,12 @@ export function toolExecutorIdentity(
     case "command":
       return {
         kind: "command",
+        executorId: binding.executorId,
+        ...(binding.label === undefined ? {} : { label: binding.label }),
+      };
+    case "mcp":
+      return {
+        kind: "mcp",
         executorId: binding.executorId,
         ...(binding.label === undefined ? {} : { label: binding.label }),
       };

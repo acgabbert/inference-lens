@@ -232,3 +232,33 @@ export async function discoverMcpServer(
     if (discoveryQueues.get(declaration.id) === turn) discoveryQueues.delete(declaration.id);
   }
 }
+
+/** Calls one already-authorized remote tool through the same bounded transport. */
+export async function invokeMcpTool(
+  declaration: McpServerDeclaration,
+  remoteToolName: string,
+  args: Record<string, unknown>,
+  signal?: AbortSignal,
+) {
+  const item = await pooledClient(declaration, process.env);
+  item.budget.bytes = 0;
+  try {
+    return await item.client.callTool(
+      { name: remoteToolName, arguments: args },
+      { timeout: declaration.callTimeoutMs, ...(signal ? { signal } : {}) },
+    );
+  } catch (error) {
+    clients.delete(declaration.id);
+    await item.client.close();
+    throw error;
+  } finally {
+    if (clients.get(declaration.id) === item) {
+      if (item.idle) clearTimeout(item.idle);
+      item.idle = setTimeout(() => {
+        clients.delete(declaration.id);
+        void item.client.close();
+      }, POOL_IDLE_MS);
+      item.idle.unref?.();
+    }
+  }
+}

@@ -15,6 +15,8 @@ export type ToolResultDraft = {
   resolution: ToolResult["resolution"];
   /** Set when continuing will run an executor rather than send this text. */
   pendingExecutorLabel?: string;
+  mcpApproval?: { mode: "ask" | "automatic"; approved: boolean; serverLabel: string; remoteToolName: string };
+  rejectedMcp?: boolean;
 };
 
 interface ToolCallListProps {
@@ -25,6 +27,8 @@ interface ToolCallListProps {
   awaitingResults: boolean;
   onDraftChange(callId: string, text: string): void;
   onContinue(): void;
+  onApproveMcp?(callId: string): void;
+  onRejectMcp?(callId: string): void;
 }
 
 /** Displays completed calls and collects any manual tool results. */
@@ -36,6 +40,8 @@ export function ToolCallList({
   awaitingResults,
   onDraftChange,
   onContinue,
+  onApproveMcp,
+  onRejectMcp,
 }: ToolCallListProps) {
   if (calls.length === 0) return null;
 
@@ -60,7 +66,7 @@ export function ToolCallList({
               <span className="provider-pill">
                 {provenance?.pill ??
                   (draft?.pendingExecutorLabel
-                    ? "Command tool"
+                    ? draft.mcpApproval ? "MCP tool" : "Command tool"
                     : draft?.resolution.kind === "mock"
                       ? "Static mock"
                       : supplied?.resolution.kind ?? "Manual")}
@@ -90,13 +96,25 @@ export function ToolCallList({
               human. Said before the run, not after: it is also the last point
               at which the user can decide not to run it.
             */}
-            {!provenance && draft?.pendingExecutorLabel && (
+            {!provenance && draft?.mcpApproval && (
+              <div className="tool-call-pending-executor">
+                <p>{draft.mcpApproval.serverLabel} will run <code>{draft.mcpApproval.remoteToolName}</code> with the arguments above.
+                  {draft.mcpApproval.mode === "automatic" ? " Automatic execution was enabled for this tool." : " Approve this call to contact the local MCP server."}</p>
+                {draft.mcpApproval.mode === "ask" && !draft.mcpApproval.approved && <>
+                  <button type="button" className="button secondary" onClick={() => onApproveMcp?.(call.id)}>Approve this call</button>
+                  <button type="button" className="text-button" onClick={() => onRejectMcp?.(call.id)}>Reject this call</button>
+                </>}
+                {draft.mcpApproval.mode === "ask" && draft.mcpApproval.approved && <p>Approved for this call.</p>}
+              </div>
+            )}
+            {!provenance && draft?.pendingExecutorLabel && !draft.mcpApproval && (
               <p className="tool-call-pending-executor">
                 Continuing runs the command tool “{draft.pendingExecutorLabel}”
                 on this device. Type a result above to answer this call by hand
                 instead.
               </p>
             )}
+            {draft?.rejectedMcp && <p>This MCP call was rejected. Type a manual result to continue, or stop the run.</p>}
             {provenance && (
               <p className="tool-call-provenance">{provenance.detail}</p>
             )}
@@ -111,6 +129,11 @@ export function ToolCallList({
           className="button primary continue-tool-run"
           type="button"
           onClick={onContinue}
+          disabled={calls.some((call) => {
+            const draft = toolResultDrafts[call.id];
+            return (draft?.mcpApproval?.mode === "ask" && !draft.mcpApproval.approved) ||
+              (draft?.rejectedMcp && !draft.text.trim());
+          })}
         >
           Supply results and continue
         </button>

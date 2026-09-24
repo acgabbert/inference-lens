@@ -6,6 +6,7 @@ import type {
   ToolExecutor,
 } from "../../packages/core/src/tool-execution.ts";
 import { createCommandToolExecutor } from "../tools/command-tool-executor.client.ts";
+import { createMcpToolExecutor } from "../tools/mcp-tool-executor.client.ts";
 
 /**
  * Binding kind to executor, in one place.
@@ -20,5 +21,7 @@ export function createToolExecutor(binding: ToolBinding): ToolExecutor {
       return createMockToolExecutor(binding);
     case "command":
       return createCommandToolExecutor(binding);
+    case "mcp":
+      return createMcpToolExecutor(binding);
   }
 }

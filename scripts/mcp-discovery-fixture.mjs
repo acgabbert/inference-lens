@@ -7,6 +7,7 @@ const port = Number(process.env.INFERENCE_LENS_MCP_FIXTURE_PORT ?? 44018);
 let revision = 1;
 let discoveryRequests = 0;
 let calls = 0;
+let lastCall = null;
 
 const server = new Server(
   { name: "inference-lens-discovery-fixture", version: "1.0.0" },
@@ -36,6 +37,30 @@ server.setRequestHandler("tools/list", async (request) => {
     }],
   };
 });
+server.setRequestHandler("tools/call", async (request) => {
+  calls++;
+  lastCall = { name: request.params.name, arguments: request.params.arguments };
+  if (request.params.name !== "lookup_record") {
+    return { content: [{ type: "text", text: "Unknown fixture tool." }], isError: true };
+  }
+  const recordId = request.params.arguments?.record_id;
+  if (recordId === "tool-error") return {
+    content: [{ type: "text", text: "Record lookup rejected by fixture." }], isError: true,
+  };
+  if (recordId === "slow") {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    return { content: [{ type: "text", text: "late response" }] };
+  }
+  if (recordId === "protocol-error") throw new Error("Synthetic MCP protocol failure");
+  if (recordId === "malformed") return { content: "bad" };
+  if (recordId === "structured") return {
+    content: [], structuredContent: { record_id: "structured", value: 7 },
+  };
+  if (recordId === "two-parts") return {
+    content: [{ type: "text", text: "first" }, { type: "text", text: "second" }],
+  };
+  return { content: [{ type: "text", text: `Record ${recordId}: local MCP result` }] };
+});
 const transport = new WebStandardStreamableHTTPServerTransport({
   sessionIdGenerator: undefined,
   enableJsonResponse: true,
@@ -46,7 +71,7 @@ const http = createServer(async (incoming, outgoing) => {
   const pathname = new URL(incoming.url ?? "/", `http://127.0.0.1:${port}`).pathname;
   if (pathname === "/status") {
     outgoing.setHeader("content-type", "application/json");
-    outgoing.end(JSON.stringify({ revision, discoveryRequests, calls }));
+    outgoing.end(JSON.stringify({ revision, discoveryRequests, calls, lastCall }));
     return;
   }
   if (pathname === "/change" && incoming.method === "POST") {

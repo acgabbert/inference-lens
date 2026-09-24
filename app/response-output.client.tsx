@@ -55,6 +55,8 @@ type ResponseOutputProps = {
   onJumpToLatest(): void;
   onToolResultDraftChange(callId: string, text: string): void;
   onContinue(): void;
+  onApproveMcp?(callId: string): void;
+  onRejectMcp?(callId: string): void;
   onRetry(): void;
   /**
    * Abandons a failed attempt and returns the composer to idle. Destructive,
@@ -113,7 +115,7 @@ export function ResponseOutput({
   readOnly = false,
   emptyState,
   onMarkdownPreviewChange, onOutputScroll, onJumpToLatest,
-  onToolResultDraftChange, onContinue, onRetry, onDiscardFailedRun,
+  onToolResultDraftChange, onContinue, onApproveMcp, onRejectMcp, onRetry, onDiscardFailedRun,
   onSaveTrace, onEditFromHere, onEmptyStateAction,
 }: ResponseOutputProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -328,7 +330,7 @@ export function ResponseOutput({
         </div>}
         {!terminal && <ToolCallList calls={completedToolCalls} toolResultDrafts={toolResultDrafts}
           suppliedResults={runState?.toolResults ?? []} toolExecutions={runState?.toolExecutions ?? []} awaitingResults={awaitingResults}
-          onDraftChange={onToolResultDraftChange} onContinue={onContinue} />}
+          onDraftChange={onToolResultDraftChange} onContinue={onContinue} onApproveMcp={onApproveMcp} onRejectMcp={onRejectMcp} />}
         {!outputFollowing && (output || reasoning) && <button className="jump-to-latest" type="button" onClick={onJumpToLatest}>Jump to latest ↓</button>}
       </div>
     </>

@@ -31,6 +31,9 @@ const mathModel = "math-output-model";
  * and a hand-typed one are distinguishable in the output itself.
  */
 const toolCallingModel = "tool-calling-model";
+const mcpToolModel = "mcp-tool-model";
+const mcpErrorModel = "mcp-error-model";
+const mcpSlowModel = "mcp-slow-model";
 /**
  * Never stops asking for the tool, however many results it is given.
  *
@@ -107,6 +110,9 @@ const server = createServer(async (request, response) => {
         { id: echoTemperatureModel, object: "model" },
         { id: mathModel, object: "model" },
         { id: toolCallingModel, object: "model" },
+        { id: mcpToolModel, object: "model" },
+        { id: mcpErrorModel, object: "model" },
+        { id: mcpSlowModel, object: "model" },
         { id: loopingToolModel, object: "model" },
       ],
     }));
@@ -142,14 +148,16 @@ const server = createServer(async (request, response) => {
     return;
   }
 
-  if (body.model === toolCallingModel || body.model === loopingToolModel) {
+  if (body.model === toolCallingModel || body.model === loopingToolModel || [mcpToolModel, mcpErrorModel, mcpSlowModel].includes(body.model)) {
+    const isMcpModel = [mcpToolModel, mcpErrorModel, mcpSlowModel].includes(body.model);
+    const selectedTool = isMcpModel ? "lookup_record" : toolName;
     const exposed = (body.tools ?? []).map((tool) => tool?.function?.name);
-    if (!exposed.includes(toolName)) {
+    if (!exposed.includes(selectedTool)) {
       response.writeHead(400, { "content-type": "application/json" });
       response.end(JSON.stringify({
-        error: `Expected ${toolName} in tools; received ${JSON.stringify(exposed)}.`,
+        error: `Expected ${selectedTool} in tools; received ${JSON.stringify(exposed)}.`,
       }));
-      console.log(`refused a tool-calling request without ${toolName}`);
+      console.log(`refused a tool-calling request without ${selectedTool}`);
       return;
     }
     const supplied = body.messages.filter(({ role }) => role === "tool");
@@ -160,7 +168,7 @@ const server = createServer(async (request, response) => {
           tool_calls: [{
             id: `call_weather_${supplied.length + 1}`,
             type: "function",
-            function: { name: toolName, arguments: toolArguments },
+            function: { name: selectedTool, arguments: isMcpModel ? JSON.stringify({ record_id: body.model === mcpErrorModel ? "tool-error" : body.model === mcpSlowModel ? "slow" : "sample-42" }) : toolArguments },
           }],
         }
       : {

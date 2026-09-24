@@ -30,6 +30,8 @@ export type ToolResultDraft = {
    * this, a command-served call looks exactly like a call nobody has answered.
    */
   pendingExecutorLabel?: string;
+  mcpApproval?: { mode: "ask" | "automatic"; approved: boolean; serverLabel: string; remoteToolName: string };
+  rejectedMcp?: boolean;
 };
 
 export function isTerminalRunState(state: RunState | null): boolean {
@@ -88,8 +90,9 @@ export function toolBindingFor(
   toolId: ToolId,
   mock: ToolMock | undefined,
   commandBinding: ToolBinding | undefined,
+  mcpBinding?: ToolBinding,
 ): ToolBinding | undefined {
-  return commandBinding ?? toolBindingForMock(toolId, mock);
+  return mcpBinding ?? commandBinding ?? toolBindingForMock(toolId, mock);
 }
 
 /**
@@ -108,6 +111,8 @@ export function toolResolutionForBinding(
       return { kind: "mock", ruleId: binding.executorId };
     case "command":
       return { kind: "live", executorId: binding.executorId };
+    case "mcp":
+      return { kind: "live", executorId: binding.executorId };
   }
 }
 
@@ -119,6 +124,7 @@ export function executableBinding(
   draft: ToolResultDraft,
 ): ToolBinding | undefined {
   if (!draft.binding) return undefined;
+  if (draft.binding.kind === "mcp" && !draft.mcpApproval?.approved) return undefined;
   return draft.text === draft.prefilledText ? draft.binding : undefined;
 }
 
@@ -161,7 +167,7 @@ export function toolResultDraftsForState(
       if (!binding) {
         return [call.id, { text: "", resolution: { kind: "manual" as const } }];
       }
-      if (binding.kind === "command") {
+      if (binding.kind === "command" || binding.kind === "mcp") {
         // Nothing to prefill: the command has not run, and inventing a
         // placeholder would be indistinguishable from a result it produced.
         // The empty draft still submits as an execution, and typing into it
@@ -173,6 +179,10 @@ export function toolResultDraftsForState(
             prefilledText: "",
             binding,
             pendingExecutorLabel: binding.label ?? binding.executorId,
+            ...(binding.kind === "mcp" ? { mcpApproval: {
+              mode: binding.mode, approved: binding.mode === "automatic",
+              serverLabel: binding.label ?? "Local MCP server", remoteToolName: binding.remoteToolName,
+            } } : {}),
             resolution: toolResolutionForBinding(binding),
           },
         ];

@@ -22,6 +22,7 @@ interface CommandToolBindingEditorProps {
   toolId: ToolId;
   toolLabel: string;
   commandTools: CommandToolsHandle;
+  supersededByMcp?: boolean;
 }
 
 function commandLine(declaration: CommandToolDeclaration): string {
@@ -38,6 +39,7 @@ export function CommandToolBindingEditor({
   toolId,
   toolLabel,
   commandTools,
+  supersededByMcp = false,
 }: CommandToolBindingEditorProps) {
   const grant = commandTools.grantFor(toolId);
   const granted = grant
@@ -55,7 +57,7 @@ export function CommandToolBindingEditor({
       ) : grant && granted ? (
         <>
           <p className="tool-command-granted">
-            <strong>{granted.label}</strong> answers {toolLabel} on this device.
+            <strong>{granted.label}</strong> {supersededByMcp ? "is allowed but currently superseded by MCP for" : "answers"} {toolLabel} on this device.
             <code>{commandLine(granted)}</code>
             <small>
               {outputSentence(granted)} Stops after {granted.timeoutMs}ms.

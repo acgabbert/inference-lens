@@ -1,6 +1,6 @@
 # MCP discovery and attachment
 
-This first MCP slice works in the service-hosted web app. It lists declared servers, connects only after a user selects one, and copies selected tool definitions into a project or the next request. It does not execute MCP tools or create an execution grant. An attached definition can still be answered manually or by an existing mock.
+MCP discovery works in the service-hosted web app. It lists declared servers, connects only after a user selects one, and copies selected tool definitions into a project or the next request. An attached definition can be answered manually, by a mock, or through the M3 local execution permission described in [M3 execution](MCP_M3_EXECUTION_DESIGN.md).
 
 ## Operator catalog
 
@@ -40,7 +40,7 @@ Discovery data is live and untrusted. Attachment copies the selected remote name
 
 The model-visible name defaults to the remote name when valid and unique. Invalid or colliding names require an explicit alias. An attached snapshot does not change on server refresh. The browser shows changed top-level descriptor fields and missing tools after a refresh; accepting a newly discovered definition requires a new attachment. Editing an attached project definition removes its stale source receipt.
 
-Discovery includes no execution endpoint or binding. Per-call approval, actual MCP `tools/call`, and result projection belong to the next implementation slice. The n8n provider-wire findings are in [the comparison](N8N_PROVIDER_WIRE_COMPARISON_2026-09-24.md).
+Discovery alone includes no execution permission. For local interactive debugging, a user can separately allow a specific attached tool to use a declared unauthenticated loopback server. The default asks at each call; an explicit per-tool choice runs automatically for the browser/service session. Repeated runs and evaluations do not use MCP permissions yet. The n8n provider-wire findings are in [the comparison](N8N_PROVIDER_WIRE_COMPARISON_2026-09-24.md).
 
 ## Local fixture
 
