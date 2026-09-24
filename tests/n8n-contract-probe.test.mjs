@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -15,6 +16,20 @@ import {
   validateRedactedCapture,
 } from "../scripts/n8n-contract-lib.mjs";
 import { main as runProbe } from "../scripts/n8n-contract-probe.mjs";
+
+test("the probe CLI runs under the supported Node runtime", () => {
+  const result = spawnSync(process.execPath, ["scripts/n8n-contract-probe.mjs"], {
+    cwd: path.resolve(import.meta.dirname, ".."),
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      INFERENCE_LENS_N8N_BASE_URL: "",
+      INFERENCE_LENS_N8N_API_KEY: "",
+    },
+  });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Missing required argument --workflow-id/);
+});
 
 async function temporaryDirectory(t) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "n8n-contract-test-"));
@@ -219,6 +234,105 @@ test("captures only the named workflow and execution IDs in staging", async (t) 
   );
 });
 
+test("keeps parent and child workflow identities distinct in a tool capture", async (t) => {
+  const root = await temporaryDirectory(t);
+  const requests = [];
+  const responses = new Map([
+    ["/api/v1/workflows/parent_workflow", {
+      id: "parent_workflow", name: "parent", active: false,
+      nodes: [{
+        id: "parent_node", name: "Tool", type: "test.tool", typeVersion: 1,
+        parameters: {
+          workflowId: {
+            value: "child_workflow",
+            cachedResultUrl: "/workflow/child_workflow",
+          },
+        },
+      }], connections: {}, settings: {},
+    }],
+    ["/api/v1/workflows/child_workflow", {
+      id: "child_workflow", name: "child", active: true,
+      nodes: [], connections: {}, settings: {},
+    }],
+    ["/api/v1/executions/parent_execution?includeData=true", {
+      id: "parent_execution", workflowId: "parent_workflow",
+      status: "success", startedAt: "2026-09-24T00:00:00.000Z",
+      stoppedAt: "2026-09-24T00:00:01.000Z",
+      data: { resultData: { runData: { Tool: [{ startTime: 1790208000000 }] } } },
+    }],
+    ["/api/v1/executions/child_execution?includeData=true", {
+      id: "child_execution", workflowId: "child_workflow",
+      status: "success", data: {},
+    }],
+  ]);
+  const rawDirectory = await captureN8nContract({
+    baseUrl: "https://n8n.example.test",
+    apiKey: "capture-secret",
+    workflowId: "parent_workflow",
+    subworkflowId: "child_workflow",
+    executionIds: ["parent_execution", "child_execution"],
+    captureName: "parent-child",
+    stagingRoot: root,
+    fetchImplementation: async (url) => {
+      const resource = `${url.pathname}${url.search}`;
+      requests.push(resource);
+      return Response.json(responses.get(resource) ?? { error: "missing" }, {
+        status: responses.has(resource) ? 200 : 404,
+      });
+    },
+  });
+  assert.deepEqual(requests, [...responses.keys()]);
+
+  const projectedDirectory = path.join(root, "projected-parent-child");
+  await redactN8nCapture({
+    inputDirectory: rawDirectory,
+    outputDirectory: projectedDirectory,
+    n8nVersion: "2.32.5-test",
+  });
+  const manifest = await validateRedactedCapture({ directory: projectedDirectory });
+  assert.equal(manifest.subworkflowId, "subworkflow_fixture");
+  assert.deepEqual(manifest.subworkflowNodeTypes, []);
+  assert.deepEqual(Object.keys(manifest.sourceFiles).sort(), [
+    "execution-01.raw.json",
+    "execution-02.raw.json",
+    "subworkflow.raw.json",
+    "workflow.raw.json",
+  ]);
+  assert.equal(
+    JSON.parse(await readFile(path.join(projectedDirectory, "subworkflow.json"), "utf8")).id,
+    "subworkflow_fixture",
+  );
+  assert.deepEqual(
+    manifest.executions.map(({ workflowId }) => workflowId),
+    ["workflow_fixture", "subworkflow_fixture"],
+  );
+  const projectedExecution = await readFile(
+    path.join(projectedDirectory, "execution-success.json"),
+    "utf8",
+  );
+  assert.doesNotMatch(projectedExecution, /startedAt|stoppedAt|startTime/);
+  const projectedWorkflow = await readFile(
+    path.join(projectedDirectory, "workflow.json"),
+    "utf8",
+  );
+  assert.doesNotMatch(projectedWorkflow, /child_workflow/);
+  assert.match(projectedWorkflow, /subworkflow_fixture/);
+
+  const rawWorkflowPath = path.join(rawDirectory, "workflow.raw.json");
+  const rawWorkflow = JSON.parse(await readFile(rawWorkflowPath, "utf8"));
+  rawWorkflow.nodes[0].parameters.unrecognizedReference =
+    "/workflow/child_workflow";
+  await writeFile(rawWorkflowPath, JSON.stringify(rawWorkflow), "utf8");
+  await assert.rejects(
+    redactN8nCapture({
+      inputDirectory: rawDirectory,
+      outputDirectory: path.join(root, "leaked-workflow-id"),
+      n8nVersion: "2.32.5-test",
+    }),
+    /configured secret/,
+  );
+});
+
 test("bundles provider-wire evidence and projects it through redaction", async (t) => {
   const root = await temporaryDirectory(t);
   const providerDirectory = path.join(root, "provider");
@@ -373,6 +487,8 @@ test("the probe forwards an optional provider capture directory", async () => {
     argv: [
       "--workflow-id",
       "workflow_1",
+      "--subworkflow-id",
+      "workflow_child",
       "--execution-id",
       "execution_1",
       "--capture-name",
@@ -393,6 +509,7 @@ test("the probe forwards an optional provider capture directory", async () => {
   });
 
   assert.equal(code, 0);
+  assert.equal(received.subworkflowId, "workflow_child");
   assert.equal(received.providerCaptureDirectory, "/tmp/provider-capture");
 });
 

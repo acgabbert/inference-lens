@@ -215,6 +215,7 @@ export async function captureN8nContract({
   baseUrl,
   apiKey,
   workflowId,
+  subworkflowId,
   executionIds,
   captureName,
   stagingRoot = ".n8n-contract-staging",
@@ -224,6 +225,12 @@ export async function captureN8nContract({
   providerCaptureDirectory,
 }) {
   validateOpaqueId(workflowId, "workflow ID");
+  if (subworkflowId !== undefined) {
+    validateOpaqueId(subworkflowId, "sub-workflow ID");
+    if (subworkflowId === workflowId) {
+      throw new N8nContractError("Sub-workflow ID must differ from workflow ID.");
+    }
+  }
   validateOpaqueId(captureName, "capture name");
   for (const executionId of executionIds) {
     validateOpaqueId(executionId, "execution ID");
@@ -258,6 +265,15 @@ export async function captureN8nContract({
       `workflows/${encodeURIComponent(workflowId)}`,
     );
     await writeJson(path.join(captureDirectory, "workflow.raw.json"), workflow);
+    if (subworkflowId !== undefined) {
+      const subworkflow = await request(
+        `workflows/${encodeURIComponent(subworkflowId)}`,
+      );
+      await writeJson(
+        path.join(captureDirectory, "subworkflow.raw.json"),
+        subworkflow,
+      );
+    }
 
     const executionFiles = [];
     for (let index = 0; index < executionIds.length; index += 1) {
@@ -289,13 +305,20 @@ export async function captureN8nContract({
       rawCaptureSchemaVersion: RAW_CAPTURE_SCHEMA_VERSION,
       capturedAt,
       workflowId,
+      ...(subworkflowId === undefined ? {} : { subworkflowId }),
       executionIds,
       endpointShapes: [
         "GET /api/v1/workflows/{workflowId}",
+        ...(subworkflowId === undefined
+          ? []
+          : ["GET /api/v1/workflows/{subworkflowId}"]),
         "GET /api/v1/executions/{executionId}?includeData=true",
       ],
       files: {
         workflow: "workflow.raw.json",
+        ...(subworkflowId === undefined
+          ? {}
+          : { subworkflow: "subworkflow.raw.json" }),
         executions: executionFiles,
         ...(providerFiles.length === 0 ? {} : { provider: providerFiles }),
       },
@@ -315,6 +338,7 @@ const REMOVED_KEY_FORMS = new Set([
   "authorization",
   "baseurl",
   "binary",
+  "cachedresulturl",
   "credential",
   "credentials",
   "defaultheaders",
@@ -326,6 +350,7 @@ const REMOVED_KEY_FORMS = new Set([
   "requestheaders",
   "responseheaders",
   "shared",
+  "starttime",
   "webhookid",
 ]);
 
@@ -408,7 +433,7 @@ function collectNodeIds(workflow, context) {
   }
 }
 
-export function projectWorkflow(rawWorkflow, context) {
+export function projectWorkflow(rawWorkflow, context, fixtureId = "workflow_fixture") {
   const workflow = requireObject(rawWorkflow, "workflow response");
   if (!Array.isArray(workflow.nodes)) {
     throw new N8nContractError("workflow response does not contain nodes.");
@@ -416,7 +441,7 @@ export function projectWorkflow(rawWorkflow, context) {
   collectNodeIds(workflow, context);
 
   return {
-    id: "workflow_fixture",
+    id: fixtureId,
     name: workflow.name,
     active: workflow.active,
     nodes: workflow.nodes.map((rawNode) => {
@@ -442,6 +467,13 @@ export function projectWorkflow(rawWorkflow, context) {
 
 function projectExecution(rawExecution, context) {
   const execution = requireObject(rawExecution, "execution response");
+  const workflowId =
+    execution.workflowId === undefined
+      ? "workflow_fixture"
+      : context.idMap.get(String(execution.workflowId));
+  if (!workflowId) {
+    throw new N8nContractError("Execution references an uncaptured workflow.");
+  }
   const workflowSnapshot =
     execution.data?.workflowData ?? execution.workflowData ?? undefined;
   if (workflowSnapshot) collectNodeIds(workflowSnapshot, context);
@@ -457,17 +489,15 @@ function projectExecution(rawExecution, context) {
     }
   }
   if (workflowSnapshot) {
-    projectedData.workflowData = projectWorkflow(workflowSnapshot, context);
+    projectedData.workflowData = projectWorkflow(workflowSnapshot, context, workflowId);
   }
 
   return {
     id: context.idMap.get(String(execution.id)) ?? "execution_fixture_unknown",
-    workflowId: "workflow_fixture",
+    workflowId,
     mode: execution.mode,
     status: execution.status,
     finished: execution.finished,
-    startedAt: execution.startedAt,
-    stoppedAt: execution.stoppedAt,
     data: projectedData,
   };
 }
@@ -565,6 +595,11 @@ export async function redactN8nCapture({
   const rawWorkflow = JSON.parse(
     await readFile(path.join(input, rawManifest.files.workflow), "utf8"),
   );
+  const rawSubworkflow = rawManifest.files.subworkflow
+    ? JSON.parse(
+        await readFile(path.join(input, rawManifest.files.subworkflow), "utf8"),
+      )
+    : undefined;
   const rawExecutions = await Promise.all(
     rawManifest.files.executions.map(async (filename) =>
       JSON.parse(await readFile(path.join(input, filename), "utf8")),
@@ -593,7 +628,12 @@ export async function redactN8nCapture({
   );
 
   const context = {
-    idMap: new Map([[String(rawManifest.workflowId), "workflow_fixture"]]),
+    idMap: new Map([
+      [String(rawManifest.workflowId), "workflow_fixture"],
+      ...(rawManifest.subworkflowId === undefined
+        ? []
+        : [[String(rawManifest.subworkflowId), "subworkflow_fixture"]]),
+    ]),
     nodeCounter: 1,
     removedFields: new Set(),
   };
@@ -604,15 +644,20 @@ export async function redactN8nCapture({
     );
   });
   collectNodeIds(rawWorkflow, context);
+  if (rawSubworkflow) collectNodeIds(rawSubworkflow, context);
   for (const execution of rawExecutions) {
     collectNodeIds(execution?.data?.workflowData, context);
   }
 
   const workflow = projectWorkflow(rawWorkflow, context);
+  const subworkflow = rawSubworkflow
+    ? projectWorkflow(rawSubworkflow, context, "subworkflow_fixture")
+    : undefined;
   const executions = rawExecutions.map((execution) =>
     projectExecution(execution, context),
   );
   const projectedFiles = new Map([["workflow.json", workflow]]);
+  if (subworkflow) projectedFiles.set("subworkflow.json", subworkflow);
   const statusCounts = new Map();
   executions.forEach((execution) => {
     const status =
@@ -628,12 +673,27 @@ export async function redactN8nCapture({
     projectedFiles.set(filename, projectProviderWire(value, context));
   }
 
+  const sensitiveStrings = [...knownSecrets, ...context.idMap.keys()];
   const serializedFiles = new Map();
   for (const [filename, value] of projectedFiles) {
     const serialized = `${JSON.stringify(value, null, 2)}\n`;
-    assertNoSensitiveText(serialized, knownSecrets);
+    assertNoSensitiveText(serialized, sensitiveStrings);
     serializedFiles.set(filename, serialized);
   }
+  const sourceFilenames = [
+    rawManifest.files.workflow,
+    ...(rawManifest.files.subworkflow ? [rawManifest.files.subworkflow] : []),
+    ...rawManifest.files.executions,
+    ...providerFilenames,
+  ];
+  const sourceFiles = Object.fromEntries(
+    await Promise.all(
+      sourceFilenames.map(async (filename) => [
+        filename,
+        { sha256: sha256(await readFile(path.join(input, filename))) },
+      ]),
+    ),
+  );
 
   try {
     await mkdir(output, { recursive: false });
@@ -657,14 +717,27 @@ export async function redactN8nCapture({
     capturedAt: rawManifest.capturedAt,
     projectedAt,
     workflowId: "workflow_fixture",
+    ...(subworkflow === undefined
+      ? {}
+      : { subworkflowId: "subworkflow_fixture" }),
     nodeTypes: workflow.nodes.map((node) => ({
       name: node.name,
       type: node.type,
       typeVersion: node.typeVersion,
     })),
+    ...(subworkflow === undefined
+      ? {}
+      : {
+          subworkflowNodeTypes: subworkflow.nodes.map((node) => ({
+            name: node.name,
+            type: node.type,
+            typeVersion: node.typeVersion,
+          })),
+        }),
     workflowSettings: workflow.settings,
     executions: executions.map((execution) => ({
       id: execution.id,
+      ...(subworkflow === undefined ? {} : { workflowId: execution.workflowId }),
       mode: execution.mode,
       status: execution.status,
       runItemCounts: countRunItems(execution),
@@ -678,6 +751,7 @@ export async function redactN8nCapture({
       "Projection requires manual review before commit.",
       "Evidence paths and save settings have not been classified automatically.",
     ],
+    sourceFiles,
     files: Object.fromEntries(
       [...serializedFiles].map(([filename, serialized]) => [
         filename,
@@ -686,7 +760,7 @@ export async function redactN8nCapture({
     ),
   };
   const serializedManifest = `${JSON.stringify(manifest, null, 2)}\n`;
-  assertNoSensitiveText(serializedManifest, knownSecrets);
+  assertNoSensitiveText(serializedManifest, sensitiveStrings);
   await writeFile(path.join(output, "manifest.json"), serializedManifest, {
     encoding: "utf8",
     flag: "wx",

@@ -88,23 +88,26 @@ JSON or SSE chunks. These are raw evidence and must remain under
 process projects them into a reviewed, versioned capture.
 
 After the execution finishes, pass the provider directory to the public API
-probe so all workflow, execution, and provider evidence enters one raw capture
-manifest:
+probe so both workflows, both executions, and provider evidence enter one raw
+capture manifest:
 
 ```sh
 INFERENCE_LENS_N8N_BASE_URL=... \
 INFERENCE_LENS_N8N_API_KEY=... \
 node scripts/n8n-contract-probe.mjs \
-  --workflow-id WORKFLOW_ID \
-  --execution-id EXECUTION_ID \
+  --workflow-id PARENT_WORKFLOW_ID \
+  --subworkflow-id CHILD_WORKFLOW_ID \
+  --execution-id PARENT_EXECUTION_ID \
+  --execution-id CHILD_EXECUTION_ID \
   --capture-name string-input \
   --provider-capture .n8n-contract-staging/tool-provider-string-input
 ```
 
 Then run `scripts/n8n-redact-capture.mjs` as usual. The four provider files are
 sanitized, hashed, listed in `manifest.json`, and validated with the workflow
-and execution projections. The probe requires all four files and refuses a
-partial provider capture.
+and execution projections. The child receives its own `subworkflow.json` and
+execution workflow identity in the projection. The probe requires all four
+provider files and refuses a partial provider capture.
 
 The provider deliberately captures only request bodies. It does not persist
 HTTP authorization headers or the synthetic OpenAI credential.

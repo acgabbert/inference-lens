@@ -8,10 +8,13 @@ import {
   oneArgument,
   parseCliArguments,
 } from "./n8n-contract-lib.mjs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const usage = `Usage:
   node scripts/n8n-contract-probe.mjs \\
     --workflow-id ID \\
+    [--subworkflow-id ID] \\
     --execution-id ID [--execution-id ID ...] \\
     --capture-name NAME \\
     [--provider-capture DIRECTORY]
@@ -31,6 +34,9 @@ export async function main({
   try {
     const argumentsMap = parseCliArguments(argv);
     const workflowId = oneArgument(argumentsMap, "--workflow-id");
+    const subworkflowId = oneArgument(argumentsMap, "--subworkflow-id", {
+      required: false,
+    });
     const executionIds = manyArguments(argumentsMap, "--execution-id");
     const captureName = oneArgument(argumentsMap, "--capture-name");
     const providerCaptureDirectory = oneArgument(
@@ -47,6 +53,7 @@ export async function main({
       baseUrl,
       apiKey,
       workflowId,
+      ...(subworkflowId === undefined ? {} : { subworkflowId }),
       executionIds,
       captureName,
       ...(providerCaptureDirectory === undefined
@@ -65,6 +72,6 @@ export async function main({
   }
 }
 
-if (import.meta.main) {
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   process.exitCode = await main();
 }

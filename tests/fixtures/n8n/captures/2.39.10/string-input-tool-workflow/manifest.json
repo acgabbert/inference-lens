@@ -1,0 +1,158 @@
+{
+  "fixtureSchemaVersion": 1,
+  "n8nVersion": "2.39.10",
+  "capturedAt": "2026-09-24T10:54:58.498Z",
+  "projectedAt": "2026-09-24T11:14:15.969Z",
+  "workflowId": "workflow_fixture",
+  "subworkflowId": "subworkflow_fixture",
+  "nodeTypes": [
+    {
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1
+    },
+    {
+      "name": "String input agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1
+    },
+    {
+      "name": "N0 OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2
+    },
+    {
+      "name": "il_echo_string",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2
+    }
+  ],
+  "subworkflowNodeTypes": [
+    {
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1
+    },
+    {
+      "name": "Return string evidence",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    }
+  ],
+  "workflowSettings": {
+    "executionOrder": "v1"
+  },
+  "executions": [
+    {
+      "id": "execution_fixture_001",
+      "workflowId": "workflow_fixture",
+      "mode": "manual",
+      "status": "success",
+      "runItemCounts": {
+        "Manual Trigger": [
+          1
+        ],
+        "N0 OpenAI Chat Model": [
+          null,
+          null
+        ],
+        "il_echo_string": [
+          null
+        ],
+        "String input agent": [
+          1
+        ]
+      }
+    },
+    {
+      "id": "execution_fixture_002",
+      "workflowId": "subworkflow_fixture",
+      "mode": "integrated",
+      "status": "success",
+      "runItemCounts": {
+        "When Executed by Another Workflow": [
+          1
+        ],
+        "Return string evidence": [
+          1
+        ]
+      }
+    }
+  ],
+  "endpointShapes": [
+    "GET /api/v1/workflows/{workflowId}",
+    "GET /api/v1/workflows/{subworkflowId}",
+    "GET /api/v1/executions/{executionId}?includeData=true"
+  ],
+  "providerFiles": [
+    "provider-request-initial.json",
+    "provider-response-tool-call.json",
+    "provider-request-continuation.json",
+    "provider-response-final.json"
+  ],
+  "removedFields": [
+    "baseURL",
+    "cachedResultUrl",
+    "credentials",
+    "defaultHeaders",
+    "fetchOptions",
+    "openai_api_key",
+    "startTime"
+  ],
+  "warnings": [
+    "Projection requires manual review before commit.",
+    "Evidence paths and save settings have not been classified automatically."
+  ],
+  "sourceFiles": {
+    "workflow.raw.json": {
+      "sha256": "9b15d3782221d15a7dbbf5665532c659a19ee1e4fa55c9b00be3967772f945cd"
+    },
+    "subworkflow.raw.json": {
+      "sha256": "4b2e2823c5fcd408f17af14f5cae4c373e304acf543fa44790292d0bab9130e7"
+    },
+    "execution-01.raw.json": {
+      "sha256": "140286f18990e0549555302d8fab7dd62180b7f263ff6792ec6064e01b3b5701"
+    },
+    "execution-02.raw.json": {
+      "sha256": "672a4c1449b1a9814a0290849f6352692877c8dfc526682a4f783187b7fac977"
+    },
+    "provider-request-initial.json": {
+      "sha256": "f4d787977f1bc6be0c4c6f6cdc83c95c960b33b82cb46f74213b3b3ba4523485"
+    },
+    "provider-response-tool-call.json": {
+      "sha256": "4cb75d6e5ca0f55d7d9b19f4aee823ab7cdb532b0cd7607250f91f9621be38f7"
+    },
+    "provider-request-continuation.json": {
+      "sha256": "abd949024177ce6d9ca9b807c9d42d5e228cd8523fc045af9d85b6e2dae2d3fe"
+    },
+    "provider-response-final.json": {
+      "sha256": "d6a25e3cab169f70c398f1c8d680bafcf9afa2ab77c9507d76658c0e6903abd6"
+    }
+  },
+  "files": {
+    "workflow.json": {
+      "sha256": "f575d93c64583cc18b557755cd66c68a90cd2e6f942c993dcdcaa56181578da8"
+    },
+    "subworkflow.json": {
+      "sha256": "4882d82fc1805de22eb82803dcb34a571cdfc5b05a2fa04513fcdc93865b6a97"
+    },
+    "execution-success.json": {
+      "sha256": "82607ca1833638e8b8375ed80e6598c3708d23798fbc6b73f81f12e266eccd71"
+    },
+    "execution-success-2.json": {
+      "sha256": "aa5ffb1b11a2756d29cec71347051a6afbe86767929b4dacea3e40a96a9d0724"
+    },
+    "provider-request-initial.json": {
+      "sha256": "226a7381fc7e2f9de129e69e291fc3d6d31c6fb7a26eb65ebee22141085a0876"
+    },
+    "provider-response-tool-call.json": {
+      "sha256": "4cb75d6e5ca0f55d7d9b19f4aee823ab7cdb532b0cd7607250f91f9621be38f7"
+    },
+    "provider-request-continuation.json": {
+      "sha256": "311ace51e3ef27c1ed17bf0af6814abc2945e5dcb646b2fba59e24bdab59b818"
+    },
+    "provider-response-final.json": {
+      "sha256": "d6a25e3cab169f70c398f1c8d680bafcf9afa2ab77c9507d76658c0e6903abd6"
+    }
+  }
+}

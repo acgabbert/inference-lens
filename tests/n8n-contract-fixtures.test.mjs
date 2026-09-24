@@ -9,6 +9,10 @@ const fixtureRoot = path.resolve(
   import.meta.dirname,
   "fixtures/n8n/captures/2.32.5",
 );
+const toolFixtureRoot = path.resolve(
+  import.meta.dirname,
+  "fixtures/n8n/captures/2.39.10/string-input-tool-workflow",
+);
 
 async function readJson(...segments) {
   return JSON.parse(await readFile(path.join(...segments), "utf8"));
@@ -31,6 +35,55 @@ test("validates every committed n8n capture and its digests offline", async () =
     assert.equal(manifest.n8nVersion, "2.32.5");
     assert.equal(manifest.workflowId, "workflow_fixture");
   }
+});
+
+test("proves the 2.39.10 string-input tool exchange from provider and child evidence", async () => {
+  const manifest = await validateRedactedCapture({ directory: toolFixtureRoot });
+  assert.equal(manifest.n8nVersion, "2.39.10");
+  assert.equal(manifest.subworkflowId, "subworkflow_fixture");
+  assert.equal(Object.keys(manifest.sourceFiles).length, 8);
+  assert.deepEqual(
+    manifest.executions.map(({ workflowId, status }) => ({ workflowId, status })),
+    [
+      { workflowId: "workflow_fixture", status: "success" },
+      { workflowId: "subworkflow_fixture", status: "success" },
+    ],
+  );
+
+  const initial = await readJson(toolFixtureRoot, "provider-request-initial.json");
+  assert.deepEqual(initial.messages.map(({ role }) => role), ["system", "user"]);
+  assert.equal(initial.tools[0].function.name, "il_echo_string");
+  assert.deepEqual(initial.tools[0].function.parameters.required, ["text"]);
+
+  const continuation = await readJson(
+    toolFixtureRoot,
+    "provider-request-continuation.json",
+  );
+  assert.deepEqual(
+    continuation.messages.map(({ role }) => role),
+    ["system", "user", "assistant", "tool"],
+  );
+  const call = continuation.messages[2].tool_calls[0];
+  assert.deepEqual(JSON.parse(call.function.arguments), {
+    text: "IL_N0_STRING_VALUE",
+    id: call.id,
+  });
+  const result = continuation.messages[3];
+  assert.equal(result.tool_call_id, call.id);
+  assert.deepEqual(JSON.parse(result.content), [{
+    fixture: "IL_N0_STRING_INPUT",
+    echoed: "IL_N0_STRING_VALUE",
+    receivedType: "string",
+  }]);
+
+  const child = await readJson(toolFixtureRoot, "execution-success-2.json");
+  assert.equal(child.workflowId, "subworkflow_fixture");
+  assert.deepEqual(
+    child.data.resultData.runData["Return string evidence"][0].data.main[0][0].json,
+    JSON.parse(result.content)[0],
+  );
+  const final = await readJson(toolFixtureRoot, "provider-response-final.json");
+  assert.equal(final.choices[0].message.content, "IL_N0_CAPTURE_COMPLETE");
 });
 
 test("proves the successful compound execution from saved model messages", async () => {
