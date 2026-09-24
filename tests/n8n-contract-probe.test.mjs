@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -217,6 +217,183 @@ test("captures only the named workflow and execution IDs in staging", async (t) 
     }),
     /already exists/,
   );
+});
+
+test("bundles provider-wire evidence and projects it through redaction", async (t) => {
+  const root = await temporaryDirectory(t);
+  const providerDirectory = path.join(root, "provider");
+  await mkdir(providerDirectory);
+  const providerFiles = {
+    "provider-request-initial.json": {
+      model: "template-echo-model",
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "il_echo_string",
+            parameters: {
+              type: "object",
+              properties: {
+                headers: { type: "string" },
+                credentials: { type: "boolean" },
+              },
+            },
+          },
+        },
+      ],
+    },
+    "provider-response-tool-call.json": {
+      choices: [
+        {
+          message: {
+            tool_calls: [
+              {
+                id: "call_inference_lens_n8n_001",
+                function: { name: "il_echo_string", arguments: '{"text":"x"}' },
+              },
+            ],
+          },
+        },
+      ],
+    },
+    "provider-request-continuation.json": {
+      messages: [
+        {
+          role: "tool",
+          tool_call_id: "call_inference_lens_n8n_001",
+          content: '[{"echo":"x"}]',
+        },
+      ],
+    },
+    "provider-response-final.json": {
+      choices: [{ message: { role: "assistant", content: "done" } }],
+    },
+  };
+  for (const [filename, value] of Object.entries(providerFiles)) {
+    await writeFile(
+      path.join(providerDirectory, filename),
+      JSON.stringify(value),
+      "utf8",
+    );
+  }
+
+  const rawDirectory = await captureN8nContract({
+    baseUrl: "https://n8n.example.test",
+    apiKey: "capture-secret",
+    workflowId: "workflow_real",
+    executionIds: ["execution_real"],
+    captureName: "with_provider",
+    stagingRoot: root,
+    providerCaptureDirectory: providerDirectory,
+    capturedAt: "2026-07-28T00:00:00.000Z",
+    fetchImplementation: async (url) =>
+      Response.json(
+        url.pathname.includes("/workflows/")
+          ? {
+              id: "workflow_real",
+              name: "tool fixture",
+              active: false,
+              nodes: [],
+              connections: {},
+              settings: {},
+            }
+          : {
+              id: "execution_real",
+              workflowId: "workflow_real",
+              mode: "manual",
+              status: "success",
+              finished: true,
+              data: {},
+            },
+      ),
+  });
+
+  const rawManifest = JSON.parse(
+    await readFile(path.join(rawDirectory, "capture-manifest.json"), "utf8"),
+  );
+  assert.deepEqual(rawManifest.files.provider, Object.keys(providerFiles));
+  assert.equal(
+    await readFile(
+      path.join(rawDirectory, "provider-request-initial.json"),
+      "utf8",
+    ),
+    JSON.stringify(providerFiles["provider-request-initial.json"]),
+  );
+
+  const projectedDirectory = path.join(root, "projected-provider");
+  await redactN8nCapture({
+    inputDirectory: rawDirectory,
+    outputDirectory: projectedDirectory,
+    n8nVersion: "2.38.10-test",
+    projectedAt: "2026-07-28T00:01:00.000Z",
+  });
+  const manifest = await validateRedactedCapture({
+    directory: projectedDirectory,
+  });
+  assert.deepEqual(manifest.providerFiles, Object.keys(providerFiles));
+  for (const filename of Object.keys(providerFiles)) {
+    assert.ok(manifest.files[filename]);
+  }
+  const initial = await readFile(
+    path.join(projectedDirectory, "provider-request-initial.json"),
+    "utf8",
+  );
+  assert.match(initial, /"headers"/);
+  assert.match(initial, /"credentials"/);
+  const continuation = JSON.parse(
+    await readFile(
+      path.join(projectedDirectory, "provider-request-continuation.json"),
+      "utf8",
+    ),
+  );
+  assert.equal(
+    continuation.messages[0].tool_call_id,
+    "call_inference_lens_n8n_001",
+  );
+  assert.equal(continuation.messages[0].content, '[{"echo":"x"}]');
+
+  await writeFile(
+    path.join(rawDirectory, "provider-request-initial.json"),
+    JSON.stringify({ authorization: "Bearer must-not-survive" }),
+    "utf8",
+  );
+  await assert.rejects(
+    redactN8nCapture({
+      inputDirectory: rawDirectory,
+      outputDirectory: path.join(root, "rejected-provider"),
+      n8nVersion: "2.38.10-test",
+    }),
+    /authorization material/,
+  );
+});
+
+test("the probe forwards an optional provider capture directory", async () => {
+  let received;
+  const code = await runProbe({
+    argv: [
+      "--workflow-id",
+      "workflow_1",
+      "--execution-id",
+      "execution_1",
+      "--capture-name",
+      "capture_one",
+      "--provider-capture",
+      "/tmp/provider-capture",
+    ],
+    env: {
+      INFERENCE_LENS_N8N_BASE_URL: "https://n8n.example.test",
+      INFERENCE_LENS_N8N_API_KEY: "test-key",
+    },
+    stdout: { write() {} },
+    stderr: { write() {} },
+    capture: async (options) => {
+      received = options;
+      return "/tmp/raw-capture";
+    },
+  });
+
+  assert.equal(code, 0);
+  assert.equal(received.providerCaptureDirectory, "/tmp/provider-capture");
 });
 
 test("projects IDs, removes credential material, and validates digests", async (t) => {

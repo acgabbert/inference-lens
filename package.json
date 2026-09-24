@@ -16,6 +16,7 @@
     "dev:buffered-provider": "node scripts/buffered-openai-provider.mjs",
     "dev:n8n-api-fixture": "node scripts/n8n-public-api-fixture.mjs",
     "dev:n8n-echo-provider": "node scripts/n8n-echo-provider.mjs",
+    "dev:n8n-tool-capture-provider": "node scripts/n8n-tool-capture-provider.mjs",
     "dev:markdown-provider": "node scripts/markdown-openai-provider.mjs",
     "dev:reasoning-provider": "node scripts/reasoning-openai-provider.mjs",
     "dev:large-catalogue-provider": "node scripts/large-catalogue-provider.mjs",
