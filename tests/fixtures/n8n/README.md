@@ -5,6 +5,12 @@ The capture files support the Phase 0 public-API contract spike. The
 verification. All workflows are inactive, manual-only, and contain no
 credentials or instance metadata.
 
+The importable parent/sub-workflow pairs under
+[`tool-workflow-stubs/`](tool-workflow-stubs/README.md) start the N0
+provider-wire reference pack for **Call n8n Workflow Tool**. Import and link
+those pairs in a disposable n8n project; they deliberately contain no saved
+workflow IDs.
+
 ## AI Agent and Message a Model contract capture
 
 The following importable workflows isolate the node versions under

@@ -1,0 +1,51 @@
+{
+  "name": "[Inference Lens N0] String input — sub-workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "text",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "11000000-0000-4000-8000-000000000001",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [-320, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { fixture: \"IL_N0_STRING_INPUT\", echoed: $json.text, receivedType: typeof $json.text } }];"
+      },
+      "id": "11000000-0000-4000-8000-000000000002",
+      "name": "Return string evidence",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-40, 0]
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Return string evidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "tags": []
+}
