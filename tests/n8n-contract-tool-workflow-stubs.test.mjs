@@ -27,6 +27,36 @@ const scenarios = [
     inputNames: ["topic"],
     sentinel: "IL_N0_MULTIPLE_OUTPUT_ITEMS",
   },
+  {
+    id: "fixed-and-ai-inputs",
+    toolName: "il_fixed_and_ai",
+    inputNames: ["text", "source"],
+    sentinel: "IL_N0_FIXED_AND_AI",
+  },
+  {
+    id: "empty-output",
+    toolName: "il_empty_output",
+    inputNames: ["topic"],
+    sentinel: "IL_N0_EMPTY_OUTPUT",
+  },
+  {
+    id: "nested-inputs",
+    toolName: "il_nested_inputs",
+    inputNames: ["payload", "tags"],
+    sentinel: "IL_N0_NESTED_INPUTS",
+  },
+  {
+    id: "workflow-error",
+    toolName: "il_workflow_error",
+    inputNames: ["reason"],
+    sentinel: "IL_N0_WORKFLOW_ERROR",
+  },
+  {
+    id: "rejected-arguments",
+    toolName: "il_rejected_arguments",
+    inputNames: ["count"],
+    sentinel: "IL_N0_REJECTED_ARGUMENTS",
+  },
 ];
 
 async function readJson(filename) {
@@ -133,4 +163,19 @@ test("n8n tool reference fixtures use import-safe unique node IDs", async () => 
       }
     }
   }
+});
+
+test("multiple-attached-tools parent exposes both tools in declared order", async () => {
+  const workflow = await readJson("multiple-attached-tools.parent.json");
+  const tools = nodesOfType(workflow, "@n8n/n8n-nodes-langchain.toolWorkflow");
+  assert.deepEqual(tools.map(({ name }) => name), [
+    "il_echo_string",
+    "il_echo_primitives",
+  ]);
+  assert.match(JSON.stringify(workflow), /IL_N0_MULTIPLE_ATTACHED_TOOLS/);
+  for (const tool of tools) {
+    assert.equal(tool.parameters.workflowId.value, "");
+    assert.equal(workflow.connections[tool.name].ai_tool[0][0].node, "Multiple attached tools agent");
+  }
+  assert.equal(new Set(workflow.nodes.map(({ id }) => id)).size, workflow.nodes.length);
 });

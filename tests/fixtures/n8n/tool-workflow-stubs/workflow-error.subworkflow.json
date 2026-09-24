@@ -1,0 +1,57 @@
+{
+  "name": "[Inference Lens N0] Workflow error — sub-workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "reason",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "71000000-0000-4000-8000-000000000001",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -320,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// IL_N0_WORKFLOW_ERROR: intentionally fail before returning items.\nthrow new Error(\"IL_N0_EXPECTED_WORKFLOW_ERROR:\" + $json.reason);"
+      },
+      "id": "71000000-0000-4000-8000-000000000002",
+      "name": "Return workflow error evidence",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -40,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Return workflow error evidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "tags": []
+}

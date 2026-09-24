@@ -13,6 +13,14 @@ const toolFixtureRoot = path.resolve(
   import.meta.dirname,
   "fixtures/n8n/captures/2.39.10/string-input-tool-workflow",
 );
+const primitiveToolFixtureRoot = path.resolve(
+  import.meta.dirname,
+  "fixtures/n8n/captures/2.39.10/primitive-inputs-tool-workflow",
+);
+const multipleOutputToolFixtureRoot = path.resolve(
+  import.meta.dirname,
+  "fixtures/n8n/captures/2.39.10/multiple-output-items-tool-workflow",
+);
 
 async function readJson(...segments) {
   return JSON.parse(await readFile(path.join(...segments), "utf8"));
@@ -83,6 +91,120 @@ test("proves the 2.39.10 string-input tool exchange from provider and child evid
     JSON.parse(result.content)[0],
   );
   const final = await readJson(toolFixtureRoot, "provider-response-final.json");
+  assert.equal(final.choices[0].message.content, "IL_N0_CAPTURE_COMPLETE");
+});
+
+test("proves primitive input types in the provider request and executed child", async () => {
+  const manifest = await validateRedactedCapture({
+    directory: primitiveToolFixtureRoot,
+  });
+  assert.equal(manifest.n8nVersion, "2.39.10");
+  assert.deepEqual(
+    manifest.executions.map(({ workflowId, status }) => ({ workflowId, status })),
+    [
+      { workflowId: "workflow_fixture", status: "success" },
+      { workflowId: "subworkflow_fixture", status: "success" },
+    ],
+  );
+
+  const initial = await readJson(
+    primitiveToolFixtureRoot,
+    "provider-request-initial.json",
+  );
+  const tool = initial.tools[0].function;
+  assert.equal(tool.name, "il_echo_primitives");
+  assert.deepEqual(
+    Object.fromEntries(
+      Object.entries(tool.parameters.properties).map(([name, schema]) => [
+        name,
+        schema.type,
+      ]),
+    ),
+    { enabled: "boolean", text: "string", count: "number" },
+  );
+  assert.deepEqual(tool.parameters.required, ["enabled", "text", "count"]);
+
+  const continuation = await readJson(
+    primitiveToolFixtureRoot,
+    "provider-request-continuation.json",
+  );
+  const call = continuation.messages[2].tool_calls[0];
+  assert.deepEqual(JSON.parse(call.function.arguments), {
+    text: "IL_N0_PRIMITIVE_TEXT",
+    count: 7,
+    enabled: true,
+    id: call.id,
+  });
+  const result = continuation.messages[3];
+  assert.equal(result.tool_call_id, call.id);
+  const expected = {
+    fixture: "IL_N0_PRIMITIVE_INPUTS",
+    values: { text: "IL_N0_PRIMITIVE_TEXT", count: 7, enabled: true },
+    types: { text: "string", count: "number", enabled: "boolean" },
+  };
+  assert.deepEqual(JSON.parse(result.content), [expected]);
+
+  const child = await readJson(
+    primitiveToolFixtureRoot,
+    "execution-success-2.json",
+  );
+  assert.deepEqual(
+    child.data.resultData.runData["Return primitive evidence"][0].data.main[0][0].json,
+    expected,
+  );
+});
+
+test("proves ordered child items become one provider-visible tool result", async () => {
+  const manifest = await validateRedactedCapture({
+    directory: multipleOutputToolFixtureRoot,
+  });
+  assert.equal(manifest.n8nVersion, "2.39.10");
+  assert.deepEqual(
+    manifest.executions.map(({ workflowId, status }) => ({ workflowId, status })),
+    [
+      { workflowId: "workflow_fixture", status: "success" },
+      { workflowId: "subworkflow_fixture", status: "success" },
+    ],
+  );
+
+  const initial = await readJson(
+    multipleOutputToolFixtureRoot,
+    "provider-request-initial.json",
+  );
+  assert.equal(initial.tools[0].function.name, "il_multiple_items");
+  assert.deepEqual(initial.tools[0].function.parameters.required, ["topic"]);
+
+  const continuation = await readJson(
+    multipleOutputToolFixtureRoot,
+    "provider-request-continuation.json",
+  );
+  const call = continuation.messages[2].tool_calls[0];
+  assert.deepEqual(JSON.parse(call.function.arguments), {
+    topic: "IL_N0_MULTI_TOPIC",
+    id: call.id,
+  });
+  const toolResult = continuation.messages[3];
+  assert.equal(toolResult.tool_call_id, call.id);
+  assert.equal(typeof toolResult.content, "string");
+  const items = JSON.parse(toolResult.content);
+  assert.deepEqual(items.map(({ ordinal, value }) => ({ ordinal, value })), [
+    { ordinal: 1, value: "IL_N0_MULTI_FIRST" },
+    { ordinal: 2, value: "IL_N0_MULTI_SECOND" },
+  ]);
+
+  const child = await readJson(
+    multipleOutputToolFixtureRoot,
+    "execution-success-2.json",
+  );
+  assert.deepEqual(
+    child.data.resultData.runData["Return two ordered items"][0].data.main[0]
+      .map(({ json }) => json),
+    items,
+  );
+  const final = await readJson(
+    multipleOutputToolFixtureRoot,
+    "provider-response-final.json",
+  );
   assert.equal(final.choices[0].message.content, "IL_N0_CAPTURE_COMPLETE");
 });
 

@@ -15,6 +15,83 @@ const SCENARIOS = {
     toolCallId: "call_inference_lens_n8n_001",
     arguments: '{"text":"IL_N0_STRING_VALUE"}',
     finalAnswer: "IL_N0_CAPTURE_COMPLETE",
+    expectedResult: [{ fixture: "IL_N0_STRING_INPUT", echoed: "IL_N0_STRING_VALUE", receivedType: "string" }],
+  },
+  "primitive-inputs": {
+    sentinel: "IL_N0_PRIMITIVE_INPUTS",
+    model: "template-echo-model",
+    toolName: "il_echo_primitives",
+    toolCallId: "call_inference_lens_n8n_001",
+    arguments: '{"text":"IL_N0_PRIMITIVE_TEXT","count":7,"enabled":true}',
+    finalAnswer: "IL_N0_CAPTURE_COMPLETE",
+    expectedResult: [{ fixture: "IL_N0_PRIMITIVE_INPUTS", values: { text: "IL_N0_PRIMITIVE_TEXT", count: 7, enabled: true }, types: { text: "string", count: "number", enabled: "boolean" } }],
+  },
+  "multiple-output-items": {
+    sentinel: "IL_N0_MULTIPLE_OUTPUT_ITEMS",
+    model: "template-echo-model",
+    toolName: "il_multiple_items",
+    toolCallId: "call_inference_lens_n8n_001",
+    arguments: '{"topic":"IL_N0_MULTI_TOPIC"}',
+    finalAnswer: "IL_N0_CAPTURE_COMPLETE",
+    expectedResult: [
+      { fixture: "IL_N0_MULTIPLE_OUTPUT_ITEMS", ordinal: 1, topic: "IL_N0_MULTI_TOPIC", value: "IL_N0_MULTI_FIRST" },
+      { fixture: "IL_N0_MULTIPLE_OUTPUT_ITEMS", ordinal: 2, topic: "IL_N0_MULTI_TOPIC", value: "IL_N0_MULTI_SECOND" },
+    ],
+  },
+  "fixed-and-ai-inputs": {
+    sentinel: "IL_N0_FIXED_AND_AI",
+    model: "template-echo-model",
+    toolName: "il_fixed_and_ai",
+    toolCallId: "call_inference_lens_n8n_001",
+    arguments: '{"text":"IL_N0_AI_TEXT"}',
+    finalAnswer: "IL_N0_CAPTURE_COMPLETE",
+    expectedResult: [{ fixture: "IL_N0_FIXED_AND_AI", text: "IL_N0_AI_TEXT", source: "IL_N0_FIXED_SOURCE" }],
+  },
+  "empty-output": {
+    sentinel: "IL_N0_EMPTY_OUTPUT",
+    model: "template-echo-model",
+    toolName: "il_empty_output",
+    toolCallId: "call_inference_lens_n8n_001",
+    arguments: '{"topic":"IL_N0_EMPTY_TOPIC"}',
+    finalAnswer: "IL_N0_CAPTURE_COMPLETE",
+    expectedResult: [],
+  },
+  "nested-inputs": {
+    sentinel: "IL_N0_NESTED_INPUTS",
+    model: "template-echo-model",
+    toolName: "il_nested_inputs",
+    toolCallId: "call_inference_lens_n8n_001",
+    arguments: '{"payload":{"label":"IL_N0_NESTED_LABEL","count":3},"tags":["IL_N0_TAG_A","IL_N0_TAG_B"]}',
+    finalAnswer: "IL_N0_CAPTURE_COMPLETE",
+    expectedResult: [{ fixture: "IL_N0_NESTED_INPUTS", payload: { label: "IL_N0_NESTED_LABEL", count: 3 }, tags: ["IL_N0_TAG_A", "IL_N0_TAG_B"], types: { payload: "object", tagsIsArray: true } }],
+  },
+  "workflow-error": {
+    sentinel: "IL_N0_WORKFLOW_ERROR",
+    model: "template-echo-model",
+    toolName: "il_workflow_error",
+    toolCallId: "call_inference_lens_n8n_001",
+    arguments: '{"reason":"IL_N0_EXPECTED_ERROR"}',
+    finalAnswer: "IL_N0_CAPTURE_COMPLETE",
+    expectedResult: null,
+  },
+  "rejected-arguments": {
+    sentinel: "IL_N0_REJECTED_ARGUMENTS",
+    model: "template-echo-model",
+    toolName: "il_rejected_arguments",
+    toolCallId: "call_inference_lens_n8n_001",
+    arguments: '{"count":"IL_N0_NOT_A_NUMBER"}',
+    finalAnswer: "IL_N0_CAPTURE_COMPLETE",
+    expectedResult: null,
+  },
+  "multiple-attached-tools": {
+    sentinel: "IL_N0_MULTIPLE_ATTACHED_TOOLS",
+    model: "template-echo-model",
+    toolName: "il_echo_string",
+    expectedToolNames: ["il_echo_string", "il_echo_primitives"],
+    toolCallId: "call_inference_lens_n8n_001",
+    arguments: '{"text":"IL_N0_STRING_VALUE"}',
+    finalAnswer: "IL_N0_CAPTURE_COMPLETE",
+    expectedResult: [{ fixture: "IL_N0_STRING_INPUT", echoed: "IL_N0_STRING_VALUE", receivedType: "string" }],
   },
 };
 
@@ -184,6 +261,10 @@ function initialProblem(body) {
   if (!names.includes(scenario.toolName)) {
     return `Initial request does not expose tool ${scenario.toolName}.`;
   }
+  if (scenario.expectedToolNames &&
+      !isDeepStrictEqual(names, scenario.expectedToolNames)) {
+    return `Initial request tool order must be ${scenario.expectedToolNames.join(", ")}.`;
+  }
   return null;
 }
 
@@ -231,15 +312,9 @@ function continuationProblem(body) {
   if (typeof result.content !== "string") {
     return "Continuation tool result content must be a string.";
   }
-  const expectedResult = [
-    {
-      fixture: scenario.sentinel,
-      echoed: expectedArguments.text,
-      receivedType: "string",
-    },
-  ];
-  if (!isDeepStrictEqual(parseArguments(result.content), expectedResult)) {
-    return "Continuation does not contain the expected string-input sub-workflow result.";
+  if (scenario.expectedResult !== null &&
+      !isDeepStrictEqual(parseArguments(result.content), scenario.expectedResult)) {
+    return `Continuation does not contain the expected ${scenarioId} sub-workflow result.`;
   }
   return null;
 }

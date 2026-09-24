@@ -1,0 +1,39 @@
+{
+  "model": "template-echo-model",
+  "temperature": 0,
+  "stream": false,
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "il_multiple_items",
+        "description": "Return two ordered workflow output items so the Inference Lens fixture can observe n8n's provider-visible result serialization.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "topic": {
+              "type": "string",
+              "description": "The diagnostic topic"
+            }
+          },
+          "required": [
+            "topic"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "strict": false
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are executing an Inference Lens n8n provider-wire contract fixture. Follow the tool-call instruction exactly."
+    },
+    {
+      "role": "user",
+      "content": "IL_N0_MULTIPLE_OUTPUT_ITEMS\nCall il_multiple_items exactly once with topic IL_N0_MULTI_TOPIC. After the tool returns, report its complete response without calling another tool."
+    }
+  ]
+}

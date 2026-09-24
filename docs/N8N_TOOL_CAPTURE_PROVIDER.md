@@ -5,7 +5,7 @@ Workflow Tool** execution. It never contacts a model. Instead, it returns one
 deterministic tool call, waits for n8n to run the sub-workflow, validates the
 continuation linkage, and returns a fixed final answer.
 
-The first scenario is `string-input`, paired with the disposable n8n workflow
+The baseline scenario is `string-input`, paired with the disposable n8n workflow
 stubs of the same name. Its fixed contract is:
 
 - model: `template-echo-model`;
@@ -14,6 +14,15 @@ stubs of the same name. Its fixed contract is:
 - call ID: `call_inference_lens_n8n_001`;
 - arguments: `{"text":"IL_N0_STRING_VALUE"}`;
 - final answer: `IL_N0_CAPTURE_COMPLETE`.
+
+The provider also supports `primitive-inputs`, `multiple-output-items`,
+`fixed-and-ai-inputs`, `empty-output`, `nested-inputs`, `workflow-error`,
+`rejected-arguments`, and `multiple-attached-tools`. Each scenario has a
+matching disposable workflow recipe in
+[`tests/fixtures/n8n/tool-workflow-stubs/README.md`](../tests/fixtures/n8n/tool-workflow-stubs/README.md).
+The success scenarios validate exact child results. Error and rejected-argument
+scenarios accept any linked string tool result because whether n8n creates one
+is the observation; a run with no continuation is deliberately incomplete.
 
 ## Run it
 
@@ -30,7 +39,7 @@ are configurable:
 ```sh
 INFERENCE_LENS_N8N_TOOL_CAPTURE_HOST=0.0.0.0 \
 INFERENCE_LENS_N8N_TOOL_CAPTURE_PORT=4014 \
-INFERENCE_LENS_N8N_TOOL_CAPTURE_SCENARIO=string-input \
+INFERENCE_LENS_N8N_TOOL_CAPTURE_SCENARIO=primitive-inputs \
 INFERENCE_LENS_N8N_TOOL_CAPTURE_OUTPUT=.n8n-contract-staging/my-capture \
 npm run dev:n8n-tool-capture-provider
 ```
@@ -46,7 +55,7 @@ requests from different executions.
 
 ## Configure and run n8n
 
-1. Import the `string-input` parent and sub-workflow stubs.
+1. Import the chosen scenario's parent and sub-workflow stubs.
 2. Select the imported sub-workflow in the parent's **Call n8n Workflow Tool**
    node.
 3. Create a dedicated OpenAI-compatible credential whose base URL points to
@@ -62,9 +71,10 @@ request. On the second request it requires the scripted assistant call and a
 For the assistant call arguments, it accepts the original scripted object or
 the same object with an `id` property equal to the call ID, as observed in an
 n8n continuation. The raw request retains the exact form n8n sent.
-The string-input scenario also requires the tool result to contain the child
-workflow's expected `fixture`, `echoed`, and `receivedType` fields. A tool error
-does not complete the capture.
+Successful scenarios require the exact expected child output. A mismatch does
+not complete the capture and leaves a raw rejected request for diagnosis.
+For `workflow-error` and `rejected-arguments`, a linked string tool result
+completes the provider exchange without asserting its yet-unknown content.
 
 ## Inspect status and artifacts
 

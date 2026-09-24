@@ -1,0 +1,512 @@
+{
+  "id": "execution_fixture_001",
+  "workflowId": "workflow_fixture",
+  "mode": "manual",
+  "status": "success",
+  "finished": true,
+  "data": {
+    "startData": {},
+    "resultData": {
+      "runData": {
+        "Manual Trigger": [
+          {
+            "executionIndex": 0,
+            "source": [],
+            "hints": [],
+            "executionTime": 1,
+            "executionStatus": "success",
+            "data": {
+              "main": [
+                [
+                  {
+                    "json": {},
+                    "pairedItem": {
+                      "item": 0
+                    }
+                  }
+                ]
+              ]
+            }
+          }
+        ],
+        "N0 OpenAI Chat Model": [
+          {
+            "executionTime": 15,
+            "executionIndex": 2,
+            "executionStatus": "success",
+            "source": [
+              {
+                "previousNode": "Multiple output items agent",
+                "previousNodeRun": 0
+              }
+            ],
+            "data": {
+              "ai_languageModel": [
+                [
+                  {
+                    "json": {
+                      "response": {
+                        "generations": [
+                          [
+                            {
+                              "text": "",
+                              "generationInfo": {
+                                "finish_reason": "tool_calls"
+                              }
+                            }
+                          ]
+                        ]
+                      },
+                      "tokenUsage": {
+                        "completionTokens": 1,
+                        "promptTokens": 2,
+                        "totalTokens": 3
+                      }
+                    }
+                  }
+                ]
+              ]
+            },
+            "inputOverride": {
+              "ai_languageModel": [
+                [
+                  {
+                    "json": {
+                      "messages": [
+                        "System: You are executing an Inference Lens n8n provider-wire contract fixture. Follow the tool-call instruction exactly.\nHuman: IL_N0_MULTIPLE_OUTPUT_ITEMS\nCall il_multiple_items exactly once with topic IL_N0_MULTI_TOPIC. After the tool returns, report its complete response without calling another tool."
+                      ],
+                      "estimatedTokens": 62,
+                      "options": {
+                        "model": "template-echo-model",
+                        "temperature": 0,
+                        "max_retries": 2,
+                        "configuration": {},
+                        "model_kwargs": {},
+                        "supports_strict_tool_calling": false
+                      }
+                    }
+                  }
+                ]
+              ]
+            },
+            "metadata": {
+              "subRun": [
+                {
+                  "node": "N0 OpenAI Chat Model",
+                  "runIndex": 0
+                }
+              ]
+            }
+          },
+          {
+            "executionTime": 7,
+            "executionIndex": 5,
+            "executionStatus": "success",
+            "source": [
+              {
+                "previousNode": "Multiple output items agent",
+                "previousNodeRun": 0
+              }
+            ],
+            "data": {
+              "ai_languageModel": [
+                [
+                  {
+                    "json": {
+                      "response": {
+                        "generations": [
+                          [
+                            {
+                              "text": "IL_N0_CAPTURE_COMPLETE",
+                              "generationInfo": {
+                                "finish_reason": "stop"
+                              }
+                            }
+                          ]
+                        ]
+                      },
+                      "tokenUsage": {
+                        "completionTokens": 1,
+                        "promptTokens": 4,
+                        "totalTokens": 5
+                      }
+                    }
+                  }
+                ]
+              ]
+            },
+            "inputOverride": {
+              "ai_languageModel": [
+                [
+                  {
+                    "json": {
+                      "messages": [
+                        "System: You are executing an Inference Lens n8n provider-wire contract fixture. Follow the tool-call instruction exactly.\nHuman: IL_N0_MULTIPLE_OUTPUT_ITEMS\nCall il_multiple_items exactly once with topic IL_N0_MULTI_TOPIC. After the tool returns, report its complete response without calling another tool.\nAI: [{\"id\":\"call_inference_lens_n8n_001\",\"name\":\"il_multiple_items\",\"args\":{\"topic\":\"IL_N0_MULTI_TOPIC\",\"id\":\"call_inference_lens_n8n_001\"},\"type\":\"tool_call\"}]\nTool: [{\"fixture\":\"IL_N0_MULTIPLE_OUTPUT_ITEMS\",\"ordinal\":1,\"topic\":\"IL_N0_MULTI_TOPIC\",\"value\":\"IL_N0_MULTI_FIRST\"},{\"fixture\":\"IL_N0_MULTIPLE_OUTPUT_ITEMS\",\"ordinal\":2,\"topic\":\"IL_N0_MULTI_TOPIC\",\"value\":\"IL_N0_MULTI_SECOND\"}]"
+                      ],
+                      "estimatedTokens": 178,
+                      "options": {
+                        "model": "template-echo-model",
+                        "temperature": 0,
+                        "max_retries": 2,
+                        "configuration": {},
+                        "model_kwargs": {},
+                        "supports_strict_tool_calling": false
+                      }
+                    }
+                  }
+                ]
+              ]
+            },
+            "metadata": {
+              "subRun": [
+                {
+                  "node": "N0 OpenAI Chat Model",
+                  "runIndex": 1
+                }
+              ]
+            }
+          }
+        ],
+        "il_multiple_items": [
+          {
+            "inputOverride": {
+              "ai_tool": [
+                [
+                  {
+                    "json": {
+                      "topic": "IL_N0_MULTI_TOPIC"
+                    },
+                    "pairedItem": {
+                      "item": 0,
+                      "input": 0,
+                      "sourceOverwrite": {
+                        "previousNode": "Manual Trigger",
+                        "previousNodeOutput": 0,
+                        "previousNodeRun": 0
+                      }
+                    }
+                  }
+                ]
+              ]
+            },
+            "source": [
+              {
+                "previousNode": "Multiple output items agent",
+                "previousNodeOutput": 0,
+                "previousNodeRun": 0
+              }
+            ],
+            "executionIndex": 3,
+            "executionTime": 45,
+            "hints": [],
+            "metadata": {
+              "preserveSourceOverwrite": true,
+              "preservedSourceOverwrite": {
+                "previousNode": "Manual Trigger",
+                "previousNodeOutput": 0,
+                "previousNodeRun": 0
+              },
+              "subExecution": {
+                "executionId": "execution_fixture_002",
+                "workflowId": "subworkflow_fixture"
+              }
+            },
+            "executionStatus": "success",
+            "data": {
+              "ai_tool": [
+                [
+                  {
+                    "json": {
+                      "fixture": "IL_N0_MULTIPLE_OUTPUT_ITEMS",
+                      "ordinal": 1,
+                      "topic": "IL_N0_MULTI_TOPIC",
+                      "value": "IL_N0_MULTI_FIRST"
+                    },
+                    "pairedItem": {
+                      "item": 0
+                    }
+                  },
+                  {
+                    "json": {
+                      "fixture": "IL_N0_MULTIPLE_OUTPUT_ITEMS",
+                      "ordinal": 2,
+                      "topic": "IL_N0_MULTI_TOPIC",
+                      "value": "IL_N0_MULTI_SECOND"
+                    },
+                    "pairedItem": {
+                      "item": 0
+                    }
+                  }
+                ]
+              ]
+            }
+          }
+        ],
+        "Multiple output items agent": [
+          {
+            "executionIndex": 4,
+            "source": [
+              {
+                "previousNode": "Manual Trigger",
+                "previousNodeOutput": 0,
+                "previousNodeRun": 0
+              }
+            ],
+            "hints": [],
+            "executionTime": 16,
+            "metadata": {
+              "nodeWasResumed": true,
+              "subNodeExecutionData": {
+                "actions": [
+                  {
+                    "action": {
+                      "actionType": "ExecutionNodeAction",
+                      "nodeName": "il_multiple_items",
+                      "input": {
+                        "topic": "IL_N0_MULTI_TOPIC"
+                      },
+                      "type": "ai_tool",
+                      "id": "call_inference_lens_n8n_001",
+                      "metadata": {
+                        "itemIndex": 0,
+                        "toolName": "il_multiple_items"
+                      }
+                    },
+                    "nodeName": "il_multiple_items",
+                    "runIndex": 0
+                  }
+                ],
+                "metadata": {
+                  "previousRequests": [],
+                  "itemIndex": 0,
+                  "iterationCount": 1
+                }
+              },
+              "tracing": {
+                "llm.tokens.in": 4,
+                "llm.tokens.out": 1,
+                "llm.tokens.total": 5,
+                "llm.tokens.estimated": false,
+                "ai.agent.version": "v3",
+                "ai.agent.streaming.enabled": false,
+                "ai.agent.items.total": 1,
+                "ai.agent.items.failed": 0,
+                "ai.agent.tool_calls.requested": 0,
+                "ai.agent.tool_calls.completed": 1,
+                "ai.agent.iteration.count": 0,
+                "ai.agent.memory.loads": 0,
+                "ai.agent.memory.saves": 0,
+                "ai.agent.execution.succeeded": true
+              }
+            },
+            "executionStatus": "success",
+            "data": {
+              "main": [
+                [
+                  {
+                    "json": {
+                      "output": "IL_N0_CAPTURE_COMPLETE"
+                    },
+                    "pairedItem": {
+                      "item": 0
+                    }
+                  }
+                ]
+              ]
+            }
+          }
+        ]
+      },
+      "pinData": {},
+      "lastNodeExecuted": "Multiple output items agent",
+      "metadata": {
+        "response_multiple_output_items_agent": "IL_N0_CAPTURE_COMPLETE"
+      }
+    },
+    "executionData": {
+      "contextData": {},
+      "nodeExecutionStack": [],
+      "metadata": {
+        "N0 OpenAI Chat Model": [
+          {
+            "subRun": [
+              {
+                "node": "N0 OpenAI Chat Model",
+                "runIndex": 0
+              }
+            ]
+          },
+          {
+            "subRun": [
+              {
+                "node": "N0 OpenAI Chat Model",
+                "runIndex": 1
+              }
+            ]
+          }
+        ]
+      },
+      "waitingExecution": {},
+      "waitingExecutionSource": {},
+      "runtimeData": {
+        "version": 1,
+        "establishedAt": 1790251534279,
+        "source": "manual",
+        "triggerNode": {
+          "name": "Manual Trigger",
+          "type": "n8n-nodes-base.manualTrigger"
+        },
+        "redaction": {
+          "version": 2,
+          "production": false,
+          "manual": false
+        }
+      }
+    },
+    "workflowData": {
+      "id": "workflow_fixture",
+      "name": "[Inference Lens N0] Multiple output items — parent",
+      "nodes": [
+        {
+          "id": "node_fixture_001",
+          "name": "Manual Trigger",
+          "type": "n8n-nodes-base.manualTrigger",
+          "typeVersion": 1,
+          "position": [
+            0,
+            0
+          ],
+          "parameters": {
+            "notice": ""
+          }
+        },
+        {
+          "id": "node_fixture_002",
+          "name": "Multiple output items agent",
+          "type": "@n8n/n8n-nodes-langchain.agent",
+          "typeVersion": 3.1,
+          "position": [
+            320,
+            0
+          ],
+          "parameters": {
+            "aiAgentStarterCallout": "",
+            "promptType": "define",
+            "text": "=IL_N0_MULTIPLE_OUTPUT_ITEMS\nCall il_multiple_items exactly once with topic IL_N0_MULTI_TOPIC. After the tool returns, report its complete response without calling another tool.",
+            "hasOutputParser": false,
+            "needsFallback": false,
+            "options": {
+              "systemMessage": "You are executing an Inference Lens n8n provider-wire contract fixture. Follow the tool-call instruction exactly.",
+              "enableStreaming": false
+            }
+          }
+        },
+        {
+          "id": "node_fixture_003",
+          "name": "N0 OpenAI Chat Model",
+          "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+          "typeVersion": 1.2,
+          "position": [
+            288,
+            240
+          ],
+          "parameters": {
+            "notice": "",
+            "model": {
+              "__rl": true,
+              "value": "template-echo-model",
+              "mode": "id"
+            },
+            "options": {
+              "temperature": 0
+            }
+          }
+        },
+        {
+          "id": "node_fixture_004",
+          "name": "il_multiple_items",
+          "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+          "typeVersion": 2.2,
+          "position": [
+            528,
+            240
+          ],
+          "parameters": {
+            "notice": "",
+            "noticeTemplateExample": "",
+            "description": "Return two ordered workflow output items so the Inference Lens fixture can observe n8n's provider-visible result serialization.",
+            "executeNotice": "",
+            "source": "database",
+            "workflowId": {
+              "__rl": true,
+              "value": "subworkflow_fixture",
+              "mode": "list",
+              "cachedResultName": "[Inference Lens N0] Multiple output items — sub-workflow"
+            },
+            "workflowInputs": {
+              "mappingMode": "defineBelow",
+              "value": {
+                "topic": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('topic', `The diagnostic topic`, 'string') }}"
+              },
+              "matchingColumns": [
+                "topic"
+              ],
+              "schema": [
+                {
+                  "id": "topic",
+                  "displayName": "topic",
+                  "required": false,
+                  "defaultMatch": false,
+                  "display": true,
+                  "canBeUsedToMatch": true,
+                  "type": "string",
+                  "removed": false
+                }
+              ],
+              "attemptToConvertTypes": false,
+              "convertFieldsToString": false
+            }
+          }
+        }
+      ],
+      "connections": {
+        "Manual Trigger": {
+          "main": [
+            [
+              {
+                "node": "Multiple output items agent",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "N0 OpenAI Chat Model": {
+          "ai_languageModel": [
+            [
+              {
+                "node": "Multiple output items agent",
+                "type": "ai_languageModel",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "il_multiple_items": {
+          "ai_tool": [
+            [
+              {
+                "node": "Multiple output items agent",
+                "type": "ai_tool",
+                "index": 0
+              }
+            ]
+          ]
+        }
+      },
+      "settings": {
+        "executionOrder": "v1"
+      }
+    }
+  }
+}
