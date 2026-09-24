@@ -109,7 +109,8 @@ function continuationRequest({ stream = false } = {}) {
       {
         role: "tool",
         tool_call_id: "call_inference_lens_n8n_001",
-        content: '[{"echo":"IL_N0_STRING_VALUE"}]',
+        content:
+          '[{"fixture":"IL_N0_STRING_INPUT","echoed":"IL_N0_STRING_VALUE","receivedType":"string"}]',
       },
     ],
   };
@@ -287,4 +288,55 @@ test("rejects a continuation whose tool-call linkage is wrong", async (t) => {
   assert.equal(status.phase, "awaiting-continuation-request");
   assert.equal(status.requestCount, 1);
   assert.equal(status.complete, false);
+});
+
+test("preserves a rejected continuation request for diagnosis", async (t) => {
+  const provider = await startProvider(t);
+  const initial = await postCompletion(provider.baseUrl, initialRequest());
+  assert.equal(initial.status, 200, provider.stderr());
+
+  const body = continuationRequest();
+  body.messages.splice(1, 1);
+  const continuation = await postCompletion(provider.baseUrl, body);
+  assert.equal(continuation.status, 422);
+  assert.match(
+    (await continuation.json()).error.message,
+    /does not contain assistant call call_inference_lens_n8n_001/,
+  );
+  assert.deepEqual(
+    await readJson(provider.outputDirectory, "provider-request-rejected.json"),
+    body,
+  );
+});
+
+test("accepts n8n's call ID added to preserved assistant arguments", async (t) => {
+  const provider = await startProvider(t);
+  const initial = await postCompletion(provider.baseUrl, initialRequest());
+  assert.equal(initial.status, 200, provider.stderr());
+
+  const body = continuationRequest();
+  body.messages[1].tool_calls[0].function.arguments =
+    '{"text":"IL_N0_STRING_VALUE","id":"call_inference_lens_n8n_001"}';
+  const continuation = await postCompletion(provider.baseUrl, body);
+  assert.equal(continuation.status, 200, await continuation.text());
+  assert.deepEqual(
+    await readJson(provider.outputDirectory, "provider-request-continuation.json"),
+    body,
+  );
+});
+
+test("rejects a sub-workflow error result instead of reporting capture success", async (t) => {
+  const provider = await startProvider(t);
+  const initial = await postCompletion(provider.baseUrl, initialRequest());
+  assert.equal(initial.status, 200, provider.stderr());
+
+  const body = continuationRequest();
+  body.messages.at(-1).content =
+    '[{"error":"Workflow is not active and cannot be executed."}]';
+  const continuation = await postCompletion(provider.baseUrl, body);
+  assert.equal(continuation.status, 422);
+  assert.match(
+    (await continuation.json()).error.message,
+    /does not contain the expected string-input sub-workflow result/,
+  );
 });

@@ -3,6 +3,7 @@
 import { createServer } from "node:http";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 
 import { stopOnSignal } from "./fixture-shutdown.mjs";
 
@@ -213,7 +214,11 @@ function continuationProblem(body) {
   }
   const expectedArguments = parseArguments(scenario.arguments);
   const actualArguments = parseArguments(call.function?.arguments);
-  if (JSON.stringify(actualArguments) !== JSON.stringify(expectedArguments)) {
+  const n8nLinkedArguments = { ...expectedArguments, id: scenario.toolCallId };
+  if (
+    !isDeepStrictEqual(actualArguments, expectedArguments) &&
+    !isDeepStrictEqual(actualArguments, n8nLinkedArguments)
+  ) {
     return `Assistant call ${scenario.toolCallId} does not preserve the scripted arguments.`;
   }
   const result = body.messages.find(
@@ -225,6 +230,16 @@ function continuationProblem(body) {
   }
   if (typeof result.content !== "string") {
     return "Continuation tool result content must be a string.";
+  }
+  const expectedResult = [
+    {
+      fixture: scenario.sentinel,
+      echoed: expectedArguments.text,
+      receivedType: "string",
+    },
+  ];
+  if (!isDeepStrictEqual(parseArguments(result.content), expectedResult)) {
+    return "Continuation does not contain the expected string-input sub-workflow result.";
   }
   return null;
 }
@@ -363,6 +378,11 @@ async function handleCompletion(request, response) {
     if (state.phase === "awaiting-continuation-request") {
       const problem = continuationProblem(body);
       if (problem) {
+        try {
+          await writeRequestCapture("provider-request-rejected.json", rawBody);
+        } catch (error) {
+          if (error.code !== "EEXIST") throw error;
+        }
         sendProblem(response, 422, problem);
         return;
       }

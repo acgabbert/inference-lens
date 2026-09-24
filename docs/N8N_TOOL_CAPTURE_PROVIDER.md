@@ -59,6 +59,12 @@ The provider accepts buffered and streaming chat-completion requests. It
 requires the expected model, prompt sentinel, and exposed tool on the first
 request. On the second request it requires the scripted assistant call and a
 `role: "tool"` result linked by the exact call ID.
+For the assistant call arguments, it accepts the original scripted object or
+the same object with an `id` property equal to the call ID, as observed in an
+n8n continuation. The raw request retains the exact form n8n sent.
+The string-input scenario also requires the tool result to contain the child
+workflow's expected `fixture`, `echoed`, and `receivedType` fields. A tool error
+does not complete the capture.
 
 ## Inspect status and artifacts
 
@@ -109,6 +115,13 @@ An invalid request returns an OpenAI-shaped error and does not advance the
 state machine. The problem is visible through `/status`. A third request after
 completion is rejected. Existing artifact filenames cause a write failure
 rather than being overwritten.
+
+If a continuation fails validation, the provider saves the first rejected
+request as `provider-request-rejected.json` in the raw staging directory. This
+file can contain prompt and tool-result content; keep it out of commits and
+inspect its `messages` structure locally to diagnose the mismatch. Later
+rejected attempts do not overwrite it. The public API probe still requires a
+successful four-file capture.
 
 Stop the process with `Ctrl-C` or `SIGTERM`. It uses the shared fixture shutdown
 handler, including when a client still holds a connection open.
