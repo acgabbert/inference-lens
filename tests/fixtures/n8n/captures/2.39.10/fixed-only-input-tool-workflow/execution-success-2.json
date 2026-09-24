@@ -1,0 +1,173 @@
+{
+  "id": "execution_fixture_002",
+  "workflowId": "subworkflow_fixture",
+  "mode": "integrated",
+  "status": "success",
+  "finished": true,
+  "data": {
+    "startData": {},
+    "resultData": {
+      "runData": {
+        "When Executed by Another Workflow": [
+          {
+            "executionIndex": 0,
+            "source": [],
+            "hints": [],
+            "executionTime": 1,
+            "metadata": {
+              "parentExecution": {
+                "executionId": "execution_fixture_001",
+                "workflowId": "workflow_fixture",
+                "shouldResume": true,
+                "executionContext": {
+                  "version": 1,
+                  "establishedAt": 1790258492733,
+                  "source": "manual",
+                  "triggerNode": {
+                    "name": "Manual Trigger",
+                    "type": "n8n-nodes-base.manualTrigger"
+                  },
+                  "redaction": {
+                    "version": 2,
+                    "production": false,
+                    "manual": false
+                  }
+                }
+              }
+            },
+            "executionStatus": "success",
+            "data": {
+              "main": [
+                [
+                  {
+                    "json": {
+                      "source": "IL_N0_FIXED_SOURCE"
+                    },
+                    "index": 0,
+                    "pairedItem": {
+                      "item": 0
+                    }
+                  }
+                ]
+              ]
+            }
+          }
+        ],
+        "Return fixed only input evidence": [
+          {
+            "executionIndex": 1,
+            "source": [
+              {
+                "previousNode": "When Executed by Another Workflow",
+                "previousNodeOutput": 0,
+                "previousNodeRun": 0
+              }
+            ],
+            "hints": [],
+            "executionTime": 6,
+            "executionStatus": "success",
+            "data": {
+              "main": [
+                [
+                  {
+                    "json": {
+                      "fixture": "IL_N0_FIXED_ONLY",
+                      "source": "IL_N0_FIXED_SOURCE"
+                    },
+                    "pairedItem": {
+                      "item": 0
+                    }
+                  }
+                ]
+              ]
+            }
+          }
+        ]
+      },
+      "lastNodeExecuted": "Return fixed only input evidence"
+    },
+    "executionData": {
+      "contextData": {},
+      "nodeExecutionStack": [],
+      "metadata": {},
+      "waitingExecution": {},
+      "waitingExecutionSource": {},
+      "runtimeData": {
+        "version": 1,
+        "establishedAt": 1790258492804,
+        "source": "integrated",
+        "triggerNode": {
+          "name": "Manual Trigger",
+          "type": "n8n-nodes-base.manualTrigger"
+        },
+        "redaction": {
+          "version": 2,
+          "production": false,
+          "manual": false
+        },
+        "parentExecutionId": "execution_fixture_001"
+      }
+    },
+    "workflowData": {
+      "id": "subworkflow_fixture",
+      "name": "[Inference Lens N0] Fixed only input — sub-workflow",
+      "nodes": [
+        {
+          "id": "node_fixture_005",
+          "name": "When Executed by Another Workflow",
+          "type": "n8n-nodes-base.executeWorkflowTrigger",
+          "typeVersion": 1.1,
+          "position": [
+            -320,
+            0
+          ],
+          "parameters": {
+            "events": "worklfow_call",
+            "inputSource": "workflowInputs",
+            "workflowInputs": {
+              "values": [
+                {
+                  "name": "source",
+                  "type": "string"
+                }
+              ]
+            },
+            "returnOutput": "lastRunOnly"
+          }
+        },
+        {
+          "id": "node_fixture_006",
+          "name": "Return fixed only input evidence",
+          "type": "n8n-nodes-base.code",
+          "typeVersion": 2,
+          "position": [
+            -40,
+            0
+          ],
+          "parameters": {
+            "mode": "runOnceForAllItems",
+            "language": "javaScript",
+            "jsCode": "return [{ json: { fixture: \"IL_N0_FIXED_ONLY\", source: $json.source } }];",
+            "notice": ""
+          }
+        }
+      ],
+      "connections": {
+        "When Executed by Another Workflow": {
+          "main": [
+            [
+              {
+                "node": "Return fixed only input evidence",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        }
+      },
+      "settings": {
+        "executionOrder": "v1"
+      }
+    }
+  }
+}

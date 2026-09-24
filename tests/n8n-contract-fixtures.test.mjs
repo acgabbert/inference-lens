@@ -25,6 +25,10 @@ const fixedAndAiToolFixtureRoot = path.resolve(
   import.meta.dirname,
   "fixtures/n8n/captures/2.39.10/fixed-and-ai-inputs-tool-workflow",
 );
+const laterToolFixtureRoot = (name) => path.resolve(
+  import.meta.dirname,
+  `fixtures/n8n/captures/2.39.10/${name}-tool-workflow`,
+);
 const fixedAndAiAgentFixtureRoots = [
   [2.2, "fixed-and-ai-inputs-agent-2.2"],
   [3, "fixed-and-ai-inputs-agent-3"],
@@ -350,6 +354,93 @@ test("compares fixed and AI tool exchanges across Agent 2.2, 3, and 3.1", async 
       { output: "IL_N0_CAPTURE_COMPLETE" },
     );
   }
+});
+
+test("captures a fixed-only workflow with n8n's optional synthetic input schema", async () => {
+  const root = laterToolFixtureRoot("fixed-only-input");
+  const manifest = await validateRedactedCapture({ directory: root });
+  assert.deepEqual(manifest.executions.map(({ status }) => status), ["success", "success"]);
+
+  const initial = await readJson(root, "provider-request-initial.json");
+  assert.deepEqual(initial.tools[0].function.parameters.properties, {
+    input: { type: "string" },
+  });
+  assert.equal(initial.tools[0].function.parameters.required, undefined);
+
+  const continuation = await readJson(root, "provider-request-continuation.json");
+  const call = continuation.messages[2].tool_calls[0];
+  assert.deepEqual(JSON.parse(call.function.arguments), { id: call.id });
+  assert.deepEqual(JSON.parse(continuation.messages[3].content), [
+    { fixture: "IL_N0_FIXED_ONLY", source: "IL_N0_FIXED_SOURCE" },
+  ]);
+  const child = await readJson(root, "execution-success-2.json");
+  assert.deepEqual(child.data.resultData.runData["When Executed by Another Workflow"][0]
+    .data.main[0][0].json, { source: "IL_N0_FIXED_SOURCE" });
+});
+
+test("captures nested inputs as untyped model properties and typed child values", async () => {
+  const root = laterToolFixtureRoot("nested-inputs");
+  const manifest = await validateRedactedCapture({ directory: root });
+  assert.deepEqual(manifest.executions.map(({ status }) => status), ["success", "success"]);
+  const initial = await readJson(root, "provider-request-initial.json");
+  assert.deepEqual(initial.tools[0].function.parameters.properties, {
+    payload: { description: "An object with label and count" },
+    tags: { description: "An array of strings" },
+  });
+  const continuation = await readJson(root, "provider-request-continuation.json");
+  assert.deepEqual(JSON.parse(continuation.messages[3].content)[0].types, {
+    payload: "object",
+    tagsIsArray: true,
+  });
+});
+
+test("captures workflow error as a model-visible result after child failure", async () => {
+  const root = laterToolFixtureRoot("workflow-error");
+  const manifest = await validateRedactedCapture({ directory: root });
+  assert.deepEqual(manifest.executions.map(({ status }) => status), ["success", "error"]);
+  const continuation = await readJson(root, "provider-request-continuation.json");
+  assert.deepEqual(JSON.parse(continuation.messages[3].content), [{
+    error: "IL_N0_EXPECTED_WORKFLOW_ERROR:IL_N0_EXPECTED_ERROR [line 2]",
+  }]);
+});
+
+test("captures rejected arguments before a child execution starts", async () => {
+  const root = laterToolFixtureRoot("rejected-arguments");
+  const manifest = await validateRedactedCapture({ directory: root });
+  assert.deepEqual(manifest.executions.map(({ status }) => status), ["success"]);
+  assert.equal(manifest.subworkflowId, undefined);
+  const continuation = await readJson(root, "provider-request-continuation.json");
+  const result = JSON.parse(continuation.messages[3].content);
+  assert.equal(result.length, 1);
+  assert.match(result[0].error, /Expected number, received string/);
+});
+
+test("captures n8n's reversed order for two attached tools and the selected child", async () => {
+  const root = laterToolFixtureRoot("multiple-attached-tools");
+  const manifest = await validateRedactedCapture({ directory: root });
+  assert.deepEqual(manifest.executions.map(({ status }) => status), ["success", "success"]);
+  const initial = await readJson(root, "provider-request-initial.json");
+  assert.deepEqual(initial.tools.map(({ function: tool }) => tool.name), [
+    "il_echo_primitives",
+    "il_echo_string",
+  ]);
+  assert.deepEqual(initial.tools[0].function.parameters.required, [
+    "text", "count", "enabled",
+  ]);
+  assert.deepEqual(initial.tools[1].function.parameters.required, ["text"]);
+  const continuation = await readJson(root, "provider-request-continuation.json");
+  const call = continuation.messages[2].tool_calls[0];
+  assert.equal(call.function.name, "il_echo_string");
+  assert.deepEqual(JSON.parse(call.function.arguments), {
+    text: "IL_N0_STRING_VALUE",
+    id: call.id,
+  });
+  assert.deepEqual(JSON.parse(continuation.messages[3].content), [
+    { fixture: "IL_N0_STRING_INPUT", echoed: "IL_N0_STRING_VALUE", receivedType: "string" },
+  ]);
+  const child = await readJson(root, "execution-success-2.json");
+  assert.deepEqual(child.data.resultData.runData["When Executed by Another Workflow"][0]
+    .data.main[0][0].json, { text: "IL_N0_STRING_VALUE" });
 });
 
 test("proves the successful compound execution from saved model messages", async () => {

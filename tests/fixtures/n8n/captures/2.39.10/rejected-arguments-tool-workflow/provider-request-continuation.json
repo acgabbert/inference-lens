@@ -1,0 +1,58 @@
+{
+  "model": "template-echo-model",
+  "temperature": 0,
+  "stream": false,
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "il_rejected_arguments",
+        "description": "Synthetic rejected arguments contract fixture for Inference Lens.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "count": {
+              "type": "number",
+              "description": "A diagnostic number"
+            }
+          },
+          "required": [
+            "count"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "strict": false
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are executing an Inference Lens n8n provider-wire contract fixture. Follow the tool-call instruction exactly."
+    },
+    {
+      "role": "user",
+      "content": "IL_N0_REJECTED_ARGUMENTS\nCall il_rejected_arguments once with count IL_N0_NOT_A_NUMBER. After the tool returns, report its response without calling another tool."
+    },
+    {
+      "role": "assistant",
+      "content": [],
+      "tool_calls": [
+        {
+          "id": "call_inference_lens_n8n_001",
+          "type": "function",
+          "function": {
+            "name": "il_rejected_arguments",
+            "arguments": "{\"count\":\"IL_N0_NOT_A_NUMBER\",\"id\":\"call_inference_lens_n8n_001\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "[{\"error\":\"Received tool input did not match expected schema\\n\\n✖ Expected number, received string\\n  → at count\"}]",
+      "tool_call_id": "call_inference_lens_n8n_001"
+    }
+  ]
+}

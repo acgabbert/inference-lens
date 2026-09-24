@@ -1,0 +1,546 @@
+{
+  "id": "execution_fixture_001",
+  "workflowId": "workflow_fixture",
+  "mode": "manual",
+  "status": "success",
+  "finished": true,
+  "data": {
+    "startData": {},
+    "resultData": {
+      "runData": {
+        "Manual Trigger": [
+          {
+            "executionIndex": 0,
+            "source": [],
+            "hints": [],
+            "executionTime": 1,
+            "executionStatus": "success",
+            "data": {
+              "main": [
+                [
+                  {
+                    "json": {},
+                    "pairedItem": {
+                      "item": 0
+                    }
+                  }
+                ]
+              ]
+            }
+          }
+        ],
+        "N0 OpenAI Chat Model": [
+          {
+            "executionTime": 17,
+            "executionIndex": 2,
+            "executionStatus": "success",
+            "source": [
+              {
+                "previousNode": "Workflow error agent",
+                "previousNodeRun": 0
+              }
+            ],
+            "data": {
+              "ai_languageModel": [
+                [
+                  {
+                    "json": {
+                      "response": {
+                        "generations": [
+                          [
+                            {
+                              "text": "",
+                              "generationInfo": {
+                                "finish_reason": "tool_calls"
+                              }
+                            }
+                          ]
+                        ]
+                      },
+                      "tokenUsage": {
+                        "completionTokens": 1,
+                        "promptTokens": 2,
+                        "totalTokens": 3
+                      }
+                    }
+                  }
+                ]
+              ]
+            },
+            "inputOverride": {
+              "ai_languageModel": [
+                [
+                  {
+                    "json": {
+                      "messages": [
+                        "System: You are executing an Inference Lens n8n provider-wire contract fixture. Follow the tool-call instruction exactly.\nHuman: IL_N0_WORKFLOW_ERROR\nCall il_workflow_error once with reason IL_N0_EXPECTED_ERROR. After the tool returns, report its response without calling another tool."
+                      ],
+                      "estimatedTokens": 61,
+                      "options": {
+                        "model": "template-echo-model",
+                        "temperature": 0,
+                        "max_retries": 2,
+                        "configuration": {},
+                        "model_kwargs": {},
+                        "supports_strict_tool_calling": false
+                      }
+                    }
+                  }
+                ]
+              ]
+            },
+            "metadata": {
+              "subRun": [
+                {
+                  "node": "N0 OpenAI Chat Model",
+                  "runIndex": 0
+                }
+              ]
+            }
+          },
+          {
+            "executionTime": 11,
+            "executionIndex": 5,
+            "executionStatus": "success",
+            "source": [
+              {
+                "previousNode": "Workflow error agent",
+                "previousNodeRun": 0
+              }
+            ],
+            "data": {
+              "ai_languageModel": [
+                [
+                  {
+                    "json": {
+                      "response": {
+                        "generations": [
+                          [
+                            {
+                              "text": "IL_N0_CAPTURE_COMPLETE",
+                              "generationInfo": {
+                                "finish_reason": "stop"
+                              }
+                            }
+                          ]
+                        ]
+                      },
+                      "tokenUsage": {
+                        "completionTokens": 1,
+                        "promptTokens": 4,
+                        "totalTokens": 5
+                      }
+                    }
+                  }
+                ]
+              ]
+            },
+            "inputOverride": {
+              "ai_languageModel": [
+                [
+                  {
+                    "json": {
+                      "messages": [
+                        "System: You are executing an Inference Lens n8n provider-wire contract fixture. Follow the tool-call instruction exactly.\nHuman: IL_N0_WORKFLOW_ERROR\nCall il_workflow_error once with reason IL_N0_EXPECTED_ERROR. After the tool returns, report its response without calling another tool.\nAI: [{\"id\":\"call_inference_lens_n8n_001\",\"name\":\"il_workflow_error\",\"args\":{\"reason\":\"IL_N0_EXPECTED_ERROR\",\"id\":\"call_inference_lens_n8n_001\"},\"type\":\"tool_call\"}]\nTool: [{\"error\":\"IL_N0_EXPECTED_WORKFLOW_ERROR:IL_N0_EXPECTED_ERROR [line 2]\"}]"
+                      ],
+                      "estimatedTokens": 142,
+                      "options": {
+                        "model": "template-echo-model",
+                        "temperature": 0,
+                        "max_retries": 2,
+                        "configuration": {},
+                        "model_kwargs": {},
+                        "supports_strict_tool_calling": false
+                      }
+                    }
+                  }
+                ]
+              ]
+            },
+            "metadata": {
+              "subRun": [
+                {
+                  "node": "N0 OpenAI Chat Model",
+                  "runIndex": 1
+                }
+              ]
+            }
+          }
+        ],
+        "il_workflow_error": [
+          {
+            "inputOverride": {
+              "ai_tool": [
+                [
+                  {
+                    "json": {
+                      "reason": "IL_N0_EXPECTED_ERROR"
+                    },
+                    "pairedItem": {
+                      "item": 0,
+                      "input": 0,
+                      "sourceOverwrite": {
+                        "previousNode": "Manual Trigger",
+                        "previousNodeOutput": 0,
+                        "previousNodeRun": 0
+                      }
+                    }
+                  }
+                ]
+              ]
+            },
+            "source": [
+              {
+                "previousNode": "Workflow error agent",
+                "previousNodeOutput": 0,
+                "previousNodeRun": 0
+              }
+            ],
+            "executionIndex": 3,
+            "executionTime": 53,
+            "hints": [],
+            "metadata": {
+              "preserveSourceOverwrite": true,
+              "preservedSourceOverwrite": {
+                "previousNode": "Manual Trigger",
+                "previousNodeOutput": 0,
+                "previousNodeRun": 0
+              }
+            },
+            "executionStatus": "error",
+            "error": {
+              "level": "warning",
+              "shouldReport": true,
+              "tags": {},
+              "timestamp": 1790258700301,
+              "context": {
+                "itemIndex": 0
+              },
+              "functionality": "regular",
+              "name": "NodeOperationError",
+              "node": {
+                "parameters": {
+                  "notice": "",
+                  "noticeTemplateExample": "",
+                  "description": "Synthetic workflow error contract fixture for Inference Lens.",
+                  "executeNotice": "",
+                  "source": "database",
+                  "workflowId": {
+                    "__rl": true,
+                    "value": "subworkflow_fixture",
+                    "mode": "list",
+                    "cachedResultName": "[Inference Lens N0] Workflow error — sub-workflow"
+                  },
+                  "workflowInputs": {
+                    "mappingMode": "defineBelow",
+                    "value": {
+                      "reason": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('reason', `A diagnostic reason`, 'string') }}"
+                    },
+                    "matchingColumns": [],
+                    "schema": [
+                      {
+                        "id": "reason",
+                        "displayName": "reason",
+                        "required": false,
+                        "defaultMatch": false,
+                        "display": true,
+                        "canBeUsedToMatch": true,
+                        "type": "string"
+                      }
+                    ],
+                    "attemptToConvertTypes": false,
+                    "convertFieldsToString": false
+                  }
+                },
+                "id": "node_fixture_004",
+                "name": "il_workflow_error",
+                "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+                "typeVersion": 2.2,
+                "position": [
+                  -128,
+                  240
+                ],
+                "rewireOutputLogTo": "ai_tool"
+              },
+              "messages": [],
+              "message": "IL_N0_EXPECTED_WORKFLOW_ERROR:IL_N0_EXPECTED_ERROR [line 2]",
+              "stack": "NodeOperationError: IL_N0_EXPECTED_WORKFLOW_ERROR:IL_N0_EXPECTED_ERROR [line 2]\n    at ExecuteContext.execute (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/@n8n+n8n-nodes-langchain@file++++home+runner+_work+n8n+n8n+packages+@n8n+nodes-langchain/node_modules/@n8n/n8n-nodes-langchain/nodes/tools/ToolWorkflow/v2/ToolWorkflowV2.node.ts:89:11)\n    at WorkflowExecute.executeNode (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file++++home+runner+_work+n8n+n8n+packages+core/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:1125:8)\n    at WorkflowExecute.runNode (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file++++home+runner+_work+n8n+n8n+packages+core/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:1427:11)\n    at /usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file++++home+runner+_work+n8n+n8n+packages+core/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:2329:27\n    at /usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file++++home+runner+_work+n8n+n8n+packages+core/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:2810:11"
+            },
+            "data": {
+              "ai_tool": [
+                [
+                  {
+                    "json": {
+                      "error": "IL_N0_EXPECTED_WORKFLOW_ERROR:IL_N0_EXPECTED_ERROR [line 2]"
+                    }
+                  }
+                ]
+              ]
+            }
+          }
+        ],
+        "Workflow error agent": [
+          {
+            "executionIndex": 4,
+            "source": [
+              {
+                "previousNode": "Manual Trigger",
+                "previousNodeOutput": 0,
+                "previousNodeRun": 0
+              }
+            ],
+            "hints": [],
+            "executionTime": 19,
+            "metadata": {
+              "nodeWasResumed": true,
+              "subNodeExecutionData": {
+                "actions": [
+                  {
+                    "action": {
+                      "actionType": "ExecutionNodeAction",
+                      "nodeName": "il_workflow_error",
+                      "input": {
+                        "reason": "IL_N0_EXPECTED_ERROR"
+                      },
+                      "type": "ai_tool",
+                      "id": "call_inference_lens_n8n_001",
+                      "metadata": {
+                        "itemIndex": 0,
+                        "toolName": "il_workflow_error"
+                      }
+                    },
+                    "nodeName": "il_workflow_error",
+                    "runIndex": 0
+                  }
+                ],
+                "metadata": {
+                  "previousRequests": [],
+                  "itemIndex": 0,
+                  "iterationCount": 1
+                }
+              },
+              "tracing": {
+                "llm.tokens.in": 4,
+                "llm.tokens.out": 1,
+                "llm.tokens.total": 5,
+                "llm.tokens.estimated": false,
+                "ai.agent.version": "v3",
+                "ai.agent.streaming.enabled": false,
+                "ai.agent.items.total": 1,
+                "ai.agent.items.failed": 0,
+                "ai.agent.tool_calls.requested": 0,
+                "ai.agent.tool_calls.completed": 1,
+                "ai.agent.iteration.count": 0,
+                "ai.agent.memory.loads": 0,
+                "ai.agent.memory.saves": 0,
+                "ai.agent.execution.succeeded": true
+              }
+            },
+            "executionStatus": "success",
+            "data": {
+              "main": [
+                [
+                  {
+                    "json": {
+                      "output": "IL_N0_CAPTURE_COMPLETE"
+                    },
+                    "pairedItem": {
+                      "item": 0
+                    }
+                  }
+                ]
+              ]
+            }
+          }
+        ]
+      },
+      "pinData": {},
+      "lastNodeExecuted": "Workflow error agent",
+      "metadata": {
+        "response_workflow_error_agent": "IL_N0_CAPTURE_COMPLETE"
+      }
+    },
+    "executionData": {
+      "contextData": {},
+      "nodeExecutionStack": [],
+      "metadata": {
+        "N0 OpenAI Chat Model": [
+          {
+            "subRun": [
+              {
+                "node": "N0 OpenAI Chat Model",
+                "runIndex": 0
+              }
+            ]
+          },
+          {
+            "subRun": [
+              {
+                "node": "N0 OpenAI Chat Model",
+                "runIndex": 1
+              }
+            ]
+          }
+        ]
+      },
+      "waitingExecution": {},
+      "waitingExecutionSource": {},
+      "runtimeData": {
+        "version": 1,
+        "establishedAt": 1790258700215,
+        "source": "manual",
+        "triggerNode": {
+          "name": "Manual Trigger",
+          "type": "n8n-nodes-base.manualTrigger"
+        },
+        "redaction": {
+          "version": 2,
+          "production": false,
+          "manual": false
+        }
+      }
+    },
+    "workflowData": {
+      "id": "workflow_fixture",
+      "name": "[Inference Lens N0] Workflow error — parent",
+      "nodes": [
+        {
+          "id": "node_fixture_001",
+          "name": "Manual Trigger",
+          "type": "n8n-nodes-base.manualTrigger",
+          "typeVersion": 1,
+          "position": [
+            -640,
+            0
+          ],
+          "parameters": {
+            "notice": ""
+          }
+        },
+        {
+          "id": "node_fixture_002",
+          "name": "Workflow error agent",
+          "type": "@n8n/n8n-nodes-langchain.agent",
+          "typeVersion": 3.1,
+          "position": [
+            -320,
+            0
+          ],
+          "parameters": {
+            "aiAgentStarterCallout": "",
+            "promptType": "define",
+            "text": "=IL_N0_WORKFLOW_ERROR\nCall il_workflow_error once with reason IL_N0_EXPECTED_ERROR. After the tool returns, report its response without calling another tool.",
+            "hasOutputParser": false,
+            "needsFallback": false,
+            "options": {
+              "systemMessage": "You are executing an Inference Lens n8n provider-wire contract fixture. Follow the tool-call instruction exactly.",
+              "enableStreaming": false
+            }
+          }
+        },
+        {
+          "id": "node_fixture_003",
+          "name": "N0 OpenAI Chat Model",
+          "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+          "typeVersion": 1.2,
+          "position": [
+            -368,
+            240
+          ],
+          "parameters": {
+            "notice": "",
+            "model": {
+              "__rl": true,
+              "value": "template-echo-model",
+              "mode": "id"
+            },
+            "options": {
+              "temperature": 0
+            }
+          }
+        },
+        {
+          "id": "node_fixture_004",
+          "name": "il_workflow_error",
+          "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+          "typeVersion": 2.2,
+          "position": [
+            -128,
+            240
+          ],
+          "parameters": {
+            "notice": "",
+            "noticeTemplateExample": "",
+            "description": "Synthetic workflow error contract fixture for Inference Lens.",
+            "executeNotice": "",
+            "source": "database",
+            "workflowId": {
+              "__rl": true,
+              "value": "subworkflow_fixture",
+              "mode": "list",
+              "cachedResultName": "[Inference Lens N0] Workflow error — sub-workflow"
+            },
+            "workflowInputs": {
+              "mappingMode": "defineBelow",
+              "value": {
+                "reason": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('reason', `A diagnostic reason`, 'string') }}"
+              },
+              "matchingColumns": [],
+              "schema": [
+                {
+                  "id": "reason",
+                  "displayName": "reason",
+                  "required": false,
+                  "defaultMatch": false,
+                  "display": true,
+                  "canBeUsedToMatch": true,
+                  "type": "string"
+                }
+              ],
+              "attemptToConvertTypes": false,
+              "convertFieldsToString": false
+            }
+          }
+        }
+      ],
+      "connections": {
+        "Manual Trigger": {
+          "main": [
+            [
+              {
+                "node": "Workflow error agent",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "N0 OpenAI Chat Model": {
+          "ai_languageModel": [
+            [
+              {
+                "node": "Workflow error agent",
+                "type": "ai_languageModel",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "il_workflow_error": {
+          "ai_tool": [
+            [
+              {
+                "node": "Workflow error agent",
+                "type": "ai_tool",
+                "index": 0
+              }
+            ]
+          ]
+        }
+      },
+      "settings": {
+        "executionOrder": "v1"
+      }
+    }
+  }
+}

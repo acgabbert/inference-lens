@@ -13,13 +13,14 @@ The disposable batch covers:
 | Primitive inputs | `primitive-inputs.parent.json` | `primitive-inputs.subworkflow.json` | String, number, and boolean schema mapping and runtime coercion. |
 | Multiple output items | `multiple-output-items.parent.json` | `multiple-output-items.subworkflow.json` | Ordered multi-item result serialization from Tool Workflow `2.2`. |
 | Fixed plus AI input | `fixed-and-ai-inputs.parent.json` | `fixed-and-ai-inputs.subworkflow.json` | Compare with the baseline `string-input` case: only `text` comes from the model; `source` is the literal `IL_N0_FIXED_SOURCE`. |
+| Fixed only input | `fixed-only-input.parent.json` | `fixed-only-input.subworkflow.json` | The sole declared input, `source`, is the literal `IL_N0_FIXED_SOURCE`; the model call has `{}` arguments. Whether n8n exposes and runs this tool remains to be captured. |
 | Fixed plus AI input, Agent 2.2 | `fixed-and-ai-inputs-agent-2.2.parent.json` | Reuse `fixed-and-ai-inputs.subworkflow.json`. | Isolate AI Agent `2.2` against the captured `3.1` case. |
 | Fixed plus AI input, Agent 3 | `fixed-and-ai-inputs-agent-3.parent.json` | Reuse `fixed-and-ai-inputs.subworkflow.json`. | Isolate AI Agent `3` against the captured `3.1` case. |
-| Empty output | `empty-output.parent.json` | `empty-output.subworkflow.json` | Whether a child emitting zero items yields a model continuation. |
+| Empty output | `empty-output.parent.json` | `empty-output.subworkflow.json` | A zero-item child caused `The workflow did not return a response`; no model continuation. Enabling Always Output Data in n8n produced `[{}]`, a different case. |
 | Nested inputs | `nested-inputs.parent.json` | `nested-inputs.subworkflow.json` | Object and array input mapping, runtime types, and result serialization. |
 | Workflow error | `workflow-error.parent.json` | `workflow-error.subworkflow.json` | Whether a thrown child error returns a model-visible tool result. |
 | Rejected arguments | `rejected-arguments.parent.json` | `rejected-arguments.subworkflow.json` | Whether a string supplied for a number input is rejected before child execution. |
-| Two attached tools | `multiple-attached-tools.parent.json` | Reuse the `string-input` and `primitive-inputs` sub-workflows. | Initial request tool order and aggregate schema. The scripted provider calls only `il_echo_string`. |
+| Two attached tools | `multiple-attached-tools.parent.json` | Reuse the `string-input` and `primitive-inputs` sub-workflows. | Initial request tool order and aggregate schema. The provider accepts either tool order and records the order n8n sends; its scripted call targets only `il_echo_string`. |
 
 ## Import and connect one scenario
 

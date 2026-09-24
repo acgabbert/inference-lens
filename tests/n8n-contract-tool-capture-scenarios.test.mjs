@@ -32,6 +32,13 @@ const cases = [
     result: [{ fixture: "IL_N0_FIXED_AND_AI", text: "IL_N0_AI_TEXT", source: "IL_N0_FIXED_SOURCE" }],
   },
   {
+    id: "fixed-only-input",
+    sentinel: "IL_N0_FIXED_ONLY",
+    name: "il_fixed_only",
+    arguments: {},
+    result: [{ fixture: "IL_N0_FIXED_ONLY", source: "IL_N0_FIXED_SOURCE" }],
+  },
+  {
     id: "empty-output",
     sentinel: "IL_N0_EMPTY_OUTPUT",
     name: "il_empty_output",
@@ -123,6 +130,36 @@ for (const scenario of cases) {
     assert.equal((await fetch(`${url}/status`).then((r) => r.json())).complete, true);
   });
 }
+
+test("captures both attached tools when n8n sends them in reverse order", async (t) => {
+  const url = await start(t, "multiple-attached-tools");
+  const request = {
+    model: "template-echo-model",
+    messages: [{ role: "user", content: "IL_N0_MULTIPLE_ATTACHED_TOOLS" }],
+    tools: ["il_echo_primitives", "il_echo_string"].map((name) => ({
+      type: "function",
+      function: { name, parameters: { type: "object" } },
+    })),
+  };
+  const response = await post(url, request);
+  assert.equal(response.status, 200);
+  assert.equal(
+    (await response.json()).choices[0].message.tool_calls[0].function.name,
+    "il_echo_string",
+  );
+});
+
+test("saves a rejected initial multiple-tool request for diagnosis", async (t) => {
+  const url = await start(t, "multiple-attached-tools");
+  const response = await post(url, {
+    model: "template-echo-model",
+    messages: [{ role: "user", content: "IL_N0_MULTIPLE_ATTACHED_TOOLS" }],
+    tools: [{ type: "function", function: { name: "il_echo_string", parameters: { type: "object" } } }],
+  });
+  assert.equal(response.status, 422);
+  const status = await fetch(`${url}/status`).then((result) => result.json());
+  assert.deepEqual(status.files, ["provider-request-rejected.json"]);
+});
 
 for (const [id, sentinel, name, argumentsValue] of [
   ["workflow-error", "IL_N0_WORKFLOW_ERROR", "il_workflow_error", { reason: "IL_N0_EXPECTED_ERROR" }],

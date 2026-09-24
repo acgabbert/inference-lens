@@ -16,7 +16,7 @@ stubs of the same name. Its fixed contract is:
 - final answer: `IL_N0_CAPTURE_COMPLETE`.
 
 The provider also supports `primitive-inputs`, `multiple-output-items`,
-`fixed-and-ai-inputs`, `empty-output`, `nested-inputs`, `workflow-error`,
+`fixed-and-ai-inputs`, `fixed-only-input`, `empty-output`, `nested-inputs`, `workflow-error`,
 `rejected-arguments`, and `multiple-attached-tools`. Each scenario has a
 matching disposable workflow recipe in
 [`tests/fixtures/n8n/tool-workflow-stubs/README.md`](../tests/fixtures/n8n/tool-workflow-stubs/README.md).
@@ -143,6 +143,38 @@ that fixed inputs are exposed to the model. See the per-run observations under
 `tests/fixtures/n8n/captures/2.39.10/fixed-and-ai-inputs-agent-2.2/`,
 `fixed-and-ai-inputs-agent-3/`, and `fixed-and-ai-inputs-tool-workflow/`.
 
+## Additional N0 observations
+
+The fixed-only, nested-input, workflow-error, and rejected-argument runs have
+redacted provider and execution captures under
+`tests/fixtures/n8n/captures/2.39.10/`. In the fixed-only case, n8n exposed
+an optional synthetic `input` string property despite the workflow declaring
+only a literal `source` input. The scripted call supplied `{}`; n8n added the
+call ID in its continuation, and the child received the fixed `source`. The
+nested input schema exposed `payload` and `tags` without JSON Schema `type`
+members, while the child received an object and an array. A thrown child error
+became a model-visible error result; a string passed to the numeric `count`
+input was rejected before any child execution.
+
+The original `empty-output` child produced zero items. Its tool node failed
+with `The workflow did not return a response`, so no model continuation was
+captured. Enabling n8n's **Always Output Data** setting changed the tool result
+to `[{}]`; the `empty-output` provider correctly rejected that nonempty result.
+The raw attempts remain under `.n8n-contract-staging/tool-provider-empty-output-01/`.
+Do not present the edited workflow as a successful zero-item capture.
+
+The first two `multiple-attached-tools` parent runs were rejected by the
+capture provider before it wrote an initial request. Its old guard required
+`il_echo_string` then `il_echo_primitives`; the ordered names did not match.
+Because the rejected initial request was not saved, those runs do not prove
+whether n8n reversed the tools or changed the set. The guard now accepts either
+order while still requiring both tools, and preserves an accepted request for
+measurement. The successful rerun showed n8n sent `il_echo_primitives` first,
+then `il_echo_string`, despite the authored parent listing the string tool
+first. The provider called only `il_echo_string`; the matching child ran and
+returned its one-item result. The redacted capture is under
+`tests/fixtures/n8n/captures/2.39.10/multiple-attached-tools-tool-workflow/`.
+
 ## Failure behavior
 
 An invalid request returns an OpenAI-shaped error and does not advance the
@@ -150,8 +182,8 @@ state machine. The problem is visible through `/status`. A third request after
 completion is rejected. Existing artifact filenames cause a write failure
 rather than being overwritten.
 
-If a continuation fails validation, the provider saves the first rejected
-request as `provider-request-rejected.json` in the raw staging directory. This
+If an initial or continuation request fails validation, the provider saves the
+first rejected request as `provider-request-rejected.json` in the raw staging directory. This
 file can contain prompt and tool-result content; keep it out of commits and
 inspect its `messages` structure locally to diagnose the mismatch. Later
 rejected attempts do not overwrite it. The public API probe still requires a

@@ -1,0 +1,39 @@
+{
+  "model": "template-echo-model",
+  "temperature": 0,
+  "stream": false,
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "il_workflow_error",
+        "description": "Synthetic workflow error contract fixture for Inference Lens.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "reason": {
+              "type": "string",
+              "description": "A diagnostic reason"
+            }
+          },
+          "required": [
+            "reason"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "strict": false
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are executing an Inference Lens n8n provider-wire contract fixture. Follow the tool-call instruction exactly."
+    },
+    {
+      "role": "user",
+      "content": "IL_N0_WORKFLOW_ERROR\nCall il_workflow_error once with reason IL_N0_EXPECTED_ERROR. After the tool returns, report its response without calling another tool."
+    }
+  ]
+}

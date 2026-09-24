@@ -1,0 +1,203 @@
+{
+  "id": "workflow_fixture",
+  "name": "[Inference Lens N0] Multiple attached tools — parent",
+  "active": false,
+  "nodes": [
+    {
+      "id": "node_fixture_001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -640,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "node_fixture_002",
+      "name": "Multiple attached tools agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -320,
+        0
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=IL_N0_MULTIPLE_ATTACHED_TOOLS\nCall il_echo_string exactly once with text IL_N0_STRING_VALUE. Do not call il_echo_primitives. After the tool returns, report its response.",
+        "options": {
+          "systemMessage": "You are executing an Inference Lens n8n provider-wire contract fixture. Follow the tool-call instruction exactly.",
+          "enableStreaming": false
+        }
+      }
+    },
+    {
+      "id": "node_fixture_003",
+      "name": "N0 OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -368,
+        240
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "template-echo-model",
+          "mode": "id"
+        },
+        "options": {
+          "temperature": 0
+        }
+      }
+    },
+    {
+      "id": "node_fixture_004",
+      "name": "il_echo_string",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        -208,
+        240
+      ],
+      "parameters": {
+        "description": "Echo one string through a deterministic n8n sub-workflow for the Inference Lens provider-wire contract fixture.",
+        "workflowId": {
+          "__rl": true,
+          "value": "subworkflow_fixture",
+          "mode": "list",
+          "cachedResultName": "[Inference Lens N0] String input — sub-workflow"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "text": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('text', `The exact string to echo`, 'string') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "text",
+              "displayName": "text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      }
+    },
+    {
+      "id": "node_fixture_005",
+      "name": "il_echo_primitives",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        -80,
+        240
+      ],
+      "parameters": {
+        "description": "Return string, number, and boolean inputs with their runtime types for the Inference Lens provider-wire contract fixture.",
+        "workflowId": {
+          "__rl": true,
+          "value": "PiSWxfzGiwWnVMsW",
+          "mode": "list",
+          "cachedResultName": "[Inference Lens N0] Primitive inputs — sub-workflow"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "text": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('text', `A diagnostic string`, 'string') }}",
+            "count": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('count', `A diagnostic number`, 'number') }}",
+            "enabled": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('enabled', `A diagnostic boolean`, 'boolean') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "text",
+              "displayName": "text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "count",
+              "displayName": "count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            },
+            {
+              "id": "enabled",
+              "displayName": "enabled",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "boolean"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Multiple attached tools agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N0 OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Multiple attached tools agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "il_echo_string": {
+      "ai_tool": [
+        [
+          {
+            "node": "Multiple attached tools agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "il_echo_primitives": {
+      "ai_tool": [
+        [
+          {
+            "node": "Multiple attached tools agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

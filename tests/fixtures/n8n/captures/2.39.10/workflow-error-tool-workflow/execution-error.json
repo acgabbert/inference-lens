@@ -1,0 +1,221 @@
+{
+  "id": "execution_fixture_002",
+  "workflowId": "subworkflow_fixture",
+  "mode": "integrated",
+  "status": "error",
+  "finished": false,
+  "data": {
+    "startData": {},
+    "resultData": {
+      "error": {
+        "level": "info",
+        "shouldReport": false,
+        "description": null,
+        "tags": {},
+        "name": "WrappedExecutionError",
+        "lineNumber": 2,
+        "message": "IL_N0_EXPECTED_WORKFLOW_ERROR:IL_N0_EXPECTED_ERROR [line 2]",
+        "stack": "WrappedExecutionError: IL_N0_EXPECTED_WORKFLOW_ERROR:IL_N0_EXPECTED_ERROR [line 2]\n    at throwExecutionError (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-nodes-base@file++++home+runner+_work+n8n+n8n+packages+nodes-base/node_modules/n8n-nodes-base/nodes/Code/throw-execution-error.ts:11:9)\n    at JsTaskRunnerSandbox.runCodeAllItems (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-nodes-base@file++++home+runner+_work+n8n+n8n+packages+nodes-base/node_modules/n8n-nodes-base/nodes/Code/JsTaskRunnerSandbox.ts:46:23)\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at ExecuteContext.execute (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-nodes-base@file++++home+runner+_work+n8n+n8n+packages+nodes-base/node_modules/n8n-nodes-base/nodes/Code/Code.node.ts:219:8)\n    at WorkflowExecute.executeNode (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file++++home+runner+_work+n8n+n8n+packages+core/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:1125:8)\n    at WorkflowExecute.runNode (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file++++home+runner+_work+n8n+n8n+packages+core/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:1427:11)\n    at /usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file++++home+runner+_work+n8n+n8n+packages+core/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:2329:27\n    at /usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file++++home+runner+_work+n8n+n8n+packages+core/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:2810:11"
+      },
+      "runData": {
+        "When Executed by Another Workflow": [
+          {
+            "executionIndex": 0,
+            "source": [],
+            "hints": [],
+            "executionTime": 1,
+            "metadata": {
+              "parentExecution": {
+                "executionId": "execution_fixture_001",
+                "workflowId": "workflow_fixture",
+                "shouldResume": true,
+                "executionContext": {
+                  "version": 1,
+                  "establishedAt": 1790258700215,
+                  "source": "manual",
+                  "triggerNode": {
+                    "name": "Manual Trigger",
+                    "type": "n8n-nodes-base.manualTrigger"
+                  },
+                  "redaction": {
+                    "version": 2,
+                    "production": false,
+                    "manual": false
+                  }
+                }
+              }
+            },
+            "executionStatus": "success",
+            "data": {
+              "main": [
+                [
+                  {
+                    "json": {
+                      "reason": "IL_N0_EXPECTED_ERROR"
+                    },
+                    "index": 0,
+                    "pairedItem": {
+                      "item": 0
+                    }
+                  }
+                ]
+              ]
+            }
+          }
+        ],
+        "Return workflow error evidence": [
+          {
+            "executionIndex": 1,
+            "source": [
+              {
+                "previousNode": "When Executed by Another Workflow",
+                "previousNodeOutput": 0,
+                "previousNodeRun": 0
+              }
+            ],
+            "hints": [],
+            "executionTime": 10,
+            "executionStatus": "error",
+            "error": {
+              "level": "info",
+              "shouldReport": false,
+              "description": null,
+              "tags": {},
+              "name": "WrappedExecutionError",
+              "lineNumber": 2,
+              "message": "IL_N0_EXPECTED_WORKFLOW_ERROR:IL_N0_EXPECTED_ERROR [line 2]",
+              "stack": "WrappedExecutionError: IL_N0_EXPECTED_WORKFLOW_ERROR:IL_N0_EXPECTED_ERROR [line 2]\n    at throwExecutionError (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-nodes-base@file++++home+runner+_work+n8n+n8n+packages+nodes-base/node_modules/n8n-nodes-base/nodes/Code/throw-execution-error.ts:11:9)\n    at JsTaskRunnerSandbox.runCodeAllItems (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-nodes-base@file++++home+runner+_work+n8n+n8n+packages+nodes-base/node_modules/n8n-nodes-base/nodes/Code/JsTaskRunnerSandbox.ts:46:23)\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at ExecuteContext.execute (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-nodes-base@file++++home+runner+_work+n8n+n8n+packages+nodes-base/node_modules/n8n-nodes-base/nodes/Code/Code.node.ts:219:8)\n    at WorkflowExecute.executeNode (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file++++home+runner+_work+n8n+n8n+packages+core/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:1125:8)\n    at WorkflowExecute.runNode (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file++++home+runner+_work+n8n+n8n+packages+core/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:1427:11)\n    at /usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file++++home+runner+_work+n8n+n8n+packages+core/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:2329:27\n    at /usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file++++home+runner+_work+n8n+n8n+packages+core/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:2810:11"
+            }
+          }
+        ]
+      },
+      "lastNodeExecuted": "Return workflow error evidence"
+    },
+    "executionData": {
+      "contextData": {},
+      "nodeExecutionStack": [
+        {
+          "node": {
+            "id": "node_fixture_006",
+            "name": "Return workflow error evidence",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+              -40,
+              0
+            ],
+            "parameters": {
+              "mode": "runOnceForAllItems",
+              "language": "javaScript",
+              "jsCode": "// IL_N0_WORKFLOW_ERROR: intentionally fail before returning items.\nthrow new Error(\"IL_N0_EXPECTED_WORKFLOW_ERROR:\" + $json.reason);",
+              "notice": ""
+            }
+          },
+          "data": {
+            "main": [
+              [
+                {
+                  "json": {
+                    "reason": "IL_N0_EXPECTED_ERROR"
+                  },
+                  "index": 0,
+                  "pairedItem": {
+                    "item": 0
+                  }
+                }
+              ]
+            ]
+          },
+          "source": {
+            "main": [
+              {
+                "previousNode": "When Executed by Another Workflow",
+                "previousNodeOutput": 0,
+                "previousNodeRun": 0
+              }
+            ]
+          }
+        }
+      ],
+      "metadata": {},
+      "waitingExecution": {},
+      "waitingExecutionSource": {},
+      "runtimeData": {
+        "version": 1,
+        "establishedAt": 1790258700277,
+        "source": "integrated",
+        "triggerNode": {
+          "name": "Manual Trigger",
+          "type": "n8n-nodes-base.manualTrigger"
+        },
+        "redaction": {
+          "version": 2,
+          "production": false,
+          "manual": false
+        },
+        "parentExecutionId": "execution_fixture_001"
+      }
+    },
+    "workflowData": {
+      "id": "subworkflow_fixture",
+      "name": "[Inference Lens N0] Workflow error — sub-workflow",
+      "nodes": [
+        {
+          "id": "node_fixture_005",
+          "name": "When Executed by Another Workflow",
+          "type": "n8n-nodes-base.executeWorkflowTrigger",
+          "typeVersion": 1.1,
+          "position": [
+            -320,
+            0
+          ],
+          "parameters": {
+            "events": "worklfow_call",
+            "inputSource": "workflowInputs",
+            "workflowInputs": {
+              "values": [
+                {
+                  "name": "reason",
+                  "type": "string"
+                }
+              ]
+            },
+            "returnOutput": "lastRunOnly"
+          }
+        },
+        {
+          "id": "node_fixture_006",
+          "name": "Return workflow error evidence",
+          "type": "n8n-nodes-base.code",
+          "typeVersion": 2,
+          "position": [
+            -40,
+            0
+          ],
+          "parameters": {
+            "mode": "runOnceForAllItems",
+            "language": "javaScript",
+            "jsCode": "// IL_N0_WORKFLOW_ERROR: intentionally fail before returning items.\nthrow new Error(\"IL_N0_EXPECTED_WORKFLOW_ERROR:\" + $json.reason);",
+            "notice": ""
+          }
+        }
+      ],
+      "connections": {
+        "When Executed by Another Workflow": {
+          "main": [
+            [
+              {
+                "node": "Return workflow error evidence",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        }
+      },
+      "settings": {
+        "executionOrder": "v1"
+      }
+    }
+  }
+}

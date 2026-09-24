@@ -1,0 +1,35 @@
+{
+  "model": "template-echo-model",
+  "temperature": 0,
+  "stream": false,
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "il_fixed_only",
+        "description": "Return a fixed source value through a synthetic n8n sub-workflow for the Inference Lens provider-wire contract fixture.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "input": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "strict": false
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are executing an Inference Lens n8n provider-wire contract fixture. Follow the tool-call instruction exactly."
+    },
+    {
+      "role": "user",
+      "content": "IL_N0_FIXED_ONLY\nCall il_fixed_only once with no arguments. The source is fixed by the workflow. After the tool returns, report its response without calling another tool."
+    }
+  ]
+}

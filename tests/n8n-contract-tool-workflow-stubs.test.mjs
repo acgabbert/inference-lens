@@ -34,6 +34,12 @@ const scenarios = [
     sentinel: "IL_N0_FIXED_AND_AI",
   },
   {
+    id: "fixed-only-input",
+    toolName: "il_fixed_only",
+    inputNames: ["source"],
+    sentinel: "IL_N0_FIXED_ONLY",
+  },
+  {
     id: "empty-output",
     toolName: "il_empty_output",
     inputNames: ["topic"],
@@ -178,6 +184,14 @@ test("multiple-attached-tools parent exposes both tools in declared order", asyn
     assert.equal(workflow.connections[tool.name].ai_tool[0][0].node, "Multiple attached tools agent");
   }
   assert.equal(new Set(workflow.nodes.map(({ id }) => id)).size, workflow.nodes.length);
+});
+
+test("fixed-only tool maps its sole input without an AI expression", async () => {
+  const workflow = await readJson("fixed-only-input.parent.json");
+  const tool = nodesOfType(workflow, "@n8n/n8n-nodes-langchain.toolWorkflow")[0];
+  assert.deepEqual(tool.parameters.workflowInputs.value, {
+    source: "IL_N0_FIXED_SOURCE",
+  });
 });
 
 test("fixed and AI input parents isolate AI Agent versions 2.2, 3, and 3.1", async () => {

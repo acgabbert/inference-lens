@@ -47,6 +47,15 @@ const SCENARIOS = {
     finalAnswer: "IL_N0_CAPTURE_COMPLETE",
     expectedResult: [{ fixture: "IL_N0_FIXED_AND_AI", text: "IL_N0_AI_TEXT", source: "IL_N0_FIXED_SOURCE" }],
   },
+  "fixed-only-input": {
+    sentinel: "IL_N0_FIXED_ONLY",
+    model: "template-echo-model",
+    toolName: "il_fixed_only",
+    toolCallId: "call_inference_lens_n8n_001",
+    arguments: "{}",
+    finalAnswer: "IL_N0_CAPTURE_COMPLETE",
+    expectedResult: [{ fixture: "IL_N0_FIXED_ONLY", source: "IL_N0_FIXED_SOURCE" }],
+  },
   "empty-output": {
     sentinel: "IL_N0_EMPTY_OUTPUT",
     model: "template-echo-model",
@@ -140,6 +149,7 @@ const state = {
   requestCount: 0,
   problem: null,
   processing: false,
+  rejectedRequestSaved: false,
 };
 
 function isObject(value) {
@@ -262,8 +272,8 @@ function initialProblem(body) {
     return `Initial request does not expose tool ${scenario.toolName}.`;
   }
   if (scenario.expectedToolNames &&
-      !isDeepStrictEqual(names, scenario.expectedToolNames)) {
-    return `Initial request tool order must be ${scenario.expectedToolNames.join(", ")}.`;
+      !isDeepStrictEqual([...names].sort(), [...scenario.expectedToolNames].sort())) {
+    return `Initial request tools must be ${scenario.expectedToolNames.join(", ")}.`;
   }
   return null;
 }
@@ -436,6 +446,12 @@ async function handleCompletion(request, response) {
     if (state.phase === "awaiting-initial-request") {
       const problem = initialProblem(body);
       if (problem) {
+        try {
+          await writeRequestCapture("provider-request-rejected.json", rawBody);
+        } catch (error) {
+          if (error.code !== "EEXIST") throw error;
+        }
+        state.rejectedRequestSaved = true;
         sendProblem(response, 422, problem);
         return;
       }
@@ -458,6 +474,7 @@ async function handleCompletion(request, response) {
         } catch (error) {
           if (error.code !== "EEXIST") throw error;
         }
+        state.rejectedRequestSaved = true;
         sendProblem(response, 422, problem);
         return;
       }
@@ -510,7 +527,10 @@ const server = createServer(async (request, response) => {
       requestCount: state.requestCount,
       complete: state.phase === "complete",
       problem: state.problem,
-      files: CAPTURE_FILES.slice(0, state.requestCount * 2),
+      files: [
+        ...CAPTURE_FILES.slice(0, state.requestCount * 2),
+        ...(state.rejectedRequestSaved ? ["provider-request-rejected.json"] : []),
+      ],
     });
     return;
   }
