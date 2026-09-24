@@ -1,11 +1,18 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export const RAW_CAPTURE_SCHEMA_VERSION = 1;
 export const FIXTURE_SCHEMA_VERSION = 1;
 export const DEFAULT_RESPONSE_LIMIT_BYTES = 8 * 1024 * 1024;
 const ERROR_BODY_LIMIT_BYTES = 1024;
+export const PROVIDER_CAPTURE_FILES = [
+  "provider-request-initial.json",
+  "provider-response-tool-call.json",
+  "provider-request-continuation.json",
+  "provider-response-final.json",
+];
 
 export class N8nContractError extends Error {
   constructor(message, options) {
@@ -214,6 +221,7 @@ export async function captureN8nContract({
   fetchImplementation = fetch,
   capturedAt = new Date().toISOString(),
   responseLimitBytes = DEFAULT_RESPONSE_LIMIT_BYTES,
+  providerCaptureDirectory,
 }) {
   validateOpaqueId(workflowId, "workflow ID");
   validateOpaqueId(captureName, "capture name");
@@ -262,6 +270,21 @@ export async function captureN8nContract({
       executionFiles.push(filename);
     }
 
+    const providerFiles = [];
+    if (providerCaptureDirectory !== undefined) {
+      const providerRoot = path.resolve(providerCaptureDirectory);
+      for (const filename of PROVIDER_CAPTURE_FILES) {
+        const source = path.join(providerRoot, filename);
+        JSON.parse(await readFile(source, "utf8"));
+        await copyFile(
+          source,
+          path.join(captureDirectory, filename),
+          fsConstants.COPYFILE_EXCL,
+        );
+        providerFiles.push(filename);
+      }
+    }
+
     await writeJson(path.join(captureDirectory, "capture-manifest.json"), {
       rawCaptureSchemaVersion: RAW_CAPTURE_SCHEMA_VERSION,
       capturedAt,
@@ -274,6 +297,7 @@ export async function captureN8nContract({
       files: {
         workflow: "workflow.raw.json",
         executions: executionFiles,
+        ...(providerFiles.length === 0 ? {} : { provider: providerFiles }),
       },
     });
   } catch (error) {
@@ -325,6 +349,24 @@ function sanitizeUnknown(value, context) {
       result[key] = sanitizeUnknown(entry, context);
     }
     return result;
+  }
+  if (typeof value === "string" && context.idMap.has(value)) {
+    return context.idMap.get(value);
+  }
+  return value;
+}
+
+function projectProviderWire(value, context) {
+  if (Array.isArray(value)) {
+    return value.map((entry) => projectProviderWire(entry, context));
+  }
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [
+        key,
+        projectProviderWire(entry, context),
+      ]),
+    );
   }
   if (typeof value === "string" && context.idMap.has(value)) {
     return context.idMap.get(value);
@@ -528,6 +570,27 @@ export async function redactN8nCapture({
       JSON.parse(await readFile(path.join(input, filename), "utf8")),
     ),
   );
+  const providerFilenames = rawManifest.files.provider ?? [];
+  if (!Array.isArray(providerFilenames)) {
+    throw new N8nContractError("Provider capture file list must be an array.");
+  }
+  if (
+    providerFilenames.length !== 0 &&
+    (providerFilenames.length !== PROVIDER_CAPTURE_FILES.length ||
+      providerFilenames.some(
+        (filename, index) => filename !== PROVIDER_CAPTURE_FILES[index],
+      ))
+  ) {
+    throw new N8nContractError("Provider capture file list is not supported.");
+  }
+  const rawProviderFiles = new Map(
+    await Promise.all(
+      providerFilenames.map(async (filename) => [
+        filename,
+        JSON.parse(await readFile(path.join(input, filename), "utf8")),
+      ]),
+    ),
+  );
 
   const context = {
     idMap: new Map([[String(rawManifest.workflowId), "workflow_fixture"]]),
@@ -561,6 +624,9 @@ export async function redactN8nCapture({
     const suffix = count === 1 ? "" : `-${count}`;
     projectedFiles.set(`execution-${status}${suffix}.json`, execution);
   });
+  for (const [filename, value] of rawProviderFiles) {
+    projectedFiles.set(filename, projectProviderWire(value, context));
+  }
 
   const serializedFiles = new Map();
   for (const [filename, value] of projectedFiles) {
@@ -604,6 +670,9 @@ export async function redactN8nCapture({
       runItemCounts: countRunItems(execution),
     })),
     endpointShapes: rawManifest.endpointShapes,
+    ...(providerFilenames.length === 0
+      ? {}
+      : { providerFiles: providerFilenames }),
     removedFields: [...context.removedFields].sort(),
     warnings: [
       "Projection requires manual review before commit.",

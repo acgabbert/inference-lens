@@ -13,7 +13,8 @@ const usage = `Usage:
   node scripts/n8n-contract-probe.mjs \\
     --workflow-id ID \\
     --execution-id ID [--execution-id ID ...] \\
-    --capture-name NAME
+    --capture-name NAME \\
+    [--provider-capture DIRECTORY]
 
 Required environment:
   INFERENCE_LENS_N8N_BASE_URL  Instance root, excluding /api/v1
@@ -32,6 +33,11 @@ export async function main({
     const workflowId = oneArgument(argumentsMap, "--workflow-id");
     const executionIds = manyArguments(argumentsMap, "--execution-id");
     const captureName = oneArgument(argumentsMap, "--capture-name");
+    const providerCaptureDirectory = oneArgument(
+      argumentsMap,
+      "--provider-capture",
+      { required: false },
+    );
     const baseUrl = normalizeN8nBaseUrl(
       env.INFERENCE_LENS_N8N_BASE_URL,
     );
@@ -43,6 +49,9 @@ export async function main({
       workflowId,
       executionIds,
       captureName,
+      ...(providerCaptureDirectory === undefined
+        ? {}
+        : { providerCaptureDirectory }),
     });
     stdout.write(`Raw capture written to ${directory}\n`);
     return 0;

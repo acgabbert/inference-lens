@@ -32,6 +32,10 @@ const FIXTURES = [
   ["scripts/reasoning-openai-provider.mjs", "INFERENCE_LENS_REASONING_PORT"],
   ["scripts/repeated-experiment-provider.mjs", "INFERENCE_LENS_REPEAT_PORT"],
   ["scripts/n8n-echo-provider.mjs", "INFERENCE_LENS_N8N_ECHO_PORT"],
+  [
+    "scripts/n8n-tool-capture-provider.mjs",
+    "INFERENCE_LENS_N8N_TOOL_CAPTURE_PORT",
+  ],
   ["scripts/n8n-public-api-fixture.mjs", "INFERENCE_LENS_N8N_FIXTURE_PORT"],
 ];
 
