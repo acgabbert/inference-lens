@@ -485,6 +485,8 @@ function HomeContent() {
     updateToolMock,
     attachRegistryToolToProject,
     attachRegistryToolToRequest,
+    attachMcpToolToProject,
+    attachMcpToolToRequest,
     removeRequestTool,
     clearRequestTools,
     replaceProjectDraft,
@@ -1936,6 +1938,7 @@ function HomeContent() {
           requestDraft={{
             messages, tools, requestTools, enabledToolIds, addTool, removeTool, moveTool, updateTool,
             setToolEnabled, mockForTool, updateToolMock, removeRequestTool,
+            attachMcpToolToProject, attachMcpToolToRequest,
           }}
           commandTools={commandTools}
           templates={projectTemplates}

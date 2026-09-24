@@ -13,6 +13,8 @@ import type {
 import { snapshotRegistryTool } from "../packages/core/src/tool-registry.ts";
 import type { RegistryTool } from "../packages/core/src/tool-registry.ts";
 import { randomUUID } from "../packages/core/src/random-id.ts";
+import type { McpDiscoveredTool } from "../packages/contracts/src/mcp-discovery.ts";
+import { snapshotMcpTool } from "./tools/mcp-tool-snapshot.ts";
 
 export interface RequestDraftSnapshot {
   messages: ConversationMessage[];
@@ -41,6 +43,8 @@ export interface RequestDraftHandle extends RequestDraftSnapshot {
   updateToolMock(toolId: ToolId, text: string, enabled: boolean): void;
   attachRegistryToolToProject(source: RegistryTool): string | undefined;
   attachRegistryToolToRequest(source: RegistryTool): string | undefined;
+  attachMcpToolToProject(source: McpDiscoveredTool, name: string): string | undefined;
+  attachMcpToolToRequest(source: McpDiscoveredTool, name: string): string | undefined;
   removeRequestTool(id: ToolId): void;
   clearRequestTools(): void;
   replaceProjectDraft(snapshot: RequestDraftSnapshot): void;
@@ -170,7 +174,15 @@ export function useRequestDraft(input: {
 
   function updateTool(id: ToolId, patch: Partial<ToolDefinition>): void {
     setTools((current) =>
-      current.map((tool) => (tool.id === id ? { ...tool, ...patch } : tool)),
+      current.map((tool) => {
+        if (tool.id !== id) return tool;
+        // Editing a discovered descriptor makes its fingerprint stale.
+        const editable = { ...tool };
+        const changes = { ...patch };
+        delete editable.source;
+        delete changes.source;
+        return { ...editable, ...changes };
+      }),
     );
     onProjectDirty();
   }
@@ -241,6 +253,32 @@ export function useRequestDraft(input: {
     return undefined;
   }
 
+  function attachMcpToolToProject(source: McpDiscoveredTool, name: string): string | undefined {
+    if (tools.some((tool) => tool.name === name)) return `A project tool named "${name}" already exists.`;
+    if (requestTools.some((tool) => tool.name === name)) return `A tool named "${name}" is already attached to the next request.`;
+    let snapshot: ToolDefinition;
+    try { snapshot = snapshotMcpTool(source, name, createEntityId("tool", randomUUID())); }
+    catch (error) { return error instanceof Error ? error.message : "This tool cannot be attached."; }
+    setTools((current) => [...current, snapshot]);
+    setEnabledToolIds((current) => [...current, snapshot.id]);
+    onProjectDirty();
+    onProjectError(undefined);
+    return undefined;
+  }
+
+  function attachMcpToolToRequest(source: McpDiscoveredTool, name: string): string | undefined {
+    const exposedProjectNames = new Set(tools.filter(({ id }) => enabledToolIds.includes(id)).map(({ name }) => name));
+    if (exposedProjectNames.has(name) || requestTools.some((tool) => tool.name === name)) {
+      return `A tool named "${name}" is already attached to the next request.`;
+    }
+    let snapshot: ToolDefinition;
+    try { snapshot = snapshotMcpTool(source, name, createEntityId("tool", randomUUID())); }
+    catch (error) { return error instanceof Error ? error.message : "This tool cannot be attached."; }
+    setRequestTools((current) => [...current, snapshot]);
+    onProjectError(undefined);
+    return undefined;
+  }
+
   function mockForTool(toolId: ToolId): ToolMock | undefined {
     return toolMocks.find((mock) => mock.toolId === toolId);
   }
@@ -300,6 +338,8 @@ export function useRequestDraft(input: {
     updateToolMock,
     attachRegistryToolToProject,
     attachRegistryToolToRequest,
+    attachMcpToolToProject,
+    attachMcpToolToRequest,
     removeRequestTool,
     clearRequestTools,
     replaceProjectDraft,

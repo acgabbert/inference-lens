@@ -17,6 +17,7 @@ import type {
 import type { ProjectTemplatesHandle } from "../templates/use-project-templates.client";
 import { isEmptyEditableConversationDraft } from "../../packages/core/src/project";
 import type { CommandToolsHandle } from "../tools/use-command-tools.client";
+import type { McpDiscoveredTool } from "../../packages/contracts/src/mcp-discovery.ts";
 import { StatusChip } from "../notifications/status-chip.client";
 import { PromptInsertionDialog } from "../templates/prompt-insertion-dialog.client";
 import { RequestSettings } from "./request-settings.client";
@@ -47,6 +48,8 @@ export interface RequestComposerProps {
     mockForTool(id: ToolId): ToolMock | undefined;
     updateToolMock(id: ToolId, text: string, enabled: boolean): void;
     removeRequestTool(id: ToolId): void;
+    attachMcpToolToProject(tool: McpDiscoveredTool, name: string): string | undefined;
+    attachMcpToolToRequest(tool: McpDiscoveredTool, name: string): string | undefined;
   };
   /** The command-tool feature owner, for the tools tab's binding surface. */
   commandTools: CommandToolsHandle;
@@ -389,7 +392,7 @@ export function RequestComposer({
             {requestPreview && <details className="request-preview"><summary>Resolved request preview</summary>{"error" in requestPreview ? <div className="template-diagnostic">{requestPreview.error}</div> : <><>{(templates.templateWorkbench.resolution?.diagnostics.length ?? 0) > 0 && <div className="template-warning" role="status">Preview contains unresolved variables. Running is blocked until they have values.</div>}</><div className="request-preview-tabs"><PaneTabs idPrefix="request-preview" label="Request preview view" value={requestPreviewView} onChange={(value) => setRequestPreviewView(value as "resolved" | "raw")} tabs={[{ id: "resolved", label: "Resolved" }, { id: "raw", label: "Raw" }]} /></div>{requestPreviewView === "resolved" ? <section aria-label="Resolved request" aria-labelledby="request-preview-resolved-tab" id="request-preview-resolved-panel" role="tabpanel"><h3>Resolved messages</h3><div className="request-preview-messages">{requestPreview.messages.map((message, index) => <article className="request-preview-message" key={`${message.role}-${index}`}><span className="eyebrow">{message.role}</span><pre>{conversationMessageText(message)}</pre></article>)}</div></section> : <section className="request-preview-raw" aria-label="Raw OpenAI-compatible request body" aria-labelledby="request-preview-raw-tab" id="request-preview-raw-panel" role="tabpanel"><h3>Raw OpenAI-compatible request body</h3><pre>{JSON.stringify(requestPreview.body, null, 2)}</pre></section>}</>}</details>}
           </>
         ) : (
-          <ToolsPane tools={requestDraft.tools} requestTools={requestDraft.requestTools} enabledToolIds={requestDraft.enabledToolIds} activeProfileName={activeProfile.name} toolsEnabled={settings.toolsEnabled} onOpenLibrary={onOpenToolLibrary} onOpenConnectionSettings={onOpenConnectionSettings} onAddTool={requestDraft.addTool} onRemoveTool={requestDraft.removeTool} onMoveTool={requestDraft.moveTool} onUpdateTool={requestDraft.updateTool} onSetToolEnabled={requestDraft.setToolEnabled} mockForTool={requestDraft.mockForTool} onUpdateToolMock={requestDraft.updateToolMock} onRemoveRequestTool={requestDraft.removeRequestTool} commandTools={commandTools} />
+          <ToolsPane tools={requestDraft.tools} requestTools={requestDraft.requestTools} enabledToolIds={requestDraft.enabledToolIds} activeProfileName={activeProfile.name} toolsEnabled={settings.toolsEnabled} onOpenLibrary={onOpenToolLibrary} onOpenConnectionSettings={onOpenConnectionSettings} onAddTool={requestDraft.addTool} onRemoveTool={requestDraft.removeTool} onMoveTool={requestDraft.moveTool} onUpdateTool={requestDraft.updateTool} onSetToolEnabled={requestDraft.setToolEnabled} mockForTool={requestDraft.mockForTool} onUpdateToolMock={requestDraft.updateToolMock} onRemoveRequestTool={requestDraft.removeRequestTool} commandTools={commandTools} onAttachMcpToProject={requestDraft.attachMcpToolToProject} onAttachMcpToRequest={requestDraft.attachMcpToolToRequest} />
         )}
       </div>
       {promptInsertionOpen && (

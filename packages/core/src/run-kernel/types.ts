@@ -145,6 +145,8 @@ export interface ToolDefinition {
   description?: string;
   inputSchema: JsonObject;
   providerOptions?: JsonObject;
+  /** Portable provenance only. Execution still requires a device-local binding. */
+  source?: { kind: "mcp"; remoteToolName: string; discoveryFingerprint: string };
 }
 
 export interface ToolArguments {

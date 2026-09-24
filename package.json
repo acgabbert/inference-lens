@@ -41,6 +41,7 @@
     "version:bump": "node scripts/version.mjs bump"
   },
   "dependencies": {
+    "@modelcontextprotocol/client": "2.1.0",
     "@tauri-apps/api": "^2.11.1",
     "next": "16.2.11",
     "re2js": "2.8.5",
@@ -49,6 +50,7 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@modelcontextprotocol/server": "2.1.0",
     "@playwright/test": "1.58.2",
     "@tailwindcss/postcss": "4.2.1",
     "@tauri-apps/cli": "^2.11.4",

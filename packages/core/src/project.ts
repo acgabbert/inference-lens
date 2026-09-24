@@ -526,6 +526,11 @@ const toolDefinitionSchema: z.ZodType<ToolDefinition> = z
     description: z.string().optional(),
     inputSchema: jsonObjectSchema,
     providerOptions: jsonObjectSchema.optional(),
+    source: z.object({
+      kind: z.literal("mcp"),
+      remoteToolName: z.string().min(1),
+      discoveryFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+    }).strict().optional(),
   })
   .strict();
 

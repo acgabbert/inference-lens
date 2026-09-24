@@ -6,6 +6,8 @@ import { PaneEmptyState } from "./pane-empty-state.client";
 import { ToolDefinitionEditor } from "./tool-definition-editor.client";
 import { CommandToolBindingEditor } from "./tools/command-tool-binding-editor.client";
 import type { CommandToolsHandle } from "./tools/use-command-tools.client";
+import type { McpDiscoveredTool } from "../packages/contracts/src/mcp-discovery.ts";
+import { McpDiscoveryPanel } from "./tools/mcp-discovery-panel.client";
 
 interface ToolsPaneProps {
   tools: ToolDefinition[];
@@ -25,6 +27,8 @@ interface ToolsPaneProps {
   onRemoveRequestTool(id: ToolId): void;
   /** What this device may run, and what each tool has been allowed to run. */
   commandTools: CommandToolsHandle;
+  onAttachMcpToProject(tool: McpDiscoveredTool, name: string): string | undefined;
+  onAttachMcpToRequest(tool: McpDiscoveredTool, name: string): string | undefined;
 }
 
 /**
@@ -38,6 +42,7 @@ export function ToolsPane({
   tools, requestTools, enabledToolIds, activeProfileName, toolsEnabled,
   onOpenLibrary, onOpenConnectionSettings, onAddTool, onRemoveTool, onMoveTool, onUpdateTool,
   onSetToolEnabled, mockForTool, onUpdateToolMock, onRemoveRequestTool, commandTools,
+  onAttachMcpToProject, onAttachMcpToRequest,
 }: ToolsPaneProps) {
   const selectedProjectTools = tools.filter(({ id }) =>
     enabledToolIds.includes(id),
@@ -94,6 +99,7 @@ export function ToolsPane({
                 <span className="tool-manifest-name">
                   <code>{tool.name.trim() || "Unnamed tool"}</code>
                   {tool.description && <small>{tool.description}</small>}
+                  {tool.source?.kind === "mcp" && <small>MCP snapshot of {tool.source.remoteToolName}</small>}
                 </span>
                 <span className="tool-origin project">Project</span>
                 <button
@@ -111,6 +117,7 @@ export function ToolsPane({
                 <span className="tool-manifest-name">
                   <code>{tool.name.trim() || "Unnamed tool"}</code>
                   {tool.description && <small>{tool.description}</small>}
+                  {tool.source?.kind === "mcp" && <small>MCP snapshot of {tool.source.remoteToolName}</small>}
                 </span>
                 <span
                   className="tool-origin once"
@@ -161,11 +168,13 @@ export function ToolsPane({
           return <article className="tool-editor" key={tool.id}>
             <div className="tool-editor-toolbar"><label className="tool-enabled"><input type="checkbox" checked={enabledToolIds.includes(tool.id)} onChange={(event) => onSetToolEnabled(tool.id, event.target.checked)} />Attach to requests</label><div className="tool-reorder"><button aria-label={`Move ${toolLabel} earlier in the request`} className="text-button" disabled={index === 0} type="button" onClick={() => onMoveTool(tool.id, -1)}>↑</button><button aria-label={`Move ${toolLabel} later in the request`} className="text-button" disabled={index === tools.length - 1} type="button" onClick={() => onMoveTool(tool.id, 1)}>↓</button></div><button className="remove-button" type="button" onClick={() => onRemoveTool(tool.id)}>Remove</button></div>
             <ToolDefinitionEditor value={tool} onChange={(value) => onUpdateTool(tool.id, value)} />
+            {tool.source?.kind === "mcp" && <p>MCP snapshot of <code>{tool.source.remoteToolName}</code> · fingerprint <code>{tool.source.discoveryFingerprint.slice(0, 12)}</code>. Editing this definition detaches its source receipt.</p>}
             <div className="tool-fields tool-mock-fields"><label className="tool-mock-toggle"><input type="checkbox" checked={mock?.enabled ?? false} onChange={(event) => onUpdateToolMock(tool.id, mockText, event.target.checked)} />Use static mock result</label>{mock?.enabled && <label className="tool-mock-result">Mock result<textarea value={mockText} onChange={(event) => onUpdateToolMock(tool.id, event.target.value, true)} /></label>}{mock?.enabled && commandServes && <p className="tool-mock-superseded">A command tool is allowed to answer {toolLabel} on this device, so this mock is not used.</p>}</div>
             <CommandToolBindingEditor toolId={tool.id} toolLabel={toolLabel} commandTools={commandTools} />
           </article>;
         })}
       </div>
+      <McpDiscoveryPanel onAttachToProject={onAttachMcpToProject} onAttachToRequest={onAttachMcpToRequest} />
     </>
   );
 }
