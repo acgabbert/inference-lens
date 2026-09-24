@@ -13,6 +13,8 @@ The disposable batch covers:
 | Primitive inputs | `primitive-inputs.parent.json` | `primitive-inputs.subworkflow.json` | String, number, and boolean schema mapping and runtime coercion. |
 | Multiple output items | `multiple-output-items.parent.json` | `multiple-output-items.subworkflow.json` | Ordered multi-item result serialization from Tool Workflow `2.2`. |
 | Fixed plus AI input | `fixed-and-ai-inputs.parent.json` | `fixed-and-ai-inputs.subworkflow.json` | Compare with the baseline `string-input` case: only `text` comes from the model; `source` is the literal `IL_N0_FIXED_SOURCE`. |
+| Fixed plus AI input, Agent 2.2 | `fixed-and-ai-inputs-agent-2.2.parent.json` | Reuse `fixed-and-ai-inputs.subworkflow.json`. | Isolate AI Agent `2.2` against the captured `3.1` case. |
+| Fixed plus AI input, Agent 3 | `fixed-and-ai-inputs-agent-3.parent.json` | Reuse `fixed-and-ai-inputs.subworkflow.json`. | Isolate AI Agent `3` against the captured `3.1` case. |
 | Empty output | `empty-output.parent.json` | `empty-output.subworkflow.json` | Whether a child emitting zero items yields a model continuation. |
 | Nested inputs | `nested-inputs.parent.json` | `nested-inputs.subworkflow.json` | Object and array input mapping, runtime types, and result serialization. |
 | Workflow error | `workflow-error.parent.json` | `workflow-error.subworkflow.json` | Whether a thrown child error returns a model-visible tool result. |
@@ -37,6 +39,20 @@ The disposable batch covers:
 6. Run the parent from Manual Trigger and record the parent and child execution
    IDs before editing or upgrading any node.
 
+For the two Agent-version variants, reuse the same active fixed-and-AI
+sub-workflow and test credential as the `3.1` run. The parent JSON differs from
+the `3.1` reference only in workflow name, unique node IDs, and AI Agent
+`typeVersion`. After import, check the Agent's **Settings** tab to confirm the
+displayed version is `2.2` or `3`. Do not accept a silent upgrade to `3.1` as a
+version result. Use a fresh provider output directory for each run with
+`INFERENCE_LENS_N8N_TOOL_CAPTURE_SCENARIO=fixed-and-ai-inputs`; record the
+provider requests and both n8n execution IDs separately. Compare the exposed
+tool schema, linked call arguments, child trigger input, tool result, and final
+answer with the captured `3.1` fixture under
+`tests/fixtures/n8n/captures/2.39.10/fixed-and-ai-inputs-tool-workflow/`.
+These two variants are reference stubs; their runtime behavior has not yet
+been captured.
+
 Run `INFERENCE_LENS_N8N_TOOL_CAPTURE_SCENARIO=<scenario> npm run dev:n8n-tool-capture-provider`
 for each scenario, using a fresh
 output directory and stopping the previous provider between runs. The scripted
@@ -57,7 +73,7 @@ omit that option for a one-turn error capture and do not claim a complete
 two-turn fixture. The same caveat applies if `empty-output` stops without a
 continuation.
 
-These JSON files have only passed local structural checks. In particular,
+Uncaptured reference stubs have only passed local structural checks. In particular,
 whether n8n 2.39.10 accepts the `object`/`array` trigger types and the
 `json` `$fromAI()` hints in `nested-inputs` must be checked during import.
 Record any migration or UI rewrite before running; do not silently edit a
@@ -65,8 +81,10 @@ captured fixture in place.
 
 ## Version guard
 
-The stubs intentionally serialize AI Agent `3.1`, OpenAI Chat Model `1.2`, Call
-n8n Workflow Tool `2.2`, and Execute Sub-workflow Trigger `1.1`. After import,
+The default parents serialize AI Agent `3.1`; the two fixed-and-AI variants
+serialize Agent `2.2` and `3`. All parents serialize OpenAI Chat Model `1.2` and
+Call n8n Workflow Tool `2.2`, and the children serialize Execute Sub-workflow
+Trigger `1.1`. After import,
 inspect every node version. If n8n migrates a node, record the observed version
 and do not treat that run as evidence for the serialized version.
 

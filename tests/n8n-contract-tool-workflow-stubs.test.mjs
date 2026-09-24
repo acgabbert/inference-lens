@@ -179,3 +179,41 @@ test("multiple-attached-tools parent exposes both tools in declared order", asyn
   }
   assert.equal(new Set(workflow.nodes.map(({ id }) => id)).size, workflow.nodes.length);
 });
+
+test("fixed and AI input parents isolate AI Agent versions 2.2, 3, and 3.1", async () => {
+  const baseline = await readJson("fixed-and-ai-inputs.parent.json");
+  const variants = [
+    ["2.2", 2.2],
+    ["3", 3],
+  ];
+  const allIds = new Set(baseline.nodes.map(({ id }) => id));
+
+  for (const [label, version] of variants) {
+    const workflow = await readJson(`fixed-and-ai-inputs-agent-${label}.parent.json`);
+    const agent = nodesOfType(workflow, "@n8n/n8n-nodes-langchain.agent")[0];
+    assert.equal(agent.typeVersion, version);
+    assert.equal(workflow.name, `[Inference Lens N0] Fixed and AI inputs — Agent ${label}`);
+    assert.equal(workflow.active, false);
+    assert.deepEqual(workflow.tags, []);
+    assert.deepEqual(workflow.pinData, {});
+    assert.doesNotMatch(
+      JSON.stringify(workflow),
+      /"credentials"|"webhookId"|"instanceId"|"projectId"|"versionId"/i,
+    );
+
+    for (const node of workflow.nodes) {
+      assert.equal(allIds.has(node.id), false, `${node.id} must be unique`);
+      allIds.add(node.id);
+    }
+
+    const normalized = structuredClone(workflow);
+    normalized.name = baseline.name;
+    normalized.nodes.forEach((node, index) => {
+      node.id = baseline.nodes[index].id;
+      if (node.type === "@n8n/n8n-nodes-langchain.agent") {
+        node.typeVersion = 3.1;
+      }
+    });
+    assert.deepEqual(normalized, baseline);
+  }
+});
