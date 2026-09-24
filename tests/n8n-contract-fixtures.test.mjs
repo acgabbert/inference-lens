@@ -21,6 +21,10 @@ const multipleOutputToolFixtureRoot = path.resolve(
   import.meta.dirname,
   "fixtures/n8n/captures/2.39.10/multiple-output-items-tool-workflow",
 );
+const fixedAndAiToolFixtureRoot = path.resolve(
+  import.meta.dirname,
+  "fixtures/n8n/captures/2.39.10/fixed-and-ai-inputs-tool-workflow",
+);
 
 async function readJson(...segments) {
   return JSON.parse(await readFile(path.join(...segments), "utf8"));
@@ -205,6 +209,68 @@ test("proves ordered child items become one provider-visible tool result", async
     multipleOutputToolFixtureRoot,
     "provider-response-final.json",
   );
+  assert.equal(final.choices[0].message.content, "IL_N0_CAPTURE_COMPLETE");
+});
+
+test("proves only the AI input appears in the tool schema while the child receives the fixed input", async () => {
+  const manifest = await validateRedactedCapture({
+    directory: fixedAndAiToolFixtureRoot,
+  });
+  assert.equal(manifest.n8nVersion, "2.39.10");
+  assert.deepEqual(
+    manifest.executions.map(({ workflowId, status }) => ({ workflowId, status })),
+    [
+      { workflowId: "workflow_fixture", status: "success" },
+      { workflowId: "subworkflow_fixture", status: "success" },
+    ],
+  );
+
+  const workflow = await readJson(fixedAndAiToolFixtureRoot, "workflow.json");
+  const mapping = workflow.nodes.find(({ name }) => name === "il_fixed_and_ai")
+    .parameters.workflowInputs.value;
+  assert.match(mapping.text, /\$fromAI\('text'/);
+  assert.equal(mapping.source, "IL_N0_FIXED_SOURCE");
+
+  const initial = await readJson(fixedAndAiToolFixtureRoot, "provider-request-initial.json");
+  const tool = initial.tools[0].function;
+  assert.equal(tool.name, "il_fixed_and_ai");
+  assert.deepEqual(tool.parameters.properties, {
+    text: { type: "string", description: "A diagnostic string" },
+  });
+  assert.deepEqual(tool.parameters.required, ["text"]);
+  assert.equal(tool.parameters.additionalProperties, false);
+
+  const continuation = await readJson(
+    fixedAndAiToolFixtureRoot,
+    "provider-request-continuation.json",
+  );
+  const call = continuation.messages[2].tool_calls[0];
+  assert.deepEqual(JSON.parse(call.function.arguments), {
+    text: "IL_N0_AI_TEXT",
+    id: call.id,
+  });
+  const expected = {
+    fixture: "IL_N0_FIXED_AND_AI",
+    text: "IL_N0_AI_TEXT",
+    source: "IL_N0_FIXED_SOURCE",
+  };
+  const result = continuation.messages[3];
+  assert.equal(result.tool_call_id, call.id);
+  assert.deepEqual(JSON.parse(result.content), [expected]);
+
+  const child = await readJson(fixedAndAiToolFixtureRoot, "execution-success-2.json");
+  assert.deepEqual(
+    child.data.resultData.runData["When Executed by Another Workflow"][0]
+      .data.main[0][0].json,
+    { text: "IL_N0_AI_TEXT", source: "IL_N0_FIXED_SOURCE" },
+  );
+  assert.deepEqual(
+    child.data.resultData.runData["Return fixed and ai inputs evidence"][0]
+      .data.main[0][0].json,
+    expected,
+  );
+
+  const final = await readJson(fixedAndAiToolFixtureRoot, "provider-response-final.json");
   assert.equal(final.choices[0].message.content, "IL_N0_CAPTURE_COMPLETE");
 });
 
