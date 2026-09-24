@@ -29,11 +29,13 @@ The initial batch covers:
 6. Run the parent from Manual Trigger and record the parent and child execution
    IDs before editing or upgrading any node.
 
-The current `scripts/n8n-echo-provider.mjs` does not request tools, so these
-parents require the N0 scripted capture-provider behavior before they can
-complete an automated two-turn tool call. Until that provider slice lands,
-importing, linking, and inspecting the refreshed input mapping are still useful
-compatibility checks.
+Run `npm run dev:n8n-tool-capture-provider` for the `string-input` scenario.
+The scripted provider issues the tool call, checks the continuation, and saves
+both provider requests. Follow
+[`docs/N8N_TOOL_CAPTURE_PROVIDER.md`](../../../../docs/N8N_TOOL_CAPTURE_PROVIDER.md)
+to capture and redact the evidence. The `primitive-inputs` and
+`multiple-output-items` stubs still need scenario-specific provider behavior
+before they can produce equivalent two-turn captures.
 
 ## Version guard
 
