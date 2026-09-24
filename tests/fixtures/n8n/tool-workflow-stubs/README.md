@@ -50,8 +50,9 @@ provider requests and both n8n execution IDs separately. Compare the exposed
 tool schema, linked call arguments, child trigger input, tool result, and final
 answer with the captured `3.1` fixture under
 `tests/fixtures/n8n/captures/2.39.10/fixed-and-ai-inputs-tool-workflow/`.
-These two variants are reference stubs; their runtime behavior has not yet
-been captured.
+Both variants now have redacted runtime captures under the corresponding
+`fixed-and-ai-inputs-agent-2.2/` and `fixed-and-ai-inputs-agent-3/` directories.
+Use a new raw directory and new versioned fixture if repeating either run.
 
 Run `INFERENCE_LENS_N8N_TOOL_CAPTURE_SCENARIO=<scenario> npm run dev:n8n-tool-capture-provider`
 for each scenario, using a fresh

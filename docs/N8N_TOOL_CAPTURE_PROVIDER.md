@@ -122,6 +122,27 @@ provider files and refuses a partial provider capture.
 The provider deliberately captures only request bodies. It does not persist
 HTTP authorization headers or the synthetic OpenAI credential.
 
+## Fixed and AI inputs across Agent versions
+
+The redacted n8n `2.39.10` captures cover AI Agent `2.2`, `3`, and `3.1` with
+OpenAI Chat Model `1.2`, Call n8n Workflow Tool `2.2`, and the same child
+workflow. In all three, the model-visible tool schema exposes only required
+string property `text`; the child receives both the model's `text` and the
+workflow's fixed `source` value. Each parent and child execution succeeded and
+the provider returned `IL_N0_CAPTURE_COMPLETE`.
+
+| AI Agent version | Assistant call arguments in continuation | Tool-result content |
+| --- | --- | --- |
+| `2.2` | Original `text` object, without an added `id`. | Indented JSON-array string. |
+| `3` | `text` plus an `id` equal to the tool call ID. | Compact JSON-array string. |
+| `3.1` | Same as `3`. | Same as `3`. |
+
+The parsed tool result is the same one-item array in each run. The argument
+and whitespace differences are observed serialization details, not evidence
+that fixed inputs are exposed to the model. See the per-run observations under
+`tests/fixtures/n8n/captures/2.39.10/fixed-and-ai-inputs-agent-2.2/`,
+`fixed-and-ai-inputs-agent-3/`, and `fixed-and-ai-inputs-tool-workflow/`.
+
 ## Failure behavior
 
 An invalid request returns an OpenAI-shaped error and does not advance the

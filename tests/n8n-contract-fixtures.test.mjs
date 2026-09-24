@@ -25,6 +25,13 @@ const fixedAndAiToolFixtureRoot = path.resolve(
   import.meta.dirname,
   "fixtures/n8n/captures/2.39.10/fixed-and-ai-inputs-tool-workflow",
 );
+const fixedAndAiAgentFixtureRoots = [
+  [2.2, "fixed-and-ai-inputs-agent-2.2"],
+  [3, "fixed-and-ai-inputs-agent-3"],
+].map(([version, directory]) => [
+  version,
+  path.resolve(import.meta.dirname, "fixtures/n8n/captures/2.39.10", directory),
+]);
 
 async function readJson(...segments) {
   return JSON.parse(await readFile(path.join(...segments), "utf8"));
@@ -272,6 +279,77 @@ test("proves only the AI input appears in the tool schema while the child receiv
 
   const final = await readJson(fixedAndAiToolFixtureRoot, "provider-response-final.json");
   assert.equal(final.choices[0].message.content, "IL_N0_CAPTURE_COMPLETE");
+});
+
+test("compares fixed and AI tool exchanges across Agent 2.2, 3, and 3.1", async () => {
+  const baselineInitial = await readJson(
+    fixedAndAiToolFixtureRoot,
+    "provider-request-initial.json",
+  );
+  const baselineContinuation = await readJson(
+    fixedAndAiToolFixtureRoot,
+    "provider-request-continuation.json",
+  );
+  const baselineCall = baselineContinuation.messages[2].tool_calls[0];
+  const baselineResult = baselineContinuation.messages[3];
+  const expectedChildInput = {
+    text: "IL_N0_AI_TEXT",
+    source: "IL_N0_FIXED_SOURCE",
+  };
+  const expectedResult = [{ fixture: "IL_N0_FIXED_AND_AI", ...expectedChildInput }];
+
+  for (const [agentVersion, root] of fixedAndAiAgentFixtureRoots) {
+    const manifest = await validateRedactedCapture({ directory: root });
+    assert.equal(manifest.n8nVersion, "2.39.10");
+    assert.deepEqual(
+      manifest.executions.map(({ workflowId, status }) => ({ workflowId, status })),
+      [
+        { workflowId: "workflow_fixture", status: "success" },
+        { workflowId: "subworkflow_fixture", status: "success" },
+      ],
+    );
+
+    const workflow = await readJson(root, "workflow.json");
+    assert.equal(
+      workflow.nodes.find(({ type }) => type === "@n8n/n8n-nodes-langchain.agent")
+        .typeVersion,
+      agentVersion,
+    );
+    const mapping = workflow.nodes.find(({ name }) => name === "il_fixed_and_ai")
+      .parameters.workflowInputs.value;
+    assert.match(mapping.text, /\$fromAI\('text'/);
+    assert.equal(mapping.source, "IL_N0_FIXED_SOURCE");
+
+    const initial = await readJson(root, "provider-request-initial.json");
+    assert.deepEqual(initial.tools[0].function, baselineInitial.tools[0].function);
+    assert.deepEqual(Object.keys(initial.tools[0].function.parameters.properties), ["text"]);
+
+    const continuation = await readJson(root, "provider-request-continuation.json");
+    const call = continuation.messages[2].tool_calls[0];
+    const result = continuation.messages[3];
+    assert.equal(result.tool_call_id, call.id);
+    assert.deepEqual(JSON.parse(result.content), expectedResult);
+    if (agentVersion === 2.2) {
+      assert.deepEqual(JSON.parse(call.function.arguments), { text: "IL_N0_AI_TEXT" });
+      assert.match(result.content, /\n/);
+    } else {
+      assert.equal(call.function.arguments, baselineCall.function.arguments);
+      assert.equal(result.content, baselineResult.content);
+    }
+
+    const child = await readJson(root, "execution-success-2.json");
+    assert.deepEqual(
+      child.data.resultData.runData["When Executed by Another Workflow"][0]
+        .data.main[0][0].json,
+      expectedChildInput,
+    );
+    const parent = await readJson(root, "execution-success.json");
+    assert.deepEqual(
+      parent.data.resultData.runData["Fixed and AI inputs agent"][0]
+        .data.main[0][0].json,
+      { output: "IL_N0_CAPTURE_COMPLETE" },
+    );
+  }
 });
 
 test("proves the successful compound execution from saved model messages", async () => {

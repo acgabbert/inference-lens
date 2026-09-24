@@ -1,0 +1,58 @@
+{
+  "id": "subworkflow_fixture",
+  "name": "[Inference Lens N0] Fixed and AI inputs — sub-workflow",
+  "active": true,
+  "nodes": [
+    {
+      "id": "node_fixture_005",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "text"
+            },
+            {
+              "name": "source"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "node_fixture_006",
+      "name": "Return fixed and ai inputs evidence",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        0
+      ],
+      "parameters": {
+        "jsCode": "return [{ json: { fixture: \"IL_N0_FIXED_AND_AI\", text: $json.text, source: $json.source } }];"
+      }
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Return fixed and ai inputs evidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
