@@ -31,6 +31,8 @@ export type ToolResultDraft = {
    */
   pendingExecutorLabel?: string;
   mcpApproval?: { mode: "ask" | "automatic"; approved: boolean; serverLabel: string; remoteToolName: string };
+  /** Presentation cue for an MCP snapshot that has no local execution binding. */
+  mcpPermissionMissing?: boolean;
   rejectedMcp?: boolean;
 };
 
@@ -165,7 +167,10 @@ export function toolResultDraftsForState(
     pendingToolCalls(state, tools).map(({ call, tool }) => {
       const binding = tool ? bindingForTool(tool.id) : undefined;
       if (!binding) {
-        return [call.id, { text: "", resolution: { kind: "manual" as const } }];
+        return [call.id, {
+          text: "", resolution: { kind: "manual" as const },
+          ...(tool?.source?.kind === "mcp" ? { mcpPermissionMissing: true } : {}),
+        }];
       }
       if (binding.kind === "command" || binding.kind === "mcp") {
         // Nothing to prefill: the command has not run, and inventing a

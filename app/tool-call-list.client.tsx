@@ -16,6 +16,7 @@ export type ToolResultDraft = {
   /** Set when continuing will run an executor rather than send this text. */
   pendingExecutorLabel?: string;
   mcpApproval?: { mode: "ask" | "automatic"; approved: boolean; serverLabel: string; remoteToolName: string };
+  mcpPermissionMissing?: boolean;
   rejectedMcp?: boolean;
 };
 
@@ -67,6 +68,7 @@ export function ToolCallList({
                 {provenance?.pill ??
                   (draft?.pendingExecutorLabel
                     ? draft.mcpApproval ? "MCP tool" : "Command tool"
+                    : draft?.mcpPermissionMissing ? "MCP needs permission"
                     : draft?.resolution.kind === "mock"
                       ? "Static mock"
                       : supplied?.resolution.kind ?? "Manual")}
@@ -90,6 +92,9 @@ export function ToolCallList({
                 <pre>{supplied.content.map(({ text }) => text).join("")}</pre>
               </label>
             ) : null}
+            {draft?.mcpPermissionMissing && <p className="tool-call-pending-executor">
+              MCP execution permission was not set for this tool. To use the server, open Tools and allow execution for this tool in Tools attached to this request or its project definition, then start a new run. You can type a result here to continue manually.
+            </p>}
             {/*
               An executor with a transport has nothing to prefill, so without
               this the card is indistinguishable from a call waiting on a

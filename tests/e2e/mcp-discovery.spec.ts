@@ -23,6 +23,9 @@ test("a declared MCP server is connected deliberately and its tools attach as de
 
   await panel.getByRole("button", { name: "Connect and browse tools" }).click();
   await expect(panel).toContainText("inference-lens-discovery-fixture");
+  const headingLeft = (await panel.getByRole("heading", { name: "MCP servers" }).boundingBox())!.x;
+  const leadLeft = (await panel.getByText("Connect to an operator-declared server", { exact: false }).boundingBox())!.x;
+  expect(leadLeft).toBeGreaterThanOrEqual(headingLeft - 2);
   await expect(panel).toContainText("2 tools");
   await expect(panel).toContainText("A tool on the second page.");
   await expect(panel).toContainText("<img src=x onerror=window.__mcpInjected=1>");
@@ -39,6 +42,7 @@ test("a declared MCP server is connected deliberately and its tools attach as de
   const secondTool = panel.getByRole("article").filter({ hasText: "A tool on the second page." });
   await secondTool.getByRole("textbox", { name: "Model-visible name for second_tool" }).fill("second_alias");
   await secondTool.getByRole("button", { name: "Attach to next request" }).click();
+  await expect(panel.getByRole("status")).toContainText("Allow execution in Tools attached to this request");
   await expect(page.getByRole("region", { name: "Tools attached to this request" })).toContainText("second_alias");
 
   await request.post("http://127.0.0.1:44018/change");

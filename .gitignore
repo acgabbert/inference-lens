@@ -35,6 +35,7 @@ yarn-error.log*
 # env files and local artifacts
 .env*
 !.env.example
+.venv-mcp/
 notes
 .n8n-contract-staging/
 

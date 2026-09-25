@@ -2,6 +2,8 @@
 
 MCP discovery works in the service-hosted web app. It lists declared servers, connects only after a user selects one, and copies selected tool definitions into a project or the next request. An attached definition can be answered manually, by a mock, or through the M3 local execution permission described in [M3 execution](MCP_M3_EXECUTION_DESIGN.md).
 
+For a copyable, no-account tryout with a Python loopback server and a deterministic provider, see [Try MCP locally](MCP_LOCAL_TRYOUT.md).
+
 ## Operator catalog
 
 Start the app with `INFERENCE_LENS_MCP_SERVERS` pointing to a JSON file:

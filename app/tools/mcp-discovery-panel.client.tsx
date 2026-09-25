@@ -93,13 +93,16 @@ export function McpDiscoveryPanel({ onAttachToProject, onAttachToRequest }: Prop
       ? onAttachToProject(tool, name)
       : onAttachToRequest(tool, name);
     setError(problem);
-    setNotice(problem ? undefined : `Attached ${name} to ${kind === "project" ? "the project" : "the next request"} as a snapshot.`);
+    setNotice(problem ? undefined : kind === "project"
+      ? `Attached ${name} to the project. To use the MCP server, allow execution in this project's tool definition above.`
+      : `Attached ${name} to the next request. Allow execution in Tools attached to this request above; otherwise, the call will ask for a manual result.`);
   }
 
   if (isTauriRuntime()) return <section aria-label="MCP servers"><h3>MCP servers</h3><p>MCP discovery is available in the service-hosted app.</p></section>;
 
-  return <section aria-label="MCP servers" className="tool-editor">
+  return <section aria-label="MCP servers" className="tool-editor mcp-discovery-panel">
     <div className="tool-editor-toolbar"><div><span className="eyebrow">External tools</span><h3>MCP servers</h3></div></div>
+    <div className="mcp-discovery-body">
     <p>Connect to an operator-declared server, inspect its tools, and attach a definition. Attachment does not grant execution.</p>
     {catalogError && <p role="alert">{catalogError}</p>}
     {!catalog && !catalogError && <p>Loading declared servers…</p>}
@@ -148,5 +151,6 @@ export function McpDiscoveryPanel({ onAttachToProject, onAttachToRequest }: Prop
         </div>
       </>}
     </>}
+    </div>
   </section>;
 }

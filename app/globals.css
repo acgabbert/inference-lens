@@ -1994,6 +1994,43 @@ output {
   gap: var(--space-xs);
 }
 
+.mcp-discovery-body {
+  padding: var(--space-md);
+  display: grid;
+  gap: var(--space-md);
+}
+
+.mcp-discovery-body > p,
+.mcp-discovery-body .tool-list > .tool-editor > p,
+.mcp-discovery-body .tool-list > .tool-editor > h4 {
+  margin: 0;
+}
+
+.mcp-discovery-body > .tool-fields,
+.mcp-discovery-body > .tool-list {
+  padding: 0;
+}
+
+.mcp-discovery-body > .tool-fields > button {
+  justify-self: start;
+}
+
+.mcp-discovery-body > label,
+.mcp-discovery-body .tool-list > .tool-editor > label {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.mcp-discovery-body .tool-list > .tool-editor {
+  padding: var(--space-md);
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.mcp-discovery-body .tool-header-actions {
+  flex-wrap: wrap;
+}
+
 .tool-schema {
   min-height: 150px;
 }

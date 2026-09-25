@@ -185,6 +185,24 @@ test("a next-request MCP snapshot can answer its call", async ({ page }) => {
   await expect(page.locator(".transcript-list")).toContainText("Record sample-42: local MCP result");
 });
 
+test("an attached MCP tool without permission explains the manual result prompt", async ({ page }) => {
+  await seedProfile(page, { model: "mcp-tool-model", favoriteModels: ["mcp-tool-model"], capabilityOverrides: { tools: true } });
+  await page.goto("/");
+  await waitForHydration(page);
+  await page.getByRole("tab", { name: "Tools" }).click();
+  const panel = page.getByRole("region", { name: "MCP servers" });
+  await panel.getByRole("combobox", { name: "Declared MCP server" }).selectOption("execution-fixture");
+  await panel.getByRole("button", { name: "Connect and browse tools" }).click();
+  await panel.getByRole("article").filter({ hasText: "Look up a record" }).getByRole("button", { name: "Attach to next request" }).click();
+  await page.getByRole("tab", { name: "Messages" }).click();
+  await page.getByRole("textbox", { name: "Message 1 content" }).fill("Look up sample-42.");
+  await page.getByRole("button", { name: /^Run current conversation/ }).first().click();
+  const card = page.locator(".tool-call-card").first();
+  await expect(card).toContainText("MCP execution permission was not set");
+  await expect(card).toContainText("Tools attached to this request");
+  await expect(card.getByRole("button", { name: "Approve this call" })).toHaveCount(0);
+});
+
 test("a tool-reported MCP error reaches the model as a completed result", async ({ page, request }) => {
   await openMcpProject(page, request, "mcp-error-model");
   await allowMcp(page, "ask");
