@@ -6,7 +6,8 @@
       "label": "Local Python example",
       "transport": "streamable-http",
       "endpoint": "http://127.0.0.1:44020/mcp",
-      "authorization": { "kind": "none" }
+      "authorization": { "kind": "none" },
+      "callTimeoutMs": 120000
     }
   ]
 }

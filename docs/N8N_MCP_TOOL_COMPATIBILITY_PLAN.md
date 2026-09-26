@@ -1,6 +1,6 @@
 # n8n-compatible MCP tool execution plan
 
-**Status:** in progress; N0, M1, M2, and the local interactive M3 slice are implemented. N1 is next, after the remaining M3 live checks.
+**Status:** in progress; N0, M1, and M2 are implemented, and the local interactive M3 slice is accepted. N1 is next.
 
 **Original baseline:** `main` at `a15b96c`, reviewed September 23, 2026.
 
@@ -21,7 +21,19 @@ provider fixture.
 - **M3 — local interactive execution implemented:** A user can allow one attached tool to call a declared unauthenticated loopback MCP server. Each call asks by default; automatic execution requires a separate per-tool opt-in and is scoped to the browser/service session. The host keeps consent, rechecks the operator declaration and remote fingerprint before calling, and returns normalized outcomes through the existing executor seam. [The M3 contract](MCP_M3_EXECUTION_DESIGN.md) records the boundaries and remaining live checks. Authenticated or remote execution, Tauri, and unattended batches remain outside this slice.
 - **Verification:** the M3 build, 639 core tests, 173 additional repository tests, and the full 211-test Playwright suite passed. The committed fixture verifies approval, rejection, automatic execution, project and next-request attachments, provider continuation, tool-reported error, structured output, timeout, manual fallback, and secret-free trace evidence. Cancellation while a call is in flight, imported-trace rendering without its server, and a modern-protocol app run remain to be checked.
 
-**Next:** finish the remaining M3 live checks, then run N1's structural comparison using a complete MCP-backed provider capture. Only measured differences should determine whether a versioned n8n presentation policy is needed.
+**Next:** run N1's structural comparison using a complete MCP-backed provider capture. Only measured differences should determine whether a versioned n8n presentation policy is needed.
+
+**September 26 acceptance update:** the user confirmed the Python-server UI run
+negotiated `2026-07-28`, cancellation in flight behaved as expected, and killing
+the server produced a red failure banner offering a manual result to continue.
+These three live checks are accepted on the user's report. Actual continuation
+after entering a manual result was not separately reported for server loss;
+the automated fixture covers continuation after timeout. The user also confirmed
+successful trace import and rendering with the Python server stopped, closing
+the remaining M3 live check. The local interactive slice is accepted; N1's
+compatibility decision and M4's repeated runs/evaluations remain separate work.
+See the
+[M3 acceptance record](MCP_M3_EXECUTION_DESIGN.md#regression-and-acceptance).
 
 ## Relationship to earlier planning
 

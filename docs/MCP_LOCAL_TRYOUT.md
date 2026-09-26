@@ -75,3 +75,30 @@ The grant is session scoped. **Run automatically for this tool** is a separate
 opt-in in the same controls. Repeated experiments and evaluations do not use
 MCP execution permissions yet. This workflow uses the service-hosted web app;
 the Tauri app does not have this MCP host integration.
+
+## 5. Check cancellation and connection loss
+
+Restart the Python server after updating the script. Select `mcp-slow-model`
+on the same buffered provider connection, keeping `lookup_record` attached and
+allowed with **Ask each time**. Start a fresh conversation with `Look up slow.`
+The provider deterministically requests `{"record_id":"slow"}`; the Python
+tool waits 60 seconds before returning. The example catalog allows 120 seconds
+per call so you can interrupt it before the host timeout.
+
+Approve the call and click **Supply results and continue** if shown. Wait until
+the Python terminal prints `Waiting 60 seconds` before taking either action:
+
+- **Cancellation:** stop the run in Inference Lens. Check that the run becomes
+  cancelled, no successful tool result or model continuation appears, and you
+  can start a new run. The Python terminal logs cancellation if it reaches the
+  server task; a cancelled app run does not itself prove remote work stopped.
+- **Connection loss:** in a separate run, kill only this example server from
+  another terminal with `kill -KILL <PID>`, using the PID it prints at startup.
+  This deliberately breaks the live connection; Ctrl-C can instead wait for
+  graceful shutdown. Check that execution fails, no result is fabricated, and
+  you can type a manual result and continue. Record whether the app reports
+  connection failure or only reaches its timeout; a timeout alone does not
+  establish prompt connection-loss handling. Restart the Python server afterward.
+
+Return to `mcp-tool-model` for the immediate `sample-42` happy path. These are
+manual acceptance checks; adding the delayed fixture does not mark them passed.

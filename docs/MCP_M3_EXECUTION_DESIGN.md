@@ -1,6 +1,6 @@
 # M3: local MCP execution contract
 
-**Status:** implemented for session-only, interactive execution.
+**Status:** accepted for session-only, local interactive execution; N1 comparison is next.
 
 ## Scope
 
@@ -74,9 +74,29 @@ approval; zero call on rejection; automatic mode only after explicit opt-in;
 stale fingerprint refusal at consent; ordinary provider continuation after
 success from project and next-request attachments, and completed tool-reported error; structured-only projection; timeout,
 protocol-error, and malformed-response failure; manual fallback after timeout;
-and a secret-free exported trace. The remaining live checks are cancellation
-while a call is in flight, an imported trace without its server, and a
-modern-protocol server run beyond the fixture's negotiated revision.
+and a secret-free exported trace. The remaining M3 live checks were accepted
+on September 26 as recorded below.
+
+September 26 update: the user confirmed a successful Python-server app run
+negotiating `2026-07-28`, satisfying the modern-protocol live check. The user
+also confirmed cancellation during the delayed call and abrupt server loss
+behaved as expected. On server loss, Inference Lens showed a red failure banner
+offering a manually supplied result to continue. These are user-verified manual
+passes using the [local tryout](MCP_LOCAL_TRYOUT.md#5-check-cancellation-and-connection-loss),
+not automated coverage of Python-server cancellation or disconnection. Actual
+continuation after entering a manual result was not separately reported in this
+live check; the committed browser fixture covers manual continuation after
+timeout. The user also confirmed a saved MCP trace imported and rendered
+successfully with the Python server stopped. This closes the server-less trace
+check and the remaining live acceptance for the local interactive M3 slice.
+
+Verification for the local tryout changes: the Python smoke check passed for an
+immediate result, a delayed call staying pending, and cancellation propagation;
+all 8 tests in `tests/e2e/mcp-interactive-execution.spec.ts` and the full
+212-test Playwright suite passed. These browser tests use the committed MCP
+fixture, not the Python tryout server. No product behavior changed during the
+subsequent acceptance-documentation updates, so the suites were not rerun for
+those updates.
 
 After the complete MCP-backed run, compare its initial and continuation
 provider requests against the committed n8n captures. That comparison informs
