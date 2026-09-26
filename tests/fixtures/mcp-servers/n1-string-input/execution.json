@@ -1,0 +1,10 @@
+{
+  "status": "completed",
+  "content": [
+    {
+      "type": "text",
+      "text": "[{\"fixture\":\"IL_N0_STRING_INPUT\",\"echoed\":\"IL_N0_STRING_VALUE\",\"receivedType\":\"string\"}]"
+    }
+  ],
+  "isError": false
+}

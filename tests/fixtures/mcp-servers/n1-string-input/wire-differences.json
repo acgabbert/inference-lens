@@ -1,0 +1,142 @@
+{
+  "baseline": "tests/fixtures/n8n/captures/2.39.10/string-input-tool-workflow",
+  "candidate": "Python MCP string-input",
+  "phases": {
+    "initial": [
+      {
+        "path": "/tools/0/function/parameters/properties/text/title",
+        "reference": {
+          "present": false
+        },
+        "actual": {
+          "present": true,
+          "value": "Text"
+        }
+      },
+      {
+        "path": "/tools/0/function/parameters/additionalProperties",
+        "reference": {
+          "present": true,
+          "value": false
+        },
+        "actual": {
+          "present": false
+        }
+      },
+      {
+        "path": "/tools/0/function/parameters/$schema",
+        "reference": {
+          "present": true,
+          "value": "http://json-schema.org/draft-07/schema#"
+        },
+        "actual": {
+          "present": false
+        }
+      },
+      {
+        "path": "/tools/0/function/parameters/title",
+        "reference": {
+          "present": false
+        },
+        "actual": {
+          "present": true,
+          "value": "il_echo_stringArguments"
+        }
+      },
+      {
+        "path": "/tools/0/function/strict",
+        "reference": {
+          "present": true,
+          "value": false
+        },
+        "actual": {
+          "present": false
+        }
+      }
+    ],
+    "continuation": [
+      {
+        "path": "/tools/0/function/parameters/properties/text/title",
+        "reference": {
+          "present": false
+        },
+        "actual": {
+          "present": true,
+          "value": "Text"
+        }
+      },
+      {
+        "path": "/tools/0/function/parameters/additionalProperties",
+        "reference": {
+          "present": true,
+          "value": false
+        },
+        "actual": {
+          "present": false
+        }
+      },
+      {
+        "path": "/tools/0/function/parameters/$schema",
+        "reference": {
+          "present": true,
+          "value": "http://json-schema.org/draft-07/schema#"
+        },
+        "actual": {
+          "present": false
+        }
+      },
+      {
+        "path": "/tools/0/function/parameters/title",
+        "reference": {
+          "present": false
+        },
+        "actual": {
+          "present": true,
+          "value": "il_echo_stringArguments"
+        }
+      },
+      {
+        "path": "/tools/0/function/strict",
+        "reference": {
+          "present": true,
+          "value": false
+        },
+        "actual": {
+          "present": false
+        }
+      },
+      {
+        "path": "/messages/2/content",
+        "reference": {
+          "present": true,
+          "value": []
+        },
+        "actual": {
+          "present": true,
+          "value": null
+        }
+      },
+      {
+        "path": "/messages/2/tool_calls/0/function/arguments",
+        "reference": {
+          "present": true,
+          "value": "{\"text\":\"IL_N0_STRING_VALUE\",\"id\":\"call_inference_lens_n8n_001\"}"
+        },
+        "actual": {
+          "present": true,
+          "value": "{\"text\":\"IL_N0_STRING_VALUE\"}"
+        }
+      },
+      {
+        "path": "/messages/3/name",
+        "reference": {
+          "present": false
+        },
+        "actual": {
+          "present": true,
+          "value": "il_echo_string"
+        }
+      }
+    ]
+  }
+}

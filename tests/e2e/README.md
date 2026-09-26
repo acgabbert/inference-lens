@@ -26,6 +26,12 @@ socket binding, run it with host-network / out-of-sandbox permission on the
 Arguments after `--` go straight to Playwright, so `--grep`, `--project`,
 `--headed`, and `--debug` all work as usual.
 
+The opt-in [N1 Python MCP capture](../../docs/N1_STRING_INPUT_COMPARISON.md)
+adds the pinned Python fixture and a provider that saves both actual requests:
+`npm run test:e2e -- --config playwright.n1.config.ts tests/e2e/n1-string-input-capture.spec.ts`.
+That config also runs the full suite when the spec path is omitted. The ordinary
+config skips this one spec and does not require Python.
+
 ## Projects
 
 `chromium-light` runs every spec. `chromium-dark` re-runs only the specs listed
