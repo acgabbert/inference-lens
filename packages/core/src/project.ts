@@ -298,55 +298,6 @@ interface ProjectReferenceValidationShape {
   defaults: ProjectDefaults;
 }
 
-export interface ProjectFileV6 {
-  schemaVersion: 6;
-  projectId: ProjectId;
-  name: string;
-  connectionRequirements: ConnectionRequirement[];
-  conversations: ProjectConversation[];
-  conversationRevisions: ProjectConversationRevision[];
-  tools: ToolDefinition[];
-  toolMocks: ToolMock[];
-  promptTemplates: PromptTemplate[];
-  externalImports: ExternalImportReceipt[];
-  defaults: ProjectDefaults;
-}
-
-export interface ProjectFileV7 {
-  schemaVersion: 7;
-  projectId: ProjectId;
-  name: string;
-  connectionRequirements: ConnectionRequirement[];
-  conversations: ProjectConversation[];
-  conversationRevisions: ProjectConversationRevision[];
-  tools: ToolDefinition[];
-  toolMocks: ToolMock[];
-  promptTemplates: PromptTemplate[];
-  externalImports: ExternalImportReceipt[];
-  evaluationSuites: Array<Omit<EvaluationSuite, "input" | "execution" | "variants">>;
-  defaults: ProjectDefaults;
-}
-
-/** A v8 suite: everything a v9 suite has except its exposed tools and ceiling. */
-export type EvaluationSuiteV8 = Omit<EvaluationSuite, "execution" | "variants"> & {
-  execution: Omit<EvaluationSuite["execution"], "toolIds" | "turnCeiling">;
-};
-
-export interface ProjectFileV8 {
-  schemaVersion: 8;
-  projectId: ProjectId;
-  name: string;
-  connectionRequirements: ConnectionRequirement[];
-  conversations: ProjectConversation[];
-  conversationRevisions: ProjectConversationRevision[];
-  tools: ToolDefinition[];
-  toolMocks: ToolMock[];
-  promptTemplates: PromptTemplate[];
-  externalImports: ExternalImportReceipt[];
-  evaluationSuites: EvaluationSuiteV8[];
-  defaults: ProjectDefaults;
-}
-
 export interface ProjectFileV10 {
   schemaVersion: 10;
   projectId: ProjectId;
@@ -604,36 +555,6 @@ const promptTemplateDraftSchema: z.ZodType<PromptTemplateDraft> = z
   })
   .strict();
 
-const legacyPromptTemplateContentSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("fragment"), text: z.string() }).strict(),
-  z
-    .object({
-      kind: z.literal("messages"),
-      messages: z.array(
-        z
-          .object({
-            role: z.enum(["system", "user", "assistant"]),
-            content: z.string(),
-          })
-          .strict(),
-      ),
-    })
-    .strict(),
-]);
-
-const legacyPromptTemplateRevisionSchema = z
-  .object({
-    id: entityId("template-revision"),
-    createdAt: z.iso.datetime({ offset: true }),
-    content: legacyPromptTemplateContentSchema,
-    variableDefaults: z.record(
-      z.string().regex(variableName, "Invalid template variable name."),
-      z.string(),
-    ),
-    externalImportId: entityId("external-import").optional(),
-  })
-  .strict();
-
 const promptTemplateSchema: z.ZodType<PromptTemplate> = z
   .object({
     id: entityId("template"),
@@ -643,17 +564,6 @@ const promptTemplateSchema: z.ZodType<PromptTemplate> = z
     recommendedTarget: promptTemplateRecommendedTargetSchema.optional(),
     draft: promptTemplateDraftSchema.optional(),
     revisions: z.array(promptTemplateRevisionSchema).min(1),
-  })
-  .strict();
-
-const legacyPromptTemplateSchema = z
-  .object({
-    id: entityId("template"),
-    name: z.string().trim().min(1),
-    currentRevisionId: entityId("template-revision"),
-    archivedAt: z.iso.datetime({ offset: true }).optional(),
-    recommendedTarget: promptTemplateRecommendedTargetSchema.optional(),
-    revisions: z.array(legacyPromptTemplateRevisionSchema).min(1),
   })
   .strict();
 
@@ -667,20 +577,6 @@ const promptTemplateUseSchema: z.ZodType<PromptTemplateUse> = z
       z.string(),
     ),
     outputMessageIds: z.array(entityId("message")).min(1),
-  })
-  .strict();
-
-const legacyPromptTemplateUseSchema = z
-  .object({
-    id: entityId("template-use"),
-    templateId: entityId("template"),
-    templateRevisionId: entityId("template-revision"),
-    values: z.record(
-      z.string().regex(variableName, "Invalid template variable name."),
-      z.string(),
-    ),
-    outputMessageIds: z.array(entityId("message")).min(1),
-    fragmentRole: z.enum(["system", "user", "assistant"]).optional(),
   })
   .strict();
 
@@ -711,32 +607,6 @@ const projectConversationRevisionSchema: z.ZodType<ProjectConversationRevision> 
       createdAt: z.iso.datetime({ offset: true }),
     })
     .strict();
-
-const legacyProjectConversationRevisionSchema = z
-  .object({
-    id: entityId("revision"),
-    conversationId: entityId("conversation"),
-    parentRevisionId: entityId("revision").optional(),
-    items: z.array(
-      z.discriminatedUnion("kind", [
-        z
-          .object({
-            kind: z.literal("message"),
-            message: conversationMessageSchema,
-            externalImportId: entityId("external-import").optional(),
-          })
-          .strict(),
-        z
-          .object({
-            kind: z.literal("template-use"),
-            use: legacyPromptTemplateUseSchema,
-          })
-          .strict(),
-      ]),
-    ),
-    createdAt: z.iso.datetime({ offset: true }),
-  })
-  .strict();
 
 const externalImportReceiptSchema: z.ZodType<ExternalImportReceipt> = z
   .object({
@@ -903,108 +773,6 @@ const evaluationSuiteSchema: z.ZodType<EvaluationSuite> = z
     cases: z.array(evaluationCaseSchema),
   })
   .strict();
-
-const legacyEvaluationSuiteV8Schema: z.ZodType<EvaluationSuiteV8> = z
-  .object({
-    id: entityId("evaluation-suite"),
-    name: z.string().trim().min(1),
-    input: z.object({
-      kind: z.literal("conversation-revision"),
-      conversationRevisionId: entityId("revision"),
-    }).strict(),
-    execution: z.object({
-      target: z.object({
-        connectionRequirementId: entityId("connection"),
-        model: z.string().trim().min(1),
-      }).strict(),
-      responseMode: z.enum(["streaming", "buffered"]),
-      options: inferenceOptionsSchema,
-      repetitions: z.number().int().min(1).max(100),
-    }).strict(),
-    inputBindings: z.array(evaluationInputBindingSchema),
-    cases: z.array(evaluationCaseSchema),
-  })
-  .strict();
-
-const legacyEvaluationSuiteV7Schema = z.object({
-  id: entityId("evaluation-suite"),
-  name: z.string().trim().min(1),
-  inputBindings: z.array(evaluationInputBindingSchema),
-  cases: z.array(evaluationCaseSchema),
-}).strict();
-
-const projectFileV5Schema = z
-  .object({
-    schemaVersion: z.literal(5),
-    projectId: entityId("project"),
-    name: z.string().trim().min(1),
-    connectionRequirements: z.array(connectionRequirementSchema).min(1),
-    conversations: z.array(projectConversationSchema).min(1),
-    conversationRevisions: z
-      .array(legacyProjectConversationRevisionSchema)
-      .min(1),
-    tools: z.array(toolDefinitionSchema),
-    toolMocks: z.array(toolMockSchema),
-    promptTemplates: z.array(legacyPromptTemplateSchema),
-    externalImports: z.array(externalImportReceiptSchema),
-    defaults: projectDefaultsSchema,
-  })
-  .strict();
-
-type ProjectFileV5 = z.infer<typeof projectFileV5Schema>;
-
-const projectFileV6Schema: z.ZodType<ProjectFileV6> = z
-  .object({
-    schemaVersion: z.literal(6),
-    projectId: entityId("project"),
-    name: z.string().trim().min(1),
-    connectionRequirements: z.array(connectionRequirementSchema).min(1),
-    conversations: z.array(projectConversationSchema).min(1),
-    conversationRevisions: z.array(projectConversationRevisionSchema).min(1),
-    tools: z.array(toolDefinitionSchema),
-    toolMocks: z.array(toolMockSchema),
-    promptTemplates: z.array(promptTemplateSchema),
-    externalImports: z.array(externalImportReceiptSchema),
-    defaults: projectDefaultsSchema,
-  })
-  .strict()
-  .superRefine(validateProjectReferences);
-
-const projectFileV7Schema: z.ZodType<ProjectFileV7> = z
-  .object({
-    schemaVersion: z.literal(7),
-    projectId: entityId("project"),
-    name: z.string().trim().min(1),
-    connectionRequirements: z.array(connectionRequirementSchema).min(1),
-    conversations: z.array(projectConversationSchema).min(1),
-    conversationRevisions: z.array(projectConversationRevisionSchema).min(1),
-    tools: z.array(toolDefinitionSchema),
-    toolMocks: z.array(toolMockSchema),
-    promptTemplates: z.array(promptTemplateSchema),
-    externalImports: z.array(externalImportReceiptSchema),
-    evaluationSuites: z.array(legacyEvaluationSuiteV7Schema),
-    defaults: projectDefaultsSchema,
-  })
-  .strict()
-  .superRefine(validateProjectReferences);
-
-const projectFileV8Schema: z.ZodType<ProjectFileV8> = z
-  .object({
-    schemaVersion: z.literal(8),
-    projectId: entityId("project"),
-    name: z.string().trim().min(1),
-    connectionRequirements: z.array(connectionRequirementSchema).min(1),
-    conversations: z.array(projectConversationSchema).min(1),
-    conversationRevisions: z.array(projectConversationRevisionSchema).min(1),
-    tools: z.array(toolDefinitionSchema),
-    toolMocks: z.array(toolMockSchema),
-    promptTemplates: z.array(promptTemplateSchema),
-    externalImports: z.array(externalImportReceiptSchema),
-    evaluationSuites: z.array(legacyEvaluationSuiteV8Schema),
-    defaults: projectDefaultsSchema,
-  })
-  .strict()
-  .superRefine(validateProjectReferences);
 
 const projectFileV10Schema: z.ZodType<ProjectFileV10> = z
   .object({
@@ -1256,7 +1024,7 @@ function validateSharedProjectReferences(
 }
 
 function validateProjectReferences(
-  project: ProjectFileV6 | ProjectFileV7 | ProjectFileV8 | ProjectFileV10,
+  project: ProjectFileV10,
   context: z.RefinementCtx,
 ): void {
   validateSharedProjectReferences(
@@ -1525,7 +1293,7 @@ function validateProjectReferences(
 }
 
 function validateEvaluationSuites(
-  project: ProjectFileV7 | ProjectFileV8 | ProjectFileV10,
+  project: ProjectFileV10,
   templates: ReadonlyMap<PromptTemplateId, PromptTemplate>,
   context: z.RefinementCtx,
 ): void {
@@ -1546,57 +1314,51 @@ function validateEvaluationSuites(
   const projectToolIds = new Set(project.tools.map(({ id }) => id));
   project.evaluationSuites.forEach((suite, suiteIndex) => {
     const suitePath = ["evaluationSuites", suiteIndex];
-    if (project.schemaVersion === 8 || project.schemaVersion === 10) {
-      const currentSuite = project.evaluationSuites[suiteIndex]!;
+    requireReference(
+      project.conversationRevisions.some(({ id }) => id === suite.input.conversationRevisionId),
+      [...suitePath, "input", "conversationRevisionId"],
+      "Evaluation input references an unknown conversation revision.",
+      context,
+    );
+    requireReference(
+      project.connectionRequirements.some(({ id }) => id === suite.execution.target.connectionRequirementId),
+      [...suitePath, "execution", "target", "connectionRequirementId"],
+      "Evaluation execution references an unknown connection requirement.",
+      context,
+    );
+    // The same treatment `defaults.enabledToolIds` gets: a suite that names a
+    // deleted tool can never be saved or imported, so nothing downstream —
+    // preflight, plan snapshotting, the binding join — has to invent an
+    // answer for a descriptor that is not there.
+    const { toolIds } = suite.execution;
+    toolIds.forEach((id, index) =>
       requireReference(
-        project.conversationRevisions.some(({ id }) => id === currentSuite.input.conversationRevisionId),
-        [...suitePath, "input", "conversationRevisionId"],
-        "Evaluation input references an unknown conversation revision.",
+        projectToolIds.has(id),
+        [...suitePath, "execution", "toolIds", index],
+        `Evaluation suite exposes tool "${id}", which does not exist.`,
         context,
+      ),
+    );
+    addDuplicateIssues(
+      toolIds,
+      [...suitePath, "execution", "toolIds"],
+      context,
+    );
+    const normalizedVariantNames = new Set<string>();
+    suite.variants.forEach((variant, variantIndex) => {
+      const variantPath = [...suitePath, "variants", variantIndex];
+      const normalizedName = variant.name.trim().toLocaleLowerCase();
+      if (normalizedVariantNames.has(normalizedName)) {
+        context.addIssue({ code: "custom", path: [...variantPath, "name"], message: `Configuration name "${variant.name}" is repeated within the suite.` });
+      }
+      normalizedVariantNames.add(normalizedName);
+      const connectionRequirementId = variant.overrides.target?.connectionRequirementId;
+      if (connectionRequirementId) requireReference(
+        project.connectionRequirements.some(({ id }) => id === connectionRequirementId),
+        [...variantPath, "overrides", "target", "connectionRequirementId"],
+        "Configuration override references an unknown connection requirement.", context,
       );
-      requireReference(
-        project.connectionRequirements.some(({ id }) => id === currentSuite.execution.target.connectionRequirementId),
-        [...suitePath, "execution", "target", "connectionRequirementId"],
-        "Evaluation execution references an unknown connection requirement.",
-        context,
-      );
-    }
-    if (project.schemaVersion === 10) {
-      // The same treatment `defaults.enabledToolIds` gets: a suite that names a
-      // deleted tool can never be saved or imported, so nothing downstream —
-      // preflight, plan snapshotting, the binding join — has to invent an
-      // answer for a descriptor that is not there.
-      const { toolIds } = project.evaluationSuites[suiteIndex]!.execution;
-      toolIds.forEach((id, index) =>
-        requireReference(
-          projectToolIds.has(id),
-          [...suitePath, "execution", "toolIds", index],
-          `Evaluation suite exposes tool "${id}", which does not exist.`,
-          context,
-        ),
-      );
-      addDuplicateIssues(
-        toolIds,
-        [...suitePath, "execution", "toolIds"],
-        context,
-      );
-      const variants = project.evaluationSuites[suiteIndex]!.variants;
-      const normalizedVariantNames = new Set<string>();
-      variants.forEach((variant, variantIndex) => {
-        const variantPath = [...suitePath, "variants", variantIndex];
-        const normalizedName = variant.name.trim().toLocaleLowerCase();
-        if (normalizedVariantNames.has(normalizedName)) {
-          context.addIssue({ code: "custom", path: [...variantPath, "name"], message: `Configuration name "${variant.name}" is repeated within the suite.` });
-        }
-        normalizedVariantNames.add(normalizedName);
-        const connectionRequirementId = variant.overrides.target?.connectionRequirementId;
-        if (connectionRequirementId) requireReference(
-          project.connectionRequirements.some(({ id }) => id === connectionRequirementId),
-          [...variantPath, "overrides", "target", "connectionRequirementId"],
-          "Configuration override references an unknown connection requirement.", context,
-        );
-      });
-    }
+    });
     const localInputIds = new Set<string>();
     const inputNames = new Set<string>();
 
@@ -1706,287 +1468,6 @@ export class ProjectValidationError extends Error {
     this.name = "ProjectValidationError";
     this.issues = issues;
   }
-}
-
-type TemplateRole = PromptTemplateMessage["role"];
-
-interface MigratedTemplateVariant {
-  templateId: PromptTemplateId;
-  revisionIds: Map<PromptTemplateRevisionId, PromptTemplateRevisionId>;
-}
-
-/**
- * Project v5 stored one-message prompts as role-less fragments and attached the
- * role to every use. V6 moves that role into the immutable template revision.
- * When one legacy template was used with several roles, each role receives its
- * own template so no use changes meaning.
- */
-function migrateProjectV5(project: ProjectFileV5): ProjectFileV6 {
-  const roles: TemplateRole[] = ["system", "user", "assistant"];
-  const occupiedTemplateIds = new Set(project.promptTemplates.map(({ id }) => id));
-  const occupiedRevisionIds = new Set(
-    project.promptTemplates.flatMap(({ revisions }) =>
-      revisions.map(({ id }) => id),
-    ),
-  );
-  const legacyTemplates = new Map(
-    project.promptTemplates.map((template) => [template.id, template]),
-  );
-  const rolesByTemplate = new Map<PromptTemplateId, Set<TemplateRole>>();
-
-  for (const conversationRevision of project.conversationRevisions) {
-    for (const item of conversationRevision.items) {
-      if (item.kind !== "template-use") continue;
-      const template = legacyTemplates.get(item.use.templateId);
-      const revision = template?.revisions.find(
-        ({ id }) => id === item.use.templateRevisionId,
-      );
-      if (!revision) continue;
-      if (revision.content.kind === "messages") {
-        if (item.use.fragmentRole !== undefined) {
-          throw new ProjectValidationError([{
-            code: "custom",
-            path: ["conversationRevisions", conversationRevision.id, "items", item.use.id, "fragmentRole"],
-            message: "Message-set template uses cannot specify a fragment role.",
-          }]);
-        }
-        continue;
-      }
-      if (!item.use.fragmentRole) {
-        throw new ProjectValidationError([{
-          code: "custom",
-          path: ["conversationRevisions", conversationRevision.id, "items", item.use.id, "fragmentRole"],
-          message: "Fragment template uses require an explicit message role.",
-        }]);
-      }
-      const usedRoles = rolesByTemplate.get(item.use.templateId) ?? new Set<TemplateRole>();
-      usedRoles.add(item.use.fragmentRole);
-      rolesByTemplate.set(item.use.templateId, usedRoles);
-    }
-  }
-
-  // Imported one-message templates already have an authored role. Preserve the
-  // original IDs for that role so the receipt remains anchored without being
-  // duplicated or rewritten.
-  const importedRoleByTemplate = new Map<PromptTemplateId, TemplateRole>();
-  for (const receipt of project.externalImports) {
-    if (receipt.projection.kind !== "prompt-template") continue;
-    const projection = receipt.projection;
-    const template = legacyTemplates.get(projection.templateId);
-    const revision = template?.revisions.find(
-      ({ id }) => id === projection.templateRevisionId,
-    );
-    const authoredRole = receipt.authored[0]?.role;
-    if (revision?.content.kind === "fragment" && authoredRole) {
-      importedRoleByTemplate.set(projection.templateId, authoredRole);
-      const usedRoles = rolesByTemplate.get(projection.templateId) ?? new Set<TemplateRole>();
-      usedRoles.add(authoredRole);
-      rolesByTemplate.set(projection.templateId, usedRoles);
-    }
-  }
-
-  function uniqueTemplateId(
-    templateId: PromptTemplateId,
-    role: TemplateRole,
-  ): PromptTemplateId {
-    const suffix = templateId.slice("template_".length);
-    for (let occurrence = 1; ; occurrence += 1) {
-      const candidate = createEntityId(
-        "template",
-        `${suffix}-${role}${occurrence === 1 ? "" : `-${occurrence}`}`,
-      );
-      if (!occupiedTemplateIds.has(candidate)) {
-        occupiedTemplateIds.add(candidate);
-        return candidate;
-      }
-    }
-  }
-
-  function uniqueRevisionId(
-    revisionId: PromptTemplateRevisionId,
-    role: TemplateRole,
-  ): PromptTemplateRevisionId {
-    const suffix = revisionId.slice("template-revision_".length);
-    for (let occurrence = 1; ; occurrence += 1) {
-      const candidate = createEntityId(
-        "template-revision",
-        `${suffix}-${role}${occurrence === 1 ? "" : `-${occurrence}`}`,
-      );
-      if (!occupiedRevisionIds.has(candidate)) {
-        occupiedRevisionIds.add(candidate);
-        return candidate;
-      }
-    }
-  }
-
-  const variantsByTemplate = new Map<
-    PromptTemplateId,
-    Map<TemplateRole, MigratedTemplateVariant>
-  >();
-  const primaryRoleByTemplate = new Map<PromptTemplateId, TemplateRole>();
-  const promptTemplates: PromptTemplate[] = [];
-
-  for (const template of project.promptTemplates) {
-    const usedRoles = rolesByTemplate.get(template.id) ?? new Set<TemplateRole>();
-    const importedRole = importedRoleByTemplate.get(template.id);
-    const primaryRole =
-      importedRole ??
-      (usedRoles.has("user")
-        ? "user"
-        : roles.find((role) => usedRoles.has(role)) ?? "user");
-    const hasFragments = template.revisions.some(
-      ({ content }) => content.kind === "fragment",
-    );
-    const variantRoles = hasFragments
-      ? [primaryRole, ...roles.filter((role) => usedRoles.has(role) && role !== primaryRole)]
-      : [primaryRole];
-    const variants = new Map<TemplateRole, MigratedTemplateVariant>();
-    primaryRoleByTemplate.set(template.id, primaryRole);
-
-    variantRoles.forEach((role, variantIndex) => {
-      const primary = variantIndex === 0;
-      const templateId = primary
-        ? template.id
-        : uniqueTemplateId(template.id, role);
-      const revisionIds = new Map<
-        PromptTemplateRevisionId,
-        PromptTemplateRevisionId
-      >();
-      const revisions = template.revisions.map((revision) => {
-        const id = primary ? revision.id : uniqueRevisionId(revision.id, role);
-        revisionIds.set(revision.id, id);
-        if (
-          revision.content.kind === "messages" &&
-          revision.content.messages.length === 0
-        ) {
-          // Migration is destructive and runs once. An empty legacy message set
-          // has no faithful v6 form, so refuse rather than invent a message.
-          throw new ProjectValidationError([
-            {
-              code: "custom",
-              path: ["promptTemplates", template.id, "revisions", revision.id],
-              message:
-                "Cannot migrate a template revision with no messages.",
-            },
-          ]);
-        }
-        const messages: PromptTemplateMessages =
-          revision.content.kind === "fragment"
-            ? [{ role, content: revision.content.text }]
-            : (structuredClone(
-                revision.content.messages,
-              ) as PromptTemplateMessages);
-        return {
-          id,
-          createdAt: revision.createdAt,
-          messages,
-          variableDefaults: { ...revision.variableDefaults },
-          ...(primary && revision.externalImportId
-            ? { externalImportId: revision.externalImportId }
-            : {}),
-        };
-      });
-      variants.set(role, { templateId, revisionIds });
-      promptTemplates.push({
-        id: templateId,
-        name: primary
-          ? template.name
-          : `${template.name} (${role[0]!.toUpperCase()}${role.slice(1)})`,
-        currentRevisionId: revisionIds.get(template.currentRevisionId)!,
-        ...(template.archivedAt ? { archivedAt: template.archivedAt } : {}),
-        ...(template.recommendedTarget
-          ? { recommendedTarget: structuredClone(template.recommendedTarget) }
-          : {}),
-        revisions,
-      });
-    });
-    variantsByTemplate.set(template.id, variants);
-  }
-
-  const conversationRevisions: ProjectConversationRevision[] =
-    project.conversationRevisions.map((revision) => ({
-      ...revision,
-      items: revision.items.map((item): ProjectConversationItem => {
-        if (item.kind === "message") return structuredClone(item);
-        const template = legacyTemplates.get(item.use.templateId);
-        const pinned = template?.revisions.find(
-          ({ id }) => id === item.use.templateRevisionId,
-        );
-        const primaryRole =
-          primaryRoleByTemplate.get(item.use.templateId) ?? "user";
-        const role =
-          pinned?.content.kind === "fragment"
-            ? item.use.fragmentRole ?? primaryRole
-            : primaryRole;
-        const variant = variantsByTemplate.get(item.use.templateId)?.get(role);
-        return {
-          kind: "template-use",
-          use: {
-            id: item.use.id,
-            templateId: variant?.templateId ?? item.use.templateId,
-            templateRevisionId:
-              variant?.revisionIds.get(item.use.templateRevisionId) ??
-              item.use.templateRevisionId,
-            values: { ...item.use.values },
-            outputMessageIds: [...item.use.outputMessageIds],
-          },
-        };
-      }),
-    }));
-
-  return {
-    ...project,
-    schemaVersion: 6,
-    promptTemplates,
-    conversationRevisions,
-  };
-}
-
-function migrateProjectV6(project: ProjectFileV6): ProjectFileV7 {
-  return {
-    ...project,
-    schemaVersion: 7,
-    evaluationSuites: [],
-  };
-}
-
-function migrateProjectV7(project: ProjectFileV7): ProjectFileV8 {
-  return {
-    ...project,
-    schemaVersion: 8,
-    evaluationSuites: project.evaluationSuites.map((suite) => ({
-      ...suite,
-      input: {
-        kind: "conversation-revision" as const,
-        conversationRevisionId: project.defaults.conversationRevisionId,
-      },
-      execution: {
-        target: structuredClone(project.defaults.target),
-        // Matches `createEvaluationSuite`: migrated suites run buffered, which
-        // every provider the project can already reach supports.
-        responseMode: "buffered" as const,
-        options: structuredClone(project.defaults.options),
-        repetitions: 1,
-      },
-    })),
-  };
-}
-
-/**
- * A suite written before suites could expose tools exposed none, and inherits
- * the default ceiling by leaving it absent — so an upgraded project runs
- * exactly as it did, one turn per repetition.
- */
-function migrateProjectV8(project: ProjectFileV8): ProjectFileV10 {
-  return {
-    ...project,
-    schemaVersion: PROJECT_SCHEMA_VERSION,
-    evaluationSuites: project.evaluationSuites.map((suite) => ({
-      ...suite,
-      execution: { ...structuredClone(suite.execution), toolIds: [] },
-      variants: [{ id: createEntityId("evaluation-variant", `${suite.id}-default`), name: "Default", overrides: {} }],
-    })),
-  };
 }
 
 export function parseProjectFile(value: unknown): ProjectFile {
