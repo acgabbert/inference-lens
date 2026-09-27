@@ -8,6 +8,8 @@ export interface McpServerSummary {
   label: string;
   /** Origin only; no path, query, authorization, or session value. */
   endpointIdentity: string;
+  /** Display hint only; the host revalidates eligibility before granting or executing. */
+  executionAvailable?: boolean;
 }
 
 export interface McpServersResponse {

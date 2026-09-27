@@ -31,12 +31,8 @@ test("N1 captures Python discovery, attachment, execution and provider continuat
   const discovery = await discoveryResponse;
   expect(discovery.ok()).toBe(true);
   await writeFile(path.join(output!, "discovery.json"), await discovery.text());
-  await panel.getByRole("article").filter({ hasText: "il_echo_string" })
-    .getByRole("button", { name: "Attach to next request" }).click();
-  const editor = page.getByRole("group", { name: "MCP execution for il_echo_string" });
-  await editor.getByRole("combobox", { name: "Local MCP server" }).selectOption("n1-string-input");
-  await editor.getByRole("button", { name: "Allow execution; ask each time" }).click();
-  await expect(editor).toContainText("Ask each time");
+  await panel.getByRole("checkbox", { name: "Select il_echo_string", exact: true }).check();
+  await panel.getByRole("button", { name: "Attach selected (1)" }).click();
   await page.getByRole("tab", { name: "Messages" }).click();
   await page.getByRole("button", { name: /^Run current conversation/ }).first().click();
   const card = page.locator(".tool-call-card").first();

@@ -402,7 +402,8 @@ function HomeContent() {
         enabledToolIds,
       };
     },
-    onApplyDraft(draft) {
+    onApplyDraft(draft, projectId) {
+      if (projectFile?.projectId !== projectId) clearRequestTools();
       replaceProjectDraft(draft);
       clearTemplateOverridesRef.current();
       setBranchContext(null);
@@ -489,6 +490,7 @@ function HomeContent() {
     attachMcpToolToProject,
     attachMcpToolToRequest,
     removeRequestTool,
+    saveRequestToolToProject,
     clearRequestTools,
     replaceProjectDraft,
   } = useRequestDraft({
@@ -1045,7 +1047,6 @@ function HomeContent() {
       workspace: projectWorkspace,
       ...(branchedFrom ? { branchedFrom } : {}),
     });
-    clearRequestTools();
     await sessionStart;
   }
 
@@ -1108,7 +1109,6 @@ function HomeContent() {
       if (prepared.executedRevisionId) projectTemplates.markExecutedRevision(prepared.executedRevisionId);
       if (prepared.adHocConversationId) adHocConversationIdRef.current = prepared.adHocConversationId;
       if (prepared.consumesPendingBranch) setBranchContext(null);
-      clearRequestTools();
       runSession.reset();
       setTraceOpen(false);
       // A batch's results are read in the Runs mode, so the batch opens there
@@ -1940,7 +1940,7 @@ function HomeContent() {
         <RequestComposer
           requestDraft={{
             messages, tools, requestTools, enabledToolIds, addTool, removeTool, moveTool, updateTool,
-            setToolEnabled, mockForTool, updateToolMock, removeRequestTool,
+            setToolEnabled, mockForTool, updateToolMock, removeRequestTool, saveRequestToolToProject,
             attachMcpToolToProject, attachMcpToolToRequest,
           }}
           commandTools={commandTools}

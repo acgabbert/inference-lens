@@ -9,34 +9,33 @@ export function McpConsentEditor({ tool, consents }: { tool: ToolDefinition; con
   const [busy, setBusy] = useState(false);
   if (tool.source?.kind !== "mcp") return null;
   const grant = consents.grantFor(tool.id);
-  const current = grant?.remoteToolName === tool.source.remoteToolName &&
-    grant.discoveryFingerprint === tool.source.discoveryFingerprint &&
-    consents.servers.some(({ id }) => id === grant.serverId);
-  const serverId = current ? grant!.serverId : selectedServer || consents.servers[0]?.id || "";
-  const label = consents.servers.find(({ id }) => id === serverId)?.label ?? serverId;
+  const current = Boolean(consents.bindingFor(tool));
+  const servers = consents.servers.filter((server) => server.executionAvailable);
+  const serverId = current ? grant!.serverId : selectedServer || servers[0]?.id || "";
 
-  async function choose(mode: "ask" | "automatic") {
+  async function choose(mode: string) {
     setBusy(true);
-    await consents.grant(tool, serverId, mode);
-    setBusy(false);
+    try {
+      if (mode === "manual") await consents.revoke(tool.id);
+      else await consents.grant(tool, serverId, mode as "ask" | "automatic");
+    } finally { setBusy(false); }
   }
 
-  return <div className="tool-fields" role="group" aria-label={`MCP execution for ${tool.name}`}>
-    <strong>MCP execution</strong>
-    {current ? <>
-      <p>{label} · {grant!.remoteToolName} · {grant!.mode === "automatic" ? "Run automatically" : "Ask each time"}. Permission ends with this service session.</p>
-      {grant!.mode === "ask" ?
-        <button type="button" className="button secondary" disabled={busy} onClick={() => void choose("automatic")}>Run automatically for this tool</button> :
-        <button type="button" className="button secondary" disabled={busy} onClick={() => void choose("ask")}>Ask each time</button>}
-      <button type="button" className="text-button" disabled={busy} onClick={() => void consents.revoke(tool.id)}>Remove MCP permission</button>
-    </> : <>
+  return <div className="tool-fields mcp-execution-controls" role="group" aria-label={`MCP execution for ${tool.name}`}>
+    {current ? <small>{consents.servers.find(({ id }) => id === serverId)?.label} · {grant!.remoteToolName}</small> :
       <label>Local MCP server
-        <select value={serverId} onChange={(event) => setSelectedServer(event.target.value)}>
-          {consents.servers.map((server) => <option key={server.id} value={server.id}>{server.label} — {server.endpointIdentity}</option>)}
+        <select disabled={busy} value={serverId} onChange={(event) => setSelectedServer(event.target.value)}>
+          {!servers.length && <option value="">No executable servers available</option>}
+          {servers.map((server) => <option key={server.id} value={server.id}>{server.label} — {server.endpointIdentity}</option>)}
         </select>
-      </label>
-      <button type="button" className="button secondary" disabled={!serverId || busy} onClick={() => void choose("ask")}>Allow execution; ask each time</button>
-    </>}
+      </label>}
+    <label>Execution mode
+      <select aria-label={`Execution mode for ${tool.name}`} disabled={busy} value={current ? grant!.mode : "manual"} onChange={(event) => void choose(event.target.value)}>
+        <option value="manual">Manual results</option>
+        <option value="ask" disabled={!serverId}>Ask before running</option>
+        <option value="automatic" disabled={!serverId}>Run automatically</option>
+      </select>
+    </label>
     {consents.error && <p role="alert">{consents.error}</p>}
   </div>;
 }

@@ -61,8 +61,9 @@ function tool(overrides = {}) {
 test("a project with no tools yet shows an empty state with an add action", async () => {
   const html = await renderPane({ tools: [] });
 
-  assert.match(html, /No project tools yet/);
-  assert.match(html, /available to this project/);
+  assert.match(html, /Project tools/);
+  assert.doesNotMatch(html, /No project tools yet/);
+  assert.doesNotMatch(html, /pane-empty-state/);
   assert.match(html, /\+ Add project tool/);
 });
 

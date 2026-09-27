@@ -1,6 +1,6 @@
 # MCP discovery and attachment
 
-MCP discovery works in the service-hosted web app. It lists declared servers, connects only after a user selects one, and copies selected tool definitions into a project or the next request. An attached definition can be answered manually, by a mock, or through the M3 local execution permission described in [M3 execution](MCP_M3_EXECUTION_DESIGN.md).
+MCP discovery works in the service-hosted web app. It lists declared servers, connects only after a user selects one, and copies selected tool definitions into a project or keeps them attached in the current tab across runs. An attached definition can be answered manually, by a mock, or through the M3 local execution permission described in [M3 execution](MCP_M3_EXECUTION_DESIGN.md).
 
 For a copyable, no-account tryout with a Python loopback server and a deterministic provider, see [Try MCP locally](MCP_LOCAL_TRYOUT.md).
 
@@ -41,6 +41,10 @@ Defaults are a 10-second connection/discovery timeout, 30-second later call time
 Discovery data is live and untrusted. Attachment copies the selected remote name (or an explicit valid alias), description, and input schema into a portable `ToolDefinition`. It also stores a secret-free source receipt containing the remote tool name and SHA-256 discovery fingerprint. The receipt contains no local server profile ID, endpoint, authorization, or protocol session value. Project export and historical run input remain readable on another device without the MCP server.
 
 The model-visible name defaults to the remote name when valid and unique. Invalid or colliding names require an explicit alias. An attached snapshot does not change on server refresh. The browser shows changed top-level descriptor fields and missing tools after a refresh; accepting a newly discovered definition requires a new attachment. Editing an attached project definition removes its stale source receipt.
+
+The browser offers searchable tool rows with expandable details, multi-selection, and a shared attachment action. “Keep attached in this tab” is the default: snapshots survive runs and same-project conversation changes, but clear on reload or opening a different project. “Save to project” adds definitions to the project draft; the project's normal save workflow persists them. A kept tool can also be moved into the project without changing its identity.
+
+For executable local servers, attachment defaults to “Ask before running.” The same action creates the definition and explicitly requests a temporary permission for the discovered server. “Run automatically” and “Manual results” are available before attachment and on attached rows. If permission creation fails, the definition remains attached and the UI reports the failure; it never reports successful permission creation. Discovery-only servers offer manual attachment. The server's execution-availability flag is only a display hint; the grant and execution endpoints remain authoritative.
 
 Discovery alone includes no execution permission. For local interactive debugging, a user can separately allow a specific attached tool to use a declared unauthenticated loopback server. The default asks at each call; an explicit per-tool choice runs automatically for the browser/service session. Repeated runs and evaluations do not use MCP permissions yet. The n8n provider-wire findings are in [the comparison](N8N_PROVIDER_WIRE_COMPARISON_2026-09-24.md).
 

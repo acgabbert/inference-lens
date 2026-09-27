@@ -439,7 +439,8 @@ pre,
 .tool-mock-superseded,
 .inference-settings-scope,
 .inference-settings-override,
-.target-caption {
+.target-caption,
+.mcp-permission-note {
   font-size: var(--type-metadata);
 }
 
@@ -2109,6 +2110,7 @@ output {
 }
 
 .tool-manifest-list li {
+  flex-wrap: wrap;
   padding: var(--space-xs) var(--space-sm);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
@@ -8566,4 +8568,62 @@ main {
   .n8n-review-content {
     padding-inline: var(--space-md);
   }
+}
+
+
+.tool-manifest-list [role="group"] {
+  flex-basis: 100%;
+  min-width: 0;
+  margin: 0;
+}
+
+.mcp-discovery-body .tool-list > .tool-editor > label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.mcp-discovery-body .tool-list input[type="checkbox"] {
+  width: auto;
+}
+
+
+.mcp-attachment-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--space-sm);
+  align-items: end;
+}
+
+.mcp-attachment-controls label {
+  min-width: 0;
+}
+
+.mcp-attachment-controls > button {
+  justify-self: start;
+}
+
+
+.tool-manifest-list .mcp-execution-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs) var(--space-sm);
+  padding: 0;
+}
+
+.mcp-execution-controls > small {
+  flex: 1;
+  min-width: 120px;
+}
+
+.mcp-execution-controls > label {
+  flex: 1;
+  min-width: 170px;
+}
+
+.mcp-permission-note {
+  margin: 0;
+  padding: 0 var(--space-md) var(--space-sm);
+  color: var(--text-secondary);
 }

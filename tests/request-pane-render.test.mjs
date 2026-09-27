@@ -267,7 +267,7 @@ test("the tool manifest lists both routes to a request in one place", async () =
   assert.match(html, /tool-origin project/);
   assert.match(html, /tool-origin once/);
   assert.equal((html.match(/>Detach</g) ?? []).length, 2);
-  assert.match(html, /aria-label="Detach scratch_pad from the next request"/);
+  assert.match(html, /aria-label="Detach scratch_pad from this tab"/);
 });
 
 test("an unselected project tool is counted out of the manifest", async () => {

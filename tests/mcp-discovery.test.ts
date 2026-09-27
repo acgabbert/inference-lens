@@ -16,7 +16,7 @@ test("the MCP catalog pins a safe host endpoint and publishes only its origin", 
   const [server] = parseMcpServerCatalog(catalog());
   assert.equal(server.connectTimeoutMs, 10_000);
   assert.equal(server.maxResponseBytes, 1_048_576);
-  assert.deepEqual(publicMcpServer(server), { id: "fixture", label: "Fixture", endpointIdentity: "http://127.0.0.1:44018" });
+  assert.deepEqual(publicMcpServer(server), { id: "fixture", label: "Fixture", endpointIdentity: "http://127.0.0.1:44018", executionAvailable: true });
   for (const endpoint of [
     "http://example.com/mcp",
     "https://user:secret@example.com/mcp",

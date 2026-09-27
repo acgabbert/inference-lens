@@ -88,8 +88,8 @@ export function readMcpServerCatalog(
 }
 
 export function publicMcpServer(server: McpServerDeclaration): {
-  id: string; label: string; endpointIdentity: string;
+  id: string; label: string; endpointIdentity: string; executionAvailable: boolean;
 } {
   const url = new URL(server.endpoint);
-  return { id: server.id, label: server.label, endpointIdentity: url.origin };
+  return { id: server.id, label: server.label, endpointIdentity: url.origin, executionAvailable: url.protocol === "http:" && server.authorization.kind === "none" && ["127.0.0.1", "[::1]"].includes(url.hostname) };
 }

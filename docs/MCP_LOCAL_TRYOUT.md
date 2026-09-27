@@ -54,9 +54,9 @@ change that environment variable.
 2. In **Tools → MCP servers**, select **Local Python example** and click
    **Connect and browse tools**. You should see `lookup_record` and its
    `record_id` input schema.
-3. Click **Attach to next request** for `lookup_record`. In its **MCP execution**
-   controls under the attached tool, select **Local Python example** and click
-   **Allow execution; ask each time**.
+3. Select `lookup_record`. Leave **Keep attached in this tab** and
+   **Ask before running** selected, then click **Attach selected (1)**.
+   The attachment creates permission for the discovered server.
 4. In **Messages**, enter `Look up sample-42.` and click **Run current
    conversation**. The pending tool call should show `lookup_record` with
    `{"record_id":"sample-42"}`. Click **Approve this call** to approve the
@@ -67,11 +67,11 @@ change that environment variable.
 
 If the pending call shows **Manual** and a blank result box, the tool was
 attached without an active MCP execution permission. Stop that run, return to
-**Tools → Tools attached to this request**, choose **Allow execution; ask each
-time** under `lookup_record`, and start a new run. Connecting and attaching do
-not themselves allow execution.
+**Tools → Tools attached to this request**, choose **Ask before running**
+under `lookup_record`, and start a new run. Connecting alone does not allow
+execution; attachment requests permission according to the selected mode.
 
-The grant is session scoped. **Run automatically for this tool** is a separate
+The grant is session scoped. **Run automatically** is a separate
 opt-in in the same controls. Repeated experiments and evaluations do not use
 MCP execution permissions yet. This workflow uses the service-hosted web app;
 the Tauri app does not have this MCP host integration.

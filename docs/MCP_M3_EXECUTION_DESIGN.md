@@ -13,7 +13,7 @@ evaluations remain an M4 concern.
 
 ## Identities and ownership
 
-The project or request keeps its detached `ToolDefinition` and source receipt.
+The project or tab keeps its detached `ToolDefinition` and source receipt.
 Neither contains a local server ID. A separate, host-owned consent record maps
 one attached `ToolId` to one operator-declared server ID, remote tool name, and
 discovery fingerprint. It also records the user's execution mode:
@@ -101,3 +101,19 @@ those updates.
 After the complete MCP-backed run, compare its initial and continuation
 provider requests against the committed n8n captures. That comparison informs
 N1; M3 does not add an n8n presentation policy on speculation.
+
+
+## M3.5 discovery and attachment UX
+
+Attachment now keeps temporary definitions across runs in the current tab.
+Reload and a different project clear them; same-project draft replacement does
+not. These definitions remain outside project serialization until explicitly
+saved to the project. Run inputs still snapshot the exposed definitions.
+
+Discovery selection defaults to an explicit “Attach selected” action with
+“Ask before running.” That action attaches each snapshot and requests consent
+for its discovered server. Automatic execution remains an explicit choice.
+The draft owner returns the created definition to the tools feature owner,
+which coordinates permission creation. Failed permission creation leaves a
+visible attached definition and an error; there is no implicit execution.
+Existing host permission lifetimes and per-call validation remain unchanged.

@@ -124,7 +124,7 @@ export function useProjectWorkspace(input: {
   createFreshProject(): ProjectFile;
   createProject(): ProjectFile;
   currentDraft(): UpdateProjectDraft;
-  onApplyDraft(draft: ProjectDraft): void;
+  onApplyDraft(draft: ProjectDraft, projectId: ProjectFile["projectId"]): void;
   /**
    * A save the user asked for landed. Deliberately not called by the auto-save
    * loop below: auto-save is continuous and unremarkable, and confirming it
@@ -389,7 +389,7 @@ export function useProjectWorkspace(input: {
     advanceProjectChangeVersion();
     setProjectFile(project);
     setCurrentWorkspace(workspace);
-    onApplyDraft(draft);
+    onApplyDraft(draft, project.projectId);
     if (profileId && resolvedProfile) {
       rememberMappedProfile(project.projectId, baseRequirementId, resolvedProfile);
     }

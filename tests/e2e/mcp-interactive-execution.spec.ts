@@ -42,12 +42,8 @@ async function allowMcp(page: Page, mode: "ask" | "automatic") {
   await page.getByRole("tab", { name: "Tools" }).click();
   const editor = page.getByRole("group", { name: "MCP execution for lookup_record" });
   await editor.getByRole("combobox", { name: "Local MCP server" }).selectOption("execution-fixture");
-  await editor.getByRole("button", { name: "Allow execution; ask each time" }).click();
-  await expect(editor).toContainText("Ask each time");
-  if (mode === "automatic") {
-    await editor.getByRole("button", { name: "Run automatically for this tool" }).click();
-    await expect(editor).toContainText("Run automatically");
-  }
+  await editor.getByRole("combobox", { name: "Execution mode for lookup_record" }).selectOption(mode);
+  await expect(editor.getByRole("combobox", { name: "Execution mode for lookup_record" })).toHaveValue(mode);
   await page.getByRole("tab", { name: "Messages" }).click();
 }
 
@@ -164,7 +160,7 @@ test("an explicit automatic permission executes without a second approval", asyn
   expect(await callCount(request)).toBe(before + 1);
 });
 
-test("a next-request MCP snapshot can answer its call", async ({ page }) => {
+test("a kept MCP snapshot answers successive runs and clears on reload", async ({ page, request }) => {
   await seedProfile(page, { model: "mcp-tool-model", favoriteModels: ["mcp-tool-model"], capabilityOverrides: { tools: true } });
   await page.goto("/");
   await waitForHydration(page);
@@ -172,17 +168,30 @@ test("a next-request MCP snapshot can answer its call", async ({ page }) => {
   const panel = page.getByRole("region", { name: "MCP servers" });
   await panel.getByRole("combobox", { name: "Declared MCP server" }).selectOption("execution-fixture");
   await panel.getByRole("button", { name: "Connect and browse tools" }).click();
-  await panel.getByRole("article").filter({ hasText: "Look up a record" }).getByRole("button", { name: "Attach to next request" }).click();
+  await panel.getByRole("checkbox", { name: "Select lookup_record", exact: true }).check();
+  await panel.getByRole("button", { name: "Attach selected (1)" }).click();
   const editor = page.getByRole("group", { name: "MCP execution for lookup_record" });
-  await editor.getByRole("combobox", { name: "Local MCP server" }).selectOption("execution-fixture");
-  await editor.getByRole("button", { name: "Allow execution; ask each time" }).click();
-  await expect(editor).toContainText("Ask each time");
+  await expect(editor.getByRole("combobox", { name: "Execution mode for lookup_record" })).toHaveValue("ask");
+  await expect(editor).toContainText("Synthetic MCP execution fixture");
   await page.getByRole("tab", { name: "Messages" }).click();
   await page.getByRole("textbox", { name: "Message 1 content" }).fill("Look up sample-42.");
   await page.getByRole("button", { name: /^Run current conversation/ }).first().click();
   await page.getByRole("button", { name: "Approve this call" }).click();
   await page.getByRole("button", { name: "Supply results and continue" }).click();
   await expect(page.locator(".transcript-list")).toContainText("Record sample-42: local MCP result");
+  await page.getByRole("tab", { name: "Tools" }).click();
+  await expect(page.getByRole("region", { name: "Tools attached to this request" })).toContainText("lookup_record");
+  const beforeSecondRun = await callCount(request);
+  await editor.getByRole("combobox", { name: "Execution mode for lookup_record" }).selectOption("automatic");
+  await expect(editor.getByRole("combobox", { name: "Execution mode for lookup_record" })).toHaveValue("automatic");
+  await page.getByRole("tab", { name: "Messages" }).click();
+  await page.getByRole("button", { name: /^Run current conversation/ }).first().click();
+  await expect(page.locator(".transcript-list")).toContainText("Record sample-42: local MCP result");
+  await expect.poll(() => callCount(request)).toBe(beforeSecondRun + 1);
+  await page.reload();
+  await waitForHydration(page);
+  await page.getByRole("tab", { name: "Tools" }).click();
+  await expect(page.getByRole("region", { name: "Tools attached to this request" })).toContainText("No tools attached");
 });
 
 test("an attached MCP tool without permission explains the manual result prompt", async ({ page }) => {
@@ -193,7 +202,9 @@ test("an attached MCP tool without permission explains the manual result prompt"
   const panel = page.getByRole("region", { name: "MCP servers" });
   await panel.getByRole("combobox", { name: "Declared MCP server" }).selectOption("execution-fixture");
   await panel.getByRole("button", { name: "Connect and browse tools" }).click();
-  await panel.getByRole("article").filter({ hasText: "Look up a record" }).getByRole("button", { name: "Attach to next request" }).click();
+  await panel.getByRole("combobox", { name: "Execution mode", exact: true }).selectOption("manual");
+  await panel.getByRole("checkbox", { name: "Select lookup_record", exact: true }).check();
+  await panel.getByRole("button", { name: "Attach selected (1)" }).click();
   await page.getByRole("tab", { name: "Messages" }).click();
   await page.getByRole("textbox", { name: "Message 1 content" }).fill("Look up sample-42.");
   await page.getByRole("button", { name: /^Run current conversation/ }).first().click();

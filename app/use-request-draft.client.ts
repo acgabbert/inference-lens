@@ -34,7 +34,7 @@ export interface RequestDraftHandle extends RequestDraftSnapshot {
     id: ConversationMessage["id"],
     patch: { content?: MessageContentPart[]; role?: ConversationMessage["role"] },
   ): void;
-  addTool(): void;
+  addTool(): ToolId;
   updateTool(id: ToolId, patch: Partial<ToolDefinition>): void;
   removeTool(id: ToolId): void;
   moveTool(id: ToolId, offset: number): void;
@@ -43,8 +43,9 @@ export interface RequestDraftHandle extends RequestDraftSnapshot {
   updateToolMock(toolId: ToolId, text: string, enabled: boolean): void;
   attachRegistryToolToProject(source: RegistryTool): string | undefined;
   attachRegistryToolToRequest(source: RegistryTool): string | undefined;
-  attachMcpToolToProject(source: McpDiscoveredTool, name: string): string | undefined;
-  attachMcpToolToRequest(source: McpDiscoveredTool, name: string): string | undefined;
+  attachMcpToolToProject(source: McpDiscoveredTool, name: string): ToolDefinition | string;
+  attachMcpToolToRequest(source: McpDiscoveredTool, name: string): ToolDefinition | string;
+  saveRequestToolToProject(id: ToolId): void;
   removeRequestTool(id: ToolId): void;
   clearRequestTools(): void;
   replaceProjectDraft(snapshot: RequestDraftSnapshot): void;
@@ -157,7 +158,7 @@ export function useRequestDraft(input: {
     onProjectDirty();
   }
 
-  function addTool(): void {
+  function addTool(): ToolId {
     const id = createEntityId("tool", randomUUID());
     const inputSchema: JsonObject = {
       type: "object",
@@ -170,6 +171,7 @@ export function useRequestDraft(input: {
     ]);
     setEnabledToolIds((current) => [...current, id]);
     onProjectDirty();
+    return id;
   }
 
   function updateTool(id: ToolId, patch: Partial<ToolDefinition>): void {
@@ -244,7 +246,7 @@ export function useRequestDraft(input: {
       exposedProjectNames.has(source.name) ||
       requestTools.some(({ name }) => name === source.name)
     ) {
-      const message = `A tool named "${source.name}" is already attached to the next request.`;
+      const message = `A tool named "${source.name}" is already attached in this tab.`;
       onProjectError(message, { clearKind: true });
       return message;
     }
@@ -253,9 +255,9 @@ export function useRequestDraft(input: {
     return undefined;
   }
 
-  function attachMcpToolToProject(source: McpDiscoveredTool, name: string): string | undefined {
+  function attachMcpToolToProject(source: McpDiscoveredTool, name: string): ToolDefinition | string {
     if (tools.some((tool) => tool.name === name)) return `A project tool named "${name}" already exists.`;
-    if (requestTools.some((tool) => tool.name === name)) return `A tool named "${name}" is already attached to the next request.`;
+    if (requestTools.some((tool) => tool.name === name)) return `A tool named "${name}" is already attached in this tab.`;
     let snapshot: ToolDefinition;
     try { snapshot = snapshotMcpTool(source, name, createEntityId("tool", randomUUID())); }
     catch (error) { return error instanceof Error ? error.message : "This tool cannot be attached."; }
@@ -263,20 +265,20 @@ export function useRequestDraft(input: {
     setEnabledToolIds((current) => [...current, snapshot.id]);
     onProjectDirty();
     onProjectError(undefined);
-    return undefined;
+    return snapshot;
   }
 
-  function attachMcpToolToRequest(source: McpDiscoveredTool, name: string): string | undefined {
+  function attachMcpToolToRequest(source: McpDiscoveredTool, name: string): ToolDefinition | string {
     const exposedProjectNames = new Set(tools.filter(({ id }) => enabledToolIds.includes(id)).map(({ name }) => name));
     if (exposedProjectNames.has(name) || requestTools.some((tool) => tool.name === name)) {
-      return `A tool named "${name}" is already attached to the next request.`;
+      return `A tool named "${name}" is already attached in this tab.`;
     }
     let snapshot: ToolDefinition;
     try { snapshot = snapshotMcpTool(source, name, createEntityId("tool", randomUUID())); }
     catch (error) { return error instanceof Error ? error.message : "This tool cannot be attached."; }
     setRequestTools((current) => [...current, snapshot]);
     onProjectError(undefined);
-    return undefined;
+    return snapshot;
   }
 
   function mockForTool(toolId: ToolId): ToolMock | undefined {
@@ -301,6 +303,20 @@ export function useRequestDraft(input: {
     onProjectDirty();
   }
 
+  function saveRequestToolToProject(id: ToolId): void {
+    const tool = requestTools.find((item) => item.id === id);
+    if (!tool) return;
+    if (tools.some((item) => item.name === tool.name)) {
+      onProjectError(`A project tool named "${tool.name}" already exists.`, { clearKind: true });
+      return;
+    }
+    // Preserve identity so the existing temporary execution permission still resolves.
+    setTools((current) => [...current, tool]);
+    setEnabledToolIds((current) => [...current, id]);
+    setRequestTools((current) => current.filter((item) => item.id !== id));
+    onProjectDirty();
+  }
+
   function removeRequestTool(id: ToolId): void {
     setRequestTools((current) => current.filter((tool) => tool.id !== id));
   }
@@ -314,7 +330,6 @@ export function useRequestDraft(input: {
     setTools(snapshot.tools);
     setToolMocks(snapshot.toolMocks);
     setEnabledToolIds(snapshot.enabledToolIds);
-    setRequestTools([]);
   }
 
   return {
@@ -340,6 +355,7 @@ export function useRequestDraft(input: {
     attachRegistryToolToRequest,
     attachMcpToolToProject,
     attachMcpToolToRequest,
+    saveRequestToolToProject,
     removeRequestTool,
     clearRequestTools,
     replaceProjectDraft,
