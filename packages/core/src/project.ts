@@ -1470,12 +1470,19 @@ export class ProjectValidationError extends Error {
   }
 }
 
+function unsupportedSchemaMessage(version: unknown): string {
+  const prefix = `Project schema v${String(version)} is not supported: this build only opens schema v${PROJECT_SCHEMA_VERSION}.`;
+  return typeof version === "number" && version > PROJECT_SCHEMA_VERSION
+    ? `${prefix} It was saved by a newer Inference Lens; update this build to open it.`
+    : `${prefix} Open it with an earlier Inference Lens release that supports it and export it again.`;
+}
+
 export function parseProjectFile(value: unknown): ProjectFile {
   if (typeof value === "object" && value !== null && "schemaVersion" in value && value.schemaVersion !== PROJECT_SCHEMA_VERSION) {
     throw new ProjectValidationError([{
       code: "custom",
       path: ["schemaVersion"],
-      message: `Project schema v${String(value.schemaVersion)} is unsupported. Open or export it with a v10-compatible Inference Lens build.`,
+      message: unsupportedSchemaMessage(value.schemaVersion),
     }]);
   }
   const parsed = projectFileV10Schema.safeParse(value);
