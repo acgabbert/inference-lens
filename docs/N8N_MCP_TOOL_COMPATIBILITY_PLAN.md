@@ -1,6 +1,6 @@
 # n8n-compatible MCP tool execution plan
 
-**Status:** in progress; N0, M1, and M2 are implemented, and the local interactive M3 slice is accepted. N1's bounded string-input comparison is captured; see the September 26 N1 update below.
+**Status:** N0, M1, M2, and M4 are implemented; the local interactive M3 slice is accepted and its live checks are automated. N1 has one reviewed string-input comparison. The next slice expands N1 evidence; see the [N1 matrix runbook](N1_MATRIX_RUNBOOK.md). No general n8n compatibility claim or presentation policy has been adopted.
 
 **Original baseline:** `main` at `a15b96c`, reviewed September 23, 2026.
 
@@ -43,12 +43,40 @@ in CI; see the acceptance record below.
 See the
 [M3 acceptance record](MCP_M3_EXECUTION_DESIGN.md#regression-and-acceptance).
 
-**September 26 M4 design:** [the M4 batch design](MCP_M4_BATCH_DESIGN.md)
+**September 26 M4 implementation:** [the M4 batch design](MCP_M4_BATCH_DESIGN.md)
 revises decision 8 and Phase 5. Command and MCP tools share one browser-side
 grant record, and the service validates each call without holding permission
 state. This replaces M3's service-side session consent. A batch that stops
 because a tool became unavailable is recorded as `stopped` in a v5 experiment
 result.
+
+**Current status after PR #119:** the dated progress entries above describe
+their original slices. M4 is merged, so unattended repeated runs/evaluations
+are no longer future work, and browser-local grants that last until revoked
+supersede M3's service-session consent. Preflight runs on Start before saving
+the plan or calling the provider; the confirmation dialog does not itself
+perform discovery. Unavailability stops a batch; a timeout fails only its
+repetition. Execution still supports only unauthenticated literal-loopback
+Streamable HTTP servers. Authenticated/remote execution and Tauri remain deferred.
+
+### Next slice: expand N1 evidence
+
+Use the [runbook](N1_MATRIX_RUNBOOK.md) to capture primitive inputs, nested
+inputs, multiple output items, and native MCP tool errors through the actual
+UI and Python SDK, then compare both provider requests with the existing n8n
+captures. Keep SDK-generated schemas and explicit fixture-owned text results;
+do not alter the application serializer to erase measured differences.
+
+Empty-output has workflow stubs but **no committed n8n provider-wire capture**.
+Capture that reference first; a stub is not an expected provider response.
+Fixed inputs, rejected arguments, and multiple attached tools are later N1
+extensions, not covered by the four-scenario harness.
+
+The deliverable is a reviewed path-by-path difference inventory and a bounded
+compatibility decision, not merely a green browser suite. Before implementing
+any presentation policy, agree its owner, selection/persistence, trace
+representation, source scope, supported versions, and result projection with
+the user. M5 remains driven by observed needs.
 
 ## Relationship to earlier planning
 
@@ -729,9 +757,10 @@ versions. Compatibility is evidence-backed and versioned, not a blanket claim.
 
 ## Phase 5 — evaluations and repeated runs
 
-The existing sequential controller already accepts resolved tool bindings, so
-this phase should require no MCP-specific experiment controller or artifact
-schema.
+Implemented by M4. The shared sequential controller resolves both command and
+MCP bindings. The [M4 contract](MCP_M4_BATCH_DESIGN.md) supersedes the original
+assumption that no artifact change was needed: v5 adds a truthful `stopped`
+status and reason for a batch stopped by tool unavailability.
 
 ### Scope
 
@@ -772,7 +801,9 @@ authorization decision.
   confirmation.
 - Tool-call checks can assert the name and argument subset.
 - Missing/revoked/stale bindings block before the first provider request.
-- A failed tool execution fails one repetition and later repetitions continue.
+- A timeout or post-call execution failure fails one repetition and later
+  repetitions continue; pre-call binding unavailability stops the batch and
+  leaves later cells not-run.
 - Saved experiment artifacts contain no MCP connection or credential details.
 - Reopening results does not reconnect to the MCP server.
 
@@ -912,15 +943,15 @@ to that environment.
 Each slice should be independently reviewable and usable as evidence for the
 next.
 
-| Slice | Deliverable | Gate |
+| Slice | Current status | Deliverable / gate |
 | --- | --- | --- |
-| N0 | Scripted n8n provider capture and baseline sub-workflow fixtures | Confirm home n8n/node versions and disposable workflow access. |
-| M1 | Throwaway Streamable HTTP client spike against Python server | Pin released SDK/protocol and record host/security decisions. |
-| M2 | Operator-owned MCP catalog, discovery, diff, and snapshot attachment | Agree profile/grant/fingerprint/name contracts. No execution. |
-| M3 | Interactive MCP execution through the existing executor seam | Approve host endpoint contract, result mapping, evidence boundary. |
-| N1 | n8n structural comparator and compatibility decision | N0 and M3 evidence; decide whether any presentation profile is justified. |
-| M4 | MCP tools in repeated runs and evaluations | Generalized grants, stale-binding policy, preflight disclosure. |
-| M5 | Hardening selected from observed use | Prioritize actual failures; no protocol-completeness work by default. |
+| N0 | Eleven captures committed | Scripted n8n provider evidence; empty-output still lacks a capture. |
+| M1 | Accepted | SDK/protocol and host/security decisions recorded. |
+| M2 | Implemented | Operator catalog, discovery, diff, and detached attachment. |
+| M3 | Local slice accepted; live checks automated | Interactive execution, interruption/manual continuation, server-less trace import, Python protocol lane. |
+| N1 | String-input reviewed; expanded harness ready | Review four additional captures, resolve the empty-output reference gap, then decide whether a presentation policy is justified. |
+| M4 | Implemented | Shared browser-local grants, live preflight, batch execution and v5 stopped results. |
+| M5 | Deferred | Prioritize observed failures and concrete user needs. |
 
 ## Decisions required before implementation
 
