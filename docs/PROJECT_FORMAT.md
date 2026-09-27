@@ -2,8 +2,9 @@
 
 Inference Lens projects use a visible `<name>.inference-lens/` directory bundle
 containing one canonical, portable JSON document named `project.json`. New
-saves use schema version 9. Version 5, 6, 7, and 8 projects are upgraded on load; earlier
-project formats and the proof-of-concept request export remain unsupported.
+saves use schema version 10, and version 10 is the only version the parser
+accepts: earlier project formats, including v5–v9, and the proof-of-concept
+request export are rejected with a version error rather than upgraded on load.
 Every schema is strict, so a reader rejects a document it does not understand
 rather than guessing.
 
@@ -85,7 +86,7 @@ complete token. Whitespace outside a token remains literal prompt content.
 
 Other Unicode whitespace, empty bodies, internal whitespace, dotted names, and
 arbitrary expression bodies are invalid native tokens. This grammar expansion
-also applies to existing Project v9 content: opening a project with a previously
+also applies to existing Project v10 content: opening a project with a previously
 invalid spaced token recognizes it as a native variable, but does not rewrite
 the project JSON or add a syntax-version field.
 
@@ -169,7 +170,7 @@ credential store, an environment variable, or session memory.
 
 ## Template authoring session
 
-The live Project v9 document is the canonical owner of template definitions and
+The live Project v10 document is the canonical owner of template definitions and
 authored conversation items. Opening the Templates workspace from an ad-hoc
 request materializes an untitled in-memory project; it does not create a
 machine-local template registry.
@@ -275,6 +276,8 @@ as the shared default of 5. It is authored on the suite rather than at
 confirmation because a repetition that reaches it fails, which makes the ceiling
 part of what produced a result.
 
+*Historical note: the paragraph below records how earlier versions were upgraded; the current parser no longer performs these migrations.*
+
 Project v8 migrates to v9 by exposing no tools and leaving the ceiling absent,
 so an upgraded suite runs exactly as it did — with no tools, no repetition can
 reach a second turn. Project v7 migrates to v8 by making each suite's borrowed
@@ -314,7 +317,7 @@ structure still arrives whole and ordered, because one use emits every message
 of its pinned revision. Authors add surrounding messages afterwards in Messages.
 
 Bindings, cases, and tools are untouched, other suites are untouched, and the
-project stays at schema version 9 — the shortcut writes nothing a v9 parser did
+project stays at schema version 10 — the shortcut writes nothing a v10 parser did
 not already accept. Because the new use has a new stable ID, existing suite
 bindings are never retargeted onto it: an identical template ID says nothing
 about whether a binding still resolves, so a suite that already has case inputs
@@ -359,7 +362,7 @@ Inference Lens refuses to overwrite it and asks the user to reopen the project.
 Completed, cancelled, and explicitly stopped runs are written as immutable
 `traces/<runId>.json` diagnostic artifacts. A repeated byte-identical write is
 allowed; different contents can never replace an existing run ID. These files
-are deliberately outside the Project v9 manifest contract, so adding or
+are deliberately outside the Project v10 manifest contract, so adding or
 removing a trace does not dirty authored project state. See
 [the run trace format](RUN_TRACE_FORMAT.md).
 

@@ -8,7 +8,7 @@ There are two executors: the project mock, and
 it has no transport, no timeout, and no asynchronous failure — so the command
 tool is what actually tested it. The contract held: the command executor added a
 binding kind, an identity case, and a host module, and changed nothing in the
-run model. An MCP client arrives later against the same seam.
+run model. The MCP client (see [MCP tool execution](MCP_M3_EXECUTION_DESIGN.md)) was added against the same seam.
 
 ## Descriptor and binding
 
