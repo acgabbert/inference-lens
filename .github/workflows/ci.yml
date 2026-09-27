@@ -60,6 +60,19 @@ jobs:
 
       - run: npm run test:e2e
 
+      # The Node MCP fixture negotiates at most 2025-11-25 and cannot be killed
+      # mid-call as a separate process; this lane runs the same host against the
+      # official Python SDK, pinned in scripts/requirements-mcp.txt.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - run: |
+          python -m venv .venv-mcp
+          .venv-mcp/bin/python -m pip install -r scripts/requirements-mcp.txt
+
+      - run: npm run test:e2e -- --config playwright.python-mcp.config.ts
+
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

@@ -102,8 +102,9 @@ Do not call the current behavior generally “n8n compatible” or exact
 
 The opt-in config owns every listener, uses the existing capture provider, and
 creates a fresh temporary output directory. Ordinary browser runs skip this
-Python-only spec. Prepare Python 3.10+ at `.venv-mcp` with `mcp==2.1.1` and
-`pydantic==2.13.5`; the fixture checks those versions at startup. This checkout
+Python-only spec. Prepare Python 3.10+ at `.venv-mcp` from
+`scripts/requirements-mcp.txt` (`mcp==2.1.1`, `pydantic==2.13.5`); the fixture
+checks those versions at startup. This checkout
 already had that environment; nothing was installed for this task.
 
 ```sh

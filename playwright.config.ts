@@ -8,6 +8,7 @@ const flakyFixturePort = 44015;
 const mcpFixturePort = 44018;
 const mcpExecutionFixturePort = 44019;
 const mcpBatchFixturePort = 44020;
+const mcpInterruptionFixturePort = 44023;
 
 /**
  * The only reason the suite's dev server can run anything at all.
@@ -118,6 +119,12 @@ export default defineConfig({
     {
       command: `INFERENCE_LENS_MCP_FIXTURE_PORT=${mcpBatchFixturePort} node scripts/mcp-discovery-fixture.mjs`,
       url: `http://127.0.0.1:${mcpBatchFixturePort}/status`,
+      reuseExistingServer: false,
+      timeout: 10_000,
+    },
+    {
+      command: `INFERENCE_LENS_MCP_FIXTURE_PORT=${mcpInterruptionFixturePort} node scripts/mcp-discovery-fixture.mjs`,
+      url: `http://127.0.0.1:${mcpInterruptionFixturePort}/status`,
       reuseExistingServer: false,
       timeout: 10_000,
     },

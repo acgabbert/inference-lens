@@ -36,6 +36,16 @@ const mcpErrorModel = "mcp-error-model";
 const mcpSlowModel = "mcp-slow-model";
 /** Asks for the MCP fixture call that takes its server down after answering. */
 const mcpOutageModel = "mcp-outage-model";
+/** Asks for the MCP fixture call that stays in flight until a spec interrupts it. */
+const mcpHoldModel = "mcp-hold-model";
+/** The `record_id` each MCP model asks the fixture for. */
+const mcpRecordIds = {
+  [mcpToolModel]: "sample-42",
+  [mcpErrorModel]: "tool-error",
+  [mcpSlowModel]: "slow",
+  [mcpOutageModel]: "go-down",
+  [mcpHoldModel]: "hold",
+};
 /**
  * Never stops asking for the tool, however many results it is given.
  *
@@ -116,6 +126,7 @@ const server = createServer(async (request, response) => {
         { id: mcpErrorModel, object: "model" },
         { id: mcpSlowModel, object: "model" },
         { id: mcpOutageModel, object: "model" },
+        { id: mcpHoldModel, object: "model" },
         { id: loopingToolModel, object: "model" },
       ],
     }));
@@ -151,8 +162,8 @@ const server = createServer(async (request, response) => {
     return;
   }
 
-  if (body.model === toolCallingModel || body.model === loopingToolModel || [mcpToolModel, mcpErrorModel, mcpSlowModel, mcpOutageModel].includes(body.model)) {
-    const isMcpModel = [mcpToolModel, mcpErrorModel, mcpSlowModel, mcpOutageModel].includes(body.model);
+  if (body.model === toolCallingModel || body.model === loopingToolModel || Object.hasOwn(mcpRecordIds, body.model)) {
+    const isMcpModel = Object.hasOwn(mcpRecordIds, body.model);
     const selectedTool = isMcpModel ? "lookup_record" : toolName;
     const exposed = (body.tools ?? []).map((tool) => tool?.function?.name);
     if (!exposed.includes(selectedTool)) {
@@ -171,7 +182,7 @@ const server = createServer(async (request, response) => {
           tool_calls: [{
             id: `call_weather_${supplied.length + 1}`,
             type: "function",
-            function: { name: selectedTool, arguments: isMcpModel ? JSON.stringify({ record_id: body.model === mcpErrorModel ? "tool-error" : body.model === mcpSlowModel ? "slow" : body.model === mcpOutageModel ? "go-down" : "sample-42" }) : toolArguments },
+            function: { name: selectedTool, arguments: isMcpModel ? JSON.stringify({ record_id: mcpRecordIds[body.model] }) : toolArguments },
           }],
         }
       : {

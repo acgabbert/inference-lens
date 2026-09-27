@@ -25,6 +25,15 @@
       "connectTimeoutMs": 2000,
       "callTimeoutMs": 200,
       "authorization": { "kind": "none" }
+    },
+    {
+      "id": "interruption-fixture",
+      "label": "Synthetic MCP interruption fixture",
+      "endpoint": "http://127.0.0.1:44023/mcp",
+      "transport": "streamable-http",
+      "connectTimeoutMs": 2000,
+      "callTimeoutMs": 30000,
+      "authorization": { "kind": "none" }
     }
   ]
 }

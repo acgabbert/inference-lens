@@ -1,0 +1,5 @@
+# The Python MCP SDK behind the local tryout, the N1 capture, and the Python
+# browser lane (playwright.python-mcp.config.ts). Pinned so a protocol result
+# names the SDK that produced it.
+mcp==2.1.1
+pydantic==2.13.5

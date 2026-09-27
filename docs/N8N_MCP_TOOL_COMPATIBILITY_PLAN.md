@@ -38,6 +38,8 @@ the automated fixture covers continuation after timeout. The user also confirmed
 successful trace import and rendering with the Python server stopped, closing
 the remaining M3 live check. The local interactive slice is accepted; N1's broader
 compatibility scope and M4's repeated runs/evaluations remain separate work.
+These live checks are now automated browser regressions, including a Python lane
+in CI; see the acceptance record below.
 See the
 [M3 acceptance record](MCP_M3_EXECUTION_DESIGN.md#regression-and-acceptance).
 

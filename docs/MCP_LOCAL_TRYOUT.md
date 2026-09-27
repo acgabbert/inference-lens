@@ -13,7 +13,7 @@ provides `python3.12` if it is not installed already.
 
 ```sh
 python3.12 -m venv .venv-mcp
-.venv-mcp/bin/python -m pip install 'mcp==2.1.1'
+.venv-mcp/bin/python -m pip install -r scripts/requirements-mcp.txt
 .venv-mcp/bin/python scripts/local-mcp-server.py
 ```
 
@@ -102,5 +102,8 @@ the Python terminal prints `Waiting 60 seconds` before taking either action:
   connection failure or only reaches its timeout; a timeout alone does not
   establish prompt connection-loss handling. Restart the Python server afterward.
 
-Return to `mcp-tool-model` for the immediate `sample-42` happy path. These are
-manual acceptance checks; adding the delayed fixture does not mark them passed.
+Return to `mcp-tool-model` for the immediate `sample-42` happy path. These
+checks are also automated: `tests/e2e/mcp-interruption.spec.ts` covers them
+against the Node fixture, and the [Python browser lane](../tests/e2e/README.md#python-mcp-lane)
+covers the protocol version and a real `kill -KILL` against this server. This
+walkthrough remains for trying the workflow by hand.

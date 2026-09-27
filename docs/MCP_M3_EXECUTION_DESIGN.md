@@ -93,6 +93,20 @@ timeout. The user also confirmed a saved MCP trace imported and rendered
 successfully with the Python server stopped. This closes the server-less trace
 check and the remaining live acceptance for the local interactive M3 slice.
 
+These manual passes are now regression tests. `tests/e2e/mcp-interruption.spec.ts`
+runs against a Node fixture entry that allows 30 seconds per call, with a
+`hold` record that stays in flight until the spec interrupts it. It covers
+stopping during the call; severing the connection mid-call, reported as
+`execution_failed` well inside the call timeout and followed by a manual result
+and provider continuation, which the live check had not reported; and importing
+the saved trace in a fresh browser with the server down and no MCP request
+made. The Node SDK negotiates at most `2025-11-25`, so
+`tests/e2e/mcp-python.spec.ts` runs the official Python SDK in its own CI lane.
+It checks that discovery shows `MCP 2026-07-28` and a run completes, and that
+`SIGKILL` of a separate server process mid-call fails promptly and still
+accepts a manual result. The specs check what the app shows and records. As
+before, they make no claim that remote work stopped after cancellation.
+
 Verification for the local tryout changes: the Python smoke check passed for an
 immediate result, a delayed call staying pending, and cancellation propagation;
 all 8 tests in `tests/e2e/mcp-interactive-execution.spec.ts` and the full
