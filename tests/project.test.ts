@@ -317,8 +317,37 @@ test("rejects pre-v10 project artifacts with an actionable version error", () =>
     createdAt: "2026-08-01T12:00:00.000Z",
   });
   for (const schemaVersion of [5, 6, 7, 8, 9]) {
-    assert.throws(() => parseProjectFile({ ...current, schemaVersion }), /unsupported/);
+    assert.throws(
+      () => parseProjectFile({ ...current, schemaVersion }),
+      (error: unknown) => {
+        const message = (error as Error).message;
+        assert.match(message, new RegExp(`schema v${schemaVersion} is not supported`));
+        assert.match(message, /only opens schema v10/);
+        assert.match(message, /earlier Inference Lens release/);
+        assert.doesNotMatch(message, /v10-compatible/);
+        return true;
+      },
+    );
   }
+});
+
+test("a project from a newer schema asks for an updated build, not an older release", () => {
+  const current = createProjectFile({
+    name: "Version 11",
+    request,
+    idSuffix: "version-11",
+    createdAt: "2026-08-01T12:00:00.000Z",
+  });
+  assert.throws(
+    () => parseProjectFile({ ...current, schemaVersion: 11 }),
+    (error: unknown) => {
+      const message = (error as Error).message;
+      assert.match(message, /schema v11 is not supported/);
+      assert.match(message, /newer Inference Lens/);
+      assert.doesNotMatch(message, /earlier Inference Lens release/);
+      return true;
+    },
+  );
 });
 
 test("a suite cannot expose a tool the project does not have, or expose one twice", () => {
@@ -649,7 +678,7 @@ test("migrates v5 fragments by duplicating templates used under different roles"
     })),
   };
 
-  assert.throws(() => parseProjectFile(legacy), /unsupported/);
+  assert.throws(() => parseProjectFile(legacy), /schema v5 is not supported/);
   return;
   const migrated = parseProjectFile(legacy);
   assert.equal(migrated.schemaVersion, 9);
@@ -713,7 +742,7 @@ test("refuses to migrate a v5 revision that carries no messages", () => {
 
   assert.throws(
     () => parseProjectFile(legacy),
-    /unsupported/,
+    /schema v5 is not supported/,
   );
 });
 
