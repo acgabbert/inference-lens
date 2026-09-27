@@ -102,6 +102,26 @@ approval unless you grant that tool standing local permission. See [MCP discover
 for attachment and permissions, and [MCP local try-out](docs/MCP_LOCAL_TRYOUT.md)
 for a runnable example.
 
+### Why MCP
+
+Inference Lens is for examining how a model behaves, not for hosting the things
+it calls. A model needs real tools to make a run worth inspecting, but building,
+securing, and running those tools is a separate job that already has owners. MCP
+is the shared interface for that boundary: a server describes each tool with a
+name, a description, and a JSON Schema, and answers calls. Inference Lens shows
+that description to the model as an ordinary function tool and relays the
+result.
+
+That keeps the two concerns apart. Presenting a tool costs nothing, because an
+MCP descriptor is already the shape a provider expects, so there is no per-tool
+adapter to write. And what a tool does (its data, credentials, and side
+effects) stays with the server and whoever operates it. Inference Lens keeps only
+a portable snapshot of the descriptor and a device-local permission to call it.
+Endpoints and credentials come from the operator's catalog, never from the
+browser or the project file. Command tools and mocks remain for cases where a
+deterministic fixture is the point. [Tool execution](docs/TOOL_EXECUTION.md)
+explains the design.
+
 ## Quick start
 
 No clone, no build, no configuration:

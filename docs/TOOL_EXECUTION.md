@@ -10,6 +10,48 @@ tool is what actually tested it. The contract held: the command executor added a
 binding kind, an identity case, and a host module, and changed nothing in the
 run model. The MCP client (see [MCP tool execution](MCP_M3_EXECUTION_DESIGN.md)) was added against the same seam.
 
+## Why MCP is the primary executor
+
+Inference Lens examines how a model uses tools. It is not meant to be where
+tools are written, hosted, secured, or kept correct. MCP was chosen as the main
+way to serve real tools because it puts that boundary in a standard place:
+
+- **Presenting a tool is cheap.** A discovered MCP descriptor carries a name, a
+  description, and an input JSON Schema, which is what a provider's function-tool
+  shape already wants. The interoperability spike found that copying those
+  three fields into a `ToolDefinition` preserved them exactly and produced an
+  ordinary request through the existing serializer
+  ([SDK decision](MCP_SDK_INTEROPERABILITY_DECISION.md)). Adding a tool needs
+  no adapter code in this repository.
+- **Responsibility stays outside.** What a tool does, what it can reach, and
+  what it costs to get wrong belong to the server and its operator. Inference
+  Lens does not implement tools, so it does not become the place their bugs,
+  side effects, or credentials live. The host service, not the page, holds the
+  server declaration and authorization, and the SDK is confined to that service
+  and never enters `packages/core`.
+- **The portable part stays portable.** Because the serving side is a separate
+  process, the descriptor/binding split above falls out naturally: the project
+  carries a snapshot of what the model was shown plus a secret-free receipt, and
+  which server answers is device-local. A shared project or trace stays readable
+  on a machine that has never seen the server.
+- **A server is reusable evidence.** The same server that answers here can be
+  attached to any other MCP-capable agent, so a run can be compared against how
+  that agent presents and executes the same tool
+  ([the n8n-compatible plan](N8N_MCP_TOOL_COMPATIBILITY_PLAN.md)).
+
+What this does not do:
+
+- MCP does not replace the other executors. A mock or a
+  [command tool](COMMAND_TOOLS.md) is still the cheaper choice when the point is
+  a fixed, deterministic answer, and both sit behind the same executor seam.
+- A server is untrusted input, not part of the trusted base. Discovery is live,
+  so attachment snapshots the descriptor and records its fingerprint, and the
+  service rechecks that fingerprint before every call. Execution is currently
+  limited to unauthenticated loopback servers with explicit per-tool permission.
+- Depending on servers means depending on their quality. A vague description or
+  a loose schema reaches the model as written. That is a property of the tool,
+  and surfacing it is part of what a run is for.
+
 ## Descriptor and binding
 
 Two things are easy to conflate and must not be:
