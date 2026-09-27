@@ -26,6 +26,29 @@ socket binding, run it with host-network / out-of-sandbox permission on the
 Arguments after `--` go straight to Playwright, so `--grep`, `--project`,
 `--headed`, and `--debug` all work as usual.
 
+The opt-in [N1 Python MCP capture](../../docs/N1_STRING_INPUT_COMPARISON.md)
+adds the pinned Python fixture and a provider that saves both actual requests:
+`npm run test:e2e -- --config playwright.n1.config.ts tests/e2e/n1-string-input-capture.spec.ts`.
+That config also runs the full suite when the spec path is omitted. The ordinary
+config skips this one spec and does not require Python.
+
+### Python MCP lane
+
+`tests/e2e/mcp-python.spec.ts` runs the host against the official Python MCP
+SDK: a run on the `2026-07-28` protocol, which the Node fixture's SDK cannot
+negotiate, and a server process killed with `SIGKILL` mid-call. CI runs it
+after the main suite. Locally:
+
+```bash
+python3.12 -m venv .venv-mcp
+.venv-mcp/bin/python -m pip install -r scripts/requirements-mcp.txt
+npm run test:e2e -- --config playwright.python-mcp.config.ts
+```
+
+That config runs only this spec. It starts `scripts/local-mcp-server.py` on
+`44024`, and the kill test starts and kills its own copy on `44025`. The
+ordinary config skips the spec.
+
 ## Projects
 
 `chromium-light` runs every spec. `chromium-dark` re-runs only the specs listed

@@ -96,6 +96,7 @@ import { RunEvidenceDetail } from "./run/run-evidence-detail.client";
 import { useRunsNavigation } from "./run/use-runs-navigation.client";
 import { toolBindingFor } from "./run/run-session-state.client";
 import { useCommandTools } from "./tools/use-command-tools.client";
+import { useMcpConsents } from "./tools/use-mcp-consents.client";
 import { commandToolUnavailableMessage } from "./tools/command-tool-availability.client";
 import { listExperimentToolBindings } from "./run/experiment-tool-bindings.client";
 import { useRepeatedExperimentSession } from "./run/use-repeated-experiment-session.client";
@@ -401,7 +402,8 @@ function HomeContent() {
         enabledToolIds,
       };
     },
-    onApplyDraft(draft) {
+    onApplyDraft(draft, projectId) {
+      if (projectFile?.projectId !== projectId) clearRequestTools();
       replaceProjectDraft(draft);
       clearTemplateOverridesRef.current();
       setBranchContext(null);
@@ -485,7 +487,10 @@ function HomeContent() {
     updateToolMock,
     attachRegistryToolToProject,
     attachRegistryToolToRequest,
+    attachMcpToolToProject,
+    attachMcpToolToRequest,
     removeRequestTool,
+    saveRequestToolToProject,
     clearRequestTools,
     replaceProjectDraft,
   } = useRequestDraft({
@@ -497,13 +502,17 @@ function HomeContent() {
   // joined with the project's mocks below: what serves a tool is one question,
   // and the run session must not have to ask it twice.
   const commandTools = useCommandTools();
+  const mcpConsents = useMcpConsents();
+  // The one answer to "what serves this tool here?", for every run surface:
+  // a local grant, else an enabled project mock.
+  const bindingForTool = (tool: ToolDefinition) =>
+    toolBindingFor(tool.id, mockForTool(tool.id), commandTools.bindingFor(tool.id), mcpConsents.bindingFor(tool));
   const runSession = useRunSession({
     transport: inferenceTransport,
     prepareCredential: () =>
       credential.prepareForProfile(requestProfile.id, requestProfile.endpoint),
-    tools,
-    bindingForTool: (toolId) =>
-      toolBindingFor(toolId, mockForTool(toolId), commandTools.bindingFor(toolId)),
+    bindingForTool,
+    mcpApprovalModeFor: mcpConsents.approvalModeFor,
     readTrace: runHistory.readTrace,
     onShowResponse() {
       setWorkbenchView("response");
@@ -528,8 +537,7 @@ function HomeContent() {
     transport: inferenceTransport,
     prepareCredential: () =>
       credential.prepareForProfile(requestProfile.id, requestProfile.endpoint),
-    bindingForTool: (toolId) =>
-      toolBindingFor(toolId, mockForTool(toolId), commandTools.bindingFor(toolId)),
+    bindingForTool,
     onTraceSaved() { setSavedRunVersion((current) => current + 1); },
     onError(message) { project.setError(message, { clearKind: true }); },
     onOpenTrace(trace, origin) { runSession.adoptTrace(trace, origin); },
@@ -1042,7 +1050,6 @@ function HomeContent() {
       workspace: projectWorkspace,
       ...(branchedFrom ? { branchedFrom } : {}),
     });
-    clearRequestTools();
     await sessionStart;
   }
 
@@ -1051,13 +1058,11 @@ function HomeContent() {
    *
    * A batch answers its own tool calls, so a tool with no binding would stop
    * every repetition at a call nobody is watching. This is the gate the plan
-   * calls "every exposed tool has an automatically resolvable binding" — mock
-   * or command; MCP will satisfy it later without changing this.
+   * calls "every exposed tool has an automatically resolvable binding" — a
+   * mock, command, or MCP grant.
    */
   function unservableTools(): ToolDefinition[] {
-    return [...resolvedTools(), ...requestTools].filter(
-      ({ id }) => !toolBindingFor(id, mockForTool(id), commandTools.bindingFor(id)),
-    );
+    return [...resolvedTools(), ...requestTools].filter((tool) => !bindingForTool(tool));
   }
 
   function unservableToolsMessage(unservable: readonly ToolDefinition[]): string {
@@ -1065,7 +1070,7 @@ function HomeContent() {
     // The shell statement is inherited, not restated: a repetition that would
     // run a command tool cannot run at all where nothing can spawn.
     const shell = commandToolUnavailableMessage(commandTools);
-    return `A repeated experiment answers its own tool calls, and nothing on this device serves ${names}. Enable a mock or grant a command tool first.${shell ? ` ${shell}` : ""}`;
+    return `A repeated experiment answers its own tool calls, and nothing on this device serves ${names}. Enable a mock, grant a command tool, or allow an MCP tool first.${shell ? ` ${shell}` : ""}`;
   }
 
   function repeat(): void {
@@ -1105,7 +1110,6 @@ function HomeContent() {
       if (prepared.executedRevisionId) projectTemplates.markExecutedRevision(prepared.executedRevisionId);
       if (prepared.adHocConversationId) adHocConversationIdRef.current = prepared.adHocConversationId;
       if (prepared.consumesPendingBranch) setBranchContext(null);
-      clearRequestTools();
       runSession.reset();
       setTraceOpen(false);
       // A batch's results are read in the Runs mode, so the batch opens there
@@ -1135,8 +1139,7 @@ function HomeContent() {
         })),
         mappedProfileIds,
         durable: Boolean(projectWorkspace),
-        bindingForTool: (toolId) =>
-          toolBindingFor(toolId, mockForTool(toolId), commandTools.bindingFor(toolId)),
+        bindingForTool,
       }));
     } catch (error) {
       project.setError(error instanceof Error ? error.message : "Could not prepare the evaluation.");
@@ -1391,7 +1394,7 @@ function HomeContent() {
   // the editor can say what a tool would be served by before it is checked.
   const evaluationSuiteToolBindings = listExperimentToolBindings(
     projectFile?.tools ?? [],
-    (toolId) => toolBindingFor(toolId, mockForTool(toolId), commandTools.bindingFor(toolId)),
+    bindingForTool,
   );
   const commandToolsUnavailableReason = commandToolUnavailableMessage(commandTools);
   const evaluationLocalProfiles = profiles.map((profile) => ({
@@ -1748,6 +1751,8 @@ function HomeContent() {
         onOutputScroll={updateOutputFollowState}
         onJumpToLatest={jumpToLatestOutput}
         onToolResultDraftChange={runSession.updateToolResultDraft}
+        onApproveMcp={runSession.approveMcpCall}
+        onRejectMcp={runSession.rejectMcpCall}
         onContinue={() => void continueRun()}
         onRetry={() => void retryRun()}
         onDiscardFailedRun={stop}
@@ -1935,9 +1940,11 @@ function HomeContent() {
         <RequestComposer
           requestDraft={{
             messages, tools, requestTools, enabledToolIds, addTool, removeTool, moveTool, updateTool,
-            setToolEnabled, mockForTool, updateToolMock, removeRequestTool,
+            setToolEnabled, mockForTool, updateToolMock, removeRequestTool, saveRequestToolToProject,
+            attachMcpToolToProject, attachMcpToolToRequest,
           }}
           commandTools={commandTools}
+          mcpConsents={mcpConsents}
           templates={projectTemplates}
           project={projectFile}
           settings={{

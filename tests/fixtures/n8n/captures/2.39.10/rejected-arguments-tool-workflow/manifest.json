@@ -1,0 +1,117 @@
+{
+  "fixtureSchemaVersion": 1,
+  "n8nVersion": "2.39.10",
+  "capturedAt": "2026-09-24T14:09:42.317Z",
+  "projectedAt": "2026-09-24T14:09:52.994Z",
+  "workflowId": "workflow_fixture",
+  "nodeTypes": [
+    {
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1
+    },
+    {
+      "name": "Rejected arguments agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1
+    },
+    {
+      "name": "N0 OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2
+    },
+    {
+      "name": "il_rejected_arguments",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2
+    }
+  ],
+  "workflowSettings": {
+    "executionOrder": "v1"
+  },
+  "executions": [
+    {
+      "id": "execution_fixture_001",
+      "mode": "manual",
+      "status": "success",
+      "runItemCounts": {
+        "Manual Trigger": [
+          1
+        ],
+        "N0 OpenAI Chat Model": [
+          null,
+          null
+        ],
+        "il_rejected_arguments": [
+          null
+        ],
+        "Rejected arguments agent": [
+          1
+        ]
+      }
+    }
+  ],
+  "endpointShapes": [
+    "GET /api/v1/workflows/{workflowId}",
+    "GET /api/v1/executions/{executionId}?includeData=true"
+  ],
+  "providerFiles": [
+    "provider-request-initial.json",
+    "provider-response-tool-call.json",
+    "provider-request-continuation.json",
+    "provider-response-final.json"
+  ],
+  "removedFields": [
+    "baseURL",
+    "cachedResultUrl",
+    "credentials",
+    "defaultHeaders",
+    "fetchOptions",
+    "openai_api_key",
+    "startTime"
+  ],
+  "warnings": [
+    "Projection requires manual review before commit.",
+    "Evidence paths and save settings have not been classified automatically."
+  ],
+  "sourceFiles": {
+    "workflow.raw.json": {
+      "sha256": "a47a6bbab46e41d42ac7947a34712127e095f794ae7c29f8ea8dbe9409a11e1b"
+    },
+    "execution-01.raw.json": {
+      "sha256": "1fc632f71771c1a5cb8e7ffbb355a669bafdbb4b2f74c533e943f1a564127554"
+    },
+    "provider-request-initial.json": {
+      "sha256": "f184ed136fbe474d61cc8cb7f1ad53cba257d492af8e7359aac0247776a081d1"
+    },
+    "provider-response-tool-call.json": {
+      "sha256": "a1d9c137543fb0ced392c4510c7a49ee0b1b21ea04cc0a0ad3e2f27ed562787f"
+    },
+    "provider-request-continuation.json": {
+      "sha256": "2272c91e93eab86c8f6475ea0cc6695decfb236f6b8c03da2aebdac58c0d12af"
+    },
+    "provider-response-final.json": {
+      "sha256": "d6a25e3cab169f70c398f1c8d680bafcf9afa2ab77c9507d76658c0e6903abd6"
+    }
+  },
+  "files": {
+    "workflow.json": {
+      "sha256": "0adc6f8cedc236c36e6fe1faa1b7c82d72c9b55d07da086d6954e872215082f0"
+    },
+    "execution-success.json": {
+      "sha256": "2840bd7e16aaf90982b967a79715a76cc7f7ab4991c28e84f83bfef45a1e8167"
+    },
+    "provider-request-initial.json": {
+      "sha256": "d7e035b2fd82bef1379dcfc7641081dccf932b0559e250dd51080f5e2fcb2861"
+    },
+    "provider-response-tool-call.json": {
+      "sha256": "a1d9c137543fb0ced392c4510c7a49ee0b1b21ea04cc0a0ad3e2f27ed562787f"
+    },
+    "provider-request-continuation.json": {
+      "sha256": "07620a6934bf06da6b01815025c0fdc9a4c82459dca48f5f354bd6cf2c6bbde0"
+    },
+    "provider-response-final.json": {
+      "sha256": "d6a25e3cab169f70c398f1c8d680bafcf9afa2ab77c9507d76658c0e6903abd6"
+    }
+  }
+}

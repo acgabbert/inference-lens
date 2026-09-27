@@ -8,12 +8,16 @@ import {
   oneArgument,
   parseCliArguments,
 } from "./n8n-contract-lib.mjs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const usage = `Usage:
   node scripts/n8n-contract-probe.mjs \\
     --workflow-id ID \\
+    [--subworkflow-id ID] \\
     --execution-id ID [--execution-id ID ...] \\
-    --capture-name NAME
+    --capture-name NAME \\
+    [--provider-capture DIRECTORY]
 
 Required environment:
   INFERENCE_LENS_N8N_BASE_URL  Instance root, excluding /api/v1
@@ -30,8 +34,16 @@ export async function main({
   try {
     const argumentsMap = parseCliArguments(argv);
     const workflowId = oneArgument(argumentsMap, "--workflow-id");
+    const subworkflowId = oneArgument(argumentsMap, "--subworkflow-id", {
+      required: false,
+    });
     const executionIds = manyArguments(argumentsMap, "--execution-id");
     const captureName = oneArgument(argumentsMap, "--capture-name");
+    const providerCaptureDirectory = oneArgument(
+      argumentsMap,
+      "--provider-capture",
+      { required: false },
+    );
     const baseUrl = normalizeN8nBaseUrl(
       env.INFERENCE_LENS_N8N_BASE_URL,
     );
@@ -41,8 +53,12 @@ export async function main({
       baseUrl,
       apiKey,
       workflowId,
+      ...(subworkflowId === undefined ? {} : { subworkflowId }),
       executionIds,
       captureName,
+      ...(providerCaptureDirectory === undefined
+        ? {}
+        : { providerCaptureDirectory }),
     });
     stdout.write(`Raw capture written to ${directory}\n`);
     return 0;
@@ -56,6 +72,6 @@ export async function main({
   }
 }
 
-if (import.meta.main) {
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   process.exitCode = await main();
 }

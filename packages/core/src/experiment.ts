@@ -42,6 +42,11 @@ import type {
 } from "./run-kernel/types.ts";
 
 export const EXPERIMENT_SCHEMA_VERSION = 4;
+/**
+ * Results moved to Version 5 alone, to record a batch that stopped itself.
+ * Plans did not change shape, so they keep Version 4.
+ */
+export const EXPERIMENT_RESULT_SCHEMA_VERSION = 5;
 export const EXPERIMENT_PLAN_FILE_SUFFIX = ".plan.json";
 export const EXPERIMENT_RESULT_FILE_SUFFIX = ".result.json";
 /**
@@ -169,6 +174,10 @@ export type RepeatedExperimentPlanV3 = RepeatedExperimentPlanV4;
 export type EvaluationExperimentPlanV3 = EvaluationExperimentPlanV4;
 export type ExperimentPlanV3 = ExperimentPlanV4;
 export type ExperimentResultV3 = ExperimentResultV4;
+/** The current in-memory result. Every accepted result is read as this. */
+export type ExperimentResult = ExperimentResultV5;
+/** A result as it may arrive from storage or a caller: either readable version. */
+export type ExperimentResultInput = ExperimentResultV4 | ExperimentResultV5;
 export type EvaluationCaseSnapshot = EvaluationCaseSnapshotV4;
 
 export interface ExperimentTerminalCellResult {
@@ -191,6 +200,27 @@ export interface ExperimentResultV4 {
   schemaVersion: 4;
   experimentId: ExperimentId;
   status: "completed" | "cancelled";
+  endedAt: string;
+  cells: ExperimentCellResult[];
+}
+
+/**
+ * Why a batch stopped itself. Only a tool binding that can no longer serve any
+ * repetition stops a batch; every other failure fails one repetition.
+ */
+export interface ExperimentStop {
+  reason: "tool_unavailable";
+  /** The failed repetition that found the tool unavailable. */
+  cellId: ExperimentCellId;
+  toolId: ToolDefinition["id"];
+}
+
+export interface ExperimentResultV5 {
+  schemaVersion: 5;
+  experimentId: ExperimentId;
+  status: "completed" | "cancelled" | "stopped";
+  /** Present exactly when `status` is `stopped`. */
+  stop?: ExperimentStop;
   endedAt: string;
   cells: ExperimentCellResult[];
 }
@@ -258,7 +288,7 @@ export interface EvaluationBakeoffAssessment {
   variants: EvaluationVariantAssessment[];
 }
 
-export type ExperimentLifecycle = "interrupted" | "completed" | "cancelled";
+export type ExperimentLifecycle = "interrupted" | "completed" | "cancelled" | "stopped";
 
 export interface ExperimentMetricRange {
   count: number;
@@ -381,6 +411,11 @@ const toolDefinitionSchema: z.ZodType<ToolDefinition> = z
     description: z.string().optional(),
     inputSchema: jsonObjectSchema,
     providerOptions: jsonObjectSchema.optional(),
+    source: z.object({
+      kind: z.literal("mcp"),
+      remoteToolName: z.string().min(1),
+      discoveryFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+    }).strict().optional(),
   })
   .strict();
 
@@ -553,30 +588,50 @@ const planSchema: z.ZodType<ExperimentPlanV4> = z.discriminatedUnion("kind", [
 // are encountered. PR10 intentionally does not migrate pre-v3 artifacts.
 const unsupportedPlanVersionSchema = z.object({ schemaVersion: z.number().int() }).passthrough();
 
-const resultSchema = z
+const resultCellsSchema = z.array(
+  z.discriminatedUnion("status", [
+    z
+      .object({
+        cellId: entityId("experiment-cell"),
+        runId: entityId("run"),
+        status: z.enum(["completed", "cancelled", "failed"]),
+      })
+      .strict(),
+    z
+      .object({
+        cellId: entityId("experiment-cell"),
+        runId: entityId("run"),
+        status: z.literal("not-run"),
+      })
+      .strict(),
+  ]),
+);
+
+const resultV4Schema = z
   .object({
-    schemaVersion: z.literal(EXPERIMENT_SCHEMA_VERSION),
+    schemaVersion: z.literal(4),
     experimentId: entityId("experiment"),
     status: z.enum(["completed", "cancelled"]),
     endedAt: z.string().datetime(),
-    cells: z.array(
-      z.discriminatedUnion("status", [
-        z
-          .object({
-            cellId: entityId("experiment-cell"),
-            runId: entityId("run"),
-            status: z.enum(["completed", "cancelled", "failed"]),
-          })
-          .strict(),
-        z
-          .object({
-            cellId: entityId("experiment-cell"),
-            runId: entityId("run"),
-            status: z.literal("not-run"),
-          })
-          .strict(),
-      ]),
-    ),
+    cells: resultCellsSchema,
+  })
+  .strict();
+
+const resultV5Schema = z
+  .object({
+    schemaVersion: z.literal(EXPERIMENT_RESULT_SCHEMA_VERSION),
+    experimentId: entityId("experiment"),
+    status: z.enum(["completed", "cancelled", "stopped"]),
+    stop: z
+      .object({
+        reason: z.literal("tool_unavailable"),
+        cellId: entityId("experiment-cell"),
+        toolId: entityId("tool"),
+      })
+      .strict()
+      .optional(),
+    endedAt: z.string().datetime(),
+    cells: resultCellsSchema,
   })
   .strict();
 
@@ -684,7 +739,7 @@ function assertPlanReferences(plan: ExperimentPlanV4): void {
 }
 
 function assertResultReferences(
-  result: ExperimentResultV4,
+  result: ExperimentResultV5,
   plan: ExperimentPlanV4,
 ): void {
   if (result.experimentId !== plan.experimentId) {
@@ -710,6 +765,23 @@ function assertResultReferences(
   });
   if (result.status === "completed" && result.cells.some((cell) => cell.status === "not-run")) {
     throw new ExperimentValidationError("A completed experiment cannot contain unstarted cells.");
+  }
+  if (result.status !== "stopped") {
+    if (result.stop) {
+      throw new ExperimentValidationError("Only a stopped experiment records a stop.");
+    }
+    return;
+  }
+  if (!result.stop) {
+    throw new ExperimentValidationError("A stopped experiment must record why it stopped.");
+  }
+  const { cellId } = result.stop;
+  const stoppedAt = result.cells.findIndex((cell) => cell.cellId === cellId);
+  if (stoppedAt < 0 || result.cells[stoppedAt]!.status !== "failed") {
+    throw new ExperimentValidationError("A stop must name the failed repetition that caused it.");
+  }
+  if (result.cells.slice(stoppedAt + 1).some((cell) => cell.status !== "not-run")) {
+    throw new ExperimentValidationError("No repetition may start after the stop.");
   }
 }
 
@@ -790,15 +862,26 @@ export function parseExperimentPlanJson(contents: string): ExperimentPlanV4 {
 export function parseExperimentResultFile(
   value: unknown,
   plan: ExperimentPlanV4,
-): ExperimentResultV4 {
+): ExperimentResultV5 {
   const parsedPlan = parseExperimentPlanFile(plan);
   const version = unsupportedPlanVersionSchema.safeParse(value);
-  if (version.success && version.data.schemaVersion !== EXPERIMENT_SCHEMA_VERSION) {
+  if (
+    version.success &&
+    version.data.schemaVersion !== 4 &&
+    version.data.schemaVersion !== EXPERIMENT_RESULT_SCHEMA_VERSION
+  ) {
     throw new ExperimentValidationError(
-      `Experiment result schema Version ${version.data.schemaVersion} is unsupported; expected Version ${EXPERIMENT_SCHEMA_VERSION}.`,
+      `Experiment result schema Version ${version.data.schemaVersion} is unsupported; expected Version 4 or ${EXPERIMENT_RESULT_SCHEMA_VERSION}.`,
     );
   }
-  const result = parseWith(resultSchema, value, "experiment result") as ExperimentResultV4;
+  // Version 4 is a strict subset of Version 5: it cannot say "stopped", so it
+  // is read as the same record with the current version number.
+  const result: ExperimentResultV5 = version.success && version.data.schemaVersion === 4
+    ? {
+        ...(parseWith(resultV4Schema, value, "experiment result") as ExperimentResultV4),
+        schemaVersion: EXPERIMENT_RESULT_SCHEMA_VERSION,
+      }
+    : (parseWith(resultV5Schema, value, "experiment result") as ExperimentResultV5);
   assertResultReferences(result, parsedPlan);
   return result;
 }
@@ -806,7 +889,7 @@ export function parseExperimentResultFile(
 export function parseExperimentResultJson(
   contents: string,
   plan: ExperimentPlanV4,
-): ExperimentResultV4 {
+): ExperimentResultV5 {
   let value: unknown;
   try {
     value = JSON.parse(contents);
@@ -830,7 +913,7 @@ export function serializeParsedExperimentPlan(plan: ExperimentPlanV4): string {
 }
 
 export function serializeExperimentResult(
-  result: ExperimentResultV4,
+  result: ExperimentResultInput,
   plan: ExperimentPlanV4,
 ): string {
   return `${JSON.stringify(stableJsonValue(parseExperimentResultFile(result, plan)), null, 2)}\n`;
@@ -899,7 +982,7 @@ export function materializeParsedExperimentCellInput(
 /** A plan with no result survived an interrupted application session. */
 export function experimentLifecycle(
   _plan: ExperimentPlanV4,
-  result?: ExperimentResultV4,
+  result?: ExperimentResultInput,
 ): ExperimentLifecycle {
   return result ? result.status : "interrupted";
 }
@@ -930,7 +1013,7 @@ export { finalAssistantOutput } from "./run-output.ts";
  */
 export function repeatedExperimentAggregate(
   plan: RepeatedExperimentPlanV4,
-  result: ExperimentResultV4 | undefined,
+  result: ExperimentResultInput | undefined,
   states: ReadonlyMap<RunId, RunState> = new Map(),
 ): RepeatedExperimentAggregate {
   const parsedPlan = parseExperimentPlanFile(plan);
@@ -1016,7 +1099,7 @@ export function repeatedExperimentAggregate(
  */
 export function evaluationExperimentAggregate(
   plan: EvaluationExperimentPlanV4,
-  result: ExperimentResultV4 | undefined,
+  result: ExperimentResultInput | undefined,
   states: ReadonlyMap<RunId, RunState> = new Map(),
 ): EvaluationBakeoffAssessment {
   const parsed = parseExperimentPlanFile(plan);
@@ -1039,7 +1122,7 @@ export function evaluationExperimentAggregate(
  */
 export function evaluationParsedExperimentAggregate(
   plan: EvaluationExperimentPlanV4,
-  result: ExperimentResultV4 | undefined,
+  result: ExperimentResultInput | undefined,
   states: ReadonlyMap<RunId, RunState> = new Map(),
   criteria?: EvaluationCriteriaOverride,
 ): EvaluationBakeoffAssessment {

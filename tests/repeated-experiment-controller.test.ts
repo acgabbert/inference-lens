@@ -510,6 +510,80 @@ test("an executor failure fails only its own repetition, and never answers for t
   assert.equal(traces[0]?.toolExecutions[0]?.status, "failed");
 });
 
+test("an unavailable tool stops the batch after the repetition that found it", async () => {
+  const started: string[] = [];
+  let executions = 0;
+  const result = await new SequentialExperimentController({
+    plan: toolPlan(3),
+    transport: transportFor(toolCalling(1), started),
+    toolBindings: [mockBinding],
+    createExecutor: () => ({
+      kind: "mock",
+      async execute() {
+        executions += 1;
+        return executions === 1
+          ? { status: "completed", content: [{ type: "text", text: "sunny" }], isError: false }
+          : { status: "failed", failure: { kind: "unavailable", message: "The MCP server could not be reached." } };
+      },
+    }),
+    async prepareCredential() { return { kind: "none" }; },
+  }).run();
+
+  assert.equal(result.schemaVersion, 5);
+  assert.equal(result.status, "stopped");
+  assert.deepEqual(result.stop, { reason: "tool_unavailable", cellId: "experiment-cell_2", toolId: weatherTool.id });
+  assert.deepEqual(result.cells.map(({ status }) => status), ["completed", "failed", "not-run"]);
+  assert.deepEqual(started, ["run_1", "run_1", "run_2"]);
+});
+
+test("a timed-out tool fails only its repetition and the batch continues", async () => {
+  let executions = 0;
+  const result = await new SequentialExperimentController({
+    plan: toolPlan(2),
+    transport: transportFor(toolCalling(1)),
+    toolBindings: [mockBinding],
+    createExecutor: () => ({
+      kind: "mock",
+      async execute() {
+        executions += 1;
+        return executions === 1
+          ? { status: "failed", failure: { kind: "timeout", message: "The MCP server did not answer." } }
+          : { status: "completed", content: [{ type: "text", text: "sunny" }], isError: false };
+      },
+    }),
+    async prepareCredential() { return { kind: "none" }; },
+  }).run();
+
+  assert.equal(result.status, "completed");
+  assert.equal(result.stop, undefined);
+  assert.deepEqual(result.cells.map(({ status }) => status), ["failed", "completed"]);
+});
+
+test("a failed binding check refuses the batch before any plan save or provider call", async () => {
+  let providerCalls = 0;
+  let saved = false;
+  const checked: string[][] = [];
+  const controller = new SequentialExperimentController({
+    plan: toolPlan(2),
+    transport: transportFor(() => {
+      providerCalls += 1;
+      return events(completed("unexpected"));
+    }),
+    toolBindings: [mockBinding],
+    async verifyToolBindings(bindings) {
+      checked.push(bindings.map(({ toolId }) => toolId));
+      throw new Error("lookup_record is unavailable: the MCP tool changed.");
+    },
+    async savePlan() { saved = true; },
+    async prepareCredential() { return { kind: "none" }; },
+  });
+
+  await assert.rejects(() => controller.run(), /lookup_record is unavailable/);
+  assert.deepEqual(checked, [[weatherTool.id]]);
+  assert.equal(providerCalls, 0);
+  assert.equal(saved, false);
+});
+
 test("refuses to start when an exposed tool has no binding on this device", async () => {
   let providerCalls = 0;
   const controller = new SequentialExperimentController({

@@ -1,0 +1,123 @@
+{
+  "name": "[Inference Lens N0] Multiple output items — parent",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "30000000-0000-4000-8000-000000000001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-640, 0]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=IL_N0_MULTIPLE_OUTPUT_ITEMS\nCall il_multiple_items exactly once with topic IL_N0_MULTI_TOPIC. After the tool returns, report its complete response without calling another tool.",
+        "hasOutputParser": false,
+        "options": {
+          "systemMessage": "You are executing an Inference Lens n8n provider-wire contract fixture. Follow the tool-call instruction exactly.",
+          "enableStreaming": false
+        }
+      },
+      "id": "30000000-0000-4000-8000-000000000002",
+      "name": "Multiple output items agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [-320, 0]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "template-echo-model",
+          "mode": "id"
+        },
+        "options": {
+          "temperature": 0
+        }
+      },
+      "id": "30000000-0000-4000-8000-000000000003",
+      "name": "N0 OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [-360, 240]
+    },
+    {
+      "parameters": {
+        "description": "Return two ordered workflow output items so the Inference Lens fixture can observe n8n's provider-visible result serialization.",
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "topic": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('topic', `The diagnostic topic`, 'string') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "topic",
+              "displayName": "topic",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "id": "30000000-0000-4000-8000-000000000004",
+      "name": "il_multiple_items",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [-120, 240]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Multiple output items agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N0 OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Multiple output items agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "il_multiple_items": {
+      "ai_tool": [
+        [
+          {
+            "node": "Multiple output items agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "tags": []
+}

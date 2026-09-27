@@ -1,0 +1,546 @@
+{
+  "id": "execution_fixture_001",
+  "workflowId": "workflow_fixture",
+  "mode": "manual",
+  "status": "success",
+  "finished": true,
+  "data": {
+    "startData": {},
+    "resultData": {
+      "runData": {
+        "Manual Trigger": [
+          {
+            "executionIndex": 0,
+            "source": [],
+            "hints": [],
+            "executionTime": 1,
+            "executionStatus": "success",
+            "data": {
+              "main": [
+                [
+                  {
+                    "json": {},
+                    "pairedItem": {
+                      "item": 0
+                    }
+                  }
+                ]
+              ]
+            }
+          }
+        ],
+        "N0 OpenAI Chat Model": [
+          {
+            "executionTime": 18,
+            "executionIndex": 2,
+            "executionStatus": "success",
+            "source": [
+              {
+                "previousNode": "Rejected arguments agent",
+                "previousNodeRun": 0
+              }
+            ],
+            "data": {
+              "ai_languageModel": [
+                [
+                  {
+                    "json": {
+                      "response": {
+                        "generations": [
+                          [
+                            {
+                              "text": "",
+                              "generationInfo": {
+                                "finish_reason": "tool_calls"
+                              }
+                            }
+                          ]
+                        ]
+                      },
+                      "tokenUsage": {
+                        "completionTokens": 1,
+                        "promptTokens": 2,
+                        "totalTokens": 3
+                      }
+                    }
+                  }
+                ]
+              ]
+            },
+            "inputOverride": {
+              "ai_languageModel": [
+                [
+                  {
+                    "json": {
+                      "messages": [
+                        "System: You are executing an Inference Lens n8n provider-wire contract fixture. Follow the tool-call instruction exactly.\nHuman: IL_N0_REJECTED_ARGUMENTS\nCall il_rejected_arguments once with count IL_N0_NOT_A_NUMBER. After the tool returns, report its response without calling another tool."
+                      ],
+                      "estimatedTokens": 63,
+                      "options": {
+                        "model": "template-echo-model",
+                        "temperature": 0,
+                        "max_retries": 2,
+                        "configuration": {},
+                        "model_kwargs": {},
+                        "supports_strict_tool_calling": false
+                      }
+                    }
+                  }
+                ]
+              ]
+            },
+            "metadata": {
+              "subRun": [
+                {
+                  "node": "N0 OpenAI Chat Model",
+                  "runIndex": 0
+                }
+              ]
+            }
+          },
+          {
+            "executionTime": 8,
+            "executionIndex": 5,
+            "executionStatus": "success",
+            "source": [
+              {
+                "previousNode": "Rejected arguments agent",
+                "previousNodeRun": 0
+              }
+            ],
+            "data": {
+              "ai_languageModel": [
+                [
+                  {
+                    "json": {
+                      "response": {
+                        "generations": [
+                          [
+                            {
+                              "text": "IL_N0_CAPTURE_COMPLETE",
+                              "generationInfo": {
+                                "finish_reason": "stop"
+                              }
+                            }
+                          ]
+                        ]
+                      },
+                      "tokenUsage": {
+                        "completionTokens": 1,
+                        "promptTokens": 4,
+                        "totalTokens": 5
+                      }
+                    }
+                  }
+                ]
+              ]
+            },
+            "inputOverride": {
+              "ai_languageModel": [
+                [
+                  {
+                    "json": {
+                      "messages": [
+                        "System: You are executing an Inference Lens n8n provider-wire contract fixture. Follow the tool-call instruction exactly.\nHuman: IL_N0_REJECTED_ARGUMENTS\nCall il_rejected_arguments once with count IL_N0_NOT_A_NUMBER. After the tool returns, report its response without calling another tool.\nAI: [{\"id\":\"call_inference_lens_n8n_001\",\"name\":\"il_rejected_arguments\",\"args\":{\"count\":\"IL_N0_NOT_A_NUMBER\",\"id\":\"call_inference_lens_n8n_001\"},\"type\":\"tool_call\"}]\nTool: [{\"error\":\"Received tool input did not match expected schema\\n\\n✖ Expected number, received string\\n  → at count\"}]"
+                      ],
+                      "estimatedTokens": 146,
+                      "options": {
+                        "model": "template-echo-model",
+                        "temperature": 0,
+                        "max_retries": 2,
+                        "configuration": {},
+                        "model_kwargs": {},
+                        "supports_strict_tool_calling": false
+                      }
+                    }
+                  }
+                ]
+              ]
+            },
+            "metadata": {
+              "subRun": [
+                {
+                  "node": "N0 OpenAI Chat Model",
+                  "runIndex": 1
+                }
+              ]
+            }
+          }
+        ],
+        "il_rejected_arguments": [
+          {
+            "inputOverride": {
+              "ai_tool": [
+                [
+                  {
+                    "json": {
+                      "count": "IL_N0_NOT_A_NUMBER"
+                    },
+                    "pairedItem": {
+                      "item": 0,
+                      "input": 0,
+                      "sourceOverwrite": {
+                        "previousNode": "Manual Trigger",
+                        "previousNodeOutput": 0,
+                        "previousNodeRun": 0
+                      }
+                    }
+                  }
+                ]
+              ]
+            },
+            "source": [
+              {
+                "previousNode": "Rejected arguments agent",
+                "previousNodeOutput": 0,
+                "previousNodeRun": 0
+              }
+            ],
+            "executionIndex": 3,
+            "executionTime": 2,
+            "hints": [],
+            "metadata": {
+              "preserveSourceOverwrite": true,
+              "preservedSourceOverwrite": {
+                "previousNode": "Manual Trigger",
+                "previousNodeOutput": 0,
+                "previousNodeRun": 0
+              }
+            },
+            "executionStatus": "error",
+            "error": {
+              "level": "warning",
+              "shouldReport": true,
+              "tags": {},
+              "timestamp": 1790258722748,
+              "context": {
+                "itemIndex": 0
+              },
+              "functionality": "regular",
+              "name": "NodeOperationError",
+              "node": {
+                "parameters": {
+                  "notice": "",
+                  "noticeTemplateExample": "",
+                  "description": "Synthetic rejected arguments contract fixture for Inference Lens.",
+                  "executeNotice": "",
+                  "source": "database",
+                  "workflowId": {
+                    "__rl": true,
+                    "value": "Xj5aIW13vSC1oUvn",
+                    "mode": "list",
+                    "cachedResultName": "[Inference Lens N0] Rejected arguments — sub-workflow"
+                  },
+                  "workflowInputs": {
+                    "mappingMode": "defineBelow",
+                    "value": {
+                      "count": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('count', `A diagnostic number`, 'number') }}"
+                    },
+                    "matchingColumns": [],
+                    "schema": [
+                      {
+                        "id": "count",
+                        "displayName": "count",
+                        "required": false,
+                        "defaultMatch": false,
+                        "display": true,
+                        "canBeUsedToMatch": true,
+                        "type": "number"
+                      }
+                    ],
+                    "attemptToConvertTypes": false,
+                    "convertFieldsToString": false
+                  }
+                },
+                "id": "node_fixture_004",
+                "name": "il_rejected_arguments",
+                "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+                "typeVersion": 2.2,
+                "position": [
+                  -128,
+                  240
+                ],
+                "rewireOutputLogTo": "ai_tool"
+              },
+              "messages": [],
+              "message": "Received tool input did not match expected schema\n\n✖ Expected number, received string\n  → at count",
+              "stack": "NodeOperationError: Received tool input did not match expected schema\n\n✖ Expected number, received string\n  → at count\n    at ExecuteContext.execute (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/@n8n+n8n-nodes-langchain@file++++home+runner+_work+n8n+n8n+packages+@n8n+nodes-langchain/node_modules/@n8n/n8n-nodes-langchain/nodes/tools/ToolWorkflow/v2/ToolWorkflowV2.node.ts:89:11)\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at WorkflowExecute.executeNode (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file++++home+runner+_work+n8n+n8n+packages+core/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:1125:8)\n    at WorkflowExecute.runNode (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file++++home+runner+_work+n8n+n8n+packages+core/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:1427:11)\n    at /usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file++++home+runner+_work+n8n+n8n+packages+core/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:2329:27\n    at /usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file++++home+runner+_work+n8n+n8n+packages+core/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:2810:11"
+            },
+            "data": {
+              "ai_tool": [
+                [
+                  {
+                    "json": {
+                      "error": "Received tool input did not match expected schema\n\n✖ Expected number, received string\n  → at count"
+                    }
+                  }
+                ]
+              ]
+            }
+          }
+        ],
+        "Rejected arguments agent": [
+          {
+            "executionIndex": 4,
+            "source": [
+              {
+                "previousNode": "Manual Trigger",
+                "previousNodeOutput": 0,
+                "previousNodeRun": 0
+              }
+            ],
+            "hints": [],
+            "executionTime": 23,
+            "metadata": {
+              "nodeWasResumed": true,
+              "subNodeExecutionData": {
+                "actions": [
+                  {
+                    "action": {
+                      "actionType": "ExecutionNodeAction",
+                      "nodeName": "il_rejected_arguments",
+                      "input": {
+                        "count": "IL_N0_NOT_A_NUMBER"
+                      },
+                      "type": "ai_tool",
+                      "id": "call_inference_lens_n8n_001",
+                      "metadata": {
+                        "itemIndex": 0,
+                        "toolName": "il_rejected_arguments"
+                      }
+                    },
+                    "nodeName": "il_rejected_arguments",
+                    "runIndex": 0
+                  }
+                ],
+                "metadata": {
+                  "previousRequests": [],
+                  "itemIndex": 0,
+                  "iterationCount": 1
+                }
+              },
+              "tracing": {
+                "llm.tokens.in": 4,
+                "llm.tokens.out": 1,
+                "llm.tokens.total": 5,
+                "llm.tokens.estimated": false,
+                "ai.agent.version": "v3",
+                "ai.agent.streaming.enabled": false,
+                "ai.agent.items.total": 1,
+                "ai.agent.items.failed": 0,
+                "ai.agent.tool_calls.requested": 0,
+                "ai.agent.tool_calls.completed": 1,
+                "ai.agent.iteration.count": 0,
+                "ai.agent.memory.loads": 0,
+                "ai.agent.memory.saves": 0,
+                "ai.agent.execution.succeeded": true
+              }
+            },
+            "executionStatus": "success",
+            "data": {
+              "main": [
+                [
+                  {
+                    "json": {
+                      "output": "IL_N0_CAPTURE_COMPLETE"
+                    },
+                    "pairedItem": {
+                      "item": 0
+                    }
+                  }
+                ]
+              ]
+            }
+          }
+        ]
+      },
+      "pinData": {},
+      "lastNodeExecuted": "Rejected arguments agent",
+      "metadata": {
+        "response_rejected_arguments_agent": "IL_N0_CAPTURE_COMPLETE"
+      }
+    },
+    "executionData": {
+      "contextData": {},
+      "nodeExecutionStack": [],
+      "metadata": {
+        "N0 OpenAI Chat Model": [
+          {
+            "subRun": [
+              {
+                "node": "N0 OpenAI Chat Model",
+                "runIndex": 0
+              }
+            ]
+          },
+          {
+            "subRun": [
+              {
+                "node": "N0 OpenAI Chat Model",
+                "runIndex": 1
+              }
+            ]
+          }
+        ]
+      },
+      "waitingExecution": {},
+      "waitingExecutionSource": {},
+      "runtimeData": {
+        "version": 1,
+        "establishedAt": 1790258722711,
+        "source": "manual",
+        "triggerNode": {
+          "name": "Manual Trigger",
+          "type": "n8n-nodes-base.manualTrigger"
+        },
+        "redaction": {
+          "version": 2,
+          "production": false,
+          "manual": false
+        }
+      }
+    },
+    "workflowData": {
+      "id": "workflow_fixture",
+      "name": "[Inference Lens N0] Rejected arguments — parent",
+      "nodes": [
+        {
+          "id": "node_fixture_001",
+          "name": "Manual Trigger",
+          "type": "n8n-nodes-base.manualTrigger",
+          "typeVersion": 1,
+          "position": [
+            -640,
+            0
+          ],
+          "parameters": {
+            "notice": ""
+          }
+        },
+        {
+          "id": "node_fixture_002",
+          "name": "Rejected arguments agent",
+          "type": "@n8n/n8n-nodes-langchain.agent",
+          "typeVersion": 3.1,
+          "position": [
+            -320,
+            0
+          ],
+          "parameters": {
+            "aiAgentStarterCallout": "",
+            "promptType": "define",
+            "text": "=IL_N0_REJECTED_ARGUMENTS\nCall il_rejected_arguments once with count IL_N0_NOT_A_NUMBER. After the tool returns, report its response without calling another tool.",
+            "hasOutputParser": false,
+            "needsFallback": false,
+            "options": {
+              "systemMessage": "You are executing an Inference Lens n8n provider-wire contract fixture. Follow the tool-call instruction exactly.",
+              "enableStreaming": false
+            }
+          }
+        },
+        {
+          "id": "node_fixture_003",
+          "name": "N0 OpenAI Chat Model",
+          "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+          "typeVersion": 1.2,
+          "position": [
+            -368,
+            240
+          ],
+          "parameters": {
+            "notice": "",
+            "model": {
+              "__rl": true,
+              "value": "template-echo-model",
+              "mode": "id"
+            },
+            "options": {
+              "temperature": 0
+            }
+          }
+        },
+        {
+          "id": "node_fixture_004",
+          "name": "il_rejected_arguments",
+          "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+          "typeVersion": 2.2,
+          "position": [
+            -128,
+            240
+          ],
+          "parameters": {
+            "notice": "",
+            "noticeTemplateExample": "",
+            "description": "Synthetic rejected arguments contract fixture for Inference Lens.",
+            "executeNotice": "",
+            "source": "database",
+            "workflowId": {
+              "__rl": true,
+              "value": "Xj5aIW13vSC1oUvn",
+              "mode": "list",
+              "cachedResultName": "[Inference Lens N0] Rejected arguments — sub-workflow"
+            },
+            "workflowInputs": {
+              "mappingMode": "defineBelow",
+              "value": {
+                "count": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('count', `A diagnostic number`, 'number') }}"
+              },
+              "matchingColumns": [],
+              "schema": [
+                {
+                  "id": "count",
+                  "displayName": "count",
+                  "required": false,
+                  "defaultMatch": false,
+                  "display": true,
+                  "canBeUsedToMatch": true,
+                  "type": "number"
+                }
+              ],
+              "attemptToConvertTypes": false,
+              "convertFieldsToString": false
+            }
+          }
+        }
+      ],
+      "connections": {
+        "Manual Trigger": {
+          "main": [
+            [
+              {
+                "node": "Rejected arguments agent",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "N0 OpenAI Chat Model": {
+          "ai_languageModel": [
+            [
+              {
+                "node": "Rejected arguments agent",
+                "type": "ai_languageModel",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "il_rejected_arguments": {
+          "ai_tool": [
+            [
+              {
+                "node": "Rejected arguments agent",
+                "type": "ai_tool",
+                "index": 0
+              }
+            ]
+          ]
+        }
+      },
+      "settings": {
+        "executionOrder": "v1"
+      }
+    }
+  }
+}

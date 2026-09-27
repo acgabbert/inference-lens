@@ -8,7 +8,7 @@ import type {
   EvaluationCaseId,
   EvaluationSuiteId,
   EvaluationVariantId,
-  ToolId,
+  ToolDefinition,
 } from "../../packages/core/src/run-kernel/types.ts";
 import { experimentExposedTools } from "../../packages/core/src/experiment.ts";
 import type { ToolBinding } from "../../packages/core/src/tool-execution.ts";
@@ -151,7 +151,7 @@ export interface EvaluationStartDraftInput {
   mappedProfileIds: Readonly<Record<string, string>>;
   durable: boolean;
   /** The device-local binding that will serve one of the suite's exposed tools. */
-  bindingForTool(toolId: ToolId): ToolBinding | undefined;
+  bindingForTool(tool: ToolDefinition): ToolBinding | undefined;
 }
 
 /** Snapshots cross-feature route inputs into the draft owned by evaluation execution. */

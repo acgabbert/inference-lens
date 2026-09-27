@@ -1,0 +1,143 @@
+{
+  "id": "workflow_fixture",
+  "name": "[Inference Lens N0] Fixed and AI inputs — Agent 2.2",
+  "active": false,
+  "nodes": [
+    {
+      "id": "node_fixture_001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "node_fixture_002",
+      "name": "Fixed and AI inputs agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        320,
+        0
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=IL_N0_FIXED_AND_AI\nCall il_fixed_and_ai once with text IL_N0_AI_TEXT. The source is fixed by the workflow. After the tool returns, report its response without calling another tool.",
+        "options": {
+          "systemMessage": "You are executing an Inference Lens n8n provider-wire contract fixture. Follow the tool-call instruction exactly.",
+          "enableStreaming": false
+        }
+      }
+    },
+    {
+      "id": "node_fixture_003",
+      "name": "N0 OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        288,
+        240
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "template-echo-model",
+          "mode": "id"
+        },
+        "options": {
+          "temperature": 0
+        }
+      }
+    },
+    {
+      "id": "node_fixture_004",
+      "name": "il_fixed_and_ai",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        528,
+        240
+      ],
+      "parameters": {
+        "description": "Synthetic fixed and ai inputs contract fixture for Inference Lens.",
+        "workflowId": {
+          "__rl": true,
+          "value": "subworkflow_fixture",
+          "mode": "list",
+          "cachedResultName": "[Inference Lens N0] Fixed and AI inputs — sub-workflow"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "text": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('text', `A diagnostic string`, 'string') }}",
+            "source": "IL_N0_FIXED_SOURCE"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "text",
+              "displayName": "text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fixed and AI inputs agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N0 OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Fixed and AI inputs agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "il_fixed_and_ai": {
+      "ai_tool": [
+        [
+          {
+            "node": "Fixed and AI inputs agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

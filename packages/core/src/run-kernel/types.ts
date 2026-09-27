@@ -145,6 +145,8 @@ export interface ToolDefinition {
   description?: string;
   inputSchema: JsonObject;
   providerOptions?: JsonObject;
+  /** Portable provenance only. Execution still requires a device-local binding. */
+  source?: { kind: "mcp"; remoteToolName: string; discoveryFingerprint: string };
 }
 
 export interface ToolArguments {
@@ -243,7 +245,13 @@ export type ToolExecutionFailureKind =
   | "invalid_result"
   | "timeout"
   | "cancelled"
-  | "rejected";
+  | "rejected"
+  /**
+   * The binding can no longer serve any call: its declaration is gone, its
+   * server cannot be reached, or the tool changed. Decided before the call is
+   * sent, so a batch can stop rather than fail every remaining repetition.
+   */
+  | "unavailable";
 
 export interface ToolExecutionFailure {
   kind: ToolExecutionFailureKind;

@@ -10,7 +10,7 @@ import {
 } from "../../packages/core/src/experiment.ts";
 import type {
   ExperimentPlanV3,
-  ExperimentResultV3,
+  ExperimentResult,
   RepeatedExperimentPlanV3,
 } from "../../packages/core/src/experiment.ts";
 import { createEntityId } from "../../packages/core/src/run-kernel/index.ts";
@@ -19,7 +19,7 @@ import type {
   RunId,
   RunState,
   RunTrace,
-  ToolId,
+  ToolDefinition,
 } from "../../packages/core/src/run-kernel/index.ts";
 import type { ToolBinding } from "../../packages/core/src/tool-execution.ts";
 import { randomUUID } from "../../packages/core/src/random-id.ts";
@@ -29,6 +29,7 @@ import { createExperimentWorkspacePersistence } from "./experiment-workspace-per
 import { listExperimentToolBindings } from "./experiment-tool-bindings.client.ts";
 import type { ExperimentToolBinding } from "./experiment-tool-bindings.client.ts";
 import { SequentialExperimentController } from "./sequential-experiment-controller.client.ts";
+import { verifyToolBindingsOnHost } from "../tools/tool-binding-check.client.ts";
 
 export const DEFAULT_REPETITION_COUNT = 5;
 export const MIN_REPETITION_COUNT = 2;
@@ -92,7 +93,7 @@ export interface RepeatedExperimentExecution {
   states: ReadonlyMap<RunId, RunState>;
   /** Absent once the experiment is terminal, and for every saved experiment. */
   live?: RepeatedExperimentLiveProgress;
-  result?: ExperimentResultV3;
+  result?: ExperimentResult;
   error?: string;
   traces: ReadonlyMap<RunId, RunTrace>;
   traceFileNames: ReadonlyMap<RunId, string>;
@@ -107,10 +108,10 @@ export interface UseRepeatedExperimentSessionOptions {
   prepareCredential(): Promise<CredentialSelection>;
   /**
    * The device-local binding that serves one tool, composed by the route from
-   * this project's mocks and this device's command grants. This is where a
+   * this project's mocks and this device's local grants. This is where a
    * portable plan is joined to how its tools are served here.
    */
-  bindingForTool(toolId: ToolId): ToolBinding | undefined;
+  bindingForTool(tool: ToolDefinition): ToolBinding | undefined;
   onTraceSaved(): void;
   onError(message: string): void;
   onOpenTrace(trace: RunTrace, origin: { workspace: ProjectWorkspaceHandle | null; fileName: string; source: "experiment" }): void;
@@ -301,6 +302,8 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
       // The plan-time join: portable descriptors in the plan, how they are
       // served on this device beside it, never inside it.
       toolBindings: pending.toolBindings.flatMap(({ binding }) => binding ? [binding] : []),
+      verifyToolBindings: (bindings) => verifyToolBindingsOnHost(bindings, (toolId) =>
+        pending.plan.commonInput.tools.find(({ id }) => id === toolId)?.name ?? toolId),
       ...persistence,
       onProgress(progress) {
         setExecution((current) => {
@@ -379,7 +382,7 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
 
   const openSaved = useCallback((opened: {
     plan: ExperimentPlanV3;
-    result?: ExperimentResultV3;
+    result?: ExperimentResult;
     traces: ReadonlyMap<RunId, RunTrace>;
     traceFileNames: ReadonlyMap<RunId, string>;
     unreadableTraces: ReadonlyMap<RunId, string>;

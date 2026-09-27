@@ -1,0 +1,153 @@
+{
+  "id": "workflow_fixture",
+  "name": "[Inference Lens N0] Primitive inputs — parent",
+  "active": false,
+  "nodes": [
+    {
+      "id": "node_fixture_001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "node_fixture_002",
+      "name": "Primitive inputs agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        320,
+        0
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=IL_N0_PRIMITIVE_INPUTS\nCall il_echo_primitives exactly once with text IL_N0_PRIMITIVE_TEXT, count 7, and enabled true. After the tool returns, report its response without calling another tool.",
+        "options": {
+          "systemMessage": "You are executing an Inference Lens n8n provider-wire contract fixture. Follow the tool-call instruction exactly.",
+          "enableStreaming": false
+        }
+      }
+    },
+    {
+      "id": "node_fixture_003",
+      "name": "N0 OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        288,
+        240
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "template-echo-model",
+          "mode": "id"
+        },
+        "options": {
+          "temperature": 0
+        }
+      }
+    },
+    {
+      "id": "node_fixture_004",
+      "name": "il_echo_primitives",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        528,
+        240
+      ],
+      "parameters": {
+        "description": "Return string, number, and boolean inputs with their runtime types for the Inference Lens provider-wire contract fixture.",
+        "workflowId": {
+          "__rl": true,
+          "value": "subworkflow_fixture",
+          "mode": "list",
+          "cachedResultName": "[Inference Lens N0] Primitive inputs — sub-workflow"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "enabled": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('enabled', `A diagnostic boolean`, 'boolean') }}",
+            "text": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('text', `A diagnostic string`, 'string') }}",
+            "count": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('count', `A diagnostic number`, 'number') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "text",
+              "displayName": "text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "count",
+              "displayName": "count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            },
+            {
+              "id": "enabled",
+              "displayName": "enabled",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "boolean"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Primitive inputs agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N0 OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Primitive inputs agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "il_echo_primitives": {
+      "ai_tool": [
+        [
+          {
+            "node": "Primitive inputs agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

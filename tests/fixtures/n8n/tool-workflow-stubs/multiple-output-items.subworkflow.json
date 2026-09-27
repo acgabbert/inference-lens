@@ -1,0 +1,51 @@
+{
+  "name": "[Inference Lens N0] Multiple output items — sub-workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "topic",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "31000000-0000-4000-8000-000000000001",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [-320, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [\n  { json: { fixture: \"IL_N0_MULTIPLE_OUTPUT_ITEMS\", ordinal: 1, topic: $json.topic, value: \"IL_N0_MULTI_FIRST\" } },\n  { json: { fixture: \"IL_N0_MULTIPLE_OUTPUT_ITEMS\", ordinal: 2, topic: $json.topic, value: \"IL_N0_MULTI_SECOND\" } }\n];"
+      },
+      "id": "31000000-0000-4000-8000-000000000002",
+      "name": "Return two ordered items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-40, 0]
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Return two ordered items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "tags": []
+}

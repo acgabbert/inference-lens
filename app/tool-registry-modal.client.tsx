@@ -147,7 +147,7 @@ export function ToolRegistryModal({
     setNotice(
       kind === "project"
         ? "Snapshot attached to the current project draft."
-        : "Snapshot attached to the next request.",
+        : "Tool kept attached in this tab.",
     );
   }
 
@@ -241,7 +241,7 @@ export function ToolRegistryModal({
                       type="button"
                       onClick={() => attach("request")}
                     >
-                      Use on next request
+                      Keep attached
                     </button>
                   </div>
                 </div>

@@ -20,6 +20,7 @@ import type {
   RunTrace,
 } from "../../packages/core/src/run-kernel/index.ts";
 import { StatusChip } from "../notifications/status-chip.client";
+import { experimentStopDetail } from "../run/experiment-stop.client";
 import { formatTokens } from "../run-metrics-format.client.ts";
 import { SideDrawer } from "../workbench-shell.client.tsx";
 import { EvaluationReassessmentDrawer } from "./evaluation-reassessment-drawer.client.tsx";
@@ -262,6 +263,9 @@ export function EvaluationResultsWorkspace({
       {live && <progress aria-label="Evaluation progress" className="experiment-progress" max={live.requested} value={live.finished}>{live.finished} of {live.requested}</progress>}
       {execution.storage === "unsaved" && <StatusChip tone="advisory" label="Session only" detail="This evaluation is not saved and will be lost when this session closes." />}
       {execution.error && <StatusChip tone="failure" label="Interrupted" detail={execution.error} />}
+      {!execution.error && execution.result?.status === "stopped" && (
+        <StatusChip tone="failure" label="Stopped" detail={experimentStopDetail(execution.plan, execution.result)} />
+      )}
       {/*
         * Persistent, not dismissible. A pass rate with no visible interpretation
         * is the exact failure this feature was designed against: every number

@@ -5,6 +5,10 @@ import { defineConfig, devices } from "@playwright/test";
 const appPort = 4300;
 const bufferedFixturePort = 44014;
 const flakyFixturePort = 44015;
+const mcpFixturePort = 44018;
+const mcpExecutionFixturePort = 44019;
+const mcpBatchFixturePort = 44020;
+const mcpInterruptionFixturePort = 44023;
 
 /**
  * The only reason the suite's dev server can run anything at all.
@@ -15,6 +19,9 @@ const flakyFixturePort = 44015;
  */
 const commandToolCatalog = fileURLToPath(
   new URL("./tests/fixtures/command-tools/catalog.json", import.meta.url),
+);
+const mcpServerCatalog = fileURLToPath(
+  new URL("./tests/fixtures/mcp-servers/catalog.json", import.meta.url),
 );
 
 /**
@@ -82,6 +89,7 @@ export default defineConfig({
         INFERENCE_LENS_N8N_BASE_URL: "",
         INFERENCE_LENS_N8N_API_KEY: "",
         INFERENCE_LENS_COMMAND_TOOLS: commandToolCatalog,
+        INFERENCE_LENS_MCP_SERVERS: mcpServerCatalog,
       },
     },
     {
@@ -93,6 +101,30 @@ export default defineConfig({
     {
       command: `INFERENCE_LENS_FLAKY_PORT=${flakyFixturePort} npm run dev:flaky-provider`,
       url: `http://127.0.0.1:${flakyFixturePort}/v1/models`,
+      reuseExistingServer: false,
+      timeout: 10_000,
+    },
+    {
+      command: `INFERENCE_LENS_MCP_FIXTURE_PORT=${mcpFixturePort} node scripts/mcp-discovery-fixture.mjs`,
+      url: `http://127.0.0.1:${mcpFixturePort}/status`,
+      reuseExistingServer: false,
+      timeout: 10_000,
+    },
+    {
+      command: `INFERENCE_LENS_MCP_FIXTURE_PORT=${mcpExecutionFixturePort} node scripts/mcp-discovery-fixture.mjs`,
+      url: `http://127.0.0.1:${mcpExecutionFixturePort}/status`,
+      reuseExistingServer: false,
+      timeout: 10_000,
+    },
+    {
+      command: `INFERENCE_LENS_MCP_FIXTURE_PORT=${mcpBatchFixturePort} node scripts/mcp-discovery-fixture.mjs`,
+      url: `http://127.0.0.1:${mcpBatchFixturePort}/status`,
+      reuseExistingServer: false,
+      timeout: 10_000,
+    },
+    {
+      command: `INFERENCE_LENS_MCP_FIXTURE_PORT=${mcpInterruptionFixturePort} node scripts/mcp-discovery-fixture.mjs`,
+      url: `http://127.0.0.1:${mcpInterruptionFixturePort}/status`,
       reuseExistingServer: false,
       timeout: 10_000,
     },

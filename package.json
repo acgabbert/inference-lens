@@ -16,6 +16,7 @@
     "dev:buffered-provider": "node scripts/buffered-openai-provider.mjs",
     "dev:n8n-api-fixture": "node scripts/n8n-public-api-fixture.mjs",
     "dev:n8n-echo-provider": "node scripts/n8n-echo-provider.mjs",
+    "dev:n8n-tool-capture-provider": "node scripts/n8n-tool-capture-provider.mjs",
     "dev:markdown-provider": "node scripts/markdown-openai-provider.mjs",
     "dev:reasoning-provider": "node scripts/reasoning-openai-provider.mjs",
     "dev:large-catalogue-provider": "node scripts/large-catalogue-provider.mjs",
@@ -40,6 +41,7 @@
     "version:bump": "node scripts/version.mjs bump"
   },
   "dependencies": {
+    "@modelcontextprotocol/client": "2.1.0",
     "@tauri-apps/api": "^2.11.1",
     "next": "16.2.11",
     "re2js": "2.8.5",
@@ -48,6 +50,7 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@modelcontextprotocol/server": "2.1.0",
     "@playwright/test": "1.58.2",
     "@tailwindcss/postcss": "4.2.1",
     "@tauri-apps/cli": "^2.11.4",

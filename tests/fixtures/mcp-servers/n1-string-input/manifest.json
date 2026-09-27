@@ -1,0 +1,28 @@
+{
+  "evidenceVersion": 1,
+  "capturedAt": "2026-09-26T20:31:42.191Z",
+  "applicationBaseCommit": "9d5bfbe934c8ec90c777841345883731779dbd65",
+  "applicationChanges": "Capture harness only; application runtime unchanged.",
+  "baseline": "tests/fixtures/n8n/captures/2.39.10/string-input-tool-workflow",
+  "pythonPackages": {
+    "mcp": "2.1.1",
+    "pydantic": "2.13.5"
+  },
+  "transport": "streamable-http",
+  "provider": "Scripted local OpenAI-compatible capture provider, buffered mode",
+  "schemaPolicy": "Python SDK-generated input schema; no n8n schema projection",
+  "resultPolicy": "Fixture returns explicit compact JSON-array text, structured_output=False",
+  "redactionReview": "Synthetic data only. Provider request bytes preserved. Discovery retains fixture loopback identity and timestamp. No headers, keys, session cookies, or external server URLs captured.",
+  "files": {
+    "completed.png": "c89398c12171b204576f09d03496b2ff8a43d36508d6b2c2045994bb0f0df1c8",
+    "discovery.json": "a73a226d92ffa11e748cbac636052e89a786f9dfb2566378772b6f877c19ab17",
+    "execution.json": "370858d5e06a96ab0f64b29af4114546375ea69b7662f3fb63f2c0db7110969b",
+    "provider-request-continuation.json": "b074b77247339c338098516c93284d2dfed2aa14ccb587952450a81554da60a8",
+    "provider-request-initial.json": "500aa7c7c9528d4e3264c5a626b791f3bb3509d0fa16d5d84f35cebdfb5ee8e8",
+    "provider-response-final.json": "d6a25e3cab169f70c398f1c8d680bafcf9afa2ab77c9507d76658c0e6903abd6",
+    "provider-response-tool-call.json": "4cb75d6e5ca0f55d7d9b19f4aee823ab7cdb532b0cd7607250f91f9621be38f7",
+    "python-execution.json": "a6a708988448ce307351e68fc46642e809d94f416bf462f9f7dd2626539f173a",
+    "python-versions.json": "1ead1a4341946965c9b5c45901db0a427f190450cd29ea3793ff950cc005adc1",
+    "wire-differences.json": "4e9d7b2e7b97d4d8370241dff5c791b9661e19ccd2277b1ef35b6871fef9fadf"
+  }
+}

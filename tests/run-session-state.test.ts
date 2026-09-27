@@ -73,7 +73,7 @@ const tools = [
 ] as const;
 
 test("derives manual and mocked drafts only for pending calls", () => {
-  const drafts = toolResultDraftsForState(state, tools, (id) =>
+  const drafts = toolResultDraftsForState(state, tools, ({ id }) =>
     toolBindingForMock(id, id === "tool_weather" ? weatherMock : undefined),
   );
   // The binding is what makes the submitted value an execution, so an edited
@@ -121,7 +121,7 @@ test("a command binding outranks an enabled mock, and prefills nothing", () => {
     "mock",
   );
 
-  const drafts = toolResultDraftsForState(state, tools, (id) =>
+  const drafts = toolResultDraftsForState(state, tools, ({ id }) =>
     id === "tool_weather" ? commandBinding : undefined,
   );
 
@@ -140,4 +140,23 @@ test("a command binding outranks an enabled mock, and prefills nothing", () => {
     executableBinding({ ...drafts["tool-call_mock"]!, text: "typed" }),
     undefined,
   );
+});
+
+test("an MCP draft takes its approval mode from the permission, and asks when none is known", () => {
+  const mcpBinding = {
+    toolId: "tool_weather" as ToolId,
+    kind: "mcp" as const,
+    executorId: "weather@aaaaaaaaaaaa",
+    label: "Local MCP",
+    serverId: "fixture",
+    remoteToolName: "weather",
+    discoveryFingerprint: "a".repeat(64),
+  };
+  const bindingFor = ({ id }: { id: string }) => (id === "tool_weather" ? mcpBinding : undefined);
+  const approval = (mode?: "ask" | "automatic") =>
+    toolResultDraftsForState(state, tools, bindingFor, () => mode)["tool-call_mock"]?.mcpApproval;
+
+  assert.deepEqual(approval("automatic"), { mode: "automatic", approved: true, serverLabel: "Local MCP", remoteToolName: "weather" });
+  assert.deepEqual(approval("ask"), { mode: "ask", approved: false, serverLabel: "Local MCP", remoteToolName: "weather" });
+  assert.deepEqual(approval(undefined), { mode: "ask", approved: false, serverLabel: "Local MCP", remoteToolName: "weather" });
 });

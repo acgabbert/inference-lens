@@ -1,0 +1,58 @@
+{
+  "model": "template-echo-model",
+  "temperature": 0,
+  "stream": false,
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "il_fixed_and_ai",
+        "description": "Synthetic fixed and ai inputs contract fixture for Inference Lens.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "description": "A diagnostic string"
+            }
+          },
+          "required": [
+            "text"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "strict": false
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are executing an Inference Lens n8n provider-wire contract fixture. Follow the tool-call instruction exactly."
+    },
+    {
+      "role": "user",
+      "content": "IL_N0_FIXED_AND_AI\nCall il_fixed_and_ai once with text IL_N0_AI_TEXT. The source is fixed by the workflow. After the tool returns, report its response without calling another tool."
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "call_inference_lens_n8n_001",
+          "type": "function",
+          "function": {
+            "name": "il_fixed_and_ai",
+            "arguments": "{\"text\":\"IL_N0_AI_TEXT\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "[\n  {\n    \"fixture\": \"IL_N0_FIXED_AND_AI\",\n    \"text\": \"IL_N0_AI_TEXT\",\n    \"source\": \"IL_N0_FIXED_SOURCE\"\n  }\n]",
+      "tool_call_id": "call_inference_lens_n8n_001"
+    }
+  ]
+}

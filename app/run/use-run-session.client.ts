@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CredentialSelection, ProviderTurnTransport } from "../../packages/contracts/src";
 import type { RichInferenceRequest } from "../../packages/core/src/types";
 import { createEntityId, createRunTrace, RunCoordinator, transcriptFromRunState } from "../../packages/core/src/run-kernel";
@@ -36,9 +36,10 @@ export interface RunSessionStartContext {
 export interface UseRunSessionOptions {
   transport: ProviderTurnTransport;
   prepareCredential(): Promise<CredentialSelection>;
-  tools: readonly ToolDefinition[];
-  /** Composed by the route from project mocks and this device's command grants. */
-  bindingForTool(toolId: ToolDefinition["id"]): ToolBinding | undefined;
+  /** Composed by the route from project mocks and this device's local grants. */
+  bindingForTool(tool: ToolDefinition): ToolBinding | undefined;
+  /** Interactive approval for an MCP-served tool: ask at each call, or not. */
+  mcpApprovalModeFor?(toolId: ToolDefinition["id"]): "ask" | "automatic" | undefined;
   readTrace(fileName: string): Promise<RunTrace>;
   onShowResponse(): void;
   onOpenTrace(): void;
@@ -67,6 +68,7 @@ export function useRunSession(options: UseRunSessionOptions) {
   const provenanceRef = useRef(new Map<string, RunTrace["branchedFrom"]>());
   const parentGenerationRef = useRef(0);
   const requestRef = useRef<RichInferenceRequest | null>(null);
+  const runToolsRef = useRef<readonly ToolDefinition[]>([]);
 
   function replaceState(next: RunState | null): void {
     runStateRef.current = next;
@@ -114,7 +116,12 @@ export function useRunSession(options: UseRunSessionOptions) {
     if (outcome === "aborted") {
       throw new DOMException("The provider turn was interrupted.", "AbortError");
     }
-    setToolResultDrafts(toolResultDraftsForState(coordinator.state, options.tools, options.bindingForTool));
+    setToolResultDrafts(toolResultDraftsForState(
+      coordinator.state,
+      runToolsRef.current,
+      options.bindingForTool,
+      (toolId) => options.mcpApprovalModeFor?.(toolId),
+    ));
   }
 
   async function start(input: ResolvedRunInput, context: RunSessionStartContext): Promise<void> {
@@ -122,6 +129,7 @@ export function useRunSession(options: UseRunSessionOptions) {
     const generation = ++requestGenerationRef.current;
     const controller = new AbortController(); abortRef.current = controller;
     const coordinator = new RunCoordinator(input); coordinatorRef.current = coordinator;
+    runToolsRef.current = input.tools;
     workspaceRef.current = context.workspace;
     requestRef.current = context.request;
     parentGenerationRef.current += 1; setParentTrace({ status: "idle" });
@@ -213,25 +221,43 @@ export function useRunSession(options: UseRunSessionOptions) {
     return true;
   }
 
-  async function continueRun(): Promise<void> {
+  async function continueRun(automaticOnly = false): Promise<void> {
     const coordinator = coordinatorRef.current;
     if (!coordinator || coordinator.state.status.kind !== "awaiting_tool_results") return;
+    if (!automaticOnly && pendingToolCalls(coordinator.state, runToolsRef.current).some(({ call }) => {
+      const draft = toolResultDrafts[call.id];
+      return (draft?.mcpApproval?.mode === "ask" && !draft.mcpApproval.approved) ||
+        (draft?.rejectedMcp && !draft.text.trim());
+    })) return;
     const generation = ++requestGenerationRef.current; const controller = new AbortController(); abortRef.current = controller; options.onShowResponse(); setIsRequestActive(true);
     try {
-      for (const entry of pendingToolCalls(coordinator.state, options.tools)) {
+      for (const entry of pendingToolCalls(coordinator.state, runToolsRef.current)) {
         if (requestGenerationRef.current !== generation) return;
+        if (automaticOnly && toolResultDrafts[entry.call.id]?.mcpApproval?.mode !== "automatic") continue;
         if (!(await resolveToolCall(coordinator, entry, controller.signal))) return;
       }
     } catch (error) {
       if (!controller.signal.aborted) { coordinator.fail({ code: "internal_error", message: error instanceof Error ? error.message : "A tool result could not be supplied." }); replaceState(coordinator.state); }
       return;
     } finally { if (requestGenerationRef.current === generation && coordinator.state.status.kind === "awaiting_tool_results") { abortRef.current = null; setIsRequestActive(false); } }
+    if (coordinator.state.status.kind === "awaiting_tool_results" && coordinator.state.status.pendingToolCallIds.length > 0) return;
     const command = coordinator.continue(); replaceState(coordinator.state); setToolResultDrafts({});
     const capture = diagnosticRef.current ?? startDiagnosticCapture(requestRef.current!); diagnosticRef.current = capture;
     try { await execute(command.execution, controller, generation, capture); }
     catch (error) { if (!controller.signal.aborted) { coordinator.fail({ code: "internal_error", message: error instanceof Error ? error.message : "Request failed." }); replaceState(coordinator.state); } }
     finally { if (requestGenerationRef.current === generation) { abortRef.current = null; setIsRequestActive(false); } }
   }
+
+  useEffect(() => {
+    if (isRequestActive || runState?.status.kind !== "awaiting_tool_results") return;
+    const pending = pendingToolCalls(runState, runToolsRef.current);
+    if (pending.some(({ call }) => toolResultDrafts[call.id]?.mcpApproval?.mode === "automatic")) {
+      void continueRun(true);
+    }
+    // The waiting call set and its drafts are the event; continueRun reads the
+    // current coordinator and has no stable identity of its own.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runState, toolResultDrafts, isRequestActive]);
 
   async function retry(): Promise<void> {
     const coordinator = coordinatorRef.current;
@@ -266,6 +292,16 @@ export function useRunSession(options: UseRunSessionOptions) {
     }
   }
   function updateToolResultDraft(callId: string, text: string): void { setToolResultDrafts((current) => ({ ...current, [callId]: { ...current[callId]!, text } })); }
+  function approveMcpCall(callId: string): void { setToolResultDrafts((current) => {
+    const draft = current[callId];
+    if (!draft?.mcpApproval) return current;
+    return { ...current, [callId]: { ...draft, mcpApproval: { ...draft.mcpApproval, approved: true } } };
+  }); }
+  function rejectMcpCall(callId: string): void { setToolResultDrafts((current) => {
+    const draft = current[callId];
+    if (!draft?.mcpApproval) return current;
+    return { ...current, [callId]: { text: "", resolution: { kind: "manual" }, rejectedMcp: true } };
+  }); }
   function reset(): void { stop(); coordinatorRef.current = null; setToolResultDrafts({}); diagnosticRef.current = null; setHasDiagnosticCapture(false); parentGenerationRef.current += 1; setParentTrace({ status: "idle" }); replaceState(null); }
   function downloadDiagnostics(): void { const capture = diagnosticRef.current; if (!capture) return; const exportedAt = new Date().toISOString(); const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([JSON.stringify({ schemaVersion: 1, exportedAt, privacy: { credentials: "redacted", messageBodies: "included" }, capture }, null, 2)], { type: "application/json" })); link.download = `inference-lens-diagnostics-${exportedAt.replaceAll(":", "-")}.json`; link.click(); URL.revokeObjectURL(link.href); }
   function traceForState(): RunTrace | undefined { const state = runStateRef.current; if (!state || !isTerminalRunState(state)) return; try { return createRunTrace(state, { branchedFrom: provenanceRef.current.get(state.runId) }); } catch { return; } }
@@ -295,5 +331,5 @@ export function useRunSession(options: UseRunSessionOptions) {
   async function importTrace(file: File): Promise<void> { try { adoptTrace(parseRunTraceJson(await file.text()), { workspace: null, fileName: file.name }); } catch (error) { options.onError(error instanceof Error ? error.message : "Could not import the run trace."); } }
   async function loadParentTrace(): Promise<void> { const provenance = visibleBranchProvenance; const generation = ++parentGenerationRef.current; if (!provenance) return; if (!workspaceRef.current) { setParentTrace({ status: "error", error: "No project folder is open. Open the folder that contains parent run " + provenance.runId + "." }); return; } setParentTrace({ status: "loading" }); try { const trace = await options.readTrace(traceFileName(provenance.runId)); if (generation !== parentGenerationRef.current) return; if (trace.runId !== provenance.runId) throw new Error("The parent trace file contains a different run."); setParentTrace({ status: "ready", trace }); } catch (error) { if (generation !== parentGenerationRef.current) return; const message = error instanceof Error ? error.message : "The trace could not be read."; const missing = error instanceof DOMException && error.name === "NotFoundError"; const invalid = /not valid|different run|schema|trace/i.test(message); setParentTrace({ status: "error", error: invalid ? `The saved parent trace for ${provenance.runId} is invalid: ${message}` : missing ? `No saved trace exists for parent run ${provenance.runId} in this project folder. Save the parent run, then try again.` : `The parent trace for ${provenance.runId} could not be read: ${message}` }); } }
   const transcript = useMemo(() => runState ? transcriptFromRunState(runState) : [], [runState]);
-  return { runState, transcript, isRequestActive, toolResultDrafts, traceStorage, hasDiagnosticCapture, visibleBranchProvenance, parentTrace, start, retry, continueRun, stop, reset, updateToolResultDraft, downloadDiagnostics, exportTrace, adoptTrace, importTrace, loadParentTrace, terminal: isTerminalRunState(runState) };
+  return { runState, transcript, isRequestActive, toolResultDrafts, traceStorage, hasDiagnosticCapture, visibleBranchProvenance, parentTrace, start, retry, continueRun, stop, reset, updateToolResultDraft, approveMcpCall, rejectMcpCall, downloadDiagnostics, exportTrace, adoptTrace, importTrace, loadParentTrace, terminal: isTerminalRunState(runState) };
 }

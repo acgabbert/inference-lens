@@ -72,6 +72,14 @@ per-tool grant made in the app, on the **Tools** tab, after the exact command
 line, its timeout, and how its output will be read are shown. The grant is
 stored on the device — never in the project — so a project shared with a
 teammate carries the tool definition and nothing about how it is served here.
+Command and MCP grants share one browser-storage record
+(`inference-lens:tool-grants:v2`); grants saved under the earlier
+`inference-lens:command-tool-grants:v1` key migrate on first read.
+
+An `unavailable` command stops a repeated run or evaluation after the
+repetition that found it, because every later repetition would fail the same
+way. Before a batch starts, the service confirms each granted command is still
+declared.
 
 A granted command outranks an enabled project mock, and the tools pane says so
 beside the mock. The grant is a deliberate act on this device; a mock arrives
@@ -123,7 +131,7 @@ report a tool error, which is why it is not the default.
 | Still running at `timeoutMs` | `timeout`; the command and its children are stopped |
 | The run was cancelled | `cancelled` |
 | The command could not be started | `execution_failed` |
-| The command id is not declared here | `rejected` |
+| The command id is not declared here, or no catalog is configured | `unavailable` |
 
 A **tool error** and a **failed execution** are deliberately different. A tool
 that ran and reported an error is a result the model is entitled to reason

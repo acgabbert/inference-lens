@@ -15,7 +15,7 @@ import {
   MIN_EXPERIMENT_TURN_CEILING,
 } from "../../packages/core/src/experiment.ts";
 
-import { experimentToolBindingLabel } from "./experiment-tool-bindings.client.ts";
+import { ExperimentToolBindingList } from "./experiment-tool-binding-list.client.tsx";
 
 export function RepeatedExperimentDialog({
   draft,
@@ -129,21 +129,7 @@ export function RepeatedExperimentDialog({
           }}
           notes={<small>Runs sequentially; the next starts only after the previous repetition is terminal.</small>}
         />
-        {exposesTools && (
-          /* What will run, at the moment cost is confirmed. A tool served
-             automatically is executed without another prompt, so this is the
-             last point at which a stale grant can be noticed. */
-          <div className="repeat-experiment-tools">
-            <h3>Tools served automatically</h3>
-            <ul>
-              {draft.toolBindings.map(({ tool, binding }) => (
-                <li key={tool.id} className={binding ? undefined : "repeat-experiment-tool-unbound"}>
-                  <code>{tool.name}</code> → {experimentToolBindingLabel({ tool, ...(binding ? { binding } : {}) })}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        {exposesTools && <ExperimentToolBindingList toolBindings={draft.toolBindings} />}
         {/* A floor once tools can extend a repetition past one turn: the
             provider is called again for every round of tool results, and the
             ceiling is the only thing bounding it. */}

@@ -54,8 +54,13 @@ catalog, beside the executable it bounds.
 - A tool that **ran and reported an error** is a *completed* execution carrying
   `isError: true`. The provider is entitled to see it and reason about it.
 - A tool that **could not produce a result** is a *failed* execution, classified
-  as `execution_failed`, `invalid_result`, `timeout`, `cancelled`, or
-  `rejected`.
+  as `execution_failed`, `invalid_result`, `timeout`, `cancelled`, `rejected`,
+  or `unavailable`.
+
+`unavailable` means the binding can no longer serve any call: its declaration
+is gone, its server cannot be reached, or the tool changed since it was
+granted. It is decided before a call is sent. A batch stops on it; every other
+failure fails only its own repetition.
 
 A failed execution never fabricates a tool result. The call stays pending, the
 failure is shown, and a human can supply a result by hand. Telling a model that

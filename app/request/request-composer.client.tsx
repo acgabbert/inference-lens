@@ -17,6 +17,8 @@ import type {
 import type { ProjectTemplatesHandle } from "../templates/use-project-templates.client";
 import { isEmptyEditableConversationDraft } from "../../packages/core/src/project";
 import type { CommandToolsHandle } from "../tools/use-command-tools.client";
+import type { McpConsentsHandle } from "../tools/use-mcp-consents.client";
+import type { McpDiscoveredTool } from "../../packages/contracts/src/mcp-discovery.ts";
 import { StatusChip } from "../notifications/status-chip.client";
 import { PromptInsertionDialog } from "../templates/prompt-insertion-dialog.client";
 import { RequestSettings } from "./request-settings.client";
@@ -39,17 +41,21 @@ export interface RequestComposerProps {
     tools: ToolDefinition[];
     requestTools: ToolDefinition[];
     enabledToolIds: ToolId[];
-    addTool(): void;
+    addTool(): ToolId;
     removeTool(id: ToolId): void;
     moveTool(id: ToolId, offset: number): void;
     updateTool(id: ToolId, patch: Partial<ToolDefinition>): void;
     setToolEnabled(id: ToolId, enabled: boolean): void;
     mockForTool(id: ToolId): ToolMock | undefined;
     updateToolMock(id: ToolId, text: string, enabled: boolean): void;
+    saveRequestToolToProject(id: ToolId): void;
     removeRequestTool(id: ToolId): void;
+    attachMcpToolToProject(tool: McpDiscoveredTool, name: string): ToolDefinition | string;
+    attachMcpToolToRequest(tool: McpDiscoveredTool, name: string): ToolDefinition | string;
   };
   /** The command-tool feature owner, for the tools tab's binding surface. */
   commandTools: CommandToolsHandle;
+  mcpConsents?: McpConsentsHandle;
   templates: ProjectTemplatesHandle;
   project:Pick<ProjectFile, "promptTemplates" | "externalImports"> | null;
   settings: RequestSettingsProps & {
@@ -98,6 +104,7 @@ export interface RequestComposerProps {
 export function RequestComposer({
   requestDraft,
   commandTools,
+  mcpConsents,
   templates,
   project,
   settings,
@@ -117,6 +124,12 @@ export function RequestComposer({
   onSaveParentTrace,
   onDiscardPendingBranch,
 }: RequestComposerProps) {
+  const [newToolId, setNewToolId] = useState<ToolId>();
+  function addProjectTool() {
+    const id = requestDraft.addTool();
+    setNewToolId(id);
+    return id;
+  }
   const [tab, setTab] = useState<RequestTab>("messages");
   const [shownImport, setShownImport] = useState(importedRevision);
   // Collapsed by default: the settings summary says what the next run will
@@ -258,7 +271,7 @@ export function RequestComposer({
         />
         {activeTab !== "messages" ? <div className="request-header-actions">
           {activeTab === "tools" ? (
-            <button className="text-button header-text-action" type="button" onClick={requestDraft.addTool}>
+            <button className="text-button header-text-action" type="button" onClick={addProjectTool}>
               + Add tool
             </button>
           ) : null}
@@ -315,7 +328,7 @@ export function RequestComposer({
                     : !settings.toolsEnabled
                       ? `${selectedToolCount} attached ${selectedToolCount === 1 ? "tool is" : "tools are"} unavailable because this profile does not allow tool calling.`
                       : requestDraft.requestTools.length > 0
-                        ? `${selectedToolCount} ${selectedToolCount === 1 ? "tool" : "tools"} attached; ${requestDraft.requestTools.length} ${requestDraft.requestTools.length === 1 ? "is" : "are"} session-only.`
+                        ? `${selectedToolCount} ${selectedToolCount === 1 ? "tool" : "tools"} attached; ${requestDraft.requestTools.length} ${requestDraft.requestTools.length === 1 ? "is" : "are"} kept in this tab.`
                         : `${selectedToolCount} ${selectedToolCount === 1 ? "tool" : "tools"} attached to this request.`}
                 </span>
                 <button className="text-button" type="button" onClick={() => setTab("tools")}>
@@ -389,7 +402,7 @@ export function RequestComposer({
             {requestPreview && <details className="request-preview"><summary>Resolved request preview</summary>{"error" in requestPreview ? <div className="template-diagnostic">{requestPreview.error}</div> : <><>{(templates.templateWorkbench.resolution?.diagnostics.length ?? 0) > 0 && <div className="template-warning" role="status">Preview contains unresolved variables. Running is blocked until they have values.</div>}</><div className="request-preview-tabs"><PaneTabs idPrefix="request-preview" label="Request preview view" value={requestPreviewView} onChange={(value) => setRequestPreviewView(value as "resolved" | "raw")} tabs={[{ id: "resolved", label: "Resolved" }, { id: "raw", label: "Raw" }]} /></div>{requestPreviewView === "resolved" ? <section aria-label="Resolved request" aria-labelledby="request-preview-resolved-tab" id="request-preview-resolved-panel" role="tabpanel"><h3>Resolved messages</h3><div className="request-preview-messages">{requestPreview.messages.map((message, index) => <article className="request-preview-message" key={`${message.role}-${index}`}><span className="eyebrow">{message.role}</span><pre>{conversationMessageText(message)}</pre></article>)}</div></section> : <section className="request-preview-raw" aria-label="Raw OpenAI-compatible request body" aria-labelledby="request-preview-raw-tab" id="request-preview-raw-panel" role="tabpanel"><h3>Raw OpenAI-compatible request body</h3><pre>{JSON.stringify(requestPreview.body, null, 2)}</pre></section>}</>}</details>}
           </>
         ) : (
-          <ToolsPane tools={requestDraft.tools} requestTools={requestDraft.requestTools} enabledToolIds={requestDraft.enabledToolIds} activeProfileName={activeProfile.name} toolsEnabled={settings.toolsEnabled} onOpenLibrary={onOpenToolLibrary} onOpenConnectionSettings={onOpenConnectionSettings} onAddTool={requestDraft.addTool} onRemoveTool={requestDraft.removeTool} onMoveTool={requestDraft.moveTool} onUpdateTool={requestDraft.updateTool} onSetToolEnabled={requestDraft.setToolEnabled} mockForTool={requestDraft.mockForTool} onUpdateToolMock={requestDraft.updateToolMock} onRemoveRequestTool={requestDraft.removeRequestTool} commandTools={commandTools} />
+          <ToolsPane tools={requestDraft.tools} requestTools={requestDraft.requestTools} enabledToolIds={requestDraft.enabledToolIds} activeProfileName={activeProfile.name} toolsEnabled={settings.toolsEnabled} onOpenLibrary={onOpenToolLibrary} onOpenConnectionSettings={onOpenConnectionSettings} onAddTool={addProjectTool} newToolId={newToolId} onRemoveTool={requestDraft.removeTool} onMoveTool={requestDraft.moveTool} onUpdateTool={requestDraft.updateTool} onSetToolEnabled={requestDraft.setToolEnabled} mockForTool={requestDraft.mockForTool} onUpdateToolMock={requestDraft.updateToolMock} onRemoveRequestTool={requestDraft.removeRequestTool} onSaveRequestToolToProject={requestDraft.saveRequestToolToProject} commandTools={commandTools} mcpConsents={mcpConsents} onAttachMcpToProject={requestDraft.attachMcpToolToProject} onAttachMcpToRequest={requestDraft.attachMcpToolToRequest} />
         )}
       </div>
       {promptInsertionOpen && (

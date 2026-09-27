@@ -123,6 +123,7 @@ async function openFixtureProject(page: Page): Promise<void> {
 /** Grants one declared command through the consent surface, as a user does. */
 async function allowCommand(page: Page, label: string): Promise<void> {
   await page.getByRole("tab", { name: "Tools" }).click();
+  await page.getByText("get_weather · Edit definition", { exact: true }).click();
   const fields = page.locator(".tool-command-fields");
   await expect(fields).toBeVisible();
   await fields.getByLabel("Command tool for get_weather").selectOption({ label });

@@ -1,0 +1,31 @@
+{
+  "id": "chatcmpl-inference-lens-n8n-tool-call",
+  "object": "chat.completion",
+  "created": 0,
+  "model": "template-echo-model",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_inference_lens_n8n_001",
+            "type": "function",
+            "function": {
+              "name": "il_echo_primitives",
+              "arguments": "{\"text\":\"IL_N0_PRIMITIVE_TEXT\",\"count\":7,\"enabled\":true}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 2,
+    "completion_tokens": 1,
+    "total_tokens": 3
+  }
+}

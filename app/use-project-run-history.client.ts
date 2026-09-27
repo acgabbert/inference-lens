@@ -14,7 +14,7 @@ import {
 import {
   parseExperimentPlanJson,
   parseExperimentResultJson,
-  type ExperimentResultV3,
+  type ExperimentResult,
   type ExperimentPlanV3,
 } from "../packages/core/src/experiment.ts";
 import type { RunId, RunTrace } from "../packages/core/src/run-kernel";
@@ -33,7 +33,7 @@ export type ProjectExperimentHistoryItem = ExperimentHistoryItem;
 
 export interface OpenedProjectExperiment {
   plan: ExperimentPlanV3;
-  result?: ExperimentResultV3;
+  result?: ExperimentResult;
   traces: ReadonlyMap<RunId, RunTrace>;
   traceFileNames: ReadonlyMap<RunId, string>;
   /**

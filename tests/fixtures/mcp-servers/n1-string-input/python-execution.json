@@ -1,0 +1,6 @@
+{
+  "arguments": {
+    "text": "IL_N0_STRING_VALUE"
+  },
+  "result": "[{\"fixture\":\"IL_N0_STRING_INPUT\",\"echoed\":\"IL_N0_STRING_VALUE\",\"receivedType\":\"string\"}]"
+}

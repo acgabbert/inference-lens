@@ -1,0 +1,186 @@
+{
+  "id": "execution_fixture_002",
+  "workflowId": "subworkflow_fixture",
+  "mode": "integrated",
+  "status": "success",
+  "finished": true,
+  "data": {
+    "startData": {},
+    "resultData": {
+      "runData": {
+        "When Executed by Another Workflow": [
+          {
+            "executionIndex": 0,
+            "source": [],
+            "hints": [],
+            "executionTime": 1,
+            "metadata": {
+              "parentExecution": {
+                "executionId": "execution_fixture_001",
+                "workflowId": "workflow_fixture",
+                "shouldResume": true,
+                "executionContext": {
+                  "version": 1,
+                  "establishedAt": 1790251534279,
+                  "source": "manual",
+                  "triggerNode": {
+                    "name": "Manual Trigger",
+                    "type": "n8n-nodes-base.manualTrigger"
+                  },
+                  "redaction": {
+                    "version": 2,
+                    "production": false,
+                    "manual": false
+                  }
+                }
+              }
+            },
+            "executionStatus": "success",
+            "data": {
+              "main": [
+                [
+                  {
+                    "json": {
+                      "topic": "IL_N0_MULTI_TOPIC"
+                    },
+                    "index": 0,
+                    "pairedItem": {
+                      "item": 0
+                    }
+                  }
+                ]
+              ]
+            }
+          }
+        ],
+        "Return two ordered items": [
+          {
+            "executionIndex": 1,
+            "source": [
+              {
+                "previousNode": "When Executed by Another Workflow",
+                "previousNodeOutput": 0,
+                "previousNodeRun": 0
+              }
+            ],
+            "hints": [],
+            "executionTime": 6,
+            "executionStatus": "success",
+            "data": {
+              "main": [
+                [
+                  {
+                    "json": {
+                      "fixture": "IL_N0_MULTIPLE_OUTPUT_ITEMS",
+                      "ordinal": 1,
+                      "topic": "IL_N0_MULTI_TOPIC",
+                      "value": "IL_N0_MULTI_FIRST"
+                    },
+                    "pairedItem": {
+                      "item": 0
+                    }
+                  },
+                  {
+                    "json": {
+                      "fixture": "IL_N0_MULTIPLE_OUTPUT_ITEMS",
+                      "ordinal": 2,
+                      "topic": "IL_N0_MULTI_TOPIC",
+                      "value": "IL_N0_MULTI_SECOND"
+                    },
+                    "pairedItem": {
+                      "item": 0
+                    }
+                  }
+                ]
+              ]
+            }
+          }
+        ]
+      },
+      "lastNodeExecuted": "Return two ordered items"
+    },
+    "executionData": {
+      "contextData": {},
+      "nodeExecutionStack": [],
+      "metadata": {},
+      "waitingExecution": {},
+      "waitingExecutionSource": {},
+      "runtimeData": {
+        "version": 1,
+        "establishedAt": 1790251534340,
+        "source": "integrated",
+        "triggerNode": {
+          "name": "Manual Trigger",
+          "type": "n8n-nodes-base.manualTrigger"
+        },
+        "redaction": {
+          "version": 2,
+          "production": false,
+          "manual": false
+        },
+        "parentExecutionId": "execution_fixture_001"
+      }
+    },
+    "workflowData": {
+      "id": "subworkflow_fixture",
+      "name": "[Inference Lens N0] Multiple output items — sub-workflow",
+      "nodes": [
+        {
+          "id": "node_fixture_005",
+          "name": "When Executed by Another Workflow",
+          "type": "n8n-nodes-base.executeWorkflowTrigger",
+          "typeVersion": 1.1,
+          "position": [
+            0,
+            0
+          ],
+          "parameters": {
+            "events": "worklfow_call",
+            "inputSource": "workflowInputs",
+            "workflowInputs": {
+              "values": [
+                {
+                  "name": "topic",
+                  "type": "string"
+                }
+              ]
+            },
+            "returnOutput": "lastRunOnly"
+          }
+        },
+        {
+          "id": "node_fixture_006",
+          "name": "Return two ordered items",
+          "type": "n8n-nodes-base.code",
+          "typeVersion": 2,
+          "position": [
+            288,
+            0
+          ],
+          "parameters": {
+            "mode": "runOnceForAllItems",
+            "language": "javaScript",
+            "jsCode": "return [\n  { json: { fixture: \"IL_N0_MULTIPLE_OUTPUT_ITEMS\", ordinal: 1, topic: $json.topic, value: \"IL_N0_MULTI_FIRST\" } },\n  { json: { fixture: \"IL_N0_MULTIPLE_OUTPUT_ITEMS\", ordinal: 2, topic: $json.topic, value: \"IL_N0_MULTI_SECOND\" } }\n];",
+            "notice": ""
+          }
+        }
+      ],
+      "connections": {
+        "When Executed by Another Workflow": {
+          "main": [
+            [
+              {
+                "node": "Return two ordered items",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        }
+      },
+      "settings": {
+        "executionOrder": "v1"
+      }
+    }
+  }
+}
