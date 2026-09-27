@@ -34,6 +34,8 @@ const toolCallingModel = "tool-calling-model";
 const mcpToolModel = "mcp-tool-model";
 const mcpErrorModel = "mcp-error-model";
 const mcpSlowModel = "mcp-slow-model";
+/** Asks for the MCP fixture call that takes its server down after answering. */
+const mcpOutageModel = "mcp-outage-model";
 /**
  * Never stops asking for the tool, however many results it is given.
  *
@@ -113,6 +115,7 @@ const server = createServer(async (request, response) => {
         { id: mcpToolModel, object: "model" },
         { id: mcpErrorModel, object: "model" },
         { id: mcpSlowModel, object: "model" },
+        { id: mcpOutageModel, object: "model" },
         { id: loopingToolModel, object: "model" },
       ],
     }));
@@ -148,8 +151,8 @@ const server = createServer(async (request, response) => {
     return;
   }
 
-  if (body.model === toolCallingModel || body.model === loopingToolModel || [mcpToolModel, mcpErrorModel, mcpSlowModel].includes(body.model)) {
-    const isMcpModel = [mcpToolModel, mcpErrorModel, mcpSlowModel].includes(body.model);
+  if (body.model === toolCallingModel || body.model === loopingToolModel || [mcpToolModel, mcpErrorModel, mcpSlowModel, mcpOutageModel].includes(body.model)) {
+    const isMcpModel = [mcpToolModel, mcpErrorModel, mcpSlowModel, mcpOutageModel].includes(body.model);
     const selectedTool = isMcpModel ? "lookup_record" : toolName;
     const exposed = (body.tools ?? []).map((tool) => tool?.function?.name);
     if (!exposed.includes(selectedTool)) {
@@ -168,7 +171,7 @@ const server = createServer(async (request, response) => {
           tool_calls: [{
             id: `call_weather_${supplied.length + 1}`,
             type: "function",
-            function: { name: selectedTool, arguments: isMcpModel ? JSON.stringify({ record_id: body.model === mcpErrorModel ? "tool-error" : body.model === mcpSlowModel ? "slow" : "sample-42" }) : toolArguments },
+            function: { name: selectedTool, arguments: isMcpModel ? JSON.stringify({ record_id: body.model === mcpErrorModel ? "tool-error" : body.model === mcpSlowModel ? "slow" : body.model === mcpOutageModel ? "go-down" : "sample-42" }) : toolArguments },
           }],
         }
       : {

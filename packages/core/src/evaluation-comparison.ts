@@ -6,7 +6,7 @@ import {
   type EvaluationExperimentPlanV3,
   type EvaluationRepetitionClassification,
   type ExperimentMetricRange,
-  type ExperimentResultV3,
+  type ExperimentResultInput,
   type ExperimentUsageAggregate,
 } from "./experiment.ts";
 import {
@@ -41,7 +41,7 @@ export interface EvaluationComparisonInput {
   experimentId: ExperimentId;
   plan: EvaluationExperimentPlanV3;
   variantId: EvaluationVariantId;
-  result?: ExperimentResultV3;
+  result?: ExperimentResultInput;
   states?: ReadonlyMap<RunId, RunState>;
 }
 

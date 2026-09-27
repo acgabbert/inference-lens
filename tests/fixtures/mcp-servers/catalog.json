@@ -16,6 +16,15 @@
       "transport": "streamable-http",
       "callTimeoutMs": 200,
       "authorization": { "kind": "none" }
+    },
+    {
+      "id": "batch-fixture",
+      "label": "Synthetic MCP batch fixture",
+      "endpoint": "http://127.0.0.1:44020/mcp",
+      "transport": "streamable-http",
+      "connectTimeoutMs": 2000,
+      "callTimeoutMs": 200,
+      "authorization": { "kind": "none" }
     }
   ]
 }

@@ -41,6 +41,13 @@ compatibility scope and M4's repeated runs/evaluations remain separate work.
 See the
 [M3 acceptance record](MCP_M3_EXECUTION_DESIGN.md#regression-and-acceptance).
 
+**September 26 M4 design:** [the M4 batch design](MCP_M4_BATCH_DESIGN.md)
+revises decision 8 and Phase 5. Command and MCP tools share one browser-side
+grant record, and the service validates each call without holding permission
+state. This replaces M3's service-side session consent. A batch that stops
+because a tool became unavailable is recorded as `stopped` in a v5 experiment
+result.
+
 ## Relationship to earlier planning
 
 This plan refines the unimplemented M1–M4 portion of the symlinked

@@ -24,7 +24,7 @@ import {
   serializeExperimentResult,
 } from "../packages/core/src/experiment.ts";
 import type {
-  ExperimentResultV3,
+  ExperimentResult,
   ExperimentPlanV3,
 } from "../packages/core/src/experiment.ts";
 import {
@@ -685,7 +685,7 @@ export async function saveExperimentPlanWorkspace(
 
 export async function saveExperimentResultWorkspace(
   handle: ProjectWorkspaceHandle,
-  result: ExperimentResultV3,
+  result: ExperimentResult,
   plan: ExperimentPlanV3,
 ): Promise<void> {
   await handle.storage.saveExperimentArtifact(

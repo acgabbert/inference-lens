@@ -15,6 +15,7 @@ import {
 } from "../packages/core/src/experiment.ts";
 import type {
   ExperimentResultV3,
+  ExperimentResultV5,
   RepeatedExperimentPlanV3,
 } from "../packages/core/src/experiment.ts";
 import { createResolvedRunInput } from "../packages/core/src/run-kernel/run-execution.ts";
@@ -162,13 +163,95 @@ test("validates result identity and planned references exactly", () => {
     ],
   };
   const serialized = serializeExperimentResult(result, source);
-  assert.deepEqual(parseExperimentResultJson(serialized, source), result);
+  // Results are always written as the current version, whatever they arrived as.
+  assert.deepEqual(parseExperimentResultJson(serialized, source), { ...result, schemaVersion: 5 });
 
   const mismatched = structuredClone(result);
   mismatched.cells[1].runId = "run_other" as RunId;
   assert.throws(
     () => serializeExperimentResult(mismatched, source),
     /unplanned cell or run/,
+  );
+});
+
+test("a stopped result records which repetition and tool stopped the batch", () => {
+  const source = { ...plan(), cells: [...plan().cells, { cellId: "experiment-cell_third" as const, ordinal: 3, runId: "run_third" as const }] };
+  const result: ExperimentResultV5 = {
+    schemaVersion: 5,
+    experimentId: source.experimentId,
+    status: "stopped",
+    stop: { reason: "tool_unavailable", cellId: "experiment-cell_second", toolId: "tool_lookup" },
+    endedAt: "2026-07-30T12:01:00.000Z",
+    cells: [
+      { cellId: "experiment-cell_first", runId: "run_first", status: "completed" },
+      { cellId: "experiment-cell_second", runId: "run_second", status: "failed" },
+      { cellId: "experiment-cell_third", runId: "run_third", status: "not-run" },
+    ],
+  };
+  const serialized = serializeExperimentResult(result, source);
+  assert.deepEqual(parseExperimentResultJson(serialized, source), result);
+  assert.equal(experimentLifecycle(source, result), "stopped");
+  assert.equal(repeatedExperimentAggregate(source, result).lifecycle, "stopped");
+});
+
+test("a stop must name the failed repetition that caused it, and only a stopped result has one", () => {
+  const source = plan();
+  const stopped: ExperimentResultV5 = {
+    schemaVersion: 5,
+    experimentId: source.experimentId,
+    status: "stopped",
+    stop: { reason: "tool_unavailable", cellId: "experiment-cell_first", toolId: "tool_lookup" },
+    endedAt: "2026-07-30T12:01:00.000Z",
+    cells: [
+      { cellId: "experiment-cell_first", runId: "run_first", status: "failed" },
+      { cellId: "experiment-cell_second", runId: "run_second", status: "not-run" },
+    ],
+  };
+  assert.doesNotThrow(() => serializeExperimentResult(stopped, source));
+
+  const { stop: _stop, ...withoutStop } = stopped;
+  void _stop;
+  assert.throws(() => serializeExperimentResult(withoutStop as ExperimentResultV5, source), /stopped experiment must record/i);
+
+  const completedCause = structuredClone(stopped);
+  completedCause.cells[0].status = "completed";
+  assert.throws(() => serializeExperimentResult(completedCause, source), /failed repetition/i);
+
+  const laterCellRan = structuredClone(stopped);
+  laterCellRan.cells[1].status = "completed";
+  assert.throws(() => serializeExperimentResult(laterCellRan, source), /after the stop/i);
+
+  const unknownCell = structuredClone(stopped);
+  unknownCell.stop = { ...stopped.stop!, cellId: "experiment-cell_other" };
+  assert.throws(() => serializeExperimentResult(unknownCell, source), /failed repetition/i);
+
+  const completedWithStop: ExperimentResultV5 = {
+    ...stopped,
+    status: "completed",
+    cells: stopped.cells.map((cell) => ({ ...cell, status: "completed" as const })),
+  };
+  assert.throws(() => serializeExperimentResult(completedWithStop, source), /only a stopped experiment/i);
+});
+
+test("Version 4 results remain readable and are read as Version 5", () => {
+  const source = plan();
+  const legacy = {
+    schemaVersion: 4,
+    experimentId: source.experimentId,
+    status: "completed",
+    endedAt: "2026-07-30T12:01:00.000Z",
+    cells: [
+      { cellId: "experiment-cell_first", runId: "run_first", status: "completed" },
+      { cellId: "experiment-cell_second", runId: "run_second", status: "failed" },
+    ],
+  };
+  assert.deepEqual(parseExperimentResultJson(JSON.stringify(legacy), source), { ...legacy, schemaVersion: 5 });
+  assert.throws(
+    () => parseExperimentResultJson(JSON.stringify({ ...legacy, status: "stopped" }), source),
+  );
+  assert.throws(
+    () => parseExperimentResultJson(JSON.stringify({ ...legacy, schemaVersion: 3 }), source),
+    /Version 3 is unsupported/,
   );
 });
 

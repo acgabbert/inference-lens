@@ -12,6 +12,7 @@ import { InferenceSettingsPanel } from "../inference-settings-panel.client.tsx";
 import { formatDuration, formatRate, formatTokens } from "../run-metrics-format.client.ts";
 import type { RepeatedExperimentExecution } from "./use-repeated-experiment-session.client.ts";
 import { StatusChip } from "../notifications/status-chip.client";
+import { experimentStopDetail } from "./experiment-stop.client";
 
 function rowStatus(
   execution: RepeatedExperimentExecution,
@@ -192,6 +193,9 @@ export function RepeatedExperimentWorkspace({
 
       {execution.storage === "unsaved" && <StatusChip tone="advisory" label="Session only" detail="This experiment is not saved and will be lost when this session closes." />}
       {execution.error && <StatusChip tone="failure" label="Interrupted" detail={execution.error} />}
+      {!execution.error && execution.result?.status === "stopped" && (
+        <StatusChip tone="failure" label="Stopped" detail={experimentStopDetail(execution.plan, execution.result)} />
+      )}
 
       {/* The same panel the Repeat dialog offers, now a record: these values
           were frozen into the plan on start and no edit can reach the calls

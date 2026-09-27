@@ -155,17 +155,22 @@ export function pendingToolCalls(
  *
  * The session asks a single question — "what binding serves this tool?" — and
  * the answer is composed by the route from the project's mocks and this
- * device's command grants. Which kinds exist is not this module's business,
+ * device's local grants. Which kinds exist is not this module's business,
  * which is what keeps a third kind from arriving here as another parameter.
  */
 export function toolResultDraftsForState(
   state: RunState,
   tools: readonly ToolDefinition[],
-  bindingForTool: (toolId: ToolDefinition["id"]) => ToolBinding | undefined,
+  bindingForTool: (tool: ToolDefinition) => ToolBinding | undefined,
+  /**
+   * How a person approves an MCP-served call. Owned by the permission, not the
+   * binding; an unknown mode asks, because asking is the safe default.
+   */
+  mcpApprovalModeFor: (toolId: ToolDefinition["id"]) => "ask" | "automatic" | undefined = () => undefined,
 ): Record<string, ToolResultDraft> {
   return Object.fromEntries(
     pendingToolCalls(state, tools).map(({ call, tool }) => {
-      const binding = tool ? bindingForTool(tool.id) : undefined;
+      const binding = tool ? bindingForTool(tool) : undefined;
       if (!binding) {
         return [call.id, {
           text: "", resolution: { kind: "manual" as const },
@@ -184,10 +189,13 @@ export function toolResultDraftsForState(
             prefilledText: "",
             binding,
             pendingExecutorLabel: binding.label ?? binding.executorId,
-            ...(binding.kind === "mcp" ? { mcpApproval: {
-              mode: binding.mode, approved: binding.mode === "automatic",
-              serverLabel: binding.label ?? "Local MCP server", remoteToolName: binding.remoteToolName,
-            } } : {}),
+            ...(binding.kind === "mcp" ? (() => {
+              const mode = mcpApprovalModeFor(binding.toolId) ?? "ask";
+              return { mcpApproval: {
+                mode, approved: mode === "automatic",
+                serverLabel: binding.label ?? "Local MCP server", remoteToolName: binding.remoteToolName,
+              } };
+            })() : {}),
             resolution: toolResolutionForBinding(binding),
           },
         ];

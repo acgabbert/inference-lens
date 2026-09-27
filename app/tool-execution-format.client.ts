@@ -37,6 +37,7 @@ const failureReasons: Record<
   timeout: "Timed out",
   cancelled: "Cancelled",
   rejected: "Refused by policy",
+  unavailable: "Unavailable",
 };
 
 function executorName(record: ToolExecutionRecord): string {

@@ -57,6 +57,11 @@ export type ToolBindingConfig =
       /** When the user granted this tool the right to run that command. */
       grantedAt: string;
     }
+  /**
+   * One tool on an operator-declared MCP server. It names what the host must
+   * verify — never an endpoint or credential. How a person approves its calls
+   * is interactive policy, owned outside the binding.
+   */
   | {
       kind: "mcp";
       executorId: string;
@@ -64,7 +69,6 @@ export type ToolBindingConfig =
       serverId: string;
       remoteToolName: string;
       discoveryFingerprint: string;
-      mode: "ask" | "automatic";
     };
 
 export type ToolBinding = ToolBindingConfig & { toolId: ToolId };

@@ -67,9 +67,16 @@ never ran. A repetition with no openable trace is presented as `Waiting`,
 `Not run`, `Trace missing`, or `Trace could not be read` — never as one
 undifferentiated blank.
 
-Both files use `schemaVersion: 3`. Pre-v3 experiment artifacts are intentionally
-unsupported; this schema was reset while the application had only one
-developer/user, so PR10 carries no artifact migration branch. Parsers reject
+Plans use `schemaVersion: 4`. Results use `schemaVersion: 5`, which adds one
+terminal status, `stopped`, for a batch that stopped itself because a tool
+binding became unavailable. A stopped result must carry
+`stop: { reason: "tool_unavailable", cellId, toolId }`, naming the failed
+repetition that found the tool unavailable; every later cell is `not-run`.
+Version 4 results remain readable and are read as Version 5, since they cannot
+say `stopped`; new results are always written as Version 5. Older versions of
+the application cannot open a Version 5 result. Pre-v4 experiment artifacts are
+intentionally unsupported; this schema was reset while the application had
+only one developer/user, so there is no earlier migration branch. Parsers reject
 unknown fields, unsupported versions,
 invalid or duplicate IDs, mismatched result references, and credential-like keys
 at provider-option boundaries. Serializers produce stable

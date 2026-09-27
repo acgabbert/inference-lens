@@ -1,19 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ToolBinding } from "../../packages/core/src/tool-execution.ts";
 import type { ToolDefinition, ToolId } from "../../packages/core/src/run-kernel/types.ts";
 import type { McpServerSummary } from "../../packages/contracts/src/mcp-discovery.ts";
 import { isTauriRuntime } from "../runtime.client.ts";
+import {
+  localToolGrantCheckItem,
+  mcpToolBinding,
+  updateLocalToolGrants,
+  useLocalToolGrants,
+  withLocalToolGrant,
+  withoutLocalToolGrant,
+} from "./local-tool-grants.client.ts";
+import type { McpToolGrant } from "./local-tool-grants.client.ts";
+import { checkToolBindingsOnHost } from "./tool-binding-check.client.ts";
 
-export interface McpConsentView {
-  toolId: string;
-  serverId: string;
-  remoteToolName: string;
-  discoveryFingerprint: string;
-  mode: "ask" | "automatic";
-  grantedAt: string;
-}
+export type McpConsentView = McpToolGrant;
 
 export interface McpConsentsHandle {
   servers: McpServerSummary[];
@@ -23,40 +26,53 @@ export interface McpConsentsHandle {
   revoke(toolId: ToolId): Promise<void>;
   bindingFor(tool: ToolDefinition): ToolBinding | undefined;
   grantFor(toolId: ToolId): McpConsentView | undefined;
+  /** Interactive approval policy for a granted tool; batches ignore it. */
+  approvalModeFor(toolId: ToolId): McpConsentView["mode"] | undefined;
 }
 
+/**
+ * The MCP permission owner: which declared servers exist, and which attached
+ * snapshots the user allowed to call them.
+ *
+ * Permissions live in the shared local grant record and last until revoked.
+ * A new one is checked with the host first, so a snapshot that no longer
+ * matches its server is refused when granted rather than when first called.
+ */
 export function useMcpConsents(): McpConsentsHandle {
   const [servers, setServers] = useState<McpServerSummary[]>([]);
-  const [grants, setGrants] = useState<McpConsentView[]>([]);
   const [error, setError] = useState<string>();
+  const localGrants = useLocalToolGrants();
+  const grants = useMemo(
+    () => localGrants.filter((grant): grant is McpToolGrant => grant.kind === "mcp"),
+    [localGrants],
+  );
+
   useEffect(() => {
     if (isTauriRuntime()) return;
     let active = true;
-    void Promise.all([
-      fetch("/api/mcp/servers").then((response) => response.json()) as Promise<{ servers: McpServerSummary[] }>,
-      fetch("/api/mcp/grants").then((response) => response.json()) as Promise<{ grants: McpConsentView[] }>,
-    ]).then(([catalog, stored]) => {
-      if (!active) return;
-      setServers(catalog.servers ?? []);
-      setGrants(stored.grants ?? []);
-    }).catch(() => { if (active) setError("MCP execution permissions could not be loaded."); });
+    void (fetch("/api/mcp/servers").then((response) => response.json()) as Promise<{ servers?: McpServerSummary[] }>)
+      .then((catalog) => { if (active) setServers(catalog.servers ?? []); })
+      .catch(() => { if (active) setError("Declared MCP servers could not be loaded."); });
     return () => { active = false; };
   }, []);
 
   const grant = useCallback(async (tool: ToolDefinition, serverId: string, mode: McpConsentView["mode"]): Promise<boolean> => {
     if (tool.source?.kind !== "mcp") return false;
+    const candidate: McpToolGrant = {
+      kind: "mcp",
+      toolId: tool.id,
+      serverId,
+      remoteToolName: tool.source.remoteToolName,
+      discoveryFingerprint: tool.source.discoveryFingerprint,
+      mode,
+      grantedAt: new Date().toISOString(),
+    };
     try {
-      const response = await fetch("/api/mcp/grants", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          toolId: tool.id, serverId, remoteToolName: tool.source.remoteToolName,
-          discoveryFingerprint: tool.source.discoveryFingerprint, mode,
-        }),
-      });
-      const body = await response.json() as { grant?: McpConsentView; error?: string };
-      if (!response.ok || !body.grant) throw new Error(body.error ?? "The MCP permission was refused.");
-      setGrants((current) => [...current.filter(({ toolId }) => toolId !== tool.id), body.grant!]);
+      const [result] = await checkToolBindingsOnHost([localToolGrantCheckItem(candidate)]);
+      if (result?.status !== "ready") {
+        throw new Error(result?.message ?? "The MCP permission was refused.");
+      }
+      updateLocalToolGrants((current) => withLocalToolGrant(current, candidate));
       setError(undefined);
       return true;
     } catch (reason) {
@@ -66,35 +82,27 @@ export function useMcpConsents(): McpConsentsHandle {
   }, []);
 
   const revoke = useCallback(async (toolId: ToolId): Promise<void> => {
-    try {
-      const response = await fetch("/api/mcp/grants", {
-        method: "DELETE", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ toolId }),
-      });
-      if (!response.ok) throw new Error("The MCP permission could not be removed.");
-      setGrants((current) => current.filter((grant) => grant.toolId !== toolId));
-      setError(undefined);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "The MCP permission could not be removed."); }
+    // Only an MCP grant is this owner's to revoke.
+    updateLocalToolGrants((current) => current.some((grant) => grant.toolId === toolId && grant.kind === "mcp")
+      ? withoutLocalToolGrant(current, toolId)
+      : [...current]);
+    setError(undefined);
   }, []);
 
-  function grantFor(toolId: ToolId): McpConsentView | undefined {
-    return grants.find((grant) => grant.toolId === toolId);
-  }
-
-  function bindingFor(tool: ToolDefinition): ToolBinding | undefined {
-    const stored = grantFor(tool.id);
-    if (!stored || tool.source?.kind !== "mcp" ||
-        stored.remoteToolName !== tool.source.remoteToolName ||
-        stored.discoveryFingerprint !== tool.source.discoveryFingerprint ||
-        !servers.some(({ id }) => id === stored.serverId)) return;
+  return useMemo<McpConsentsHandle>(() => {
+    const grantFor = (toolId: ToolId) => grants.find((grant) => grant.toolId === toolId);
     return {
-      kind: "mcp", toolId: tool.id,
-      executorId: `${stored.remoteToolName}@${stored.discoveryFingerprint.slice(0, 12)}`,
-      label: servers.find(({ id }) => id === stored.serverId)?.label,
-      serverId: stored.serverId, remoteToolName: stored.remoteToolName,
-      discoveryFingerprint: stored.discoveryFingerprint, mode: stored.mode,
+      servers,
+      grants,
+      ...(error ? { error } : {}),
+      grant,
+      revoke,
+      grantFor,
+      bindingFor(tool) {
+        const stored = grantFor(tool.id);
+        return stored ? mcpToolBinding(stored, tool, servers) : undefined;
+      },
+      approvalModeFor: (toolId) => grantFor(toolId)?.mode,
     };
-  }
-
-  return { servers, grants, error, grant, revoke, bindingFor, grantFor };
+  }, [servers, grants, error, grant, revoke]);
 }

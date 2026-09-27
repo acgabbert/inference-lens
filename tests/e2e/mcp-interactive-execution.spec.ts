@@ -66,51 +66,48 @@ async function savedTrace(page: Page): Promise<{ raw: string; toolExecutions: Ar
   });
 }
 
-test("an attached local MCP tool can receive a session execution consent", async ({ request }) => {
+test("the service checks a named MCP tool before every call and classifies what follows", async ({ request }) => {
   const discovery = await request.post("/api/mcp/discovery", { data: { serverId: "execution-fixture" } });
   expect(discovery.ok()).toBe(true);
   const body = await discovery.json() as { tools: Array<{ remoteName: string; fingerprint?: string }> };
   const tool = body.tools.find(({ remoteName }) => remoteName === "lookup_record");
   expect(tool?.fingerprint).toBeTruthy();
+  const named = { serverId: "execution-fixture", remoteToolName: "lookup_record", discoveryFingerprint: tool!.fingerprint! };
+  const execute = (recordId: string, overrides: Record<string, string> = {}) => request.post("/api/mcp/execute", {
+    data: { toolCallId: `call-${recordId}`, ...named, ...overrides, arguments: { record_id: recordId } },
+  });
 
-  const ungranted = await request.post("/api/mcp/execute", {
-    data: { toolId: "tool:mcp-fixture-regression", toolCallId: "call-ungranted", arguments: { record_id: "sample-42" } },
-  });
-  expect(ungranted.status()).toBe(403);
-  const stale = await request.post("/api/mcp/grants", {
-    data: { toolId: "tool:mcp-fixture-regression", serverId: "execution-fixture", remoteToolName: "lookup_record",
-      discoveryFingerprint: "0".repeat(64), mode: "automatic" },
-  });
-  expect(stale.status()).toBe(409);
+  // Nothing is held server-side: a stale fingerprint or an undeclared server
+  // is refused before any call, as an ordinary unavailable outcome.
+  const before = await callCount(request);
+  for (const overrides of [{ discoveryFingerprint: "0".repeat(64) }, { serverId: "removed-server" }] as Array<Record<string, string>>) {
+    const refused = await execute("sample-42", overrides);
+    expect(refused.ok()).toBe(true);
+    expect((await refused.json() as { failure?: { kind: string } }).failure?.kind).toBe("unavailable");
+  }
+  expect(await callCount(request)).toBe(before);
 
-  const grant = await request.post("/api/mcp/grants", {
-    data: {
-      toolId: "tool:mcp-fixture-regression",
-      serverId: "execution-fixture",
-      remoteToolName: "lookup_record",
-      discoveryFingerprint: tool!.fingerprint,
-      mode: "ask",
-    },
-  });
-  expect(grant.status()).toBe(201);
-  const errorCall = await request.post("/api/mcp/execute", {
-    data: { toolId: "tool:mcp-fixture-regression", toolCallId: "call-error", arguments: { record_id: "tool-error" } },
-  });
+  const check = await request.post("/api/tool-bindings/check", { data: { bindings: [
+    { toolId: "tool_fresh", kind: "mcp", ...named },
+    { toolId: "tool_stale", kind: "mcp", ...named, discoveryFingerprint: "0".repeat(64) },
+  ] } });
+  expect(await check.json()).toMatchObject({ results: [
+    { toolId: "tool_fresh", status: "ready" },
+    { toolId: "tool_stale", status: "unavailable", reason: "fingerprint_changed" },
+  ] });
+
+  const errorCall = await execute("tool-error");
   expect(errorCall.ok()).toBe(true);
   expect(await errorCall.json()).toEqual({
     status: "completed", content: [{ type: "text", text: "Record lookup rejected by fixture." }], isError: true,
   });
-  const structuredCall = await request.post("/api/mcp/execute", {
-    data: { toolId: "tool:mcp-fixture-regression", toolCallId: "call-structured", arguments: { record_id: "structured" } },
-  });
+  const structuredCall = await execute("structured");
   expect(structuredCall.ok()).toBe(true);
   expect(await structuredCall.json()).toEqual({
     status: "completed", content: [{ type: "text", text: '{"record_id":"structured","value":7}' }], isError: false,
   });
   for (const [recordId, expectedKind] of [["slow", "timeout"], ["protocol-error", "execution_failed"], ["malformed", "execution_failed"]] as const) {
-    const response = await request.post("/api/mcp/execute", {
-      data: { toolId: "tool:mcp-fixture-regression", toolCallId: `call-${recordId}`, arguments: { record_id: recordId } },
-    });
+    const response = await execute(recordId);
     expect(response.ok()).toBe(true);
     const outcome = await response.json() as { status: string; failure?: { kind: string } };
     expect(outcome.status).toBe("failed");
@@ -135,8 +132,25 @@ test("an MCP call waits for approval, then reaches the server and provider conti
   const trace = await savedTrace(page);
   expect(trace.toolExecutions[0]?.executor).toMatchObject({ kind: "mcp", label: "Synthetic MCP execution fixture" });
   expect(trace.raw).not.toContain("http://127.0.0.1:44019/mcp");
-  expect(trace.raw).not.toContain("il_mcp_session");
+  expect(trace.raw).not.toContain("execution-fixture");
   expect(trace.raw).not.toContain("grantedAt");
+});
+
+test("an MCP permission lasts across reloads until it is revoked", async ({ page, request }) => {
+  await openMcpProject(page, request);
+  await allowMcp(page, "ask");
+  const mode = () => page.getByRole("group", { name: "MCP execution for lookup_record" })
+    .getByRole("combobox", { name: "Execution mode for lookup_record" });
+
+  await openMcpProject(page, request);
+  await page.getByRole("tab", { name: "Tools" }).click();
+  await expect(mode()).toHaveValue("ask");
+
+  await mode().selectOption("manual");
+  await expect(mode()).toHaveValue("manual");
+  await openMcpProject(page, request);
+  await page.getByRole("tab", { name: "Tools" }).click();
+  await expect(mode()).toHaveValue("manual");
 });
 
 test("rejecting an MCP call contacts no server", async ({ page, request }) => {

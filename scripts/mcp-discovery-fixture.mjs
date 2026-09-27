@@ -8,6 +8,8 @@ let revision = 1;
 let discoveryRequests = 0;
 let calls = 0;
 let lastCall = null;
+/** While down, every MCP request fails as a stopped server's would. */
+let down = false;
 
 const server = new Server(
   { name: "inference-lens-discovery-fixture", version: "1.0.0" },
@@ -56,6 +58,11 @@ server.setRequestHandler("tools/call", async (request) => {
   if (recordId === "structured") return {
     content: [], structuredContent: { record_id: "structured", value: 7 },
   };
+  if (recordId === "go-down") {
+    // Answers this call, then behaves as a server that stopped right after.
+    down = true;
+    return { content: [{ type: "text", text: "Record go-down: local MCP result" }] };
+  }
   if (recordId === "two-parts") return {
     content: [{ type: "text", text: "first" }, { type: "text", text: "second" }],
   };
@@ -71,12 +78,22 @@ const http = createServer(async (incoming, outgoing) => {
   const pathname = new URL(incoming.url ?? "/", `http://127.0.0.1:${port}`).pathname;
   if (pathname === "/status") {
     outgoing.setHeader("content-type", "application/json");
-    outgoing.end(JSON.stringify({ revision, discoveryRequests, calls, lastCall }));
+    outgoing.end(JSON.stringify({ revision, discoveryRequests, calls, lastCall, down }));
+    return;
+  }
+  if (pathname === "/restore" && incoming.method === "POST") {
+    revision = 1;
+    down = false;
+    outgoing.end("restored");
     return;
   }
   if (pathname === "/change" && incoming.method === "POST") {
     revision = 2;
     outgoing.end("changed");
+    return;
+  }
+  if (down && pathname === "/mcp") {
+    incoming.socket.destroy();
     return;
   }
   if (pathname !== "/mcp") {

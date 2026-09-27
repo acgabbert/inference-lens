@@ -71,10 +71,12 @@ attached without an active MCP execution permission. Stop that run, return to
 under `lookup_record`, and start a new run. Connecting alone does not allow
 execution; attachment requests permission according to the selected mode.
 
-The grant is session scoped. **Run automatically** is a separate
-opt-in in the same controls. Repeated experiments and evaluations do not use
-MCP execution permissions yet. This workflow uses the service-hosted web app;
-the Tauri app does not have this MCP host integration.
+The grant stays on this device until you revoke it (choose **Manual
+results**). **Run automatically** is a separate opt-in in the same controls.
+Repeated experiments and evaluations also use the grant: their confirmation
+approves every call the batch makes, whichever mode is chosen. This workflow
+uses the service-hosted web app; the Tauri app does not have this MCP host
+integration.
 
 ## 5. Check cancellation and connection loss
 

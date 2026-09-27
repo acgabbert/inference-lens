@@ -49,8 +49,13 @@ export function resolveCommandToolExecutionRequest(
   };
 }
 
-function rejection(message: string): ToolExecutionOutcome {
-  return { status: "failed", failure: { kind: "rejected", message } };
+/**
+ * The declaration this binding names cannot serve: no catalog, or the command
+ * is not in it. Classified as unavailable rather than rejected because the
+ * binding will fail the same way for every later call.
+ */
+function unavailable(message: string): ToolExecutionOutcome {
+  return { status: "failed", failure: { kind: "unavailable", message } };
 }
 
 export interface ExecuteCommandToolOptions {
@@ -68,7 +73,7 @@ export async function executeCommandTool(
   const source = options.catalog ?? readCommandToolCatalog(environment);
 
   if (!source.available) {
-    return rejection(
+    return unavailable(
       source.problem ??
         `This service runs no command tools. Set ${COMMAND_TOOLS_VARIABLE} to a command catalog to declare some.`,
     );
@@ -79,7 +84,7 @@ export async function executeCommandTool(
     request.commandId,
   );
   if (!declaration) {
-    return rejection(
+    return unavailable(
       `No command “${request.commandId}” is declared on this service. It may have been removed from the catalog.`,
     );
   }

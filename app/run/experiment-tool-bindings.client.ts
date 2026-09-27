@@ -1,4 +1,4 @@
-import type { ToolDefinition, ToolId } from "../../packages/core/src/run-kernel/index.ts";
+import type { ToolDefinition } from "../../packages/core/src/run-kernel/index.ts";
 import type { ToolBinding } from "../../packages/core/src/tool-execution.ts";
 
 /** One exposed tool and what will answer it, for a confirmation listing. */
@@ -14,10 +14,10 @@ export interface ExperimentToolBinding {
  */
 export function listExperimentToolBindings(
   tools: readonly ToolDefinition[],
-  bindingForTool: (toolId: ToolId) => ToolBinding | undefined,
+  bindingForTool: (tool: ToolDefinition) => ToolBinding | undefined,
 ): ExperimentToolBinding[] {
   return tools.map((tool) => {
-    const binding = bindingForTool(tool.id);
+    const binding = bindingForTool(tool);
     return { tool, ...(binding ? { binding } : {}) };
   });
 }
@@ -32,6 +32,9 @@ export function listExperimentToolBindings(
 export function experimentToolBindingLabel(entry: ExperimentToolBinding): string {
   const { binding } = entry;
   if (!binding) return "nothing on this device";
+  if (binding.kind === "mcp") {
+    return `MCP "${binding.remoteToolName}" on ${binding.label ?? binding.serverId}`;
+  }
   const name = binding.label ?? binding.executorId;
   return binding.kind === "mock" ? `mock "${name}"` : `command "${name}"`;
 }

@@ -1,9 +1,10 @@
-import type { ToolExecutionContentPart, ToolExecutionOutcome } from "../../../packages/core/src/run-kernel/types.ts";
+import { SdkError, SdkErrorCode } from "@modelcontextprotocol/client";
+import type { McpDiscoveryResponse } from "../../../packages/contracts/src/mcp-discovery.ts";
+import type { ToolExecutionContentPart, ToolExecutionFailureKind, ToolExecutionOutcome } from "../../../packages/core/src/run-kernel/types.ts";
 import { discoverMcpServer, invokeMcpTool } from "./mcp-discovery.ts";
 import type { McpServerDeclaration } from "./mcp-server-catalog.ts";
-import type { McpConsent } from "./mcp-consent.ts";
 
-function failed(kind: "rejected" | "execution_failed" | "invalid_result" | "timeout" | "cancelled", message: string): ToolExecutionOutcome {
+function failed(kind: ToolExecutionFailureKind, message: string): ToolExecutionOutcome {
   return { status: "failed", failure: { kind, message } };
 }
 
@@ -40,24 +41,62 @@ function projectMcpResult(value: Awaited<ReturnType<typeof invokeMcpTool>>): Too
   return { status: "completed", content, isError: value.isError === true };
 }
 
+/** What an execution names; the host resolves everything else from its catalog. */
+export interface McpExecutionTarget {
+  remoteToolName: string;
+  discoveryFingerprint: string;
+}
+
+/** Injected by tests; production uses the pooled SDK client. */
+export interface McpExecutionDependencies {
+  discover(declaration: McpServerDeclaration): Promise<McpDiscoveryResponse>;
+  invoke(
+    declaration: McpServerDeclaration,
+    remoteToolName: string,
+    args: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<Awaited<ReturnType<typeof invokeMcpTool>>>;
+}
+
+const defaultDependencies: McpExecutionDependencies = {
+  discover: (declaration) => discoverMcpServer(declaration),
+  invoke: invokeMcpTool,
+};
+
+/**
+ * Validates the live tool, then calls it.
+ *
+ * Classified by phase: anything that fails before `tools/call` is sent means
+ * this binding cannot serve any call, so it is `unavailable`; anything after
+ * fails only this call. Message text never decides the class.
+ */
 export async function executeMcpTool(
   declaration: McpServerDeclaration,
-  consent: McpConsent,
+  target: McpExecutionTarget,
   args: Record<string, unknown>,
   signal?: AbortSignal,
+  dependencies: McpExecutionDependencies = defaultDependencies,
 ): Promise<ToolExecutionOutcome> {
   if (signal?.aborted) return failed("cancelled", "The MCP call was cancelled.");
+  let discovery: McpDiscoveryResponse;
   try {
-    const discovery = await discoverMcpServer(declaration);
-    const current = discovery.tools.find(({ remoteName }) => remoteName === consent.remoteToolName);
-    if (!current || current.invalidReason || current.fingerprint !== consent.discoveryFingerprint) {
-      return failed("rejected", "The MCP tool changed or is no longer available. Review and grant it again.");
-    }
-    return projectMcpResult(await invokeMcpTool(declaration, consent.remoteToolName, args, signal));
+    discovery = await dependencies.discover(declaration);
+  } catch {
+    if (signal?.aborted) return failed("cancelled", "The MCP call was cancelled.");
+    return failed("unavailable", "The MCP server could not be reached.");
+  }
+  const current = discovery.tools.find(({ remoteName }) => remoteName === target.remoteToolName);
+  if (!current || current.invalidReason) {
+    return failed("unavailable", "The MCP server no longer offers this tool. Refresh discovery and attach it again.");
+  }
+  if (current.fingerprint !== target.discoveryFingerprint) {
+    return failed("unavailable", "The MCP tool changed since it was attached. Review the change and attach it again.");
+  }
+  try {
+    return projectMcpResult(await dependencies.invoke(declaration, target.remoteToolName, args, signal));
   } catch (error) {
     if (signal?.aborted) return failed("cancelled", "The MCP call was cancelled.");
-    const message = error instanceof Error ? error.message.toLowerCase() : "";
-    if (message.includes("timeout") || message.includes("timed out")) {
+    if (error instanceof SdkError && error.code === SdkErrorCode.RequestTimeout) {
       return failed("timeout", "The MCP server did not answer before its call timeout.");
     }
     // SDK errors can contain URLs, headers, or protocol data. The normalized

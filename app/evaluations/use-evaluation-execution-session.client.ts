@@ -3,9 +3,10 @@
 import { useCallback, useRef, useState } from "react";
 
 import type { CredentialSelection, ProviderTurnTransport } from "../../packages/contracts/src/index.ts";
+import { experimentExposedTools } from "../../packages/core/src/experiment.ts";
 import type {
   EvaluationExperimentPlanV3,
-  ExperimentResultV3,
+  ExperimentResult,
 } from "../../packages/core/src/experiment.ts";
 import type { ResolvedRunInput, RunId, RunState, RunTrace } from "../../packages/core/src/run-kernel/index.ts";
 import type { EvaluationVariantId } from "../../packages/core/src/run-kernel/types.ts";
@@ -14,6 +15,7 @@ import type { ProjectWorkspaceHandle } from "../project-workspace.client.ts";
 import { createExperimentWorkspacePersistence } from "../run/experiment-workspace-persistence.client.ts";
 import type { ExperimentToolBinding } from "../run/experiment-tool-bindings.client.ts";
 import { SequentialExperimentController } from "../run/sequential-experiment-controller.client.ts";
+import { verifyToolBindingsOnHost } from "../tools/tool-binding-check.client.ts";
 
 export interface EvaluationExecutionDraft {
   plan: EvaluationExperimentPlanV3;
@@ -46,7 +48,7 @@ export interface EvaluationExecution {
   workspace: ProjectWorkspaceHandle | null;
   states: ReadonlyMap<RunId, RunState>;
   live?: EvaluationLiveProgress;
-  result?: ExperimentResultV3;
+  result?: ExperimentResult;
   error?: string;
   traces: ReadonlyMap<RunId, RunTrace>;
   traceFileNames: ReadonlyMap<RunId, string>;
@@ -113,6 +115,8 @@ export function useEvaluationExecutionSession(options: UseEvaluationExecutionSes
       // repeated experiment makes, so one suite is served identically here and
       // nowhere else by accident.
       toolBindings: pending.toolBindings.flatMap(({ binding }) => binding ? [binding] : []),
+      verifyToolBindings: (bindings) => verifyToolBindingsOnHost(bindings, (toolId) =>
+        experimentExposedTools(pending.plan).find(({ id }) => id === toolId)?.name ?? toolId),
       ...persistence,
       onProgress(progress) {
         setExecution((current) => current?.plan.experimentId === pending.plan.experimentId
@@ -181,7 +185,7 @@ export function useEvaluationExecutionSession(options: UseEvaluationExecutionSes
 
   const openSaved = useCallback((opened: {
     plan: EvaluationExperimentPlanV3;
-    result?: ExperimentResultV3;
+    result?: ExperimentResult;
     traces: ReadonlyMap<RunId, RunTrace>;
     traceFileNames: ReadonlyMap<RunId, string>;
     unreadableTraces: ReadonlyMap<RunId, string>;

@@ -144,7 +144,7 @@ export function ToolsPane({
             ))}
           </ul>
         )}
-        {[...selectedProjectTools, ...requestTools].some((tool) => tool.source?.kind === "mcp") && <p className="mcp-permission-note">MCP permissions end when the browser session or service ends, or after 24 hours idle. Saving a tool to the project does not save permission.</p>}
+        {[...selectedProjectTools, ...requestTools].some((tool) => tool.source?.kind === "mcp") && <p className="mcp-permission-note">MCP permissions stay on this device until you revoke them, and stop working if the server changes the tool. Saving a tool to the project does not save permission.</p>}
       </section>
       <div className="tools-tab-toolbar">
         <div>

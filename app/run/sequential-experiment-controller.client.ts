@@ -6,11 +6,13 @@ import {
   parseExperimentPlanFile,
   serializeParsedExperimentPlan,
   serializeExperimentResult,
+  EXPERIMENT_RESULT_SCHEMA_VERSION,
 } from "../../packages/core/src/experiment.ts";
 import type {
   ExperimentCell,
   ExperimentPlanV4,
-  ExperimentResultV4,
+  ExperimentResult,
+  ExperimentStop,
 } from "../../packages/core/src/experiment.ts";
 import { RunCoordinator } from "../../packages/core/src/run-kernel/index.ts";
 import { createRunTrace } from "../../packages/core/src/run-kernel/reducer.ts";
@@ -24,7 +26,7 @@ import { pendingToolCalls, toolResolutionForBinding } from "./run-session-state.
 import { createToolExecutor } from "./tool-executors.client.ts";
 
 export interface SequentialExperimentProgress {
-  status: "running" | "completed" | "cancelled";
+  status: "running" | ExperimentResult["status"];
   requested: number;
   /** Cells that reached a terminal run status; queued `not-run` cells are excluded. */
   finished: number;
@@ -41,7 +43,7 @@ export interface SequentialExperimentControllerOptions {
   /** Must durably save the plan before resolving. Omit for an ad hoc session experiment. */
   savePlan?(plan: ExperimentPlanV4, serialized: string): Promise<void>;
   /** Must durably save the final result before resolving. Omit for an ad hoc session experiment. */
-  saveResult?(result: ExperimentResultV4, serialized: string): Promise<void>;
+  saveResult?(result: ExperimentResult, serialized: string): Promise<void>;
   onProgress?(progress: SequentialExperimentProgress): void;
   /**
    * Invoked exactly once for every started cell after it reaches a terminal state.
@@ -58,6 +60,13 @@ export interface SequentialExperimentControllerOptions {
    * what makes continuation automatic rather than a pause nobody can answer.
    */
   toolBindings?: readonly ToolBinding[];
+  /**
+   * Confirms with the host that every binding can still serve, before any plan
+   * is saved or provider called. Rejects with a message naming what cannot.
+   * A local grant proves only that the user allowed a tool; whether its server
+   * or command still exists is the host's to answer.
+   */
+  verifyToolBindings?(bindings: readonly ToolBinding[]): Promise<void>;
   /** Injected by tests; the app resolves a binding kind to its executor. */
   createExecutor?(binding: ToolBinding): ToolExecutor;
 }
@@ -89,6 +98,8 @@ export class SequentialExperimentController {
   private frozenPlan: ExperimentPlanV4 | undefined;
   private readonly credentials = new Map<string, CredentialSelection>();
   private cancellationRequested = false;
+  /** Set when a binding turned out unable to serve any later repetition. */
+  private stop: ExperimentStop | undefined;
   private running = false;
   private hasRun = false;
 
@@ -112,7 +123,7 @@ export class SequentialExperimentController {
     this.activeAbortController?.abort();
   }
 
-  async run(): Promise<ExperimentResultV4> {
+  async run(): Promise<ExperimentResult> {
     if (this.running) throw new Error("The experiment is already running.");
     if (this.hasRun) throw new Error("The experiment has already run.");
     // Parse before any observable work, including optional persistence. This
@@ -133,6 +144,12 @@ export class SequentialExperimentController {
           .join(", ")}. Bind or disable ${
           unbound.length === 1 ? "that tool" : "those tools"
         } before starting.`,
+      );
+    }
+    if (this.options.verifyToolBindings && this.bindings.length > 0) {
+      const exposed = new Set(experimentExposedTools(plan).map(({ id }) => id));
+      await this.options.verifyToolBindings(
+        this.bindings.filter(({ toolId }) => exposed.has(toolId)),
       );
     }
     // A bakeoff is all-or-nothing at its paid boundary. Resolve every distinct
@@ -166,25 +183,29 @@ export class SequentialExperimentController {
       if (this.options.savePlan) await this.options.savePlan(plan, serializedPlan);
       this.hasRun = true;
 
-      const cells: ExperimentResultV4["cells"] = [];
+      const cells: ExperimentResult["cells"] = [];
       this.emitRunning(cells.length);
       for (const cell of plan.cells) {
-        if (this.cancellationRequested) break;
+        if (this.cancellationRequested || this.stop) break;
         await this.runCell(cell, cells, plan);
-        if (this.cancellationRequested) break;
+        if (this.cancellationRequested || this.stop) break;
       }
 
+      // A user's stop wins over a tool's: both leave later cells unstarted,
+      // but the result must not blame a tool for what the user did.
       const cancelled = this.cancellationRequested;
-      if (cancelled) {
+      const stop = cancelled ? undefined : this.stop;
+      if (cancelled || stop) {
         for (const cell of plan.cells.slice(cells.length)) {
           cells.push({ cellId: cell.cellId, runId: cell.runId, status: "not-run" });
         }
       }
 
-      const result: ExperimentResultV4 = {
-        schemaVersion: 4,
+      const result: ExperimentResult = {
+        schemaVersion: EXPERIMENT_RESULT_SCHEMA_VERSION,
         experimentId: plan.experimentId,
-        status: cancelled ? "cancelled" : "completed",
+        status: cancelled ? "cancelled" : stop ? "stopped" : "completed",
+        ...(stop ? { stop } : {}),
         endedAt: new Date().toISOString(),
         cells,
       };
@@ -207,7 +228,7 @@ export class SequentialExperimentController {
 
   private async runCell(
     cell: ExperimentCell,
-    cells: ExperimentResultV4["cells"],
+    cells: ExperimentResult["cells"],
     plan: ExperimentPlanV4,
   ): Promise<void> {
     const input = materializeParsedExperimentCellInput(plan, cell);
@@ -268,7 +289,7 @@ export class SequentialExperimentController {
           });
           break;
         }
-        if (!(await this.serveToolCalls(coordinator, input.tools, controller.signal, notify))) break;
+        if (!(await this.serveToolCalls(coordinator, cell, input.tools, controller.signal, notify))) break;
         command = coordinator.continue();
         notify();
       }
@@ -332,6 +353,7 @@ export class SequentialExperimentController {
    */
   private async serveToolCalls(
     coordinator: RunCoordinator,
+    cell: ExperimentCell,
     tools: ResolvedRunInput["tools"],
     signal: AbortSignal,
     notify: () => void,
@@ -365,6 +387,11 @@ export class SequentialExperimentController {
       const execution = coordinator.state.toolExecutions.find(
         ({ id }) => id === attempt.executionId,
       );
+      if (attempt.outcome.status === "failed" && attempt.outcome.failure.kind === "unavailable") {
+        // The binding cannot serve this call or any later one, so continuing
+        // would spend a provider call per repetition to fail the same way.
+        this.stop = { reason: "tool_unavailable", cellId: cell.cellId, toolId: tool.id };
+      }
       if (attempt.outcome.status === "failed" || !execution?.content) {
         coordinator.fail({
           code: "tool_error",
@@ -392,7 +419,7 @@ export class SequentialExperimentController {
     return true;
   }
 
-  private terminalCellCount(cells: ExperimentResultV4["cells"]): number {
+  private terminalCellCount(cells: ExperimentResult["cells"]): number {
     return cells.filter((cell) => cell.status !== "not-run").length;
   }
 

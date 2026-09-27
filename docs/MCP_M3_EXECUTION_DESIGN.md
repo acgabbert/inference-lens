@@ -1,6 +1,9 @@
 # M3: local MCP execution contract
 
-**Status:** accepted for session-only, local interactive execution; N1 comparison is next.
+**Status:** accepted for session-only, local interactive execution. The
+service-side session consent described below was replaced in M4 by a
+browser-side grant record and per-call service checks; see
+[the M4 design](MCP_M4_BATCH_DESIGN.md).
 
 ## Scope
 

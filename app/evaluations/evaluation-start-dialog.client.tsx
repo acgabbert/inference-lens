@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 
 import { DEFAULT_EXPERIMENT_TURN_CEILING } from "../../packages/core/src/experiment.ts";
-import { experimentToolBindingLabel } from "../run/experiment-tool-bindings.client.ts";
+import { ExperimentToolBindingList } from "../run/experiment-tool-binding-list.client.tsx";
 import type { EvaluationExecutionDraft } from "./use-evaluation-execution-session.client.ts";
 import {
   evaluationBatchGuardrail,
@@ -65,21 +65,7 @@ export function EvaluationStartDialog({
             : <>{callCount.toLocaleString()} planned</>}</dd></div>
           <div><dt>Evidence</dt><dd>{draft.storage === "durable" ? "Saved to the open project folder" : "Session only — lost when this session closes"}</dd></div>
         </dl>
-        {exposesTools && (
-          /* What will run, at the moment cost is confirmed. An evaluation
-             answers its own tool calls, so this is the last point at which a
-             stale grant can be noticed before it executes unattended. */
-          <div className="repeat-experiment-tools">
-            <h3>Tools served automatically</h3>
-            <ul>
-              {draft.toolBindings.map(({ tool, binding }) => (
-                <li key={tool.id} className={binding ? undefined : "repeat-experiment-tool-unbound"}>
-                  <code>{tool.name}</code> → {experimentToolBindingLabel({ tool, ...(binding ? { binding } : {}) })}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        {exposesTools && <ExperimentToolBindingList toolBindings={draft.toolBindings} />}
         {guardrail.warning && <p className="evaluation-batch-warning" role="alert"><strong>Large evaluation batch.</strong> {exposesTools
           ? <>This will run {callCount.toLocaleString()} sequential repetitions, up to {guardrail.worstCaseCalls.toLocaleString()} provider calls if every one keeps calling tools.</>
           : <>This will make {callCount.toLocaleString()} sequential provider calls.</>} The batch size will not be adjusted.</p>}

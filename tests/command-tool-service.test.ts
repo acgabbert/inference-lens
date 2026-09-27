@@ -96,11 +96,11 @@ test("a declared command runs and answers the call", async () => {
 });
 
 /**
- * The catalog is the ceiling. A page that asks for something undeclared is
- * refused by policy — which is a different fact from a command that failed,
- * and the vocabulary has said so since T1.
+ * The catalog is the ceiling. A page that asks for something undeclared gets
+ * nothing run — a different fact from a command that failed. The binding is
+ * unavailable: it will fail the same way for every later call.
  */
-test("an undeclared command is rejected, not attempted", async () => {
+test("an undeclared command is unavailable, not attempted", async () => {
   const outcome = await executeCommandTool(
     {
       commandId: "/bin/sh",
@@ -112,10 +112,12 @@ test("an undeclared command is rejected, not attempted", async () => {
   );
 
   assert.equal(outcome.status, "failed");
-  assert.equal(outcome.status === "failed" && outcome.failure.kind, "rejected");
+  // Unavailable rather than rejected: the binding can no longer serve any
+  // call, which is what stops a batch instead of failing one repetition.
+  assert.equal(outcome.status === "failed" && outcome.failure.kind, "unavailable");
 });
 
-test("a service with no catalog rejects every command, naming the fix", async () => {
+test("a service with no catalog makes every command unavailable, naming the fix", async () => {
   const outcome = await executeCommandTool(
     {
       commandId: "weather",
@@ -126,7 +128,7 @@ test("a service with no catalog rejects every command, naming the fix", async ()
     { environment: {} },
   );
 
-  assert.equal(outcome.status === "failed" && outcome.failure.kind, "rejected");
+  assert.equal(outcome.status === "failed" && outcome.failure.kind, "unavailable");
   assert.match(
     outcome.status === "failed" ? outcome.failure.message : "",
     new RegExp(COMMAND_TOOLS_VARIABLE),

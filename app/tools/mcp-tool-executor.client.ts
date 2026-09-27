@@ -3,6 +3,13 @@
 import type { ToolExecutionOutcome } from "../../packages/core/src/run-kernel/types.ts";
 import type { ToolBindingConfig, ToolExecutor } from "../../packages/core/src/tool-execution.ts";
 
+/**
+ * A client of the local service's MCP execution route.
+ *
+ * It names the declared server, remote tool, and granted fingerprint; the
+ * service checks all three against its catalog and the live server before
+ * calling. A refusal to serve arrives as an ordinary `unavailable` outcome.
+ */
 export function createMcpToolExecutor(binding: Extract<ToolBindingConfig, { kind: "mcp" }>): ToolExecutor {
   return {
     kind: "mcp",
@@ -11,7 +18,7 @@ export function createMcpToolExecutor(binding: Extract<ToolBindingConfig, { kind
       if (invocation.tool.source?.kind !== "mcp" ||
           invocation.tool.source.remoteToolName !== binding.remoteToolName ||
           invocation.tool.source.discoveryFingerprint !== binding.discoveryFingerprint) {
-        return { status: "failed", failure: { kind: "rejected", message: "The attached MCP definition no longer matches this permission." } };
+        return { status: "failed", failure: { kind: "unavailable", message: "The attached MCP definition no longer matches this permission." } };
       }
       let args: unknown;
       try { args = JSON.parse(invocation.call.arguments.text || "{}"); }
@@ -22,7 +29,13 @@ export function createMcpToolExecutor(binding: Extract<ToolBindingConfig, { kind
       try {
         const response = await fetch("/api/mcp/execute", {
           method: "POST", headers: { "content-type": "application/json" },
-          body: JSON.stringify({ toolId: invocation.tool.id, toolCallId: invocation.toolCallId, arguments: args }),
+          body: JSON.stringify({
+            toolCallId: invocation.toolCallId,
+            serverId: binding.serverId,
+            remoteToolName: binding.remoteToolName,
+            discoveryFingerprint: binding.discoveryFingerprint,
+            arguments: args,
+          }),
           signal: runtime.signal,
         });
         const value = await response.json() as ToolExecutionOutcome & { error?: string };

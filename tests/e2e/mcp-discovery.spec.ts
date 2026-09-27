@@ -97,9 +97,11 @@ test("a refused permission leaves a visible manual attachment and explains the f
   await page.getByRole("tab", { name: "Tools" }).click();
   const panel = page.getByRole("region", { name: "MCP servers" });
   await panel.getByRole("button", { name: "Connect and browse tools" }).click();
-  await page.route("**/api/mcp/grants", async (route) => {
-    if (route.request().method() !== "POST") return route.continue();
-    await route.fulfill({ status: 409, json: { error: "The advertised tool changed." } });
+  await page.route("**/api/tool-bindings/check", async (route) => {
+    const { bindings } = route.request().postDataJSON() as { bindings: Array<{ toolId: string }> };
+    await route.fulfill({ json: { results: bindings.map(({ toolId }) => ({
+      toolId, status: "unavailable", reason: "fingerprint_changed", message: "The MCP tool changed since it was attached.",
+    })) } });
   });
   await panel.getByRole("checkbox", { name: "Select lookup_record", exact: true }).check();
   await panel.getByRole("button", { name: "Attach selected (1)" }).click();

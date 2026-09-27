@@ -36,8 +36,10 @@ export interface RunSessionStartContext {
 export interface UseRunSessionOptions {
   transport: ProviderTurnTransport;
   prepareCredential(): Promise<CredentialSelection>;
-  /** Composed by the route from project mocks and this device's command grants. */
+  /** Composed by the route from project mocks and this device's local grants. */
   bindingForTool(tool: ToolDefinition): ToolBinding | undefined;
+  /** Interactive approval for an MCP-served tool: ask at each call, or not. */
+  mcpApprovalModeFor?(toolId: ToolDefinition["id"]): "ask" | "automatic" | undefined;
   readTrace(fileName: string): Promise<RunTrace>;
   onShowResponse(): void;
   onOpenTrace(): void;
@@ -114,10 +116,12 @@ export function useRunSession(options: UseRunSessionOptions) {
     if (outcome === "aborted") {
       throw new DOMException("The provider turn was interrupted.", "AbortError");
     }
-    setToolResultDrafts(toolResultDraftsForState(coordinator.state, runToolsRef.current, (toolId) => {
-      const tool = runToolsRef.current.find(({ id }) => id === toolId);
-      return tool ? options.bindingForTool(tool) : undefined;
-    }));
+    setToolResultDrafts(toolResultDraftsForState(
+      coordinator.state,
+      runToolsRef.current,
+      options.bindingForTool,
+      (toolId) => options.mcpApprovalModeFor?.(toolId),
+    ));
   }
 
   async function start(input: ResolvedRunInput, context: RunSessionStartContext): Promise<void> {

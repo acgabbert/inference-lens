@@ -87,9 +87,21 @@ export function readMcpServerCatalog(
   }
 }
 
+/**
+ * The execution ceiling: an unauthenticated server at a literal loopback
+ * address. Other declared servers can be discovered but never called.
+ */
+export function isExecutableMcpDeclaration(server: McpServerDeclaration): boolean {
+  const url = new URL(server.endpoint);
+  return url.protocol === "http:" && server.authorization.kind === "none" &&
+    ["127.0.0.1", "[::1]"].includes(url.hostname);
+}
+
 export function publicMcpServer(server: McpServerDeclaration): {
   id: string; label: string; endpointIdentity: string; executionAvailable: boolean;
 } {
-  const url = new URL(server.endpoint);
-  return { id: server.id, label: server.label, endpointIdentity: url.origin, executionAvailable: url.protocol === "http:" && server.authorization.kind === "none" && ["127.0.0.1", "[::1]"].includes(url.hostname) };
+  return {
+    id: server.id, label: server.label, endpointIdentity: new URL(server.endpoint).origin,
+    executionAvailable: isExecutableMcpDeclaration(server),
+  };
 }
