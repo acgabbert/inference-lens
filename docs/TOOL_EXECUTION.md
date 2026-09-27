@@ -86,8 +86,10 @@ Someone comparing two runs has to be able to tell "the tool returned an image we
 cannot send" from "the tool returned nothing".
 
 Raw bytes are held in memory only. They do not enter a run trace; a linked
-evidence artifact for raw protocol content arrives with the MCP work, which is
-the change that actually creates the trace-size problem.
+evidence artifact for raw protocol content was deferred when MCP shipped and
+remains open (see Phase 6 of
+[the n8n-compatible MCP plan](N8N_MCP_TOOL_COMPATIBILITY_PLAN.md)); it is the
+change that actually creates the trace-size problem.
 
 ## Evidence
 

@@ -1,6 +1,6 @@
 # n8n-compatible MCP tool execution plan
 
-**Status:** in progress; N0, M1, and M2 are implemented, and the local interactive M3 slice is accepted. N1's bounded string-input comparison is captured; see the September 26 N1 update below.
+**Status:** in progress; N0, M1, M2, and M4 are implemented, and the local interactive M3 slice is accepted. N1's bounded string-input comparison is captured; see the September 26 N1 update below. Phase 6 hardening items remain deferred.
 
 **Original baseline:** `main` at `a15b96c`, reviewed September 23, 2026.
 
@@ -37,7 +37,8 @@ after entering a manual result was not separately reported for server loss;
 the automated fixture covers continuation after timeout. The user also confirmed
 successful trace import and rendering with the Python server stopped, closing
 the remaining M3 live check. The local interactive slice is accepted; N1's broader
-compatibility scope and M4's repeated runs/evaluations remain separate work.
+compatibility scope remained separate work; M4's repeated runs/evaluations
+were implemented afterward.
 These live checks are now automated browser regressions, including a Python lane
 in CI; see the acceptance record below.
 See the

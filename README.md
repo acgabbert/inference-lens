@@ -95,6 +95,13 @@ JSON Schema object, so unsupported keywords are preserved. See
 [the tool registry design](docs/TOOL_REGISTRY.md) for snapshot and persistence
 semantics.
 
+Tools can also be discovered from a user-run MCP server and attached to a
+project as ordinary tool definitions. Execution is limited to unauthenticated
+Streamable HTTP servers at a literal loopback address, and each call asks for
+approval unless you grant that tool standing local permission. See [MCP discovery](docs/MCP_DISCOVERY.md)
+for attachment and permissions, and [MCP local try-out](docs/MCP_LOCAL_TRYOUT.md)
+for a runnable example.
+
 ## Quick start
 
 No clone, no build, no configuration:

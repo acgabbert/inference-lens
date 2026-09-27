@@ -90,15 +90,6 @@ also applies to existing Project v10 content: opening a project with a previousl
 invalid spaced token recognizes it as a native variable, but does not rewrite
 the project JSON or add a syntax-version field.
 
-Version 5 represented single-message prompts as role-less fragments and stored
-the role on each use. During migration a fragment becomes a one-message prompt.
-If one legacy template was used under several roles, the migration keeps the
-primary role on the original template and creates a role-labelled copy for each
-additional role, then rewrites uses to the matching copy. This preserves output
-roles without retaining a role override in the v6 contract. A v5 revision that
-carries no messages at all has no faithful v6 form, so the migration refuses the
-document rather than inventing one.
-
 Template revisions are immutable. Saving changed content or defaults appends a
 revision and advances `currentRevisionId`; saving an unchanged revision is a
 no-op. Uses remain pinned until explicitly updated. Core helpers create
@@ -205,7 +196,7 @@ inside explicit `providerOptions` objects.
 
 ## Evaluation suites
 
-Project v7 added ordered `evaluationSuites` as authored, portable content. A
+Ordered `evaluationSuites` are authored, portable content. A
 suite owns stable input-binding and case IDs. Each case owns an ordered list of
 provider-neutral deterministic checks and may carry a reference answer for
 human review; reference answers do not receive an automatic score.
@@ -219,8 +210,8 @@ but execution preflight will not treat that as a runnable dataset.
 
 ### Suite-owned input and execution
 
-Project v8 gives every suite its own `input` and `execution`; v9 adds its
-exposed tools and turn ceiling:
+Every suite owns its own `input` and `execution`, including its exposed tools
+and turn ceiling:
 
 ```json
 "input": { "kind": "conversation-revision", "conversationRevisionId": "revision_example" },
@@ -241,7 +232,7 @@ points the suite at the new revision deliberately. Repetitions are portable
 authored content rather than session state, so a shared suite reproduces the
 same batch size elsewhere.
 
-`execution.responseMode` defaults to `buffered` for new and migrated suites. A
+`execution.responseMode` defaults to `buffered` for new suites. A
 batch is read after it finishes, so incremental delivery buys an evaluation
 nothing while narrowing which providers the suite can run against. Streaming
 remains selectable, and preflight reports a setup issue when the suite pins a
@@ -276,20 +267,18 @@ as the shared default of 5. It is authored on the suite rather than at
 confirmation because a repetition that reaches it fails, which makes the ceiling
 part of what produced a result.
 
-*Historical note: the paragraph below records how earlier versions were upgraded; the current parser no longer performs these migrations.*
+### Configurations
 
-Project v8 migrates to v9 by exposing no tools and leaving the ceiling absent,
-so an upgraded suite runs exactly as it did — with no tools, no repetition can
-reach a second turn. Project v7 migrates to v8 by making each suite's borrowed
-context explicit: the
-project's default conversation revision becomes the suite input, and the
-project's default target and inference options are copied into the suite, with
-buffered delivery and one repetition. Copies are independent, so later changes
-to the project defaults do not reach migrated suites. Project v6 migrates by
-adding an empty suite collection first, and v5 uses the existing prompt-template
-migration before that. Loading performs these migrations in memory; the
-workspace is not rewritten until its ordinary explicit-save or auto-save path
-runs.
+Each suite also carries `variants` — at least one, named uniquely within the
+suite ignoring case and surrounding whitespace. A variant is stored as sparse
+`overrides` on the suite's base `execution`: an optional `target`
+(`connectionRequirementId` and/or `model`), `responseMode`, and `options`
+(`temperature`, `maxOutputTokens`, `seed`, `stop`, `providerOptions`). An absent
+field inherits from the base, and `null` in `options` clears the value to the
+provider default. A variant's connection requirement must exist in the project.
+Repetitions, `toolIds`, and `turnCeiling` are shared by every variant. See
+[the evaluation suite authoring guide](EVALUATION_SUITE_AUTHORING.md) for how
+configurations are authored and compared.
 
 ### Starting an evaluation from a saved prompt
 
@@ -326,6 +315,16 @@ is warned before the revision is created rather than silently rewritten.
 Human revision descriptions are projected on demand from this data and are not
 stored. A mutable `revisionName` on portable content would let a label drift
 from the immutable revision an execution actually snapshotted.
+
+## Tool definition source
+
+A `ToolDefinition` attached from an MCP server carries an optional
+`source: { kind: "mcp", remoteToolName, discoveryFingerprint }` receipt. The
+fingerprint is the SHA-256 of the discovered descriptor. The receipt names no
+server profile, endpoint, credential, or session, so a project stays readable
+and runnable as data on a device without that server; editing the definition
+removes the receipt. Which server serves the tool is device-local. See
+[MCP discovery](MCP_DISCOVERY.md).
 
 ## Tool mock semantics
 
