@@ -32,6 +32,13 @@ adds the pinned Python fixture and a provider that saves both actual requests:
 That config also runs the full suite when the spec path is omitted. The ordinary
 config skips this one spec and does not require Python.
 
+The expanded [N1 matrix runbook](../../docs/N1_MATRIX_RUNBOOK.md) covers
+primitive/nested inputs, multiple output items, and native tool errors:
+`npm run test:e2e -- --config playwright.n1-matrix.config.ts tests/e2e/n1-matrix-capture.spec.ts`.
+Omit the spec path for the full suite plus these four captures. Each invocation
+creates fresh evidence; run this and the string-input lane sequentially because
+they share the app port. Empty-output awaits a real n8n reference capture.
+
 ### Python MCP lane
 
 `tests/e2e/mcp-python.spec.ts` runs the host against the official Python MCP
