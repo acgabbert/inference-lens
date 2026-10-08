@@ -30,7 +30,7 @@ async function fixture(variantCount) {
     name: "Comparison drawer", idSuffix: `drawer-${variantCount}`,
     request: { provider: "openai-compatible", endpoint: "https://provider.example.test/v1", model: "base-model", messages: [{ role: "user", content: "Explain migrations." }] },
   });
-  const variants = ["First", "Second", "Third"].slice(0, variantCount).map((name, index) => ({
+  const variants = ["First", "Second", "Third"].slice(0, variantCount).map((name) => ({
     id: `evaluation-variant_${name.toLowerCase()}`,
     name,
     overrides: { target: { model: `${name.toLowerCase()}-model` } },

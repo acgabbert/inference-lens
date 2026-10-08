@@ -230,7 +230,7 @@ test("opening a Project v6 workspace refuses the unsupported artifact without re
   manifest.contents = originalContents;
   directory.entries.set("project.json", manifest);
 
-  await assert.rejects(() => withDirectoryPicker(directory, () => openProjectFolder()), /unsupported/);
+  await assert.rejects(() => withDirectoryPicker(directory, () => openProjectFolder()), /schema v6 is not supported/);
   assert.equal(manifest.contents, originalContents);
   assert.deepEqual(writes, []);
 });

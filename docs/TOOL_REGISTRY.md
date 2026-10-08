@@ -1,7 +1,7 @@
 # Local tool registry
 
 Inference Lens keeps reusable tool definitions in a versioned, local registry.
-Registry data is separate from portable Project v8 files and never contains
+Registry data is separate from portable Project v10 files and never contains
 credentials or executor configuration. How a tool is *served* is a separate
 device-local binding; see [tool execution](TOOL_EXECUTION.md).
 
@@ -10,12 +10,12 @@ creates a detached `ToolDefinition` snapshot with a fresh `tool_*` identity:
 
 - **Attach to project** copies the snapshot into the current project draft's
   existing `tools` collection and enables it by default. The draft can be new
-  and unsaved or loaded from an existing Project v8 file.
+  and unsaved or loaded from an existing Project v10 file.
 - **Attach to next request** holds a one-shot snapshot in the composer. It is
   captured in `ResolvedRunInput` when the run starts and then cleared.
 
 Later registry edits do not change project copies, pending run snapshots, or
-historical traces. This preserves Project v8 portability and deterministic run
+historical traces. This preserves Project v10 portability and deterministic run
 inspection without introducing registry links into the project format.
 
 The schema builder and Advanced JSON mode edit the same JSON Schema object.
