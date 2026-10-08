@@ -21,6 +21,12 @@ export interface RequestSettingsProps {
   /** What the run's profile has enabled; the select offers only these. */
   supportedProtocols: ProviderWireProtocol[];
   onProtocolChange(protocol: ProviderWireProtocol): void;
+  /**
+   * What changing the protocol here changes beyond this run, shown under the
+   * select: without a project it is the profile's remembered preference, with
+   * one it is the project's default target, which evaluations do not follow.
+   */
+  protocolScope: string;
   streamingAvailable: boolean;
   modelDiscovery: ModelDiscoveryState | null;
   /** Pinned model ids for the active profile; see `ModelCombobox`. */
@@ -54,6 +60,7 @@ export function RequestSettings({
   protocol,
   supportedProtocols,
   onProtocolChange,
+  protocolScope,
   streamingAvailable,
   modelDiscovery,
   favoriteModels,
@@ -93,6 +100,7 @@ export function RequestSettings({
             <ProtocolSelect
               value={protocol}
               supported={supportedProtocols}
+              scope={protocolScope}
               onChange={onProtocolChange}
             />
           ),
@@ -117,10 +125,12 @@ export function RequestSettings({
 function ProtocolSelect({
   value,
   supported,
+  scope,
   onChange,
 }: {
   value: ProviderWireProtocol;
   supported: ProviderWireProtocol[];
+  scope: string;
   onChange(protocol: ProviderWireProtocol): void;
 }) {
   const options = supported.includes(value) ? supported : [value, ...supported];
@@ -128,6 +138,7 @@ function ProtocolSelect({
     <label>
       Protocol
       <select
+        data-readiness-control="protocol"
         value={value}
         onChange={(event) => onChange(event.target.value as ProviderWireProtocol)}
       >
@@ -138,6 +149,7 @@ function ProtocolSelect({
           </option>
         ))}
       </select>
+      <small>{scope}</small>
     </label>
   );
 }

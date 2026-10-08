@@ -9,7 +9,9 @@ import type { EvaluationCaseSource } from "../../packages/core/src/evaluation-ca
 import { resolveEvaluationVariant } from "../../packages/core/src/evaluation-suites";
 import type { EvaluationInputBinding, EvaluationVariant } from "../../packages/core/src/evaluation-suites";
 import type { ConversationRevisionDescriptor } from "../../packages/core/src/conversation-revision-description";
-import type { InferenceOptions, ProviderProtocol } from "../../packages/core/src/run-kernel";
+import type { InferenceOptions, ProviderProtocol, ProviderWireProtocol } from "../../packages/core/src/run-kernel";
+import { PROVIDER_WIRE_PROTOCOLS } from "../../packages/core/src/run-kernel/types";
+import { protocolLabel } from "../../packages/core/src/provider-protocols";
 import {
   DEFAULT_EXPERIMENT_TURN_CEILING,
   MAX_EXPERIMENT_TURN_CEILING,
@@ -93,10 +95,20 @@ function revisionOption(descriptor: ConversationRevisionDescriptor) {
   );
 }
 
+/**
+ * Every protocol, not only what some local profile has enabled: a suite is
+ * portable, and whether this device can serve its choice is the start gate's
+ * question, answered per configuration against the profile it maps to.
+ */
+function ProtocolOptions() {
+  return <>{PROVIDER_WIRE_PROTOCOLS.map((protocol) => <option key={protocol} value={protocol}>{protocolLabel(protocol)}</option>)}</>;
+}
+
 function hasVariantOverride(overrides: EvaluationVariant["overrides"]): boolean {
   return (
     overrides.target?.connectionRequirementId !== undefined ||
     overrides.target?.model !== undefined ||
+    overrides.target?.protocol !== undefined ||
     overrides.responseMode !== undefined ||
     Object.keys(overrides.options ?? {}).length > 0
   );
@@ -246,10 +258,12 @@ function ConfigurationRow({
   index: number;
 }) {
   const effective = resolveEvaluationVariant(suite, variant);
-  const inherited = (field: "connection" | "model" | "delivery" | "temperature") => field === "connection"
+  const inherited = (field: "connection" | "model" | "protocol" | "delivery" | "temperature") => field === "connection"
     ? variant.overrides.target?.connectionRequirementId === undefined
     : field === "model"
       ? variant.overrides.target?.model === undefined
+      : field === "protocol"
+        ? variant.overrides.target?.protocol === undefined
       : field === "delivery"
         ? variant.overrides.responseMode === undefined
         : variant.overrides.options?.temperature === undefined;
@@ -265,13 +279,14 @@ function ConfigurationRow({
     <div className="evaluation-settings-grid">
       <label>Connection <select aria-label={`Configuration connection ${variant.name}`} value={effective.target.connectionRequirementId} onChange={(event) => update({ ...variant.overrides, target: { ...variant.overrides.target, connectionRequirementId: event.target.value as typeof effective.target.connectionRequirementId } })}>{project.connectionRequirements.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}</select><small>{inherited("connection") ? "Inherits suite connection" : "Overrides suite connection"}</small></label>
       <label>Model <input aria-label={`Configuration model ${variant.name}`} value={effective.target.model} onChange={(event) => update({ ...variant.overrides, target: { ...variant.overrides.target, model: event.target.value } })} /><small>{inherited("model") ? "Inherits suite model" : "Overrides suite model"}</small></label>
+      <label>Protocol <select aria-label={`Configuration protocol ${variant.name}`} value={effective.target.protocol} onChange={(event) => update({ ...variant.overrides, target: { ...variant.overrides.target, protocol: event.target.value as ProviderWireProtocol } })}><ProtocolOptions /></select><small>{inherited("protocol") ? "Inherits suite protocol" : "Overrides suite protocol"}</small></label>
       <label>Delivery <select aria-label={`Configuration delivery ${variant.name}`} value={effective.responseMode} onChange={(event) => update({ ...variant.overrides, responseMode: event.target.value as typeof effective.responseMode })}><option value="buffered">Buffered</option><option value="streaming">Streaming</option></select><small>{inherited("delivery") ? "Inherits suite delivery" : "Overrides suite delivery"}</small></label>
       <label>Temperature <input aria-label={`Configuration temperature ${variant.name}`} type="number" step="0.1" value={effective.options.temperature ?? ""} onChange={(event) => update({ ...variant.overrides, options: { ...variant.overrides.options, temperature: event.target.value === "" ? null : Number(event.target.value) } })} /><small>{inherited("temperature") ? "Inherits suite option" : variant.overrides.options?.temperature === null ? "Uses provider default" : "Overrides suite option"}</small></label>
     </div>
     {/* The per-field captions above already say what is inherited versus
         overridden; this line only earns its place once an override exists,
         because before that it restates the captions in one denser sentence. */}
-    {hasVariantOverride(variant.overrides) && <p className="evaluation-portable-warning">Effective: {project.connectionRequirements.find(({ id }) => id === effective.target.connectionRequirementId)?.name ?? effective.target.connectionRequirementId} · {effective.target.model} · {effective.responseMode} · temperature {effective.options.temperature ?? "provider default"} · max output {effective.options.maxOutputTokens ?? "provider default"} · seed {effective.options.seed ?? "provider default"} · stop {effective.options.stop?.join(", ") || "provider default"} · provider options {effective.options.providerOptions ? "set" : "provider default"}</p>}
+    {hasVariantOverride(variant.overrides) && <p className="evaluation-portable-warning">Effective: {project.connectionRequirements.find(({ id }) => id === effective.target.connectionRequirementId)?.name ?? effective.target.connectionRequirementId} · {effective.target.model} · {protocolLabel(effective.target.protocol)} · {effective.responseMode} · temperature {effective.options.temperature ?? "provider default"} · max output {effective.options.maxOutputTokens ?? "provider default"} · seed {effective.options.seed ?? "provider default"} · stop {effective.options.stop?.join(", ") || "provider default"} · provider options {effective.options.providerOptions ? "set" : "provider default"}</p>}
   </article>;
 }
 
@@ -777,6 +792,27 @@ export function EvaluationSuiteEditor({
                               ...suite.execution.target,
                               connectionRequirementId: project.defaults.target.connectionRequirementId,
                             },
+                          }),
+                        },
+                      }
+                    : {}),
+                }}
+                protocol={{
+                  summary: protocolLabel(suite.execution.target.protocol),
+                  control: (
+                    <label>Protocol
+                      <select value={suite.execution.target.protocol} onChange={(event) => authoring.updateExecution({ ...suite.execution, target: { ...suite.execution.target, protocol: event.target.value as ProviderWireProtocol } })}>
+                        <ProtocolOptions />
+                      </select>
+                    </label>
+                  ),
+                  ...(suite.execution.target.protocol !== project.defaults.target.protocol
+                    ? {
+                        override: {
+                          inheritedFrom: "project defaults",
+                          onRevert: () => authoring.updateExecution({
+                            ...suite.execution,
+                            target: { ...suite.execution.target, protocol: project.defaults.target.protocol },
                           }),
                         },
                       }

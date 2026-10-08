@@ -59,7 +59,7 @@ export interface EvaluationResolvedLocalTarget {
   variantName: string;
   requirementId: string;
   requirementName: string;
-  /** The wire protocol the requirement declares; every run of it uses this. */
+  /** The configuration's protocol: its own override, else the suite's. */
   protocol: ProviderWireProtocol;
   model: string;
   responseMode: "streaming" | "buffered";
@@ -91,7 +91,7 @@ export function resolveEvaluationLocalTargets(input: {
         variantName: variant.name,
         requirementId: effective.target.connectionRequirementId,
         requirementName: requirement?.name ?? effective.target.connectionRequirementId,
-        protocol: requirement?.protocol ?? "openai-compatible-chat-completions",
+        protocol: effective.target.protocol,
         model: effective.target.model,
         responseMode: effective.responseMode,
         options: effective.options,

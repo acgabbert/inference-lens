@@ -55,6 +55,16 @@ const labelByProtocol = {
   "anthropic-messages": "Anthropic Messages",
 } as const satisfies Record<ProviderWireProtocol, string>;
 
+/**
+ * The short names an operator writes in `INFERENCE_LENS_API_PROTOCOLS`. Owned
+ * here so the server's parser and the UI's report of a bad value agree.
+ */
+export const PROTOCOL_CONFIGURATION_NAMES = {
+  "chat-completions": "openai-compatible-chat-completions",
+  responses: "openai-responses",
+  "anthropic-messages": "anthropic-messages",
+} as const satisfies Record<string, ProviderWireProtocol>;
+
 export function isProviderWireProtocol(value: unknown): value is ProviderWireProtocol {
   return (PROVIDER_WIRE_PROTOCOLS as readonly unknown[]).includes(value);
 }

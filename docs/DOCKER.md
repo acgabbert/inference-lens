@@ -204,7 +204,15 @@ pointed at `https://api.openai.com/v1` can use `chat-completions,responses`.
 Like the endpoint, the list is the server's: the profile's protocol switches
 are locked while it is set. Unset, the profile starts with chat completions and
 the switches are yours. A list naming anything unrecognized is ignored as a
-whole rather than half applied.
+whole rather than half applied — but not silently: the server logs a warning
+the first time the UI asks for its configuration, and the UI shows a banner and
+a note in Connections naming the unrecognized entries. Until it is fixed the
+profile behaves as if the variable were unset.
+
+When a project or the composer asks for a protocol the server has not listed,
+the run is blocked with a notice offering another protocol or another
+connection: the protocol switches are the server's, so enabling one means
+changing `INFERENCE_LENS_API_PROTOCOLS` and restarting.
 
 Leave `INFERENCE_LENS_MODEL` unset and the profile starts with no model rather
 than a guess: a local llama.cpp server has never heard of `gpt-4.1-mini`. A run

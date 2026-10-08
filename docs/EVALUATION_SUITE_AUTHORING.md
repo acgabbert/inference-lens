@@ -13,15 +13,16 @@ cannot execute.
 
 A suite owns one base execution configuration and one or more named,
 portable **Configurations**. A configuration stores only sparse overrides for
-connection requirement, model, delivery mode, and inference options; absent
+connection requirement, model, protocol, delivery mode, and inference options; absent
 fields inherit from the base, while `null` explicitly clears an optional
 inference option to use the provider default. A configuration's
 `providerOptions` replaces the base object rather than deep-merging it.
 Repetitions, exposed tools, and turn ceiling remain shared across every
-configuration. Changing the evaluation's model or temperature therefore never edits the
-composer's, and a suite reproduces the same batch wherever the project is
-opened. Only the device-local runtime target (profile, endpoint, protocol,
-capabilities) is supplied from outside; see
+configuration. Changing the evaluation's model, protocol or temperature therefore
+never edits the composer's — nor does changing the composer's edit a suite's —
+and a suite reproduces the same batch wherever the project is opened. Only the
+device-local runtime target (profile, endpoint, capabilities) is supplied from
+outside; see
 [the project format](PROJECT_FORMAT.md#suite-owned-input-and-execution).
 
 Preflight covers the selected cases, not only the bindings. It reports a case

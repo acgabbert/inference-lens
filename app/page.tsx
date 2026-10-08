@@ -12,6 +12,7 @@ import {
   updateConnectionRequirementEndpoint,
 } from "../packages/core/src/project";
 import { createEntityId } from "../packages/core/src/run-kernel";
+import { PROTOCOL_CONFIGURATION_NAMES } from "../packages/core/src/provider-protocols";
 import { modalOwnsKeyboardCommands } from "./keyboard-command-scope.client";
 import type {
   RunTrace,
@@ -35,7 +36,7 @@ import { ProjectCreationDialog } from "./project-creation-dialog.client";
 import type { ProjectCreationMode } from "./project-creation-dialog.client";
 import { ProjectReplacementDialog } from "./project-replacement-dialog.client";
 import { useModelDiscovery } from "./use-model-discovery.client";
-import { useConnectionProfiles } from "./use-connection-profiles.client";
+import { serverManagesProtocols, useConnectionProfiles } from "./use-connection-profiles.client";
 import { toggleFavoriteModel } from "./profile-store.client";
 import { useRequestDraft } from "./request/use-request-draft.client";
 import { chooseDefaultUserPrompt, createInitialMessages } from "./request/default-messages";
@@ -151,6 +152,8 @@ function HomeContent() {
     serverDefaultProfileNotice,
     adoptServerDefaultProfile,
     dismissServerDefaultProfileNotice,
+    serverProtocolsNotice,
+    dismissServerProtocolsNotice,
     credential,
   } = useConnectionProfiles({ isDesktopRuntime });
   const originNotice = useInsecureOriginNotice(serverDefault.containerized);
@@ -235,6 +238,7 @@ function HomeContent() {
         ...(activeRevision ? { items: activeRevision.items } : {}),
         model: requestSettings.model,
         temperature: requestSettings.temperature,
+        protocol: requestSettings.protocol,
         tools: serializedTools(),
         toolMocks,
         enabledToolIds,
@@ -327,9 +331,6 @@ function HomeContent() {
     messages,
     updateActiveProfile,
     onProjectEdited: project.markDirty,
-    currentProjectDocument: () => project.currentProjectDocument(),
-    adoptProjectMutation: (next) => project.adoptProjectMutation(next),
-    onProjectError: (message) => project.setError(message),
   });
   // Device-local execution capability. Owned here only long enough to be
   // joined with the project's mocks below: what serves a tool is one question,
@@ -851,6 +852,11 @@ function HomeContent() {
     protocol: {
       id: requestSettings.protocol,
       supported: requestSettings.protocolSupported,
+      managedByServer: serverManagesProtocols(
+        requestSettings.profile,
+        serverDefault,
+        isDesktopRuntime,
+      ),
     },
     ...(projectTemplates.activeConnectionRequirement
       ? {
@@ -1009,6 +1015,33 @@ function HomeContent() {
     };
   }
 
+  function serverProtocolsBanner(): AppBannerCandidate | undefined {
+    if (!serverProtocolsNotice) return undefined;
+    const names = serverProtocolsNotice.unrecognized.map((name) => `"${name}"`).join(", ");
+    return {
+      id: "server-protocols-invalid",
+      tone: "advisory",
+      title: "INFERENCE_LENS_API_PROTOCOLS was ignored",
+      detail: `It names ${names}, which ${
+        serverProtocolsNotice.unrecognized.length === 1 ? "is" : "are"
+      } not a recognized API, so the server default profile falls back to the APIs enabled in Connections. Use ${Object.keys(
+        PROTOCOL_CONFIGURATION_NAMES,
+      ).join(", ")} and restart the server.`,
+      actions: [
+        {
+          key: "review",
+          label: "Review Connections",
+          primary: true,
+          onSelect: () => {
+            dismissServerProtocolsNotice();
+            setConnectionDrawerOpen(true);
+          },
+        },
+        { key: "dismiss", label: "Dismiss", onSelect: dismissServerProtocolsNotice },
+      ],
+    };
+  }
+
   function serverDefaultBanner(): AppBannerCandidate | undefined {
     if (!serverDefaultProfileNotice) return undefined;
     return {
@@ -1035,6 +1068,7 @@ function HomeContent() {
   const appBanner = chooseAppBanner([
     projectErrorBanner(),
     insecureOriginBanner(),
+    serverProtocolsBanner(),
     serverDefaultBanner(),
   ]);
 
@@ -1249,6 +1283,9 @@ function HomeContent() {
             protocol: requestSettings.protocol,
             supportedProtocols: requestSettings.supportedProtocols,
             onProtocolChange: requestSettings.setProtocol,
+            protocolScope: projectFile
+              ? "Project default. Evaluations set their own protocol in their execution settings."
+              : `Remembered for "${requestSettings.profile.name}".`,
             streamingAvailable: requestSettings.capabilities.streaming,
             toolsEnabled: requestSettings.capabilities.tools,
             modelDiscovery: activeModelDiscovery,

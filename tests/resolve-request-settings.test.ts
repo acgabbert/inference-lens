@@ -50,6 +50,7 @@ function input(
     activeProfile: active,
     sessionModel: undefined,
     sessionTemperature: undefined,
+    sessionProtocol: undefined,
     streamingPreferred: true,
     ...overrides,
   };
@@ -155,13 +156,13 @@ test("without a project the profile's protocol preference picks among what it su
   );
 });
 
-test("a project's requirement owns the protocol, and an unsupported one is reported", () => {
+test("a project's default target owns the protocol, and an unsupported one is reported", () => {
   const responsesProject = {
     ...project,
-    connectionRequirements: project.connectionRequirements.map((requirement) => ({
-      ...requirement,
-      protocol: "openai-responses" as const,
-    })),
+    defaults: {
+      ...project.defaults,
+      target: { ...project.defaults.target, protocol: "openai-responses" as const },
+    },
   };
   const settings = resolveRequestSettings(input({
     projectFile: responsesProject,
@@ -170,4 +171,15 @@ test("a project's requirement owns the protocol, and an unsupported one is repor
   assert.equal(settings.protocol, "openai-responses");
   assert.equal(settings.protocolSupported, false);
   assert.equal(requestFromSettings(settings, []).protocol, "openai-responses");
+
+  // The composer's unsaved choice wins over the saved default, the same way
+  // its model does, until the project is saved with it.
+  assert.equal(
+    resolveRequestSettings(input({
+      projectFile: responsesProject,
+      mappedProfileIds: { [requirementId]: "mapped" },
+      sessionProtocol: "openai-compatible-chat-completions",
+    })).protocol,
+    "openai-compatible-chat-completions",
+  );
 });

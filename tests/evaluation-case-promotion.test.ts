@@ -15,13 +15,13 @@ const bindingId = createEntityId("evaluation-input", "topic");
 function project(): ProjectFile {
   return {
     schemaVersion: 11, projectId: createEntityId("project", "promotion"), name: "Promotion",
-    defaults: { conversationRevisionId: revisionId, target: { connectionRequirementId: createEntityId("connection", "local"), model: "fixture" }, options: {}, enabledToolIds: [] },
-    connectionRequirements: [{ id: createEntityId("connection", "local"), name: "Local", provider: "openai-compatible", protocol: "openai-compatible-chat-completions", endpoint: "http://localhost" }],
+    defaults: { conversationRevisionId: revisionId, target: { connectionRequirementId: createEntityId("connection", "local"), model: "fixture", protocol: "openai-compatible-chat-completions" }, options: {}, enabledToolIds: [] },
+    connectionRequirements: [{ id: createEntityId("connection", "local"), name: "Local", provider: "openai-compatible", endpoint: "http://localhost" }],
     conversations: [{ id: createEntityId("conversation", "promotion"), name: "Promotion" }],
     conversationRevisions: [{ id: revisionId, conversationId: createEntityId("conversation", "promotion"), createdAt: "2026-08-06T12:00:00.000Z", items: [{ kind: "template-use", use: { id: useId, templateId: createEntityId("template", "prompt"), templateRevisionId: createEntityId("template-revision", "one"), values: {}, outputMessageIds: [createEntityId("message", "one")] } }] }],
     promptTemplates: [{ id: createEntityId("template", "prompt"), name: "Prompt", currentRevisionId: createEntityId("template-revision", "one"), revisions: [{ id: createEntityId("template-revision", "one"), createdAt: "2026-08-06T12:00:00.000Z", messages: [{ role: "user", content: "{{topic}}" }], variableDefaults: {} }] }], externalImports: [], tools: [], toolMocks: [], evaluationSuites: [{
       id: suiteId, name: "Incidents", input: { kind: "conversation-revision", conversationRevisionId: revisionId },
-      execution: { target: { connectionRequirementId: createEntityId("connection", "local"), model: "fixture" }, responseMode: "buffered", options: {}, repetitions: 1, toolIds: [] },
+      execution: { target: { connectionRequirementId: createEntityId("connection", "local"), model: "fixture", protocol: "openai-compatible-chat-completions" }, responseMode: "buffered", options: {}, repetitions: 1, toolIds: [] },
       variants: [{ id: createEntityId("evaluation-variant", "default"), name: "Default", overrides: {} }],
       inputBindings: [{ id: bindingId, name: "Topic", target: { kind: "template-variable", templateUseId: useId, variableName: "topic" } }], cases: [],
     }],

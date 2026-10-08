@@ -19,6 +19,7 @@ import type {
   ProfileCredentialHandle,
   ServerDefaultStatus,
 } from "./use-connection-profiles.client";
+import { serverManagesProtocols } from "./use-connection-profiles.client";
 import { SideDrawer } from "./workbench-shell.client";
 import type { ReadinessDestination } from "./run-readiness.client";
 
@@ -213,9 +214,12 @@ export function ConnectionDrawer({
     usingServerDefault &&
     !matchesServerOrigin(activeProfile.endpoint, serverDefault.endpoint);
   const serverOrigin = configuredServerOrigin(serverDefault.endpoint);
-  // Reapplied from the server's configuration on every load, so an edit here
-  // would be silently undone; locked the way the endpoint is.
-  const protocolsManaged = serverDefaultActive && Boolean(serverDefault.protocols);
+  // Locked the way the endpoint is; see `serverManagesProtocols`.
+  const protocolsManaged = serverManagesProtocols(
+    activeProfile,
+    serverDefault,
+    isDesktopRuntime,
+  );
 
   useEffect(() => {
     if (!open || pendingDestination?.surface !== "connections") return;
@@ -421,7 +425,15 @@ export function ConnectionDrawer({
           })}
           {protocolsManaged && (
             <span className="credential-status">
-              Managed by <code>INFERENCE_LENS_API_PROTOCOLS</code>.
+              Managed by <code>INFERENCE_LENS_API_PROTOCOLS</code>. Enabling
+              another API means changing that variable on the server.
+            </span>
+          )}
+          {serverDefaultActive && serverDefault.unrecognizedProtocols && (
+            <span className="credential-status" role="status">
+              <code>INFERENCE_LENS_API_PROTOCOLS</code> was ignored: it names{" "}
+              {serverDefault.unrecognizedProtocols.map((name) => `"${name}"`).join(", ")},
+              which the server does not recognize.
             </span>
           )}
         </fieldset>

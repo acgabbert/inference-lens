@@ -382,6 +382,38 @@ test("a protocol the profile has not enabled blocks the run and points at the pr
   );
 });
 
+test("a protocol the server manages is never routed to its locked switch", () => {
+  const readiness = runReadiness({
+    ...ready,
+    protocol: { id: "openai-responses", supported: false, managedByServer: true },
+  });
+  assert.equal(readiness?.blocked, true);
+  assert.equal(
+    readiness?.headline,
+    "\"Local llama\" does not have Responses enabled",
+  );
+  assert.match(readiness?.detail ?? "", /INFERENCE_LENS_API_PROTOCOLS/);
+  assert.deepEqual(
+    readiness?.actions.map(({ label, destination, primary }) => ({ label, destination, primary })),
+    [
+      {
+        label: "Choose another API",
+        destination: { surface: "request", tab: "messages", control: "protocol" },
+        primary: true,
+      },
+      {
+        label: "Change connection",
+        destination: { surface: "connections", control: "profile" },
+        primary: undefined,
+      },
+    ],
+  );
+  assert.equal(
+    runEmptyStatePresentation(readiness).headline,
+    "Choose an API this connection supports",
+  );
+});
+
 test("a missing model outranks an unsupported protocol", () => {
   const readiness = runReadiness({
     ...ready,

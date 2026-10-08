@@ -10,6 +10,7 @@ import type { ProviderWireProtocol } from "../packages/core/src/run-kernel/types
 export type RunReadinessActionKind =
   | "map-profile"
   | "open-connections"
+  | "choose-protocol"
   | "update-project-endpoint"
   | "edit-template"
   | "review-templates"
@@ -32,7 +33,12 @@ export type ReadinessDestination =
   | {
       surface: "request";
       tab: "messages" | "tools";
-      control: "model" | "template-use" | "template-variable" | "tool-manifest";
+      control:
+        | "model"
+        | "protocol"
+        | "template-use"
+        | "template-variable"
+        | "tool-manifest";
       entityId?: string;
       fieldName?: string;
     }
@@ -100,6 +106,9 @@ export function runEmptyStatePresentation(
             action.destination.control === "protocols"
           ? "Enable this protocol or choose another"
         : action?.destination.surface === "request" &&
+            action.destination.control === "protocol"
+          ? "Choose an API this connection supports"
+        : action?.destination.surface === "request" &&
             action.destination.control === "model"
           ? "Choose a model"
           : action?.destination.surface === "request" &&
@@ -142,8 +151,12 @@ export interface RunReadinessInput {
   /** Endpoint the open project declares, when it declares one. */
   requiredEndpoint?: string;
   activeConnectionRequirementId?: string;
-  /** The protocol the run would use, and whether its profile has it enabled. */
-  protocol?: { id: ProviderWireProtocol; supported: boolean };
+  /**
+   * The protocol the run would use and whether its profile has it enabled.
+   * `managedByServer` means the profile's protocol switches are locked to
+   * `INFERENCE_LENS_API_PROTOCOLS`, so enabling one here is not an option.
+   */
+  protocol?: { id: ProviderWireProtocol; supported: boolean; managedByServer?: boolean };
   templateResolutionError?: string;
   templateIssues: RunReadinessTemplateIssue[];
   templateTargets?: RunReadinessTemplateTarget[];
@@ -280,14 +293,37 @@ export function runReadiness(
 
   if (protocol && !protocol.supported) {
     const label = protocolLabel(protocol.id);
-    return {
+    const chooseAnother: RunReadinessAction = {
+      kind: "choose-protocol",
+      label: "Choose another API",
+      destination: { surface: "request", tab: "messages", control: "protocol" },
+    };
+    const shared = {
       blocked: true,
       headline: `"${profile}" does not have ${label} enabled`,
-      detail: `Enable ${label} for this profile in Connections, or choose another protocol in Run settings.`,
       explanation:
         "A profile states which protocols its endpoint speaks. Sending a protocol it never claimed would fail at the provider with an error about a path, not about the choice.",
-      summary: `Enable ${label} for this profile before running.`,
       facts: [{ label: `Profile "${profile}"`, value: activeProfileEndpoint }],
+    };
+    if (protocol.managedByServer) {
+      return {
+        ...shared,
+        detail: `Choose another API in Run settings, or another connection. This server sets "${profile}"'s APIs with INFERENCE_LENS_API_PROTOCOLS, so enabling ${label} means changing that on the server.`,
+        summary: `Choose an API "${profile}" supports before running.`,
+        actions: [
+          { ...chooseAnother, primary: true },
+          {
+            kind: "open-connections",
+            label: "Change connection",
+            destination: { surface: "connections", control: "profile" },
+          },
+        ],
+      };
+    }
+    return {
+      ...shared,
+      detail: `Enable ${label} for this profile in Connections, or choose another API in Run settings.`,
+      summary: `Enable ${label} for this profile before running.`,
       actions: [
         {
           kind: "open-connections",
@@ -299,6 +335,7 @@ export function runReadiness(
           },
           primary: true,
         },
+        chooseAnother,
       ],
     };
   }

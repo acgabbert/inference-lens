@@ -29,7 +29,8 @@ HTTP and Tauri hosts own credentials and provider networking, but not
 provider-specific serialization, and they do not retain complete-run state.
 
 A connection states which protocols it speaks through its capabilities
-(`chatCompletions`, `responsesApi`, `anthropicMessages`); a run chooses one.
+(`chatCompletions`, `responsesApi`, `anthropicMessages`); a run chooses one
+through its execution target, beside the model.
 `packages/core/src/provider-protocols.ts` owns what every host needs before an
 adapter is involved: the path each protocol appends to the connection's base
 URL, and how its credential is presented (`Authorization: Bearer` for the

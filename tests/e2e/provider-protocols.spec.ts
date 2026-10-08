@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { createProjectFile } from "../../packages/core/src/project";
+import { createEvaluationSuite } from "../../packages/core/src/evaluation-suite-authoring";
 import type { ProjectFile } from "../../packages/core/src/project";
 import { createEntityId } from "../../packages/core/src/run-kernel";
 import type { Page } from "@playwright/test";
@@ -14,6 +15,7 @@ import {
   RESPONSES_FIXTURE_ENDPOINT,
   importProject,
   openInferenceSettings,
+  openMode,
   seedProfile,
   seedProfiles,
   waitForHydration,
@@ -23,8 +25,8 @@ import {
 const RESPONSES_ONLY = { chatCompletions: false, responsesApi: true };
 
 /**
- * A project states the protocol its runs use; a profile states which ones its
- * endpoint speaks. These specs drive the join between the two through the UI.
+ * A project's target states the protocol its runs use; a profile states which
+ * ones its endpoint speaks. These specs drive the join between the two through the UI.
  */
 test("a project's protocol blocks a profile that lacks it until the profile enables it", async ({ page }) => {
   const project = createProjectFile({
@@ -269,10 +271,12 @@ function anthropicToolProject(): ProjectFile {
     name: "Anthropic tool fixture",
     connectionRequirements: project.connectionRequirements.map((requirement) => ({
       ...requirement,
-      protocol: "anthropic-messages" as const,
       endpoint: ANTHROPIC_FIXTURE_ENDPOINT,
     })),
-    defaults: { ...project.defaults, target: { ...project.defaults.target, model: "claude-fixture-tool" } },
+    defaults: {
+      ...project.defaults,
+      target: { ...project.defaults.target, model: "claude-fixture-tool", protocol: "anthropic-messages" },
+    },
   };
 }
 
@@ -301,4 +305,129 @@ test("an Anthropic tool call round-trips its tool_use and tool_result under one 
   // Refused by the fixture unless the signed thinking block leads the
   // replayed assistant turn unchanged.
   await expect(page.locator(".transcript-list")).toContainText("Chicago report: 72°F and clear");
+});
+
+/**
+ * The server's `INFERENCE_LENS_API_PROTOCOLS` locks the server default
+ * profile's switches, so a notice that sent the user to one would end at a
+ * disabled checkbox. Stubbed rather than configured: the suite's dev server
+ * runs with no server default at all, and this is about the UI's response.
+ */
+async function serveManagedProfile(page: Page, status: Record<string, unknown>): Promise<void> {
+  await page.route("**/api/runtime-status", (route) =>
+    route.fulfill({
+      json: {
+        containerized: false,
+        serverDefaultCredentialConfigured: true,
+        endpoint: BUFFERED_FIXTURE_ENDPOINT,
+        model: "buffered-test-model",
+        ...status,
+      },
+    }),
+  );
+}
+
+test("a protocol the server has not listed offers another API, never the locked switch", async ({ page }) => {
+  await serveManagedProfile(page, { protocols: ["openai-compatible-chat-completions"] });
+  const project = createProjectFile({
+    name: "Managed responses project",
+    request: {
+      provider: "openai-compatible",
+      protocol: "openai-responses",
+      endpoint: BUFFERED_FIXTURE_ENDPOINT,
+      model: "buffered-test-model",
+      messages: [{ role: "user", content: "Hello" }],
+    },
+    idSuffix: "managed-protocol",
+    createdAt: "2026-10-08T12:00:00.000Z",
+  });
+  await page.goto("/");
+  await waitForHydration(page, "Server default");
+  await importProject(page, project, "Managed responses project");
+  await page.getByRole("button", { name: 'Map "Server default"' }).first().click();
+  const mapping = page.getByRole("dialog", { name: "Connections" });
+  await mapping.getByLabel("Profile for Default connection").selectOption({ label: "Server default" });
+  await mapping.getByRole("button", { name: /close/i }).first().click();
+
+  const run = page.getByRole("button", { name: /run current conversation/i });
+  await expect(run).toBeDisabled();
+  const notice = page.locator(".run-readiness-slot").first();
+  await expect(notice).toContainText('"Server default" does not have Responses enabled');
+  await notice.getByRole("button", { name: "Details" }).click();
+  await expect(notice).toContainText("INFERENCE_LENS_API_PROTOCOLS");
+  await expect(page.getByRole("button", { name: "Enable Responses" })).toHaveCount(0);
+
+  // The secondary action reaches a control that is enabled.
+  await notice.getByRole("button", { name: "Change connection" }).click();
+  const drawer = page.getByRole("dialog", { name: "Connections" });
+  await expect(drawer.locator('[data-readiness-control="profile"]')).toBeFocused();
+  await expect(drawer.locator('[data-readiness-control="profile"]')).toBeEnabled();
+  await expect(drawer).toContainText("Enabling another API means changing that variable on the server.");
+  await drawer.getByRole("button", { name: /close/i }).first().click();
+
+  // The primary action lands on the run's own protocol, which resolves it.
+  await notice.getByRole("button", { name: "Choose another API" }).click();
+  const protocol = page.locator('[data-readiness-control="protocol"]');
+  await expect(protocol).toBeFocused();
+  await expect(protocol).toBeEnabled();
+  await protocol.selectOption("openai-compatible-chat-completions");
+  await expect(page.getByText('"Server default" does not have Responses enabled')).toHaveCount(0);
+  await expect(run).toBeEnabled();
+});
+
+test("an unrecognized INFERENCE_LENS_API_PROTOCOLS is reported rather than silently ignored", async ({ page }) => {
+  await serveManagedProfile(page, { unrecognizedProtocols: ["assistants"] });
+  await page.goto("/");
+  await waitForHydration(page, "Server default");
+
+  const banner = page.locator('[data-app-banner="server-protocols-invalid"]');
+  await expect(banner).toContainText("INFERENCE_LENS_API_PROTOCOLS was ignored");
+  await expect(banner).toContainText('"assistants"');
+  await expect(banner).toContainText("chat-completions, responses, anthropic-messages");
+
+  await banner.getByRole("button", { name: "Review Connections" }).click();
+  const drawer = page.getByRole("dialog", { name: "Connections" });
+  await expect(drawer).toContainText('was ignored: it names "assistants"');
+  // Ignored means unmanaged: the switches stay the user's.
+  await expect(drawer.getByRole("checkbox", { name: /^Responses/ })).toBeEnabled();
+});
+
+test("changing the composer's protocol leaves an evaluation's protocol alone", async ({ page }) => {
+  const base = createProjectFile({
+    name: "Protocol scope project",
+    request: {
+      provider: "openai-compatible",
+      endpoint: BUFFERED_FIXTURE_ENDPOINT,
+      model: "buffered-test-model",
+      messages: [{ role: "user", content: "Hello" }],
+    },
+    idSuffix: "protocol-scope",
+    createdAt: "2026-10-08T12:00:00.000Z",
+  });
+  const project = createEvaluationSuite(base, "Chat suite", () => "protocol-scope-suite").project;
+  await seedProfile(page, {
+    capabilityOverrides: { responsesApi: true },
+    instanceId: "profile-instance-scope",
+  });
+  await page.addInitScript(({ mapKey, projectId }) => {
+    localStorage.setItem(mapKey, JSON.stringify({
+      [projectId]: { profileId: "buffered", profileInstanceId: "profile-instance-scope" },
+    }));
+  }, { mapKey: PROJECT_PROFILE_MAP_STORAGE_KEY, projectId: project.projectId });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+  await waitForHydration(page);
+  await importProject(page, project, "Protocol scope project");
+
+  const settings = await openInferenceSettings(page);
+  const protocol = settings.getByLabel("Protocol");
+  await expect(settings).toContainText("Project default. Evaluations set their own protocol");
+  await protocol.selectOption("openai-responses");
+  await expect(protocol).toHaveValue("openai-responses");
+
+  await openMode(page, "Evaluations");
+  const execution = await openInferenceSettings(page, "Evaluation execution settings");
+  await expect(execution.getByLabel("Protocol")).toHaveValue("openai-compatible-chat-completions");
+  await page.getByRole("button", { name: /^Configurations/ }).click();
+  await expect(page.getByLabel("Configuration protocol Default")).toHaveValue("openai-compatible-chat-completions");
 });

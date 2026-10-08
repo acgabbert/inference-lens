@@ -25,6 +25,8 @@ export interface RequestSettingsInput<Profile extends InferenceProfile> {
   /** The project's model and temperature for this session; unused without a project. */
   sessionModel: string | undefined;
   sessionTemperature: number | undefined;
+  /** The project's protocol for this session; unused without a project. */
+  sessionProtocol: ProviderWireProtocol | undefined;
   streamingPreferred: boolean;
 }
 
@@ -37,9 +39,9 @@ export interface ResolvedRequestSettings<Profile extends InferenceProfile> {
   profileMapped: boolean;
   capabilities: ProviderCapabilities;
   /**
-   * The wire protocol the run is sent with. A project's requirement states it
-   * outright; without a project the profile's preference picks among what the
-   * profile supports.
+   * The wire protocol the run is sent with. A project's default target states
+   * it outright; without a project the profile's preference picks among what
+   * the profile supports.
    */
   protocol: ProviderWireProtocol;
   /** False when the project asks for a protocol its mapped profile has not enabled. */
@@ -67,8 +69,8 @@ export function resolveRequestSettings<Profile extends InferenceProfile>(
     profile.provider,
     profile.capabilityOverrides,
   );
-  const protocol = connectionRequirement
-    ? connectionRequirement.protocol
+  const protocol = projectFile
+    ? input.sessionProtocol ?? projectFile.defaults.target.protocol
     : effectiveProtocol(capabilities, profile.protocol);
   return {
     connectionRequirement,

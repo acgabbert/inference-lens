@@ -48,6 +48,7 @@ interface RuntimeStatus {
   endpoint?: string;
   model?: string;
   protocols?: ProviderWireProtocol[];
+  unrecognizedProtocols?: string[];
 }
 
 /**
@@ -66,6 +67,31 @@ export interface ServerDefaultStatus {
   endpoint?: string;
   /** Present when the server states which protocols that provider speaks. */
   protocols?: ProviderWireProtocol[];
+  /**
+   * Present when the server's protocol list names something it does not
+   * recognize. The list is then ignored whole, exactly as if it were unset,
+   * so this is the only trace of the operator's mistake.
+   */
+  unrecognizedProtocols?: string[];
+}
+
+/**
+ * Whether a profile's protocol switches are the server's rather than the
+ * user's. They are reapplied from `INFERENCE_LENS_API_PROTOCOLS` on every load,
+ * so a surface that offered to change one would be offering an edit that is
+ * silently undone. Shared by Connections, which locks them, and readiness,
+ * which must not send the user to a locked switch.
+ */
+export function serverManagesProtocols(
+  profile: { credentialRef?: string },
+  serverDefault: ServerDefaultStatus,
+  isDesktopRuntime: boolean,
+): boolean {
+  return (
+    !isDesktopRuntime &&
+    profile.credentialRef === SERVER_DEFAULT_CREDENTIAL_REF &&
+    Boolean(serverDefault.protocols)
+  );
 }
 
 const unknownServerDefault: ServerDefaultStatus = {
@@ -89,6 +115,11 @@ function parseRuntimeStatus(body: unknown): RuntimeStatus {
     value.protocols.length > 0 &&
     value.protocols.every(isProviderWireProtocol)
       ? { protocols: value.protocols }
+      : {}),
+    ...(Array.isArray(value.unrecognizedProtocols) &&
+    value.unrecognizedProtocols.length > 0 &&
+    value.unrecognizedProtocols.every((name) => typeof name === "string")
+      ? { unrecognizedProtocols: value.unrecognizedProtocols as string[] }
       : {}),
   };
 }
@@ -141,6 +172,13 @@ export interface ConnectionProfilesHandle {
   serverDefaultProfileNotice?: { profileId: string };
   adoptServerDefaultProfile(): void;
   dismissServerDefaultProfileNotice(): void;
+  /**
+   * The server's protocol list names something unrecognized and was ignored.
+   * Held until dismissed for this page load; the next load reports it again,
+   * because nothing here can fix it.
+   */
+  serverProtocolsNotice?: { unrecognized: string[] };
+  dismissServerProtocolsNotice(): void;
   credential: ProfileCredentialHandle;
 }
 
@@ -183,6 +221,8 @@ export function useConnectionProfiles(input: {
     useState<ServerDefaultStatus>(unknownServerDefault);
   const [serverDefaultProfileNotice, setServerDefaultProfileNotice] =
     useState<{ profileId: string }>();
+  const [serverProtocolsNoticeDismissed, setServerProtocolsNoticeDismissed] =
+    useState(false);
 
   // Lets the one-shot provisioning effect read the restored profiles without
   // taking a dependency on them, which would re-arm an effect that must run
@@ -277,6 +317,9 @@ export function useConnectionProfiles(input: {
         configured: status.configured,
         ...(status.endpoint ? { endpoint: status.endpoint } : {}),
         ...(status.protocols ? { protocols: status.protocols } : {}),
+        ...(status.unrecognizedProtocols
+          ? { unrecognizedProtocols: status.unrecognizedProtocols }
+          : {}),
       });
       reconcileRef.current(status);
     })();
@@ -606,6 +649,10 @@ export function useConnectionProfiles(input: {
     },
     dismissServerDefaultProfileNotice: () =>
       setServerDefaultProfileNotice(undefined),
+    ...(serverDefault.unrecognizedProtocols && !serverProtocolsNoticeDismissed
+      ? { serverProtocolsNotice: { unrecognized: serverDefault.unrecognizedProtocols } }
+      : {}),
+    dismissServerProtocolsNotice: () => setServerProtocolsNoticeDismissed(true),
     credential: {
       draft: credentialDraft,
       status: credentialStatus,

@@ -209,10 +209,14 @@ export function RequestComposer({
       });
       return () => { cancelled = true; };
     }
-    // The model field lives inside the settings disclosure. Readiness routing
-    // opens its owner first, then this effect runs again against the mounted
-    // control and focuses it.
-    if (pendingDestination.control === "model" && !settingsOpen) {
+    // The model and protocol fields live inside the settings disclosure.
+    // Readiness routing opens its owner first, then this effect runs again
+    // against the mounted control and focuses it.
+    if (
+      (pendingDestination.control === "model" ||
+        pendingDestination.control === "protocol") &&
+      !settingsOpen
+    ) {
       let cancelled = false;
       queueMicrotask(() => {
         if (!cancelled) setSettingsOpen(true);
@@ -222,6 +226,10 @@ export function RequestComposer({
     const target =
       pendingDestination.control === "model"
         ? modelRef.current
+        : pendingDestination.control === "protocol"
+          ? composerRef.current?.querySelector<HTMLElement>(
+              '[data-readiness-control="protocol"]',
+            ) ?? null
         : pendingDestination.control === "tool-manifest"
           ? composerRef.current?.querySelector<HTMLElement>(
               '[data-readiness-target="tool-manifest"]',

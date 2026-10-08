@@ -33,12 +33,12 @@ import {
   setPromptTemplateRecommendedTarget,
   updatePromptTemplateDraft,
   updateConnectionRequirementEndpoint,
-  updateConnectionRequirementProtocol,
   updateProjectDraft,
   updatePromptTemplateUseToLatest,
   updatePromptTemplateUseValues,
 } from "../packages/core/src/project.ts";
-import { evaluationSuitePreflight } from "../packages/core/src/evaluation-suites.ts";
+import { evaluationSuitePreflight, resolveEvaluationVariant } from "../packages/core/src/evaluation-suites.ts";
+import { createEvaluationSuite } from "../packages/core/src/evaluation-suite-authoring.ts";
 import { resolveProviderCapabilities } from "../packages/core/src/types.ts";
 
 const request = {
@@ -160,7 +160,6 @@ test("creates a strict, portable Project v11 document", () => {
       id: "connection_example-default",
       name: "Default connection",
       provider: "openai-compatible",
-      protocol: "openai-compatible-chat-completions",
       endpoint: "https://api.example.com/v1",
       capabilityOverrides: request.capabilities,
     },
@@ -170,6 +169,7 @@ test("creates a strict, portable Project v11 document", () => {
     templateDiagnostics: [],
     model: "example-model",
     temperature: 0.4,
+    protocol: "openai-compatible-chat-completions",
     tools: [],
     toolMocks: [],
     enabledToolIds: [],
@@ -351,52 +351,102 @@ test("a project from a newer schema asks for an updated build, not an older rele
   );
 });
 
-test("a v10 project opens unchanged apart from its restamped version", () => {
-  const current = createProjectFile({
-    name: "Version 10",
-    request,
-    idSuffix: "version-10",
-    createdAt: "2026-08-01T12:00:00.000Z",
-  });
-  const opened = parseProjectFile({ ...current, schemaVersion: 10 });
+test("a v10 project moves its connection's protocol onto every execution target", () => {
+  const current = createEvaluationSuite(
+    createProjectFile({
+      name: "Version 10",
+      request,
+      idSuffix: "version-10",
+      createdAt: "2026-08-01T12:00:00.000Z",
+    }),
+    "Suite",
+    () => "version-10-suite",
+  ).project;
+  // The shape v10 wrote: the protocol on the requirement, none on a target.
+  const withoutProtocol = <Target extends { protocol?: unknown }>({ protocol: _, ...rest }: Target) => rest;
+  const v10 = {
+    ...current,
+    schemaVersion: 10,
+    connectionRequirements: current.connectionRequirements.map((requirement) => ({
+      ...requirement,
+      protocol: "openai-compatible-chat-completions",
+    })),
+    defaults: { ...current.defaults, target: withoutProtocol(current.defaults.target) },
+    evaluationSuites: current.evaluationSuites.map((suite) => ({
+      ...suite,
+      execution: { ...suite.execution, target: withoutProtocol(suite.execution.target) },
+    })),
+  };
+  const opened = parseProjectFile(v10);
   assert.equal(opened.schemaVersion, 11);
   assert.deepEqual(opened, current);
+  assert.equal(opened.defaults.target.protocol, "openai-compatible-chat-completions");
   assert.equal(
-    opened.connectionRequirements[0]!.protocol,
+    opened.evaluationSuites[0]!.execution.target.protocol,
     "openai-compatible-chat-completions",
   );
+  assert.equal("protocol" in opened.connectionRequirements[0]!, false);
 });
 
-test("a connection requirement records the protocol its runs use", () => {
+test("the execution target, not the connection, records the protocol a run uses", () => {
   const project = createProjectFile({
     name: "Protocols",
     request: { ...request, protocol: "anthropic-messages" },
     idSuffix: "protocols",
     createdAt: "2026-08-01T12:00:00.000Z",
   });
-  const requirement = project.connectionRequirements[0]!;
-  assert.equal(requirement.protocol, "anthropic-messages");
+  assert.equal(project.defaults.target.protocol, "anthropic-messages");
+  assert.equal("protocol" in project.connectionRequirements[0]!, false);
+  assert.equal(projectDraft(project).protocol, "anthropic-messages");
 
-  const switched = updateConnectionRequirementProtocol(
-    project,
-    requirement.id,
-    "openai-responses",
-  );
-  assert.equal(switched.connectionRequirements[0]!.protocol, "openai-responses");
-  assert.equal(
-    updateConnectionRequirementProtocol(switched, requirement.id, "openai-responses"),
-    switched,
-  );
+  // The composer changes only the project's default target. A suite created
+  // earlier keeps the protocol it was created with.
+  const { project: withSuite } = createEvaluationSuite(project, "Suite", () => "protocols-suite");
+  const draft = projectDraft(withSuite);
+  const switched = updateProjectDraft(withSuite, {
+    messages: draft.messages,
+    model: draft.model,
+    protocol: "openai-responses",
+    tools: draft.tools,
+    toolMocks: draft.toolMocks,
+    enabledToolIds: draft.enabledToolIds,
+  });
+  assert.equal(switched.defaults.target.protocol, "openai-responses");
+  assert.equal(switched.evaluationSuites[0]!.execution.target.protocol, "anthropic-messages");
+
   assert.throws(
     () => parseProjectFile({
-      ...switched,
-      connectionRequirements: [{ ...requirement, protocol: "openai-assistants" }],
+      ...project,
+      defaults: { ...project.defaults, target: { ...project.defaults.target, protocol: "openai-assistants" } },
     }),
     /protocol/,
   );
   assert.throws(
-    () => updateConnectionRequirementProtocol(project, "connection_missing", "openai-responses"),
-    /does not exist/,
+    () => parseProjectFile({
+      ...project,
+      connectionRequirements: [{ ...project.connectionRequirements[0]!, protocol: "openai-responses" }],
+    }),
+    /protocol/,
+  );
+});
+
+test("an evaluation configuration may override the suite's protocol", () => {
+  const { project, suiteId } = createEvaluationSuite(
+    createProjectFile({ name: "Variants", request, idSuffix: "variants", createdAt: "2026-08-01T12:00:00.000Z" }),
+    "Suite",
+    () => "variants-suite",
+  );
+  const suite = project.evaluationSuites.find(({ id }) => id === suiteId)!;
+  const variant = { ...suite.variants[0]!, overrides: { target: { protocol: "openai-responses" as const } } };
+  const updated = parseProjectFile({
+    ...project,
+    evaluationSuites: [{ ...suite, variants: [variant] }],
+  });
+  const resolved = resolveEvaluationVariant(updated.evaluationSuites[0]!, updated.evaluationSuites[0]!.variants[0]!);
+  assert.equal(resolved.target.protocol, "openai-responses");
+  assert.equal(
+    resolveEvaluationVariant(suite, suite.variants[0]!).target.protocol,
+    "openai-compatible-chat-completions",
   );
 });
 

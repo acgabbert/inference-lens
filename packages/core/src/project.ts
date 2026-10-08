@@ -76,10 +76,7 @@ export const PROJECT_FILE_NAME = "project.json";
 export const PROJECT_EXPORT_FILE_SUFFIX = ".project.json";
 export const PROJECT_GITIGNORE_CONTENTS = "*\n";
 export const PROJECT_SCHEMA_VERSION = 11;
-/**
- * Older versions this build still opens. Each is a strict subset of the
- * current schema, so opening one only restamps its version.
- */
+/** Older versions this build still opens; see `migrateV10Project`. */
 const OPENABLE_PROJECT_SCHEMA_VERSIONS: readonly number[] = [10];
 
 /**
@@ -121,8 +118,6 @@ export interface ConnectionRequirement {
   id: ConnectionRequirementId;
   name: string;
   provider: "openai-compatible";
-  /** The wire protocol this project's runs use against this connection. */
-  protocol: ProviderWireProtocol;
   endpoint: string;
   capabilityOverrides?: ProviderCapabilityOverrides;
 }
@@ -238,12 +233,22 @@ export interface ProjectConversationRevision {
   createdAt: string;
 }
 
+/**
+ * What a run is sent to and how. The protocol sits beside the model rather
+ * than on the connection: which API a run speaks is a choice about the run,
+ * the way the model is, and a connection only states which ones it can serve.
+ * Keeping it here lets a suite or one of its configurations choose differently
+ * from the composer without changing anything shared.
+ */
+export interface ExecutionTarget {
+  connectionRequirementId: ConnectionRequirementId;
+  model: string;
+  protocol: ProviderWireProtocol;
+}
+
 export interface ProjectDefaults {
   conversationRevisionId: ConversationRevisionId;
-  target: {
-    connectionRequirementId: ConnectionRequirementId;
-    model: string;
-  };
+  target: ExecutionTarget;
   options: InferenceOptions;
   enabledToolIds: ToolId[];
 }
@@ -456,7 +461,6 @@ const connectionRequirementSchema: z.ZodType<ConnectionRequirement> = z
     id: entityId("connection"),
     name: z.string().trim().min(1),
     provider: z.literal("openai-compatible"),
-    protocol: z.enum(PROVIDER_WIRE_PROTOCOLS),
     endpoint: z
       .url()
       .refine(
@@ -693,15 +697,18 @@ const externalImportReceiptSchema: z.ZodType<ExternalImportReceipt> = z
     });
   });
 
+const executionTargetSchema = z
+  .object({
+    connectionRequirementId: entityId("connection"),
+    model: z.string().trim().min(1),
+    protocol: z.enum(PROVIDER_WIRE_PROTOCOLS),
+  })
+  .strict();
+
 const projectDefaultsSchema = z
   .object({
     conversationRevisionId: entityId("revision"),
-    target: z
-      .object({
-        connectionRequirementId: entityId("connection"),
-        model: z.string().trim().min(1),
-      })
-      .strict(),
+    target: executionTargetSchema,
     options: inferenceOptionsSchema,
     enabledToolIds: z.array(entityId("tool")),
   })
@@ -746,6 +753,7 @@ const evaluationVariantSchema: z.ZodType<EvaluationVariant> = z.object({
     target: z.object({
       connectionRequirementId: entityId("connection").optional(),
       model: z.string().trim().min(1).optional(),
+      protocol: z.enum(PROVIDER_WIRE_PROTOCOLS).optional(),
     }).strict().optional(),
     responseMode: z.enum(["streaming", "buffered"]).optional(),
     options: evaluationVariantOptionsSchema.optional(),
@@ -761,10 +769,7 @@ const evaluationSuiteSchema: z.ZodType<EvaluationSuite> = z
       conversationRevisionId: entityId("revision"),
     }).strict(),
     execution: z.object({
-      target: z.object({
-        connectionRequirementId: entityId("connection"),
-        model: z.string().trim().min(1),
-      }).strict(),
+      target: executionTargetSchema,
       responseMode: z.enum(["streaming", "buffered"]),
       options: inferenceOptionsSchema,
       repetitions: z.number().int().min(1).max(100),
@@ -1488,6 +1493,53 @@ function unsupportedSchemaMessage(version: unknown): string {
     : `${prefix} Open it with an earlier Inference Lens release that supports it and export it again.`;
 }
 
+/**
+ * v10 put the protocol on the connection requirement, where it could only ever
+ * be chat completions. v11 states it on each execution target instead, so the
+ * requirement's value moves to every target that names that requirement and
+ * the requirement loses the field. Anything malformed is passed through for
+ * the v11 schema to reject with its ordinary message.
+ */
+function migrateV10Project(value: object): unknown {
+  const project = value as Record<string, unknown>;
+  const requirements = Array.isArray(project.connectionRequirements)
+    ? (project.connectionRequirements as unknown[])
+    : [];
+  const protocolByRequirement = new Map<unknown, unknown>(
+    requirements.flatMap((requirement) =>
+      isRecord(requirement) ? [[requirement.id, requirement.protocol] as const] : [],
+    ),
+  );
+  const withProtocol = (target: unknown): unknown =>
+    isRecord(target) && !("protocol" in target)
+      ? { ...target, protocol: protocolByRequirement.get(target.connectionRequirementId) }
+      : target;
+  const defaults = project.defaults;
+  return {
+    ...project,
+    schemaVersion: PROJECT_SCHEMA_VERSION,
+    connectionRequirements: requirements.map((requirement) => {
+      if (!isRecord(requirement)) return requirement;
+      const { protocol: _protocol, ...rest } = requirement;
+      return rest;
+    }),
+    ...(isRecord(defaults) ? { defaults: { ...defaults, target: withProtocol(defaults.target) } } : {}),
+    ...(Array.isArray(project.evaluationSuites)
+      ? {
+          evaluationSuites: (project.evaluationSuites as unknown[]).map((suite) =>
+            isRecord(suite) && isRecord(suite.execution)
+              ? { ...suite, execution: { ...suite.execution, target: withProtocol(suite.execution.target) } }
+              : suite,
+          ),
+        }
+      : {}),
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 export function parseProjectFile(value: unknown): ProjectFile {
   if (typeof value === "object" && value !== null && "schemaVersion" in value && value.schemaVersion !== PROJECT_SCHEMA_VERSION) {
     if (!OPENABLE_PROJECT_SCHEMA_VERSIONS.includes(value.schemaVersion as number)) {
@@ -1497,10 +1549,7 @@ export function parseProjectFile(value: unknown): ProjectFile {
         message: unsupportedSchemaMessage(value.schemaVersion),
       }]);
     }
-    // Validated against the current schema after restamping. That is exact
-    // only because every openable version is a strict subset of it: v10
-    // differs solely in allowing fewer protocols and capability keys.
-    value = { ...value, schemaVersion: PROJECT_SCHEMA_VERSION };
+    value = migrateV10Project(value);
   }
   const parsed = projectFileV11Schema.safeParse(value);
   if (!parsed.success) throw new ProjectValidationError(parsed.error.issues);
@@ -1641,6 +1690,7 @@ export interface ProjectDraft {
   templateDiagnostics: ProjectTemplateDiagnostic[];
   model: string;
   temperature?: number;
+  protocol: ProviderWireProtocol;
   tools: ToolDefinition[];
   toolMocks: ToolMock[];
   enabledToolIds: ToolId[];
@@ -1650,6 +1700,8 @@ export interface UpdateProjectDraft {
   messages: ConversationMessage[];
   items?: ProjectConversationItem[];
   model: string;
+  /** Omitted by a caller that does not edit it; the default target's stays. */
+  protocol?: ProviderWireProtocol;
   temperature?: number;
   tools: ToolDefinition[];
   toolMocks: ToolMock[];
@@ -1884,6 +1936,7 @@ export function projectDraft(
     templateDiagnostics: resolved.diagnostics,
     model: project.defaults.target.model,
     temperature: project.defaults.options.temperature,
+    protocol: project.defaults.target.protocol,
     tools: project.tools,
     toolMocks: project.toolMocks,
     enabledToolIds: project.defaults.enabledToolIds,
@@ -1991,6 +2044,7 @@ export function updateProjectDraft(
       target: {
         ...project.defaults.target,
         model: draft.model,
+        ...(draft.protocol ? { protocol: draft.protocol } : {}),
       },
       options: {
         ...project.defaults.options,
@@ -2044,39 +2098,6 @@ export function updateConnectionRequirementEndpoint(
   connectionRequirements[requirementIndex] = {
     ...connectionRequirements[requirementIndex]!,
     endpoint: trimmed,
-  };
-  return parseProjectFile({ ...project, connectionRequirements });
-}
-
-/**
- * Chooses the wire protocol a declared connection is run with. A project
- * states one protocol per requirement, so comparing two protocols against one
- * provider is two requirements, never a hidden switch.
- */
-export function updateConnectionRequirementProtocol(
-  project: ProjectFile,
-  requirementId: ConnectionRequirementId,
-  protocol: ProviderWireProtocol,
-): ProjectFile {
-  const requirementIndex = project.connectionRequirements.findIndex(
-    ({ id }) => id === requirementId,
-  );
-  if (requirementIndex < 0) {
-    throw new ProjectValidationError([
-      {
-        code: "custom",
-        path: ["connectionRequirements", requirementId],
-        message: "Connection requirement does not exist.",
-      },
-    ]);
-  }
-  if (project.connectionRequirements[requirementIndex]!.protocol === protocol) {
-    return project;
-  }
-  const connectionRequirements = [...project.connectionRequirements];
-  connectionRequirements[requirementIndex] = {
-    ...connectionRequirements[requirementIndex]!,
-    protocol,
   };
   return parseProjectFile({ ...project, connectionRequirements });
 }
@@ -3118,7 +3139,6 @@ export function createProjectFile({
         id: connectionId,
         name: "Default connection",
         provider: request.provider,
-        protocol: request.protocol ?? "openai-compatible-chat-completions",
         endpoint: request.endpoint,
         capabilityOverrides: request.capabilities,
       },
@@ -3165,6 +3185,7 @@ export function createProjectFile({
       target: {
         connectionRequirementId: connectionId,
         model: request.model,
+        protocol: request.protocol ?? "openai-compatible-chat-completions",
       },
       options:
         request.temperature === undefined

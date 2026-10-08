@@ -1,14 +1,23 @@
 import type { CredentialSelection } from "../../../packages/contracts/src/index.ts";
+import { PROTOCOL_CONFIGURATION_NAMES } from "../../../packages/core/src/provider-protocols.ts";
 import { PROVIDER_WIRE_PROTOCOLS } from "../../../packages/core/src/run-kernel/types.ts";
 import type { ProviderWireProtocol } from "../../../packages/core/src/run-kernel/types.ts";
 
 /** The names `INFERENCE_LENS_API_PROTOCOLS` accepts, short and full. */
 const protocolNames: Record<string, ProviderWireProtocol> = {
-  "chat-completions": "openai-compatible-chat-completions",
-  responses: "openai-responses",
-  "anthropic-messages": "anthropic-messages",
+  ...PROTOCOL_CONFIGURATION_NAMES,
   ...Object.fromEntries(PROVIDER_WIRE_PROTOCOLS.map((protocol) => [protocol, protocol])),
 };
+
+/**
+ * What `INFERENCE_LENS_API_PROTOCOLS` says. Unset and invalid are kept apart:
+ * both leave the profile's switches with the user, but only an invalid value
+ * is an operator mistake worth reporting.
+ */
+export type ServerProtocolConfiguration =
+  | { kind: "unset" }
+  | { kind: "valid"; protocols: ProviderWireProtocol[] }
+  | { kind: "invalid"; unrecognized: string[] };
 
 /**
  * Parses a comma-separated protocol list. A list naming anything unknown is
@@ -17,12 +26,16 @@ const protocolNames: Record<string, ProviderWireProtocol> = {
  */
 export function parseServerProtocols(
   value: string | undefined,
-): ProviderWireProtocol[] | undefined {
+): ServerProtocolConfiguration {
   const names = value?.split(",").map((name) => name.trim()).filter(Boolean) ?? [];
-  if (names.length === 0) return undefined;
+  if (names.length === 0) return { kind: "unset" };
+  const unrecognized = names.filter((name) => !Object.hasOwn(protocolNames, name));
+  if (unrecognized.length > 0) return { kind: "invalid", unrecognized };
   const protocols = names.map((name) => protocolNames[name]);
-  if (protocols.some((protocol) => protocol === undefined)) return undefined;
-  return PROVIDER_WIRE_PROTOCOLS.filter((protocol) => protocols.includes(protocol));
+  return {
+    kind: "valid",
+    protocols: PROVIDER_WIRE_PROTOCOLS.filter((protocol) => protocols.includes(protocol)),
+  };
 }
 
 export interface CredentialStore {
@@ -73,7 +86,13 @@ export class EnvironmentCredentialStore implements CredentialStore {
    * point of setting the variable. Callers report the credential separately.
    */
   connectionConfiguration():
-    | { endpoint: string; model?: string; protocols?: ProviderWireProtocol[] }
+    | {
+        endpoint: string;
+        model?: string;
+        protocols?: ProviderWireProtocol[];
+        /** Set instead of `protocols` when the list names something unknown. */
+        unrecognizedProtocols?: string[];
+      }
     | undefined {
     const endpoint = this.environment[this.endpointVariableName]?.trim();
     if (!endpoint) return undefined;
@@ -86,7 +105,10 @@ export class EnvironmentCredentialStore implements CredentialStore {
     return {
       endpoint: safeEndpoint,
       ...(model ? { model } : {}),
-      ...(protocols ? { protocols } : {}),
+      ...(protocols.kind === "valid" ? { protocols: protocols.protocols } : {}),
+      ...(protocols.kind === "invalid"
+        ? { unrecognizedProtocols: protocols.unrecognized }
+        : {}),
     };
   }
 

@@ -4,6 +4,7 @@ import {
   EnvironmentCredentialStore,
   executeProviderTurn,
   parseAllowedHosts,
+  parseServerProtocols,
   resolveModelDiscoveryRequest,
   resolveProviderTurnRequest,
   validateSameOrigin,
@@ -542,13 +543,27 @@ test("the server states which protocols its default connection speaks", () => {
   });
 });
 
-test("an unrecognized server protocol list is ignored rather than half-applied", () => {
+test("an unrecognized server protocol list is reported rather than half-applied", () => {
   const store = new EnvironmentCredentialStore({
     INFERENCE_LENS_API_ENDPOINT: "https://api.example.test/v1",
-    INFERENCE_LENS_API_PROTOCOLS: "responses,assistants",
+    INFERENCE_LENS_API_PROTOCOLS: "responses,assistants, chat ",
   });
   assert.deepEqual(store.connectionConfiguration(), {
     endpoint: "https://api.example.test/v1",
+    unrecognizedProtocols: ["assistants", "chat"],
+  });
+});
+
+test("unset, blank and recognized protocol lists are told apart from invalid ones", () => {
+  assert.deepEqual(parseServerProtocols(undefined), { kind: "unset" });
+  assert.deepEqual(parseServerProtocols(" , "), { kind: "unset" });
+  assert.deepEqual(parseServerProtocols("responses"), {
+    kind: "valid",
+    protocols: ["openai-responses"],
+  });
+  assert.deepEqual(parseServerProtocols("responses,assistants"), {
+    kind: "invalid",
+    unrecognized: ["assistants"],
   });
 });
 
