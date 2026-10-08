@@ -310,3 +310,23 @@ test("protocols the server declares are locked on its profile", async () => {
   assert.ok(switches.every((input) => / disabled=""/.test(input)));
   assert.match(html, /Managed by <code>INFERENCE_LENS_API_PROTOCOLS<\/code>/);
 });
+
+test("the connection heading names the APIs the profile speaks", async () => {
+  const pill = (html) => html.match(/<span class="provider-pill">([^<]*)<\/span>/)?.[1];
+  const only = (enabled) => ({
+    ...capabilities,
+    chatCompletions: false,
+    responsesApi: false,
+    anthropicMessages: false,
+    ...enabled,
+  });
+  assert.equal(pill(await render(DRAWER, "ConnectionDrawer", drawer({
+    capabilities: only({ anthropicMessages: true }),
+  }))), "Anthropic");
+  assert.equal(pill(await render(DRAWER, "ConnectionDrawer", drawer({
+    capabilities: only({ chatCompletions: true, responsesApi: true }),
+  }))), "OpenAI compatible");
+  assert.equal(pill(await render(DRAWER, "ConnectionDrawer", drawer({
+    capabilities: only({ responsesApi: true, anthropicMessages: true }),
+  }))), "OpenAI compatible + Anthropic");
+});

@@ -18,6 +18,7 @@ import {
   openMode,
   seedProfile,
   seedProfiles,
+  stubProjectDirectory,
   waitForHydration,
 } from "./support";
 
@@ -430,4 +431,30 @@ test("changing the composer's protocol leaves an evaluation's protocol alone", a
   await expect(execution.getByLabel("Protocol")).toHaveValue("openai-compatible-chat-completions");
   await page.getByRole("button", { name: /^Configurations/ }).click();
   await expect(page.getByLabel("Configuration protocol Default")).toHaveValue("openai-compatible-chat-completions");
+});
+
+test("a new project started while another is open runs on the protocol its profile speaks", async ({ page }) => {
+  await seedProfile(page, {
+    endpoint: ANTHROPIC_FIXTURE_ENDPOINT,
+    model: "claude-fixture-text",
+    capabilityOverrides: ANTHROPIC_ONLY,
+  });
+  await stubProjectDirectory(page, { name: "projects", files: {} });
+  await page.goto("/");
+  await waitForHydration(page);
+
+  for (const name of ["First project", "Second project"]) {
+    await page.getByLabel("Project menu").click();
+    await page.getByRole("button", { name: "New project folder…", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Create an Inference Lens project" });
+    await dialog.getByLabel("Project name").fill(name);
+    await dialog.getByRole("button", { name: "Choose location…" }).click();
+    await expect(page.locator(".topbar")).toContainText(name);
+  }
+
+  // The second project is built fresh rather than from the composer; it must
+  // still target what the profile speaks, not fall back to chat completions.
+  const settings = await openInferenceSettings(page);
+  await expect(settings.getByLabel("Protocol")).toHaveValue("anthropic-messages");
+  await expect(page.getByText("does not have Chat Completions enabled")).toHaveCount(0);
 });

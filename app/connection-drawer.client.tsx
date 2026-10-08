@@ -7,6 +7,7 @@ import {
   protocolCapabilityKey,
   protocolLabel,
   protocolPath,
+  supportedProtocols,
 } from "../packages/core/src/provider-protocols";
 import { PROVIDER_WIRE_PROTOCOLS } from "../packages/core/src/run-kernel/types";
 import type { ProviderWireProtocol } from "../packages/core/src/run-kernel/types";
@@ -51,6 +52,19 @@ const protocolDescriptions: Record<ProviderWireProtocol, string> = {
   "openai-responses": "The OpenAI Responses API.",
   "anthropic-messages": "The native Anthropic API; the key is sent as x-api-key.",
 };
+
+/**
+ * The API families a profile speaks, for the section heading. Derived from its
+ * enabled protocols so an Anthropic-only connection is not labelled OpenAI.
+ */
+function providerFamilies(capabilities: ProviderCapabilities): string | undefined {
+  const families = new Set(
+    supportedProtocols(capabilities).map((protocol) =>
+      protocol === "anthropic-messages" ? "Anthropic" : "OpenAI compatible",
+    ),
+  );
+  return families.size === 0 ? undefined : [...families].join(" + ");
+}
 
 /** Names the variables to set, in the one place the absence is felt. */
 function ServerCredentialHint() {
@@ -214,6 +228,7 @@ export function ConnectionDrawer({
     usingServerDefault &&
     !matchesServerOrigin(activeProfile.endpoint, serverDefault.endpoint);
   const serverOrigin = configuredServerOrigin(serverDefault.endpoint);
+  const providerFamily = providerFamilies(capabilities);
   // Locked the way the endpoint is; see `serverManagesProtocols`.
   const protocolsManaged = serverManagesProtocols(
     activeProfile,
@@ -256,7 +271,7 @@ export function ConnectionDrawer({
         )}
         <div className="section-heading">
           <span>Connection</span>
-          <span className="provider-pill">OpenAI compatible</span>
+          {providerFamily && <span className="provider-pill">{providerFamily}</span>}
         </div>
 
         <div className="profile-row">

@@ -916,7 +916,7 @@ textarea:focus {
 .protocol-capabilities {
   display: grid;
   gap: var(--space-xs);
-  margin: 0;
+  margin: 0 0 var(--space-sm);
   padding: 0;
   border: 0;
   min-width: 0;

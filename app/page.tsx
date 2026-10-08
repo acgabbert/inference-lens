@@ -12,7 +12,10 @@ import {
   updateConnectionRequirementEndpoint,
 } from "../packages/core/src/project";
 import { createEntityId } from "../packages/core/src/run-kernel";
-import { PROTOCOL_CONFIGURATION_NAMES } from "../packages/core/src/provider-protocols";
+import {
+  PROTOCOL_CONFIGURATION_NAMES,
+  effectiveProtocol,
+} from "../packages/core/src/provider-protocols";
 import { modalOwnsKeyboardCommands } from "./keyboard-command-scope.client";
 import type {
   RunTrace,
@@ -220,6 +223,9 @@ function HomeContent() {
           temperature: activeProfile.temperature,
           responseMode: requestSettings.responseMode,
           capabilities: activeCapabilities,
+          // Not the open project's protocol: a fresh project starts from the
+          // profile, the same way it takes its endpoint and model.
+          protocol: effectiveProtocol(activeCapabilities, activeProfile.protocol),
         },
       });
     },
