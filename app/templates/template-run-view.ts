@@ -4,7 +4,7 @@
  * readiness needs about them.
  */
 
-import { buildChatCompletionsRequest } from "../../packages/core/src/openai-compatible.ts";
+import { providerProtocolAdapter } from "../../packages/core/src/provider-adapters.ts";
 import type { ProjectFile } from "../../packages/core/src/project.ts";
 import { createSingleTurnRunExecution } from "../../packages/core/src/run-kernel/index.ts";
 import type {
@@ -21,7 +21,7 @@ export type TemplateRequestPreview =
 
 /**
  * The provider request the pinned prompts resolve to, built the same way a
- * run builds it. Absent without a project revision or a resolution.
+ * run builds it — by the adapter for the run's protocol. Absent without a project revision or a resolution.
  */
 export function templateRequestPreview(input: {
   project: ProjectFile | null;
@@ -50,7 +50,7 @@ export function templateRequestPreview(input: {
     );
     return {
       messages: resolution.messages,
-      body: buildChatCompletionsRequest({
+      body: providerProtocolAdapter(execution.turnInput.target.protocol).buildRequest({
         runId: execution.runId,
         turnId: execution.turnId,
         exchangeId: execution.exchangeId,

@@ -551,3 +551,47 @@ test("an unrecognized server protocol list is ignored rather than half-applied",
     endpoint: "https://api.example.test/v1",
   });
 });
+
+test("a Responses turn is sent to /responses and a reported failure is a provider error", async () => {
+  const originalFetch = globalThis.fetch;
+  const requested: string[] = [];
+  globalThis.fetch = async (input, init) => {
+    requested.push(String(input));
+    const headers = new Headers(init?.headers);
+    assert.equal(headers.get("authorization"), "Bearer test-key");
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    assert.ok(Array.isArray(body.input));
+    assert.equal("messages" in body, false);
+    return new Response(
+      [
+        "event: response.failed",
+        `data: ${JSON.stringify({ type: "response.failed", response: { status: "failed", error: { code: "server_error", message: "The model crashed." } } })}`,
+        "",
+        "",
+      ].join("\n"),
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    );
+  };
+  try {
+    const base = execution({ ...OPENAI_COMPATIBLE_CAPABILITIES, responsesApi: true });
+    const events = [];
+    for await (const event of executeProviderTurn(
+      { ...base, input: { ...base.input, target: { ...base.input.target, protocol: "openai-responses" as const } } },
+      "test-key",
+    )) {
+      events.push(event);
+    }
+    assert.deepEqual(requested, ["https://api.example.test/v1/responses"]);
+    const failed = events.at(-1);
+    assert.deepEqual(failed, {
+      type: "failed",
+      error: {
+        code: "provider_error",
+        message: "server_error: The model crashed.",
+        retryable: false,
+      },
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

@@ -24,6 +24,19 @@ export class ProviderProtocolError extends Error {
   }
 }
 
+/**
+ * The provider answered, then reported inside the response that it failed —
+ * a Responses `response.failed` event, an Anthropic `error` event. It is the
+ * provider's own message, so it is a provider error rather than a protocol
+ * violation, but it arrives with no HTTP status to judge a retry by.
+ */
+export class ProviderReportedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProviderReportedError";
+  }
+}
+
 const capabilityByProtocol = {
   "openai-compatible-chat-completions": "chatCompletions",
   "openai-responses": "responsesApi",

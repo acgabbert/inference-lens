@@ -1,5 +1,8 @@
 import { streamProviderTurn } from "../../../packages/core/src/provider-adapters.ts";
-import { ProviderProtocolError } from "../../../packages/core/src/provider-protocols.ts";
+import {
+  ProviderProtocolError,
+  ProviderReportedError,
+} from "../../../packages/core/src/provider-protocols.ts";
 import type {
   ProviderExecution,
   ProviderTransportEvent,
@@ -43,6 +46,15 @@ export async function* executeProviderTurn(
         : undefined;
     if (signal?.aborted) {
       yield { type: "cancelled", reason: "Request aborted." };
+      return;
+    }
+    if (error instanceof ProviderReportedError) {
+      // The provider answered and named its own failure. With no status to
+      // judge it by, it is not retried automatically; the user can retry.
+      yield {
+        type: "failed",
+        error: { code: "provider_error", message, retryable: false },
+      };
       return;
     }
     const code =

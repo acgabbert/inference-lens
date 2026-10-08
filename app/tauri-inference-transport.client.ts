@@ -17,7 +17,10 @@ import {
   providerRequestEvent,
 } from "../packages/core/src/provider-adapters.ts";
 import type { ProviderHttpRequest } from "../packages/core/src/provider-adapters.ts";
-import { ProviderProtocolError } from "../packages/core/src/provider-protocols.ts";
+import {
+  ProviderProtocolError,
+  ProviderReportedError,
+} from "../packages/core/src/provider-protocols.ts";
 import type {
   ProviderExecution,
   ProviderTransportEvent,
@@ -227,6 +230,13 @@ async function* toProviderTransportEvents(
         yield {
           type: "failed",
           error: { code: "protocol_error", message: error.message },
+        };
+        return;
+      }
+      if (error instanceof ProviderReportedError) {
+        yield {
+          type: "failed",
+          error: { code: "provider_error", message: error.message, retryable: false },
         };
         return;
       }

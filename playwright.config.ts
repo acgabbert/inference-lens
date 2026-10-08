@@ -9,6 +9,7 @@ const mcpFixturePort = 44018;
 const mcpExecutionFixturePort = 44019;
 const mcpBatchFixturePort = 44020;
 const mcpInterruptionFixturePort = 44023;
+const responsesFixturePort = 44026;
 
 /**
  * The only reason the suite's dev server can run anything at all.
@@ -95,6 +96,12 @@ export default defineConfig({
     {
       command: `INFERENCE_LENS_BUFFERED_PORT=${bufferedFixturePort} npm run dev:buffered-provider`,
       url: `http://127.0.0.1:${bufferedFixturePort}/v1/models`,
+      reuseExistingServer: false,
+      timeout: 10_000,
+    },
+    {
+      command: `INFERENCE_LENS_RESPONSES_PORT=${responsesFixturePort} npm run dev:responses-provider`,
+      url: `http://127.0.0.1:${responsesFixturePort}/v1/models`,
       reuseExistingServer: false,
       timeout: 10_000,
     },

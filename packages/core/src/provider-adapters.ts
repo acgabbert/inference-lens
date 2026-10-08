@@ -7,6 +7,11 @@ import {
   sseLines,
 } from "./openai-compatible.ts";
 import {
+  buildResponsesRequest,
+  normalizeResponsesResponse,
+  normalizeResponsesStream,
+} from "./openai-responses.ts";
+import {
   credentialHeaders,
   protocolHeaders,
   protocolLabel,
@@ -47,8 +52,16 @@ const chatCompletionsAdapter: ProviderProtocolAdapter = {
   normalizeResponse: normalizeOpenAICompatibleResponse,
 };
 
+const responsesAdapter: ProviderProtocolAdapter = {
+  protocol: "openai-responses",
+  buildRequest: buildResponsesRequest,
+  normalizeStream: normalizeResponsesStream,
+  normalizeResponse: normalizeResponsesResponse,
+};
+
 const adapters: Partial<Record<ProviderWireProtocol, ProviderProtocolAdapter>> = {
   "openai-compatible-chat-completions": chatCompletionsAdapter,
+  "openai-responses": responsesAdapter,
 };
 
 export function providerProtocolAdapter(
