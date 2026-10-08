@@ -23,7 +23,6 @@ import {
 } from "../packages/core/src/run-kernel";
 import { modalOwnsKeyboardCommands } from "./keyboard-command-scope.client";
 import type {
-  RunState,
   RunTrace,
   ConversationMessage,
   ConversationId,
@@ -88,6 +87,7 @@ import {
 } from "./run/prepare-workbench-run.client";
 import { useRunSession } from "./run/use-run-session.client";
 import { RunEvidenceDetail } from "./run/run-evidence-detail.client";
+import { useResponseView } from "./run/use-response-view.client";
 import { useRunsNavigation } from "./run/use-runs-navigation.client";
 import { toolBindingFor } from "./run/run-session-state.client";
 import { useCommandTools } from "./tools/use-command-tools.client";
@@ -125,7 +125,6 @@ import type { AppBanner as AppBannerCandidate } from "./notifications/banner-pri
 
 const inferenceTransport = createInferenceTransport();
 
-const MARKDOWN_PREVIEW_STORAGE_KEY = "inference-lens:markdown-preview:v1";
 const STREAMING_PREFERENCE_STORAGE_KEY =
   "inference-lens:streaming-preference:v1";
 
@@ -222,24 +221,6 @@ function chooseDefaultUserPrompt(): string {
   ];
 }
 
-type DisplayStatus = "idle" | "running" | "waiting" | "complete" | "failed";
-function displayStatus(state: RunState | null): DisplayStatus {
-  if (!state) return "idle";
-  switch (state.status.kind) {
-    case "completed":
-      return "complete";
-    case "awaiting_tool_results":
-      return "waiting";
-    case "paused":
-      return state.status.reason === "attempt_failed" ? "failed" : "waiting";
-    case "failed":
-    case "cancelled":
-      return "failed";
-    default:
-      return "running";
-  }
-}
-
 function HomeContent() {
   // Keep the server render and the browser's first render identical. The
   // Tauri bridge exists only in the browser, so checking it during render
@@ -319,9 +300,6 @@ function HomeContent() {
   // the same case and repetition instead of silently resetting to repetition 1.
   const [comparisonReturnTarget, setComparisonReturnTarget] = useState<EvaluationComparisonReturnTarget>();
   const [comparisonTraceOpen, setComparisonTraceOpen] = useState(false);
-  const [outputFollowing, setOutputFollowing] = useState(true);
-  const [markdownPreview, setMarkdownPreview] = useState(true);
-  const [markdownPreviewLoaded, setMarkdownPreviewLoaded] = useState(false);
   const [streamingPreferred, setStreamingPreferred] = useState(true);
   const [streamingPreferenceLoaded, setStreamingPreferenceLoaded] =
     useState(false);
@@ -480,7 +458,10 @@ function HomeContent() {
     readTrace: runHistory.readTrace,
     onShowResponse() {
       setWorkbenchView("response");
-      setOutputFollowing(true);
+      // Declared after this hook because it reads `runState`. Safe: the run
+      // session calls this only from its run, continue, and retry commands,
+      // never during render.
+      responseView.followLatest();
     },
     onOpenTrace() {
       setWorkbenchView("inspect");
@@ -493,6 +474,7 @@ function HomeContent() {
   });
   const { runState, isRequestActive, toolResultDrafts, traceStorage,
     hasDiagnosticCapture, visibleBranchProvenance, parentTrace, transcript } = runSession;
+  const responseView = useResponseView(runState);
   const runsNavigation = useRunsNavigation({
     ...(projectFile ? { projectId: projectFile.projectId } : {}),
     readTrace: runHistory.readTrace,
@@ -538,7 +520,6 @@ function HomeContent() {
   const [sessionModel, setSessionModel] = useState<string>();
   const [sessionTemperature, setSessionTemperature] = useState<number>();
   const adHocConversationIdRef = useRef<ConversationId | null>(null);
-  const outputScrollRef = useRef<HTMLDivElement | null>(null);
   const [branchContext, setBranchContext] = useState<BranchContext | null>(null);
   const nonBranchableMessageIds = new Set(
     runState?.input?.templateResolutions.flatMap((resolution) =>
@@ -562,15 +543,6 @@ function HomeContent() {
   }, []);
 
   useEffect(() => {
-    const previewId = window.setTimeout(() => {
-      const saved = window.localStorage.getItem(MARKDOWN_PREVIEW_STORAGE_KEY);
-      if (saved === "raw") setMarkdownPreview(false);
-      setMarkdownPreviewLoaded(true);
-    }, 0);
-    return () => window.clearTimeout(previewId);
-  }, []);
-
-  useEffect(() => {
     const preferenceId = window.setTimeout(() => {
       const saved = window.localStorage.getItem(
         STREAMING_PREFERENCE_STORAGE_KEY,
@@ -582,14 +554,6 @@ function HomeContent() {
     }, 0);
     return () => window.clearTimeout(preferenceId);
   }, []);
-
-  useEffect(() => {
-    if (!markdownPreviewLoaded) return;
-    window.localStorage.setItem(
-      MARKDOWN_PREVIEW_STORAGE_KEY,
-      markdownPreview ? "markdown" : "raw",
-    );
-  }, [markdownPreview, markdownPreviewLoaded]);
 
   useEffect(() => {
     if (!streamingPreferenceLoaded) return;
@@ -761,46 +725,6 @@ function HomeContent() {
   useEffect(() => {
     clearTemplateOverridesRef.current = projectTemplates.clearTransientOverrides;
   }, [projectTemplates.clearTransientOverrides]);
-
-  const { output, reasoning, status } = (() => {
-    const attempts =
-      runState?.turns.flatMap((turn) => {
-        const latest = turn.attempts.at(-1);
-        return latest ? [latest] : [];
-      }) ?? [];
-    return {
-      output: attempts.map((attempt) => attempt.text).join(""),
-      reasoning: attempts.map((attempt) => attempt.reasoning).join(""),
-      status: displayStatus(runState),
-    };
-  })();
-
-  const completedToolCalls = runState?.turns.flatMap(
-    (turn) => turn.attempts.at(-1)?.completedToolCalls ?? [],
-  ) ?? [];
-
-  useEffect(() => {
-    if (!outputFollowing) return;
-    const frame = window.requestAnimationFrame(() => {
-      const element = outputScrollRef.current;
-      if (element) element.scrollTop = element.scrollHeight;
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [completedToolCalls.length, output, outputFollowing, reasoning]);
-
-  function updateOutputFollowState(): void {
-    const element = outputScrollRef.current;
-    if (!element) return;
-    const distanceFromBottom =
-      element.scrollHeight - element.scrollTop - element.clientHeight;
-    setOutputFollowing(distanceFromBottom < 56);
-  }
-
-  function jumpToLatestOutput(): void {
-    const element = outputScrollRef.current;
-    if (element) element.scrollTop = element.scrollHeight;
-    setOutputFollowing(true);
-  }
 
   function currentRequest(): RichInferenceRequest {
     return {
@@ -1553,24 +1477,24 @@ function HomeContent() {
   const responseSurface = (
     <section className="result">
       <ResponseOutput
-        output={output}
-        reasoning={reasoning}
-        status={status}
+        output={responseView.output}
+        reasoning={responseView.reasoning}
+        status={responseView.status}
         runState={runState}
         isRequestActive={isRequestActive}
-        markdownPreview={markdownPreview}
-        outputFollowing={outputFollowing}
-        outputScrollRef={outputScrollRef}
-        completedToolCalls={completedToolCalls}
+        markdownPreview={responseView.markdownPreview}
+        outputFollowing={responseView.following}
+        outputScrollRef={responseView.scrollRef}
+        completedToolCalls={responseView.completedToolCalls}
         toolResultDrafts={toolResultDrafts}
         traceStorage={traceStorage}
         transcript={transcript}
         nonBranchableMessageIds={nonBranchableMessageIds}
         branchedFrom={visibleBranchProvenance}
         emptyState={responseEmptyState}
-        onMarkdownPreviewChange={setMarkdownPreview}
-        onOutputScroll={updateOutputFollowState}
-        onJumpToLatest={jumpToLatestOutput}
+        onMarkdownPreviewChange={responseView.setMarkdownPreview}
+        onOutputScroll={responseView.updateFollowState}
+        onJumpToLatest={responseView.jumpToLatest}
         onToolResultDraftChange={runSession.updateToolResultDraft}
         onApproveMcp={runSession.approveMcpCall}
         onRejectMcp={runSession.rejectMcpCall}
@@ -1733,7 +1657,7 @@ function HomeContent() {
         view={workbenchView}
         onViewChange={setWorkbenchView}
         inspectAvailable={Boolean(runState && runState.status.kind !== "not_started")}
-        responseStatus={status}
+        responseStatus={responseView.status}
         request={
         <RequestComposer
           requestDraft={{
