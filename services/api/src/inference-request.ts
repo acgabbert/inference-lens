@@ -13,6 +13,7 @@ import {
   isProviderCapabilities,
   resolveProviderCapabilities,
 } from "../../../packages/core/src/types.ts";
+import { isProviderWireProtocol } from "../../../packages/core/src/provider-protocols.ts";
 import type { CredentialStore } from "./credential-store.ts";
 
 function parseCredential(value: unknown): CredentialSelection {
@@ -51,8 +52,10 @@ function parseProviderExecution(value: unknown): ProviderExecution {
   if (!input || typeof input !== "object") {
     throw new Error("Provider turn input is required.");
   }
-  if (input.target?.protocol !== "openai-compatible-chat-completions") {
-    throw new Error("Only OpenAI-compatible chat completions are supported.");
+  if (!isProviderWireProtocol(input.target?.protocol)) {
+    throw new Error(
+      "Protocol must be chat completions, Responses, or Anthropic Messages.",
+    );
   }
   if (
     typeof input.target.endpoint !== "string" ||
@@ -79,6 +82,16 @@ function parseProviderExecution(value: unknown): ProviderExecution {
       )
     ) {
       throw new Error("Every message needs a valid role and text content.");
+    }
+    const continuation = (candidate as { providerContinuation?: unknown }).providerContinuation;
+    if (
+      continuation !== undefined &&
+      (!continuation ||
+        typeof continuation !== "object" ||
+        !isProviderWireProtocol((continuation as { protocol?: unknown }).protocol) ||
+        !Array.isArray((continuation as { items?: unknown }).items))
+    ) {
+      throw new Error("A provider continuation needs a protocol and a list of items.");
     }
   }
   if (!input.options || typeof input.options !== "object") {
@@ -139,7 +152,7 @@ export function resolveProviderTurnRequest(
 export function resolveModelDiscoveryRequest(
   value: unknown,
   credentials: CredentialStore,
-): Pick<ResolvedInferenceRequest, "endpoint" | "apiKey" | "capabilities"> {
+): Pick<ResolvedInferenceRequest, "endpoint" | "apiKey" | "capabilities" | "protocol"> {
   if (!value || typeof value !== "object") {
     throw new Error("Request body must be an object.");
   }
@@ -153,8 +166,14 @@ export function resolveModelDiscoveryRequest(
   ) {
     throw new Error("Capabilities must contain only known boolean values.");
   }
+  if (body.protocol !== undefined && !isProviderWireProtocol(body.protocol)) {
+    throw new Error(
+      "Protocol must be chat completions, Responses, or Anthropic Messages.",
+    );
+  }
   return {
     endpoint: body.endpoint,
+    ...(body.protocol ? { protocol: body.protocol } : {}),
     capabilities:
       body.capabilities ?? resolveProviderCapabilities("openai-compatible"),
     apiKey: credentials.resolve(parseCredential(body.credential), body.endpoint),

@@ -3,7 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { ProjectFile } from "../../packages/core/src/project.ts";
-import type { ConversationMessage } from "../../packages/core/src/run-kernel/types.ts";
+import type {
+  ConversationMessage,
+  ProviderWireProtocol,
+} from "../../packages/core/src/run-kernel/types.ts";
 import type { RichInferenceRequest } from "../../packages/core/src/types.ts";
 import type {
   StoredInferenceProfile,
@@ -22,9 +25,15 @@ export interface UseRequestSettingsOptions {
   activeProfile: StoredInferenceProfile;
   /** The composer's messages, which `currentRequest` sends. */
   messages: ConversationMessage[];
-  /** Without a project, model and temperature edits write the active profile. */
+  /**
+   * Without a project, model, temperature and protocol edits write the active
+   * profile: they are its remembered preferences.
+   */
   updateActiveProfile(patch: StoredInferenceProfilePatch): void;
-  /** With a project, model and temperature edits are unsaved project work. */
+  /**
+   * With a project, they are unsaved edits to its default target. Suites keep
+   * their own target, so none of them changes what an evaluation runs.
+   */
   onProjectEdited(): void;
 }
 
@@ -41,8 +50,9 @@ export interface RequestSettingsHandle
   setModel(model: string): void;
   setTemperature(temperature: number | undefined): void;
   setStreamingPreferred(streaming: boolean): void;
-  /** Adopts a project draft's model and temperature as this session's. */
-  applyDraft(draft: { model: string; temperature?: number }): void;
+  setProtocol(protocol: ProviderWireProtocol): void;
+  /** Adopts a project draft's model, temperature and protocol as this session's. */
+  applyDraft(draft: { model: string; temperature?: number; protocol: ProviderWireProtocol }): void;
   currentRequest(): RichInferenceRequest;
 }
 
@@ -58,6 +68,7 @@ export function useRequestSettings(options: UseRequestSettingsOptions): RequestS
   } = options;
   const [sessionModel, setSessionModel] = useState<string>();
   const [sessionTemperature, setSessionTemperature] = useState<number>();
+  const [sessionProtocol, setSessionProtocol] = useState<ProviderWireProtocol>();
   const [streamingPreferred, setStreamingPreferredState] = useState(true);
   const [streamingPreferenceLoaded, setStreamingPreferenceLoaded] =
     useState(false);
@@ -91,6 +102,7 @@ export function useRequestSettings(options: UseRequestSettingsOptions): RequestS
     activeProfile,
     sessionModel,
     sessionTemperature,
+    sessionProtocol,
     streamingPreferred,
   });
 
@@ -112,6 +124,14 @@ export function useRequestSettings(options: UseRequestSettingsOptions): RequestS
         updateActiveProfile({ temperature });
       }
     },
+    setProtocol(protocol) {
+      if (projectFile) {
+        setSessionProtocol(protocol);
+        onProjectEdited();
+      } else {
+        updateActiveProfile({ protocol });
+      }
+    },
     setStreamingPreferred(streaming) {
       streamingPreferenceChangedRef.current = true;
       setStreamingPreferredState(streaming);
@@ -119,6 +139,7 @@ export function useRequestSettings(options: UseRequestSettingsOptions): RequestS
     applyDraft(draft) {
       setSessionModel(draft.model);
       setSessionTemperature(draft.temperature);
+      setSessionProtocol(draft.protocol);
     },
     currentRequest: () => requestFromSettings(resolved, messages),
   };

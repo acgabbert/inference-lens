@@ -4,6 +4,7 @@ import {
   EnvironmentCredentialStore,
   executeProviderTurn,
   parseAllowedHosts,
+  parseServerProtocols,
   resolveModelDiscoveryRequest,
   resolveProviderTurnRequest,
   validateSameOrigin,
@@ -468,5 +469,241 @@ test("keeps authentication failures non-retryable", async () => {
     }
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("accepts every wire protocol at the provider-turn boundary and nothing else", () => {
+  for (const protocol of [
+    "openai-compatible-chat-completions",
+    "openai-responses",
+    "anthropic-messages",
+  ] as const) {
+    const base = execution();
+    const request = resolveProviderTurnRequest(
+      {
+        execution: { ...base, input: { ...base.input, target: { ...base.input.target, protocol } } },
+        credential: { kind: "provided", apiKey: "session-key" },
+      },
+      environmentStore,
+    );
+    assert.equal(request.execution.input.target.protocol, protocol);
+  }
+  for (const protocol of ["mock", "openai-assistants", undefined]) {
+    const base = execution();
+    assert.throws(
+      () =>
+        resolveProviderTurnRequest(
+          {
+            execution: { ...base, input: { ...base.input, target: { ...base.input.target, protocol } } },
+            credential: { kind: "provided", apiKey: "session-key" },
+          },
+          environmentStore,
+        ),
+      /Protocol must be chat completions, Responses, or Anthropic Messages/,
+    );
+  }
+});
+
+test("model discovery carries the protocol that decides its credential header", () => {
+  const request = resolveModelDiscoveryRequest(
+    {
+      endpoint: "https://api.example.test/v1",
+      protocol: "anthropic-messages",
+      credential: { kind: "provided", apiKey: "session-key" },
+    },
+    environmentStore,
+  );
+  assert.equal(request.protocol, "anthropic-messages");
+  assert.throws(
+    () =>
+      resolveModelDiscoveryRequest(
+        {
+          endpoint: "https://api.example.test/v1",
+          protocol: "mock",
+          credential: { kind: "provided", apiKey: "session-key" },
+        },
+        environmentStore,
+      ),
+    /Protocol must be/,
+  );
+});
+
+test("the server states which protocols its default connection speaks", () => {
+  const store = new EnvironmentCredentialStore({
+    INFERENCE_LENS_API_ENDPOINT: "https://api.anthropic.com/v1",
+    INFERENCE_LENS_API_PROTOCOLS: " anthropic-messages , chat-completions,responses ",
+  });
+  assert.deepEqual(store.connectionConfiguration(), {
+    endpoint: "https://api.anthropic.com/v1",
+    protocols: [
+      "openai-compatible-chat-completions",
+      "openai-responses",
+      "anthropic-messages",
+    ],
+  });
+});
+
+test("an unrecognized server protocol list is reported rather than half-applied", () => {
+  const store = new EnvironmentCredentialStore({
+    INFERENCE_LENS_API_ENDPOINT: "https://api.example.test/v1",
+    INFERENCE_LENS_API_PROTOCOLS: "responses,assistants, chat ",
+  });
+  assert.deepEqual(store.connectionConfiguration(), {
+    endpoint: "https://api.example.test/v1",
+    unrecognizedProtocols: ["assistants", "chat"],
+  });
+});
+
+test("unset, blank and recognized protocol lists are told apart from invalid ones", () => {
+  assert.deepEqual(parseServerProtocols(undefined), { kind: "unset" });
+  assert.deepEqual(parseServerProtocols(" , "), { kind: "unset" });
+  assert.deepEqual(parseServerProtocols("responses"), {
+    kind: "valid",
+    protocols: ["openai-responses"],
+  });
+  assert.deepEqual(parseServerProtocols("responses,assistants"), {
+    kind: "invalid",
+    unrecognized: ["assistants"],
+  });
+});
+
+test("a Responses turn is sent to /responses and a reported failure is a provider error", async () => {
+  const originalFetch = globalThis.fetch;
+  const requested: string[] = [];
+  globalThis.fetch = async (input, init) => {
+    requested.push(String(input));
+    const headers = new Headers(init?.headers);
+    assert.equal(headers.get("authorization"), "Bearer test-key");
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    assert.ok(Array.isArray(body.input));
+    assert.equal("messages" in body, false);
+    return new Response(
+      [
+        "event: response.failed",
+        `data: ${JSON.stringify({ type: "response.failed", response: { status: "failed", error: { code: "server_error", message: "The model crashed." } } })}`,
+        "",
+        "",
+      ].join("\n"),
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    );
+  };
+  try {
+    const base = execution({ ...OPENAI_COMPATIBLE_CAPABILITIES, responsesApi: true });
+    const events = [];
+    for await (const event of executeProviderTurn(
+      { ...base, input: { ...base.input, target: { ...base.input.target, protocol: "openai-responses" as const } } },
+      "test-key",
+    )) {
+      events.push(event);
+    }
+    assert.deepEqual(requested, ["https://api.example.test/v1/responses"]);
+    const failed = events.at(-1);
+    assert.deepEqual(failed, {
+      type: "failed",
+      error: {
+        code: "provider_error",
+        message: "server_error: The model crashed.",
+        retryable: false,
+      },
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("an Anthropic turn presents its key as x-api-key and records it masked", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    assert.equal(String(input), "https://api.example.test/v1/messages");
+    const headers = new Headers(init?.headers);
+    assert.equal(headers.get("x-api-key"), "test-key");
+    assert.equal(headers.get("anthropic-version"), "2023-06-01");
+    assert.equal(headers.get("authorization"), null);
+    return Response.json({
+      type: "message",
+      content: [{ type: "text", text: "Hi" }],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 3, output_tokens: 1 },
+    });
+  };
+  try {
+    const base = execution(
+      { ...OPENAI_COMPATIBLE_CAPABILITIES, chatCompletions: false, anthropicMessages: true },
+      "buffered",
+    );
+    const events = [];
+    for await (const event of executeProviderTurn(
+      { ...base, input: { ...base.input, target: { ...base.input.target, protocol: "anthropic-messages" as const } } },
+      "test-key",
+    )) {
+      events.push(event);
+    }
+    const request = events.find((event) => event.type === "request");
+    assert.deepEqual(request && "request" in request ? request.request.headers : undefined, {
+      "x-api-key": "••••••••",
+      "content-type": "application/json",
+      "anthropic-version": "2023-06-01",
+    });
+    assert.equal(events.at(-1)?.type, "completed");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Anthropic model discovery sends its key as x-api-key and asks for the whole catalogue", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    assert.equal(String(input), "https://api.example.test/v1/models?limit=1000");
+    const headers = new Headers(init?.headers);
+    assert.equal(headers.get("x-api-key"), "test-key");
+    assert.equal(headers.get("anthropic-version"), "2023-06-01");
+    return Response.json({ data: [{ id: "claude-opus-5-5", type: "model" }], has_more: false });
+  };
+  try {
+    const { discoverOpenAICompatibleModels } = await import("../packages/core/src/openai-compatible.ts");
+    assert.deepEqual(
+      await discoverOpenAICompatibleModels({
+        endpoint: "https://api.example.test/v1",
+        apiKey: "test-key",
+        protocol: "anthropic-messages",
+        capabilities: OPENAI_COMPATIBLE_CAPABILITIES,
+      }),
+      ["claude-opus-5-5"],
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("a provider continuation must name a protocol and carry an item list", () => {
+  const base = execution();
+  const withAssistant = (providerContinuation: unknown) => ({
+    execution: {
+      ...base,
+      input: {
+        ...base.input,
+        messages: [
+          ...base.input.messages,
+          {
+            id: "message_assistant",
+            role: "assistant",
+            content: [{ type: "text", text: "Hi" }],
+            providerContinuation,
+          },
+        ],
+      },
+    },
+    credential: { kind: "provided", apiKey: "session-key" },
+  });
+  const accepted = resolveProviderTurnRequest(
+    withAssistant({ protocol: "anthropic-messages", items: [{ type: "thinking", thinking: "", signature: "s" }] }),
+    environmentStore,
+  );
+  assert.equal(accepted.execution.input.messages.length, 2);
+  for (const malformed of [{ protocol: "mock", items: [] }, { protocol: "openai-responses" }, "opaque"]) {
+    assert.throws(
+      () => resolveProviderTurnRequest(withAssistant(malformed), environmentStore),
+      /provider continuation/i,
+    );
   }
 });

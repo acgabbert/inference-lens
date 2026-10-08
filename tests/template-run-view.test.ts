@@ -148,3 +148,36 @@ test("the request preview is absent without a project and reports resolution err
     { error: "Broken." },
   );
 });
+
+test("the request preview is the body of the run's own protocol", () => {
+  const project = projectWithUses([
+    { suffix: "triage", content: "Triage {{topic}}.", values: { topic: "the rollback" } },
+  ]);
+  const preview = templateRequestPreview({
+    project,
+    revision: activeRevision(project),
+    view: viewOf(project),
+    request: {
+      ...request,
+      protocol: "openai-responses",
+      capabilities: {
+        chatCompletions: false,
+        responsesApi: true,
+        anthropicMessages: false,
+        streaming: true,
+        modelDiscovery: true,
+        tools: false,
+        parallelToolCalls: false,
+        structuredOutput: false,
+        vision: false,
+        embeddings: false,
+      },
+      messages: [],
+    },
+    tools: [],
+  });
+  assert.ok(preview && !("error" in preview));
+  const body = preview.body as { input?: { content: string }[]; messages?: unknown };
+  assert.equal(body.messages, undefined);
+  assert.equal(body.input?.at(-1)?.content, "Triage the rollback.");
+});

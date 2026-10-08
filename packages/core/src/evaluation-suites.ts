@@ -12,7 +12,7 @@ import type {
 } from "./run-kernel/types.ts";
 import type { CheckDefinition } from "./checks.ts";
 import { resolveEvaluationCase } from "./evaluation-case-resolution.ts";
-import type { ProjectFile } from "./project.ts";
+import type { ExecutionTarget, ProjectFile } from "./project.ts";
 import { templateUseVariableIndex } from "./template-use-variable-index.ts";
 export { templateUseVariableIndex } from "./template-use-variable-index.ts";
 
@@ -39,7 +39,7 @@ export interface EvaluationVariant {
   id: EvaluationVariantId;
   name: string;
   overrides: {
-    target?: Partial<Pick<EvaluationSuite["execution"]["target"], "connectionRequirementId" | "model">>;
+    target?: Partial<EvaluationSuite["execution"]["target"]>;
     responseMode?: EvaluationSuite["execution"]["responseMode"];
     options?: {
       temperature?: number | null;
@@ -70,6 +70,7 @@ export function resolveEvaluationVariant(
     target: {
       connectionRequirementId: variant.overrides.target?.connectionRequirementId ?? suite.execution.target.connectionRequirementId,
       model: variant.overrides.target?.model ?? suite.execution.target.model,
+      protocol: variant.overrides.target?.protocol ?? suite.execution.target.protocol,
     },
     responseMode: variant.overrides.responseMode ?? suite.execution.responseMode,
     options: {
@@ -93,10 +94,7 @@ export interface EvaluationSuite {
   };
   /** Portable execution preferences. Credentials and local profile identity never enter project data. */
   execution: {
-    target: {
-      connectionRequirementId: ConnectionRequirementId;
-      model: string;
-    };
+    target: ExecutionTarget;
     responseMode: "streaming" | "buffered";
     options: InferenceOptions;
     repetitions: number;

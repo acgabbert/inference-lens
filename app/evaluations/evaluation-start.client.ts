@@ -1,5 +1,12 @@
 import type { ProviderCapabilities } from "../../packages/core/src/types.ts";
-import type { InferenceOptions } from "../../packages/core/src/run-kernel/types.ts";
+import type {
+  InferenceOptions,
+  ProviderWireProtocol,
+} from "../../packages/core/src/run-kernel/types.ts";
+import {
+  protocolLabel,
+  supportsProtocol,
+} from "../../packages/core/src/provider-protocols.ts";
 import { createEvaluationExperimentPlan } from "../../packages/core/src/evaluation-execution.ts";
 import { resolveEvaluationVariant } from "../../packages/core/src/evaluation-suites.ts";
 import type { ProjectFile } from "../../packages/core/src/project.ts";
@@ -52,6 +59,8 @@ export interface EvaluationResolvedLocalTarget {
   variantName: string;
   requirementId: string;
   requirementName: string;
+  /** The configuration's protocol: its own override, else the suite's. */
+  protocol: ProviderWireProtocol;
   model: string;
   responseMode: "streaming" | "buffered";
   options: InferenceOptions;
@@ -82,6 +91,7 @@ export function resolveEvaluationLocalTargets(input: {
         variantName: variant.name,
         requirementId: effective.target.connectionRequirementId,
         requirementName: requirement?.name ?? effective.target.connectionRequirementId,
+        protocol: effective.target.protocol,
         model: effective.target.model,
         responseMode: effective.responseMode,
         options: effective.options,
@@ -133,6 +143,9 @@ export function evaluationStartReadiness(
     if (!target.model.trim()) {
       return { blockedReason: `Configuration “${target.variantName}” needs a model.` };
     }
+    if (!supportsProtocol(target.profile.capabilities, target.protocol)) {
+      return { blockedReason: `Configuration “${target.variantName}” uses ${protocolLabel(target.protocol)}, but ${target.profile.name || "its mapped profile"} does not have it enabled.` };
+    }
     if (target.responseMode === "streaming" && !target.profile.capabilities.streaming) {
       return { blockedReason: `Configuration “${target.variantName}” uses streaming, but ${target.profile.name || "its mapped profile"} cannot stream. Choose buffered delivery.` };
     }
@@ -167,7 +180,7 @@ export interface EvaluationTargetPreview {
   requirementName: string;
   targetName?: string;
   endpoint?: string;
-  protocol: "openai-compatible-chat-completions";
+  protocol: ProviderWireProtocol;
   model: string;
   responseMode: "streaming" | "buffered";
   options: InferenceOptions;
@@ -230,7 +243,7 @@ export function evaluationWorkspaceExecution(
       ...(target.profile
         ? { targetName: target.profile.name || "Untitled profile", endpoint: target.profile.endpoint }
         : {}),
-      protocol: "openai-compatible-chat-completions" as const,
+      protocol: target.protocol,
       model: target.model,
       responseMode: target.responseMode,
       options: target.options,
@@ -273,7 +286,7 @@ export function createEvaluationStartDraft(input: EvaluationStartDraftInput) {
   if (missing) throw new Error(`Map “${missing.requirementName}” to a local profile for configuration “${missing.variantName}”.`);
   const runtimeTargets = Object.fromEntries(targets.map((target) => [target.variantId, {
     profileId: createEntityId("profile", target.profile!.id),
-    protocol: "openai-compatible-chat-completions" as const,
+    protocol: target.protocol,
     endpoint: target.profile!.endpoint,
     capabilities: target.profile!.capabilities,
   }])) as Record<EvaluationVariantId, Omit<import("../../packages/core/src/run-kernel/types.ts").ResolvedRunInput["target"], "model">>;

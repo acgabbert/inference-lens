@@ -81,6 +81,9 @@ function composerProps(overrides = {}) {
       model: "fixture-model",
       temperature: 0.7,
       responseMode: "buffered",
+      protocol: "openai-compatible-chat-completions",
+      supportedProtocols: ["openai-compatible-chat-completions"],
+      onProtocolChange: noop,
       streamingAvailable: true,
       toolsEnabled: true,
       modelDiscovery: null,
@@ -194,6 +197,35 @@ test("the remembered temperature override survives collapsing the panel", async 
   }
 });
 
+test("the protocol is chosen beside the model from what the profile has enabled", async () => {
+  const chosen = [];
+  const settings = {
+    ...composerProps().settings,
+    protocol: "anthropic-messages",
+    supportedProtocols: ["openai-compatible-chat-completions", "openai-responses"],
+    onProtocolChange: (protocol) => chosen.push(protocol),
+  };
+  const view = await mount({ settings });
+  try {
+    await view.click(view.settingsToggle());
+    const select = Array.from(view.container.querySelectorAll("label")).find(
+      (label) => label.textContent.startsWith("Protocol"),
+    )?.querySelector("select");
+    assert.ok(select);
+    // A protocol the project asks for but the profile has not enabled stays
+    // selected and says so, instead of the control showing something else.
+    assert.equal(select.value, "anthropic-messages");
+    assert.deepEqual(
+      Array.from(select.options).map((option) => option.textContent),
+      ["Anthropic Messages (not enabled)", "Chat Completions", "Responses"],
+    );
+    await view.select(select, "openai-responses");
+    assert.deepEqual(chosen, ["openai-responses"]);
+  } finally {
+    await view.close();
+  }
+});
+
 test("the settings panel hides its controls behind a summary of what will be sent", async () => {
   const view = await mount();
   try {
@@ -207,7 +239,7 @@ test("the settings panel hides its controls behind a summary of what will be sen
     const facts = Array.from(
       view.container.querySelectorAll(".inference-settings-fact"),
     ).map((fact) => fact.textContent);
-    assert.deepEqual(facts, ["fixture-model", "Temp 0.7", "Buffered"]);
+    assert.deepEqual(facts, ["Chat Completions", "fixture-model", "Temp 0.7", "Buffered"]);
     assert.equal(
       view.container.querySelector('.streaming-control input[type="checkbox"]'),
       null,
@@ -307,6 +339,12 @@ async function mount(overrides = {}) {
     async click(element) {
       await act(async () => {
         element.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+      });
+    },
+    async select(element, value) {
+      await act(async () => {
+        element.value = value;
+        element.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
       });
     },
     async keydown(key, options = {}) {

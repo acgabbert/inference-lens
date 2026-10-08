@@ -73,7 +73,6 @@ function withAlternateConnection(project: ProjectFile): ProjectFile {
       id: "connection_alternate",
       name: "Alternate connection",
       provider: "openai-compatible",
-      protocol: "openai-compatible-chat-completions",
       endpoint: "http://localhost:4011/v1/chat/completions",
     }],
   });

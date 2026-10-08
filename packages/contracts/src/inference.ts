@@ -1,6 +1,7 @@
 import type {
   ProviderExecution,
   ProviderTransportEvent,
+  ProviderWireProtocol,
 } from "../../core/src/run-kernel/index.ts";
 import type { ProviderCapabilities } from "../../core/src/types.ts";
 
@@ -29,6 +30,11 @@ export interface ProviderTurnRequest {
 
 export interface ModelDiscoveryRequest {
   endpoint: string;
+  /**
+   * Decides how the credential is presented. Absent means chat completions,
+   * which every caller before protocols existed meant.
+   */
+  protocol?: ProviderWireProtocol;
   /** Snapshot from the selected profile; unsupported discovery is never sent. */
   capabilities?: ProviderCapabilities;
   credential: CredentialSelection;

@@ -583,6 +583,18 @@ export function reduceRunEvent(state: RunState, event: RunEvent): RunState {
       break;
     }
 
+    case "assistant.continuation": {
+      assertStreamingAttempt(state, event);
+      next = {
+        ...state,
+        turns: updateAttempt(state, event, (attempt) => ({
+          ...attempt,
+          continuation: event.continuation,
+        })),
+      };
+      break;
+    }
+
     case "usage.reported": {
       // Providers may send final usage in a trailing frame after the assistant
       // has supplied its finish reason. Usage is accounting metadata, not a
@@ -843,7 +855,7 @@ export function createRunTrace(
     );
   }
   return {
-    schemaVersion: 6,
+    schemaVersion: 7,
     runId: state.runId,
     input: state.input,
     status: state.status,

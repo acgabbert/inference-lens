@@ -55,6 +55,9 @@ function nextTurnInput(state: RunState): ProviderTurnInput {
     role: "assistant",
     content: textContent(previousAttempt.text),
     toolCalls: previousAttempt.completedToolCalls,
+    ...(previousAttempt.continuation
+      ? { providerContinuation: previousAttempt.continuation }
+      : {}),
   };
   const toolMessages: ConversationMessage[] = results.map((result) => ({
     id: createEntityId("message", result.id),

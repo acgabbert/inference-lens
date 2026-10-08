@@ -1,7 +1,8 @@
+import { streamProviderTurn } from "../../../packages/core/src/provider-adapters.ts";
 import {
-  OpenAICompatibleProtocolError,
-  streamOpenAICompatibleProvider,
-} from "../../../packages/core/src/openai-compatible.ts";
+  ProviderProtocolError,
+  ProviderReportedError,
+} from "../../../packages/core/src/provider-protocols.ts";
 import type {
   ProviderExecution,
   ProviderTransportEvent,
@@ -27,7 +28,7 @@ export async function* executeProviderTurn(
   environment: ProviderTurnEnvironment = {},
 ): AsyncGenerator<ProviderTransportEvent> {
   try {
-    for await (const providerEvent of streamOpenAICompatibleProvider(
+    for await (const providerEvent of streamProviderTurn(
       execution,
       apiKey,
       signal,
@@ -47,8 +48,17 @@ export async function* executeProviderTurn(
       yield { type: "cancelled", reason: "Request aborted." };
       return;
     }
+    if (error instanceof ProviderReportedError) {
+      // The provider answered and named its own failure. With no status to
+      // judge it by, it is not retried automatically; the user can retry.
+      yield {
+        type: "failed",
+        error: { code: "provider_error", message, retryable: false },
+      };
+      return;
+    }
     const code =
-      error instanceof OpenAICompatibleProtocolError
+      error instanceof ProviderProtocolError
         ? "protocol_error" as const
         : status === undefined
           ? "transport_error" as const

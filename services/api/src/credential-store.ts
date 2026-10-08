@@ -1,4 +1,42 @@
 import type { CredentialSelection } from "../../../packages/contracts/src/index.ts";
+import { PROTOCOL_CONFIGURATION_NAMES } from "../../../packages/core/src/provider-protocols.ts";
+import { PROVIDER_WIRE_PROTOCOLS } from "../../../packages/core/src/run-kernel/types.ts";
+import type { ProviderWireProtocol } from "../../../packages/core/src/run-kernel/types.ts";
+
+/** The names `INFERENCE_LENS_API_PROTOCOLS` accepts, short and full. */
+const protocolNames: Record<string, ProviderWireProtocol> = {
+  ...PROTOCOL_CONFIGURATION_NAMES,
+  ...Object.fromEntries(PROVIDER_WIRE_PROTOCOLS.map((protocol) => [protocol, protocol])),
+};
+
+/**
+ * What `INFERENCE_LENS_API_PROTOCOLS` says. Unset and invalid are kept apart:
+ * both leave the profile's switches with the user, but only an invalid value
+ * is an operator mistake worth reporting.
+ */
+export type ServerProtocolConfiguration =
+  | { kind: "unset" }
+  | { kind: "valid"; protocols: ProviderWireProtocol[] }
+  | { kind: "invalid"; unrecognized: string[] };
+
+/**
+ * Parses a comma-separated protocol list. A list naming anything unknown is
+ * refused whole: applying the recognizable part of a typo would quietly run a
+ * protocol nobody asked for.
+ */
+export function parseServerProtocols(
+  value: string | undefined,
+): ServerProtocolConfiguration {
+  const names = value?.split(",").map((name) => name.trim()).filter(Boolean) ?? [];
+  if (names.length === 0) return { kind: "unset" };
+  const unrecognized = names.filter((name) => !Object.hasOwn(protocolNames, name));
+  if (unrecognized.length > 0) return { kind: "invalid", unrecognized };
+  const protocols = names.map((name) => protocolNames[name]);
+  return {
+    kind: "valid",
+    protocols: PROVIDER_WIRE_PROTOCOLS.filter((protocol) => protocols.includes(protocol)),
+  };
+}
 
 export interface CredentialStore {
   resolve(selection: CredentialSelection, endpoint: string): string;
@@ -15,17 +53,20 @@ export class EnvironmentCredentialStore implements CredentialStore {
   private readonly credentialVariableName: string;
   private readonly endpointVariableName: string;
   private readonly modelVariableName: string;
+  private readonly protocolsVariableName: string;
 
   constructor(
     environment: Record<string, string | undefined>,
     credentialVariableName = "INFERENCE_LENS_API_KEY",
     endpointVariableName = "INFERENCE_LENS_API_ENDPOINT",
     modelVariableName = "INFERENCE_LENS_MODEL",
+    protocolsVariableName = "INFERENCE_LENS_API_PROTOCOLS",
   ) {
     this.environment = environment;
     this.credentialVariableName = credentialVariableName;
     this.endpointVariableName = endpointVariableName;
     this.modelVariableName = modelVariableName;
+    this.protocolsVariableName = protocolsVariableName;
   }
 
   /** Safe to expose to the same-origin UI; never exposes the credential itself. */
@@ -44,15 +85,30 @@ export class EnvironmentCredentialStore implements CredentialStore {
    * is a supported configuration, and prefilling its endpoint is the whole
    * point of setting the variable. Callers report the credential separately.
    */
-  connectionConfiguration(): { endpoint: string; model?: string } | undefined {
+  connectionConfiguration():
+    | {
+        endpoint: string;
+        model?: string;
+        protocols?: ProviderWireProtocol[];
+        /** Set instead of `protocols` when the list names something unknown. */
+        unrecognizedProtocols?: string[];
+      }
+    | undefined {
     const endpoint = this.environment[this.endpointVariableName]?.trim();
     if (!endpoint) return undefined;
     const safeEndpoint = safeEndpointForClient(endpoint);
     if (!safeEndpoint) return undefined;
     const model = this.environment[this.modelVariableName]?.trim();
+    const protocols = parseServerProtocols(
+      this.environment[this.protocolsVariableName],
+    );
     return {
       endpoint: safeEndpoint,
       ...(model ? { model } : {}),
+      ...(protocols.kind === "valid" ? { protocols: protocols.protocols } : {}),
+      ...(protocols.kind === "invalid"
+        ? { unrecognizedProtocols: protocols.unrecognized }
+        : {}),
     };
   }
 

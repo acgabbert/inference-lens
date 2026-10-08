@@ -27,7 +27,7 @@ function plan() {
         endpoint: "https://provider.example.test/v1",
         model: "render-model",
         capabilities: {
-          chatCompletions: true, responsesApi: false, streaming: true,
+          chatCompletions: true, responsesApi: false, anthropicMessages: false, streaming: true,
           modelDiscovery: true, tools: true, parallelToolCalls: false,
           structuredOutput: false, vision: false, embeddings: false,
         },

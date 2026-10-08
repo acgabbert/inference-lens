@@ -66,6 +66,7 @@ function multiMappingProject(): ProjectFile {
         target: {
           connectionRequirementId: firstRequirement.id,
           model: "provider-default-temperature-model",
+          protocol: "openai-compatible-chat-completions",
         },
         responseMode: "buffered",
         options: {},

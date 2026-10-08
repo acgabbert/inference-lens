@@ -10,6 +10,7 @@ import type { ResolvedTemplateUse, RunTrace } from "../packages/core/src/run-ker
 import {
   assertTraceEntryName,
   isTraceEntryName,
+  parseRunTraceFile,
   parseRunTraceJson,
   RunTraceValidationError,
   runStateFromTrace,
@@ -84,7 +85,7 @@ test("serializes and parses a deterministic run trace", () => {
   assert.deepEqual(runStateFromTrace(trace).events, trace.events);
   assert.match(serialized, /"raw": "data: \{/);
   assert.match(serialized, /"body": "\{\\"model\\"/);
-  assert.match(serialized, /"schemaVersion": 6/);
+  assert.match(serialized, /"schemaVersion": 7/);
   assert.match(serialized, /"toolExecutions": \[\]/);
 });
 
@@ -110,12 +111,12 @@ test("migrates Version 1 evidence but rejects Version 1 branch provenance", () =
     }
   }
   const migrated = parseRunTraceJson(JSON.stringify(v1));
-  assert.equal(migrated.schemaVersion, 6);
+  assert.equal(migrated.schemaVersion, 7);
   assert.deepEqual(migrated.toolExecutions, []);
   assert.deepEqual(migrated.input.templateResolutions, []);
   assert.equal(migrated.input.responseMode, "streaming");
   assert.equal(migrated.turns[0]?.attempts[0]?.input.responseMode, "streaming");
-  assert.match(serializeRunTrace(v1), /"schemaVersion": 6/);
+  assert.match(serializeRunTrace(v1), /"schemaVersion": 7/);
 
   assert.throws(
     () => parseRunTraceJson(JSON.stringify({
@@ -411,4 +412,22 @@ test("rejects discovered trace names that could leave the traces directory", () 
       rejected,
     );
   }
+});
+
+test("a version 6 trace still opens, but cannot carry a version 7 event", () => {
+  const trace = completedTrace();
+  const v6 = { ...structuredClone(trace), schemaVersion: 6 };
+  assert.equal(parseRunTraceFile(v6).schemaVersion, 6);
+  const completedIndex = v6.events.findIndex(({ type }) => type === "assistant.completed");
+  const started = v6.events[completedIndex]!;
+  const smuggled = structuredClone(v6) as unknown as { events: Array<Record<string, unknown>> };
+  smuggled.events.splice(completedIndex, 0, {
+    ...started,
+    type: "assistant.continuation",
+    continuation: { protocol: "anthropic-messages", items: [] },
+  });
+  smuggled.events.forEach((event, index) => {
+    event.sequence = (v6.events[0]!.sequence) + index;
+  });
+  assert.throws(() => parseRunTraceFile(smuggled), /schema version does not define/);
 });

@@ -50,18 +50,18 @@ async function openFolder(page: import("@playwright/test").Page, files: Record<s
 
 function fixture(): Record<string, string> {
   const project: ProjectFile = {
-    schemaVersion: 10,
+    schemaVersion: 11,
     projectId: ids.project,
     name: "Promotion browser fixture",
-    defaults: { conversationRevisionId: ids.revision, target: { connectionRequirementId: ids.connection, model: "fixture-model" }, options: {}, enabledToolIds: [] },
-    connectionRequirements: [{ id: ids.connection, name: "Fixture", provider: "openai-compatible", protocol: "openai-compatible-chat-completions", endpoint: "http://127.0.0.1:44014/v1" }],
+    defaults: { conversationRevisionId: ids.revision, target: { connectionRequirementId: ids.connection, model: "fixture-model", protocol: "openai-compatible-chat-completions" }, options: {}, enabledToolIds: [] },
+    connectionRequirements: [{ id: ids.connection, name: "Fixture", provider: "openai-compatible", endpoint: "http://127.0.0.1:44014/v1" }],
     conversations: [{ id: ids.conversation, name: "Incident conversation" }],
     conversationRevisions: [{ id: ids.revision, conversationId: ids.conversation, createdAt: "2026-08-06T12:00:00.000Z", items: [{ kind: "template-use", use: { id: ids.use, templateId: ids.template, templateRevisionId: ids.templateRevision, values: {}, outputMessageIds: [ids.message] } }] }],
     promptTemplates: [{ id: ids.template, name: "Incident prompt", currentRevisionId: ids.templateRevision, revisions: [{ id: ids.templateRevision, createdAt: "2026-08-06T12:00:00.000Z", messages: [{ role: "user", content: "Investigate {{topic}}" }], variableDefaults: {} }] }],
     externalImports: [], tools: [], toolMocks: [],
     evaluationSuites: [{
       id: ids.suite, name: "Incidents", input: { kind: "conversation-revision", conversationRevisionId: ids.revision },
-      execution: { target: { connectionRequirementId: ids.connection, model: "fixture-model" }, responseMode: "buffered", options: {}, repetitions: 1, toolIds: [] },
+      execution: { target: { connectionRequirementId: ids.connection, model: "fixture-model", protocol: "openai-compatible-chat-completions" }, responseMode: "buffered", options: {}, repetitions: 1, toolIds: [] },
       variants: [{ id: ids.variant, name: "Default", overrides: {} }],
       inputBindings: [{ id: ids.input, name: "Topic", target: { kind: "template-variable", templateUseId: ids.use, variableName: "topic" } }],
       cases: [],
@@ -69,7 +69,7 @@ function fixture(): Record<string, string> {
   };
   const input = {
     runId: ids.run, conversationId: ids.conversation, conversationRevisionId: ids.revision,
-    target: { profileId: createEntityId("profile", "fixture"), protocol: "mock" as const, endpoint: "http://fixture.test", model: "fixture-model", capabilities: { chatCompletions: true, responsesApi: false, streaming: true, modelDiscovery: false, tools: false, parallelToolCalls: false, structuredOutput: false, vision: false, embeddings: false } },
+    target: { profileId: createEntityId("profile", "fixture"), protocol: "mock" as const, endpoint: "http://fixture.test", model: "fixture-model", capabilities: { chatCompletions: true, responsesApi: false, anthropicMessages: false, streaming: true, modelDiscovery: false, tools: false, parallelToolCalls: false, structuredOutput: false, vision: false, embeddings: false } },
     messages: [{ id: ids.message, role: "user" as const, content: [{ type: "text" as const, text: "Investigate database migration rollback" }] }], responseMode: "buffered" as const, options: {}, tools: [], resolvedAt: "2026-08-06T12:01:00.000Z",
     templateResolutions: [{ templateUseId: ids.use, templateId: ids.template, templateRevisionId: ids.templateRevision, templateName: "Incident prompt", messages: [{ role: "user" as const, content: "Investigate database migration rollback" }], variableDefaults: {}, values: { topic: "database migration rollback" }, outputMessageIds: [ids.message] }],
   };

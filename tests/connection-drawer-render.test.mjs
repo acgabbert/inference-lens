@@ -15,7 +15,7 @@ async function render(modulePath, component, props) {
 
 const capabilities = {
   chatCompletions: true,
-  responsesApi: false,
+  responsesApi: false, anthropicMessages: false,
   streaming: true,
   modelDiscovery: true,
   tools: false,
@@ -275,4 +275,58 @@ test("a mapped project already dialing its declared endpoint says nothing to fix
   assert.match(html, /Project connection mapped/);
   assert.doesNotMatch(html, /Mapped to a different endpoint/);
   assert.doesNotMatch(html, /to expect this endpoint/);
+});
+
+test("each protocol the endpoint speaks is a switch on the profile", async () => {
+  const html = await render(DRAWER, "ConnectionDrawer", drawer({
+    capabilities: { ...capabilities, responsesApi: true },
+  }));
+  assert.match(html, /<legend>Protocols<\/legend>/);
+  for (const [label, path] of [
+    ["Chat Completions", "/chat/completions"],
+    ["Responses", "/responses"],
+    ["Anthropic Messages", "/messages"],
+  ]) {
+    assert.match(html, new RegExp(`${label} <code>${path}</code>`));
+  }
+  const switches = html.match(/<input data-readiness-control="protocols"[^>]*>/g) ?? [];
+  assert.equal(switches.length, 3);
+  assert.deepEqual(switches.map((input) => / checked=""/.test(input)), [true, true, false]);
+  assert.ok(switches.every((input) => !/ disabled=""/.test(input)));
+  assert.doesNotMatch(html, /INFERENCE_LENS_API_PROTOCOLS/);
+});
+
+test("protocols the server declares are locked on its profile", async () => {
+  const html = await render(DRAWER, "ConnectionDrawer", drawer({
+    activeProfile: { credentialRef: "environment-default" },
+    serverDefault: {
+      configured: true,
+      endpoint: "https://api.anthropic.com/v1",
+      protocols: ["anthropic-messages"],
+    },
+  }));
+  const switches = html.match(/<input data-readiness-control="protocols"[^>]*>/g) ?? [];
+  assert.equal(switches.length, 3);
+  assert.ok(switches.every((input) => / disabled=""/.test(input)));
+  assert.match(html, /Managed by <code>INFERENCE_LENS_API_PROTOCOLS<\/code>/);
+});
+
+test("the connection heading names the APIs the profile speaks", async () => {
+  const pill = (html) => html.match(/<span class="provider-pill">([^<]*)<\/span>/)?.[1];
+  const only = (enabled) => ({
+    ...capabilities,
+    chatCompletions: false,
+    responsesApi: false,
+    anthropicMessages: false,
+    ...enabled,
+  });
+  assert.equal(pill(await render(DRAWER, "ConnectionDrawer", drawer({
+    capabilities: only({ anthropicMessages: true }),
+  }))), "Anthropic");
+  assert.equal(pill(await render(DRAWER, "ConnectionDrawer", drawer({
+    capabilities: only({ chatCompletions: true, responsesApi: true }),
+  }))), "OpenAI compatible");
+  assert.equal(pill(await render(DRAWER, "ConnectionDrawer", drawer({
+    capabilities: only({ responsesApi: true, anthropicMessages: true }),
+  }))), "OpenAI compatible + Anthropic");
 });

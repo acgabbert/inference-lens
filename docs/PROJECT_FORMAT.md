@@ -2,9 +2,13 @@
 
 Inference Lens projects use a visible `<name>.inference-lens/` directory bundle
 containing one canonical, portable JSON document named `project.json`. New
-saves use schema version 10, and version 10 is the only version the parser
-accepts: earlier project formats, including v5–v9, and the proof-of-concept
-request export are rejected with a version error rather than upgraded on load.
+saves use schema version 11. The parser also opens version 10 and upgrades it on
+load: the protocol v10 kept on each connection requirement (always chat
+completions) moves onto every execution target that names that requirement —
+the project default and each suite's `execution.target` — and the requirement
+loses the field. See [Connection protocols](#connection-protocols). Earlier project
+formats, including v5–v9, and the proof-of-concept request export are rejected
+with a version error rather than upgraded on load.
 Every schema is strict, so a reader rejects a document it does not understand
 rather than guessing.
 
@@ -216,7 +220,11 @@ and turn ceiling:
 ```json
 "input": { "kind": "conversation-revision", "conversationRevisionId": "revision_example" },
 "execution": {
-  "target": { "connectionRequirementId": "connection_default", "model": "example-model" },
+  "target": {
+    "connectionRequirementId": "connection_default",
+    "model": "example-model",
+    "protocol": "openai-compatible-chat-completions"
+  },
   "responseMode": "buffered",
   "options": { "temperature": 0.4 },
   "repetitions": 1,
@@ -238,8 +246,9 @@ nothing while narrowing which providers the suite can run against. Streaming
 remains selectable, and preflight reports a setup issue when the suite pins a
 mode the mapped connection cannot serve.
 
-The boundary is unchanged: `execution.target` names a *connection requirement*
-and a model. The local profile, endpoint, protocol, and capabilities that
+The boundary is unchanged: `execution.target` names a *connection requirement*,
+a model, and the protocol to speak to it. The local profile, endpoint, and
+capabilities that
 satisfy that requirement stay device-local and are supplied to an execution plan
 as a separate `runtimeTarget`. Credentials and local profile identity never
 enter a suite.
@@ -272,7 +281,7 @@ part of what produced a result.
 Each suite also carries `variants` — at least one, named uniquely within the
 suite ignoring case and surrounding whitespace. A variant is stored as sparse
 `overrides` on the suite's base `execution`: an optional `target`
-(`connectionRequirementId` and/or `model`), `responseMode`, and `options`
+(any of `connectionRequirementId`, `model`, `protocol`), `responseMode`, and `options`
 (`temperature`, `maxOutputTokens`, `seed`, `stop`, `providerOptions`). An absent
 field inherits from the base, and `null` in `options` clears the value to the
 provider default. A variant's connection requirement must exist in the project.
@@ -306,8 +315,8 @@ structure still arrives whole and ordered, because one use emits every message
 of its pinned revision. Authors add surrounding messages afterwards in Messages.
 
 Bindings, cases, and tools are untouched, other suites are untouched, and the
-project stays at schema version 10 — the shortcut writes nothing a v10 parser did
-not already accept. Because the new use has a new stable ID, existing suite
+project's schema version is unchanged — the shortcut writes nothing the current
+parser did not already accept. Because the new use has a new stable ID, existing suite
 bindings are never retargeted onto it: an identical template ID says nothing
 about whether a binding still resolves, so a suite that already has case inputs
 is warned before the revision is created rather than silently rewritten.
@@ -367,3 +376,37 @@ removing a trace does not dirty authored project state. See
 
 `attachments/` remains reserved for a later format and is not part of the
 version 3 manifest contract.
+
+## Connection protocols
+
+The wire protocol a run speaks is part of its execution target, beside the
+model — in `defaults.target` for the composer, and in each suite's
+`execution.target` and variant `overrides.target`:
+
+```json
+"target": {
+  "connectionRequirementId": "connection_default",
+  "model": "gpt-4.1-mini",
+  "protocol": "openai-responses"
+}
+```
+
+`protocol` is one of `openai-compatible-chat-completions`, `openai-responses`,
+or `anthropic-messages`. Version 11 added the last two, and the
+`anthropicMessages` key to `capabilityOverrides`; a project using either cannot
+be opened by a build that only reads version 10, which is why the version
+changed.
+
+It lives on the target rather than on the connection requirement because it is
+a choice about a run, not a fact about the provider. Changing the composer's
+protocol in Run settings edits only `defaults.target`; a suite keeps the
+protocol it states, and one configuration can compare Responses against chat
+completions on the same connection by overriding it. A connection requirement
+states only which protocols it can serve, through `capabilityOverrides`.
+
+The local profile mapped to the target's requirement must have the protocol
+enabled. A composer run is blocked with a notice that offers enabling it in
+Connections or choosing another in Run settings — or, when the server manages
+the profile's protocols through `INFERENCE_LENS_API_PROTOCOLS`, choosing another
+protocol or connection. An evaluation refuses to start, naming the
+configuration whose protocol its profile does not serve.

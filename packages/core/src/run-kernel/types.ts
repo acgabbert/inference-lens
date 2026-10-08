@@ -99,6 +99,25 @@ export interface UserMessage extends MessageBase {
 export interface AssistantMessage extends MessageBase {
   role: "assistant";
   toolCalls?: ToolCall[];
+  /**
+   * What the provider needs back to continue from this turn — signed thinking
+   * blocks, encrypted reasoning items. Present only on provider turn inputs a
+   * run assembles for itself, never on authored conversation messages.
+   */
+  providerContinuation?: ProviderContinuation;
+}
+
+/**
+ * Opaque, protocol-tagged provider state that must be replayed verbatim to
+ * continue a conversation — Anthropic `thinking`/`redacted_thinking` blocks
+ * with their signatures, Responses `reasoning` items with
+ * `encrypted_content`. Only an adapter for the same protocol reads it; any
+ * other protocol drops it. It is evidence, not a secret, and is recorded in
+ * the trace so a retry or replay sends the same bytes.
+ */
+export interface ProviderContinuation {
+  protocol: ProviderWireProtocol;
+  items: JsonValue[];
 }
 
 export interface ToolMessage extends MessageBase {
@@ -121,9 +140,16 @@ export interface ConversationRevision {
   createdAt: string;
 }
 
-export type ProviderProtocol =
-  | "openai-compatible-chat-completions"
-  | "mock";
+/** A protocol a real provider is reached with; the order is the default preference. */
+export const PROVIDER_WIRE_PROTOCOLS = [
+  "openai-compatible-chat-completions",
+  "openai-responses",
+  "anthropic-messages",
+] as const;
+
+export type ProviderWireProtocol = (typeof PROVIDER_WIRE_PROTOCOLS)[number];
+
+export type ProviderProtocol = ProviderWireProtocol | "mock";
 
 /**
  * How a provider response is delivered for every turn in one immutable run.
@@ -519,6 +545,11 @@ export type RunEvent = RunEventMetadata &
         source?: EventSource;
       } & AttemptEvent)
     | ({
+        type: "assistant.continuation";
+        continuation: ProviderContinuation;
+        source?: EventSource;
+      } & AttemptEvent)
+    | ({
         type: "assistant.completed";
         finishReason: FinishReason;
         source?: EventSource;
@@ -584,6 +615,7 @@ export interface ModelTurnAttemptState {
   toolCalls: ToolCallAccumulator[];
   completedToolCalls?: ToolCall[];
   usage?: RunTokenUsage;
+  continuation?: ProviderContinuation;
   finishReason?: FinishReason;
   error?: RunError;
 }
@@ -647,7 +679,7 @@ export interface RunState {
 }
 
 export interface RunTrace {
-  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6;
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7;
   runId: RunId;
   input: ResolvedRunInput;
   status: TerminalRunStatus;
@@ -723,6 +755,12 @@ export type ProviderEvent =
   | {
       type: "usage";
       usage: RunTokenUsage;
+      source?: EventSource;
+    }
+  | {
+      /** At most one per turn, before `completed`. */
+      type: "continuation";
+      continuation: ProviderContinuation;
       source?: EventSource;
     }
   | {

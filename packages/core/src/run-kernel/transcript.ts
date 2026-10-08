@@ -1,6 +1,7 @@
 import { createEntityId } from "./types.ts";
 import type {
   ConversationMessage,
+  ProviderContinuation,
   RunState,
   ToolCall,
 } from "./types.ts";
@@ -19,6 +20,8 @@ function textContent(text: string) {
 export interface TranscriptEntry {
   message: ConversationMessage;
   reasoning?: string;
+  /** Kept off the message for the same reason as `reasoning`. */
+  continuation?: ProviderContinuation;
 }
 
 /**
@@ -53,6 +56,7 @@ export function transcriptFromRunState(state: RunState): TranscriptEntry[] {
           : {}),
       },
       ...(attempt.reasoning ? { reasoning: attempt.reasoning } : {}),
+      ...(attempt.continuation ? { continuation: attempt.continuation } : {}),
     });
 
     state.toolResults

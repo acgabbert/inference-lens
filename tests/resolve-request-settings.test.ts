@@ -50,6 +50,7 @@ function input(
     activeProfile: active,
     sessionModel: undefined,
     sessionTemperature: undefined,
+    sessionProtocol: undefined,
     streamingPreferred: true,
     ...overrides,
   };
@@ -111,6 +112,7 @@ test("the request carries the resolved target and the given messages", () => {
   }));
   assert.deepEqual(requestFromSettings(settings, messages), {
     provider: "openai-compatible",
+    protocol: "openai-compatible-chat-completions",
     endpoint: "http://mapped.test/v1",
     model: "mapped-model",
     messages,
@@ -118,4 +120,66 @@ test("the request carries the resolved target and the given messages", () => {
     responseMode: "buffered",
     capabilities: settings.capabilities,
   });
+});
+
+test("without a project the profile's protocol preference picks among what it supports", () => {
+  const both: InferenceProfile = {
+    ...active,
+    capabilityOverrides: { responsesApi: true },
+    protocol: "openai-responses",
+  };
+  const settings = resolveRequestSettings(input({ profiles: [both], activeProfile: both }));
+  assert.equal(settings.protocol, "openai-responses");
+  assert.equal(settings.protocolSupported, true);
+  assert.deepEqual(settings.supportedProtocols, [
+    "openai-compatible-chat-completions",
+    "openai-responses",
+  ]);
+  assert.equal(requestFromSettings(settings, []).protocol, "openai-responses");
+
+  // A preference the profile no longer supports falls back rather than
+  // producing a run its connection was never configured for.
+  const withdrawn = { ...both, capabilityOverrides: {} };
+  assert.equal(
+    resolveRequestSettings(input({ profiles: [withdrawn], activeProfile: withdrawn })).protocol,
+    "openai-compatible-chat-completions",
+  );
+
+  // A profile that speaks only Anthropic runs Anthropic without being told.
+  const anthropic: InferenceProfile = {
+    ...active,
+    capabilityOverrides: { chatCompletions: false, anthropicMessages: true },
+  };
+  assert.equal(
+    resolveRequestSettings(input({ profiles: [anthropic], activeProfile: anthropic })).protocol,
+    "anthropic-messages",
+  );
+});
+
+test("a project's default target owns the protocol, and an unsupported one is reported", () => {
+  const responsesProject = {
+    ...project,
+    defaults: {
+      ...project.defaults,
+      target: { ...project.defaults.target, protocol: "openai-responses" as const },
+    },
+  };
+  const settings = resolveRequestSettings(input({
+    projectFile: responsesProject,
+    mappedProfileIds: { [requirementId]: "mapped" },
+  }));
+  assert.equal(settings.protocol, "openai-responses");
+  assert.equal(settings.protocolSupported, false);
+  assert.equal(requestFromSettings(settings, []).protocol, "openai-responses");
+
+  // The composer's unsaved choice wins over the saved default, the same way
+  // its model does, until the project is saved with it.
+  assert.equal(
+    resolveRequestSettings(input({
+      projectFile: responsesProject,
+      mappedProfileIds: { [requirementId]: "mapped" },
+      sessionProtocol: "openai-compatible-chat-completions",
+    })).protocol,
+    "openai-compatible-chat-completions",
+  );
 });

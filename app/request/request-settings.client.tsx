@@ -1,6 +1,8 @@
 "use client";
 
 import type { RefObject } from "react";
+import { protocolLabel } from "../../packages/core/src/provider-protocols.ts";
+import type { ProviderWireProtocol } from "../../packages/core/src/run-kernel/types.ts";
 import { InferenceSettingsPanel } from "../inference-settings-panel.client";
 import type { InferenceSettingsValue } from "../inference-settings-panel.client";
 import type { ModelDiscoveryState } from "../use-model-discovery.client";
@@ -15,6 +17,16 @@ export interface RequestSettingsProps {
   model: string;
   temperature?: number;
   responseMode: "streaming" | "buffered";
+  protocol: ProviderWireProtocol;
+  /** What the run's profile has enabled; the select offers only these. */
+  supportedProtocols: ProviderWireProtocol[];
+  onProtocolChange(protocol: ProviderWireProtocol): void;
+  /**
+   * What changing the protocol here changes beyond this run, shown under the
+   * select: without a project it is the profile's remembered preference, with
+   * one it is the project's default target, which evaluations do not follow.
+   */
+  protocolScope: string;
   streamingAvailable: boolean;
   modelDiscovery: ModelDiscoveryState | null;
   /** Pinned model ids for the active profile; see `ModelCombobox`. */
@@ -45,6 +57,10 @@ export function RequestSettings({
   model,
   temperature,
   responseMode,
+  protocol,
+  supportedProtocols,
+  onProtocolChange,
+  protocolScope,
   streamingAvailable,
   modelDiscovery,
   favoriteModels,
@@ -78,6 +94,17 @@ export function RequestSettings({
           }
         }}
         streamingAvailable={streamingAvailable}
+        protocol={{
+          summary: protocolLabel(protocol),
+          control: (
+            <ProtocolSelect
+              value={protocol}
+              supported={supportedProtocols}
+              scope={protocolScope}
+              onChange={onProtocolChange}
+            />
+          ),
+        }}
         scopeOnModelField
         modelDiscovery={modelDiscovery}
         favoriteModels={favoriteModels}
@@ -87,5 +114,42 @@ export function RequestSettings({
         readinessTarget
       />
     </section>
+  );
+}
+
+/**
+ * Offers the protocols the run's profile has enabled. A project may ask for
+ * one its mapped profile has not: it stays selected and marked, and readiness
+ * says what to do, rather than the select silently showing something else.
+ */
+function ProtocolSelect({
+  value,
+  supported,
+  scope,
+  onChange,
+}: {
+  value: ProviderWireProtocol;
+  supported: ProviderWireProtocol[];
+  scope: string;
+  onChange(protocol: ProviderWireProtocol): void;
+}) {
+  const options = supported.includes(value) ? supported : [value, ...supported];
+  return (
+    <label>
+      Protocol
+      <select
+        data-readiness-control="protocol"
+        value={value}
+        onChange={(event) => onChange(event.target.value as ProviderWireProtocol)}
+      >
+        {options.map((protocol) => (
+          <option key={protocol} value={protocol}>
+            {protocolLabel(protocol)}
+            {supported.includes(protocol) ? "" : " (not enabled)"}
+          </option>
+        ))}
+      </select>
+      <small>{scope}</small>
+    </label>
   );
 }

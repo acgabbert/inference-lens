@@ -6,6 +6,7 @@ import type {
   ProviderTurnTransport,
 } from "../packages/contracts/src/index.ts";
 import type { ProviderCapabilities } from "../packages/core/src/types.ts";
+import type { ProviderWireProtocol } from "../packages/core/src/run-kernel/types.ts";
 
 export type ModelDiscoveryStatus = "idle" | "loading" | "loaded" | "failed";
 
@@ -37,6 +38,8 @@ export type ModelDiscoveryInput = {
   endpoint: string;
   /** Resolved by the caller; discovery is refused when unsupported. */
   capabilities: ProviderCapabilities;
+  /** Decides how the credential is presented to the listing. */
+  protocol: ProviderWireProtocol;
   transport: ProviderTurnTransport;
   prepareCredential: () => Promise<CredentialSelection>;
 };
@@ -55,12 +58,14 @@ export type ModelDiscoveryHandle = {
 export function useModelDiscovery(
   input: ModelDiscoveryInput,
 ): ModelDiscoveryHandle {
-  const { profileId, endpoint, capabilities, transport, prepareCredential } =
+  const { profileId, endpoint, capabilities, protocol, transport, prepareCredential } =
     input;
   const [discovery, setDiscovery] = useState<ModelDiscoveryState | null>(null);
   const cacheRef = useRef(new Map<string, string[]>());
   const requestRef = useRef(0);
-  const profileKey = modelProfileKey(profileId, endpoint);
+  // The protocol joins the key because it changes the credential header: a
+  // listing refused under one protocol may succeed under another.
+  const profileKey = `${modelProfileKey(profileId, endpoint)}\u0000${protocol}`;
 
   async function loadModels(force = false): Promise<void> {
     if (!capabilities.modelDiscovery) {
@@ -85,6 +90,7 @@ export function useModelDiscovery(
       const credential = await prepareCredential();
       const { models } = await transport.discoverModels({
         endpoint,
+        protocol,
         capabilities,
         credential,
       });

@@ -101,6 +101,8 @@ export interface InferenceSettingsPanelProps {
   /** Only the composer's field answers readiness routing; see `ModelCombobox`. */
   readinessTarget?: boolean;
   connection?: InferenceSettingsSlot;
+  /** The wire protocol, for a surface that chooses it beside the model. */
+  protocol?: InferenceSettingsSlot;
   repetitions?: InferenceSettingsSlot;
   /** Lines the surface shows under the controls, such as its planned run count. */
   notes?: ReactNode;
@@ -161,6 +163,7 @@ export function InferenceSettingsPanel({
   modelInputRef,
   readinessTarget = false,
   connection,
+  protocol,
   repetitions,
   notes,
   showDelivery = true,
@@ -211,6 +214,7 @@ export function InferenceSettingsPanel({
 
   const facts = [
     connection?.summary,
+    protocol?.summary,
     value.model || "No model",
     temperatureSummary(value.temperature),
     showDelivery ? deliverySummary(value.responseMode) : undefined,
@@ -266,6 +270,12 @@ export function InferenceSettingsPanel({
                 <div>
                   <dt>Connection</dt>
                   <dd>{connection.summary}</dd>
+                </div>
+              ) : null}
+              {protocol?.summary ? (
+                <div>
+                  <dt>Protocol</dt>
+                  <dd>{protocol.summary}</dd>
                 </div>
               ) : null}
               <div>
@@ -331,6 +341,14 @@ export function InferenceSettingsPanel({
                   />
                 ) : null}
               </div>
+              {protocol?.control ? (
+                <div className="inference-settings-field">
+                  {protocol.control}
+                  {protocol.override ? (
+                    <OverrideMarker field="protocol" override={protocol.override} />
+                  ) : null}
+                </div>
+              ) : null}
               {connection?.control ? (
                 <div className="inference-settings-field">
                   {connection.control}

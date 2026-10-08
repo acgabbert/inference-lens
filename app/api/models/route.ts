@@ -18,7 +18,7 @@ export const runtime = "nodejs";
 
 export async function POST(incoming: Request): Promise<Response> {
   let request:
-    | Pick<ResolvedInferenceRequest, "endpoint" | "apiKey" | "capabilities">
+    | Pick<ResolvedInferenceRequest, "endpoint" | "apiKey" | "capabilities" | "protocol">
     | undefined;
   try {
     validateWorkbenchRequest(incoming, runtimeRequestPolicy());

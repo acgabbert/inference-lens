@@ -48,6 +48,7 @@ import type {
   MessageContentPart,
   MessageId,
   ProjectId,
+  ProviderWireProtocol,
   PromptTemplateId,
   PromptTemplateRevisionId,
   PromptTemplateUseId,
@@ -56,7 +57,7 @@ import type {
   ToolId,
   ToolMockId,
 } from "./run-kernel/types.ts";
-import { createEntityId } from "./run-kernel/types.ts";
+import { createEntityId, PROVIDER_WIRE_PROTOCOLS } from "./run-kernel/types.ts";
 import { randomUUID } from "./random-id.ts";
 import {
   discoverTemplateVariables,
@@ -74,7 +75,9 @@ export const PROJECT_DIRECTORY_SUFFIX = ".inference-lens";
 export const PROJECT_FILE_NAME = "project.json";
 export const PROJECT_EXPORT_FILE_SUFFIX = ".project.json";
 export const PROJECT_GITIGNORE_CONTENTS = "*\n";
-export const PROJECT_SCHEMA_VERSION = 10;
+export const PROJECT_SCHEMA_VERSION = 11;
+/** Older versions this build still opens; see `migrateV10Project`. */
+const OPENABLE_PROJECT_SCHEMA_VERSIONS: readonly number[] = [10];
 
 /**
  * Turns the portable project display name into one safe, visible directory
@@ -115,7 +118,6 @@ export interface ConnectionRequirement {
   id: ConnectionRequirementId;
   name: string;
   provider: "openai-compatible";
-  protocol: "openai-compatible-chat-completions";
   endpoint: string;
   capabilityOverrides?: ProviderCapabilityOverrides;
 }
@@ -231,12 +233,22 @@ export interface ProjectConversationRevision {
   createdAt: string;
 }
 
+/**
+ * What a run is sent to and how. The protocol sits beside the model rather
+ * than on the connection: which API a run speaks is a choice about the run,
+ * the way the model is, and a connection only states which ones it can serve.
+ * Keeping it here lets a suite or one of its configurations choose differently
+ * from the composer without changing anything shared.
+ */
+export interface ExecutionTarget {
+  connectionRequirementId: ConnectionRequirementId;
+  model: string;
+  protocol: ProviderWireProtocol;
+}
+
 export interface ProjectDefaults {
   conversationRevisionId: ConversationRevisionId;
-  target: {
-    connectionRequirementId: ConnectionRequirementId;
-    model: string;
-  };
+  target: ExecutionTarget;
   options: InferenceOptions;
   enabledToolIds: ToolId[];
 }
@@ -298,8 +310,8 @@ interface ProjectReferenceValidationShape {
   defaults: ProjectDefaults;
 }
 
-export interface ProjectFileV10 {
-  schemaVersion: 10;
+export interface ProjectFileV11 {
+  schemaVersion: 11;
   projectId: ProjectId;
   name: string;
   connectionRequirements: ConnectionRequirement[];
@@ -313,7 +325,7 @@ export interface ProjectFileV10 {
   defaults: ProjectDefaults;
 }
 
-export type ProjectFile = ProjectFileV10;
+export type ProjectFile = ProjectFileV11;
 
 const entityId = <Kind extends Parameters<typeof createEntityId>[0]>(
   kind: Kind,
@@ -343,6 +355,7 @@ const capabilityOverridesSchema = z
   .object({
     chatCompletions: z.boolean().optional(),
     responsesApi: z.boolean().optional(),
+    anthropicMessages: z.boolean().optional(),
     streaming: z.boolean().optional(),
     modelDiscovery: z.boolean().optional(),
     tools: z.boolean().optional(),
@@ -448,7 +461,6 @@ const connectionRequirementSchema: z.ZodType<ConnectionRequirement> = z
     id: entityId("connection"),
     name: z.string().trim().min(1),
     provider: z.literal("openai-compatible"),
-    protocol: z.literal("openai-compatible-chat-completions"),
     endpoint: z
       .url()
       .refine(
@@ -685,15 +697,18 @@ const externalImportReceiptSchema: z.ZodType<ExternalImportReceipt> = z
     });
   });
 
+const executionTargetSchema = z
+  .object({
+    connectionRequirementId: entityId("connection"),
+    model: z.string().trim().min(1),
+    protocol: z.enum(PROVIDER_WIRE_PROTOCOLS),
+  })
+  .strict();
+
 const projectDefaultsSchema = z
   .object({
     conversationRevisionId: entityId("revision"),
-    target: z
-      .object({
-        connectionRequirementId: entityId("connection"),
-        model: z.string().trim().min(1),
-      })
-      .strict(),
+    target: executionTargetSchema,
     options: inferenceOptionsSchema,
     enabledToolIds: z.array(entityId("tool")),
   })
@@ -738,6 +753,7 @@ const evaluationVariantSchema: z.ZodType<EvaluationVariant> = z.object({
     target: z.object({
       connectionRequirementId: entityId("connection").optional(),
       model: z.string().trim().min(1).optional(),
+      protocol: z.enum(PROVIDER_WIRE_PROTOCOLS).optional(),
     }).strict().optional(),
     responseMode: z.enum(["streaming", "buffered"]).optional(),
     options: evaluationVariantOptionsSchema.optional(),
@@ -753,10 +769,7 @@ const evaluationSuiteSchema: z.ZodType<EvaluationSuite> = z
       conversationRevisionId: entityId("revision"),
     }).strict(),
     execution: z.object({
-      target: z.object({
-        connectionRequirementId: entityId("connection"),
-        model: z.string().trim().min(1),
-      }).strict(),
+      target: executionTargetSchema,
       responseMode: z.enum(["streaming", "buffered"]),
       options: inferenceOptionsSchema,
       repetitions: z.number().int().min(1).max(100),
@@ -774,7 +787,7 @@ const evaluationSuiteSchema: z.ZodType<EvaluationSuite> = z
   })
   .strict();
 
-const projectFileV10Schema: z.ZodType<ProjectFileV10> = z
+const projectFileV11Schema: z.ZodType<ProjectFileV11> = z
   .object({
     schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
     projectId: entityId("project"),
@@ -1024,7 +1037,7 @@ function validateSharedProjectReferences(
 }
 
 function validateProjectReferences(
-  project: ProjectFileV10,
+  project: ProjectFileV11,
   context: z.RefinementCtx,
 ): void {
   validateSharedProjectReferences(
@@ -1293,7 +1306,7 @@ function validateProjectReferences(
 }
 
 function validateEvaluationSuites(
-  project: ProjectFileV10,
+  project: ProjectFileV11,
   templates: ReadonlyMap<PromptTemplateId, PromptTemplate>,
   context: z.RefinementCtx,
 ): void {
@@ -1471,21 +1484,74 @@ export class ProjectValidationError extends Error {
 }
 
 function unsupportedSchemaMessage(version: unknown): string {
-  const prefix = `Project schema v${String(version)} is not supported: this build only opens schema v${PROJECT_SCHEMA_VERSION}.`;
+  const openable = [...OPENABLE_PROJECT_SCHEMA_VERSIONS, PROJECT_SCHEMA_VERSION]
+    .map((openableVersion) => `v${openableVersion}`)
+    .join(" and ");
+  const prefix = `Project schema v${String(version)} is not supported: this build opens schema ${openable}.`;
   return typeof version === "number" && version > PROJECT_SCHEMA_VERSION
     ? `${prefix} It was saved by a newer Inference Lens; update this build to open it.`
     : `${prefix} Open it with an earlier Inference Lens release that supports it and export it again.`;
 }
 
+/**
+ * v10 put the protocol on the connection requirement, where it could only ever
+ * be chat completions. v11 states it on each execution target instead, so the
+ * requirement's value moves to every target that names that requirement and
+ * the requirement loses the field. Anything malformed is passed through for
+ * the v11 schema to reject with its ordinary message.
+ */
+function migrateV10Project(value: object): unknown {
+  const project = value as Record<string, unknown>;
+  const requirements = Array.isArray(project.connectionRequirements)
+    ? (project.connectionRequirements as unknown[])
+    : [];
+  const protocolByRequirement = new Map<unknown, unknown>(
+    requirements.flatMap((requirement) =>
+      isRecord(requirement) ? [[requirement.id, requirement.protocol] as const] : [],
+    ),
+  );
+  const withProtocol = (target: unknown): unknown =>
+    isRecord(target) && !("protocol" in target)
+      ? { ...target, protocol: protocolByRequirement.get(target.connectionRequirementId) }
+      : target;
+  const defaults = project.defaults;
+  return {
+    ...project,
+    schemaVersion: PROJECT_SCHEMA_VERSION,
+    connectionRequirements: requirements.map((requirement) => {
+      if (!isRecord(requirement)) return requirement;
+      const { protocol: _protocol, ...rest } = requirement;
+      return rest;
+    }),
+    ...(isRecord(defaults) ? { defaults: { ...defaults, target: withProtocol(defaults.target) } } : {}),
+    ...(Array.isArray(project.evaluationSuites)
+      ? {
+          evaluationSuites: (project.evaluationSuites as unknown[]).map((suite) =>
+            isRecord(suite) && isRecord(suite.execution)
+              ? { ...suite, execution: { ...suite.execution, target: withProtocol(suite.execution.target) } }
+              : suite,
+          ),
+        }
+      : {}),
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 export function parseProjectFile(value: unknown): ProjectFile {
   if (typeof value === "object" && value !== null && "schemaVersion" in value && value.schemaVersion !== PROJECT_SCHEMA_VERSION) {
-    throw new ProjectValidationError([{
-      code: "custom",
-      path: ["schemaVersion"],
-      message: unsupportedSchemaMessage(value.schemaVersion),
-    }]);
+    if (!OPENABLE_PROJECT_SCHEMA_VERSIONS.includes(value.schemaVersion as number)) {
+      throw new ProjectValidationError([{
+        code: "custom",
+        path: ["schemaVersion"],
+        message: unsupportedSchemaMessage(value.schemaVersion),
+      }]);
+    }
+    value = migrateV10Project(value);
   }
-  const parsed = projectFileV10Schema.safeParse(value);
+  const parsed = projectFileV11Schema.safeParse(value);
   if (!parsed.success) throw new ProjectValidationError(parsed.error.issues);
   return parsed.data;
 }
@@ -1624,6 +1690,7 @@ export interface ProjectDraft {
   templateDiagnostics: ProjectTemplateDiagnostic[];
   model: string;
   temperature?: number;
+  protocol: ProviderWireProtocol;
   tools: ToolDefinition[];
   toolMocks: ToolMock[];
   enabledToolIds: ToolId[];
@@ -1633,6 +1700,8 @@ export interface UpdateProjectDraft {
   messages: ConversationMessage[];
   items?: ProjectConversationItem[];
   model: string;
+  /** Omitted by a caller that does not edit it; the default target's stays. */
+  protocol?: ProviderWireProtocol;
   temperature?: number;
   tools: ToolDefinition[];
   toolMocks: ToolMock[];
@@ -1867,6 +1936,7 @@ export function projectDraft(
     templateDiagnostics: resolved.diagnostics,
     model: project.defaults.target.model,
     temperature: project.defaults.options.temperature,
+    protocol: project.defaults.target.protocol,
     tools: project.tools,
     toolMocks: project.toolMocks,
     enabledToolIds: project.defaults.enabledToolIds,
@@ -1974,6 +2044,7 @@ export function updateProjectDraft(
       target: {
         ...project.defaults.target,
         model: draft.model,
+        ...(draft.protocol ? { protocol: draft.protocol } : {}),
       },
       options: {
         ...project.defaults.options,
@@ -3068,7 +3139,6 @@ export function createProjectFile({
         id: connectionId,
         name: "Default connection",
         provider: request.provider,
-        protocol: "openai-compatible-chat-completions",
         endpoint: request.endpoint,
         capabilityOverrides: request.capabilities,
       },
@@ -3115,6 +3185,7 @@ export function createProjectFile({
       target: {
         connectionRequirementId: connectionId,
         model: request.model,
+        protocol: request.protocol ?? "openai-compatible-chat-completions",
       },
       options:
         request.temperature === undefined

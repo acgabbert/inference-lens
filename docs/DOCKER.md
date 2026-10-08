@@ -194,6 +194,26 @@ profile, since setting the variables says plainly which provider you meant.
 Once you have profiles of your own it is added alongside them and offered
 rather than switched to, and it never overwrites an existing profile.
 
+Set `INFERENCE_LENS_API_PROTOCOLS` to say which APIs the endpoint speaks —
+`chat-completions`, `responses`, and `anthropic-messages`, comma-separated. The
+profile enables exactly those, each run picks one in **Run settings**, and the
+key is presented the way the chosen protocol expects: `Authorization: Bearer`
+for the OpenAI protocols, `x-api-key` for Anthropic. For example, a server
+pointed at `https://api.anthropic.com/v1` uses `anthropic-messages`, and one
+pointed at `https://api.openai.com/v1` can use `chat-completions,responses`.
+Like the endpoint, the list is the server's: the profile's protocol switches
+are locked while it is set. Unset, the profile starts with chat completions and
+the switches are yours. A list naming anything unrecognized is ignored as a
+whole rather than half applied — but not silently: the server logs a warning
+the first time the UI asks for its configuration, and the UI shows a banner and
+a note in Connections naming the unrecognized entries. Until it is fixed the
+profile behaves as if the variable were unset.
+
+When a project or the composer asks for a protocol the server has not listed,
+the run is blocked with a notice offering another protocol or another
+connection: the protocol switches are the server's, so enabling one means
+changing `INFERENCE_LENS_API_PROTOCOLS` and restarting.
+
 Leave `INFERENCE_LENS_MODEL` unset and the profile starts with no model rather
 than a guess: a local llama.cpp server has never heard of `gpt-4.1-mini`. A run
 is blocked until you pick one, with a notice pointing at the model picker,

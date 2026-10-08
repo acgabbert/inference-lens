@@ -10,6 +10,12 @@ import {
   resolveProviderCapabilities,
 } from "../packages/core/src/types.ts";
 import { randomUUID } from "../packages/core/src/random-id.ts";
+import {
+  isProviderWireProtocol,
+  protocolCapabilityKey,
+} from "../packages/core/src/provider-protocols.ts";
+import { PROVIDER_WIRE_PROTOCOLS } from "../packages/core/src/run-kernel/types.ts";
+import type { ProviderWireProtocol } from "../packages/core/src/run-kernel/types.ts";
 
 const STORAGE_KEY = "inference-lens:inference-profiles:v1";
 
@@ -110,6 +116,28 @@ export function nextCapabilityOverrides(
     overrides[key] = enabled;
   }
   return Object.keys(overrides).length === 0 ? undefined : overrides;
+}
+
+/**
+ * The profile with its protocol capabilities set to exactly `protocols`. The
+ * server owns which protocols its default connection speaks, the way it owns
+ * the endpoint, so this replaces those three answers and leaves every other
+ * override to the user.
+ */
+export function withServerProtocols<Profile extends StoredInferenceProfile>(
+  profile: Profile,
+  protocols: readonly ProviderWireProtocol[],
+): Profile {
+  let next = profile;
+  for (const protocol of PROVIDER_WIRE_PROTOCOLS) {
+    const capabilityOverrides = nextCapabilityOverrides(
+      next,
+      protocolCapabilityKey(protocol),
+      protocols.includes(protocol),
+    );
+    next = { ...next, capabilityOverrides };
+  }
+  return next;
 }
 
 /**
@@ -228,6 +256,11 @@ function sanitizeProfile(
     ...(profile.capabilityOverrides === undefined
       ? {}
       : { capabilityOverrides: profile.capabilityOverrides }),
+    // An unrecognized preference is dropped rather than the whole profile: a
+    // run then falls back to a protocol the profile supports.
+    ...(isProviderWireProtocol(profile.protocol)
+      ? { protocol: profile.protocol }
+      : {}),
     ...(profile.credentialRef === undefined
       ? {}
       : { credentialRef: profile.credentialRef }),

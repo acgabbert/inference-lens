@@ -9,7 +9,7 @@ import { isSensitiveTemplateVariableName } from "./project.ts";
 import { stableJsonValue } from "./stable-json.ts";
 import { renderTemplateMessages } from "./template-engine.ts";
 
-export const RUN_TRACE_SCHEMA_VERSION = 6;
+export const RUN_TRACE_SCHEMA_VERSION = 7;
 export const RUN_TRACE_FILE_SUFFIX = ".json";
 
 /**
@@ -54,6 +54,7 @@ const traceEnvelopeBaseSchema = z
             "assistant.reasoning_delta",
             "assistant.tool_call_delta",
             "usage.reported",
+            "assistant.continuation",
             "assistant.completed",
             "tool.execution_started",
             "tool.execution_completed",
@@ -238,6 +239,14 @@ const traceV6EnvelopeSchema = traceEnvelopeBaseSchema
   })
   .strict();
 
+/**
+ * Version 7 adds `assistant.continuation` events: the opaque provider state a
+ * later turn replays. Otherwise identical to version 6.
+ */
+const traceV7EnvelopeSchema = traceV6EnvelopeSchema.extend({
+  schemaVersion: z.literal(7),
+});
+
 // Discriminated on the version so a rejection reports the offending field in
 // the matching envelope, rather than collapsing every branch's complaint into
 // one union error.
@@ -248,6 +257,7 @@ const traceEnvelopeSchema = z.discriminatedUnion("schemaVersion", [
   traceV4EnvelopeSchema,
   traceV5EnvelopeSchema,
   traceV6EnvelopeSchema,
+  traceV7EnvelopeSchema,
 ]);
 
 export function traceFileName(runId: RunId): string {
@@ -404,6 +414,14 @@ export function parseRunTraceFile(value: unknown): RunTrace {
       schemaVersion: RUN_TRACE_SCHEMA_VERSION,
       toolExecutions: [],
     };
+  }
+  if (
+    envelope.schemaVersion < 7 &&
+    trace.events.some((event) => event.type === "assistant.continuation")
+  ) {
+    throw new RunTraceValidationError(
+      "Run trace contains an event its schema version does not define.",
+    );
   }
   if (trace.runId !== trace.input.runId) {
     throw new RunTraceValidationError("Run trace input has a different run ID.");

@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   createDefaultProfile,
   nextCapabilityOverrides,
+  withServerProtocols,
   profileDeletionRefusal,
   readProfiles,
   removeProfile,
@@ -285,4 +286,70 @@ test("a server-provisioned profile is deletable only once unconfigured", () => {
   // Released by the reconcile once the server stops declaring a credential,
   // and from then on it is an ordinary profile.
   assert.equal(profileDeletionRefusal(profiles, provisioned, false), undefined);
+});
+
+test("the server's protocol list becomes the profile's protocol capabilities", () => {
+  const anthropicOnly = withServerProtocols(profile(), ["anthropic-messages"]);
+  assert.deepEqual(anthropicOnly.capabilityOverrides, {
+    chatCompletions: false,
+    anthropicMessages: true,
+  });
+  // Unrelated overrides survive, and a list matching the baseline stores none.
+  const reset = withServerProtocols(
+    profile({ tools: true, responsesApi: true }),
+    ["openai-compatible-chat-completions"],
+  );
+  assert.deepEqual(reset.capabilityOverrides, { tools: true });
+  const plain = withServerProtocols(profile(), ["openai-compatible-chat-completions"]);
+  assert.equal(plain.capabilityOverrides, undefined);
+});
+
+test("a stored protocol preference survives a reload, and an unknown one is dropped", () => {
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  let stored = JSON.stringify({
+    profiles: [
+      {
+        id: "responses",
+        name: "Responses",
+        provider: "openai-compatible",
+        endpoint: "https://api.example.com/v1",
+        model: "example-model",
+        protocol: "openai-responses",
+      },
+      {
+        id: "future",
+        name: "Future",
+        provider: "openai-compatible",
+        endpoint: "https://api.example.com/v1",
+        model: "example-model",
+        protocol: "openai-assistants",
+      },
+    ],
+    activeProfileId: "responses",
+  });
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      localStorage: {
+        getItem: () => stored,
+        setItem: (_key: string, value: string) => {
+          stored = value;
+        },
+      },
+    },
+  });
+  try {
+    const snapshot = readProfiles();
+    assert.equal(snapshot.profiles[0]!.protocol, "openai-responses");
+    // An unrecognized preference is a missing one, not a reason to lose the
+    // profile: the run falls back to a protocol the profile supports.
+    assert.equal(snapshot.profiles[1]!.id, "future");
+    assert.equal(snapshot.profiles[1]!.protocol, undefined);
+  } finally {
+    if (originalWindow) {
+      Object.defineProperty(globalThis, "window", originalWindow);
+    } else {
+      delete (globalThis as { window?: unknown }).window;
+    }
+  }
 });

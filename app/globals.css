@@ -913,6 +913,25 @@ textarea:focus {
   margin-top: var(--space-sm);
 }
 
+.protocol-capabilities {
+  display: grid;
+  gap: var(--space-xs);
+  margin: 0 0 var(--space-sm);
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.protocol-capabilities legend {
+  padding: 0;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.protocol-capabilities > small {
+  color: var(--text-muted);
+}
+
 .capability-toggle {
   display: flex !important;
   align-items: flex-start;
