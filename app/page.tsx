@@ -19,13 +19,11 @@ import {
 import {
   createEntityId,
   createSingleTurnRunExecution,
-  transcriptFromRunState,
 } from "../packages/core/src/run-kernel";
 import { modalOwnsKeyboardCommands } from "./keyboard-command-scope.client";
 import type {
   RunTrace,
   ConversationMessage,
-  ConversationId,
   MessageId,
   PromptTemplateId,
   PromptTemplateRevisionId,
@@ -64,7 +62,7 @@ import { ResponseOutput } from "./response-output.client";
 import { WorkbenchShell } from "./workbench-shell.client";
 import type { WorkbenchView } from "./workbench-shell.client";
 import { RunTracePanel } from "./run-trace-panel.client";
-import { runStateFromTrace, traceFileName } from "../packages/core/src/run-trace";
+import { traceFileName } from "../packages/core/src/run-trace";
 import { RunHistoryDrawer } from "./run-history-drawer.client";
 import { useEvaluationBaselines } from "./evaluations/use-evaluation-baselines.client";
 import type {
@@ -81,14 +79,12 @@ import { RUN_READINESS_SUMMARY_ID } from "./run-readiness-notice.client";
 import type {
   ConfirmationDialogRequest,
 } from "./confirmation-dialog.client";
-import {
-  prepareWorkbenchRun,
-  type WorkbenchBranchContext,
-} from "./run/prepare-workbench-run.client";
+import { prepareWorkbenchRun } from "./run/prepare-workbench-run.client";
 import { useRunSession } from "./run/use-run-session.client";
 import { RunEvidenceDetail } from "./run/run-evidence-detail.client";
 import { useResponseView } from "./run/use-response-view.client";
 import { useBatchCompletion } from "./run/use-batch-completion.client";
+import { usePendingBranch } from "./run/use-pending-branch.client";
 import { useRunsNavigation } from "./run/use-runs-navigation.client";
 import { toolBindingFor } from "./run/run-session-state.client";
 import { useCommandTools } from "./tools/use-command-tools.client";
@@ -122,10 +118,6 @@ const inferenceTransport = createInferenceTransport();
 
 const STREAMING_PREFERENCE_STORAGE_KEY =
   "inference-lens:streaming-preference:v1";
-
-interface BranchContext extends WorkbenchBranchContext {
-  parentTraceNeedsSaving: boolean;
-}
 
 function subscribeToDesktopRuntime(): () => void {
   return () => {};
@@ -310,7 +302,9 @@ function HomeContent() {
       if (projectFile?.projectId !== projectId) clearRequestTools();
       replaceProjectDraft(draft);
       clearTemplateOverridesRef.current();
-      setBranchContext(null);
+      // Declared after this hook because it reads the run session. Safe: a
+      // draft is applied only from project commands, never during render.
+      pendingBranch.clear();
       setSessionModel(draft.model);
       setSessionTemperature(draft.temperature);
       runSession.reset();
@@ -430,7 +424,9 @@ function HomeContent() {
       setTraceOpen(true);
     },
     onTraceSaved() { setSavedRunVersion((current) => current + 1); },
-    onResetBranch() { setBranchContext(null); },
+    // Declared after this hook because it reads `runState`. Safe: the run
+    // session resets the branch only from its adopt-trace command.
+    onResetBranch() { pendingBranch.clear(); },
     onError(message) { project.setError(message, { clearKind: true }); },
     onClearError() { project.setError(undefined, { clearKind: true }); },
   });
@@ -489,13 +485,13 @@ function HomeContent() {
   });
   const [sessionModel, setSessionModel] = useState<string>();
   const [sessionTemperature, setSessionTemperature] = useState<number>();
-  const adHocConversationIdRef = useRef<ConversationId | null>(null);
-  const [branchContext, setBranchContext] = useState<BranchContext | null>(null);
-  const nonBranchableMessageIds = new Set(
-    runState?.input?.templateResolutions.flatMap((resolution) =>
-      resolution.outputMessageIds.slice(0, -1),
-    ) ?? [],
-  );
+  const pendingBranch = usePendingBranch({
+    runState,
+    transcript,
+    traceStorage,
+    resetMessages,
+    onError(message) { project.setError(message); },
+  });
 
   useEffect(() => {
     const promptId = window.setTimeout(() => {
@@ -580,7 +576,7 @@ function HomeContent() {
     serializedTools,
     toolMocks,
     enabledToolIds,
-    branchParentRevisionId: branchContext?.parentConversationRevisionId,
+    branchParentRevisionId: pendingBranch.pending?.parentConversationRevisionId,
     ensureProjectDocument,
     adoptProjectMutation: project.adoptProjectMutation,
     replaceProjectDraft,
@@ -589,7 +585,7 @@ function HomeContent() {
     addDraftMessage: addMessage,
     updateDraftMessage: updateMessage,
     removeDraftMessage: removeMessage,
-    clearPendingBranch: () => setBranchContext(null),
+    clearPendingBranch: pendingBranch.clear,
     requestConfirmation: setConfirmation,
     onImportApplied() {
       setMode("compose");
@@ -755,22 +751,7 @@ function HomeContent() {
   }
 
   function editFromHere(messageId: MessageId): void {
-    if (!runState || !["completed", "cancelled", "failed"].includes(runState.status.kind)) {
-      return;
-    }
-    const index = transcript.findIndex(({ message }) => message.id === messageId);
-    if (index < 0) return;
-    resetMessages(
-      structuredClone(transcript.slice(0, index + 1).map(({ message }) => message)),
-    );
-    setBranchContext({
-      parentRunId: runState.runId,
-      parentConversationRevisionId: runState.input?.conversationRevisionId,
-      branchMessageId: messageId,
-      parentTraceNeedsSaving:
-        traceStorage?.kind === "unsaved" || traceStorage?.kind === "error",
-    });
-    setWorkbenchView("request");
+    if (pendingBranch.editFromHere(messageId)) setWorkbenchView("request");
   }
 
   function setEditorModel(model: string): void {
@@ -887,9 +868,8 @@ function HomeContent() {
       requestTools,
       capabilities: requestCapabilities,
       profileName: requestProfile.name,
-      branchContext: branchContext ?? undefined,
       templateRunOverrides: projectTemplates.templateRunOverrides,
-      adHocConversationId: adHocConversationIdRef.current ?? undefined,
+      ...pendingBranch.preparationInputs(),
     });
     if (!prepared.ok) {
       if (prepared.errorKind === "tools-disabled") {
@@ -903,10 +883,7 @@ function HomeContent() {
     if (prepared.executedRevisionId) {
       projectTemplates.markExecutedRevision(prepared.executedRevisionId);
     }
-    if (prepared.adHocConversationId) {
-      adHocConversationIdRef.current = prepared.adHocConversationId;
-    }
-    if (prepared.consumesPendingBranch) setBranchContext(null);
+    pendingBranch.settle(prepared);
     const input = prepared.input;
     const branchedFrom = prepared.branchedFrom;
     const request = {
@@ -959,9 +936,8 @@ function HomeContent() {
       requestTools,
       capabilities: requestCapabilities,
       profileName: requestProfile.name,
-      branchContext: branchContext ?? undefined,
       templateRunOverrides: projectTemplates.templateRunOverrides,
-      adHocConversationId: adHocConversationIdRef.current ?? undefined,
+      ...pendingBranch.preparationInputs(),
     });
     if (!prepared.ok) {
       if (prepared.errorKind === "tools-disabled") project.setToolsDisabledError(prepared.message);
@@ -978,8 +954,7 @@ function HomeContent() {
     repeatedExperiment.begin(input, requestProfile.name || "Untitled profile", () => {
       if (prepared.projectMutation) project.adoptBranchRevision(prepared.projectMutation);
       if (prepared.executedRevisionId) projectTemplates.markExecutedRevision(prepared.executedRevisionId);
-      if (prepared.adHocConversationId) adHocConversationIdRef.current = prepared.adHocConversationId;
-      if (prepared.consumesPendingBranch) setBranchContext(null);
+      pendingBranch.settle(prepared);
       runSession.reset();
       setTraceOpen(false);
       // A batch's results are read in the Runs mode, so the batch opens there
@@ -1025,19 +1000,7 @@ function HomeContent() {
     setRunHistoryOpen(false);
   }
   function branchFromHistoryTrace(trace: RunTrace): void {
-    const savedTranscript = transcriptFromRunState(runStateFromTrace(trace));
-    const branchMessage = savedTranscript.at(-1)?.message;
-    if (!branchMessage) {
-      project.setError("This saved trace has no message to branch from.");
-      return;
-    }
-    resetMessages(structuredClone(savedTranscript.map(({ message }) => message)));
-    setBranchContext({
-      parentRunId: trace.runId,
-      parentConversationRevisionId: trace.input.conversationRevisionId,
-      branchMessageId: branchMessage.id,
-      parentTraceNeedsSaving: false,
-    });
+    if (!pendingBranch.branchFromTrace(trace)) return;
     setMode("compose");
     setWorkbenchView("request");
   }
@@ -1348,7 +1311,7 @@ function HomeContent() {
         toolResultDrafts={toolResultDrafts}
         traceStorage={traceStorage}
         transcript={transcript}
-        nonBranchableMessageIds={nonBranchableMessageIds}
+        nonBranchableMessageIds={pendingBranch.nonBranchableMessageIds}
         branchedFrom={visibleBranchProvenance}
         emptyState={responseEmptyState}
         onMarkdownPreviewChange={responseView.setMarkdownPreview}
@@ -1387,7 +1350,7 @@ function HomeContent() {
       {...(projectFile ? { onPromoteTrace: (trace: RunTrace) => evaluationCaseSource.requestPromotion(trace) } : {})}
     />
   );
-  const n8nImportDisabledReason = branchContext
+  const n8nImportDisabledReason = pendingBranch.pending
     ? "Finish or discard the pending branch before importing a prompt."
     : Boolean(runState) && !runReachedTerminalStatus
       ? "Finish or stop the current run before importing a prompt."
@@ -1572,7 +1535,7 @@ function HomeContent() {
           onReadinessAction={resolveReadiness}
           onDestinationHandled={() => setPendingReadinessDestination(undefined)}
           activeProfile={requestProfile}
-          {...(branchContext ? { pendingBranch: branchContext } : {})}
+          {...(pendingBranch.pending ? { pendingBranch: pendingBranch.pending } : {})}
           {...(requestPreview ? { requestPreview } : {})}
           onOpenConnectionSettings={() => setConnectionDrawerOpen(true)}
           onOpenPrompts={() => {
@@ -1582,7 +1545,7 @@ function HomeContent() {
           onEditPromptSource={editPromptSource}
           onOpenToolLibrary={() => setToolRegistryOpen(true)}
           onSaveParentTrace={() => void runSession.exportTrace()}
-          onDiscardPendingBranch={() => setBranchContext(null)}
+          onDiscardPendingBranch={pendingBranch.clear}
         />
         }
         response={responseSurface}
