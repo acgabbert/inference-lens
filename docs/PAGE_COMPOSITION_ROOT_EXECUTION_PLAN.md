@@ -1,7 +1,7 @@
 # `app/page.tsx` composition-root execution plan
 
-**Status:** PRs 5a and 5b complete; PR 5 ownership inventory recorded on 2026-10-08.
-PRs 5c–5g extract the remaining owners it found and must merge before PR 5.
+**Status:** PRs 5a–5c complete; PR 5 ownership inventory recorded on 2026-10-08.
+PRs 5d–5g extract the remaining owners it found and must merge before PR 5.
 
 **Observed baseline:** `main` at `e59785c` on 2026-07-29
 
@@ -108,7 +108,7 @@ constraints, stop that PR and design the behavior change separately.
 | 4 | Request composer | Complete | PR 3 |
 | 5a | Evaluation workspace and case-source owners | Complete | PR 4 |
 | 5b | Prompts mode and prompt navigation | Complete | PR 5a |
-| 5c | Response view | Planned | PR 5b |
+| 5c | Response view | Complete | PR 5b |
 | 5d | Batch completion signals | Planned | PR 5c |
 | 5e | Pending branch | Planned | PR 5d |
 | 5f | Request settings | Planned | PR 5e |
@@ -995,6 +995,36 @@ resume following.
 
 Whether the pure derivation moves to a Node-tested module beside the hook.
 Recommendation: yes.
+
+### Decisions (agreed 2026-10-08)
+
+- **The hook is called after the run session.** `useResponseView(runState)`
+  reads the session's `runState`, and the session's `onShowResponse` calls the
+  hook's `followLatest()` through a `const` declared later in the same render.
+  That is safe because `useRunSession` calls `onShowResponse` only from its
+  run, continue, and retry commands, never during render; a comment at the
+  call site records this. No ref is added to the page.
+- **The derivation is a pure module.** `app/run/response-view.ts` holds
+  `DisplayStatus`, `displayStatus`, and `responseContentOf`, Node-tested in
+  `tests/response-view.test.ts`. The hook lives beside it in
+  `app/run/use-response-view.client.ts` and owns the storage key, the follow
+  state, the scroll ref, `updateFollowState`, and `jumpToLatest`. The topbar's
+  `responseStatus` reads the same `status`.
+
+### Verification completed
+
+- Characterization added before extraction and run green against unchanged
+  code in `tests/e2e/response-view.spec.ts`: the pane follows output, scrolling
+  away shows "Jump to latest ↓", jumping returns to the bottom, and a new run
+  resumes following; the Markdown or Raw choice is written as `markdown` or
+  `raw`, survives a reload without being overwritten by the default, and
+  applies to the next run. Removing the resume from `onShowResponse` turned
+  the follow spec red on the lingering jump button.
+- Not covered in the browser: following during a streamed response, since no
+  streaming fixture produces overflowing output. The buffered answer exercises
+  the same effect on its output change.
+- Shared automated gate, the affected response and Markdown specs, and the full
+  Playwright suite; see the PR description for counts.
 
 ## PR 5d — Extract batch completion signals
 
