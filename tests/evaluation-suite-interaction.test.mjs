@@ -84,3 +84,27 @@ test("an empty saved-prompt picker closes and asks its owner for the prompt libr
     assert.equal(templatesRequested, 1);
   } finally { await act(async () => root.unmount()); container.remove(); }
 });
+
+/**
+ * Sections are keyed by suite ID so each resets when the selected suite
+ * changes. Siblings must not all reuse the bare suite ID: React warns about the
+ * duplicate and may duplicate or drop a section. Only client reconciliation
+ * checks this, so it cannot be caught by a static render.
+ */
+test("the editor's sibling sections never share a React key", async () => {
+  const [{ createElement, act }, { createRoot }, { EvaluationSuiteEditor }] = await Promise.all([import("react"), import("react-dom/client"), ssrLoadModule("/app/evaluations/evaluation-suite-editor.client.tsx")]);
+  const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
+  const errors = [];
+  const original = console.error;
+  console.error = (...args) => { errors.push(args.map(String).join(" ")); };
+  try {
+    await act(async () => root.render(createElement(EvaluationSuiteEditor, {
+      authoring: evaluationFixture(),
+      execution: { storage: "durable", running: false, onStart() {} },
+    })));
+  } finally {
+    console.error = original;
+    await act(async () => root.unmount()); container.remove();
+  }
+  assert.deepEqual(errors.filter((message) => /same key/.test(message)), []);
+});

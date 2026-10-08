@@ -8,7 +8,6 @@ import {
   detachPromptTemplateUse,
   findPromptTemplateUsages,
   insertPromptTemplateUse,
-  isEmptyEditableConversationDraft,
   projectDraft,
   removePromptTemplateUse,
   renamePromptTemplate,

@@ -714,7 +714,7 @@ export function EvaluationSuiteEditor({
                 </div>}
               </div>
               <ConfigurationsSection
-                key={suite.id}
+                key={`${suite.id}:configurations`}
                 suite={suite}
                 project={project}
                 authoring={authoring}
@@ -800,7 +800,7 @@ export function EvaluationSuiteEditor({
                   settings disclosure because a suite that runs tools is a
                   different kind of evaluation, not a tweak to this one. */}
               <ToolsSection
-                key={suite.id}
+                key={`${suite.id}:tools`}
                 project={project}
                 authoring={authoring}
                 exposedToolIds={exposedToolIds}

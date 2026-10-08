@@ -191,7 +191,7 @@ confirm that it contains values rather than mutation commands.
 
 ### In scope
 
-- Add `app/prepare-workbench-run.client.ts`.
+- Add `app/run/prepare-workbench-run.client.ts`.
 - Add direct Node-safe tests for preparation policy.
 - Replace the corresponding inline portion of `run()`.
 - Keep a small page adapter that resolves current snapshots, applies proposed
@@ -373,8 +373,8 @@ Do not leave both an inline and hook command wired at the end of any checkpoint.
 
 ### In scope
 
-- Add `app/use-run-session.client.ts`.
-- Add a Node-safe `app/run-session-state.client.ts` if pure helpers warrant it.
+- Add `app/run/use-run-session.client.ts`.
+- Add a Node-safe `app/run/run-session-state.client.ts` if pure helpers warrant it.
 - Add focused policy, rendering, and provider-fixture coverage.
 - Update `page.tsx` to consume the new handle.
 - Preserve the response pane, run trace panel, attempt/branch diffing, topbar
@@ -547,7 +547,7 @@ that every member has one caller and one stated owner.
 
 ### In scope
 
-- Add `app/use-project-templates.client.ts`.
+- Add `app/templates/use-project-templates.client.ts`.
 - Add or extend a Node-safe template policy module where immutable mutation
   logic is currently embedded in the page.
 - Move n8n-import application policy into this owner; keep n8n fetching and
@@ -701,7 +701,7 @@ routing its actions.
 
 ### In scope
 
-- Add `app/request-composer.client.tsx`.
+- Add `app/request/request-composer.client.tsx`.
 - Move request-tab state from `page.tsx`.
 - Move the request side of `WorkbenchShell` into the component.
 - Preserve existing CSS class names unless a change is required by the new
