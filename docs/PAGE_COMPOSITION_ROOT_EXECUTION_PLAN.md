@@ -1,7 +1,7 @@
 # `app/page.tsx` composition-root execution plan
 
-**Status:** PRs 5a–5e complete; PR 5 ownership inventory recorded on 2026-10-08.
-PRs 5f–5g extract the remaining owners it found and must merge before PR 5.
+**Status:** PRs 5a–5f complete; PR 5 ownership inventory recorded on 2026-10-08.
+PR 5g extracts the remaining owner it found and must merge before PR 5.
 
 **Observed baseline:** `main` at `e59785c` on 2026-07-29
 
@@ -111,7 +111,7 @@ constraints, stop that PR and design the behavior change separately.
 | 5c | Response view | Complete | PR 5b |
 | 5d | Batch completion signals | Complete | PR 5c |
 | 5e | Pending branch | Complete | PR 5d |
-| 5f | Request settings | Planned | PR 5e |
+| 5f | Request settings | Complete | PR 5e |
 | 5g | Tool registry | Planned | PR 5f |
 | 5 | Feature organization and composition-root guardrail | Blocked by inventory | PR 5g |
 
@@ -1148,9 +1148,45 @@ example with a ref-backed reader or by splitting profile resolution from the
 session values, and must not rely on incidental closure timing. Check whether
 the `clearTemplateOverridesRef` workaround can be removed in the same change.
 
-### Decide before coding
+### Decisions (agreed 2026-10-08)
 
-How the cycle is broken. This is the PR most likely to need a user decision.
+- **The cycle is broken by call order, not by a ref.** `useRequestSettings` is
+  called after `useProjectWorkspace` and `useRequestDraft`, because it reads
+  `projectFile`, `mappedProfileIds`, and `messages`. The workspace's callbacks
+  read `requestSettings` through a `const` declared later in the same render,
+  as they already do for `pendingBranch`. The workspace calls them only from
+  project commands and effects, never during render; a comment above the
+  workspace call records this. Splitting session state from resolution was
+  rejected because `currentDraft` and `createProject` need the effective
+  model, which depends on the mapping, so a forward reference would remain. A
+  ref-backed reader was rejected as machinery that reads the same committed
+  values the closures already do.
+- **`clearTemplateOverridesRef` is removed.** `onApplyDraft` calls
+  `projectTemplates.clearTransientOverrides()` directly under the same rule.
+- **Resolution is a pure module.** `app/request/resolve-request-settings.ts`
+  holds `resolveRequestSettings` and `requestFromSettings`, Node-tested in
+  `tests/resolve-request-settings.test.ts`. The hook in
+  `app/request/use-request-settings.client.ts` owns the session model and
+  temperature, the streaming preference and its storage key, and the editor
+  setters. It takes `updateActiveProfile` and `onProjectEdited` and returns the
+  resolved connection requirement, profile, `profileMapped`, capabilities,
+  model, temperature, and response mode, with `setModel`, `setTemperature`,
+  `setStreamingPreferred`, `applyDraft`, and `currentRequest`. Model discovery
+  and credentials stay in the page and read `requestSettings.profile`.
+
+### Verification completed
+
+- Characterization added before extraction and run green against unchanged
+  code in `tests/e2e/request-settings-ownership.spec.ts`: without a project,
+  editing model and temperature writes the active profile and the run sends
+  them; in a project, the same edits mark it unsaved, reach the provider, leave
+  the stored profile untouched, and a re-import restores the project's values;
+  toggling streaming writes `buffered` and `streaming` to the preference key.
+  Making `applyDraft` a no-op turned the project test red on `profile-model`
+  where `project-model` was expected.
+- Not covered in the browser: `createFreshProject`'s response mode when a
+  folder project is created from an open project. The existing streaming
+  preference race is covered by `streaming-preference.spec.ts`.
 
 ## PR 5g — Extract the tool registry
 
