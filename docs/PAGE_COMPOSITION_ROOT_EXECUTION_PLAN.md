@@ -1,7 +1,7 @@
 # `app/page.tsx` composition-root execution plan
 
-**Status:** PRs 5a–5d complete; PR 5 ownership inventory recorded on 2026-10-08.
-PRs 5e–5g extract the remaining owners it found and must merge before PR 5.
+**Status:** PRs 5a–5e complete; PR 5 ownership inventory recorded on 2026-10-08.
+PRs 5f–5g extract the remaining owners it found and must merge before PR 5.
 
 **Observed baseline:** `main` at `e59785c` on 2026-07-29
 
@@ -110,7 +110,7 @@ constraints, stop that PR and design the behavior change separately.
 | 5b | Prompts mode and prompt navigation | Complete | PR 5a |
 | 5c | Response view | Complete | PR 5b |
 | 5d | Batch completion signals | Complete | PR 5c |
-| 5e | Pending branch | Planned | PR 5d |
+| 5e | Pending branch | Complete | PR 5d |
 | 5f | Request settings | Planned | PR 5e |
 | 5g | Tool registry | Planned | PR 5f |
 | 5 | Feature organization and composition-root guardrail | Blocked by inventory | PR 5g |
@@ -1087,8 +1087,44 @@ whether a branch was created so the page can navigate.
 
 ### Stays in the page
 
-Clearing the branch when a project draft is applied, the session resets, or a
-run consumes it. Those are calls into the hook from existing transactions.
+Clearing the branch when a project draft or n8n import is applied, a trace is
+adopted, or a run consumes it. Those are calls into the hook from existing
+transactions.
+
+### Decisions (agreed 2026-10-08)
+
+- **Run preparation reads and settles through the hook.** The ad hoc
+  conversation ID stays a private ref. `run()` and `repeat()` spread
+  `pendingBranch.preparationInputs()` into `prepareWorkbenchRun` and call
+  `pendingBranch.settle(prepared)` once the run is committed to, which
+  remembers the ad hoc conversation and drops a consumed branch. `repeat()`
+  still settles only after its dialog confirms.
+- **The hook is called after the run session.** It reads `runState`,
+  `transcript`, and `traceStorage`. `useProjectWorkspace`'s `onApplyDraft` and
+  `useRunSession`'s `onResetBranch` call `pendingBranch.clear()` through a
+  `const` declared later in the same render, as the page already did with the
+  branch state setter; neither runs during render.
+- **The derivation is a pure module.** `app/run/pending-branch.ts` holds
+  `PendingBranch`, `branchFromTranscript`, `branchFromSavedTrace`, and
+  `nonBranchableMessageIds`, Node-tested in `tests/pending-branch.test.ts`. The
+  hook in `app/run/use-pending-branch.client.ts` takes `resetMessages` and
+  `onError`; `editFromHere` and `branchFromTrace` return whether a branch
+  started, and the page navigates.
+
+### Verification completed
+
+- Characterization added before extraction and run green against unchanged
+  code in `tests/e2e/pending-branch.spec.ts`: "Edit from here" drafts the
+  transcript through that message and shows the pending-branch chip with
+  "Save trace…" for an unsaved parent; the next run records "Branched from run
+  …" and drops the chip; "Discard branch" leaves an ordinary run; importing a
+  project drops the branch. Removing the consumption in `settle` and the clear
+  in `onApplyDraft` turned the first and last red on the lingering chip.
+  Branching from a saved trace in Runs was already covered by
+  `runs-result-discovery.spec.ts`.
+- Not covered in the browser: the disabled "Edit from here" inside a
+  message-set template, and a saved trace with no message to branch from. The
+  Node test covers the first; the second has no route through the UI.
 
 ## PR 5f — Extract request settings
 
