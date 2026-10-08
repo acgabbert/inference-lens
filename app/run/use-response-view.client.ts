@@ -37,6 +37,10 @@ export function useResponseView(runState: RunState | null): ResponseView {
   const [markdownPreview, setMarkdownPreview] = useState(true);
   const [markdownPreviewLoaded, setMarkdownPreviewLoaded] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  // A scroll event from our own write can arrive after the next streamed
+  // delta grows the document. That extra distance is not a reader scrolling
+  // away. Remember the clamped position and ignore only that matching event.
+  const automaticScrollRef = useRef<{ element: HTMLDivElement; top: number } | null>(null);
   const content = responseContentOf(runState);
   const { output, reasoning, completedToolCalls } = content;
 
@@ -61,7 +65,10 @@ export function useResponseView(runState: RunState | null): ResponseView {
     if (!following) return;
     const frame = window.requestAnimationFrame(() => {
       const element = scrollRef.current;
-      if (element) element.scrollTop = element.scrollHeight;
+      if (element && element.scrollTop !== element.scrollHeight - element.clientHeight) {
+        element.scrollTop = element.scrollHeight;
+        automaticScrollRef.current = { element, top: element.scrollTop };
+      }
     });
     return () => window.cancelAnimationFrame(frame);
   }, [completedToolCalls.length, output, following, reasoning]);
@@ -69,6 +76,9 @@ export function useResponseView(runState: RunState | null): ResponseView {
   function updateFollowState(): void {
     const element = scrollRef.current;
     if (!element) return;
+    const automatic = automaticScrollRef.current;
+    automaticScrollRef.current = null;
+    if (automatic?.element === element && automatic.top === element.scrollTop) return;
     const distanceFromBottom =
       element.scrollHeight - element.scrollTop - element.clientHeight;
     setFollowing(distanceFromBottom < FOLLOW_THRESHOLD_PX);
@@ -76,7 +86,10 @@ export function useResponseView(runState: RunState | null): ResponseView {
 
   function jumpToLatest(): void {
     const element = scrollRef.current;
-    if (element) element.scrollTop = element.scrollHeight;
+    if (element) {
+      element.scrollTop = element.scrollHeight;
+      automaticScrollRef.current = { element, top: element.scrollTop };
+    }
     setFollowing(true);
   }
 

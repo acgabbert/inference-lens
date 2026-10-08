@@ -5695,6 +5695,8 @@ main {
 }
 
 .output-scroll {
+  /* The response owner controls following; browser anchoring must not undo it. */
+  overflow-anchor: none;
   position: relative;
   background: var(--surface-panel);
 }
