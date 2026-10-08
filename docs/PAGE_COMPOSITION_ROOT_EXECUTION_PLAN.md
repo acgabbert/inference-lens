@@ -1,6 +1,7 @@
 # `app/page.tsx` composition-root execution plan
 
-**Status:** PR 4 complete
+**Status:** PR 4 complete; PR 5 ownership inventory recorded on 2026-10-08.
+PRs 5a–5g extract the owners it found and must merge before PR 5.
 
 **Observed baseline:** `main` at `e59785c` on 2026-07-29
 
@@ -12,7 +13,9 @@ Turn `app/page.tsx` into a composition root by moving cohesive feature state,
 effects, refs, and mutation workflows to named owners. Preserve current
 behavior and all serialized and provider-facing contracts.
 
-This work is delivered as five sequential, independently mergeable PRs. Each
+This work is delivered as sequential, independently mergeable PRs: the five
+originally planned, plus PRs 5a–5g added by the
+[PR 5 ownership inventory](#pr-5-ownership-inventory). Each
 PR starts from `main` after the preceding PR has merged. There is no long-lived
 integration branch.
 
@@ -76,7 +79,7 @@ Apply these rules to every PR:
 
 ## Compatibility constraints
 
-All five PRs preserve these boundaries:
+Every PR in this plan preserves these boundaries:
 
 - no project-file schema change;
 - no run-trace schema change;
@@ -103,7 +106,14 @@ constraints, stop that PR and design the behavior change separately.
 | 2 | Atomic live run session | Merged (`eb675a0`) | PR 1 |
 | 3 | Project-template workbench owner | Complete | PR 2 |
 | 4 | Request composer | Complete | PR 3 |
-| 5 | Feature organization and composition-root guardrail | Ready | PR 4 |
+| 5a | Evaluation workspace and case-source owners | Planned | PR 4 |
+| 5b | Prompts mode and prompt navigation | Planned | PR 5a |
+| 5c | Response view | Planned | PR 5b |
+| 5d | Batch completion signals | Planned | PR 5c |
+| 5e | Pending branch | Planned | PR 5d |
+| 5f | Request settings | Planned | PR 5e |
+| 5g | Tool registry | Planned | PR 5f |
+| 5 | Feature organization and composition-root guardrail | Blocked by inventory | PR 5g |
 
 ---
 
@@ -774,6 +784,230 @@ Check both light and dark themes and scan the request pane for invalid text.
 
 ---
 
+## PR 5 ownership inventory
+
+**Observed:** `main` at `2746222` on 2026-10-08. `app/page.tsx` is 2,436
+lines. `HomeContent` holds 57 hook calls (`useState`, `useRef`, `useEffect`).
+
+PR 5's ownership review was performed before its file moves. It found seven
+responsibilities that still need a feature owner. Most arrived with features
+merged after PR 4: MCP execution, the Runs evidence workspace, the Prompts
+mode, evaluation baselines, and trace-to-case promotion. Under PR 5's own rule,
+those extractions are not hidden in the mechanical PR. They are delivered first
+as PRs 5a–5g.
+
+### Remains in the page
+
+Each item below has a reason to stay. PR 5 records the final list in
+`docs/ARCHITECTURE.md`.
+
+| Responsibility | Classification | Reason |
+| --- | --- | --- |
+| `mode`, `workbenchView`, `changeMode`, `traceOpen` | Top-level view selection | The page decides which region is mounted. |
+| `comparisonTraceOpen`, `comparisonReturnTarget` | Cross-feature transaction | A comparison unmounts while its trace is read in Compose; the return target must outlive both. |
+| `pendingReadinessDestination`, `resolveReadiness` | Cross-feature transaction | Routes a readiness action across the mode boundary to Connections, Prompts, or the composer. |
+| Overlay visibility: tool library, n8n import, `confirmation`, `projectCreationMode`, connections drawer and `sessionPromptProjectNotice`, run history | Top-level composition | Opened from several features; rendered at the root. |
+| `run()`, `repeat()` | Cross-feature transaction | Join request settings, project, templates, branch, run session, and Runs navigation. |
+| `openHistoryTrace`, `openHistoryExperiment`, `dismissFinishedExperiment` | Cross-feature transaction | Join run history, the run and batch sessions, and navigation. |
+| `chooseProfile`, `confirmDeleteActiveProfile`, `confirmUpdateProjectEndpoint`, `changeCapability` | Cross-feature transaction | Join connection profiles and the project's connection mapping. |
+| Banner candidates and `chooseAppBanner` | Cross-feature adapter | One slot ranks failures and advisories from several owners. |
+| `savedRunVersion`, `importedRevision` | Cross-feature signal | Counters that invalidate a history listing and return the composer to Messages. |
+| `useDesktopRuntime`, `useProjectFolderAccess`, `inferenceTransport` | Route/runtime concern | Hydration-safe runtime detection and the single transport instance. |
+| Cmd+Enter and Cmd+S handlers | Top-level composition | Dispatch to whichever workspace is active. |
+
+### Needs an owner
+
+| PR | Owner | Moves out of the page |
+| --- | --- | --- |
+| 5a | Evaluation workspace and `useEvaluationCaseSource` | `suiteHistoryRequested`, `suiteHistoryExpanded`, `evaluationSetupOpen`, `evaluationPreviewPreference`; local targets, start readiness, `evaluationExecutionActions`, the `evaluationHistory` adapter, `startEvaluation`, `confirmEvaluation`; `caseSource`, its loading effect, `onOpenSourceTrace`, and the `promotion` dialog workflow. About 220 lines. |
+| 5b | `PromptsMode` and prompt navigation | The inline `ProjectTemplatesPane` tree; `promptNavigationTarget`, `editPromptSource`, `returnFromPromptSource`, return-target clearing on insert and save-and-insert, and `compatibleEvaluationSuitesByTemplate`. |
+| 5c | `useResponseView` | `markdownPreview` and its storage effects; `outputFollowing`, `outputScrollRef`, the follow effect, `updateOutputFollowState`, `jumpToLatestOutput`; `displayStatus` and the output, reasoning, status, and completed-tool-call derivation. |
+| 5d | `useBatchCompletion` | `finishedBatchesRef`, `finishedBatchCount`, `viewedExperimentId`, unread tracking, `runsIndicator`, `announceFinishedBatch`, and its draining effect. |
+| 5e | `usePendingBranch` | `branchContext`, `adHocConversationIdRef`, `editFromHere`, `branchFromHistoryTrace`, and `nonBranchableMessageIds`. |
+| 5f | `useRequestSettings` | `sessionModel`, `sessionTemperature`, `streamingPreferred` and its storage effects; `requestProfile` and `requestCapabilities`, `activeModel`, `activeTemperature`, `activeResponseMode`, `setEditorModel`, `setEditorTemperature`, and `currentRequest`. |
+| 5g | `useToolRegistry` | `toolRegistry`, `toolRegistryLoaded`, and the read and write effects around the existing store. |
+
+The order puts the largest, lowest-risk owners first and the request settings
+last of the substantive ones, because of the hook-order dependency described
+under PR 5f.
+
+### Left for PR 5's mechanical cleanup
+
+These change no ownership and need no separate PR:
+
+- delete the pass-through wrappers `continueRun`, `retryRun`, `stop`, and
+  `downloadDiagnostics`;
+- move `defaultUserPrompts`, `createInitialMessages`, and
+  `chooseDefaultUserPrompt` beside `useRequestDraft`;
+- make `templateRequestPreview` and the `runReadiness` input assembly pure
+  functions in their feature modules;
+- share the prepared-run application steps duplicated between `run()` and
+  `repeat()` through one page-local helper; and
+- move `ProjectCreationDialog`'s per-mode copy into the dialog behind a mode
+  prop.
+
+### Rules for PRs 5a–5g
+
+The delivery rules and compatibility constraints above apply unchanged. In
+addition:
+
+- Each PR starts with a short contract note in its description: the owner's
+  inputs, returned snapshot and commands, and what it does not own. Ambiguous or
+  consequential contract choices are agreed with the user before coding.
+- An owner whose state must survive a mode unmounting is a hook called by the
+  page, not state inside the mode component.
+- Owners take narrow callbacks, such as `onError`, `publishToast`, or
+  `onNavigate`, instead of complete project, session, or toast handles. This
+  follows the pattern `useRunSession` and the evaluation hooks already use.
+- Iterate against the affected Playwright specs and run the full suite once
+  before handing the PR back.
+
+## PR 5a — Extract the evaluation workspace and case source
+
+**Suggested branch:** `claude/extract-evaluation-workspace`
+
+### Ownership
+
+- **Evaluation workspace hook.** Owns setup and preview layout state, the
+  suite-history request latch and disclosure, local target resolution, start
+  readiness, the execution actions passed to the editor and preview, and the
+  history adapter. It exposes `start()` and the disabled reason the topbar and
+  shortcut read. It survives the Evaluations mode unmounting.
+- **`useEvaluationCaseSource`.** Owns the focused case's source annotation:
+  loading, validating it against its trace, saving after promotion, and its
+  toasts.
+- **Promotion workflow.** The `promotion` target and the promote-to-case
+  mutation move to whichever of the two owners the contract note settles on.
+  Navigating to the promoted case stays a page callback.
+
+### Stays in the page
+
+`confirmEvaluation`'s reset of other sessions and switch to Runs, opening a
+source trace in Compose, and the baseline-comparison handoff into Runs. Each is
+a cross-feature transaction.
+
+### Decide before coding
+
+Whether start readiness and the execution actions belong in the workspace hook
+or in a pure module the hook calls, and where the promotion target lives.
+
+## PR 5b — Extract the Prompts mode
+
+**Suggested branch:** `claude/extract-prompts-mode`
+
+### Ownership
+
+- **`PromptsMode`.** A mode component in `app/modes/` alongside
+  `EvaluationsMode` and `RunsMode`. It renders `ProjectTemplatesPane`, derives
+  the persistence status, and builds the compatible-suites map.
+- **Prompt navigation hook.** Owns `promptNavigationTarget`, its key, and the
+  return target. It exposes `editSource`, `returnFromSource`, `clearReturn`, and
+  `selectionChanged`.
+
+### Stays in the page
+
+Mode switches into Compose and Evaluations, and the `pendingReadinessDestination`
+set on return. The return target remains IDs only, with the existing fallback
+toast when the use has been removed.
+
+### Decide before coding
+
+The return path: does the navigation hook report a result for the page to act
+on, or receive navigation callbacks?
+
+## PR 5c — Extract the response view
+
+**Suggested branch:** `claude/extract-response-view`
+
+### Ownership
+
+`useResponseView` owns the Markdown preview preference (same storage key and
+values), output following, the scroll ref, and the derivation of output,
+reasoning, display status, and completed tool calls from `RunState`.
+
+### Stays in the page
+
+`responseSurface` remains composed once in the page, because Compose and Runs
+both mount it. `useRunSession`'s `onShowResponse` calls the hook's command to
+resume following.
+
+### Decide before coding
+
+Whether the pure derivation moves to a Node-tested module beside the hook.
+Recommendation: yes.
+
+## PR 5d — Extract batch completion signals
+
+**Suggested branch:** `claude/extract-batch-completion`
+
+### Ownership
+
+`useBatchCompletion` owns the finished-batch queue and the counter that drains
+it, `viewedExperimentId`, unread derivation, the Runs indicator, and the
+completion toast. It takes the current mode, both execution snapshots, a
+toast publisher, and a `viewResults` navigation callback. It exposes
+`recordFinished` for the two sessions' `onFinished` and `indicator` for the
+topbar.
+
+### Preserve
+
+The render-time adjustment of `viewedExperimentId` and the post-commit drain
+are deliberate (see their comments) and move unchanged.
+
+## PR 5e — Extract the pending branch
+
+**Suggested branch:** `claude/extract-pending-branch`
+
+### Ownership
+
+`usePendingBranch` owns `branchContext`, the ad hoc conversation ID, edit-from-
+here and branch-from-saved-trace preparation, and `nonBranchableMessageIds`.
+It takes `resetMessages` and an error callback. Its returned commands report
+whether a branch was created so the page can navigate.
+
+### Stays in the page
+
+Clearing the branch when a project draft is applied, the session resets, or a
+run consumes it. Those are calls into the hook from existing transactions.
+
+## PR 5f — Extract request settings
+
+**Suggested branch:** `claude/extract-request-settings`
+
+### Ownership
+
+`useRequestSettings` owns the session model and temperature, the streaming
+preference (same storage key and values), resolution of the request's
+profile from the project mapping or active profile, request capabilities, the
+effective model, temperature, and response mode, the editor setters, and
+`currentRequest()`.
+
+### Hook-order dependency
+
+`useProjectWorkspace`'s callbacks (`createFreshProject`, `createProject`,
+`currentDraft`, `onApplyDraft`) read these values through closures, while
+resolving the request profile needs `projectFile` and `mappedProfileIds` from
+that same hook. The contract note must settle this cycle explicitly, for
+example with a ref-backed reader or by splitting profile resolution from the
+session values, and must not rely on incidental closure timing. Check whether
+the `clearTemplateOverridesRef` workaround can be removed in the same change.
+
+### Decide before coding
+
+How the cycle is broken. This is the PR most likely to need a user decision.
+
+## PR 5g — Extract the tool registry
+
+**Suggested branch:** `claude/extract-tool-registry`
+
+### Ownership
+
+`useToolRegistry` owns the device-local registry state, its deferred load, and
+write-back through the existing `tool-registry-store.client.ts`. The modal's
+visibility stays in the page. The registry format is unchanged.
+
+---
+
 ## PR 5 — Organize feature modules and enforce the composition root
 
 **Suggested title:** `Organize workbench features and guard the composition root`
@@ -788,8 +1022,10 @@ guardrail.
 
 ### Ownership review
 
-At the start of this PR, inventory every state value, ref, effect, and inner
-function still in `HomeContent`. Classify each as:
+The initial inventory was recorded on 2026-10-08 as the
+[PR 5 ownership inventory](#pr-5-ownership-inventory), and its findings became
+PRs 5a–5g. After those merge, repeat the inventory against current code: check
+every state value, ref, effect, and inner function still in `HomeContent`. Classify each as:
 
 - top-level composition or view selection;
 - deliberate cross-feature transaction;
@@ -806,6 +1042,8 @@ than hiding a new extraction in this mechanical change.
   stable.
 - Rewrite imports and update tests mechanically.
 - Remove dead imports and helpers exposed by the completed extractions.
+- Apply the inventory's
+  [mechanical cleanup](#left-for-pr-5s-mechanical-cleanup) list.
 - Add an `AGENTS.md` section requiring route components to remain composition
   roots.
 - Update `docs/ARCHITECTURE.md` with the final workbench ownership map.
@@ -888,6 +1126,14 @@ invalid values.
 | Template-use state, immutable mutations, external-import application, and preview | `useProjectTemplates` |
 | Request-pane presentation and local navigation | `RequestComposer` |
 | Run-history listing and artifact reads | `useProjectRunHistory` |
+| Evaluation layout, start readiness, history adapter | Evaluation workspace hook (PR 5a) |
+| Case-source annotation and trace-to-case promotion | `useEvaluationCaseSource` (PR 5a) |
+| Prompt library presentation and edit-source/return navigation | `PromptsMode` and the prompt navigation hook (PR 5b) |
+| Response presentation preferences, output following, output derivation | `useResponseView` (PR 5c) |
+| Finished-batch announcement and the Runs indicator | `useBatchCompletion` (PR 5d) |
+| Pending branch and ad hoc conversation identity | `usePendingBranch` (PR 5e) |
+| Session model, temperature, streaming preference, request profile | `useRequestSettings` (PR 5f) |
+| Device-local tool registry | `useToolRegistry` (PR 5g) |
 | Cross-feature transactions and top-level layout | `app/page.tsx` |
 
 ## Final acceptance criteria
