@@ -269,3 +269,28 @@ test("the run-history drawer filters saved evidence by kind", async ({ page }) =
     .getByRole("button", { name: "Evaluations" }).click();
   await expect(entries).toHaveCount(1);
 });
+
+test("the suite's setup band and past-executions disclosure survive leaving the Evaluations mode", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openFixtureProject(page);
+
+  // Both regions belong to a mode that unmounts whenever another one is on
+  // screen, so their state has to be held above it to come back as left.
+  const setupToggle = page.getByRole("button", { name: /^Setup/ });
+  await expect(setupToggle).toHaveAttribute("aria-expanded", "true");
+  await setupToggle.click();
+  await expect(setupToggle).toHaveAttribute("aria-expanded", "false");
+
+  const section = page.locator(".evaluation-suite-history");
+  await section.getByText("Past executions").click();
+  await expect(section).toContainText("1 saved execution of this suite");
+
+  await openMode(page, "Compose");
+  await expect(section).toHaveCount(0);
+  await openMode(page, "Evaluations");
+
+  await expect(setupToggle).toHaveAttribute("aria-expanded", "false");
+  await expect(section).toHaveAttribute("open", "");
+  await expect(section).toContainText("1 saved execution of this suite");
+  await expect(section.locator(".evaluation-suite-history-item")).toHaveCount(1);
+});

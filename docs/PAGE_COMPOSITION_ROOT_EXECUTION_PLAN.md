@@ -1,7 +1,7 @@
 # `app/page.tsx` composition-root execution plan
 
-**Status:** PR 4 complete; PR 5 ownership inventory recorded on 2026-10-08.
-PRs 5a–5g extract the owners it found and must merge before PR 5.
+**Status:** PR 5a complete; PR 5 ownership inventory recorded on 2026-10-08.
+PRs 5b–5g extract the remaining owners it found and must merge before PR 5.
 
 **Observed baseline:** `main` at `e59785c` on 2026-07-29
 
@@ -106,7 +106,7 @@ constraints, stop that PR and design the behavior change separately.
 | 2 | Atomic live run session | Merged (`eb675a0`) | PR 1 |
 | 3 | Project-template workbench owner | Complete | PR 2 |
 | 4 | Request composer | Complete | PR 3 |
-| 5a | Evaluation workspace and case-source owners | Planned | PR 4 |
+| 5a | Evaluation workspace and case-source owners | Complete | PR 4 |
 | 5b | Prompts mode and prompt navigation | Planned | PR 5a |
 | 5c | Response view | Planned | PR 5b |
 | 5d | Batch completion signals | Planned | PR 5c |
@@ -812,6 +812,7 @@ Each item below has a reason to stay. PR 5 records the final list in
 | `chooseProfile`, `confirmDeleteActiveProfile`, `confirmUpdateProjectEndpoint`, `changeCapability` | Cross-feature transaction | Join connection profiles and the project's connection mapping. |
 | Banner candidates and `chooseAppBanner` | Cross-feature adapter | One slot ranks failures and advisories from several owners. |
 | `savedRunVersion`, `importedRevision` | Cross-feature signal | Counters that invalidate a history listing and return the composer to Messages. |
+| `suiteHistoryRequested` | Cross-feature signal | One of three demands — with the run-history drawer and Runs — that load the shared run-history listing, which is called before the evaluation owners exist. Settled in PR 5a. |
 | `useDesktopRuntime`, `useProjectFolderAccess`, `inferenceTransport` | Route/runtime concern | Hydration-safe runtime detection and the single transport instance. |
 | Cmd+Enter and Cmd+S handlers | Top-level composition | Dispatch to whichever workspace is active. |
 
@@ -819,7 +820,7 @@ Each item below has a reason to stay. PR 5 records the final list in
 
 | PR | Owner | Moves out of the page |
 | --- | --- | --- |
-| 5a | Evaluation workspace and `useEvaluationCaseSource` | `suiteHistoryRequested`, `suiteHistoryExpanded`, `evaluationSetupOpen`, `evaluationPreviewPreference`; local targets, start readiness, `evaluationExecutionActions`, the `evaluationHistory` adapter, `startEvaluation`, `confirmEvaluation`; `caseSource`, its loading effect, `onOpenSourceTrace`, and the `promotion` dialog workflow. About 220 lines. |
+| 5a | Evaluation workspace and `useEvaluationCaseSource` | `suiteHistoryExpanded`, `evaluationSetupOpen`, `evaluationPreviewPreference`; local targets, start readiness, `evaluationExecutionActions`, the `evaluationHistory` adapter, `startEvaluation`, `confirmEvaluation`; `caseSource`, its loading effect, `onOpenSourceTrace`, and the `promotion` dialog workflow. About 220 lines. |
 | 5b | `PromptsMode` and prompt navigation | The inline `ProjectTemplatesPane` tree; `promptNavigationTarget`, `editPromptSource`, `returnFromPromptSource`, return-target clearing on insert and save-and-insert, and `compatibleEvaluationSuitesByTemplate`. |
 | 5c | `useResponseView` | `markdownPreview` and its storage effects; `outputFollowing`, `outputScrollRef`, the follow effect, `updateOutputFollowState`, `jumpToLatestOutput`; `displayStatus` and the output, reasoning, status, and completed-tool-call derivation. |
 | 5d | `useBatchCompletion` | `finishedBatchesRef`, `finishedBatchCount`, `viewedExperimentId`, unread tracking, `runsIndicator`, `announceFinishedBatch`, and its draining effect. |
@@ -869,9 +870,9 @@ addition:
 ### Ownership
 
 - **Evaluation workspace hook.** Owns setup and preview layout state, the
-  suite-history request latch and disclosure, local target resolution, start
-  readiness, the execution actions passed to the editor and preview, and the
-  history adapter. It exposes `start()` and the disabled reason the topbar and
+  past-executions disclosure (the request latch stays in the page; see
+  Decisions), local target resolution, start readiness, the execution actions
+  passed to the editor and preview, and the history adapter. It exposes `start()` and the disabled reason the topbar and
   shortcut read. It survives the Evaluations mode unmounting.
 - **`useEvaluationCaseSource`.** Owns the focused case's source annotation:
   loading, validating it against its trace, saving after promotion, and its
@@ -890,6 +891,33 @@ a cross-feature transaction.
 
 Whether start readiness and the execution actions belong in the workspace hook
 or in a pure module the hook calls, and where the promotion target lives.
+
+### Decisions (agreed 2026-10-08)
+
+- **History latch stays in the page.** `useProjectRunHistory` takes the latch
+  as one of three demands and must be called before evaluation authoring, the
+  run sessions, and tool bindings exist, which the workspace hook needs. The
+  hook reports `onHistoryRequested()`; the page keeps the boolean. The
+  disclosure's open state moves into the hook.
+- **Start readiness is a pure function the hook calls.**
+  `evaluationWorkspaceExecution` in `evaluation-start.client.ts` resolves local
+  targets, the disabled reason, and preview targets, and is Node-tested. The
+  hook `useEvaluationWorkspace` adds layout state, `start()`, and the history
+  adapter.
+- **Promotion lives in `useEvaluationCaseSource`**, which already writes the
+  source annotation after promotion. The page supplies `onPromoted(suiteId,
+  caseId)` for navigation and `onOpenTrace(trace, origin)` for reading a
+  source trace in Compose.
+
+### Verification completed
+
+- Characterization added before extraction and run green against unchanged
+  code: setup band and past-executions disclosure surviving a mode switch;
+  a source annotation loaded from disk opens its trace; a source whose trace
+  is missing is reported and the case stays usable.
+- `tests/evaluation-workspace-execution.test.ts` covers the pure function.
+- Shared automated gate, affected evaluation specs, and the full Playwright
+  suite; see the PR description for counts.
 
 ## PR 5b — Extract the Prompts mode
 
