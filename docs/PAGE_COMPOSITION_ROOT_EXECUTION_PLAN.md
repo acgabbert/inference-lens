@@ -1,7 +1,7 @@
 # `app/page.tsx` composition-root execution plan
 
-**Status:** PR 5a complete; PR 5 ownership inventory recorded on 2026-10-08.
-PRs 5b–5g extract the remaining owners it found and must merge before PR 5.
+**Status:** PRs 5a and 5b complete; PR 5 ownership inventory recorded on 2026-10-08.
+PRs 5c–5g extract the remaining owners it found and must merge before PR 5.
 
 **Observed baseline:** `main` at `e59785c` on 2026-07-29
 
@@ -107,7 +107,7 @@ constraints, stop that PR and design the behavior change separately.
 | 3 | Project-template workbench owner | Complete | PR 2 |
 | 4 | Request composer | Complete | PR 3 |
 | 5a | Evaluation workspace and case-source owners | Complete | PR 4 |
-| 5b | Prompts mode and prompt navigation | Planned | PR 5a |
+| 5b | Prompts mode and prompt navigation | Complete | PR 5a |
 | 5c | Response view | Planned | PR 5b |
 | 5d | Batch completion signals | Planned | PR 5c |
 | 5e | Pending branch | Planned | PR 5d |
@@ -942,6 +942,38 @@ toast when the use has been removed.
 
 The return path: does the navigation hook report a result for the page to act
 on, or receive navigation callbacks?
+
+### Decisions (agreed 2026-10-08)
+
+- **The hook reports a result.** `usePromptNavigation().returnFromSource()`
+  clears the return path and returns the `{ kind, useId }` target, or
+  `undefined`. The page switches to Compose, checks that the use still exists,
+  and either sets the readiness destination or posts the fallback toast. The
+  hook never switches modes and knows nothing about composer items or toasts.
+- **The state transitions are a pure module.** `app/templates/prompt-navigation.ts`
+  holds `openPromptSource`, `followPromptSelection`, and `clearPromptReturn`,
+  Node-tested in `tests/prompt-navigation.test.ts`. Opening a source bumps the
+  remount key; following the author's selection keeps it.
+- **`PromptsMode` takes the templates handle plus narrow callbacks.** It takes
+  `ProjectTemplatesHandle` as `EvaluationsMode` takes `authoring`, a `Pick` of
+  the evaluation authoring handle, the navigation handle, and the page
+  callbacks `onInserted`, `onReturn`, `onRevisionEvaluationStarted`,
+  `onEvaluationSuiteOpened`, and `onOpenN8nImport`. It wraps insert and
+  save-and-insert and calls `onInserted` on success.
+
+### Verification completed
+
+- Characterization added before extraction and run green against unchanged
+  code: re-entering Prompts from the mode strip drops "Back to request" but
+  keeps the source revision selected; adding the viewed source revision
+  returns to Compose with a second use; an unsaved imported project reports
+  drafts as kept in this session.
+- Not covered in the browser: the fallback toast when the originating use has
+  been removed while its source is open. The only route found is an n8n import
+  during source navigation. That branch stays in the page, reshaped only to
+  read the hook's result.
+- Shared automated gate, affected Prompts and evaluation specs, and the full
+  Playwright suite; see the PR description for counts.
 
 ## PR 5c — Extract the response view
 
