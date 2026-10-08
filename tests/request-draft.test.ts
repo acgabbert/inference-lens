@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { removeDraftMessage } from "../app/use-request-draft.client.ts";
+import { removeDraftMessage } from "../app/request/use-request-draft.client.ts";
 import { createEntityId } from "../packages/core/src/run-kernel/types.ts";
 import type {
   AssistantMessage,

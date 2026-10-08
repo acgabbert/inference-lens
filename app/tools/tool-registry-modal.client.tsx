@@ -4,15 +4,15 @@ import { useEffect, useState } from "react";
 
 import {
   createRegistryTool,
-} from "../packages/core/src/tool-registry";
+} from "../../packages/core/src/tool-registry";
 import type {
   RegistryTool,
   RegistryToolId,
   ToolRegistryV1,
-} from "../packages/core/src/tool-registry";
-import type { ConfirmationDialogRequest } from "./confirmation-dialog.client";
-import { ToolDefinitionEditor } from "./tool-definition-editor.client";
-import { randomUUID } from "../packages/core/src/random-id";
+} from "../../packages/core/src/tool-registry";
+import type { ConfirmationDialogRequest } from "../confirmation-dialog.client";
+import { ToolDefinitionEditor } from "../tool-definition-editor.client";
+import { randomUUID } from "../../packages/core/src/random-id";
 
 interface ToolRegistryModalProps {
   open: boolean;
