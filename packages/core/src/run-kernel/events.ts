@@ -95,6 +95,13 @@ function providerEventPayload(
         usage: event.usage,
         source: event.source,
       };
+    case "continuation":
+      return {
+        type: "assistant.continuation",
+        ...context,
+        continuation: event.continuation,
+        source: event.source,
+      };
     case "completed":
       return {
         type: "assistant.completed",

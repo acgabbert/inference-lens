@@ -179,6 +179,13 @@ test("a streamed message normalizes thinking, text, a tool call, and usage", asy
     { type: "tool_call_delta", toolCallId, index: 0, providerCallId: "toolu_9", nameDelta: "get_weather", argumentsDelta: "" },
     { type: "tool_call_delta", toolCallId, index: 0, argumentsDelta: '{"city":' },
     { type: "tool_call_delta", toolCallId, index: 0, argumentsDelta: '"Oslo"}' },
+    {
+      type: "continuation",
+      continuation: {
+        protocol: "anthropic-messages",
+        items: [{ type: "thinking", thinking: "Need weather.", signature: "sig" }],
+      },
+    },
     { type: "usage", usage: { inputTokens: 45, cachedInputTokens: 30, outputTokens: 22, totalTokens: 67 } },
     { type: "completed", finishReason: { normalized: "tool_calls", raw: "tool_use" } },
   ]);
@@ -244,6 +251,16 @@ test("a buffered message yields the same events from its content blocks", async 
       nameDelta: "get_weather",
       argumentsDelta: '{"city":"Rome"}',
     },
+    {
+      type: "continuation",
+      continuation: {
+        protocol: "anthropic-messages",
+        items: [
+          { type: "thinking", thinking: "Short.", signature: "sig" },
+          { type: "redacted_thinking", data: "opaque" },
+        ],
+      },
+    },
     { type: "usage", usage: { inputTokens: 5, outputTokens: 7, totalTokens: 12 } },
     { type: "completed", finishReason: { normalized: "tool_calls", raw: "tool_use" } },
   ]);
@@ -256,4 +273,77 @@ test("a buffered message yields the same events from its content blocks", async 
 
 test("the adapter registry serves Anthropic Messages", () => {
   assert.equal(providerProtocolAdapter("anthropic-messages").protocol, "anthropic-messages");
+});
+
+test("signed thinking is captured as an opaque continuation, streamed or buffered", async () => {
+  const streamed = await collect(normalizeAnthropicMessagesStream(execution(), lines(sse(
+    { type: "message_start", message: { usage: { input_tokens: 1 } } },
+    { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "" } },
+    { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "Plan " } },
+    { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "it." } },
+    { type: "content_block_delta", index: 0, delta: { type: "signature_delta", signature: "sig-a" } },
+    { type: "content_block_stop", index: 0 },
+    { type: "content_block_start", index: 1, content_block: { type: "redacted_thinking", data: "opaque-b" } },
+    { type: "content_block_stop", index: 1 },
+    { type: "content_block_start", index: 2, content_block: { type: "tool_use", id: "toolu_1", name: "get_weather", input: {} } },
+    { type: "content_block_stop", index: 2 },
+    { type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { output_tokens: 3 } },
+    { type: "message_stop" },
+  ))));
+  const types = streamed.filter((event) => event.type !== "frame").map((event) => event.type);
+  assert.deepEqual(types.slice(-3), ["continuation", "usage", "completed"]);
+  const continuation = streamed.find((event) => event.type === "continuation");
+  assert.deepEqual(continuation && "continuation" in continuation ? continuation.continuation : undefined, {
+    protocol: "anthropic-messages",
+    items: [
+      { type: "thinking", thinking: "Plan it.", signature: "sig-a" },
+      { type: "redacted_thinking", data: "opaque-b" },
+    ],
+  });
+
+  const buffered = await collect(normalizeAnthropicMessagesResponse(execution(), JSON.stringify({
+    content: [
+      { type: "thinking", thinking: "Short.", signature: "sig" },
+      { type: "text", text: "Hi" },
+    ],
+    stop_reason: "end_turn",
+  })));
+  const bufferedContinuation = buffered.find((event) => event.type === "continuation");
+  assert.deepEqual(
+    bufferedContinuation && "continuation" in bufferedContinuation ? bufferedContinuation.continuation.items : undefined,
+    [{ type: "thinking", thinking: "Short.", signature: "sig" }],
+  );
+
+  // No thinking, no continuation event.
+  const plain = await collect(normalizeAnthropicMessagesResponse(execution(), JSON.stringify({
+    content: [{ type: "text", text: "Hi" }],
+    stop_reason: "end_turn",
+  })));
+  assert.equal(plain.some((event) => event.type === "continuation"), false);
+});
+
+test("a continuation is replayed ahead of the turn it belongs to, and only on its own protocol", () => {
+  const assistant = turnInput.messages[3]!;
+  const withContinuation = (protocol: "anthropic-messages" | "openai-responses") => execution({
+    messages: [
+      turnInput.messages[2]!,
+      {
+        ...assistant,
+        providerContinuation: {
+          protocol,
+          items: [{ type: "thinking", thinking: "Plan it.", signature: "sig-a" }],
+        },
+      } as typeof assistant,
+    ],
+  });
+  const replayed = buildAnthropicMessagesRequest(withContinuation("anthropic-messages")).body;
+  assert.deepEqual(
+    ((replayed.messages as Array<{ content: Array<{ type: string }> }>)[1]!.content).map(({ type }) => type),
+    ["thinking", "text", "tool_use", "tool_use"],
+  );
+  const foreign = buildAnthropicMessagesRequest(withContinuation("openai-responses")).body;
+  assert.deepEqual(
+    ((foreign.messages as Array<{ content: Array<{ type: string }> }>)[1]!.content).map(({ type }) => type),
+    ["text", "tool_use", "tool_use"],
+  );
 });

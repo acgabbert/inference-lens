@@ -659,3 +659,36 @@ test("Anthropic model discovery sends its key as x-api-key and asks for the whol
     globalThis.fetch = originalFetch;
   }
 });
+
+test("a provider continuation must name a protocol and carry an item list", () => {
+  const base = execution();
+  const withAssistant = (providerContinuation: unknown) => ({
+    execution: {
+      ...base,
+      input: {
+        ...base.input,
+        messages: [
+          ...base.input.messages,
+          {
+            id: "message_assistant",
+            role: "assistant",
+            content: [{ type: "text", text: "Hi" }],
+            providerContinuation,
+          },
+        ],
+      },
+    },
+    credential: { kind: "provided", apiKey: "session-key" },
+  });
+  const accepted = resolveProviderTurnRequest(
+    withAssistant({ protocol: "anthropic-messages", items: [{ type: "thinking", thinking: "", signature: "s" }] }),
+    environmentStore,
+  );
+  assert.equal(accepted.execution.input.messages.length, 2);
+  for (const malformed of [{ protocol: "mock", items: [] }, { protocol: "openai-responses" }, "opaque"]) {
+    assert.throws(
+      () => resolveProviderTurnRequest(withAssistant(malformed), environmentStore),
+      /provider continuation/i,
+    );
+  }
+});

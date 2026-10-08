@@ -83,6 +83,16 @@ function parseProviderExecution(value: unknown): ProviderExecution {
     ) {
       throw new Error("Every message needs a valid role and text content.");
     }
+    const continuation = (candidate as { providerContinuation?: unknown }).providerContinuation;
+    if (
+      continuation !== undefined &&
+      (!continuation ||
+        typeof continuation !== "object" ||
+        !isProviderWireProtocol((continuation as { protocol?: unknown }).protocol) ||
+        !Array.isArray((continuation as { items?: unknown }).items))
+    ) {
+      throw new Error("A provider continuation needs a protocol and a list of items.");
+    }
   }
   if (!input.options || typeof input.options !== "object") {
     throw new Error("Provider options must be an object.");

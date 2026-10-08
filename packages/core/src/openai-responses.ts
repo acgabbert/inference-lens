@@ -4,6 +4,7 @@ import type {
   EventSource,
   FinishReason,
   JsonObject,
+  JsonValue,
   ProviderEvent,
   ProviderExecution,
   RunTokenUsage,
@@ -31,6 +32,7 @@ type ResponsesItem = {
   role?: string;
   content?: Array<{ type?: string; text?: string; refusal?: string }>;
   summary?: Array<{ type?: string; text?: string }>;
+  encrypted_content?: string;
 };
 
 type ResponsesUsage = {
@@ -73,7 +75,14 @@ function inputItems(messages: ConversationMessage[]): JsonObject[] {
         return [{ type: "message", role: message.role, content: contentText(message) }];
       case "assistant": {
         const text = contentText(message);
+        // Reasoning items lead the turn they came from. Another protocol's
+        // continuation means nothing here and is left out.
+        const continuation =
+          message.providerContinuation?.protocol === "openai-responses"
+            ? (message.providerContinuation.items as JsonObject[])
+            : [];
         return [
+          ...continuation,
           ...(text ? [{ type: "message", role: "assistant", content: text }] : []),
           ...(message.toolCalls ?? []).map((call) => {
             const providerCallId = call.providerCallId ?? call.id;
@@ -148,12 +157,33 @@ export function buildResponsesRequest(
           })),
         }),
     store: false,
+    // Nothing is stored, so reasoning can only carry across tool turns as
+    // encrypted content the next request sends back.
+    include: ["reasoning.encrypted_content"],
     ...providerOptions,
     // Delivery mode is application-owned and cannot be contradicted by raw
     // provider options.
     stream: input.responseMode === "streaming",
   };
   return { url: providerRequestUrl(target.endpoint, "openai-responses"), body };
+}
+
+/**
+ * Only reasoning that carries `encrypted_content` can be replayed: with
+ * `store: false` an item id alone refers to nothing the provider kept.
+ */
+function isReplayableReasoning(item: ResponsesItem | undefined): boolean {
+  return item?.type === "reasoning" && typeof item.encrypted_content === "string";
+}
+
+function continuationEvent(items: ResponsesItem[], source: EventSource): ProviderEvent[] {
+  return items.length === 0
+    ? []
+    : [{
+        type: "continuation",
+        continuation: { protocol: "openai-responses", items: items as JsonValue[] },
+        source,
+      }];
 }
 
 function normalizedUsage(usage: ResponsesUsage | undefined): RunTokenUsage | undefined {
@@ -254,6 +284,7 @@ export async function* normalizeResponsesStream(
   const calls = new FunctionCalls(execution);
   let refused = false;
   let finished = false;
+  const reasoningItems: ResponsesItem[] = [];
 
   for await (const line of lines) {
     if (!line.startsWith("data:")) continue;
@@ -314,6 +345,7 @@ export async function* normalizeResponsesStream(
         break;
       }
       case "response.output_item.done": {
+        if (isReplayableReasoning(event.item)) reasoningItems.push(event.item!);
         if (event.item?.type !== "function_call") break;
         // A server may report a call only once it is complete. Whatever the
         // stream has not already carried is sent now, so the run sees the
@@ -338,6 +370,7 @@ export async function* normalizeResponsesStream(
       case "response.completed":
       case "response.incomplete": {
         const response = event.response ?? {};
+        yield* continuationEvent(reasoningItems, source);
         const usage = normalizedUsage(response.usage);
         if (usage) yield { type: "usage", usage, source };
         const calledTools = calls.size > 0 ||
@@ -422,6 +455,7 @@ export async function* normalizeResponsesResponse(
     };
   }
 
+  yield* continuationEvent(response.output.filter(isReplayableReasoning), source);
   const usage = normalizedUsage(response.usage);
   if (usage) yield { type: "usage", usage, source };
   yield {

@@ -189,7 +189,7 @@ test("a granted command answers the call, and the trace says which one", async (
   );
 
   const trace = await savedTrace(page);
-  expect(trace.schemaVersion).toBe(6);
+  expect(trace.schemaVersion).toBe(7);
   expect(
     trace.events.map(({ type }) => type).filter((type) => type.startsWith("tool.")),
   ).toEqual([

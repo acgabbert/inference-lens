@@ -1,6 +1,6 @@
 # Run trace format
 
-New traces use schema version 6. Versions 1 through 5 remain importable.
+New traces use schema version 7. Versions 1 through 6 remain importable.
 Versions 1 and 2 gain an empty `input.templateResolutions` collection during
 migration; Versions 1 through 3 gain `responseMode: "streaming"` on the run,
 turn events, and attempt projections. Version 5 replaces fragment-shaped
@@ -31,7 +31,7 @@ accepted as a valid Inference Lens run. Version 1 and 2 compatibility remains
 unchanged because those formats contain no template provenance.
 
 Inference Lens run traces are immutable, credential-free diagnostic artifacts.
-Version 6 uses deterministic JSON and is stored as `traces/<runId>.json` when a
+Version 7 uses deterministic JSON and is stored as `traces/<runId>.json` when a
 run belongs to an open project folder. A terminal ad hoc run can be exported
 from the Project menu, and older traces can be imported for
 inspection.
@@ -110,11 +110,12 @@ when the stored projections disagree.
 
 ## Compatibility and immutability
 
-The root `schemaVersion` is currently `6`. Version 1 is accepted with its
+The root `schemaVersion` is currently `7`. Version 1 is accepted with its
 original strict root schema; Version 2 adds the optional `branchedFrom` field,
 Version 3 adds required template provenance, Version 4 adds the required
 run-level response mode, Version 5 stores template provenance as messages, and
-Version 6 adds the required `toolExecutions` collection. The response mode is:
+Version 6 adds the required `toolExecutions` collection, and Version 7 adds the
+`assistant.continuation` event. The response mode is:
 
 ```ts
 "streaming" | "buffered"
@@ -122,7 +123,32 @@ Version 6 adds the required `toolExecutions` collection. The response mode is:
 
 The mode is copied into each provider-turn input, so retries and tool-driven
 continuation turns preserve how the run was executed. New serialization always
-writes Version 6.
+writes Version 7.
+
+## Provider continuation
+
+Some protocols require provider state to be sent back to continue after a tool
+call: Anthropic Messages needs each signed `thinking` (or `redacted_thinking`)
+block returned unchanged, and the Responses API, used with `store: false`,
+needs each `reasoning` item's `encrypted_content`. An adapter that receives
+such state emits one `assistant.continuation` event before the turn completes:
+
+```json
+{
+  "type": "assistant.continuation",
+  "continuation": {
+    "protocol": "anthropic-messages",
+    "items": [{ "type": "thinking", "thinking": "…", "signature": "…" }]
+  }
+}
+```
+
+`items` are opaque and stored verbatim. The next turn's input carries them as
+the assistant message's `providerContinuation`, and only an adapter for the same
+protocol replays them; any other protocol leaves them out. They are evidence,
+not credentials, and they are deliberately not part of authored conversation
+messages: a run branched into a project revision starts without them. A version
+6 trace containing this event is rejected.
 
 `toolExecutions` is required rather than optional so that an artifact cannot be
 ambiguous between "this run executed no tools" and "this file predates the

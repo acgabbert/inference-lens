@@ -37,6 +37,16 @@ const toolModel = "responses-tool-model";
 const toolName = "get_weather";
 const toolCallId = "call_weather_1";
 const toolArguments = '{"city":"Chicago"}';
+/**
+ * Reasoning that must come back. With `store: false` the only way to carry it
+ * across the tool turn is the encrypted content, replayed before the call.
+ */
+const toolReasoning = {
+  type: "reasoning",
+  id: "rs_tool",
+  summary: [{ type: "summary_text", text: "Chicago needs a lookup." }],
+  encrypted_content: "fixture-encrypted-reasoning",
+};
 
 async function readJson(request) {
   const chunks = [];
@@ -124,22 +134,34 @@ function toolReply(response, body) {
     refuse(response, "Expected `strict: false` on a schema that is not strict-compatible.");
     return;
   }
+  if (!(body.include ?? []).includes("reasoning.encrypted_content")) {
+    refuse(response, "Expected include to ask for reasoning.encrypted_content.");
+    return;
+  }
   const outputs = body.input.filter((item) => item?.type === "function_call_output");
   if (outputs.length === 0) {
     const call = { type: "function_call", id: "fc_fixture", call_id: toolCallId, name: toolName, arguments: toolArguments };
     if (!body.stream) {
       response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify(responseObject([call], { input_tokens: 6, output_tokens: 4, total_tokens: 10 })));
+      response.end(JSON.stringify(responseObject([toolReasoning, call], { input_tokens: 6, output_tokens: 4, total_tokens: 10 })));
       return;
     }
     writeEvents(response, [
       { type: "response.created", response: { id: "resp_fixture", status: "in_progress" } },
-      { type: "response.output_item.added", output_index: 0, item: { ...call, arguments: "" } },
-      { type: "response.function_call_arguments.delta", item_id: "fc_fixture", output_index: 0, delta: toolArguments.slice(0, 9) },
-      { type: "response.function_call_arguments.delta", item_id: "fc_fixture", output_index: 0, delta: toolArguments.slice(9) },
-      { type: "response.output_item.done", output_index: 0, item: call },
-      { type: "response.completed", response: responseObject([call], { input_tokens: 6, output_tokens: 4, total_tokens: 10 }) },
+      { type: "response.output_item.added", output_index: 0, item: { ...toolReasoning, summary: [], encrypted_content: undefined } },
+      { type: "response.output_item.done", output_index: 0, item: toolReasoning },
+      { type: "response.output_item.added", output_index: 1, item: { ...call, arguments: "" } },
+      { type: "response.function_call_arguments.delta", item_id: "fc_fixture", output_index: 1, delta: toolArguments.slice(0, 9) },
+      { type: "response.function_call_arguments.delta", item_id: "fc_fixture", output_index: 1, delta: toolArguments.slice(9) },
+      { type: "response.output_item.done", output_index: 1, item: call },
+      { type: "response.completed", response: responseObject([toolReasoning, call], { input_tokens: 6, output_tokens: 4, total_tokens: 10 }) },
     ]);
+    return;
+  }
+  const callIndex = body.input.findIndex((item) => item?.type === "function_call" && item.call_id === toolCallId);
+  const replayed = body.input[callIndex - 1];
+  if (replayed?.type !== "reasoning" || replayed.encrypted_content !== toolReasoning.encrypted_content) {
+    refuse(response, "Expected the encrypted reasoning item replayed immediately before its function_call.");
     return;
   }
   const call = body.input.find((item) => item?.type === "function_call" && item.call_id === toolCallId);

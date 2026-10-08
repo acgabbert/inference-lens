@@ -120,6 +120,7 @@ test("a Responses request carries the conversation as stateless input items", ()
       parameters: { type: "object", properties: { city: { type: "string" } } },
     }],
     store: false,
+    include: ["reasoning.encrypted_content"],
     reasoning: { effort: "low" },
     stream: true,
   });
@@ -331,4 +332,48 @@ test("a buffered response yields the same events from its output items", async (
 
 test("the adapter registry serves Responses", () => {
   assert.equal(providerProtocolAdapter("openai-responses").protocol, "openai-responses");
+});
+
+test("encrypted reasoning is requested, captured, and replayed before its turn", async () => {
+  const { body } = buildResponsesRequest(execution());
+  assert.deepEqual(body.include, ["reasoning.encrypted_content"]);
+
+  const reasoning = { type: "reasoning", id: "rs_1", summary: [{ type: "summary_text", text: "Think." }], encrypted_content: "enc-1" };
+  const streamed = await collect(normalizeResponsesStream(execution(), lines(sse(
+    { type: "response.output_item.added", output_index: 0, item: { ...reasoning, summary: [], encrypted_content: undefined } },
+    { type: "response.output_item.done", output_index: 0, item: reasoning },
+    { type: "response.completed", response: { status: "completed", output: [reasoning] } },
+  ))));
+  const types = streamed.filter((event) => event.type !== "frame").map((event) => event.type);
+  assert.deepEqual(types.slice(-2), ["continuation", "completed"]);
+  const continuation = streamed.find((event) => event.type === "continuation");
+  assert.deepEqual(continuation && "continuation" in continuation ? continuation.continuation : undefined, {
+    protocol: "openai-responses",
+    items: [reasoning],
+  });
+
+  const buffered = await collect(normalizeResponsesResponse(execution(), JSON.stringify({
+    status: "completed",
+    output: [reasoning, { type: "message", content: [{ type: "output_text", text: "Hi" }] }],
+  })));
+  assert.ok(buffered.some((event) => event.type === "continuation"));
+
+  const assistant = turnInput.messages[2]!;
+  const replay = buildResponsesRequest(execution({
+    messages: [
+      turnInput.messages[1]!,
+      { ...assistant, providerContinuation: { protocol: "openai-responses", items: [reasoning] } } as typeof assistant,
+      turnInput.messages[3]!,
+    ],
+  })).body;
+  assert.deepEqual(
+    (replay.input as Array<{ type: string }>).map(({ type }) => type),
+    ["message", "reasoning", "message", "function_call", "function_call_output"],
+  );
+  const foreign = buildResponsesRequest(execution({
+    messages: [
+      { ...assistant, providerContinuation: { protocol: "anthropic-messages", items: [reasoning] } } as typeof assistant,
+    ],
+  })).body;
+  assert.equal((foreign.input as Array<{ type: string }>).some(({ type }) => type === "reasoning"), false);
 });

@@ -1173,3 +1173,58 @@ test("does not serialize a streaming request when the profile disables it", asyn
     globalThis.fetch = originalFetch;
   }
 });
+
+test("a turn's provider continuation rides the next turn's input and survives the trace", () => {
+  const input: ResolvedRunInput = {
+    ...resolvedInput,
+    target: {
+      ...resolvedInput.target,
+      protocol: "anthropic-messages",
+      capabilities: { ...OPENAI_COMPATIBLE_CAPABILITIES, anthropicMessages: true, tools: true },
+    },
+    tools: [{
+      id: createEntityId("tool", "weather"),
+      name: "get_weather",
+      inputSchema: { type: "object" },
+    }],
+  };
+  const coordinator = new RunCoordinator(input);
+  coordinator.start();
+  const callId = createEntityId("tool-call", "continuation-weather");
+  const continuation = {
+    protocol: "anthropic-messages" as const,
+    items: [{ type: "thinking", thinking: "Plan it.", signature: "sig-a" }],
+  };
+  coordinator.accept({ type: "tool_call_delta", toolCallId: callId, index: 0, providerCallId: "toolu_1", nameDelta: "get_weather", argumentsDelta: "{}" });
+  coordinator.accept({ type: "continuation", continuation });
+  coordinator.accept({ type: "completed", finishReason: { normalized: "tool_calls", raw: "tool_use" } });
+  coordinator.finishTurnStream();
+  coordinator.supplyToolResults([{
+    id: createEntityId("tool-result", "continuation-weather"),
+    toolCallId: callId,
+    content: [{ type: "text", text: "Sunny" }],
+    resolution: { kind: "manual" },
+  }]);
+  const second = coordinator.continue();
+  const assistant = second.execution.input.messages.at(-2);
+  assert.deepEqual(
+    assistant?.role === "assistant" ? assistant.providerContinuation : undefined,
+    continuation,
+  );
+
+  coordinator.accept({ type: "text_delta", text: "Sunny." });
+  coordinator.accept({ type: "completed", finishReason: { normalized: "stop", raw: "end_turn" } });
+  coordinator.finishTurnStream();
+
+  // Evidence on the transcript entry, never on the message that a branch
+  // would turn into authored project content.
+  const transcript = transcriptFromRunState(coordinator.state);
+  assert.deepEqual(transcript[1]?.continuation, continuation);
+  assert.equal("providerContinuation" in transcript[1]!.message, false);
+
+  const trace = createRunTrace(coordinator.state);
+  assert.equal(trace.schemaVersion, 7);
+  assert.ok(trace.events.some(({ type }) => type === "assistant.continuation"));
+  const imported = runStateFromTrace(parseRunTraceJson(serializeRunTrace(trace)));
+  assert.deepEqual(transcriptFromRunState(imported), transcript);
+});

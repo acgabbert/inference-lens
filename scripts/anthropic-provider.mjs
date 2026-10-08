@@ -21,9 +21,14 @@ const fixtureKey = "fixture-anthropic-key";
 const textModel = "claude-fixture-text";
 const textAnswer = "Anthropic fixture answer: 2 + 2 = 4.";
 const thinking = "Adding two and two.";
-/** Calls get_weather once, then answers from the tool_result it was sent. */
+/**
+ * Thinks, calls get_weather once, then answers from the tool_result it was
+ * sent — but only if the next turn returns the signed thinking block first and
+ * unchanged, as the API requires when thinking precedes a tool call.
+ */
 const toolModel = "claude-fixture-tool";
 const toolUseId = "toolu_fixture_1";
+const toolThinking = { type: "thinking", thinking: "Chicago needs a lookup.", signature: "fixture-tool-signature" };
 
 function refuse(response, status, message) {
   response.writeHead(status, { "content-type": "application/json" });
@@ -107,13 +112,21 @@ function toolReply(response, body) {
     Array.isArray(message.content) ? message.content.filter((block) => block.type === "tool_result") : []);
   if (results.length === 0) {
     reply(response, body.stream, [
+      toolThinking,
       { type: "tool_use", id: toolUseId, name: "get_weather", input: { city: "Chicago" } },
     ], "tool_use", { input_tokens: 6, output_tokens: 4 });
     return;
   }
-  const call = body.messages.some((message) => message.role === "assistant" &&
+  const assistant = body.messages.find((message) => message.role === "assistant" &&
     Array.isArray(message.content) &&
     message.content.some((block) => block.type === "tool_use" && block.id === toolUseId));
+  const call = Boolean(assistant);
+  const first = assistant?.content[0];
+  if (!first || first.type !== "thinking" || first.thinking !== toolThinking.thinking ||
+    first.signature !== toolThinking.signature) {
+    refuse(response, 400, "The assistant turn must start with its signed thinking block, unchanged.");
+    return;
+  }
   const result = results.find((block) => block.tool_use_id === toolUseId);
   if (!call || !result) {
     refuse(response, 400, `Expected the tool_use and its tool_result under ${toolUseId}.`);

@@ -195,9 +195,10 @@ test("a Responses tool call round-trips its call and output under one call id", 
   await expect(card.locator("textarea")).toHaveValue("72°F and clear");
   await page.getByRole("button", { name: "Supply results and continue" }).click();
 
-  // The fixture answers the second turn only when it carries the function
-  // call and its output under the same call_id, so this text on screen is the
-  // round trip, not merely a rendered card.
+  // The fixture answers the second turn only when it carries the encrypted
+  // reasoning item before the function call, and the call and its output
+  // under the same call_id, so this text on screen is the round trip — and
+  // the reasoning carried across it — not merely a rendered card.
   await expect(page.locator(".transcript-list")).toContainText("Chicago report: 72°F and clear");
 });
 
@@ -297,5 +298,7 @@ test("an Anthropic tool call round-trips its tool_use and tool_result under one 
   const card = page.locator(".tool-call-card");
   await expect(card).toContainText("get_weather");
   await page.getByRole("button", { name: "Supply results and continue" }).click();
+  // Refused by the fixture unless the signed thinking block leads the
+  // replayed assistant turn unchanged.
   await expect(page.locator(".transcript-list")).toContainText("Chicago report: 72°F and clear");
 });

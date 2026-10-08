@@ -4,6 +4,7 @@ import type {
   EventSource,
   FinishReason,
   JsonObject,
+  JsonValue,
   ProviderEvent,
   ProviderExecution,
   RunTokenUsage,
@@ -31,6 +32,8 @@ type ContentBlock = {
   type?: string;
   text?: string;
   thinking?: string;
+  signature?: string;
+  data?: string;
   id?: string;
   name?: string;
   input?: unknown;
@@ -60,6 +63,7 @@ type StreamEvent = {
     type?: string;
     text?: string;
     thinking?: string;
+    signature?: string;
     partial_json?: string;
     stop_reason?: string | null;
   };
@@ -104,13 +108,20 @@ function anthropicMessages(
       case "assistant": {
         const text = contentText(message);
         const calls = message.toolCalls ?? [];
-        if (calls.length === 0) {
+        // Thinking blocks lead the turn they came from. Another protocol's
+        // continuation means nothing here and is left out.
+        const continuation =
+          message.providerContinuation?.protocol === "anthropic-messages"
+            ? message.providerContinuation.items
+            : [];
+        if (calls.length === 0 && continuation.length === 0) {
           result.push({ role: "assistant", content: text });
           break;
         }
         result.push({
           role: "assistant",
           content: [
+            ...continuation,
             ...(text ? [{ type: "text", text }] : []),
             ...calls.map((call) => {
               const id = call.providerCallId ?? call.id;
@@ -225,6 +236,19 @@ function normalizedUsage(usage: AnthropicUsage): RunTokenUsage | undefined {
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
+function isThinkingBlock(block: ContentBlock): boolean {
+  return block.type === "thinking" || block.type === "redacted_thinking";
+}
+
+function continuationEvent(
+  items: JsonValue[],
+  source: EventSource,
+): ProviderEvent[] {
+  return items.length === 0
+    ? []
+    : [{ type: "continuation", continuation: { protocol: "anthropic-messages", items }, source }];
+}
+
 function finishReason(raw: string | null | undefined): FinishReason {
   switch (raw) {
     case "end_turn":
@@ -264,6 +288,9 @@ export async function* normalizeAnthropicMessagesStream(
   const usage: AnthropicUsage = {};
   let stopReason: string | null | undefined;
   const toolCalls = new Map<number, { toolCallId: ToolCallId; index: number }>();
+  // Thinking blocks by content index, rebuilt exactly as the provider sent
+  // them, so the next turn can return them unchanged.
+  const thinkingBlocks = new Map<number, Record<string, string>>();
   let stopped = false;
 
   for await (const line of lines) {
@@ -288,6 +315,14 @@ export async function* normalizeAnthropicMessagesStream(
         break;
       case "content_block_start": {
         const block = event.content_block;
+        if (block && isThinkingBlock(block)) {
+          thinkingBlocks.set(
+            event.index ?? thinkingBlocks.size,
+            block.type === "thinking"
+              ? { type: "thinking", thinking: block.thinking ?? "", signature: block.signature ?? "" }
+              : { type: "redacted_thinking", data: block.data ?? "" },
+          );
+        }
         if (block?.type === "text" && block.text) {
           yield { type: "text_delta", text: block.text, source };
         } else if (block?.type === "thinking" && block.thinking) {
@@ -315,7 +350,12 @@ export async function* normalizeAnthropicMessagesStream(
         if (delta?.type === "text_delta" && delta.text) {
           yield { type: "text_delta", text: delta.text, source };
         } else if (delta?.type === "thinking_delta" && delta.thinking) {
+          const block = thinkingBlocks.get(event.index ?? -1);
+          if (block) block.thinking += delta.thinking;
           yield { type: "reasoning_delta", reasoning: delta.thinking, source };
+        } else if (delta?.type === "signature_delta" && delta.signature) {
+          const block = thinkingBlocks.get(event.index ?? -1);
+          if (block) block.signature += delta.signature;
         } else if (delta?.type === "input_json_delta" && delta.partial_json) {
           const call = toolCalls.get(event.index ?? -1);
           if (call) {
@@ -336,6 +376,12 @@ export async function* normalizeAnthropicMessagesStream(
         break;
       case "message_stop": {
         stopped = true;
+        yield* continuationEvent(
+          [...thinkingBlocks.entries()]
+            .sort(([left], [right]) => left - right)
+            .map(([, block]) => block),
+          source,
+        );
         const normalized = normalizedUsage(usage);
         if (normalized) yield { type: "usage", usage: normalized, source };
         yield { type: "completed", finishReason: finishReason(stopReason), source };
@@ -398,6 +444,10 @@ export async function* normalizeAnthropicMessagesResponse(
     };
   }
 
+  yield* continuationEvent(
+    message.content.filter(isThinkingBlock) as JsonValue[],
+    source,
+  );
   const usage = message.usage ? normalizedUsage(message.usage) : undefined;
   if (usage) yield { type: "usage", usage, source };
   yield { type: "completed", finishReason: finishReason(message.stop_reason), source };
