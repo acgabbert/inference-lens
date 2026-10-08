@@ -1385,6 +1385,30 @@ trace surfaces — as cross-feature adapters. No further owner was found.
 
 ---
 
+## Review follow-ups (2026-10-08)
+
+- Added the explicit `RunSessionHandle` and exported trace-origin type beside
+  `useRunSession`, documenting command preconditions and callback timing.
+- Strengthened the preview characterization with a branch/discard sequence:
+  the draft remains truncated while the pinned revision resolves both prompts.
+  Removing the raw body's resolved-message override now fails on the missing
+  `Summarize the rollback.` content; the mutation was restored after checking.
+- Added a controlled real SSE provider and browser assertions across successive
+  overflowing deltas, scrolling away, and jumping back while still streaming.
+  Before the fix, the second delta left the view 996 pixels from the bottom.
+  A delayed event from an automatic scroll was interpreted as scrolling away
+  after new content arrived. The response-view owner now ignores that matching
+  programmatic event while still honoring a changed scroll position. Browser
+  scroll anchoring is disabled for this pane so it cannot undo the owner’s
+  scroll-to-bottom after the jump button disappears.
+
+Verification: lint, both typechecks, and `npm test` passed (940 tests).
+The two focused browser specs passed all five tests; the streaming regression
+also passed five repeated runs after the final fix. The final full browser run
+passed 243 tests with seven opt-in Python MCP/N1 tests skipped. An earlier full
+run hit a Vite request-body error whose overlay blocked three tests; the fresh
+server rerun passed. Native Tauri and hosted providers were not exercised.
+
 ## Expected final ownership
 
 | Concern | Owner |

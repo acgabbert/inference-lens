@@ -125,4 +125,25 @@ test("pinned prompts resolve into the request preview, and differing targets are
   await expect(raw).toContainText('"model": "project-model"');
   await expect(raw).toContainText('"content": "Summarize the rollback."');
   await expect(preview).not.toContainText(/undefined|NaN|Infinity/);
+
+  // Branch at the first generated message, leaving only Triage in the draft.
+  await page.getByRole("button", { name: "Run current conversation ⌘↵" }).click();
+  const transcript = page.getByLabel("Run transcript");
+  await expect(transcript).toContainText("Buffered fixture response: 2 + 2 = 4.");
+  await transcript.getByRole("button", { name: "Edit from here" }).first().click();
+  const branch = page.getByRole("status").filter({ hasText: "Pending branch" });
+  await expect(branch).toBeVisible();
+  await expect(raw).toContainText('"content": "Triage the rollback."');
+  await expect(raw).not.toContainText("Summarize the rollback.");
+
+  // Discarding provenance leaves the truncated draft, but restores the full
+  // pinned revision's resolution. The raw body must use that resolution too.
+  await branch.getByRole("button", { name: "Discard branch" }).click();
+  await expect(branch).toHaveCount(0);
+  await expect(raw).toContainText('"content": "Summarize the rollback."');
+  await preview.getByRole("tab", { name: "Resolved" }).click();
+  await expect(resolved.locator(".request-preview-message pre")).toHaveText([
+    "Triage the rollback.",
+    "Summarize the rollback.",
+  ]);
 });

@@ -171,6 +171,15 @@ await importProject(page, fixtureProject(), "My fixture project");
   directory, which is the only way to reach project-backed features in a
   browser.
 
+### Advancing a stream from a test
+
+`tests/e2e/support/controlled-stream.ts` starts a per-test loopback SSE provider
+on an ephemeral port. `response-view.spec.ts` sends each block only after the
+previous block reaches the screen, checks following and scrolling away while
+the stream remains open, then sends the terminal event. This exercises the real
+provider transport without relying on fixed delays. The spec closes all fixture
+connections in `finally`, including when an assertion fails.
+
 ### Traps that produce false passes
 
 Each of these has silently shipped a green test that exercised nothing:

@@ -168,6 +168,12 @@ changes: name the owner before materially expanding the route.
 | Inference option-set presentation and its disclosure | `app/inference-settings-panel.client.tsx` |
 | Run-history listing and artifact reads | `useProjectRunHistory` |
 
+`useRunSession` exposes the explicit `RunSessionHandle` application contract
+beside its implementation. Its commands document preparation, continuation,
+retry, and trace-adoption preconditions. Its callbacks run only from commands,
+effects, or asynchronous work, never during render; this permits the route's
+callbacks to refer to feature handles declared later in the same render.
+
 ### What stays in the page
 
 Each remaining page-local value has a reason to be there:

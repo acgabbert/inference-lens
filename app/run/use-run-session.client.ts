@@ -18,9 +18,10 @@ import type { ProjectWorkspaceHandle } from "../project-workspace.client";
 import type { TraceStorageStatus } from "../response-output.client";
 import type { ParentTraceState } from "../run-trace-panel.client";
 import { executableBinding, isTerminalRunState, pendingToolCalls, toolResultDraftsForState } from "./run-session-state.client";
+import type { TranscriptEntry } from "../../packages/core/src/run-kernel/transcript";
 import type { ToolResultDraft } from "./run-session-state.client";
 
-type TraceOrigin = {
+export type TraceOrigin = {
   workspace: ProjectWorkspaceHandle | null;
   fileName: string;
   /** An in-memory repeated-experiment trace, not a user-imported file. */
@@ -33,6 +34,11 @@ export interface RunSessionStartContext {
   branchedFrom?: RunTrace["branchedFrom"];
 }
 
+/**
+ * Ports invoked only from commands, effects, or their asynchronous work, never
+ * during render. Callbacks may therefore close over later-declared feature
+ * handles in the composition root. No callback identity is required to be stable.
+ */
 export interface UseRunSessionOptions {
   transport: ProviderTurnTransport;
   prepareCredential(): Promise<CredentialSelection>;
@@ -41,16 +47,67 @@ export interface UseRunSessionOptions {
   /** Interactive approval for an MCP-served tool: ask at each call, or not. */
   mcpApprovalModeFor?(toolId: ToolDefinition["id"]): "ask" | "automatic" | undefined;
   readTrace(fileName: string): Promise<RunTrace>;
+  /** Synchronous in start/retry/continue, including automatic continuation from an effect. */
   onShowResponse(): void;
+  /** Synchronous during trace adoption, before the visible state is replaced. */
   onOpenTrace(): void;
+  /** After an autosave succeeds; may arrive after another run has become visible. */
   onTraceSaved(): void;
+  /** Synchronous during trace adoption, before onOpenTrace. */
   onResetBranch(): void;
   onError(message: string): void;
   onClearError(): void;
 }
 
+/**
+ * Application-local snapshots and commands for the single live run. Snapshots
+ * describe this render; commands own coordinator invalidation and persistence.
+ * This is not a serialized project, trace, or provider contract.
+ */
+export interface RunSessionHandle {
+  runState: RunState | null;
+  transcript: TranscriptEntry[];
+  isRequestActive: boolean;
+  toolResultDrafts: Record<string, ToolResultDraft>;
+  traceStorage: TraceStorageStatus | null;
+  hasDiagnosticCapture: boolean;
+  visibleBranchProvenance: RunTrace["branchedFrom"];
+  parentTrace: ParentTraceState;
+  terminal: boolean;
+  /** Requires successfully prepared input; aborts and supersedes any prior request. */
+  start(input: ResolvedRunInput, context: RunSessionStartContext): Promise<void>;
+  /** Acts only on a live paused attempt_failed run; otherwise a no-op. */
+  retry(): Promise<void>;
+  /**
+   * Acts only while awaiting tool results. Manual continuation waits for MCP
+   * approval (or a replacement result after rejection). automaticOnly serves
+   * only automatically approved MCP calls, leaving other calls pending.
+   */
+  continueRun(automaticOnly?: boolean): Promise<void>;
+  /** Idempotently invalidates in-flight work and terminates a nonterminal live run. */
+  stop(): void;
+  /** Stops and clears run state, diagnostics, tool drafts, and parent trace. */
+  reset(): void;
+  /** Requires an existing pending call's draft. */
+  updateToolResultDraft(callId: string, text: string): void;
+  /** No-op unless the call has an MCP approval draft. */
+  approveMcpCall(callId: string): void;
+  /** No-op unless the call has an MCP approval draft; then requires a manual result. */
+  rejectMcpCall(callId: string): void;
+  /** No-op without a diagnostic capture. */
+  downloadDiagnostics(): void;
+  /** Exports only terminal state; failures are surfaced through traceStorage. */
+  exportTrace(): Promise<void>;
+  /** Requires a validated trace; invalidates live work before adopting its visible state. */
+  adoptTrace(trace: RunTrace, origin: TraceOrigin): void;
+  /** Parses and validates before adoption; reports failures through onError. */
+  importTrace(file: File): Promise<void>;
+  /** Loads the visible branch's parent; stale completions cannot replace newer state. */
+  loadParentTrace(): Promise<void>;
+}
+
 /** Owns the one live RunCoordinator and every ref that can invalidate it. */
-export function useRunSession(options: UseRunSessionOptions) {
+export function useRunSession(options: UseRunSessionOptions): RunSessionHandle {
   const [runState, setRunState] = useState<RunState | null>(null);
   const [isRequestActive, setIsRequestActive] = useState(false);
   const [toolResultDrafts, setToolResultDrafts] = useState<Record<string, ToolResultDraft>>({});
