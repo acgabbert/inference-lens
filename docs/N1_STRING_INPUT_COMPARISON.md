@@ -110,10 +110,16 @@ already had that environment; nothing was installed for this task.
 ```sh
 npm run test:e2e -- --config playwright.n1.config.ts tests/e2e/n1-string-input-capture.spec.ts
 npm run test:e2e -- --config playwright.n1.config.ts
-node scripts/n1-compare-capture.mjs <printed-capture-directory>
 npm run test:n8n-contract
 npm run typecheck
 ```
+
+The browser spec now already writes `wire-differences.json`. The standalone
+comparator (`node scripts/n1-compare-capture.mjs <capture-directory>`) refuses
+to overwrite an existing report; use it only for an independent capture
+directory without that file. Its optional second argument
+selects a scenario, defaulting to `string-input`. See the
+[expanded N1 runbook](N1_MATRIX_RUNBOOK.md) for the four additional scenarios.
 
 Use the printed directory or the Playwright attachment to find fresh artifacts.
 Do not point `INFERENCE_LENS_N1_OUTPUT` at committed evidence; it must be an
