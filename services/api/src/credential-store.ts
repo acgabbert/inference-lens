@@ -1,4 +1,29 @@
 import type { CredentialSelection } from "../../../packages/contracts/src/index.ts";
+import { PROVIDER_WIRE_PROTOCOLS } from "../../../packages/core/src/run-kernel/types.ts";
+import type { ProviderWireProtocol } from "../../../packages/core/src/run-kernel/types.ts";
+
+/** The names `INFERENCE_LENS_API_PROTOCOLS` accepts, short and full. */
+const protocolNames: Record<string, ProviderWireProtocol> = {
+  "chat-completions": "openai-compatible-chat-completions",
+  responses: "openai-responses",
+  "anthropic-messages": "anthropic-messages",
+  ...Object.fromEntries(PROVIDER_WIRE_PROTOCOLS.map((protocol) => [protocol, protocol])),
+};
+
+/**
+ * Parses a comma-separated protocol list. A list naming anything unknown is
+ * refused whole: applying the recognizable part of a typo would quietly run a
+ * protocol nobody asked for.
+ */
+export function parseServerProtocols(
+  value: string | undefined,
+): ProviderWireProtocol[] | undefined {
+  const names = value?.split(",").map((name) => name.trim()).filter(Boolean) ?? [];
+  if (names.length === 0) return undefined;
+  const protocols = names.map((name) => protocolNames[name]);
+  if (protocols.some((protocol) => protocol === undefined)) return undefined;
+  return PROVIDER_WIRE_PROTOCOLS.filter((protocol) => protocols.includes(protocol));
+}
 
 export interface CredentialStore {
   resolve(selection: CredentialSelection, endpoint: string): string;
@@ -15,17 +40,20 @@ export class EnvironmentCredentialStore implements CredentialStore {
   private readonly credentialVariableName: string;
   private readonly endpointVariableName: string;
   private readonly modelVariableName: string;
+  private readonly protocolsVariableName: string;
 
   constructor(
     environment: Record<string, string | undefined>,
     credentialVariableName = "INFERENCE_LENS_API_KEY",
     endpointVariableName = "INFERENCE_LENS_API_ENDPOINT",
     modelVariableName = "INFERENCE_LENS_MODEL",
+    protocolsVariableName = "INFERENCE_LENS_API_PROTOCOLS",
   ) {
     this.environment = environment;
     this.credentialVariableName = credentialVariableName;
     this.endpointVariableName = endpointVariableName;
     this.modelVariableName = modelVariableName;
+    this.protocolsVariableName = protocolsVariableName;
   }
 
   /** Safe to expose to the same-origin UI; never exposes the credential itself. */
@@ -44,15 +72,21 @@ export class EnvironmentCredentialStore implements CredentialStore {
    * is a supported configuration, and prefilling its endpoint is the whole
    * point of setting the variable. Callers report the credential separately.
    */
-  connectionConfiguration(): { endpoint: string; model?: string } | undefined {
+  connectionConfiguration():
+    | { endpoint: string; model?: string; protocols?: ProviderWireProtocol[] }
+    | undefined {
     const endpoint = this.environment[this.endpointVariableName]?.trim();
     if (!endpoint) return undefined;
     const safeEndpoint = safeEndpointForClient(endpoint);
     if (!safeEndpoint) return undefined;
     const model = this.environment[this.modelVariableName]?.trim();
+    const protocols = parseServerProtocols(
+      this.environment[this.protocolsVariableName],
+    );
     return {
       endpoint: safeEndpoint,
       ...(model ? { model } : {}),
+      ...(protocols ? { protocols } : {}),
     };
   }
 

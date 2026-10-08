@@ -5,8 +5,8 @@ import {
   discoverOpenAICompatibleModels,
   modelsUrl,
   OpenAICompatibleStreamProtocolError,
-  streamOpenAICompatibleProvider,
 } from "../packages/core/src/openai-compatible.ts";
+import { streamProviderTurn } from "../packages/core/src/provider-adapters.ts";
 import { OPENAI_COMPATIBLE_CAPABILITIES } from "../packages/core/src/types.ts";
 import {
   createEntityId,
@@ -850,7 +850,7 @@ test("emits provider events with raw frames and normalized deltas", async () => 
   };
   try {
     const providerEvents = [];
-    for await (const event of streamOpenAICompatibleProvider(
+    for await (const event of streamProviderTurn(
       providerExecution,
       "secret",
     )) {
@@ -941,7 +941,7 @@ test("serializes tool definitions, assistant calls, and tool results", async () 
   };
 
   try {
-    for await (const event of streamOpenAICompatibleProvider(
+    for await (const event of streamProviderTurn(
       execution,
       "secret",
     )) {
@@ -982,7 +982,7 @@ test("normalizes streamed provider reasoning separately from answer text", async
     });
   try {
     const events = [];
-    for await (const event of streamOpenAICompatibleProvider(
+    for await (const event of streamProviderTurn(
       providerExecution,
       "secret",
     )) {
@@ -1025,7 +1025,7 @@ test("treats [DONE] as a completion when no finish reason was sent", async () =>
     });
   try {
     const providerEvents = [];
-    for await (const event of streamOpenAICompatibleProvider(
+    for await (const event of streamProviderTurn(
       providerExecution,
       "secret",
     )) {
@@ -1069,7 +1069,7 @@ test("rejects an EOF without an OpenAI-compatible terminal signal", async () => 
     let partialText = "";
     await assert.rejects(
       async () => {
-        for await (const event of streamOpenAICompatibleProvider(
+        for await (const event of streamProviderTurn(
           providerExecution,
           "secret",
         )) {
@@ -1151,7 +1151,7 @@ test("does not serialize a streaming request when the profile disables it", asyn
   try {
     await assert.rejects(
       () =>
-        streamOpenAICompatibleProvider(
+        streamProviderTurn(
           {
             ...providerExecution,
             input: {

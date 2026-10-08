@@ -4,6 +4,8 @@
  */
 
 import { sameChatCompletionsTarget } from "../packages/core/src/openai-compatible.ts";
+import { protocolLabel } from "../packages/core/src/provider-protocols.ts";
+import type { ProviderWireProtocol } from "../packages/core/src/run-kernel/types.ts";
 
 export type RunReadinessActionKind =
   | "map-profile"
@@ -22,7 +24,10 @@ export type ReadinessDestination =
         | "project-endpoint"
         | "profile"
         | "endpoint"
+        | "protocols"
         | "tools-capability";
+      /** With `protocols`, the one switch that resolves the notice. */
+      protocol?: ProviderWireProtocol;
     }
   | {
       surface: "request";
@@ -91,6 +96,9 @@ export function runEmptyStatePresentation(
       : action?.destination.surface === "connections" &&
           action.destination.control === "endpoint"
         ? "Enter the profile endpoint"
+        : action?.destination.surface === "connections" &&
+            action.destination.control === "protocols"
+          ? "Enable this protocol or choose another"
         : action?.destination.surface === "request" &&
             action.destination.control === "model"
           ? "Choose a model"
@@ -134,6 +142,8 @@ export interface RunReadinessInput {
   /** Endpoint the open project declares, when it declares one. */
   requiredEndpoint?: string;
   activeConnectionRequirementId?: string;
+  /** The protocol the run would use, and whether its profile has it enabled. */
+  protocol?: { id: ProviderWireProtocol; supported: boolean };
   templateResolutionError?: string;
   templateIssues: RunReadinessTemplateIssue[];
   templateTargets?: RunReadinessTemplateTarget[];
@@ -185,6 +195,7 @@ export function runReadiness(
     toolsEnabled,
     requiredEndpoint,
     activeConnectionRequirementId,
+    protocol,
     templateResolutionError,
     templateIssues,
     templateTargets = [],
@@ -261,6 +272,31 @@ export function runReadiness(
           kind: "open-connections",
           label: "Choose a model",
           destination: { surface: "request", tab: "messages", control: "model" },
+          primary: true,
+        },
+      ],
+    };
+  }
+
+  if (protocol && !protocol.supported) {
+    const label = protocolLabel(protocol.id);
+    return {
+      blocked: true,
+      headline: `"${profile}" does not have ${label} enabled`,
+      detail: `Enable ${label} for this profile in Connections, or choose another protocol in Run settings.`,
+      explanation:
+        "A profile states which protocols its endpoint speaks. Sending a protocol it never claimed would fail at the provider with an error about a path, not about the choice.",
+      summary: `Enable ${label} for this profile before running.`,
+      facts: [{ label: `Profile "${profile}"`, value: activeProfileEndpoint }],
+      actions: [
+        {
+          kind: "open-connections",
+          label: `Enable ${label}`,
+          destination: {
+            surface: "connections",
+            control: "protocols",
+            protocol: protocol.id,
+          },
           primary: true,
         },
       ],

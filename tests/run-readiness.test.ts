@@ -356,3 +356,37 @@ test("endpoints that dial the same URL are not reported as a mismatch", () => {
   assert.ok(unmapped?.blocked);
   assert.doesNotMatch(unmapped.detail, /different endpoint/);
 });
+
+test("a protocol the profile has not enabled blocks the run and points at the protocol settings", () => {
+  const readiness = runReadiness({
+    ...ready,
+    protocol: { id: "anthropic-messages", supported: false },
+  });
+  assert.equal(readiness?.blocked, true);
+  assert.equal(
+    readiness?.headline,
+    "\"Local llama\" does not have Anthropic Messages enabled",
+  );
+  assert.deepEqual(readiness?.actions[0]?.destination, {
+    surface: "connections",
+    control: "protocols",
+    protocol: "anthropic-messages",
+  });
+  assert.equal(
+    runEmptyStatePresentation(readiness).headline,
+    "Enable this protocol or choose another",
+  );
+  assert.equal(
+    runReadiness({ ...ready, protocol: { id: "openai-responses", supported: true } }),
+    undefined,
+  );
+});
+
+test("a missing model outranks an unsupported protocol", () => {
+  const readiness = runReadiness({
+    ...ready,
+    activeProfileModel: "",
+    protocol: { id: "openai-responses", supported: false },
+  });
+  assert.match(readiness?.headline ?? "", /no model selected/);
+});

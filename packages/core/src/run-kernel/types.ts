@@ -121,9 +121,16 @@ export interface ConversationRevision {
   createdAt: string;
 }
 
-export type ProviderProtocol =
-  | "openai-compatible-chat-completions"
-  | "mock";
+/** A protocol a real provider is reached with; the order is the default preference. */
+export const PROVIDER_WIRE_PROTOCOLS = [
+  "openai-compatible-chat-completions",
+  "openai-responses",
+  "anthropic-messages",
+] as const;
+
+export type ProviderWireProtocol = (typeof PROVIDER_WIRE_PROTOCOLS)[number];
+
+export type ProviderProtocol = ProviderWireProtocol | "mock";
 
 /**
  * How a provider response is delivered for every turn in one immutable run.

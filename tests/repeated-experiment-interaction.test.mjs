@@ -39,7 +39,7 @@ function execution() {
         model: "interaction-model",
         capabilities: {
           chatCompletions: true,
-          responsesApi: false,
+          responsesApi: false, anthropicMessages: false,
           streaming: true,
           modelDiscovery: false,
           tools: false,

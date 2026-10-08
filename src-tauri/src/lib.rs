@@ -86,6 +86,54 @@ struct ResolvedCredential {
     api_key: Option<String>,
 }
 
+/// The Anthropic API version pinned by every Messages request and listing.
+const ANTHROPIC_VERSION: &str = "2023-06-01";
+
+/// The wire protocol a request is sent with. It decides only the path and
+/// how the credential is presented; Rust still never reads protocol bodies.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+enum WireProtocol {
+    #[serde(rename = "openai-compatible-chat-completions")]
+    ChatCompletions,
+    #[serde(rename = "openai-responses")]
+    Responses,
+    #[serde(rename = "anthropic-messages")]
+    AnthropicMessages,
+}
+
+/// Every protocol path, so a pasted full URL reduces to its base.
+const PROTOCOL_PATHS: [&str; 3] = ["/chat/completions", "/responses", "/messages"];
+
+impl WireProtocol {
+    fn path(self) -> &'static str {
+        match self {
+            Self::ChatCompletions => "/chat/completions",
+            Self::Responses => "/responses",
+            Self::AnthropicMessages => "/messages",
+        }
+    }
+
+    fn authorize(
+        self,
+        request: reqwest::RequestBuilder,
+        api_key: Option<&str>,
+    ) -> reqwest::RequestBuilder {
+        match self {
+            Self::AnthropicMessages => {
+                let request = request.header("anthropic-version", ANTHROPIC_VERSION);
+                match api_key {
+                    Some(api_key) => request.header("x-api-key", api_key),
+                    None => request,
+                }
+            }
+            Self::ChatCompletions | Self::Responses => match api_key {
+                Some(api_key) => request.bearer_auth(api_key),
+                None => request,
+            },
+        }
+    }
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CredentialStatus {
@@ -990,15 +1038,12 @@ struct ModelDiscoveryProxyResponse {
 #[tauri::command]
 async fn discover_models(
     endpoint: String,
+    protocol: WireProtocol,
     credential: CredentialSelection,
 ) -> Result<ModelDiscoveryProxyResponse, String> {
     let credential = resolve_credential(credential, &endpoint)?;
-    let models_url = models_url(&endpoint)?;
-    let request = Client::new().get(models_url);
-    let request = match credential.api_key {
-        Some(api_key) => request.bearer_auth(api_key),
-        None => request,
-    };
+    let models_url = models_url(&endpoint, protocol)?;
+    let request = protocol.authorize(Client::new().get(models_url), credential.api_key.as_deref());
     let response = request
         .send()
         .await
@@ -1039,14 +1084,12 @@ async fn start_provider_turn(
     active_runs: State<'_, ActiveRuns>,
     request_id: String,
     credential: CredentialSelection,
-    endpoint: String,
-    body: String,
-    streaming: bool,
+    request: OutboundProviderRequest,
 ) -> Result<ProviderTurnAccepted, String> {
     if !request_id.starts_with("provider-turn_") {
         return Err(command_error("Provider turn identifiers are invalid."));
     }
-    let credential = resolve_credential(credential, &endpoint)?;
+    let credential = resolve_credential(credential, &request.endpoint)?;
     let cancellation = CancellationToken::new();
     active_runs
         .0
@@ -1055,19 +1098,7 @@ async fn start_provider_turn(
         .insert(request_id.clone(), cancellation.clone());
     let state = active_runs.inner().clone();
     tauri::async_runtime::spawn(async move {
-        execute_provider_turn(
-            app,
-            state,
-            request_id,
-            OutboundProviderRequest {
-                endpoint,
-                body,
-                streaming,
-            },
-            credential,
-            cancellation,
-        )
-        .await;
+        execute_provider_turn(app, state, request_id, request, credential, cancellation).await;
     });
     Ok(ProviderTurnAccepted { status: 202 })
 }
@@ -1099,8 +1130,12 @@ impl ProviderEvents {
     }
 }
 
+/// What the webview asks to send. `endpoint` is what the credential was
+/// resolved against; the URL is derived from it and the protocol here.
+#[derive(Deserialize)]
 struct OutboundProviderRequest {
     endpoint: String,
+    protocol: WireProtocol,
     body: String,
     streaming: bool,
 }
@@ -1117,6 +1152,7 @@ async fn execute_provider_turn(
     stream_provider_turn(
         &events,
         &request.endpoint,
+        request.protocol,
         request.body,
         request.streaming,
         credential.api_key.as_deref(),
@@ -1129,12 +1165,13 @@ async fn execute_provider_turn(
 async fn stream_provider_turn(
     events: &ProviderEvents,
     endpoint: &str,
+    protocol: WireProtocol,
     body: String,
     streaming: bool,
     api_key: Option<&str>,
     cancellation: &CancellationToken,
 ) {
-    let url = match chat_completions_url(endpoint) {
+    let url = match provider_request_url(endpoint, protocol) {
         Ok(url) => url,
         Err(message) => {
             events.emit(&RawStreamEvent::Error {
@@ -1157,11 +1194,7 @@ async fn stream_provider_turn(
                 .post(&url)
                 .header(reqwest::header::CONTENT_TYPE, "application/json")
                 .body(body);
-            let request = match api_key {
-                Some(api_key) => request.bearer_auth(api_key),
-                None => request,
-            };
-            request.send()
+            protocol.authorize(request, api_key).send()
         } => response,
     };
     let response = match response {
@@ -1314,36 +1347,35 @@ fn response_headers(headers: &reqwest::header::HeaderMap) -> Value {
     Value::Object(result)
 }
 
-fn chat_completions_url(endpoint: &str) -> Result<String, String> {
-    let trimmed = endpoint.trim().trim_end_matches('/');
-    let parsed = Url::parse(trimmed)
+/// Mirrors `providerRequestUrl` in TypeScript: the request evidence the webview
+/// records must name the URL this function dials.
+fn endpoint_with_path(endpoint: &str, suffix: &str) -> Result<Url, String> {
+    let mut parsed = Url::parse(endpoint.trim())
         .map_err(|_| command_error("Endpoint must be a valid HTTP or HTTPS URL."))?;
     if parsed.scheme() != "https" && parsed.scheme() != "http" {
         return Err(command_error("Endpoint must use HTTP or HTTPS."));
     }
-    if parsed.path().ends_with("/chat/completions") {
-        Ok(parsed.to_string())
-    } else {
-        Ok(format!("{trimmed}/chat/completions"))
+    let mut path = parsed.path().trim_end_matches('/').to_owned();
+    if let Some(known) = PROTOCOL_PATHS.iter().find(|known| path.ends_with(*known)) {
+        path.truncate(path.len() - known.len());
     }
+    parsed.set_path(&format!("{path}{suffix}"));
+    parsed.set_fragment(None);
+    Ok(parsed)
 }
 
-fn models_url(endpoint: &str) -> Result<String, String> {
-    let mut parsed = Url::parse(endpoint.trim().trim_end_matches('/'))
-        .map_err(|_| command_error("Endpoint must be a valid HTTP or HTTPS URL."))?;
-    if parsed.scheme() != "https" && parsed.scheme() != "http" {
-        return Err(command_error("Endpoint must use HTTP or HTTPS."));
-    }
-    if parsed.path().ends_with("/chat/completions") {
-        let path = parsed
-            .path()
-            .trim_end_matches("/chat/completions")
-            .to_owned();
-        parsed.set_path(&path);
-    }
-    parsed.set_path(&format!("{}/models", parsed.path().trim_end_matches('/')));
+fn provider_request_url(endpoint: &str, protocol: WireProtocol) -> Result<String, String> {
+    Ok(endpoint_with_path(endpoint, protocol.path())?.to_string())
+}
+
+/// Mirrors `discoveryUrl` in TypeScript. Anthropic pages its listing at 20 by
+/// default, so discovery asks for its maximum.
+fn models_url(endpoint: &str, protocol: WireProtocol) -> Result<String, String> {
+    let mut parsed = endpoint_with_path(endpoint, "/models")?;
     parsed.set_query(None);
-    parsed.set_fragment(None);
+    if protocol == WireProtocol::AnthropicMessages {
+        parsed.set_query(Some("limit=1000"));
+    }
     Ok(parsed.to_string())
 }
 
@@ -1842,5 +1874,84 @@ mod tests {
         assert!(!status.can_persist);
         assert!(!status.is_stored);
         assert!(!status.is_approved_for_endpoint);
+    }
+
+    #[test]
+    fn derives_every_protocol_path_from_the_same_base() {
+        for endpoint in [
+            "https://api.example.com/v1",
+            "https://api.example.com/v1/",
+            "https://api.example.com/v1/chat/completions",
+            "https://api.example.com/v1/messages/",
+        ] {
+            assert_eq!(
+                provider_request_url(endpoint, WireProtocol::ChatCompletions).unwrap(),
+                "https://api.example.com/v1/chat/completions"
+            );
+            assert_eq!(
+                provider_request_url(endpoint, WireProtocol::Responses).unwrap(),
+                "https://api.example.com/v1/responses"
+            );
+            assert_eq!(
+                provider_request_url(endpoint, WireProtocol::AnthropicMessages).unwrap(),
+                "https://api.example.com/v1/messages"
+            );
+            assert_eq!(
+                models_url(endpoint, WireProtocol::ChatCompletions).unwrap(),
+                "https://api.example.com/v1/models"
+            );
+        }
+        assert_eq!(
+            provider_request_url("http://localhost:8080", WireProtocol::Responses).unwrap(),
+            "http://localhost:8080/responses"
+        );
+        assert_eq!(
+            provider_request_url(
+                "https://gateway.example.com/openai?api-version=1",
+                WireProtocol::ChatCompletions
+            )
+            .unwrap(),
+            "https://gateway.example.com/openai/chat/completions?api-version=1"
+        );
+        assert_eq!(
+            models_url(
+                "https://api.anthropic.com/v1?ignored=1",
+                WireProtocol::AnthropicMessages
+            )
+            .unwrap(),
+            "https://api.anthropic.com/v1/models?limit=1000"
+        );
+        assert!(provider_request_url("file:///tmp", WireProtocol::Responses).is_err());
+    }
+
+    #[test]
+    fn presents_the_credential_the_way_each_protocol_expects() {
+        let client = Client::new();
+        let anthropic = WireProtocol::AnthropicMessages
+            .authorize(client.get("https://example.test"), Some("secret"))
+            .build()
+            .expect("build anthropic request");
+        assert_eq!(anthropic.headers()["x-api-key"], "secret");
+        assert_eq!(anthropic.headers()["anthropic-version"], ANTHROPIC_VERSION);
+        assert!(anthropic.headers().get("authorization").is_none());
+
+        let responses = WireProtocol::Responses
+            .authorize(client.get("https://example.test"), Some("secret"))
+            .build()
+            .expect("build responses request");
+        assert_eq!(responses.headers()["authorization"], "Bearer secret");
+        assert!(responses.headers().get("x-api-key").is_none());
+
+        let keyless = WireProtocol::AnthropicMessages
+            .authorize(client.get("https://example.test"), None)
+            .build()
+            .expect("build keyless request");
+        assert!(keyless.headers().get("x-api-key").is_none());
+        assert_eq!(keyless.headers()["anthropic-version"], ANTHROPIC_VERSION);
+
+        let parsed: WireProtocol =
+            serde_json::from_value(json!("anthropic-messages")).expect("parse protocol");
+        assert_eq!(parsed, WireProtocol::AnthropicMessages);
+        assert!(serde_json::from_value::<WireProtocol>(json!("mock")).is_err());
     }
 }

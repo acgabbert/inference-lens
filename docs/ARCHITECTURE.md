@@ -21,12 +21,19 @@ Non-retryable failures terminate the run.
 
 `packages/contracts` owns the browser-to-host request shape. A
 `ProviderTurnTransport` executes exactly one `ProviderExecution` and streams
-normalized `ProviderTransportEvent` values. `packages/core/src/openai-compatible.ts`
-is the single, provider-neutral implementation of request construction, SSE
-parsing, and normalization; both hosts call into it rather than each keeping
-their own copy. The HTTP and Tauri hosts own credentials and provider
-networking, but not provider-specific serialization, and they do not retain
-complete-run state.
+normalized `ProviderTransportEvent` values. Each wire protocol has one core
+adapter that owns request construction, SSE parsing, and normalization, and
+`packages/core/src/provider-adapters.ts` picks it by `target.protocol`; both
+hosts call into that registry rather than each keeping their own copy. The
+HTTP and Tauri hosts own credentials and provider networking, but not
+provider-specific serialization, and they do not retain complete-run state.
+
+A connection states which protocols it speaks through its capabilities
+(`chatCompletions`, `responsesApi`, `anthropicMessages`); a run chooses one.
+`packages/core/src/provider-protocols.ts` owns what every host needs before an
+adapter is involved: the path each protocol appends to the connection's base
+URL, and how its credential is presented (`Authorization: Bearer` for the
+OpenAI protocols, `x-api-key` plus `anthropic-version` for Anthropic Messages).
 
 `app/http-inference-transport.client.ts` is the only UI module that knows the
 current `/api/*` URLs and NDJSON parsing details.
@@ -46,16 +53,17 @@ the request body with the shared core adapter and derives the credential's
 approved origin, but the request URL is always derived in Rust from the same
 endpoint the credential was resolved against — never accepted pre-built from
 the webview — so a compromised webview cannot redirect a keychain secret to an
-arbitrary host. Rust forwards raw SSE lines over the existing event channel;
-`packages/core/src/openai-compatible.ts` parses and normalizes them on the
-TypeScript side, the same code path the web host uses. The same TypeScript
+arbitrary host. Rust receives the protocol as a closed enum and derives only
+the path and credential header from it. It forwards raw SSE lines over the
+existing event channel; the core adapter for that protocol parses and
+normalizes them on the TypeScript side, the same code path the web host uses. The same TypeScript
 coordinator therefore drives web and desktop runs without duplicating the
 resumable state machine, or the provider protocol parsing, in Rust.
 
 Project persistence follows the same boundary:
 
 ```text
-Project v10 parser/serializer -> ProjectWorkspace -> browser bundle or Tauri filesystem
+Project v11 parser/serializer -> ProjectWorkspace -> browser bundle or Tauri filesystem
 RunTrace v1 parser/serializer -> ProjectWorkspace -> traces/<runId>.json
 ```
 

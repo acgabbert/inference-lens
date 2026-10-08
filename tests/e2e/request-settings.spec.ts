@@ -56,6 +56,7 @@ test("a project can use the provider default despite a mapped profile override",
   // Collapsed, the panel reports every value it will send, delivery included:
   // the controls are hidden but nothing about the next run is.
   await expect(page.locator(".inference-settings-fact")).toHaveText([
+    "Chat Completions",
     "provider-default-temperature-model",
     "Provider default temp",
     "Buffered",

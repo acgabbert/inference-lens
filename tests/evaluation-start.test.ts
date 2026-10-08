@@ -19,6 +19,7 @@ const ready = {
     variantName: "Default",
     requirementId: "connection_default",
     requirementName: "Default provider",
+    protocol: "openai-compatible-chat-completions" as const,
     model: "test-model",
     responseMode: "streaming" as const,
     options: {},

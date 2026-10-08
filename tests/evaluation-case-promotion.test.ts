@@ -14,7 +14,7 @@ const bindingId = createEntityId("evaluation-input", "topic");
 
 function project(): ProjectFile {
   return {
-    schemaVersion: 10, projectId: createEntityId("project", "promotion"), name: "Promotion",
+    schemaVersion: 11, projectId: createEntityId("project", "promotion"), name: "Promotion",
     defaults: { conversationRevisionId: revisionId, target: { connectionRequirementId: createEntityId("connection", "local"), model: "fixture" }, options: {}, enabledToolIds: [] },
     connectionRequirements: [{ id: createEntityId("connection", "local"), name: "Local", provider: "openai-compatible", protocol: "openai-compatible-chat-completions", endpoint: "http://localhost" }],
     conversations: [{ id: createEntityId("conversation", "promotion"), name: "Promotion" }],
@@ -31,7 +31,7 @@ function project(): ProjectFile {
 function trace(overrides: Partial<RunTrace["input"]> = {}): Pick<RunTrace, "input"> {
   return { input: {
     runId: createEntityId("run", "promotion"), conversationId: createEntityId("conversation", "promotion"), conversationRevisionId: revisionId,
-    target: { profileId: createEntityId("profile", "local"), protocol: "mock", endpoint: "http://localhost", model: "fixture", capabilities: { chatCompletions: true, responsesApi: false, streaming: true, modelDiscovery: false, tools: false, parallelToolCalls: false, structuredOutput: false, vision: false, embeddings: false } }, messages: [], responseMode: "buffered", options: {}, tools: [], resolvedAt: "2026-08-06T12:00:00.000Z",
+    target: { profileId: createEntityId("profile", "local"), protocol: "mock", endpoint: "http://localhost", model: "fixture", capabilities: { chatCompletions: true, responsesApi: false, anthropicMessages: false, streaming: true, modelDiscovery: false, tools: false, parallelToolCalls: false, structuredOutput: false, vision: false, embeddings: false } }, messages: [], responseMode: "buffered", options: {}, tools: [], resolvedAt: "2026-08-06T12:00:00.000Z",
     templateResolutions: [{ templateUseId: useId, templateId: createEntityId("template", "prompt"), templateRevisionId: createEntityId("template-revision", "one"), templateName: "Prompt", messages: [{ role: "user", content: "topic" }], variableDefaults: {}, values: { topic: "database migrations" }, outputMessageIds: [createEntityId("message", "one")] }],
     ...overrides,
   } };

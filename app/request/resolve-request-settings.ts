@@ -4,6 +4,12 @@ import type {
 } from "../../packages/core/src/project.ts";
 import type { ConversationMessage } from "../../packages/core/src/run-kernel/types.ts";
 import { resolveProviderCapabilities } from "../../packages/core/src/types.ts";
+import {
+  effectiveProtocol,
+  supportedProtocols,
+  supportsProtocol,
+} from "../../packages/core/src/provider-protocols.ts";
+import type { ProviderWireProtocol } from "../../packages/core/src/run-kernel/types.ts";
 import type {
   InferenceProfile,
   ProviderCapabilities,
@@ -30,6 +36,15 @@ export interface ResolvedRequestSettings<Profile extends InferenceProfile> {
   /** Whether the requirement's mapping names a profile that still exists. */
   profileMapped: boolean;
   capabilities: ProviderCapabilities;
+  /**
+   * The wire protocol the run is sent with. A project's requirement states it
+   * outright; without a project the profile's preference picks among what the
+   * profile supports.
+   */
+  protocol: ProviderWireProtocol;
+  /** False when the project asks for a protocol its mapped profile has not enabled. */
+  protocolSupported: boolean;
+  supportedProtocols: ProviderWireProtocol[];
   model: string;
   temperature: number | undefined;
   responseMode: "streaming" | "buffered";
@@ -52,11 +67,17 @@ export function resolveRequestSettings<Profile extends InferenceProfile>(
     profile.provider,
     profile.capabilityOverrides,
   );
+  const protocol = connectionRequirement
+    ? connectionRequirement.protocol
+    : effectiveProtocol(capabilities, profile.protocol);
   return {
     connectionRequirement,
     profile,
     profileMapped: Boolean(mappedProfile),
     capabilities,
+    protocol,
+    protocolSupported: supportsProtocol(capabilities, protocol),
+    supportedProtocols: supportedProtocols(capabilities),
     model: input.sessionModel ?? profile.model,
     // Without a project there is no session layer: the profile is edited directly.
     temperature: projectFile ? input.sessionTemperature : profile.temperature,
@@ -71,6 +92,7 @@ export function requestFromSettings(
 ): RichInferenceRequest {
   return {
     provider: "openai-compatible",
+    protocol: settings.protocol,
     endpoint: settings.profile.endpoint,
     model: settings.model,
     messages,

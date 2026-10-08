@@ -10,14 +10,14 @@ import type {
   ProviderTurnStream,
   ProviderTurnTransport,
 } from "../packages/contracts/src";
+import { parseModelsResponse } from "../packages/core/src/openai-compatible.ts";
 import {
-  buildChatCompletionsRequest,
-  normalizeOpenAICompatibleResponse,
-  normalizeOpenAICompatibleStream,
-  OpenAICompatibleProtocolError,
-  parseModelsResponse,
-  redactedProviderUrl,
-} from "../packages/core/src/openai-compatible.ts";
+  buildProviderHttpRequest,
+  providerProtocolAdapter,
+  providerRequestEvent,
+} from "../packages/core/src/provider-adapters.ts";
+import type { ProviderHttpRequest } from "../packages/core/src/provider-adapters.ts";
+import { ProviderProtocolError } from "../packages/core/src/provider-protocols.ts";
 import type {
   ProviderExecution,
   ProviderTransportEvent,
@@ -183,8 +183,7 @@ function* terminalTransportEvent(
 
 async function* toProviderTransportEvents(
   execution: ProviderExecution,
-  url: string,
-  bodyText: string,
+  request: ProviderHttpRequest,
   credential: NativeCredentialSelection,
   queue: AsyncEventQueue<RawStreamEvent>,
   signal: AbortSignal | undefined,
@@ -192,18 +191,7 @@ async function* toProviderTransportEvents(
   unlisten: () => void,
 ): AsyncGenerator<ProviderTransportEvent> {
   try {
-    yield {
-      type: "request",
-      request: {
-        url: redactedProviderUrl(url),
-        method: "POST",
-        headers: {
-          authorization: credential.kind === "none" ? "(not set)" : "Bearer ••••••••",
-          "content-type": "application/json",
-        },
-        body: bodyText,
-      },
-    };
+    yield providerRequestEvent(request, credential.kind !== "none");
 
     const first = await queue.next();
     if (first.done) return;
@@ -219,14 +207,15 @@ async function* toProviderTransportEvents(
     };
 
     let terminal: RawStreamEvent | undefined;
+    const adapter = providerProtocolAdapter(request.protocol);
     try {
       if (execution.input.responseMode === "buffered") {
         const raw = await bodyFromQueue(queue, (event) => {
           terminal = event;
         });
-        yield* normalizeOpenAICompatibleResponse(execution, raw);
+        yield* adapter.normalizeResponse(execution, raw);
       } else {
-        yield* normalizeOpenAICompatibleStream(
+        yield* adapter.normalizeStream(
           execution,
           linesFromQueue(queue, (event) => {
             terminal = event;
@@ -234,7 +223,7 @@ async function* toProviderTransportEvents(
         );
       }
     } catch (error) {
-      if (error instanceof OpenAICompatibleProtocolError) {
+      if (error instanceof ProviderProtocolError) {
         yield {
           type: "failed",
           error: { code: "protocol_error", message: error.message },
@@ -260,7 +249,11 @@ export class TauriInferenceTransport implements ProviderTurnTransport {
     const credential = nativeCredential(request.credential);
     const { status, body } = await invoke<{ status: number; body: string }>(
       "discover_models",
-      { endpoint: request.endpoint, credential },
+      {
+        endpoint: request.endpoint,
+        protocol: request.protocol ?? "openai-compatible-chat-completions",
+        credential,
+      },
     );
     if (status < 200 || status >= 300) {
       const detail = body.slice(0, 4_000);
@@ -277,8 +270,7 @@ export class TauriInferenceTransport implements ProviderTurnTransport {
     signal?: AbortSignal,
   ): Promise<ProviderTurnStream> {
     const credential = nativeCredential(request.credential);
-    const { url, body } = buildChatCompletionsRequest(request.execution);
-    const bodyText = JSON.stringify(body);
+    const providerRequest = buildProviderHttpRequest(request.execution);
     const requestId = `provider-turn_${randomUUID()}`;
     const queue = new AsyncEventQueue<RawStreamEvent>();
     const unlisten = await listen<RawStreamEvent>(
@@ -296,17 +288,19 @@ export class TauriInferenceTransport implements ProviderTurnTransport {
       const accepted = await invoke<ProviderTurnAccepted>("start_provider_turn", {
         requestId,
         credential,
-        endpoint: request.execution.input.target.endpoint,
-        body: bodyText,
-        streaming: request.execution.input.responseMode === "streaming",
+        request: {
+          endpoint: request.execution.input.target.endpoint,
+          protocol: providerRequest.protocol,
+          body: providerRequest.bodyText,
+          streaming: request.execution.input.responseMode === "streaming",
+        },
       });
       return {
         status: accepted.status,
         headers: new Headers({ "x-inference-lens-transport": "tauri" }),
         events: toProviderTransportEvents(
           request.execution,
-          url,
-          bodyText,
+          providerRequest,
           credential,
           queue,
           signal,

@@ -65,7 +65,7 @@ export function createSingleTurnRunExecution(
   const turnInput: ProviderTurnInput = {
     target: {
       profileId: createEntityId("profile", "openai-compatible"),
-      protocol: "openai-compatible-chat-completions",
+      protocol: request.protocol ?? "openai-compatible-chat-completions",
       endpoint: request.endpoint,
       model: request.model,
       capabilities:

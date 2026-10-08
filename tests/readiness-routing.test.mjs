@@ -62,7 +62,7 @@ async function render(modulePath, component, props) {
 }
 
 const capabilities = {
-  chatCompletions: true, responsesApi: false, streaming: true,
+  chatCompletions: true, responsesApi: false, anthropicMessages: false, streaming: true,
   modelDiscovery: true, tools: false, parallelToolCalls: false,
   structuredOutput: false, vision: false, embeddings: false,
 };
@@ -123,6 +123,9 @@ function composerProps(pendingDestination, onDestinationHandled) {
     evaluationExecution: { storage: "unsaved", running: false, onStart: noop },
     settings: {
       model: "fixture-model", temperature: 0.7, responseMode: "buffered",
+      protocol: "openai-compatible-chat-completions",
+      supportedProtocols: ["openai-compatible-chat-completions"],
+      onProtocolChange: noop,
       streamingAvailable: true, toolsEnabled: true, modelDiscovery: null,
       favoriteModels: [],
       onModelChange: noop, onTemperatureChange: noop,

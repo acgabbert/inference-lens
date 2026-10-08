@@ -1,7 +1,5 @@
-import {
-  OpenAICompatibleProtocolError,
-  streamOpenAICompatibleProvider,
-} from "../../../packages/core/src/openai-compatible.ts";
+import { streamProviderTurn } from "../../../packages/core/src/provider-adapters.ts";
+import { ProviderProtocolError } from "../../../packages/core/src/provider-protocols.ts";
 import type {
   ProviderExecution,
   ProviderTransportEvent,
@@ -27,7 +25,7 @@ export async function* executeProviderTurn(
   environment: ProviderTurnEnvironment = {},
 ): AsyncGenerator<ProviderTransportEvent> {
   try {
-    for await (const providerEvent of streamOpenAICompatibleProvider(
+    for await (const providerEvent of streamProviderTurn(
       execution,
       apiKey,
       signal,
@@ -48,7 +46,7 @@ export async function* executeProviderTurn(
       return;
     }
     const code =
-      error instanceof OpenAICompatibleProtocolError
+      error instanceof ProviderProtocolError
         ? "protocol_error" as const
         : status === undefined
           ? "transport_error" as const

@@ -40,6 +40,7 @@ import type {
   ToolDefinition,
   PromptTemplateUseId,
 } from "./run-kernel/types.ts";
+import { PROVIDER_WIRE_PROTOCOLS } from "./run-kernel/types.ts";
 
 export const EXPERIMENT_SCHEMA_VERSION = 4;
 /**
@@ -449,6 +450,8 @@ const capabilitiesSchema = z
   .object({
     chatCompletions: z.boolean(),
     responsesApi: z.boolean(),
+    // Recorded before the protocol existed means it was not enabled.
+    anthropicMessages: z.boolean().default(false),
     streaming: z.boolean(),
     modelDiscovery: z.boolean(),
     tools: z.boolean(),
@@ -466,7 +469,7 @@ const commonInputBaseSchema = z
     target: z
       .object({
         profileId: entityId("profile"),
-        protocol: z.enum(["openai-compatible-chat-completions", "mock"]),
+        protocol: z.enum([...PROVIDER_WIRE_PROTOCOLS, "mock"]),
         endpoint: z
           .url()
           .refine(

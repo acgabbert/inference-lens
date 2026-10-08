@@ -2,9 +2,11 @@
 
 Inference Lens projects use a visible `<name>.inference-lens/` directory bundle
 containing one canonical, portable JSON document named `project.json`. New
-saves use schema version 10, and version 10 is the only version the parser
-accepts: earlier project formats, including v5–v9, and the proof-of-concept
-request export are rejected with a version error rather than upgraded on load.
+saves use schema version 11. The parser also opens version 10, which is a strict
+subset of 11 — it differs only in allowing fewer connection protocols and
+capability keys — so opening one only restamps its version. Earlier project
+formats, including v5–v9, and the proof-of-concept request export are rejected
+with a version error rather than upgraded on load.
 Every schema is strict, so a reader rejects a document it does not understand
 rather than guessing.
 
@@ -306,8 +308,8 @@ structure still arrives whole and ordered, because one use emits every message
 of its pinned revision. Authors add surrounding messages afterwards in Messages.
 
 Bindings, cases, and tools are untouched, other suites are untouched, and the
-project stays at schema version 10 — the shortcut writes nothing a v10 parser did
-not already accept. Because the new use has a new stable ID, existing suite
+project's schema version is unchanged — the shortcut writes nothing the current
+parser did not already accept. Because the new use has a new stable ID, existing suite
 bindings are never retargeted onto it: an identical template ID says nothing
 about whether a binding still resolves, so a suite that already has case inputs
 is warned before the revision is created rather than silently rewritten.
@@ -367,3 +369,27 @@ removing a trace does not dirty authored project state. See
 
 `attachments/` remains reserved for a later format and is not part of the
 version 3 manifest contract.
+
+## Connection protocols
+
+Each connection requirement records the wire protocol the project's runs use
+against it:
+
+```json
+{
+  "id": "connection_default",
+  "name": "Default connection",
+  "provider": "openai-compatible",
+  "protocol": "openai-responses",
+  "endpoint": "https://api.openai.com/v1"
+}
+```
+
+`protocol` is one of `openai-compatible-chat-completions`, `openai-responses`,
+or `anthropic-messages`. Version 11 added the last two, and the
+`anthropicMessages` key to `capabilityOverrides`; a project using either cannot
+be opened by a build that only reads version 10, which is why the version
+changed. A requirement names one protocol, so comparing two protocols against
+the same provider is two requirements mapped to the same profile. The mapped
+profile must have the protocol enabled; a run is blocked with a notice pointing
+at Connections when it does not.

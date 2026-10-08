@@ -106,6 +106,7 @@ test("the collapsed panel reports what the run will send, and expanding reveals 
   // Every value is named while collapsed. These are exact so a
   // formatting regression cannot hide behind a substring match.
   await expect(panel.locator(".inference-settings-fact")).toHaveText([
+    "Chat Completions",
     "buffered-test-model",
     "Temp 0.3",
     "Buffered",
@@ -144,6 +145,7 @@ test("the collapsed panel reports what the run will send, and expanding reveals 
   await panel.getByRole("slider", { name: "Temperature" }).fill("0.9");
   await toggle.click();
   await expect(panel.locator(".inference-settings-fact")).toHaveText([
+    "Chat Completions",
     "buffered-test-model",
     "Temp 0.9",
     "Buffered",

@@ -470,3 +470,84 @@ test("keeps authentication failures non-retryable", async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+test("accepts every wire protocol at the provider-turn boundary and nothing else", () => {
+  for (const protocol of [
+    "openai-compatible-chat-completions",
+    "openai-responses",
+    "anthropic-messages",
+  ] as const) {
+    const base = execution();
+    const request = resolveProviderTurnRequest(
+      {
+        execution: { ...base, input: { ...base.input, target: { ...base.input.target, protocol } } },
+        credential: { kind: "provided", apiKey: "session-key" },
+      },
+      environmentStore,
+    );
+    assert.equal(request.execution.input.target.protocol, protocol);
+  }
+  for (const protocol of ["mock", "openai-assistants", undefined]) {
+    const base = execution();
+    assert.throws(
+      () =>
+        resolveProviderTurnRequest(
+          {
+            execution: { ...base, input: { ...base.input, target: { ...base.input.target, protocol } } },
+            credential: { kind: "provided", apiKey: "session-key" },
+          },
+          environmentStore,
+        ),
+      /Protocol must be chat completions, Responses, or Anthropic Messages/,
+    );
+  }
+});
+
+test("model discovery carries the protocol that decides its credential header", () => {
+  const request = resolveModelDiscoveryRequest(
+    {
+      endpoint: "https://api.example.test/v1",
+      protocol: "anthropic-messages",
+      credential: { kind: "provided", apiKey: "session-key" },
+    },
+    environmentStore,
+  );
+  assert.equal(request.protocol, "anthropic-messages");
+  assert.throws(
+    () =>
+      resolveModelDiscoveryRequest(
+        {
+          endpoint: "https://api.example.test/v1",
+          protocol: "mock",
+          credential: { kind: "provided", apiKey: "session-key" },
+        },
+        environmentStore,
+      ),
+    /Protocol must be/,
+  );
+});
+
+test("the server states which protocols its default connection speaks", () => {
+  const store = new EnvironmentCredentialStore({
+    INFERENCE_LENS_API_ENDPOINT: "https://api.anthropic.com/v1",
+    INFERENCE_LENS_API_PROTOCOLS: " anthropic-messages , chat-completions,responses ",
+  });
+  assert.deepEqual(store.connectionConfiguration(), {
+    endpoint: "https://api.anthropic.com/v1",
+    protocols: [
+      "openai-compatible-chat-completions",
+      "openai-responses",
+      "anthropic-messages",
+    ],
+  });
+});
+
+test("an unrecognized server protocol list is ignored rather than half-applied", () => {
+  const store = new EnvironmentCredentialStore({
+    INFERENCE_LENS_API_ENDPOINT: "https://api.example.test/v1",
+    INFERENCE_LENS_API_PROTOCOLS: "responses,assistants",
+  });
+  assert.deepEqual(store.connectionConfiguration(), {
+    endpoint: "https://api.example.test/v1",
+  });
+});

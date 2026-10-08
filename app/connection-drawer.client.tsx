@@ -3,6 +3,13 @@
 import { useEffect, useRef, type RefObject } from "react";
 import type { ConnectionRequirement } from "../packages/core/src/project";
 import { sameChatCompletionsTarget } from "../packages/core/src/openai-compatible";
+import {
+  protocolCapabilityKey,
+  protocolLabel,
+  protocolPath,
+} from "../packages/core/src/provider-protocols";
+import { PROVIDER_WIRE_PROTOCOLS } from "../packages/core/src/run-kernel/types";
+import type { ProviderWireProtocol } from "../packages/core/src/run-kernel/types";
 import type { ProviderCapabilities } from "../packages/core/src/types";
 import type {
   StoredInferenceProfile,
@@ -37,6 +44,12 @@ function configuredServerOrigin(endpoint?: string): string | undefined {
     return undefined;
   }
 }
+
+const protocolDescriptions: Record<ProviderWireProtocol, string> = {
+  "openai-compatible-chat-completions": "OpenAI-compatible servers, including most local ones.",
+  "openai-responses": "The OpenAI Responses API.",
+  "anthropic-messages": "The native Anthropic API; the key is sent as x-api-key.",
+};
 
 /** Names the variables to set, in the one place the absence is felt. */
 function ServerCredentialHint() {
@@ -181,6 +194,7 @@ export function ConnectionDrawer({
   const profileRef = useRef<HTMLSelectElement>(null);
   const endpointRef = useRef<HTMLInputElement>(null);
   const toolsCapabilityRef = useRef<HTMLInputElement>(null);
+  const protocolRefs = useRef(new Map<ProviderWireProtocol, HTMLInputElement>());
   const mappingRefs = useRef(new Map<string, HTMLSelectElement>());
   const projectEndpointRefs = useRef(new Map<string, HTMLButtonElement>());
   const keychainActive = isDesktopRuntime && credential.status.canPersist;
@@ -199,6 +213,9 @@ export function ConnectionDrawer({
     usingServerDefault &&
     !matchesServerOrigin(activeProfile.endpoint, serverDefault.endpoint);
   const serverOrigin = configuredServerOrigin(serverDefault.endpoint);
+  // Reapplied from the server's configuration on every load, so an edit here
+  // would be silently undone; locked the way the endpoint is.
+  const protocolsManaged = serverDefaultActive && Boolean(serverDefault.protocols);
 
   useEffect(() => {
     if (!open || pendingDestination?.surface !== "connections") return;
@@ -206,6 +223,9 @@ export function ConnectionDrawer({
       profile: profileRef.current,
       endpoint: endpointRef.current,
       "tools-capability": toolsCapabilityRef.current,
+      protocols: protocolRefs.current.get(
+        pendingDestination.protocol ?? PROVIDER_WIRE_PROTOCOLS[0],
+      ),
       "project-mapping": connectionRequirements
         .map(({ id }) => mappingRefs.current.get(id))
         .find((element) => element?.value === "") ?? mappingRefs.current.values().next().value,
@@ -372,6 +392,39 @@ export function ConnectionDrawer({
             </span>
           )}
         </label>
+        <fieldset className="protocol-capabilities">
+          <legend>Protocols</legend>
+          <small>
+            Which APIs this endpoint speaks. Each run picks one in Run settings.
+          </small>
+          {PROVIDER_WIRE_PROTOCOLS.map((protocol) => {
+            const key = protocolCapabilityKey(protocol);
+            return (
+              <label className="capability-toggle" key={protocol}>
+                <input
+                  ref={(element) => {
+                    if (element) protocolRefs.current.set(protocol, element);
+                    else protocolRefs.current.delete(protocol);
+                  }}
+                  data-readiness-control="protocols"
+                  type="checkbox"
+                  checked={capabilities[key]}
+                  disabled={protocolsManaged}
+                  onChange={(event) => onCapabilityChange(key, event.target.checked)}
+                />
+                <span>
+                  {protocolLabel(protocol)} <code>{protocolPath(protocol)}</code>
+                  <small>{protocolDescriptions[protocol]}</small>
+                </span>
+              </label>
+            );
+          })}
+          {protocolsManaged && (
+            <span className="credential-status">
+              Managed by <code>INFERENCE_LENS_API_PROTOCOLS</code>.
+            </span>
+          )}
+        </fieldset>
         <label className="capability-toggle">
           <input
             type="checkbox"

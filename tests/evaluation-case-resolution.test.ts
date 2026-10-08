@@ -283,7 +283,7 @@ test("the focused-case preview and the frozen plan resolve identically", () => {
         endpoint: "http://localhost:4010/v1",
         capabilities: {
           chatCompletions: true,
-          responsesApi: false,
+          responsesApi: false, anthropicMessages: false,
           streaming: true,
           modelDiscovery: false,
           tools: false,

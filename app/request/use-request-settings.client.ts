@@ -2,8 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { updateConnectionRequirementProtocol } from "../../packages/core/src/project.ts";
 import type { ProjectFile } from "../../packages/core/src/project.ts";
-import type { ConversationMessage } from "../../packages/core/src/run-kernel/types.ts";
+import type {
+  ConversationMessage,
+  ProviderWireProtocol,
+} from "../../packages/core/src/run-kernel/types.ts";
 import type { RichInferenceRequest } from "../../packages/core/src/types.ts";
 import type {
   StoredInferenceProfile,
@@ -26,6 +30,13 @@ export interface UseRequestSettingsOptions {
   updateActiveProfile(patch: StoredInferenceProfilePatch): void;
   /** With a project, model and temperature edits are unsaved project work. */
   onProjectEdited(): void;
+  /**
+   * With a project, the protocol is part of its connection requirement, so
+   * changing it is a project mutation rather than session state.
+   */
+  currentProjectDocument(): ProjectFile;
+  adoptProjectMutation(project: ProjectFile): void;
+  onProjectError(message: string): void;
 }
 
 /**
@@ -41,6 +52,7 @@ export interface RequestSettingsHandle
   setModel(model: string): void;
   setTemperature(temperature: number | undefined): void;
   setStreamingPreferred(streaming: boolean): void;
+  setProtocol(protocol: ProviderWireProtocol): void;
   /** Adopts a project draft's model and temperature as this session's. */
   applyDraft(draft: { model: string; temperature?: number }): void;
   currentRequest(): RichInferenceRequest;
@@ -55,6 +67,9 @@ export function useRequestSettings(options: UseRequestSettingsOptions): RequestS
     messages,
     updateActiveProfile,
     onProjectEdited,
+    currentProjectDocument,
+    adoptProjectMutation,
+    onProjectError,
   } = options;
   const [sessionModel, setSessionModel] = useState<string>();
   const [sessionTemperature, setSessionTemperature] = useState<number>();
@@ -110,6 +125,28 @@ export function useRequestSettings(options: UseRequestSettingsOptions): RequestS
         onProjectEdited();
       } else {
         updateActiveProfile({ temperature });
+      }
+    },
+    setProtocol(protocol) {
+      const requirement = resolved.connectionRequirement;
+      if (!requirement) {
+        updateActiveProfile({ protocol });
+        return;
+      }
+      try {
+        adoptProjectMutation(
+          updateConnectionRequirementProtocol(
+            currentProjectDocument(),
+            requirement.id,
+            protocol,
+          ),
+        );
+      } catch (error) {
+        onProjectError(
+          error instanceof Error
+            ? error.message
+            : "Could not change the project's protocol.",
+        );
       }
     },
     setStreamingPreferred(streaming) {

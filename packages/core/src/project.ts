@@ -48,6 +48,7 @@ import type {
   MessageContentPart,
   MessageId,
   ProjectId,
+  ProviderWireProtocol,
   PromptTemplateId,
   PromptTemplateRevisionId,
   PromptTemplateUseId,
@@ -56,7 +57,7 @@ import type {
   ToolId,
   ToolMockId,
 } from "./run-kernel/types.ts";
-import { createEntityId } from "./run-kernel/types.ts";
+import { createEntityId, PROVIDER_WIRE_PROTOCOLS } from "./run-kernel/types.ts";
 import { randomUUID } from "./random-id.ts";
 import {
   discoverTemplateVariables,
@@ -74,7 +75,12 @@ export const PROJECT_DIRECTORY_SUFFIX = ".inference-lens";
 export const PROJECT_FILE_NAME = "project.json";
 export const PROJECT_EXPORT_FILE_SUFFIX = ".project.json";
 export const PROJECT_GITIGNORE_CONTENTS = "*\n";
-export const PROJECT_SCHEMA_VERSION = 10;
+export const PROJECT_SCHEMA_VERSION = 11;
+/**
+ * Older versions this build still opens. Each is a strict subset of the
+ * current schema, so opening one only restamps its version.
+ */
+const OPENABLE_PROJECT_SCHEMA_VERSIONS: readonly number[] = [10];
 
 /**
  * Turns the portable project display name into one safe, visible directory
@@ -115,7 +121,8 @@ export interface ConnectionRequirement {
   id: ConnectionRequirementId;
   name: string;
   provider: "openai-compatible";
-  protocol: "openai-compatible-chat-completions";
+  /** The wire protocol this project's runs use against this connection. */
+  protocol: ProviderWireProtocol;
   endpoint: string;
   capabilityOverrides?: ProviderCapabilityOverrides;
 }
@@ -298,8 +305,8 @@ interface ProjectReferenceValidationShape {
   defaults: ProjectDefaults;
 }
 
-export interface ProjectFileV10 {
-  schemaVersion: 10;
+export interface ProjectFileV11 {
+  schemaVersion: 11;
   projectId: ProjectId;
   name: string;
   connectionRequirements: ConnectionRequirement[];
@@ -313,7 +320,7 @@ export interface ProjectFileV10 {
   defaults: ProjectDefaults;
 }
 
-export type ProjectFile = ProjectFileV10;
+export type ProjectFile = ProjectFileV11;
 
 const entityId = <Kind extends Parameters<typeof createEntityId>[0]>(
   kind: Kind,
@@ -343,6 +350,7 @@ const capabilityOverridesSchema = z
   .object({
     chatCompletions: z.boolean().optional(),
     responsesApi: z.boolean().optional(),
+    anthropicMessages: z.boolean().optional(),
     streaming: z.boolean().optional(),
     modelDiscovery: z.boolean().optional(),
     tools: z.boolean().optional(),
@@ -448,7 +456,7 @@ const connectionRequirementSchema: z.ZodType<ConnectionRequirement> = z
     id: entityId("connection"),
     name: z.string().trim().min(1),
     provider: z.literal("openai-compatible"),
-    protocol: z.literal("openai-compatible-chat-completions"),
+    protocol: z.enum(PROVIDER_WIRE_PROTOCOLS),
     endpoint: z
       .url()
       .refine(
@@ -774,7 +782,7 @@ const evaluationSuiteSchema: z.ZodType<EvaluationSuite> = z
   })
   .strict();
 
-const projectFileV10Schema: z.ZodType<ProjectFileV10> = z
+const projectFileV11Schema: z.ZodType<ProjectFileV11> = z
   .object({
     schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
     projectId: entityId("project"),
@@ -1024,7 +1032,7 @@ function validateSharedProjectReferences(
 }
 
 function validateProjectReferences(
-  project: ProjectFileV10,
+  project: ProjectFileV11,
   context: z.RefinementCtx,
 ): void {
   validateSharedProjectReferences(
@@ -1293,7 +1301,7 @@ function validateProjectReferences(
 }
 
 function validateEvaluationSuites(
-  project: ProjectFileV10,
+  project: ProjectFileV11,
   templates: ReadonlyMap<PromptTemplateId, PromptTemplate>,
   context: z.RefinementCtx,
 ): void {
@@ -1471,7 +1479,10 @@ export class ProjectValidationError extends Error {
 }
 
 function unsupportedSchemaMessage(version: unknown): string {
-  const prefix = `Project schema v${String(version)} is not supported: this build only opens schema v${PROJECT_SCHEMA_VERSION}.`;
+  const openable = [...OPENABLE_PROJECT_SCHEMA_VERSIONS, PROJECT_SCHEMA_VERSION]
+    .map((openableVersion) => `v${openableVersion}`)
+    .join(" and ");
+  const prefix = `Project schema v${String(version)} is not supported: this build opens schema ${openable}.`;
   return typeof version === "number" && version > PROJECT_SCHEMA_VERSION
     ? `${prefix} It was saved by a newer Inference Lens; update this build to open it.`
     : `${prefix} Open it with an earlier Inference Lens release that supports it and export it again.`;
@@ -1479,13 +1490,19 @@ function unsupportedSchemaMessage(version: unknown): string {
 
 export function parseProjectFile(value: unknown): ProjectFile {
   if (typeof value === "object" && value !== null && "schemaVersion" in value && value.schemaVersion !== PROJECT_SCHEMA_VERSION) {
-    throw new ProjectValidationError([{
-      code: "custom",
-      path: ["schemaVersion"],
-      message: unsupportedSchemaMessage(value.schemaVersion),
-    }]);
+    if (!OPENABLE_PROJECT_SCHEMA_VERSIONS.includes(value.schemaVersion as number)) {
+      throw new ProjectValidationError([{
+        code: "custom",
+        path: ["schemaVersion"],
+        message: unsupportedSchemaMessage(value.schemaVersion),
+      }]);
+    }
+    // Validated against the current schema after restamping. That is exact
+    // only because every openable version is a strict subset of it: v10
+    // differs solely in allowing fewer protocols and capability keys.
+    value = { ...value, schemaVersion: PROJECT_SCHEMA_VERSION };
   }
-  const parsed = projectFileV10Schema.safeParse(value);
+  const parsed = projectFileV11Schema.safeParse(value);
   if (!parsed.success) throw new ProjectValidationError(parsed.error.issues);
   return parsed.data;
 }
@@ -2027,6 +2044,39 @@ export function updateConnectionRequirementEndpoint(
   connectionRequirements[requirementIndex] = {
     ...connectionRequirements[requirementIndex]!,
     endpoint: trimmed,
+  };
+  return parseProjectFile({ ...project, connectionRequirements });
+}
+
+/**
+ * Chooses the wire protocol a declared connection is run with. A project
+ * states one protocol per requirement, so comparing two protocols against one
+ * provider is two requirements, never a hidden switch.
+ */
+export function updateConnectionRequirementProtocol(
+  project: ProjectFile,
+  requirementId: ConnectionRequirementId,
+  protocol: ProviderWireProtocol,
+): ProjectFile {
+  const requirementIndex = project.connectionRequirements.findIndex(
+    ({ id }) => id === requirementId,
+  );
+  if (requirementIndex < 0) {
+    throw new ProjectValidationError([
+      {
+        code: "custom",
+        path: ["connectionRequirements", requirementId],
+        message: "Connection requirement does not exist.",
+      },
+    ]);
+  }
+  if (project.connectionRequirements[requirementIndex]!.protocol === protocol) {
+    return project;
+  }
+  const connectionRequirements = [...project.connectionRequirements];
+  connectionRequirements[requirementIndex] = {
+    ...connectionRequirements[requirementIndex]!,
+    protocol,
   };
   return parseProjectFile({ ...project, connectionRequirements });
 }
@@ -3068,7 +3118,7 @@ export function createProjectFile({
         id: connectionId,
         name: "Default connection",
         provider: request.provider,
-        protocol: "openai-compatible-chat-completions",
+        protocol: request.protocol ?? "openai-compatible-chat-completions",
         endpoint: request.endpoint,
         capabilityOverrides: request.capabilities,
       },

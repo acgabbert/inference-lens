@@ -1,4 +1,12 @@
 import type { ResolvedInferenceRequest } from "./types.ts";
+import {
+  credentialHeaders,
+  protocolHeaders,
+  ProviderProtocolError,
+  providerModelsUrl,
+  providerRequestUrl,
+  sameProviderTarget,
+} from "./provider-protocols.ts";
 import { createEntityId } from "./run-kernel/types.ts";
 import type {
   ConversationMessage,
@@ -6,6 +14,7 @@ import type {
   JsonObject,
   ProviderExecution,
   ProviderEvent,
+  ProviderWireProtocol,
   RunTokenUsage,
   ToolCallId,
 } from "./run-kernel/types.ts";
@@ -63,7 +72,7 @@ type OpenAIModelsResponse = {
  * The provider closed an SSE response without the terminal signal required by
  * the OpenAI-compatible chat-completions protocol.
  */
-export class OpenAICompatibleProtocolError extends Error {
+export class OpenAICompatibleProtocolError extends ProviderProtocolError {
   constructor(message: string) {
     super(message);
     this.name = "OpenAICompatibleProtocolError";
@@ -78,13 +87,7 @@ export class OpenAICompatibleStreamProtocolError extends OpenAICompatibleProtoco
 }
 
 export function chatCompletionsUrl(endpoint: string): string {
-  const trimmed = endpoint.trim().replace(/\/+$/, "");
-  const parsed = new URL(trimmed);
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-    throw new Error("Endpoint must use HTTP or HTTPS.");
-  }
-  if (parsed.pathname.endsWith("/chat/completions")) return parsed.toString();
-  return `${trimmed}/chat/completions`;
+  return providerRequestUrl(endpoint, "openai-compatible-chat-completions");
 }
 
 /**
@@ -101,34 +104,11 @@ export function chatCompletionsUrl(endpoint: string): string {
  * the same target is a property of how this protocol builds its request URL.
  */
 export function sameChatCompletionsTarget(a: string, b: string): boolean {
-  try {
-    // Re-parsed rather than compared as built: `chatCompletionsUrl` appends to
-    // the caller's text, so a host differing only in case survives it. Parsing
-    // canonicalizes the scheme, host case, and a redundant default port, and
-    // leaves the path alone, which is case-sensitive and must stay compared.
-    const target = (endpoint: string): string =>
-      new URL(chatCompletionsUrl(endpoint)).toString();
-    return target(a) === target(b);
-  } catch {
-    // An endpoint that cannot be parsed is reported by the readiness checks
-    // that own it. Comparing the text is the most this can honestly say.
-    return a.trim() === b.trim();
-  }
+  return sameProviderTarget(a, b);
 }
 
 export function modelsUrl(endpoint: string): string {
-  const trimmed = endpoint.trim().replace(/\/+$/, "");
-  const parsed = new URL(trimmed);
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-    throw new Error("Endpoint must use HTTP or HTTPS.");
-  }
-  if (parsed.pathname.endsWith("/chat/completions")) {
-    parsed.pathname = parsed.pathname.slice(0, -"/chat/completions".length);
-  }
-  parsed.pathname = `${parsed.pathname.replace(/\/+$/, "")}/models`;
-  parsed.search = "";
-  parsed.hash = "";
-  return parsed.toString();
+  return providerModelsUrl(endpoint);
 }
 
 /**
@@ -148,21 +128,25 @@ export function parseModelsResponse(body: unknown): string[] {
 }
 
 /**
- * Lists the model identifiers an OpenAI-compatible endpoint exposes. Model
- * discovery is optional: callers can still accept a manually supplied ID.
+ * Lists the model identifiers an endpoint exposes. Model discovery is
+ * optional: callers can still accept a manually supplied ID. Every supported
+ * protocol lists models at `/models` in the same `data[].id` shape; only the
+ * credential header differs.
  */
 export async function discoverOpenAICompatibleModels(
-  request: Pick<ResolvedInferenceRequest, "endpoint" | "apiKey" | "capabilities">,
+  request: Pick<ResolvedInferenceRequest, "endpoint" | "apiKey" | "capabilities" | "protocol">,
   signal?: AbortSignal,
 ): Promise<string[]> {
   if (!request.capabilities.modelDiscovery) {
     throw new Error("Model discovery is not supported by this profile.");
   }
-  const response = await fetch(modelsUrl(request.endpoint), {
+  const protocol = request.protocol ?? "openai-compatible-chat-completions";
+  const response = await fetch(discoveryUrl(request.endpoint, protocol), {
     method: "GET",
-    headers: request.apiKey
-      ? { authorization: `Bearer ${request.apiKey}` }
-      : undefined,
+    headers: {
+      ...protocolHeaders(protocol),
+      ...credentialHeaders(protocol, request.apiKey),
+    },
     signal,
   });
   if (!response.ok) {
@@ -174,6 +158,19 @@ export async function discoverOpenAICompatibleModels(
   }
 
   return parseModelsResponse(await response.json());
+}
+
+/**
+ * Anthropic pages its listing at 20 by default; asking for its maximum keeps
+ * discovery to one request for any realistic catalogue.
+ */
+export function discoveryUrl(
+  endpoint: string,
+  protocol: ProviderWireProtocol,
+): string {
+  const url = new URL(modelsUrl(endpoint));
+  if (protocol === "anthropic-messages") url.searchParams.set("limit", "1000");
+  return url.toString();
 }
 
 const sensitiveHeaderNames = new Set([
@@ -519,63 +516,6 @@ export async function* normalizeOpenAICompatibleStream(
       "Provider stream ended before sending finish_reason or [DONE].",
     );
   }
-}
-
-export async function* streamOpenAICompatibleProvider(
-  execution: ProviderExecution,
-  apiKey: string,
-  signal?: AbortSignal,
-): AsyncGenerator<ProviderEvent> {
-  const { url, body } = buildChatCompletionsRequest(execution);
-  const bodyText = JSON.stringify(body);
-
-  yield {
-    type: "request",
-    request: {
-      url: redactedProviderUrl(url),
-      method: "POST",
-      headers: {
-        authorization: apiKey ? "Bearer ••••••••" : "(not set)",
-        "content-type": "application/json",
-      },
-      body: bodyText,
-    },
-  };
-
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      ...(apiKey
-        ? { authorization: `Bearer ${apiKey}` }
-        : {}),
-    },
-    body: bodyText,
-    signal,
-  });
-
-  yield {
-    type: "response_started",
-    response: {
-      status: response.status,
-      headers: redactedProviderHeaders(response.headers),
-    },
-  };
-
-  if (!response.ok) {
-    const detail = (await response.text()).slice(0, 4_000);
-    throw Object.assign(
-      new Error(detail || `Provider returned HTTP ${response.status}.`),
-      { status: response.status },
-    );
-  }
-
-  if (execution.input.responseMode === "buffered") {
-    yield* normalizeOpenAICompatibleResponse(execution, await response.text());
-    return;
-  }
-  if (!response.body) throw new Error("Provider returned an empty response.");
-  yield* normalizeOpenAICompatibleStream(execution, sseLines(response.body));
 }
 
 function contentText(message: ConversationMessage): string {

@@ -5,11 +5,14 @@ import type { CredentialSelection } from "../packages/contracts/src/index.ts";
 import type { ProviderCapabilities } from "../packages/core/src/types.ts";
 import { resolveProviderCapabilities } from "../packages/core/src/types.ts";
 import { randomUUID } from "../packages/core/src/random-id.ts";
+import { isProviderWireProtocol } from "../packages/core/src/provider-protocols.ts";
+import type { ProviderWireProtocol } from "../packages/core/src/run-kernel/types.ts";
 import {
   SERVER_DEFAULT_CREDENTIAL_REF,
   createDefaultProfile,
   createProfile,
   nextCapabilityOverrides,
+  withServerProtocols,
   profileDeletionRefusal,
   readProfiles,
   removeProfile,
@@ -44,6 +47,7 @@ interface RuntimeStatus {
   configured: boolean;
   endpoint?: string;
   model?: string;
+  protocols?: ProviderWireProtocol[];
 }
 
 /**
@@ -60,6 +64,8 @@ export interface ServerDefaultStatus {
   configured: boolean;
   /** Present whenever the server declares a provider, key or no key. */
   endpoint?: string;
+  /** Present when the server states which protocols that provider speaks. */
+  protocols?: ProviderWireProtocol[];
 }
 
 const unknownServerDefault: ServerDefaultStatus = {
@@ -79,6 +85,11 @@ function parseRuntimeStatus(body: unknown): RuntimeStatus {
     configured: value.serverDefaultCredentialConfigured === true,
     endpoint: text("endpoint"),
     model: text("model"),
+    ...(Array.isArray(value.protocols) &&
+    value.protocols.length > 0 &&
+    value.protocols.every(isProviderWireProtocol)
+      ? { protocols: value.protocols }
+      : {}),
   };
 }
 
@@ -265,6 +276,7 @@ export function useConnectionProfiles(input: {
         containerized: status.containerized,
         configured: status.configured,
         ...(status.endpoint ? { endpoint: status.endpoint } : {}),
+        ...(status.protocols ? { protocols: status.protocols } : {}),
       });
       reconcileRef.current(status);
     })();
@@ -356,8 +368,13 @@ export function useConnectionProfiles(input: {
       return;
     }
 
+    // Like the endpoint, the protocols a server declares are its own to state;
+    // a server that declares none leaves the profile's choices with the user.
+    const withProtocols = (profile: StoredInferenceProfile) =>
+      status.protocols ? withServerProtocols(profile, status.protocols) : profile;
+
     if (existing) {
-      const next: StoredInferenceProfile = {
+      const next: StoredInferenceProfile = withProtocols({
         ...existing,
         // The endpoint is the server's to own: the credential is released only
         // to the origin it names, so a profile pointing anywhere else is dead
@@ -366,8 +383,13 @@ export function useConnectionProfiles(input: {
         // a lock. It is filled in only while the profile has no model at all.
         endpoint: status.endpoint,
         ...(status.model && !existing.model ? { model: status.model } : {}),
-      };
-      if (existing.endpoint === next.endpoint && existing.model === next.model) {
+      });
+      if (
+        existing.endpoint === next.endpoint &&
+        existing.model === next.model &&
+        JSON.stringify(existing.capabilityOverrides) ===
+          JSON.stringify(next.capabilityOverrides)
+      ) {
         return;
       }
       setProfiles(
@@ -376,7 +398,7 @@ export function useConnectionProfiles(input: {
       return;
     }
 
-    const added: StoredInferenceProfile = {
+    const added: StoredInferenceProfile = withProtocols({
       ...createDefaultProfile(),
       id: current.some(({ id }) => id === SERVER_DEFAULT_PROFILE_ID)
         ? `${SERVER_DEFAULT_PROFILE_ID}-${randomUUID()}`
@@ -389,7 +411,7 @@ export function useConnectionProfiles(input: {
       // never chose.
       model: status.model ?? "",
       credentialRef: SERVER_DEFAULT_CREDENTIAL_REF,
-    };
+    });
     // Configuring the server is explicit intent, so a device that has never
     // stored a profile adopts it outright. `current` here is just the unused
     // starting profile — replacing it rather than keeping both means a first

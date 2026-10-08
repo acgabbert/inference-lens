@@ -327,6 +327,9 @@ function HomeContent() {
     messages,
     updateActiveProfile,
     onProjectEdited: project.markDirty,
+    currentProjectDocument: () => project.currentProjectDocument(),
+    adoptProjectMutation: (next) => project.adoptProjectMutation(next),
+    onProjectError: (message) => project.setError(message),
   });
   // Device-local execution capability. Owned here only long enough to be
   // joined with the project's mocks below: what serves a tool is one question,
@@ -432,6 +435,7 @@ function HomeContent() {
     profileId: requestSettings.profile.id,
     endpoint: requestSettings.profile.endpoint,
     capabilities: requestSettings.capabilities,
+    protocol: requestSettings.protocol,
     transport: inferenceTransport,
     prepareCredential: () =>
       credential.prepareForProfile(requestSettings.profile.id, requestSettings.profile.endpoint),
@@ -844,6 +848,10 @@ function HomeContent() {
     activeProfileModel: requestSettings.model,
     selectedToolCount,
     toolsEnabled: requestSettings.capabilities.tools,
+    protocol: {
+      id: requestSettings.protocol,
+      supported: requestSettings.protocolSupported,
+    },
     ...(projectTemplates.activeConnectionRequirement
       ? {
           requiredEndpoint: projectTemplates.activeConnectionRequirement.endpoint,
@@ -1238,6 +1246,9 @@ function HomeContent() {
             model: requestSettings.model,
             temperature: requestSettings.temperature,
             responseMode: requestSettings.responseMode,
+            protocol: requestSettings.protocol,
+            supportedProtocols: requestSettings.supportedProtocols,
+            onProtocolChange: requestSettings.setProtocol,
             streamingAvailable: requestSettings.capabilities.streaming,
             toolsEnabled: requestSettings.capabilities.tools,
             modelDiscovery: activeModelDiscovery,

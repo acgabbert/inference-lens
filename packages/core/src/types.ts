@@ -1,3 +1,5 @@
+import type { ProviderWireProtocol } from "./run-kernel/types.ts";
+
 export type MessageRole = "system" | "user" | "assistant" | "tool";
 
 /**
@@ -6,8 +8,12 @@ export type MessageRole = "system" | "user" | "assistant" | "tool";
  * about a model's quality or reliability.
  */
 export interface ProviderCapabilities {
+  /** The connection speaks OpenAI-compatible `/chat/completions`. */
   chatCompletions: boolean;
+  /** The connection speaks the OpenAI Responses API at `/responses`. */
   responsesApi: boolean;
+  /** The connection speaks the native Anthropic Messages API at `/messages`. */
+  anthropicMessages: boolean;
   streaming: boolean;
   modelDiscovery: boolean;
   tools: boolean;
@@ -22,6 +28,7 @@ export type ProviderCapabilityOverrides = Partial<ProviderCapabilities>;
 const providerCapabilityKeys = [
   "chatCompletions",
   "responsesApi",
+  "anthropicMessages",
   "streaming",
   "modelDiscovery",
   "tools",
@@ -35,6 +42,7 @@ const providerCapabilityKeys = [
 export const OPENAI_COMPATIBLE_CAPABILITIES: ProviderCapabilities = Object.freeze({
   chatCompletions: true,
   responsesApi: false,
+  anthropicMessages: false,
   streaming: true,
   modelDiscovery: true,
   tools: false,
@@ -95,6 +103,11 @@ export interface InferenceMessage {
 
 export interface InferenceRequest {
   provider: "openai-compatible";
+  /**
+   * The wire protocol this request is sent with. Absent means chat
+   * completions, the only protocol callers created before it existed used.
+   */
+  protocol?: ProviderWireProtocol;
   endpoint: string;
   model: string;
   messages: InferenceMessage[];
@@ -135,6 +148,11 @@ export interface InferenceProfile {
   endpoint: string;
   model: string;
   temperature?: number;
+  /**
+   * The protocol this profile runs with when no project chooses one. Absent
+   * means the first protocol the profile supports.
+   */
+  protocol?: ProviderWireProtocol;
   /** Conservative adjustments to the adapter's protocol defaults. */
   capabilityOverrides?: ProviderCapabilityOverrides;
   credentialRef?: string;
