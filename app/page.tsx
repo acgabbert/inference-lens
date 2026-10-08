@@ -88,6 +88,7 @@ import {
 import { useRunSession } from "./run/use-run-session.client";
 import { RunEvidenceDetail } from "./run/run-evidence-detail.client";
 import { useResponseView } from "./run/use-response-view.client";
+import { useBatchCompletion } from "./run/use-batch-completion.client";
 import { useRunsNavigation } from "./run/use-runs-navigation.client";
 import { toolBindingFor } from "./run/run-session-state.client";
 import { useCommandTools } from "./tools/use-command-tools.client";
@@ -106,13 +107,7 @@ import { EvaluationStartDialog } from "./evaluations/evaluation-start-dialog.cli
 import { PromoteTraceToCaseDialog } from "./evaluations/promote-trace-to-case-dialog.client";
 import type { EvaluationComparisonReturnTarget } from "./evaluations/evaluation-comparison-workspace.client";
 import { EVALUATION_PREFLIGHT_SUMMARY_ID } from "./evaluations/evaluation-suite-editor.client";
-import { evaluationExperimentAggregate } from "../packages/core/src/experiment";
-import {
-  evaluationPassSummary,
-  evaluationPassTone,
-} from "./evaluations/evaluation-history-format.client";
-import type { EvaluationPassTone } from "./evaluations/evaluation-history-format.client";
-import type { AppMode, ModeIndicator, ModeIndicatorTone } from "./modes/app-mode";
+import type { AppMode } from "./modes/app-mode";
 import { EvaluationsMode } from "./modes/evaluations-mode.client";
 import { RunsMode } from "./modes/runs-mode.client";
 import { PromptsMode } from "./modes/prompts-mode.client";
@@ -131,33 +126,6 @@ const STREAMING_PREFERENCE_STORAGE_KEY =
 interface BranchContext extends WorkbenchBranchContext {
   parentTraceNeedsSaving: boolean;
 }
-
-/**
- * A batch that finished in this session and has not been announced yet.
- *
- * Held as a small queue rather than announced from the session hook directly:
- * the hook reports completion in the same tick it stores the result, so the
- * pass rate the toast wants is not readable until React has committed. The
- * effect that drains this runs after that commit and derives the summary from
- * the same execution state the Runs indicator reads, which is what keeps the
- * two from disagreeing about the same batch.
- */
-type FinishedBatch =
-  | { kind: "evaluation"; experimentId: string }
-  | { kind: "repeated"; experimentId: string; repetitions: number };
-
-/**
- * `pending` and `unscored` both mean the batch decided nothing — interrupted,
- * or an aggregate that could not be derived. Neither is a failure, so neither
- * gets a failure colour on the strip.
- */
-const indicatorToneForPassTone: Record<EvaluationPassTone, ModeIndicatorTone> = {
-  passed: "passed",
-  partial: "partial",
-  failed: "failed",
-  pending: "neutral",
-  unscored: "neutral",
-};
 
 function subscribeToDesktopRuntime(): () => void {
   return () => {};
@@ -252,8 +220,6 @@ function HomeContent() {
   // an ordinary callback, the same way `onError` and `onTraceSaved` already
   // are, so every toast in the app has a reviewable path from cause to message.
   const toasts = useToasts();
-  const finishedBatchesRef = useRef<FinishedBatch[]>([]);
-  const [finishedBatchCount, setFinishedBatchCount] = useState(0);
   const [toolRegistry, setToolRegistry] = useState<ToolRegistryV1>(
     emptyToolRegistry(),
   );
@@ -290,10 +256,6 @@ function HomeContent() {
   // switching modes and back is lossless for as long as the app is open.
   const [mode, setMode] = useState<AppMode>("compose");
   const promptNavigation = usePromptNavigation();
-  // The batch the user has actually looked at in Runs. Without this a finished
-  // batch is signalled only by the running dot disappearing, which is
-  // indistinguishable from nothing having happened.
-  const [viewedExperimentId, setViewedExperimentId] = useState<string>();
   const [traceOpen, setTraceOpen] = useState(false);
   // A comparison is unmounted while its evidence is read in Compose. Retain
   // this tiny target at the route boundary so closing that trace returns to
@@ -488,8 +450,7 @@ function HomeContent() {
     onError(message) { project.setError(message, { clearKind: true }); },
     onOpenTrace(trace, origin) { runSession.adoptTrace(trace, origin); },
     onFinished({ experimentId, repetitions }) {
-      finishedBatchesRef.current.push({ kind: "repeated", experimentId, repetitions });
-      setFinishedBatchCount((current) => current + 1);
+      batchCompletion.recordFinished({ kind: "repeated", experimentId, repetitions });
     },
   });
   const evaluationExecution = useEvaluationExecutionSession({
@@ -505,9 +466,18 @@ function HomeContent() {
     onError(message) { project.setError(message, { clearKind: true }); },
     onOpenTrace(trace, origin) { runSession.adoptTrace(trace, origin); },
     onFinished({ experimentId }) {
-      finishedBatchesRef.current.push({ kind: "evaluation", experimentId });
-      setFinishedBatchCount((current) => current + 1);
+      batchCompletion.recordFinished({ kind: "evaluation", experimentId });
     },
+  });
+  // Both sessions' `onFinished` call `batchCompletion`, declared here after
+  // them because it reads their snapshots. That is safe: a session reports
+  // completion only after awaiting its batch, never during render.
+  const batchCompletion = useBatchCompletion({
+    mode,
+    repeated: repeatedExperiment,
+    evaluation: evaluationExecution,
+    publishToast: toasts.publish,
+    viewResults: () => setMode("runs"),
   });
   // Reinterpreting a finished evaluation is its own feature with its own state,
   // so the route only joins it to the execution it reads and the project it can
@@ -1113,24 +1083,6 @@ function HomeContent() {
       onConfirm: clear,
     });
   }
-  const experimentActive = repeatedExperiment.isRunning || evaluationExecution.isRunning;
-  const openExperimentId =
-    evaluationExecution.execution?.plan.experimentId ??
-    repeatedExperiment.execution?.plan.experimentId;
-  // "Unread" is which batch was last seen, not a flag raised when one finishes.
-  // A flag would have to be lowered by an effect and would re-raise itself
-  // every time the user left Runs; identity cannot drift that way.
-  //
-  // Adjusted during render rather than in an effect, as the composer does for
-  // its focus mode: while Runs is on screen and nothing is still running, what
-  // it shows is by definition read, and the discarded state never reaches the
-  // DOM.
-  if (mode === "runs" && !experimentActive && openExperimentId !== viewedExperimentId) {
-    setViewedExperimentId(openExperimentId);
-  }
-  const runsUnread =
-    Boolean(openExperimentId) && !experimentActive && openExperimentId !== viewedExperimentId;
-
   const runReachedTerminalStatus = Boolean(
     runState &&
       ["completed", "cancelled", "failed"].includes(runState.status.kind),
@@ -1280,99 +1232,6 @@ function HomeContent() {
     window.addEventListener("keydown", onContextualRunShortcut);
     return () => window.removeEventListener("keydown", onContextualRunShortcut);
   }, []);
-
-  /**
-   * What the Runs dot says. A running batch outranks an unread one because it
-   * is the thing still changing; an unread evaluation is coloured by its own
-   * pass rate, and anything that decided nothing — an interrupted batch, a
-   * repeated experiment, a comparison — stays neutral rather than borrowing a
-   * verdict it does not have.
-   */
-  function runsIndicator(): ModeIndicator | undefined {
-    if (experimentActive) return { tone: "running", label: "running" };
-    if (!runsUnread) return undefined;
-    const evaluation = evaluationExecution.execution;
-    if (evaluation && !evaluation.error) {
-      try {
-        const score = evaluationExperimentAggregate(
-          evaluation.plan,
-          evaluation.result,
-          evaluation.states,
-        );
-        const active = score.variants[0];
-        return active ? {
-          tone: indicatorToneForPassTone[evaluationPassTone(active)],
-          label: score.variants.length === 1
-            ? `finished, ${evaluationPassSummary(active)}, not yet viewed`
-            : `finished, ${active.variant.name}: ${evaluationPassSummary(active)}, not yet viewed`,
-        } : { tone: "neutral", label: "finished, not yet viewed" };
-      } catch {
-        // An aggregate that cannot be derived is not a failed batch. The dot
-        // says there is something to read and lets the workspace explain it.
-        return { tone: "neutral", label: "finished, not yet viewed" };
-      }
-    }
-    return { tone: "neutral", label: "finished, not yet viewed" };
-  }
-
-  /**
-   * Tells the user a batch they started has finished, and offers the one
-   * click that gets them to it.
-   *
-   * This is the affordance the Runs mode was made conditional on: results no
-   * longer appear in the pane the user was looking at, so a batch that finishes
-   * while they are composing would otherwise be signalled only by a dot on the
-   * mode strip. Nothing here is the sole carrier — the dot is still there, and
-   * it does not expire — but the dot cannot interrupt and this can.
-   *
-   * Suppressed while Runs is already on screen: the results are being watched
-   * live, and an action that navigates to where the user already is would be a
-   * message about nothing.
-   */
-  const announceFinishedBatch = useEffectEvent((batch: FinishedBatch) => {
-    if (mode === "runs") return;
-    const viewResults = {
-      label: "View results",
-      onSelect: () => setMode("runs"),
-    };
-    if (batch.kind === "repeated") {
-      toasts.publish({
-        key: `batch-finished:${batch.experimentId}`,
-        title: "Repeated experiment finished",
-        detail: `${batch.repetitions} ${batch.repetitions === 1 ? "repetition" : "repetitions"} completed.`,
-        action: viewResults,
-        durableHome: "the Runs mode indicator, until the results are opened",
-      });
-      return;
-    }
-    const evaluation = evaluationExecution.execution;
-    let detail = "Every selected case has a verdict.";
-    if (evaluation?.plan.experimentId === batch.experimentId) {
-      try {
-        const assessment = evaluationExperimentAggregate(evaluation.plan, evaluation.result, evaluation.states);
-        detail = assessment.variants.length
-          ? `${assessment.variants.map((variant) => `${variant.variant.name}: ${evaluationPassSummary(variant)}`).join(" · ")}.`
-          : detail;
-      } catch {
-        // An aggregate that cannot be derived is not a failed batch. The toast
-        // says there is something to read and lets the workspace explain it.
-      }
-    }
-    toasts.publish({
-      key: `batch-finished:${batch.experimentId}`,
-      title: "Evaluation finished",
-      detail,
-      action: viewResults,
-      durableHome: "the Runs mode indicator, which also carries the pass rate",
-    });
-  });
-  // The counter is the trigger and the ref is the payload: draining the ref
-  // rather than clearing state keeps this effect from scheduling a render of
-  // its own, and makes a repeated invocation a no-op because the queue is
-  // already empty by then.
-  useEffect(() => {
-    finishedBatchesRef.current.splice(0).forEach(announceFinishedBatch);
-  }, [finishedBatchCount]);
 
   /**
    * The one banner slot, in priority order.
@@ -1564,10 +1423,7 @@ function HomeContent() {
         isExperimentActive={repeatedExperiment.isRunning || evaluationExecution.isRunning}
         mode={mode}
         onModeChange={changeMode}
-        modeIndicators={(() => {
-          const runs = runsIndicator();
-          return runs ? { runs } : {};
-        })()}
+        modeIndicators={batchCompletion.indicator ? { runs: batchCompletion.indicator } : {}}
         awaitingToolResults={runState?.status.kind === "awaiting_tool_results"}
         retryableFailure={
           runState?.status.kind === "paused" &&

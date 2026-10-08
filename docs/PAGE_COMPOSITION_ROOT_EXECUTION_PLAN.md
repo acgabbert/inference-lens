@@ -1,7 +1,7 @@
 # `app/page.tsx` composition-root execution plan
 
-**Status:** PRs 5a–5c complete; PR 5 ownership inventory recorded on 2026-10-08.
-PRs 5d–5g extract the remaining owners it found and must merge before PR 5.
+**Status:** PRs 5a–5d complete; PR 5 ownership inventory recorded on 2026-10-08.
+PRs 5e–5g extract the remaining owners it found and must merge before PR 5.
 
 **Observed baseline:** `main` at `e59785c` on 2026-07-29
 
@@ -109,7 +109,7 @@ constraints, stop that PR and design the behavior change separately.
 | 5a | Evaluation workspace and case-source owners | Complete | PR 4 |
 | 5b | Prompts mode and prompt navigation | Complete | PR 5a |
 | 5c | Response view | Complete | PR 5b |
-| 5d | Batch completion signals | Planned | PR 5c |
+| 5d | Batch completion signals | Complete | PR 5c |
 | 5e | Pending branch | Planned | PR 5d |
 | 5f | Request settings | Planned | PR 5e |
 | 5g | Tool registry | Planned | PR 5f |
@@ -1043,6 +1043,36 @@ topbar.
 
 The render-time adjustment of `viewedExperimentId` and the post-commit drain
 are deliberate (see their comments) and move unchanged.
+
+### Decisions (2026-10-08)
+
+Settled by the PR 5c precedent; no open contract choice remained.
+
+- **The hook is called after both batch sessions.** `useBatchCompletion` reads
+  their `isRunning` and `execution` snapshots, and each session's `onFinished`
+  calls `batchCompletion.recordFinished` through a `const` declared later in
+  the same render. Sessions report completion only after awaiting their batch,
+  never during render; a comment at the call site records this.
+- **The Runs dot and toast copy are a pure module.** `app/run/batch-completion.ts`
+  holds `FinishedBatch`, `runsIndicator`, and `finishedBatchToast`, Node-tested
+  in `tests/batch-completion.test.ts`. The hook in
+  `app/run/use-batch-completion.client.ts` owns the queue and its counter,
+  `viewedExperimentId`, unread derivation, and the draining effect. It takes
+  `mode`, the two snapshots, `publishToast`, and `viewResults`; it never
+  switches modes itself.
+
+### Verification completed
+
+- Characterization added before extraction and run green against unchanged
+  code in `tests/e2e/repeated-experiment-completion.spec.ts`: a repeated
+  experiment that finishes while Compose is open shows "Repeated experiment
+  finished" with "2 repetitions completed.", leaves a neutral "finished, not
+  yet viewed" dot, and "View results" lands on Runs and retires both. Removing
+  the repeated session's `recordFinished` call turned it red on the missing
+  toast. Evaluation outcomes were already covered by
+  `runs-indicator.spec.ts` and `evaluation-completion-toast.spec.ts`.
+- Not covered in the browser: the singular "1 repetition" copy, which the
+  dialog's two-repetition minimum makes unreachable; the Node test covers it.
 
 ## PR 5e — Extract the pending branch
 
