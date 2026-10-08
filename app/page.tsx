@@ -25,7 +25,6 @@ import { modalOwnsKeyboardCommands } from "./keyboard-command-scope.client";
 import type {
   RunState,
   RunTrace,
-  ExperimentCellId,
   ConversationMessage,
   ConversationId,
   MessageId,
@@ -42,10 +41,7 @@ import {
 import { AppErrorBoundary } from "./app-error-boundary.client";
 import { useInsecureOriginNotice } from "./use-insecure-origin.client";
 import { randomUUID } from "../packages/core/src/random-id.ts";
-import { projectFolderAccessAvailable, readEvaluationCaseSourcesWorkspace, readRunTraceWorkspace, saveEvaluationCaseSourcesWorkspace } from "./project-workspace.client";
-import { promoteTraceToEvaluationCase } from "../packages/core/src/evaluation-case-promotion.ts";
-import { upsertEvaluationCaseSource } from "../packages/core/src/evaluation-case-sources.ts";
-import type { EvaluationCaseSource } from "../packages/core/src/evaluation-case-sources.ts";
+import { projectFolderAccessAvailable } from "./project-workspace.client";
 import { emptyToolRegistry } from "../packages/core/src/tool-registry";
 import type {
   ToolRegistryV1,
@@ -69,9 +65,8 @@ import { ResponseOutput } from "./response-output.client";
 import { WorkbenchShell } from "./workbench-shell.client";
 import type { WorkbenchView } from "./workbench-shell.client";
 import { RunTracePanel } from "./run-trace-panel.client";
-import { parseRunTraceJson, runStateFromTrace, traceFileName } from "../packages/core/src/run-trace";
+import { runStateFromTrace, traceFileName } from "../packages/core/src/run-trace";
 import { RunHistoryDrawer } from "./run-history-drawer.client";
-import type { EvaluationSuiteHistoryHandle } from "./evaluations/evaluation-suite-history.client";
 import { useEvaluationBaselines } from "./evaluations/use-evaluation-baselines.client";
 import type {
   ProjectExperimentHistoryItem,
@@ -98,7 +93,6 @@ import { toolBindingFor } from "./run/run-session-state.client";
 import { useCommandTools } from "./tools/use-command-tools.client";
 import { useMcpConsents } from "./tools/use-mcp-consents.client";
 import { commandToolUnavailableMessage } from "./tools/command-tool-availability.client";
-import { listExperimentToolBindings } from "./run/experiment-tool-bindings.client";
 import { useRepeatedExperimentSession } from "./run/use-repeated-experiment-session.client";
 import { RepeatedExperimentDialog } from "./run/repeated-experiment-dialog.client";
 import { useProjectTemplates } from "./templates/use-project-templates.client";
@@ -107,17 +101,13 @@ import { ProjectTemplatesPane } from "./project-templates-pane.client";
 import type { CompatibleEvaluationSuite } from "./project-templates-pane.client";
 import { useEvaluationSuiteAuthoring } from "./evaluations/use-evaluation-suite-authoring.client";
 import { useEvaluationReassessment } from "./evaluations/use-evaluation-reassessment.client";
-import {
-  createEvaluationStartDraft,
-  evaluationStartReadiness,
-  resolveEvaluationLocalTargets,
-} from "./evaluations/evaluation-start.client";
 import { useEvaluationExecutionSession } from "./evaluations/use-evaluation-execution-session.client";
+import { useEvaluationWorkspace } from "./evaluations/use-evaluation-workspace.client";
+import { useEvaluationCaseSource } from "./evaluations/use-evaluation-case-source.client";
 import { EvaluationStartDialog } from "./evaluations/evaluation-start-dialog.client";
 import { PromoteTraceToCaseDialog } from "./evaluations/promote-trace-to-case-dialog.client";
 import type { EvaluationComparisonReturnTarget } from "./evaluations/evaluation-comparison-workspace.client";
 import { EVALUATION_PREFLIGHT_SUMMARY_ID } from "./evaluations/evaluation-suite-editor.client";
-import type { EvaluationSuiteExecutionActions } from "./evaluations/evaluation-suite-editor.client";
 import { evaluationExperimentAggregate } from "../packages/core/src/experiment";
 import {
   evaluationPassSummary,
@@ -313,17 +303,9 @@ function HomeContent() {
   const [runHistoryOpen, setRunHistoryOpen] = useState(false);
   // Set once the suite editor's past-execution list has been expanded. Listing
   // costs a full parse of every artifact in the project folder, so neither
-  // surface being open means no listing happens at all.
+  // surface being open means no listing happens at all. Held here because the
+  // listing is shared: this, the run-history drawer, and Runs each demand it.
   const [suiteHistoryRequested, setSuiteHistoryRequested] = useState(false);
-  // Separate from the latch above: the listing stays cached once requested, but
-  // the disclosure can be closed again, and it has to survive the Evaluations
-  // mode unmounting while another mode is on screen.
-  const [suiteHistoryExpanded, setSuiteHistoryExpanded] = useState(false);
-  // The Evaluations mode's own open regions, held here for the same reason as
-  // the disclosure above: the mode unmounts whenever another one is on screen.
-  const [evaluationSetupOpen, setEvaluationSetupOpen] = useState(true);
-  const [evaluationPreviewPreference, setEvaluationPreviewPreference] =
-    useState<"auto" | "open" | "closed">("auto");
   const [savedRunVersion, setSavedRunVersion] = useState(0);
   // Bumped when an import lands in the composer's message list, so the composer
   // returns to Messages and the newly imported snapshot is on screen. This used
@@ -353,8 +335,6 @@ function HomeContent() {
   // the same case and repetition instead of silently resetting to repetition 1.
   const [comparisonReturnTarget, setComparisonReturnTarget] = useState<EvaluationComparisonReturnTarget>();
   const [comparisonTraceOpen, setComparisonTraceOpen] = useState(false);
-  const [promotion, setPromotion] = useState<{ trace: RunTrace; experimentCellId?: string }>();
-  const [caseSource, setCaseSource] = useState<EvaluationCaseSource>();
   const [outputFollowing, setOutputFollowing] = useState(true);
   const [markdownPreview, setMarkdownPreview] = useState(true);
   const [markdownPreviewLoaded, setMarkdownPreviewLoaded] = useState(false);
@@ -749,39 +729,51 @@ function HomeContent() {
       });
     },
   });
-  const selectedEvaluationSuite = projectFile?.evaluationSuites.find(
-    ({ id }) => id === evaluationAuthoring.suiteId,
-  );
-  useEffect(() => {
-    const suiteId = evaluationAuthoring.suiteId;
-    const caseId = evaluationAuthoring.focusedCaseId;
-    if (!projectWorkspace || !suiteId || !caseId) {
-      return;
-    }
-    let current = true;
-    void readEvaluationCaseSourcesWorkspace(projectWorkspace)
-      .then(async (file) => {
-        const source = file.sources.find((item) => item.suiteId === suiteId && item.caseId === caseId);
-        if (!source) return undefined;
-        const trace = parseRunTraceJson(await readRunTraceWorkspace(projectWorkspace, traceFileName(source.runId)));
-        if (trace.runId !== source.runId) throw new Error("The source annotation points to a different trace.");
-        return source;
-      })
-      .then((source) => {
-        if (current) setCaseSource(source);
-      })
-      .catch((error) => {
-        if (!current) return;
-        setCaseSource(undefined);
-        toasts.publish({
-          key: "evaluation-case-source-unreadable",
-          title: "Case source link is unavailable",
-          detail: error instanceof Error ? error.message : "The local source annotation or its trace could not be read.",
-          durableHome: "the portable case, which remains valid without local evidence",
-        });
-      });
-    return () => { current = false; };
-  }, [evaluationAuthoring.focusedCaseId, evaluationAuthoring.suiteId, projectFile, projectWorkspace, toasts.publish]);
+  const evaluationWorkspace = useEvaluationWorkspace({
+    authoring: evaluationAuthoring,
+    project: projectFile,
+    workspace: projectWorkspace,
+    profiles,
+    mappedProfileIds,
+    bindingForTool,
+    commandToolsUnavailableReason: commandToolUnavailableMessage(commandTools),
+    activityInProgress: isRequestActive || repeatedExperiment.isRunning || evaluationExecution.isRunning,
+    running: evaluationExecution.isRunning,
+    onBegin: evaluationExecution.begin,
+    onError(message) { project.setError(message); },
+    clearError() { project.clearErrorKind(); },
+    runHistory,
+    baselines: evaluationBaselines,
+    onHistoryRequested() { setSuiteHistoryRequested(true); },
+    onOpenExecution: (item) => openHistoryExperiment(item),
+    onComparisonOpened() {
+      // A comparison is a results surface, so anything else holding the
+      // Runs mode is released the same way opening a saved execution does.
+      repeatedExperiment.clear();
+      evaluationExecution.clear();
+      runSession.reset();
+      setMode("runs");
+    },
+  });
+  const evaluationCaseSource = useEvaluationCaseSource({
+    workspace: projectWorkspace,
+    project: projectFile,
+    ...(evaluationAuthoring.suiteId ? { suiteId: evaluationAuthoring.suiteId } : {}),
+    ...(evaluationAuthoring.focusedCaseId ? { focusedCaseId: evaluationAuthoring.focusedCaseId } : {}),
+    adoptProjectMutation: project.adoptProjectMutation,
+    publishToast: toasts.publish,
+    onPromoted(suiteId, caseId) {
+      evaluationAuthoring.selectSuite(suiteId);
+      evaluationAuthoring.focusCase(caseId);
+      setMode("evaluations");
+    },
+    onOpenTrace(trace, origin) {
+      runSession.adoptTrace(trace, origin);
+      setTraceOpen(true);
+      setMode("compose");
+      setWorkbenchView("inspect");
+    },
+  });
   useEffect(() => {
     clearTemplateOverridesRef.current = projectTemplates.clearTransientOverrides;
   }, [projectTemplates.clearTransientOverrides]);
@@ -1118,34 +1110,6 @@ function HomeContent() {
     });
   }
 
-  function startEvaluation(): void {
-    project.clearErrorKind();
-    if (evaluationStartDisabledReason) {
-      project.setError(evaluationStartDisabledReason);
-      return;
-    }
-    if (!projectFile || !selectedEvaluationSuite || !evaluationAuthoring.revisionId) return;
-    try {
-      evaluationExecution.begin(createEvaluationStartDraft({
-        project: projectFile,
-        suiteId: selectedEvaluationSuite.id,
-        selectedCaseIds: [...evaluationAuthoring.selectedCaseIds],
-        selectedVariantIds: [...evaluationAuthoring.selectedVariantIds],
-        profiles: profiles.map((profile) => ({
-          id: profile.id,
-          name: profile.name,
-          endpoint: profile.endpoint,
-          capabilities: resolveProviderCapabilities(profile.provider, profile.capabilityOverrides),
-        })),
-        mappedProfileIds,
-        durable: Boolean(projectWorkspace),
-        bindingForTool,
-      }));
-    } catch (error) {
-      project.setError(error instanceof Error ? error.message : "Could not prepare the evaluation.");
-    }
-  }
-
   function confirmEvaluation(): void {
     runSession.reset();
     repeatedExperiment.clear();
@@ -1388,123 +1352,6 @@ function HomeContent() {
     });
   }
   const responseEmptyState = runEmptyStatePresentation(readiness);
-  // The device-local half of a suite's tool exposure, joined once for the three
-  // surfaces that need it: the editor's listing, the start gate, and the
-  // confirmation. Every project tool is resolved, not only the exposed ones, so
-  // the editor can say what a tool would be served by before it is checked.
-  const evaluationSuiteToolBindings = listExperimentToolBindings(
-    projectFile?.tools ?? [],
-    bindingForTool,
-  );
-  const commandToolsUnavailableReason = commandToolUnavailableMessage(commandTools);
-  const evaluationLocalProfiles = profiles.map((profile) => ({
-    id: profile.id,
-    name: profile.name,
-    endpoint: profile.endpoint,
-    capabilities: resolveProviderCapabilities(profile.provider, profile.capabilityOverrides),
-  }));
-  const evaluationLocalTargets = projectFile && selectedEvaluationSuite
-    ? resolveEvaluationLocalTargets({
-        project: projectFile,
-        suiteId: selectedEvaluationSuite.id,
-        selectedVariantIds: [...evaluationAuthoring.selectedVariantIds],
-        profiles: evaluationLocalProfiles,
-        mappedProfileIds,
-      })
-    : [];
-  const evaluationStartDisabledReason = evaluationStartReadiness({
-    projectOpen: Boolean(projectFile),
-    suiteSelected: Boolean(evaluationAuthoring.suiteId),
-    revisionSelected: Boolean(evaluationAuthoring.revisionId),
-    revisionAvailable: Boolean(projectFile?.conversationRevisions.some(
-      ({ id }) => id === evaluationAuthoring.revisionId,
-    )),
-    diagnostics: evaluationAuthoring.diagnostics,
-    selectedCaseCount: evaluationAuthoring.selectedCaseIds.size,
-    selectedVariantCount: evaluationAuthoring.selectedVariantIds.size,
-    repetitions: selectedEvaluationSuite?.execution.repetitions ?? 1,
-    toolBindings: evaluationSuiteToolBindings
-      .filter(({ tool }) => selectedEvaluationSuite?.execution.toolIds.includes(tool.id))
-      .map(({ tool, binding }) => ({ name: tool.name, bound: Boolean(binding) })),
-    ...(commandToolsUnavailableReason ? { commandToolsUnavailableReason } : {}),
-    ...(selectedEvaluationSuite?.execution.turnCeiling === undefined
-      ? {}
-      : { turnCeiling: selectedEvaluationSuite.execution.turnCeiling }),
-    targets: evaluationLocalTargets,
-    activityInProgress: isRequestActive || repeatedExperiment.isRunning || evaluationExecution.isRunning,
-  }).blockedReason;
-
-  // One object, two panes: the composer's preflight and the response pane's
-  // provider-input preview must report the same target and settings, so they
-  // read the same value rather than each assembling their own.
-  const evaluationExecutionActions: EvaluationSuiteExecutionActions = {
-    storage: projectWorkspace ? "durable" : "unsaved",
-    running: evaluationExecution.isRunning,
-    preview: {
-      targets: evaluationLocalTargets.map((target) => ({
-        variantId: target.variantId,
-        variantName: target.variantName,
-        requirementName: target.requirementName,
-        ...(target.profile
-          ? { targetName: target.profile.name || "Untitled profile", endpoint: target.profile.endpoint }
-          : {}),
-        protocol: "openai-compatible-chat-completions",
-        model: target.model,
-        responseMode: target.responseMode,
-        options: target.options,
-        streamingAvailable: target.profile?.capabilities.streaming ?? false,
-      })),
-    },
-    ...(evaluationStartDisabledReason ? { disabledReason: evaluationStartDisabledReason } : {}),
-    onStart: startEvaluation,
-    toolBindings: evaluationSuiteToolBindings,
-    ...(commandToolsUnavailableReason ? { commandToolsUnavailableReason } : {}),
-  };
-
-  // Cross-feature adapter: saved executions are project-workspace evidence and
-  // the suite being authored is authoring state, so scoping one to the other
-  // belongs to the route rather than to either owner. Executions are matched by
-  // suite identity across every input revision — a run against an older
-  // revision is still this suite's evidence, and the editor marks it as drifted
-  // rather than hiding it.
-  const evaluationHistory: EvaluationSuiteHistoryHandle | undefined = projectWorkspace
-    ? {
-        status: runHistory.status,
-        executions: runHistory.experiments.filter(
-          (item): item is Extract<typeof item, { kind: "evaluation" }> =>
-            item.kind === "evaluation" && item.evaluation.suiteId === selectedEvaluationSuite?.id,
-        ),
-        ...(runHistory.error ? { error: runHistory.error } : {}),
-        ...(evaluationAuthoring.revisionId
-          ? { currentRevisionId: evaluationAuthoring.revisionId }
-          : {}),
-        expanded: suiteHistoryExpanded,
-        onExpandedChange: setSuiteHistoryExpanded,
-        onExpand: () => {
-          setSuiteHistoryRequested(true);
-          evaluationBaselines.load();
-        },
-        onRefresh: () => void runHistory.refresh(),
-        onOpen: (item) => openHistoryExperiment(item),
-        baselines: {
-          items: evaluationBaselines.forSuite(selectedEvaluationSuite?.id),
-          ...(evaluationBaselines.error ? { error: evaluationBaselines.error } : {}),
-          busy: evaluationBaselines.comparing,
-          onPin: (item, variantId, name) => evaluationBaselines.pin(item, variantId, name),
-          onUnpin: (baselineId) => evaluationBaselines.unpin(baselineId),
-          onCompare: async (baseline, candidate, candidateVariantId) => {
-            await evaluationBaselines.compare(baseline, candidate, candidateVariantId);
-            // A comparison is a results surface, so anything else holding the
-            // Runs mode is released the same way opening a saved execution does.
-            repeatedExperiment.clear();
-            evaluationExecution.clear();
-            runSession.reset();
-            setMode("runs");
-          },
-        },
-      }
-    : undefined;
-
   const onContextualRunShortcut = useEffectEvent((event: KeyboardEvent) => {
     if (!(event.metaKey || event.ctrlKey) || event.key !== "Enter") return;
     event.preventDefault();
@@ -1520,7 +1367,7 @@ function HomeContent() {
     // Each mode's primary action is what the shortcut fires. Runs has none:
     // it is where results are read, not where work is started.
     if (mode === "evaluations") {
-      if (!evaluationStartDisabledReason) startEvaluation();
+      if (!evaluationWorkspace.startDisabledReason) evaluationWorkspace.start();
       return;
     }
     if (mode !== "compose") return;
@@ -1780,7 +1627,7 @@ function HomeContent() {
           setMode("runs");
         }
       }}
-      {...(projectFile ? { onPromoteTrace: (trace: RunTrace) => setPromotion({ trace }) } : {})}
+      {...(projectFile ? { onPromoteTrace: (trace: RunTrace) => evaluationCaseSource.requestPromotion(trace) } : {})}
     />
   );
   const n8nImportDisabledReason = branchContext
@@ -1853,7 +1700,7 @@ function HomeContent() {
         }
         runDisabled={Boolean(readiness?.blocked)}
         runDisabledReasonId={RUN_READINESS_SUMMARY_ID}
-        evaluationStartDisabled={Boolean(evaluationStartDisabledReason)}
+        evaluationStartDisabled={Boolean(evaluationWorkspace.startDisabledReason)}
         evaluationStartDisabledReasonId={EVALUATION_PREFLIGHT_SUMMARY_ID}
         onChooseProfile={chooseProfile}
         onOpenConnections={() => setConnectionDrawerOpen(true)}
@@ -1877,7 +1724,7 @@ function HomeContent() {
         onStop={stop}
         onStopExperiment={evaluationExecution.isRunning ? evaluationExecution.cancel : repeatedExperiment.cancel}
         onRun={() => void run()}
-        onStartEvaluation={startEvaluation}
+        onStartEvaluation={evaluationWorkspace.start}
       />
 
       <AppBanner {...(appBanner ? { selection: appBanner } : {})} />
@@ -2076,7 +1923,7 @@ function HomeContent() {
               );
               if (!succeeded) return false;
               setMode("evaluations");
-              setEvaluationSetupOpen(true);
+              evaluationWorkspace.layout.onSetupOpenChange(true);
               return true;
             }}
             onOpenEvaluationSuite={(suiteId) => {
@@ -2113,14 +1960,9 @@ function HomeContent() {
       ) : mode === "evaluations" ? (
         <EvaluationsMode
           authoring={evaluationAuthoring}
-          execution={evaluationExecutionActions}
-          {...(evaluationHistory ? { history: evaluationHistory } : {})}
-          layout={{
-            setupOpen: evaluationSetupOpen,
-            onSetupOpenChange: setEvaluationSetupOpen,
-            previewPreference: evaluationPreviewPreference,
-            onPreviewPreferenceChange: setEvaluationPreviewPreference,
-          }}
+          execution={evaluationWorkspace.execution}
+          {...(evaluationWorkspace.history ? { history: evaluationWorkspace.history } : {})}
+          layout={evaluationWorkspace.layout}
           modelFavorites={{
             models: activeProfile.favoriteModels ?? [],
             onToggle: (model) =>
@@ -2131,22 +1973,8 @@ function HomeContent() {
           onOpenTemplates={() =>
             resolveReadiness({ surface: "prompts", control: "prompt-library" })
           }
-          {...(projectWorkspace && evaluationAuthoring.suiteId && evaluationAuthoring.focusedCaseId && caseSource
-            ? { caseSource }
-            : {})}
-          onOpenSourceTrace={(source) => {
-            if (!projectWorkspace) return;
-            void readRunTraceWorkspace(projectWorkspace, traceFileName(source.runId))
-              .then((contents) => {
-                const trace = parseRunTraceJson(contents);
-                if (trace.runId !== source.runId) throw new Error("The saved source trace contains a different run.");
-                runSession.adoptTrace(trace, { workspace: projectWorkspace, fileName: traceFileName(source.runId) });
-                setTraceOpen(true);
-                setMode("compose");
-                setWorkbenchView("inspect");
-              })
-              .catch((error) => toasts.publish({ key: "evaluation-case-source-open-failed", title: "Could not open source trace", detail: error instanceof Error ? error.message : "The saved source trace could not be read.", durableHome: "the case remains valid without its optional source annotation" }));
-          }}
+          {...(evaluationCaseSource.source ? { caseSource: evaluationCaseSource.source } : {})}
+          onOpenSourceTrace={evaluationCaseSource.openSource}
         />
       ) : (
         <RunsMode
@@ -2214,7 +2042,7 @@ function HomeContent() {
                     setMode("compose");
                     setWorkbenchView("inspect");
                   },
-                  onPromoteCandidate: (trace, experimentCellId) => setPromotion({ trace, experimentCellId }),
+                  onPromoteCandidate: (trace, experimentCellId) => evaluationCaseSource.requestPromotion(trace, experimentCellId),
                   ...(comparisonReturnTarget ? { returnTarget: comparisonReturnTarget } : {}),
                   onReturnTargetChange: setComparisonReturnTarget,
                 },
@@ -2226,7 +2054,7 @@ function HomeContent() {
                   execution: evaluationExecution.execution,
                   onStop: evaluationExecution.cancel,
                   onOpenTrace: evaluationExecution.openTrace,
-                  onPromoteTrace: (trace, experimentCellId) => setPromotion({ trace, experimentCellId }),
+                  onPromoteTrace: (trace, experimentCellId) => evaluationCaseSource.requestPromotion(trace, experimentCellId),
                   onReturnToList: evaluationExecution.returnToEvaluation,
                   onDismiss: () => dismissFinishedExperiment("evaluation"),
                   reassessment: evaluationReassessment,
@@ -2378,37 +2206,12 @@ function HomeContent() {
           onConfirm={confirmEvaluation}
         />
       )}
-      {promotion && projectFile && (
+      {evaluationCaseSource.promotion && projectFile && (
         <PromoteTraceToCaseDialog
           project={projectFile}
-          trace={promotion.trace}
-          onCancel={() => setPromotion(undefined)}
-          onPromote={(suiteId, name) => {
-            try {
-              const promoted = promoteTraceToEvaluationCase(projectFile, { suiteId, trace: promotion.trace, name });
-              project.adoptProjectMutation(promoted.project);
-              evaluationAuthoring.selectSuite(suiteId);
-              evaluationAuthoring.focusCase(promoted.caseId);
-              setPromotion(undefined);
-              setMode("evaluations");
-              toasts.publish({ key: "evaluation-case-promoted", title: `Promoted “${name.trim()}” to a case`, detail: "Checks still need to be authored.", durableHome: "the evaluation suite’s focused case" });
-              if (projectWorkspace) void (async () => {
-                try {
-                  const sources = await readEvaluationCaseSourcesWorkspace(projectWorkspace);
-                  const source = {
-                    suiteId, caseId: promoted.caseId, runId: promotion.trace.runId, capturedAt: new Date().toISOString(),
-                    ...(promotion.experimentCellId ? { experimentCellId: promotion.experimentCellId as ExperimentCellId } : {}),
-                  };
-                  await saveEvaluationCaseSourcesWorkspace(projectWorkspace, upsertEvaluationCaseSource(sources, source));
-                  setCaseSource(source);
-                } catch {
-                  toasts.publish({ key: "evaluation-case-source-unsaved", title: "Case promoted, but source link was not saved", detail: "The portable case is safe; reopen the trace if you need to keep its evidence link.", durableHome: "the promoted case, which remains valid without the local annotation" });
-                }
-              })();
-            } catch (error) {
-              toasts.publish({ key: "evaluation-case-promotion-failed", title: "Could not promote trace", detail: error instanceof Error ? error.message : "The trace could not be promoted.", durableHome: "the evaluation result evidence" });
-            }
-          }}
+          trace={evaluationCaseSource.promotion.trace}
+          onCancel={evaluationCaseSource.cancelPromotion}
+          onPromote={evaluationCaseSource.promote}
         />
       )}
       {confirmation && (

@@ -21,6 +21,33 @@ const ids = {
   run: createEntityId("run", "promotion-browser"),
 };
 
+const sourceCase = createEntityId("evaluation-case", "promotion-browser-saved");
+
+/** The promotion fixture with a case promoted earlier and its local source annotation on disk. */
+function fixtureWithSavedSource(sourceRunId: string): Record<string, string> {
+  const files = fixture();
+  const project = JSON.parse(files["project.json"]!) as ProjectFile;
+  project.evaluationSuites[0]!.cases.push({ id: sourceCase, name: "Saved rollback", values: { [ids.input]: "database migration rollback" }, checks: [] });
+  return {
+    ...files,
+    "project.json": serializeProjectFile(project),
+    "evaluation-case-sources.json": JSON.stringify({
+      schemaVersion: 1,
+      sources: [{ suiteId: ids.suite, caseId: sourceCase, runId: sourceRunId, capturedAt: "2026-08-06T12:02:00.000Z" }],
+    }),
+  };
+}
+
+async function openFolder(page: import("@playwright/test").Page, files: Record<string, string>): Promise<void> {
+  await seedProfile(page);
+  await stubProjectDirectory(page, { name: "promotion-browser.inference-lens", files });
+  await page.goto("/");
+  await waitForHydration(page);
+  await page.getByLabel("Project menu").click();
+  await page.getByRole("button", { name: "Open project folder…" }).click();
+  await expect(page.locator(".brand")).toContainText("Promotion browser fixture");
+}
+
 function fixture(): Record<string, string> {
   const project: ProjectFile = {
     schemaVersion: 10,
@@ -85,4 +112,24 @@ test("an ordinary source trace promotes exact values and remains openable from i
   await expect(editor.getByText("No deterministic checks yet.")).toBeVisible();
   await editor.getByRole("button", { name: "Open source trace" }).click();
   await expect(page.getByRole("button", { name: "Promote to case…" })).toBeVisible();
+});
+
+test("a source annotation saved earlier is validated against its trace and opens it", async ({ page }) => {
+  await openFolder(page, fixtureWithSavedSource(ids.run));
+  await openMode(page, "Evaluations");
+  const editor = page.getByRole("region", { name: "Evaluation suites" });
+  await expect(editor.getByRole("heading", { name: "Saved rollback" })).toBeVisible();
+  await editor.getByRole("button", { name: "Open source trace" }).click();
+  await expect(page.getByRole("button", { name: "Promote to case…" })).toBeVisible();
+  await expect(page.locator(".result")).toContainText("The rollback failed.");
+});
+
+test("a source annotation whose trace is missing is reported and the case stays usable", async ({ page }) => {
+  await openFolder(page, fixtureWithSavedSource(createEntityId("run", "promotion-browser-missing")));
+  await openMode(page, "Evaluations");
+  const editor = page.getByRole("region", { name: "Evaluation suites" });
+  await expect(editor.getByRole("heading", { name: "Saved rollback" })).toBeVisible();
+  await expect(page.getByText("Case source link is unavailable")).toBeVisible();
+  await expect(editor.getByRole("button", { name: "Open source trace" })).toHaveCount(0);
+  await expect(editor.getByLabel("Saved rollback topic")).toHaveValue("database migration rollback");
 });

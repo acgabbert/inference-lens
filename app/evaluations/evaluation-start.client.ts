@@ -5,6 +5,7 @@ import { resolveEvaluationVariant } from "../../packages/core/src/evaluation-sui
 import type { ProjectFile } from "../../packages/core/src/project.ts";
 import { createEntityId } from "../../packages/core/src/run-kernel/types.ts";
 import type {
+  ConversationRevisionId,
   EvaluationCaseId,
   EvaluationSuiteId,
   EvaluationVariantId,
@@ -13,6 +14,7 @@ import type {
 import { experimentExposedTools } from "../../packages/core/src/experiment.ts";
 import type { ToolBinding } from "../../packages/core/src/tool-execution.ts";
 import { listExperimentToolBindings } from "../run/experiment-tool-bindings.client.ts";
+import type { ExperimentToolBinding } from "../run/experiment-tool-bindings.client.ts";
 import { describeConversationRevision } from "../../packages/core/src/conversation-revision-description.ts";
 import { evaluationBatchGuardrail } from "./evaluation-batch.client.ts";
 import { revisionChoice } from "./revision-choice.client.ts";
@@ -140,6 +142,102 @@ export function evaluationStartReadiness(
   }
   if (input.activityInProgress) return { blockedReason: "Finish or stop the current run first." };
   return {};
+}
+
+export interface EvaluationWorkspaceExecutionInput {
+  project: ProjectFile | null;
+  suiteId?: EvaluationSuiteId;
+  revisionId?: ConversationRevisionId;
+  diagnostics: readonly { message: string }[];
+  selectedCaseCount: number;
+  selectedVariantIds: readonly EvaluationVariantId[];
+  profiles: readonly EvaluationLocalProfile[];
+  mappedProfileIds: Readonly<Record<string, string>>;
+  /** What serves each of the project's tools on this device; filtered to the suite's here. */
+  toolBindings: readonly ExperimentToolBinding[];
+  commandToolsUnavailableReason?: string;
+  /** Whether any other run or batch is in progress. */
+  activityInProgress: boolean;
+}
+
+/** The exact target and settings one selected configuration would snapshot. */
+export interface EvaluationTargetPreview {
+  variantId: EvaluationVariantId;
+  variantName: string;
+  requirementName: string;
+  targetName?: string;
+  endpoint?: string;
+  protocol: "openai-compatible-chat-completions";
+  model: string;
+  responseMode: "streaming" | "buffered";
+  options: InferenceOptions;
+  streamingAvailable: boolean;
+}
+
+export interface EvaluationWorkspaceExecution {
+  targets: EvaluationResolvedLocalTarget[];
+  previewTargets: EvaluationTargetPreview[];
+  disabledReason?: string;
+}
+
+/**
+ * Joins the suite being authored to this device's profiles and tools. The
+ * preflight and the provider-input preview both read the result, so they
+ * report the same target and the same reason a start is refused.
+ */
+export function evaluationWorkspaceExecution(
+  input: EvaluationWorkspaceExecutionInput,
+): EvaluationWorkspaceExecution {
+  const suite = input.project?.evaluationSuites.find(({ id }) => id === input.suiteId);
+  const targets = input.project && suite
+    ? resolveEvaluationLocalTargets({
+        project: input.project,
+        suiteId: suite.id,
+        selectedVariantIds: input.selectedVariantIds,
+        profiles: input.profiles,
+        mappedProfileIds: input.mappedProfileIds,
+      })
+    : [];
+  const { blockedReason } = evaluationStartReadiness({
+    projectOpen: Boolean(input.project),
+    suiteSelected: Boolean(input.suiteId),
+    revisionSelected: Boolean(input.revisionId),
+    revisionAvailable: Boolean(input.project?.conversationRevisions.some(
+      ({ id }) => id === input.revisionId,
+    )),
+    diagnostics: input.diagnostics,
+    selectedCaseCount: input.selectedCaseCount,
+    selectedVariantCount: input.selectedVariantIds.length,
+    repetitions: suite?.execution.repetitions ?? 1,
+    toolBindings: input.toolBindings
+      .filter(({ tool }) => suite?.execution.toolIds.includes(tool.id))
+      .map(({ tool, binding }) => ({ name: tool.name, bound: Boolean(binding) })),
+    ...(input.commandToolsUnavailableReason
+      ? { commandToolsUnavailableReason: input.commandToolsUnavailableReason }
+      : {}),
+    ...(suite?.execution.turnCeiling === undefined
+      ? {}
+      : { turnCeiling: suite.execution.turnCeiling }),
+    targets,
+    activityInProgress: input.activityInProgress,
+  });
+  return {
+    targets,
+    previewTargets: targets.map((target) => ({
+      variantId: target.variantId,
+      variantName: target.variantName,
+      requirementName: target.requirementName,
+      ...(target.profile
+        ? { targetName: target.profile.name || "Untitled profile", endpoint: target.profile.endpoint }
+        : {}),
+      protocol: "openai-compatible-chat-completions" as const,
+      model: target.model,
+      responseMode: target.responseMode,
+      options: target.options,
+      streamingAvailable: target.profile?.capabilities.streaming ?? false,
+    })),
+    ...(blockedReason ? { disabledReason: blockedReason } : {}),
+  };
 }
 
 export interface EvaluationStartDraftInput {
