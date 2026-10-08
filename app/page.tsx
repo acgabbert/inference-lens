@@ -3,15 +3,10 @@
 import {
   useEffect,
   useEffectEvent,
-  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
-import type {
-  ProviderCapabilities,
-  RichInferenceRequest,
-} from "../packages/core/src/types";
-import { resolveProviderCapabilities } from "../packages/core/src/types";
+import type { ProviderCapabilities } from "../packages/core/src/types";
 import {
   createProjectFile,
   updateConnectionRequirementEndpoint,
@@ -55,6 +50,7 @@ import { useModelDiscovery } from "./use-model-discovery.client";
 import { useConnectionProfiles } from "./use-connection-profiles.client";
 import { toggleFavoriteModel } from "./profile-store.client";
 import { useRequestDraft } from "./use-request-draft.client";
+import { useRequestSettings } from "./request/use-request-settings.client";
 import { useProjectWorkspace } from "./use-project-workspace.client";
 import { ConnectionDrawer } from "./connection-drawer.client";
 import { Topbar } from "./topbar.client";
@@ -115,9 +111,6 @@ import { chooseAppBanner } from "./notifications/banner-priority.client";
 import type { AppBanner as AppBannerCandidate } from "./notifications/banner-priority.client";
 
 const inferenceTransport = createInferenceTransport();
-
-const STREAMING_PREFERENCE_STORAGE_KEY =
-  "inference-lens:streaming-preference:v1";
 
 function subscribeToDesktopRuntime(): () => void {
   return () => {};
@@ -239,7 +232,6 @@ function HomeContent() {
   // to ride on the presence of the import notice, which stopped being possible
   // once that notice became a toast with no state behind it.
   const [importedRevision, setImportedRevision] = useState(0);
-  const clearTemplateOverridesRef = useRef<() => void>(() => {});
   const [workbenchView, setWorkbenchView] =
     useState<WorkbenchView>("request");
   // Navigation state, deliberately transient: a reload lands on Compose rather
@@ -254,10 +246,10 @@ function HomeContent() {
   // the same case and repetition instead of silently resetting to repetition 1.
   const [comparisonReturnTarget, setComparisonReturnTarget] = useState<EvaluationComparisonReturnTarget>();
   const [comparisonTraceOpen, setComparisonTraceOpen] = useState(false);
-  const [streamingPreferred, setStreamingPreferred] = useState(true);
-  const [streamingPreferenceLoaded, setStreamingPreferenceLoaded] =
-    useState(false);
-  const streamingPreferenceChangedRef = useRef(false);
+  // The callbacks below read `requestSettings` and `projectTemplates`, both
+  // declared after this hook because they read its project and mapping. Safe:
+  // the workspace calls these only from project commands and effects, never
+  // during render.
   const project = useProjectWorkspace({
     activeProfile,
     profiles,
@@ -273,7 +265,7 @@ function HomeContent() {
           model: activeProfile.model,
           messages: createInitialMessages(chooseDefaultUserPrompt()),
           temperature: activeProfile.temperature,
-          responseMode: activeResponseMode,
+          responseMode: requestSettings.responseMode,
           capabilities: activeCapabilities,
         },
       });
@@ -281,7 +273,7 @@ function HomeContent() {
     createProject() {
       return createProjectFile({
         name: "Untitled Inference Lens project",
-        request: currentRequest(),
+        request: requestSettings.currentRequest(),
       });
     },
     currentDraft() {
@@ -291,8 +283,8 @@ function HomeContent() {
       return {
         messages,
         ...(activeRevision ? { items: activeRevision.items } : {}),
-        model: activeModel,
-        temperature: activeTemperature,
+        model: requestSettings.model,
+        temperature: requestSettings.temperature,
         tools: serializedTools(),
         toolMocks,
         enabledToolIds,
@@ -301,12 +293,11 @@ function HomeContent() {
     onApplyDraft(draft, projectId) {
       if (projectFile?.projectId !== projectId) clearRequestTools();
       replaceProjectDraft(draft);
-      clearTemplateOverridesRef.current();
+      projectTemplates.clearTransientOverrides();
       // Declared after this hook because it reads the run session. Safe: a
       // draft is applied only from project commands, never during render.
       pendingBranch.clear();
-      setSessionModel(draft.model);
-      setSessionTemperature(draft.temperature);
+      requestSettings.applyDraft(draft);
       runSession.reset();
     },
     onSaved({ name, destination }) {
@@ -330,23 +321,6 @@ function HomeContent() {
     projectErrorKind,
     mappedProfileIds,
   } = project;
-  const requestConnectionRequirement = projectFile?.connectionRequirements.find(
-    ({ id }) => id === projectFile.defaults.target.connectionRequirementId,
-  );
-  const mappedRequestProfile = requestConnectionRequirement
-    ? profiles.find(
-        ({ id }) => id === mappedProfileIds[requestConnectionRequirement.id],
-      )
-    : undefined;
-  // A project's device-local mapping owns execution. The active profile only
-  // owns which definition the Connections drawer is editing.
-  const requestProfile = projectFile
-    ? mappedRequestProfile ?? activeProfile
-    : activeProfile;
-  const requestCapabilities = resolveProviderCapabilities(
-    requestProfile.provider,
-    requestProfile.capabilityOverrides,
-  );
   const runHistory = useProjectRunHistory(
     projectWorkspace,
     runHistoryOpen || suiteHistoryRequested || mode === "runs",
@@ -396,6 +370,15 @@ function HomeContent() {
     onProjectDirty: project.markDirty,
     onProjectError: project.setError,
   });
+  const requestSettings = useRequestSettings({
+    projectFile,
+    mappedProfileIds,
+    profiles,
+    activeProfile,
+    messages,
+    updateActiveProfile,
+    onProjectEdited: project.markDirty,
+  });
   // Device-local execution capability. Owned here only long enough to be
   // joined with the project's mocks below: what serves a tool is one question,
   // and the run session must not have to ask it twice.
@@ -408,7 +391,7 @@ function HomeContent() {
   const runSession = useRunSession({
     transport: inferenceTransport,
     prepareCredential: () =>
-      credential.prepareForProfile(requestProfile.id, requestProfile.endpoint),
+      credential.prepareForProfile(requestSettings.profile.id, requestSettings.profile.endpoint),
     bindingForTool,
     mcpApprovalModeFor: mcpConsents.approvalModeFor,
     readTrace: runHistory.readTrace,
@@ -440,7 +423,7 @@ function HomeContent() {
   const repeatedExperiment = useRepeatedExperimentSession({
     transport: inferenceTransport,
     prepareCredential: () =>
-      credential.prepareForProfile(requestProfile.id, requestProfile.endpoint),
+      credential.prepareForProfile(requestSettings.profile.id, requestSettings.profile.endpoint),
     bindingForTool,
     onTraceSaved() { setSavedRunVersion((current) => current + 1); },
     onError(message) { project.setError(message, { clearKind: true }); },
@@ -483,8 +466,6 @@ function HomeContent() {
     project: projectFile,
     adoptProjectMutation: project.adoptProjectMutation,
   });
-  const [sessionModel, setSessionModel] = useState<string>();
-  const [sessionTemperature, setSessionTemperature] = useState<number>();
   const pendingBranch = usePendingBranch({
     runState,
     transcript,
@@ -509,56 +490,22 @@ function HomeContent() {
   }, []);
 
   useEffect(() => {
-    const preferenceId = window.setTimeout(() => {
-      const saved = window.localStorage.getItem(
-        STREAMING_PREFERENCE_STORAGE_KEY,
-      );
-      if (!streamingPreferenceChangedRef.current && saved === "buffered") {
-        setStreamingPreferred(false);
-      }
-      setStreamingPreferenceLoaded(true);
-    }, 0);
-    return () => window.clearTimeout(preferenceId);
-  }, []);
-
-  useEffect(() => {
-    if (!streamingPreferenceLoaded) return;
-    window.localStorage.setItem(
-      STREAMING_PREFERENCE_STORAGE_KEY,
-      streamingPreferred ? "streaming" : "buffered",
-    );
-  }, [streamingPreferred, streamingPreferenceLoaded]);
-
-  function changeStreamingPreference(streaming: boolean): void {
-    streamingPreferenceChangedRef.current = true;
-    setStreamingPreferred(streaming);
-  }
-
-  useEffect(() => {
     if (!toolRegistryLoaded) return;
     writeToolRegistry(toolRegistry);
   }, [toolRegistry, toolRegistryLoaded]);
 
-  const activeModel = sessionModel ?? requestProfile.model;
-  const activeTemperature = projectFile
-    ? sessionTemperature
-    : requestProfile.temperature;
-  const activeResponseMode =
-    streamingPreferred && requestCapabilities.streaming
-      ? "streaming"
-      : "buffered";
   const selectedProjectToolCount = tools.filter(({ id }) =>
     enabledToolIds.includes(id),
   ).length;
   const selectedToolCount = selectedProjectToolCount + requestTools.length;
   const unservableToolNames = unservableTools().map(({ name }) => name);
   const { discovery: activeModelDiscovery, loadModels } = useModelDiscovery({
-    profileId: requestProfile.id,
-    endpoint: requestProfile.endpoint,
-    capabilities: requestCapabilities,
+    profileId: requestSettings.profile.id,
+    endpoint: requestSettings.profile.endpoint,
+    capabilities: requestSettings.capabilities,
     transport: inferenceTransport,
     prepareCredential: () =>
-      credential.prepareForProfile(requestProfile.id, requestProfile.endpoint),
+      credential.prepareForProfile(requestSettings.profile.id, requestSettings.profile.endpoint),
   });
 
   function ensureProjectDocument() {
@@ -571,8 +518,8 @@ function HomeContent() {
     projectFile,
     projectDirty,
     messages,
-    model: activeModel,
-    temperature: activeTemperature,
+    model: requestSettings.model,
+    temperature: requestSettings.temperature,
     serializedTools,
     toolMocks,
     enabledToolIds,
@@ -688,22 +635,6 @@ function HomeContent() {
       setWorkbenchView("inspect");
     },
   });
-  useEffect(() => {
-    clearTemplateOverridesRef.current = projectTemplates.clearTransientOverrides;
-  }, [projectTemplates.clearTransientOverrides]);
-
-  function currentRequest(): RichInferenceRequest {
-    return {
-      provider: "openai-compatible",
-      endpoint: requestProfile.endpoint,
-      model: activeModel,
-      messages,
-      temperature: activeTemperature,
-      responseMode: activeResponseMode,
-      capabilities: requestCapabilities,
-    };
-  }
-
   function templateRequestPreview():
     | { body: unknown; messages: ConversationMessage[] }
     | { error: string }
@@ -718,7 +649,7 @@ function HomeContent() {
     if (!resolution) return undefined;
     try {
       const request = {
-        ...currentRequest(),
+        ...requestSettings.currentRequest(),
         messages: resolution.messages,
       };
       const execution = createSingleTurnRunExecution(
@@ -754,29 +685,11 @@ function HomeContent() {
     if (pendingBranch.editFromHere(messageId)) setWorkbenchView("request");
   }
 
-  function setEditorModel(model: string): void {
-    if (projectFile) {
-      setSessionModel(model);
-      project.markDirty();
-    } else {
-      updateActiveProfile({ model });
-    }
-  }
-
-  function setEditorTemperature(temperature: number | undefined): void {
-    if (projectFile) {
-      setSessionTemperature(temperature);
-      project.markDirty();
-    } else {
-      updateActiveProfile({ temperature });
-    }
-  }
-
   function chooseProfile(profileId: string): void {
     const profile = profiles.find(({ id }) => id === profileId);
     if (!profile) return;
-    if (requestConnectionRequirement) {
-      project.mapProfile(requestConnectionRequirement.id, profile);
+    if (requestSettings.connectionRequirement) {
+      project.mapProfile(requestSettings.connectionRequirement.id, profile);
     }
     selectProfile(profileId);
   }
@@ -860,14 +773,14 @@ function HomeContent() {
     repeatedExperiment.clear();
     evaluationExecution.clear();
     project.clearErrorKind();
-    const requestSnapshot = currentRequest();
+    const requestSnapshot = requestSettings.currentRequest();
     const prepared = prepareWorkbenchRun({
       request: requestSnapshot,
       project: projectFile ?? undefined,
       projectTools: resolvedTools(),
       requestTools,
-      capabilities: requestCapabilities,
-      profileName: requestProfile.name,
+      capabilities: requestSettings.capabilities,
+      profileName: requestSettings.profile.name,
       templateRunOverrides: projectTemplates.templateRunOverrides,
       ...pendingBranch.preparationInputs(),
     });
@@ -890,7 +803,7 @@ function HomeContent() {
       ...requestSnapshot,
       messages: input.messages,
     };
-    input.target.profileId = createEntityId("profile", requestProfile.id);
+    input.target.profileId = createEntityId("profile", requestSettings.profile.id);
     runsNavigation.selectCurrent(input.runId);
     const sessionStart = runSession.start(input, {
       request,
@@ -928,14 +841,14 @@ function HomeContent() {
       project.setError(unservableToolsMessage(unservable));
       return;
     }
-    const requestSnapshot = currentRequest();
+    const requestSnapshot = requestSettings.currentRequest();
     const prepared = prepareWorkbenchRun({
       request: requestSnapshot,
       project: projectFile ?? undefined,
       projectTools: resolvedTools(),
       requestTools,
-      capabilities: requestCapabilities,
-      profileName: requestProfile.name,
+      capabilities: requestSettings.capabilities,
+      profileName: requestSettings.profile.name,
       templateRunOverrides: projectTemplates.templateRunOverrides,
       ...pendingBranch.preparationInputs(),
     });
@@ -948,10 +861,10 @@ function HomeContent() {
       ...prepared.input,
       target: {
         ...prepared.input.target,
-        profileId: createEntityId("profile", requestProfile.id),
+        profileId: createEntityId("profile", requestSettings.profile.id),
       },
     };
-    repeatedExperiment.begin(input, requestProfile.name || "Untitled profile", () => {
+    repeatedExperiment.begin(input, requestSettings.profile.name || "Untitled profile", () => {
       if (prepared.projectMutation) project.adoptBranchRevision(prepared.projectMutation);
       if (prepared.executedRevisionId) projectTemplates.markExecutedRevision(prepared.executedRevisionId);
       pendingBranch.settle(prepared);
@@ -1059,13 +972,13 @@ function HomeContent() {
   const readiness = runReadiness({
     projectOpen: Boolean(projectFile),
     connectionMapped: projectTemplates.activeConnectionRequirement
-      ? Boolean(mappedRequestProfile)
+      ? requestSettings.profileMapped
       : true,
-    activeProfileName: requestProfile.name,
-    activeProfileEndpoint: requestProfile.endpoint,
-    activeProfileModel: activeModel,
+    activeProfileName: requestSettings.profile.name,
+    activeProfileEndpoint: requestSettings.profile.endpoint,
+    activeProfileModel: requestSettings.model,
     selectedToolCount,
-    toolsEnabled: requestCapabilities.tools,
+    toolsEnabled: requestSettings.capabilities.tools,
     ...(projectTemplates.activeConnectionRequirement
       ? {
           requiredEndpoint: projectTemplates.activeConnectionRequirement.endpoint,
@@ -1369,9 +1282,9 @@ function HomeContent() {
     >
       <Topbar
         profiles={profiles}
-        activeProfile={requestProfile}
-        {...(requestConnectionRequirement
-          ? { projectConnectionName: requestConnectionRequirement.name }
+        activeProfile={requestSettings.profile}
+        {...(requestSettings.connectionRequirement
+          ? { projectConnectionName: requestSettings.connectionRequirement.name }
           : {})}
         hasCredential={credential.hasCredential}
         projectName={projectFile?.name}
@@ -1489,21 +1402,21 @@ function HomeContent() {
           templates={projectTemplates}
           project={projectFile}
           settings={{
-            model: activeModel,
-            temperature: activeTemperature,
-            responseMode: activeResponseMode,
-            streamingAvailable: requestCapabilities.streaming,
-            toolsEnabled: requestCapabilities.tools,
+            model: requestSettings.model,
+            temperature: requestSettings.temperature,
+            responseMode: requestSettings.responseMode,
+            streamingAvailable: requestSettings.capabilities.streaming,
+            toolsEnabled: requestSettings.capabilities.tools,
             modelDiscovery: activeModelDiscovery,
-            favoriteModels: requestProfile.favoriteModels ?? [],
-            onModelChange: setEditorModel,
-            onTemperatureChange: setEditorTemperature,
-            onStreamingPreferenceChange: changeStreamingPreference,
+            favoriteModels: requestSettings.profile.favoriteModels ?? [],
+            onModelChange: requestSettings.setModel,
+            onTemperatureChange: requestSettings.setTemperature,
+            onStreamingPreferenceChange: requestSettings.setStreamingPreferred,
             onLoadModels: (force) => void loadModels(force),
             onToggleFavoriteModel: (model) =>
-              updateProfile(requestProfile.id, {
+              updateProfile(requestSettings.profile.id, {
                 favoriteModels: toggleFavoriteModel(
-                  requestProfile.favoriteModels,
+                  requestSettings.profile.favoriteModels,
                   model,
                 ),
               }),
@@ -1512,9 +1425,9 @@ function HomeContent() {
                   inherited: {
                     label: "profile defaults",
                     value: {
-                      model: requestProfile.model,
-                      temperature: requestProfile.temperature,
-                      responseMode: activeResponseMode,
+                      model: requestSettings.profile.model,
+                      temperature: requestSettings.profile.temperature,
+                      responseMode: requestSettings.responseMode,
                     },
                   },
                 }
@@ -1534,7 +1447,7 @@ function HomeContent() {
           importedRevision={importedRevision}
           onReadinessAction={resolveReadiness}
           onDestinationHandled={() => setPendingReadinessDestination(undefined)}
-          activeProfile={requestProfile}
+          activeProfile={requestSettings.profile}
           {...(pendingBranch.pending ? { pendingBranch: pendingBranch.pending } : {})}
           {...(requestPreview ? { requestPreview } : {})}
           onOpenConnectionSettings={() => setConnectionDrawerOpen(true)}
@@ -1736,7 +1649,7 @@ function HomeContent() {
             ...(projectTemplates.activeConnectionRequirement
               ? { connectionRequirementName: projectTemplates.activeConnectionRequirement.name }
               : {}),
-            projectModel: activeModel,
+            projectModel: requestSettings.model,
           }}
           onImport={projectTemplates.importN8nPrompt}
         />
@@ -1802,14 +1715,14 @@ function HomeContent() {
         <RepeatedExperimentDialog
           draft={repeatedExperiment.draft}
           settings={{
-            streamingAvailable: requestCapabilities.streaming,
+            streamingAvailable: requestSettings.capabilities.streaming,
             modelDiscovery: activeModelDiscovery,
-            favoriteModels: requestProfile.favoriteModels ?? [],
+            favoriteModels: requestSettings.profile.favoriteModels ?? [],
             onLoadModels: (force) => void loadModels(force),
             onToggleFavoriteModel: (model) =>
-              updateProfile(requestProfile.id, {
+              updateProfile(requestSettings.profile.id, {
                 favoriteModels: toggleFavoriteModel(
-                  requestProfile.favoriteModels,
+                  requestSettings.profile.favoriteModels,
                   model,
                 ),
               }),
