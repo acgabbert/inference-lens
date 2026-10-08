@@ -128,3 +128,41 @@ test("editing a pinned source returns to the exact request use", async ({ page }
   );
   await expect(useCard).toContainText("Revision 1");
 });
+
+test("re-entering Prompts from the mode strip drops the return path but keeps the source", async ({ page }) => {
+  const useCard = page.locator('[data-template-use-id="template-use_originating-use"]');
+  await useCard.getByRole("button", { name: "Edit source" }).click();
+  await expect(page.getByRole("button", { name: "Back to request" })).toBeVisible();
+
+  await openMode(page, "Compose");
+  await openMode(page, "Prompts");
+
+  await expect(page.getByLabel("Prompt name")).toHaveValue("Incident triage");
+  await expect(page.locator(".template-revision-field select")).toHaveValue(
+    "template-revision_incident-triage-1",
+  );
+  await expect(page.getByRole("button", { name: "Back to request" })).toHaveCount(0);
+});
+
+test("adding the viewed source revision returns to the request with a new use", async ({ page }) => {
+  const useCard = page.locator('[data-template-use-id="template-use_originating-use"]');
+  await useCard.getByRole("button", { name: "Edit source" }).click();
+
+  await page.getByRole("button", { name: "Use Revision 1" }).click();
+
+  await expect(page.getByRole("button", { name: "Compose", exact: true })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expect(page.locator("[data-template-use-id]")).toHaveCount(2);
+});
+
+test("an unsaved imported project reports drafts as kept in this session", async ({ page }) => {
+  await openMode(page, "Prompts");
+  await page.locator(".template-list").getByRole("button", { name: /Incident triage/ }).click();
+  await page.getByLabel("Prompt content").fill("EDITED: diagnose {{incident}}.");
+
+  await expect(page.locator(".template-draft-status")).toHaveText(
+    "Draft kept in this session. Save the project to keep it after closing.",
+  );
+});

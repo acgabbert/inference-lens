@@ -97,8 +97,6 @@ import { useRepeatedExperimentSession } from "./run/use-repeated-experiment-sess
 import { RepeatedExperimentDialog } from "./run/repeated-experiment-dialog.client";
 import { useProjectTemplates } from "./templates/use-project-templates.client";
 import { RequestComposer } from "./request/request-composer.client";
-import { ProjectTemplatesPane } from "./project-templates-pane.client";
-import type { CompatibleEvaluationSuite } from "./project-templates-pane.client";
 import { useEvaluationSuiteAuthoring } from "./evaluations/use-evaluation-suite-authoring.client";
 import { useEvaluationReassessment } from "./evaluations/use-evaluation-reassessment.client";
 import { useEvaluationExecutionSession } from "./evaluations/use-evaluation-execution-session.client";
@@ -117,18 +115,8 @@ import type { EvaluationPassTone } from "./evaluations/evaluation-history-format
 import type { AppMode, ModeIndicator, ModeIndicatorTone } from "./modes/app-mode";
 import { EvaluationsMode } from "./modes/evaluations-mode.client";
 import { RunsMode } from "./modes/runs-mode.client";
-
-type PromptReturnTarget = {
-  kind: "template-use";
-  useId: PromptTemplateUseId;
-};
-
-interface PromptNavigationTarget {
-  key: number;
-  templateId: PromptTemplateId;
-  revisionId?: PromptTemplateRevisionId;
-  returnTarget?: PromptReturnTarget;
-}
+import { PromptsMode } from "./modes/prompts-mode.client";
+import { usePromptNavigation } from "./templates/use-prompt-navigation.client";
 import { useToasts } from "./notifications/use-toasts.client";
 import { ToastRegion } from "./notifications/toast-region.client";
 import { AppBanner } from "./notifications/app-banner.client";
@@ -320,11 +308,7 @@ function HomeContent() {
   // Each mode's sub-state lives in the feature hooks above this line, so
   // switching modes and back is lossless for as long as the app is open.
   const [mode, setMode] = useState<AppMode>("compose");
-  // Prompt navigation is transient UI state. The return target carries only
-  // stable IDs, never a component or object snapshot, so a removed use can
-  // fall back safely to Compose without changing project serialization.
-  const [promptNavigationTarget, setPromptNavigationTarget] =
-    useState<PromptNavigationTarget>();
+  const promptNavigation = usePromptNavigation();
   // The batch the user has actually looked at in Runs. Without this a finished
   // batch is signalled only by the running dot disappearing, which is
   // indistinguishable from nothing having happened.
@@ -1300,9 +1284,7 @@ function HomeContent() {
 
   function changeMode(nextMode: AppMode): void {
     if (nextMode === "prompts" && mode !== "prompts") {
-      setPromptNavigationTarget((current) =>
-        current ? { ...current, returnTarget: undefined } : current,
-      );
+      promptNavigation.clearReturn();
     }
     if (nextMode === "runs" && !runsNavigation.selection && runState) {
       runsNavigation.selectCurrent(runState.runId);
@@ -1315,20 +1297,12 @@ function HomeContent() {
     templateId: PromptTemplateId,
     revisionId: PromptTemplateRevisionId,
   ): void {
-    setPromptNavigationTarget((current) => ({
-      key: (current?.key ?? 0) + 1,
-      templateId,
-      revisionId,
-      returnTarget: { kind: "template-use", useId },
-    }));
+    promptNavigation.editSource(useId, templateId, revisionId);
     setMode("prompts");
   }
 
   function returnFromPromptSource(): void {
-    const target = promptNavigationTarget?.returnTarget;
-    setPromptNavigationTarget((current) =>
-      current ? { ...current, returnTarget: undefined } : current,
-    );
+    const target = promptNavigation.returnFromSource();
     setMode("compose");
     setWorkbenchView("request");
     if (!target) return;
@@ -1635,29 +1609,6 @@ function HomeContent() {
     : Boolean(runState) && !runReachedTerminalStatus
       ? "Finish or stop the current run before importing a prompt."
       : undefined;
-  const libraryTemplates =
-    projectTemplates.libraryTemplates ?? projectFile?.promptTemplates ?? [];
-  const sessionTemplateIds =
-    projectTemplates.sessionTemplateIds ?? new Set<PromptTemplateId>();
-  const compatibleEvaluationSuitesByTemplate = new Map<
-    PromptTemplateId,
-    CompatibleEvaluationSuite[]
-  >();
-  projectFile?.evaluationSuites.forEach((suite) => {
-    const revision = projectFile.conversationRevisions.find(
-      ({ id }) => id === suite.input.conversationRevisionId,
-    );
-    revision?.items.forEach((item) => {
-      if (item.kind !== "template-use") return;
-      const current =
-        compatibleEvaluationSuitesByTemplate.get(item.use.templateId) ?? [];
-      compatibleEvaluationSuitesByTemplate.set(item.use.templateId, [
-        ...current,
-        { suite, pinnedRevisionId: item.use.templateRevisionId },
-      ]);
-    });
-  });
-
   return (
     <main
       onKeyDown={(event) => {
@@ -1845,9 +1796,7 @@ function HomeContent() {
           {...(requestPreview ? { requestPreview } : {})}
           onOpenConnectionSettings={() => setConnectionDrawerOpen(true)}
           onOpenPrompts={() => {
-            setPromptNavigationTarget((current) =>
-              current ? { ...current, returnTarget: undefined } : current,
-            );
+            promptNavigation.clearReturn();
             setMode("prompts");
           }}
           onEditPromptSource={editPromptSource}
@@ -1860,103 +1809,33 @@ function HomeContent() {
         inspect={traceSurface}
       />
       ) : mode === "prompts" ? (
-        <section aria-label="Prompt authoring" className="prompt-mode-workspace">
-          <ProjectTemplatesPane
-            key={`${projectFile?.projectId ?? "unsaved-project"}:${promptNavigationTarget?.key ?? 0}`}
-            templates={libraryTemplates}
-            sessionTemplateIds={sessionTemplateIds}
-            connectionRequirements={projectFile?.connectionRequirements ?? []}
-            defaultConnectionRequirementId={
-              projectFile?.defaults.target.connectionRequirementId
-            }
-            usageCounts={projectTemplates.templateUsageCounts}
-            itemCount={
-              projectTemplates.activeProjectRevision?.items.length ?? messages.length
-            }
-            persistenceStatus={
-              projectErrorKind === "auto-save"
-                ? "error"
-                : !projectWorkspace
-                  ? "session"
-                  : projectDirty
-                    ? "saving"
-                    : "saved"
-            }
-            {...(n8nImportDisabledReason ? { n8nImportDisabledReason } : {})}
-            onOpenN8nImport={() => setN8nImportOpen(true)}
-            onCreate={projectTemplates.createProjectTemplate}
-            onDraftChange={projectTemplates.updateProjectTemplateDraft}
-            onRecommendedTargetChange={
-              projectTemplates.updateProjectTemplateRecommendedTarget
-            }
-            onSave={projectTemplates.saveProjectTemplate}
-            onSaveAndInsert={(...args) => {
-              const revisionId = projectTemplates.saveAndInsertProjectTemplate(...args);
-              if (revisionId) {
-                setPromptNavigationTarget((current) =>
-                  current ? { ...current, returnTarget: undefined } : current,
-                );
-                setMode("compose");
-                setWorkbenchView("request");
-              }
-              return revisionId;
-            }}
-            onRename={projectTemplates.renameProjectTemplate}
-            onArchive={projectTemplates.archiveProjectTemplate}
-            onRestore={projectTemplates.restoreProjectTemplate}
-            onInsert={(...args) => {
-              projectTemplates.insertProjectTemplate(...args);
-              setPromptNavigationTarget((current) =>
-                current ? { ...current, returnTarget: undefined } : current,
-              );
-              setMode("compose");
-              setWorkbenchView("request");
-            }}
-            compatibleEvaluationSuitesByTemplate={
-              compatibleEvaluationSuitesByTemplate
-            }
-            onEvaluateRevision={(templateId, revisionId, suiteId) => {
-              const succeeded = evaluationAuthoring.evaluatePromptRevision(
-                templateId,
-                revisionId,
-                suiteId,
-              );
-              if (!succeeded) return false;
-              setMode("evaluations");
-              evaluationWorkspace.layout.onSetupOpenChange(true);
-              return true;
-            }}
-            onOpenEvaluationSuite={(suiteId) => {
-              evaluationAuthoring.selectSuite(suiteId);
-              setMode("evaluations");
-            }}
-            {...(evaluationAuthoring.savedPromptError
-              ? { evaluateRevisionError: evaluationAuthoring.savedPromptError }
-              : {})}
-            onDismissEvaluateRevisionError={evaluationAuthoring.dismissPromptError}
-            focusRequested={pendingReadinessDestination?.surface === "prompts"}
-            onFocusHandled={() => setPendingReadinessDestination(undefined)}
-            {...(promptNavigationTarget
-              ? { navigationTarget: promptNavigationTarget }
-              : {})}
-            onSelectionChange={(templateId, revisionId) =>
-              setPromptNavigationTarget((current) => ({
-                key: current?.key ?? 0,
-                templateId,
-                ...(revisionId ? { revisionId } : {}),
-                ...(current?.returnTarget
-                  ? { returnTarget: current.returnTarget }
-                  : {}),
-              }))
-            }
-            {...(promptNavigationTarget?.returnTarget
-              ? {
-                  returnLabel: "Back to request",
-                  onReturn: returnFromPromptSource,
-                }
-              : {})}
-          />
-        </section>
+        <PromptsMode
+          {...(projectFile ? { project: projectFile } : {})}
+          templates={projectTemplates}
+          draftMessageCount={messages.length}
+          persistence={{
+            autoSaveFailed: projectErrorKind === "auto-save",
+            folderBacked: Boolean(projectWorkspace),
+            dirty: projectDirty,
+          }}
+          navigation={promptNavigation}
+          evaluations={evaluationAuthoring}
+          {...(n8nImportDisabledReason ? { n8nImportDisabledReason } : {})}
+          focusRequested={pendingReadinessDestination?.surface === "prompts"}
+          onFocusHandled={() => setPendingReadinessDestination(undefined)}
+          onOpenN8nImport={() => setN8nImportOpen(true)}
+          onInserted={() => {
+            promptNavigation.clearReturn();
+            setMode("compose");
+            setWorkbenchView("request");
+          }}
+          onReturn={returnFromPromptSource}
+          onRevisionEvaluationStarted={() => {
+            setMode("evaluations");
+            evaluationWorkspace.layout.onSetupOpenChange(true);
+          }}
+          onEvaluationSuiteOpened={() => setMode("evaluations")}
+        />
       ) : mode === "evaluations" ? (
         <EvaluationsMode
           authoring={evaluationAuthoring}
