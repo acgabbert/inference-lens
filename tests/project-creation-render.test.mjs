@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { ssrLoadModule } from "./support/ssr.mjs";
 
-async function renderProjectCreationDialog() {
+async function renderProjectCreationDialog(mode = "new") {
   const [
     { ProjectCreationDialog },
     { renderToStaticMarkup },
@@ -15,6 +15,7 @@ async function renderProjectCreationDialog() {
   ]);
   return renderToStaticMarkup(
     createElement(ProjectCreationDialog, {
+      mode,
       initialName: "Prompt Lab",
       onClose: () => {},
       onCreate: () => {},
@@ -29,4 +30,14 @@ test("creates visible project bundles with Git protection on by default", async 
   assert.match(html, /type="checkbox" checked=""/);
   assert.match(html, /Choose location/);
   assert.doesNotMatch(html, /undefined|NaN|Infinity/);
+});
+
+test("each save mode names what choosing a folder will do", async () => {
+  const save = await renderProjectCreationDialog("save");
+  assert.match(save, /Save this project/);
+  assert.match(save, /Save to folder…/);
+  const beforeSwitch = await renderProjectCreationDialog("save-before-switch");
+  assert.match(beforeSwitch, /Save the current project/);
+  assert.match(beforeSwitch, /switch projects only after the save succeeds/);
+  assert.match(beforeSwitch, /Save and switch…/);
 });

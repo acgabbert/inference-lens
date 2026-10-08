@@ -143,20 +143,51 @@ as a quality regression. See [deterministic checks](DETERMINISTIC_CHECKS.md).
 `app/page.tsx` is the workbench composition root. It owns top-level layout,
 view selection, and the deliberate transactions that connect profile,
 workspace, draft, template, and run features; it does not own feature-local
-workflows.
+workflows. `AGENTS.md` ("Route composition roots") states the rule for
+changes: name the owner before materially expanding the route.
 
 | Concern | Owner |
 | --- | --- |
 | Profile, capability, credential, and profile deletion | `useConnectionProfiles` |
 | Portable project lifecycle, folder resume, persistence, and profile mapping | `useProjectWorkspace` |
-| Authored request messages, tools, and mocks | `useRequestDraft` |
+| Authored request messages, tools, mocks, and the default first prompt | `app/request/use-request-draft.client.ts` |
+| Session model, temperature, streaming preference, and request profile | `app/request/use-request-settings.client.ts` |
+| Request-pane presentation and local navigation | `app/request/request-composer.client.tsx` |
 | Run validation and provider-neutral input derivation | `app/run/prepare-workbench-run.client.ts` |
 | Live coordination, retry, continuation, stop, diagnostics, and trace lifecycle | `app/run/use-run-session.client.ts` |
 | Tool-result drafts, mock bindings, and whether a draft is still an execution | `app/run/run-session-state.client.ts` |
-| Template-use state, immutable mutations, external-import application, and preview | `app/templates/use-project-templates.client.ts` |
-| Request-pane presentation and local navigation | `app/request/request-composer.client.tsx` |
+| Pending branch and ad hoc conversation identity | `app/run/use-pending-branch.client.ts` |
+| Response presentation preferences, output following, and output derivation | `app/run/use-response-view.client.ts` |
+| Finished-batch announcement and the Runs indicator | `app/run/use-batch-completion.client.ts` |
+| Template-use state, immutable mutations, external-import application | `app/templates/use-project-templates.client.ts` |
+| Template request preview and template run-readiness facts | `app/templates/template-run-view.ts` |
+| Prompt library presentation and edit-source/return navigation | `PromptsMode` and `app/templates/use-prompt-navigation.client.ts` |
+| Evaluation layout, start readiness, and history adapter | `app/evaluations/use-evaluation-workspace.client.ts` |
+| Case-source annotation and trace-to-case promotion | `app/evaluations/use-evaluation-case-source.client.ts` |
+| Device-local tool library | `app/tools/use-tool-registry.client.ts` |
 | Inference option-set presentation and its disclosure | `app/inference-settings-panel.client.tsx` |
 | Run-history listing and artifact reads | `useProjectRunHistory` |
+
+### What stays in the page
+
+Each remaining page-local value has a reason to be there:
+
+| Responsibility | Reason |
+| --- | --- |
+| `mode`, `workbenchView`, `changeMode`, `traceOpen` | View selection: the page decides which region is mounted. |
+| `comparisonTraceOpen`, `comparisonReturnTarget` | A comparison unmounts while its trace is read in Compose; the return target must outlive both. |
+| `pendingReadinessDestination`, `resolveReadiness` | Routes a readiness action across the mode boundary to Connections, Prompts, or the composer. |
+| Overlay visibility: tool library, n8n import, `confirmation`, `projectCreationMode`, connections drawer and `sessionPromptProjectNotice`, run history | Opened from several features; rendered at the root. |
+| `run()`, `repeat()`, and their `prepareComposerRun` / `commitPreparedRun` steps | Join request settings, project, templates, branch, run session, and Runs navigation. |
+| `confirmEvaluation`, `openHistoryTrace`, `openHistoryExperiment`, `dismissFinishedExperiment`, `branchFromHistoryTrace`, `editFromHere` | Join history, the run and batch sessions, and navigation. |
+| `chooseProfile`, `confirmDeleteActiveProfile`, `confirmUpdateProjectEndpoint`, `changeCapability` | Join connection profiles and the project's connection mapping. |
+| `bindingForTool`, `unservableTools` | The one answer to "what serves this tool here?", joining project mocks with command and MCP grants for every run surface. |
+| `runHistoryBlocked`, `n8nImportDisabledReason`, the run-readiness input | Gates that read the run session, batch sessions, branch, and templates together. |
+| Banner candidates and `chooseAppBanner` | One slot ranks failures and advisories from several owners. |
+| `savedRunVersion`, `importedRevision`, `suiteHistoryRequested` | Signals that invalidate the shared history listing or return the composer to Messages. |
+| The response and trace surfaces | Composed once and mounted by both Compose and Runs. |
+| `useDesktopRuntime`, `useProjectFolderAccess`, `inferenceTransport` | Hydration-safe runtime detection and the single transport instance. |
+| Cmd+Enter and Cmd+S handlers | Dispatch to whichever workspace is active. |
 
 ### The shared inference settings panel
 

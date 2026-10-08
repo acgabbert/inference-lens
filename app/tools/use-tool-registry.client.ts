@@ -7,7 +7,7 @@ import type { ToolRegistryV1 } from "../../packages/core/src/tool-registry.ts";
 import {
   readToolRegistry,
   writeToolRegistry,
-} from "../tool-registry-store.client.ts";
+} from "./tool-registry-store.client.ts";
 
 export interface ToolRegistryHandle {
   registry: ToolRegistryV1;

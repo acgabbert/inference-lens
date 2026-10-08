@@ -1,20 +1,21 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import type { ToolMock } from "../packages/core/src/project.ts";
-import { createEntityId } from "../packages/core/src/run-kernel/types.ts";
+import { useCallback, useEffect, useState } from "react";
+import type { ToolMock } from "../../packages/core/src/project.ts";
+import { createEntityId } from "../../packages/core/src/run-kernel/types.ts";
 import type {
   JsonObject,
   ConversationMessage,
   MessageContentPart,
   ToolDefinition,
   ToolId,
-} from "../packages/core/src/run-kernel/types.ts";
-import { snapshotRegistryTool } from "../packages/core/src/tool-registry.ts";
-import type { RegistryTool } from "../packages/core/src/tool-registry.ts";
-import { randomUUID } from "../packages/core/src/random-id.ts";
-import type { McpDiscoveredTool } from "../packages/contracts/src/mcp-discovery.ts";
-import { snapshotMcpTool } from "./tools/mcp-tool-snapshot.ts";
+} from "../../packages/core/src/run-kernel/types.ts";
+import { snapshotRegistryTool } from "../../packages/core/src/tool-registry.ts";
+import type { RegistryTool } from "../../packages/core/src/tool-registry.ts";
+import { randomUUID } from "../../packages/core/src/random-id.ts";
+import type { McpDiscoveredTool } from "../../packages/contracts/src/mcp-discovery.ts";
+import { snapshotMcpTool } from "../tools/mcp-tool-snapshot.ts";
+import { chooseDefaultUserPrompt, createInitialMessages } from "./default-messages.ts";
 
 export interface RequestDraftSnapshot {
   messages: ConversationMessage[];
@@ -91,14 +92,16 @@ export function removeDraftMessage(
  * Owns the editable request and project-tool draft. Project persistence and
  * error presentation remain with the caller; mutations notify it only when
  * they change data that belongs in a project document.
+ *
+ * The draft renders the first default prompt on the server and on first
+ * paint, then swaps in a random one after hydration so the markup matches.
  */
 export function useRequestDraft(input: {
-  initialMessages: ConversationMessage[];
   onProjectDirty(): void;
   onProjectError(message: string | undefined, options?: { clearKind?: boolean }): void;
 }): RequestDraftHandle {
-  const { initialMessages, onProjectDirty, onProjectError } = input;
-  const [messages, setMessages] = useState<ConversationMessage[]>(initialMessages);
+  const { onProjectDirty, onProjectError } = input;
+  const [messages, setMessages] = useState<ConversationMessage[]>(createInitialMessages);
   const [tools, setTools] = useState<ToolDefinition[]>([]);
   const [toolMocks, setToolMocks] = useState<ToolMock[]>([]);
   const [enabledToolIds, setEnabledToolIds] = useState<ToolId[]>([]);
@@ -131,6 +134,13 @@ export function useRequestDraft(input: {
   const resetMessages = useCallback((nextMessages: ConversationMessage[]): void => {
     setMessages(nextMessages);
   }, []);
+
+  useEffect(() => {
+    const promptId = window.setTimeout(() => {
+      resetMessages(createInitialMessages(chooseDefaultUserPrompt()));
+    }, 0);
+    return () => window.clearTimeout(promptId);
+  }, [resetMessages]);
 
   function removeMessage(id: ConversationMessage["id"]): void {
     setMessages((current) => removeDraftMessage(current, id));

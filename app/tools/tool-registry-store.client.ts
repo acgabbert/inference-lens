@@ -3,8 +3,8 @@
 import {
   emptyToolRegistry,
   parseToolRegistry,
-} from "../packages/core/src/tool-registry";
-import type { ToolRegistryV1 } from "../packages/core/src/tool-registry";
+} from "../../packages/core/src/tool-registry";
+import type { ToolRegistryV1 } from "../../packages/core/src/tool-registry";
 
 const STORAGE_KEY = "inference-lens:tool-registry:v1";
 

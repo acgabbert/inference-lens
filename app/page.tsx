@@ -11,38 +11,34 @@ import {
   createProjectFile,
   updateConnectionRequirementEndpoint,
 } from "../packages/core/src/project";
-import {
-  createEntityId,
-  createSingleTurnRunExecution,
-} from "../packages/core/src/run-kernel";
+import { createEntityId } from "../packages/core/src/run-kernel";
 import { modalOwnsKeyboardCommands } from "./keyboard-command-scope.client";
 import type {
   RunTrace,
-  ConversationMessage,
   MessageId,
   PromptTemplateId,
   PromptTemplateRevisionId,
   PromptTemplateUseId,
   ToolDefinition,
 } from "../packages/core/src/run-kernel";
-import { buildChatCompletionsRequest } from "../packages/core/src/openai-compatible";
 import {
   createInferenceTransport,
   isTauriRuntime,
 } from "./tauri-inference-transport.client";
 import { AppErrorBoundary } from "./app-error-boundary.client";
 import { useInsecureOriginNotice } from "./use-insecure-origin.client";
-import { randomUUID } from "../packages/core/src/random-id.ts";
 import { projectFolderAccessAvailable } from "./project-workspace.client";
 import { useToolRegistry } from "./tools/use-tool-registry.client";
-import { ToolRegistryModal } from "./tool-registry-modal.client";
+import { ToolRegistryModal } from "./tools/tool-registry-modal.client";
 import { N8nImportModal } from "./n8n-import-modal.client";
 import { ProjectCreationDialog } from "./project-creation-dialog.client";
+import type { ProjectCreationMode } from "./project-creation-dialog.client";
 import { ProjectReplacementDialog } from "./project-replacement-dialog.client";
 import { useModelDiscovery } from "./use-model-discovery.client";
 import { useConnectionProfiles } from "./use-connection-profiles.client";
 import { toggleFavoriteModel } from "./profile-store.client";
-import { useRequestDraft } from "./use-request-draft.client";
+import { useRequestDraft } from "./request/use-request-draft.client";
+import { chooseDefaultUserPrompt, createInitialMessages } from "./request/default-messages";
 import { useRequestSettings } from "./request/use-request-settings.client";
 import { useProjectWorkspace } from "./use-project-workspace.client";
 import { ConnectionDrawer } from "./connection-drawer.client";
@@ -69,6 +65,7 @@ import type {
   ConfirmationDialogRequest,
 } from "./confirmation-dialog.client";
 import { prepareWorkbenchRun } from "./run/prepare-workbench-run.client";
+import type { PrepareWorkbenchRunResult } from "./run/prepare-workbench-run.client";
 import { useRunSession } from "./run/use-run-session.client";
 import { RunEvidenceDetail } from "./run/run-evidence-detail.client";
 import { useResponseView } from "./run/use-response-view.client";
@@ -97,6 +94,7 @@ import { EvaluationsMode } from "./modes/evaluations-mode.client";
 import { RunsMode } from "./modes/runs-mode.client";
 import { PromptsMode } from "./modes/prompts-mode.client";
 import { usePromptNavigation } from "./templates/use-prompt-navigation.client";
+import { templateReadinessInputs, templateRequestPreview } from "./templates/template-run-view";
 import { useToasts } from "./notifications/use-toasts.client";
 import { ToastRegion } from "./notifications/toast-region.client";
 import { AppBanner } from "./notifications/app-banner.client";
@@ -127,44 +125,6 @@ function useProjectFolderAccess(): boolean {
     projectFolderAccessAvailable,
     serverDesktopRuntime,
   );
-}
-
-const defaultUserPrompts = [
-  "Write a tiny mystery set in a lighthouse, ending with an unexpected kindness, in two sentences.",
-  "Describe the first sunrise on Mars from the perspective of a botanist in two sentences.",
-  "Invent a folktale explaining why thunder always follows lightning in two sentences.",
-  "Write a product launch announcement for a backpack that can translate bird songs in two sentences.",
-  "Explain the tradeoff between a cache and a database index to a new engineer in two sentences.",
-  "Suggest a graceful recovery plan for a web app whose payment API has begun timing out in two sentences.",
-  "Write a TypeScript function that returns the unique values in an array, then explain its time complexity in two sentences.",
-  "Describe how you would make a command-line tool feel friendly to a first-time user in two sentences.",
-  "Compare event-driven and polling-based systems through the lens of a busy restaurant in two sentences.",
-  "Propose a concise commit message and pull-request summary for fixing an off-by-one pagination bug in two sentences.",
-  "Write a detective's field note about a suspiciously helpful houseplant in two sentences.",
-  "Explain how a password manager improves security without using technical jargon in two sentences.",
-] as const;
-
-function createInitialMessages(
-  userPrompt: string = defaultUserPrompts[0],
-): ConversationMessage[] {
-  return [
-    {
-      id: createEntityId("message", randomUUID()),
-      role: "system",
-      content: [{ type: "text", text: "You are a concise, thoughtful assistant." }],
-    },
-    {
-      id: createEntityId("message", randomUUID()),
-      role: "user",
-      content: [{ type: "text", text: userPrompt }],
-    },
-  ];
-}
-
-function chooseDefaultUserPrompt(): string {
-  return defaultUserPrompts[
-    Math.floor(Math.random() * defaultUserPrompts.length)
-  ];
 }
 
 function HomeContent() {
@@ -204,7 +164,7 @@ function HomeContent() {
   const [confirmation, setConfirmation] =
     useState<ConfirmationDialogRequest>();
   const [projectCreationMode, setProjectCreationMode] =
-    useState<"new" | "save" | "save-before-switch">();
+    useState<ProjectCreationMode>();
   const [connectionDrawerOpen, setConnectionDrawerOpen] = useState(false);
   const [sessionPromptProjectNotice, setSessionPromptProjectNotice] =
     useState<string>();
@@ -356,7 +316,6 @@ function HomeContent() {
     clearRequestTools,
     replaceProjectDraft,
   } = useRequestDraft({
-    initialMessages: createInitialMessages(),
     onProjectDirty: project.markDirty,
     onProjectError: project.setError,
   });
@@ -463,13 +422,6 @@ function HomeContent() {
     resetMessages,
     onError(message) { project.setError(message); },
   });
-
-  useEffect(() => {
-    const promptId = window.setTimeout(() => {
-      resetMessages(createInitialMessages(chooseDefaultUserPrompt()));
-    }, 0);
-    return () => window.clearTimeout(promptId);
-  }, [resetMessages]);
 
   const selectedProjectToolCount = tools.filter(({ id }) =>
     enabledToolIds.includes(id),
@@ -612,52 +564,6 @@ function HomeContent() {
       setWorkbenchView("inspect");
     },
   });
-  function templateRequestPreview():
-    | { body: unknown; messages: ConversationMessage[] }
-    | { error: string }
-    | undefined {
-    if (!projectFile || !projectTemplates.activeProjectRevision) {
-      return undefined;
-    }
-    if (projectTemplates.templateWorkbench.resolutionError) {
-      return { error: projectTemplates.templateWorkbench.resolutionError };
-    }
-    const resolution = projectTemplates.templateWorkbench.resolution;
-    if (!resolution) return undefined;
-    try {
-      const request = {
-        ...requestSettings.currentRequest(),
-        messages: resolution.messages,
-      };
-      const execution = createSingleTurnRunExecution(
-        request,
-        {
-          conversationId: projectTemplates.activeProjectRevision.conversationId,
-          conversationRevisionId: projectTemplates.activeProjectRevision.id,
-        },
-        "template-preview",
-        "1970-01-01T00:00:00.000Z",
-        [...resolvedTools(), ...requestTools],
-        resolution.templateResolutions,
-      );
-      return {
-        messages: resolution.messages,
-        body: buildChatCompletionsRequest({
-          runId: execution.runId,
-          turnId: execution.turnId,
-          exchangeId: execution.exchangeId,
-          attempt: execution.attempt,
-          input: execution.turnInput,
-        }).body,
-      };
-    } catch (error) {
-      return {
-        error:
-          error instanceof Error ? error.message : "Could not build request preview.",
-      };
-    }
-  }
-
   function editFromHere(messageId: MessageId): void {
     if (pendingBranch.editFromHere(messageId)) setWorkbenchView("request");
   }
@@ -746,13 +652,16 @@ function HomeContent() {
     if (key === "tools" && enabled) project.clearToolsDisabledError();
   }
 
-  async function run() {
-    repeatedExperiment.clear();
-    evaluationExecution.clear();
-    project.clearErrorKind();
-    const requestSnapshot = requestSettings.currentRequest();
+  /**
+   * Prepares the composer's request for a single run or a repeated
+   * experiment, reporting why it cannot start. Nothing is committed: the
+   * caller applies the result with `commitPreparedRun` once the work goes
+   * ahead. The returned input targets the request's profile.
+   */
+  function prepareComposerRun() {
+    const request = requestSettings.currentRequest();
     const prepared = prepareWorkbenchRun({
-      request: requestSnapshot,
+      request,
       project: projectFile ?? undefined,
       projectTools: resolvedTools(),
       requestTools,
@@ -762,32 +671,41 @@ function HomeContent() {
       ...pendingBranch.preparationInputs(),
     });
     if (!prepared.ok) {
-      if (prepared.errorKind === "tools-disabled") {
-        project.setToolsDisabledError(prepared.message);
-      } else {
-        project.setError(prepared.message);
-      }
-      return;
+      if (prepared.errorKind === "tools-disabled") project.setToolsDisabledError(prepared.message);
+      else project.setError(prepared.message);
+      return undefined;
     }
-    if (prepared.projectMutation) project.adoptBranchRevision(prepared.projectMutation);
-    if (prepared.executedRevisionId) {
-      projectTemplates.markExecutedRevision(prepared.executedRevisionId);
-    }
-    pendingBranch.settle(prepared);
-    const input = prepared.input;
-    const branchedFrom = prepared.branchedFrom;
-    const request = {
-      ...requestSnapshot,
-      messages: input.messages,
+    const input = {
+      ...prepared.input,
+      target: {
+        ...prepared.input.target,
+        profileId: createEntityId("profile", requestSettings.profile.id),
+      },
     };
-    input.target.profileId = createEntityId("profile", requestSettings.profile.id);
+    return { request, prepared, input };
+  }
+
+  /** A prepared run's branch revision, executed revision, and branch consumption. */
+  function commitPreparedRun(prepared: Extract<PrepareWorkbenchRunResult, { ok: true }>): void {
+    if (prepared.projectMutation) project.adoptBranchRevision(prepared.projectMutation);
+    if (prepared.executedRevisionId) projectTemplates.markExecutedRevision(prepared.executedRevisionId);
+    pendingBranch.settle(prepared);
+  }
+
+  async function run() {
+    repeatedExperiment.clear();
+    evaluationExecution.clear();
+    project.clearErrorKind();
+    const composed = prepareComposerRun();
+    if (!composed) return;
+    const { request, prepared, input } = composed;
+    commitPreparedRun(prepared);
     runsNavigation.selectCurrent(input.runId);
-    const sessionStart = runSession.start(input, {
-      request,
+    await runSession.start(input, {
+      request: { ...request, messages: input.messages },
       workspace: projectWorkspace,
-      ...(branchedFrom ? { branchedFrom } : {}),
+      ...(prepared.branchedFrom ? { branchedFrom: prepared.branchedFrom } : {}),
     });
-    await sessionStart;
   }
 
   /**
@@ -818,33 +736,11 @@ function HomeContent() {
       project.setError(unservableToolsMessage(unservable));
       return;
     }
-    const requestSnapshot = requestSettings.currentRequest();
-    const prepared = prepareWorkbenchRun({
-      request: requestSnapshot,
-      project: projectFile ?? undefined,
-      projectTools: resolvedTools(),
-      requestTools,
-      capabilities: requestSettings.capabilities,
-      profileName: requestSettings.profile.name,
-      templateRunOverrides: projectTemplates.templateRunOverrides,
-      ...pendingBranch.preparationInputs(),
-    });
-    if (!prepared.ok) {
-      if (prepared.errorKind === "tools-disabled") project.setToolsDisabledError(prepared.message);
-      else project.setError(prepared.message);
-      return;
-    }
-    const input = {
-      ...prepared.input,
-      target: {
-        ...prepared.input.target,
-        profileId: createEntityId("profile", requestSettings.profile.id),
-      },
-    };
+    const composed = prepareComposerRun();
+    if (!composed) return;
+    const { prepared, input } = composed;
     repeatedExperiment.begin(input, requestSettings.profile.name || "Untitled profile", () => {
-      if (prepared.projectMutation) project.adoptBranchRevision(prepared.projectMutation);
-      if (prepared.executedRevisionId) projectTemplates.markExecutedRevision(prepared.executedRevisionId);
-      pendingBranch.settle(prepared);
+      commitPreparedRun(prepared);
       runSession.reset();
       setTraceOpen(false);
       // A batch's results are read in the Runs mode, so the batch opens there
@@ -861,21 +757,6 @@ function HomeContent() {
     void evaluationExecution.confirm(projectWorkspace);
   }
 
-  async function continueRun(): Promise<void> {
-    return runSession.continueRun();
-  }
-
-  async function retryRun(): Promise<void> {
-    return runSession.retry();
-  }
-
-  function stop() {
-    runSession.stop();
-  }
-
-  function downloadDiagnostics() {
-    runSession.downloadDiagnostics();
-  }
   async function openHistoryTrace(item: ProjectRunHistoryItem): Promise<void> {
     const workspace = projectWorkspace;
     if (!workspace) throw new Error("The project folder is no longer open.");
@@ -944,8 +825,15 @@ function HomeContent() {
     (Boolean(runState) && !runReachedTerminalStatus) ||
     repeatedExperiment.isRunning ||
     evaluationExecution.isRunning;
-  const requestPreview = templateRequestPreview();
-  const composerItems = projectTemplates.templateWorkbench.composerItems;
+  const requestPreview = templateRequestPreview({
+    project: projectFile,
+    ...(projectTemplates.activeProjectRevision
+      ? { revision: projectTemplates.activeProjectRevision }
+      : {}),
+    view: projectTemplates.templateWorkbench,
+    request: requestSettings.currentRequest(),
+    tools: [...resolvedTools(), ...requestTools],
+  });
   const readiness = runReadiness({
     projectOpen: Boolean(projectFile),
     connectionMapped: projectTemplates.activeConnectionRequirement
@@ -962,39 +850,7 @@ function HomeContent() {
           activeConnectionRequirementId: projectTemplates.activeConnectionRequirement.id,
         }
       : {}),
-    ...(projectTemplates.templateWorkbench.resolutionError
-      ? { templateResolutionError: projectTemplates.templateWorkbench.resolutionError }
-      : {}),
-    templateIssues:
-      projectTemplates.templateWorkbench.resolution?.diagnostics.map(
-        ({ templateUseId, diagnostic }) => ({
-          templateUseId,
-          ...(diagnostic.code === "missing-template-variable"
-            ? { variableName: diagnostic.name }
-            : {}),
-        }),
-      ) ?? [],
-    templateTargets:
-      composerItems.flatMap((item) => {
-        if (item.kind !== "template-use") return [];
-        const template = projectFile?.promptTemplates.find(
-          ({ id }) => id === item.use.templateId,
-        );
-        const target = template?.recommendedTarget;
-        if (!template || !target) return [];
-        const requirement = projectFile?.connectionRequirements.find(
-          ({ id }) => id === target.connectionRequirementId,
-        );
-        return [
-          {
-            templateName: template.name,
-            connectionRequirementId: target.connectionRequirementId,
-            connectionRequirementName:
-              requirement?.name ?? target.connectionRequirementId,
-            model: target.model,
-          },
-        ];
-      }) ?? [],
+    ...templateReadinessInputs(projectFile, projectTemplates.templateWorkbench),
   });
 
   function resolveReadiness(destination: ReadinessDestination): void {
@@ -1076,7 +932,7 @@ function HomeContent() {
     if (mode !== "compose") return;
     if (readiness?.blocked) return;
     if (runState?.status.kind === "paused" && runState.status.reason === "attempt_failed") {
-      void retryRun();
+      void runSession.retry();
     } else if (runState?.status.kind !== "awaiting_tool_results") {
       void run();
     }
@@ -1210,9 +1066,9 @@ function HomeContent() {
         onToolResultDraftChange={runSession.updateToolResultDraft}
         onApproveMcp={runSession.approveMcpCall}
         onRejectMcp={runSession.rejectMcpCall}
-        onContinue={() => void continueRun()}
-        onRetry={() => void retryRun()}
-        onDiscardFailedRun={stop}
+        onContinue={() => void runSession.continueRun()}
+        onRetry={() => void runSession.retry()}
+        onDiscardFailedRun={runSession.stop}
         onSaveTrace={() => void runSession.exportTrace()}
         onEditFromHere={editFromHere}
         onEmptyStateAction={() => {
@@ -1295,7 +1151,7 @@ function HomeContent() {
         onExportProject={project.exportProject}
         {...(n8nImportDisabledReason ? { n8nImportDisabledReason } : {})}
         onOpenN8nImport={() => setN8nImportOpen(true)}
-        onDownloadDiagnostics={downloadDiagnostics}
+        onDownloadDiagnostics={runSession.downloadDiagnostics}
         onDownloadRunTrace={() => void runSession.exportTrace()}
         onImportRunTrace={(event) => {
           const file = event.target.files?.[0];
@@ -1305,7 +1161,7 @@ function HomeContent() {
           event.target.value = "";
         }}
         onOpenRunHistory={() => setRunHistoryOpen(true)}
-        onStop={stop}
+        onStop={runSession.stop}
         onStopExperiment={evaluationExecution.isRunning ? evaluationExecution.cancel : repeatedExperiment.cancel}
         onRun={() => void run()}
         onStartEvaluation={evaluationWorkspace.start}
@@ -1633,32 +1489,12 @@ function HomeContent() {
       )}
       {projectCreationMode && (
         <ProjectCreationDialog
+          mode={projectCreationMode}
           initialName={
             projectCreationMode === "new"
               ? "Untitled Inference Lens project"
               : projectFile?.name ?? "Untitled Inference Lens project"
           }
-          {...(projectCreationMode === "save-before-switch"
-            ? {
-                copy: {
-                  eyebrow: "Save before switching",
-                  title: "Save the current project",
-                  description:
-                    "Choose a folder for the current project. Inference Lens will switch projects only after the save succeeds.",
-                  submitLabel: "Save and switch…",
-                },
-              }
-            : projectCreationMode === "save"
-              ? {
-                  copy: {
-                    eyebrow: "Save project",
-                    title: "Save this project",
-                    description:
-                      "Choose a folder for this project. Its current prompts and settings will be saved there.",
-                    submitLabel: "Save to folder…",
-                  },
-                }
-              : {})}
           onClose={() => setProjectCreationMode(undefined)}
           onCreate={(options) => {
             if (projectCreationMode === "new") {

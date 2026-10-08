@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ConversationMessage, PromptTemplateId, PromptTemplateRevisionId, PromptTemplateUseId, ToolDefinition, ToolId } from "../../packages/core/src/run-kernel";
 import type { ProjectFile, ToolMock } from "../../packages/core/src/project";
+import type { TemplateRequestPreview } from "../templates/template-run-view.ts";
 import { conversationMessageText } from "../conversation-display";
 import { PaneTabs } from "../workbench-shell.client";
 import { TemplateUseCard } from "../project-templates-pane.client";
@@ -26,9 +27,7 @@ import type { RequestSettingsProps } from "./request-settings.client";
 
 type RequestTab = "messages" | "tools";
 
-type RequestPreview =
-  | { body: unknown; messages: ConversationMessage[] }
-  | { error: string };
+type RequestPreview = TemplateRequestPreview;
 
 /**
  * The request-pane feature owns its local navigation and presentation. Its

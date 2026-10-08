@@ -1,7 +1,7 @@
 # `app/page.tsx` composition-root execution plan
 
-**Status:** PRs 5a–5g complete; the owners found by the PR 5 ownership
-inventory (2026-10-08) are all extracted. PR 5 is next.
+**Status:** Complete. PR 5 closed the plan on 2026-10-08; the final ownership
+map is in `docs/ARCHITECTURE.md`.
 
 **Observed baseline:** `main` at `e59785c` on 2026-07-29
 
@@ -113,7 +113,7 @@ constraints, stop that PR and design the behavior change separately.
 | 5e | Pending branch | Complete | PR 5d |
 | 5f | Request settings | Complete | PR 5e |
 | 5g | Tool registry | Complete | PR 5f |
-| 5 | Feature organization and composition-root guardrail | Planned | PR 5g |
+| 5 | Feature organization and composition-root guardrail | Complete | PR 5g |
 
 ---
 
@@ -1325,6 +1325,63 @@ invalid values.
 - `AGENTS.md` and `docs/ARCHITECTURE.md` describe the final ownership.
 - The complete automated gate and compact running-app matrix are reported.
 - No compatibility constraint changed.
+
+### Ownership review (2026-10-08)
+
+Repeated on `main` at `31f822e`, after PR 5g: `app/page.tsx` was 1,750 lines
+with 18 `useState`, `useRef`, and `useEffect` calls in `HomeContent`. Every
+remaining state value, ref, and effect matched the
+[Remains in the page](#remains-in-the-page) list except the default-prompt
+effect, which the cleanup list already moved. The review also classified the
+smaller adapters the inventory had not named — `bindingForTool`,
+`unservableTools`, `runHistoryBlocked`, `n8nImportDisabledReason`,
+`confirmEvaluation`, `ensureProjectDocument`, and the shared response and
+trace surfaces — as cross-feature adapters. No further owner was found.
+
+### Decisions (agreed 2026-10-08)
+
+- **Narrow file moves.** Only modules with an existing feature directory and a
+  single owning feature moved: `use-request-draft.client.ts` to
+  `app/request/`, and `tool-registry-store.client.ts` and
+  `tool-registry-modal.client.tsx` to `app/tools/`. The project, connection,
+  and run-history hooks stay at the app root; giving them new directories
+  would be a move for symmetry.
+- **The request draft owns the default prompt.** `app/request/default-messages.ts`
+  holds the prompt list, `createInitialMessages`, and
+  `chooseDefaultUserPrompt`. `useRequestDraft` drops its `initialMessages`
+  option, renders the first prompt on the server, and picks a random one after
+  hydration. `createFreshProject` imports the helpers.
+- **Template derivations are one pure module.** `app/templates/template-run-view.ts`
+  holds `templateRequestPreview` and `templateReadinessInputs`, Node-tested in
+  `tests/template-run-view.test.ts`. The page still assembles the readiness
+  input because it joins templates with request settings and the tool count.
+- **`run()` and `repeat()` share two page-local steps.** `prepareComposerRun`
+  prepares and reports, `commitPreparedRun` applies the branch revision,
+  executed revision, and branch consumption. `repeat()` still commits only
+  after its dialog confirms.
+- **`ProjectCreationDialog` takes a required `mode`** and owns each mode's
+  copy. The `copy` prop is removed.
+- **`AGENTS.md` needed no change.** Its "Route composition roots" section,
+  added in PR #75, already states the required policy.
+
+### Verification completed
+
+- Characterization added before the cleanup and run green against unchanged
+  code in `tests/e2e/workbench-composition.spec.ts`: a fresh workbench opens on
+  the system prompt and the randomly chosen user prompt (with `Math.random`
+  pinned); two pinned prompts resolve into the request preview's messages and
+  raw body; and their differing recommended targets are named in run
+  readiness. Removing the default-prompt effect turned the first test red on
+  the server-rendered prompt; emptying the template targets turned the second
+  red on the missing readiness notice. Dropping the preview's message override
+  stayed green, because in that fixture the composer's messages already hold
+  the resolved output.
+- `tests/project-creation-render.test.mjs` now renders both save modes. The
+  dialog copy for all three modes was already covered in the browser by
+  `new-project-isolation`, `project-storage-clarity`, and
+  `project-replacement-guard`.
+- Final metrics, recorded as observations: `app/page.tsx` is 1,586 lines with
+  17 `useState`, `useRef`, and `useEffect` calls in `HomeContent`.
 
 ---
 

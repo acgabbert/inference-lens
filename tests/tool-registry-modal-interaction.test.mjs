@@ -53,7 +53,7 @@ async function withHarness(run) {
     { createRoot },
     { act },
   ] = await Promise.all([
-    ssrLoadModule("/app/tool-registry-modal.client.tsx"),
+    ssrLoadModule("/app/tools/tool-registry-modal.client.tsx"),
     ssrLoadModule("/app/confirmation-dialog.client.tsx"),
     import("react"),
     import("react-dom/client"),

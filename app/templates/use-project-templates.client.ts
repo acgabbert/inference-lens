@@ -56,7 +56,7 @@ import {
   templateRunOverridesAfterSave,
   templateRunOverridesAfterUpdate,
 } from "./project-template-policy";
-import { removeDraftMessage } from "../use-request-draft.client";
+import { removeDraftMessage } from "../request/use-request-draft.client";
 
 /** What an external prompt import landed, reported once when it lands. */
 export interface ProjectTemplatesImportNotice {
