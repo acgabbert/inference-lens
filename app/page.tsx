@@ -34,14 +34,7 @@ import { AppErrorBoundary } from "./app-error-boundary.client";
 import { useInsecureOriginNotice } from "./use-insecure-origin.client";
 import { randomUUID } from "../packages/core/src/random-id.ts";
 import { projectFolderAccessAvailable } from "./project-workspace.client";
-import { emptyToolRegistry } from "../packages/core/src/tool-registry";
-import type {
-  ToolRegistryV1,
-} from "../packages/core/src/tool-registry";
-import {
-  readToolRegistry,
-  writeToolRegistry,
-} from "./tool-registry-store.client";
+import { useToolRegistry } from "./tools/use-tool-registry.client";
 import { ToolRegistryModal } from "./tool-registry-modal.client";
 import { N8nImportModal } from "./n8n-import-modal.client";
 import { ProjectCreationDialog } from "./project-creation-dialog.client";
@@ -205,10 +198,7 @@ function HomeContent() {
   // an ordinary callback, the same way `onError` and `onTraceSaved` already
   // are, so every toast in the app has a reviewable path from cause to message.
   const toasts = useToasts();
-  const [toolRegistry, setToolRegistry] = useState<ToolRegistryV1>(
-    emptyToolRegistry(),
-  );
-  const [toolRegistryLoaded, setToolRegistryLoaded] = useState(false);
+  const toolRegistry = useToolRegistry();
   const [toolRegistryOpen, setToolRegistryOpen] = useState(false);
   const [n8nImportOpen, setN8nImportOpen] = useState(false);
   const [confirmation, setConfirmation] =
@@ -480,19 +470,6 @@ function HomeContent() {
     }, 0);
     return () => window.clearTimeout(promptId);
   }, [resetMessages]);
-
-  useEffect(() => {
-    const registryId = window.setTimeout(() => {
-      setToolRegistry(readToolRegistry());
-      setToolRegistryLoaded(true);
-    }, 0);
-    return () => window.clearTimeout(registryId);
-  }, []);
-
-  useEffect(() => {
-    if (!toolRegistryLoaded) return;
-    writeToolRegistry(toolRegistry);
-  }, [toolRegistry, toolRegistryLoaded]);
 
   const selectedProjectToolCount = tools.filter(({ id }) =>
     enabledToolIds.includes(id),
@@ -1633,8 +1610,8 @@ function HomeContent() {
       {toolRegistryOpen && (
         <ToolRegistryModal
           open
-          registry={toolRegistry}
-          onChange={setToolRegistry}
+          registry={toolRegistry.registry}
+          onChange={toolRegistry.setRegistry}
           onAttachToProject={attachRegistryToolToProject}
           onAttachToRequest={attachRegistryToolToRequest}
           requestConfirmation={setConfirmation}

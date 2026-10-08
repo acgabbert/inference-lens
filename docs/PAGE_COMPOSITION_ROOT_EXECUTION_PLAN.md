@@ -1,7 +1,7 @@
 # `app/page.tsx` composition-root execution plan
 
-**Status:** PRs 5a–5f complete; PR 5 ownership inventory recorded on 2026-10-08.
-PR 5g extracts the remaining owner it found and must merge before PR 5.
+**Status:** PRs 5a–5g complete; the owners found by the PR 5 ownership
+inventory (2026-10-08) are all extracted. PR 5 is next.
 
 **Observed baseline:** `main` at `e59785c` on 2026-07-29
 
@@ -112,8 +112,8 @@ constraints, stop that PR and design the behavior change separately.
 | 5d | Batch completion signals | Complete | PR 5c |
 | 5e | Pending branch | Complete | PR 5d |
 | 5f | Request settings | Complete | PR 5e |
-| 5g | Tool registry | Planned | PR 5f |
-| 5 | Feature organization and composition-root guardrail | Blocked by inventory | PR 5g |
+| 5g | Tool registry | Complete | PR 5f |
+| 5 | Feature organization and composition-root guardrail | Planned | PR 5g |
 
 ---
 
@@ -1197,6 +1197,28 @@ the `clearTemplateOverridesRef` workaround can be removed in the same change.
 `useToolRegistry` owns the device-local registry state, its deferred load, and
 write-back through the existing `tool-registry-store.client.ts`. The modal's
 visibility stays in the page. The registry format is unchanged.
+
+### Decisions (2026-10-08)
+
+Settled by the plan's ownership note; no open contract choice remained.
+
+- **The hook takes nothing and returns `registry` and `setRegistry`.** It
+  lives in `app/tools/use-tool-registry.client.ts` beside the other tool
+  owners. The load flag stays private: nothing outside the hook read it.
+  The store module stays where it is; PR 5 decides any move.
+- **Attaching stays with the request draft.** `attachRegistryToolToProject`
+  and `attachRegistryToolToRequest` copy a snapshot and are unchanged; the
+  page still wires them and the confirmation dialog into the modal.
+
+### Verification completed
+
+- Characterization added before extraction and run green against unchanged
+  code in `tests/e2e/tool-registry-ownership.spec.ts`: a library stored before
+  load is listed and left in storage, a new tool saved in the modal is written
+  back, and both survive a reload. Removing the wait for the initial read
+  turned it red with the library empty where `lookup_order` was expected.
+- Not covered in the browser: a stored library that fails to parse, which
+  `tests/tool-registry.test.ts` covers at the parser.
 
 ---
 
