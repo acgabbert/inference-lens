@@ -7,6 +7,11 @@ import {
   sseLines,
 } from "./openai-compatible.ts";
 import {
+  buildAnthropicMessagesRequest,
+  normalizeAnthropicMessagesResponse,
+  normalizeAnthropicMessagesStream,
+} from "./anthropic-messages.ts";
+import {
   buildResponsesRequest,
   normalizeResponsesResponse,
   normalizeResponsesStream,
@@ -14,7 +19,6 @@ import {
 import {
   credentialHeaders,
   protocolHeaders,
-  protocolLabel,
   ProviderProtocolError,
   redactedCredentialHeaders,
 } from "./provider-protocols.ts";
@@ -59,9 +63,17 @@ const responsesAdapter: ProviderProtocolAdapter = {
   normalizeResponse: normalizeResponsesResponse,
 };
 
-const adapters: Partial<Record<ProviderWireProtocol, ProviderProtocolAdapter>> = {
+const anthropicMessagesAdapter: ProviderProtocolAdapter = {
+  protocol: "anthropic-messages",
+  buildRequest: buildAnthropicMessagesRequest,
+  normalizeStream: normalizeAnthropicMessagesStream,
+  normalizeResponse: normalizeAnthropicMessagesResponse,
+};
+
+const adapters: Record<ProviderWireProtocol, ProviderProtocolAdapter> = {
   "openai-compatible-chat-completions": chatCompletionsAdapter,
   "openai-responses": responsesAdapter,
+  "anthropic-messages": anthropicMessagesAdapter,
 };
 
 export function providerProtocolAdapter(
@@ -72,7 +84,7 @@ export function providerProtocolAdapter(
     throw new ProviderProtocolError(
       protocol === "mock"
         ? "A mock target cannot be sent to a provider."
-        : `${protocolLabel(protocol)} is not supported yet.`,
+        : `Unknown protocol ${String(protocol)}.`,
     );
   }
   return adapter;

@@ -3,7 +3,10 @@ import { expect, test } from "@playwright/test";
 import { createProjectFile } from "../../packages/core/src/project";
 import type { ProjectFile } from "../../packages/core/src/project";
 import { createEntityId } from "../../packages/core/src/run-kernel";
+import type { Page } from "@playwright/test";
+
 import {
+  ANTHROPIC_FIXTURE_ENDPOINT,
   BUFFERED_FIXTURE_ENDPOINT,
   PROFILE_STORAGE_KEY,
   PROJECT_PROFILE_MAP_STORAGE_KEY,
@@ -195,5 +198,104 @@ test("a Responses tool call round-trips its call and output under one call id", 
   // The fixture answers the second turn only when it carries the function
   // call and its output under the same call_id, so this text on screen is the
   // round trip, not merely a rendered card.
+  await expect(page.locator(".transcript-list")).toContainText("Chicago report: 72°F and clear");
+});
+
+/** A profile that speaks only Anthropic Messages. */
+const ANTHROPIC_ONLY = { chatCompletions: false, anthropicMessages: true };
+
+/** Types the fixture's key into Connections, the way a user supplies a session key. */
+async function enterSessionKey(page: Page): Promise<void> {
+  await page.getByLabel(/^Run target:/).click();
+  await page.getByRole("button", { name: /manage connections/i }).click();
+  const connections = page.getByRole("dialog", { name: "Connections" });
+  await connections.getByLabel(/^API key/).fill("fixture-anthropic-key");
+  await connections.getByLabel(/^API key/).blur();
+  await connections.getByRole("button", { name: /close/i }).first().click();
+}
+
+test("a streamed Anthropic run sends its key as x-api-key and shows thinking and answer", async ({ page }) => {
+  await seedProfile(page, {
+    endpoint: ANTHROPIC_FIXTURE_ENDPOINT,
+    model: "claude-fixture-text",
+    streaming: "stream",
+    capabilityOverrides: ANTHROPIC_ONLY,
+  });
+  await page.goto("/");
+  await waitForHydration(page);
+  await enterSessionKey(page);
+
+  // A profile that speaks only Anthropic runs it without being told.
+  const settings = await openInferenceSettings(page);
+  await expect(settings.locator(".inference-settings-fact").first()).toHaveText("Anthropic Messages");
+
+  await page.getByRole("button", { name: /run current conversation/i }).click();
+  const response = page.locator(".response-pane");
+  // The fixture refuses any request without x-api-key and anthropic-version,
+  // and any with Authorization, so this answer is the credential arriving.
+  await expect(response).toContainText("Anthropic fixture answer: 2 + 2 = 4.");
+  await expect(response.locator(".reasoning-stream").first()).toContainText("Adding two and two.");
+  await expect(response).not.toContainText(/NaN|undefined|Infinity/);
+
+  await page.getByRole("button", { name: "Run details" }).click();
+  await page.getByRole("tab", { name: "Events" }).click();
+  const evidence = page.locator(".request-evidence").first();
+  await expect(evidence).toContainText(`${ANTHROPIC_FIXTURE_ENDPOINT}/messages`);
+  await expect(evidence).toContainText("x-api-key");
+  await expect(evidence).toContainText("anthropic-version");
+  await expect(evidence).not.toContainText("fixture-anthropic-key");
+  await expect(evidence).toContainText('"max_tokens": 4096');
+});
+
+test("model discovery lists an Anthropic catalogue with the Anthropic credential", async ({ page }) => {
+  await seedProfile(page, {
+    endpoint: ANTHROPIC_FIXTURE_ENDPOINT,
+    model: "",
+    capabilityOverrides: ANTHROPIC_ONLY,
+  });
+  await page.goto("/");
+  await waitForHydration(page);
+  await enterSessionKey(page);
+  const settings = await openInferenceSettings(page);
+  await settings.locator('[data-readiness-control="model"]').click();
+  await expect(page.getByRole("option", { name: "claude-fixture-tool" })).toBeVisible();
+});
+
+function anthropicToolProject(): ProjectFile {
+  const project = responsesToolProject();
+  return {
+    ...project,
+    name: "Anthropic tool fixture",
+    connectionRequirements: project.connectionRequirements.map((requirement) => ({
+      ...requirement,
+      protocol: "anthropic-messages" as const,
+      endpoint: ANTHROPIC_FIXTURE_ENDPOINT,
+    })),
+    defaults: { ...project.defaults, target: { ...project.defaults.target, model: "claude-fixture-tool" } },
+  };
+}
+
+test("an Anthropic tool call round-trips its tool_use and tool_result under one id", async ({ page }) => {
+  const project = anthropicToolProject();
+  await seedProfile(page, {
+    endpoint: ANTHROPIC_FIXTURE_ENDPOINT,
+    model: "claude-fixture-tool",
+    capabilityOverrides: { ...ANTHROPIC_ONLY, tools: true },
+    instanceId: "profile-instance-anthropic",
+  });
+  await page.addInitScript(({ mapKey, projectId }) => {
+    localStorage.setItem(mapKey, JSON.stringify({
+      [projectId]: { profileId: "buffered", profileInstanceId: "profile-instance-anthropic" },
+    }));
+  }, { mapKey: PROJECT_PROFILE_MAP_STORAGE_KEY, projectId: project.projectId });
+  await page.goto("/");
+  await waitForHydration(page);
+  await enterSessionKey(page);
+  await importProject(page, project, "Anthropic tool fixture");
+
+  await page.getByRole("button", { name: /^Run current conversation/ }).first().click();
+  const card = page.locator(".tool-call-card");
+  await expect(card).toContainText("get_weather");
+  await page.getByRole("button", { name: "Supply results and continue" }).click();
   await expect(page.locator(".transcript-list")).toContainText("Chicago report: 72°F and clear");
 });

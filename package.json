@@ -20,6 +20,7 @@
     "dev:markdown-provider": "node scripts/markdown-openai-provider.mjs",
     "dev:reasoning-provider": "node scripts/reasoning-openai-provider.mjs",
     "dev:responses-provider": "node scripts/responses-provider.mjs",
+    "dev:anthropic-provider": "node scripts/anthropic-provider.mjs",
     "dev:large-catalogue-provider": "node scripts/large-catalogue-provider.mjs",
     "build": "npm run typecheck && vinext build",
     "build:tauri": "npm run typecheck && INFERENCE_LENS_TARGET=tauri vinext build",

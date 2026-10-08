@@ -23,6 +23,8 @@ export const PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY =
 export const BUFFERED_FIXTURE_ENDPOINT = "http://127.0.0.1:44014/v1";
 /** The Responses API fixture (`scripts/responses-provider.mjs`). */
 export const RESPONSES_FIXTURE_ENDPOINT = "http://127.0.0.1:44026/v1";
+/** The Anthropic Messages fixture (`scripts/anthropic-provider.mjs`). */
+export const ANTHROPIC_FIXTURE_ENDPOINT = "http://127.0.0.1:44027/v1";
 
 export interface SeedProfileOptions {
   endpoint?: string;

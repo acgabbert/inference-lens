@@ -10,6 +10,7 @@ const mcpExecutionFixturePort = 44019;
 const mcpBatchFixturePort = 44020;
 const mcpInterruptionFixturePort = 44023;
 const responsesFixturePort = 44026;
+const anthropicFixturePort = 44027;
 
 /**
  * The only reason the suite's dev server can run anything at all.
@@ -102,6 +103,12 @@ export default defineConfig({
     {
       command: `INFERENCE_LENS_RESPONSES_PORT=${responsesFixturePort} npm run dev:responses-provider`,
       url: `http://127.0.0.1:${responsesFixturePort}/v1/models`,
+      reuseExistingServer: false,
+      timeout: 10_000,
+    },
+    {
+      command: `INFERENCE_LENS_ANTHROPIC_PORT=${anthropicFixturePort} npm run dev:anthropic-provider`,
+      url: `http://127.0.0.1:${anthropicFixturePort}/health`,
       reuseExistingServer: false,
       timeout: 10_000,
     },

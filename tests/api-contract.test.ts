@@ -595,3 +595,67 @@ test("a Responses turn is sent to /responses and a reported failure is a provide
     globalThis.fetch = originalFetch;
   }
 });
+
+test("an Anthropic turn presents its key as x-api-key and records it masked", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    assert.equal(String(input), "https://api.example.test/v1/messages");
+    const headers = new Headers(init?.headers);
+    assert.equal(headers.get("x-api-key"), "test-key");
+    assert.equal(headers.get("anthropic-version"), "2023-06-01");
+    assert.equal(headers.get("authorization"), null);
+    return Response.json({
+      type: "message",
+      content: [{ type: "text", text: "Hi" }],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 3, output_tokens: 1 },
+    });
+  };
+  try {
+    const base = execution(
+      { ...OPENAI_COMPATIBLE_CAPABILITIES, chatCompletions: false, anthropicMessages: true },
+      "buffered",
+    );
+    const events = [];
+    for await (const event of executeProviderTurn(
+      { ...base, input: { ...base.input, target: { ...base.input.target, protocol: "anthropic-messages" as const } } },
+      "test-key",
+    )) {
+      events.push(event);
+    }
+    const request = events.find((event) => event.type === "request");
+    assert.deepEqual(request && "request" in request ? request.request.headers : undefined, {
+      "x-api-key": "••••••••",
+      "content-type": "application/json",
+      "anthropic-version": "2023-06-01",
+    });
+    assert.equal(events.at(-1)?.type, "completed");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Anthropic model discovery sends its key as x-api-key and asks for the whole catalogue", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    assert.equal(String(input), "https://api.example.test/v1/models?limit=1000");
+    const headers = new Headers(init?.headers);
+    assert.equal(headers.get("x-api-key"), "test-key");
+    assert.equal(headers.get("anthropic-version"), "2023-06-01");
+    return Response.json({ data: [{ id: "claude-opus-5-5", type: "model" }], has_more: false });
+  };
+  try {
+    const { discoverOpenAICompatibleModels } = await import("../packages/core/src/openai-compatible.ts");
+    assert.deepEqual(
+      await discoverOpenAICompatibleModels({
+        endpoint: "https://api.example.test/v1",
+        apiKey: "test-key",
+        protocol: "anthropic-messages",
+        capabilities: OPENAI_COMPATIBLE_CAPABILITIES,
+      }),
+      ["claude-opus-5-5"],
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
