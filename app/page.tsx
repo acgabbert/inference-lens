@@ -752,6 +752,7 @@ function HomeContent() {
   const selectedEvaluationSuite = projectFile?.evaluationSuites.find(
     ({ id }) => id === evaluationAuthoring.suiteId,
   );
+  const publishToast = toasts.publish;
   useEffect(() => {
     const suiteId = evaluationAuthoring.suiteId;
     const caseId = evaluationAuthoring.focusedCaseId;
@@ -773,7 +774,7 @@ function HomeContent() {
       .catch((error) => {
         if (!current) return;
         setCaseSource(undefined);
-        toasts.publish({
+        publishToast({
           key: "evaluation-case-source-unreadable",
           title: "Case source link is unavailable",
           detail: error instanceof Error ? error.message : "The local source annotation or its trace could not be read.",
@@ -781,7 +782,7 @@ function HomeContent() {
         });
       });
     return () => { current = false; };
-  }, [evaluationAuthoring.focusedCaseId, evaluationAuthoring.suiteId, projectFile, projectWorkspace, toasts.publish]);
+  }, [evaluationAuthoring.focusedCaseId, evaluationAuthoring.suiteId, projectFile, projectWorkspace, publishToast]);
   useEffect(() => {
     clearTemplateOverridesRef.current = projectTemplates.clearTransientOverrides;
   }, [projectTemplates.clearTransientOverrides]);
