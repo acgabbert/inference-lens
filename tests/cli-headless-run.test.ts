@@ -441,6 +441,27 @@ test("a rate-limit pause is announced on the progress stream when it starts", as
   ]);
 });
 
+test("a suite held back only by rate limiting exits 3, not 1", async (t) => {
+  const provider = await recordingProvider({ rateLimitFirstRequest: "0" });
+  t.after(provider.close);
+  const cases: typeof twoCases = [twoCases[0]!, {
+    ...twoCases[0]!, id: "evaluation-case_sum-again", name: "States the sum again",
+    checks: [{ checkId: "check_sum-again", kind: "contains", value: "2 + 2 = 4" }],
+  }];
+  const directory = await writeHeadlessProjectFolder(headlessProject({ endpoint: provider.endpoint, cases }));
+
+  const outcome = await run(directory, { [KEY_VARIABLE]: KEY }).done;
+
+  assert.equal(outcome.error, undefined);
+  assert.equal(outcome.exitCode, 3);
+  const summary = outcome.summary!;
+  assert.equal(summary.verdict, "incomplete");
+  assert.equal(summary.lifecycle, "completed");
+  const [configuration] = summary.configurations;
+  assert.deepEqual(configuration.caseCounts, { total: 2, passed: 1, failed: 0, incomplete: 1 });
+  assert.equal(configuration.cases[0].repetitions[0].classification, "rate-limited");
+});
+
 test("bad concurrency flags exit 2 before any request or artifact", async (t) => {
   const provider = await recordingProvider();
   t.after(provider.close);

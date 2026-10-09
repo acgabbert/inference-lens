@@ -9,6 +9,7 @@ import {
   type ExperimentResultInput,
   type ExperimentUsageAggregate,
   experimentConnectionKey,
+  isFailingRepetition,
   sequentialExperimentConcurrency,
 } from "./experiment.ts";
 import {
@@ -58,6 +59,12 @@ export type CaseOutcomeDelta =
   | "fixed"
   | "regressed"
   | "incomparable"
+  /**
+   * A side has a rate-limited repetition and neither side a failing one, so
+   * there is not enough evidence to call the case regressed, fixed, or
+   * unchanged.
+   */
+  | "inconclusive"
   | "baseline-only"
   | "candidate-only";
 
@@ -71,6 +78,8 @@ export interface EvaluationCaseSideSummary {
    */
   missingTrace: number;
   notRun: number;
+  /** Repetitions the provider refused with a 429: missing evidence, like the two above. */
+  rateLimited: number;
   checkCounts: { total: number; passed: number; failed: number; notEvaluated: number };
   totalDurationMs: ExperimentMetricRange;
 }
@@ -167,6 +176,7 @@ export interface EvaluationComparisonCounts extends SuiteAlignmentCounts {
   fixed: number;
   unchangedPass: number;
   unchangedFail: number;
+  inconclusive: number;
 }
 
 export interface EvaluationComparison {
@@ -247,9 +257,11 @@ function caseSide(
   const planCase = side.input.plan.suite.cases.find(({ caseId }) => caseId === assessment.caseId);
   let missingTrace = 0;
   let notRun = 0;
+  let rateLimited = 0;
   for (const repetition of assessment.repetitions) {
     if (repetition.classification === "trace-unavailable") missingTrace += 1;
     if (repetition.classification === "not-run") notRun += 1;
+    if (repetition.classification === "rate-limited") rateLimited += 1;
     checkCounts.total += planCase?.checks.length ?? 0;
     for (const check of repetition.checks) {
       if (check.outcome.status === "passed") checkCounts.passed += 1;
@@ -264,6 +276,7 @@ function caseSide(
     repetitions: assessment.repetitions.length,
     missingTrace,
     notRun,
+    rateLimited,
     checkCounts,
     totalDurationMs: range(durations(side, assessment)),
   };
@@ -368,14 +381,29 @@ function executionDrift(
   return drift;
 }
 
+/**
+ * Rate limiting withholds evidence rather than giving a wrong answer, so it
+ * cannot flip an outcome on its own. A failing repetition on either side is
+ * still a real outcome and is compared as one.
+ */
+function inconclusive(
+  baseline: readonly EvaluationRepetitionClassification[],
+  candidate: readonly EvaluationRepetitionClassification[],
+): boolean {
+  const both = [...baseline, ...candidate];
+  return both.includes("rate-limited") && !both.some(isFailingRepetition);
+}
+
 function delta(
   alignment: SuiteAlignmentStatus,
   baseline: EvaluationCaseSideSummary | undefined,
   candidate: EvaluationCaseSideSummary | undefined,
+  classifications: { baseline: EvaluationRepetitionClassification[]; candidate: EvaluationRepetitionClassification[] },
 ): CaseOutcomeDelta {
   if (!baseline) return "candidate-only";
   if (!candidate) return "baseline-only";
   if (alignment === "incompatible") return "incomparable";
+  if (inconclusive(classifications.baseline, classifications.candidate)) return "inconclusive";
   if (baseline.passed && candidate.passed) return "unchanged-pass";
   if (!baseline.passed && !candidate.passed) return "unchanged-fail";
   return candidate.passed ? "fixed" : "regressed";
@@ -408,11 +436,13 @@ function repetitionComparisons(
         ? "baseline-only"
         : alignment === "incompatible"
           ? "incomparable"
-          : baselineSide.classification === "passed" && candidateSide.classification === "passed"
-            ? "unchanged-pass"
-            : baselineSide.classification !== "passed" && candidateSide.classification !== "passed"
-              ? "unchanged-fail"
-              : candidateSide.classification === "passed" ? "fixed" : "regressed";
+          : inconclusive([baselineSide.classification], [candidateSide.classification])
+            ? "inconclusive"
+            : baselineSide.classification === "passed" && candidateSide.classification === "passed"
+              ? "unchanged-pass"
+              : baselineSide.classification !== "passed" && candidateSide.classification !== "passed"
+                ? "unchanged-fail"
+                : candidateSide.classification === "passed" ? "fixed" : "regressed";
     return {
       repetition,
       delta: repetitionDelta,
@@ -441,7 +471,10 @@ export function compareEvaluationExecutions(
       name: aligned.name,
       alignment: aligned.status,
       reasons: aligned.reasons,
-      delta: delta(aligned.status, baselineSide, candidateSide),
+      delta: delta(aligned.status, baselineSide, candidateSide, {
+        baseline: baselineAssessment?.repetitions.map(({ classification }) => classification) ?? [],
+        candidate: candidateAssessment?.repetitions.map(({ classification }) => classification) ?? [],
+      }),
       ...(baselineSide ? { baseline: baselineSide } : {}),
       ...(candidateSide ? { candidate: candidateSide } : {}),
       repetitions: repetitionComparisons(aligned.status, baselineAssessment, candidateAssessment),
@@ -463,6 +496,7 @@ export function compareEvaluationExecutions(
     fixed: cases.filter(({ delta }) => delta === "fixed").length,
     unchangedPass: cases.filter(({ delta }) => delta === "unchanged-pass").length,
     unchangedFail: cases.filter(({ delta }) => delta === "unchanged-fail").length,
+    inconclusive: cases.filter(({ delta }) => delta === "inconclusive").length,
   };
 
   return {

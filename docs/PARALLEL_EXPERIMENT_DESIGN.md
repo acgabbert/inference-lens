@@ -3,7 +3,7 @@
 **Status:** decisions 1–5 agreed October 9, 2026; decisions 6–8 (rate
 limits and retry) agreed the same day as recommended. A review the same day
 amended decisions 4, 5, and 8 and added decision 9; see
-[Review amendments](#review-amendments). Slices 1–4 are implemented,
+[Review amendments](#review-amendments). Slices 1–5 are implemented,
 including the retry policy that decision 8 adds to slice 1; see
 [Implementation status](#implementation-status), and the
 [headless CLI design](HEADLESS_CLI_DESIGN.md) for slice 4's flags. The decisions below need no
@@ -237,9 +237,11 @@ Consequences:
   failed, so a suite whose only problem is rate limiting has the verdict
   `incomplete` and the CLI exits 3, not 1. A CI job then cannot report a
   model regression that was really a quota problem.
-- Baseline comparisons treat a rate-limited repetition as missing evidence,
-  as they do `not-run`. Without this, a case that passed before and was
-  rate-limited now would show as regressed.
+- Baseline comparisons treat a rate-limited repetition as missing evidence.
+  Without this, a case that passed before and was rate-limited now would
+  show as regressed. (Amended in implementation: this originally said "as
+  they do `not-run`", but comparisons count a `not-run` repetition as not
+  passing, so it needed a new delta; see slice 5 below.)
 - `RepeatedExperimentAggregate` gains a `rateLimited` count, separate from
   `failed`.
 - The CLI's `--json` summary v1 gains `rate-limited` as a classification
@@ -524,6 +526,50 @@ of 2 and of 1, a pause reported and cleared, cancellation clearing it),
 `tests/e2e/experiment-concurrency.spec.ts` (a repeated experiment holding
 three calls in flight at the app's inference route, and an evaluation run
 once at the default and once two at a time, then compared).
+
+### Slice 5: what exists
+
+A run is rate-limited when it failed with `provider_error` and
+`providerStatus: 429` (`isRateLimitedRun` in `packages/core/src/experiment.ts`).
+Evaluations classify it `rate-limited`, the repeated-request aggregate and
+the history entries count it as `rateLimited` apart from `failed`, the CLI
+prints it as "rate limited", and both workspaces label it.
+
+Choices made in implementation (the first agreed on review, October 9, 2026):
+
+- **Comparisons gain an `inconclusive` delta.** Decision 7 assumed
+  comparisons already treated `not-run` as missing evidence. They do not: a
+  case with a `not-run` repetition has not passed, so it reads as regressed
+  against a passing baseline. `CaseOutcomeDelta` and the per-repetition delta
+  therefore gain `inconclusive`: a side has a rate-limited repetition and
+  neither side a failing one (`check-failed`, `run-failed`, or `cancelled`,
+  per `isFailingRepetition`). A real failure beside a rate-limited
+  repetition is still compared as one. `EvaluationComparisonCounts` gains
+  `inconclusive`, and each case side gains a `rateLimited` count beside
+  `missingTrace` and `notRun`. Only rate limiting triggers it; whether
+  `not-run` and `trace-unavailable` should too is a separate decision, since
+  it would change how stopped and cancelled runs compare today.
+- **Checks are not evaluated** on a rate-limited repetition: the run ended
+  before a final answer, so its checks count as not evaluated rather than
+  failed.
+- **The verdict.** `headlessVerdict` returns `incomplete` for a completed
+  run only when every repetition passed or was rate-limited. Any other
+  shortfall keeps the verdict it had.
+- **The workspaces.** A rate-limited repetition has a "rate limited" chip in
+  the warning tone. The comparison shows an "Inconclusive" tile when any case
+  is inconclusive, labels the case "inconclusive · rate limited", and names
+  the rate-limited repetitions on their side. The repeated experiment and the
+  Runs list add "N rate limited" beside the failed count.
+
+Verification: `tests/evaluation-comparison.test.ts` (classification, a 503
+still failing, the verdict, the inconclusive delta, and a real failure beside
+a rate-limited repetition), `tests/experiment.test.ts` (the aggregate's
+count), `tests/cli-headless-run.test.ts` (exit 3 against a provider that
+answers 429), `tests/evaluation-results-render.test.mjs`,
+`tests/repeated-experiment-render.test.mjs`, `tests/run-history-render.test.mjs`,
+and `tests/e2e/rate-limited-classification.spec.ts` (a loopback provider
+refusing one case with a real 429, read in the results and against a
+baseline).
 
 ## Review amendments
 

@@ -21,7 +21,7 @@ import type {
 } from "../packages/core/src/experiment.ts";
 import { createResolvedRunInput } from "../packages/core/src/run-kernel/run-execution.ts";
 import { RunCoordinator } from "../packages/core/src/run-kernel/coordinator.ts";
-import type { ResolvedRunInput, RunId } from "../packages/core/src/run-kernel/types.ts";
+import type { ResolvedRunInput, RunError, RunId } from "../packages/core/src/run-kernel/types.ts";
 
 function plan(): RepeatedExperimentPlanV3 {
   const input = createResolvedRunInput(
@@ -548,6 +548,39 @@ test("projects interrupted and missing-trace evidence without fabricating result
   assert.equal(aggregate.distinctFinalAssistantOutputs, 1);
   assert.deepEqual(aggregate.outputCharacterCount, { count: 1, min: 4, median: 4, max: 4 });
   assert.equal(experimentLifecycle(source), "interrupted");
+});
+
+test("counts rate-limited repetitions apart from failed ones", () => {
+  const source = plan();
+  const refused = (cellId: "experiment-cell_first" | "experiment-cell_second", providerStatus: number) => {
+    const coordinator = new RunCoordinator(materializeExperimentCellInput(source, cellId));
+    coordinator.start();
+    const error: RunError = { code: "provider_error", message: "Refused", retryable: true, providerStatus };
+    coordinator.accept({ type: "failed", error });
+    coordinator.finishTurnStream();
+    coordinator.fail(error);
+    return coordinator.state;
+  };
+  const first = refused("experiment-cell_first", 429);
+  const second = refused("experiment-cell_second", 500);
+  const result: ExperimentResultV3 = {
+    schemaVersion: 4,
+    experimentId: source.experimentId,
+    status: "completed",
+    endedAt: "2026-07-30T12:01:00.000Z",
+    cells: [
+      { cellId: "experiment-cell_first", runId: "run_first", status: "completed" },
+      { cellId: "experiment-cell_second", runId: "run_second", status: "completed" },
+    ],
+  };
+  const aggregate = repeatedExperimentAggregate(
+    source,
+    result,
+    new Map([[first.runId, first], [second.runId, second]]),
+  );
+
+  assert.equal(aggregate.rateLimited, 1);
+  assert.equal(aggregate.failed, 1);
 });
 
 test("names the three experiment artifact kinds and refuses lookalikes", () => {

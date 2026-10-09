@@ -98,6 +98,27 @@ test("renders strict as-run case, repetition, check, usage, and evidence results
   assert.doesNotMatch(html, /NaN|Infinity|undefined|\[object Object\]/);
 });
 
+test("a rate-limited repetition reads as rate limited and leaves its case incomplete, not failed", async () => {
+  const fx = await fixture();
+  const first = completedState(fx, fx.plan.cells[0], "Include a rollback plan.");
+  const coordinator = new fx.kernel.RunCoordinator(fx.experimentCore.materializeExperimentCellInput(fx.plan, fx.plan.cells[1].cellId));
+  coordinator.start();
+  const error = { code: "provider_error", message: "Too many requests", retryable: true, providerStatus: 429 };
+  coordinator.accept({ type: "failed", error });
+  coordinator.finishTurnStream();
+  coordinator.fail(error);
+  const second = coordinator.state;
+  const states = new Map([[first.runId, first], [second.runId, second]]);
+  const result = { schemaVersion: 4, experimentId: fx.plan.experimentId, status: "completed", endedAt: "2026-08-01T12:11:00.000Z", cells: fx.plan.cells.map((cell) => ({ cellId: cell.cellId, runId: cell.runId, status: "completed" })) };
+  const html = fx.renderToStaticMarkup(fx.createElement(fx.EvaluationResultsWorkspace, {
+    execution: { plan: fx.plan, result, storage: "durable", workspace: null, states, traces: new Map([[first.runId, {}], [second.runId, {}]]), traceFileNames: new Map(), unreadableTraces: new Map(), selectedRunId: null },
+    onStop() {}, onOpenTrace() {},
+  }));
+  assert.match(html, /<span class="run-history-status rate-limited">rate limited<\/span>/);
+  assert.doesNotMatch(html, /run failed/);
+  assert.match(html, /0 failed · 1 incomplete/);
+});
+
 test("projects readable, unreadable, absent, and not-created evidence independently", async () => {
   const fx = await fixture();
   const cell = fx.plan.cells[0];

@@ -6432,6 +6432,13 @@ main {
   color: var(--text-muted);
 }
 
+/* A rate-limited run is missing evidence, not a model failure: the provider
+   refused it before the model answered. */
+.run-history-status.rate-limited {
+  background: var(--warning-surface);
+  color: var(--warning-strong);
+}
+
 /* A cancelled run is neither a success nor a fault, so it keeps the neutral
    pill the base rule sets. It is named here so the omission reads as a
    decision rather than as a missing case. */
