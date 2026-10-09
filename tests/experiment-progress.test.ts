@@ -7,8 +7,8 @@ import type { RepeatedExperimentPlanV3 } from "../packages/core/src/experiment.t
 import type { ProviderTransportEvent } from "../packages/core/src/run-kernel/index.ts";
 import { createMockOnlyToolExecutor } from "../packages/runner/src/mock-only-tool-executor.ts";
 import type { SchedulerClock } from "../packages/runner/src/scheduler-clock.ts";
-import { SequentialExperimentController } from "../packages/runner/src/sequential-experiment-controller.ts";
-import type { SequentialExperimentProgress } from "../packages/runner/src/sequential-experiment-controller.ts";
+import { ExperimentController } from "../packages/runner/src/experiment-controller.ts";
+import type { ExperimentProgress } from "../packages/runner/src/experiment-controller.ts";
 
 const ENDPOINT = "https://provider.example.test/v1";
 
@@ -119,13 +119,13 @@ function fakeClock() {
   return clock;
 }
 
-const last = (emitted: SequentialExperimentProgress[]) => emitted[emitted.length - 1]!;
+const last = (emitted: ExperimentProgress[]) => emitted[emitted.length - 1]!;
 
 test("progress reports every running ordinal, not one current ordinal", async () => {
   const releases = new Map([1, 2, 3].map((ordinal) => [`run_${ordinal}`, deferred()]));
   const started: string[] = [];
-  const emitted: SequentialExperimentProgress[] = [];
-  const pending = new SequentialExperimentController({
+  const emitted: ExperimentProgress[] = [];
+  const pending = new ExperimentController({
     plan: plan(3),
     concurrency: { maxInFlight: 2, connectionLimit: 2 },
     createExecutor: createMockOnlyToolExecutor,
@@ -159,8 +159,8 @@ test("progress reports every running ordinal, not one current ordinal", async ()
 });
 
 test("at the default limit the running set never holds more than one ordinal", async () => {
-  const emitted: SequentialExperimentProgress[] = [];
-  await new SequentialExperimentController({
+  const emitted: ExperimentProgress[] = [];
+  await new ExperimentController({
     plan: plan(3),
     createExecutor: createMockOnlyToolExecutor,
     transport: transportFor(async function* (runId) {
@@ -181,8 +181,8 @@ test("at the default limit the running set never holds more than one ordinal", a
 test("progress reports when a paused connection may start cells again, and when it resumes", async () => {
   const clock = fakeClock();
   const started: string[] = [];
-  const emitted: SequentialExperimentProgress[] = [];
-  const pending = new SequentialExperimentController({
+  const emitted: ExperimentProgress[] = [];
+  const pending = new ExperimentController({
     plan: plan(2),
     clock,
     createExecutor: createMockOnlyToolExecutor,
@@ -220,8 +220,8 @@ test("progress reports when a paused connection may start cells again, and when 
 
 test("cancellation clears a reported pause", async () => {
   const clock = fakeClock();
-  const emitted: SequentialExperimentProgress[] = [];
-  const controller = new SequentialExperimentController({
+  const emitted: ExperimentProgress[] = [];
+  const controller = new ExperimentController({
     plan: plan(2),
     clock,
     createExecutor: createMockOnlyToolExecutor,

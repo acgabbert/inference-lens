@@ -28,8 +28,8 @@ import type { ProjectWorkspaceHandle } from "../project-workspace.client.ts";
 import { createExperimentWorkspacePersistence } from "./experiment-workspace-persistence.client.ts";
 import { listExperimentToolBindings } from "../../packages/core/src/tool-binding-resolution.ts";
 import type { ExperimentToolBinding } from "../../packages/core/src/tool-binding-resolution.ts";
-import { SequentialExperimentController } from "../../packages/runner/src/sequential-experiment-controller.ts";
-import type { ExperimentConnectionPause } from "../../packages/runner/src/sequential-experiment-controller.ts";
+import { ExperimentController } from "../../packages/runner/src/experiment-controller.ts";
+import type { ExperimentConnectionPause } from "../../packages/runner/src/experiment-controller.ts";
 import { normalizedConcurrency } from "./experiment-concurrency.client.tsx";
 import { createToolExecutor } from "./tool-executors.client.ts";
 import { verifyToolBindingsOnHost } from "../tools/tool-binding-check.client.ts";
@@ -193,7 +193,7 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
   const [draft, setDraft] = useState<RepeatedExperimentDraft>();
   const [execution, setExecution] = useState<RepeatedExperimentExecution>();
   const [isRunning, setIsRunning] = useState(false);
-  const controllerRef = useRef<SequentialExperimentController | undefined>(undefined);
+  const controllerRef = useRef<ExperimentController | undefined>(undefined);
 
   const { bindingForTool } = options;
 
@@ -313,7 +313,7 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
       ? createExperimentWorkspacePersistence(workspace, pending.plan)
       : undefined;
     const limit = pending.concurrency ?? 1;
-    const controller = new SequentialExperimentController({
+    const controller = new ExperimentController({
       plan: pending.plan,
       transport: options.transport,
       prepareCredential: options.prepareCredential,

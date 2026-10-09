@@ -1,6 +1,6 @@
 import type {
-  SequentialExperimentControllerOptions,
-} from "../../packages/runner/src/sequential-experiment-controller.ts";
+  ExperimentControllerOptions,
+} from "../../packages/runner/src/experiment-controller.ts";
 import {
   saveExperimentPlanWorkspace,
   saveExperimentResultWorkspace,
@@ -18,7 +18,7 @@ export function createExperimentWorkspacePersistence(
   workspace: ProjectWorkspaceHandle,
   plan: ExperimentPlanV3,
 ): Pick<
-  SequentialExperimentControllerOptions,
+  ExperimentControllerOptions,
   "savePlan" | "saveResult" | "onTerminalTrace"
 > {
   return {

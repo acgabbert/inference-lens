@@ -15,8 +15,8 @@ import { runStateFromTrace, traceFileName } from "../../packages/core/src/run-tr
 import type { ProjectWorkspaceHandle } from "../project-workspace.client.ts";
 import { createExperimentWorkspacePersistence } from "../run/experiment-workspace-persistence.client.ts";
 import type { ExperimentToolBinding } from "../../packages/core/src/tool-binding-resolution.ts";
-import { SequentialExperimentController } from "../../packages/runner/src/sequential-experiment-controller.ts";
-import type { ExperimentConnectionPause } from "../../packages/runner/src/sequential-experiment-controller.ts";
+import { ExperimentController } from "../../packages/runner/src/experiment-controller.ts";
+import type { ExperimentConnectionPause } from "../../packages/runner/src/experiment-controller.ts";
 import { createToolExecutor } from "../run/tool-executors.client.ts";
 import { verifyToolBindingsOnHost } from "../tools/tool-binding-check.client.ts";
 
@@ -93,7 +93,7 @@ export function useEvaluationExecutionSession(options: UseEvaluationExecutionSes
   const [draft, setDraft] = useState<EvaluationExecutionDraft>();
   const [execution, setExecution] = useState<EvaluationExecution>();
   const [isRunning, setIsRunning] = useState(false);
-  const controllerRef = useRef<SequentialExperimentController | undefined>(undefined);
+  const controllerRef = useRef<ExperimentController | undefined>(undefined);
 
   const begin = useCallback((next: EvaluationExecutionDraft) => setDraft(next), []);
   const dismissDialog = useCallback(() => setDraft(undefined), []);
@@ -127,7 +127,7 @@ export function useEvaluationExecutionSession(options: UseEvaluationExecutionSes
     const persistence = workspace
       ? createExperimentWorkspacePersistence(workspace, pending.plan)
       : undefined;
-    const controller = new SequentialExperimentController({
+    const controller = new ExperimentController({
       plan: pending.plan,
       transport: options.transport,
       prepareCredential: options.prepareCredential,

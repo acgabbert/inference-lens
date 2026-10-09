@@ -6,7 +6,7 @@ import {
 } from "../../runner/src/evaluation-start.ts";
 import type { EvaluationLocalProfile } from "../../runner/src/evaluation-start.ts";
 import { createMockOnlyToolExecutor } from "../../runner/src/mock-only-tool-executor.ts";
-import { SequentialExperimentController } from "../../runner/src/sequential-experiment-controller.ts";
+import { ExperimentController } from "../../runner/src/experiment-controller.ts";
 import { toolBindingForMock } from "../../core/src/tool-binding-resolution.ts";
 import { evaluationSuitePreflight, resolveEvaluationVariant } from "../../core/src/evaluation-suites.ts";
 import {
@@ -120,7 +120,7 @@ function headlessBindingForTool(project: ProjectFile) {
 }
 
 export function startHeadlessEvaluation(options: HeadlessEvaluationOptions): HeadlessEvaluationRun {
-  let controller: SequentialExperimentController | undefined;
+  let controller: ExperimentController | undefined;
   let cancelled = false;
   const done = runHeadlessEvaluation(options, (created) => {
     controller = created;
@@ -137,7 +137,7 @@ export function startHeadlessEvaluation(options: HeadlessEvaluationOptions): Hea
 
 async function runHeadlessEvaluation(
   options: HeadlessEvaluationOptions,
-  onController: (controller: SequentialExperimentController) => void,
+  onController: (controller: ExperimentController) => void,
 ): Promise<HeadlessEvaluationOutcome> {
   let prepared: Awaited<ReturnType<typeof prepareHeadlessEvaluation>>;
   try {
@@ -158,7 +158,7 @@ async function runHeadlessEvaluation(
   /** When each paused connection resumes, as last announced, by profile and endpoint. */
   const announcedPauses = new Map<string, number>();
 
-  const controller = new SequentialExperimentController({
+  const controller = new ExperimentController({
     plan,
     transport: options.transport,
     async prepareCredential(target): Promise<CredentialSelection> {

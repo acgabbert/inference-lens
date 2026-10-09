@@ -13,7 +13,7 @@ import {
   rateLimitPauseMs,
 } from "../packages/runner/src/rate-limit-pause.ts";
 import type { SchedulerClock } from "../packages/runner/src/scheduler-clock.ts";
-import { SequentialExperimentController } from "../packages/runner/src/sequential-experiment-controller.ts";
+import { ExperimentController } from "../packages/runner/src/experiment-controller.ts";
 
 function plan(count: number): RepeatedExperimentPlanV3 {
   return {
@@ -140,7 +140,7 @@ test("places cells in plan order when they finish in reverse", async () => {
   const started: string[] = [];
   const finished: string[] = [];
   const releases = new Map(["run_1", "run_2", "run_3"].map((runId) => [runId, deferred()]));
-  const controller = new SequentialExperimentController({
+  const controller = new ExperimentController({
     plan: plan(3),
     concurrency: { maxInFlight: 3, connectionLimit: 3 },
     createExecutor: createMockOnlyToolExecutor,
@@ -175,7 +175,7 @@ test("never exceeds a connection's limit, and reaches it", async () => {
   const started: string[] = [];
   let active = 0;
   let peak = 0;
-  const result = await new SequentialExperimentController({
+  const result = await new ExperimentController({
     plan: plan(7),
     concurrency: { maxInFlight: 5, connectionLimit: 2 },
     createExecutor: createMockOnlyToolExecutor,
@@ -201,7 +201,7 @@ test("never exceeds a connection's limit, and reaches it", async () => {
 test("with no setting, cells run one at a time exactly as before", async () => {
   let active = 0;
   let peak = 0;
-  const result = await new SequentialExperimentController({
+  const result = await new ExperimentController({
     plan: plan(4),
     createExecutor: createMockOnlyToolExecutor,
     transport: transportFor(async function* (runId) {
@@ -274,7 +274,7 @@ function toolCalling() {
 async function peakToolOverlap(bindings: ToolBinding[]): Promise<number> {
   let active = 0;
   let peak = 0;
-  const result = await new SequentialExperimentController({
+  const result = await new ExperimentController({
     plan: toolPlan(4),
     concurrency: { maxInFlight: 4, connectionLimit: 4 },
     transport: transportFor(toolCalling()),
@@ -347,7 +347,7 @@ test("mock tool calls overlap", async () => {
 test("a stop lets in-flight cells finish and starts no other", async () => {
   const started: string[] = [];
   const stopRecorded = deferred();
-  const result = await new SequentialExperimentController({
+  const result = await new ExperimentController({
     plan: toolPlan(4),
     concurrency: { maxInFlight: 2, connectionLimit: 2 },
     transport: transportFor(toolCalling(), started),
@@ -385,7 +385,7 @@ test("a stop lets in-flight cells finish and starts no other", async () => {
 test("cancellation aborts every in-flight cell", async () => {
   const started: string[] = [];
   const traces: RunTrace[] = [];
-  const controller = new SequentialExperimentController({
+  const controller = new ExperimentController({
     plan: plan(4),
     concurrency: { maxInFlight: 3, connectionLimit: 3 },
     createExecutor: createMockOnlyToolExecutor,
@@ -412,7 +412,7 @@ test("a trace that cannot be saved aborts the cells in flight and waits for them
   const started: string[] = [];
   const order: string[] = [];
   let savedResults = 0;
-  const controller = new SequentialExperimentController({
+  const controller = new ExperimentController({
     plan: plan(4),
     concurrency: { maxInFlight: 2, connectionLimit: 2 },
     createExecutor: createMockOnlyToolExecutor,
@@ -480,7 +480,7 @@ test("a 429 pauses new cells on its connection without interrupting cells in fli
   const clock = fakeClock();
   const started: string[] = [];
   const releaseSecond = deferred();
-  const controller = new SequentialExperimentController({
+  const controller = new ExperimentController({
     plan: plan(3),
     concurrency: { maxInFlight: 2, connectionLimit: 2 },
     clock,
@@ -519,7 +519,7 @@ test("a 429 pauses new cells on its connection without interrupting cells in fli
 test("cancellation ends a rate-limit pause at once", async () => {
   const clock = fakeClock();
   const started: string[] = [];
-  const controller = new SequentialExperimentController({
+  const controller = new ExperimentController({
     plan: plan(2),
     clock,
     createExecutor: createMockOnlyToolExecutor,

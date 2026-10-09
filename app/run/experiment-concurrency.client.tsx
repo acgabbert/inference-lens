@@ -6,7 +6,7 @@ import type {
   ExperimentConcurrencySetting,
   ExperimentConnectionConcurrency,
 } from "../../packages/core/src/experiment.ts";
-import type { ExperimentConnectionPause } from "../../packages/runner/src/sequential-experiment-controller.ts";
+import type { ExperimentConnectionPause } from "../../packages/runner/src/experiment-controller.ts";
 
 /**
  * The most cells a start dialog lets a person run at once. Not a scheduler

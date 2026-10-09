@@ -40,7 +40,7 @@ export interface ExperimentConnectionPause {
   until: number;
 }
 
-export interface SequentialExperimentProgress {
+export interface ExperimentProgress {
   status: "running" | ExperimentResult["status"];
   requested: number;
   /** Cells that reached a terminal run status; queued `not-run` cells are excluded. */
@@ -57,7 +57,7 @@ export interface SequentialExperimentProgress {
   states: ReadonlyMap<RunId, RunState>;
 }
 
-export interface SequentialExperimentControllerOptions {
+export interface ExperimentControllerOptions {
   plan: ExperimentPlanV4;
   transport: ProviderTurnTransport;
   /** Resolves and verifies a local credential before any provider traffic. */
@@ -66,7 +66,7 @@ export interface SequentialExperimentControllerOptions {
   savePlan?(plan: ExperimentPlanV4, serialized: string): Promise<void>;
   /** Must durably save the final result before resolving. Omit for an ad hoc session experiment. */
   saveResult?(result: ExperimentResult, serialized: string): Promise<void>;
-  onProgress?(progress: SequentialExperimentProgress): void;
+  onProgress?(progress: ExperimentProgress): void;
   /**
    * Invoked exactly once for every started cell after it reaches a terminal state.
    * A rejection deliberately interrupts the experiment: no later cells start and
@@ -135,8 +135,8 @@ function terminalStatus(state: RunState): TerminalRunStatus | undefined {
  * watching a batch call by call. Calls that reach one MCP server or one
  * declared command never overlap, whichever cells make them.
  */
-export class SequentialExperimentController {
-  private readonly options: SequentialExperimentControllerOptions;
+export class ExperimentController {
+  private readonly options: ExperimentControllerOptions;
   private readonly states = new Map<RunId, RunState>();
   /** One per cell in flight; cancellation aborts them all. */
   private readonly cellAbortControllers = new Set<AbortController>();
@@ -169,7 +169,7 @@ export class SequentialExperimentController {
   private readonly bindings: readonly ToolBinding[];
   private readonly createExecutor: (binding: ToolBinding) => ToolExecutor;
 
-  constructor(options: SequentialExperimentControllerOptions) {
+  constructor(options: ExperimentControllerOptions) {
     this.options = options;
     this.bindings = options.toolBindings ?? [];
     this.createExecutor = options.createExecutor;
@@ -646,7 +646,7 @@ export class SequentialExperimentController {
     });
   }
 
-  private emit(progress: SequentialExperimentProgress): void {
+  private emit(progress: ExperimentProgress): void {
     this.options.onProgress?.({ ...progress, states: new Map(this.states) });
   }
 }

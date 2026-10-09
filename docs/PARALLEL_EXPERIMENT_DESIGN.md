@@ -458,8 +458,8 @@ Choices made in implementation, within the agreed decisions:
   user.", and do not mark the experiment as cancelled.
 - **Not yet done.** The class keeps its `Sequential` name and
   `SequentialExperimentProgress` keeps `currentOrdinal`, which is the
-  ordinal of the cell that last reported. Slice 3 replaces `currentOrdinal`;
-  the rename is deferred (see slice 3 below).
+  ordinal of the cell that last reported. Slice 3 replaces `currentOrdinal`
+  and renames both (see slice 3 below).
 
 Verification: `tests/concurrent-experiment-scheduler.test.ts` (plan-order
 placement, the per-connection limit, the stop, cancellation, tool locks,
@@ -470,7 +470,7 @@ running). The existing controller tests pass unchanged.
 
 ### Slice 3: what exists
 
-`SequentialExperimentProgress` reports `runningOrdinals` and
+`ExperimentProgress` reports `runningOrdinals` and
 `pausedConnections` in place of `currentOrdinal`. Both workspaces read
 them, both start dialogs set a limit, and a comparison names a changed
 concurrency.
@@ -478,10 +478,12 @@ concurrency.
 Choices made in implementation, within the agreed decisions (the first two
 agreed on review, October 9, 2026):
 
-- **The rename is deferred.** The class, its file, and the progress type
-  keep their `Sequential` names, to change in one mechanical commit of their
-  own. Slice 4 changed the CLI, which imports the class, at the same time,
-  so renaming here would have collided with it.
+- **The rename.** `SequentialExperimentController` is now
+  `ExperimentController` in `packages/runner/src/experiment-controller.ts`,
+  with `ExperimentControllerOptions` and `ExperimentProgress`. It landed in
+  its own commit after slice 4 merged, because slice 4 was changing the CLI,
+  which imports the class, at the same time. Earlier sections keep the old
+  names, as they were written.
 - **The CLI's pause line.** `evaluation-run.ts` prints a stderr line when a
   connection's pause starts or lengthens, naming the connection by its
   requirement ID; see the [headless CLI design](HEADLESS_CLI_DESIGN.md).
