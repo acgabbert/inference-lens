@@ -81,8 +81,11 @@ function holdOpenRequest(port) {
   });
 }
 
-// Distinct per fixture so the files can run concurrently without colliding.
-let nextPort = 45_200;
+// Distinct per fixture so the files can run concurrently without colliding,
+// and below the ephemeral range (Linux 32768+, macOS 49152+): inside it, a
+// concurrent test's port-0 listener can be handed one of these first, and the
+// readiness probe then connects to that stranger instead of the fixture.
+let nextPort = 31_200;
 
 for (const [script, portVariable] of FIXTURES) {
   test(`${script} stops on SIGTERM with a client connected`, async (t) => {
