@@ -14,9 +14,9 @@ import type {
 import type {
   ProviderTransportEvent,
 } from "../packages/core/src/run-kernel/index.ts";
-import { InferenceTransportError } from "./inference-transport-error.ts";
+import { InferenceTransportError } from "../packages/runner/src/inference-transport-error.ts";
 
-export { InferenceTransportError } from "./inference-transport-error.ts";
+export { InferenceTransportError } from "../packages/runner/src/inference-transport-error.ts";
 
 async function responseError(response: Response): Promise<InferenceTransportError> {
   const body = (await response.json().catch(() => null)) as { error?: unknown } | null;

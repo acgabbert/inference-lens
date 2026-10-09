@@ -4,8 +4,9 @@ import {
   evaluationWorkspaceExecution,
 } from "../../../app/evaluations/evaluation-start.client.ts";
 import type { EvaluationLocalProfile } from "../../../app/evaluations/evaluation-start.client.ts";
-import { SequentialExperimentController } from "../../../app/run/sequential-experiment-controller.client.ts";
-import { toolBindingForMock } from "../../../app/run/run-session-state.client.ts";
+import { createMockOnlyToolExecutor } from "../../runner/src/mock-only-tool-executor.ts";
+import { SequentialExperimentController } from "../../runner/src/sequential-experiment-controller.ts";
+import { toolBindingForMock } from "../../core/src/tool-binding-resolution.ts";
 import { evaluationSuitePreflight, resolveEvaluationVariant } from "../../core/src/evaluation-suites.ts";
 import {
   evaluationParsedExperimentAggregate,
@@ -148,7 +149,7 @@ async function runHeadlessEvaluation(
       return resolution.credential;
     },
     toolBindings,
-    ...(options.createExecutor ? { createExecutor: options.createExecutor } : {}),
+    createExecutor: options.createExecutor ?? createMockOnlyToolExecutor,
     async savePlan(frozen, serialized) {
       await folder.saveExperimentArtifact(experimentPlanFileName(frozen.experimentId), serialized);
       planSaved = true;

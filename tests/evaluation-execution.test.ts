@@ -23,7 +23,8 @@ import { RunCoordinator } from "../packages/core/src/run-kernel/coordinator.ts";
 import type { EvaluationCaseId, ResolvedRunInput } from "../packages/core/src/run-kernel/types.ts";
 import { OPENAI_COMPATIBLE_CAPABILITIES } from "../packages/core/src/types.ts";
 import type { ProviderTurnTransport } from "../packages/contracts/src/inference.ts";
-import { SequentialExperimentController } from "../app/run/sequential-experiment-controller.client.ts";
+import { createMockOnlyToolExecutor } from "../packages/runner/src/mock-only-tool-executor.ts";
+import { SequentialExperimentController } from "../packages/runner/src/sequential-experiment-controller.ts";
 
 function projectFixture(withChecks = true) {
   let project = createProjectFile({
@@ -428,6 +429,7 @@ test("the shared sequential controller executes evaluation cells as ordinary run
   };
   const result = await new SequentialExperimentController({
     plan,
+    createExecutor: createMockOnlyToolExecutor,
     transport,
     async prepareCredential() { return { kind: "none" }; },
     onTerminalTrace(trace) { traces.push(trace.runId); },
@@ -499,6 +501,7 @@ test("the controller prepares each configuration target before deterministic exe
   };
   await new SequentialExperimentController({
     plan,
+    createExecutor: createMockOnlyToolExecutor,
     transport,
     async prepareCredential(target) {
       prepared.push(`${target.profileId} ${target.endpoint}`);
@@ -524,6 +527,7 @@ test("an unservable configuration refuses the whole batch before credentials, pe
   let providerCalls = 0;
   await assert.rejects(() => new SequentialExperimentController({
     plan,
+    createExecutor: createMockOnlyToolExecutor,
     transport: {
       async discoverModels() { return { models: [] }; },
       async executeTurn() { providerCalls += 1; throw new Error("should not run"); },

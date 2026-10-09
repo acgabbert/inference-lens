@@ -12,12 +12,13 @@ import { parseRunTraceJson, runStateFromTrace, traceFileName } from "../../packa
 import { randomUUID } from "../../packages/core/src/random-id";
 import { recordDiagnostic, redactDiagnosticValue, startDiagnosticCapture } from "../diagnostics.client";
 import type { DiagnosticCapture } from "../diagnostics.client";
-import { driveProviderTurn } from "./provider-turn-driver.client";
+import { driveProviderTurn } from "../../packages/runner/src/provider-turn-driver";
 import { exportRunTraceFile, runTraceWorkspaceLocation, runTraceWorkspacePath, saveRunTraceWorkspace } from "../project-workspace.client";
 import type { ProjectWorkspaceHandle } from "../project-workspace.client";
 import type { TraceStorageStatus } from "../response-output.client";
 import type { ParentTraceState } from "../run-trace-panel.client";
-import { executableBinding, isTerminalRunState, pendingToolCalls, toolResultDraftsForState } from "./run-session-state.client";
+import { executableBinding, isTerminalRunState, toolResultDraftsForState } from "./run-session-state.client";
+import { pendingToolCalls } from "../../packages/core/src/tool-binding-resolution";
 import type { TranscriptEntry } from "../../packages/core/src/run-kernel/transcript";
 import type { ToolResultDraft } from "./run-session-state.client";
 

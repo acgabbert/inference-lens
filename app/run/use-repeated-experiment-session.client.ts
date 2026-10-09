@@ -28,7 +28,8 @@ import type { ProjectWorkspaceHandle } from "../project-workspace.client.ts";
 import { createExperimentWorkspacePersistence } from "./experiment-workspace-persistence.client.ts";
 import { listExperimentToolBindings } from "./experiment-tool-bindings.client.ts";
 import type { ExperimentToolBinding } from "./experiment-tool-bindings.client.ts";
-import { SequentialExperimentController } from "./sequential-experiment-controller.client.ts";
+import { SequentialExperimentController } from "../../packages/runner/src/sequential-experiment-controller.ts";
+import { createToolExecutor } from "./tool-executors.client.ts";
 import { verifyToolBindingsOnHost } from "../tools/tool-binding-check.client.ts";
 
 export const DEFAULT_REPETITION_COUNT = 5;
@@ -301,6 +302,7 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
       // The plan-time join: portable descriptors in the plan, how they are
       // served on this device beside it, never inside it.
       toolBindings: pending.toolBindings.flatMap(({ binding }) => binding ? [binding] : []),
+      createExecutor: createToolExecutor,
       verifyToolBindings: (bindings) => verifyToolBindingsOnHost(bindings, (toolId) =>
         pending.plan.commonInput.tools.find(({ id }) => id === toolId)?.name ?? toolId),
       ...persistence,

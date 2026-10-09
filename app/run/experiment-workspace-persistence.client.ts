@@ -1,6 +1,6 @@
 import type {
   SequentialExperimentControllerOptions,
-} from "./sequential-experiment-controller.client.ts";
+} from "../../packages/runner/src/sequential-experiment-controller.ts";
 import {
   saveExperimentPlanWorkspace,
   saveExperimentResultWorkspace,

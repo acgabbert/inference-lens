@@ -11,6 +11,8 @@ import { renderTemplateMessages } from "./template-engine.ts";
 
 export const RUN_TRACE_SCHEMA_VERSION = 7;
 export const RUN_TRACE_FILE_SUFFIX = ".json";
+/** The project-folder directory that holds saved run traces. */
+export const TRACES_DIRECTORY_NAME = "traces";
 
 /**
  * Run traces are diagnostic evidence, not authored project state. The parser

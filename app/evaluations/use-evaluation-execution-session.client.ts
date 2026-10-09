@@ -14,7 +14,8 @@ import { runStateFromTrace, traceFileName } from "../../packages/core/src/run-tr
 import type { ProjectWorkspaceHandle } from "../project-workspace.client.ts";
 import { createExperimentWorkspacePersistence } from "../run/experiment-workspace-persistence.client.ts";
 import type { ExperimentToolBinding } from "../run/experiment-tool-bindings.client.ts";
-import { SequentialExperimentController } from "../run/sequential-experiment-controller.client.ts";
+import { SequentialExperimentController } from "../../packages/runner/src/sequential-experiment-controller.ts";
+import { createToolExecutor } from "../run/tool-executors.client.ts";
 import { verifyToolBindingsOnHost } from "../tools/tool-binding-check.client.ts";
 
 export interface EvaluationExecutionDraft {
@@ -114,6 +115,7 @@ export function useEvaluationExecutionSession(options: UseEvaluationExecutionSes
       // repeated experiment makes, so one suite is served identically here and
       // nowhere else by accident.
       toolBindings: pending.toolBindings.flatMap(({ binding }) => binding ? [binding] : []),
+      createExecutor: createToolExecutor,
       verifyToolBindings: (bindings) => verifyToolBindingsOnHost(bindings, (toolId) =>
         experimentExposedTools(pending.plan).find(({ id }) => id === toolId)?.name ?? toolId),
       ...persistence,

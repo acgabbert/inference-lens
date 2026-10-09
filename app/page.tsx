@@ -78,7 +78,7 @@ import { useResponseView } from "./run/use-response-view.client";
 import { useBatchCompletion } from "./run/use-batch-completion.client";
 import { usePendingBranch } from "./run/use-pending-branch.client";
 import { useRunsNavigation } from "./run/use-runs-navigation.client";
-import { toolBindingFor } from "./run/run-session-state.client";
+import { toolBindingFor } from "../packages/core/src/tool-binding-resolution";
 import { useCommandTools } from "./tools/use-command-tools.client";
 import { useMcpConsents } from "./tools/use-mcp-consents.client";
 import { commandToolUnavailableMessage } from "./tools/command-tool-availability.client";
