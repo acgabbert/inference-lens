@@ -22,12 +22,15 @@ after(() => {
 });
 
 test("renders through the shared server", async () => {
-  await renderToHtml("/app/run-history-drawer.client.tsx", "RunHistoryDrawer", {
-    open: false,
-    projectName: "probe",
-    onClose() {},
-    async onSelect() {},
-    async onSelectExperiment() {},
+  await renderToHtml("/app/run/runs-evidence-list.client.tsx", "RunsEvidenceList", {
+    filter: "all",
+    scrollTop: 0,
+    onFilterChange() {},
+    onScrollTopChange() {},
+    onSelectCurrent() {},
+    onSelectCurrentBatch() {},
+    onSelectRun() {},
+    onSelectExperiment() {},
     history: {
       status: "loaded",
       entries: [],

@@ -4,7 +4,7 @@ import test from "node:test";
 import { ssrLoadModule } from "./support/ssr.mjs";
 
 /**
- * Renders the real drawer through Vite's SSR pipeline rather than asserting on
+ * Renders the real Runs evidence list through Vite's SSR pipeline rather than asserting on
  * the projection alone. A green summary test proves the numbers are right; it
  * cannot prove they reach the screen, and it passes an absent duration or an
  * empty usage record straight through to whatever the formatter does with it.
@@ -13,20 +13,24 @@ import { ssrLoadModule } from "./support/ssr.mjs";
  * cases a healthy provider will not produce on demand — a run that reported no
  * usage, one with no turns, one with no measured duration — are all covered.
  */
-async function renderDrawer(props) {
-  const [{ RunHistoryDrawer }, { renderToStaticMarkup }, { createElement }] =
+async function renderList(props) {
+  const [{ RunsEvidenceList }, { renderToStaticMarkup }, { createElement }] =
     await Promise.all([
-      ssrLoadModule("/app/run-history-drawer.client.tsx"),
+      ssrLoadModule("/app/run/runs-evidence-list.client.tsx"),
       import("react-dom/server"),
       import("react"),
     ]);
   return renderToStaticMarkup(
-    createElement(RunHistoryDrawer, {
-      open: true,
-      projectName: "demo-project",
-      onClose() {},
-      async onSelect() {},
-      async onSelectExperiment() {},
+    createElement(RunsEvidenceList, {
+      projectId: "project_demo",
+      filter: "all",
+      scrollTop: 0,
+      onFilterChange() {},
+      onScrollTopChange() {},
+      onSelectCurrent() {},
+      onSelectCurrentBatch() {},
+      onSelectRun() {},
+      onSelectExperiment() {},
       ...props,
     }),
   );
@@ -63,6 +67,7 @@ function summary(overrides) {
     endedAt: "2026-07-25T12:00:00.550Z",
     status: "completed",
     model: "example-model",
+    protocol: "openai-compatible-chat-completions",
     durationMs: 550,
     usage: { inputTokens: 4, outputTokens: 6, totalTokens: 10 },
     turnCount: 1,
@@ -84,8 +89,8 @@ function assertNoBrokenNumbers(html) {
   }
 }
 
-test("renders each saved run's model, status, and measured numbers", async () => {
-  const html = await renderDrawer({
+test("names each saved run by its request, then its target, outcome, and measured numbers", async () => {
+  const html = await renderList({
     history: historyState({
       items: [
         {
@@ -93,6 +98,8 @@ test("renders each saved run's model, status, and measured numbers", async () =>
           summary: summary({
             runId: "run_alpha",
             model: "alpha-model",
+            protocol: "anthropic-messages",
+            requestExcerpt: "Summarise the rollback plan",
             durationMs: 1650,
             usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
             turnCount: 2,
@@ -102,18 +109,21 @@ test("renders each saved run's model, status, and measured numbers", async () =>
     }),
   });
 
-  assert.match(html, /alpha-model/);
+  assert.match(html, /<strong[^>]*>Summarise the rollback plan<\/strong>/);
+  assert.match(html, /alpha-model · Anthropic Messages/);
   assert.match(html, /completed/);
   // 1650 ms crosses the formatter's second boundary.
   assert.match(html, /1\.65 s/);
   assert.match(html, /30 tokens/);
   assert.match(html, /2 turns/);
-  assert.match(html, /run_alpha\.json/);
+  assert.match(html, /Saved to folder/);
+  // The file name is a detail for the hover title, not the row's text.
+  assert.match(html, /title="run_alpha\.json"/);
   assertNoBrokenNumbers(html);
 });
 
 test("renders absent measurements as a dash rather than as zero", async () => {
-  const html = await renderDrawer({
+  const html = await renderList({
     history: historyState({
       items: [
         {
@@ -138,7 +148,7 @@ test("renders absent measurements as a dash rather than as zero", async () => {
 });
 
 test("labels a retried run with its retry count", async () => {
-  const html = await renderDrawer({
+  const html = await renderList({
     history: historyState({
       items: [
         {
@@ -160,19 +170,19 @@ test("labels a retried run with its retry count", async () => {
 });
 
 test("a listing that has not been attempted does not render as an empty project", async () => {
-  const idle = await renderDrawer({ history: historyState({ status: "idle" }) });
+  const idle = await renderList({ history: historyState({ status: "idle" }) });
 
-  assert.match(idle, /Loading…/);
-  assert.doesNotMatch(idle, /No saved runs yet/);
+  assert.match(idle, /Loading saved evidence…/);
+  assert.doesNotMatch(idle, /No evidence yet/);
 
-  const loaded = await renderDrawer({ history: historyState() });
+  const loaded = await renderList({ history: historyState() });
 
-  assert.match(loaded, /No saved evidence yet/);
-  assert.match(loaded, /0 saved entries/);
+  assert.match(loaded, /No evidence yet/);
+  assert.match(loaded, /0 entries/);
 });
 
 test("surfaces a failed listing and the artifacts it skipped", async () => {
-  const html = await renderDrawer({
+  const html = await renderList({
     history: historyState({
       status: "loaded",
       items: [{ fileName: "run_ok.json", summary: summary() }],
@@ -182,7 +192,7 @@ test("surfaces a failed listing and the artifacts it skipped", async () => {
     }),
   });
 
-  assert.match(html, /1 saved entry/);
+  assert.match(html, /1 entry/);
   assert.match(html, /1 invalid history artifact was skipped/);
   assert.match(html, /torn\.json/);
   assert.match(html, /not valid JSON/);
@@ -208,21 +218,21 @@ test("renders repeated experiments as one grouped history entry", async () => {
     missingTrace: 0,
     cells: [],
   };
-  const html = await renderDrawer({
-    selectedExperimentId: experiment.experimentId,
+  const html = await renderList({
+    selection: { kind: "experiment", projectId: "project_demo", experimentId: experiment.experimentId },
     history: historyState({ experiments: [experiment] }),
   });
 
-  assert.match(html, /1 saved entry/);
+  assert.match(html, /1 entry/);
   assert.match(html, /Repeated experiment · grouped-model/);
   assert.match(html, /5 repetitions · 4 completed · 1 failed/);
-  assert.match(html, /experiment_grouped\.plan\.json/);
+  assert.match(html, /title="experiment_grouped\.plan\.json"/);
   assert.match(html, /aria-current="true"/);
   assertNoBrokenNumbers(html);
 });
 
 test("warns about large immutable history without implying deletion", async () => {
-  const html = await renderDrawer({
+  const html = await renderList({
     history: historyState({ artifactCount: 500, largeHistory: true }),
   });
   assert.match(html, /Large project history/);
@@ -262,7 +272,7 @@ test("an evaluation row reports its strict pass rate, not its run status", async
       }],
     },
   };
-  const html = await renderDrawer({
+  const html = await renderList({
     history: historyState({ experiments: [experiment] }),
   });
 
@@ -274,7 +284,7 @@ test("an evaluation row reports its strict pass rate, not its run status", async
 });
 
 test("an evaluation that could not be scored says so rather than reporting zero passes", async () => {
-  const html = await renderDrawer({
+  const html = await renderList({
     history: historyState({
       experiments: [{
         experimentId: "experiment_unscored",
@@ -305,7 +315,7 @@ test("an evaluation that could not be scored says so rather than reporting zero 
 });
 
 test("the kind filter is offered with every entry shown by default", async () => {
-  const html = await renderDrawer({
+  const html = await renderList({
     history: historyState({ items: [{ fileName: "run_alpha.json", summary: summary() }] }),
   });
 
@@ -313,5 +323,65 @@ test("the kind filter is offered with every entry shown by default", async () =>
     assert.match(html, new RegExp(`>${label}</button>`));
   }
   assert.match(html, /aria-pressed="true"[^>]*>All</);
-  assert.match(html, /1 saved entry/);
+  assert.match(html, /1 entry/);
+});
+
+test("the session's run appears once, saying whether it survives the next run", async () => {
+  const current = {
+    runId: "run_example",
+    model: "example-model",
+    protocol: "openai-responses",
+    requestExcerpt: "What changed?",
+    status: "completed",
+    storageLabel: "Not saved · replaced by the next run",
+    saved: false,
+  };
+  const unsaved = await renderList({ currentRun: current });
+  assert.match(unsaved, /What changed\?/);
+  assert.match(unsaved, /example-model · Responses/);
+  assert.match(unsaved, /Not saved · replaced by the next run/);
+
+  // Saved to the folder, the same run is listed under its run ID only once.
+  const saved = await renderList({
+    currentRun: { ...current, storageLabel: "Saved to folder", saved: true },
+    history: historyState({ items: [{ fileName: "run_example.json", summary: summary() }] }),
+  });
+  assert.equal(saved.match(/class="runs-evidence-item( [^"]*)?"/g)?.length, 1);
+  assert.match(saved, /1 entry/);
+});
+
+test("a running batch locks the other saved batches rather than replacing itself", async () => {
+  const experiment = (id) => ({
+    experimentId: id,
+    kind: "repeated-request",
+    planFileName: `${id}.plan.json`,
+    createdAt: "2026-07-25T13:00:00.000Z",
+    model: "grouped-model",
+    lifecycle: "completed",
+    requested: 2,
+    completed: 2,
+    failed: 0,
+    cancelled: 0,
+    notRun: 0,
+    missingTrace: 0,
+    cells: [],
+  });
+  const html = await renderList({
+    currentBatch: {
+      experimentId: "experiment_live",
+      kind: "repeated-request",
+      title: "Repeated experiment · grouped-model",
+      status: "running",
+      detail: "2 runs · 1 finished",
+      storageLabel: "Saved to folder",
+    },
+    experimentsLockedReason: "Stop the running batch before opening another.",
+    history: historyState({ experiments: [experiment("experiment_live"), experiment("experiment_old")] }),
+  });
+
+  // The live batch is listed once, in place, and stays selectable.
+  assert.equal(html.match(/Repeated experiment · grouped-model/g)?.length, 2);
+  assert.match(html, /aria-current="true"[^>]*title="experiment_live\.plan\.json"/);
+  assert.match(html, /disabled=""[^>]*title="Stop the running batch before opening another\."/);
+  assert.equal(html.match(/disabled=""/g)?.length, 1);
 });
