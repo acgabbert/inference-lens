@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 import { startHeadlessEvaluation } from "./evaluation-run.ts";
+import type { HeadlessConcurrency } from "./evaluation-run.ts";
 import { formatHeadlessSummary, EXIT_SETUP } from "./summary.ts";
 import { createInProcessTransport, isContainerizedProcess } from "./transport.ts";
 
@@ -14,6 +15,11 @@ plan, result, and trace files the app writes.
 Options:
   --suite <id-or-name>   Suite to run. Optional when the project has one suite.
   --no-auth <id>         Call connection <id> without a key. Repeatable.
+  --concurrency <n>      Run up to <n> repetitions at once, on any one
+                         connection or across several. Default 1.
+  --connection-concurrency <id>=<n>
+                         Run at most <n> of them at once on connection <id>.
+                         Repeatable. Cannot exceed --concurrency.
   --json                 Print a machine-readable summary on stdout.
   -h, --help             Show this help.
 
@@ -50,6 +56,8 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
       options: {
         suite: { type: "string" },
         "no-auth": { type: "string", multiple: true },
+        concurrency: { type: "string" },
+        "connection-concurrency": { type: "string", multiple: true },
         json: { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
       },
@@ -69,10 +77,19 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
     return EXIT_SETUP;
   }
 
+  let concurrency: HeadlessConcurrency;
+  try {
+    concurrency = parseConcurrency(values.concurrency, values["connection-concurrency"] ?? []);
+  } catch (error) {
+    io.stderr(`inference-lens: ${error instanceof Error ? error.message : String(error)}\n`);
+    return EXIT_SETUP;
+  }
+
   const run = startHeadlessEvaluation({
     projectDirectory: projectFolder,
     ...(values.suite === undefined ? {} : { suite: values.suite }),
     noAuth: new Set(values["no-auth"] ?? []),
+    concurrency,
     environment: io.environment,
     transport: createInProcessTransport({ containerized: isContainerizedProcess(io.environment) }),
     onProgress: (line) => io.stderr(`${line}\n`),
@@ -81,7 +98,9 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
   const removeInterrupt = io.onInterrupt?.(() => {
     interrupts += 1;
     if (interrupts === 1) {
-      io.stderr("Stopping after the current request. Interrupt again to quit immediately.\n");
+      io.stderr(
+        `Stopping after the current ${(concurrency.limit ?? 1) > 1 ? "requests" : "request"}. Interrupt again to quit immediately.\n`,
+      );
       run.cancel();
     } else {
       process.exit(130);
@@ -95,6 +114,32 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
     else io.stdout(formatHeadlessSummary(outcome.summary));
   }
   return outcome.exitCode;
+}
+
+function parseConcurrency(limit: string | undefined, connections: readonly string[]): HeadlessConcurrency {
+  const parsed: { limit?: number; connections: Map<string, number> } = { connections: new Map() };
+  if (limit !== undefined) {
+    const value = positiveWholeNumber(limit);
+    if (value === undefined) throw new Error(`--concurrency must be a positive whole number, not "${limit}".`);
+    parsed.limit = value;
+  }
+  for (const entry of connections) {
+    const separator = entry.lastIndexOf("=");
+    const id = entry.slice(0, Math.max(separator, 0));
+    const value = positiveWholeNumber(entry.slice(separator + 1));
+    if (separator <= 0 || value === undefined) {
+      throw new Error(`--connection-concurrency takes <connection-id>=<positive whole number>, not "${entry}".`);
+    }
+    if (parsed.connections.has(id)) throw new Error(`--connection-concurrency names ${id} more than once.`);
+    parsed.connections.set(id, value);
+  }
+  return parsed;
+}
+
+function positiveWholeNumber(text: string): number | undefined {
+  if (!/^[1-9][0-9]*$/.test(text)) return undefined;
+  const value = Number(text);
+  return Number.isSafeInteger(value) ? value : undefined;
 }
 
 const invokedDirectly = Boolean(process.argv[1]) &&

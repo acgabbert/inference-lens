@@ -2,6 +2,7 @@ import type {
   EvaluationBakeoffAssessment,
   EvaluationExperimentPlanV4,
   EvaluationRepetitionClassification,
+  ExperimentConcurrency,
   ExperimentLifecycle,
   ExperimentResult,
   ExperimentStop,
@@ -59,6 +60,12 @@ export interface HeadlessSummaryV1 {
   /** Folder the artifact paths below are relative to. */
   projectDirectory: string;
   artifacts: { plan: string; result?: string };
+  /**
+   * The limits the result recorded: how many repetitions could run at once,
+   * overall and per connection. Absent when no result was written. Timings
+   * from runs at different limits are not comparable.
+   */
+  concurrency?: ExperimentConcurrency;
   configurations: HeadlessConfigurationSummary[];
 }
 
@@ -111,6 +118,7 @@ export function createHeadlessSummary(input: {
       plan: input.planPath,
       ...(input.resultPath ? { result: input.resultPath } : {}),
     },
+    ...(result ? { concurrency: result.concurrency } : {}),
     configurations: assessment.variants.map((variant) => ({
       variantId: variant.variant.variantId,
       name: variant.variant.name,
@@ -164,6 +172,9 @@ export function formatHeadlessSummary(summary: HeadlessSummaryV1): string {
   lines.push(`Suite "${summary.suite.name}" — ${summary.verdict.toUpperCase()}`);
   if (summary.lifecycle !== "completed") {
     lines.push(`The run ${summary.lifecycle === "interrupted" ? "was interrupted" : `was ${summary.lifecycle}`} before every case finished.`);
+  }
+  if (summary.concurrency && summary.concurrency.maxInFlight > 1) {
+    lines.push(`Ran up to ${summary.concurrency.maxInFlight} repetitions at once.`);
   }
   if (summary.stop) {
     lines.push(`Stopped because tool ${summary.stop.toolId} became unavailable.`);

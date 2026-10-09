@@ -10,7 +10,7 @@ import test from "node:test";
 
 import { startHeadlessEvaluation } from "../packages/cli/src/evaluation-run.ts";
 import { runCli } from "../packages/cli/src/main.ts";
-import { HEADLESS_SUMMARY_SCHEMA_VERSION } from "../packages/cli/src/summary.ts";
+import { formatHeadlessSummary, HEADLESS_SUMMARY_SCHEMA_VERSION } from "../packages/cli/src/summary.ts";
 import { createInProcessTransport } from "../packages/cli/src/transport.ts";
 import { loadProjectHistoryFiles } from "../packages/core/src/experiment-history.ts";
 import {
@@ -31,8 +31,21 @@ const KEY_VARIABLE = "INFERENCE_LENS_CONNECTION_HEADLESS_DEFAULT_API_KEY";
  * Authorization header is the proof the key got to the wire; scanning the
  * written files for the same key is the proof it went nowhere else.
  */
-async function recordingProvider(options: { holdFirstRequest?: Promise<void> } = {}) {
+async function recordingProvider(options: {
+  holdFirstRequest?: Promise<void>;
+  /**
+   * Holds every request until this many are in flight at once, so a run that
+   * never overlaps them is seen at a peak of 1 rather than passing by luck.
+   * Gives up after a second so a sequential run still finishes.
+   */
+  holdUntilInFlight?: number;
+} = {}) {
   const requests: Array<{ authorization?: string; body: { model?: string; stream?: boolean } }> = [];
+  let inFlight = 0;
+  let peakInFlight = 0;
+  let releaseOverlap: () => void = () => {};
+  const overlapped = new Promise<void>((resolve) => { releaseOverlap = resolve; });
+  const overlapTimeout = setTimeout(releaseOverlap, 1_000);
   let first = true;
   let notifyFirst: () => void = () => {};
   const firstArrived = new Promise<void>((resolve) => { notifyFirst = resolve; });
@@ -43,6 +56,12 @@ async function recordingProvider(options: { holdFirstRequest?: Promise<void> } =
       ...(request.headers.authorization ? { authorization: request.headers.authorization } : {}),
       body: JSON.parse(Buffer.concat(chunks).toString("utf8")),
     });
+    inFlight += 1;
+    peakInFlight = Math.max(peakInFlight, inFlight);
+    if (options.holdUntilInFlight !== undefined) {
+      if (inFlight >= options.holdUntilInFlight) releaseOverlap();
+      await overlapped;
+    }
     if (first) {
       first = false;
       notifyFirst();
@@ -55,6 +74,7 @@ async function recordingProvider(options: { holdFirstRequest?: Promise<void> } =
       choices: [{ index: 0, message: { role: "assistant", content: ANSWER }, finish_reason: "stop" }],
       usage: { prompt_tokens: 3, completion_tokens: 9, total_tokens: 12 },
     }));
+    inFlight -= 1;
   });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -63,7 +83,9 @@ async function recordingProvider(options: { holdFirstRequest?: Promise<void> } =
     endpoint: `http://127.0.0.1:${port}/v1`,
     requests,
     firstArrived,
+    get peakInFlight() { return peakInFlight; },
     close: () => new Promise<void>((resolve) => {
+      clearTimeout(overlapTimeout);
       server.closeAllConnections();
       server.close(() => resolve());
     }),
@@ -324,6 +346,116 @@ test("the command line rejects bad usage with exit 2 and prints --json on stdout
     stdout: () => {}, stderr: (text) => missing.push(text), environment: { [KEY_VARIABLE]: KEY },
   }), 2);
   assert.match(missing.join(""), /No evaluation suite has the ID or name "Nope"\. Available: evaluation-suite_arithmetic \("Arithmetic"\)/);
+});
+
+const threeCases: NonNullable<Parameters<typeof headlessProject>[0]["cases"]> = [
+  ...twoCases,
+  {
+    id: "evaluation-case_product",
+    name: "States the product",
+    topic: "multiplication",
+    checks: [{ checkId: "check_product", kind: "contains", value: "2 + 2 = 4" }],
+  },
+];
+
+test("--concurrency runs cells at once, records the limit, and reports it", async (t) => {
+  const provider = await recordingProvider({ holdUntilInFlight: 2 });
+  t.after(provider.close);
+  const directory = await writeHeadlessProjectFolder(headlessProject({ endpoint: provider.endpoint, cases: threeCases }));
+
+  const outcome = await run(directory, { [KEY_VARIABLE]: KEY }, { concurrency: { limit: 2 } }).done;
+
+  assert.equal(outcome.exitCode, 1, outcome.error);
+  assert.equal(provider.peakInFlight, 2, "two requests were in flight at once, never three");
+  const recorded = {
+    maxInFlight: 2,
+    connections: [{ profileId: `profile_${HEADLESS_CONNECTION_ID}`, endpoint: provider.endpoint, limit: 2 }],
+  };
+  const { experiments } = await readArtifacts(directory);
+  const plan = parseExperimentPlanJson(experiments.find(({ fileName }) => fileName.endsWith(".plan.json"))!.contents);
+  const result = parseExperimentResultJson(experiments.find(({ fileName }) => fileName.endsWith(".result.json"))!.contents, plan);
+  assert.deepEqual(result.concurrency, recorded);
+  assert.deepEqual(outcome.summary?.concurrency, recorded);
+  // Cells finish in any order but are reported in plan order.
+  assert.deepEqual(
+    outcome.summary?.configurations[0].cases.map(({ caseId }) => caseId),
+    threeCases.map(({ id }) => id),
+  );
+  assert.match(formatHeadlessSummary(outcome.summary!), /^Ran up to 2 repetitions at once\.$/m);
+});
+
+test("--connection-concurrency caps one connection below the overall limit", async (t) => {
+  const provider = await recordingProvider({ holdUntilInFlight: 2 });
+  t.after(provider.close);
+  const directory = await writeHeadlessProjectFolder(headlessProject({ endpoint: provider.endpoint, cases: twoCases }));
+
+  const outcome = await run(directory, { [KEY_VARIABLE]: KEY }, {
+    concurrency: { limit: 3, connections: new Map([[HEADLESS_CONNECTION_ID, 1]]) },
+  }).done;
+
+  assert.equal(outcome.exitCode, 1, outcome.error);
+  assert.equal(provider.peakInFlight, 1);
+  assert.deepEqual(outcome.summary?.concurrency, {
+    maxInFlight: 3,
+    connections: [{ profileId: `profile_${HEADLESS_CONNECTION_ID}`, endpoint: provider.endpoint, limit: 1 }],
+  });
+});
+
+test("the default runs one repetition at a time and says nothing about concurrency", async (t) => {
+  const provider = await recordingProvider();
+  t.after(provider.close);
+  const directory = await writeHeadlessProjectFolder(headlessProject({ endpoint: provider.endpoint, cases: twoCases }));
+
+  const outcome = await run(directory, { [KEY_VARIABLE]: KEY }).done;
+
+  assert.equal(provider.peakInFlight, 1);
+  assert.equal(outcome.summary?.concurrency?.maxInFlight, 1);
+  assert.doesNotMatch(formatHeadlessSummary(outcome.summary!), /at once/);
+});
+
+test("bad concurrency flags exit 2 before any request or artifact", async (t) => {
+  const provider = await recordingProvider();
+  t.after(provider.close);
+  const directory = await writeHeadlessProjectFolder(headlessProject({ endpoint: provider.endpoint }));
+  const attempt = async (...flags: string[]) => {
+    const stderr: string[] = [];
+    const code = await runCli(["run", directory, ...flags], {
+      stdout: () => {}, stderr: (text) => stderr.push(text), environment: { [KEY_VARIABLE]: KEY },
+    });
+    return { code, stderr: stderr.join("") };
+  };
+
+  for (const value of ["0", "-1", "1.5", "two", ""]) {
+    const { code, stderr } = await attempt(`--concurrency=${value}`);
+    assert.equal(code, 2, value);
+    assert.match(stderr, /--concurrency must be a positive whole number/, value);
+  }
+  for (const value of ["connection_headless-default", "=2", "connection_headless-default=0"]) {
+    const { code, stderr } = await attempt("--concurrency", "2", "--connection-concurrency", value);
+    assert.equal(code, 2, value);
+    assert.match(stderr, /--connection-concurrency takes <connection-id>=<positive whole number>/, value);
+  }
+  {
+    const { code, stderr } = await attempt("--concurrency", "2", "--connection-concurrency", "connection_nope=1");
+    assert.equal(code, 2);
+    assert.match(stderr, /--connection-concurrency names connection_nope, which this project does not declare/);
+  }
+  {
+    const { code, stderr } = await attempt("--connection-concurrency", `${HEADLESS_CONNECTION_ID}=4`);
+    assert.equal(code, 2);
+    assert.match(stderr, /--connection-concurrency allows connection_headless-default 4 at once, more than the overall --concurrency of 1/);
+  }
+  {
+    const { code, stderr } = await attempt(
+      "--concurrency", "4",
+      "--connection-concurrency", `${HEADLESS_CONNECTION_ID}=2`,
+      "--connection-concurrency", `${HEADLESS_CONNECTION_ID}=3`,
+    );
+    assert.equal(code, 2);
+    assert.match(stderr, /--connection-concurrency names connection_headless-default more than once/);
+  }
+  assert.equal(provider.requests.length, 0);
+  await assert.rejects(stat(path.join(directory, "experiments")), { code: "ENOENT" });
 });
 
 test("the CLI process runs a suite against the committed buffered fixture provider", async (t) => {
