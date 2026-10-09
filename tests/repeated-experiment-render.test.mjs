@@ -349,7 +349,7 @@ test("running workspace exposes determinate activity, the active repetition, and
         workspace: {},
         states: new Map(),
         unreadableTraces: new Map(),
-        live: { startedAtMs: Date.now(), requested: 2, finished: 1, currentOrdinal: 2 },
+        live: { startedAtMs: Date.now(), requested: 2, finished: 1, runningOrdinals: [2], pausedConnections: [] },
         traces: new Map(),
         selectedRunId: null,
       },
@@ -452,7 +452,7 @@ test("a live repetition is never described as having lost its trace", async () =
         storage: "durable",
         workspace: {},
         states: new Map([["run_render-1", streamingState("run_render-1")]]),
-        live: { startedAtMs: Date.now(), requested: 2, finished: 0, currentOrdinal: 1 },
+        live: { startedAtMs: Date.now(), requested: 2, finished: 0, runningOrdinals: [1], pausedConnections: [] },
         traces: new Map(),
         traceFileNames: new Map(),
         unreadableTraces: new Map(),
@@ -481,7 +481,7 @@ test("a live repetition is never described as having lost its trace", async () =
         storage: "durable",
         workspace: {},
         states: new Map([["run_render-1", completedState("run_render-1", "Answer")]]),
-        live: { startedAtMs: Date.now(), requested: 2, finished: 1, currentOrdinal: 1 },
+        live: { startedAtMs: Date.now(), requested: 2, finished: 1, runningOrdinals: [], pausedConnections: [] },
         traces: new Map(),
         traceFileNames: new Map(),
         unreadableTraces: new Map(),
@@ -640,4 +640,151 @@ test("the Compose shell names its panes the same regardless of what they hold", 
   assert.doesNotMatch(html, /Experiment<\/button>/);
   assert.match(html, /Experiment summary/);
   assertNoBrokenValues(html);
+});
+
+test("running workspace marks every running repetition, not only the last to report", async () => {
+  const frozenPlan = plan();
+  const html = await render(
+    "/app/run/repeated-experiment-workspace.client.tsx",
+    "RepeatedExperimentWorkspace",
+    {
+      execution: {
+        plan: frozenPlan,
+        storage: "durable",
+        workspace: {},
+        states: new Map([
+          ["run_render-1", streamingState("run_render-1")],
+          ["run_render-2", streamingState("run_render-2")],
+        ]),
+        live: { startedAtMs: Date.now(), requested: 2, finished: 0, runningOrdinals: [1, 2], pausedConnections: [] },
+        traces: new Map(),
+        traceFileNames: new Map(),
+        unreadableTraces: new Map(),
+        selectedRunId: null,
+      },
+      onStop() {},
+      onOpenTrace() {},
+    },
+  );
+
+  assert.match(html, /0 of 2 finished · Running 2 repetitions/);
+  assert.equal((html.match(/repeated-experiment-row active/g) ?? []).length, 2);
+  assert.deepEqual(pendingLabels(html), ["Running…", "Running…"]);
+  assertNoBrokenValues(html);
+});
+
+test("a rate-limit pause says when new repetitions resume", async () => {
+  const frozenPlan = plan();
+  const html = await render(
+    "/app/run/repeated-experiment-workspace.client.tsx",
+    "RepeatedExperimentWorkspace",
+    {
+      execution: {
+        plan: frozenPlan,
+        storage: "durable",
+        workspace: {},
+        states: new Map([["run_render-1", completedState("run_render-1", "Answer")]]),
+        live: {
+          startedAtMs: Date.now(),
+          requested: 2,
+          finished: 1,
+          runningOrdinals: [],
+          pausedConnections: [{
+            profileId: "profile_render",
+            endpoint: "https://provider.example.test/v1",
+            until: Date.now() + 12_000,
+          }],
+        },
+        traces: new Map(),
+        traceFileNames: new Map(),
+        unreadableTraces: new Map(),
+        selectedRunId: null,
+      },
+      onStop() {},
+      onOpenTrace() {},
+    },
+  );
+
+  assert.match(html, /1 of 2 finished · Paused after a rate limit/);
+  assert.match(html, /role="status"><strong[^>]*>Rate limited</);
+  assert.match(html, /New repetitions resume in 1[12] s/);
+  assertNoBrokenValues(html);
+});
+
+test("latency names the concurrency it was measured under when repetitions overlapped", async () => {
+  const frozenPlan = plan();
+  const states = new Map([
+    ["run_render-1", completedMetricState("run_render-1", "Hello", {
+      totalDurationMs: 1_650, ttfoMs: 500, outputSpanMs: 1_000, outputTokens: 20, totalTokens: 30,
+    })],
+    ["run_render-2", completedMetricState("run_render-2", "Again", {
+      totalDurationMs: 2_350, ttfoMs: 700, outputSpanMs: 1_000, outputTokens: 30, totalTokens: 50,
+    })],
+  ]);
+  const result = (maxInFlight) => ({
+    schemaVersion: 6,
+    experimentId: frozenPlan.experimentId,
+    status: "completed",
+    endedAt: "2026-07-30T12:01:00.000Z",
+    concurrency: {
+      maxInFlight,
+      connections: [{ profileId: "profile_render", endpoint: "https://provider.example.test/v1", limit: maxInFlight }],
+    },
+    retryPolicy: { rateLimited: { maxRetries: 0 } },
+    cells: frozenPlan.cells.map(({ cellId, runId }, index) => ({ cellId, runId, status: "completed", startOrder: index + 1 })),
+  });
+  const workspace = (maxInFlight) => render(
+    "/app/run/repeated-experiment-workspace.client.tsx",
+    "RepeatedExperimentWorkspace",
+    {
+      execution: {
+        plan: frozenPlan, storage: "durable", workspace: {}, states,
+        unreadableTraces: new Map(), result: result(maxInFlight), traces: new Map(), selectedRunId: null,
+      },
+      onStop() {},
+      onOpenTrace() {},
+    },
+  );
+
+  const overlapping = await workspace(2);
+  assert.match(overlapping, /Measured with up to 2 repetitions at once/);
+  assertNoBrokenValues(overlapping);
+  // One at a time is how every earlier result ran; it needs no caveat.
+  assert.doesNotMatch(await workspace(1), /at once/);
+});
+
+test("the repeat dialog offers a concurrency limit that starts at one", async () => {
+  const frozenPlan = plan();
+  const props = (concurrency) => ({
+    draft: {
+      plan: frozenPlan,
+      targetName: "Fixture connection",
+      requestSummary: "1 message",
+      repetitionCount: 5,
+      concurrency,
+      toolBindings: [],
+      commitPreparation() {},
+    },
+    settings: {
+      streamingAvailable: true, modelDiscovery: null, favoriteModels: [],
+      onLoadModels() {}, onToggleFavoriteModel() {},
+    },
+    onCountChange() {},
+    onTurnCeilingChange() {},
+    onConcurrencyChange() {},
+    onSettingsChange() {},
+    onCancel() {},
+    onConfirm() {},
+  });
+
+  const sequential = await render("/app/run/repeated-experiment-dialog.client.tsx", "RepeatedExperimentDialog", props(1));
+  assert.match(sequential, /aria-label="Run at once"[^>]*value="1"/);
+  assert.match(sequential, /Runs sequentially/);
+
+  const overlapping = await render("/app/run/repeated-experiment-dialog.client.tsx", "RepeatedExperimentDialog", props(3));
+  assert.match(overlapping, /aria-label="Run at once"[^>]*value="3"/);
+  assert.match(overlapping, /5 reps · ≤\d+ turns · 3 at once/);
+  assert.match(overlapping, /Up to 3 run at once/);
+  assert.doesNotMatch(overlapping, /Runs sequentially/);
+  assertNoBrokenValues(overlapping);
 });

@@ -7,8 +7,10 @@ import { compareEvaluationExecutions } from "../packages/core/src/evaluation-com
 import type { EvaluationComparisonInput } from "../packages/core/src/evaluation-comparison.ts";
 import {
   materializeExperimentCellInput,
+  noExperimentRetries,
   type EvaluationExperimentPlanV3,
   type ExperimentResultV3,
+  type ExperimentResultV6,
 } from "../packages/core/src/experiment.ts";
 import {
   createProjectFile,
@@ -167,7 +169,7 @@ function execute(
 
 function comparisonInput(
   plan: EvaluationExperimentPlanV3,
-  run: { result: ExperimentResultV3; states: Map<RunId, RunState> },
+  run: { result: ExperimentResultV3 | ExperimentResultV6; states: Map<RunId, RunState> },
 ): EvaluationComparisonInput {
   return {
     experimentId: plan.experimentId,
@@ -387,4 +389,55 @@ test("repetition evidence preserves a regression that occurs only in repetition 
     comparison.cases[0]?.repetitions.map(({ repetition, delta }) => [repetition, delta]),
     [[1, "unchanged-pass"], [2, "regressed"]],
   );
+});
+
+function atConcurrency(
+  plan: EvaluationExperimentPlanV3,
+  run: { result: ExperimentResultV3; states: Map<RunId, RunState> },
+  maxInFlight: number,
+  limit: number,
+): { result: ExperimentResultV6; states: Map<RunId, RunState> } {
+  const variant = plan.suite.variants[0]!;
+  return {
+    states: run.states,
+    result: {
+      ...run.result,
+      schemaVersion: 6,
+      concurrency: {
+        maxInFlight,
+        connections: [{ profileId: variant.target.profileId, endpoint: variant.target.endpoint, limit }],
+      },
+      retryPolicy: noExperimentRetries(),
+      cells: run.result.cells.map((cell, index) => ({ ...cell, startOrder: index + 1 })),
+    },
+  };
+}
+
+test("a changed concurrency is drift context, so latency is not compared blind", () => {
+  const baseline = planFixture([migrations]);
+  const candidate = planFixture([migrations]);
+  const outputs = { [migrations.id]: "Plan the migration." };
+  const comparison = compareEvaluationExecutions(
+    // A Version 4 result ran one cell at a time.
+    comparisonInput(baseline, execute(baseline, outputs)),
+    comparisonInput(candidate, atConcurrency(candidate, execute(candidate, outputs), 4, 2)),
+  );
+  assert.deepEqual(comparison.drift.concurrency, {
+    baseline: { maxInFlight: 1, connectionLimit: 1 },
+    candidate: { maxInFlight: 4, connectionLimit: 2 },
+  });
+  assert.equal(comparison.drift.any, true);
+  assert.equal(comparison.cases[0]?.delta, "unchanged-pass");
+});
+
+test("the same concurrency, recorded or upgraded, is not drift", () => {
+  const baseline = planFixture([migrations]);
+  const candidate = planFixture([migrations]);
+  const outputs = { [migrations.id]: "Plan the migration." };
+  const comparison = compareEvaluationExecutions(
+    comparisonInput(baseline, execute(baseline, outputs)),
+    comparisonInput(candidate, atConcurrency(candidate, execute(candidate, outputs), 1, 1)),
+  );
+  assert.equal(comparison.drift.concurrency, undefined);
+  assert.equal(comparison.drift.any, false);
 });

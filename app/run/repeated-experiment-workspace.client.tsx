@@ -12,6 +12,7 @@ import { InferenceSettingsPanel } from "../inference-settings-panel.client.tsx";
 import { formatDuration, formatRate, formatTokens } from "../run-metrics-format.client.ts";
 import type { RepeatedExperimentExecution } from "./use-repeated-experiment-session.client.ts";
 import { StatusChip } from "../notifications/status-chip.client";
+import { pauseSecondsRemaining, recordedConcurrencyLabel } from "./experiment-concurrency.client.tsx";
 import { experimentStopDetail } from "./experiment-stop.client";
 
 function rowStatus(
@@ -147,7 +148,8 @@ export function RepeatedExperimentWorkspace({
   const live = execution.result || execution.error ? undefined : execution.live;
   const isRunning = live !== undefined;
   const lifecycle = isRunning ? "running" : execution.error ? "interrupted" : aggregate.lifecycle;
-  const activeOrdinal = live?.currentOrdinal;
+  const runningOrdinals = live?.runningOrdinals ?? [];
+  const recordedConcurrency = recordedConcurrencyLabel(execution.result?.concurrency, "repetitions");
   const incompleteOutcomes = [
     aggregate.notRun > 0 ? `${aggregate.notRun} not run` : undefined,
     aggregate.missingTrace > 0 ? `${aggregate.missingTrace} missing trace` : undefined,
@@ -177,7 +179,11 @@ export function RepeatedExperimentWorkspace({
           <h2>Repeated experiment</h2>
           <p>
             {live
-              ? <>{live.finished} of {live.requested} finished{activeOrdinal ? ` · Running repetition ${activeOrdinal}` : " · Preparing"} · <span className="experiment-elapsed">{elapsedTime(nowMs - live.startedAtMs)} elapsed</span></>
+              ? <>{live.finished} of {live.requested} finished{runningOrdinals.length > 1
+                ? ` · Running ${runningOrdinals.length} repetitions`
+                : runningOrdinals.length === 1
+                  ? ` · Running repetition ${runningOrdinals[0]}`
+                  : live.pausedConnections.length > 0 ? " · Paused after a rate limit" : " · Preparing"} · <span className="experiment-elapsed">{elapsedTime(nowMs - live.startedAtMs)} elapsed</span></>
               : `${aggregate.requested} requested repetitions`}
           </p>
         </div>
@@ -191,6 +197,15 @@ export function RepeatedExperimentWorkspace({
 
       {live && <progress aria-label="Experiment progress" className="experiment-progress" max={live.requested} value={live.finished}>{live.finished} of {live.requested}</progress>}
 
+      {/* One connection, so at most one pause. */}
+      {live?.pausedConnections.map((pause) => (
+        <StatusChip
+          key={`${pause.profileId} ${pause.endpoint}`}
+          tone="advisory"
+          label="Rate limited"
+          detail={`New repetitions resume in ${pauseSecondsRemaining(pause, nowMs)} s. Repetitions already running continue.`}
+        />
+      ))}
       {execution.storage === "unsaved" && <StatusChip tone="advisory" label="Session only" detail="This experiment is not saved and will be lost when this session closes." />}
       {execution.error && <StatusChip tone="failure" label="Interrupted" detail={execution.error} />}
       {!execution.error && execution.result?.status === "stopped" && (
@@ -245,6 +260,9 @@ export function RepeatedExperimentWorkspace({
             {range("Total duration", aggregate.totalDurationMs, formatDuration)}
             {range("Time to first output", aggregate.ttfoMs, formatDuration)}
           </dl>
+          {/* Timings taken under concurrent load are not comparable with
+              one-at-a-time ones, so the reader is told which these are. */}
+          {recordedConcurrency && <p className="repeated-experiment-metric-note">Measured with {recordedConcurrency}.</p>}
         </section>}
 
         {hasUsage && <section className="repeated-experiment-metric-section">
@@ -275,11 +293,10 @@ export function RepeatedExperimentWorkspace({
           const state = execution.states.get(cell.runId);
           const trace = execution.traces.get(cell.runId);
           const unreadable = execution.unreadableTraces.get(cell.runId);
-          const isActive = activeOrdinal === cell.ordinal;
-          // The controller keeps reporting a cell as current while its terminal
-          // trace is written, so the status word comes from the cell's own
-          // evidence. Overriding it with the controller's cursor relabelled a
-          // finished repetition as still running.
+          const isActive = runningOrdinals.includes(cell.ordinal);
+          // The status word comes from the cell's own evidence, so a finished
+          // repetition whose trace is still being written never reads as
+          // running.
           const status = rowStatus(execution, cell.runId, isRunning);
           const isSelected = execution.selectedRunId === cell.runId;
           const preview = outputPreview(state);

@@ -6,6 +6,7 @@ import type { CredentialSelection, ProviderTurnTransport } from "../../packages/
 import { experimentExposedTools } from "../../packages/core/src/experiment.ts";
 import type {
   EvaluationExperimentPlanV3,
+  ExperimentConcurrencySetting,
   ExperimentResult,
 } from "../../packages/core/src/experiment.ts";
 import type { ResolvedRunInput, RunId, RunState, RunTrace } from "../../packages/core/src/run-kernel/index.ts";
@@ -15,6 +16,7 @@ import type { ProjectWorkspaceHandle } from "../project-workspace.client.ts";
 import { createExperimentWorkspacePersistence } from "../run/experiment-workspace-persistence.client.ts";
 import type { ExperimentToolBinding } from "../../packages/core/src/tool-binding-resolution.ts";
 import { SequentialExperimentController } from "../../packages/runner/src/sequential-experiment-controller.ts";
+import type { ExperimentConnectionPause } from "../../packages/runner/src/sequential-experiment-controller.ts";
 import { createToolExecutor } from "../run/tool-executors.client.ts";
 import { verifyToolBindingsOnHost } from "../tools/tool-binding-check.client.ts";
 
@@ -34,13 +36,22 @@ export interface EvaluationExecutionDraft {
    */
   revisionLabel: string;
   storage: "durable" | "unsaved";
+  /**
+   * How many repetitions may run at once, set at confirmation. Absent means
+   * every limit is 1. Never written into the plan: the result records the
+   * limits the run actually used.
+   */
+  concurrency?: ExperimentConcurrencySetting;
 }
 
 export interface EvaluationLiveProgress {
   startedAtMs: number;
   requested: number;
   finished: number;
-  currentOrdinal?: number;
+  /** Repetitions started and not yet terminal, ascending. */
+  runningOrdinals: readonly number[];
+  /** Connections a provider 429 is holding back. */
+  pausedConnections: readonly ExperimentConnectionPause[];
 }
 
 export interface EvaluationExecution {
@@ -86,6 +97,9 @@ export function useEvaluationExecutionSession(options: UseEvaluationExecutionSes
 
   const begin = useCallback((next: EvaluationExecutionDraft) => setDraft(next), []);
   const dismissDialog = useCallback(() => setDraft(undefined), []);
+  const setConcurrency = useCallback((concurrency: ExperimentConcurrencySetting) => {
+    setDraft((current) => current ? { ...current, concurrency } : current);
+  }, []);
 
   const confirm = useCallback(async (workspace: ProjectWorkspaceHandle | null) => {
     const pending = draft;
@@ -97,7 +111,13 @@ export function useEvaluationExecutionSession(options: UseEvaluationExecutionSes
       storage: workspace ? "durable" : "unsaved",
       workspace,
       states: new Map(),
-      live: { startedAtMs: Date.now(), requested: pending.plan.cells.length, finished: 0 },
+      live: {
+        startedAtMs: Date.now(),
+        requested: pending.plan.cells.length,
+        finished: 0,
+        runningOrdinals: [],
+        pausedConnections: [],
+      },
       traces: new Map(),
       traceFileNames: new Map(),
       unreadableTraces: new Map(),
@@ -119,6 +139,7 @@ export function useEvaluationExecutionSession(options: UseEvaluationExecutionSes
       verifyToolBindings: (bindings) => verifyToolBindingsOnHost(bindings, (toolId) =>
         experimentExposedTools(pending.plan).find(({ id }) => id === toolId)?.name ?? toolId),
       ...persistence,
+      ...(pending.concurrency ? { concurrency: pending.concurrency } : {}),
       onProgress(progress) {
         setExecution((current) => current?.plan.experimentId === pending.plan.experimentId
           ? {
@@ -129,7 +150,8 @@ export function useEvaluationExecutionSession(options: UseEvaluationExecutionSes
                     startedAtMs: current.live?.startedAtMs ?? Date.now(),
                     requested: progress.requested,
                     finished: progress.finished,
-                    ...(progress.currentOrdinal === undefined ? {} : { currentOrdinal: progress.currentOrdinal }),
+                    runningOrdinals: progress.runningOrdinals,
+                    pausedConnections: progress.pausedConnections,
                   }
                 : undefined,
             }
@@ -211,5 +233,5 @@ export function useEvaluationExecutionSession(options: UseEvaluationExecutionSes
     if (!controllerRef.current?.isRunning) setExecution(undefined);
   }, []);
 
-  return { draft, execution, begin, dismissDialog, confirm, cancel, openTrace, openSaved, returnToEvaluation, clear, isRunning };
+  return { draft, execution, begin, dismissDialog, setConcurrency, confirm, cancel, openTrace, openSaved, returnToEvaluation, clear, isRunning };
 }

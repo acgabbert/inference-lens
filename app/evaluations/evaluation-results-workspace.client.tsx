@@ -21,6 +21,7 @@ import type {
 } from "../../packages/core/src/run-kernel/index.ts";
 import { StatusChip } from "../notifications/status-chip.client";
 import { experimentStopDetail } from "../run/experiment-stop.client";
+import { pauseSecondsRemaining, recordedConcurrencyLabel } from "../run/experiment-concurrency.client.tsx";
 import { formatTokens } from "../run-metrics-format.client.ts";
 import { SideDrawer } from "../workbench-shell.client.tsx";
 import { EvaluationReassessmentDrawer } from "./evaluation-reassessment-drawer.client.tsx";
@@ -170,19 +171,33 @@ export function EvaluationResultsWorkspace({
     ? evaluationVariantAssessment(aggregate, selectedVariantId)
     : undefined;
   const live = execution.result || execution.error ? undefined : execution.live;
-  const activeCell = live?.currentOrdinal === undefined
-    ? undefined
-    : execution.plan.cells.find(({ ordinal }) => ordinal === live.currentOrdinal);
+  const runningOrdinals = live?.runningOrdinals ?? [];
+  // One running cell is named; several are counted, because naming the
+  // last to report would read as though it were the only one.
+  const activeCell = runningOrdinals.length === 1
+    ? execution.plan.cells.find(({ ordinal }) => ordinal === runningOrdinals[0])
+    : undefined;
   const activeCase = activeCell
     ? execution.plan.suite.cases.find(({ caseId }) => caseId === activeCell.caseId)
     : undefined;
   const lifecycle = live ? "running" : execution.error ? "interrupted" : aggregate.lifecycle;
 
-  function liveOverlay(ordinal: number): LiveCellOverlay | undefined {
+  function liveOverlay(cell: { ordinal: number; runId: RunId }): LiveCellOverlay | undefined {
     if (!live) return undefined;
-    if (live.currentOrdinal === undefined || ordinal > live.currentOrdinal) return "queued";
-    return ordinal === live.currentOrdinal ? "running" : undefined;
+    if (runningOrdinals.includes(cell.ordinal)) return "running";
+    // A started cell that is no longer running is terminal, and its own
+    // evidence speaks for it; only a cell that never started is queued.
+    return execution.states.has(cell.runId) ? undefined : "queued";
   }
+
+  /** The configurations a paused connection holds back, by name. */
+  function pausedVariantNames(pause: { profileId: string; endpoint: string }): string {
+    const names = execution.plan.suite.variants
+      .filter(({ target }) => target.profileId === pause.profileId && target.endpoint === pause.endpoint)
+      .map(({ name }) => name);
+    return names.length > 0 ? names.join(", ") : pause.endpoint;
+  }
+  const recordedConcurrency = recordedConcurrencyLabel(execution.result?.concurrency);
 
   function comparisonSide(variantId: EvaluationVariantId): ComparisonSide {
     const assessment = evaluationVariantAssessment(aggregate, variantId);
@@ -231,8 +246,12 @@ export function EvaluationResultsWorkspace({
           <span className="eyebrow">{execution.storage === "durable" ? "Saved project evaluation" : "Unsaved session evaluation"}</span>
           <h2>{execution.plan.suite.name}</h2>
           <p>{live
-            ? <>{live.finished} of {live.requested} finished{activeCase && activeCell ? ` · ${activeCase.name}, ${parsedPlan.suite.variants.find(({ variantId }) => variantId === activeCell.variantId)?.name ?? "Configuration"}, repetition ${activeCell.repetition}` : " · Preparing"} · {elapsedTime(nowMs - live.startedAtMs)} elapsed</>
-            : <>{interpretation?.name ?? "As run"} · {execution.plan.suite.cases.length} cases · {execution.plan.repetitions} {execution.plan.repetitions === 1 ? "repetition" : "repetitions"}</>}</p>
+            ? <>{live.finished} of {live.requested} finished{runningOrdinals.length > 1
+              ? ` · ${runningOrdinals.length} running`
+              : activeCase && activeCell
+                ? ` · ${activeCase.name}, ${parsedPlan.suite.variants.find(({ variantId }) => variantId === activeCell.variantId)?.name ?? "Configuration"}, repetition ${activeCell.repetition}`
+                : live.pausedConnections.length > 0 ? " · Paused after a rate limit" : " · Preparing"} · {elapsedTime(nowMs - live.startedAtMs)} elapsed</>
+            : <>{interpretation?.name ?? "As run"} · {execution.plan.suite.cases.length} cases · {execution.plan.repetitions} {execution.plan.repetitions === 1 ? "repetition" : "repetitions"}{recordedConcurrency ? ` · ${recordedConcurrency}` : ""}</>}</p>
         </div>
         <div className="evaluation-results-actions">
           <span className={`run-history-status ${lifecycle}`}>{lifecycle}</span>
@@ -261,6 +280,14 @@ export function EvaluationResultsWorkspace({
       </header>
 
       {live && <progress aria-label="Evaluation progress" className="experiment-progress" max={live.requested} value={live.finished}>{live.finished} of {live.requested}</progress>}
+      {live?.pausedConnections.map((pause) => (
+        <StatusChip
+          key={`${pause.profileId} ${pause.endpoint}`}
+          tone="advisory"
+          label="Rate limited"
+          detail={`New repetitions for ${pausedVariantNames(pause)} resume in ${pauseSecondsRemaining(pause, nowMs)} s. Repetitions already running continue.`}
+        />
+      ))}
       {execution.storage === "unsaved" && <StatusChip tone="advisory" label="Session only" detail="This evaluation is not saved and will be lost when this session closes." />}
       {execution.error && <StatusChip tone="failure" label="Interrupted" detail={execution.error} />}
       {!execution.error && execution.result?.status === "stopped" && (
@@ -316,7 +343,7 @@ export function EvaluationResultsWorkspace({
               );
               const overlays = execution.plan.cells
                 .filter(({ variantId }) => variantId === variant.variant.variantId)
-                .map(({ ordinal }) => liveOverlay(ordinal));
+                .map((cell) => liveOverlay(cell));
               const liveStatus = overlays.includes("running")
                 ? "In progress"
                 : overlays.includes("queued")
@@ -356,7 +383,7 @@ export function EvaluationResultsWorkspace({
           const caseCells = execution.plan.cells.filter(
             ({ caseId, variantId }) => caseId === caseAssessment.caseId && variantId === activeVariant.variant.variantId,
           );
-          const caseOverlays = caseCells.map(({ ordinal }) => liveOverlay(ordinal));
+          const caseOverlays = caseCells.map((cell) => liveOverlay(cell));
           const caseLiveStatus = caseOverlays.includes("running")
             ? "running"
             : caseOverlays.includes("queued")
@@ -379,7 +406,7 @@ export function EvaluationResultsWorkspace({
               <div className="evaluation-repetition-results">
                 {caseAssessment.repetitions.map((repetition) => {
                   const cell = caseCells.find(({ cellId }) => cellId === repetition.cellId)!;
-                  const overlay = liveOverlay(cell.ordinal);
+                  const overlay = liveOverlay(cell);
                   const reachability = evaluationEvidenceReachability(repetition, execution);
                   const presentation = overlay ?? repetition.classification;
                   return (

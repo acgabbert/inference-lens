@@ -603,3 +603,40 @@ test("an interrupted evaluation is not coloured as a failure", async () => {
   assert.match(html, /class="evaluation-pass pending"/);
   assert.doesNotMatch(html, /class="evaluation-pass failed"/);
 });
+
+test("evaluation confirmation offers an overall limit, and one per connection when the suite uses several", async () => {
+  const [{ EvaluationStartDialog }, { renderToStaticMarkup }, { createElement }] = await Promise.all([
+    ssrLoadModule("/app/evaluations/evaluation-start-dialog.client.tsx"),
+    import("react-dom/server"), import("react"),
+  ]);
+  const cases = [{ caseId: "evaluation-case_1", name: "Case 1", input: { target: { model: "fixture-model" } } }];
+  const hosted = { profileId: "profile_hosted", endpoint: "https://hosted.test/v1", model: "hosted-model" };
+  const local = { profileId: "profile_local", endpoint: "http://localhost:8080/v1", model: "local-model" };
+  const draft = (variants, concurrency) => ({
+    targetNames: Object.fromEntries(variants.map(({ variantId }, index) => [variantId, index === 0 ? "Hosted profile" : "Local profile"])),
+    toolBindings: [],
+    revisionLabel: "Current",
+    storage: "durable",
+    ...(concurrency ? { concurrency } : {}),
+    plan: { repetitions: 2, cells: Array.from({ length: 2 * variants.length }), suite: { name: "Quality gate", conversationRevisionId: "revision_frozen", variants, cases } },
+  });
+  const render = (props) => renderToStaticMarkup(createElement(EvaluationStartDialog, {
+    onCancel() {}, onConfirm() {}, onConcurrencyChange() {}, ...props,
+  }));
+
+  const single = render({ draft: draft([{ variantId: "evaluation-variant_a", name: "A", target: hosted, responseMode: "buffered" }]) });
+  assert.match(single, /aria-label="Run at once"[^>]*value="1"/);
+  assert.doesNotMatch(single, /aria-label="Run at once on /);
+  assert.match(single, /runs sequentially/);
+
+  const bakeoff = render({ draft: draft([
+    { variantId: "evaluation-variant_a", name: "A", target: hosted, responseMode: "buffered" },
+    { variantId: "evaluation-variant_b", name: "B", target: local, responseMode: "buffered" },
+  ], { maxInFlight: 4, connectionLimit: 4, connections: [{ ...local, limit: 1 }] }) });
+  assert.match(bakeoff, /aria-label="Run at once"[^>]*value="4"/);
+  assert.match(bakeoff, /aria-label="Run at once on Hosted profile · https:\/\/hosted.test\/v1"[^>]*value="4"/);
+  assert.match(bakeoff, /aria-label="Run at once on Local profile · http:\/\/localhost:8080\/v1"[^>]*value="1"/);
+  assert.doesNotMatch(bakeoff, /runs sequentially/);
+  assert.match(bakeoff, /up to 4 at once/);
+  assert.doesNotMatch(bakeoff, /NaN|Infinity|undefined|\[object Object\]/);
+});

@@ -32,12 +32,27 @@ import type { SchedulerClock } from "./scheduler-clock.ts";
 import { toolResourceKey, ToolResourceLocks } from "./tool-resource-locks.ts";
 import { pendingToolCalls, toolResolutionForBinding } from "../../core/src/tool-binding-resolution.ts";
 
+/** A connection that may not start cells until `until`, after a provider 429. */
+export interface ExperimentConnectionPause {
+  profileId: ResolvedRunInput["target"]["profileId"];
+  endpoint: string;
+  /** Epoch milliseconds from the scheduler's clock. */
+  until: number;
+}
+
 export interface SequentialExperimentProgress {
   status: "running" | ExperimentResult["status"];
   requested: number;
   /** Cells that reached a terminal run status; queued `not-run` cells are excluded. */
   finished: number;
-  currentOrdinal?: number;
+  /**
+   * Ordinals of the cells started and not yet terminal, ascending. A cell
+   * leaves the set when its run ends, before its trace is saved. With the
+   * default limits it holds at most one ordinal.
+   */
+  runningOrdinals: readonly number[];
+  /** Connections in a rate-limit pause, in plan first-use order. Empty once the experiment ends. */
+  pausedConnections: readonly ExperimentConnectionPause[];
   /** Started cells only, keyed by their preallocated ordinary run ID. */
   states: ReadonlyMap<RunId, RunState>;
 }
@@ -138,9 +153,15 @@ export class SequentialExperimentController {
   private interruption: Error | undefined;
   /** When each paused connection may start cells again, by connection key. */
   private readonly pausedUntil = new Map<string, number>();
+  /** Started cells whose runs are not yet terminal. */
+  private readonly runningOrdinals = new Set<number>();
+  /** Each connection's identity by key, in plan first-use order. */
+  private connections: ReadonlyMap<string, Omit<ExperimentConnectionPause, "until">> = new Map();
   private readonly toolLocks = new ToolResourceLocks();
   private readonly clock: SchedulerClock;
   private changed = false;
+  /** Terminal cells as last reported, so a pause can be reported between cell updates. */
+  private finished = 0;
   private wake: (() => void) | undefined;
   private running = false;
   private hasRun = false;
@@ -219,6 +240,8 @@ export class SequentialExperimentController {
       }
     }
     const concurrency = resolveExperimentConcurrency(plan, this.options.concurrency);
+    this.connections = new Map(concurrency.connections.map(({ profileId, endpoint }) =>
+      [experimentConnectionKey({ profileId, endpoint }), { profileId, endpoint }] as const));
 
     this.running = true;
     try {
@@ -228,7 +251,7 @@ export class SequentialExperimentController {
       this.hasRun = true;
 
       const cells: ResultCells = Array.from({ length: plan.cells.length }, () => undefined);
-      this.emitRunning(0);
+      this.emitRunning();
       await this.schedule(plan, preflightInputs, concurrency, cells);
       if (this.interruption) throw this.interruption;
 
@@ -258,6 +281,8 @@ export class SequentialExperimentController {
         status: result.status,
         requested: plan.cells.length,
         finished: this.terminalCellCount(result.cells),
+        runningOrdinals: [],
+        pausedConnections: [],
         states: this.states,
       });
       return result;
@@ -332,10 +357,14 @@ export class SequentialExperimentController {
     const until = this.clock.now() + ms;
     if (until <= (this.pausedUntil.get(connection) ?? 0)) return;
     this.pausedUntil.set(connection, until);
+    this.emitRunning();
     void this.clock.sleep(ms, this.runAbortController.signal).then(() => {
       // Ended by the timer, not by comparing clocks: a timer may fire a
       // millisecond early, and nothing else would wake the scheduler.
-      if (this.pausedUntil.get(connection) === until) this.pausedUntil.delete(connection);
+      if (this.pausedUntil.get(connection) !== until) return;
+      this.pausedUntil.delete(connection);
+      // After the run settles there is nothing left to report a resumption to.
+      if (this.running) this.emitRunning();
       this.notifyChange();
     });
   }
@@ -393,9 +422,10 @@ export class SequentialExperimentController {
     const controller = new AbortController();
     this.cellAbortControllers.add(controller);
     this.states.set(input.runId, coordinator.state);
+    this.runningOrdinals.add(cell.ordinal);
     const notify = () => {
       this.states.set(coordinator.state.runId, coordinator.state);
-      this.emitRunning(this.terminalCellCount(cells), cell.ordinal);
+      this.emitRunning(cells);
     };
     notify();
 
@@ -412,7 +442,7 @@ export class SequentialExperimentController {
         signal: controller.signal,
         onStateChange: (state) => {
           this.states.set(state.runId, state);
-          this.emitRunning(this.terminalCellCount(cells), cell.ordinal);
+          this.emitRunning(cells);
         },
       });
       if (outcome === "aborted") {
@@ -482,7 +512,8 @@ export class SequentialExperimentController {
     this.states.set(input.runId, coordinator.state);
     cells[index] = { cellId: cell.cellId, runId: cell.runId, status: terminal.kind, startOrder };
     if (terminal.kind === "cancelled" && !this.interruption) this.cancellationRequested = true;
-    this.emitRunning(this.terminalCellCount(cells), cell.ordinal);
+    this.runningOrdinals.delete(cell.ordinal);
+    this.emitRunning(cells);
     try {
       await this.options.onTerminalTrace?.(createRunTrace(coordinator.state), cell);
     } catch (error) {
@@ -597,14 +628,20 @@ export class SequentialExperimentController {
     return cells.filter((cell) => cell !== undefined && cell.status !== "not-run").length;
   }
 
-  private emitRunning(finished: number, currentOrdinal?: number): void {
+  /** Reports running progress; `cells` is the partial result, once any cell has started. */
+  private emitRunning(cells?: ResultCells): void {
     const plan = this.frozenPlan;
     if (!plan) throw new Error("The experiment plan has not been frozen.");
+    if (cells) this.finished = this.terminalCellCount(cells);
     this.emit({
       status: "running",
       requested: plan.cells.length,
-      finished,
-      currentOrdinal,
+      finished: this.finished,
+      runningOrdinals: [...this.runningOrdinals].sort((left, right) => left - right),
+      pausedConnections: [...this.connections].flatMap(([key, connection]) => {
+        const until = this.pausedUntil.get(key);
+        return until === undefined ? [] : [{ ...connection, until }];
+      }),
       states: this.states,
     });
   }

@@ -326,7 +326,7 @@ test("emits immutable progress snapshots with finished terminal-cell counts", as
     status: string;
     requested: number;
     finished: number;
-    currentOrdinal?: number;
+    runningOrdinals: readonly number[];
     states: Array<[string, string]>;
   }> = [];
   const result = await new SequentialExperimentController({
@@ -339,7 +339,7 @@ test("emits immutable progress snapshots with finished terminal-cell counts", as
         status: progress.status,
         requested: progress.requested,
         finished: progress.finished,
-        ...(progress.currentOrdinal === undefined ? {} : { currentOrdinal: progress.currentOrdinal }),
+        runningOrdinals: progress.runningOrdinals,
         states: [...progress.states].map(([runId, state]) => [runId, state.status.kind]),
       });
     },
@@ -347,18 +347,22 @@ test("emits immutable progress snapshots with finished terminal-cell counts", as
 
   assert.equal(result.status, "completed");
   assert.deepEqual(snapshots[0], {
-    status: "running", requested: 2, finished: 0, states: [],
+    status: "running", requested: 2, finished: 0, runningOrdinals: [], states: [],
   });
+  assert.ok(snapshots.some((snapshot) =>
+    snapshot.runningOrdinals.join() === "1" && snapshot.states[0]?.[1] === "running",
+  ));
   assert.ok(snapshots.some((snapshot) =>
     snapshot.status === "running"
     && snapshot.finished === 1
-    && snapshot.currentOrdinal === 1
+    && snapshot.runningOrdinals.length === 0
     && snapshot.states[0]?.[1] === "completed",
   ));
   assert.deepEqual(snapshots.at(-1), {
     status: "completed",
     requested: 2,
     finished: 2,
+    runningOrdinals: [],
     states: [["run_1", "completed"], ["run_2", "completed"]],
   });
 });

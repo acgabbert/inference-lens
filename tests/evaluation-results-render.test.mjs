@@ -54,10 +54,16 @@ function completedState(fx, cell, text, usage) {
   return coordinator.state;
 }
 
+function runningState(fx, cell) {
+  const coordinator = new fx.kernel.RunCoordinator(fx.experimentCore.materializeExperimentCellInput(fx.plan, cell.cellId));
+  coordinator.start();
+  return coordinator.state;
+}
+
 test("renders live evaluation progress with the active case and repetition", async () => {
   const fx = await fixture();
   const html = fx.renderToStaticMarkup(fx.createElement(fx.EvaluationResultsWorkspace, {
-    execution: { plan: fx.plan, storage: "unsaved", workspace: null, states: new Map(), live: { startedAtMs: Date.now(), requested: 2, finished: 0, currentOrdinal: 1 }, traces: new Map(), traceFileNames: new Map(), unreadableTraces: new Map(), selectedRunId: null },
+    execution: { plan: fx.plan, storage: "unsaved", workspace: null, states: new Map(), live: { startedAtMs: Date.now(), requested: 2, finished: 0, runningOrdinals: [1], pausedConnections: [] }, traces: new Map(), traceFileNames: new Map(), unreadableTraces: new Map(), selectedRunId: null },
     onStop() {}, onOpenTrace() {},
   }));
   assert.match(html, /0 of 2 finished · Migrations, Default, repetition 1/);
@@ -112,4 +118,65 @@ test("projects readable, unreadable, absent, and not-created evidence independen
   assert.deepEqual(fx.evaluationEvidenceReachability({ ...base, classification: "not-run" }, {
     states: new Map(), traces: new Map(), unreadableTraces: new Map(),
   }), { kind: "not-created" });
+});
+
+test("live evaluation progress marks every running repetition and counts them", async () => {
+  const fx = await fixture();
+  const [first, second] = fx.plan.cells;
+  const html = fx.renderToStaticMarkup(fx.createElement(fx.EvaluationResultsWorkspace, {
+    execution: {
+      plan: fx.plan, storage: "unsaved", workspace: null,
+      states: new Map([first, second].map((cell) => [cell.runId, runningState(fx, cell)])),
+      live: { startedAtMs: Date.now(), requested: 2, finished: 0, runningOrdinals: [1, 2], pausedConnections: [] },
+      traces: new Map(), traceFileNames: new Map(), unreadableTraces: new Map(), selectedRunId: null,
+    },
+    onStop() {}, onOpenTrace() {},
+  }));
+  assert.match(html, /0 of 2 finished · 2 running/);
+  assert.equal((html.match(/Pending while this run is active/g) ?? []).length, 2);
+  assert.doesNotMatch(html, /Pending until this run starts/);
+  assert.doesNotMatch(html, /NaN|Infinity|undefined|\[object Object\]/);
+});
+
+test("live evaluation progress names the configurations a rate-limit pause holds back", async () => {
+  const fx = await fixture();
+  const [first] = fx.plan.cells;
+  const variant = fx.plan.suite.variants[0];
+  const html = fx.renderToStaticMarkup(fx.createElement(fx.EvaluationResultsWorkspace, {
+    execution: {
+      plan: fx.plan, storage: "unsaved", workspace: null,
+      states: new Map([[first.runId, completedState(fx, first, "Answer")]]),
+      live: {
+        startedAtMs: Date.now(), requested: 2, finished: 1, runningOrdinals: [],
+        pausedConnections: [{ profileId: variant.target.profileId, endpoint: variant.target.endpoint, until: Date.now() + 5_000 }],
+      },
+      traces: new Map(), traceFileNames: new Map(), unreadableTraces: new Map(), selectedRunId: null,
+    },
+    onStop() {}, onOpenTrace() {},
+  }));
+  assert.match(html, /1 of 2 finished · Paused after a rate limit/);
+  assert.match(html, /role="status"><strong[^>]*>Rate limited</);
+  assert.match(html, /New repetitions for Default resume in [45] s/);
+  assert.doesNotMatch(html, /NaN|Infinity|undefined|\[object Object\]/);
+});
+
+test("a result that ran cells at once says so beside its latency", async () => {
+  const fx = await fixture();
+  const states = new Map(fx.plan.cells.map((cell) => {
+    const state = completedState(fx, cell, "Include a rollback plan.");
+    return [state.runId, state];
+  }));
+  const variant = fx.plan.suite.variants[0];
+  const result = (maxInFlight) => ({
+    schemaVersion: 6, experimentId: fx.plan.experimentId, status: "completed", endedAt: "2026-08-01T12:11:00.000Z",
+    concurrency: { maxInFlight, connections: [{ profileId: variant.target.profileId, endpoint: variant.target.endpoint, limit: maxInFlight }] },
+    retryPolicy: { rateLimited: { maxRetries: 0 } },
+    cells: fx.plan.cells.map((cell, index) => ({ cellId: cell.cellId, runId: cell.runId, status: "completed", startOrder: index + 1 })),
+  });
+  const render = (maxInFlight) => fx.renderToStaticMarkup(fx.createElement(fx.EvaluationResultsWorkspace, {
+    execution: { plan: fx.plan, result: result(maxInFlight), storage: "durable", workspace: null, states, traces: new Map(), traceFileNames: new Map(), unreadableTraces: new Map(), selectedRunId: null },
+    onStop() {}, onOpenTrace() {},
+  }));
+  assert.match(render(4), /As run · 1 cases · 2 repetitions · up to 4 at once/);
+  assert.doesNotMatch(render(1), /at once/);
 });

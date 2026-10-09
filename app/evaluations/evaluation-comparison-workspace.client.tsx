@@ -7,6 +7,7 @@ import type {
   EvaluationCaseComparison,
   EvaluationCaseSideSummary,
   EvaluationExecutionDrift,
+  EvaluationVariantConcurrency,
 } from "../../packages/core/src/evaluation-comparison.ts";
 import { finalAssistantOutput } from "../../packages/core/src/run-output.ts";
 import { diffLines } from "../../packages/core/src/text-diff.ts";
@@ -63,6 +64,14 @@ function formatMs(value?: number): string {
   return value >= 1_000 ? `${(value / 1_000).toFixed(1)}s` : `${Math.round(value)}ms`;
 }
 
+/** Latency taken under concurrent load is not comparable with one-at-a-time latency. */
+function concurrencyText({ maxInFlight, connectionLimit }: EvaluationVariantConcurrency): string {
+  if (maxInFlight <= 1) return "one at a time";
+  return connectionLimit < maxInFlight
+    ? `up to ${maxInFlight} at once, ${connectionLimit} on this connection`
+    : `up to ${maxInFlight} at once`;
+}
+
 function DriftList({ drift }: { drift: EvaluationExecutionDrift }) {
   const rows: Array<[string, string, string]> = [];
   if (drift.inputRevision) {
@@ -79,6 +88,13 @@ function DriftList({ drift }: { drift: EvaluationExecutionDrift }) {
       "Repetitions",
       String(drift.repetitions.baseline),
       String(drift.repetitions.candidate),
+    ]);
+  }
+  if (drift.concurrency) {
+    rows.push([
+      "Concurrency",
+      concurrencyText(drift.concurrency.baseline),
+      concurrencyText(drift.concurrency.candidate),
     ]);
   }
   if (rows.length === 0) return null;

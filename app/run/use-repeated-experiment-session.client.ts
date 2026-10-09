@@ -29,6 +29,8 @@ import { createExperimentWorkspacePersistence } from "./experiment-workspace-per
 import { listExperimentToolBindings } from "../../packages/core/src/tool-binding-resolution.ts";
 import type { ExperimentToolBinding } from "../../packages/core/src/tool-binding-resolution.ts";
 import { SequentialExperimentController } from "../../packages/runner/src/sequential-experiment-controller.ts";
+import type { ExperimentConnectionPause } from "../../packages/runner/src/sequential-experiment-controller.ts";
+import { normalizedConcurrency } from "./experiment-concurrency.client.tsx";
 import { createToolExecutor } from "./tool-executors.client.ts";
 import { verifyToolBindingsOnHost } from "../tools/tool-binding-check.client.ts";
 
@@ -46,6 +48,12 @@ export interface RepeatedExperimentDraft {
   targetName: string;
   requestSummary: string;
   repetitionCount: number;
+  /**
+   * How many repetitions may run at once. Absent means 1. Held beside the
+   * plan, never in it: the right limit belongs to this machine and account,
+   * and the result records the limit the run actually used.
+   */
+  concurrency?: number;
   /**
    * What will serve each exposed tool, resolved when the dialog opened.
    *
@@ -82,7 +90,10 @@ export interface RepeatedExperimentLiveProgress {
   requested: number;
   /** Cells that reached a terminal run status; queued cells are excluded. */
   finished: number;
-  currentOrdinal?: number;
+  /** Repetitions started and not yet terminal, ascending. */
+  runningOrdinals: readonly number[];
+  /** Present while a provider 429 holds back new repetitions. */
+  pausedConnections: readonly ExperimentConnectionPause[];
 }
 
 export interface RepeatedExperimentExecution {
@@ -267,6 +278,10 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
     });
   }, []);
 
+  const setConcurrency = useCallback((value: number) => {
+    setDraft((current) => current ? { ...current, concurrency: normalizedConcurrency(value) } : current);
+  }, []);
+
   const dismissDialog = useCallback(() => setDraft(undefined), []);
 
   const confirm = useCallback(async (workspace: ProjectWorkspaceHandle | null) => {
@@ -285,6 +300,8 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
         startedAtMs: Date.now(),
         requested: pending.plan.cells.length,
         finished: 0,
+        runningOrdinals: [],
+        pausedConnections: [],
       },
       traces: new Map(),
       traceFileNames: new Map(),
@@ -295,6 +312,7 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
     const persistence = workspace
       ? createExperimentWorkspacePersistence(workspace, pending.plan)
       : undefined;
+    const limit = pending.concurrency ?? 1;
     const controller = new SequentialExperimentController({
       plan: pending.plan,
       transport: options.transport,
@@ -306,6 +324,8 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
       verifyToolBindings: (bindings) => verifyToolBindingsOnHost(bindings, (toolId) =>
         pending.plan.commonInput.tools.find(({ id }) => id === toolId)?.name ?? toolId),
       ...persistence,
+      // One connection, so one number is both limits.
+      concurrency: { maxInFlight: limit, connectionLimit: limit },
       onProgress(progress) {
         setExecution((current) => {
           if (current?.plan.experimentId !== pending.plan.experimentId) return current;
@@ -319,9 +339,8 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
                   startedAtMs: current.live?.startedAtMs ?? Date.now(),
                   requested: progress.requested,
                   finished: progress.finished,
-                  ...(progress.currentOrdinal === undefined
-                    ? {}
-                    : { currentOrdinal: progress.currentOrdinal }),
+                  runningOrdinals: progress.runningOrdinals,
+                  pausedConnections: progress.pausedConnections,
                 }
               : undefined,
           };
@@ -424,6 +443,7 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
     begin,
     setRepetitionCount,
     setTurnCeiling,
+    setConcurrency,
     updateSettings,
     dismissDialog,
     confirm,
