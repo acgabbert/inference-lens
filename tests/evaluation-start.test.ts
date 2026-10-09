@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { evaluationStartReadiness } from "../app/evaluations/evaluation-start.client.ts";
-import type { EvaluationResolvedLocalTarget } from "../app/evaluations/evaluation-start.client.ts";
+import type { EvaluationResolvedLocalTarget } from "../packages/runner/src/evaluation-start.ts";
 import { OPENAI_COMPATIBLE_CAPABILITIES } from "../packages/core/src/types.ts";
 
 const ready = {

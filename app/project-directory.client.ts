@@ -3,9 +3,8 @@
 import {
   assertTraceEntryName,
   isTraceEntryName,
+  TRACES_DIRECTORY_NAME,
 } from "../packages/core/src/run-trace.ts";
-
-export const TRACES_DIRECTORY_NAME = "traces";
 
 export type WorkspacePermissionState = "granted" | "denied" | "prompt";
 

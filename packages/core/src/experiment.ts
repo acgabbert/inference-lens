@@ -48,6 +48,8 @@ export const EXPERIMENT_SCHEMA_VERSION = 4;
  * Plans did not change shape, so they keep Version 4.
  */
 export const EXPERIMENT_RESULT_SCHEMA_VERSION = 5;
+/** The project-folder directory that holds experiment plans, results, and assessments. */
+export const EXPERIMENTS_DIRECTORY_NAME = "experiments";
 export const EXPERIMENT_PLAN_FILE_SUFFIX = ".plan.json";
 export const EXPERIMENT_RESULT_FILE_SUFFIX = ".result.json";
 /**

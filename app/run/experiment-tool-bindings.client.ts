@@ -1,26 +1,4 @@
-import type { ToolDefinition } from "../../packages/core/src/run-kernel/index.ts";
-import type { ToolBinding } from "../../packages/core/src/tool-execution.ts";
-
-/** One exposed tool and what will answer it, for a confirmation listing. */
-export interface ExperimentToolBinding {
-  tool: ToolDefinition;
-  binding?: ToolBinding;
-}
-
-/**
- * Resolves a plan's exposed tools against this device once, when a
- * confirmation opens. A grant cannot be made while a modal is up, so the
- * listing the user confirms is the listing the controller joins at start.
- */
-export function listExperimentToolBindings(
-  tools: readonly ToolDefinition[],
-  bindingForTool: (tool: ToolDefinition) => ToolBinding | undefined,
-): ExperimentToolBinding[] {
-  return tools.map((tool) => {
-    const binding = bindingForTool(tool);
-    return { tool, ...(binding ? { binding } : {}) };
-  });
-}
+import type { ExperimentToolBinding } from "../../packages/core/src/tool-binding-resolution.ts";
 
 /**
  * Names what will answer one exposed tool, or that nothing can.

@@ -2,6 +2,7 @@
 
 import {
   assertExperimentEntryName,
+  EXPERIMENTS_DIRECTORY_NAME,
   isExperimentEntryName,
 } from "../packages/core/src/experiment.ts";
 import type {
@@ -9,7 +10,6 @@ import type {
   StoredRunTraceFile,
 } from "./project-directory.client.ts";
 
-export const EXPERIMENTS_DIRECTORY_NAME = "experiments";
 export type StoredExperimentArtifactFile = StoredRunTraceFile;
 
 function isNotFound(error: unknown): boolean {

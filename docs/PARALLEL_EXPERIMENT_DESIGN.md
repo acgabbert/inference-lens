@@ -38,8 +38,9 @@ headless CLI share the feature because they share the scheduler.
 
 ## What assumes one cell at a time today
 
-All references are to `app/run/sequential-experiment-controller.client.ts`
-before the move, unless noted otherwise.
+All references are to `packages/runner/src/sequential-experiment-controller.ts`
+(formerly `app/run/sequential-experiment-controller.client.ts`), unless noted
+otherwise.
 
 | Assumption | Where | Effect of parallelism |
 | --- | --- | --- |

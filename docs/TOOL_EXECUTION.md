@@ -72,7 +72,7 @@ deletion, so a binding kind added later cannot leak its configuration by
 default — it has to be given an identity there first.
 
 A mock binding is **derived, not stored** (`toolBindingForMock` in
-`app/run/run-session-state.client.ts`). Mocks live in the project because their
+`packages/core/src/tool-binding-resolution.ts`). Mocks live in the project because their
 *content* is authored material a teammate should receive; there is nothing
 device-local about them to remember.
 

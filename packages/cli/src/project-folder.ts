@@ -1,16 +1,15 @@
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { EXPERIMENTS_DIRECTORY_NAME } from "../../../app/experiment-directory.client.ts";
-import { TRACES_DIRECTORY_NAME } from "../../../app/project-directory.client.ts";
 import {
   assertExperimentEntryName,
+  EXPERIMENTS_DIRECTORY_NAME,
   experimentPlanFileName,
   experimentResultFileName,
 } from "../../core/src/experiment.ts";
 import { PROJECT_FILE_NAME, parseProjectJson } from "../../core/src/project.ts";
 import type { ProjectFile } from "../../core/src/project.ts";
-import { assertTraceEntryName, traceFileName } from "../../core/src/run-trace.ts";
+import { assertTraceEntryName, TRACES_DIRECTORY_NAME, traceFileName } from "../../core/src/run-trace.ts";
 import type { ExperimentId, RunId } from "../../core/src/run-kernel/types.ts";
 
 export class ProjectFolderError extends Error {

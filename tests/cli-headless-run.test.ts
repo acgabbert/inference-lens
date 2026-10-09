@@ -243,6 +243,35 @@ test("a suite exposing a tool with no enabled mock exits 2, naming the tool", as
   assert.equal(provider.requests.length, 0);
 });
 
+test("a capability the project does not declare is refused in the CLI's own words", async (t) => {
+  const provider = await recordingProvider();
+  t.after(provider.close);
+  const base = headlessProject({ endpoint: provider.endpoint });
+  const project = parseProjectFile({
+    ...base,
+    connectionRequirements: base.connectionRequirements.map((requirement) => ({
+      ...requirement,
+      capabilityOverrides: { ...requirement.capabilityOverrides, streaming: false },
+    })),
+    evaluationSuites: base.evaluationSuites.map((suite) => ({
+      ...suite,
+      execution: { ...suite.execution, responseMode: "streaming" },
+    })),
+  });
+  const directory = await writeHeadlessProjectFolder(project);
+
+  const outcome = await run(directory, { [KEY_VARIABLE]: KEY }).done;
+
+  assert.equal(outcome.exitCode, 2);
+  // The app's remedy is a button in its preflight; here it is the project file.
+  assert.equal(
+    outcome.error,
+    `Configuration "Default" uses streaming, but connection "Default connection" (${HEADLESS_CONNECTION_ID}) ` +
+      "does not enable it. Enable it in that connection's capabilityOverrides, or set the suite to buffered delivery.",
+  );
+  assert.equal(provider.requests.length, 0);
+});
+
 test("an interrupted run exits 3 and still leaves a readable, cancelled experiment", async (t) => {
   let release: () => void = () => {};
   const held = new Promise<void>((resolve) => { release = resolve; });

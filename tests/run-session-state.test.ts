@@ -7,10 +7,9 @@ import {
   executableBinding,
   isRetryableRunState,
   isTerminalRunState,
-  toolBindingFor,
-  toolBindingForMock,
   toolResultDraftsForState,
 } from "../app/run/run-session-state.client.ts";
+import { toolBindingFor, toolBindingForMock } from "../packages/core/src/tool-binding-resolution.ts";
 import type { ToolMock } from "../packages/core/src/project.ts";
 import type { ToolId } from "../packages/core/src/run-kernel/index.ts";
 

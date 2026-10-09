@@ -1,12 +1,13 @@
-import type { ToolMock } from "../../packages/core/src/project.ts";
 import type { ToolBinding } from "../../packages/core/src/tool-execution.ts";
 import type {
   RunState,
-  ToolCall,
   ToolDefinition,
-  ToolId,
   ToolResult,
 } from "../../packages/core/src/run-kernel/index.ts";
+import {
+  pendingToolCalls,
+  toolResolutionForBinding,
+} from "../../packages/core/src/tool-binding-resolution.ts";
 
 /** Kept independent of the renderer so session policy can be tested in Node. */
 export type ToolResultDraft = {
@@ -49,76 +50,6 @@ export function isRetryableRunState(state: RunState | null): boolean {
 }
 
 /**
- * The device-local binding an enabled project mock stands for.
- *
- * Mocks live in the project because their *content* is authored material a
- * teammate should receive, and their binding stays derived rather than stored:
- * there is nothing device-local about a mock to remember. The command grants
- * in `app/tools/command-tool-bindings.client.ts` are the opposite case, which
- * is why that registry is persisted and this one is not.
- */
-export function toolBindingForMock(
-  toolId: ToolId,
-  mock: ToolMock | undefined,
-): ToolBinding | undefined {
-  if (!mock?.enabled) return undefined;
-  return {
-    toolId,
-    kind: "mock",
-    executorId: mock.id,
-    label: mock.name,
-    result: {
-      content: mock.result.content.map(({ text }) => ({
-        type: "text" as const,
-        text,
-      })),
-      ...(mock.result.isError === undefined
-        ? {}
-        : { isError: mock.result.isError }),
-    },
-  };
-}
-
-/**
- * The one binding that serves a tool, from everything that offers to.
- *
- * A granted command outranks an enabled mock. The mock is authored material
- * that travels with the project and is often left switched on; the grant is a
- * deliberate act on this device, naming this tool. Reading it the other way
- * would let a teammate's saved mock quietly outrank a command the user just
- * allowed — and the UI says which one will answer either way.
- */
-export function toolBindingFor(
-  toolId: ToolId,
-  mock: ToolMock | undefined,
-  commandBinding: ToolBinding | undefined,
-  mcpBinding?: ToolBinding,
-): ToolBinding | undefined {
-  return mcpBinding ?? commandBinding ?? toolBindingForMock(toolId, mock);
-}
-
-/**
- * What a result served by this binding says about where its value came from.
- *
- * Shared by the interactive session and the batch controller so that one run
- * cannot describe a mocked result differently from another. Provenance is
- * project vocabulary and stays separate from the execution evidence beside it:
- * this answers "where did this value come from", not "what ran".
- */
-export function toolResolutionForBinding(
-  binding: ToolBinding,
-): ToolResult["resolution"] {
-  switch (binding.kind) {
-    case "mock":
-      return { kind: "mock", ruleId: binding.executorId };
-    case "command":
-      return { kind: "live", executorId: binding.executorId };
-    case "mcp":
-      return { kind: "live", executorId: binding.executorId };
-  }
-}
-
-/**
  * The binding that may execute this draft, or nothing when the submitted value
  * is the user's rather than the executor's.
  */
@@ -128,26 +59,6 @@ export function executableBinding(
   if (!draft.binding) return undefined;
   if (draft.binding.kind === "mcp" && !draft.mcpApproval?.approved) return undefined;
   return draft.text === draft.prefilledText ? draft.binding : undefined;
-}
-
-/** The calls one waiting turn still needs results for, with their definitions. */
-export function pendingToolCalls(
-  state: RunState,
-  tools: readonly ToolDefinition[],
-): { call: ToolCall; tool?: ToolDefinition }[] {
-  if (state.status.kind !== "awaiting_tool_results") return [];
-  const waiting = state.status;
-  const pending = new Set(waiting.pendingToolCallIds);
-  const calls: ToolCall[] =
-    state.turns
-      .find(({ turnId }) => turnId === waiting.turnId)
-      ?.attempts.at(-1)?.completedToolCalls ?? [];
-  return calls
-    .filter((call) => pending.has(call.id))
-    .map((call) => ({
-      call,
-      tool: tools.find(({ name }) => name === call.name),
-    }));
 }
 
 /**

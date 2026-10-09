@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { evaluationBatchGuardrail } from "../app/evaluations/evaluation-batch.client.ts";
 import {
-  evaluationBatchGuardrail,
   LARGE_EVALUATION_BATCH_WARNING_THRESHOLD,
   MAX_EVALUATION_PROVIDER_CALLS,
   MAX_EVALUATION_REPETITIONS,
-} from "../app/evaluations/evaluation-batch.client.ts";
+} from "../packages/runner/src/evaluation-batch-limits.ts";
 
 test("warns on a large evaluation without changing its paid call count", () => {
   const guardrail = evaluationBatchGuardrail(5, 5);

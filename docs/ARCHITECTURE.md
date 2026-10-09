@@ -28,6 +28,15 @@ hosts call into that registry rather than each keeping their own copy. The
 HTTP and Tauri hosts own credentials and provider networking, but not
 provider-specific serialization, and they do not retain complete-run state.
 
+`packages/runner` owns experiment scheduling that every host shares:
+`SequentialExperimentController`, which runs a frozen plan cell by cell,
+`driveProviderTurn`, which drives one coordinator command through a
+`ProviderTurnTransport`, and the evaluation start checks, which return a typed
+`EvaluationStartBlocker` for each host to phrase. It sits above `packages/core` and
+`packages/contracts`, and both the app and the headless CLI in `packages/cli`
+import it. Each host supplies its transport, credentials, artifact writes, and
+tool executors.
+
 A connection states which protocols it speaks through its capabilities
 (`chatCompletions`, `responsesApi`, `anthropicMessages`); a run chooses one
 through its execution target, beside the model.
@@ -164,7 +173,7 @@ changes: name the owner before materially expanding the route.
 | Request-pane presentation and local navigation | `app/request/request-composer.client.tsx` |
 | Run validation and provider-neutral input derivation | `app/run/prepare-workbench-run.client.ts` |
 | Live coordination, retry, continuation, stop, diagnostics, and trace lifecycle | `app/run/use-run-session.client.ts` |
-| Tool-result drafts, mock bindings, and whether a draft is still an execution | `app/run/run-session-state.client.ts` |
+| Tool-result drafts and whether a draft is still an execution | `app/run/run-session-state.client.ts` |
 | Pending branch and ad hoc conversation identity | `app/run/use-pending-branch.client.ts` |
 | Response presentation preferences, output following, and output derivation | `app/run/use-response-view.client.ts` |
 | Finished-batch announcement and the Runs indicator | `app/run/use-batch-completion.client.ts` |

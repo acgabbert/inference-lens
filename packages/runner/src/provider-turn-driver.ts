@@ -1,6 +1,6 @@
-import type { CredentialSelection, ProviderTurnTransport } from "../../packages/contracts/src";
-import type { ProviderExecution, ProviderTransportEvent, RunCoordinator, RunState } from "../../packages/core/src/run-kernel";
-import { InferenceTransportError } from "../inference-transport-error.ts";
+import type { CredentialSelection, ProviderTurnTransport } from "../../contracts/src";
+import type { ProviderExecution, ProviderTransportEvent, RunCoordinator, RunState } from "../../core/src/run-kernel";
+import { InferenceTransportError } from "./inference-transport-error.ts";
 
 /**
  * Observability belongs to the caller. The driver deliberately has no

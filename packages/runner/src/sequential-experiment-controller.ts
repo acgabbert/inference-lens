@@ -1,4 +1,4 @@
-import type { CredentialSelection, ProviderTurnTransport } from "../../packages/contracts/src";
+import type { CredentialSelection, ProviderTurnTransport } from "../../contracts/src";
 import {
   experimentExposedTools,
   experimentTurnCeiling,
@@ -7,23 +7,22 @@ import {
   serializeParsedExperimentPlan,
   serializeExperimentResult,
   EXPERIMENT_RESULT_SCHEMA_VERSION,
-} from "../../packages/core/src/experiment.ts";
+} from "../../core/src/experiment.ts";
 import type {
   ExperimentCell,
   ExperimentPlanV4,
   ExperimentResult,
   ExperimentStop,
-} from "../../packages/core/src/experiment.ts";
-import { RunCoordinator } from "../../packages/core/src/run-kernel/index.ts";
-import { createRunTrace } from "../../packages/core/src/run-kernel/reducer.ts";
-import { createEntityId } from "../../packages/core/src/run-kernel/types.ts";
-import type { RunState, RunTrace, TerminalRunStatus } from "../../packages/core/src/run-kernel/index.ts";
-import type { ResolvedRunInput, RunId } from "../../packages/core/src/run-kernel/types.ts";
-import { executeToolCall, resolveToolBinding } from "../../packages/core/src/tool-execution.ts";
-import type { ToolBinding, ToolExecutor } from "../../packages/core/src/tool-execution.ts";
-import { driveProviderTurn } from "./provider-turn-driver.client.ts";
-import { pendingToolCalls, toolResolutionForBinding } from "./run-session-state.client.ts";
-import { createToolExecutor } from "./tool-executors.client.ts";
+} from "../../core/src/experiment.ts";
+import { RunCoordinator } from "../../core/src/run-kernel/index.ts";
+import { createRunTrace } from "../../core/src/run-kernel/reducer.ts";
+import { createEntityId } from "../../core/src/run-kernel/types.ts";
+import type { RunState, RunTrace, TerminalRunStatus } from "../../core/src/run-kernel/index.ts";
+import type { ResolvedRunInput, RunId } from "../../core/src/run-kernel/types.ts";
+import { executeToolCall, resolveToolBinding } from "../../core/src/tool-execution.ts";
+import type { ToolBinding, ToolExecutor } from "../../core/src/tool-execution.ts";
+import { driveProviderTurn } from "./provider-turn-driver.ts";
+import { pendingToolCalls, toolResolutionForBinding } from "../../core/src/tool-binding-resolution.ts";
 
 export interface SequentialExperimentProgress {
   status: "running" | ExperimentResult["status"];
@@ -67,8 +66,12 @@ export interface SequentialExperimentControllerOptions {
    * or command still exists is the host's to answer.
    */
   verifyToolBindings?(bindings: readonly ToolBinding[]): Promise<void>;
-  /** Injected by tests; the app resolves a binding kind to its executor. */
-  createExecutor?(binding: ToolBinding): ToolExecutor;
+  /**
+   * Resolves a binding kind to its executor. Each host supplies its own: the
+   * app reaches command and MCP tools through its service, and a host with no
+   * such route passes `createMockOnlyToolExecutor`.
+   */
+  createExecutor(binding: ToolBinding): ToolExecutor;
 }
 
 function terminalStatus(state: RunState): TerminalRunStatus | undefined {
@@ -109,7 +112,7 @@ export class SequentialExperimentController {
   constructor(options: SequentialExperimentControllerOptions) {
     this.options = options;
     this.bindings = options.toolBindings ?? [];
-    this.createExecutor = options.createExecutor ?? createToolExecutor;
+    this.createExecutor = options.createExecutor;
   }
 
   get isRunning(): boolean {

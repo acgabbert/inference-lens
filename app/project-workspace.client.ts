@@ -12,12 +12,14 @@ import type { ProjectFile } from "../packages/core/src/project.ts";
 import {
   assertTraceEntryName,
   serializeRunTrace,
+  TRACES_DIRECTORY_NAME,
   traceFileName,
 } from "../packages/core/src/run-trace.ts";
 import type { RunTrace } from "../packages/core/src/run-kernel/index.ts";
 import {
   EVALUATION_ASSESSMENT_FILE_SUFFIX,
   assertExperimentEntryName,
+  EXPERIMENTS_DIRECTORY_NAME,
   experimentPlanFileName,
   experimentResultFileName,
   serializeExperimentPlan,
@@ -49,7 +51,6 @@ import {
 } from "../packages/core/src/evaluation-case-sources.ts";
 import type { EvaluationCaseSourcesFileV1 } from "../packages/core/src/evaluation-case-sources.ts";
 import {
-  EXPERIMENTS_DIRECTORY_NAME,
   listExperimentArtifactsFromDirectory,
   readExperimentArtifactFromDirectory,
 } from "./experiment-directory.client.ts";
@@ -57,7 +58,6 @@ import type { StoredExperimentArtifactFile } from "./experiment-directory.client
 import {
   listTracesFromDirectory,
   readTraceFromDirectory,
-  TRACES_DIRECTORY_NAME,
 } from "./project-directory.client.ts";
 import type {
   FileSystemDirectoryHandleLike,

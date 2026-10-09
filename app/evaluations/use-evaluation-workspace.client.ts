@@ -10,7 +10,7 @@ import { resolveProviderCapabilities } from "../../packages/core/src/types.ts";
 import type { EvaluationsLayoutHandle } from "../modes/evaluations-mode.client";
 import type { StoredInferenceProfile } from "../profile-store.client.ts";
 import type { ProjectWorkspaceHandle } from "../project-workspace.client.ts";
-import { listExperimentToolBindings } from "../run/experiment-tool-bindings.client.ts";
+import { listExperimentToolBindings } from "../../packages/core/src/tool-binding-resolution.ts";
 import type { ProjectRunHistoryState } from "../use-project-run-history.client.ts";
 import {
   createEvaluationStartDraft,

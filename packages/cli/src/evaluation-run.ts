@@ -1,11 +1,13 @@
 import type { CredentialSelection, ProviderTurnTransport } from "../../contracts/src/index.ts";
 import {
-  createEvaluationStartDraft,
-  evaluationWorkspaceExecution,
-} from "../../../app/evaluations/evaluation-start.client.ts";
-import type { EvaluationLocalProfile } from "../../../app/evaluations/evaluation-start.client.ts";
-import { SequentialExperimentController } from "../../../app/run/sequential-experiment-controller.client.ts";
-import { toolBindingForMock } from "../../../app/run/run-session-state.client.ts";
+  createEvaluationStartPlan,
+  evaluationStartBlocker,
+  resolveEvaluationLocalTargets,
+} from "../../runner/src/evaluation-start.ts";
+import type { EvaluationLocalProfile } from "../../runner/src/evaluation-start.ts";
+import { createMockOnlyToolExecutor } from "../../runner/src/mock-only-tool-executor.ts";
+import { SequentialExperimentController } from "../../runner/src/sequential-experiment-controller.ts";
+import { toolBindingForMock } from "../../core/src/tool-binding-resolution.ts";
 import { evaluationSuitePreflight, resolveEvaluationVariant } from "../../core/src/evaluation-suites.ts";
 import {
   evaluationParsedExperimentAggregate,
@@ -26,6 +28,7 @@ import {
 } from "./credentials.ts";
 import type { ConnectionResolution } from "./credentials.ts";
 import { openNodeProjectFolder } from "./project-folder.ts";
+import { describeStartBlocker } from "./start-blockers.ts";
 import {
   createHeadlessSummary,
   exitCodeForVerdict,
@@ -148,7 +151,7 @@ async function runHeadlessEvaluation(
       return resolution.credential;
     },
     toolBindings,
-    ...(options.createExecutor ? { createExecutor: options.createExecutor } : {}),
+    createExecutor: options.createExecutor ?? createMockOnlyToolExecutor,
     async savePlan(frozen, serialized) {
       await folder.saveExperimentArtifact(experimentPlanFileName(frozen.experimentId), serialized);
       planSaved = true;
@@ -238,39 +241,24 @@ async function prepareHeadlessEvaluation(options: HeadlessEvaluationOptions) {
 
   const bindingForTool = headlessBindingForTool(project);
   const exposed = project.tools.filter(({ id }) => suite.execution.toolIds.includes(id));
-  const unserved = exposed.filter((tool) => !bindingForTool(tool));
-  if (unserved.length > 0) {
-    throw new HeadlessSetupError(
-      `This suite exposes ${unserved.map(({ name }) => name).join(", ")}, and headless runs can serve only enabled project mocks so far. ` +
-        `Enable a mock for ${unserved.length === 1 ? "that tool" : "those tools"} in the app, or remove ${unserved.length === 1 ? "it" : "them"} from the suite.`,
-    );
-  }
-
-  const gate = evaluationWorkspaceExecution({
-    project,
-    suiteId: suite.id,
-    revisionId,
+  const blocker = evaluationStartBlocker({
     diagnostics: evaluationSuitePreflight(project, suite.id, revisionId, selectedCaseIds),
     selectedCaseCount: selectedCaseIds.length,
-    selectedVariantIds,
-    profiles,
-    mappedProfileIds,
-    toolBindings: exposed.map((tool) => {
-      const binding = bindingForTool(tool);
-      return { tool, ...(binding ? { binding } : {}) };
-    }),
-    activityInProgress: false,
+    selectedVariantCount: selectedVariantIds.length,
+    repetitions: suite.execution.repetitions,
+    toolBindings: exposed.map((tool) => ({ name: tool.name, bound: Boolean(bindingForTool(tool)) })),
+    ...(suite.execution.turnCeiling === undefined ? {} : { turnCeiling: suite.execution.turnCeiling }),
+    targets: resolveEvaluationLocalTargets({ project, suiteId: suite.id, selectedVariantIds, profiles, mappedProfileIds }),
   });
-  if (gate.disabledReason) throw new HeadlessSetupError(gate.disabledReason);
+  if (blocker) throw new HeadlessSetupError(describeStartBlocker(blocker));
 
-  const draft = createEvaluationStartDraft({
+  const draft = createEvaluationStartPlan({
     project,
     suiteId: suite.id,
     selectedCaseIds,
     selectedVariantIds,
     profiles,
     mappedProfileIds,
-    durable: true,
     bindingForTool,
   });
   const plan: EvaluationExperimentPlanV4 = draft.plan;

@@ -5,7 +5,7 @@ import type { ProviderTurnTransport, ProviderTurnStream } from "../packages/cont
 import { OPENAI_COMPATIBLE_CAPABILITIES } from "../packages/core/src/types.ts";
 import { createEntityId, RunCoordinator } from "../packages/core/src/run-kernel/index.ts";
 import type { ProviderTransportEvent, ResolvedRunInput } from "../packages/core/src/run-kernel/index.ts";
-import { driveProviderTurn } from "../app/run/provider-turn-driver.client.ts";
+import { driveProviderTurn } from "../packages/runner/src/provider-turn-driver.ts";
 
 const input: ResolvedRunInput = {
   runId: createEntityId("run", "driver"),
