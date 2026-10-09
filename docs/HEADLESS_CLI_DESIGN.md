@@ -299,6 +299,7 @@ Two contract changes came with the move:
 
 ```sh
 npm run cli -- run ./evals.inference-lens --suite triage [--json] [--no-auth <id>]
+  [--concurrency <n>] [--connection-concurrency <id>=<n>]
 ```
 
 | Module | Owns |
@@ -333,3 +334,38 @@ Verification: `tests/cli-credentials.test.ts`, `tests/cli-headless-run.test.ts`
 (including a subprocess run against `scripts/buffered-openai-provider.mjs`),
 and `tests/e2e/headless-cli-artifacts.spec.ts`, which runs the CLI and then
 opens what it wrote in the app's Run history and Evaluation results.
+
+### Concurrency flags
+
+Slice 4 of the [parallel experiment design](PARALLEL_EXPERIMENT_DESIGN.md)
+exposes the shared scheduler's limits.
+
+- **`--concurrency <n>`** sets both the overall limit and every connection's
+  limit to `n`, so a one-connection suite actually runs `n` repetitions at
+  once. Setting only the overall limit would leave a one-connection suite,
+  the common case, at 1. Default 1, which is what every run did before.
+- **`--connection-concurrency <id>=<n>`**, repeatable, lowers one
+  connection's limit, keyed by the connection requirement ID that
+  `--no-auth` and the credential variables already use. It may only lower:
+  a value above `--concurrency` is refused rather than silently capped,
+  because the overall limit would make it unreachable. An ID the project
+  does not declare is refused; one the selected suite does not use is
+  ignored, as it is for credentials.
+- **Errors.** A value that is not a positive whole number, a repeated ID,
+  or either refusal above exits 2 before anything is sent or written.
+- **Reporting.** The `--json` summary v1 gains an optional `concurrency`,
+  the limits the result recorded (`{ maxInFlight, connections }`), absent
+  when no result was written. This adds a field without a version bump; v1
+  has not been in a tagged release. The human summary adds "Ran up to `n`
+  repetitions at once." only when `n` is above 1, so default output is
+  unchanged.
+- **Progress.** The per-repetition stderr line counts finished
+  repetitions, so it reads correctly in any finishing order. The line the
+  design asks for when a rate-limit pause starts needs the pause times that
+  the progress contract (parallel slice 3) adds, and follows it.
+
+Verification: `tests/cli-headless-run.test.ts` drives an in-process
+provider that holds requests until two overlap, and checks the peak number
+in flight (2 at `--concurrency 2` over three cases; 1 when
+`--connection-concurrency` lowers it), the recorded and reported limits, plan
+order in the summary, and each refusal.

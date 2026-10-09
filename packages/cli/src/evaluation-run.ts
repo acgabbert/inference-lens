@@ -14,7 +14,11 @@ import {
   experimentPlanFileName,
   experimentResultFileName,
 } from "../../core/src/experiment.ts";
-import type { EvaluationExperimentPlanV4, ExperimentResult } from "../../core/src/experiment.ts";
+import type {
+  EvaluationExperimentPlanV4,
+  ExperimentConcurrencySetting,
+  ExperimentResult,
+} from "../../core/src/experiment.ts";
 import type { EvaluationSuite, ProjectFile } from "../../core/src/project.ts";
 import { serializeRunTrace } from "../../core/src/run-trace.ts";
 import type { RunId, RunState } from "../../core/src/run-kernel/index.ts";
@@ -53,10 +57,22 @@ export interface HeadlessEvaluationOptions {
   noAuth?: ReadonlySet<string>;
   environment: Readonly<Record<string, string | undefined>>;
   transport: ProviderTurnTransport;
+  /** How many repetitions may run at once. One at a time when omitted. */
+  concurrency?: HeadlessConcurrency;
   /** One line per finished repetition, for stderr. */
   onProgress?(line: string): void;
   /** Injected by tests. */
   createExecutor?(binding: ToolBinding): ToolExecutor;
+}
+
+/**
+ * `--concurrency` and `--connection-concurrency`. `limit` caps the whole run
+ * and is also every connection's limit unless `connections` lowers it.
+ */
+export interface HeadlessConcurrency {
+  limit?: number;
+  /** By connection requirement ID. Each may only lower `limit`. */
+  connections?: ReadonlyMap<string, number>;
 }
 
 export interface HeadlessEvaluationOutcome {
@@ -129,7 +145,7 @@ async function runHeadlessEvaluation(
   } catch (error) {
     return { exitCode: EXIT_SETUP, error: error instanceof Error ? error.message : String(error) };
   }
-  const { folder, plan, toolBindings, credentials } = prepared;
+  const { folder, plan, toolBindings, credentials, concurrency } = prepared;
 
   let planSaved = false;
   let result: ExperimentResult | undefined;
@@ -152,6 +168,7 @@ async function runHeadlessEvaluation(
     },
     toolBindings,
     createExecutor: options.createExecutor ?? createMockOnlyToolExecutor,
+    concurrency,
     async savePlan(frozen, serialized) {
       await folder.saveExperimentArtifact(experimentPlanFileName(frozen.experimentId), serialized);
       planSaved = true;
@@ -215,6 +232,24 @@ async function prepareHeadlessEvaluation(options: HeadlessEvaluationOptions) {
   if (unknownNoAuth.length > 0) {
     throw new HeadlessSetupError(`--no-auth names ${unknownNoAuth.join(", ")}, which this project does not declare.`);
   }
+  const limit = options.concurrency?.limit ?? 1;
+  const connectionLimits = options.concurrency?.connections ?? new Map<string, number>();
+  const unknownConcurrency = [...connectionLimits.keys()].filter(
+    (id) => !project.connectionRequirements.some((requirement) => requirement.id === id),
+  );
+  if (unknownConcurrency.length > 0) {
+    throw new HeadlessSetupError(
+      `--connection-concurrency names ${unknownConcurrency.join(", ")}, which this project does not declare.`,
+    );
+  }
+  for (const [id, connectionLimit] of connectionLimits) {
+    // The overall limit caps every connection, so a higher one could never be reached.
+    if (connectionLimit > limit) {
+      throw new HeadlessSetupError(
+        `--connection-concurrency allows ${id} ${connectionLimit} at once, more than the overall --concurrency of ${limit}.`,
+      );
+    }
+  }
 
   // Only the connections this suite will call need a key. Resolving others
   // would refuse a run over a credential it never uses.
@@ -265,10 +300,21 @@ async function prepareHeadlessEvaluation(options: HeadlessEvaluationOptions) {
   const credentials = new Map<string, ConnectionResolution>(
     resolutions.map((resolution) => [createEntityId("profile", resolution.requirementId), resolution]),
   );
+  const concurrency: ExperimentConcurrencySetting = {
+    maxInFlight: limit,
+    connectionLimit: limit,
+    connections: resolutions.flatMap(({ requirementId, endpoint }) => {
+      const connectionLimit = connectionLimits.get(requirementId);
+      return connectionLimit === undefined
+        ? []
+        : [{ profileId: createEntityId("profile", requirementId), endpoint, limit: connectionLimit }];
+    }),
+  };
   return {
     folder,
     plan,
     toolBindings: draft.toolBindings.flatMap(({ binding }) => binding ? [binding] : []),
     credentials,
+    concurrency,
   };
 }
