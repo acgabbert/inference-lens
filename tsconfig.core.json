@@ -8,6 +8,7 @@
     "packages/core/src/**/*.ts",
     "packages/contracts/src/**/*.ts",
     "services/api/src/**/*.ts",
+    "packages/cli/src/**/*.ts",
     "tests/*.test.ts"
   ],
   "exclude": [

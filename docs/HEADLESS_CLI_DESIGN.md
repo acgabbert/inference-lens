@@ -1,7 +1,7 @@
 # Headless command-line experiments
 
-**Status:** proposed; no implementation authorized by this document. The
-decisions below need agreement before any contract changes.
+**Status:** decisions 1–4 agreed as recommended (October 9, 2026). Slice 2 is
+implemented in `packages/cli/`; see [Implementation status](#implementation-status).
 **Baseline:** `main` at `5755b57`, reviewed October 9, 2026.
 
 ## Goal
@@ -252,3 +252,57 @@ experience without Docker. It is a separate release decision; see
   well-formed.
 - A container smoke test runs the CLI through the published-image command
   above against a fixture provider.
+
+## Implementation status
+
+### Sequencing change: slice 2 before slice 1
+
+Slice 1 moves the scheduler out of `app/run/`, which another change to the Runs
+workspace is editing at the same time. To avoid conflicting with it, slice 2
+was built first and is purely additive: the CLI imports
+`SequentialExperimentController`, `toolBindingForMock`,
+`evaluationWorkspaceExecution`, and `createEvaluationStartDraft` from where
+they live today, without editing them. Their imports were already safe to load
+in Node; the unit suite has loaded them there all along. Slice 1 still follows
+once the Runs work lands, and then only changes those import paths. Until
+then, a start refusal is phrased in the app's words (for example "Enable a mock
+or grant a command tool first"), because the extraction that lets each host
+phrase it has not happened yet.
+
+### Slice 2: what exists
+
+```sh
+npm run cli -- run ./evals.inference-lens --suite triage [--json] [--no-auth <id>]
+```
+
+| Module | Owns |
+| --- | --- |
+| `packages/cli/src/credentials.ts` | Decision 2C, including origin binding and the `--no-auth` rule |
+| `packages/cli/src/project-folder.ts` | Reading `project.json`; write-once plan, result, and trace files under the app's names |
+| `packages/cli/src/transport.ts` | `executeProviderTurn` in process, behind the same `resolveProviderTurnRequest` validation the service applies |
+| `packages/cli/src/evaluation-run.ts` | Suite selection, start checks, plan, controller, assessment |
+| `packages/cli/src/summary.ts` | `--json` schema version 1, the human summary, exit codes |
+| `packages/cli/src/main.ts` | Argument parsing, interrupt handling, stdout/stderr split |
+
+Choices made in implementation, within the agreed decisions:
+
+- **Variable names.** `<ID>` is the requirement ID without its `connection_`
+  prefix, upper-cased, with every other character replaced by `_`
+  (`connection_evals-default` → `INFERENCE_LENS_CONNECTION_EVALS_DEFAULT_API_KEY`).
+  Two connections that fold to one name are refused rather than sharing a key.
+  Only connections the selected suite uses need a credential.
+- **Capabilities.** With no device profile, a connection's capabilities are
+  the project's declared `capabilityOverrides`, resolved the way the app
+  resolves a profile. A suite whose protocol, streaming, or tools the
+  declaration does not enable is refused with the app's start-gate message.
+- **Tools.** Mocks only, as slice 2 specifies. A suite exposing any tool
+  without an enabled project mock exits 2, naming the tool.
+- **Interrupts.** The first SIGINT or SIGTERM stops after the current request
+  and writes a cancelled result (exit 3). A second exits immediately.
+- **Running it.** `npm run cli` runs the TypeScript sources with Node's type
+  stripping. A bundled `inference-lens` binary is slice 4.
+
+Verification: `tests/cli-credentials.test.ts`, `tests/cli-headless-run.test.ts`
+(including a subprocess run against `scripts/buffered-openai-provider.mjs`),
+and `tests/e2e/headless-cli-artifacts.spec.ts`, which runs the CLI and then
+opens what it wrote in the app's Run history and Evaluation results.
