@@ -2,7 +2,9 @@ import { createServer } from "node:http";
 
 import { stopOnSignal } from "./fixture-shutdown.mjs";
 
-const host = "127.0.0.1";
+// Loopback by default. The container smoke test binds the Docker bridge address
+// instead, so a container reaches it as host.docker.internal.
+const host = process.env.INFERENCE_LENS_BUFFERED_HOST ?? "127.0.0.1";
 const port = Number.parseInt(
   process.env.INFERENCE_LENS_BUFFERED_PORT ?? "4014",
   10,

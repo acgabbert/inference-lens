@@ -137,6 +137,10 @@ model in the UI. A key entered this way remains only in the current browser
 session. For provider networking, server-side credentials, Compose, and
 troubleshooting, see the [Docker guide](docs/DOCKER.md).
 
+The same image can also run an evaluation suite with no browser, for CI, with
+`inference-lens run <project-folder>`; see
+[Run an evaluation suite from the command line](docs/DOCKER.md#run-an-evaluation-suite-from-the-command-line).
+
 ### Run the published image with Compose
 
 For a persistent deployment without a long `docker run` command, download the

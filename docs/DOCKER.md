@@ -259,6 +259,74 @@ arriving under any other name is answered with `403` and a message naming this
 variable. Serve such a deployment over HTTPS and put authentication in front of
 it — the workbench itself has no user accounts.
 
+## Run an evaluation suite from the command line
+
+The image also contains the headless CLI, `inference-lens`. It runs one suite
+from a project folder with no browser and no server, and writes the same plan,
+result, and trace files the app writes, so the app's Runs and Evaluations
+workspaces open them afterwards. Give the image that command in place of the
+server:
+
+```sh
+docker run --rm \
+  --add-host=host.docker.internal:host-gateway \
+  -e INFERENCE_LENS_API_KEY -e INFERENCE_LENS_API_ENDPOINT \
+  -v "$PWD/evals.inference-lens:/project" \
+  --user "$(id -u):$(id -g)" \
+  ghcr.io/acgabbert/inference-lens:latest \
+  inference-lens run /project --suite triage
+```
+
+- **Pin a version tag** (`:0.3.0` rather than `:latest`) in CI, so the same
+  command runs the same CLI next month.
+- **`--user` is required on Linux.** Without it, the CLI runs as the image's
+  `node` user (uid 1000): the files it writes belong to that user, and if your
+  uid differs it cannot write into the folder at all. Docker Desktop maps
+  ownership on its own, and the flag is harmless there.
+- **Credentials come from the environment only.** `-e NAME` with no value
+  passes the variable through from your shell, so the key never appears on the
+  command line. Pass any per-connection variable the same way, for example
+  `-e INFERENCE_LENS_CONNECTION_EVALS_DEFAULT_API_KEY`.
+- **Provider addresses** follow the same rules as the server: a host-native
+  provider is `http://host.docker.internal:<port>/v1`. See
+  [Connect to a provider](#connect-to-a-provider).
+- **The exit code is the CLI's**, so `docker run` exits 0 when the suite
+  passed, 1 when a case failed, 2 for a setup error, and 3 when the run did not
+  complete. `--json` prints a machine-readable summary on stdout and nothing
+  else; progress goes to stderr. Run `inference-lens --help` for every option.
+
+To shorten the command, define a shell function that mounts the current
+directory, so relative paths work as they would on the host:
+
+```sh
+inference-lens() {
+  docker run --rm \
+    --add-host=host.docker.internal:host-gateway \
+    -e INFERENCE_LENS_API_KEY -e INFERENCE_LENS_API_ENDPOINT \
+    -v "$PWD:/work" -w /work \
+    --user "$(id -u):$(id -g)" \
+    ghcr.io/acgabbert/inference-lens:latest \
+    inference-lens "$@"
+}
+
+inference-lens run evals.inference-lens --suite triage --json
+```
+
+**Real tools.** `--allow-tool` runs a command or MCP server declared in the
+catalog that `INFERENCE_LENS_COMMAND_TOOLS` or `INFERENCE_LENS_MCP_SERVERS`
+names, and both catalogs are read *inside* the container. Mount each catalog
+(and the commands it names) into the container and pass the variable with its
+in-container path. The image provides Node.js and a POSIX shell, nothing more.
+An MCP server must be on a loopback address, which inside a container is the
+container itself; to reach one running on the host, run with `--network host`
+and `-e INFERENCE_LENS_CONTAINER=0`.
+
+**Inside a running server container.** `docker compose exec inference-lens
+inference-lens run /project` also works, and reuses the server's environment.
+The published Compose template mounts no project folder and keeps the root
+filesystem read-only, though, so this needs a writable project mount added to
+the service. Prefer the one-off container above.
+
 ## Build from source with Compose
 
 Compose builds the image locally. It requires a `.env` file:
