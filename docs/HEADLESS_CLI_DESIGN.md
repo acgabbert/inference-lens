@@ -1,7 +1,8 @@
 # Headless command-line experiments
 
-**Status:** decisions 1–4 agreed as recommended (October 9, 2026). Slice 2 is
-implemented in `packages/cli/`; see [Implementation status](#implementation-status).
+**Status:** decisions 1–4 agreed as recommended (October 9, 2026). Slices 1
+and 2 are implemented, in `packages/runner/` and `packages/cli/`; see
+[Implementation status](#implementation-status).
 **Baseline:** `main` at `5755b57`, reviewed October 9, 2026.
 
 ## Goal
@@ -263,11 +264,36 @@ was built first and is purely additive: the CLI imports
 `SequentialExperimentController`, `toolBindingForMock`,
 `evaluationWorkspaceExecution`, and `createEvaluationStartDraft` from where
 they live today, without editing them. Their imports were already safe to load
-in Node; the unit suite has loaded them there all along. Slice 1 still follows
-once the Runs work lands, and then only changes those import paths. Until
-then, a start refusal is phrased in the app's words (for example "Enable a mock
-or grant a command tool first"), because the extraction that lets each host
-phrase it has not happened yet.
+in Node; the unit suite has loaded them there all along. Slice 1 followed once
+the Runs work landed; see below.
+
+### Slice 1: what exists
+
+The scheduler and the start checks moved into `packages/runner/`, a package
+above `packages/core` and `packages/contracts`. It could not go into core:
+contracts already imports core, and the controller needs contracts'
+`ProviderTurnTransport`. Nothing in `packages/` imports from `app/` any more.
+
+| Module | Owns |
+| --- | --- |
+| `packages/runner/src/sequential-experiment-controller.ts` | `SequentialExperimentController`, moved without behavior change |
+| `packages/runner/src/provider-turn-driver.ts` | `driveProviderTurn` and its retry classification (`InferenceTransportError` beside it) |
+| `packages/runner/src/mock-only-tool-executor.ts` | The executor factory for a host that serves project mocks only |
+| `packages/runner/src/evaluation-batch-limits.ts` | Paid-batch limits as data (`evaluationBatchSize`) |
+| `packages/runner/src/evaluation-start.ts` | Target resolution, `evaluationStartBlocker`, and `createEvaluationStartPlan` |
+| `packages/core/src/tool-binding-resolution.ts` | Mock bindings, binding precedence, result provenance, pending calls |
+
+Two contract changes came with the move:
+
+- **`createExecutor` is required.** The app passes its service-backed
+  factory; the CLI passes `createMockOnlyToolExecutor`. Before, the CLI
+  inherited the app's factory by default, and with it `app/tools/`.
+- **Start checks return a typed blocker** (`EvaluationStartBlocker`), not a
+  sentence. The app phrases it exactly as before in
+  `app/evaluations/evaluation-start.client.ts`; the app-only gates (no project,
+  no suite, another run in progress) stay there. The CLI phrases it in
+  `packages/cli/src/start-blockers.ts`, naming the `project.json` field that
+  clears it rather than an app control.
 
 ### Slice 2: what exists
 
@@ -281,6 +307,7 @@ npm run cli -- run ./evals.inference-lens --suite triage [--json] [--no-auth <id
 | `packages/cli/src/project-folder.ts` | Reading `project.json`; write-once plan, result, and trace files under the app's names |
 | `packages/cli/src/transport.ts` | `executeProviderTurn` in process, behind the same `resolveProviderTurnRequest` validation the service applies |
 | `packages/cli/src/evaluation-run.ts` | Suite selection, start checks, plan, controller, assessment |
+| `packages/cli/src/start-blockers.ts` | The CLI's wording for each start blocker |
 | `packages/cli/src/summary.ts` | `--json` schema version 1, the human summary, exit codes |
 | `packages/cli/src/main.ts` | Argument parsing, interrupt handling, stdout/stderr split |
 

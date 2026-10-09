@@ -1,7 +1,7 @@
 "use client";
 
 import { experimentToolBindingLabel } from "./experiment-tool-bindings.client.ts";
-import type { ExperimentToolBinding } from "./experiment-tool-bindings.client.ts";
+import type { ExperimentToolBinding } from "../../packages/core/src/tool-binding-resolution.ts";
 
 /**
  * What will serve each exposed tool, at the moment cost is confirmed.

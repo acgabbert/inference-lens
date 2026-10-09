@@ -29,9 +29,10 @@ HTTP and Tauri hosts own credentials and provider networking, but not
 provider-specific serialization, and they do not retain complete-run state.
 
 `packages/runner` owns experiment scheduling that every host shares:
-`SequentialExperimentController`, which runs a frozen plan cell by cell, and
+`SequentialExperimentController`, which runs a frozen plan cell by cell,
 `driveProviderTurn`, which drives one coordinator command through a
-`ProviderTurnTransport`. It sits above `packages/core` and
+`ProviderTurnTransport`, and the evaluation start checks, which return a typed
+`EvaluationStartBlocker` for each host to phrase. It sits above `packages/core` and
 `packages/contracts`, and both the app and the headless CLI in `packages/cli`
 import it. Each host supplies its transport, credentials, artifact writes, and
 tool executors.

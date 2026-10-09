@@ -13,7 +13,7 @@ import type { EvaluationVariantId } from "../../packages/core/src/run-kernel/typ
 import { runStateFromTrace, traceFileName } from "../../packages/core/src/run-trace.ts";
 import type { ProjectWorkspaceHandle } from "../project-workspace.client.ts";
 import { createExperimentWorkspacePersistence } from "../run/experiment-workspace-persistence.client.ts";
-import type { ExperimentToolBinding } from "../run/experiment-tool-bindings.client.ts";
+import type { ExperimentToolBinding } from "../../packages/core/src/tool-binding-resolution.ts";
 import { SequentialExperimentController } from "../../packages/runner/src/sequential-experiment-controller.ts";
 import { createToolExecutor } from "../run/tool-executors.client.ts";
 import { verifyToolBindingsOnHost } from "../tools/tool-binding-check.client.ts";

@@ -21,16 +21,14 @@ import { InferenceSettingsPanel } from "../inference-settings-panel.client";
 import { DisclosureChevron } from "../disclosure-chevron.client";
 import { EditableTitle } from "../editable-title.client";
 import { experimentToolBindingLabel } from "../run/experiment-tool-bindings.client";
-import type { ExperimentToolBinding } from "../run/experiment-tool-bindings.client";
+import type { ExperimentToolBinding } from "../../packages/core/src/tool-binding-resolution";
 import { PaneEmptyState } from "../pane-empty-state.client";
 import { groupRevisionChoices, revisionChoice } from "./revision-choice.client";
 import { SavedPromptDialog } from "./saved-prompt-dialog.client";
 import type { EvaluationSuiteAuthoringHandle } from "./use-evaluation-suite-authoring.client";
 import type { EvaluationCheckAuthoringField } from "./use-evaluation-suite-authoring.client";
-import {
-  evaluationBatchGuardrail,
-  MAX_EVALUATION_REPETITIONS,
-} from "./evaluation-batch.client";
+import { evaluationBatchGuardrail } from "./evaluation-batch.client";
+import { MAX_EVALUATION_REPETITIONS } from "../../packages/runner/src/evaluation-batch-limits";
 import {
   EvaluationSuiteHistory,
   type EvaluationSuiteHistoryHandle,
