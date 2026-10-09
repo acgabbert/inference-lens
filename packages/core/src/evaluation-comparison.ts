@@ -8,6 +8,8 @@ import {
   type ExperimentMetricRange,
   type ExperimentResultInput,
   type ExperimentUsageAggregate,
+  experimentConnectionKey,
+  sequentialExperimentConcurrency,
 } from "./experiment.ts";
 import {
   alignSuiteSnapshots,
@@ -116,6 +118,14 @@ export interface EvaluationDriftField<Value> {
  * model is a genuine comparison of two configurations, unlike a changed case
  * definition, which compares two different questions.
  */
+/** How many cells could run at once when one configuration's timings were taken. */
+export interface EvaluationVariantConcurrency {
+  /** Across the whole experiment. */
+  maxInFlight: number;
+  /** On the configuration's own connection. */
+  connectionLimit: number;
+}
+
 export interface EvaluationExecutionDrift {
   inputRevision?: EvaluationDriftField<string>;
   model?: EvaluationDriftField<string>;
@@ -124,6 +134,11 @@ export interface EvaluationExecutionDrift {
   /** `true` when the serialized inference options differ in any way. */
   optionsChanged?: boolean;
   repetitions?: EvaluationDriftField<number>;
+  /**
+   * The limits each side's configuration ran under. Absent when either side
+   * has no result, because then nothing records how it ran.
+   */
+  concurrency?: EvaluationDriftField<EvaluationVariantConcurrency>;
   // No `checkSchemaVersion` field: the plan pins it as a `z.literal`, so both
   // sides must equal this build's version to have parsed at all. A version
   // range — and the drift reporting it would justify — arrives with the PR
@@ -292,6 +307,17 @@ function sideSummary(side: SideDerivation): EvaluationComparisonSideSummary {
   };
 }
 
+/** Versions 4 and 5 predate recorded concurrency and ran one cell at a time. */
+function variantConcurrency(side: SideDerivation): EvaluationVariantConcurrency | undefined {
+  const { result, plan } = side.input;
+  const target = side.variant.variant?.target;
+  if (!result || !target) return undefined;
+  const concurrency = result.schemaVersion === 6 ? result.concurrency : sequentialExperimentConcurrency(plan);
+  const key = experimentConnectionKey(target);
+  const connection = concurrency.connections.find((entry) => experimentConnectionKey(entry) === key);
+  return { maxInFlight: concurrency.maxInFlight, connectionLimit: connection?.limit ?? 1 };
+}
+
 function executionDrift(
   baseline: SideDerivation,
   candidate: SideDerivation,
@@ -329,6 +355,14 @@ function executionDrift(
   }
   if (baseline.input.plan.repetitions !== candidate.input.plan.repetitions) {
     drift.repetitions = { baseline: baseline.input.plan.repetitions, candidate: candidate.input.plan.repetitions };
+  }
+  const baselineConcurrency = variantConcurrency(baseline);
+  const candidateConcurrency = variantConcurrency(candidate);
+  if (
+    baselineConcurrency && candidateConcurrency &&
+    !sameJson(baselineConcurrency, candidateConcurrency)
+  ) {
+    drift.concurrency = { baseline: baselineConcurrency, candidate: candidateConcurrency };
   }
   drift.any = Object.keys(drift).length > 1;
   return drift;

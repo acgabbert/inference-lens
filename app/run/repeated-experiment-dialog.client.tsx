@@ -16,12 +16,14 @@ import {
 } from "../../packages/core/src/experiment.ts";
 
 import { ExperimentToolBindingList } from "./experiment-tool-binding-list.client.tsx";
+import { ExperimentConcurrencyFields } from "./experiment-concurrency.client.tsx";
 
 export function RepeatedExperimentDialog({
   draft,
   settings,
   onCountChange,
   onTurnCeilingChange,
+  onConcurrencyChange,
   onSettingsChange,
   onCancel,
   onConfirm,
@@ -40,6 +42,7 @@ export function RepeatedExperimentDialog({
   };
   onCountChange(count: number): void;
   onTurnCeilingChange(ceiling: number): void;
+  onConcurrencyChange(concurrency: number): void;
   onSettingsChange(next: RepeatedExperimentSettings): void;
   onCancel(): void;
   onConfirm(): void;
@@ -49,6 +52,8 @@ export function RepeatedExperimentDialog({
   const [settingsOpen, setSettingsOpen] = useState(true);
   const turnCeiling = draft.plan.turnCeiling ?? DEFAULT_EXPERIMENT_TURN_CEILING;
   const exposesTools = draft.toolBindings.length > 0;
+  const concurrency = draft.concurrency ?? 1;
+  const target = draft.plan.commonInput.target;
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -63,7 +68,9 @@ export function RepeatedExperimentDialog({
       <section aria-labelledby="repeat-experiment-title" aria-modal="true" className="confirmation-dialog repeated-experiment-dialog" role="dialog">
         <span className="eyebrow">Repeated experiment</span>
         <h2 id="repeat-experiment-title">Run this frozen request repeatedly</h2>
-        <p>Each repetition is a new ordinary run. Results execute one at a time, in order.</p>
+        <p>Each repetition is a new ordinary run. {concurrency > 1
+          ? <>Up to {concurrency} execute at once, starting in order.</>
+          : <>Results execute one at a time, in order.</>}</p>
         <dl className="confirmation-details repeat-experiment-details">
           <div><dt>Frozen request</dt><dd>{draft.requestSummary}</dd></div>
           <div><dt>Target</dt><dd>{draft.targetName}</dd></div>
@@ -99,7 +106,7 @@ export function RepeatedExperimentDialog({
           onLoadModels={settings.onLoadModels}
           onToggleFavoriteModel={settings.onToggleFavoriteModel}
           repetitions={{
-            summary: `${draft.repetitionCount} reps · ≤${turnCeiling} turns`,
+            summary: `${draft.repetitionCount} reps · ≤${turnCeiling} turns${concurrency > 1 ? ` · ${concurrency} at once` : ""}`,
             control: (
               <>
                 <label className="inference-settings-count">
@@ -124,10 +131,17 @@ export function RepeatedExperimentDialog({
                     onChange={(event) => onTurnCeilingChange(Number(event.target.value))}
                   />
                 </label>
+                <ExperimentConcurrencyFields
+                  connections={[{ profileId: target.profileId, endpoint: target.endpoint, label: draft.targetName }]}
+                  value={{ maxInFlight: concurrency, connectionLimit: concurrency }}
+                  onChange={(next) => onConcurrencyChange(next.maxInFlight ?? 1)}
+                />
               </>
             ),
           }}
-          notes={<small>Runs sequentially; the next starts only after the previous repetition is terminal.</small>}
+          notes={<small>{concurrency > 1
+            ? <>Up to {concurrency} run at once. Latency measured under concurrent load is not comparable with one-at-a-time runs.</>
+            : <>Runs sequentially; the next starts only after the previous repetition is terminal.</>}</small>}
         />
         {exposesTools && <ExperimentToolBindingList toolBindings={draft.toolBindings} />}
         {/* A floor once tools can extend a repetition past one turn: the

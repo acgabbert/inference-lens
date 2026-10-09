@@ -3249,6 +3249,11 @@ output {
   font-variant-numeric: tabular-nums;
 }
 
+.repeated-experiment-metric-note {
+  margin: var(--space-sm) 0 0;
+  color: var(--text-muted);
+}
+
 .repeated-experiment-more-metrics {
   padding: 0;
 }
@@ -7584,6 +7589,24 @@ main {
   margin-top: var(--space-3xs);
   overflow-wrap: anywhere;
   color: var(--text-muted);
+}
+
+.evaluation-start-concurrency dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm) var(--space-md);
+  white-space: normal;
+  font-family: inherit;
+}
+
+.evaluation-start-concurrency label {
+  display: grid;
+  gap: var(--space-3xs);
+  min-width: 0;
+}
+
+.evaluation-start-concurrency input {
+  width: 6rem;
 }
 
 .evaluation-results-workspace {

@@ -28,7 +28,7 @@ import type { EvaluationCaseId, ResolvedRunInput } from "../packages/core/src/ru
 import { OPENAI_COMPATIBLE_CAPABILITIES } from "../packages/core/src/types.ts";
 import type { ProviderTurnTransport } from "../packages/contracts/src/inference.ts";
 import { createMockOnlyToolExecutor } from "../packages/runner/src/mock-only-tool-executor.ts";
-import { SequentialExperimentController } from "../packages/runner/src/sequential-experiment-controller.ts";
+import { ExperimentController } from "../packages/runner/src/experiment-controller.ts";
 
 function projectFixture(withChecks = true) {
   let project = createProjectFile({
@@ -517,7 +517,7 @@ test("the shared sequential controller executes evaluation cells as ordinary run
       };
     },
   };
-  const result = await new SequentialExperimentController({
+  const result = await new ExperimentController({
     plan,
     createExecutor: createMockOnlyToolExecutor,
     transport,
@@ -589,7 +589,7 @@ test("the controller prepares each configuration target before deterministic exe
       };
     },
   };
-  await new SequentialExperimentController({
+  await new ExperimentController({
     plan,
     createExecutor: createMockOnlyToolExecutor,
     transport,
@@ -615,7 +615,7 @@ test("an unservable configuration refuses the whole batch before credentials, pe
   let credentialCalls = 0;
   let saved = false;
   let providerCalls = 0;
-  await assert.rejects(() => new SequentialExperimentController({
+  await assert.rejects(() => new ExperimentController({
     plan,
     createExecutor: createMockOnlyToolExecutor,
     transport: {
@@ -691,7 +691,7 @@ test("an overall limit of 1 runs a two-connection suite one cell at a time", asy
   const plan = twoConnectionPlan();
   const started: string[] = [];
   const { transport, overallPeak } = overlapTransport(started);
-  const result = await new SequentialExperimentController({
+  const result = await new ExperimentController({
     plan,
     concurrency: { maxInFlight: 1, connectionLimit: 2 },
     createExecutor: createMockOnlyToolExecutor,
@@ -708,7 +708,7 @@ test("an overall limit of 1 runs a two-connection suite one cell at a time", asy
 test("connections at a limit of 1 run side by side when the overall limit allows", async () => {
   const plan = twoConnectionPlan();
   const { transport, peaks, overallPeak } = overlapTransport();
-  const result = await new SequentialExperimentController({
+  const result = await new ExperimentController({
     plan,
     concurrency: { maxInFlight: 2 },
     createExecutor: createMockOnlyToolExecutor,
@@ -761,7 +761,7 @@ test("a 429 on one connection leaves the other connection starting cells", async
       };
     },
   };
-  const pending = new SequentialExperimentController({
+  const pending = new ExperimentController({
     plan,
     concurrency: { maxInFlight: 2 },
     clock,

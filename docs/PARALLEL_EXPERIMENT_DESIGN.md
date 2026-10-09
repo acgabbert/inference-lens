@@ -3,9 +3,10 @@
 **Status:** decisions 1–5 agreed October 9, 2026; decisions 6–8 (rate
 limits and retry) agreed the same day as recommended. A review the same day
 amended decisions 4, 5, and 8 and added decision 9; see
-[Review amendments](#review-amendments). Slices 1 and 2 are implemented,
+[Review amendments](#review-amendments). Slices 1–4 are implemented,
 including the retry policy that decision 8 adds to slice 1; see
-[Implementation status](#implementation-status). The decisions below need no
+[Implementation status](#implementation-status), and the
+[headless CLI design](HEADLESS_CLI_DESIGN.md) for slice 4's flags. The decisions below need no
 further sign-off, but the implementation should come back for review if it
 finds that one of them cannot hold.
 **Baseline:** `main` at `ee5f292`.
@@ -457,8 +458,8 @@ Choices made in implementation, within the agreed decisions:
   user.", and do not mark the experiment as cancelled.
 - **Not yet done.** The class keeps its `Sequential` name and
   `SequentialExperimentProgress` keeps `currentOrdinal`, which is the
-  ordinal of the cell that last reported. Both change with slice 3's
-  progress contract; at a limit of 1 they mean what they always did.
+  ordinal of the cell that last reported. Slice 3 replaces `currentOrdinal`
+  and renames both (see slice 3 below).
 
 Verification: `tests/concurrent-experiment-scheduler.test.ts` (plan-order
 placement, the per-connection limit, the stop, cancellation, tool locks,
@@ -466,6 +467,63 @@ decision 9, the pause headers, and the pause itself on a fake clock) and
 `tests/evaluation-execution.test.ts` (resolving a setting, the overall limit
 across two connections, and a pause that leaves the other connection
 running). The existing controller tests pass unchanged.
+
+### Slice 3: what exists
+
+`ExperimentProgress` reports `runningOrdinals` and
+`pausedConnections` in place of `currentOrdinal`. Both workspaces read
+them, both start dialogs set a limit, and a comparison names a changed
+concurrency.
+
+Choices made in implementation, within the agreed decisions (the first two
+agreed on review, October 9, 2026):
+
+- **The rename.** `SequentialExperimentController` is now
+  `ExperimentController` in `packages/runner/src/experiment-controller.ts`,
+  with `ExperimentControllerOptions` and `ExperimentProgress`. It landed in
+  its own commit after slice 4 merged, because slice 4 was changing the CLI,
+  which imports the class, at the same time. Earlier sections keep the old
+  names, as they were written.
+- **The CLI's pause line.** `evaluation-run.ts` prints a stderr line when a
+  connection's pause starts or lengthens, naming the connection by its
+  requirement ID; see the [headless CLI design](HEADLESS_CLI_DESIGN.md).
+- **Progress.** `runningOrdinals` lists the cells started and not yet
+  terminal, ascending. A cell leaves it when its run ends, before its trace
+  is saved, so a finished repetition never reads as running.
+  `pausedConnections` lists `{ profileId, endpoint, until }` per paused
+  connection, in plan first-use order, with `until` in epoch milliseconds
+  from the scheduler's clock. The scheduler reports progress when a pause
+  begins and when it ends, so a resumption is visible before the next cell
+  starts. A terminal emission has both lists empty.
+- **The start control.** Both dialogs open at 1 every time; nothing is
+  remembered, so running cells at once is always a choice made for that run.
+  The repeated experiment has one connection and one field, which sets
+  both limits. The evaluation dialog has an overall field, which also sets
+  the default for every connection, and one field per connection when the
+  suite's configurations use more than one. Each field allows at most 16
+  (`MAX_EXPERIMENT_CONCURRENCY`), a ceiling on what one click can send, not a
+  scheduler rule. The setting travels on the draft, never in the plan.
+- **The workspaces.** One running cell is named as before; several are
+  counted ("2 running", "Running 3 repetitions"). A cell is queued only if
+  it has not started. A pause shows as a "Rate limited" status chip with the
+  seconds left, naming the configurations it holds back.
+- **Where timings are compared.** A result that ran more than one cell at
+  once says "up to N at once" in the evaluation header and under the
+  repeated experiment's latency. One at a time needs no caveat. A baseline
+  comparison gains a `concurrency` drift field,
+  `{ maxInFlight, connectionLimit }` for the compared configuration's
+  connection; a Version 4 or 5 result reads as one at a time, and a side with
+  no result has none to compare.
+
+Verification: `tests/experiment-progress.test.ts` (the running set at a limit
+of 2 and of 1, a pause reported and cleared, cancellation clearing it),
+`tests/evaluation-comparison.test.ts` (concurrency drift),
+`tests/repeated-experiment-render.test.mjs`,
+`tests/evaluation-results-render.test.mjs`, and
+`tests/evaluation-suite-render.test.mjs` (both workspaces, both dialogs), and
+`tests/e2e/experiment-concurrency.spec.ts` (a repeated experiment holding
+three calls in flight at the app's inference route, and an evaluation run
+once at the default and once two at a time, then compared).
 
 ## Review amendments
 

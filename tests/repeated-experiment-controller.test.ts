@@ -7,7 +7,7 @@ import type { RepeatedExperimentPlanV3 } from "../packages/core/src/experiment.t
 import type { ProviderTransportEvent, RunTrace, ToolCallId } from "../packages/core/src/run-kernel/index.ts";
 import type { ToolBinding } from "../packages/core/src/tool-execution.ts";
 import { createMockOnlyToolExecutor } from "../packages/runner/src/mock-only-tool-executor.ts";
-import { SequentialExperimentController } from "../packages/runner/src/sequential-experiment-controller.ts";
+import { ExperimentController } from "../packages/runner/src/experiment-controller.ts";
 import { createExperimentWorkspacePersistence } from "../app/run/experiment-workspace-persistence.client.ts";
 import type { ProjectWorkspaceHandle } from "../app/project-workspace.client.ts";
 
@@ -139,7 +139,7 @@ test("runs two, five, and high-count schedules strictly one cell at a time", asy
       yield* completed(`response ${runId}`);
       active -= 1;
     }, started);
-    const controller = new SequentialExperimentController({
+    const controller = new ExperimentController({
       plan: plan(count),
       createExecutor: createMockOnlyToolExecutor,
       transport,
@@ -163,7 +163,7 @@ test("finalizes a retryable failure and continues later cells", async () => {
   const transport = transportFor((runId) => events(runId === "run_2"
     ? [{ type: "failed", error: { code: "provider_error", message: "Busy", retryable: true } }]
     : completed(runId)), started);
-  const result = await new SequentialExperimentController({
+  const result = await new ExperimentController({
     plan: plan(3),
     createExecutor: createMockOnlyToolExecutor,
     transport,
@@ -182,7 +182,7 @@ test("refuses the whole batch when credential preflight fails", async () => {
   let credentialAttempt = 0;
   const started: string[] = [];
   const traces: RunTrace[] = [];
-  await assert.rejects(() => new SequentialExperimentController({
+  await assert.rejects(() => new ExperimentController({
     plan: plan(3),
     createExecutor: createMockOnlyToolExecutor,
     transport: transportFor((runId) => events(completed(runId)), started),
@@ -211,7 +211,7 @@ test("cancels a streamed cell, preserves its ordinary trace, and marks later cel
       signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
     });
   }, started);
-  const controller = new SequentialExperimentController({
+  const controller = new ExperimentController({
     plan: plan(3),
     createExecutor: createMockOnlyToolExecutor,
     transport,
@@ -236,7 +236,7 @@ test("cancellation between cells does not start the next provider request", asyn
   const traceStarted = deferred();
   const releaseTrace = deferred();
   const started: string[] = [];
-  const controller = new SequentialExperimentController({
+  const controller = new ExperimentController({
     plan: plan(2),
     createExecutor: createMockOnlyToolExecutor,
     transport: transportFor((runId) => events(completed(runId)), started),
@@ -259,7 +259,7 @@ test("cancellation between cells does not start the next provider request", asyn
 
 test("does not call a provider before a durable plan save succeeds and saves the result after traces", async () => {
   let providerCalls = 0;
-  const rejected = new SequentialExperimentController({
+  const rejected = new ExperimentController({
     plan: plan(2),
     createExecutor: createMockOnlyToolExecutor,
     transport: transportFor(() => {
@@ -274,7 +274,7 @@ test("does not call a provider before a durable plan save succeeds and saves the
 
   const order: string[] = [];
   const savedTraces: RunTrace[] = [];
-  const result = await new SequentialExperimentController({
+  const result = await new ExperimentController({
     plan: plan(2),
     createExecutor: createMockOnlyToolExecutor,
     transport: transportFor((runId) => {
@@ -305,7 +305,7 @@ test("validates ad hoc plans before progress or provider work", async () => {
   invalid.cells[1]!.runId = invalid.cells[0]!.runId;
   let providerCalls = 0;
   const progress: unknown[] = [];
-  const controller = new SequentialExperimentController({
+  const controller = new ExperimentController({
     plan: invalid,
     createExecutor: createMockOnlyToolExecutor,
     transport: transportFor(() => {
@@ -326,10 +326,10 @@ test("emits immutable progress snapshots with finished terminal-cell counts", as
     status: string;
     requested: number;
     finished: number;
-    currentOrdinal?: number;
+    runningOrdinals: readonly number[];
     states: Array<[string, string]>;
   }> = [];
-  const result = await new SequentialExperimentController({
+  const result = await new ExperimentController({
     plan: plan(2),
     createExecutor: createMockOnlyToolExecutor,
     transport: transportFor((runId) => events(completed(runId))),
@@ -339,7 +339,7 @@ test("emits immutable progress snapshots with finished terminal-cell counts", as
         status: progress.status,
         requested: progress.requested,
         finished: progress.finished,
-        ...(progress.currentOrdinal === undefined ? {} : { currentOrdinal: progress.currentOrdinal }),
+        runningOrdinals: progress.runningOrdinals,
         states: [...progress.states].map(([runId, state]) => [runId, state.status.kind]),
       });
     },
@@ -347,18 +347,22 @@ test("emits immutable progress snapshots with finished terminal-cell counts", as
 
   assert.equal(result.status, "completed");
   assert.deepEqual(snapshots[0], {
-    status: "running", requested: 2, finished: 0, states: [],
+    status: "running", requested: 2, finished: 0, runningOrdinals: [], states: [],
   });
+  assert.ok(snapshots.some((snapshot) =>
+    snapshot.runningOrdinals.join() === "1" && snapshot.states[0]?.[1] === "running",
+  ));
   assert.ok(snapshots.some((snapshot) =>
     snapshot.status === "running"
     && snapshot.finished === 1
-    && snapshot.currentOrdinal === 1
+    && snapshot.runningOrdinals.length === 0
     && snapshot.states[0]?.[1] === "completed",
   ));
   assert.deepEqual(snapshots.at(-1), {
     status: "completed",
     requested: 2,
     finished: 2,
+    runningOrdinals: [],
     states: [["run_1", "completed"], ["run_2", "completed"]],
   });
 });
@@ -368,7 +372,7 @@ test("progress keeps the parsed schedule when the caller mutates its source plan
   const firstTraceStarted = deferred();
   const releaseFirstTrace = deferred();
   const requested: number[] = [];
-  const controller = new SequentialExperimentController({
+  const controller = new ExperimentController({
     plan: sourcePlan,
     createExecutor: createMockOnlyToolExecutor,
     transport: transportFor((runId) => events(completed(runId))),
@@ -394,7 +398,7 @@ test("a terminal-trace persistence failure deliberately interrupts the experimen
   const started: string[] = [];
   let savedPlans = 0;
   let savedResults = 0;
-  const controller = new SequentialExperimentController({
+  const controller = new ExperimentController({
     plan: plan(3),
     createExecutor: createMockOnlyToolExecutor,
     transport: transportFor((runId) => events(completed(runId)), started),
@@ -416,7 +420,7 @@ test("a terminal-trace persistence failure deliberately interrupts the experimen
 test("a cancellation requested before run saves a cancelled no-provider result", async () => {
   let providerCalls = 0;
   const saved: string[] = [];
-  const controller = new SequentialExperimentController({
+  const controller = new ExperimentController({
     plan: plan(2),
     createExecutor: createMockOnlyToolExecutor,
     transport: transportFor(() => {
@@ -440,7 +444,7 @@ test("a cancellation requested before run saves a cancelled no-provider result",
 test("serves a tool call and continues the repetition to a real answer", async () => {
   const started: string[] = [];
   const traces: RunTrace[] = [];
-  const result = await new SequentialExperimentController({
+  const result = await new ExperimentController({
     plan: toolPlan(2),
     createExecutor: createMockOnlyToolExecutor,
     transport: transportFor(toolCalling(1), started),
@@ -472,7 +476,7 @@ test("a repetition that keeps calling tools fails at its ceiling without stoppin
   // Cell 1 never stops asking; cell 2 asks once and then answers.
   const endless = toolCalling(99);
   const once = toolCalling(1);
-  const result = await new SequentialExperimentController({
+  const result = await new ExperimentController({
     plan: toolPlan(2, 3),
     createExecutor: createMockOnlyToolExecutor,
     transport: transportFor((runId) => {
@@ -501,7 +505,7 @@ test("an executor failure fails only its own repetition, and never answers for t
     ...mockBinding,
     result: { content: [{ type: "text", text: "unused" }] },
   };
-  const result = await new SequentialExperimentController({
+  const result = await new ExperimentController({
     plan: toolPlan(2),
     transport: transportFor(toolCalling(1)),
     toolBindings: [failing],
@@ -528,7 +532,7 @@ test("an executor failure fails only its own repetition, and never answers for t
 test("an unavailable tool stops the batch after the repetition that found it", async () => {
   const started: string[] = [];
   let executions = 0;
-  const result = await new SequentialExperimentController({
+  const result = await new ExperimentController({
     plan: toolPlan(3),
     transport: transportFor(toolCalling(1), started),
     toolBindings: [mockBinding],
@@ -567,7 +571,7 @@ test("an unavailable tool stops the batch after the repetition that found it", a
 
 test("a timed-out tool fails only its repetition and the batch continues", async () => {
   let executions = 0;
-  const result = await new SequentialExperimentController({
+  const result = await new ExperimentController({
     plan: toolPlan(2),
     transport: transportFor(toolCalling(1)),
     toolBindings: [mockBinding],
@@ -592,7 +596,7 @@ test("a failed binding check refuses the batch before any plan save or provider 
   let providerCalls = 0;
   let saved = false;
   const checked: string[][] = [];
-  const controller = new SequentialExperimentController({
+  const controller = new ExperimentController({
     plan: toolPlan(2),
     createExecutor: createMockOnlyToolExecutor,
     transport: transportFor(() => {
@@ -616,7 +620,7 @@ test("a failed binding check refuses the batch before any plan save or provider 
 
 test("refuses to start when an exposed tool has no binding on this device", async () => {
   let providerCalls = 0;
-  const controller = new SequentialExperimentController({
+  const controller = new ExperimentController({
     plan: toolPlan(2),
     createExecutor: createMockOnlyToolExecutor,
     transport: transportFor(() => {
@@ -652,7 +656,7 @@ test("workspace persistence binds plans, terminal traces, and results to PR2 hel
     },
   };
   const frozenPlan = plan(2);
-  const result = await new SequentialExperimentController({
+  const result = await new ExperimentController({
     plan: frozenPlan,
     createExecutor: createMockOnlyToolExecutor,
     transport: transportFor((runId) => events(completed(runId))),

@@ -39,6 +39,8 @@ async function recordingProvider(options: {
    * Gives up after a second so a sequential run still finishes.
    */
   holdUntilInFlight?: number;
+  /** Answers the first request with a 429 carrying this `Retry-After`. */
+  rateLimitFirstRequest?: string;
 } = {}) {
   const requests: Array<{ authorization?: string; body: { model?: string; stream?: boolean } }> = [];
   let inFlight = 0;
@@ -66,6 +68,12 @@ async function recordingProvider(options: {
       first = false;
       notifyFirst();
       await options.holdFirstRequest;
+      if (options.rateLimitFirstRequest !== undefined) {
+        response.writeHead(429, { "content-type": "application/json", "retry-after": options.rateLimitFirstRequest });
+        response.end(JSON.stringify({ error: { message: "Too many requests" } }));
+        inFlight -= 1;
+        return;
+      }
     }
     response.writeHead(200, { "content-type": "application/json" });
     response.end(JSON.stringify({
@@ -411,6 +419,26 @@ test("the default runs one repetition at a time and says nothing about concurren
   assert.equal(provider.peakInFlight, 1);
   assert.equal(outcome.summary?.concurrency?.maxInFlight, 1);
   assert.doesNotMatch(formatHeadlessSummary(outcome.summary!), /at once/);
+});
+
+test("a rate-limit pause is announced on the progress stream when it starts", async (t) => {
+  const provider = await recordingProvider({ rateLimitFirstRequest: "1" });
+  t.after(provider.close);
+  const directory = await writeHeadlessProjectFolder(headlessProject({ endpoint: provider.endpoint, cases: twoCases }));
+
+  const progress: string[] = [];
+  const outcome = await run(directory, { [KEY_VARIABLE]: KEY }, { onProgress: (line) => progress.push(line) }).done;
+
+  assert.equal(outcome.error, undefined);
+  assert.equal(provider.requests.length, 2);
+  // Named by the requirement ID --connection-concurrency takes, and printed
+  // before the cell that hit the limit is reported, so a quiet second reads
+  // as waiting rather than hung.
+  assert.deepEqual(progress, [
+    `Rate limited on ${HEADLESS_CONNECTION_ID} (${provider.endpoint}); new repetitions there wait 1 s.`,
+    "[1/2] Default · States the sum #1: failed",
+    "[2/2] Default · Mentions rollback #1: completed",
+  ]);
 });
 
 test("bad concurrency flags exit 2 before any request or artifact", async (t) => {
