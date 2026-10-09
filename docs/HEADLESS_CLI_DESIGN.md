@@ -2,8 +2,9 @@
 
 **Status:** decisions 1–4 agreed as recommended (October 9, 2026). Slices 1
 to 3 are implemented, in `packages/runner/` and `packages/cli/`; see
-[Implementation status](#implementation-status). Decision 3's grant names its
-target explicitly; see [slice 3](#slice-3-what-exists).
+[Implementation status](#implementation-status). Decision 3 was refined on
+October 9, 2026 so that a grant names its target explicitly; see
+[slice 3](#slice-3-what-exists).
 **Baseline:** `main` at `5755b57`, reviewed October 9, 2026.
 
 ## Goal
@@ -148,7 +149,7 @@ inherit grants from one.
 | Option | Effect |
 | --- | --- |
 | A. Mocks only | Command and MCP tools are refused. Safest; it excludes suites that exist to exercise real tools. |
-| **B. Explicit per-run grants (recommended)** | `--allow-tool <name>` grants one exposed tool for this invocation only. Mocks need no grant. The operator catalogs (`INFERENCE_LENS_COMMAND_TOOLS` and the MCP server catalog) still decide what can be reached, and their checks, including the MCP fingerprint check, still run before any plan is saved. |
+| **B. Explicit per-run grants (recommended)** | `--allow-tool <tool>=command:<command-id>` or `--allow-tool <tool>=mcp:<server-id>` grants one exposed tool for this invocation only, naming what serves it, because a project never records which command or server that is. Mocks need no grant. The operator catalogs (`INFERENCE_LENS_COMMAND_TOOLS` and `INFERENCE_LENS_MCP_SERVERS`) still decide what can be reached, and their checks, including the MCP fingerprint check, still run before any plan is saved. |
 | C. A grants file | Lasting grants on disk. Convenient for CI, but it creates a second permission store with its own revocation story. |
 
 Recommendation: **B**. An exposed tool that is neither mocked nor granted
