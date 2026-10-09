@@ -1,0 +1,254 @@
+# Headless command-line experiments
+
+**Status:** proposed; no implementation authorized by this document. The
+decisions below need agreement before any contract changes.
+**Baseline:** `main` at `5755b57`, reviewed October 9, 2026.
+
+## Goal
+
+Run an evaluation suite in an Inference Lens project from a terminal, a CI
+job, or a scheduled task, with no browser and no running server. Write the
+same plan, result, and trace artifacts the app writes, so the Runs and
+Evaluations workspaces can open a headless run later as if it had been started
+there.
+
+```sh
+inference-lens run ./evals.inference-lens --suite triage
+```
+
+Typical uses:
+
+- A CI regression gate that fails a pull request when a suite stops passing.
+- Long or scheduled batches that should not depend on an open browser tab.
+- Re-running a suite against a new model or protocol from a script.
+
+## Non-goals
+
+- A second user interface. The CLI starts runs and reports their outcome.
+  Inspection stays in the app.
+- Editing projects. The CLI never writes `project.json`.
+- Hosting or proxying providers for other clients.
+- Authenticated or remote MCP execution, which remains deferred as it is for
+  the app.
+
+## What already exists
+
+Most of the work is already portable. The CLI is mainly a new host for
+existing code.
+
+| Concern | Owner today | Headless status |
+| --- | --- | --- |
+| Building an evaluation plan from a suite | `createEvaluationExperimentPlan` in `packages/core/src/evaluation-execution.ts` | Portable |
+| Expanding a plan into run inputs | `materializeParsedExperimentCellInput` in `packages/core/src/experiment.ts` | Portable |
+| Run kernel, protocol adapters, checks, aggregates | `packages/core` | Portable |
+| Project, trace, plan, and result parsing and serialization | `packages/core` | Portable |
+| Sequential scheduling, stop on unavailable tool, result writing | `SequentialExperimentController` in `app/run/sequential-experiment-controller.client.ts` | Client file, but its dependencies are injected (see below) |
+| Provider HTTP | `executeProviderTurn` in `services/api/src/run-executor.ts` | Node; reusable in process |
+| Server credentials | `EnvironmentCredentialStore` in `services/api/src/credential-store.ts` | Node; one connection only |
+| Command and MCP tool execution | `services/api/src` (`command-tool-execution.ts`, `mcp-execution.ts`) | Node; reached from the app through the service API |
+| Evaluation start checks | `app/evaluations/evaluation-start.client.ts` | Client; mixes UI wording with portable rules |
+| Project folder I/O | Browser directory adapter and Tauri | No Node adapter |
+| Tool grants | Browser storage, per browser profile | No headless equivalent |
+
+The controller already takes `transport`, `prepareCredential`, `savePlan`,
+`saveResult`, `onTerminalTrace`, `toolBindings`, `verifyToolBindings`, and
+`createExecutor` as options. Its three client-side imports
+(`provider-turn-driver.client.ts`, `run-session-state.client.ts`,
+`tool-executors.client.ts`) do not touch browser APIs. Only the last one
+chooses executors that call the service over HTTP, and the controller already
+lets a caller replace that choice.
+
+## Proposed shape
+
+```text
+packages/core (unchanged contracts)
+    └── shared scheduler: SequentialExperimentController, moved out of app/
+           ├── app/            browser transport, browser storage, UI grants
+           └── packages/cli/   in-process transport, Node filesystem, flag grants
+                                └── services/api provider, credential, tool code
+```
+
+1. **Move the scheduler.** Move `SequentialExperimentController` and its three
+   helpers into a shared module that both `app/` and the CLI import. Move only
+   the helpers' portable parts; keep the executor factory, which chooses
+   service-backed executors, in `app/`. This is a pure move with no behavior
+   change, and the app's existing tests and e2e suite cover it.
+2. **Extract start checks.** Split the rules in `evaluation-start.client.ts`
+   (missing model, unsupported protocol, streaming, tools, unbound tools)
+   into a portable function that returns structured reasons. Both the app and
+   the CLI phrase those reasons for their own medium.
+3. **Add a Node project adapter.** Read and validate `project.json`. Write
+   `experiments/<id>.plan.json`, `experiments/<id>.result.json`, and
+   `traces/<runId>.json` with the same names and write behavior as the app's
+   directory adapters (to be confirmed against them when implementing). Never
+   write `project.json`.
+4. **Add the CLI host.** Resolve credentials and tool grants (decisions 2 and
+   3), build the plan, drive the controller with an in-process transport over
+   `executeProviderTurn`, derive the assessment, and report it (decision 4).
+
+The first version covers **evaluation suites only**. Repeated runs of the
+project's current conversation can follow, because the controller already
+handles both plan kinds; they are left out only to keep the first surface
+small.
+
+### Sharing a folder with the app
+
+The CLI only creates new, immutable artifact files, so it can safely write
+into a folder the app has open. The app reads saved history when the history
+view is opened rather than watching the folder, so a headless run appears the
+next time it is opened. Neither side ever rewrites the other's files.
+
+## Decisions to agree
+
+### 1. Invocation model
+
+| Option | Effect |
+| --- | --- |
+| **A. Node CLI that calls providers directly (recommended)** | Self-contained and works in CI with no server. Reuses `services/api` code in process. Its credential and grant rules must be designed for the CLI. |
+| B. Client of a running Inference Lens service | Reuses the server's credential and permission checks. Needs a new authenticated, script-facing API, since today's service API is built and guarded for the same-origin browser (`services/api/src/request-security.ts`). A CI job would need to start the service first. |
+
+Recommendation: **A**. Option B can be added later if a central service is
+wanted, without changing the artifacts.
+
+### 2. Credentials
+
+A project names *connection requirements* (`id`, `name`, `endpoint`,
+capabilities) and never stores credentials. Each selected configuration
+targets one requirement, and a suite may use several. The CLI must map each
+requirement it uses to a key, without the key ever appearing in a command line,
+a project file, or an artifact.
+
+| Option | Effect |
+| --- | --- |
+| A. Existing server variables only | `INFERENCE_LENS_API_KEY` and its siblings serve every requirement whose endpoint origin matches `INFERENCE_LENS_API_ENDPOINT`. Simple, but only one provider per run. |
+| B. A connections file | A local, uncommitted JSON file maps requirement IDs to an endpoint and the *name* of an environment variable holding the key. Supports many providers. It is one more file format to version. |
+| **C. A plus per-requirement variables (recommended)** | The server variables work as in A. `INFERENCE_LENS_CONNECTION_<ID>_API_KEY` (and an optional `_ENDPOINT` override) covers any other requirement. |
+
+Under every option:
+
+- A key is released only to its endpoint's origin, as
+  `EnvironmentCredentialStore` does today.
+- A requirement with no credential fails before any provider call and is named
+  in the error.
+- Unauthenticated local endpoints are used only when explicitly declared,
+  for example with `--no-auth <requirementId>`, so a missing variable is never
+  read as "no key needed".
+
+Recommendation: **C**. It matches what the Docker image and CI secrets already
+supply, and it avoids a new file format.
+
+### 3. Tool permissions
+
+In the app, command and MCP tools run only after a person grants them in
+browser storage. A headless run has no browser profile, and it must not
+inherit grants from one.
+
+| Option | Effect |
+| --- | --- |
+| A. Mocks only | Command and MCP tools are refused. Safest; it excludes suites that exist to exercise real tools. |
+| **B. Explicit per-run grants (recommended)** | `--allow-tool <name>` grants one exposed tool for this invocation only. Mocks need no grant. The operator catalogs (`INFERENCE_LENS_COMMAND_TOOLS` and the MCP server catalog) still decide what can be reached, and their checks, including the MCP fingerprint check, still run before any plan is saved. |
+| C. A grants file | Lasting grants on disk. Convenient for CI, but it creates a second permission store with its own revocation story. |
+
+Recommendation: **B**. An exposed tool that is neither mocked nor granted
+stops the run before any provider call, naming the tool, as the app does
+today.
+
+### 4. Output and exit codes
+
+Recommendation:
+
+- Show progress and a human-readable summary by default. Progress goes to
+  stderr, so stdout stays clean for `--json`.
+- `--json` prints one machine-readable summary to stdout: the experiment ID,
+  artifact paths, overall verdict, and per-configuration and per-case
+  outcomes. It references traces and never copies model output, following the
+  rule in [deterministic checks](DETERMINISTIC_CHECKS.md).
+- Exit codes:
+
+| Code | Meaning |
+| --- | --- |
+| 0 | The suite passed under its strict scoring policy. |
+| 1 | The suite ran to completion and at least one case failed. |
+| 2 | Usage or setup error. Nothing was sent to a provider and no plan was written. |
+| 3 | The run started but did not complete: stopped on an unavailable tool, interrupted, or failed to write an artifact. |
+
+The JSON summary is a public contract, so it needs a schema version from the
+first release.
+
+## Distribution
+
+### Inside the published image
+
+The image's entrypoint runs whatever command it is given
+(`scripts/docker-entrypoint.sh` ends in `exec "$@"`). Shipping the CLI as a
+second entry point in the image (`inference-lens` on `PATH`) is enough to run
+it instead of the server, with no entrypoint change. The runtime stage
+currently copies only the server's standalone output, so the build must also
+bundle the CLI.
+
+### Recommended use: one-off container per command
+
+```sh
+docker run --rm \
+  --add-host=host.docker.internal:host-gateway \
+  -e INFERENCE_LENS_API_KEY -e INFERENCE_LENS_API_ENDPOINT \
+  -v "$PWD/evals.inference-lens:/project" \
+  --user "$(id -u):$(id -g)" \
+  ghcr.io/acgabbert/inference-lens:<version> \
+  inference-lens run /project --suite triage
+```
+
+- A pinned image tag is the reproducibility story for CI.
+- `--user` makes written artifacts belong to the host user rather than the
+  image's `node` user (uid 1000). The Docker guide must explain this.
+- Provider networking (`host.docker.internal`, Compose networks) works exactly
+  as it does for the server; see the [Docker guide](DOCKER.md).
+- The documentation should offer a shell alias or a small wrapper script for
+  the long command line. The CLI itself never starts containers, which would
+  require access to the Docker socket.
+
+### Also possible: inside a running server container
+
+```sh
+docker compose exec inference-lens inference-lens run /project --suite triage
+```
+
+This reuses the server's environment, but the published Compose template
+deliberately mounts no project folder and uses a read-only root filesystem.
+Using it requires adding a writable project mount, which weakens that design.
+Document it as possible, not as the main path.
+
+### Later: a host install
+
+Publishing to npm (`npx inference-lens run …`) gives the best developer
+experience without Docker. It is a separate release decision; see
+[releasing](RELEASING.md).
+
+## Delivery slices
+
+1. Move the scheduler and extract the start checks. No behavior change; the
+   existing unit tests and full Playwright suite must stay green.
+2. Add the Node project adapter and the CLI with mocks-only tools and decision
+   2 credentials. Test it against the existing local fixture providers
+   (`dev:echo-provider`, `dev:responses-provider`, `dev:anthropic-provider`),
+   and confirm that the app's Runs and Evaluations workspaces open the
+   artifacts it wrote.
+3. Add explicit command and MCP grants, testing them with the committed MCP
+   and command-tool fixtures.
+4. Ship the CLI in the image and document it in the Docker guide.
+5. Optional follow-ups: repeated-run plans, case and configuration selection
+   flags, and npm publishing.
+
+## Verification expectations
+
+- Unit tests cover credential resolution (including origin binding and the
+  missing-credential error), grant refusal, exit-code mapping, and the JSON
+  summary schema.
+- An integration test runs the CLI against a fixture provider and validates
+  every written artifact with the core parsers.
+- A Playwright spec opens a project containing CLI-written artifacts and
+  checks that Runs and Evaluations show the run and its assessment. This is
+  the check that the artifacts are genuinely shared rather than merely
+  well-formed.
+- A container smoke test runs the CLI through the published-image command
+  above against a fixture provider.
