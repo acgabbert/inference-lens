@@ -297,6 +297,12 @@ docker run --rm \
 - **Run part of a suite** with `--case` and `--configuration`, each taking an
   ID or exact name and repeatable, for example to re-run one failing case. The
   exit code then describes only what ran; the summary says how much that was.
+- **Repeat the project's current conversation** with `inference-lens repeat
+  /project [--repetitions <n>]`, which sends the conversation, model,
+  temperature, and enabled tools as last saved in the app. It is buffered
+  unless you pass `--response-mode streaming`. It exits 0 when every
+  repetition completed and 1 when one failed; `--json` prints a summary with
+  `"kind": "repeated-request"`.
 
 To shorten the command, define a shell function that mounts the current
 directory, so relative paths work as they would on the host:

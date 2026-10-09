@@ -4,6 +4,7 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 
 import { startHeadlessEvaluation } from "../../packages/cli/src/evaluation-run";
+import { startHeadlessRepeat } from "../../packages/cli/src/repeated-run";
 import { createInProcessTransport } from "../../packages/cli/src/transport";
 import type { ToolDefinition } from "../../packages/core/src/run-kernel/types";
 import {
@@ -86,6 +87,45 @@ test("the app opens an evaluation the headless CLI wrote", async ({ page }) => {
   await expect(workspace).toContainText("Mentions rollback");
   // Every trace the CLI wrote was found and read back as evidence.
   await expect(workspace).not.toContainText("Trace absent");
+  await expect(workspace).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
+});
+
+/**
+ * `repeat` writes a repeated-request plan the app has always written itself;
+ * this checks the CLI's copy is grouped and read back the same way, with
+ * every trace found.
+ */
+test("the app opens a repeated run the headless CLI wrote", async ({ page }) => {
+  const directory = await writeHeadlessProjectFolder(headlessProject({ endpoint: BUFFERED_FIXTURE_ENDPOINT }));
+  const outcome = await startHeadlessRepeat({
+    projectDirectory: directory,
+    environment: {},
+    noAuth: new Set([HEADLESS_CONNECTION_ID]),
+    transport: createInProcessTransport({ containerized: false }),
+    repetitions: 3,
+  }).done;
+  expect(outcome.error).toBeUndefined();
+  expect(outcome.exitCode).toBe(0);
+
+  const files = await readProjectFolder(directory);
+  expect(Object.keys(files).filter((name) => name.startsWith("traces/"))).toHaveLength(3);
+  await stubProjectDirectory(page, { name: "fixture.inference-lens", files });
+
+  await page.goto("/");
+  await page.getByLabel("Project menu").click();
+  await page.getByRole("button", { name: "Open project folder…" }).click();
+  await expect(page.getByText(/Inspect every model run · Headless fixture/)).toBeVisible();
+
+  await page.getByLabel("Run data menu").click();
+  await page.getByRole("button", { name: "Run history", exact: true }).click();
+  const grouped = page.locator(".runs-evidence-item.experiment").filter({ hasText: "Repeated experiment · buffered-test-model" });
+  await expect(grouped).toHaveCount(1);
+  await expect(grouped).toContainText("3 repetitions · 3 completed");
+  await grouped.click();
+
+  const workspace = page.getByRole("region", { name: "Repeated experiment results" });
+  await expect(workspace).toContainText("3 completed");
+  await expect(workspace).not.toContainText(/missing trace/i);
   await expect(workspace).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
 });
 

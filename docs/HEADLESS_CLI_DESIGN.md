@@ -5,8 +5,9 @@ to 4 are implemented, in `packages/runner/`, `packages/cli/`, and the
 container image; see [Implementation status](#implementation-status). Decision 3 was refined on
 October 9, 2026 so that a grant names its target explicitly; see
 [slice 3](#slice-3-what-exists). Slice 5's decisions were agreed the same day; see
-[slice 5](#slice-5-selection-and-repeated-runs). Slice 5a is implemented; see
-[slice 5a](#slice-5a-what-exists).
+[slice 5](#slice-5-selection-and-repeated-runs). Slices 5a and 5b are
+implemented; see [slice 5a](#slice-5a-what-exists) and
+[slice 5b](#slice-5b-what-exists).
 **Baseline:** `main` at `5755b57`, reviewed October 9, 2026.
 
 ## Goal
@@ -275,7 +276,7 @@ no headless equivalent.
 | Conversation | `project.defaults.conversationRevisionId`, with template uses resolved by `projectDraft`. Choosing another revision is left for later. |
 | Target, options, tools | `project.defaults`. Overriding the model or options from the command line is left for later; edit and save the project instead. |
 | Repetitions | `--repetitions <n>`, default 5, 2 to 100: the app's dialog bounds, moved to the runner so both read one constant. |
-| Response mode | `--response-mode streaming\|buffered`, default `buffered`. Unlike the app, which defaults to streaming, a headless job usually has nobody watching output arrive, and buffered needs no declared capability. The cost is that a buffered run measures no TTFO, so the summary reports the mode and the human summary says TTFO was not measured. `streaming` on a connection whose declared capabilities do not include it is refused (exit 2), never silently downgraded. |
+| Response mode | `--response-mode streaming\|buffered`, default `buffered`. Unlike the app, which defaults to streaming, a headless job usually has nobody watching output arrive, and buffered needs no declared capability. The cost is that a buffered run's TTFO is the time to the whole response (corrected in implementation: this said "measures no TTFO"), so the summary reports the mode and the human summary says what TTFO means for it. `streaming` on a connection whose declared capabilities do not include it is refused (exit 2), never silently downgraded. |
 | Turn ceiling | The default, as the app's dialog starts with. No flag yet. |
 
 Tool rules are decision 3 unchanged: each tool in `enabledToolIds` needs an
@@ -679,3 +680,48 @@ red first. They cover a subset run (the requests sent, the plan's snapshot,
 needing no key once its configuration is left out, and each refusal on the
 command line. No browser spec was added: the plan has the shape the app
 writes for its own subset runs.
+
+### Slice 5b: what exists
+
+Decisions 7A, 8 (buffered by default), and 9A, as agreed:
+
+```sh
+inference-lens repeat <project-folder> [--repetitions <n>]
+  [--response-mode streaming|buffered]
+```
+
+| Piece | Owns |
+| --- | --- |
+| `packages/runner/src/repeated-start.ts` | `createRepeatedExperimentPlan` and the repetition bounds, moved from the app's repeated-experiment hook, which now imports them; `resolveProjectDefaultsRun` and the typed `RepeatedStartBlocker` |
+| `packages/cli/src/headless-experiment.ts` | What both commands share, moved out of `evaluation-run.ts`: flag checks for connections, credentials, grants, driving the controller, and writing artifacts |
+| `packages/cli/src/repeated-run.ts` | The `repeat` command: the plan from the saved defaults, the aggregate, and the outcome |
+| `packages/cli/src/summary.ts` | `kind` on both summaries; `HeadlessRepeatedSummaryV1`, its outcome, exit codes, and human report |
+| `packages/cli/src/main.ts` | One option set per command, so the other command's flags are refused rather than ignored |
+
+Choices made in implementation:
+
+- **Temperature only.** The app's composer carries the temperature and no
+  other inference option into a run, so `resolveProjectDefaultsRun` does the
+  same through `createResolvedRunInput`. Other saved options are not sent by
+  either.
+- **TTFO when buffered.** Decision 8 said a buffered run measures no TTFO.
+  It does: the first output is the whole response, so the number tracks total
+  latency. The summary keeps the metric as core derives it, and the human
+  report says what it means for a buffered run.
+- **Outcome.** A real failure wins over rate limiting, as in a suite: one
+  failed and one rate-limited repetition exits 1.
+- **The fixture provider** used by both CLI test files moved to
+  `tests/fixtures/headless/recording-provider.ts`, and can now stream and
+  fail a request.
+
+Verification: `tests/cli-repeated-run.test.ts`, written against stubs and run
+red first, so each test failed on its own assertion. It covers the request
+on the wire (model, resolved template, no stream), artifacts parsed by the
+core parsers and grouped by the app's history projection, `project.json`
+untouched, streaming, the refused streaming request, exit codes 1, 2, and 3,
+an unbound tool, the default of 5 repetitions through the command line,
+`kind` on the evaluation summary, and refused usage. A new case in
+`tests/e2e/headless-cli-artifacts.spec.ts` opens a CLI-written repeated run in
+Run history and the repeated-experiment workspace. It passed on its first run:
+it could only fail before `repeat` existed at the import.
+
