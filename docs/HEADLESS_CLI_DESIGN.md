@@ -360,9 +360,12 @@ exposes the shared scheduler's limits.
   repetitions at once." only when `n` is above 1, so default output is
   unchanged.
 - **Progress.** The per-repetition stderr line counts finished
-  repetitions, so it reads correctly in any finishing order. The line the
-  design asks for when a rate-limit pause starts needs the pause times that
-  the progress contract (parallel slice 3) adds, and follows it.
+  repetitions, so it reads correctly in any finishing order. When a
+  provider 429 pauses a connection, or a later one lengthens the pause,
+  stderr gets `Rate limited on <requirement ID> (<endpoint>); new
+  repetitions there wait <n> s.`, from the pause times in parallel slice 3's
+  progress contract. It names the connection by the ID
+  `--connection-concurrency` takes.
 
 Verification: `tests/cli-headless-run.test.ts` drives an in-process
 provider that holds requests until two overlap, and checks the peak number

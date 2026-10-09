@@ -155,6 +155,8 @@ async function runHeadlessEvaluation(
   const variantNames = new Map(plan.suite.variants.map(({ variantId, name }) => [variantId, name]));
   const caseNames = new Map(plan.suite.cases.map(({ caseId, name }) => [caseId, name]));
   let finished = 0;
+  /** When each paused connection resumes, as last announced, by profile and endpoint. */
+  const announcedPauses = new Map<string, number>();
 
   const controller = new SequentialExperimentController({
     plan,
@@ -179,6 +181,18 @@ async function runHeadlessEvaluation(
     },
     onProgress(progress) {
       states = progress.states;
+      for (const pause of progress.pausedConnections) {
+        // Announced when a pause starts or a later 429 lengthens it, so a run
+        // that goes quiet reads as waiting rather than hung.
+        const key = `${pause.profileId} ${pause.endpoint}`;
+        if ((announcedPauses.get(key) ?? 0) >= pause.until) continue;
+        announcedPauses.set(key, pause.until);
+        const connection = credentials.get(pause.profileId)?.requirementId ?? pause.profileId;
+        const seconds = Math.max(1, Math.ceil((pause.until - Date.now()) / 1_000));
+        options.onProgress?.(
+          `Rate limited on ${connection} (${pause.endpoint}); new repetitions there wait ${seconds} s.`,
+        );
+      }
     },
     async onTerminalTrace(trace, cell) {
       await folder.saveTrace(trace.runId, serializeRunTrace(trace));

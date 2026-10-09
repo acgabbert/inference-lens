@@ -482,9 +482,9 @@ agreed on review, October 9, 2026):
   keep their `Sequential` names, to change in one mechanical commit of their
   own. Slice 4 changed the CLI, which imports the class, at the same time,
   so renaming here would have collided with it.
-- **The CLI's pause line is a follow-up.** Slice 3 does not touch
-  `packages/cli`. `evaluation-run.ts` can print a stderr line when
-  `pausedConnections` gains an entry.
+- **The CLI's pause line.** `evaluation-run.ts` prints a stderr line when a
+  connection's pause starts or lengthens, naming the connection by its
+  requirement ID; see the [headless CLI design](HEADLESS_CLI_DESIGN.md).
 - **Progress.** `runningOrdinals` lists the cells started and not yet
   terminal, ascending. A cell leaves it when its run ends, before its trace
   is saved, so a finished repetition never reads as running.
