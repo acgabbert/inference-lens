@@ -1,8 +1,8 @@
 # Headless command-line experiments
 
 **Status:** decisions 1–4 agreed as recommended (October 9, 2026). Slices 1
-to 3 are implemented, in `packages/runner/` and `packages/cli/`; see
-[Implementation status](#implementation-status). Decision 3 was refined on
+to 4 are implemented, in `packages/runner/`, `packages/cli/`, and the
+container image; see [Implementation status](#implementation-status). Decision 3 was refined on
 October 9, 2026 so that a grant names its target explicitly; see
 [slice 3](#slice-3-what-exists).
 **Baseline:** `main` at `5755b57`, reviewed October 9, 2026.
@@ -185,9 +185,9 @@ first release.
 The image's entrypoint runs whatever command it is given
 (`scripts/docker-entrypoint.sh` ends in `exec "$@"`). Shipping the CLI as a
 second entry point in the image (`inference-lens` on `PATH`) is enough to run
-it instead of the server, with no entrypoint change. The runtime stage
-currently copies only the server's standalone output, so the build must also
-bundle the CLI.
+it instead of the server. The runtime stage copied only the server's
+standalone output, so the build must also bundle the CLI. One entrypoint
+change turned out to be needed; see [slice 4](#slice-4-what-exists).
 
 ### Recommended use: one-off container per command
 
@@ -454,3 +454,48 @@ Verification: `tests/cli-headless-run.test.ts` runs a suite against an
 in-process provider that refuses the first request with a 429, once with
 the flag (three requests, exit 0, the recorded policy and the retried count
 reported) and once without (two requests, the policy reported as off).
+
+### Slice 4: what exists
+
+The published image runs the CLI in place of the server:
+`docker run … ghcr.io/acgabbert/inference-lens:<version> inference-lens run
+/project`. The [Docker guide](DOCKER.md#run-an-evaluation-suite-from-the-command-line)
+documents the one-off-container command, `--user`, credentials, a shell
+function for the long command line, real tools in a container, and
+`docker compose exec` as possible but not preferred.
+
+| Piece | Owns |
+| --- | --- |
+| `vite.cli.config.ts` | `npm run build:cli`: one self-contained ES module, `dist/cli/inference-lens.mjs`, with every dependency inlined and only `node:` imports left |
+| `Dockerfile` | Building the bundle beside the server, and installing it root-owned at `/app/cli/inference-lens.mjs`, linked as `/usr/local/bin/inference-lens` |
+| `scripts/docker-entrypoint.sh` | The browser banner, now printed only for the server command |
+| `scripts/docker-cli-smoke.ts` | `npm run test:docker-cli -- <image>`: the documented command against the buffered fixture provider |
+
+Choices made in implementation:
+
+- **A bundle, not the sources.** The runtime stage has no TypeScript sources
+  and only the server's traced `node_modules`, so the CLI ships as one file
+  built with the Vite already in the repository. It does not depend on Node's
+  type stripping or on what the server's standalone output happens to
+  include. `npm run cli` still runs the sources, for development.
+- **The banner moved off other commands' stdout.** The entrypoint printed its
+  "open http://localhost:3000" banner before every command, which put it
+  ahead of the `--json` summary and broke decision 4's stdout contract. It now
+  prints only when the command is `node server.js`, the image's default, so
+  the server's output is unchanged.
+- **Fixture host.** `scripts/buffered-openai-provider.mjs` takes an optional
+  `INFERENCE_LENS_BUFFERED_HOST`, as `n8n-echo-provider.mjs` already does, so
+  the smoke test can bind it to the Docker bridge address that
+  `host.docker.internal:host-gateway` resolves to rather than to every
+  interface. It still defaults to loopback.
+
+Verification: `tests/cli-bundle.test.ts` builds the bundle, copies it to a
+directory with nothing else in it, and runs it through a symlink as the
+image's `PATH` entry does. It checks that only `node:` imports remain, runs
+a suite against the committed buffered fixture provider, and serves an MCP
+grant through the bundled MCP client. The process must exit on its own.
+`scripts/docker-cli-smoke.ts` runs in the image workflow on every pull
+request, against a native amd64 build. It checks the exit code (1, for one
+failing case), that stdout parses as the JSON summary and nothing else, that
+the plan, result, and traces parse with the core parsers, and that they
+belong to the host user.

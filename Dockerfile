@@ -8,7 +8,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY . ./
-RUN npm run build
+RUN npm run build && npm run build:cli
 
 FROM node:22-bookworm-slim AS runtime
 
@@ -24,6 +24,10 @@ WORKDIR /app
 # runtime dependencies required by its Node server.
 COPY --from=build --chown=node:node /app/dist/standalone ./
 COPY --from=build --chmod=755 /app/scripts/docker-entrypoint.sh /usr/local/bin/
+# The headless CLI is one self-contained file, so `inference-lens run …` works
+# in place of the server command. It is root-owned: nothing rewrites it.
+COPY --from=build --chmod=755 /app/dist/cli/inference-lens.mjs /app/cli/inference-lens.mjs
+RUN ln -s /app/cli/inference-lens.mjs /usr/local/bin/inference-lens
 
 EXPOSE 3000
 
