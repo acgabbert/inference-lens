@@ -5,8 +5,6 @@ import { useCallback, useRef, useState } from "react";
 import type { CredentialSelection, ProviderTurnTransport } from "../../packages/contracts/src/index.ts";
 import {
   DEFAULT_EXPERIMENT_TURN_CEILING,
-  MAX_EXPERIMENT_TURN_CEILING,
-  MIN_EXPERIMENT_TURN_CEILING,
   rateLimitRetries,
 } from "../../packages/core/src/experiment.ts";
 import type {
@@ -14,7 +12,6 @@ import type {
   ExperimentResult,
   RepeatedExperimentPlanV3,
 } from "../../packages/core/src/experiment.ts";
-import { createEntityId } from "../../packages/core/src/run-kernel/index.ts";
 import type {
   ResolvedRunInput,
   RunId,
@@ -23,21 +20,22 @@ import type {
   ToolDefinition,
 } from "../../packages/core/src/run-kernel/index.ts";
 import type { ToolBinding } from "../../packages/core/src/tool-execution.ts";
-import { randomUUID } from "../../packages/core/src/random-id.ts";
 import { runStateFromTrace, traceFileName } from "../../packages/core/src/run-trace.ts";
 import type { ProjectWorkspaceHandle } from "../project-workspace.client.ts";
 import { createExperimentWorkspacePersistence } from "./experiment-workspace-persistence.client.ts";
 import { listExperimentToolBindings } from "../../packages/core/src/tool-binding-resolution.ts";
 import type { ExperimentToolBinding } from "../../packages/core/src/tool-binding-resolution.ts";
 import { ExperimentController } from "../../packages/runner/src/experiment-controller.ts";
+import {
+  createRepeatedExperimentPlan,
+  DEFAULT_REPETITION_COUNT,
+  normalizedRepetitionCount,
+  normalizedTurnCeiling,
+} from "../../packages/runner/src/repeated-start.ts";
 import type { ExperimentConnectionPause } from "../../packages/runner/src/experiment-controller.ts";
 import { normalizedConcurrency } from "./experiment-concurrency.client.tsx";
 import { createToolExecutor } from "./tool-executors.client.ts";
 import { verifyToolBindingsOnHost } from "../tools/tool-binding-check.client.ts";
-
-export const DEFAULT_REPETITION_COUNT = 5;
-export const MIN_REPETITION_COUNT = 2;
-export const MAX_REPETITION_COUNT = 100;
 
 /** One exposed tool and what will answer it, for the confirmation listing. */
 export type RepeatedExperimentToolBinding = ExperimentToolBinding;
@@ -141,44 +139,6 @@ export interface UseRepeatedExperimentSessionOptions {
   onFinished?(outcome: { experimentId: string; repetitions: number }): void;
 }
 
-function normalizedCount(value: number): number {
-  if (!Number.isFinite(value)) return DEFAULT_REPETITION_COUNT;
-  return Math.max(MIN_REPETITION_COUNT, Math.min(MAX_REPETITION_COUNT, Math.trunc(value)));
-}
-
-function normalizedCeiling(value: number): number {
-  if (!Number.isFinite(value)) return DEFAULT_EXPERIMENT_TURN_CEILING;
-  return Math.max(
-    MIN_EXPERIMENT_TURN_CEILING,
-    Math.min(MAX_EXPERIMENT_TURN_CEILING, Math.trunc(value)),
-  );
-}
-
-/** Freezes the resolved semantic input and allocates every ordinary run before execution. */
-function planFor(
-  input: ResolvedRunInput,
-  repetitionCount: number,
-  turnCeiling: number,
-): RepeatedExperimentPlanV3 {
-  const frozenInput = structuredClone(input);
-  const { runId: discardedRunId, ...commonInput } = frozenInput;
-  void discardedRunId;
-  const experimentId = createEntityId("experiment", randomUUID());
-  return {
-    schemaVersion: 4,
-    experimentId,
-    kind: "repeated-request",
-    createdAt: new Date().toISOString(),
-    commonInput,
-    turnCeiling: normalizedCeiling(turnCeiling),
-    cells: Array.from({ length: normalizedCount(repetitionCount) }, (_, index) => ({
-      cellId: createEntityId("experiment-cell", randomUUID()),
-      ordinal: index + 1,
-      runId: createEntityId("run", randomUUID()),
-    })),
-  };
-}
-
 function requestSummary(input: ResolvedRunInput): string {
   const messageCount = input.messages.length;
   return `${messageCount} ${messageCount === 1 ? "message" : "messages"}`;
@@ -216,7 +176,7 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
 
   const begin = useCallback((input: ResolvedRunInput, targetName: string, commitPreparation: () => void) => {
     const count = DEFAULT_REPETITION_COUNT;
-    const plan = planFor(input, count, DEFAULT_EXPERIMENT_TURN_CEILING);
+    const plan = createRepeatedExperimentPlan(input, count, DEFAULT_EXPERIMENT_TURN_CEILING);
     setDraft({
       plan,
       inheritedSettings: {
@@ -235,10 +195,10 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
   const setRepetitionCount = useCallback((value: number) => {
     setDraft((current) => {
       if (!current) return current;
-      const count = normalizedCount(value);
+      const count = normalizedRepetitionCount(value);
       return {
         ...current,
-        plan: planFor(sampleInput(current.plan), count, ceilingOf(current.plan)),
+        plan: createRepeatedExperimentPlan(sampleInput(current.plan), count, ceilingOf(current.plan)),
         repetitionCount: count,
       };
     });
@@ -249,7 +209,7 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
       if (!current) return current;
       return {
         ...current,
-        plan: planFor(sampleInput(current.plan), current.repetitionCount, normalizedCeiling(value)),
+        plan: createRepeatedExperimentPlan(sampleInput(current.plan), current.repetitionCount, normalizedTurnCeiling(value)),
       };
     });
   }, []);
@@ -265,7 +225,7 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
       const input = sampleInput(current.plan);
       return {
         ...current,
-        plan: planFor(
+        plan: createRepeatedExperimentPlan(
           {
             ...input,
             target: { ...input.target, model: settings.model },

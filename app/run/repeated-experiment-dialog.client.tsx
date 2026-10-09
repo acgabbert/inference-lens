@@ -8,7 +8,7 @@ import type {
   RepeatedExperimentDraft,
   RepeatedExperimentSettings,
 } from "./use-repeated-experiment-session.client.ts";
-import { MAX_REPETITION_COUNT, MIN_REPETITION_COUNT } from "./use-repeated-experiment-session.client.ts";
+import { MAX_REPETITION_COUNT, MIN_REPETITION_COUNT } from "../../packages/runner/src/repeated-start.ts";
 import {
   DEFAULT_EXPERIMENT_TURN_CEILING,
   MAX_EXPERIMENT_TURN_CEILING,
