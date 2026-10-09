@@ -5,7 +5,8 @@ to 4 are implemented, in `packages/runner/`, `packages/cli/`, and the
 container image; see [Implementation status](#implementation-status). Decision 3 was refined on
 October 9, 2026 so that a grant names its target explicitly; see
 [slice 3](#slice-3-what-exists). Slice 5's decisions were agreed the same day; see
-[slice 5](#slice-5-selection-and-repeated-runs).
+[slice 5](#slice-5-selection-and-repeated-runs). Slice 5a is implemented; see
+[slice 5a](#slice-5a-what-exists).
 **Baseline:** `main` at `5755b57`, reviewed October 9, 2026.
 
 ## Goal
@@ -647,3 +648,34 @@ request, against a native amd64 build. It checks the exit code (1, for one
 failing case), that stdout parses as the JSON summary and nothing else, that
 the plan, result, and traces parse with the core parsers, and that they
 belong to the host user.
+
+### Slice 5a: what exists
+
+Decisions 5A and 6A, as agreed:
+
+```sh
+inference-lens run <project-folder> [--suite <id-or-name>]
+  [--case <id-or-name>]... [--configuration <id-or-name>]...
+```
+
+| Piece | Owns |
+| --- | --- |
+| `selectSuiteItems` in `packages/cli/src/evaluation-run.ts` | Resolving both flags as `--suite` resolves, and refusing an unknown, ambiguous, or repeated selection |
+| `HeadlessScope` in `packages/cli/src/summary.ts` | `scope` in summary v1, and the human summary's "Ran 2 of 3 cases" line, printed only when something was left out |
+
+Choices made in implementation:
+
+- **Suite order.** The selection is returned in the suite's order, not the
+  flags', so two invocations naming the same cases write the same plan order.
+- **Only selected connections.** Credentials resolve for the connections the
+  selected configurations use, so leaving a configuration out also leaves out
+  its key, as decision 5 requires.
+- **Exit code 0's wording.** `--help` now says "every case that ran passed"
+  rather than "the suite passed".
+
+Verification: four tests in `tests/cli-headless-run.test.ts`, written and run
+red first. They cover a subset run (the requests sent, the plan's snapshot,
+`scope`, and the human line), a full run's `scope` with no line, a connection
+needing no key once its configuration is left out, and each refusal on the
+command line. No browser spec was added: the plan has the shape the app
+writes for its own subset runs.

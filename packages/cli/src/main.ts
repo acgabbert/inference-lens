@@ -16,6 +16,10 @@ plan, result, and trace files the app writes.
 
 Options:
   --suite <id-or-name>   Suite to run. Optional when the project has one suite.
+  --case <id-or-name>    Run only this case. Repeatable. Every case by default.
+  --configuration <id-or-name>
+                         Run only this configuration. Repeatable. Every
+                         configuration by default.
   --no-auth <id>         Call connection <id> without a key. Repeatable.
   --concurrency <n>      Run up to <n> repetitions at once, on any one
                          connection or across several. Default 1.
@@ -46,7 +50,7 @@ Tool catalogs (environment only; what --allow-tool may name):
   INFERENCE_LENS_MCP_SERVERS     Path to the MCP server catalog.
 
 Exit codes:
-  0  The suite passed.
+  0  Every case that ran passed.
   1  The suite ran to completion and at least one case failed.
   2  Usage or setup error. Nothing was sent and no plan was written.
   3  The run started but did not complete.
@@ -69,6 +73,8 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
       strict: true,
       options: {
         suite: { type: "string" },
+        case: { type: "string", multiple: true },
+        configuration: { type: "string", multiple: true },
         "no-auth": { type: "string", multiple: true },
         concurrency: { type: "string" },
         "connection-concurrency": { type: "string", multiple: true },
@@ -106,6 +112,8 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
   const run = startHeadlessEvaluation({
     projectDirectory: projectFolder,
     ...(values.suite === undefined ? {} : { suite: values.suite }),
+    ...(values.case === undefined ? {} : { cases: values.case }),
+    ...(values.configuration === undefined ? {} : { configurations: values.configuration }),
     noAuth: new Set(values["no-auth"] ?? []),
     concurrency,
     toolGrants,

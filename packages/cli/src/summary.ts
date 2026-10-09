@@ -57,11 +57,19 @@ export interface HeadlessConfigurationSummary {
   cases: HeadlessCaseSummary[];
 }
 
+/** How much of the suite ran. A verdict describes what ran, not the whole suite. */
+export interface HeadlessScope {
+  cases: { selected: number; total: number };
+  configurations: { selected: number; total: number };
+}
+
 export interface HeadlessSummaryV1 {
   schemaVersion: typeof HEADLESS_SUMMARY_SCHEMA_VERSION;
   experimentId: string;
   suite: { suiteId: string; name: string };
   verdict: HeadlessVerdict;
+  /** Added after the first release; a run with no `--case` or `--configuration` selects everything. */
+  scope: HeadlessScope;
   lifecycle: ExperimentLifecycle;
   stop?: ExperimentStop;
   /** Folder the artifact paths below are relative to. */
@@ -106,6 +114,7 @@ export function exitCodeForVerdict(verdict: HeadlessVerdict): number {
 
 export function createHeadlessSummary(input: {
   plan: EvaluationExperimentPlanV4;
+  scope: HeadlessScope;
   result?: ExperimentResult;
   assessment: EvaluationBakeoffAssessment;
   projectDirectory: string;
@@ -120,6 +129,7 @@ export function createHeadlessSummary(input: {
     experimentId: plan.experimentId,
     suite: { suiteId: plan.suite.suiteId, name: plan.suite.name },
     verdict: headlessVerdict(assessment),
+    scope: input.scope,
     lifecycle: assessment.lifecycle,
     // Summary v1 reports why the run stopped, not the result's bookkeeping
     // for checking the stop, so it keeps the fields it shipped with.
@@ -185,6 +195,14 @@ const CLASSIFICATION_WORDS: Record<EvaluationRepetitionClassification, string> =
 export function formatHeadlessSummary(summary: HeadlessSummaryV1): string {
   const lines: string[] = [];
   lines.push(`Suite "${summary.suite.name}" — ${summary.verdict.toUpperCase()}`);
+  const { cases, configurations } = summary.scope;
+  const partial = [
+    ...(cases.selected < cases.total ? [`${cases.selected} of ${cases.total} cases`] : []),
+    ...(configurations.selected < configurations.total
+      ? [`${configurations.selected} of ${configurations.total} configurations`]
+      : []),
+  ];
+  if (partial.length > 0) lines.push(`Ran ${partial.join(" and ")}.`);
   if (summary.lifecycle !== "completed") {
     lines.push(`The run ${summary.lifecycle === "interrupted" ? "was interrupted" : `was ${summary.lifecycle}`} before every case finished.`);
   }
