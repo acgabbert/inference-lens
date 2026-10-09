@@ -812,7 +812,7 @@ Each item below has a reason to stay. PR 5 records the final list in
 | `chooseProfile`, `confirmDeleteActiveProfile`, `confirmUpdateProjectEndpoint`, `changeCapability` | Cross-feature transaction | Join connection profiles and the project's connection mapping. |
 | Banner candidates and `chooseAppBanner` | Cross-feature adapter | One slot ranks failures and advisories from several owners. |
 | `savedRunVersion`, `importedRevision` | Cross-feature signal | Counters that invalidate a history listing and return the composer to Messages. |
-| `suiteHistoryRequested` | Cross-feature signal | One of three demands — with the run-history drawer and Runs — that load the shared run-history listing, which is called before the evaluation owners exist. Settled in PR 5a. |
+| `suiteHistoryRequested` | Cross-feature signal | One of two demands — with Runs — that load the shared run-history listing, which is called before the evaluation owners exist. Settled in PR 5a. |
 | `useDesktopRuntime`, `useProjectFolderAccess`, `inferenceTransport` | Route/runtime concern | Hydration-safe runtime detection and the single transport instance. |
 | Cmd+Enter and Cmd+S handlers | Top-level composition | Dispatch to whichever workspace is active. |
 

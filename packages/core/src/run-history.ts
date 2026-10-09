@@ -1,4 +1,6 @@
 import type {
+  ConversationMessage,
+  ProviderProtocol,
   RunId,
   RunState,
   RunTokenUsage,
@@ -18,6 +20,9 @@ export interface RunHistorySummary {
   endedAt: string;
   status: TerminalRunStatus["kind"];
   model: string;
+  protocol: ProviderProtocol;
+  /** What the user last asked, for recognising a row; see `runRequestExcerpt`. */
+  requestExcerpt?: string;
   durationMs?: number;
   usage: RunTokenUsage;
   turnCount: number;
@@ -85,7 +90,44 @@ function summarizeReducedRunTrace(
     attemptCount: metrics.attemptCount,
     retryCount: metrics.retryCount,
     messageCount: trace.input.messages.length,
+    protocol: trace.input.target.protocol,
+    ...excerptField(trace.input.messages),
   };
+}
+
+const REQUEST_EXCERPT_LENGTH = 120;
+
+/**
+ * The text of the last user message, collapsed to one line and shortened.
+ *
+ * A run is recognised by what was asked of it far more readily than by its
+ * model or identifier, and the request is already in every trace, so this is
+ * derived rather than stored. Absent when no user message carries text.
+ */
+export function runRequestExcerpt(
+  messages: readonly ConversationMessage[],
+): string | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]!;
+    if (message.role !== "user") continue;
+    const text = message.content
+      .map((part) => part.text)
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!text) continue;
+    return text.length <= REQUEST_EXCERPT_LENGTH
+      ? text
+      : `${text.slice(0, REQUEST_EXCERPT_LENGTH - 1).trimEnd()}…`;
+  }
+  return undefined;
+}
+
+function excerptField(
+  messages: readonly ConversationMessage[],
+): { requestExcerpt?: string } {
+  const requestExcerpt = runRequestExcerpt(messages);
+  return requestExcerpt === undefined ? {} : { requestExcerpt };
 }
 
 /**

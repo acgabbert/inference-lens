@@ -72,7 +72,7 @@ test("review: direct prompt reuse reaches a real request and remains discoverabl
   await expect(page.locator(".request-evidence").first()).toContainText("SAVED PROMPT: investigate database outage.");
   await capture(page, "06-reused-prompt-result");
   await openMode(page, "Runs");
-  await expect(page.getByRole("navigation", { name: "Run evidence" })).toContainText("Current session");
+  await expect(page.getByRole("navigation", { name: "Run evidence" })).toContainText("Not saved · replaced by the next run");
   await expect(page.getByRole("region", { name: "Selected run evidence" }))
     .toContainText("Buffered fixture response");
   await capture(page, "07-imported-project-runs-history-disabled");

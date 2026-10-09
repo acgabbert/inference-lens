@@ -218,8 +218,8 @@ test("a wrong regex is corrected over saved outputs without another provider cal
   // Reopened from the project folder, the saved reassessment is still there and
   // still defaults to As run.
   await page.getByLabel("Run data menu").click();
-  await page.getByRole("button", { name: "Run history…" }).click();
-  await page.locator(".run-history-item.experiment")
+  await page.getByRole("button", { name: "Run history", exact: true }).click();
+  await page.locator(".runs-evidence-item.experiment")
     .filter({ hasText: "Evaluation · Topics" })
     .first()
     .click();

@@ -114,7 +114,6 @@ export interface UseRepeatedExperimentSessionOptions {
   bindingForTool(tool: ToolDefinition): ToolBinding | undefined;
   onTraceSaved(): void;
   onError(message: string): void;
-  onOpenTrace(trace: RunTrace, origin: { workspace: ProjectWorkspaceHandle | null; fileName: string; source: "experiment" }): void;
   /**
    * A batch this session started has run to completion. Same contract as the
    * evaluation session's: only this hook can distinguish a batch that just
@@ -368,17 +367,16 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
 
   const cancel = useCallback(() => controllerRef.current?.cancel(), []);
 
+  /**
+   * Selects one run to read beside the batch. The trace stays a read model of
+   * this execution: adopting it into the live run session would replace the
+   * session's ordinary run, which may exist nowhere else.
+   */
   const openTrace = useCallback((runId: RunId) => {
     const current = execution;
-    const trace = current?.traces.get(runId);
-    if (!current || !trace) return;
+    if (!current?.traces.has(runId)) return;
     setExecution((active) => active === current ? { ...active, selectedRunId: runId } : active);
-    options.onOpenTrace(trace, {
-      workspace: current.workspace,
-      fileName: current.traceFileNames.get(trace.runId) ?? traceFileName(trace.runId),
-      source: "experiment",
-    });
-  }, [execution, options]);
+  }, [execution]);
 
   const openSaved = useCallback((opened: {
     plan: ExperimentPlanV3;

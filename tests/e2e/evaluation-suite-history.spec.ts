@@ -238,8 +238,8 @@ test("past executions of the authored suite open from the suite editor", async (
 
   await items.click();
 
-  // Opening from the editor reaches the same results workspace the run-history
-  // drawer reaches, with the same strict scoring.
+  // Opening from the editor reaches the same results workspace the Runs list
+  // reaches, with the same strict scoring.
   const workspace = page.getByRole("region", { name: "Evaluation results" });
   await expect(workspace).toBeVisible();
   await expect(workspace).toContainText("Topic quality");
@@ -247,25 +247,25 @@ test("past executions of the authored suite open from the suite editor", async (
   await expect(workspace).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
 });
 
-test("the run-history drawer filters saved evidence by kind", async ({ page }) => {
+test("the Runs list filters saved evidence by kind", async ({ page }) => {
   await openFixtureProject(page);
 
   await page.getByLabel("Run data menu").click();
-  await page.getByRole("button", { name: "Run history…" }).click();
+  await page.getByRole("button", { name: "Run history", exact: true }).click();
 
-  const entries = page.locator(".run-history-item");
+  const entries = page.locator(".runs-evidence-item");
   // The evaluation's own traces are grouped into it rather than listed loose,
   // so the folder's three artifacts read as one entry.
   await expect(entries).toHaveCount(1);
   await expect(entries).toContainText("Evaluation · Topic quality");
   await expect(entries).toContainText("1/2 cases passed");
 
-  await page.getByRole("group", { name: "Filter saved evidence" })
+  await page.getByRole("group", { name: "Filter run evidence" })
     .getByRole("button", { name: "Runs" }).click();
   await expect(entries).toHaveCount(0);
   await expect(page.locator(".run-history-empty")).toContainText("Nothing matches this filter");
 
-  await page.getByRole("group", { name: "Filter saved evidence" })
+  await page.getByRole("group", { name: "Filter run evidence" })
     .getByRole("button", { name: "Evaluations" }).click();
   await expect(entries).toHaveCount(1);
 });

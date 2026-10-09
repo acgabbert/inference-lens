@@ -46,6 +46,22 @@ export function useRunsNavigation({
     setSelection({ kind: "current-run", runId });
   }
 
+  /**
+   * Shows the session's batch. A batch the user starts selects itself through
+   * this; one that merely finishes in the background never calls it, so it
+   * cannot replace evidence the user is reading.
+   */
+  function selectCurrentBatch(): void {
+    setInspection(undefined);
+    setSelection({ kind: "current-batch" });
+  }
+
+  /** Gives the main area back to whatever results are open, such as a comparison. */
+  function clearSelection(): void {
+    setInspection(undefined);
+    setSelection(undefined);
+  }
+
   async function selectSavedRun(item: ProjectRunHistoryItem): Promise<void> {
     if (!projectId) return;
     const next = {
@@ -100,6 +116,8 @@ export function useRunsNavigation({
     setFilter,
     setScrollTop,
     selectCurrent,
+    selectCurrentBatch,
+    clearSelection,
     selectSavedRun,
     selectExperiment,
   };

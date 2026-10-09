@@ -185,11 +185,11 @@ export function ResponseOutput({
             ) : (
               <>
                 <strong>Run trace not saved</strong>
-                <span>No project folder was open for this run.</span>
+                <span>No project folder was open for this run, so the next run replaces it.</span>
               </>
             )}
           </span>
-          {(traceStorage.kind === "unsaved" ||
+          {!readOnly && (traceStorage.kind === "unsaved" ||
             traceStorage.kind === "error") && (
             <button
               className="button secondary trace-storage-action"

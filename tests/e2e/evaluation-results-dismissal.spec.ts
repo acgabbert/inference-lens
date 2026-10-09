@@ -186,8 +186,8 @@ test("a finished evaluation hands the pane back to the preview, and reopens from
   // Dismissing a saved evaluation is navigation, not a discard: the same
   // results come back from grouped project history.
   await page.getByLabel("Run data menu").click();
-  await page.getByRole("button", { name: "Run history…" }).click();
-  await page.locator(".run-history-item.experiment")
+  await page.getByRole("button", { name: "Run history", exact: true }).click();
+  await page.locator(".runs-evidence-item.experiment")
     .filter({ hasText: "Evaluation · Topics" })
     .first()
     .click();

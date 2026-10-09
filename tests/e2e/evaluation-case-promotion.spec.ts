@@ -96,8 +96,8 @@ test("an ordinary source trace promotes exact values and remains openable from i
   await page.getByRole("button", { name: "Open project folder…" }).click();
   await expect(page.locator(".brand")).toContainText("Promotion browser fixture");
   await page.getByLabel("Run data menu").click();
-  await page.getByRole("button", { name: "Run history…" }).click();
-  await page.locator(".run-history-item").click();
+  await page.getByRole("button", { name: "Run history", exact: true }).click();
+  await page.locator(".runs-evidence-item").click();
   await expect(page.getByRole("button", { name: "Promote to case…" })).toBeVisible();
   await page.getByRole("button", { name: "Promote to case…" }).click();
   const dialog = page.getByRole("dialog", { name: "Promote to case" });
