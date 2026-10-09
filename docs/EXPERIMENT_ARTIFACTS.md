@@ -67,14 +67,42 @@ never ran. A repetition with no openable trace is presented as `Waiting`,
 `Not run`, `Trace missing`, or `Trace could not be read` — never as one
 undifferentiated blank.
 
-Plans use `schemaVersion: 4`. Results use `schemaVersion: 5`, which adds one
-terminal status, `stopped`, for a batch that stopped itself because a tool
-binding became unavailable. A stopped result must carry
-`stop: { reason: "tool_unavailable", cellId, toolId }`, naming the failed
-repetition that found the tool unavailable; every later cell is `not-run`.
-Version 4 results remain readable and are read as Version 5, since they cannot
-say `stopped`; new results are always written as Version 5. Older versions of
-the application cannot open a Version 5 result. Pre-v4 experiment artifacts are
+Plans use `schemaVersion: 4`. Results use `schemaVersion: 6`.
+
+- Version 5 added one terminal status, `stopped`, for a batch that stopped
+  itself because a tool binding became unavailable. A stopped result carries
+  `stop: { reason: "tool_unavailable", cellId, toolId }`, naming the failed
+  repetition that found the tool unavailable.
+- Version 6 records how the batch was scheduled, so that cells can run
+  concurrently (see the [parallel experiment design](PARALLEL_EXPERIMENT_DESIGN.md)):
+  - `concurrency` is `{ maxInFlight, connections }`. `maxInFlight` is the
+    most cells that could be in flight across the whole experiment; 1 means
+    one at a time. `connections` lists one `{ profileId, endpoint, limit }`
+    entry for each distinct connection the plan uses, in the order the plan
+    first uses it, where `limit` is the most cells for that connection that
+    could be in flight at once.
+  - Every started (terminal) cell has a one-based `startOrder`; together they
+    number the started cells exactly once each. `not-run` cells have none.
+    Cells stay in plan order whatever order they started or finished in.
+    On each connection, cells start in plan order: its started cells are a
+    prefix of its cells, with rising start orders. Different connections
+    are independent.
+  - `retryPolicy` says which failed attempts the scheduler could retry. It
+    is keyed by failure class; Version 6 knows one,
+    `{ rateLimited: { maxRetries } }` for a provider 429, and
+    `maxRetries: 0` means a 429 fails its repetition.
+  - `stop.startedCells` counts the cells that had started when the stop was
+    recorded. The rule is that no cell starts after the stop: cells already
+    running may finish, so a terminal cell can follow the stopping cell in
+    plan order, but no `startOrder` may exceed `startedCells`, and every
+    started cell must be counted.
+
+Version 4 and 5 results remain readable and are read as Version 6 at a
+concurrency of 1 with retries off: their started cells receive start orders in plan order,
+and a Version 5 stop counts the cells up to and including the stopping one,
+which keeps Version 5's rule that nothing ran after it. New results are always
+written as Version 6, including at a concurrency of 1. Older versions of the
+application cannot open a Version 6 result. Pre-v4 experiment artifacts are
 intentionally unsupported; this schema was reset while the application had
 only one developer/user, so there is no earlier migration branch. Parsers reject
 unknown fields, unsupported versions,

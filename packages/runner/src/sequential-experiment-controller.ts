@@ -1,18 +1,21 @@
 import type { CredentialSelection, ProviderTurnTransport } from "../../contracts/src";
 import {
+  experimentConnectionKey,
   experimentExposedTools,
   experimentTurnCeiling,
   materializeParsedExperimentCellInput,
+  noExperimentRetries,
   parseExperimentPlanFile,
   serializeParsedExperimentPlan,
   serializeExperimentResult,
+  sequentialExperimentConcurrency,
   EXPERIMENT_RESULT_SCHEMA_VERSION,
 } from "../../core/src/experiment.ts";
 import type {
   ExperimentCell,
   ExperimentPlanV4,
   ExperimentResult,
-  ExperimentStop,
+  ExperimentStopV6,
 } from "../../core/src/experiment.ts";
 import { RunCoordinator } from "../../core/src/run-kernel/index.ts";
 import { createRunTrace } from "../../core/src/run-kernel/reducer.ts";
@@ -102,7 +105,9 @@ export class SequentialExperimentController {
   private readonly credentials = new Map<string, CredentialSelection>();
   private cancellationRequested = false;
   /** Set when a binding turned out unable to serve any later repetition. */
-  private stop: ExperimentStop | undefined;
+  private stop: ExperimentStopV6 | undefined;
+  /** Cells started so far; each cell's start order is this count once it starts. */
+  private startedCells = 0;
   private running = false;
   private hasRun = false;
 
@@ -173,7 +178,7 @@ export class SequentialExperimentController {
       }
     }
     for (const { target } of preflightInputs) {
-      const key = `${target.profileId}\u0000${target.endpoint}`;
+      const key = experimentConnectionKey(target);
       if (!this.credentials.has(key)) {
         this.credentials.set(key, await this.options.prepareCredential(target));
       }
@@ -210,6 +215,10 @@ export class SequentialExperimentController {
         status: cancelled ? "cancelled" : stop ? "stopped" : "completed",
         ...(stop ? { stop } : {}),
         endedAt: new Date().toISOString(),
+        // Cells run one at a time until the scheduler learns concurrency.
+        concurrency: sequentialExperimentConcurrency(plan),
+        // A 429 fails its repetition until the scheduler learns to retry.
+        retryPolicy: noExperimentRetries(),
         cells,
       };
       // Serialize unconditionally so ad hoc results cross the same strict
@@ -237,6 +246,7 @@ export class SequentialExperimentController {
     const input = materializeParsedExperimentCellInput(plan, cell);
     const coordinator = new RunCoordinator(input);
     let command = coordinator.start();
+    const startOrder = ++this.startedCells;
     const controller = new AbortController();
     this.activeAbortController = controller;
     this.states.set(input.runId, coordinator.state);
@@ -326,7 +336,7 @@ export class SequentialExperimentController {
     if (!terminal) throw new Error("The experiment cell could not be finalized.");
 
     this.states.set(input.runId, coordinator.state);
-    cells.push({ cellId: cell.cellId, runId: cell.runId, status: terminal.kind });
+    cells.push({ cellId: cell.cellId, runId: cell.runId, status: terminal.kind, startOrder });
     if (terminal.kind === "cancelled") this.cancellationRequested = true;
     this.emitRunning(this.terminalCellCount(cells), cell.ordinal);
     try {
@@ -341,7 +351,7 @@ export class SequentialExperimentController {
   }
 
   private credentialFor(target: ResolvedRunInput["target"]): Promise<CredentialSelection> {
-    const credential = this.credentials.get(`${target.profileId}\u0000${target.endpoint}`);
+    const credential = this.credentials.get(experimentConnectionKey(target));
     if (!credential) return Promise.reject(new Error(`No prepared credential exists for ${target.profileId}.`));
     return Promise.resolve(credential);
   }
@@ -393,7 +403,12 @@ export class SequentialExperimentController {
       if (attempt.outcome.status === "failed" && attempt.outcome.failure.kind === "unavailable") {
         // The binding cannot serve this call or any later one, so continuing
         // would spend a provider call per repetition to fail the same way.
-        this.stop = { reason: "tool_unavailable", cellId: cell.cellId, toolId: tool.id };
+        this.stop = {
+          reason: "tool_unavailable",
+          cellId: cell.cellId,
+          toolId: tool.id,
+          startedCells: this.startedCells,
+        };
       }
       if (attempt.outcome.status === "failed" || !execution?.content) {
         coordinator.fail({

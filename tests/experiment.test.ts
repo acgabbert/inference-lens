@@ -16,6 +16,7 @@ import {
 import type {
   ExperimentResultV3,
   ExperimentResultV5,
+  ExperimentResultV6,
   RepeatedExperimentPlanV3,
 } from "../packages/core/src/experiment.ts";
 import { createResolvedRunInput } from "../packages/core/src/run-kernel/run-execution.ts";
@@ -52,6 +53,29 @@ function plan(): RepeatedExperimentPlanV3 {
       { cellId: "experiment-cell_second", ordinal: 2, runId: "run_second" },
     ],
   };
+}
+
+function threeCellPlan(): RepeatedExperimentPlanV3 {
+  const source = plan();
+  return {
+    ...source,
+    cells: [...source.cells, { cellId: "experiment-cell_third", ordinal: 3, runId: "run_third" }],
+  };
+}
+
+/** What every pre-Version 6 result ran with, and what the writer records today. */
+const RETRIES_OFF = { rateLimited: { maxRetries: 0 } };
+
+/** The concurrency every pre-Version 6 result actually ran at. */
+function sequential(source: RepeatedExperimentPlanV3) {
+  const { profileId, endpoint } = source.commonInput.target;
+  return { maxInFlight: 1, connections: [{ profileId, endpoint, limit: 1 }] };
+}
+
+/** Two cells in flight at once on the plan's one connection. */
+function twoAtOnce(source: RepeatedExperimentPlanV3) {
+  const { connections } = sequential(source);
+  return { maxInFlight: 2, connections: [{ ...connections[0]!, limit: 2 }] };
 }
 
 function completedState(input: ResolvedRunInput, text: string) {
@@ -164,7 +188,16 @@ test("validates result identity and planned references exactly", () => {
   };
   const serialized = serializeExperimentResult(result, source);
   // Results are always written as the current version, whatever they arrived as.
-  assert.deepEqual(parseExperimentResultJson(serialized, source), { ...result, schemaVersion: 5 });
+  assert.deepEqual(parseExperimentResultJson(serialized, source), {
+    ...result,
+    schemaVersion: 6,
+    concurrency: sequential(source),
+    retryPolicy: RETRIES_OFF,
+    cells: [
+      { cellId: "experiment-cell_first", runId: "run_first", status: "completed", startOrder: 1 },
+      { cellId: "experiment-cell_second", runId: "run_second", status: "not-run" },
+    ],
+  });
 
   const mismatched = structuredClone(result);
   mismatched.cells[1].runId = "run_other" as RunId;
@@ -175,16 +208,18 @@ test("validates result identity and planned references exactly", () => {
 });
 
 test("a stopped result records which repetition and tool stopped the batch", () => {
-  const source = { ...plan(), cells: [...plan().cells, { cellId: "experiment-cell_third" as const, ordinal: 3, runId: "run_third" as const }] };
-  const result: ExperimentResultV5 = {
-    schemaVersion: 5,
+  const source = threeCellPlan();
+  const result: ExperimentResultV6 = {
+    schemaVersion: 6,
     experimentId: source.experimentId,
     status: "stopped",
-    stop: { reason: "tool_unavailable", cellId: "experiment-cell_second", toolId: "tool_lookup" },
+    stop: { reason: "tool_unavailable", cellId: "experiment-cell_second", toolId: "tool_lookup", startedCells: 2 },
     endedAt: "2026-07-30T12:01:00.000Z",
+    concurrency: sequential(source),
+    retryPolicy: RETRIES_OFF,
     cells: [
-      { cellId: "experiment-cell_first", runId: "run_first", status: "completed" },
-      { cellId: "experiment-cell_second", runId: "run_second", status: "failed" },
+      { cellId: "experiment-cell_first", runId: "run_first", status: "completed", startOrder: 1 },
+      { cellId: "experiment-cell_second", runId: "run_second", status: "failed", startOrder: 2 },
       { cellId: "experiment-cell_third", runId: "run_third", status: "not-run" },
     ],
   };
@@ -196,14 +231,16 @@ test("a stopped result records which repetition and tool stopped the batch", () 
 
 test("a stop must name the failed repetition that caused it, and only a stopped result has one", () => {
   const source = plan();
-  const stopped: ExperimentResultV5 = {
-    schemaVersion: 5,
+  const stopped: ExperimentResultV6 = {
+    schemaVersion: 6,
     experimentId: source.experimentId,
     status: "stopped",
-    stop: { reason: "tool_unavailable", cellId: "experiment-cell_first", toolId: "tool_lookup" },
+    stop: { reason: "tool_unavailable", cellId: "experiment-cell_first", toolId: "tool_lookup", startedCells: 1 },
     endedAt: "2026-07-30T12:01:00.000Z",
+    concurrency: sequential(source),
+    retryPolicy: RETRIES_OFF,
     cells: [
-      { cellId: "experiment-cell_first", runId: "run_first", status: "failed" },
+      { cellId: "experiment-cell_first", runId: "run_first", status: "failed", startOrder: 1 },
       { cellId: "experiment-cell_second", runId: "run_second", status: "not-run" },
     ],
   };
@@ -211,29 +248,208 @@ test("a stop must name the failed repetition that caused it, and only a stopped 
 
   const { stop: _stop, ...withoutStop } = stopped;
   void _stop;
-  assert.throws(() => serializeExperimentResult(withoutStop as ExperimentResultV5, source), /stopped experiment must record/i);
+  assert.throws(() => serializeExperimentResult(withoutStop as ExperimentResultV6, source), /stopped experiment must record/i);
 
   const completedCause = structuredClone(stopped);
   completedCause.cells[0].status = "completed";
   assert.throws(() => serializeExperimentResult(completedCause, source), /failed repetition/i);
 
   const laterCellRan = structuredClone(stopped);
-  laterCellRan.cells[1].status = "completed";
+  laterCellRan.cells[1] = { ...laterCellRan.cells[1], status: "completed", startOrder: 2 };
   assert.throws(() => serializeExperimentResult(laterCellRan, source), /after the stop/i);
 
   const unknownCell = structuredClone(stopped);
   unknownCell.stop = { ...stopped.stop!, cellId: "experiment-cell_other" };
   assert.throws(() => serializeExperimentResult(unknownCell, source), /failed repetition/i);
 
-  const completedWithStop: ExperimentResultV5 = {
+  const completedWithStop: ExperimentResultV6 = {
     ...stopped,
     status: "completed",
-    cells: stopped.cells.map((cell) => ({ ...cell, status: "completed" as const })),
+    cells: stopped.cells.map((cell, index) => ({ ...cell, status: "completed" as const, startOrder: index + 1 })),
   };
   assert.throws(() => serializeExperimentResult(completedWithStop, source), /only a stopped experiment/i);
 });
 
-test("Version 4 results remain readable and are read as Version 5", () => {
+test("a stopped Version 6 result may hold later cells that started before the stop", () => {
+  const source = threeCellPlan();
+  // The first cell stopped the batch, but the second had already started
+  // alongside it and was allowed to finish; the third never started.
+  const result: ExperimentResultV6 = {
+    schemaVersion: 6,
+    experimentId: source.experimentId,
+    status: "stopped",
+    stop: { reason: "tool_unavailable", cellId: "experiment-cell_first", toolId: "tool_lookup", startedCells: 2 },
+    endedAt: "2026-07-30T12:01:00.000Z",
+    concurrency: twoAtOnce(source),
+    retryPolicy: RETRIES_OFF,
+    cells: [
+      { cellId: "experiment-cell_first", runId: "run_first", status: "failed", startOrder: 1 },
+      { cellId: "experiment-cell_second", runId: "run_second", status: "completed", startOrder: 2 },
+      { cellId: "experiment-cell_third", runId: "run_third", status: "not-run" },
+    ],
+  };
+  assert.deepEqual(parseExperimentResultJson(serializeExperimentResult(result, source), source), result);
+
+  const startedAfter = structuredClone(result);
+  startedAfter.cells[2] = { ...startedAfter.cells[2], status: "completed", startOrder: 3 };
+  assert.throws(() => serializeExperimentResult(startedAfter, source), /No repetition may start after the stop/);
+
+  const overcounted = structuredClone(result);
+  overcounted.stop!.startedCells = 3;
+  assert.throws(() => serializeExperimentResult(overcounted, source), /stop must count/i);
+});
+
+test("Version 6 start orders number the started cells once each, from one", () => {
+  const source = plan();
+  const result: ExperimentResultV6 = {
+    schemaVersion: 6,
+    experimentId: source.experimentId,
+    status: "completed",
+    endedAt: "2026-07-30T12:01:00.000Z",
+    concurrency: twoAtOnce(source),
+    retryPolicy: RETRIES_OFF,
+    cells: [
+      { cellId: "experiment-cell_first", runId: "run_first", status: "completed", startOrder: 1 },
+      { cellId: "experiment-cell_second", runId: "run_second", status: "completed", startOrder: 2 },
+    ],
+  };
+  assert.doesNotThrow(() => serializeExperimentResult(result, source));
+
+  const repeated = structuredClone(result);
+  repeated.cells[1] = { cellId: "experiment-cell_second", runId: "run_second", status: "completed", startOrder: 1 };
+  assert.throws(() => serializeExperimentResult(repeated, source), /start orders must number/i);
+
+  const gap = structuredClone(result);
+  gap.cells[1] = { cellId: "experiment-cell_second", runId: "run_second", status: "completed", startOrder: 3 };
+  assert.throws(() => serializeExperimentResult(gap, source), /start orders must number/i);
+
+  const missing = structuredClone(result) as unknown as { cells: Array<Record<string, unknown>> };
+  delete missing.cells[0]!.startOrder;
+  assert.throws(() => serializeExperimentResult(missing as unknown as ExperimentResultV6, source), /startOrder/);
+
+  const unstartedWithOrder = {
+    ...structuredClone(result),
+    status: "cancelled",
+    cells: [result.cells[0], { ...result.cells[1], status: "not-run" }],
+  };
+  assert.throws(() => serializeExperimentResult(unstartedWithOrder as unknown as ExperimentResultV6, source));
+});
+
+test("Version 6 refuses cells on one connection that started out of plan order", () => {
+  const source = plan();
+  // Both cells share the plan's one connection, so the second cannot start
+  // first, however many could be in flight.
+  const reversed: ExperimentResultV6 = {
+    schemaVersion: 6,
+    experimentId: source.experimentId,
+    status: "completed",
+    endedAt: "2026-07-30T12:01:00.000Z",
+    concurrency: twoAtOnce(source),
+    retryPolicy: RETRIES_OFF,
+    cells: [
+      { cellId: "experiment-cell_first", runId: "run_first", status: "completed", startOrder: 2 },
+      { cellId: "experiment-cell_second", runId: "run_second", status: "completed", startOrder: 1 },
+    ],
+  };
+  assert.throws(() => serializeExperimentResult(reversed, source), /plan order on each connection/);
+
+  // Nor can a later cell start while an earlier one on its connection never did.
+  const skipped: ExperimentResultV6 = {
+    ...reversed,
+    status: "cancelled",
+    cells: [
+      { cellId: "experiment-cell_first", runId: "run_first", status: "not-run" },
+      { cellId: "experiment-cell_second", runId: "run_second", status: "cancelled", startOrder: 1 },
+    ],
+  };
+  assert.throws(() => serializeExperimentResult(skipped, source), /plan order on each connection/);
+});
+
+test("Version 6 records an overall limit and one positive limit for each connection the plan uses", () => {
+  const source = plan();
+  const [connection] = sequential(source).connections;
+  const result: ExperimentResultV6 = {
+    schemaVersion: 6,
+    experimentId: source.experimentId,
+    status: "completed",
+    endedAt: "2026-07-30T12:01:00.000Z",
+    concurrency: { maxInFlight: 4, connections: [{ ...connection!, limit: 4 }] },
+    retryPolicy: RETRIES_OFF,
+    cells: [
+      { cellId: "experiment-cell_first", runId: "run_first", status: "completed", startOrder: 1 },
+      { cellId: "experiment-cell_second", runId: "run_second", status: "completed", startOrder: 2 },
+    ],
+  };
+  assert.doesNotThrow(() => serializeExperimentResult(result, source));
+
+  for (const connections of [
+    [],
+    [connection, connection],
+    [{ ...connection!, endpoint: "https://other.example.com/v1" }],
+    [{ ...connection!, limit: 0 }],
+    [{ ...connection!, limit: 1.5 }],
+  ]) {
+    assert.throws(
+      () => serializeExperimentResult({ ...result, concurrency: { maxInFlight: 4, connections } } as ExperimentResultV6, source),
+      /concurrency/i,
+      JSON.stringify(connections),
+    );
+  }
+  for (const maxInFlight of [0, 1.5, undefined]) {
+    assert.throws(
+      () => serializeExperimentResult(
+        { ...result, concurrency: { maxInFlight, connections: [connection] } } as ExperimentResultV6,
+        source,
+      ),
+      /concurrency/i,
+      String(maxInFlight),
+    );
+  }
+  // The Version 6 draft's bare list of connection limits is not a Version 6 result.
+  assert.throws(
+    () => serializeExperimentResult({ ...result, concurrency: [connection] } as unknown as ExperimentResultV6, source),
+    /concurrency/i,
+  );
+});
+
+test("Version 6 records the retry policy a batch ran under", () => {
+  const source = plan();
+  const result: ExperimentResultV6 = {
+    schemaVersion: 6,
+    experimentId: source.experimentId,
+    status: "completed",
+    endedAt: "2026-07-30T12:01:00.000Z",
+    concurrency: sequential(source),
+    retryPolicy: { rateLimited: { maxRetries: 2 } },
+    cells: [
+      { cellId: "experiment-cell_first", runId: "run_first", status: "completed", startOrder: 1 },
+      { cellId: "experiment-cell_second", runId: "run_second", status: "completed", startOrder: 2 },
+    ],
+  };
+  assert.deepEqual(parseExperimentResultJson(serializeExperimentResult(result, source), source), result);
+
+  const { retryPolicy: _retryPolicy, ...withoutPolicy } = result;
+  void _retryPolicy;
+  assert.throws(
+    () => serializeExperimentResult(withoutPolicy as ExperimentResultV6, source),
+    /retryPolicy/,
+  );
+  for (const retryPolicy of [
+    {},
+    { rateLimited: { maxRetries: -1 } },
+    { rateLimited: { maxRetries: 1.5 } },
+    // Retrying other failures is not something this version can record.
+    { rateLimited: { maxRetries: 2 }, serverError: { maxRetries: 1 } },
+  ]) {
+    assert.throws(
+      () => serializeExperimentResult({ ...result, retryPolicy } as ExperimentResultV6, source),
+      /retryPolicy/,
+      JSON.stringify(retryPolicy),
+    );
+  }
+});
+
+test("Version 4 results remain readable and are read as Version 6 at a concurrency of 1", () => {
   const source = plan();
   const legacy = {
     schemaVersion: 4,
@@ -245,13 +461,63 @@ test("Version 4 results remain readable and are read as Version 5", () => {
       { cellId: "experiment-cell_second", runId: "run_second", status: "failed" },
     ],
   };
-  assert.deepEqual(parseExperimentResultJson(JSON.stringify(legacy), source), { ...legacy, schemaVersion: 5 });
+  assert.deepEqual(parseExperimentResultJson(JSON.stringify(legacy), source), {
+    ...legacy,
+    schemaVersion: 6,
+    concurrency: sequential(source),
+    retryPolicy: RETRIES_OFF,
+    cells: [
+      { cellId: "experiment-cell_first", runId: "run_first", status: "completed", startOrder: 1 },
+      { cellId: "experiment-cell_second", runId: "run_second", status: "failed", startOrder: 2 },
+    ],
+  });
   assert.throws(
     () => parseExperimentResultJson(JSON.stringify({ ...legacy, status: "stopped" }), source),
   );
   assert.throws(
     () => parseExperimentResultJson(JSON.stringify({ ...legacy, schemaVersion: 3 }), source),
-    /Version 3 is unsupported/,
+    /Version 3 is unsupported; expected Version 4, 5, or 6/,
+  );
+  assert.throws(
+    () => parseExperimentResultJson(JSON.stringify({ ...legacy, schemaVersion: 7 }), source),
+    /Version 7 is unsupported/,
+  );
+});
+
+test("Version 5 results are read as Version 6, keeping the rule that nothing ran after the stop", () => {
+  const source = threeCellPlan();
+  const legacy: ExperimentResultV5 = {
+    schemaVersion: 5,
+    experimentId: source.experimentId,
+    status: "stopped",
+    stop: { reason: "tool_unavailable", cellId: "experiment-cell_second", toolId: "tool_lookup" },
+    endedAt: "2026-07-30T12:01:00.000Z",
+    cells: [
+      { cellId: "experiment-cell_first", runId: "run_first", status: "completed" },
+      { cellId: "experiment-cell_second", runId: "run_second", status: "failed" },
+      { cellId: "experiment-cell_third", runId: "run_third", status: "not-run" },
+    ],
+  };
+  assert.deepEqual(parseExperimentResultJson(JSON.stringify(legacy), source), {
+    ...legacy,
+    schemaVersion: 6,
+    stop: { ...legacy.stop!, startedCells: 2 },
+    concurrency: sequential(source),
+    retryPolicy: RETRIES_OFF,
+    cells: [
+      { cellId: "experiment-cell_first", runId: "run_first", status: "completed", startOrder: 1 },
+      { cellId: "experiment-cell_second", runId: "run_second", status: "failed", startOrder: 2 },
+      { cellId: "experiment-cell_third", runId: "run_third", status: "not-run" },
+    ],
+  });
+
+  // Version 5 could not record a cell that ran after the stop; one that
+  // claims to is still refused after the upgrade.
+  const laterCellRan = structuredClone(legacy);
+  laterCellRan.cells[2]!.status = "completed";
+  assert.throws(
+    () => parseExperimentResultJson(JSON.stringify(laterCellRan), source),
+    /No repetition may start after the stop/,
   );
 });
 

@@ -169,7 +169,8 @@ test("a repeated run serves an MCP tool without per-call approval after confirma
 
   const artifacts = Object.values(await savedFiles(page, "experiments")).join("\n");
   const traces = Object.values(await savedFiles(page, "traces")).join("\n");
-  expect(artifacts).toContain('"schemaVersion": 5');
+  expect(artifacts).toContain('"schemaVersion": 6');
+  expect(artifacts).toContain('"startOrder": 2');
   for (const evidence of [artifacts, traces]) {
     for (const forbidden of [SERVER_ID, "44020", "grantedAt"]) expect(evidence).not.toContain(forbidden);
   }

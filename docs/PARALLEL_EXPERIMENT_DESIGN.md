@@ -1,8 +1,13 @@
 # Parallel experiment cells
 
-**Status:** decisions agreed October 9, 2026; not yet implemented. The decisions
-below need no further sign-off, but the implementation should come back for
-review if it finds that one of them cannot hold.
+**Status:** decisions 1–5 agreed October 9, 2026; decisions 6–8 (rate
+limits and retry) agreed the same day as recommended. A review the same day
+amended decisions 4, 5, and 8 and added decision 9; see
+[Review amendments](#review-amendments). Slice 1 is implemented,
+including the retry policy that decision 8 adds to it; see
+[Implementation status](#implementation-status). The decisions below need no
+further sign-off, but the implementation should come back for review if it
+finds that one of them cannot hold.
 **Baseline:** `main` at `ee5f292`.
 **Depends on:** slice 1 of the [headless CLI design](HEADLESS_CLI_DESIGN.md),
 which moves the scheduler into a shared module.
@@ -13,13 +18,20 @@ Let one experiment run several cells at once, so a long evaluation suite or
 repeated-run batch finishes in a fraction of the time. The app and the
 headless CLI share the feature because they share the scheduler.
 
+Running cells at once makes rate limits likelier, so the same design covers
+them: the scheduler backs off a connection that answers 429, results report
+rate-limited repetitions apart from model failures, and a run can opt in to
+retrying them.
+
 ## Non-goals
 
 - Parallel tool calls *within* one turn (`parallelToolCalls`). That setting
   controls what a model may ask for. This design is about how many cells
   the scheduler runs.
-- Automatic retry or adaptive backoff on rate-limit errors. A rate-limited
-  attempt fails its own repetition, exactly as it does today.
+- Retrying anything other than a provider 429. Transport errors and 5xx
+  responses still fail their own repetition; a 5xx may have been billed.
+- Reading provider-specific quota headers (`x-ratelimit-reset-*`,
+  `anthropic-ratelimit-*`). Only `retry-after-ms` and `Retry-After` are used.
 - Running several experiments at once.
 
 ## Sequencing
@@ -87,6 +99,21 @@ over a stop, as it does today, and aborts every in-flight cell.
 If more than one cell finds a tool unavailable, the result records the first
 to do so.
 
+### 9. A trace that cannot be saved
+
+Today, if a finished cell's trace cannot be saved, `run()` rejects, no
+result is written, and the experiment reads as interrupted. With several
+cells in flight, the others need an answer too (added on review).
+
+| Option | Effect |
+| --- | --- |
+| A. Let in-flight cells finish | Spends provider calls whose traces are unlikely to save either. |
+| **B. Stop, abort, drain, then fail (agreed)** | No new cell starts. Every in-flight cell is aborted, and the scheduler waits for all of them to settle before rejecting with the first save failure, exactly as today: no result is written. |
+
+Draining before rejecting means no request is still running when the
+caller hears that the experiment failed. Further save failures from the
+aborted cells are ignored; the first one is the error reported.
+
 ### 3. Result compatibility
 
 The changed stop invariant and the recorded concurrency both change the
@@ -109,6 +136,10 @@ Details:
   validator checks that every terminal cell started before the stop and
   every `not-run` cell did not start.
 - Cells stay in plan order, whatever order they finished in.
+- On each connection, cells start in plan order: the started cells are a
+  prefix of that connection's cells, with rising start orders. The validator
+  refuses a result that breaks this. A future scheduler that reorders cells,
+  such as running previously failed cases first, would need a new version.
 - The writer always writes Version 6, including when the concurrency is 1.
 - An older app opening a project with Version 6 results rejects them with its
   existing "unsupported version" message. This is accepted, as it was for
@@ -119,16 +150,24 @@ Details:
 | Option | Effect |
 | --- | --- |
 | A. One global limit | Simple, but a suite comparing a local model with a hosted one is held to whichever endpoint is most fragile. |
-| **B. Per connection, default 1 (agreed)** | Each connection has its own limit. With no setting, every limit is 1 and behavior matches today exactly. |
+| B. Per connection, default 1 | Each connection has its own limit. But with every limit at 1, a suite using two connections runs two cells at once, which is not today's behavior. |
+| **C. Overall limit plus per connection, both default 1 (agreed, amended)** | At most `maxInFlight` cells run across the experiment, and at most each connection's limit on that connection. With no setting, every limit is 1 and behavior matches today exactly. |
+
+Option B was agreed first, but it cannot keep its own promise: with every
+limit at 1, cells for different connections would still run at once, and the
+result could not tell that run from a one-at-a-time run that recorded the
+same per-connection limits. The overall limit fixes both. Running
+connections independently is something a person chooses by raising it.
 
 A connection is identified the same way the scheduler already keys prepared
-credentials: the target's connection profile ID plus its endpoint. Cells for
-different connections run independently. Within one connection, cells start
-in plan order as slots free up, so early cells finish first and partial
-progress reads naturally.
+credentials: the target's connection profile ID plus its endpoint. Within
+the overall limit, cells for different connections run independently.
+Within one connection, cells start in plan order as slots free up, so early
+cells finish first and partial progress reads naturally. The result
+validator enforces that order (see decision 3).
 
-The setting is a map from connection to limit, plus an optional default for
-connections it does not name. The app's control for it, and the CLI flag's
+The setting is an overall limit, a map from connection to limit, and an
+optional default for connections the map does not name. The app's control for it, and the CLI flag's
 exact syntax, are presentation choices for the implementation.
 
 ### 5. Tools under concurrency
@@ -136,12 +175,112 @@ exact syntax, are presentation choices for the implementation.
 | Option | Effect |
 | --- | --- |
 | A. All tools run concurrently | Fastest, but a command tool that writes a file or an MCP server that keeps session state can corrupt other cells. |
-| **B. Mocks concurrent; command and MCP sequential (agreed)** | Mock tools are pure and run freely. Calls to command and MCP bindings are serialized across the whole experiment, one call at a time per binding. |
+| **B. Mocks concurrent; command and MCP sequential (agreed, amended)** | Mock tools are pure and run freely. Calls that reach the same MCP server or the same declared command are serialized across the whole experiment, one call at a time per resource. |
 | C. Opt-in per binding | The eventual goal, but it needs a new field on device-local bindings and a way for a person to assert the tool is safe. |
+
+The lock is per **resource**, not per binding. A binding is per tool, and
+two tools can reach the same stateful MCP server (`serverId`) or the same
+declared command (`executorId`); one lock per binding would let their calls
+overlap. So an MCP binding takes the lock for `mcp:<serverId>` and a command
+binding the lock for `command:<executorId>`.
 
 Serializing a tool call holds only that call, not the cell's whole turn, so
 provider requests still overlap. Option C can be added later without
 changing the result or plan, because bindings never travel in either.
+
+### 6. Pausing a connection after a 429
+
+When a provider answers any attempt with HTTP 429, the scheduler stops new
+cells on that connection from starting until a pause ends. The attempt that
+got the 429 is not hidden: without decision 8 its cell fails, exactly as it
+does today. The pause only keeps the scheduler from making things worse.
+
+- **Where the signal comes from.** No new plumbing. A 429 reaches the
+  coordinator as `provider_error` with `providerStatus: 429` on both the web
+  and desktop transports, and the exchange's recorded response headers
+  already include `retry-after`.
+- **How long.** `retry-after-ms` if present, otherwise `Retry-After` (delta
+  seconds or an HTTP date). With neither, or an unreadable value, **5
+  seconds**. Every pause is capped at **60 seconds**, so one header cannot
+  stall a batch for an hour; if the provider is still limiting after that,
+  the next 429 starts another pause.
+- **Scope.** One connection, keyed the same way as decision 4. Other
+  connections keep starting cells. Cells already in flight on the paused
+  connection are not interrupted. A later 429 extends a pause only if it
+  would end later.
+- **Where it lives.** In slice 2's per-connection slots: a paused connection
+  has no free slot until the pause ends. It is not added to the current
+  one-at-a-time loop first, because that loop is being replaced and a pause
+  there would also hold up cells for other connections.
+- **Cancellation** ends a pause at once.
+- **Not persisted.** The result format does not record pauses. Each 429 is
+  already in its run's trace.
+
+This reverses the earlier non-goal "adaptive backoff on rate-limit errors".
+
+### 7. Rate-limited repetitions are reported apart from failures
+
+A repetition is **rate-limited** when its run failed and its final error is
+`provider_error` with `providerStatus: 429`. That is derived from the trace,
+like every other classification, so no saved artifact changes.
+
+| Option | Effect |
+| --- | --- |
+| A. Keep it as `run-failed` with a flag | Every count and verdict still treats a quota problem as a model failure unless each reader checks the flag. |
+| **B. New `rate-limited` classification, counted as incomplete (agreed)** | A rate-limited case is neither passed nor failed: it is missing evidence. |
+
+Consequences:
+
+- `EvaluationRepetitionClassification` gains `rate-limited`. A case with a
+  rate-limited repetition and no failing one counts as **incomplete**, not
+  failed, so a suite whose only problem is rate limiting has the verdict
+  `incomplete` and the CLI exits 3, not 1. A CI job then cannot report a
+  model regression that was really a quota problem.
+- Baseline comparisons treat a rate-limited repetition as missing evidence,
+  as they do `not-run`. Without this, a case that passed before and was
+  rate-limited now would show as regressed.
+- `RepeatedExperimentAggregate` gains a `rateLimited` count, separate from
+  `failed`.
+- The CLI's `--json` summary v1 gains `rate-limited` as a classification
+  value **without a version bump**. A new enum value would normally be a
+  breaking change, but v1 has never been in a tagged release.
+- The Runs and Evaluations workspaces label it "rate limited", separately
+  from "run failed".
+
+### 8. Automatic retry of 429s
+
+| Option | Effect |
+| --- | --- |
+| A. Never retry | Results stay simple, but a suite that brushes its rate limit has gaps. |
+| B. Always retry | Suites finish, but the default behavior changes and a result cannot say whether retries were allowed. |
+| **C. Opt-in, bounded, recorded in the result (agreed)** | Off by default, so behavior matches today; when on, the result says so. |
+
+- **What retries.** A 429 only, at most **2 retries per provider turn**,
+  so at most 3 attempts per turn. A run with tool calls has several turns,
+  and each turn has its own budget. (Amended on review: "2 retries per
+  attempt that got one" could be read as never ending, because every retry
+  is itself an attempt.) Each retry waits the same way as a pause (decision 6: the header,
+  else 5 seconds, capped at 60). The cell keeps its slot while it waits.
+  The connection pause still applies to other cells.
+- **How.** The run kernel already supports it: a retryable failure pauses
+  the coordinator at `attempt_failed`, which the scheduler today turns into
+  a failure (`coordinator.fail`). With retry on, it calls
+  `coordinator.retry()` instead. Each retry is a recorded attempt in the
+  trace, latency is already measured per attempt, and runs with retries
+  are already counted, so the evidence stays honest.
+- **When retries run out,** the cell fails and is classified `rate-limited`
+  (decision 7).
+- **Recorded in the result.** Version 6 gains a `retryPolicy`, so a result
+  says whether retries were allowed, just as it says what concurrency it
+  ran at. This is added to Version 6 before it merges, rather than costing a
+  Version 7 later. Versions 4 and 5 upgrade to retries off.
+- **Shown in summaries.** Assessments, the repeated-request aggregate, and
+  the CLI summary report how many repetitions needed retries after rate
+  limiting, so retry cannot quietly hide a configuration that keeps hitting
+  its limit.
+- **Turning it on.** A control at experiment start in the app, and a CLI
+  flag (`--retry-rate-limits`). The exact presentation is an implementation
+  choice.
 
 ## Progress contract
 
@@ -149,22 +288,38 @@ changing the result or plan, because bindings never travel in either.
 running ordinals. Because the class is no longer sequential, it is renamed as
 part of this change; the rename is mechanical and is not a separate decision.
 Both workspaces then derive each cell's display state from that set and the
-terminal states, rather than comparing against one ordinal. With a
+terminal states, rather than comparing against one ordinal. Progress also
+reports, per connection, the time a rate-limit pause ends (decision 6), so a
+paused batch does not look frozen; the CLI prints a line to stderr when a
+pause starts. With a
 concurrency of 1 the set has at most one member and the screens look exactly
 as they do today.
 
 ## Delivery slices
 
 1. **Result Version 6.** Add the type, parser, upgrade path, and validator
-   in `packages/core`. Write Version 6 at a concurrency of 1. Behavior is
-   unchanged.
+   in `packages/core`. Write Version 6 at a concurrency of 1, with retries
+   off. Behavior is unchanged.
 2. **Concurrent scheduler.** Per-connection slots, per-cell abort
-   controllers, ordered result placement, the new stop rule, and serialized
-   command and MCP calls. Default limits stay at 1. Unit tests drive it with a
-   controllable fake transport.
+   controllers, ordered result placement, the new stop rule, serialized
+   command and MCP calls, and the rate-limit pause (decision 6). Default
+   limits stay at 1. Unit tests drive it with a controllable fake transport.
 3. **Progress and app surfaces.** The running-ordinals progress contract,
-   both workspaces, and a concurrency control at experiment start.
+   the pause indicator, both workspaces, and a concurrency control at
+   experiment start.
 4. **CLI flag.** `--concurrency`, after headless slice 2 lands.
+
+Nothing that can raise a limit above 1 ships before slice 3's progress
+contract and its consumers. Slice 2 adds no way to set a limit, and the
+default keeps one cell at a time, so slice 2 alone cannot make either
+workspace mislabel running cells.
+5. **Rate-limited classification** (decision 7) in core assessments, the
+   repeated-request aggregate, comparisons, the CLI summary, and both
+   workspaces. It depends only on slice 1, so it can land before or after
+   slices 2–4.
+6. **Automatic retry** (decision 8): the scheduler calls `retry()` when the
+   result's policy allows it, the start control, `--retry-rate-limits`, and
+   the retry counts in summaries. After slices 2 and 5.
 
 ## Verification expectations
 
@@ -178,7 +333,27 @@ as they do today.
   - Cancellation aborting every in-flight cell.
   - Per-connection limits never being exceeded, observed through the fake
     transport's peak in-flight count.
-  - Command and MCP calls never overlapping, and mock calls overlapping.
+  - Command and MCP calls never overlapping, including calls from two
+    different bindings that reach the same MCP server or the same declared
+    command; calls to different servers overlapping; mock calls
+    overlapping.
+  - A trace save failure with other cells in flight: no new cell starts,
+    the in-flight cells are aborted, the rejection waits for them, and no
+    result is written.
+  - An overall limit of 1 running a two-connection suite one cell at a
+    time, observed through the fake transport's peak in-flight count.
+  - A 429 pausing only its own connection: no new cell on it starts before
+    the pause ends, other connections keep starting cells, cancellation
+    ends the pause, and the wait follows `retry-after-ms`, then
+    `Retry-After` in both forms, then the 5-second default, capped at 60
+    seconds. A fake clock, not real waiting.
+  - A failed run whose final error is a provider 429 classified
+    `rate-limited`, its case counted incomplete, the CLI verdict
+    `incomplete`, and a comparison treating it as missing evidence.
+  - With retries on, a 429 followed by success recorded as two attempts and
+    classified by its checks; three 429s in a row classified
+    `rate-limited`. With retries off, the first 429 fails the cell.
+  - `retryPolicy` validation, and Versions 4 and 5 upgrading to retries off.
 - With the default limit of 1, the existing unit tests and full Playwright
   suite pass unchanged. That shows the default changes no behavior.
 - A Playwright spec runs a suite with a concurrency above 1 against a local
@@ -188,3 +363,90 @@ as they do today.
   provider must hold its responses long enough for cells to overlap, or the
   spec passes without exercising any concurrency; see the
   [provider fixture guide](PROVIDER_FIXTURES.md).
+- A Playwright spec runs a suite against a fixture provider that answers
+  some requests with 429 and a short `Retry-After`. It checks that the
+  results label those repetitions "rate limited" rather than "run failed",
+  and, with retries on, that they recover and the retry count is shown.
+  The fixture must actually return the 429 to the app's transport; a test
+  that injects the classification directly exercises nothing.
+
+## Implementation status
+
+### Slice 1: what exists
+
+`ExperimentResultV6` in `packages/core/src/experiment.ts`, with its parser,
+validator, and the upgrade from Versions 4 and 5. The scheduler writes Version
+6 at a concurrency of 1 with retries off, and otherwise behaves as before. The format is
+documented in [experiment artifacts](EXPERIMENT_ARTIFACTS.md).
+
+Choices made in implementation, within the agreed decisions:
+
+- **Recorded concurrency.** `concurrency` is the effective limits,
+  `{ maxInFlight, connections }`, with one `{ profileId, endpoint, limit }`
+  per distinct connection in plan first-use order, rather than the setting
+  a person supplied (an overall limit, a map, and a default). The validator
+  requires exactly the plan's connections, each once.
+  `sequentialExperimentConcurrency(plan)` builds the all-ones value, and
+  `experimentConnectionKey` is the one key the scheduler's credential cache
+  and the result share.
+- **Start order.** A one-based `startOrder` on each started cell, not a
+  timestamp: it is deterministic and directly checkable. The validator also
+  checks plan order on each connection.
+- **Checking the stop.** A start order alone cannot show that a cell started
+  after the stop, because a stop is recorded when the stopping cell fails,
+  after other cells may have started. So the stop records
+  `startedCells`, the number of cells that had started at that moment. The
+  validator refuses any started cell beyond that count and a count that
+  includes cells that never started.
+- **Retry policy.** `retryPolicy` is keyed by failure class:
+  `{ rateLimited: { maxRetries } }`, with `maxRetries: 0` meaning off, which
+  is what the scheduler writes until slice 6 and what Versions 4 and 5
+  upgrade to. Version 6 refuses any other class. The keying lets a later
+  version add a class with its own bound (see below) without reshaping the
+  field.
+- **Headless summary.** The CLI's `--json` summary v1 keeps its `stop` at
+  `{ reason, cellId, toolId }`; `startedCells` is result bookkeeping and is
+  not copied into it. Reporting concurrency in the summary is left to the
+  slice 4 `--concurrency` flag.
+
+Verification: `tests/experiment.test.ts` (Version 6 validation, including
+the overall limit, start order on one connection, and the retry policy, and
+both upgrades), `tests/evaluation-execution.test.ts` (independent start
+order across two connections), `tests/repeated-experiment-controller.test.ts` (the scheduler's
+Version 6 output), and `tests/cli-summary.test.ts`.
+
+## Review amendments
+
+A review on October 9, 2026, found four problems and two gaps; all were
+accepted.
+
+| Finding | Resolution |
+| --- | --- |
+| Per-connection limits of 1 still run different connections at once, contradicting "behavior matches today", and the result could not tell the two apart. | Decision 4 adds an overall limit, `maxInFlight`, default 1, recorded in Version 6. |
+| One lock per binding lets two tools on the same MCP server or command overlap. | Decision 5 locks per resource: `mcp:<serverId>` and `command:<executorId>`. |
+| The validator accepted out-of-order starts on one connection, which the scheduler must never produce. | Decision 3 adds the per-connection plan-order rule, and the validator enforces it. |
+| A concurrent scheduler shipped before the progress contract could mislabel cells. | With the overall limit defaulting to 1 and no way to raise it before slice 3, it cannot; the delivery slices now say so. |
+| "2 retries per attempt" was ambiguous. | Decision 8 says 2 retries per provider turn. |
+| The plan did not say what happens to in-flight cells when a trace cannot be saved. | Decision 9: stop, abort, drain, then fail as today. |
+
+### Extending retry to other failures
+
+Retrying a 5xx, a timeout, or a dropped connection later is cheap in code:
+`isRetryableRunError` already marks 408, 429, and 5xx retryable, and the
+coordinator pauses on every retryable failure, so the scheduler's retry
+path from slice 6 needs only to pick the bound for the new class. The cost
+is elsewhere:
+
+- **A result version.** Results are parsed strictly, so a new key under
+  `retryPolicy` is a Version 7, which older apps refuse. The upgrade itself
+  is trivial: a Version 6 result reads as Version 7 with the new class off.
+- **Billing.** A 429 is rejected before the model runs. A 5xx, or a
+  connection dropped mid-stream, may already have produced billed tokens,
+  so a retry can pay twice. The metrics already sum usage across attempts,
+  so the cost is visible, but the policy needs its own, likely lower, bound.
+- **Waiting.** A 5xx rarely carries `Retry-After`, so it needs its own
+  backoff rather than decision 6's header-driven pause, and whether a 5xx
+  should also pause the whole connection is a separate decision.
+- **Classification.** Decision 7's `rate-limited` would need a sibling (for
+  example `provider-unavailable`) so that a run that ran out of 5xx retries
+  is not reported as a model failure either.
