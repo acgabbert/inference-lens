@@ -269,7 +269,7 @@ test("a suite exposing a tool with no enabled mock exits 2, naming the tool", as
   const outcome = await run(directory, { [KEY_VARIABLE]: KEY }).done;
 
   assert.equal(outcome.exitCode, 2);
-  assert.match(outcome.error ?? "", /exposes lookup_order, and headless runs can serve only enabled project mocks/);
+  assert.match(outcome.error ?? "", /exposes lookup_order, and nothing in this run can answer it\. Grant it with --allow-tool/);
   assert.equal(provider.requests.length, 0);
 });
 

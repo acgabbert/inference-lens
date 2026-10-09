@@ -11,6 +11,7 @@ import {
 } from "../../../packages/core/src/project.ts";
 import type { ProjectFile } from "../../../packages/core/src/project.ts";
 import type { CheckDefinition } from "../../../packages/core/src/checks.ts";
+import type { ToolDefinition } from "../../../packages/core/src/run-kernel/types.ts";
 
 export const HEADLESS_CONNECTION_ID = "connection_headless-default";
 
@@ -86,6 +87,32 @@ export function headlessProject(options: {
         checks,
       })),
     }],
+  });
+}
+
+/** A one-case suite that exposes `tool` and passes only if `expected` reaches the answer. */
+export function headlessToolProject(endpoint: string, tool: ToolDefinition, expected: string, extra: Partial<ProjectFile> = {}) {
+  const base = headlessProject({
+    endpoint,
+    cases: [{
+      id: "evaluation-case_tool",
+      name: "Uses the tool",
+      topic: "the weather",
+      checks: [{ checkId: "check_tool", kind: "contains", value: expected }],
+    }],
+  });
+  return parseProjectFile({
+    ...base,
+    connectionRequirements: base.connectionRequirements.map((requirement) => ({
+      ...requirement,
+      capabilityOverrides: { ...requirement.capabilityOverrides, tools: true },
+    })),
+    tools: [tool],
+    evaluationSuites: base.evaluationSuites.map((suite) => ({
+      ...suite,
+      execution: { ...suite.execution, toolIds: [tool.id] },
+    })),
+    ...extra,
   });
 }
 

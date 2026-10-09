@@ -93,6 +93,18 @@ export function terminateCommandTools(): void {
   liveCommands.clear();
 }
 
+/**
+ * For a host that owns SIGINT and SIGTERM itself, such as the CLI, whose
+ * first interrupt stops gracefully: live commands are still killed when the
+ * process exits, but a signal is left to the host's own handler, which
+ * cancels running commands through their abort signals.
+ */
+export function installCommandToolExitHook(): void {
+  if (shutdownHooksInstalled) return;
+  shutdownHooksInstalled = true;
+  process.on("exit", terminateCommandTools);
+}
+
 function installShutdownHooks(): void {
   if (shutdownHooksInstalled) return;
   shutdownHooksInstalled = true;
