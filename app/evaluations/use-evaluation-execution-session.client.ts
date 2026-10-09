@@ -61,7 +61,6 @@ export interface UseEvaluationExecutionSessionOptions {
   prepareCredential(target: ResolvedRunInput["target"]): Promise<CredentialSelection>;
   onTraceSaved(): void;
   onError(message: string): void;
-  onOpenTrace(trace: RunTrace, origin: { workspace: ProjectWorkspaceHandle | null; fileName: string; source: "experiment" }): void;
   /**
    * A batch this session started has run to completion.
    *
@@ -171,17 +170,16 @@ export function useEvaluationExecutionSession(options: UseEvaluationExecutionSes
 
   const cancel = useCallback(() => controllerRef.current?.cancel(), []);
 
+  /**
+   * Selects one run to read beside the batch. The trace stays a read model of
+   * this execution: adopting it into the live run session would replace the
+   * session's ordinary run, which may exist nowhere else.
+   */
   const openTrace = useCallback((runId: RunId) => {
     const current = execution;
-    const trace = current?.traces.get(runId);
-    if (!current || !trace) return;
+    if (!current?.traces.has(runId)) return;
     setExecution((active) => active === current ? { ...active, selectedRunId: runId } : active);
-    options.onOpenTrace(trace, {
-      workspace: current.workspace,
-      fileName: current.traceFileNames.get(runId) ?? traceFileName(runId),
-      source: "experiment",
-    });
-  }, [execution, options]);
+  }, [execution]);
 
   const openSaved = useCallback((opened: {
     plan: EvaluationExperimentPlanV3;

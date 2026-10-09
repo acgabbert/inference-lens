@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import type { ExperimentCellId, RunId, RunState, RunTrace } from "../../packages/core/src/run-kernel";
+import type { ExperimentCellId, RunId, RunTrace } from "../../packages/core/src/run-kernel";
 import { PaneEmptyState } from "../pane-empty-state.client";
 import { EvaluationComparisonWorkspace } from "../evaluations/evaluation-comparison-workspace.client";
 import type { EvaluationComparisonReturnTarget } from "../evaluations/evaluation-comparison-workspace.client";
@@ -16,6 +16,8 @@ import { RepeatedExperimentWorkspace } from "../run/repeated-experiment-workspac
 import type { RepeatedExperimentExecution } from "../run/use-repeated-experiment-session.client";
 import {
   RunsEvidenceList,
+  type RunsCurrentBatch,
+  type RunsCurrentRun,
   type RunsHistoryFilter,
   type RunsSelection,
 } from "../run/runs-evidence-list.client";
@@ -27,19 +29,23 @@ import type {
 import styles from "./runs-mode.module.css";
 
 interface RunsModeProps {
-  browser?: {
+  browser: {
     projectId?: string;
-    currentRun?: { runId: RunId; model: string; status: RunState["status"]["kind"]; startedAt?: string };
+    currentRun?: RunsCurrentRun;
+    currentBatch?: RunsCurrentBatch;
     history?: ProjectRunHistoryState;
     selection?: RunsSelection;
     filter: RunsHistoryFilter;
     scrollTop: number;
+    experimentsLockedReason?: string;
+    /** Evidence for an explicitly selected ordinary run, current or saved. */
     selectedEvidence?: ReactNode;
     loading?: boolean;
     error?: string;
     onFilterChange(filter: RunsHistoryFilter): void;
     onScrollTopChange(scrollTop: number): void;
     onSelectCurrent(runId: RunId): void;
+    onSelectCurrentBatch(): void;
     onSelectRun(item: ProjectRunHistoryItem): void;
     onSelectExperiment(item: ProjectExperimentHistoryItem): void;
   };
@@ -74,29 +80,20 @@ interface RunsModeProps {
    * mode's job; rendering one run's output is not, and duplicating it here
    * would give the app a second response surface.
    */
-  detail?: ReactNode;
-  /**
-   * An ordinary request keeps rendering in Compose's response surface. Runs
-   * owns the route back to it, not another copy of that surface.
-   */
-  currentRequest?: {
-    onOpen(): void;
-  };
-  /** Saved evidence exists only for a folder-backed project. */
-  savedHistory?: {
-    disabled: boolean;
-    disabledReason?: string;
-    onOpen(): void;
+  detail?: {
+    content: ReactNode;
+    batchLabel: string;
+    memberLabel: string;
   };
   /** Where an empty Runs mode sends someone who has nothing to look at yet. */
   onStartSomething(): void;
 }
 
 /**
- * Where results are read. Evaluation results, repeated-experiment results, and
- * baseline comparison are wide tabular things; each one used to claim whichever
- * half-pane happened to be free, which is what gave the response pane three
- * identities. Here they are the only thing on screen.
+ * Where results are read: a list of the session's and the project folder's
+ * evidence beside whatever is selected. Evaluation results, repeated-experiment
+ * results, and baseline comparison are wide tabular things, so each gets the
+ * main area to itself, with a selected member beside it.
  */
 export function RunsMode({
   browser,
@@ -104,16 +101,15 @@ export function RunsMode({
   evaluation,
   repeated,
   detail,
-  currentRequest,
-  savedHistory,
   onStartSomething,
 }: RunsModeProps) {
-  // Mirrors the precedence the two-pane shell resolved by nesting: a live or
-  // reopened execution outranks a loaded comparison, because it is the thing
-  // the user most recently caused.
+  // A live or reopened execution outranks a loaded comparison, because it is
+  // the thing the user most recently caused. An explicitly selected ordinary
+  // run outranks both; see `browserDetail`.
   const selectedRunId =
     evaluation?.execution.selectedRunId ?? repeated?.execution.selectedRunId ?? null;
   const showDetail = Boolean(detail && selectedRunId);
+  const returnToBatch = evaluation?.onReturnToList ?? repeated?.onReturnToList;
 
   const results = evaluation ? (
     <EvaluationResultsWorkspace
@@ -146,89 +142,36 @@ export function RunsMode({
     />
   ) : null;
 
-  const browserDetail = browser?.selectedEvidence ? (
+  const browserDetail = browser.selectedEvidence ? (
     <section aria-label="Selected run evidence" className={styles.results}>
       {browser.selectedEvidence}
     </section>
-  ) : browser?.loading ? (
+  ) : browser.loading ? (
     <div className={styles.empty} role="status">Loading saved evidence…</div>
-  ) : browser?.error ? (
+  ) : browser.error ? (
     <div className={styles.empty} role="alert">
       <PaneEmptyState eyebrow="Runs" heading="Evidence unavailable" detail={browser.error} />
     </div>
   ) : null;
 
-  if (!results && !browser) {
-    return (
-      <div className={styles.mode}>
-        <div className={styles.empty}>
-          <PaneEmptyState
-            eyebrow="Runs"
-            heading={currentRequest ? "Current request result" : "No results open"}
-            detail={
-              currentRequest
-                ? "The latest ordinary request is still available in Compose."
-                : "Ordinary request results appear here after a run. You can also browse saved project evidence or start an evaluation."
-            }
-            {...(currentRequest
-              ? {
-                  action: {
-                    label: "View current response",
-                    onClick: currentRequest.onOpen,
-                  },
-                }
-              : {})}
-          />
-          <nav aria-label="Run destinations" className={styles.destinations}>
-            {savedHistory ? (
-              <div className={styles.destination}>
-                <button
-                  className="button secondary"
-                  disabled={savedHistory.disabled}
-                  title={savedHistory.disabledReason}
-                  type="button"
-                  onClick={savedHistory.onOpen}
-                >
-                  Open saved run history
-                </button>
-                <small>
-                  Browse ordinary runs, repeated experiments, and evaluations saved in this project folder.
-                </small>
-              </div>
-            ) : (
-              <p className={styles.historyNote}>
-                Save this project to a folder to build a browsable run history.
-              </p>
-            )}
-            <div className={styles.destination}>
-              <button className="button secondary" type="button" onClick={onStartSomething}>
-                Go to Evaluations
-              </button>
-              <small>Start a batch or open a comparison in Runs.</small>
-            </div>
-          </nav>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className={browser ? `${styles.mode} ${styles.withBrowser}` : styles.mode}>
-      {browser && (
-        <RunsEvidenceList
-          {...(browser.projectId ? { projectId: browser.projectId } : {})}
-          {...(browser.currentRun ? { currentRun: browser.currentRun } : {})}
-          {...(browser.history ? { history: browser.history } : {})}
-          {...(browser.selection ? { selection: browser.selection } : {})}
-          filter={browser.filter}
-          scrollTop={browser.scrollTop}
-          onFilterChange={browser.onFilterChange}
-          onScrollTopChange={browser.onScrollTopChange}
-          onSelectCurrent={browser.onSelectCurrent}
-          onSelectRun={browser.onSelectRun}
-          onSelectExperiment={browser.onSelectExperiment}
-        />
-      )}
+    <div className={`${styles.mode} ${styles.withBrowser}`}>
+      <RunsEvidenceList
+        {...(browser.projectId ? { projectId: browser.projectId } : {})}
+        {...(browser.currentRun ? { currentRun: browser.currentRun } : {})}
+        {...(browser.currentBatch ? { currentBatch: browser.currentBatch } : {})}
+        {...(browser.history ? { history: browser.history } : {})}
+        {...(browser.selection ? { selection: browser.selection } : {})}
+        {...(browser.experimentsLockedReason ? { experimentsLockedReason: browser.experimentsLockedReason } : {})}
+        filter={browser.filter}
+        scrollTop={browser.scrollTop}
+        onFilterChange={browser.onFilterChange}
+        onScrollTopChange={browser.onScrollTopChange}
+        onSelectCurrent={browser.onSelectCurrent}
+        onSelectCurrentBatch={browser.onSelectCurrentBatch}
+        onSelectRun={browser.onSelectRun}
+        onSelectExperiment={browser.onSelectExperiment}
+      />
       <div className={showDetail && !browserDetail ? `${styles.content} ${styles.withDetail}` : styles.content}>
         {browserDetail ?? (results ? (
           <section aria-label="Run results" className={styles.results}>
@@ -239,14 +182,33 @@ export function RunsMode({
             <PaneEmptyState
               eyebrow="Runs"
               heading="No results open"
-              detail="Ordinary request results appear here after a run. You can also browse saved project evidence or start an evaluation."
+              detail="Run a request in Compose and its result appears here. Choose saved evidence from the list, or start an evaluation."
               action={{ label: "Go to Evaluations", onClick: onStartSomething }}
             />
           </div>
         ))}
-        {showDetail && !browserDetail && (
+        {showDetail && !browserDetail && detail && (
           <section aria-label="Selected run" className={styles.detail}>
-            {detail}
+            <nav aria-label="Breadcrumb" className={styles.breadcrumb}>
+              <ol>
+                <li>Runs</li>
+                <li>
+                  <span aria-hidden="true">/</span>
+                  {returnToBatch ? (
+                    <button className="text-button" type="button" onClick={returnToBatch}>
+                      {detail.batchLabel}
+                    </button>
+                  ) : (
+                    detail.batchLabel
+                  )}
+                </li>
+                <li>
+                  <span aria-hidden="true">/</span>
+                  <span aria-current="page">{detail.memberLabel}</span>
+                </li>
+              </ol>
+            </nav>
+            {detail.content}
           </section>
         )}
       </div>

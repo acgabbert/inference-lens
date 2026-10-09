@@ -31,7 +31,7 @@ Observed means reproduced or visually inspected during this review. Proposed mea
 | --- | --- | --- | --- |
 | L1 | Prompts remains a tab inside the request half of Compose; the other half can be idle output. At 390px the 140px prompt rail remains beside the editor, and revision controls overlap the rail. | Give prompt authoring its own full-width workspace and narrow list/detail navigation. | First |
 | L2 | At 880px and 390px the evaluation provider preview occupies most of the captured workspace, leaving little or no visible case editor. Desktop case editing already has useful hierarchy. | Make preview optional at constrained widths and give the case editor the main scroll region. | After prompt and Runs workflows; mobile deferred |
-| L3 | Runs now finds the ordinary response, but sends the user to Compose to read it. Saved history opens as a drawer over a destination screen. | Put the history list and selected evidence in Runs, sharing the existing response renderer. | Next |
+| L3 | Runs now finds the ordinary response, but sends the user to Compose to read it. Saved history opens as a drawer over a destination screen. | Put the history list and selected evidence in Runs, sharing the existing response renderer. | Done; see §2 decisions |
 | L4 | The small-screen header reduces connection/project/run-data controls to compact symbols; three navigation levels precede prompt content. | Keep project/target context readable and reduce navigation levels for authoring. | Desktop context alongside layout work; mobile deferred |
 | L5 | Authoring shows revision metadata, evaluation, archive, and n8n actions above or beside content; the request-level Repeat action remains visible. | Establish a clear action hierarchy for the object being edited. | Alongside L1 |
 | L6 | Current characterization reproduces menus staying open on Escape and tool-library focus remaining outside the dialog. Tool copy also attaches the copy. | Establish predictable overlay/return behavior and explicit tool attachment steps. | Separate supporting slice |
@@ -70,7 +70,9 @@ Rows should emphasize recognition: request excerpt or suite name, target/model, 
 
 Browsing historical evidence should be read-only. **Branch from this run** is an explicit handoff to Compose and uses the existing provenance/parent-trace rules. Merely selecting a result must not replace the current request draft or create a provider call.
 
-**Decisions before implementation:**
+**Decisions (settled 2026-10-09):** retention follows the recommendation below — Runs lists the one in-memory ordinary run and the one in-memory batch beside folder history, and an unsaved run says **Not saved · replaced by the next run** in its row and its response. Viewing is independent of Compose: batch members and saved runs are read in place and never adopted into the run session; **Branch from this run** is the only handoff. A run or batch the user starts selects itself; a background completion does not. Excerpts are derived from each trace's last user message; there is no format change. The run-history drawer is gone, and **Run data → Run history** opens Runs.
+
+**Decisions before implementation (as originally framed):**
 
 - **History retention:** all session runs requires a bounded memory policy and lifecycle rules. **Recommendation:** first expose the latest in-memory ordinary result plus existing folder history; do not imply older unsaved results can be recovered. Broader session history is a later decision.
 - **Viewing versus adopting:** inspect in Runs with a distinct selected evidence identity, versus continue adopting the selected trace into Compose. **Recommendation:** independent inspection selection, with explicit branching. Define its interaction with live execution and project switching before coding.

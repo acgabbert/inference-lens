@@ -19,7 +19,6 @@ interface TopbarProps {
   hasDiagnosticCapture: boolean;
   hasRunTrace: boolean;
   hasProjectWorkspace: boolean;
-  runHistoryBlocked: boolean;
   isRequestActive: boolean;
   isExperimentActive: boolean;
   /**
@@ -74,7 +73,6 @@ export function Topbar({
   mode, onModeChange, modeIndicators,
   hasRunTrace,
   hasProjectWorkspace,
-  runHistoryBlocked,
   retryableFailure,
   runDisabled, onChooseProfile, onOpenConnections, onNewProject, onOpenProject,
   runDisabledReasonId,
@@ -174,7 +172,7 @@ export function Topbar({
         </div></details>
         <details className="header-menu run-data-menu"><summary aria-label="Run data menu" className="button secondary"><span className="run-data-menu-label">Run data</span> <span className="menu-chevron">⌄</span></summary><div className="menu-popover project-popover run-data-popover">
           <div className="menu-group-heading">Run data</div>
-          <button disabled={!hasProjectWorkspace || runHistoryBlocked} title={runHistoryBlocked ? "Finish or stop the current run before opening history." : undefined} type="button" onClick={(event) => { onOpenRunHistory(); closeContainingMenu(event.currentTarget); }}>Run history…</button><label className="menu-file-button">Import run trace…<input type="file" accept="application/json,.json" onChange={onImportRunTrace} /></label><button disabled={!hasRunTrace} type="button" onClick={onDownloadRunTrace}>Export run trace…</button><span className="menu-separator" /><button disabled={!hasDiagnosticCapture} type="button" onClick={onDownloadDiagnostics}>Download diagnostics</button>
+          <button type="button" onClick={(event) => { onOpenRunHistory(); closeContainingMenu(event.currentTarget); }}>Run history</button><label className="menu-file-button">Import run trace…<input type="file" accept="application/json,.json" onChange={onImportRunTrace} /></label><button disabled={!hasRunTrace} type="button" onClick={onDownloadRunTrace}>Export run trace…</button><span className="menu-separator" /><button disabled={!hasDiagnosticCapture} type="button" onClick={onDownloadDiagnostics}>Download diagnostics</button>
         </div></details>
         {/*
           The topbar holds one primary action and `Stop`; nothing else. Which

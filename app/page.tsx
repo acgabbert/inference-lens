@@ -31,7 +31,7 @@ import {
 } from "./tauri-inference-transport.client";
 import { AppErrorBoundary } from "./app-error-boundary.client";
 import { useInsecureOriginNotice } from "./use-insecure-origin.client";
-import { projectFolderAccessAvailable } from "./project-workspace.client";
+import { projectFolderAccessAvailable, runTraceWorkspacePath } from "./project-workspace.client";
 import { useToolRegistry } from "./tools/use-tool-registry.client";
 import { ToolRegistryModal } from "./tools/tool-registry-modal.client";
 import { N8nImportModal } from "./n8n-import-modal.client";
@@ -47,17 +47,14 @@ import { useRequestSettings } from "./request/use-request-settings.client";
 import { useProjectWorkspace } from "./use-project-workspace.client";
 import { ConnectionDrawer } from "./connection-drawer.client";
 import { Topbar } from "./topbar.client";
-import { ResponseOutput } from "./response-output.client";
+import { ResponseOutput, type TraceStorageStatus } from "./response-output.client";
 import { WorkbenchShell } from "./workbench-shell.client";
 import type { WorkbenchView } from "./workbench-shell.client";
 import { RunTracePanel } from "./run-trace-panel.client";
 import { traceFileName } from "../packages/core/src/run-trace";
-import { RunHistoryDrawer } from "./run-history-drawer.client";
+import { runRequestExcerpt } from "../packages/core/src/run-history";
 import { useEvaluationBaselines } from "./evaluations/use-evaluation-baselines.client";
-import type {
-  ProjectExperimentHistoryItem,
-  ProjectRunHistoryItem,
-} from "./use-project-run-history.client";
+import type { ProjectExperimentHistoryItem } from "./use-project-run-history.client";
 import { useProjectRunHistory } from "./use-project-run-history.client";
 import {
   ConfirmationDialog,
@@ -72,6 +69,11 @@ import { prepareWorkbenchRun } from "./run/prepare-workbench-run.client";
 import type { PrepareWorkbenchRunResult } from "./run/prepare-workbench-run.client";
 import { useRunSession } from "./run/use-run-session.client";
 import { RunEvidenceDetail } from "./run/run-evidence-detail.client";
+import {
+  batchMemberLabel,
+  batchTitle,
+  currentRunStorageLabel,
+} from "./run/runs-evidence-labels";
 import { useResponseView } from "./run/use-response-view.client";
 import { useBatchCompletion } from "./run/use-batch-completion.client";
 import { usePendingBranch } from "./run/use-pending-branch.client";
@@ -176,7 +178,6 @@ function HomeContent() {
     useState<string>();
   const [pendingReadinessDestination, setPendingReadinessDestination] =
     useState<ReadinessDestination>();
-  const [runHistoryOpen, setRunHistoryOpen] = useState(false);
   // Set once the suite editor's past-execution list has been expanded. Listing
   // costs a full parse of every artifact in the project folder, so neither
   // surface being open means no listing happens at all. Held here because the
@@ -283,7 +284,7 @@ function HomeContent() {
   } = project;
   const runHistory = useProjectRunHistory(
     projectWorkspace,
-    runHistoryOpen || suiteHistoryRequested || mode === "runs",
+    suiteHistoryRequested || mode === "runs",
     savedRunVersion,
   );
   // Named baselines are annotations over the same artifacts the history
@@ -386,7 +387,6 @@ function HomeContent() {
     bindingForTool,
     onTraceSaved() { setSavedRunVersion((current) => current + 1); },
     onError(message) { project.setError(message, { clearKind: true }); },
-    onOpenTrace(trace, origin) { runSession.adoptTrace(trace, origin); },
     onFinished({ experimentId, repetitions }) {
       batchCompletion.recordFinished({ kind: "repeated", experimentId, repetitions });
     },
@@ -402,7 +402,6 @@ function HomeContent() {
     },
     onTraceSaved() { setSavedRunVersion((current) => current + 1); },
     onError(message) { project.setError(message, { clearKind: true }); },
-    onOpenTrace(trace, origin) { runSession.adoptTrace(trace, origin); },
     onFinished({ experimentId }) {
       batchCompletion.recordFinished({ kind: "evaluation", experimentId });
     },
@@ -553,6 +552,7 @@ function HomeContent() {
       repeatedExperiment.clear();
       evaluationExecution.clear();
       runSession.reset();
+      runsNavigation.clearSelection();
       setMode("runs");
     },
   });
@@ -754,6 +754,7 @@ function HomeContent() {
       commitPreparedRun(prepared);
       runSession.reset();
       setTraceOpen(false);
+      runsNavigation.selectCurrentBatch();
       // A batch's results are read in the Runs mode, so the batch opens there
       // rather than displacing whatever the current pane was showing.
       setMode("runs");
@@ -764,23 +765,11 @@ function HomeContent() {
     runSession.reset();
     repeatedExperiment.clear();
     setTraceOpen(false);
+    runsNavigation.selectCurrentBatch();
     setMode("runs");
     void evaluationExecution.confirm(projectWorkspace);
   }
 
-  async function openHistoryTrace(item: ProjectRunHistoryItem): Promise<void> {
-    const workspace = projectWorkspace;
-    if (!workspace) throw new Error("The project folder is no longer open.");
-    runSession.adoptTrace(await runHistory.readTrace(item.fileName), {
-      workspace,
-      fileName: item.fileName,
-    });
-    repeatedExperiment.clear();
-    evaluationExecution.clear();
-    // A single saved run reads in the response pane, which belongs to Compose.
-    setMode("compose");
-    setRunHistoryOpen(false);
-  }
   function branchFromHistoryTrace(trace: RunTrace): void {
     if (!pendingBranch.branchFromTrace(trace)) return;
     setMode("compose");
@@ -799,7 +788,6 @@ function HomeContent() {
     }
     runsNavigation.selectExperiment(item);
     setMode("runs");
-    setRunHistoryOpen(false);
   }
   /**
    * Releases a finished batch from the response pane. A durable batch is
@@ -832,10 +820,11 @@ function HomeContent() {
     runState &&
       ["completed", "cancelled", "failed"].includes(runState.status.kind),
   );
-  const runHistoryBlocked =
-    (Boolean(runState) && !runReachedTerminalStatus) ||
-    repeatedExperiment.isRunning ||
-    evaluationExecution.isRunning;
+  // Opening a saved batch replaces the session's batch, which would strand one
+  // that is still running. Ordinary evidence stays browsable throughout.
+  const batchRunning = repeatedExperiment.isRunning || evaluationExecution.isRunning;
+  // The two sessions clear each other, so at most one holds a batch.
+  const activeBatch = evaluationExecution.execution ?? repeatedExperiment.execution;
   const requestPreview = templateRequestPreview({
     project: projectFile,
     ...(projectTemplates.activeProjectRevision
@@ -891,7 +880,7 @@ function HomeContent() {
     if (nextMode === "prompts" && mode !== "prompts") {
       promptNavigation.clearReturn();
     }
-    if (nextMode === "runs" && !runsNavigation.selection && runState) {
+    if (nextMode === "runs" && !runsNavigation.selection && runState && !activeBatch) {
       runsNavigation.selectCurrent(runState.runId);
     }
     setMode(nextMode);
@@ -1086,10 +1075,34 @@ function HomeContent() {
     setProjectCreationMode("save");
   }
 
-  // The single-run response and its trace panel are one surface with one
-  // owner, mounted by Compose and reused by the Runs mode when a run is
-  // selected out of a batch. Composing them once here is what keeps the app
-  // from growing a second response implementation.
+  const currentRunExcerpt = runState?.input ? runRequestExcerpt(runState.input.messages) : undefined;
+  // One run of the open batch, read in place. It is never adopted into the run
+  // session, so reading it cannot displace the session's ordinary run.
+  const batchMember = (() => {
+    const runId = activeBatch?.selectedRunId;
+    const trace = runId ? activeBatch.traces.get(runId) : undefined;
+    if (!activeBatch || !runId || !trace) return undefined;
+    const storage: TraceStorageStatus = activeBatch.storage === "durable" && activeBatch.workspace
+      ? {
+          kind: "saved",
+          location: runTraceWorkspacePath(
+            activeBatch.workspace,
+            activeBatch.traceFileNames.get(runId) ?? traceFileName(runId),
+          ),
+        }
+      : { kind: "unsaved" };
+    return {
+      trace,
+      storage,
+      batchLabel: batchTitle(activeBatch.plan),
+      memberLabel: batchMemberLabel(activeBatch.plan, runId) ?? "Selected run",
+    };
+  })();
+  // The live run's response is one surface with one owner, mounted by Compose
+  // and reused by the Runs mode when the current run is selected there.
+  // Composing it once here is what keeps the app from growing a second
+  // response implementation; immutable evidence reads through the same
+  // renderer via `RunEvidenceDetail`.
   const responseSurface = (
     <section className="result">
       <ResponseOutput
@@ -1175,7 +1188,6 @@ function HomeContent() {
         hasDiagnosticCapture={hasDiagnosticCapture}
         hasRunTrace={runReachedTerminalStatus}
         hasProjectWorkspace={Boolean(projectWorkspace)}
-        runHistoryBlocked={runHistoryBlocked}
         isRequestActive={isRequestActive}
         isExperimentActive={repeatedExperiment.isRunning || evaluationExecution.isRunning}
         mode={mode}
@@ -1208,7 +1220,7 @@ function HomeContent() {
           }
           event.target.value = "";
         }}
-        onOpenRunHistory={() => setRunHistoryOpen(true)}
+        onOpenRunHistory={() => changeMode("runs")}
         onStop={runSession.stop}
         onStopExperiment={evaluationExecution.isRunning ? evaluationExecution.cancel : repeatedExperiment.cancel}
         onRun={() => void run()}
@@ -1252,17 +1264,6 @@ function HomeContent() {
         {...(sessionPromptProjectNotice
           ? { authoringNotice: sessionPromptProjectNotice }
           : {})}
-      />
-
-      <RunHistoryDrawer
-        open={runHistoryOpen}
-        projectName={projectFile?.name}
-        selectedRunId={runState?.runId}
-        selectedExperimentId={evaluationExecution.execution?.plan.experimentId ?? repeatedExperiment.execution?.plan.experimentId}
-        history={runHistory}
-        onClose={() => setRunHistoryOpen(false)}
-        onSelect={(item) => openHistoryTrace(item)}
-        onSelectExperiment={(item) => openHistoryExperiment(item)}
       />
 
       {mode === "compose" ? (
@@ -1407,8 +1408,28 @@ function HomeContent() {
                   currentRun: {
                     runId: runState.runId,
                     model: runState.input.target.model,
+                    protocol: runState.input.target.protocol,
+                    ...(currentRunExcerpt ? { requestExcerpt: currentRunExcerpt } : {}),
                     status: runState.status.kind,
                     ...(runState.startedAt ? { startedAt: runState.startedAt } : {}),
+                    storageLabel: currentRunStorageLabel(runState.status.kind, traceStorage),
+                    saved: traceStorage?.kind === "saved",
+                  },
+                }
+              : {}),
+            ...(activeBatch
+              ? {
+                  currentBatch: {
+                    experimentId: activeBatch.plan.experimentId,
+                    kind: activeBatch.plan.kind,
+                    title: batchTitle(activeBatch.plan),
+                    status: batchRunning ? "running" : activeBatch.result?.status ?? "interrupted",
+                    detail: `${activeBatch.plan.cells.length} ${activeBatch.plan.cells.length === 1 ? "run" : "runs"}${
+                      activeBatch.live ? ` · ${activeBatch.live.finished} finished` : ""
+                    }`,
+                    storageLabel: activeBatch.storage === "durable"
+                      ? "Saved to folder"
+                      : "Not saved · replaced by the next run",
                   },
                 }
               : {}),
@@ -1416,15 +1437,22 @@ function HomeContent() {
             ...(runsNavigation.selection ? { selection: runsNavigation.selection } : {}),
             filter: runsNavigation.filter,
             scrollTop: runsNavigation.scrollTop,
+            ...(batchRunning
+              ? { experimentsLockedReason: "Stop the running batch before opening another." }
+              : {}),
             ...(runsNavigation.selection?.kind === "current-run" && runState?.runId === runsNavigation.selection.runId
               ? { selectedEvidence: responseSurface }
               : runsNavigation.inspection?.status === "ready" && runsNavigation.inspection.trace
                 ? {
                     selectedEvidence: (
                       <RunEvidenceDetail
+                        key={runsNavigation.inspection.trace.runId}
                         trace={runsNavigation.inspection.trace}
-                        fileName={runsNavigation.inspection.selection.fileName}
+                        eyebrow="Saved evidence"
+                        storage={{ kind: "saved", location: runsNavigation.inspection.selection.fileName }}
                         onBranch={branchFromHistoryTrace}
+                        readTrace={runHistory.readTrace}
+                        {...(projectFile ? { onPromoteTrace: (trace: RunTrace) => evaluationCaseSource.requestPromotion(trace) } : {})}
                       />
                     ),
                   }
@@ -1436,8 +1464,13 @@ function HomeContent() {
             onFilterChange: runsNavigation.setFilter,
             onScrollTopChange: runsNavigation.setScrollTop,
             onSelectCurrent: runsNavigation.selectCurrent,
+            onSelectCurrentBatch: runsNavigation.selectCurrentBatch,
             onSelectRun: (item) => void runsNavigation.selectSavedRun(item),
-            onSelectExperiment: (item) => void openHistoryExperiment(item),
+            onSelectExperiment: (item) => {
+              openHistoryExperiment(item).catch((error: unknown) => {
+                project.setError(error instanceof Error ? error.message : "Could not open the saved batch.", { clearKind: true });
+              });
+            },
           }}
           {...(evaluationBaselines.comparison && !evaluationExecution.execution && !repeatedExperiment.execution
             ? {
@@ -1494,23 +1527,22 @@ function HomeContent() {
                 },
               }
             : {})}
-          detail={
-            <>
-              {responseSurface}
-              {traceSurface}
-            </>
-          }
-          {...(projectWorkspace
+          {...(batchMember
             ? {
-                savedHistory: {
-                  disabled: runHistoryBlocked,
-                  ...(runHistoryBlocked
-                    ? {
-                        disabledReason:
-                          "Finish or stop the current run before opening history.",
-                      }
-                    : {}),
-                  onOpen: () => setRunHistoryOpen(true),
+                detail: {
+                  content: (
+                    <RunEvidenceDetail
+                      key={batchMember.trace.runId}
+                      trace={batchMember.trace}
+                      eyebrow={activeBatch?.storage === "durable" ? "Saved batch run" : "Batch run · not saved"}
+                      storage={batchMember.storage}
+                      onBranch={branchFromHistoryTrace}
+                      {...(projectWorkspace ? { readTrace: runHistory.readTrace } : {})}
+                      {...(projectFile ? { onPromoteTrace: (trace: RunTrace) => evaluationCaseSource.requestPromotion(trace) } : {})}
+                    />
+                  ),
+                  batchLabel: batchMember.batchLabel,
+                  memberLabel: batchMember.memberLabel,
                 },
               }
             : {})}

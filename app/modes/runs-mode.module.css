@@ -48,6 +48,7 @@
   min-height: 0;
   flex: 1 1 auto;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-content: start;
   gap: var(--space-sm);
   overflow: auto;
@@ -55,6 +56,9 @@
 
 .mode :global(.runs-evidence-item) {
   width: 100%;
+  /* A long request excerpt truncates inside the row rather than widening it. */
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
   padding: var(--space-md);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
@@ -71,6 +75,11 @@
   border-color: var(--border-strong);
 }
 
+.mode :global(.runs-evidence-item:disabled) {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .mode :global(.runs-evidence-item.selected) {
   border-color: var(--accent);
   background: var(--accent-soft);
@@ -82,7 +91,12 @@
   gap: var(--space-xs);
 }
 
+.mode :global(.runs-evidence-item-heading > *) {
+  flex: 0 0 auto;
+}
+
 .mode :global(.runs-evidence-item-heading strong) {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   color: var(--text-primary);
@@ -115,39 +129,39 @@
   margin: 0 auto;
 }
 
-.destinations {
-  width: min(100%, 620px);
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-md);
-}
-
-.destination,
-.historyNote {
-  min-width: 0;
-  margin: 0;
-  padding: var(--space-lg);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
+.breadcrumb {
+  flex: 0 0 auto;
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--border-subtle);
   background: var(--surface-raised);
   color: var(--text-muted);
 }
 
-.destination {
+.breadcrumb ol {
+  margin: 0;
+  padding: 0;
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-sm);
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+  list-style: none;
 }
 
-.destination small {
-  line-height: var(--leading-prose);
-}
-
-.historyNote {
+.breadcrumb li {
+  min-width: 0;
   display: flex;
   align-items: center;
-  line-height: var(--leading-prose);
+  gap: var(--space-xs);
+}
+
+.breadcrumb [aria-current="page"] {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.mode :global(.runs-evidence-storage.unsaved) {
+  color: var(--warning-strong);
+  font-weight: 600;
 }
 
 @media (max-width: 1100px) {
@@ -169,9 +183,5 @@
   .empty {
     justify-content: flex-start;
     padding: var(--space-xl) var(--space-md);
-  }
-
-  .destinations {
-    grid-template-columns: minmax(0, 1fr);
   }
 }

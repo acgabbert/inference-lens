@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   loadRunHistoryFiles,
   loadRunHistoryFilesWithStates,
+  runRequestExcerpt,
   summarizeRunTrace,
 } from "../packages/core/src/run-history.ts";
 import {
@@ -184,7 +185,40 @@ test("derives a compact history summary from canonical trace evidence", () => {
     attemptCount: 1,
     retryCount: 0,
     messageCount: 1,
+    protocol: "openai-compatible-chat-completions",
+    requestExcerpt: "Hello 0",
   });
+});
+
+test("excerpts the last user message so a row is recognisable without opening it", () => {
+  const message = (role: "system" | "user" | "assistant", text: string, suffix: string) => ({
+    id: createEntityId("message", suffix),
+    role,
+    content: [{ type: "text" as const, text }],
+  });
+
+  assert.equal(
+    runRequestExcerpt([
+      message("system", "You are terse.", "system"),
+      message("user", "First question", "first"),
+      message("assistant", "First answer", "answer"),
+      message("user", "  Follow-up\n\n   about   rollback  ", "follow-up"),
+    ]),
+    "Follow-up about rollback",
+  );
+  // A conversation that ends on a system or assistant turn still names the
+  // request by what the user last asked.
+  assert.equal(
+    runRequestExcerpt([message("user", "Only ask", "ask"), message("assistant", "Prefill", "prefill")]),
+    "Only ask",
+  );
+  assert.equal(runRequestExcerpt([message("system", "Instructions only", "only")]), undefined);
+  assert.equal(runRequestExcerpt([message("user", "   ", "blank")]), undefined);
+
+  const long = runRequestExcerpt([message("user", "word ".repeat(60), "long")]);
+  assert.ok(long);
+  assert.ok(long.length <= 120, `excerpt is ${long.length} characters`);
+  assert.ok(long.endsWith("…"));
 });
 
 test("counts the attempts a failed run burned before giving up", () => {

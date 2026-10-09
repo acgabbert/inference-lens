@@ -236,8 +236,8 @@ async function installNativeWorkspaceFixture(page: Page): Promise<void> {
 /** The disposition every storage adapter must report for the same folder. */
 async function expectInterruptedExperiment(page: Page): Promise<void> {
   await page.getByLabel("Run data menu").click();
-  await page.getByRole("button", { name: "Run history…" }).click();
-  const grouped = page.locator(".run-history-item.experiment");
+  await page.getByRole("button", { name: "Run history", exact: true }).click();
+  const grouped = page.locator(".runs-evidence-item.experiment");
   await expect(grouped).toHaveCount(2);
   const repeated = grouped.filter({ hasText: "Repeated experiment" });
   await expect(repeated).toContainText("Repeated experiment · history-fixture-model");
@@ -266,10 +266,10 @@ async function expectInterruptedExperiment(page: Page): Promise<void> {
 
 async function expectInterruptedEvaluation(page: Page): Promise<void> {
   await page.getByLabel("Run data menu").click();
-  await page.getByRole("button", { name: "Run history…" }).click();
+  await page.getByRole("button", { name: "Run history", exact: true }).click();
   // The row is titled by its suite, not by its model: a project runs many
   // suites against one model, and the model alone cannot tell them apart.
-  const grouped = page.locator(".run-history-item.experiment").filter({ hasText: "Evaluation · History quality gate" });
+  const grouped = page.locator(".runs-evidence-item.experiment").filter({ hasText: "Evaluation · History quality gate" });
   await expect(grouped).toContainText("interrupted");
   // Nothing ran, so nothing passed and nothing failed. The row reports the
   // strict pass rate rather than the run-status counts.
