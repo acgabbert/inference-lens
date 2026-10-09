@@ -241,7 +241,7 @@ export function RepeatedExperimentWorkspace({
         <section className="repeated-experiment-metric-section">
           <h3>Outcomes</h3>
           <dl>
-            <div><dt>Finished runs</dt><dd>{aggregate.completed} completed · {aggregate.failed} failed · {aggregate.cancelled} cancelled</dd></div>
+            <div><dt>Finished runs</dt><dd>{aggregate.completed} completed · {aggregate.failed} failed{aggregate.rateLimited > 0 && ` · ${aggregate.rateLimited} rate limited`} · {aggregate.cancelled} cancelled</dd></div>
             {incompleteOutcomes.length > 0 && <div><dt>Unstarted / missing</dt><dd>{incompleteOutcomes.join(" · ")}</dd></div>}
           </dl>
         </section>

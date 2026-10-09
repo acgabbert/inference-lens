@@ -2,6 +2,7 @@ import {
   evaluationParsedExperimentAggregate,
   experimentArtifactIdentity,
   isExperimentEntryName,
+  isRateLimitedRun,
   parseExperimentPlanJson,
   parseExperimentResultJson,
   repeatedExperimentAggregate,
@@ -70,6 +71,7 @@ interface CommonExperimentHistoryFields {
   requested: number;
   completed: number;
   failed: number;
+  rateLimited: number;
   cancelled: number;
   notRun: number;
   missingTrace: number;
@@ -177,6 +179,7 @@ export function loadProjectHistoryFiles(
           const dispositions = new Map(result?.cells.map((cell) => [cell.cellId, cell]));
           let completed = 0;
           let failed = 0;
+          let rateLimited = 0;
           let cancelled = 0;
           let notRun = 0;
           let missingTrace = 0;
@@ -186,6 +189,7 @@ export function loadProjectHistoryFiles(
             if (disposition?.status === "not-run" || (!disposition && !state)) notRun += 1;
             else if (!state) missingTrace += 1;
             else if (state.status.kind === "completed") completed += 1;
+            else if (isRateLimitedRun(state)) rateLimited += 1;
             else if (state.status.kind === "failed") failed += 1;
             else if (state.status.kind === "cancelled") cancelled += 1;
             else notRun += 1;
@@ -196,6 +200,7 @@ export function loadProjectHistoryFiles(
             requested: plan.cells.length,
             completed,
             failed,
+            rateLimited,
             cancelled,
             notRun,
             missingTrace,
@@ -237,6 +242,7 @@ export function loadProjectHistoryFiles(
       requested: aggregate.requested,
       completed: aggregate.completed,
       failed: aggregate.failed,
+      rateLimited: aggregate.rateLimited,
       cancelled: aggregate.cancelled,
       notRun: aggregate.notRun,
       missingTrace: aggregate.missingTrace,

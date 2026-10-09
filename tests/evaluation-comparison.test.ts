@@ -5,7 +5,9 @@ import { createEvaluationExperimentPlan } from "../packages/core/src/evaluation-
 import { alignSuiteSnapshots } from "../packages/core/src/evaluation-suite-alignment.ts";
 import { compareEvaluationExecutions } from "../packages/core/src/evaluation-comparison.ts";
 import type { EvaluationComparisonInput } from "../packages/core/src/evaluation-comparison.ts";
+import { headlessVerdict } from "../packages/cli/src/summary.ts";
 import {
+  evaluationParsedExperimentAggregate,
   materializeExperimentCellInput,
   noExperimentRetries,
   type EvaluationExperimentPlanV3,
@@ -22,7 +24,7 @@ import {
 } from "../packages/core/src/project.ts";
 import { RunCoordinator } from "../packages/core/src/run-kernel/coordinator.ts";
 import type { CheckDefinition } from "../packages/core/src/checks.ts";
-import type { ResolvedRunInput, RunId, RunState } from "../packages/core/src/run-kernel/types.ts";
+import type { ResolvedRunInput, RunError, RunId, RunState } from "../packages/core/src/run-kernel/types.ts";
 import { OPENAI_COMPATIBLE_CAPABILITIES } from "../packages/core/src/types.ts";
 
 interface CaseFixture {
@@ -106,8 +108,9 @@ function projectFixture(cases: CaseFixture[], model = "confirmed-model"): Projec
 
 let planSuffix = 0;
 
-function planFixture(cases: CaseFixture[], model?: string): EvaluationExperimentPlanV3 {
+function planFixture(cases: CaseFixture[], model?: string, repetitions = 1): EvaluationExperimentPlanV3 {
   const project = projectFixture(cases, model);
+  project.evaluationSuites[0]!.execution.repetitions = repetitions;
   const batch = ++planSuffix;
   let suffix = 0;
   return createEvaluationExperimentPlan({
@@ -440,4 +443,110 @@ test("the same concurrency, recorded or upgraded, is not drift", () => {
   );
   assert.equal(comparison.drift.concurrency, undefined);
   assert.equal(comparison.drift.any, false);
+});
+
+/** A run whose only attempt the provider refused, failed as the scheduler fails it. */
+function providerFailed(input: ResolvedRunInput, providerStatus: number): RunState {
+  const coordinator = new RunCoordinator(input);
+  coordinator.start();
+  const error: RunError = { code: "provider_error", message: "Refused", retryable: true, providerStatus };
+  coordinator.accept({ type: "failed", error });
+  coordinator.finishTurnStream();
+  coordinator.fail(error);
+  return coordinator.state;
+}
+
+/** Replaces the named case's run with one the provider refused with `providerStatus`. */
+function refuse(
+  plan: EvaluationExperimentPlanV3,
+  run: { result: ExperimentResultV3; states: Map<RunId, RunState> },
+  caseId: string,
+  options: { providerStatus?: number; repetition?: number } = {},
+) {
+  const { providerStatus = 429, repetition } = options;
+  const states = new Map(run.states);
+  for (const cell of plan.cells.filter((candidate) =>
+    candidate.caseId === caseId && (repetition === undefined || candidate.repetition === repetition))) {
+    states.set(cell.runId, providerFailed(materializeExperimentCellInput(plan, cell.cellId), providerStatus));
+  }
+  return { ...run, states };
+}
+
+test("a repetition the provider rate-limited is missing evidence, not a failure", () => {
+  const plan = planFixture([migrations, backups]);
+  const run = refuse(plan, execute(plan, {
+    [migrations.id]: "Plan the migration.",
+    [backups.id]: "Keep a backup.",
+  }), backups.id);
+  const [variant] = evaluationParsedExperimentAggregate(plan, run.result, run.states).variants;
+
+  assert.equal(variant?.cases[1]?.repetitions[0]?.classification, "rate-limited");
+  assert.equal(variant?.repetitionCounts["rate-limited"], 1);
+  assert.equal(variant?.repetitionCounts["run-failed"], 0);
+  assert.deepEqual(variant?.caseCounts, { total: 2, passed: 1, failed: 0, incomplete: 1 });
+  // The model never answered, so its checks have nothing to read.
+  assert.deepEqual(variant?.checkCounts, { total: 2, passed: 1, failed: 0, notEvaluated: 1 });
+});
+
+test("a provider failure other than 429 is still a failed run", () => {
+  const plan = planFixture([backups]);
+  const run = refuse(plan, execute(plan, { [backups.id]: "Keep a backup." }), backups.id, { providerStatus: 503 });
+  const [variant] = evaluationParsedExperimentAggregate(plan, run.result, run.states).variants;
+
+  assert.equal(variant?.cases[0]?.repetitions[0]?.classification, "run-failed");
+  assert.equal(variant?.caseCounts.failed, 1);
+});
+
+test("a suite whose only problem is rate limiting is incomplete, not failed", () => {
+  const plan = planFixture([migrations, backups]);
+  const outputs = { [migrations.id]: "Plan the migration.", [backups.id]: "Keep a backup." };
+  const limited = refuse(plan, execute(plan, outputs), backups.id);
+  assert.equal(headlessVerdict(evaluationParsedExperimentAggregate(plan, limited.result, limited.states)), "incomplete");
+
+  // A real failure beside it still fails the suite.
+  const failing = refuse(plan, execute(plan, { ...outputs, [migrations.id]: "Nothing relevant." }), backups.id);
+  assert.equal(headlessVerdict(evaluationParsedExperimentAggregate(plan, failing.result, failing.states)), "failed");
+});
+
+test("a case rate-limited on one side is inconclusive, not a regression or a fix", () => {
+  const baseline = planFixture([migrations, backups]);
+  const candidate = planFixture([migrations, backups]);
+  const outputs = { [migrations.id]: "Plan the migration.", [backups.id]: "Keep a backup." };
+  const comparison = compareEvaluationExecutions(
+    comparisonInput(baseline, refuse(baseline, execute(baseline, outputs), migrations.id)),
+    comparisonInput(candidate, refuse(candidate, execute(candidate, outputs), backups.id)),
+  );
+
+  assert.deepEqual(
+    comparison.cases.map(({ name, delta }) => [name, delta]),
+    [["Migrations", "inconclusive"], ["Backups", "inconclusive"]],
+  );
+  assert.deepEqual(
+    comparison.cases.map(({ repetitions }) => repetitions[0]?.delta),
+    ["inconclusive", "inconclusive"],
+  );
+  assert.equal(comparison.counts.inconclusive, 2);
+  assert.equal(comparison.cases[0]?.baseline?.rateLimited, 1);
+  assert.equal(comparison.cases[0]?.candidate?.rateLimited, 0);
+  assert.equal(comparison.counts.regressed, 0);
+  assert.equal(comparison.counts.fixed, 0);
+});
+
+test("a real failure beside a rate-limited repetition still reads as a regression", () => {
+  const baseline = planFixture([migrations], undefined, 2);
+  const candidate = planFixture([migrations], undefined, 2);
+  const baselineRun = execute(baseline, { [migrations.id]: "Plan the migration." });
+  // Repetition 1 is rate-limited and repetition 2 answers wrongly.
+  const candidateRun = refuse(candidate, execute(candidate, { [migrations.id]: "Nothing relevant." }), migrations.id, { repetition: 1 });
+  const comparison = compareEvaluationExecutions(
+    comparisonInput(baseline, baselineRun),
+    comparisonInput(candidate, candidateRun),
+  );
+  assert.equal(comparison.cases[0]?.delta, "regressed");
+  assert.deepEqual(
+    comparison.cases[0]?.repetitions.map(({ repetition, delta }) => [repetition, delta]),
+    [[1, "inconclusive"], [2, "regressed"]],
+  );
+  assert.equal(comparison.counts.inconclusive, 0);
+  assert.equal(comparison.counts.regressed, 1);
 });

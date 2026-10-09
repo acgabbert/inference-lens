@@ -171,7 +171,7 @@ Recommendation:
 | 0 | The suite passed under its strict scoring policy. |
 | 1 | The suite ran to completion and at least one case failed. |
 | 2 | Usage or setup error. Nothing was sent to a provider and no plan was written. |
-| 3 | The run started but did not complete: stopped on an unavailable tool, interrupted, or failed to write an artifact. |
+| 3 | The run started but did not complete: stopped on an unavailable tool, interrupted, or failed to write an artifact. Also a completed run whose only shortfall is rate limiting: every repetition passed or was refused with a 429 (see decision 7 of the [parallel experiment design](PARALLEL_EXPERIMENT_DESIGN.md)). |
 
 The JSON summary is a public contract, so it needs a schema version from the
 first release.

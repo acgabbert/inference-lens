@@ -25,6 +25,7 @@ const deltaLabels: Record<CaseOutcomeDelta, string> = {
   fixed: "fixed",
   regressed: "regressed",
   incomparable: "not comparable",
+  inconclusive: "inconclusive · rate limited",
   "baseline-only": "removed",
   "candidate-only": "added",
 };
@@ -36,6 +37,7 @@ const deltaTones: Record<CaseOutcomeDelta, string> = {
   fixed: "completed",
   regressed: "failed",
   incomparable: "not-evaluated",
+  inconclusive: "rate-limited",
   "baseline-only": "not-run",
   "candidate-only": "not-run",
 };
@@ -143,6 +145,7 @@ function SideCell({ summary }: { summary?: EvaluationCaseSideSummary }) {
         {formatMs(summary.totalDurationMs.median)} median
         {summary.missingTrace > 0 && ` · ${summary.missingTrace} trace missing`}
         {summary.notRun > 0 && ` · ${summary.notRun} not run`}
+        {summary.rateLimited > 0 && ` · ${summary.rateLimited} rate limited`}
       </small>
     </td>
   );
@@ -422,6 +425,12 @@ export function EvaluationComparisonWorkspace({
             {comparison.counts.unchangedPass} passing · {comparison.counts.unchangedFail} failing
           </strong>
         </div>
+        {comparison.counts.inconclusive > 0 && (
+          <div>
+            <span>Inconclusive</span>
+            <strong>{comparison.counts.inconclusive}</strong>
+          </div>
+        )}
         <div>
           <span>Not comparable</span>
           <strong>

@@ -306,9 +306,20 @@ export type EvaluationRepetitionClassification =
   | "check-failed"
   | "not-evaluated"
   | "run-failed"
+  /** The run failed because the provider answered 429: missing evidence, not a model failure. */
+  | "rate-limited"
   | "cancelled"
   | "not-run"
   | "trace-unavailable";
+
+/**
+ * Whether a repetition is evidence that the configuration failed. Anything
+ * else short of `passed` is missing evidence, which leaves its case
+ * incomplete rather than failed.
+ */
+export function isFailingRepetition(classification: EvaluationRepetitionClassification): boolean {
+  return classification === "check-failed" || classification === "run-failed" || classification === "cancelled";
+}
 
 export interface EvaluationRepetitionAssessment {
   cellId: ExperimentCellId;
@@ -382,7 +393,10 @@ export interface RepeatedExperimentAggregate {
   lifecycle: ExperimentLifecycle;
   requested: number;
   completed: number;
+  /** Failed runs other than those `rateLimited` counts. */
   failed: number;
+  /** Runs that failed because the provider answered 429. */
+  rateLimited: number;
   cancelled: number;
   notRun: number;
   missingTrace: number;
@@ -1329,6 +1343,16 @@ function usage(values: Array<number | undefined>): ExperimentUsageAggregate {
 export { finalAssistantOutput } from "./run-output.ts";
 
 /**
+ * Whether a run failed because the provider answered its final attempt with
+ * 429. Read from the trace, so no saved artifact records it.
+ */
+export function isRateLimitedRun(state: RunState): boolean {
+  return state.status.kind === "failed" &&
+    state.status.error.code === "provider_error" &&
+    state.status.error.providerStatus === 429;
+}
+
+/**
  * Derives summary evidence from immutable artifacts and ordinary run states.
  * Missing states are explicitly represented rather than treated as zero-valued
  * metrics or successful repetitions.
@@ -1346,6 +1370,7 @@ export function repeatedExperimentAggregate(
   const results = new Map(parsedResult?.cells.map((cell) => [cell.cellId, cell]));
   let completed = 0;
   let failed = 0;
+  let rateLimited = 0;
   let cancelled = 0;
   let notRun = 0;
   let missingTrace = 0;
@@ -1372,7 +1397,7 @@ export function repeatedExperimentAggregate(
     }
     switch (state.status.kind) {
       case "completed": completed += 1; break;
-      case "failed": failed += 1; break;
+      case "failed": if (isRateLimitedRun(state)) rateLimited += 1; else failed += 1; break;
       case "cancelled": cancelled += 1; break;
       default: notRun += 1; continue;
     }
@@ -1396,6 +1421,7 @@ export function repeatedExperimentAggregate(
     requested: parsedPlan.cells.length,
     completed,
     failed,
+    rateLimited,
     cancelled,
     notRun,
     missingTrace,
@@ -1466,7 +1492,7 @@ export function evaluationParsedExperimentAggregate(
   const variants = parsed.suite.variants.map((variant): EvaluationVariantAssessment => {
     const assessments = new Map<EvaluationCaseId, EvaluationRepetitionAssessment[]>();
     const repetitionCounts: Record<EvaluationRepetitionClassification, number> = {
-      passed: 0, "check-failed": 0, "not-evaluated": 0, "run-failed": 0,
+      passed: 0, "check-failed": 0, "not-evaluated": 0, "run-failed": 0, "rate-limited": 0,
       cancelled: 0, "not-run": 0, "trace-unavailable": 0,
     };
     const checkCounts = { total: 0, passed: 0, failed: 0, notEvaluated: 0 };
@@ -1486,6 +1512,10 @@ export function evaluationParsedExperimentAggregate(
         checkCounts.notEvaluated += caseChecks.length;
       } else if (!state) {
         classification = parsedResult ? "trace-unavailable" : "not-evaluated";
+        checkCounts.notEvaluated += caseChecks.length;
+      } else if (isRateLimitedRun(state)) {
+        // The run ended before a final answer, so its checks have nothing to read.
+        classification = "rate-limited";
         checkCounts.notEvaluated += caseChecks.length;
       } else if (state.status.kind === "failed") {
         classification = "run-failed";
@@ -1529,7 +1559,7 @@ export function evaluationParsedExperimentAggregate(
     });
     const passed = caseAssessments.filter((assessment) => assessment.passed).length;
     const failed = caseAssessments.filter(({ passed: casePassed, repetitions }) =>
-      !casePassed && repetitions.some(({ classification }) => ["check-failed", "run-failed", "cancelled"].includes(classification)),
+      !casePassed && repetitions.some(({ classification }) => isFailingRepetition(classification)),
     ).length;
     return {
       variant,

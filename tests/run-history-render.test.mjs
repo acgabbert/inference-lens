@@ -231,6 +231,34 @@ test("renders repeated experiments as one grouped history entry", async () => {
   assertNoBrokenNumbers(html);
 });
 
+test("a repeated experiment row counts rate-limited repetitions apart from failed ones", async () => {
+  const experiment = {
+    experimentId: "experiment_limited",
+    planFileName: "experiment_limited.plan.json",
+    resultFileName: "experiment_limited.result.json",
+    createdAt: "2026-07-25T13:00:00.000Z",
+    endedAt: "2026-07-25T13:01:00.000Z",
+    model: "limited-model",
+    lifecycle: "completed",
+    requested: 5,
+    completed: 3,
+    failed: 0,
+    rateLimited: 2,
+    cancelled: 0,
+    notRun: 0,
+    missingTrace: 0,
+    cells: [],
+  };
+  const html = await renderList({
+    selection: { kind: "experiment", projectId: "project_demo", experimentId: experiment.experimentId },
+    history: historyState({ experiments: [experiment] }),
+  });
+
+  assert.match(html, /5 repetitions · 3 completed · 2 rate limited/);
+  assert.doesNotMatch(html, /failed/);
+  assertNoBrokenNumbers(html);
+});
+
 test("warns about large immutable history without implying deletion", async () => {
   const html = await renderList({
     history: historyState({ artifactCount: 500, largeHistory: true }),

@@ -72,12 +72,16 @@ export interface HeadlessSummaryV1 {
 /**
  * Strict scoring all the way up: the suite passes only when every
  * configuration passed, and only a run that finished can pass or fail at all.
+ * A suite whose only shortfall is rate limiting is incomplete too, so a quota
+ * problem never reads as a model regression.
  */
 export function headlessVerdict(assessment: EvaluationBakeoffAssessment): HeadlessVerdict {
   if (assessment.lifecycle !== "completed") return "incomplete";
-  return assessment.variants.length > 0 && assessment.variants.every(({ passed }) => passed)
-    ? "passed"
-    : "failed";
+  if (assessment.variants.length > 0 && assessment.variants.every(({ passed }) => passed)) return "passed";
+  const repetitions = assessment.variants.flatMap(({ cases }) => cases.flatMap(({ repetitions }) => repetitions));
+  const onlyRateLimited = repetitions.some(({ classification }) => classification === "rate-limited") &&
+    repetitions.every(({ classification }) => classification === "passed" || classification === "rate-limited");
+  return onlyRateLimited ? "incomplete" : "failed";
 }
 
 export function exitCodeForVerdict(verdict: HeadlessVerdict): number {
@@ -161,6 +165,7 @@ const CLASSIFICATION_WORDS: Record<EvaluationRepetitionClassification, string> =
   "check-failed": "check failed",
   "not-evaluated": "not evaluated",
   "run-failed": "run failed",
+  "rate-limited": "rate limited",
   cancelled: "cancelled",
   "not-run": "not run",
   "trace-unavailable": "trace unavailable",

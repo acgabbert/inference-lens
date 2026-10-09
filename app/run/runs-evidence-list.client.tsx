@@ -111,6 +111,7 @@ function experimentMeta(item: ProjectExperimentHistoryItem): string {
   const outcomes = [
     item.completed ? `${item.completed} completed` : undefined,
     item.failed ? `${item.failed} failed` : undefined,
+    item.rateLimited ? `${item.rateLimited} rate limited` : undefined,
     item.cancelled ? `${item.cancelled} cancelled` : undefined,
     item.notRun ? `${item.notRun} not run` : undefined,
     item.missingTrace ? `${item.missingTrace} missing` : undefined,

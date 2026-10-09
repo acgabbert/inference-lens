@@ -33,6 +33,7 @@ const classificationLabels: Record<EvaluationRepetitionClassification, string> =
   "check-failed": "check failed",
   "not-evaluated": "not evaluated",
   "run-failed": "run failed",
+  "rate-limited": "rate limited",
   cancelled: "cancelled",
   "not-run": "not run",
   "trace-unavailable": "trace unavailable",

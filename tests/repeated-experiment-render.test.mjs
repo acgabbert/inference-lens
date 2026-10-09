@@ -337,6 +337,50 @@ test("repeated workspace renders unsaved state, exact aggregate text, and ordina
   assertNoBrokenValues(html);
 });
 
+test("rate-limited repetitions are counted apart from failed ones", async () => {
+  const frozenPlan = plan();
+  const failed = (runId, providerStatus) => ({
+    ...completedState(runId, ""),
+    status: {
+      kind: "failed",
+      failedAt: "2026-07-30T12:00:10.000Z",
+      error: { code: "provider_error", message: "Refused", providerStatus },
+    },
+  });
+  const html = await render(
+    "/app/run/repeated-experiment-workspace.client.tsx",
+    "RepeatedExperimentWorkspace",
+    {
+      execution: {
+        plan: frozenPlan,
+        storage: "durable",
+        workspace: null,
+        states: new Map([["run_render-1", failed("run_render-1", 429)], ["run_render-2", failed("run_render-2", 500)]]),
+        unreadableTraces: new Map(),
+        result: {
+          schemaVersion: 4,
+          experimentId: frozenPlan.experimentId,
+          status: "completed",
+          endedAt: "2026-07-30T12:01:00.000Z",
+          cells: [
+            { cellId: "experiment-cell_render-1", runId: "run_render-1", status: "failed" },
+            { cellId: "experiment-cell_render-2", runId: "run_render-2", status: "failed" },
+          ],
+        },
+        traces: new Map([["run_render-1", { runId: "run_render-1" }], ["run_render-2", { runId: "run_render-2" }]]),
+        selectedRunId: null,
+      },
+      placement: "request",
+      onStop() {},
+      onOpenTrace() {},
+      onReturnToRequest() {},
+    },
+  );
+
+  assert.match(html, /0 completed · 1 failed · 1 rate limited · 0 cancelled/);
+  assertNoBrokenValues(html);
+});
+
 test("running workspace exposes determinate activity, the active repetition, and elapsed time", async () => {
   const frozenPlan = plan();
   const html = await render(
