@@ -40,8 +40,9 @@ export function describeStartBlocker(blocker: EvaluationStartBlocker): string {
     case "unbound_tools": {
       const { toolNames } = blocker;
       const one = toolNames.length === 1;
-      return `This suite exposes ${toolNames.join(", ")}, and headless runs can serve only enabled project mocks so far. ` +
-        `Enable a mock for ${one ? "that tool" : "those tools"} in the app, or remove ${one ? "it" : "them"} from the suite.`;
+      return `This suite exposes ${toolNames.join(", ")}, and nothing in this run can answer ${one ? "it" : "them"}. ` +
+        `Grant ${one ? "it" : "each"} with --allow-tool <tool>=command:<id> or --allow-tool <tool>=mcp:<server-id>, ` +
+        `enable a mock for ${one ? "that tool" : "those tools"} in the app, or remove ${one ? "it" : "them"} from the suite.`;
     }
     case "profile_unmapped":
       return `No ${connection(blocker.target)} was resolved for configuration "${blocker.target.variantName}".`;

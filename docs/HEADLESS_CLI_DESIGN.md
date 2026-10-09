@@ -1,8 +1,10 @@
 # Headless command-line experiments
 
 **Status:** decisions 1–4 agreed as recommended (October 9, 2026). Slices 1
-and 2 are implemented, in `packages/runner/` and `packages/cli/`; see
-[Implementation status](#implementation-status).
+to 3 are implemented, in `packages/runner/` and `packages/cli/`; see
+[Implementation status](#implementation-status). Decision 3 was refined on
+October 9, 2026 so that a grant names its target explicitly; see
+[slice 3](#slice-3-what-exists).
 **Baseline:** `main` at `5755b57`, reviewed October 9, 2026.
 
 ## Goal
@@ -147,7 +149,7 @@ inherit grants from one.
 | Option | Effect |
 | --- | --- |
 | A. Mocks only | Command and MCP tools are refused. Safest; it excludes suites that exist to exercise real tools. |
-| **B. Explicit per-run grants (recommended)** | `--allow-tool <name>` grants one exposed tool for this invocation only. Mocks need no grant. The operator catalogs (`INFERENCE_LENS_COMMAND_TOOLS` and the MCP server catalog) still decide what can be reached, and their checks, including the MCP fingerprint check, still run before any plan is saved. |
+| **B. Explicit per-run grants (recommended)** | `--allow-tool <tool>=command:<command-id>` or `--allow-tool <tool>=mcp:<server-id>` grants one exposed tool for this invocation only, naming what serves it, because a project never records which command or server that is. Mocks need no grant. The operator catalogs (`INFERENCE_LENS_COMMAND_TOOLS` and `INFERENCE_LENS_MCP_SERVERS`) still decide what can be reached, and their checks, including the MCP fingerprint check, still run before any plan is saved. |
 | C. A grants file | Lasting grants on disk. Convenient for CI, but it creates a second permission store with its own revocation story. |
 
 Recommendation: **B**. An exposed tool that is neither mocked nor granted
@@ -300,6 +302,7 @@ Two contract changes came with the move:
 ```sh
 npm run cli -- run ./evals.inference-lens --suite triage [--json] [--no-auth <id>]
   [--concurrency <n>] [--connection-concurrency <id>=<n>] [--retry-rate-limits]
+  [--allow-tool <tool>=command:<id>] [--allow-tool <tool>=mcp:<server-id>]
 ```
 
 | Module | Owns |
@@ -323,8 +326,9 @@ Choices made in implementation, within the agreed decisions:
   the project's declared `capabilityOverrides`, resolved the way the app
   resolves a profile. A suite whose protocol, streaming, or tools the
   declaration does not enable is refused with the app's start-gate message.
-- **Tools.** Mocks only, as slice 2 specifies. A suite exposing any tool
-  without an enabled project mock exits 2, naming the tool.
+- **Tools.** Mocks only, as slice 2 specifies; slice 3 adds grants (below).
+  A suite exposing any tool with neither an enabled project mock nor a grant
+  exits 2, naming the tool.
 - **Interrupts.** The first SIGINT or SIGTERM stops after the current request
   and writes a cancelled result (exit 3). A second exits immediately.
 - **Running it.** `npm run cli` runs the TypeScript sources with Node's type
@@ -334,6 +338,58 @@ Verification: `tests/cli-credentials.test.ts`, `tests/cli-headless-run.test.ts`
 (including a subprocess run against `scripts/buffered-openai-provider.mjs`),
 and `tests/e2e/headless-cli-artifacts.spec.ts`, which runs the CLI and then
 opens what it wrote in the app's Run history and Evaluation results.
+
+### Slice 3: what exists
+
+Decision 3B, with one refinement agreed on October 9, 2026: a project never
+records which command or MCP server serves a tool (in the app that is the
+device-local grant), so `--allow-tool` names its target explicitly rather
+than taking a bare tool name.
+
+```sh
+--allow-tool get_weather=command:weather     # a command in INFERENCE_LENS_COMMAND_TOOLS
+--allow-tool lookup_record=mcp:docs-server   # a server in INFERENCE_LENS_MCP_SERVERS
+```
+
+| Module | Owns |
+| --- | --- |
+| `packages/cli/src/tool-grants.ts` | Parsing `--allow-tool`, resolving grants to bindings, and the in-process preflight against both catalogs |
+| `packages/cli/src/tool-executor.ts` | The CLI's executor factory: mocks, and command and MCP tools run in process through the service's own execution code |
+
+Choices made in implementation, within the agreed decision:
+
+- **Precedence.** A grant outranks an enabled project mock for the same tool,
+  as a grant does in the app (`toolBindingFor`).
+- **Refusals, all exit 2 before anything is sent or written.** A malformed
+  value; a tool named twice; a tool the project does not define; `mcp:` for a
+  tool that was not attached from an MCP server; and, at the controller's
+  `verifyToolBindings` preflight, a command the catalog does not declare, a
+  missing or unreadable catalog, an MCP server that is not declared or not
+  executable, and an MCP tool that is gone or whose fingerprint changed. Each
+  names the tool and, where it helps, the variable that would fix it. A
+  grant for a tool the selected suite does not expose is ignored, as an
+  unused credential is.
+- **The ceiling is unchanged.** Catalogs are read per call, as the service
+  reads them, and an MCP call checks the live fingerprint first. Only
+  loopback, unauthenticated MCP servers execute, as in the app.
+- **Executor identity.** An MCP binding's `executorId` is derived exactly as
+  the app derives it, so a trace names an MCP answer the same way whichever
+  host ran it.
+- **Interrupts.** The command runner used to install SIGINT and SIGTERM
+  handlers that kill live commands and re-raise the signal, which turned the
+  CLI's graceful first interrupt into an immediate exit with no result.
+  `installCommandToolExitHook` lets a host that owns those signals keep only
+  the exit-time cleanup; the first interrupt then cancels a running command
+  through its abort signal, ending its process tree, and the run writes a
+  cancelled result (exit 3).
+
+Verification: `tests/cli-tool-grants.test.ts` runs the committed command
+fixture (`weather.mjs`) and MCP fixture (`scripts/mcp-discovery-fixture.mjs`)
+behind a provider that asks for one tool call and passes only if the tool's
+text comes back; covers precedence over a mock, each refusal with no request
+or artifact, an unexposed grant being ignored, and a changed MCP fingerprint;
+and, in a CLI subprocess, interrupts a granted `hang.mjs` and checks for exit
+3, a written result, and the command's own child process gone.
 
 ### Concurrency flags
 

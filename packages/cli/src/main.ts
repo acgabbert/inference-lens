@@ -5,6 +5,8 @@ import { parseArgs } from "node:util";
 import { startHeadlessEvaluation } from "./evaluation-run.ts";
 import type { HeadlessConcurrency } from "./evaluation-run.ts";
 import { formatHeadlessSummary, EXIT_SETUP } from "./summary.ts";
+import { parseToolGrants } from "./tool-grants.ts";
+import type { HeadlessToolGrant } from "./tool-grants.ts";
 import { createInProcessTransport, isContainerizedProcess } from "./transport.ts";
 
 export const USAGE = `Usage: inference-lens run <project-folder> [options]
@@ -20,6 +22,11 @@ Options:
   --connection-concurrency <id>=<n>
                          Run at most <n> of them at once on connection <id>.
                          Repeatable. Cannot exceed --concurrency.
+  --allow-tool <tool>=command:<id>
+  --allow-tool <tool>=mcp:<server-id>
+                         Let tool <tool> run the declared command <id>, or
+                         call it on the declared MCP server, for this run
+                         only. Repeatable. Outranks an enabled project mock.
   --retry-rate-limits    Retry a request the provider refuses with HTTP 429,
                          up to 2 times per provider turn, after the wait it
                          asks for. Off by default; the result records it.
@@ -33,6 +40,10 @@ Credentials (environment only):
                                             Key for any connection on that origin.
   <ID> is the connection ID without its "connection_" prefix, upper-cased,
   with every other character replaced by "_".
+
+Tool catalogs (environment only; what --allow-tool may name):
+  INFERENCE_LENS_COMMAND_TOOLS   Path to the command catalog.
+  INFERENCE_LENS_MCP_SERVERS     Path to the MCP server catalog.
 
 Exit codes:
   0  The suite passed.
@@ -61,6 +72,7 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
         "no-auth": { type: "string", multiple: true },
         concurrency: { type: "string" },
         "connection-concurrency": { type: "string", multiple: true },
+        "allow-tool": { type: "string", multiple: true },
         "retry-rate-limits": { type: "boolean", default: false },
         json: { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
@@ -82,8 +94,10 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
   }
 
   let concurrency: HeadlessConcurrency;
+  let toolGrants: HeadlessToolGrant[];
   try {
     concurrency = parseConcurrency(values.concurrency, values["connection-concurrency"] ?? []);
+    toolGrants = parseToolGrants(values["allow-tool"] ?? []);
   } catch (error) {
     io.stderr(`inference-lens: ${error instanceof Error ? error.message : String(error)}\n`);
     return EXIT_SETUP;
@@ -94,6 +108,7 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
     ...(values.suite === undefined ? {} : { suite: values.suite }),
     noAuth: new Set(values["no-auth"] ?? []),
     concurrency,
+    toolGrants,
     retryRateLimits: values["retry-rate-limits"],
     environment: io.environment,
     transport: createInProcessTransport({ containerized: isContainerizedProcess(io.environment) }),

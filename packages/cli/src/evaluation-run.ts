@@ -5,9 +5,8 @@ import {
   resolveEvaluationLocalTargets,
 } from "../../runner/src/evaluation-start.ts";
 import type { EvaluationLocalProfile } from "../../runner/src/evaluation-start.ts";
-import { createMockOnlyToolExecutor } from "../../runner/src/mock-only-tool-executor.ts";
 import { ExperimentController } from "../../runner/src/experiment-controller.ts";
-import { toolBindingForMock } from "../../core/src/tool-binding-resolution.ts";
+import { toolBindingFor } from "../../core/src/tool-binding-resolution.ts";
 import { evaluationSuitePreflight, resolveEvaluationVariant } from "../../core/src/evaluation-suites.ts";
 import {
   evaluationParsedExperimentAggregate,
@@ -24,7 +23,7 @@ import type { EvaluationSuite, ProjectFile } from "../../core/src/project.ts";
 import { serializeRunTrace } from "../../core/src/run-trace.ts";
 import type { RunId, RunState } from "../../core/src/run-kernel/index.ts";
 import { createEntityId } from "../../core/src/run-kernel/types.ts";
-import type { ToolDefinition } from "../../core/src/run-kernel/types.ts";
+import type { ToolDefinition, ToolId } from "../../core/src/run-kernel/types.ts";
 import type { ToolExecutor, ToolBinding } from "../../core/src/tool-execution.ts";
 import { resolveProviderCapabilities } from "../../core/src/types.ts";
 import {
@@ -41,6 +40,9 @@ import {
   EXIT_SETUP,
 } from "./summary.ts";
 import type { HeadlessSummaryV1 } from "./summary.ts";
+import { createHeadlessToolExecutor } from "./tool-executor.ts";
+import { resolveToolGrants, verifyHeadlessToolBindings } from "./tool-grants.ts";
+import type { HeadlessToolGrant } from "./tool-grants.ts";
 
 /** Anything that stops a run before a plan is written: exit code 2. */
 export class HeadlessSetupError extends Error {
@@ -60,6 +62,8 @@ export interface HeadlessEvaluationOptions {
   transport: ProviderTurnTransport;
   /** How many repetitions may run at once. One at a time when omitted. */
   concurrency?: HeadlessConcurrency;
+  /** `--allow-tool`: command and MCP tools this invocation may run. None when omitted. */
+  toolGrants?: readonly HeadlessToolGrant[];
   /** `--retry-rate-limits`: retry a 429 up to the bound decision 8 sets. Off when omitted. */
   retryRateLimits?: boolean;
   /** One line per finished repetition, for stderr. */
@@ -113,13 +117,19 @@ export function selectSuite(project: ProjectFile, requested: string | undefined)
 }
 
 /**
- * Mocks only, for now. Command and MCP tools need explicit per-run grants,
- * which arrive with `--allow-tool`; until then a suite exposing one is refused
- * before anything is sent, naming the tool.
+ * A grant from `--allow-tool` outranks an enabled project mock, as a grant
+ * does in the app. A tool with neither is refused before anything is sent.
  */
-function headlessBindingForTool(project: ProjectFile) {
-  return (tool: ToolDefinition): ToolBinding | undefined =>
-    toolBindingForMock(tool.id, project.toolMocks.find(({ toolId }) => toolId === tool.id));
+function headlessBindingForTool(project: ProjectFile, grants: ReadonlyMap<ToolId, ToolBinding>) {
+  return (tool: ToolDefinition): ToolBinding | undefined => {
+    const granted = grants.get(tool.id);
+    return toolBindingFor(
+      tool.id,
+      project.toolMocks.find(({ toolId }) => toolId === tool.id),
+      granted?.kind === "command" ? granted : undefined,
+      granted?.kind === "mcp" ? granted : undefined,
+    );
+  };
 }
 
 export function startHeadlessEvaluation(options: HeadlessEvaluationOptions): HeadlessEvaluationRun {
@@ -172,7 +182,12 @@ async function runHeadlessEvaluation(
       return resolution.credential;
     },
     toolBindings,
-    createExecutor: options.createExecutor ?? createMockOnlyToolExecutor,
+    createExecutor: options.createExecutor ?? createHeadlessToolExecutor(options.environment),
+    verifyToolBindings: (bindings) => verifyHeadlessToolBindings(
+      bindings,
+      (toolId) => plan.suite.tools.find(({ id }) => id === toolId)?.name ?? toolId,
+      options.environment,
+    ),
     concurrency,
     ...(options.retryRateLimits ? { retryPolicy: rateLimitRetries() } : {}),
     async savePlan(frozen, serialized) {
@@ -292,8 +307,11 @@ async function prepareHeadlessEvaluation(options: HeadlessEvaluationOptions) {
   });
   const mappedProfileIds = Object.fromEntries(profiles.map(({ id }) => [id, id]));
 
-  const bindingForTool = headlessBindingForTool(project);
   const exposed = project.tools.filter(({ id }) => suite.execution.toolIds.includes(id));
+  const bindingForTool = headlessBindingForTool(
+    project,
+    resolveToolGrants(project, exposed, options.toolGrants ?? [], options.environment),
+  );
   const blocker = evaluationStartBlocker({
     diagnostics: evaluationSuitePreflight(project, suite.id, revisionId, selectedCaseIds),
     selectedCaseCount: selectedCaseIds.length,
