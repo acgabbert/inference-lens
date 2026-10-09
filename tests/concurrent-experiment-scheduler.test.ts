@@ -3,6 +3,7 @@ import test from "node:test";
 
 import type { ProviderTurnStream, ProviderTurnTransport } from "../packages/contracts/src/inference.ts";
 import { OPENAI_COMPATIBLE_CAPABILITIES } from "../packages/core/src/types.ts";
+import { isRateLimitedRun, rateLimitRetries, rateLimitRetryCount } from "../packages/core/src/experiment.ts";
 import type { RepeatedExperimentPlanV3 } from "../packages/core/src/experiment.ts";
 import type { ProviderTransportEvent, RunTrace, ToolCallId } from "../packages/core/src/run-kernel/index.ts";
 import type { ToolBinding, ToolExecutor } from "../packages/core/src/tool-execution.ts";
@@ -14,6 +15,7 @@ import {
 } from "../packages/runner/src/rate-limit-pause.ts";
 import type { SchedulerClock } from "../packages/runner/src/scheduler-clock.ts";
 import { ExperimentController } from "../packages/runner/src/experiment-controller.ts";
+import type { ExperimentProgress } from "../packages/runner/src/experiment-controller.ts";
 
 function plan(count: number): RepeatedExperimentPlanV3 {
   return {
@@ -538,4 +540,183 @@ test("cancellation ends a rate-limit pause at once", async () => {
   assert.deepEqual(started, ["run_1"]);
   assert.equal(result.status, "cancelled");
   assert.deepEqual(result.cells.map(({ status }) => status), ["failed", "not-run"]);
+});
+
+/** Both cells of a two-cell plan in flight at once, so the second never waits on the first's pause. */
+const BOTH_AT_ONCE = { maxInFlight: 2, connectionLimit: 2 };
+
+/**
+ * Answers each attempt of run 1 from `attempts`, by its attempt number and
+ * turn; run 2, which plans need beside it, always answers at once. `log` records
+ * run 1's attempts as "run:turn:attempt".
+ */
+function attemptTransport(
+  attempts: (runId: string, attempt: number, turn: number) => ProviderTransportEvent[],
+  log: string[] = [],
+): ProviderTurnTransport {
+  const turns = new Map<string, number>();
+  return {
+    async discoverModels() { return { models: [] }; },
+    async executeTurn({ execution }): Promise<ProviderTurnStream> {
+      if (execution.attempt === 1) turns.set(execution.runId, (turns.get(execution.runId) ?? 0) + 1);
+      const turn = turns.get(execution.runId)!;
+      const events = execution.runId === "run_1" ? attempts(execution.runId, execution.attempt, turn) : completed("other");
+      if (execution.runId === "run_1") log.push(`${execution.runId}:${turn}:${execution.attempt}`);
+      return { status: 200, headers: new Headers(), events: (async function* () { yield* events; })() };
+    },
+  };
+}
+
+test("with retries allowed, a 429 waits as its header asks and retries the same turn", async () => {
+  const clock = fakeClock();
+  const log: string[] = [];
+  const traces: RunTrace[] = [];
+  const controller = new ExperimentController({
+    plan: plan(2),
+    concurrency: BOTH_AT_ONCE,
+    clock,
+    retryPolicy: rateLimitRetries(),
+    createExecutor: createMockOnlyToolExecutor,
+    transport: attemptTransport((_runId, attempt) =>
+      attempt === 1 ? rateLimited({ "retry-after": "2" }) : completed("hello"), log),
+    async prepareCredential() { return { kind: "none" }; },
+    onTerminalTrace(trace) { if (trace.runId === "run_1") traces.push(trace); },
+  });
+
+  const pending = controller.run();
+  await until(() => clock.sleeps.length > 0, "the retry wait to begin");
+  for (let tick = 0; tick < 10; tick += 1) await settle();
+  // Nothing is retried before the wait ends.
+  assert.deepEqual(log, ["run_1:1:1"]);
+  clock.advance(2_000);
+  const result = await pending;
+
+  assert.deepEqual(log, ["run_1:1:1", "run_1:1:2"]);
+  assert.ok(clock.sleeps.every((ms) => ms === 2_000));
+  assert.deepEqual(result.retryPolicy, { rateLimited: { maxRetries: 2 } });
+  assert.deepEqual(result.cells.map(({ status }) => status), ["completed", "completed"]);
+  const attempts = traces[0]!.events.filter(({ type }) => type === "turn.attempt_started" || type === "turn.started");
+  assert.equal(attempts.length, 2);
+});
+
+test("a turn is retried at most twice; the third 429 fails the repetition as rate limited", async () => {
+  const clock = fakeClock();
+  const log: string[] = [];
+  const states: Array<ExperimentProgress["states"]> = [];
+  const controller = new ExperimentController({
+    plan: plan(2),
+    concurrency: BOTH_AT_ONCE,
+    clock,
+    retryPolicy: rateLimitRetries(),
+    createExecutor: createMockOnlyToolExecutor,
+    transport: attemptTransport(() => rateLimited({}), log),
+    async prepareCredential() { return { kind: "none" }; },
+    onProgress(progress) { states.push(progress.states); },
+  });
+
+  const pending = controller.run();
+  for (let retry = 1; retry <= 2; retry += 1) {
+    await until(() => log.length === retry, `attempt ${retry}`);
+    await settle();
+    clock.advance(DEFAULT_RATE_LIMIT_PAUSE_MS);
+  }
+  const result = await pending;
+
+  assert.deepEqual(log, ["run_1:1:1", "run_1:1:2", "run_1:1:3"]);
+  assert.deepEqual(result.cells.map(({ status }) => status), ["failed", "completed"]);
+  const final = states.at(-1)!.get("run_1")!;
+  assert.equal(isRateLimitedRun(final), true);
+  assert.equal(rateLimitRetryCount(final), 2);
+});
+
+test("each provider turn has its own retry budget", async () => {
+  const clock = fakeClock();
+  const log: string[] = [];
+  const frozen = toolPlan(2);
+  const controller = new ExperimentController({
+    plan: frozen,
+    concurrency: BOTH_AT_ONCE,
+    clock,
+    retryPolicy: rateLimitRetries(),
+    toolBindings: [mockBinding(weatherTool.id), mockBinding(forecastTool.id)],
+    createExecutor: createMockOnlyToolExecutor,
+    transport: attemptTransport((runId, attempt, turn) => {
+      if (attempt <= 2) return rateLimited({ "retry-after-ms": "10" });
+      if (turn === 2) return completed("done");
+      return [
+        { type: "tool_call_delta", toolCallId: `tool-call_${runId}-1` as ToolCallId, index: 0, nameDelta: weatherTool.name, argumentsDelta: "{}" },
+        { type: "completed", finishReason: { normalized: "tool_calls" } },
+      ];
+    }, log),
+    async prepareCredential() { return { kind: "none" }; },
+  });
+
+  const pending = controller.run();
+  for (const expected of [1, 2, 4, 5]) {
+    await until(() => log.length === expected, `attempt ${expected}`);
+    await settle();
+    clock.advance(10);
+  }
+  const result = await pending;
+
+  assert.deepEqual(log, ["run_1:1:1", "run_1:1:2", "run_1:1:3", "run_1:2:1", "run_1:2:2", "run_1:2:3"]);
+  assert.deepEqual(result.cells.map(({ status }) => status), ["completed", "completed"]);
+});
+
+test("only a 429 is retried: a retryable 503 still fails its repetition", async () => {
+  const log: string[] = [];
+  const result = await new ExperimentController({
+    plan: plan(2),
+    concurrency: BOTH_AT_ONCE,
+    clock: fakeClock(),
+    retryPolicy: rateLimitRetries(),
+    createExecutor: createMockOnlyToolExecutor,
+    transport: attemptTransport(() => [{
+      type: "failed",
+      error: { code: "provider_error", message: "Unavailable", retryable: true, providerStatus: 503 },
+    }], log),
+    async prepareCredential() { return { kind: "none" }; },
+  }).run();
+
+  assert.deepEqual(log, ["run_1:1:1"]);
+  assert.deepEqual(result.cells.map(({ status }) => status), ["failed", "completed"]);
+});
+
+test("with retries off, a 429 is not retried and the result says so", async () => {
+  const log: string[] = [];
+  const result = await new ExperimentController({
+    plan: plan(2),
+    concurrency: BOTH_AT_ONCE,
+    clock: fakeClock(),
+    createExecutor: createMockOnlyToolExecutor,
+    transport: attemptTransport(() => rateLimited({}), log),
+    async prepareCredential() { return { kind: "none" }; },
+  }).run();
+
+  assert.deepEqual(log, ["run_1:1:1"]);
+  assert.deepEqual(result.retryPolicy, { rateLimited: { maxRetries: 0 } });
+});
+
+test("cancellation during a retry wait cancels the repetition without another attempt", async () => {
+  const clock = fakeClock();
+  const log: string[] = [];
+  const controller = new ExperimentController({
+    plan: plan(2),
+    concurrency: BOTH_AT_ONCE,
+    clock,
+    retryPolicy: rateLimitRetries(),
+    createExecutor: createMockOnlyToolExecutor,
+    transport: attemptTransport(() => rateLimited({ "retry-after": "30" }), log),
+    async prepareCredential() { return { kind: "none" }; },
+  });
+
+  const pending = controller.run();
+  await until(() => clock.sleeps.length > 0, "the retry wait to begin");
+  await settle();
+  controller.cancel();
+  const result = await pending;
+
+  assert.deepEqual(log, ["run_1:1:1"]);
+  assert.equal(result.status, "cancelled");
+  assert.deepEqual(result.cells.map(({ status }) => status), ["cancelled", "completed"]);
 });

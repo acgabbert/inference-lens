@@ -7616,6 +7616,35 @@ main {
   width: 6rem;
 }
 
+/* The start dialogs' rate-limit retry opt-in: a checkbox with its consequence
+   beneath, laid out like the streaming control it sits near. */
+label.experiment-retry-field {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  color: var(--text-primary);
+  font-family: inherit;
+  white-space: normal;
+  cursor: pointer;
+}
+
+.experiment-retry-field input {
+  margin: var(--space-3xs) 0 0;
+  width: auto;
+}
+
+.experiment-retry-field span,
+.experiment-retry-field small {
+  display: block;
+}
+
+.experiment-retry-field small {
+  margin-top: var(--space-3xs);
+  color: var(--text-muted);
+  line-height: var(--leading-tight);
+}
+
 .evaluation-results-workspace {
   display: grid;
   gap: var(--space-lg);

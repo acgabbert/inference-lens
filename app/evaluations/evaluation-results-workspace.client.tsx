@@ -22,6 +22,7 @@ import type {
 import { StatusChip } from "../notifications/status-chip.client";
 import { experimentStopDetail } from "../run/experiment-stop.client";
 import { pauseSecondsRemaining, recordedConcurrencyLabel } from "../run/experiment-concurrency.client.tsx";
+import { recordedRetryLabel } from "../run/experiment-retry.client.tsx";
 import { formatTokens } from "../run-metrics-format.client.ts";
 import { SideDrawer } from "../workbench-shell.client.tsx";
 import { EvaluationReassessmentDrawer } from "./evaluation-reassessment-drawer.client.tsx";
@@ -199,6 +200,7 @@ export function EvaluationResultsWorkspace({
     return names.length > 0 ? names.join(", ") : pause.endpoint;
   }
   const recordedConcurrency = recordedConcurrencyLabel(execution.result?.concurrency);
+  const recordedRetries = recordedRetryLabel(execution.result?.retryPolicy);
 
   function comparisonSide(variantId: EvaluationVariantId): ComparisonSide {
     const assessment = evaluationVariantAssessment(aggregate, variantId);
@@ -252,7 +254,7 @@ export function EvaluationResultsWorkspace({
               : activeCase && activeCell
                 ? ` · ${activeCase.name}, ${parsedPlan.suite.variants.find(({ variantId }) => variantId === activeCell.variantId)?.name ?? "Configuration"}, repetition ${activeCell.repetition}`
                 : live.pausedConnections.length > 0 ? " · Paused after a rate limit" : " · Preparing"} · {elapsedTime(nowMs - live.startedAtMs)} elapsed</>
-            : <>{interpretation?.name ?? "As run"} · {execution.plan.suite.cases.length} cases · {execution.plan.repetitions} {execution.plan.repetitions === 1 ? "repetition" : "repetitions"}{recordedConcurrency ? ` · ${recordedConcurrency}` : ""}</>}</p>
+            : <>{interpretation?.name ?? "As run"} · {execution.plan.suite.cases.length} cases · {execution.plan.repetitions} {execution.plan.repetitions === 1 ? "repetition" : "repetitions"}{recordedConcurrency ? ` · ${recordedConcurrency}` : ""}{recordedRetries ? ` · ${recordedRetries}` : ""}</>}</p>
         </div>
         <div className="evaluation-results-actions">
           <span className={`run-history-status ${lifecycle}`}>{lifecycle}</span>
@@ -364,7 +366,7 @@ export function EvaluationResultsWorkspace({
                     </button>
                   </th>
                   <td><span className={`run-history-status ${statusClass}`}>{liveStatus ?? (variant.passed ? "passed" : "did not pass")}</span></td>
-                  <td><strong>{variant.caseCounts.passed} / {variant.caseCounts.total} passed</strong><small>{passRate(variant)}% · {variant.caseCounts.failed} failed · {variant.caseCounts.incomplete} incomplete</small></td>
+                  <td><strong>{variant.caseCounts.passed} / {variant.caseCounts.total} passed</strong><small>{passRate(variant)}% · {variant.caseCounts.failed} failed · {variant.caseCounts.incomplete} incomplete{variant.retriedAfterRateLimit > 0 ? ` · ${variant.retriedAfterRateLimit} retried after rate limiting` : ""}</small></td>
                   <td><strong>{variant.checkCounts.passed} passed · {variant.checkCounts.failed} failed · {variant.checkCounts.notEvaluated} not evaluated</strong></td>
                   <td><strong>{formatLatency(variant.totalDurationMs)}</strong><small>{variant.totalDurationMs.count}/{expectedCells} completed runs</small></td>
                   <td><strong>{variant.totalTokens.total === undefined ? "—" : `${formatTokens(variant.totalTokens.total)} tokens`} · {variant.totalTokens.reportedRuns}/{expectedCells} runs reported</strong></td>

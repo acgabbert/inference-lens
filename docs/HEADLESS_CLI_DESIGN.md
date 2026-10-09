@@ -299,7 +299,7 @@ Two contract changes came with the move:
 
 ```sh
 npm run cli -- run ./evals.inference-lens --suite triage [--json] [--no-auth <id>]
-  [--concurrency <n>] [--connection-concurrency <id>=<n>]
+  [--concurrency <n>] [--connection-concurrency <id>=<n>] [--retry-rate-limits]
 ```
 
 | Module | Owns |
@@ -372,3 +372,29 @@ provider that holds requests until two overlap, and checks the peak number
 in flight (2 at `--concurrency 2` over three cases; 1 when
 `--connection-concurrency` lowers it), the recorded and reported limits, plan
 order in the summary, and each refusal.
+
+### Retry flag
+
+Slice 6 of the [parallel experiment design](PARALLEL_EXPERIMENT_DESIGN.md)
+adds `--retry-rate-limits`.
+
+- **`--retry-rate-limits`** retries a request the provider refuses with
+  HTTP 429, up to 2 times per provider turn, after the wait the provider asks
+  for (decision 6's reading, capped at 60 seconds). Off by default, so a run
+  without it behaves as before. Nothing else is retried.
+- **Reporting.** The `--json` summary v1 gains an optional `retryPolicy`,
+  the policy the result recorded (`{ rateLimited: { maxRetries } }`), absent
+  when no result was written, and each configuration gains
+  `retriedAfterRateLimit`, the repetitions that retried at least one 429,
+  whatever their outcome. Both are added without a version bump, for the
+  reason `concurrency` was. The human summary adds "Retried rate-limited
+  requests up to 2 times per turn." when retries were on, and
+  ", N retried after rate limiting" on a configuration's line when N is
+  above 0, so default output is unchanged.
+- **Exit codes** are unchanged. A repetition whose retries ran out is
+  rate-limited, so a suite held back only by that still exits 3.
+
+Verification: `tests/cli-headless-run.test.ts` runs a suite against an
+in-process provider that refuses the first request with a 429, once with
+the flag (three requests, exit 0, the recorded policy and the retried count
+reported) and once without (two requests, the policy reported as off).

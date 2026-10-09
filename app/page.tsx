@@ -1629,6 +1629,7 @@ function HomeContent() {
           onCountChange={repeatedExperiment.setRepetitionCount}
           onTurnCeilingChange={repeatedExperiment.setTurnCeiling}
           onConcurrencyChange={repeatedExperiment.setConcurrency}
+          onRetryRateLimitsChange={repeatedExperiment.setRetryRateLimits}
           onSettingsChange={repeatedExperiment.updateSettings}
           onCancel={repeatedExperiment.dismissDialog}
           onConfirm={() => void repeatedExperiment.confirm(projectWorkspace)}
@@ -1638,6 +1639,7 @@ function HomeContent() {
         <EvaluationStartDialog
           draft={evaluationExecution.draft}
           onConcurrencyChange={evaluationExecution.setConcurrency}
+          onRetryRateLimitsChange={evaluationExecution.setRetryRateLimits}
           onCancel={evaluationExecution.dismissDialog}
           onConfirm={confirmEvaluation}
         />

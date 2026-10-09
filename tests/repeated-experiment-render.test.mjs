@@ -832,3 +832,76 @@ test("the repeat dialog offers a concurrency limit that starts at one", async ()
   assert.doesNotMatch(overlapping, /Runs sequentially/);
   assertNoBrokenValues(overlapping);
 });
+
+test("the repeat dialog offers rate-limit retries, off until chosen", async () => {
+  const frozenPlan = plan();
+  const props = (retryRateLimits) => ({
+    draft: {
+      plan: frozenPlan,
+      targetName: "Fixture connection",
+      requestSummary: "1 message",
+      repetitionCount: 5,
+      ...(retryRateLimits === undefined ? {} : { retryRateLimits }),
+      toolBindings: [],
+      commitPreparation() {},
+    },
+    settings: {
+      streamingAvailable: true, modelDiscovery: null, favoriteModels: [],
+      onLoadModels() {}, onToggleFavoriteModel() {},
+    },
+    onCountChange() {},
+    onTurnCeilingChange() {},
+    onConcurrencyChange() {},
+    onRetryRateLimitsChange() {},
+    onSettingsChange() {},
+    onCancel() {},
+    onConfirm() {},
+  });
+
+  const off = await render("/app/run/repeated-experiment-dialog.client.tsx", "RepeatedExperimentDialog", props(undefined));
+  assert.match(off, /<input[^>]*aria-label="Retry rate-limited requests"[^>]*type="checkbox"/);
+  assert.doesNotMatch(off, /aria-label="Retry rate-limited requests"[^>]*checked/);
+  assert.match(off, /up to 2 times per turn/);
+
+  const on = await render("/app/run/repeated-experiment-dialog.client.tsx", "RepeatedExperimentDialog", props(true));
+  assert.match(on, /aria-label="Retry rate-limited requests"[^>]*checked/);
+  assertNoBrokenValues(on);
+});
+
+test("a result that allowed retries counts the repetitions that needed them", async () => {
+  const frozenPlan = plan();
+  const retried = completedState("run_render-1", "Hello");
+  retried.turns[0].attempts.unshift({
+    attempt: 1, exchangeId: "exchange_render-refused", status: "failed", text: "", reasoning: "", toolCalls: [],
+    error: { code: "provider_error", message: "Too many requests", retryable: true, providerStatus: 429 },
+  });
+  retried.turns[0].attempts[1].attempt = 2;
+  const second = completedState("run_render-2", "Hello");
+  const workspace = (maxRetries, first = retried) => render(
+    "/app/run/repeated-experiment-workspace.client.tsx",
+    "RepeatedExperimentWorkspace",
+    {
+      execution: {
+        plan: frozenPlan, storage: "durable", workspace: {}, unreadableTraces: new Map(),
+        states: new Map([["run_render-1", first], ["run_render-2", second]]),
+        result: {
+          schemaVersion: 6, experimentId: frozenPlan.experimentId, status: "completed", endedAt: "2026-07-30T12:01:00.000Z",
+          concurrency: { maxInFlight: 1, connections: [{ profileId: "profile_render", endpoint: "https://provider.example.test/v1", limit: 1 }] },
+          retryPolicy: { rateLimited: { maxRetries } },
+          cells: frozenPlan.cells.map(({ cellId, runId }, index) => ({ cellId, runId, status: "completed", startOrder: index + 1 })),
+        },
+        traces: new Map(), selectedRunId: null,
+      },
+      onStop() {},
+      onOpenTrace() {},
+    },
+  );
+
+  const allowed = await workspace(2);
+  assert.match(allowed, /<dt>Retried after rate limiting<\/dt><dd>1 of 2 · up to 2 retries per turn allowed<\/dd>/);
+  assertNoBrokenValues(allowed);
+  // Allowed but never needed still says so, so a clean run reads as clean.
+  assert.match(await workspace(2, completedState("run_render-1", "Hello")), /<dd>0 of 2 · up to 2 retries per turn allowed<\/dd>/);
+  // Retries off and none observed: nothing to say.
+  assert.doesNotMatch(await workspace(0, completedState("run_render-1", "Hello")), /Retried after rate limiting/);
+});

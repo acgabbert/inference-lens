@@ -9,6 +9,9 @@ import {
   materializeExperimentCellInput,
   parseExperimentPlanJson,
   parseExperimentResultJson,
+  RATE_LIMIT_MAX_RETRIES,
+  rateLimitRetries,
+  rateLimitRetryCount,
   repeatedExperimentAggregate,
   serializeExperimentPlan,
   serializeExperimentResult,
@@ -581,6 +584,54 @@ test("counts rate-limited repetitions apart from failed ones", () => {
 
   assert.equal(aggregate.rateLimited, 1);
   assert.equal(aggregate.failed, 1);
+});
+
+/** A run whose first attempt the provider refused with `providerStatus`, retried once and answered. */
+function retriedState(input: ResolvedRunInput, providerStatus: number) {
+  const coordinator = new RunCoordinator(input);
+  coordinator.start();
+  coordinator.accept({
+    type: "failed",
+    error: { code: "provider_error", message: "Refused", retryable: true, providerStatus },
+  });
+  coordinator.finishTurnStream();
+  const { execution } = coordinator.retry();
+  coordinator.accept({ type: "text_delta", text: "Hi", source: { exchangeId: execution.exchangeId } });
+  coordinator.accept({ type: "completed", finishReason: { normalized: "stop", raw: "stop" } });
+  coordinator.finishTurnStream();
+  return coordinator.state;
+}
+
+test("the opt-in retry policy allows two retries of a rate-limited turn", () => {
+  assert.equal(RATE_LIMIT_MAX_RETRIES, 2);
+  assert.deepEqual(rateLimitRetries(), { rateLimited: { maxRetries: 2 } });
+});
+
+test("counts repetitions that needed retries after rate limiting, and no other retry", () => {
+  const source = plan();
+  const first = retriedState(materializeExperimentCellInput(source, "experiment-cell_first"), 429);
+  const second = retriedState(materializeExperimentCellInput(source, "experiment-cell_second"), 503);
+  assert.equal(rateLimitRetryCount(first), 1);
+  assert.equal(rateLimitRetryCount(second), 0);
+  const result: ExperimentResultV3 = {
+    schemaVersion: 4,
+    experimentId: source.experimentId,
+    status: "completed",
+    endedAt: "2026-07-30T12:01:00.000Z",
+    cells: [
+      { cellId: "experiment-cell_first", runId: "run_first", status: "completed" },
+      { cellId: "experiment-cell_second", runId: "run_second", status: "completed" },
+    ],
+  };
+  const aggregate = repeatedExperimentAggregate(
+    source,
+    result,
+    new Map([[first.runId, first], [second.runId, second]]),
+  );
+
+  assert.equal(aggregate.completed, 2);
+  assert.equal(aggregate.runsWithRetries, 2);
+  assert.equal(aggregate.retriedAfterRateLimit, 1);
 });
 
 test("names the three experiment artifact kinds and refuses lookalikes", () => {

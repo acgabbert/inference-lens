@@ -7,6 +7,7 @@ import {
   DEFAULT_EXPERIMENT_TURN_CEILING,
   MAX_EXPERIMENT_TURN_CEILING,
   MIN_EXPERIMENT_TURN_CEILING,
+  rateLimitRetries,
 } from "../../packages/core/src/experiment.ts";
 import type {
   ExperimentPlanV3,
@@ -54,6 +55,11 @@ export interface RepeatedExperimentDraft {
    * and the result records the limit the run actually used.
    */
   concurrency?: number;
+  /**
+   * Whether a 429 is retried, up to the bound the core sets. Absent means off.
+   * Beside the plan for the same reason as `concurrency`; the result records it.
+   */
+  retryRateLimits?: boolean;
   /**
    * What will serve each exposed tool, resolved when the dialog opened.
    *
@@ -282,6 +288,10 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
     setDraft((current) => current ? { ...current, concurrency: normalizedConcurrency(value) } : current);
   }, []);
 
+  const setRetryRateLimits = useCallback((retryRateLimits: boolean) => {
+    setDraft((current) => current ? { ...current, retryRateLimits } : current);
+  }, []);
+
   const dismissDialog = useCallback(() => setDraft(undefined), []);
 
   const confirm = useCallback(async (workspace: ProjectWorkspaceHandle | null) => {
@@ -326,6 +336,7 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
       ...persistence,
       // One connection, so one number is both limits.
       concurrency: { maxInFlight: limit, connectionLimit: limit },
+      ...(pending.retryRateLimits ? { retryPolicy: rateLimitRetries() } : {}),
       onProgress(progress) {
         setExecution((current) => {
           if (current?.plan.experimentId !== pending.plan.experimentId) return current;
@@ -444,6 +455,7 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
     setRepetitionCount,
     setTurnCeiling,
     setConcurrency,
+    setRetryRateLimits,
     updateSettings,
     dismissDialog,
     confirm,

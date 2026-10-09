@@ -488,6 +488,38 @@ test("a repetition the provider rate-limited is missing evidence, not a failure"
   assert.deepEqual(variant?.checkCounts, { total: 2, passed: 1, failed: 0, notEvaluated: 1 });
 });
 
+test("a configuration counts the repetitions that needed retries after rate limiting", () => {
+  const plan = planFixture([migrations, backups]);
+  const run = execute(plan, { [migrations.id]: "Plan the migration.", [backups.id]: "Keep a backup." });
+  const states = new Map(run.states);
+  const [first, second] = plan.cells;
+  // One retried and then answered; one retried until its budget ran out.
+  const retried = new RunCoordinator(materializeExperimentCellInput(plan, first!.cellId));
+  retried.start();
+  const refusal: RunError = { code: "provider_error", message: "Refused", retryable: true, providerStatus: 429 };
+  retried.accept({ type: "failed", error: refusal });
+  retried.finishTurnStream();
+  const { execution } = retried.retry();
+  retried.accept({ type: "text_delta", text: "Plan the migration.", source: { exchangeId: execution.exchangeId } });
+  retried.accept({ type: "completed", finishReason: { normalized: "stop", raw: "stop" } });
+  retried.finishTurnStream();
+  states.set(first!.runId, retried.state);
+  const exhausted = new RunCoordinator(materializeExperimentCellInput(plan, second!.cellId));
+  exhausted.start();
+  exhausted.accept({ type: "failed", error: refusal });
+  exhausted.finishTurnStream();
+  exhausted.retry();
+  exhausted.accept({ type: "failed", error: refusal });
+  exhausted.finishTurnStream();
+  exhausted.fail(refusal);
+  states.set(second!.runId, exhausted.state);
+  const [variant] = evaluationParsedExperimentAggregate(plan, run.result, states).variants;
+
+  assert.equal(variant?.repetitionCounts.passed, 1);
+  assert.equal(variant?.repetitionCounts["rate-limited"], 1);
+  assert.equal(variant?.retriedAfterRateLimit, 2);
+});
+
 test("a provider failure other than 429 is still a failed run", () => {
   const plan = planFixture([backups]);
   const run = refuse(plan, execute(plan, { [backups.id]: "Keep a backup." }), backups.id, { providerStatus: 503 });

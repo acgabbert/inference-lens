@@ -201,3 +201,37 @@ test("a result that ran cells at once says so beside its latency", async () => {
   assert.match(render(4), /As run · 1 cases · 2 repetitions · up to 4 at once/);
   assert.doesNotMatch(render(1), /at once/);
 });
+
+test("a result that allowed retries says so, and counts the repetitions that needed them", async () => {
+  const fx = await fixture();
+  const [first, second] = fx.plan.cells;
+  const retried = (() => {
+    const coordinator = new fx.kernel.RunCoordinator(fx.experimentCore.materializeExperimentCellInput(fx.plan, first.cellId));
+    coordinator.start();
+    coordinator.accept({ type: "failed", error: { code: "provider_error", message: "Too many requests", retryable: true, providerStatus: 429 } });
+    coordinator.finishTurnStream();
+    const { execution } = coordinator.retry();
+    coordinator.accept({ type: "text_delta", text: "Include a rollback plan.", source: { exchangeId: execution.exchangeId } });
+    coordinator.accept({ type: "completed", finishReason: { normalized: "stop" }, source: { exchangeId: execution.exchangeId } });
+    coordinator.finishTurnStream();
+    return coordinator.state;
+  })();
+  const states = new Map([[retried.runId, retried], [second.runId, completedState(fx, second, "Include a rollback plan.")]]);
+  const variant = fx.plan.suite.variants[0];
+  const html = fx.renderToStaticMarkup(fx.createElement(fx.EvaluationResultsWorkspace, {
+    execution: {
+      plan: fx.plan, storage: "durable", workspace: null, states, traces: new Map(), traceFileNames: new Map(), unreadableTraces: new Map(), selectedRunId: null,
+      result: {
+        schemaVersion: 6, experimentId: fx.plan.experimentId, status: "completed", endedAt: "2026-08-01T12:11:00.000Z",
+        concurrency: { maxInFlight: 1, connections: [{ profileId: variant.target.profileId, endpoint: variant.target.endpoint, limit: 1 }] },
+        retryPolicy: { rateLimited: { maxRetries: 2 } },
+        cells: fx.plan.cells.map((cell, index) => ({ cellId: cell.cellId, runId: cell.runId, status: "completed", startOrder: index + 1 })),
+      },
+    },
+    onStop() {}, onOpenTrace() {},
+  }));
+
+  assert.match(html, /As run · 1 cases · 2 repetitions · rate-limited requests retried up to 2 times/);
+  assert.match(html, /0 incomplete · 1 retried after rate limiting/);
+  assert.doesNotMatch(html, /NaN|Infinity|undefined|\[object Object\]/);
+});

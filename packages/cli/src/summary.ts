@@ -5,6 +5,7 @@ import type {
   ExperimentConcurrency,
   ExperimentLifecycle,
   ExperimentResult,
+  ExperimentRetryPolicy,
   ExperimentStop,
 } from "../../core/src/experiment.ts";
 
@@ -47,6 +48,12 @@ export interface HeadlessConfigurationSummary {
   model: string;
   passed: boolean;
   caseCounts: { total: number; passed: number; failed: number; incomplete: number };
+  /**
+   * Repetitions that retried at least one request the provider refused with
+   * 429, whatever their outcome, so retrying cannot hide a configuration that
+   * keeps reaching its limit.
+   */
+  retriedAfterRateLimit: number;
   cases: HeadlessCaseSummary[];
 }
 
@@ -66,6 +73,8 @@ export interface HeadlessSummaryV1 {
    * from runs at different limits are not comparable.
    */
   concurrency?: ExperimentConcurrency;
+  /** Whether a 429 was retried, and how often per provider turn. Absent when no result was written. */
+  retryPolicy?: ExperimentRetryPolicy;
   configurations: HeadlessConfigurationSummary[];
 }
 
@@ -122,7 +131,7 @@ export function createHeadlessSummary(input: {
       plan: input.planPath,
       ...(input.resultPath ? { result: input.resultPath } : {}),
     },
-    ...(result ? { concurrency: result.concurrency } : {}),
+    ...(result ? { concurrency: result.concurrency, retryPolicy: result.retryPolicy } : {}),
     configurations: assessment.variants.map((variant) => ({
       variantId: variant.variant.variantId,
       name: variant.variant.name,
@@ -130,6 +139,7 @@ export function createHeadlessSummary(input: {
       model: variant.variant.target.model,
       passed: variant.passed,
       caseCounts: { ...variant.caseCounts },
+      retriedAfterRateLimit: variant.retriedAfterRateLimit,
       cases: variant.cases.map((evaluationCase) => {
         const checks = { total: 0, passed: 0, failed: 0, notEvaluated: 0 };
         for (const repetition of evaluationCase.repetitions) {
@@ -181,6 +191,10 @@ export function formatHeadlessSummary(summary: HeadlessSummaryV1): string {
   if (summary.concurrency && summary.concurrency.maxInFlight > 1) {
     lines.push(`Ran up to ${summary.concurrency.maxInFlight} repetitions at once.`);
   }
+  const maxRetries = summary.retryPolicy?.rateLimited.maxRetries ?? 0;
+  if (maxRetries > 0) {
+    lines.push(`Retried rate-limited requests up to ${maxRetries} ${maxRetries === 1 ? "time" : "times"} per turn.`);
+  }
   if (summary.stop) {
     lines.push(`Stopped because tool ${summary.stop.toolId} became unavailable.`);
   }
@@ -191,7 +205,8 @@ export function formatHeadlessSummary(summary: HeadlessSummaryV1): string {
       `${configuration.passed ? "PASS" : "FAIL"}  ${configuration.name} (${configuration.model}) — ` +
         `${caseCounts.passed}/${caseCounts.total} cases passed` +
         (caseCounts.failed ? `, ${caseCounts.failed} failed` : "") +
-        (caseCounts.incomplete ? `, ${caseCounts.incomplete} incomplete` : ""),
+        (caseCounts.incomplete ? `, ${caseCounts.incomplete} incomplete` : "") +
+        (configuration.retriedAfterRateLimit ? `, ${configuration.retriedAfterRateLimit} retried after rate limiting` : ""),
     );
     for (const evaluationCase of configuration.cases) {
       if (evaluationCase.passed) continue;

@@ -150,6 +150,8 @@ export function RepeatedExperimentWorkspace({
   const lifecycle = isRunning ? "running" : execution.error ? "interrupted" : aggregate.lifecycle;
   const runningOrdinals = live?.runningOrdinals ?? [];
   const recordedConcurrency = recordedConcurrencyLabel(execution.result?.concurrency, "repetitions");
+  const maxRateLimitRetries = execution.result?.retryPolicy?.rateLimited.maxRetries ?? 0;
+  const finishedRuns = aggregate.completed + aggregate.failed + aggregate.rateLimited + aggregate.cancelled;
   const incompleteOutcomes = [
     aggregate.notRun > 0 ? `${aggregate.notRun} not run` : undefined,
     aggregate.missingTrace > 0 ? `${aggregate.missingTrace} missing trace` : undefined,
@@ -242,6 +244,11 @@ export function RepeatedExperimentWorkspace({
           <h3>Outcomes</h3>
           <dl>
             <div><dt>Finished runs</dt><dd>{aggregate.completed} completed · {aggregate.failed} failed{aggregate.rateLimited > 0 && ` · ${aggregate.rateLimited} rate limited`} · {aggregate.cancelled} cancelled</dd></div>
+            {/* Shown whenever retries were allowed, even at zero, so a clean
+                run reads as clean rather than as never having retried. */}
+            {(maxRateLimitRetries > 0 || aggregate.retriedAfterRateLimit > 0) && (
+              <div><dt>Retried after rate limiting</dt><dd>{aggregate.retriedAfterRateLimit} of {finishedRuns}{maxRateLimitRetries > 0 ? ` · up to ${maxRateLimitRetries} ${maxRateLimitRetries === 1 ? "retry" : "retries"} per turn allowed` : ""}</dd></div>
+            )}
             {incompleteOutcomes.length > 0 && <div><dt>Unstarted / missing</dt><dd>{incompleteOutcomes.join(" · ")}</dd></div>}
           </dl>
         </section>

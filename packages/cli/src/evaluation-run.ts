@@ -13,6 +13,7 @@ import {
   evaluationParsedExperimentAggregate,
   experimentPlanFileName,
   experimentResultFileName,
+  rateLimitRetries,
 } from "../../core/src/experiment.ts";
 import type {
   EvaluationExperimentPlanV4,
@@ -59,6 +60,8 @@ export interface HeadlessEvaluationOptions {
   transport: ProviderTurnTransport;
   /** How many repetitions may run at once. One at a time when omitted. */
   concurrency?: HeadlessConcurrency;
+  /** `--retry-rate-limits`: retry a 429 up to the bound decision 8 sets. Off when omitted. */
+  retryRateLimits?: boolean;
   /** One line per finished repetition, for stderr. */
   onProgress?(line: string): void;
   /** Injected by tests. */
@@ -171,6 +174,7 @@ async function runHeadlessEvaluation(
     toolBindings,
     createExecutor: options.createExecutor ?? createMockOnlyToolExecutor,
     concurrency,
+    ...(options.retryRateLimits ? { retryPolicy: rateLimitRetries() } : {}),
     async savePlan(frozen, serialized) {
       await folder.saveExperimentArtifact(experimentPlanFileName(frozen.experimentId), serialized);
       planSaved = true;

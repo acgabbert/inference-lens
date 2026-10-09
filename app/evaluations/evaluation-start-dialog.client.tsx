@@ -10,6 +10,7 @@ import {
   settingMaxInFlight,
 } from "../run/experiment-concurrency.client.tsx";
 import type { ExperimentConnectionChoice } from "../run/experiment-concurrency.client.tsx";
+import { ExperimentRetryField } from "../run/experiment-retry.client.tsx";
 import type { EvaluationExecutionDraft } from "./use-evaluation-execution-session.client.ts";
 import {
   evaluationBatchGuardrail,
@@ -40,11 +41,13 @@ function connectionChoices(draft: EvaluationExecutionDraft): ExperimentConnectio
 export function EvaluationStartDialog({
   draft,
   onConcurrencyChange,
+  onRetryRateLimitsChange,
   onCancel,
   onConfirm,
 }: {
   draft: EvaluationExecutionDraft;
   onConcurrencyChange(concurrency: ExperimentConcurrencySetting): void;
+  onRetryRateLimitsChange(enabled: boolean): void;
   onCancel(): void;
   onConfirm(): void;
 }) {
@@ -96,6 +99,9 @@ export function EvaluationStartDialog({
               value={draft.concurrency}
               onChange={onConcurrencyChange}
             />
+          </dd></div>
+          <div className="evaluation-start-retry"><dt>Rate limits</dt><dd>
+            <ExperimentRetryField checked={draft.retryRateLimits ?? false} onChange={onRetryRateLimitsChange} />
           </dd></div>
           <div><dt>Evidence</dt><dd>{draft.storage === "durable" ? "Saved to the open project folder" : "Session only — lost when this session closes"}</dd></div>
         </dl>

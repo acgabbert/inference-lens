@@ -462,6 +462,51 @@ test("a suite held back only by rate limiting exits 3, not 1", async (t) => {
   assert.equal(configuration.cases[0].repetitions[0].classification, "rate-limited");
 });
 
+test("--retry-rate-limits retries a 429, records the policy, and reports the retried repetition", async (t) => {
+  const provider = await recordingProvider({ rateLimitFirstRequest: "0" });
+  t.after(provider.close);
+  const cases: typeof twoCases = [twoCases[0]!, {
+    ...twoCases[0]!, id: "evaluation-case_sum-again", name: "States the sum again",
+    checks: [{ checkId: "check_sum-again", kind: "contains", value: "2 + 2 = 4" }],
+  }];
+  const directory = await writeHeadlessProjectFolder(headlessProject({ endpoint: provider.endpoint, cases }));
+
+  const stdout: string[] = [];
+  const code = await runCli(["run", directory, "--retry-rate-limits", "--json"], {
+    stdout: (text) => stdout.push(text),
+    stderr: () => {},
+    environment: { [KEY_VARIABLE]: KEY },
+  });
+
+  // The refused request was retried, so the suite has its evidence and passes.
+  assert.equal(code, 0);
+  assert.equal(provider.requests.length, 3);
+  const { experiments } = await readArtifacts(directory);
+  const plan = parseExperimentPlanJson(experiments.find(({ fileName }) => fileName.endsWith(".plan.json"))!.contents);
+  const result = parseExperimentResultJson(experiments.find(({ fileName }) => fileName.endsWith(".result.json"))!.contents, plan);
+  assert.deepEqual(result.retryPolicy, { rateLimited: { maxRetries: 2 } });
+  const summary = JSON.parse(stdout.join(""));
+  assert.equal(summary.verdict, "passed");
+  assert.deepEqual(summary.retryPolicy, { rateLimited: { maxRetries: 2 } });
+  assert.equal(summary.configurations[0].retriedAfterRateLimit, 1);
+  const text = formatHeadlessSummary(summary);
+  assert.match(text, /^Retried rate-limited requests up to 2 times per turn\.$/m);
+  assert.match(text, /^PASS {2}Default \(.+\) — 2\/2 cases passed, 1 retried after rate limiting$/m);
+});
+
+test("without --retry-rate-limits a 429 is not retried and the summary says retries were off", async (t) => {
+  const provider = await recordingProvider({ rateLimitFirstRequest: "0" });
+  t.after(provider.close);
+  const directory = await writeHeadlessProjectFolder(headlessProject({ endpoint: provider.endpoint, cases: twoCases }));
+
+  const outcome = await run(directory, { [KEY_VARIABLE]: KEY }).done;
+
+  assert.equal(provider.requests.length, 2);
+  assert.deepEqual(outcome.summary?.retryPolicy, { rateLimited: { maxRetries: 0 } });
+  assert.equal(outcome.summary?.configurations[0].retriedAfterRateLimit, 0);
+  assert.doesNotMatch(formatHeadlessSummary(outcome.summary!), /[Rr]etried/);
+});
+
 test("bad concurrency flags exit 2 before any request or artifact", async (t) => {
   const provider = await recordingProvider();
   t.after(provider.close);

@@ -17,6 +17,7 @@ import {
 
 import { ExperimentToolBindingList } from "./experiment-tool-binding-list.client.tsx";
 import { ExperimentConcurrencyFields } from "./experiment-concurrency.client.tsx";
+import { ExperimentRetryField } from "./experiment-retry.client.tsx";
 
 export function RepeatedExperimentDialog({
   draft,
@@ -24,6 +25,7 @@ export function RepeatedExperimentDialog({
   onCountChange,
   onTurnCeilingChange,
   onConcurrencyChange,
+  onRetryRateLimitsChange,
   onSettingsChange,
   onCancel,
   onConfirm,
@@ -43,6 +45,7 @@ export function RepeatedExperimentDialog({
   onCountChange(count: number): void;
   onTurnCeilingChange(ceiling: number): void;
   onConcurrencyChange(concurrency: number): void;
+  onRetryRateLimitsChange(enabled: boolean): void;
   onSettingsChange(next: RepeatedExperimentSettings): void;
   onCancel(): void;
   onConfirm(): void;
@@ -136,6 +139,7 @@ export function RepeatedExperimentDialog({
                   value={{ maxInFlight: concurrency, connectionLimit: concurrency }}
                   onChange={(next) => onConcurrencyChange(next.maxInFlight ?? 1)}
                 />
+                <ExperimentRetryField checked={draft.retryRateLimits ?? false} onChange={onRetryRateLimitsChange} />
               </>
             ),
           }}
