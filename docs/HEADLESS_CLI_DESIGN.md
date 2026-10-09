@@ -4,7 +4,7 @@
 to 4 are implemented, in `packages/runner/`, `packages/cli/`, and the
 container image; see [Implementation status](#implementation-status). Decision 3 was refined on
 October 9, 2026 so that a grant names its target explicitly; see
-[slice 3](#slice-3-what-exists). Slice 5 is proposed, not agreed; see
+[slice 3](#slice-3-what-exists). Slice 5's decisions were agreed the same day; see
 [slice 5](#slice-5-selection-and-repeated-runs).
 **Baseline:** `main` at `5755b57`, reviewed October 9, 2026.
 
@@ -181,7 +181,8 @@ first release.
 
 ## Slice 5: selection and repeated runs
 
-**Status:** proposed October 9, 2026; decisions 5 to 9 are not yet agreed.
+**Status:** decisions 5 to 9 agreed October 9, 2026, as recommended except
+the response mode in decision 8, which defaults to buffered.
 npm publishing, the third follow-up, is deferred.
 
 Two pull requests, in this order, so that the smaller one never waits on the
@@ -273,7 +274,7 @@ no headless equivalent.
 | Conversation | `project.defaults.conversationRevisionId`, with template uses resolved by `projectDraft`. Choosing another revision is left for later. |
 | Target, options, tools | `project.defaults`. Overriding the model or options from the command line is left for later; edit and save the project instead. |
 | Repetitions | `--repetitions <n>`, default 5, 2 to 100: the app's dialog bounds, moved to the runner so both read one constant. |
-| Response mode | `--response-mode streaming\|buffered`, default `streaming`, the app's default. A connection whose declared capabilities do not include streaming is refused (exit 2) with a message naming `--response-mode buffered`, rather than silently downgraded, so TTFO figures never quietly disappear. |
+| Response mode | `--response-mode streaming\|buffered`, default `buffered`. Unlike the app, which defaults to streaming, a headless job usually has nobody watching output arrive, and buffered needs no declared capability. The cost is that a buffered run measures no TTFO, so the summary reports the mode and the human summary says TTFO was not measured. `streaming` on a connection whose declared capabilities do not include it is refused (exit 2), never silently downgraded. |
 | Turn ceiling | The default, as the app's dialog starts with. No flag yet. |
 
 Tool rules are decision 3 unchanged: each tool in `enabledToolIds` needs an
@@ -293,7 +294,8 @@ The v1 summary is built around a suite verdict (`suite`, `verdict`, and
 The repeated summary, under the same rule as decision 4 (it names outcomes
 and points at evidence, never copying model output): experiment ID,
 lifecycle and stop, artifact paths, recorded concurrency and retry policy, the
-target (connection, protocol, model) and conversation revision, the counts
+target (connection, protocol, model), response mode, and conversation
+revision, the counts
 `repeatedExperimentAggregate` derives (requested, completed, failed,
 rate limited, cancelled, not run, missing trace, retried after rate
 limiting), its metric ranges (duration, TTFO, tokens, throughput, turns, tool
@@ -315,7 +317,8 @@ Exit codes for `repeat`:
   plan shape is the app's own subset shape, so no new browser spec; the
   existing `headless-cli-artifacts.spec.ts` and the full suite run once.
 - **5b.** Unit tests for building input from `project.defaults` (including a
-  template-backed revision and a refused streaming request), the repeated
+  template-backed revision, the buffered default, and a refused streaming
+  request), the repeated
   summary, and its exit codes; an integration run against the fixture
   provider that parses every artifact with the core parsers; and a new case
   in `headless-cli-artifacts.spec.ts` that opens a CLI-written repeated run in
