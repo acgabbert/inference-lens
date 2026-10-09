@@ -240,6 +240,17 @@ export function noExperimentRetries(): ExperimentRetryPolicy {
   return { rateLimited: { maxRetries: 0 } };
 }
 
+/**
+ * How many cells could be in flight: at most `maxInFlight` across the whole
+ * experiment, and at most each connection's `limit` on that connection. An
+ * overall limit of 1 is one cell at a time, whatever the connection limits.
+ */
+export interface ExperimentConcurrency {
+  maxInFlight: number;
+  /** One entry per distinct connection, in the order the plan first uses it. */
+  connections: ExperimentConnectionConcurrency[];
+}
+
 export interface ExperimentResultV4 {
   schemaVersion: 4;
   experimentId: ExperimentId;
@@ -284,8 +295,7 @@ export interface ExperimentResultV6 {
   /** Present exactly when `status` is `stopped`. */
   stop?: ExperimentStopV6;
   endedAt: string;
-  /** One entry per distinct connection, in the order the plan first uses it. */
-  concurrency: ExperimentConnectionConcurrency[];
+  concurrency: ExperimentConcurrency;
   retryPolicy: ExperimentRetryPolicy;
   /** Always in plan order, whatever order the cells finished in. */
   cells: ExperimentCellResultV6[];
@@ -718,15 +728,20 @@ const resultV6Schema = z
       .strict()
       .optional(),
     endedAt: z.string().datetime(),
-    concurrency: z.array(
-      z
-        .object({
-          profileId: entityId("profile"),
-          endpoint: z.string(),
-          limit: z.number().int().positive(),
-        })
-        .strict(),
-    ),
+    concurrency: z
+      .object({
+        maxInFlight: z.number().int().positive(),
+        connections: z.array(
+          z
+            .object({
+              profileId: entityId("profile"),
+              endpoint: z.string(),
+              limit: z.number().int().positive(),
+            })
+            .strict(),
+        ),
+      })
+      .strict(),
     retryPolicy: z
       .object({
         rateLimited: z.object({ maxRetries: z.number().int().nonnegative() }).strict(),
@@ -778,12 +793,13 @@ function planInputs(plan: ExperimentPlanV4): Array<Omit<ResolvedRunInput, "runId
 }
 
 /**
- * Every distinct connection a plan targets, in the order the plan first uses
- * it, each at a limit of 1: what every result before Version 6 ran at.
+ * One cell at a time: an overall limit of 1, and every distinct connection a
+ * plan targets, in the order the plan first uses it, at a limit of 1. What
+ * every result before Version 6 ran at, and the default.
  */
 export function sequentialExperimentConcurrency(
   plan: ExperimentPlanV4,
-): ExperimentConnectionConcurrency[] {
+): ExperimentConcurrency {
   const connections = new Map<string, ExperimentConnectionConcurrency>();
   for (const { target } of planInputs(plan)) {
     const key = experimentConnectionKey(target);
@@ -791,7 +807,7 @@ export function sequentialExperimentConcurrency(
       connections.set(key, { profileId: target.profileId, endpoint: target.endpoint, limit: 1 });
     }
   }
-  return [...connections.values()];
+  return { maxInFlight: 1, connections: [...connections.values()] };
 }
 
 /** The key the scheduler and the result both use for one connection. */
@@ -916,6 +932,7 @@ function assertResultReferences(
       "Experiment result start orders must number the started cells once each, from one.",
     );
   }
+  assertConnectionStartOrder(result, plan);
   if (result.status === "completed" && result.cells.some((cell) => cell.status === "not-run")) {
     throw new ExperimentValidationError("A completed experiment cannot contain unstarted cells.");
   }
@@ -943,12 +960,48 @@ function assertResultReferences(
   }
 }
 
+/**
+ * Each connection starts its cells in plan order as slots free up, so on one
+ * connection the started cells are a prefix of its cells, in rising start
+ * order. Different connections are independent of each other.
+ */
+function assertConnectionStartOrder(result: ExperimentResultV6, plan: ExperimentPlanV4): void {
+  const connectionOf = cellConnectionKeys(plan);
+  const lastStart = new Map<string, number>();
+  const unstarted = new Set<string>();
+  for (const cell of result.cells) {
+    const connection = connectionOf(cell.cellId);
+    if (cell.status === "not-run") {
+      unstarted.add(connection);
+      continue;
+    }
+    if (unstarted.has(connection) || cell.startOrder < (lastStart.get(connection) ?? 0)) {
+      throw new ExperimentValidationError(
+        "Experiment result cells must start in plan order on each connection.",
+      );
+    }
+    lastStart.set(connection, cell.startOrder);
+  }
+}
+
+function cellConnectionKeys(plan: ExperimentPlanV4): (cellId: ExperimentCellId) => string {
+  if (plan.kind === "repeated-request") {
+    const key = experimentConnectionKey(plan.commonInput.target);
+    return () => key;
+  }
+  const byVariant = new Map(
+    plan.suite.variants.map((variant) => [variant.variantId, experimentConnectionKey(variant.target)]),
+  );
+  const byCell = new Map(plan.cells.map((cell) => [cell.cellId, byVariant.get(cell.variantId)!]));
+  return (cellId) => byCell.get(cellId)!;
+}
+
 function assertConcurrency(
-  concurrency: ExperimentConnectionConcurrency[],
+  concurrency: ExperimentConcurrency,
   plan: ExperimentPlanV4,
 ): void {
-  const expected = sequentialExperimentConcurrency(plan).map(experimentConnectionKey);
-  const actual = concurrency.map(experimentConnectionKey);
+  const expected = sequentialExperimentConcurrency(plan).connections.map(experimentConnectionKey);
+  const actual = concurrency.connections.map(experimentConnectionKey);
   if (
     actual.length !== expected.length ||
     actual.some((key, index) => key !== expected[index])

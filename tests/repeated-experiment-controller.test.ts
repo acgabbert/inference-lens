@@ -558,7 +558,8 @@ test("an unavailable tool stops the batch after the repetition that found it", a
     result.cells.map((cell) => cell.status === "not-run" ? undefined : cell.startOrder),
     [1, 2, undefined],
   );
-  assert.deepEqual(result.concurrency.map(({ limit }) => limit), [1]);
+  assert.equal(result.concurrency.maxInFlight, 1);
+  assert.deepEqual(result.concurrency.connections.map(({ limit }) => limit), [1]);
   // Retrying is opt-in and the scheduler does not offer it yet.
   assert.deepEqual(result.retryPolicy, { rateLimited: { maxRetries: 0 } });
   assert.deepEqual(started, ["run_1", "run_1", "run_2"]);

@@ -75,13 +75,18 @@ Plans use `schemaVersion: 4`. Results use `schemaVersion: 6`.
   repetition that found the tool unavailable.
 - Version 6 records how the batch was scheduled, so that cells can run
   concurrently (see the [parallel experiment design](PARALLEL_EXPERIMENT_DESIGN.md)):
-  - `concurrency` lists one `{ profileId, endpoint, limit }` entry for each
-    distinct connection the plan uses, in the order the plan first uses it.
-    `limit` is the most cells for that connection that could be in flight at
-    once.
+  - `concurrency` is `{ maxInFlight, connections }`. `maxInFlight` is the
+    most cells that could be in flight across the whole experiment; 1 means
+    one at a time. `connections` lists one `{ profileId, endpoint, limit }`
+    entry for each distinct connection the plan uses, in the order the plan
+    first uses it, where `limit` is the most cells for that connection that
+    could be in flight at once.
   - Every started (terminal) cell has a one-based `startOrder`; together they
     number the started cells exactly once each. `not-run` cells have none.
     Cells stay in plan order whatever order they started or finished in.
+    On each connection, cells start in plan order: its started cells are a
+    prefix of its cells, with rising start orders. Different connections
+    are independent.
   - `retryPolicy` says which failed attempts the scheduler could retry. It
     is keyed by failure class; Version 6 knows one,
     `{ rateLimited: { maxRetries } }` for a provider 429, and

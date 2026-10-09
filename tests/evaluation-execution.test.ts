@@ -8,8 +8,11 @@ import {
   evaluationVariantAssessment,
   materializeExperimentCellInput,
   parseExperimentPlanJson,
+  sequentialExperimentConcurrency,
   serializeExperimentPlan,
+  serializeExperimentResult,
 } from "../packages/core/src/experiment.ts";
+import type { ExperimentResultV6 } from "../packages/core/src/experiment.ts";
 import { createEvaluationExperimentPlan, EvaluationSetupError } from "../packages/core/src/evaluation-execution.ts";
 import { evaluationSuitePreflight } from "../packages/core/src/evaluation-suites.ts";
 import {
@@ -322,6 +325,92 @@ test("missing traces and cancellation remain separate non-passing classification
   assert.equal(aggregate.variants[0]?.repetitionCounts["trace-unavailable"], 1);
   assert.equal(aggregate.variants[0]?.checkCounts.notEvaluated, 2);
   assert.equal(aggregate.lifecycle, "cancelled");
+});
+
+/** One case, two repetitions, on each of two connections. */
+function twoConnectionPlan() {
+  const initial = projectFixture();
+  const sourceSuite = initial.evaluationSuites[0]!;
+  const project = parseProjectFile({
+    ...initial,
+    evaluationSuites: [{
+      ...sourceSuite,
+      variants: [
+        { id: "evaluation-variant_fast", name: "Fast", overrides: { target: { model: "fast-model" } } },
+        { id: "evaluation-variant_careful", name: "Careful", overrides: { target: { model: "careful-model" } } },
+      ],
+    }],
+  });
+  let suffix = 0;
+  return createEvaluationExperimentPlan({
+    project,
+    suiteId: "evaluation-suite_topics",
+    selectedCaseIds: ["evaluation-case_migrations"],
+    selectedVariantIds: ["evaluation-variant_fast", "evaluation-variant_careful"],
+    createdAt: "2026-08-01T12:20:00.000Z",
+    createSuffix: () => `connections-${++suffix}`,
+    runtimeTargets: {
+      "evaluation-variant_fast": {
+        profileId: "profile_fast", protocol: "openai-compatible-chat-completions",
+        endpoint: "https://fast.example.test/v1", capabilities: OPENAI_COMPATIBLE_CAPABILITIES,
+      },
+      "evaluation-variant_careful": {
+        profileId: "profile_careful", protocol: "openai-compatible-chat-completions",
+        endpoint: "https://careful.example.test/v1", capabilities: OPENAI_COMPATIBLE_CAPABILITIES,
+      },
+    },
+  });
+}
+
+test("a Version 6 result names both connections and orders starts only within each", () => {
+  const plan = twoConnectionPlan();
+  const concurrency = sequentialExperimentConcurrency(plan);
+  assert.deepEqual(concurrency, {
+    maxInFlight: 1,
+    connections: [
+      { profileId: "profile_fast", endpoint: "https://fast.example.test/v1", limit: 1 },
+      { profileId: "profile_careful", endpoint: "https://careful.example.test/v1", limit: 1 },
+    ],
+  });
+
+  const fast = plan.cells.filter(({ variantId }) => variantId === "evaluation-variant_fast");
+  const careful = plan.cells.filter(({ variantId }) => variantId === "evaluation-variant_careful");
+  assert.equal(fast.length, 2);
+  assert.equal(careful.length, 2);
+  function resultWith(startOrders: Map<string, number>): ExperimentResultV6 {
+    return {
+      schemaVersion: 6,
+      experimentId: plan.experimentId,
+      status: "completed",
+      endedAt: "2026-08-01T12:21:00.000Z",
+      concurrency: {
+        maxInFlight: 2,
+        connections: concurrency.connections.map((connection) => ({ ...connection, limit: 1 })),
+      },
+      retryPolicy: { rateLimited: { maxRetries: 0 } },
+      cells: plan.cells.map((cell) => ({
+        cellId: cell.cellId,
+        runId: cell.runId,
+        status: "completed",
+        startOrder: startOrders.get(cell.cellId)!,
+      })),
+    };
+  }
+
+  // The careful connection's cells may start before the fast connection's,
+  // although they come later in plan order: the connections are independent.
+  const independent = resultWith(new Map([
+    [careful[0]!.cellId, 1], [fast[0]!.cellId, 2], [careful[1]!.cellId, 3], [fast[1]!.cellId, 4],
+  ]));
+  assert.doesNotThrow(() => serializeExperimentResult(independent, plan));
+
+  const reversedOnOneConnection = resultWith(new Map([
+    [fast[1]!.cellId, 1], [careful[0]!.cellId, 2], [fast[0]!.cellId, 3], [careful[1]!.cellId, 4],
+  ]));
+  assert.throws(
+    () => serializeExperimentResult(reversedOnOneConnection, plan),
+    /plan order on each connection/,
+  );
 });
 
 test("multi-variant assessment preserves order and isolates counts, metrics, and incomplete cases", () => {

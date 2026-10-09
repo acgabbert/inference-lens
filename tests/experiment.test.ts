@@ -69,7 +69,13 @@ const RETRIES_OFF = { rateLimited: { maxRetries: 0 } };
 /** The concurrency every pre-Version 6 result actually ran at. */
 function sequential(source: RepeatedExperimentPlanV3) {
   const { profileId, endpoint } = source.commonInput.target;
-  return [{ profileId, endpoint, limit: 1 }];
+  return { maxInFlight: 1, connections: [{ profileId, endpoint, limit: 1 }] };
+}
+
+/** Two cells in flight at once on the plan's one connection. */
+function twoAtOnce(source: RepeatedExperimentPlanV3) {
+  const { connections } = sequential(source);
+  return { maxInFlight: 2, connections: [{ ...connections[0]!, limit: 2 }] };
 }
 
 function completedState(input: ResolvedRunInput, text: string) {
@@ -274,7 +280,7 @@ test("a stopped Version 6 result may hold later cells that started before the st
     status: "stopped",
     stop: { reason: "tool_unavailable", cellId: "experiment-cell_first", toolId: "tool_lookup", startedCells: 2 },
     endedAt: "2026-07-30T12:01:00.000Z",
-    concurrency: [{ ...sequential(source)[0]!, limit: 2 }],
+    concurrency: twoAtOnce(source),
     retryPolicy: RETRIES_OFF,
     cells: [
       { cellId: "experiment-cell_first", runId: "run_first", status: "failed", startOrder: 1 },
@@ -300,23 +306,22 @@ test("Version 6 start orders number the started cells once each, from one", () =
     experimentId: source.experimentId,
     status: "completed",
     endedAt: "2026-07-30T12:01:00.000Z",
-    concurrency: [{ ...sequential(source)[0]!, limit: 2 }],
+    concurrency: twoAtOnce(source),
     retryPolicy: RETRIES_OFF,
-    // Cells stay in plan order whatever order they started in.
     cells: [
-      { cellId: "experiment-cell_first", runId: "run_first", status: "completed", startOrder: 2 },
-      { cellId: "experiment-cell_second", runId: "run_second", status: "completed", startOrder: 1 },
+      { cellId: "experiment-cell_first", runId: "run_first", status: "completed", startOrder: 1 },
+      { cellId: "experiment-cell_second", runId: "run_second", status: "completed", startOrder: 2 },
     ],
   };
   assert.doesNotThrow(() => serializeExperimentResult(result, source));
 
   const repeated = structuredClone(result);
-  repeated.cells[1] = { cellId: "experiment-cell_second", runId: "run_second", status: "completed", startOrder: 2 };
-  assert.throws(() => serializeExperimentResult(repeated, source), /start order/i);
+  repeated.cells[1] = { cellId: "experiment-cell_second", runId: "run_second", status: "completed", startOrder: 1 };
+  assert.throws(() => serializeExperimentResult(repeated, source), /start orders must number/i);
 
   const gap = structuredClone(result);
-  gap.cells[0] = { cellId: "experiment-cell_first", runId: "run_first", status: "completed", startOrder: 3 };
-  assert.throws(() => serializeExperimentResult(gap, source), /start order/i);
+  gap.cells[1] = { cellId: "experiment-cell_second", runId: "run_second", status: "completed", startOrder: 3 };
+  assert.throws(() => serializeExperimentResult(gap, source), /start orders must number/i);
 
   const missing = structuredClone(result) as unknown as { cells: Array<Record<string, unknown>> };
   delete missing.cells[0]!.startOrder;
@@ -330,15 +335,45 @@ test("Version 6 start orders number the started cells once each, from one", () =
   assert.throws(() => serializeExperimentResult(unstartedWithOrder as unknown as ExperimentResultV6, source));
 });
 
-test("Version 6 records one positive limit for each connection the plan uses", () => {
+test("Version 6 refuses cells on one connection that started out of plan order", () => {
   const source = plan();
-  const [connection] = sequential(source);
+  // Both cells share the plan's one connection, so the second cannot start
+  // first, however many could be in flight.
+  const reversed: ExperimentResultV6 = {
+    schemaVersion: 6,
+    experimentId: source.experimentId,
+    status: "completed",
+    endedAt: "2026-07-30T12:01:00.000Z",
+    concurrency: twoAtOnce(source),
+    retryPolicy: RETRIES_OFF,
+    cells: [
+      { cellId: "experiment-cell_first", runId: "run_first", status: "completed", startOrder: 2 },
+      { cellId: "experiment-cell_second", runId: "run_second", status: "completed", startOrder: 1 },
+    ],
+  };
+  assert.throws(() => serializeExperimentResult(reversed, source), /plan order on each connection/);
+
+  // Nor can a later cell start while an earlier one on its connection never did.
+  const skipped: ExperimentResultV6 = {
+    ...reversed,
+    status: "cancelled",
+    cells: [
+      { cellId: "experiment-cell_first", runId: "run_first", status: "not-run" },
+      { cellId: "experiment-cell_second", runId: "run_second", status: "cancelled", startOrder: 1 },
+    ],
+  };
+  assert.throws(() => serializeExperimentResult(skipped, source), /plan order on each connection/);
+});
+
+test("Version 6 records an overall limit and one positive limit for each connection the plan uses", () => {
+  const source = plan();
+  const [connection] = sequential(source).connections;
   const result: ExperimentResultV6 = {
     schemaVersion: 6,
     experimentId: source.experimentId,
     status: "completed",
     endedAt: "2026-07-30T12:01:00.000Z",
-    concurrency: [{ ...connection!, limit: 4 }],
+    concurrency: { maxInFlight: 4, connections: [{ ...connection!, limit: 4 }] },
     retryPolicy: RETRIES_OFF,
     cells: [
       { cellId: "experiment-cell_first", runId: "run_first", status: "completed", startOrder: 1 },
@@ -347,7 +382,7 @@ test("Version 6 records one positive limit for each connection the plan uses", (
   };
   assert.doesNotThrow(() => serializeExperimentResult(result, source));
 
-  for (const concurrency of [
+  for (const connections of [
     [],
     [connection, connection],
     [{ ...connection!, endpoint: "https://other.example.com/v1" }],
@@ -355,11 +390,26 @@ test("Version 6 records one positive limit for each connection the plan uses", (
     [{ ...connection!, limit: 1.5 }],
   ]) {
     assert.throws(
-      () => serializeExperimentResult({ ...result, concurrency } as ExperimentResultV6, source),
-      /concurrency|limit/i,
-      JSON.stringify(concurrency),
+      () => serializeExperimentResult({ ...result, concurrency: { maxInFlight: 4, connections } } as ExperimentResultV6, source),
+      /concurrency/i,
+      JSON.stringify(connections),
     );
   }
+  for (const maxInFlight of [0, 1.5, undefined]) {
+    assert.throws(
+      () => serializeExperimentResult(
+        { ...result, concurrency: { maxInFlight, connections: [connection] } } as ExperimentResultV6,
+        source,
+      ),
+      /concurrency/i,
+      String(maxInFlight),
+    );
+  }
+  // The Version 6 draft's bare list of connection limits is not a Version 6 result.
+  assert.throws(
+    () => serializeExperimentResult({ ...result, concurrency: [connection] } as unknown as ExperimentResultV6, source),
+    /concurrency/i,
+  );
 });
 
 test("Version 6 records the retry policy a batch ran under", () => {
