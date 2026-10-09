@@ -8,6 +8,7 @@ import {
   evaluationVariantAssessment,
   materializeExperimentCellInput,
   parseExperimentPlanJson,
+  resolveExperimentConcurrency,
   sequentialExperimentConcurrency,
   serializeExperimentPlan,
   serializeExperimentResult,
@@ -627,4 +628,158 @@ test("an unservable configuration refuses the whole batch before credentials, pe
   assert.equal(credentialCalls, 0);
   assert.equal(saved, false);
   assert.equal(providerCalls, 0);
+});
+
+test("resolves a concurrency setting into the limits a result records", () => {
+  const plan = twoConnectionPlan();
+  assert.deepEqual(resolveExperimentConcurrency(plan), sequentialExperimentConcurrency(plan));
+  assert.deepEqual(resolveExperimentConcurrency(plan, {
+    maxInFlight: 3,
+    connectionLimit: 2,
+    connections: [
+      { profileId: "profile_careful", endpoint: "https://careful.example.test/v1", limit: 5 },
+      // A setting may name connections this plan does not use.
+      { profileId: "profile_other", endpoint: "https://other.example.test/v1", limit: 4 },
+    ],
+  }), {
+    maxInFlight: 3,
+    connections: [
+      { profileId: "profile_fast", endpoint: "https://fast.example.test/v1", limit: 2 },
+      // No connection can run more cells than the experiment as a whole.
+      { profileId: "profile_careful", endpoint: "https://careful.example.test/v1", limit: 3 },
+    ],
+  });
+  for (const setting of [{ maxInFlight: 0 }, { connectionLimit: 1.5 }, {
+    connections: [{ profileId: "profile_fast" as const, endpoint: "https://fast.example.test/v1", limit: -1 }],
+  }]) {
+    assert.throws(() => resolveExperimentConcurrency(plan, setting), /positive whole number/);
+  }
+});
+
+/** Records each connection's own peak and the experiment's overall peak. */
+function overlapTransport(started: string[] = []) {
+  const active = new Map<string, number>();
+  const peaks = new Map<string, number>();
+  let overall = 0;
+  let overallPeak = 0;
+  const transport: ProviderTurnTransport = {
+    async discoverModels() { return { models: [] }; },
+    async executeTurn({ execution }) {
+      started.push(execution.runId);
+      const key = execution.input.target.profileId;
+      return {
+        status: 200,
+        headers: new Headers(),
+        events: (async function* () {
+          active.set(key, (active.get(key) ?? 0) + 1);
+          peaks.set(key, Math.max(peaks.get(key) ?? 0, active.get(key)!));
+          overall += 1;
+          overallPeak = Math.max(overallPeak, overall);
+          for (let tick = 0; tick < 3; tick += 1) await new Promise((resolve) => setImmediate(resolve));
+          active.set(key, active.get(key)! - 1);
+          overall -= 1;
+          yield { type: "text_delta" as const, text: "migration" };
+          yield { type: "completed" as const, finishReason: { normalized: "stop" as const } };
+        })(),
+      };
+    },
+  };
+  return { transport, peaks, overallPeak: () => overallPeak };
+}
+
+test("an overall limit of 1 runs a two-connection suite one cell at a time", async () => {
+  const plan = twoConnectionPlan();
+  const started: string[] = [];
+  const { transport, overallPeak } = overlapTransport(started);
+  const result = await new SequentialExperimentController({
+    plan,
+    concurrency: { maxInFlight: 1, connectionLimit: 2 },
+    createExecutor: createMockOnlyToolExecutor,
+    transport,
+    async prepareCredential() { return { kind: "none" }; },
+  }).run();
+
+  assert.equal(overallPeak(), 1);
+  assert.deepEqual(started, plan.cells.map(({ runId }) => runId));
+  assert.equal(result.concurrency.maxInFlight, 1);
+  assert.deepEqual(result.concurrency.connections.map(({ limit }) => limit), [1, 1]);
+});
+
+test("connections at a limit of 1 run side by side when the overall limit allows", async () => {
+  const plan = twoConnectionPlan();
+  const { transport, peaks, overallPeak } = overlapTransport();
+  const result = await new SequentialExperimentController({
+    plan,
+    concurrency: { maxInFlight: 2 },
+    createExecutor: createMockOnlyToolExecutor,
+    transport,
+    async prepareCredential() { return { kind: "none" }; },
+  }).run();
+
+  assert.equal(result.status, "completed");
+  assert.equal(overallPeak(), 2);
+  assert.deepEqual([...peaks.values()], [1, 1]);
+  assert.doesNotThrow(() => serializeExperimentResult(result, plan));
+});
+
+test("a 429 on one connection leaves the other connection starting cells", async () => {
+  const plan = twoConnectionPlan();
+  let now = 0;
+  const timers: Array<{ at: number; resolve: () => void }> = [];
+  const clock = {
+    now: () => now,
+    sleep(ms: number, signal: AbortSignal) {
+      return new Promise<void>((resolve) => {
+        timers.push({ at: now + ms, resolve });
+        signal.addEventListener("abort", () => resolve(), { once: true });
+      });
+    },
+  };
+  const started: string[] = [];
+  const [fastFirst, fastSecond, carefulFirst, carefulSecond] = plan.cells.map(({ runId }) => runId);
+  const transport: ProviderTurnTransport = {
+    async discoverModels() { return { models: [] }; },
+    async executeTurn({ execution }) {
+      started.push(execution.runId);
+      const limited = execution.runId === fastFirst;
+      return {
+        status: 200,
+        headers: new Headers(),
+        events: (async function* () {
+          if (limited) {
+            yield { type: "request" as const, request: { url: "https://fast.example.test/v1/chat/completions", method: "POST", headers: {} } };
+            yield { type: "response_started" as const, response: { status: 429, headers: { "retry-after": "10" } } };
+            yield {
+              type: "failed" as const,
+              error: { code: "provider_error" as const, message: "Too many requests", retryable: true, providerStatus: 429 },
+            };
+            return;
+          }
+          yield { type: "text_delta" as const, text: "migration" };
+          yield { type: "completed" as const, finishReason: { normalized: "stop" as const } };
+        })(),
+      };
+    },
+  };
+  const pending = new SequentialExperimentController({
+    plan,
+    concurrency: { maxInFlight: 2 },
+    clock,
+    createExecutor: createMockOnlyToolExecutor,
+    transport,
+    async prepareCredential() { return { kind: "none" }; },
+  }).run();
+
+  for (let tick = 0; tick < 50 && !started.includes(carefulSecond!); tick += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  // The careful connection finished both its cells; the fast one waits out its pause.
+  assert.deepEqual(started, [fastFirst, carefulFirst, carefulSecond]);
+  now = 10_000;
+  for (const timer of timers.splice(0)) timer.resolve();
+  const result = await pending;
+
+  assert.deepEqual(started, [fastFirst, carefulFirst, carefulSecond, fastSecond]);
+  assert.deepEqual(result.cells.map(({ status }) => status), ["failed", "completed", "completed", "completed"]);
+  assert.doesNotThrow(() => serializeExperimentResult(result, plan));
 });
