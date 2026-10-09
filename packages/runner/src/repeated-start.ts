@@ -10,7 +10,7 @@ import { supportsProtocol } from "../../core/src/provider-protocols.ts";
 import { randomUUID } from "../../core/src/random-id.ts";
 import { createResolvedRunInput } from "../../core/src/run-kernel/run-execution.ts";
 import { createEntityId } from "../../core/src/run-kernel/types.ts";
-import type { ResolvedRunInput, ToolDefinition } from "../../core/src/run-kernel/types.ts";
+import type { ProviderWireProtocol, ResolvedRunInput, ToolDefinition } from "../../core/src/run-kernel/types.ts";
 import type { ProviderCapabilities } from "../../core/src/types.ts";
 
 export const DEFAULT_REPETITION_COUNT = 5;
@@ -70,7 +70,7 @@ export interface RepeatedLocalConnection {
 export type RepeatedStartBlocker =
   | { kind: "template_diagnostic"; message: string }
   | { kind: "endpoint_missing"; connection: RepeatedLocalConnection }
-  | { kind: "protocol_disabled"; connection: RepeatedLocalConnection; protocol: ResolvedRunInput["target"]["protocol"] }
+  | { kind: "protocol_disabled"; connection: RepeatedLocalConnection; protocol: ProviderWireProtocol }
   | { kind: "streaming_unsupported"; connection: RepeatedLocalConnection }
   | { kind: "tools_unsupported"; connection: RepeatedLocalConnection }
   | { kind: "unbound_tools"; toolNames: string[] };

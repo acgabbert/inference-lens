@@ -7,6 +7,7 @@ import type {
   EvaluationResolvedLocalTarget,
   EvaluationStartBlocker,
 } from "../../runner/src/evaluation-start.ts";
+import type { RepeatedLocalConnection, RepeatedStartBlocker } from "../../runner/src/repeated-start.ts";
 
 function describeBatchLimit(limit: EvaluationBatchLimit, size: EvaluationBatchSize): string {
   switch (limit.kind) {
@@ -59,5 +60,35 @@ export function describeStartBlocker(blocker: EvaluationStartBlocker): string {
     case "tools_unsupported":
       return `Configuration "${blocker.target.variantName}" exposes tools, but ${connection(blocker.target)} does not enable them. ` +
         "Enable tools in that connection's capabilityOverrides, or remove the tools from the suite.";
+  }
+}
+
+function defaultConnection(connection: RepeatedLocalConnection): string {
+  return `connection "${connection.requirementName}" (${connection.requirementId})`;
+}
+
+/** The CLI's wording for why `repeat` cannot start, naming the remedy in `project.json` or on the command line. */
+export function describeRepeatedStartBlocker(blocker: RepeatedStartBlocker): string {
+  switch (blocker.kind) {
+    case "template_diagnostic":
+      return blocker.message;
+    case "endpoint_missing":
+      return `The ${defaultConnection(blocker.connection)} has no endpoint.`;
+    case "protocol_disabled":
+      return `The project's defaults use ${protocolLabel(blocker.protocol)}, but ${defaultConnection(blocker.connection)} does not enable it. ` +
+        "Enable it in that connection's capabilityOverrides, or choose another protocol for the project's defaults.";
+    case "streaming_unsupported":
+      return `--response-mode streaming was requested, but ${defaultConnection(blocker.connection)} does not enable streaming. ` +
+        "Enable it in that connection's capabilityOverrides, or pass --response-mode buffered.";
+    case "tools_unsupported":
+      return `The project's defaults enable tools, but ${defaultConnection(blocker.connection)} does not enable them. ` +
+        "Enable tools in that connection's capabilityOverrides, or disable the tools in the app.";
+    case "unbound_tools": {
+      const { toolNames } = blocker;
+      const one = toolNames.length === 1;
+      return `The project's defaults enable ${toolNames.join(", ")}, and nothing in this run can answer ${one ? "it" : "them"}. ` +
+        `Grant ${one ? "it" : "each"} with --allow-tool <tool>=command:<id> or --allow-tool <tool>=mcp:<server-id>, ` +
+        `or enable a mock for ${one ? "that tool" : "those tools"} in the app.`;
+    }
   }
 }

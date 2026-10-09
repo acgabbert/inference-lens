@@ -1,13 +1,19 @@
+import { isRateLimitedRun } from "../../core/src/experiment.ts";
 import type {
   EvaluationBakeoffAssessment,
   EvaluationExperimentPlanV4,
   EvaluationRepetitionClassification,
   ExperimentConcurrency,
   ExperimentLifecycle,
+  ExperimentMetricRange,
   ExperimentResult,
   ExperimentRetryPolicy,
   ExperimentStop,
+  ExperimentUsageAggregate,
+  RepeatedExperimentAggregate,
+  RepeatedExperimentPlanV4,
 } from "../../core/src/experiment.ts";
+import type { RunId, RunState } from "../../core/src/run-kernel/index.ts";
 
 /**
  * The `--json` summary. A public contract from its first release: a field is
@@ -64,6 +70,8 @@ export interface HeadlessScope {
 }
 
 export interface HeadlessSummaryV1 {
+  /** Added after the first release, to tell this summary from `repeat`'s. */
+  kind: "evaluation";
   schemaVersion: typeof HEADLESS_SUMMARY_SCHEMA_VERSION;
   experimentId: string;
   suite: { suiteId: string; name: string };
@@ -125,6 +133,7 @@ export function createHeadlessSummary(input: {
 }): HeadlessSummaryV1 {
   const { plan, result, assessment } = input;
   return {
+    kind: "evaluation",
     schemaVersion: HEADLESS_SUMMARY_SCHEMA_VERSION,
     experimentId: plan.experimentId,
     suite: { suiteId: plan.suite.suiteId, name: plan.suite.name },
@@ -234,6 +243,243 @@ export function formatHeadlessSummary(summary: HeadlessSummaryV1): string {
           `#${repetition} ${CLASSIFICATION_WORDS[classification]}${trace ? ` (${trace})` : ""}`);
       lines.push(`  ✗ ${evaluationCase.name}: ${outcomes.join("; ") || "no repetitions ran"}`);
     }
+  }
+  lines.push("");
+  lines.push(`Experiment ${summary.experimentId} in ${summary.projectDirectory}`);
+  lines.push(`  plan:   ${summary.artifacts.plan}`);
+  if (summary.artifacts.result) lines.push(`  result: ${summary.artifacts.result}`);
+  return `${lines.join("\n")}\n`;
+}
+
+/**
+ * The `repeat --json` summary: its own public contract, versioned apart from
+ * the evaluation summary, under the same rules. A repeated run has no checks,
+ * so it reports what happened to each repetition and the metric ranges, and
+ * points at the traces for anything more.
+ */
+export const HEADLESS_REPEATED_SUMMARY_SCHEMA_VERSION = 1;
+
+/**
+ * `completed` when every repetition completed; `failed` when the batch ran to
+ * the end and at least one failed other than by a 429; `incomplete` otherwise,
+ * including a run whose only shortfall is rate limiting.
+ */
+export type HeadlessRepeatedOutcome = "completed" | "failed" | "incomplete";
+
+export type HeadlessRepetitionStatus =
+  | "completed"
+  | "failed"
+  | "rate-limited"
+  | "cancelled"
+  | "not-run"
+  | "trace-unavailable";
+
+export interface HeadlessRepeatedSummaryV1 {
+  kind: "repeated-request";
+  schemaVersion: typeof HEADLESS_REPEATED_SUMMARY_SCHEMA_VERSION;
+  experimentId: string;
+  outcome: HeadlessRepeatedOutcome;
+  lifecycle: ExperimentLifecycle;
+  stop?: ExperimentStop;
+  /** Folder the artifact paths below are relative to. */
+  projectDirectory: string;
+  artifacts: { plan: string; result?: string };
+  /** As in the evaluation summary: absent when no result was written. */
+  concurrency?: ExperimentConcurrency;
+  retryPolicy?: ExperimentRetryPolicy;
+  conversationRevisionId: string;
+  target: { connectionRequirementId: string; protocol: string; model: string };
+  /**
+   * In a buffered run the first output is the whole response, so
+   * `metrics.ttfoMs` then says nothing about how soon output starts.
+   */
+  responseMode: "streaming" | "buffered";
+  counts: Pick<
+    RepeatedExperimentAggregate,
+    "requested" | "completed" | "failed" | "rateLimited" | "cancelled" | "notRun" | "missingTrace" | "retriedAfterRateLimit"
+  >;
+  metrics: {
+    totalDurationMs: ExperimentMetricRange;
+    ttfoMs: ExperimentMetricRange;
+    outputTokensPerSecond: ExperimentMetricRange;
+    turnsPerRun: ExperimentMetricRange;
+    toolCallsPerRun: ExperimentMetricRange;
+    totalTokens: ExperimentUsageAggregate;
+    outputTokens: ExperimentUsageAggregate;
+  };
+  /** How many different final answers the completed repetitions gave. A count, never the answers. */
+  distinctFinalAssistantOutputs: number;
+  repetitions: Array<{
+    ordinal: number;
+    runId: string;
+    status: HeadlessRepetitionStatus;
+    /** Relative to the project folder; absent when no trace was written. */
+    trace?: string;
+  }>;
+}
+
+export function headlessRepeatedOutcome(aggregate: RepeatedExperimentAggregate): HeadlessRepeatedOutcome {
+  if (aggregate.lifecycle !== "completed") return "incomplete";
+  if (aggregate.failed > 0) return "failed";
+  return aggregate.completed === aggregate.requested ? "completed" : "incomplete";
+}
+
+export function exitCodeForRepeatedOutcome(outcome: HeadlessRepeatedOutcome): number {
+  switch (outcome) {
+    case "completed":
+      return EXIT_PASSED;
+    case "failed":
+      return EXIT_FAILED;
+    case "incomplete":
+      return EXIT_INCOMPLETE;
+  }
+}
+
+/** Classifies one repetition the way `repeatedExperimentAggregate` counts it. */
+function repetitionStatus(
+  disposition: ExperimentResult["cells"][number] | undefined,
+  state: RunState | undefined,
+): HeadlessRepetitionStatus {
+  if (disposition?.status === "not-run" || (!disposition && !state)) return "not-run";
+  if (!state) return "trace-unavailable";
+  switch (state.status.kind) {
+    case "completed":
+      return "completed";
+    case "failed":
+      return isRateLimitedRun(state) ? "rate-limited" : "failed";
+    case "cancelled":
+      return "cancelled";
+    default:
+      return "not-run";
+  }
+}
+
+export function createHeadlessRepeatedSummary(input: {
+  plan: RepeatedExperimentPlanV4;
+  result?: ExperimentResult;
+  aggregate: RepeatedExperimentAggregate;
+  states: ReadonlyMap<RunId, RunState>;
+  connectionRequirementId: string;
+  projectDirectory: string;
+  planPath: string;
+  resultPath?: string;
+  /** Traces that were actually written, by run ID. */
+  tracePaths: ReadonlyMap<string, string>;
+}): HeadlessRepeatedSummaryV1 {
+  const { plan, result, aggregate } = input;
+  const dispositions = new Map(result?.cells.map((cell) => [cell.cellId, cell]));
+  return {
+    kind: "repeated-request",
+    schemaVersion: HEADLESS_REPEATED_SUMMARY_SCHEMA_VERSION,
+    experimentId: plan.experimentId,
+    outcome: headlessRepeatedOutcome(aggregate),
+    lifecycle: aggregate.lifecycle,
+    ...(result?.stop
+      ? { stop: { reason: result.stop.reason, cellId: result.stop.cellId, toolId: result.stop.toolId } }
+      : {}),
+    projectDirectory: input.projectDirectory,
+    artifacts: {
+      plan: input.planPath,
+      ...(input.resultPath ? { result: input.resultPath } : {}),
+    },
+    ...(result ? { concurrency: result.concurrency, retryPolicy: result.retryPolicy } : {}),
+    conversationRevisionId: plan.commonInput.conversationRevisionId,
+    target: {
+      connectionRequirementId: input.connectionRequirementId,
+      protocol: plan.commonInput.target.protocol,
+      model: plan.commonInput.target.model,
+    },
+    responseMode: plan.commonInput.responseMode,
+    counts: {
+      requested: aggregate.requested,
+      completed: aggregate.completed,
+      failed: aggregate.failed,
+      rateLimited: aggregate.rateLimited,
+      cancelled: aggregate.cancelled,
+      notRun: aggregate.notRun,
+      missingTrace: aggregate.missingTrace,
+      retriedAfterRateLimit: aggregate.retriedAfterRateLimit,
+    },
+    metrics: {
+      totalDurationMs: aggregate.totalDurationMs,
+      ttfoMs: aggregate.ttfoMs,
+      outputTokensPerSecond: aggregate.outputTokensPerSecond,
+      turnsPerRun: aggregate.turnsPerRun,
+      toolCallsPerRun: aggregate.toolCallsPerRun,
+      totalTokens: aggregate.totalTokens,
+      outputTokens: aggregate.outputTokens,
+    },
+    distinctFinalAssistantOutputs: aggregate.distinctFinalAssistantOutputs,
+    repetitions: plan.cells.map((cell) => {
+      const trace = input.tracePaths.get(cell.runId);
+      return {
+        ordinal: cell.ordinal,
+        runId: cell.runId,
+        status: repetitionStatus(dispositions.get(cell.cellId), input.states.get(cell.runId)),
+        ...(trace ? { trace } : {}),
+      };
+    }),
+  };
+}
+
+const STATUS_WORDS: Record<HeadlessRepetitionStatus, string> = {
+  completed: "completed",
+  failed: "failed",
+  "rate-limited": "rate limited",
+  cancelled: "cancelled",
+  "not-run": "not run",
+  "trace-unavailable": "trace unavailable",
+};
+
+function formatRange(range: ExperimentMetricRange, unit: string): string | undefined {
+  if (range.count === 0 || range.median === undefined) return undefined;
+  const round = (value: number | undefined) => Math.round(value ?? 0);
+  return `median ${round(range.median)} ${unit} (${round(range.min)}–${round(range.max)})`;
+}
+
+/** The default, human-readable report for `repeat`. Names outcomes; never quotes output. */
+export function formatHeadlessRepeatedSummary(summary: HeadlessRepeatedSummaryV1): string {
+  const lines: string[] = [];
+  const { counts } = summary;
+  lines.push(`Repeated run — ${summary.outcome.toUpperCase()}`);
+  if (summary.lifecycle !== "completed") {
+    lines.push(`The run ${summary.lifecycle === "interrupted" ? "was interrupted" : `was ${summary.lifecycle}`} before every repetition finished.`);
+  }
+  lines.push(
+    `${counts.completed} of ${counts.requested} repetitions completed` +
+      (counts.failed ? `, ${counts.failed} failed` : "") +
+      (counts.rateLimited ? `, ${counts.rateLimited} rate limited` : "") +
+      (counts.cancelled ? `, ${counts.cancelled} cancelled` : "") +
+      (counts.notRun ? `, ${counts.notRun} not run` : "") +
+      (counts.retriedAfterRateLimit ? `, ${counts.retriedAfterRateLimit} retried after rate limiting` : "") +
+      ".",
+  );
+  lines.push(`${summary.target.model} on ${summary.target.connectionRequirementId}, ${summary.responseMode}.`);
+  if (summary.responseMode === "buffered") lines.push("Buffered, so TTFO is the time to the whole response.");
+  if (summary.concurrency && summary.concurrency.maxInFlight > 1) {
+    lines.push(`Ran up to ${summary.concurrency.maxInFlight} repetitions at once.`);
+  }
+  const maxRetries = summary.retryPolicy?.rateLimited.maxRetries ?? 0;
+  if (maxRetries > 0) {
+    lines.push(`Retried rate-limited requests up to ${maxRetries} ${maxRetries === 1 ? "time" : "times"} per turn.`);
+  }
+  if (summary.stop) {
+    lines.push(`Stopped because tool ${summary.stop.toolId} became unavailable.`);
+  }
+  const duration = formatRange(summary.metrics.totalDurationMs, "ms");
+  const ttfo = formatRange(summary.metrics.ttfoMs, "ms");
+  if (duration || ttfo) {
+    lines.push("");
+    if (duration) lines.push(`  duration: ${duration}`);
+    if (ttfo) lines.push(`  TTFO:     ${ttfo}`);
+  }
+  if (counts.completed > 0) {
+    lines.push(`  distinct final outputs: ${summary.distinctFinalAssistantOutputs}`);
+  }
+  const shortfalls = summary.repetitions.filter(({ status }) => status !== "completed");
+  if (shortfalls.length > 0) lines.push("");
+  for (const { ordinal, status, trace } of shortfalls) {
+    lines.push(`  ✗ #${ordinal} ${STATUS_WORDS[status]}${trace ? ` (${trace})` : ""}`);
   }
   lines.push("");
   lines.push(`Experiment ${summary.experimentId} in ${summary.projectDirectory}`);

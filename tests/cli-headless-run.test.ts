@@ -3,7 +3,6 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { createServer } from "node:http";
-import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import test from "node:test";
@@ -21,84 +20,10 @@ import {
 import { parseProjectFile } from "../packages/core/src/project.ts";
 import { parseRunTraceJson, runStateFromTrace } from "../packages/core/src/run-trace.ts";
 import { HEADLESS_CONNECTION_ID, headlessProject, writeHeadlessProjectFolder } from "./fixtures/headless/project.ts";
+import { recordingProvider } from "./fixtures/headless/recording-provider.ts";
 
-const ANSWER = "Buffered fixture response: 2 + 2 = 4.";
 const KEY = "sk-headless-secret-value";
 const KEY_VARIABLE = "INFERENCE_LENS_CONNECTION_HEADLESS_DEFAULT_API_KEY";
-
-/**
- * A chat-completions provider that records what reached it. The recorded
- * Authorization header is the proof the key got to the wire; scanning the
- * written files for the same key is the proof it went nowhere else.
- */
-async function recordingProvider(options: {
-  holdFirstRequest?: Promise<void>;
-  /**
-   * Holds every request until this many are in flight at once, so a run that
-   * never overlaps them is seen at a peak of 1 rather than passing by luck.
-   * Gives up after a second so a sequential run still finishes.
-   */
-  holdUntilInFlight?: number;
-  /** Answers the first request with a 429 carrying this `Retry-After`. */
-  rateLimitFirstRequest?: string;
-} = {}) {
-  const requests: Array<{ authorization?: string; body: { model?: string; stream?: boolean } }> = [];
-  let inFlight = 0;
-  let peakInFlight = 0;
-  let releaseOverlap: () => void = () => {};
-  const overlapped = new Promise<void>((resolve) => { releaseOverlap = resolve; });
-  const overlapTimeout = setTimeout(releaseOverlap, 1_000);
-  let first = true;
-  let notifyFirst: () => void = () => {};
-  const firstArrived = new Promise<void>((resolve) => { notifyFirst = resolve; });
-  const server: Server = createServer(async (request: IncomingMessage, response: ServerResponse) => {
-    const chunks: Buffer[] = [];
-    for await (const chunk of request) chunks.push(chunk as Buffer);
-    requests.push({
-      ...(request.headers.authorization ? { authorization: request.headers.authorization } : {}),
-      body: JSON.parse(Buffer.concat(chunks).toString("utf8")),
-    });
-    inFlight += 1;
-    peakInFlight = Math.max(peakInFlight, inFlight);
-    if (options.holdUntilInFlight !== undefined) {
-      if (inFlight >= options.holdUntilInFlight) releaseOverlap();
-      await overlapped;
-    }
-    if (first) {
-      first = false;
-      notifyFirst();
-      await options.holdFirstRequest;
-      if (options.rateLimitFirstRequest !== undefined) {
-        response.writeHead(429, { "content-type": "application/json", "retry-after": options.rateLimitFirstRequest });
-        response.end(JSON.stringify({ error: { message: "Too many requests" } }));
-        inFlight -= 1;
-        return;
-      }
-    }
-    response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify({
-      id: "chatcmpl-headless",
-      object: "chat.completion",
-      choices: [{ index: 0, message: { role: "assistant", content: ANSWER }, finish_reason: "stop" }],
-      usage: { prompt_tokens: 3, completion_tokens: 9, total_tokens: 12 },
-    }));
-    inFlight -= 1;
-  });
-  server.listen(0, "127.0.0.1");
-  await once(server, "listening");
-  const { port } = server.address() as AddressInfo;
-  return {
-    endpoint: `http://127.0.0.1:${port}/v1`,
-    requests,
-    firstArrived,
-    get peakInFlight() { return peakInFlight; },
-    close: () => new Promise<void>((resolve) => {
-      clearTimeout(overlapTimeout);
-      server.closeAllConnections();
-      server.close(() => resolve());
-    }),
-  };
-}
 
 const twoCases: NonNullable<Parameters<typeof headlessProject>[0]["cases"]> = [
   {
