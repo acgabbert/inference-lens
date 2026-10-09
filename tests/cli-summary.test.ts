@@ -15,6 +15,7 @@ test("summary v1 reports a stop with only the fields it shipped with", () => {
   } as unknown as ExperimentResult;
   const summary = createHeadlessSummary({
     plan,
+    scope: { cases: { selected: 1, total: 1 }, configurations: { selected: 1, total: 1 } },
     result,
     assessment: { lifecycle: "stopped", variants: [] } as unknown as EvaluationBakeoffAssessment,
     projectDirectory: "/project",

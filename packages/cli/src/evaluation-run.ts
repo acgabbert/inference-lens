@@ -56,6 +56,10 @@ export interface HeadlessEvaluationOptions {
   projectDirectory: string;
   /** A suite ID or its exact name. May be omitted when the project has one suite. */
   suite?: string;
+  /** `--case`: case IDs or exact names. Every case when omitted. */
+  cases?: readonly string[];
+  /** `--configuration`: configuration IDs or exact names. Every configuration when omitted. */
+  configurations?: readonly string[];
   /** Requirement IDs declared as needing no credential. */
   noAuth?: ReadonlySet<string>;
   environment: Readonly<Record<string, string | undefined>>;
@@ -117,6 +121,43 @@ export function selectSuite(project: ProjectFile, requested: string | undefined)
 }
 
 /**
+ * Resolves `--case` or `--configuration` the way `--suite` resolves: an ID
+ * wins, then a unique exact name. Returns IDs in the suite's order, so the
+ * plan reads the same whatever order the flags came in.
+ */
+export function selectSuiteItems<Id extends string>(
+  suite: EvaluationSuite,
+  items: ReadonlyArray<{ id: Id; name: string }>,
+  requested: readonly string[] | undefined,
+  noun: "case" | "configuration",
+): Id[] {
+  if (requested === undefined || requested.length === 0) return items.map(({ id }) => id);
+  const flag = `--${noun}`;
+  const describe = ({ id, name }: { id: Id; name: string }) => `${id} ("${name}")`;
+  const selected = new Set<Id>();
+  for (const value of requested) {
+    let item = items.find(({ id }) => id === value);
+    if (!item) {
+      const byName = items.filter(({ name }) => name === value);
+      if (byName.length > 1) {
+        throw new HeadlessSetupError(
+          `${byName.length} ${noun}s are named "${value}"; pass one of their IDs instead: ${byName.map(({ id }) => id).join(", ")}.`,
+        );
+      }
+      item = byName[0];
+    }
+    if (!item) {
+      throw new HeadlessSetupError(
+        `No ${noun} in suite "${suite.name}" has the ID or name "${value}". Available: ${items.map(describe).join(", ") || "none"}.`,
+      );
+    }
+    if (selected.has(item.id)) throw new HeadlessSetupError(`${flag} selects ${describe(item)} more than once.`);
+    selected.add(item.id);
+  }
+  return items.filter(({ id }) => selected.has(id)).map(({ id }) => id);
+}
+
+/**
  * A grant from `--allow-tool` outranks an enabled project mock, as a grant
  * does in the app. A tool with neither is refused before anything is sent.
  */
@@ -158,7 +199,7 @@ async function runHeadlessEvaluation(
   } catch (error) {
     return { exitCode: EXIT_SETUP, error: error instanceof Error ? error.message : String(error) };
   }
-  const { folder, plan, toolBindings, credentials, concurrency } = prepared;
+  const { folder, plan, scope, toolBindings, credentials, concurrency } = prepared;
 
   let planSaved = false;
   let result: ExperimentResult | undefined;
@@ -240,6 +281,7 @@ async function runHeadlessEvaluation(
   const assessment = evaluationParsedExperimentAggregate(plan, resultSaved ? result : undefined, states);
   const summary = createHeadlessSummary({
     plan,
+    scope,
     ...(resultSaved && result ? { result } : {}),
     assessment,
     projectDirectory: folder.directory,
@@ -256,8 +298,8 @@ async function prepareHeadlessEvaluation(options: HeadlessEvaluationOptions) {
   const { project } = folder;
   const suite = selectSuite(project, options.suite);
   const revisionId = suite.input.conversationRevisionId;
-  const selectedCaseIds = suite.cases.map(({ id }) => id);
-  const selectedVariantIds = suite.variants.map(({ id }) => id);
+  const selectedCaseIds = selectSuiteItems(suite, suite.cases, options.cases, "case");
+  const selectedVariantIds = selectSuiteItems(suite, suite.variants, options.configurations, "configuration");
 
   const unknownNoAuth = [...(options.noAuth ?? [])].filter(
     (id) => !project.connectionRequirements.some((requirement) => requirement.id === id),
@@ -284,10 +326,12 @@ async function prepareHeadlessEvaluation(options: HeadlessEvaluationOptions) {
     }
   }
 
-  // Only the connections this suite will call need a key. Resolving others
-  // would refuse a run over a credential it never uses.
+  // Only the connections the selected configurations will call need a key.
+  // Resolving others would refuse a run over a credential it never uses.
   const usedRequirementIds = new Set(
-    suite.variants.map((variant) => resolveEvaluationVariant(suite, variant).target.connectionRequirementId),
+    suite.variants
+      .filter(({ id }) => selectedVariantIds.includes(id))
+      .map((variant) => resolveEvaluationVariant(suite, variant).target.connectionRequirementId),
   );
   const usedRequirements = project.connectionRequirements.filter(({ id }) => usedRequirementIds.has(id));
   assertDistinctConnectionVariables(usedRequirements);
@@ -349,6 +393,10 @@ async function prepareHeadlessEvaluation(options: HeadlessEvaluationOptions) {
   return {
     folder,
     plan,
+    scope: {
+      cases: { selected: selectedCaseIds.length, total: suite.cases.length },
+      configurations: { selected: selectedVariantIds.length, total: suite.variants.length },
+    },
     toolBindings: draft.toolBindings.flatMap(({ binding }) => binding ? [binding] : []),
     credentials,
     concurrency,

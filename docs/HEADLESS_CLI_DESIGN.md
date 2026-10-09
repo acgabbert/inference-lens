@@ -4,7 +4,9 @@
 to 4 are implemented, in `packages/runner/`, `packages/cli/`, and the
 container image; see [Implementation status](#implementation-status). Decision 3 was refined on
 October 9, 2026 so that a grant names its target explicitly; see
-[slice 3](#slice-3-what-exists).
+[slice 3](#slice-3-what-exists). Slice 5's decisions were agreed the same day; see
+[slice 5](#slice-5-selection-and-repeated-runs). Slice 5a is implemented; see
+[slice 5a](#slice-5a-what-exists).
 **Baseline:** `main` at `5755b57`, reviewed October 9, 2026.
 
 ## Goal
@@ -178,6 +180,152 @@ Recommendation:
 The JSON summary is a public contract, so it needs a schema version from the
 first release.
 
+## Slice 5: selection and repeated runs
+
+**Status:** decisions 5 to 9 agreed October 9, 2026, as recommended except
+the response mode in decision 8, which defaults to buffered.
+npm publishing, the third follow-up, is deferred.
+
+Two pull requests, in this order, so that the smaller one never waits on the
+larger:
+
+- **5a. Case and configuration selection** (decisions 5 and 6).
+- **5b. Repeated runs of the project's conversation** (decisions 7 to 9).
+
+### What 5a builds on
+
+Selection is already native. The app's suite editor selects cases and
+configurations, and `createEvaluationStartPlan` takes `selectedCaseIds` and
+`selectedVariantIds` and copies only those into the plan's suite snapshot.
+`evaluationSuitePreflight` and `evaluationStartBlocker` already count and check
+only the selection. The CLI simply passes every ID today
+(`packages/cli/src/evaluation-run.ts`). A CLI subset run therefore writes a
+plan of exactly the shape the app writes for a subset, and the Evaluations
+view already opens those. No artifact changes.
+
+### 5. Selection flags
+
+| Option | Effect |
+| --- | --- |
+| **A. `--case` and `--configuration`, repeatable, by ID or exact name (recommended)** | The rule `--suite` already follows: an ID wins, then a unique exact name; an ambiguous name is refused, listing the IDs. Omitting a flag selects everything, as today. |
+| B. IDs only | Unambiguous, but names are what a person reads in the app and in the summary. |
+| C. Patterns (`--case 'refund*'`) | Convenient for large suites, but a pattern that silently matches nothing or too much is worse than an error, and it is easy to add later. |
+
+Under every option:
+
+- An unknown case or configuration exits 2 and lists what is available, as an
+  unknown suite does.
+- A flag naming the same case twice is refused, like a repeated
+  `--connection-concurrency` ID.
+- Credentials, grants, and start checks apply to the selection only: a
+  connection used only by an unselected configuration needs no key.
+- `--configuration` rather than `--variant`: the app and the human summary say
+  "configuration"; `variantId` stays the JSON field name.
+
+### 6. Reporting a partial run
+
+A "passed" verdict for 2 of 20 cases must not read in CI as the suite passing.
+
+| Option | Effect |
+| --- | --- |
+| **A. Record the scope in the summary (recommended)** | Summary v1 gains `scope: { cases: { selected, total }, configurations: { selected, total } }`, always present. A new field is additive under the summary's contract, so the version stays 1. The human summary adds "Ran 2 of 20 cases" when anything was left out. The verdict and exit codes keep their meaning: they describe what ran. |
+| B. A distinct verdict, such as `passed-partial` | Impossible to miss, but it changes an enum consumers already switch on, which is a version bump, and exit 0 versus 1 still has to choose. |
+| C. Nothing; the plan already records it | True, but a consumer has to open the plan and compare it with `project.json` to find out. |
+
+### What 5b builds on
+
+`ExperimentController` already runs `repeated-request` plans, the Runs
+workspace already opens them, and `repeatedExperimentAggregate` in
+`packages/core/src/experiment.ts` already derives their counts and metric
+ranges. What is missing is building the plan without the app:
+
+- The app freezes the **composer's live request**
+  (`prepareWorkbenchRun` in `app/run/prepare-workbench-run.client.ts`), and the
+  plan itself is built in a React hook
+  (`planFor` in `app/run/use-repeated-experiment-session.client.ts`).
+- The saved project carries most of that request in `project.defaults`: the
+  active conversation revision, the target, the inference options, and the
+  enabled tools. `projectDraft` already resolves it, templates included.
+- It does **not** carry the response mode (a per-device preference in the app,
+  defaulting to streaming), the repetition count, or the turn ceiling; those
+  live in the dialog.
+
+Ownership, following slice 1: `planFor` and the repetition bounds move to
+`packages/runner/src/repeated-start.ts` and the app imports them unchanged.
+A new runner function builds a `ResolvedRunInput` from `project.defaults`
+(it never writes `project.json`); the app keeps building from the composer.
+The CLI gains `packages/cli/src/repeated-run.ts`. What both CLI commands share
+(credentials, grants, concurrency, driving the controller, writing artifacts)
+moves out of `evaluation-run.ts` into one module rather than being copied.
+
+### 7. Command shape
+
+| Option | Effect |
+| --- | --- |
+| **A. A `repeat` subcommand (recommended)** | `inference-lens repeat <project-folder> [--repetitions <n>]`. `--suite`, `--case`, and `--configuration` never apply to it and are rejected by the parser rather than ignored. It shares `--no-auth`, `--concurrency`, `--connection-concurrency`, `--allow-tool`, `--retry-rate-limits`, and `--json`, with the same meanings. `run` keeps its name and behavior. |
+| B. `run --repeat <n>` | One command, but `run` becomes two modes with disjoint flags, and `run` with no flags would mean something different depending on whether the project has a suite. |
+
+### 8. What a repeated run sends
+
+What the CLI repeats is the project's saved defaults, not a composer that has
+no headless equivalent.
+
+| Setting | Recommendation |
+| --- | --- |
+| Conversation | `project.defaults.conversationRevisionId`, with template uses resolved by `projectDraft`. Choosing another revision is left for later. |
+| Target, options, tools | `project.defaults`. Overriding the model or options from the command line is left for later; edit and save the project instead. |
+| Repetitions | `--repetitions <n>`, default 5, 2 to 100: the app's dialog bounds, moved to the runner so both read one constant. |
+| Response mode | `--response-mode streaming\|buffered`, default `buffered`. Unlike the app, which defaults to streaming, a headless job usually has nobody watching output arrive, and buffered needs no declared capability. The cost is that a buffered run measures no TTFO, so the summary reports the mode and the human summary says TTFO was not measured. `streaming` on a connection whose declared capabilities do not include it is refused (exit 2), never silently downgraded. |
+| Turn ceiling | The default, as the app's dialog starts with. No flag yet. |
+
+Tool rules are decision 3 unchanged: each tool in `enabledToolIds` needs an
+enabled mock or an `--allow-tool` grant, or the run exits 2. In the app a
+person can answer a repeated run's tool calls by hand; headless, nobody can.
+
+### 9. Summary and exit codes
+
+The v1 summary is built around a suite verdict (`suite`, `verdict`, and
+`configurations` are required), which a repeated run does not have.
+
+| Option | Effect |
+| --- | --- |
+| **A. A separate summary per command, told apart by `kind` (recommended)** | The evaluation summary gains `kind: "evaluation"`, additively, and stays version 1. `repeat --json` prints a `kind: "repeated-request"` summary with its own version, starting at 1. Nobody parsing today's output is affected. |
+| B. Summary version 2 covering both | One schema, but every existing consumer has to handle a version bump for a command they do not use. |
+
+The repeated summary, under the same rule as decision 4 (it names outcomes
+and points at evidence, never copying model output): experiment ID,
+lifecycle and stop, artifact paths, recorded concurrency and retry policy, the
+target (connection, protocol, model), response mode, and conversation
+revision, the counts
+`repeatedExperimentAggregate` derives (requested, completed, failed,
+rate limited, cancelled, not run, missing trace, retried after rate
+limiting), its metric ranges (duration, TTFO, tokens, throughput, turns, tool
+calls), `distinctFinalAssistantOutputs` as a number, and one entry per
+repetition with its run ID, status, and trace path.
+
+Exit codes for `repeat`:
+
+| Option | Effect |
+| --- | --- |
+| **A. Mirror the evaluation meanings (recommended)** | 0: every repetition completed. 1: the batch ran to completion and at least one repetition failed for a reason other than a 429. 2: usage or setup error, as now. 3: the run did not complete (interrupted, stopped on a tool, an artifact write failed), or its only shortfall is rate limiting, as decision 4 already says for suites. |
+| B. 0 whenever the batch finishes | Failures are evidence, not errors. Simpler, but CI cannot gate on a provider that errors one time in five. |
+
+### Verification for slice 5
+
+- **5a.** Unit tests for selection resolution (ID, name, ambiguous, unknown,
+  repeated) and for `scope`, in `tests/cli-headless-run.test.ts`; a
+  subprocess run of a subset against the buffered fixture provider. The
+  plan shape is the app's own subset shape, so no new browser spec; the
+  existing `headless-cli-artifacts.spec.ts` and the full suite run once.
+- **5b.** Unit tests for building input from `project.defaults` (including a
+  template-backed revision, the buffered default, and a refused streaming
+  request), the repeated
+  summary, and its exit codes; an integration run against the fixture
+  provider that parses every artifact with the core parsers; and a new case
+  in `headless-cli-artifacts.spec.ts` that opens a CLI-written repeated run in
+  the Runs workspace. The app's repeated dialog is covered by its existing
+  specs, which must stay green after `planFor` moves.
+
 ## Distribution
 
 ### Inside the published image
@@ -239,8 +387,9 @@ experience without Docker. It is a separate release decision; see
 3. Add explicit command and MCP grants, testing them with the committed MCP
    and command-tool fixtures.
 4. Ship the CLI in the image and document it in the Docker guide.
-5. Optional follow-ups: repeated-run plans, case and configuration selection
-   flags, and npm publishing.
+5. Optional follow-ups: case and configuration selection flags (5a), then
+   repeated-run plans (5b); see [slice 5](#slice-5-selection-and-repeated-runs).
+   npm publishing is deferred.
 
 ## Verification expectations
 
@@ -499,3 +648,34 @@ request, against a native amd64 build. It checks the exit code (1, for one
 failing case), that stdout parses as the JSON summary and nothing else, that
 the plan, result, and traces parse with the core parsers, and that they
 belong to the host user.
+
+### Slice 5a: what exists
+
+Decisions 5A and 6A, as agreed:
+
+```sh
+inference-lens run <project-folder> [--suite <id-or-name>]
+  [--case <id-or-name>]... [--configuration <id-or-name>]...
+```
+
+| Piece | Owns |
+| --- | --- |
+| `selectSuiteItems` in `packages/cli/src/evaluation-run.ts` | Resolving both flags as `--suite` resolves, and refusing an unknown, ambiguous, or repeated selection |
+| `HeadlessScope` in `packages/cli/src/summary.ts` | `scope` in summary v1, and the human summary's "Ran 2 of 3 cases" line, printed only when something was left out |
+
+Choices made in implementation:
+
+- **Suite order.** The selection is returned in the suite's order, not the
+  flags', so two invocations naming the same cases write the same plan order.
+- **Only selected connections.** Credentials resolve for the connections the
+  selected configurations use, so leaving a configuration out also leaves out
+  its key, as decision 5 requires.
+- **Exit code 0's wording.** `--help` now says "every case that ran passed"
+  rather than "the suite passed".
+
+Verification: four tests in `tests/cli-headless-run.test.ts`, written and run
+red first. They cover a subset run (the requests sent, the plan's snapshot,
+`scope`, and the human line), a full run's `scope` with no line, a connection
+needing no key once its configuration is left out, and each refusal on the
+command line. No browser spec was added: the plan has the shape the app
+writes for its own subset runs.

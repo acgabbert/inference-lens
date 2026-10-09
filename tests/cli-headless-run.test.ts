@@ -552,6 +552,138 @@ test("bad concurrency flags exit 2 before any request or artifact", async (t) =>
   await assert.rejects(stat(path.join(directory, "experiments")), { code: "ENOENT" });
 });
 
+const OTHER_CONNECTION_ID = "connection_headless-other";
+
+/**
+ * `cases` under two configurations: "Default", and "Other model" on a second
+ * connection that no test gives a key, so a run that reaches it is refused.
+ */
+function selectionProject(endpoint: string, cases: NonNullable<Parameters<typeof headlessProject>[0]["cases"]>) {
+  const base = headlessProject({ endpoint, cases });
+  return parseProjectFile({
+    ...base,
+    connectionRequirements: [
+      ...base.connectionRequirements,
+      { ...base.connectionRequirements[0], id: OTHER_CONNECTION_ID, name: "Other connection" },
+    ],
+    evaluationSuites: base.evaluationSuites.map((suite) => ({
+      ...suite,
+      variants: [
+        ...suite.variants,
+        {
+          id: "evaluation-variant_other",
+          name: "Other model",
+          overrides: { target: { connectionRequirementId: OTHER_CONNECTION_ID, model: "other-model" } },
+        },
+      ],
+    })),
+  });
+}
+
+test("--case and --configuration run only the selection, and the summary records its scope", async (t) => {
+  const provider = await recordingProvider();
+  t.after(provider.close);
+  const directory = await writeHeadlessProjectFolder(selectionProject(provider.endpoint, threeCases));
+
+  // One case by ID and one by name; the configuration by name. "Other model"
+  // is left out, so its connection needs no key.
+  const outcome = await run(directory, { [KEY_VARIABLE]: KEY }, {
+    cases: ["evaluation-case_sum", "States the product"],
+    configurations: ["Default"],
+  }).done;
+
+  assert.equal(outcome.error, undefined);
+  assert.equal(outcome.exitCode, 0);
+  assert.equal(provider.requests.length, 2);
+  const summary = outcome.summary!;
+  assert.deepEqual(summary.scope, {
+    cases: { selected: 2, total: 3 },
+    configurations: { selected: 1, total: 2 },
+  });
+  assert.deepEqual(summary.configurations.map(({ variantId }) => variantId), ["evaluation-variant_default"]);
+  assert.deepEqual(
+    summary.configurations[0].cases.map(({ caseId }) => caseId),
+    ["evaluation-case_sum", "evaluation-case_product"],
+  );
+  assert.match(formatHeadlessSummary(summary), /^Ran 2 of 3 cases and 1 of 2 configurations\.$/m);
+
+  // The plan holds only the selection, as a subset run from the app does.
+  const { experiments } = await readArtifacts(directory);
+  const plan = parseExperimentPlanJson(experiments.find(({ fileName }) => fileName.endsWith(".plan.json"))!.contents);
+  if (plan.kind !== "evaluation") throw new Error("expected an evaluation plan");
+  assert.deepEqual(plan.suite.cases.map(({ caseId }) => caseId), ["evaluation-case_sum", "evaluation-case_product"]);
+  assert.deepEqual(plan.suite.variants.map(({ variantId }) => variantId), ["evaluation-variant_default"]);
+});
+
+test("a full run records a complete scope and says nothing about it", async (t) => {
+  const provider = await recordingProvider();
+  t.after(provider.close);
+  const directory = await writeHeadlessProjectFolder(headlessProject({ endpoint: provider.endpoint, cases: twoCases }));
+
+  const outcome = await run(directory, { [KEY_VARIABLE]: KEY }).done;
+
+  assert.deepEqual(outcome.summary?.scope, {
+    cases: { selected: 2, total: 2 },
+    configurations: { selected: 1, total: 1 },
+  });
+  assert.doesNotMatch(formatHeadlessSummary(outcome.summary!), /^Ran \d+ of /m);
+});
+
+test("a connection only an unselected configuration uses needs no key", async (t) => {
+  const provider = await recordingProvider();
+  t.after(provider.close);
+  const directory = await writeHeadlessProjectFolder(selectionProject(provider.endpoint, twoCases));
+
+  // Without a selection, "Other model" is in the run and its key is missing.
+  const everything = await run(directory, { [KEY_VARIABLE]: KEY }).done;
+  assert.equal(everything.exitCode, 2);
+  assert.match(everything.error ?? "", new RegExp(`No credential for connection "Other connection" \\(${OTHER_CONNECTION_ID}\\)`));
+
+  const selected = await run(directory, { [KEY_VARIABLE]: KEY }, { configurations: ["evaluation-variant_default"] }).done;
+  assert.equal(selected.error, undefined);
+  assert.equal(selected.summary?.lifecycle, "completed");
+  assert.equal(provider.requests.length, 2);
+});
+
+test("bad selection flags exit 2 before any request or artifact", async (t) => {
+  const provider = await recordingProvider();
+  t.after(provider.close);
+  const directory = await writeHeadlessProjectFolder(selectionProject(provider.endpoint, [
+    ...twoCases,
+    { ...twoCases[0], id: "evaluation-case_sum-again", checks: [{ checkId: "check_sum-again", kind: "contains", value: "4" }] },
+  ]));
+  const attempt = async (...flags: string[]) => {
+    const stderr: string[] = [];
+    const code = await runCli(["run", directory, ...flags], {
+      stdout: () => {}, stderr: (text) => stderr.push(text), environment: { [KEY_VARIABLE]: KEY },
+    });
+    return { code, stderr: stderr.join("") };
+  };
+
+  {
+    const { code, stderr } = await attempt("--case", "Nope");
+    assert.equal(code, 2);
+    assert.match(stderr, /No case in suite "Arithmetic" has the ID or name "Nope"\. Available: evaluation-case_sum \("States the sum"\), evaluation-case_rollback \("Mentions rollback"\), evaluation-case_sum-again \("States the sum"\)\./);
+  }
+  {
+    const { code, stderr } = await attempt("--case", "States the sum");
+    assert.equal(code, 2);
+    assert.match(stderr, /2 cases are named "States the sum"; pass one of their IDs instead: evaluation-case_sum, evaluation-case_sum-again\./);
+  }
+  {
+    const { code, stderr } = await attempt("--case", "evaluation-case_rollback", "--case", "Mentions rollback");
+    assert.equal(code, 2);
+    assert.match(stderr, /--case selects evaluation-case_rollback \("Mentions rollback"\) more than once\./);
+  }
+  {
+    const { code, stderr } = await attempt("--configuration", "Nope");
+    assert.equal(code, 2);
+    assert.match(stderr, /No configuration in suite "Arithmetic" has the ID or name "Nope"\. Available: evaluation-variant_default \("Default"\), evaluation-variant_other \("Other model"\)\./);
+  }
+  assert.equal(provider.requests.length, 0);
+  await assert.rejects(stat(path.join(directory, "experiments")), { code: "ENOENT" });
+});
+
 test("the CLI process runs a suite against the committed buffered fixture provider", async (t) => {
   const root = path.resolve(import.meta.dirname, "..");
   const port = await new Promise<number>((resolve) => {

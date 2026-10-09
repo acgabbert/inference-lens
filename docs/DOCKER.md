@@ -294,6 +294,9 @@ docker run --rm \
   passed, 1 when a case failed, 2 for a setup error, and 3 when the run did not
   complete. `--json` prints a machine-readable summary on stdout and nothing
   else; progress goes to stderr. Run `inference-lens --help` for every option.
+- **Run part of a suite** with `--case` and `--configuration`, each taking an
+  ID or exact name and repeatable, for example to re-run one failing case. The
+  exit code then describes only what ran; the summary says how much that was.
 
 To shorten the command, define a shell function that mounts the current
 directory, so relative paths work as they would on the host:
