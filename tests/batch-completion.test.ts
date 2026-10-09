@@ -124,6 +124,7 @@ function finishedEvaluation(answer: string): FinishedEvaluation {
       status: "completed",
       endedAt: "2026-10-08T12:11:00.000Z",
       concurrency: sequentialExperimentConcurrency(plan),
+      retryPolicy: { rateLimited: { maxRetries: 0 } },
       cells: [{ cellId: cell.cellId, runId: cell.runId, status: "completed", startOrder: 1 }],
     },
     states: new Map([[state.runId, state]]),

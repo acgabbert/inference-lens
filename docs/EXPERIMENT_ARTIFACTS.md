@@ -82,6 +82,10 @@ Plans use `schemaVersion: 4`. Results use `schemaVersion: 6`.
   - Every started (terminal) cell has a one-based `startOrder`; together they
     number the started cells exactly once each. `not-run` cells have none.
     Cells stay in plan order whatever order they started or finished in.
+  - `retryPolicy` says which failed attempts the scheduler could retry. It
+    is keyed by failure class; Version 6 knows one,
+    `{ rateLimited: { maxRetries } }` for a provider 429, and
+    `maxRetries: 0` means a 429 fails its repetition.
   - `stop.startedCells` counts the cells that had started when the stop was
     recorded. The rule is that no cell starts after the stop: cells already
     running may finish, so a terminal cell can follow the stopping cell in
@@ -89,7 +93,7 @@ Plans use `schemaVersion: 4`. Results use `schemaVersion: 6`.
     started cell must be counted.
 
 Version 4 and 5 results remain readable and are read as Version 6 at a
-concurrency of 1: their started cells receive start orders in plan order,
+concurrency of 1 with retries off: their started cells receive start orders in plan order,
 and a Version 5 stop counts the cells up to and including the stopping one,
 which keeps Version 5's rule that nothing ran after it. New results are always
 written as Version 6, including at a concurrency of 1. Older versions of the

@@ -63,6 +63,9 @@ function threeCellPlan(): RepeatedExperimentPlanV3 {
   };
 }
 
+/** What every pre-Version 6 result ran with, and what the writer records today. */
+const RETRIES_OFF = { rateLimited: { maxRetries: 0 } };
+
 /** The concurrency every pre-Version 6 result actually ran at. */
 function sequential(source: RepeatedExperimentPlanV3) {
   const { profileId, endpoint } = source.commonInput.target;
@@ -183,6 +186,7 @@ test("validates result identity and planned references exactly", () => {
     ...result,
     schemaVersion: 6,
     concurrency: sequential(source),
+    retryPolicy: RETRIES_OFF,
     cells: [
       { cellId: "experiment-cell_first", runId: "run_first", status: "completed", startOrder: 1 },
       { cellId: "experiment-cell_second", runId: "run_second", status: "not-run" },
@@ -206,6 +210,7 @@ test("a stopped result records which repetition and tool stopped the batch", () 
     stop: { reason: "tool_unavailable", cellId: "experiment-cell_second", toolId: "tool_lookup", startedCells: 2 },
     endedAt: "2026-07-30T12:01:00.000Z",
     concurrency: sequential(source),
+    retryPolicy: RETRIES_OFF,
     cells: [
       { cellId: "experiment-cell_first", runId: "run_first", status: "completed", startOrder: 1 },
       { cellId: "experiment-cell_second", runId: "run_second", status: "failed", startOrder: 2 },
@@ -227,6 +232,7 @@ test("a stop must name the failed repetition that caused it, and only a stopped 
     stop: { reason: "tool_unavailable", cellId: "experiment-cell_first", toolId: "tool_lookup", startedCells: 1 },
     endedAt: "2026-07-30T12:01:00.000Z",
     concurrency: sequential(source),
+    retryPolicy: RETRIES_OFF,
     cells: [
       { cellId: "experiment-cell_first", runId: "run_first", status: "failed", startOrder: 1 },
       { cellId: "experiment-cell_second", runId: "run_second", status: "not-run" },
@@ -269,6 +275,7 @@ test("a stopped Version 6 result may hold later cells that started before the st
     stop: { reason: "tool_unavailable", cellId: "experiment-cell_first", toolId: "tool_lookup", startedCells: 2 },
     endedAt: "2026-07-30T12:01:00.000Z",
     concurrency: [{ ...sequential(source)[0]!, limit: 2 }],
+    retryPolicy: RETRIES_OFF,
     cells: [
       { cellId: "experiment-cell_first", runId: "run_first", status: "failed", startOrder: 1 },
       { cellId: "experiment-cell_second", runId: "run_second", status: "completed", startOrder: 2 },
@@ -294,6 +301,7 @@ test("Version 6 start orders number the started cells once each, from one", () =
     status: "completed",
     endedAt: "2026-07-30T12:01:00.000Z",
     concurrency: [{ ...sequential(source)[0]!, limit: 2 }],
+    retryPolicy: RETRIES_OFF,
     // Cells stay in plan order whatever order they started in.
     cells: [
       { cellId: "experiment-cell_first", runId: "run_first", status: "completed", startOrder: 2 },
@@ -331,6 +339,7 @@ test("Version 6 records one positive limit for each connection the plan uses", (
     status: "completed",
     endedAt: "2026-07-30T12:01:00.000Z",
     concurrency: [{ ...connection!, limit: 4 }],
+    retryPolicy: RETRIES_OFF,
     cells: [
       { cellId: "experiment-cell_first", runId: "run_first", status: "completed", startOrder: 1 },
       { cellId: "experiment-cell_second", runId: "run_second", status: "completed", startOrder: 2 },
@@ -353,6 +362,43 @@ test("Version 6 records one positive limit for each connection the plan uses", (
   }
 });
 
+test("Version 6 records the retry policy a batch ran under", () => {
+  const source = plan();
+  const result: ExperimentResultV6 = {
+    schemaVersion: 6,
+    experimentId: source.experimentId,
+    status: "completed",
+    endedAt: "2026-07-30T12:01:00.000Z",
+    concurrency: sequential(source),
+    retryPolicy: { rateLimited: { maxRetries: 2 } },
+    cells: [
+      { cellId: "experiment-cell_first", runId: "run_first", status: "completed", startOrder: 1 },
+      { cellId: "experiment-cell_second", runId: "run_second", status: "completed", startOrder: 2 },
+    ],
+  };
+  assert.deepEqual(parseExperimentResultJson(serializeExperimentResult(result, source), source), result);
+
+  const { retryPolicy: _retryPolicy, ...withoutPolicy } = result;
+  void _retryPolicy;
+  assert.throws(
+    () => serializeExperimentResult(withoutPolicy as ExperimentResultV6, source),
+    /retryPolicy/,
+  );
+  for (const retryPolicy of [
+    {},
+    { rateLimited: { maxRetries: -1 } },
+    { rateLimited: { maxRetries: 1.5 } },
+    // Retrying other failures is not something this version can record.
+    { rateLimited: { maxRetries: 2 }, serverError: { maxRetries: 1 } },
+  ]) {
+    assert.throws(
+      () => serializeExperimentResult({ ...result, retryPolicy } as ExperimentResultV6, source),
+      /retryPolicy/,
+      JSON.stringify(retryPolicy),
+    );
+  }
+});
+
 test("Version 4 results remain readable and are read as Version 6 at a concurrency of 1", () => {
   const source = plan();
   const legacy = {
@@ -369,6 +415,7 @@ test("Version 4 results remain readable and are read as Version 6 at a concurren
     ...legacy,
     schemaVersion: 6,
     concurrency: sequential(source),
+    retryPolicy: RETRIES_OFF,
     cells: [
       { cellId: "experiment-cell_first", runId: "run_first", status: "completed", startOrder: 1 },
       { cellId: "experiment-cell_second", runId: "run_second", status: "failed", startOrder: 2 },
@@ -406,6 +453,7 @@ test("Version 5 results are read as Version 6, keeping the rule that nothing ran
     schemaVersion: 6,
     stop: { ...legacy.stop!, startedCells: 2 },
     concurrency: sequential(source),
+    retryPolicy: RETRIES_OFF,
     cells: [
       { cellId: "experiment-cell_first", runId: "run_first", status: "completed", startOrder: 1 },
       { cellId: "experiment-cell_second", runId: "run_second", status: "failed", startOrder: 2 },

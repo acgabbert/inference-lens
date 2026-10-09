@@ -1,8 +1,8 @@
 # Parallel experiment cells
 
 **Status:** decisions 1–5 agreed October 9, 2026; decisions 6–8 (rate
-limits and retry) agreed the same day as recommended. Slice 1 is implemented
-except for the retry policy that decision 8 adds to it; see
+limits and retry) agreed the same day as recommended. Slice 1 is implemented,
+including the retry policy that decision 8 adds to it; see
 [Implementation status](#implementation-status). The decisions below need no
 further sign-off, but the implementation should come back for review if it
 finds that one of them cannot hold.
@@ -325,10 +325,8 @@ as they do today.
 
 `ExperimentResultV6` in `packages/core/src/experiment.ts`, with its parser,
 validator, and the upgrade from Versions 4 and 5. The scheduler writes Version
-6 at a concurrency of 1 and otherwise behaves as before. The format is
+6 at a concurrency of 1 with retries off, and otherwise behaves as before. The format is
 documented in [experiment artifacts](EXPERIMENT_ARTIFACTS.md).
-
-Still to do in this slice: the `retryPolicy` field that decision 8 adds.
 
 Choices made in implementation, within the agreed decisions:
 
@@ -347,11 +345,39 @@ Choices made in implementation, within the agreed decisions:
   `startedCells`, the number of cells that had started at that moment. The
   validator refuses any started cell beyond that count and a count that
   includes cells that never started.
+- **Retry policy.** `retryPolicy` is keyed by failure class:
+  `{ rateLimited: { maxRetries } }`, with `maxRetries: 0` meaning off, which
+  is what the scheduler writes until slice 6 and what Versions 4 and 5
+  upgrade to. Version 6 refuses any other class. The keying lets a later
+  version add a class with its own bound (see below) without reshaping the
+  field.
 - **Headless summary.** The CLI's `--json` summary v1 keeps its `stop` at
   `{ reason, cellId, toolId }`; `startedCells` is result bookkeeping and is
   not copied into it. Reporting concurrency in the summary is left to the
   slice 4 `--concurrency` flag.
 
-Verification: `tests/experiment.test.ts` (Version 6 validation and both
-upgrades), `tests/repeated-experiment-controller.test.ts` (the scheduler's
+Verification: `tests/experiment.test.ts` (Version 6 validation, including
+the retry policy, and both upgrades), `tests/repeated-experiment-controller.test.ts` (the scheduler's
 Version 6 output), and `tests/cli-summary.test.ts`.
+
+### Extending retry to other failures
+
+Retrying a 5xx, a timeout, or a dropped connection later is cheap in code:
+`isRetryableRunError` already marks 408, 429, and 5xx retryable, and the
+coordinator pauses on every retryable failure, so the scheduler's retry
+path from slice 6 needs only to pick the bound for the new class. The cost
+is elsewhere:
+
+- **A result version.** Results are parsed strictly, so a new key under
+  `retryPolicy` is a Version 7, which older apps refuse. The upgrade itself
+  is trivial: a Version 6 result reads as Version 7 with the new class off.
+- **Billing.** A 429 is rejected before the model runs. A 5xx, or a
+  connection dropped mid-stream, may already have produced billed tokens,
+  so a retry can pay twice. The metrics already sum usage across attempts,
+  so the cost is visible, but the policy needs its own, likely lower, bound.
+- **Waiting.** A 5xx rarely carries `Retry-After`, so it needs its own
+  backoff rather than decision 6's header-driven pause, and whether a 5xx
+  should also pause the whole connection is a separate decision.
+- **Classification.** Decision 7's `rate-limited` would need a sibling (for
+  example `provider-unavailable`) so that a run that ran out of 5xx retries
+  is not reported as a model failure either.

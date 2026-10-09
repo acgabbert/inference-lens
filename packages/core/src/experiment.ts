@@ -46,8 +46,8 @@ import { PROVIDER_WIRE_PROTOCOLS } from "./run-kernel/types.ts";
 export const EXPERIMENT_SCHEMA_VERSION = 4;
 /**
  * Results moved to Version 5 alone, to record a batch that stopped itself, and
- * to Version 6 to record the concurrency they ran at and the order their cells
- * started in. Plans did not change shape, so they keep Version 4.
+ * to Version 6 to record the concurrency and retry policy they ran under and
+ * the order their cells started in. Plans did not change shape, so they keep Version 4.
  */
 export const EXPERIMENT_RESULT_SCHEMA_VERSION = 6;
 /** The project-folder directory that holds experiment plans, results, and assessments. */
@@ -225,6 +225,21 @@ export interface ExperimentConnectionConcurrency {
   limit: number;
 }
 
+/**
+ * Which failed attempts the scheduler may retry, keyed by failure class so a
+ * later version can add a class (a 5xx, say) with its own bound. Version 6
+ * knows only rate limiting.
+ */
+export interface ExperimentRetryPolicy {
+  /** A provider 429. `maxRetries: 0` means a 429 fails its repetition. */
+  rateLimited: { maxRetries: number };
+}
+
+/** Retries off: what every result before Version 6 ran with, and the default. */
+export function noExperimentRetries(): ExperimentRetryPolicy {
+  return { rateLimited: { maxRetries: 0 } };
+}
+
 export interface ExperimentResultV4 {
   schemaVersion: 4;
   experimentId: ExperimentId;
@@ -271,6 +286,7 @@ export interface ExperimentResultV6 {
   endedAt: string;
   /** One entry per distinct connection, in the order the plan first uses it. */
   concurrency: ExperimentConnectionConcurrency[];
+  retryPolicy: ExperimentRetryPolicy;
   /** Always in plan order, whatever order the cells finished in. */
   cells: ExperimentCellResultV6[];
 }
@@ -711,6 +727,11 @@ const resultV6Schema = z
         })
         .strict(),
     ),
+    retryPolicy: z
+      .object({
+        rateLimited: z.object({ maxRetries: z.number().int().nonnegative() }).strict(),
+      })
+      .strict(),
     cells: z.array(
       z.discriminatedUnion("status", [
         z
@@ -940,7 +961,8 @@ function assertConcurrency(
 
 /**
  * Results before Version 6 ran one cell at a time in plan order, so their
- * started cells began in plan order and every connection had a limit of 1.
+ * started cells began in plan order, every connection had a limit of 1, and
+ * nothing was retried.
  * Version 5 already refused a cell that ran after the stop; counting the
  * stopping cell as the last to start keeps that refusal after the upgrade.
  */
@@ -971,6 +993,7 @@ function upgradeSequentialResult(
       : {}),
     endedAt: result.endedAt,
     concurrency: sequentialExperimentConcurrency(plan),
+    retryPolicy: noExperimentRetries(),
     cells,
   };
 }

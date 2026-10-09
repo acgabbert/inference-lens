@@ -4,6 +4,7 @@ import {
   experimentExposedTools,
   experimentTurnCeiling,
   materializeParsedExperimentCellInput,
+  noExperimentRetries,
   parseExperimentPlanFile,
   serializeParsedExperimentPlan,
   serializeExperimentResult,
@@ -216,6 +217,8 @@ export class SequentialExperimentController {
         endedAt: new Date().toISOString(),
         // Cells run one at a time until the scheduler learns concurrency.
         concurrency: sequentialExperimentConcurrency(plan),
+        // A 429 fails its repetition until the scheduler learns to retry.
+        retryPolicy: noExperimentRetries(),
         cells,
       };
       // Serialize unconditionally so ad hoc results cross the same strict
