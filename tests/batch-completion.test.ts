@@ -7,7 +7,10 @@ import {
 } from "../app/run/batch-completion.ts";
 import type { FinishedEvaluation } from "../app/run/batch-completion.ts";
 import { createEvaluationExperimentPlan } from "../packages/core/src/evaluation-execution.ts";
-import { materializeExperimentCellInput } from "../packages/core/src/experiment.ts";
+import {
+  materializeExperimentCellInput,
+  sequentialExperimentConcurrency,
+} from "../packages/core/src/experiment.ts";
 import {
   createProjectFile,
   createPromptTemplate,
@@ -116,11 +119,12 @@ function finishedEvaluation(answer: string): FinishedEvaluation {
   return {
     plan,
     result: {
-      schemaVersion: 5,
+      schemaVersion: 6,
       experimentId: plan.experimentId,
       status: "completed",
       endedAt: "2026-10-08T12:11:00.000Z",
-      cells: [{ cellId: cell.cellId, runId: cell.runId, status: "completed" }],
+      concurrency: sequentialExperimentConcurrency(plan),
+      cells: [{ cellId: cell.cellId, runId: cell.runId, status: "completed", startOrder: 1 }],
     },
     states: new Map([[state.runId, state]]),
   };

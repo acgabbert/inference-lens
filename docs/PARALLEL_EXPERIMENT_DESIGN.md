@@ -1,8 +1,9 @@
 # Parallel experiment cells
 
-**Status:** decisions agreed October 9, 2026; not yet implemented. The decisions
-below need no further sign-off, but the implementation should come back for
-review if it finds that one of them cannot hold.
+**Status:** decisions agreed October 9, 2026. Slice 1 is implemented; see
+[Implementation status](#implementation-status). The decisions below need no
+further sign-off, but the implementation should come back for review if it
+finds that one of them cannot hold.
 **Baseline:** `main` at `ee5f292`.
 **Depends on:** slice 1 of the [headless CLI design](HEADLESS_CLI_DESIGN.md),
 which moves the scheduler into a shared module.
@@ -188,3 +189,38 @@ as they do today.
   provider must hold its responses long enough for cells to overlap, or the
   spec passes without exercising any concurrency; see the
   [provider fixture guide](PROVIDER_FIXTURES.md).
+
+## Implementation status
+
+### Slice 1: what exists
+
+`ExperimentResultV6` in `packages/core/src/experiment.ts`, with its parser,
+validator, and the upgrade from Versions 4 and 5. The scheduler writes Version
+6 at a concurrency of 1 and otherwise behaves as before. The format is
+documented in [experiment artifacts](EXPERIMENT_ARTIFACTS.md).
+
+Choices made in implementation, within the agreed decisions:
+
+- **Recorded concurrency.** `concurrency` is the effective limits, one
+  `{ profileId, endpoint, limit }` per distinct connection in plan first-use
+  order, rather than the setting a person supplied (a map plus a default).
+  The validator requires exactly the plan's connections, each once.
+  `sequentialExperimentConcurrency(plan)` builds the all-ones list, and
+  `experimentConnectionKey` is the one key the scheduler's credential cache
+  and the result share.
+- **Start order.** A one-based `startOrder` on each started cell, not a
+  timestamp: it is deterministic and directly checkable.
+- **Checking the stop.** A start order alone cannot show that a cell started
+  after the stop, because a stop is recorded when the stopping cell fails,
+  after other cells may have started. So the stop records
+  `startedCells`, the number of cells that had started at that moment. The
+  validator refuses any started cell beyond that count and a count that
+  includes cells that never started.
+- **Headless summary.** The CLI's `--json` summary v1 keeps its `stop` at
+  `{ reason, cellId, toolId }`; `startedCells` is result bookkeeping and is
+  not copied into it. Reporting concurrency in the summary is left to the
+  slice 4 `--concurrency` flag.
+
+Verification: `tests/experiment.test.ts` (Version 6 validation and both
+upgrades), `tests/repeated-experiment-controller.test.ts` (the scheduler's
+Version 6 output), and `tests/cli-summary.test.ts`.

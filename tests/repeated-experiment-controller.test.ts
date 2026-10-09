@@ -544,10 +544,21 @@ test("an unavailable tool stops the batch after the repetition that found it", a
     async prepareCredential() { return { kind: "none" }; },
   }).run();
 
-  assert.equal(result.schemaVersion, 5);
+  assert.equal(result.schemaVersion, 6);
   assert.equal(result.status, "stopped");
-  assert.deepEqual(result.stop, { reason: "tool_unavailable", cellId: "experiment-cell_2", toolId: weatherTool.id });
+  assert.deepEqual(result.stop, {
+    reason: "tool_unavailable",
+    cellId: "experiment-cell_2",
+    toolId: weatherTool.id,
+    startedCells: 2,
+  });
   assert.deepEqual(result.cells.map(({ status }) => status), ["completed", "failed", "not-run"]);
+  // One cell at a time: cells start in plan order, at a limit of 1.
+  assert.deepEqual(
+    result.cells.map((cell) => cell.status === "not-run" ? undefined : cell.startOrder),
+    [1, 2, undefined],
+  );
+  assert.deepEqual(result.concurrency.map(({ limit }) => limit), [1]);
   assert.deepEqual(started, ["run_1", "run_1", "run_2"]);
 });
 

@@ -18,6 +18,7 @@ import {
   MIN_EXPERIMENT_TURN_CEILING,
 } from "./turn-ceiling.ts";
 import type {
+  ConnectionProfileId,
   ConversationMessage,
   ConversationRevisionId,
   EntityId,
@@ -44,10 +45,11 @@ import { PROVIDER_WIRE_PROTOCOLS } from "./run-kernel/types.ts";
 
 export const EXPERIMENT_SCHEMA_VERSION = 4;
 /**
- * Results moved to Version 5 alone, to record a batch that stopped itself.
- * Plans did not change shape, so they keep Version 4.
+ * Results moved to Version 5 alone, to record a batch that stopped itself, and
+ * to Version 6 to record the concurrency they ran at and the order their cells
+ * started in. Plans did not change shape, so they keep Version 4.
  */
-export const EXPERIMENT_RESULT_SCHEMA_VERSION = 5;
+export const EXPERIMENT_RESULT_SCHEMA_VERSION = 6;
 /** The project-folder directory that holds experiment plans, results, and assessments. */
 export const EXPERIMENTS_DIRECTORY_NAME = "experiments";
 export const EXPERIMENT_PLAN_FILE_SUFFIX = ".plan.json";
@@ -178,9 +180,9 @@ export type EvaluationExperimentPlanV3 = EvaluationExperimentPlanV4;
 export type ExperimentPlanV3 = ExperimentPlanV4;
 export type ExperimentResultV3 = ExperimentResultV4;
 /** The current in-memory result. Every accepted result is read as this. */
-export type ExperimentResult = ExperimentResultV5;
-/** A result as it may arrive from storage or a caller: either readable version. */
-export type ExperimentResultInput = ExperimentResultV4 | ExperimentResultV5;
+export type ExperimentResult = ExperimentResultV6;
+/** A result as it may arrive from storage or a caller: any readable version. */
+export type ExperimentResultInput = ExperimentResultV4 | ExperimentResultV5 | ExperimentResultV6;
 export type EvaluationCaseSnapshot = EvaluationCaseSnapshotV4;
 
 export interface ExperimentTerminalCellResult {
@@ -198,6 +200,30 @@ export interface ExperimentNotRunCellResult {
 export type ExperimentCellResult =
   | ExperimentTerminalCellResult
   | ExperimentNotRunCellResult;
+
+/** A started cell, as Version 6 records it. */
+export interface ExperimentStartedCellResultV6 extends ExperimentTerminalCellResult {
+  /**
+   * One-based position among the cells this experiment started. Cells are
+   * stored in plan order; this says when each one began.
+   */
+  startOrder: number;
+}
+
+export type ExperimentCellResultV6 =
+  | ExperimentStartedCellResultV6
+  | ExperimentNotRunCellResult;
+
+/**
+ * The limit one connection ran under. A connection is identified the way the
+ * scheduler keys prepared credentials: the target's profile and endpoint.
+ */
+export interface ExperimentConnectionConcurrency {
+  profileId: ConnectionProfileId;
+  endpoint: string;
+  /** Most cells for this connection that could be in flight at once. */
+  limit: number;
+}
 
 export interface ExperimentResultV4 {
   schemaVersion: 4;
@@ -226,6 +252,27 @@ export interface ExperimentResultV5 {
   stop?: ExperimentStop;
   endedAt: string;
   cells: ExperimentCellResult[];
+}
+
+export interface ExperimentStopV6 extends ExperimentStop {
+  /**
+   * How many cells had started when the stop was recorded. No cell starts
+   * after it, so every started cell's `startOrder` is at most this.
+   */
+  startedCells: number;
+}
+
+export interface ExperimentResultV6 {
+  schemaVersion: 6;
+  experimentId: ExperimentId;
+  status: "completed" | "cancelled" | "stopped";
+  /** Present exactly when `status` is `stopped`. */
+  stop?: ExperimentStopV6;
+  endedAt: string;
+  /** One entry per distinct connection, in the order the plan first uses it. */
+  concurrency: ExperimentConnectionConcurrency[];
+  /** Always in plan order, whatever order the cells finished in. */
+  cells: ExperimentCellResultV6[];
 }
 
 export type EvaluationRepetitionClassification =
@@ -624,7 +671,7 @@ const resultV4Schema = z
 
 const resultV5Schema = z
   .object({
-    schemaVersion: z.literal(EXPERIMENT_RESULT_SCHEMA_VERSION),
+    schemaVersion: z.literal(5),
     experimentId: entityId("experiment"),
     status: z.enum(["completed", "cancelled", "stopped"]),
     stop: z
@@ -637,6 +684,52 @@ const resultV5Schema = z
       .optional(),
     endedAt: z.string().datetime(),
     cells: resultCellsSchema,
+  })
+  .strict();
+
+const resultV6Schema = z
+  .object({
+    schemaVersion: z.literal(EXPERIMENT_RESULT_SCHEMA_VERSION),
+    experimentId: entityId("experiment"),
+    status: z.enum(["completed", "cancelled", "stopped"]),
+    stop: z
+      .object({
+        reason: z.literal("tool_unavailable"),
+        cellId: entityId("experiment-cell"),
+        toolId: entityId("tool"),
+        startedCells: z.number().int().positive(),
+      })
+      .strict()
+      .optional(),
+    endedAt: z.string().datetime(),
+    concurrency: z.array(
+      z
+        .object({
+          profileId: entityId("profile"),
+          endpoint: z.string(),
+          limit: z.number().int().positive(),
+        })
+        .strict(),
+    ),
+    cells: z.array(
+      z.discriminatedUnion("status", [
+        z
+          .object({
+            cellId: entityId("experiment-cell"),
+            runId: entityId("run"),
+            status: z.enum(["completed", "cancelled", "failed"]),
+            startOrder: z.number().int().positive(),
+          })
+          .strict(),
+        z
+          .object({
+            cellId: entityId("experiment-cell"),
+            runId: entityId("run"),
+            status: z.literal("not-run"),
+          })
+          .strict(),
+      ]),
+    ),
   })
   .strict();
 
@@ -661,6 +754,30 @@ function planInputs(plan: ExperimentPlanV4): Array<Omit<ResolvedRunInput, "runId
         ...variant,
         tools: plan.suite.tools,
       }));
+}
+
+/**
+ * Every distinct connection a plan targets, in the order the plan first uses
+ * it, each at a limit of 1: what every result before Version 6 ran at.
+ */
+export function sequentialExperimentConcurrency(
+  plan: ExperimentPlanV4,
+): ExperimentConnectionConcurrency[] {
+  const connections = new Map<string, ExperimentConnectionConcurrency>();
+  for (const { target } of planInputs(plan)) {
+    const key = experimentConnectionKey(target);
+    if (!connections.has(key)) {
+      connections.set(key, { profileId: target.profileId, endpoint: target.endpoint, limit: 1 });
+    }
+  }
+  return [...connections.values()];
+}
+
+/** The key the scheduler and the result both use for one connection. */
+export function experimentConnectionKey(
+  target: Pick<ResolvedRunInput["target"], "profileId" | "endpoint">,
+): string {
+  return `${target.profileId}\u0000${target.endpoint}`;
 }
 
 function assertNoSensitiveProviderOptions(plan: ExperimentPlanV4): void {
@@ -744,7 +861,7 @@ function assertPlanReferences(plan: ExperimentPlanV4): void {
 }
 
 function assertResultReferences(
-  result: ExperimentResultV5,
+  result: ExperimentResultV6,
   plan: ExperimentPlanV4,
 ): void {
   if (result.experimentId !== plan.experimentId) {
@@ -768,6 +885,16 @@ function assertResultReferences(
     }
     seen.add(cell.cellId);
   });
+  assertConcurrency(result.concurrency, plan);
+  // Every started cell has a start order, and together they count 1..n.
+  const startOrders = result.cells
+    .flatMap((cell) => cell.status === "not-run" ? [] : [cell.startOrder])
+    .sort((left, right) => left - right);
+  if (startOrders.some((order, index) => order !== index + 1)) {
+    throw new ExperimentValidationError(
+      "Experiment result start orders must number the started cells once each, from one.",
+    );
+  }
   if (result.status === "completed" && result.cells.some((cell) => cell.status === "not-run")) {
     throw new ExperimentValidationError("A completed experiment cannot contain unstarted cells.");
   }
@@ -780,14 +907,72 @@ function assertResultReferences(
   if (!result.stop) {
     throw new ExperimentValidationError("A stopped experiment must record why it stopped.");
   }
-  const { cellId } = result.stop;
-  const stoppedAt = result.cells.findIndex((cell) => cell.cellId === cellId);
-  if (stoppedAt < 0 || result.cells[stoppedAt]!.status !== "failed") {
+  const { cellId, startedCells } = result.stop;
+  const stopping = result.cells.find((cell) => cell.cellId === cellId);
+  if (!stopping || stopping.status !== "failed") {
     throw new ExperimentValidationError("A stop must name the failed repetition that caused it.");
   }
-  if (result.cells.slice(stoppedAt + 1).some((cell) => cell.status !== "not-run")) {
+  // Cells already running when the stop was recorded may finish, so a later
+  // cell in plan order can be terminal. None may have started after it.
+  if (startOrders.length > startedCells) {
     throw new ExperimentValidationError("No repetition may start after the stop.");
   }
+  if (startOrders.length < startedCells) {
+    throw new ExperimentValidationError("A stop must count only cells that started.");
+  }
+}
+
+function assertConcurrency(
+  concurrency: ExperimentConnectionConcurrency[],
+  plan: ExperimentPlanV4,
+): void {
+  const expected = sequentialExperimentConcurrency(plan).map(experimentConnectionKey);
+  const actual = concurrency.map(experimentConnectionKey);
+  if (
+    actual.length !== expected.length ||
+    actual.some((key, index) => key !== expected[index])
+  ) {
+    throw new ExperimentValidationError(
+      "Experiment result concurrency must name each connection the plan uses once, in plan order.",
+    );
+  }
+}
+
+/**
+ * Results before Version 6 ran one cell at a time in plan order, so their
+ * started cells began in plan order and every connection had a limit of 1.
+ * Version 5 already refused a cell that ran after the stop; counting the
+ * stopping cell as the last to start keeps that refusal after the upgrade.
+ */
+function upgradeSequentialResult(
+  result: ExperimentResultV5,
+  plan: ExperimentPlanV4,
+): ExperimentResultV6 {
+  let started = 0;
+  const cells = result.cells.map((cell): ExperimentCellResultV6 =>
+    cell.status === "not-run" ? cell : { ...cell, startOrder: ++started }
+  );
+  const stopOrder = result.stop
+    ? cells.find((cell) => cell.cellId === result.stop!.cellId)
+    : undefined;
+  return {
+    schemaVersion: EXPERIMENT_RESULT_SCHEMA_VERSION,
+    experimentId: result.experimentId,
+    status: result.status,
+    ...(result.stop
+      ? {
+          stop: {
+            ...result.stop,
+            // A stop naming no started cell is refused by the validator; any
+            // positive count keeps that the error it reports.
+            startedCells: stopOrder && stopOrder.status !== "not-run" ? stopOrder.startOrder : 1,
+          },
+        }
+      : {}),
+    endedAt: result.endedAt,
+    concurrency: sequentialExperimentConcurrency(plan),
+    cells,
+  };
 }
 
 export function experimentPlanFileName(experimentId: ExperimentId): string {
@@ -867,26 +1052,35 @@ export function parseExperimentPlanJson(contents: string): ExperimentPlanV4 {
 export function parseExperimentResultFile(
   value: unknown,
   plan: ExperimentPlanV4,
-): ExperimentResultV5 {
+): ExperimentResultV6 {
   const parsedPlan = parseExperimentPlanFile(plan);
   const version = unsupportedPlanVersionSchema.safeParse(value);
   if (
     version.success &&
     version.data.schemaVersion !== 4 &&
+    version.data.schemaVersion !== 5 &&
     version.data.schemaVersion !== EXPERIMENT_RESULT_SCHEMA_VERSION
   ) {
     throw new ExperimentValidationError(
-      `Experiment result schema Version ${version.data.schemaVersion} is unsupported; expected Version 4 or ${EXPERIMENT_RESULT_SCHEMA_VERSION}.`,
+      `Experiment result schema Version ${version.data.schemaVersion} is unsupported; expected Version 4, 5, or ${EXPERIMENT_RESULT_SCHEMA_VERSION}.`,
     );
   }
-  // Version 4 is a strict subset of Version 5: it cannot say "stopped", so it
-  // is read as the same record with the current version number.
-  const result: ExperimentResultV5 = version.success && version.data.schemaVersion === 4
-    ? {
-        ...(parseWith(resultV4Schema, value, "experiment result") as ExperimentResultV4),
-        schemaVersion: EXPERIMENT_RESULT_SCHEMA_VERSION,
-      }
-    : (parseWith(resultV5Schema, value, "experiment result") as ExperimentResultV5);
+  const schemaVersion = version.success ? version.data.schemaVersion : EXPERIMENT_RESULT_SCHEMA_VERSION;
+  // Version 4 is a strict subset of Version 5: it cannot say "stopped".
+  const result: ExperimentResultV6 = schemaVersion === 4
+    ? upgradeSequentialResult(
+        {
+          ...(parseWith(resultV4Schema, value, "experiment result") as ExperimentResultV4),
+          schemaVersion: 5,
+        },
+        parsedPlan,
+      )
+    : schemaVersion === 5
+      ? upgradeSequentialResult(
+          parseWith(resultV5Schema, value, "experiment result") as ExperimentResultV5,
+          parsedPlan,
+        )
+      : (parseWith(resultV6Schema, value, "experiment result") as ExperimentResultV6);
   assertResultReferences(result, parsedPlan);
   return result;
 }
@@ -894,7 +1088,7 @@ export function parseExperimentResultFile(
 export function parseExperimentResultJson(
   contents: string,
   plan: ExperimentPlanV4,
-): ExperimentResultV5 {
+): ExperimentResultV6 {
   let value: unknown;
   try {
     value = JSON.parse(contents);

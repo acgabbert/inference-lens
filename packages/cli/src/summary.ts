@@ -101,7 +101,11 @@ export function createHeadlessSummary(input: {
     suite: { suiteId: plan.suite.suiteId, name: plan.suite.name },
     verdict: headlessVerdict(assessment),
     lifecycle: assessment.lifecycle,
-    ...(result?.stop ? { stop: result.stop } : {}),
+    // Summary v1 reports why the run stopped, not the result's bookkeeping
+    // for checking the stop, so it keeps the fields it shipped with.
+    ...(result?.stop
+      ? { stop: { reason: result.stop.reason, cellId: result.stop.cellId, toolId: result.stop.toolId } }
+      : {}),
     projectDirectory: input.projectDirectory,
     artifacts: {
       plan: input.planPath,
