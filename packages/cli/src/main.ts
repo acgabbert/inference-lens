@@ -20,6 +20,9 @@ Options:
   --connection-concurrency <id>=<n>
                          Run at most <n> of them at once on connection <id>.
                          Repeatable. Cannot exceed --concurrency.
+  --retry-rate-limits    Retry a request the provider refuses with HTTP 429,
+                         up to 2 times per provider turn, after the wait it
+                         asks for. Off by default; the result records it.
   --json                 Print a machine-readable summary on stdout.
   -h, --help             Show this help.
 
@@ -58,6 +61,7 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
         "no-auth": { type: "string", multiple: true },
         concurrency: { type: "string" },
         "connection-concurrency": { type: "string", multiple: true },
+        "retry-rate-limits": { type: "boolean", default: false },
         json: { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
       },
@@ -90,6 +94,7 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
     ...(values.suite === undefined ? {} : { suite: values.suite }),
     noAuth: new Set(values["no-auth"] ?? []),
     concurrency,
+    retryRateLimits: values["retry-rate-limits"],
     environment: io.environment,
     transport: createInProcessTransport({ containerized: isContainerizedProcess(io.environment) }),
     onProgress: (line) => io.stderr(`${line}\n`),

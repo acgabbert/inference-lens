@@ -90,7 +90,11 @@ Plans use `schemaVersion: 4`. Results use `schemaVersion: 6`.
   - `retryPolicy` says which failed attempts the scheduler could retry. It
     is keyed by failure class; Version 6 knows one,
     `{ rateLimited: { maxRetries } }` for a provider 429, and
-    `maxRetries: 0` means a 429 fails its repetition.
+    `maxRetries: 0` means a 429 fails its repetition. The app's start
+    dialogs and the CLI's `--retry-rate-limits` write `maxRetries: 2` when a
+    person opts in, and `0` otherwise. Each retry is a recorded attempt in
+    the run's trace, so how many repetitions needed one is derived from the
+    traces, not stored here.
   - `stop.startedCells` counts the cells that had started when the stop was
     recorded. The rule is that no cell starts after the stop: cells already
     running may finish, so a terminal cell can follow the stopping cell in

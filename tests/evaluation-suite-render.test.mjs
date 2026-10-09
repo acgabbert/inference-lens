@@ -640,3 +640,35 @@ test("evaluation confirmation offers an overall limit, and one per connection wh
   assert.match(bakeoff, /up to 4 at once/);
   assert.doesNotMatch(bakeoff, /NaN|Infinity|undefined|\[object Object\]/);
 });
+
+test("evaluation confirmation offers rate-limit retries, off until chosen", async () => {
+  const [{ EvaluationStartDialog }, { renderToStaticMarkup }, { createElement }] = await Promise.all([
+    ssrLoadModule("/app/evaluations/evaluation-start-dialog.client.tsx"),
+    import("react-dom/server"), import("react"),
+  ]);
+  const target = { profileId: "profile_hosted", endpoint: "https://hosted.test/v1", model: "hosted-model" };
+  const draft = (retryRateLimits) => ({
+    targetNames: { "evaluation-variant_a": "Hosted profile" },
+    toolBindings: [],
+    revisionLabel: "Current",
+    storage: "durable",
+    ...(retryRateLimits === undefined ? {} : { retryRateLimits }),
+    plan: {
+      repetitions: 2, cells: Array.from({ length: 2 }),
+      suite: {
+        name: "Quality gate", conversationRevisionId: "revision_frozen",
+        variants: [{ variantId: "evaluation-variant_a", name: "A", target, responseMode: "buffered" }],
+        cases: [{ caseId: "evaluation-case_1", name: "Case 1", input: { target: { model: "hosted-model" } } }],
+      },
+    },
+  });
+  const render = (retryRateLimits) => renderToStaticMarkup(createElement(EvaluationStartDialog, {
+    draft: draft(retryRateLimits), onCancel() {}, onConfirm() {}, onConcurrencyChange() {}, onRetryRateLimitsChange() {},
+  }));
+
+  const off = render(undefined);
+  assert.match(off, /<input[^>]*aria-label="Retry rate-limited requests"[^>]*type="checkbox"/);
+  assert.doesNotMatch(off, /aria-label="Retry rate-limited requests"[^>]*checked/);
+  assert.match(off, /up to 2 times per turn/);
+  assert.match(render(true), /aria-label="Retry rate-limited requests"[^>]*checked/);
+});

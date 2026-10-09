@@ -16,6 +16,7 @@ import type {
   ExperimentConcurrencySetting,
   ExperimentPlanV4,
   ExperimentResult,
+  ExperimentRetryPolicy,
   ExperimentStopV6,
 } from "../../core/src/experiment.ts";
 import { RunCoordinator } from "../../core/src/run-kernel/index.ts";
@@ -100,7 +101,12 @@ export interface ExperimentControllerOptions {
    * one at a time. The result records the limits this resolves to.
    */
   concurrency?: ExperimentConcurrencySetting;
-  /** Times rate-limit pauses. Defaults to the system clock. */
+  /**
+   * Which failed attempts are retried, and how often per provider turn.
+   * Omitted, nothing is retried. The result records the policy.
+   */
+  retryPolicy?: ExperimentRetryPolicy;
+  /** Times rate-limit pauses and retry waits. Defaults to the system clock. */
   clock?: SchedulerClock;
 }
 
@@ -128,8 +134,10 @@ function terminalStatus(state: RunState): TerminalRunStatus | undefined {
  * each connection as slots free up. With the default limits of 1 it runs one
  * cell at a time. A provider 429 pauses new cells on its connection.
  *
- * It deliberately has no automatic retry policy: a retryable attempt is
- * finalized as a failed ordinary run and later cells proceed. Tool calls it
+ * A 429 is retried only when the retry policy allows it, after the same wait
+ * the pause uses, at most the policy's bound per provider turn. Every other
+ * retryable attempt, and a 429 past that bound, is finalized as a failed
+ * ordinary run and later cells proceed. Tool calls it
  * does serve, but only from a binding that was resolvable before the first
  * provider call — a repetition never stops to ask a person, because nobody is
  * watching a batch call by call. Calls that reach one MCP server or one
@@ -159,6 +167,7 @@ export class ExperimentController {
   private connections: ReadonlyMap<string, Omit<ExperimentConnectionPause, "until">> = new Map();
   private readonly toolLocks = new ToolResourceLocks();
   private readonly clock: SchedulerClock;
+  private readonly retryPolicy: ExperimentRetryPolicy;
   private changed = false;
   /** Terminal cells as last reported, so a pause can be reported between cell updates. */
   private finished = 0;
@@ -174,6 +183,7 @@ export class ExperimentController {
     this.bindings = options.toolBindings ?? [];
     this.createExecutor = options.createExecutor;
     this.clock = options.clock ?? systemSchedulerClock;
+    this.retryPolicy = options.retryPolicy ?? noExperimentRetries();
   }
 
   get isRunning(): boolean {
@@ -266,8 +276,7 @@ export class ExperimentController {
         ...(stop ? { stop } : {}),
         endedAt: new Date().toISOString(),
         concurrency,
-        // A 429 fails its repetition until the scheduler learns to retry.
-        retryPolicy: noExperimentRetries(),
+        retryPolicy: this.retryPolicy,
         // Placed by plan index, so finishing order never reorders them.
         cells: plan.cells.map((cell, index) =>
           cells[index] ?? { cellId: cell.cellId, runId: cell.runId, status: "not-run" }
@@ -463,8 +472,21 @@ export class ExperimentController {
       const limited = rateLimitedAttempt(coordinator.state);
       if (limited) {
         // Keep later cells on this connection from making the limit worse.
-        // This cell is not hidden: it fails below, as it always has.
-        this.pauseConnection(connection, rateLimitPauseMs(limited.headers, this.clock.now()));
+        const waitMs = rateLimitPauseMs(limited.headers, this.clock.now());
+        this.pauseConnection(connection, waitMs);
+        if (this.mayRetryRateLimited(coordinator.state)) {
+          // The cell keeps its slot while it waits, and the wait ends early
+          // only when the experiment does.
+          await this.clock.sleep(waitMs, controller.signal);
+          if (controller.signal.aborted) {
+            coordinator.cancel(this.abortReason());
+            break;
+          }
+          command = coordinator.retry();
+          notify();
+          continue;
+        }
+        // Not retried: this cell fails below, as it always has.
       }
       if (coordinator.state.status.kind !== "awaiting_tool_results") break;
       if (coordinator.state.turns.length >= ceiling) {
@@ -523,6 +545,16 @@ export class ExperimentController {
         { cause: error },
       );
     }
+  }
+
+  /**
+   * Whether the run is paused on a rate-limited attempt its turn still has a
+   * retry for. Each provider turn has its own budget.
+   */
+  private mayRetryRateLimited(state: RunState): boolean {
+    if (state.status.kind !== "paused" || state.status.reason !== "attempt_failed") return false;
+    const retries = (state.turns.at(-1)?.attempts.length ?? 1) - 1;
+    return retries < this.retryPolicy.rateLimited.maxRetries;
   }
 
   private credentialFor(target: ResolvedRunInput["target"]): Promise<CredentialSelection> {

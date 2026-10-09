@@ -240,6 +240,14 @@ export function noExperimentRetries(): ExperimentRetryPolicy {
   return { rateLimited: { maxRetries: 0 } };
 }
 
+/** How many times one provider turn may be retried after a 429 when retries are on. */
+export const RATE_LIMIT_MAX_RETRIES = 2;
+
+/** Retries on: a rate-limited turn may be retried `RATE_LIMIT_MAX_RETRIES` times. */
+export function rateLimitRetries(): ExperimentRetryPolicy {
+  return { rateLimited: { maxRetries: RATE_LIMIT_MAX_RETRIES } };
+}
+
 /**
  * How many cells could be in flight: at most `maxInFlight` across the whole
  * experiment, and at most each connection's `limit` on that connection. An
@@ -351,6 +359,12 @@ export interface EvaluationVariantAssessment {
   cases: EvaluationCaseAssessment[];
   caseCounts: EvaluationCaseCounts;
   repetitionCounts: Record<EvaluationRepetitionClassification, number>;
+  /**
+   * Repetitions that retried at least one attempt the provider answered with
+   * 429, whatever their classification, so retrying cannot quietly hide a
+   * configuration that keeps reaching its rate limit.
+   */
+  retriedAfterRateLimit: number;
   checkCounts: { total: number; passed: number; failed: number; notEvaluated: number };
   totalDurationMs: ExperimentMetricRange;
   totalTokens: ExperimentUsageAggregate;
@@ -401,6 +415,8 @@ export interface RepeatedExperimentAggregate {
   notRun: number;
   missingTrace: number;
   runsWithRetries: number;
+  /** Runs that retried at least one attempt the provider answered with 429. */
+  retriedAfterRateLimit: number;
   totalDurationMs: ExperimentMetricRange;
   ttfoMs: ExperimentMetricRange;
   reportedTotalTokens: ExperimentMetricRange;
@@ -1353,6 +1369,17 @@ export function isRateLimitedRun(state: RunState): boolean {
 }
 
 /**
+ * How many attempts in the run the provider answered with 429 and that were
+ * then retried. Read from the trace, like `isRateLimitedRun`, so it counts the
+ * same way whoever retried them.
+ */
+export function rateLimitRetryCount(state: RunState): number {
+  return state.turns.reduce((count, { attempts }) =>
+    count + attempts.slice(0, -1).filter(({ status, error }) =>
+      status === "failed" && error?.code === "provider_error" && error.providerStatus === 429).length, 0);
+}
+
+/**
  * Derives summary evidence from immutable artifacts and ordinary run states.
  * Missing states are explicitly represented rather than treated as zero-valued
  * metrics or successful repetitions.
@@ -1375,6 +1402,7 @@ export function repeatedExperimentAggregate(
   let notRun = 0;
   let missingTrace = 0;
   let runsWithRetries = 0;
+  let retriedAfterRateLimit = 0;
   const durations: number[] = [];
   const ttfo: number[] = [];
   const totalTokens: Array<number | undefined> = [];
@@ -1403,6 +1431,7 @@ export function repeatedExperimentAggregate(
     }
     const metrics = runMetrics(state);
     if (metrics.retryCount > 0) runsWithRetries += 1;
+    if (rateLimitRetryCount(state) > 0) retriedAfterRateLimit += 1;
     if (metrics.totalDurationMs !== undefined) durations.push(metrics.totalDurationMs);
     if (metrics.ttfoMs !== undefined) ttfo.push(metrics.ttfoMs);
     totalTokens.push(metrics.usage.totalTokens);
@@ -1426,6 +1455,7 @@ export function repeatedExperimentAggregate(
     notRun,
     missingTrace,
     runsWithRetries,
+    retriedAfterRateLimit,
     totalDurationMs: range(durations),
     ttfoMs: range(ttfo),
     reportedTotalTokens: range(totalTokens.filter((value): value is number => value !== undefined)),
@@ -1496,6 +1526,7 @@ export function evaluationParsedExperimentAggregate(
       cancelled: 0, "not-run": 0, "trace-unavailable": 0,
     };
     const checkCounts = { total: 0, passed: 0, failed: 0, notEvaluated: 0 };
+    let retriedAfterRateLimit = 0;
     const durations: number[] = [];
     const totalTokenValues: Array<number | undefined> = [];
     const outputTokenValues: Array<number | undefined> = [];
@@ -1544,6 +1575,7 @@ export function evaluationParsedExperimentAggregate(
         if (state.status.kind === "completed" && metrics.totalDurationMs !== undefined) durations.push(metrics.totalDurationMs);
       }
       repetitionCounts[classification] += 1;
+      if (state && rateLimitRetryCount(state) > 0) retriedAfterRateLimit += 1;
       assessments.set(cell.caseId, [...(assessments.get(cell.caseId) ?? []), {
         cellId: cell.cellId, runId: cell.runId, repetition: cell.repetition, classification, checks,
       }]);
@@ -1568,6 +1600,7 @@ export function evaluationParsedExperimentAggregate(
       cases: caseAssessments,
       caseCounts: { total: caseAssessments.length, passed, failed, incomplete: caseAssessments.length - passed - failed },
       repetitionCounts,
+      retriedAfterRateLimit,
       checkCounts,
       totalDurationMs: range(durations),
       totalTokens: usage(totalTokenValues),

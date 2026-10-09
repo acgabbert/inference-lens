@@ -3,10 +3,10 @@
 **Status:** decisions 1–5 agreed October 9, 2026; decisions 6–8 (rate
 limits and retry) agreed the same day as recommended. A review the same day
 amended decisions 4, 5, and 8 and added decision 9; see
-[Review amendments](#review-amendments). Slices 1–5 are implemented,
-including the retry policy that decision 8 adds to slice 1; see
+[Review amendments](#review-amendments). All six slices are implemented; see
 [Implementation status](#implementation-status), and the
-[headless CLI design](HEADLESS_CLI_DESIGN.md) for slice 4's flags. The decisions below need no
+[headless CLI design](HEADLESS_CLI_DESIGN.md) for the CLI flags of slices 4
+and 6. The decisions below need no
 further sign-off, but the implementation should come back for review if it
 finds that one of them cannot hold.
 **Baseline:** `main` at `ee5f292`.
@@ -570,6 +570,60 @@ answers 429), `tests/evaluation-results-render.test.mjs`,
 and `tests/e2e/rate-limited-classification.spec.ts` (a loopback provider
 refusing one case with a real 429, read in the results and against a
 baseline).
+
+### Slice 6: what exists
+
+`ExperimentControllerOptions.retryPolicy` lets the scheduler retry a 429: when
+an attempt is rate-limited and its turn has retries left, the cell waits and
+calls `coordinator.retry()`. Both start dialogs have a "Retry rate-limited
+requests" checkbox, the CLI has `--retry-rate-limits`, and the result records
+the policy.
+
+Choices made in implementation, within the agreed decisions:
+
+- **The bound.** `RATE_LIMIT_MAX_RETRIES` is 2 and `rateLimitRetries()` is
+  the policy both controls write. The validator still accepts any
+  `maxRetries` of 0 or more, so the bound belongs to the controls, not the
+  format.
+- **The wait.** The same `rateLimitPauseMs` reading as the pause, on the
+  scheduler's clock, ended early only by the cell's own abort. A cell
+  cancelled while it waits is cancelled, with no further attempt. The 429
+  still pauses its connection for other cells, so the waiting cell and its
+  connection resume at about the same time.
+- **The budget.** Per provider turn: a turn's retries used are its attempts
+  less one. A 429 on a later turn of a tool-calling run has its own two.
+- **Counting.** `rateLimitRetryCount(state)` counts the attempts the
+  provider answered with 429 that were then retried, read from the trace.
+  A repetition counts toward `retriedAfterRateLimit` (on
+  `EvaluationVariantAssessment`, `RepeatedExperimentAggregate`, and each
+  configuration in the CLI summary) when that is above 0, whatever its
+  classification: one that retried and then succeeded counts, and so does
+  one whose retries ran out. The existing `runsWithRetries` still counts
+  any retry.
+- **Presentation.** The checkbox is off each time a dialog opens, as the
+  concurrency field starts at 1. The evaluation header adds "rate-limited
+  requests retried up to 2 times" and a configuration's case counts add
+  "N retried after rate limiting". The repeated experiment adds a
+  "Retried after rate limiting" row, "N of M · up to 2 retries per turn
+  allowed", shown whenever retries were allowed, so a clean run reads as
+  clean.
+- **Not done.** A baseline comparison does not name a changed retry policy
+  as drift the way it names concurrency. A retried run's evidence is
+  complete, so the two sides are still comparable; whether to name it is
+  left open.
+
+Verification: `tests/concurrent-experiment-scheduler.test.ts` (a retry after
+the header's wait, the third 429 failing as rate-limited, a budget per turn,
+a 503 not retried, retries off, and cancellation during the wait),
+`tests/experiment.test.ts` and `tests/evaluation-comparison.test.ts` (the
+counts), `tests/cli-headless-run.test.ts` (the flag),
+`tests/repeated-experiment-render.test.mjs`,
+`tests/evaluation-results-render.test.mjs`,
+`tests/evaluation-suite-render.test.mjs` (both dialogs and workspaces), and
+`tests/e2e/rate-limit-retry.spec.ts` (a loopback provider refusing one case
+once with a real 429: with the box checked the case passes after a second
+request and the results say so; unchecked it is rate limited and nothing is
+retried).
 
 ## Review amendments
 

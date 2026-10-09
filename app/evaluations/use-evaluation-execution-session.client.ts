@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 
 import type { CredentialSelection, ProviderTurnTransport } from "../../packages/contracts/src/index.ts";
-import { experimentExposedTools } from "../../packages/core/src/experiment.ts";
+import { experimentExposedTools, rateLimitRetries } from "../../packages/core/src/experiment.ts";
 import type {
   EvaluationExperimentPlanV3,
   ExperimentConcurrencySetting,
@@ -42,6 +42,8 @@ export interface EvaluationExecutionDraft {
    * limits the run actually used.
    */
   concurrency?: ExperimentConcurrencySetting;
+  /** Whether a 429 is retried, up to the bound the core sets. Absent means off; the result records it. */
+  retryRateLimits?: boolean;
 }
 
 export interface EvaluationLiveProgress {
@@ -101,6 +103,10 @@ export function useEvaluationExecutionSession(options: UseEvaluationExecutionSes
     setDraft((current) => current ? { ...current, concurrency } : current);
   }, []);
 
+  const setRetryRateLimits = useCallback((retryRateLimits: boolean) => {
+    setDraft((current) => current ? { ...current, retryRateLimits } : current);
+  }, []);
+
   const confirm = useCallback(async (workspace: ProjectWorkspaceHandle | null) => {
     const pending = draft;
     if (!pending || controllerRef.current?.isRunning) return;
@@ -140,6 +146,7 @@ export function useEvaluationExecutionSession(options: UseEvaluationExecutionSes
         experimentExposedTools(pending.plan).find(({ id }) => id === toolId)?.name ?? toolId),
       ...persistence,
       ...(pending.concurrency ? { concurrency: pending.concurrency } : {}),
+      ...(pending.retryRateLimits ? { retryPolicy: rateLimitRetries() } : {}),
       onProgress(progress) {
         setExecution((current) => current?.plan.experimentId === pending.plan.experimentId
           ? {
@@ -233,5 +240,5 @@ export function useEvaluationExecutionSession(options: UseEvaluationExecutionSes
     if (!controllerRef.current?.isRunning) setExecution(undefined);
   }, []);
 
-  return { draft, execution, begin, dismissDialog, setConcurrency, confirm, cancel, openTrace, openSaved, returnToEvaluation, clear, isRunning };
+  return { draft, execution, begin, dismissDialog, setConcurrency, setRetryRateLimits, confirm, cancel, openTrace, openSaved, returnToEvaluation, clear, isRunning };
 }
