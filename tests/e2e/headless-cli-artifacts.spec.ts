@@ -59,8 +59,8 @@ test("the app opens an evaluation the headless CLI wrote", async ({ page }) => {
   await expect(page.getByText(/Inspect every model run · Headless fixture/)).toBeVisible();
 
   await page.getByLabel("Run data menu").click();
-  await page.getByRole("button", { name: "Run history…" }).click();
-  const grouped = page.locator(".run-history-item.experiment").filter({ hasText: "Evaluation · Arithmetic" });
+  await page.getByRole("button", { name: "Run history", exact: true }).click();
+  const grouped = page.locator(".runs-evidence-item.experiment").filter({ hasText: "Evaluation · Arithmetic" });
   await expect(grouped).toHaveCount(1);
   await expect(grouped).toContainText("1/2 cases passed");
   await expect(grouped).toContainText("completed");
