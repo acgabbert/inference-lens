@@ -6,13 +6,14 @@ import {
   materializeParsedExperimentCellInput,
   noExperimentRetries,
   parseExperimentPlanFile,
+  resolveExperimentConcurrency,
   serializeParsedExperimentPlan,
   serializeExperimentResult,
-  sequentialExperimentConcurrency,
   EXPERIMENT_RESULT_SCHEMA_VERSION,
 } from "../../core/src/experiment.ts";
 import type {
   ExperimentCell,
+  ExperimentConcurrencySetting,
   ExperimentPlanV4,
   ExperimentResult,
   ExperimentStopV6,
@@ -25,6 +26,10 @@ import type { ResolvedRunInput, RunId } from "../../core/src/run-kernel/types.ts
 import { executeToolCall, resolveToolBinding } from "../../core/src/tool-execution.ts";
 import type { ToolBinding, ToolExecutor } from "../../core/src/tool-execution.ts";
 import { driveProviderTurn } from "./provider-turn-driver.ts";
+import { rateLimitedAttempt, rateLimitPauseMs } from "./rate-limit-pause.ts";
+import { systemSchedulerClock } from "./scheduler-clock.ts";
+import type { SchedulerClock } from "./scheduler-clock.ts";
+import { toolResourceKey, ToolResourceLocks } from "./tool-resource-locks.ts";
 import { pendingToolCalls, toolResolutionForBinding } from "../../core/src/tool-binding-resolution.ts";
 
 export interface SequentialExperimentProgress {
@@ -75,7 +80,19 @@ export interface SequentialExperimentControllerOptions {
    * such route passes `createMockOnlyToolExecutor`.
    */
   createExecutor(binding: ToolBinding): ToolExecutor;
+  /**
+   * How many cells may run at once. Omitted, every limit is 1 and cells run
+   * one at a time. The result records the limits this resolves to.
+   */
+  concurrency?: ExperimentConcurrencySetting;
+  /** Times rate-limit pauses. Defaults to the system clock. */
+  clock?: SchedulerClock;
 }
+
+type ResultCells = Array<ExperimentResult["cells"][number] | undefined>;
+
+const USER_STOP_REASON = "Stopped by user.";
+const INTERRUPTED_REASON = "Stopped because another repetition's trace could not be saved.";
 
 function terminalStatus(state: RunState): TerminalRunStatus | undefined {
   switch (state.status.kind) {
@@ -89,18 +106,27 @@ function terminalStatus(state: RunState): TerminalRunStatus | undefined {
 }
 
 /**
- * Sequential, non-React execution owner for one already-frozen experiment plan.
+ * Non-React execution owner for one already-frozen experiment plan.
+ *
+ * Cells run up to the configured limits: at most `maxInFlight` at once, and at
+ * most each connection's limit on that connection, starting in plan order on
+ * each connection as slots free up. With the default limits of 1 it runs one
+ * cell at a time. A provider 429 pauses new cells on its connection.
  *
  * It deliberately has no automatic retry policy: a retryable attempt is
- * finalized as a failed ordinary run and the next cell proceeds. Tool calls it
+ * finalized as a failed ordinary run and later cells proceed. Tool calls it
  * does serve, but only from a binding that was resolvable before the first
  * provider call — a repetition never stops to ask a person, because nobody is
- * watching a batch call by call.
+ * watching a batch call by call. Calls that reach one MCP server or one
+ * declared command never overlap, whichever cells make them.
  */
 export class SequentialExperimentController {
   private readonly options: SequentialExperimentControllerOptions;
   private readonly states = new Map<RunId, RunState>();
-  private activeAbortController: AbortController | undefined;
+  /** One per cell in flight; cancellation aborts them all. */
+  private readonly cellAbortControllers = new Set<AbortController>();
+  /** Aborted on cancellation or interruption, ending any rate-limit pause. */
+  private readonly runAbortController = new AbortController();
   private frozenPlan: ExperimentPlanV4 | undefined;
   private readonly credentials = new Map<string, CredentialSelection>();
   private cancellationRequested = false;
@@ -108,6 +134,14 @@ export class SequentialExperimentController {
   private stop: ExperimentStopV6 | undefined;
   /** Cells started so far; each cell's start order is this count once it starts. */
   private startedCells = 0;
+  /** The first failure that must reject `run()` once every cell has settled. */
+  private interruption: Error | undefined;
+  /** When each paused connection may start cells again, by connection key. */
+  private readonly pausedUntil = new Map<string, number>();
+  private readonly toolLocks = new ToolResourceLocks();
+  private readonly clock: SchedulerClock;
+  private changed = false;
+  private wake: (() => void) | undefined;
   private running = false;
   private hasRun = false;
 
@@ -118,17 +152,18 @@ export class SequentialExperimentController {
     this.options = options;
     this.bindings = options.toolBindings ?? [];
     this.createExecutor = options.createExecutor;
+    this.clock = options.clock ?? systemSchedulerClock;
   }
 
   get isRunning(): boolean {
     return this.running;
   }
 
-  /** Prevents execution before start, or stops the active request and later cells. */
+  /** Prevents execution before start, or stops every active request and later cells. */
   cancel(): void {
     if (this.hasRun && !this.running) return;
     this.cancellationRequested = true;
-    this.activeAbortController?.abort();
+    this.abortInFlight();
   }
 
   async run(): Promise<ExperimentResult> {
@@ -183,6 +218,7 @@ export class SequentialExperimentController {
         this.credentials.set(key, await this.options.prepareCredential(target));
       }
     }
+    const concurrency = resolveExperimentConcurrency(plan, this.options.concurrency);
 
     this.running = true;
     try {
@@ -191,35 +227,28 @@ export class SequentialExperimentController {
       if (this.options.savePlan) await this.options.savePlan(plan, serializedPlan);
       this.hasRun = true;
 
-      const cells: ExperimentResult["cells"] = [];
-      this.emitRunning(cells.length);
-      for (const cell of plan.cells) {
-        if (this.cancellationRequested || this.stop) break;
-        await this.runCell(cell, cells, plan);
-        if (this.cancellationRequested || this.stop) break;
-      }
+      const cells: ResultCells = Array.from({ length: plan.cells.length }, () => undefined);
+      this.emitRunning(0);
+      await this.schedule(plan, preflightInputs, concurrency, cells);
+      if (this.interruption) throw this.interruption;
 
       // A user's stop wins over a tool's: both leave later cells unstarted,
       // but the result must not blame a tool for what the user did.
       const cancelled = this.cancellationRequested;
       const stop = cancelled ? undefined : this.stop;
-      if (cancelled || stop) {
-        for (const cell of plan.cells.slice(cells.length)) {
-          cells.push({ cellId: cell.cellId, runId: cell.runId, status: "not-run" });
-        }
-      }
-
       const result: ExperimentResult = {
         schemaVersion: EXPERIMENT_RESULT_SCHEMA_VERSION,
         experimentId: plan.experimentId,
         status: cancelled ? "cancelled" : stop ? "stopped" : "completed",
         ...(stop ? { stop } : {}),
         endedAt: new Date().toISOString(),
-        // Cells run one at a time until the scheduler learns concurrency.
-        concurrency: sequentialExperimentConcurrency(plan),
+        concurrency,
         // A 429 fails its repetition until the scheduler learns to retry.
         retryPolicy: noExperimentRetries(),
-        cells,
+        // Placed by plan index, so finishing order never reorders them.
+        cells: plan.cells.map((cell, index) =>
+          cells[index] ?? { cellId: cell.cellId, runId: cell.runId, status: "not-run" }
+        ),
       };
       // Serialize unconditionally so ad hoc results cross the same strict
       // result-validation boundary as durable results.
@@ -228,27 +257,141 @@ export class SequentialExperimentController {
       this.emit({
         status: result.status,
         requested: plan.cells.length,
-        finished: this.terminalCellCount(cells),
+        finished: this.terminalCellCount(result.cells),
         states: this.states,
       });
       return result;
     } finally {
-      this.activeAbortController = undefined;
+      this.runAbortController.abort();
+      this.cellAbortControllers.clear();
       this.running = false;
     }
   }
 
+  /**
+   * Starts cells as slots free up until none is left to start, then waits for
+   * every cell in flight to settle. A cell is eligible when the experiment and
+   * its connection both have a free slot and its connection is not paused;
+   * cells are considered in plan order, so each connection starts its own in
+   * plan order. After a cancellation, a stop, or an interruption, nothing new
+   * starts, but cells already running are always awaited.
+   */
+  private async schedule(
+    plan: ExperimentPlanV4,
+    inputs: readonly ResolvedRunInput[],
+    concurrency: ReturnType<typeof resolveExperimentConcurrency>,
+    cells: ResultCells,
+  ): Promise<void> {
+    const limits = new Map(
+      concurrency.connections.map((connection) => [experimentConnectionKey(connection), connection.limit]),
+    );
+    const connectionOf = inputs.map(({ target }) => experimentConnectionKey(target));
+    const active = new Map<string, number>();
+    const unstarted = plan.cells.map((_cell, index) => index);
+    let inFlight = 0;
+
+    for (;;) {
+      this.changed = false;
+      for (let position = 0; position < unstarted.length && inFlight < concurrency.maxInFlight;) {
+        if (this.halted()) break;
+        const index = unstarted[position]!;
+        const connection = connectionOf[index]!;
+        if ((active.get(connection) ?? 0) >= limits.get(connection)! || this.isPaused(connection)) {
+          position += 1;
+          continue;
+        }
+        unstarted.splice(position, 1);
+        inFlight += 1;
+        active.set(connection, (active.get(connection) ?? 0) + 1);
+        void this.runCell(plan.cells[index]!, index, inputs[index]!, connection, cells, plan)
+          .catch((error: unknown) => this.interrupt(error))
+          .finally(() => {
+            inFlight -= 1;
+            active.set(connection, active.get(connection)! - 1);
+            this.notifyChange();
+          });
+      }
+      if (inFlight === 0 && (this.halted() || unstarted.length === 0)) return;
+      await this.nextChange();
+    }
+  }
+
+  private halted(): boolean {
+    return this.cancellationRequested || this.stop !== undefined || this.interruption !== undefined;
+  }
+
+  private isPaused(connection: string): boolean {
+    return (this.pausedUntil.get(connection) ?? 0) > this.clock.now();
+  }
+
+  /**
+   * Keeps new cells on `connection` from starting for `ms`. A pause only ever
+   * lengthens; cancellation ends it, because nothing new starts after that.
+   */
+  private pauseConnection(connection: string, ms: number): void {
+    const until = this.clock.now() + ms;
+    if (until <= (this.pausedUntil.get(connection) ?? 0)) return;
+    this.pausedUntil.set(connection, until);
+    void this.clock.sleep(ms, this.runAbortController.signal).then(() => {
+      // Ended by the timer, not by comparing clocks: a timer may fire a
+      // millisecond early, and nothing else would wake the scheduler.
+      if (this.pausedUntil.get(connection) === until) this.pausedUntil.delete(connection);
+      this.notifyChange();
+    });
+  }
+
+  /** Records the first failure, then aborts every cell so `run()` can drain and reject. */
+  private interrupt(error: unknown): void {
+    if (this.interruption) return;
+    this.interruption = error instanceof Error ? error : new Error(String(error));
+    this.abortInFlight();
+  }
+
+  private abortInFlight(): void {
+    for (const controller of this.cellAbortControllers) controller.abort();
+    this.runAbortController.abort();
+    this.notifyChange();
+  }
+
+  /** Why an aborted cell was cancelled. */
+  private abortReason(): string {
+    return this.interruption && !this.cancellationRequested ? INTERRUPTED_REASON : USER_STOP_REASON;
+  }
+
+  private notifyChange(): void {
+    this.changed = true;
+    this.wake?.();
+  }
+
+  /** Resolves on the next cell settling, pause ending, or abort. */
+  private nextChange(): Promise<void> {
+    if (this.changed) return Promise.resolve();
+    return new Promise((resolve) => {
+      this.wake = () => {
+        this.wake = undefined;
+        resolve();
+      };
+    });
+  }
+
+  /**
+   * Runs one cell to a terminal state and saves its trace. The scheduler only
+   * calls this while nothing has halted the experiment, so a cell is never
+   * started after a cancellation, stop, or interruption is recorded.
+   */
   private async runCell(
     cell: ExperimentCell,
-    cells: ExperimentResult["cells"],
+    index: number,
+    input: ResolvedRunInput,
+    connection: string,
+    cells: ResultCells,
     plan: ExperimentPlanV4,
   ): Promise<void> {
-    const input = materializeParsedExperimentCellInput(plan, cell);
     const coordinator = new RunCoordinator(input);
     let command = coordinator.start();
     const startOrder = ++this.startedCells;
     const controller = new AbortController();
-    this.activeAbortController = controller;
+    this.cellAbortControllers.add(controller);
     this.states.set(input.runId, coordinator.state);
     const notify = () => {
       this.states.set(coordinator.state.runId, coordinator.state);
@@ -256,58 +399,59 @@ export class SequentialExperimentController {
     };
     notify();
 
-    if (this.cancellationRequested) {
-      coordinator.cancel("Stopped by user.");
-    } else {
-      const ceiling = experimentTurnCeiling(plan);
-      // One iteration per provider turn. A turn that ends awaiting tool results
-      // is served here and continued; anything else leaves the loop and is
-      // finalized below, so every exit path still produces a terminal trace.
-      for (;;) {
-        const outcome = await driveProviderTurn({
-          coordinator,
-          execution: command.execution,
-          transport: this.options.transport,
-          prepareCredential: () => this.credentialFor(input.target),
-          signal: controller.signal,
-          onStateChange: (state) => {
-            this.states.set(state.runId, state);
-            this.emitRunning(this.terminalCellCount(cells), cell.ordinal);
-          },
-        });
-        if (outcome === "aborted") {
-          // The supported transports emit a cancelled event before throwing when
-          // this controller's signal is aborted. Today this signal is aborted
-          // only by cancel(), so an aborted outcome intentionally ends the whole
-          // experiment. Revisit this if providers gain independent cancellation.
-          coordinator.cancel("Stopped by user.");
-          this.cancellationRequested = true;
-          break;
-        }
-        if (outcome === "superseded") {
-          coordinator.fail({
-            code: "internal_error",
-            message: "The experiment request was superseded unexpectedly.",
-          });
-          break;
-        }
-        if (coordinator.state.status.kind !== "awaiting_tool_results") break;
-        if (coordinator.state.turns.length >= ceiling) {
-          // The ceiling is the cost bound the confirmation quoted, so reaching
-          // it fails this repetition rather than buying another turn. D4: only
-          // this repetition.
-          coordinator.fail({
-            code: "tool_error",
-            message: `This repetition reached its ${ceiling}-turn ceiling with tool calls outstanding.`,
-          });
-          break;
-        }
-        if (!(await this.serveToolCalls(coordinator, cell, input.tools, controller.signal, notify))) break;
-        command = coordinator.continue();
-        notify();
+    const ceiling = experimentTurnCeiling(plan);
+    // One iteration per provider turn. A turn that ends awaiting tool results
+    // is served here and continued; anything else leaves the loop and is
+    // finalized below, so every exit path still produces a terminal trace.
+    for (;;) {
+      const outcome = await driveProviderTurn({
+        coordinator,
+        execution: command.execution,
+        transport: this.options.transport,
+        prepareCredential: () => this.credentialFor(input.target),
+        signal: controller.signal,
+        onStateChange: (state) => {
+          this.states.set(state.runId, state);
+          this.emitRunning(this.terminalCellCount(cells), cell.ordinal);
+        },
+      });
+      if (outcome === "aborted") {
+        // The supported transports emit a cancelled event before throwing when
+        // this controller's signal is aborted. The signal is aborted only when
+        // the whole experiment ends, by cancel() or an interruption, never
+        // for one cell. Revisit this if providers gain independent cancellation.
+        coordinator.cancel(this.abortReason());
+        break;
       }
+      if (outcome === "superseded") {
+        coordinator.fail({
+          code: "internal_error",
+          message: "The experiment request was superseded unexpectedly.",
+        });
+        break;
+      }
+      const limited = rateLimitedAttempt(coordinator.state);
+      if (limited) {
+        // Keep later cells on this connection from making the limit worse.
+        // This cell is not hidden: it fails below, as it always has.
+        this.pauseConnection(connection, rateLimitPauseMs(limited.headers, this.clock.now()));
+      }
+      if (coordinator.state.status.kind !== "awaiting_tool_results") break;
+      if (coordinator.state.turns.length >= ceiling) {
+        // The ceiling is the cost bound the confirmation quoted, so reaching
+        // it fails this repetition rather than buying another turn. D4: only
+        // this repetition.
+        coordinator.fail({
+          code: "tool_error",
+          message: `This repetition reached its ${ceiling}-turn ceiling with tool calls outstanding.`,
+        });
+        break;
+      }
+      if (!(await this.serveToolCalls(coordinator, cell, input.tools, controller.signal, notify))) break;
+      command = coordinator.continue();
+      notify();
     }
-    if (this.activeAbortController === controller) this.activeAbortController = undefined;
+    this.cellAbortControllers.delete(controller);
 
     // D4: do not leave a retryable attempt awaiting interactive retry.
     if (coordinator.state.status.kind === "paused" && coordinator.state.status.reason === "attempt_failed") {
@@ -336,8 +480,8 @@ export class SequentialExperimentController {
     if (!terminal) throw new Error("The experiment cell could not be finalized.");
 
     this.states.set(input.runId, coordinator.state);
-    cells.push({ cellId: cell.cellId, runId: cell.runId, status: terminal.kind, startOrder });
-    if (terminal.kind === "cancelled") this.cancellationRequested = true;
+    cells[index] = { cellId: cell.cellId, runId: cell.runId, status: terminal.kind, startOrder };
+    if (terminal.kind === "cancelled" && !this.interruption) this.cancellationRequested = true;
     this.emitRunning(this.terminalCellCount(cells), cell.ordinal);
     try {
       await this.options.onTerminalTrace?.(createRunTrace(coordinator.state), cell);
@@ -382,19 +526,30 @@ export class SequentialExperimentController {
         });
         return false;
       }
-      const attempt = await executeToolCall(
-        coordinator,
-        this.createExecutor(binding),
-        binding,
-        { toolCallId: call.id, tool, call },
-        { signal },
-      );
+      // A stateful resource serves one call at a time across every cell.
+      // Only the call holds it, so other cells' provider turns still overlap.
+      const resource = toolResourceKey(binding);
+      const release = resource ? await this.toolLocks.acquire(resource) : undefined;
+      let attempt: Awaited<ReturnType<typeof executeToolCall>> | undefined;
+      try {
+        if (!signal.aborted) {
+          attempt = await executeToolCall(
+            coordinator,
+            this.createExecutor(binding),
+            binding,
+            { toolCallId: call.id, tool, call },
+            { signal },
+          );
+        }
+      } finally {
+        release?.();
+      }
       notify();
-      if (this.cancellationRequested || signal.aborted) {
-        // A cancelled execution is the user stopping the batch, not a tool that
+      if (!attempt || this.cancellationRequested || signal.aborted) {
+        // A cancelled execution is the batch ending, not a tool that
         // misbehaved, and the cell has to say so.
-        coordinator.cancel("Stopped by user.");
-        this.cancellationRequested = true;
+        coordinator.cancel(this.abortReason());
+        if (!this.interruption) this.cancellationRequested = true;
         return false;
       }
       const execution = coordinator.state.toolExecutions.find(
@@ -403,7 +558,8 @@ export class SequentialExperimentController {
       if (attempt.outcome.status === "failed" && attempt.outcome.failure.kind === "unavailable") {
         // The binding cannot serve this call or any later one, so continuing
         // would spend a provider call per repetition to fail the same way.
-        this.stop = {
+        // Cells already in flight may find the same thing; the first is the cause.
+        this.stop ??= {
           reason: "tool_unavailable",
           cellId: cell.cellId,
           toolId: tool.id,
@@ -437,8 +593,8 @@ export class SequentialExperimentController {
     return true;
   }
 
-  private terminalCellCount(cells: ExperimentResult["cells"]): number {
-    return cells.filter((cell) => cell.status !== "not-run").length;
+  private terminalCellCount(cells: ResultCells | ExperimentResult["cells"]): number {
+    return cells.filter((cell) => cell !== undefined && cell.status !== "not-run").length;
   }
 
   private emitRunning(finished: number, currentOrdinal?: number): void {

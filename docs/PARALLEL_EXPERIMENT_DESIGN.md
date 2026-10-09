@@ -3,8 +3,8 @@
 **Status:** decisions 1–5 agreed October 9, 2026; decisions 6–8 (rate
 limits and retry) agreed the same day as recommended. A review the same day
 amended decisions 4, 5, and 8 and added decision 9; see
-[Review amendments](#review-amendments). Slice 1 is implemented,
-including the retry policy that decision 8 adds to it; see
+[Review amendments](#review-amendments). Slices 1 and 2 are implemented,
+including the retry policy that decision 8 adds to slice 1; see
 [Implementation status](#implementation-status). The decisions below need no
 further sign-off, but the implementation should come back for review if it
 finds that one of them cannot hold.
@@ -414,6 +414,58 @@ the overall limit, start order on one connection, and the retry policy, and
 both upgrades), `tests/evaluation-execution.test.ts` (independent start
 order across two connections), `tests/repeated-experiment-controller.test.ts` (the scheduler's
 Version 6 output), and `tests/cli-summary.test.ts`.
+
+### Slice 2: what exists
+
+The scheduler in `packages/runner/src/sequential-experiment-controller.ts`
+runs cells concurrently up to the limits, with per-cell abort controllers,
+plan-index result placement, the stop rule of decision 2, per-resource tool
+locks (decision 5), the rate-limit pause (decision 6), and the
+abort-and-drain failure of decision 9. Nothing in the app or CLI sets a
+limit yet, so every run still goes one cell at a time.
+
+Choices made in implementation, within the agreed decisions:
+
+- **The setting.** `ExperimentConcurrencySetting` in `packages/core` is
+  `{ maxInFlight?, connectionLimit?, connections? }`: an overall limit, a
+  default for connections not named, and per-connection limits keyed like
+  the result's. Every value defaults to 1 and must be a positive whole
+  number. `resolveExperimentConcurrency(plan, setting)` turns it into the
+  recorded `ExperimentConcurrency`: entries for connections the plan does
+  not use are ignored, and no connection's limit exceeds `maxInFlight`,
+  because it could never be reached.
+- **Scheduling.** Each time a slot frees, the scheduler walks the unstarted
+  cells in plan order and starts every one whose connection has a free slot
+  and is not paused, while the overall limit allows. Skipping a full or
+  paused connection skips all of its cells, which is what keeps each
+  connection in plan order. A cell holds its slot until its trace is saved,
+  as the sequential loop did.
+- **Pauses.** Time comes from an injectable `SchedulerClock`
+  (`packages/runner/src/scheduler-clock.ts`), so tests move it by hand. A
+  pause ends when its timer fires, not when the clock passes its end, so a
+  timer that fires a millisecond early cannot strand the scheduler. The
+  header reading is `rateLimitPauseMs` in
+  `packages/runner/src/rate-limit-pause.ts`, which slice 6 can reuse for its
+  retry wait. A pause applies at the default limits too: after a 429, the
+  next cell on that connection waits instead of starting at once.
+- **Tool locks.** `ToolResourceLocks` (`tool-resource-locks.ts`) serves each
+  `mcp:<serverId>` or `command:<executorId>` key first come, first served.
+  A cell whose experiment ended while it waited for a lock does not run the
+  call.
+- **Decision 9's aborted cells** are cancelled with the reason "Stopped
+  because another repetition's trace could not be saved.", not "Stopped by
+  user.", and do not mark the experiment as cancelled.
+- **Not yet done.** The class keeps its `Sequential` name and
+  `SequentialExperimentProgress` keeps `currentOrdinal`, which is the
+  ordinal of the cell that last reported. Both change with slice 3's
+  progress contract; at a limit of 1 they mean what they always did.
+
+Verification: `tests/concurrent-experiment-scheduler.test.ts` (plan-order
+placement, the per-connection limit, the stop, cancellation, tool locks,
+decision 9, the pause headers, and the pause itself on a fake clock) and
+`tests/evaluation-execution.test.ts` (resolving a setting, the overall limit
+across two connections, and a pause that leaves the other connection
+running). The existing controller tests pass unchanged.
 
 ## Review amendments
 

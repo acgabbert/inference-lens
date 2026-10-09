@@ -810,6 +810,53 @@ export function sequentialExperimentConcurrency(
   return { maxInFlight: 1, connections: [...connections.values()] };
 }
 
+/**
+ * The concurrency a person asks for. Every limit defaults to 1, so an empty
+ * setting runs one cell at a time. Not persisted: a result records the
+ * effective limits `resolveExperimentConcurrency` derives from it.
+ */
+export interface ExperimentConcurrencySetting {
+  /** Most cells in flight across the whole experiment. */
+  maxInFlight?: number;
+  /** The limit for any connection `connections` does not name. */
+  connectionLimit?: number;
+  /** Per-connection limits. Entries for connections a plan does not use are ignored. */
+  connections?: readonly ExperimentConnectionConcurrency[];
+}
+
+/**
+ * The limits a plan actually runs under. No connection's limit exceeds the
+ * overall limit, because it could never be reached.
+ */
+export function resolveExperimentConcurrency(
+  plan: ExperimentPlanV4,
+  setting: ExperimentConcurrencySetting = {},
+): ExperimentConcurrency {
+  const maxInFlight = concurrencyLimit(setting.maxInFlight, "The overall limit");
+  const connectionLimit = concurrencyLimit(setting.connectionLimit, "The connection limit");
+  const named = new Map(
+    (setting.connections ?? []).map((connection) => [
+      experimentConnectionKey(connection),
+      concurrencyLimit(connection.limit, `The limit for ${connection.profileId}`),
+    ]),
+  );
+  return {
+    maxInFlight,
+    connections: sequentialExperimentConcurrency(plan).connections.map((connection) => ({
+      ...connection,
+      limit: Math.min(maxInFlight, named.get(experimentConnectionKey(connection)) ?? connectionLimit),
+    })),
+  };
+}
+
+function concurrencyLimit(value: number | undefined, label: string): number {
+  if (value === undefined) return 1;
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new ExperimentValidationError(`${label} must be a positive whole number.`);
+  }
+  return value;
+}
+
 /** The key the scheduler and the result both use for one connection. */
 export function experimentConnectionKey(
   target: Pick<ResolvedRunInput["target"], "profileId" | "endpoint">,
