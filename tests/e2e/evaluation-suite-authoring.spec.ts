@@ -182,6 +182,7 @@ test("every offered check kind is addable in the running editor", async ({ page 
     "Did not call tool",
     "Tool call count",
     "Tool call arguments",
+    "Tool call sequence",
   ]) {
     await page.getByLabel("New check kind").selectOption({ label });
     await page.getByRole("button", { name: "+ Add check" }).click();
@@ -218,7 +219,7 @@ test("every offered check kind is addable in the running editor", async ({ page 
     }
   }
   expect(failures).toEqual([]);
-  await expect(editor.locator(".evaluation-case-check-count")).toHaveText("11");
+  await expect(editor.locator(".evaluation-case-check-count")).toHaveText("12");
   await expect(editor).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
 });
 

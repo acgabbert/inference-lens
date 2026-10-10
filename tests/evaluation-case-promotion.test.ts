@@ -14,7 +14,7 @@ const bindingId = createEntityId("evaluation-input", "topic");
 
 function project(): ProjectFile {
   return {
-    schemaVersion: 11, projectId: createEntityId("project", "promotion"), name: "Promotion",
+    schemaVersion: 12, projectId: createEntityId("project", "promotion"), name: "Promotion",
     defaults: { conversationRevisionId: revisionId, target: { connectionRequirementId: createEntityId("connection", "local"), model: "fixture", protocol: "openai-compatible-chat-completions" }, options: {}, enabledToolIds: [] },
     connectionRequirements: [{ id: createEntityId("connection", "local"), name: "Local", provider: "openai-compatible", endpoint: "http://localhost" }],
     conversations: [{ id: createEntityId("conversation", "promotion"), name: "Promotion" }],

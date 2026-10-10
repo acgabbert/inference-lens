@@ -926,3 +926,192 @@ test("tool-call checks never return not-evaluated for a completed run", () => {
     "not-evaluated",
   );
 });
+
+/**
+ * One tool-calling turn per entry, each followed by its results, then an
+ * answering turn. Calls inside one entry share a turn, the way a provider's
+ * parallel calls do.
+ */
+function toolTurnsRun(turns: ReadonlyArray<ReadonlyArray<{ name: string; arguments: string }>>): RunState {
+  const next = eventStream(runId);
+  const events: RunEvent[] = [next(0, { type: "run.started", input: resolvedInput })];
+  let clock = 0;
+  const turn = (index: number) => ({
+    turnId: createEntityId("turn", `sequence-${index}`),
+    exchangeId: createEntityId("exchange", `sequence-${index}`),
+  });
+  turns.forEach((calls, turnIndex) => {
+    const { turnId: id, exchangeId: exchange } = turn(turnIndex);
+    events.push(
+      next((clock += 10), { type: "turn.started", turnId: id, attempt: 1, exchangeId: exchange, input: turnInput }),
+      next((clock += 10), { type: "exchange.requested", turnId: id, attempt: 1, exchangeId: exchange, request }),
+    );
+    const callIds = calls.map((_, callIndex) => createEntityId("tool-call", `sequence-${turnIndex}-${callIndex}`));
+    calls.forEach((call, callIndex) => {
+      events.push(next((clock += 1), {
+        type: "assistant.tool_call_delta",
+        turnId: id,
+        attempt: 1,
+        exchangeId: exchange,
+        toolCallId: callIds[callIndex]!,
+        index: callIndex,
+        nameDelta: call.name,
+        argumentsDelta: call.arguments,
+      }));
+    });
+    events.push(next((clock += 10), {
+      type: "assistant.completed",
+      turnId: id,
+      attempt: 1,
+      exchangeId: exchange,
+      finishReason: { normalized: "tool_calls", raw: "tool_calls" },
+    }));
+    callIds.forEach((toolCallId, callIndex) => {
+      events.push(next((clock += 1), {
+        type: "tool.result_supplied",
+        turnId: id,
+        result: {
+          id: createEntityId("tool-result", `sequence-${turnIndex}-${callIndex}`),
+          toolCallId,
+          content: [{ type: "text", text: "ok" }],
+          resolution: { kind: "manual" },
+        },
+      }));
+    });
+  });
+  const { turnId: last, exchangeId: lastExchange } = turn(turns.length);
+  events.push(
+    next((clock += 10), { type: "turn.started", turnId: last, attempt: 1, exchangeId: lastExchange, input: turnInput }),
+    next((clock += 10), { type: "exchange.requested", turnId: last, attempt: 1, exchangeId: lastExchange, request }),
+    next((clock += 10), { type: "assistant.text_delta", turnId: last, attempt: 1, exchangeId: lastExchange, text: "Done." }),
+    next((clock += 10), {
+      type: "assistant.completed",
+      turnId: last,
+      attempt: 1,
+      exchangeId: lastExchange,
+      finishReason: { normalized: "stop", raw: "stop" },
+    }),
+    next((clock += 10), { type: "run.completed" }),
+  );
+  return reduceAll(events);
+}
+
+test("projects the turn each tool call was made in", () => {
+  const state = toolTurnsRun([
+    [{ name: "search", arguments: "{}" }, { name: "lookup", arguments: "{}" }],
+    [{ name: "book", arguments: "{}" }],
+  ]);
+  assert.deepEqual(
+    runCheckSubject(state).toolCalls?.map(({ name, turnIndex }) => ({ name, turnIndex })),
+    [
+      { name: "search", turnIndex: 0 },
+      { name: "lookup", turnIndex: 0 },
+      { name: "book", turnIndex: 1 },
+    ],
+  );
+});
+
+test("a tool-call sequence requires each step in a later turn than the step before it", () => {
+  const steps = [{ toolName: "search" }, { toolName: "book" }];
+  const ordered = toolTurnsRun([
+    [{ name: "search", arguments: '{"city":"Oslo"}' }],
+    [{ name: "log", arguments: "{}" }],
+    [{ name: "book", arguments: '{"city":"Oslo"}' }],
+  ]);
+  const passed = outcomeFor(ordered, { kind: "tool-call-sequence", steps });
+  assert.equal(passed.status, "passed");
+  assert.deepEqual(evidenceOf(passed), { steps: 2, matchedSteps: 2, matchedTurns: [0, 2] });
+
+  // Emitted in emission order but in the same turn: the second call could not
+  // have depended on the first one's result, so it is not "after" it.
+  const parallel = toolTurnsRun([
+    [{ name: "search", arguments: "{}" }, { name: "book", arguments: "{}" }],
+  ]);
+  const sameTurn = outcomeFor(parallel, { kind: "tool-call-sequence", steps });
+  assert.equal(sameTurn.status, "failed");
+  assert.deepEqual(evidenceOf(sameTurn), { steps: 2, matchedSteps: 1, matchedTurns: [0], firstUnmatchedStep: 2 });
+  assert.equal(
+    sameTurn.status === "failed" && sameTurn.message,
+    'Step 2 (tool "book") was called, but not in a turn after step 1.',
+  );
+
+  const reversed = toolTurnsRun([
+    [{ name: "book", arguments: "{}" }],
+    [{ name: "search", arguments: "{}" }],
+  ]);
+  const backwards = outcomeFor(reversed, { kind: "tool-call-sequence", steps });
+  assert.equal(backwards.status, "failed");
+  assert.deepEqual(evidenceOf(backwards), { steps: 2, matchedSteps: 1, matchedTurns: [1], firstUnmatchedStep: 2 });
+
+  const missing = outcomeFor(ordered, { kind: "tool-call-sequence", steps: [{ toolName: "cancel" }, { toolName: "book" }] });
+  assert.equal(missing.status, "failed");
+  assert.equal(missing.status === "failed" && missing.message, 'Step 1 (tool "cancel") was not called.');
+  assert.deepEqual(evidenceOf(missing), { steps: 2, matchedSteps: 0, matchedTurns: [], firstUnmatchedStep: 1 });
+});
+
+test("a tool-call sequence matches each step at its earliest possible turn", () => {
+  // Matching the first search at turn 2 would leave no later book; the
+  // earliest-turn match at turn 0 is always at least as good.
+  const state = toolTurnsRun([
+    [{ name: "search", arguments: "{}" }],
+    [{ name: "book", arguments: "{}" }],
+    [{ name: "search", arguments: "{}" }],
+  ]);
+  assert.equal(
+    outcomeFor(state, { kind: "tool-call-sequence", steps: [{ toolName: "search" }, { toolName: "book" }] }).status,
+    "passed",
+  );
+  // A repeated step needs a second, later call.
+  const twice = outcomeFor(state, {
+    kind: "tool-call-sequence",
+    steps: [{ toolName: "search" }, { toolName: "book" }, { toolName: "search" }],
+  });
+  assert.deepEqual(evidenceOf(twice), { steps: 3, matchedSteps: 3, matchedTurns: [0, 1, 2] });
+});
+
+test("a tool-call sequence step can require an arguments subset", () => {
+  const state = toolTurnsRun([
+    [{ name: "search", arguments: '{"city":"Bergen"}' }],
+    [{ name: "search", arguments: '{"city":"Oslo","days":2}' }],
+    [{ name: "book", arguments: '{"city":"Bergen"}' }],
+    [{ name: "book", arguments: "not json" }],
+  ]);
+  const matching = outcomeFor(state, {
+    kind: "tool-call-sequence",
+    steps: [
+      { toolName: "search", argumentsSubset: { city: "Oslo" } },
+      { toolName: "book", argumentsSubset: { city: "Bergen" } },
+    ],
+  });
+  assert.deepEqual(evidenceOf(matching), { steps: 2, matchedSteps: 2, matchedTurns: [1, 2] });
+
+  const unmatched = outcomeFor(state, {
+    kind: "tool-call-sequence",
+    steps: [
+      { toolName: "search", argumentsSubset: { city: "Oslo" } },
+      { toolName: "book", argumentsSubset: { city: "Oslo" } },
+    ],
+  });
+  assert.equal(unmatched.status, "failed");
+  assert.equal(
+    unmatched.status === "failed" && unmatched.message,
+    'Step 2 (tool "book") was not called with arguments matching the expected subset.',
+  );
+});
+
+test("a tool-call sequence is decidable for any completed run and parsed strictly", () => {
+  assert.equal(
+    outcomeFor(completedRun({ text: "Hi" }), { kind: "tool-call-sequence", steps: [{ toolName: "search" }] }).status,
+    "failed",
+  );
+  assert.equal(
+    outcomeFor(failedRun(), { kind: "tool-call-sequence", steps: [{ toolName: "search" }] }).status,
+    "not-evaluated",
+  );
+
+  const valid = { checkId: "check_sequence", kind: "tool-call-sequence", steps: [{ toolName: "a" }, { toolName: "b", argumentsSubset: { x: 1 } }] };
+  assert.deepEqual(parseCheckDefinition(valid), valid);
+  assert.throws(() => parseCheckDefinition({ ...valid, steps: [] }), CheckValidationError);
+  assert.throws(() => parseCheckDefinition({ ...valid, negate: true }), CheckValidationError);
+  assert.throws(() => parseCheckDefinition({ ...valid, steps: [{ toolName: "a", extra: 1 }] }), CheckValidationError);
+});

@@ -170,7 +170,8 @@ export type EvaluationCheckAuthoringField =
   | "tool-name"
   | "count"
   | "comparator"
-  | "arguments-subset";
+  | "arguments-subset"
+  | "steps";
 
 export interface EvaluationSuiteAuthoringError {
   message: string;

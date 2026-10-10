@@ -124,7 +124,7 @@ function projectWithEvaluationSuite() {
   });
 }
 
-test("creates a strict, portable Project v11 document", () => {
+test("creates a strict, portable Project v12 document", () => {
   const project = createProjectFile({
     name: "Example",
     request,
@@ -151,8 +151,8 @@ test("creates a strict, portable Project v11 document", () => {
   assert.equal(projectDirectoryName("   "), "Untitled.inference-lens");
   assert.equal(projectExportFileName("Prompt Lab"), "Prompt Lab.project.json");
   assert.equal(projectExportFileName("CON"), "CON-project.project.json");
-  assert.equal(PROJECT_SCHEMA_VERSION, 11);
-  assert.equal(project.schemaVersion, 11);
+  assert.equal(PROJECT_SCHEMA_VERSION, 12);
+  assert.equal(project.schemaVersion, 12);
   assert.equal(project.projectId, "project_example");
   const draft = projectDraft(project);
   assert.deepEqual(projectDraft(project), {
@@ -176,7 +176,7 @@ test("creates a strict, portable Project v11 document", () => {
   });
   assert.deepEqual(project.externalImports, []);
   assert.deepEqual(project.evaluationSuites, []);
-  assert.equal(JSON.parse(serializeProjectFile(project)).schemaVersion, 11);
+  assert.equal(JSON.parse(serializeProjectFile(project)).schemaVersion, 12);
 });
 
 test("resolves native formatting-whitespace tokens without rewriting authored project JSON", () => {
@@ -323,7 +323,7 @@ test("rejects pre-v10 project artifacts with an actionable version error", () =>
       (error: unknown) => {
         const message = (error as Error).message;
         assert.match(message, new RegExp(`schema v${schemaVersion} is not supported`));
-        assert.match(message, /opens schema v10 and v11/);
+        assert.match(message, /opens schema v10, v11 and v12/);
         assert.match(message, /earlier Inference Lens release/);
         assert.doesNotMatch(message, /v10-compatible/);
         return true;
@@ -334,16 +334,16 @@ test("rejects pre-v10 project artifacts with an actionable version error", () =>
 
 test("a project from a newer schema asks for an updated build, not an older release", () => {
   const current = createProjectFile({
-    name: "Version 12",
+    name: "Version 13",
     request,
-    idSuffix: "version-12",
+    idSuffix: "version-13",
     createdAt: "2026-08-01T12:00:00.000Z",
   });
   assert.throws(
-    () => parseProjectFile({ ...current, schemaVersion: 12 }),
+    () => parseProjectFile({ ...current, schemaVersion: 13 }),
     (error: unknown) => {
       const message = (error as Error).message;
-      assert.match(message, /schema v12 is not supported/);
+      assert.match(message, /schema v13 is not supported/);
       assert.match(message, /newer Inference Lens/);
       assert.doesNotMatch(message, /earlier Inference Lens release/);
       return true;
@@ -378,7 +378,7 @@ test("a v10 project moves its connection's protocol onto every execution target"
     })),
   };
   const opened = parseProjectFile(v10);
-  assert.equal(opened.schemaVersion, 11);
+  assert.equal(opened.schemaVersion, 12);
   assert.deepEqual(opened, current);
   assert.equal(opened.defaults.target.protocol, "openai-compatible-chat-completions");
   assert.equal(
@@ -2245,4 +2245,33 @@ test("re-pointing an unknown connection is refused rather than ignored", () => {
       ),
     ProjectValidationError,
   );
+});
+
+test("a v11 project opens as v12 unchanged, and v12 stores a tool-call sequence", () => {
+  const current = createEvaluationSuite(
+    createProjectFile({
+      name: "Version 11",
+      request,
+      idSuffix: "version-11",
+      createdAt: "2026-08-01T12:00:00.000Z",
+    }),
+    "Suite",
+    () => "version-11-suite",
+  ).project;
+  assert.deepEqual(parseProjectFile({ ...current, schemaVersion: 11 }), current);
+
+  const sequence = {
+    checkId: "check_sequence",
+    kind: "tool-call-sequence",
+    steps: [{ toolName: "search", argumentsSubset: { city: "Oslo" } }, { toolName: "book" }],
+  } as const;
+  const suite = current.evaluationSuites[0]!;
+  const withSequence = {
+    ...current,
+    evaluationSuites: [{
+      ...suite,
+      cases: [{ id: "evaluation-case_sequence", name: "Sequence", values: {}, checks: [sequence] }],
+    }],
+  };
+  assert.deepEqual(parseProjectFile(withSequence).evaluationSuites[0]!.cases[0]!.checks, [sequence]);
 });

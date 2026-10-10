@@ -68,13 +68,14 @@ JSON" (failed) and "the pattern was invalid" (not-evaluated).
 
 ## Vocabulary
 
-Eleven kinds ship in v3. Four make a statement about the shape of the answer
+Twelve kinds ship in v4. Four make a statement about the shape of the answer
 and accept `negate`, which asserts the opposite — "does not contain", "does
 not match", "is not JSON". Three are thresholds; their bound direction is
-already in the kind name, so they reject `negate` at parse time. Four assert
+already in the kind name, so they reject `negate` at parse time. Five assert
 on tool calls (see below); none of them accept `negate` — `called-tool` and
 `did-not-call-tool` already state both directions as separate kinds, and a
-negated count or argument match is not an assertion anyone means to write.
+negated count, argument match, or sequence is not an assertion anyone means to
+write.
 
 | Kind | Parameters | Passes when |
 | --- | --- | --- |
@@ -89,6 +90,7 @@ negated count or argument match is not an assertion anyone means to write.
 | `did-not-call-tool` | `toolName` | No turn of the run called `toolName` |
 | `tool-call-count` | `toolName?`, `count`, `comparator` | The number of calls (to `toolName`, or to any tool when omitted) satisfies `comparator` against `count` |
 | `tool-call-arguments` | `toolName`, `argumentsSubset` | Some call to `toolName` has parsed JSON-object arguments that are a superset of `argumentsSubset` |
+| `tool-call-sequence` | `steps` of `toolName`, `argumentsSubset?` | Each step is matched, in order, by a call in a strictly later turn than the previous step's |
 
 Every maximum is inclusive at its exact edge.
 
@@ -184,8 +186,8 @@ value — it is what "the run made no tool calls" looks like, so tool-call
 checks never return `not-evaluated` for a completed run.
 
 Matching is **any-turn**: a check passes if any call anywhere in the run
-satisfies it, not only the last turn or a specific one. Ordered-sequence
-matching (call A before call B) is deliberately deferred.
+satisfies it, not only the last turn or a specific one. The one exception is
+`tool-call-sequence`, below, which is about order.
 
 `toolName` matches `ToolCall.name` exactly — the name a provider actually
 called, which is also what an executor binding resolves. A check never
@@ -201,6 +203,33 @@ into nested objects. Arrays and scalars compare by deep equality — partial
 matching inside an array is ambiguous (which element? which order?), so it is
 not attempted. A call whose arguments never resolved to a JSON object (`parsed`
 is absent) cannot satisfy an arguments check.
+
+### Tool-call sequences
+
+`tool-call-sequence` asserts an order: an ordered list of `steps`, each naming a
+`toolName` and optionally an `argumentsSubset` with the same superset rule as
+`tool-call-arguments`. It passes when every step is satisfied, in order, by a
+call made in a **strictly later turn** than the call that satisfied the step
+before it. Other calls may come between steps.
+
+Order is by turn, not by emission order. Calls a provider emits together in one
+turn were all requested before any of their results existed, so none of them
+could have depended on another. "Look up, then act" emitted as two parallel
+calls is exactly the behavior this check exists to catch, and emission order
+would pass it. For that reason `toolCallsInRun` also projects each call's
+zero-based `turnIndex`.
+
+Each step is matched at the earliest turn it can be. That greedy choice never
+rules out a later step another choice would have allowed, so it finds a match
+whenever one exists, and the evidence it reports is the same for every run that
+reads the same trace.
+
+The evidence is positions only: `steps`, `matchedSteps`, the `matchedTurns` of
+the steps that matched, and on failure `firstUnmatchedStep` (one-based). The
+failure message says why that step did not match: it was never called, it was
+called but not with matching arguments, or it was called only at or before the
+turn of the step before it. Like the other tool-call kinds it cannot be
+negated, and a completed run is always decidable.
 
 ## Evidence
 
@@ -223,9 +252,17 @@ Check definitions carry no `schemaVersion` of their own. They are always
 embedded in a versioned container — the project document, or an evaluation
 execution artifact — and that container's version is what a parser negotiates.
 `CHECK_SCHEMA_VERSION` records the vocabulary's version. Safe regex was version
-2; the four tool-call kinds are version 3. Adding, removing, or changing the
-meaning of a kind requires bumping it and the version of every container that
-stores checks.
+2; the four tool-call kinds are version 3; `tool-call-sequence` is version 4.
+Adding, removing, or changing the meaning of a kind requires bumping it and the
+version of every container that stores checks.
+
+Containers that record the vocabulary — an evaluation plan and a reassessment —
+accept every version in `READABLE_CHECK_SCHEMA_VERSIONS` (currently 3 and 4)
+and write the current one. Each version so far only added kinds, so an older
+list parses unchanged; a container may not, however, carry a kind newer than
+the version it declares. A reassessment may declare a newer vocabulary than the
+execution it rescores: checks are re-derived from saved traces, so a kind the
+execution never had can still score its evidence.
 
 Parsers reject unknown fields, unknown kinds, unsafe identifiers, `negate` on a
 threshold kind, unusable Safe regex definitions, and repeated check identities

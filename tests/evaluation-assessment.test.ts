@@ -10,6 +10,7 @@ import {
 } from "../packages/core/src/evaluation-assessment.ts";
 import type { EvaluationAssessmentV1 } from "../packages/core/src/evaluation-assessment.ts";
 import { CHECK_SCHEMA_VERSION } from "../packages/core/src/checks.ts";
+import type { CheckDefinition } from "../packages/core/src/checks.ts";
 import { createEvaluationExperimentPlan } from "../packages/core/src/evaluation-execution.ts";
 import type {
   EvaluationExperimentPlanV3,
@@ -227,10 +228,10 @@ test("pins the check vocabulary and the scoring policy as literals", () => {
   const plan = evaluationPlan();
   const source = assessment(plan);
 
-  const olderVocabulary = JSON.parse(serializeEvaluationAssessment(source, plan));
-  olderVocabulary.checkSchemaVersion = CHECK_SCHEMA_VERSION - 1;
+  const unreadableVocabulary = JSON.parse(serializeEvaluationAssessment(source, plan));
+  unreadableVocabulary.checkSchemaVersion = 2;
   assert.throws(
-    () => parseEvaluationAssessmentJson(JSON.stringify(olderVocabulary), plan),
+    () => parseEvaluationAssessmentJson(JSON.stringify(unreadableVocabulary), plan),
     EvaluationAssessmentError,
   );
 
@@ -265,5 +266,33 @@ test("is not valid JSON is reported as such", () => {
   assert.throws(
     () => parseEvaluationAssessmentJson("{", evaluationPlan()),
     /not valid JSON/,
+  );
+});
+
+test("reads a reassessment written under check vocabulary 3", () => {
+  const plan = evaluationPlan();
+  const written = JSON.parse(serializeEvaluationAssessment(assessment(plan), plan));
+  written.checkSchemaVersion = 3;
+  assert.equal(parseEvaluationAssessmentJson(JSON.stringify(written), plan).checkSchemaVersion, 3);
+});
+
+test("a reassessment may score an older execution with a newer check kind", () => {
+  const plan = { ...evaluationPlan(), checkSchemaVersion: 3 as const };
+  const sequence: CheckDefinition = {
+    checkId: "check_sequence",
+    kind: "tool-call-sequence",
+    steps: [{ toolName: "search" }, { toolName: "book" }],
+  };
+  const newer = { ...assessment(plan), cases: [{ caseId: "evaluation-case_migrations" as const, checks: [sequence] }] };
+  const json = serializeEvaluationAssessment(newer, plan);
+  assert.equal(JSON.parse(json).checkSchemaVersion, CHECK_SCHEMA_VERSION);
+  assert.deepEqual(parseEvaluationAssessmentJson(json, plan).cases[0]!.checks, [sequence]);
+
+  // The same checks cannot claim the vocabulary that lacked them.
+  const mislabelled = JSON.parse(json);
+  mislabelled.checkSchemaVersion = 3;
+  assert.throws(
+    () => parseEvaluationAssessmentJson(JSON.stringify(mislabelled), plan),
+    /uses a tool-call-sequence check, which check vocabulary Version 3 does not have/,
   );
 });

@@ -58,6 +58,15 @@ const mcpRecordIds = {
  */
 const loopingToolModel = "looping-tool-model";
 /**
+ * Calls tools across turns in a fixed order, so an ordered check has a known
+ * right answer: `get_weather` alone in the first turn, then `get_alerts` and
+ * `get_weather` together in the second, then an answer. "Weather before
+ * alerts" holds; "alerts before weather" does not, because the only weather
+ * call after the alerts call shares its turn.
+ */
+const toolSequenceModel = "tool-sequence-model";
+const toolSequenceTools = ["get_weather", "get_alerts"];
+/**
  * Answers correctly, but slowly enough that a batch is still running while a
  * spec navigates somewhere else.
  *
@@ -161,6 +170,39 @@ const server = createServer(async (request, response) => {
     response.end(JSON.stringify({
       error: "Expected the temperature field to be omitted.",
     }));
+    return;
+  }
+
+  if (body.model === toolSequenceModel) {
+    const exposed = (body.tools ?? []).map((tool) => tool?.function?.name);
+    const missing = toolSequenceTools.filter((name) => !exposed.includes(name));
+    if (missing.length > 0) {
+      response.writeHead(400, { "content-type": "application/json" });
+      response.end(JSON.stringify({
+        error: `Expected ${missing.join(", ")} in tools; received ${JSON.stringify(exposed)}.`,
+      }));
+      console.log(`refused a tool-sequence request without ${missing.join(", ")}`);
+      return;
+    }
+    const supplied = body.messages.filter(({ role }) => role === "tool").length;
+    const call = (id, name) => ({ id, type: "function", function: { name, arguments: toolArguments } });
+    const message = supplied === 0
+      ? { role: "assistant", content: null, tool_calls: [call("call_sequence_1", "get_weather")] }
+      : supplied === 1
+        ? {
+            role: "assistant",
+            content: null,
+            tool_calls: [call("call_sequence_2", "get_alerts"), call("call_sequence_3", "get_weather")],
+          }
+        : { role: "assistant", content: `Sequence complete after ${supplied} tool results.` };
+    response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+    response.end(JSON.stringify({
+      id: "chatcmpl-tool-sequence-fixture",
+      object: "chat.completion",
+      choices: [{ index: 0, message, finish_reason: message.tool_calls ? "tool_calls" : "stop" }],
+      usage: { prompt_tokens: 5, completion_tokens: 6, total_tokens: 11 },
+    }));
+    console.log(`served tool-sequence step after ${supplied} tool result(s)`);
     return;
   }
 

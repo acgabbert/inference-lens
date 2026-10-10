@@ -175,7 +175,7 @@ function unfinishedCheckText(check: CheckDefinition): boolean {
     || (
       (check.kind === "called-tool" || check.kind === "did-not-call-tool" || check.kind === "tool-call-arguments") &&
       check.toolName === ""
-    );
+    ) || (check.kind === "tool-call-sequence" && check.steps.some(({ toolName }) => toolName === ""));
 }
 
 /** Pure, provider-free authoring preflight for a selected suite and revision. */
@@ -231,6 +231,8 @@ export function evaluationSuitePreflight(
           ? `A regex check on case "${evaluationCase.name}" needs a pattern.`
           : check.kind === "called-tool" || check.kind === "did-not-call-tool" || check.kind === "tool-call-arguments"
             ? `A ${check.kind} check on case "${evaluationCase.name}" needs a tool name.`
+            : check.kind === "tool-call-sequence"
+              ? `A tool-call-sequence check on case "${evaluationCase.name}" needs a tool name for every step.`
             : `A ${check.kind} check on case "${evaluationCase.name}" has no expected text yet.`,
       });
     });

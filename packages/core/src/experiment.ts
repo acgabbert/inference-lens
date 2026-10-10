@@ -1,12 +1,13 @@
 import { z } from "zod";
 
 import {
-  CHECK_SCHEMA_VERSION,
   checkDefinitionSchema,
+  checkNewerThanVocabulary,
   checkOutcomeSummary,
   evaluateChecks,
+  READABLE_CHECK_SCHEMA_VERSIONS,
 } from "./checks.ts";
-import type { CheckDefinition, CheckResult } from "./checks.ts";
+import type { CheckDefinition, CheckResult, ReadableCheckSchemaVersion } from "./checks.ts";
 import { isSensitiveTemplateVariableName } from "./project.ts";
 import { runMetrics } from "./run-metrics.ts";
 import { finalAssistantOutput, outputCharacterCount } from "./run-output.ts";
@@ -154,7 +155,8 @@ export interface EvaluationExperimentPlanV4 {
   experimentId: ExperimentId;
   kind: "evaluation";
   createdAt: string;
-  checkSchemaVersion: typeof CHECK_SCHEMA_VERSION;
+  /** New plans declare `CHECK_SCHEMA_VERSION`; older plans keep the version they ran under. */
+  checkSchemaVersion: ReadableCheckSchemaVersion;
   scoringPolicy: "strict";
   repetitions: number;
   /** See `RepeatedExperimentPlanV4.turnCeiling`; the controller reads both. */
@@ -667,7 +669,7 @@ const evaluationVariantSnapshotSchema = z.object({
 const evaluationPlanSchema = planBaseSchema.extend({
   schemaVersion: z.literal(EXPERIMENT_SCHEMA_VERSION),
   kind: z.literal("evaluation"),
-  checkSchemaVersion: z.literal(CHECK_SCHEMA_VERSION),
+  checkSchemaVersion: z.union(READABLE_CHECK_SCHEMA_VERSIONS.map((version) => z.literal(version))),
   scoringPolicy: z.literal("strict"),
   repetitions: z.number().int().positive(),
   turnCeiling: turnCeilingSchema.optional(),
@@ -934,6 +936,14 @@ function assertPlanReferences(plan: ExperimentPlanV4): void {
   });
 
   if (plan.kind !== "evaluation") return;
+  plan.suite.cases.forEach((evaluationCase) => {
+    const newer = checkNewerThanVocabulary(evaluationCase.checks, plan.checkSchemaVersion);
+    if (newer) {
+      throw new ExperimentValidationError(
+        `Evaluation case ${evaluationCase.caseId} uses a ${newer.kind} check, which check vocabulary Version ${plan.checkSchemaVersion} does not have.`,
+      );
+    }
+  });
   const bindingIds = new Set(plan.suite.inputBindings.map(({ id }) => id));
   if (bindingIds.size !== plan.suite.inputBindings.length) {
     throw new ExperimentValidationError("Evaluation input binding identities must be unique.");

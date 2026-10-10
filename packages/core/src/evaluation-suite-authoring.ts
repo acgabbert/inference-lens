@@ -514,6 +514,8 @@ export function defaultCheck(
     case "did-not-call-tool": return { checkId, kind: input.kind, toolName: "" };
     case "tool-call-count": return { checkId, kind: input.kind, count: 1, comparator: "at-least" };
     case "tool-call-arguments": return { checkId, kind: input.kind, toolName: "", argumentsSubset: {} };
+    // Two steps, because one step is only `called-tool` with more ceremony.
+    case "tool-call-sequence": return { checkId, kind: input.kind, steps: [{ toolName: "" }, { toolName: "" }] };
   }
 }
 

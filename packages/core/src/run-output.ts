@@ -44,6 +44,12 @@ export function outputCharacterCount(output: string): number {
 export interface ToolCallEvidence {
   name: string;
   arguments: ToolArguments;
+  /**
+   * The zero-based position of the turn that made the call. Calls in one turn
+   * were emitted together, before any of their results existed, so ordering
+   * assertions compare turns rather than emission order.
+   */
+  turnIndex: number;
 }
 
 /**
@@ -58,11 +64,12 @@ export interface ToolCallEvidence {
  * "unknown" the way they must for `finalAssistantOutput`'s `undefined`.
  */
 export function toolCallsInRun(state: RunState): ToolCallEvidence[] {
-  return state.turns.flatMap((turn) =>
+  return state.turns.flatMap((turn, turnIndex) =>
     turn.attempts.flatMap((attempt) =>
       (attempt.completedToolCalls ?? []).map((call) => ({
         name: call.name,
         arguments: call.arguments,
+        turnIndex,
       })),
     ),
   );

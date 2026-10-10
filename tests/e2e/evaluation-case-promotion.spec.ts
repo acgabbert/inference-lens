@@ -50,7 +50,7 @@ async function openFolder(page: import("@playwright/test").Page, files: Record<s
 
 function fixture(): Record<string, string> {
   const project: ProjectFile = {
-    schemaVersion: 11,
+    schemaVersion: 12,
     projectId: ids.project,
     name: "Promotion browser fixture",
     defaults: { conversationRevisionId: ids.revision, target: { connectionRequirementId: ids.connection, model: "fixture-model", protocol: "openai-compatible-chat-completions" }, options: {}, enabledToolIds: [] },

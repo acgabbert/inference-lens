@@ -1,7 +1,12 @@
 import { z } from "zod";
 
-import { CHECK_SCHEMA_VERSION, checkDefinitionSchema } from "./checks.ts";
-import type { CheckDefinition } from "./checks.ts";
+import {
+  CHECK_SCHEMA_VERSION,
+  checkDefinitionSchema,
+  checkNewerThanVocabulary,
+  READABLE_CHECK_SCHEMA_VERSIONS,
+} from "./checks.ts";
+import type { CheckDefinition, ReadableCheckSchemaVersion } from "./checks.ts";
 import { EVALUATION_ASSESSMENT_FILE_SUFFIX } from "./experiment.ts";
 import type { EvaluationCriteriaOverride, ExperimentPlanV4 } from "./experiment.ts";
 import { stableJsonValue } from "./stable-json.ts";
@@ -49,11 +54,11 @@ export interface EvaluationAssessmentV1 {
   name: string;
   createdAt: string;
   /**
-   * Pinned as a literal, exactly as the plan pins it. A reassessment cannot
-   * use a check kind the execution's vocabulary lacked, because the
-   * execution's own artifact would not parse under this build.
+   * The vocabulary the reassessment's own checks were written in. It may be
+   * newer than the execution's: checks are re-derived from the saved traces,
+   * so a kind the execution never had can still score its evidence.
    */
-  checkSchemaVersion: typeof CHECK_SCHEMA_VERSION;
+  checkSchemaVersion: ReadableCheckSchemaVersion;
   scoringPolicy: "strict";
   cases: EvaluationAssessmentCase[];
 }
@@ -91,7 +96,7 @@ const assessmentSchema = z
     experimentId: entityId("experiment"),
     name: z.string().trim().min(1).max(EVALUATION_ASSESSMENT_NAME_MAX_LENGTH),
     createdAt: z.string().datetime(),
-    checkSchemaVersion: z.literal(CHECK_SCHEMA_VERSION),
+    checkSchemaVersion: z.union(READABLE_CHECK_SCHEMA_VERSIONS.map((version) => z.literal(version))),
     scoringPolicy: z.literal("strict"),
     cases: z.array(assessmentCaseSchema).min(1),
   })
@@ -146,6 +151,13 @@ function assertAssessmentReferences(
       throw new EvaluationAssessmentError(`Reassessment repeats case ${assessmentCase.caseId}.`);
     }
     seenCases.add(assessmentCase.caseId);
+
+    const newer = checkNewerThanVocabulary(assessmentCase.checks, assessment.checkSchemaVersion);
+    if (newer) {
+      throw new EvaluationAssessmentError(
+        `Reassessment case ${assessmentCase.caseId} uses a ${newer.kind} check, which check vocabulary Version ${assessment.checkSchemaVersion} does not have.`,
+      );
+    }
 
     const seenChecks = new Set<string>();
     assessmentCase.checks.forEach((check) => {

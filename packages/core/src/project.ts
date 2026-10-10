@@ -75,9 +75,9 @@ export const PROJECT_DIRECTORY_SUFFIX = ".inference-lens";
 export const PROJECT_FILE_NAME = "project.json";
 export const PROJECT_EXPORT_FILE_SUFFIX = ".project.json";
 export const PROJECT_GITIGNORE_CONTENTS = "*\n";
-export const PROJECT_SCHEMA_VERSION = 11;
-/** Older versions this build still opens; see `migrateV10Project`. */
-const OPENABLE_PROJECT_SCHEMA_VERSIONS: readonly number[] = [10];
+export const PROJECT_SCHEMA_VERSION = 12;
+/** Older versions this build still opens; see `migrateProject`. */
+const OPENABLE_PROJECT_SCHEMA_VERSIONS: readonly number[] = [10, 11];
 
 /**
  * Turns the portable project display name into one safe, visible directory
@@ -310,8 +310,8 @@ interface ProjectReferenceValidationShape {
   defaults: ProjectDefaults;
 }
 
-export interface ProjectFileV11 {
-  schemaVersion: 11;
+export interface ProjectFileV12 {
+  schemaVersion: 12;
   projectId: ProjectId;
   name: string;
   connectionRequirements: ConnectionRequirement[];
@@ -325,7 +325,7 @@ export interface ProjectFileV11 {
   defaults: ProjectDefaults;
 }
 
-export type ProjectFile = ProjectFileV11;
+export type ProjectFile = ProjectFileV12;
 
 const entityId = <Kind extends Parameters<typeof createEntityId>[0]>(
   kind: Kind,
@@ -787,7 +787,7 @@ const evaluationSuiteSchema: z.ZodType<EvaluationSuite> = z
   })
   .strict();
 
-const projectFileV11Schema: z.ZodType<ProjectFileV11> = z
+const projectFileV12Schema: z.ZodType<ProjectFileV12> = z
   .object({
     schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
     projectId: entityId("project"),
@@ -1037,7 +1037,7 @@ function validateSharedProjectReferences(
 }
 
 function validateProjectReferences(
-  project: ProjectFileV11,
+  project: ProjectFileV12,
   context: z.RefinementCtx,
 ): void {
   validateSharedProjectReferences(
@@ -1306,7 +1306,7 @@ function validateProjectReferences(
 }
 
 function validateEvaluationSuites(
-  project: ProjectFileV11,
+  project: ProjectFileV12,
   templates: ReadonlyMap<PromptTemplateId, PromptTemplate>,
   context: z.RefinementCtx,
 ): void {
@@ -1485,9 +1485,9 @@ export class ProjectValidationError extends Error {
 
 function unsupportedSchemaMessage(version: unknown): string {
   const openable = [...OPENABLE_PROJECT_SCHEMA_VERSIONS, PROJECT_SCHEMA_VERSION]
-    .map((openableVersion) => `v${openableVersion}`)
-    .join(" and ");
-  const prefix = `Project schema v${String(version)} is not supported: this build opens schema ${openable}.`;
+    .map((openableVersion) => `v${openableVersion}`);
+  const listed = `${openable.slice(0, -1).join(", ")} and ${openable.at(-1)}`;
+  const prefix = `Project schema v${String(version)} is not supported: this build opens schema ${listed}.`;
   return typeof version === "number" && version > PROJECT_SCHEMA_VERSION
     ? `${prefix} It was saved by a newer Inference Lens; update this build to open it.`
     : `${prefix} Open it with an earlier Inference Lens release that supports it and export it again.`;
@@ -1498,9 +1498,9 @@ function unsupportedSchemaMessage(version: unknown): string {
  * be chat completions. v11 states it on each execution target instead, so the
  * requirement's value moves to every target that names that requirement and
  * the requirement loses the field. Anything malformed is passed through for
- * the v11 schema to reject with its ordinary message.
+ * the current schema to reject with its ordinary message.
  */
-function migrateV10Project(value: object): unknown {
+function migrateV10Project(value: object): object {
   const project = value as Record<string, unknown>;
   const requirements = Array.isArray(project.connectionRequirements)
     ? (project.connectionRequirements as unknown[])
@@ -1517,7 +1517,7 @@ function migrateV10Project(value: object): unknown {
   const defaults = project.defaults;
   return {
     ...project,
-    schemaVersion: PROJECT_SCHEMA_VERSION,
+    schemaVersion: 11,
     connectionRequirements: requirements.map((requirement) => {
       if (!isRecord(requirement)) return requirement;
       const { protocol: _protocol, ...rest } = requirement;
@@ -1536,6 +1536,23 @@ function migrateV10Project(value: object): unknown {
   };
 }
 
+/**
+ * v12 added the `tool-call-sequence` check kind (check vocabulary 4). A v11
+ * document is already a valid v12 document; the version moved only so that a
+ * build which cannot read the new kind refuses the file by version rather than
+ * by an unknown-kind error deep inside a suite.
+ */
+function migrateV11Project(value: object): object {
+  return { ...value, schemaVersion: 12 };
+}
+
+/** Applies each step from the document's version up to the current one. */
+function migrateProject(value: object & { schemaVersion: unknown }): object {
+  let migrated: object = value;
+  if (value.schemaVersion === 10) migrated = migrateV10Project(migrated);
+  return migrateV11Project(migrated);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -1549,9 +1566,9 @@ export function parseProjectFile(value: unknown): ProjectFile {
         message: unsupportedSchemaMessage(value.schemaVersion),
       }]);
     }
-    value = migrateV10Project(value);
+    value = migrateProject(value);
   }
-  const parsed = projectFileV11Schema.safeParse(value);
+  const parsed = projectFileV12Schema.safeParse(value);
   if (!parsed.success) throw new ProjectValidationError(parsed.error.issues);
   return parsed.data;
 }

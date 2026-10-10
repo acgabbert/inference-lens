@@ -26,7 +26,35 @@ import type {
  * Adding, removing, or changing the meaning of a kind requires bumping this
  * constant and the version of every container that stores checks.
  */
-export const CHECK_SCHEMA_VERSION = 3;
+export const CHECK_SCHEMA_VERSION = 4;
+
+/**
+ * Every vocabulary version a container may still declare. Each version only
+ * added kinds, so a definition list valid under an older version parses
+ * unchanged under the current schema.
+ */
+export const READABLE_CHECK_SCHEMA_VERSIONS = [3, CHECK_SCHEMA_VERSION] as const;
+
+export type ReadableCheckSchemaVersion = (typeof READABLE_CHECK_SCHEMA_VERSIONS)[number];
+
+/** Kinds a container declaring an older vocabulary version cannot contain. */
+const CHECK_KIND_INTRODUCED_IN: Partial<Record<string, ReadableCheckSchemaVersion>> = {
+  "tool-call-sequence": 4,
+};
+
+/**
+ * The first definition whose kind is newer than the vocabulary version its
+ * container declares, so a container cannot claim an older version while
+ * carrying checks that version never had.
+ */
+export function checkNewerThanVocabulary(
+  definitions: readonly CheckDefinition[],
+  version: ReadableCheckSchemaVersion,
+): CheckDefinition | undefined {
+  return definitions.find((definition) =>
+    (CHECK_KIND_INTRODUCED_IN[definition.kind] ?? 0) > version,
+  );
+}
 
 export class CheckValidationError extends Error {
   constructor(message: string) {
@@ -52,6 +80,7 @@ export const CHECK_KINDS = [
   "did-not-call-tool",
   "tool-call-count",
   "tool-call-arguments",
+  "tool-call-sequence",
 ] as const;
 
 export type CheckKind = (typeof CHECK_KINDS)[number];
@@ -166,6 +195,24 @@ export interface ToolCallArgumentsCheck extends CheckDefinitionBase {
   argumentsSubset: JsonObject;
 }
 
+export interface ToolCallSequenceStep {
+  toolName: string;
+  /** Same superset semantics as `ToolCallArgumentsCheck.argumentsSubset`. */
+  argumentsSubset?: JsonObject;
+}
+
+/**
+ * Matches when the steps are satisfied in order, each by a call made in a
+ * strictly later turn than the call that satisfied the step before it. Other
+ * calls may come between steps. Calls in one turn are not ordered against each
+ * other: they were emitted before any of their results existed, so none could
+ * have depended on another.
+ */
+export interface ToolCallSequenceCheck extends CheckDefinitionBase {
+  kind: "tool-call-sequence";
+  steps: ToolCallSequenceStep[];
+}
+
 export type CheckDefinition =
   | ExactMatchCheck
   | ContainsCheck
@@ -177,7 +224,8 @@ export type CheckDefinition =
   | CalledToolCheck
   | DidNotCallToolCheck
   | ToolCallCountCheck
-  | ToolCallArgumentsCheck;
+  | ToolCallArgumentsCheck
+  | ToolCallSequenceCheck;
 
 /**
  * The outcome of one check against one run.
@@ -284,6 +332,12 @@ const toolCallArgumentsShape = {
   toolName: z.string(),
   argumentsSubset: jsonObjectSchema,
 };
+const toolCallSequenceShape = {
+  ...definitionBase,
+  steps: z.array(
+    z.object({ toolName: z.string(), argumentsSubset: jsonObjectSchema.optional() }).strict(),
+  ).min(1),
+};
 
 export const checkDefinitionSchema: z.ZodType<CheckDefinition> = z
   .discriminatedUnion("kind", [
@@ -334,6 +388,7 @@ export const checkDefinitionSchema: z.ZodType<CheckDefinition> = z
     z.object({ ...calledToolShape, kind: z.literal("did-not-call-tool") }).strict(),
     z.object({ ...toolCallCountShape, kind: z.literal("tool-call-count") }).strict(),
     z.object({ ...toolCallArgumentsShape, kind: z.literal("tool-call-arguments") }).strict(),
+    z.object({ ...toolCallSequenceShape, kind: z.literal("tool-call-sequence") }).strict(),
   ])
   .superRefine((definition, context) => {
     if (definition.kind !== "regex") return;
@@ -372,6 +427,7 @@ export const authoredCheckDefinitionSchema: z.ZodType<CheckDefinition> = z
     z.object({ ...calledToolShape, kind: z.literal("did-not-call-tool") }).strict(),
     z.object({ ...toolCallCountShape, kind: z.literal("tool-call-count") }).strict(),
     z.object({ ...toolCallArgumentsShape, kind: z.literal("tool-call-arguments") }).strict(),
+    z.object({ ...toolCallSequenceShape, kind: z.literal("tool-call-sequence") }).strict(),
   ])
   .superRefine((definition, context) => {
     if (definition.kind !== "regex" || definition.pattern === "") return;
@@ -532,6 +588,55 @@ function toolCallsNamed(
   toolName: string,
 ): ToolCallEvidence[] {
   return (toolCalls ?? []).filter((call) => call.name === toolName);
+}
+
+function callMatchesStep(call: ToolCallEvidence, step: ToolCallSequenceStep): boolean {
+  if (call.name !== step.toolName) return false;
+  if (step.argumentsSubset === undefined) return true;
+  return call.arguments.parsed !== undefined &&
+    jsonSubsetMatches(step.argumentsSubset, call.arguments.parsed);
+}
+
+/**
+ * Matches each step at the earliest turn after the previous step's turn.
+ * Taking the earliest possible turn never rules out a later step that another
+ * choice would have allowed, so this greedy pass finds a match whenever one
+ * exists.
+ */
+function evaluateToolCallSequence(
+  definition: ToolCallSequenceCheck,
+  toolCalls: readonly ToolCallEvidence[],
+): CheckOutcome {
+  const matchedTurns: number[] = [];
+  for (const [index, step] of definition.steps.entries()) {
+    const after = matchedTurns.at(-1) ?? -1;
+    const match = toolCalls.find((call) => call.turnIndex > after && callMatchesStep(call, step));
+    if (match) {
+      matchedTurns.push(match.turnIndex);
+      continue;
+    }
+    const stepNumber = index + 1;
+    const named = `Step ${stepNumber} (tool "${step.toolName}")`;
+    const message = index > 0 && toolCalls.some((call) => callMatchesStep(call, step))
+      ? `${named} was called, but not in a turn after step ${stepNumber - 1}.`
+      : step.argumentsSubset !== undefined && toolCalls.some((call) => call.name === step.toolName)
+        ? `${named} was not called with arguments matching the expected subset.`
+        : `${named} was not called.`;
+    return outcome(
+      {
+        steps: definition.steps.length,
+        matchedSteps: index,
+        matchedTurns,
+        firstUnmatchedStep: stepNumber,
+      },
+      message,
+    );
+  }
+  return outcome({
+    steps: definition.steps.length,
+    matchedSteps: definition.steps.length,
+    matchedTurns,
+  });
 }
 
 function evaluateOutputCheck(
@@ -786,6 +891,8 @@ export function evaluateCheck(
             : `No call to tool "${definition.toolName}" had arguments matching the expected subset.`,
       );
     }
+    case "tool-call-sequence":
+      return evaluateToolCallSequence(definition, subject.toolCalls ?? []);
   }
 }
 

@@ -2,7 +2,13 @@
 
 import { useState } from "react";
 import { CHECK_KINDS } from "../../packages/core/src/checks";
-import type { CheckDefinition, CheckKind, ToolCallCountComparator } from "../../packages/core/src/checks";
+import type {
+  CheckDefinition,
+  CheckKind,
+  ToolCallCountComparator,
+  ToolCallSequenceCheck,
+  ToolCallSequenceStep,
+} from "../../packages/core/src/checks";
 import type { JsonObject } from "../../packages/core/src/run-kernel";
 import type { EvaluationCase } from "../../packages/core/src/project";
 import type { EvaluationCaseSource } from "../../packages/core/src/evaluation-case-sources";
@@ -55,6 +61,7 @@ const checkKindLabels: Record<CheckKind, string> = {
   "did-not-call-tool": "Did not call tool",
   "tool-call-count": "Tool call count",
   "tool-call-arguments": "Tool call arguments",
+  "tool-call-sequence": "Tool call sequence",
 };
 
 // Ordered by the vocabulary itself, so a new kind cannot be offered without a
@@ -288,6 +295,74 @@ function ConfigurationRow({
   </article>;
 }
 
+/**
+ * A JSON-object text field that commits on blur. An unparsable value or a
+ * non-object reverts to the last committed text rather than committing
+ * something the check cannot hold; `optional` lets an empty field mean "no
+ * value" instead of `{}`.
+ */
+function parseArgumentsSubset(text: string, optional: boolean): JsonObject | undefined | null {
+  if (optional && text.trim() === "") return undefined;
+  try {
+    const value = JSON.parse(text || "{}");
+    return typeof value === "object" && value !== null && !Array.isArray(value) ? value as JsonObject : null;
+  } catch {
+    return null;
+  }
+}
+
+function argumentsText(subset: JsonObject | undefined): string {
+  return subset === undefined ? "" : JSON.stringify(subset, null, 2);
+}
+
+/**
+ * The steps of a tool-call sequence. Steps carry no identity of their own, so
+ * each is keyed by its position and content: removing a middle step remounts
+ * the ones after it instead of leaving their uncontrolled fields showing the
+ * text of the step that used to be there.
+ */
+function SequenceStepsEditor({ check, onCommit }: {
+  check: ToolCallSequenceCheck;
+  onCommit(check: CheckDefinition, field: EvaluationCheckAuthoringField): boolean;
+}) {
+  const commitSteps = (steps: ToolCallSequenceStep[]) => onCommit({ ...check, steps }, "steps");
+  const replace = (index: number, step: ToolCallSequenceStep) =>
+    commitSteps(check.steps.map((current, at) => at === index ? step : current));
+  return <>
+    <ol className="evaluation-sequence-steps">
+      {check.steps.map((step, index) => (
+        <li key={`${index}:${step.toolName}:${argumentsText(step.argumentsSubset)}`}>
+          <fieldset className="evaluation-sequence-step">
+            <legend className="evaluation-sequence-step-heading">
+              <span>Step {index + 1}</span>
+              {index > 0 && <small>in a later turn than step {index}</small>}
+            </legend>
+            <div className="evaluation-sequence-step-body">
+            <label>Tool name <input defaultValue={step.toolName} placeholder="get_weather" onBlur={(event) => {
+              if (event.target.value === step.toolName) return;
+              if (!replace(index, { ...step, toolName: event.target.value })) event.currentTarget.value = step.toolName;
+            }} /></label>
+            <label>Expected arguments (JSON subset, optional)
+              <textarea defaultValue={argumentsText(step.argumentsSubset)} rows={2} placeholder="Any arguments" onBlur={(event) => {
+                const parsed = parseArgumentsSubset(event.target.value, true);
+                const next = parsed === undefined
+                  ? { toolName: step.toolName }
+                  : { toolName: step.toolName, argumentsSubset: parsed ?? {} };
+                if (parsed === null || !replace(index, next)) {
+                  event.currentTarget.value = argumentsText(step.argumentsSubset);
+                }
+              }} />
+            </label>
+            {check.steps.length > 1 && <button className="text-button" type="button" onClick={() => commitSteps(check.steps.filter((_, at) => at !== index))}>Remove step {index + 1}</button>}
+            </div>
+          </fieldset>
+        </li>
+      ))}
+    </ol>
+    <div><button className="button secondary" type="button" onClick={() => commitSteps([...check.steps, { toolName: "" }])}>+ Add step</button></div>
+  </>;
+}
+
 function CheckEditor({ check, error, onCommit, onRemove }: {
   check: CheckDefinition;
   error?: { field: EvaluationCheckAuthoringField; message: string };
@@ -373,12 +448,8 @@ function CheckEditor({ check, error, onCommit, onRemove }: {
             defaultValue={JSON.stringify(check.argumentsSubset, null, 2)}
             rows={4}
             onBlur={(event) => {
-              let parsed: JsonObject;
-              try {
-                const value = JSON.parse(event.target.value || "{}");
-                if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("not an object");
-                parsed = value as JsonObject;
-              } catch {
+              const parsed = parseArgumentsSubset(event.target.value, false);
+              if (!parsed) {
                 event.currentTarget.value = JSON.stringify(check.argumentsSubset, null, 2);
                 return;
               }
@@ -390,6 +461,8 @@ function CheckEditor({ check, error, onCommit, onRemove }: {
         </label>
       )}
       {error?.field === "arguments-subset" && <p className="evaluation-field-error" role="alert">{error.message}</p>}
+      {check.kind === "tool-call-sequence" && <SequenceStepsEditor check={check} onCommit={onCommit} />}
+      {error?.field === "steps" && <p className="evaluation-field-error" role="alert">{error.message}</p>}
     </article>
   );
 }

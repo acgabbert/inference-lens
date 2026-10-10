@@ -783,3 +783,28 @@ test("a 429 on one connection leaves the other connection starting cells", async
   assert.deepEqual(result.cells.map(({ status }) => status), ["failed", "completed", "completed", "completed"]);
   assert.doesNotThrow(() => serializeExperimentResult(result, plan));
 });
+
+test("new plans declare the current check vocabulary, and Version 3 plans stay readable", () => {
+  const plan = planFixture();
+  assert.equal(plan.kind === "evaluation" && plan.checkSchemaVersion, 4);
+
+  const older = JSON.parse(serializeExperimentPlan(plan));
+  older.checkSchemaVersion = 3;
+  assert.equal(parseExperimentPlanJson(JSON.stringify(older)).kind, "evaluation");
+
+  const withSequence = structuredClone(older);
+  withSequence.suite.cases[0].checks.push({
+    checkId: "check_sequence",
+    kind: "tool-call-sequence",
+    steps: [{ toolName: "search" }, { toolName: "book" }],
+  });
+  assert.throws(
+    () => parseExperimentPlanJson(JSON.stringify(withSequence)),
+    /uses a tool-call-sequence check, which check vocabulary Version 3 does not have/,
+  );
+  withSequence.checkSchemaVersion = 4;
+  assert.equal(parseExperimentPlanJson(JSON.stringify(withSequence)).kind, "evaluation");
+
+  older.checkSchemaVersion = 2;
+  assert.throws(() => parseExperimentPlanJson(JSON.stringify(older)));
+});
