@@ -2,7 +2,8 @@
 
 **Status:** proposed design for review; documentation only. The user requested
 this plan, not implementation. Recommendations below are not yet approved.
-**Baseline:** `main` at `5235047`, inspected October 13, 2026.
+**Baseline:** `main` at `5235047`, inspected October 13, 2026; revised after
+review on October 14, 2026.
 **Working feature name:** Create local MCP mock.
 
 ## 1. Outcome and product boundary
@@ -140,6 +141,15 @@ preview labeled **Text returned to the model**. Start without a fabricated
 success result. Empty text is allowed only after an explicit choice to use it;
 blank/not-yet-configured and intentionally empty are different draft states.
 
+Offer an explicit **Insert n8n item-array shape** action for users who want the
+model to see what their n8n tool would have sent. The 2.39.10 captures show the
+child's output items sent as one JSON-array string; Agent 3 and 3.1 serialize
+it compactly, Agent 2.2 pretty-prints it with two-space indentation and
+newlines. The action therefore follows the selected agent node version, names
+the n8n version its shape came from, and is unavailable for unrecorded agent
+versions. It inserts editable text once; nothing wraps the response
+afterwards, and the default remains whatever the user typed.
+
 The first mock returns that same response for every valid call. Say this next
 to the editor: fixed mappings are explanatory context, not executed workflow
 logic, and the response is not computed from the arguments.
@@ -151,9 +161,13 @@ data; do not promise that automatic credential omission makes them sanitized.
 
 ### Download, start, connect
 
-Choose a server label and an explicit port, defaulting to the existing local
-example's `44020`. An occupied port produces an actionable startup error; no
-silent switch to a new port that disagrees with the catalog.
+Choose a server label and an explicit port. Do not default to `44020`: the
+local example uses it and so does the `batch-fixture` entry in
+`tests/fixtures/mcp-servers/catalog.json`, and the repository's fixtures occupy
+`44014`–`44030`. Default outside that range (for example `44100`) and show the
+port prominently, since a second generated mock needs a different one. An
+occupied port produces an actionable startup error; no silent switch to a new
+port that disagrees with the catalog.
 
 Download the folder as a ZIP. Display OS-appropriate virtual-environment,
 dependency-installation, startup, and shutdown instructions. No administrator
@@ -177,20 +191,39 @@ discovery review; it never rewrites the existing attached snapshot.
 ## 5. Extraction contract
 
 Automatic support is an allowlist of tested node versions/configurations, not a
-claim to accept all n8n exports. Begin with the committed string-input and
-primitive-input captures, then add fixed-plus-AI mappings only after their
-model-visible contract is proven against captured evidence.
+claim to accept all n8n exports. The committed n8n 2.39.10 captures under
+`tests/fixtures/n8n/captures/2.39.10/` already record the model-visible schema
+for each starting entry:
+
+| Agent | Call n8n Workflow Tool | Captured `$fromAI` types and shapes |
+| --- | --- | --- |
+| 3.1 | 2.2 | `string`, `number`, `boolean`, `json`; fixed-plus-AI; fixed-only; multiple attached tools |
+| 3 | 2.2 | `string` with a fixed input |
+| 2.2 | 2.2 | `string` with a fixed input |
+
+Fixed-plus-AI mappings are proven by the `fixed-and-ai-inputs-*` captures: the
+literal fixed input is absent from the schema and applied by n8n after the
+call. Widening the allowlist requires a new capture, not a code change alone.
+
+The supported literal form is the one n8n writes when a field is switched to
+model-supplied:
+``={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('key', `description`, 'type') }}``.
+The parser must accept that comment prefix and the backtick-quoted description,
+and treat any other wrapping as unresolved.
 
 | Input shape | Proposed behavior |
 | --- | --- |
-| Literal supported `$fromAI(key, description, type, default)` form | Parse without evaluation; retain evidence paths. Establish required/default semantics from captured behavior rather than guessing from child metadata. |
+| Literal supported `$fromAI(key, description, type)` form | Parse without evaluation; retain evidence paths. Every captured key is required; the schema carries `additionalProperties: false` and the draft-07 `$schema` marker. Take required semantics from captures rather than guessing from child metadata. |
+| `$fromAI` with a fourth (default) argument | No capture records its effect on `required` or `default`. Unresolved until captured. |
+| `$fromAI(key, description, 'json')` | n8n advertises the property with only a `description` and no `type` (`nested-inputs-tool-workflow`). Reproduce that: the property accepts any JSON value, and the runtime validator must too. Do not invent object or array constraints. |
+| Tool with no `$fromAI` inputs | n8n advertises an optional `{"input": {"type": "string"}}` property with no `required` list (`fixed-only-input-tool-workflow`); the captured model call sent no `input`. Reproduce that synthesized property and label it as n8n-generated in review, rather than emitting empty `properties`. |
 | Direct literal fixed value | Display separately; do not expose it as an AI argument. Export only reviewed contextual information. |
 | Parent key differs from child-input name | Preserve both identities and the mapping; model schema uses the actual AI key. |
 | Referenced child absent | Continue only when parent evidence fully determines the reviewed interface; otherwise request child data or manual definition. |
 | `$json`, `$env`, upstream-node references, interpolation, computed keys | Unresolved. Do not evaluate, fetch, or infer them. |
 | Multiple `$fromAI()` calls or duplicate conflicting keys | Block automatic extraction for that field; require explicit resolution. |
 | Unknown node version, dynamic workflow selector, ambiguous agent context | Explain unsupported configuration and offer manual definition. |
-| Object/array types with incomplete constraints | Preserve what is known; do not infer a restrictive schema from one example. Require explicit review and runtime-validator support. |
+| Manually authored object/array types | Preserve what the user declares; do not infer a restrictive schema from one example. Require explicit review and runtime-validator support. |
 | Child code or downstream service nodes | Never execute or translate them. |
 
 Retain schema constraints and metadata as data, including required fields,
@@ -281,8 +314,21 @@ All generated Python is from static, reviewed templates. Imported names,
 descriptions, schemas, responses, and user labels are serialized as data, never
 interpolated into executable source, shell fragments, or Python identifiers.
 Archive paths are fixed/sanitized and cannot escape the bundle. Startup bounds
-manifest/response sizes and restricts file references to the bundle. Set
-concrete limits before implementation, aligned with current discovery caps.
+manifest/response sizes and restricts file references to the bundle. Derive
+the limits from the existing discovery caps rather than choosing new ones: a
+reviewed input schema must fit discovery's `SCHEMA_MAX_BYTES` (64 KiB), above
+which discovery drops a tool's schema, and the manifest must fit
+`DISCOVERY_MAX_BYTES` (4 MiB). Tool-call responses pass through the same
+transport bound, the smaller of the catalog entry's `maxResponseBytes`
+(default 1 MiB) and 4 MiB, measured on the JSON-RPC body after the text is
+JSON-escaped. Set the response-file limit with that envelope and escaping
+headroom, and state it in the README, so a mock that starts cannot return a
+result the app rejects as too large.
+
+`mcp-catalog.example.json` sets `connectTimeoutMs` and `callTimeoutMs`
+explicitly and explains them. A static mock answers quickly, but the
+200 ms call timeouts in the test catalog are a harness choice, not a value to
+copy into a user's catalog.
 
 Runtime rules:
 
@@ -290,6 +336,10 @@ Runtime rules:
   validation protections. No automatic network exposure or credentials.
 - Advertise the exact reviewed descriptor using a public SDK API proven by the
   spike. Prefer an explicit schema registration layer over function inference.
+  The committed Python servers all register decorated functions on
+  `MCPServer`, which is what produced the N1 schema differences; the SDK's
+  low-level `Server`, whose tool listing returns an `inputSchema` verbatim, is
+  the first candidate the spike tries.
 - Validate arguments against the supported reviewed schema, without implicit
   coercion or default insertion. The same schema restrictions must govern
   discovery and invocation.
@@ -297,8 +347,13 @@ Runtime rules:
   text, with `isError: false`. Do not add `structuredContent`, double-encode
   JSON text, trim whitespace, or append a newline.
 - Missing/corrupt configuration or response files fail startup clearly; they
-  never return a placeholder success. Unknown tool/invalid arguments follow
-  tested SDK error behavior; do not manufacture business results.
+  never return a placeholder success. Do not manufacture business results for
+  an unknown tool or invalid arguments. If the mock validates arguments itself
+  rather than relying on the SDK, it also chooses how a rejection reaches the
+  model: a protocol error fails the call in `mcp-execution.ts`, while an
+  `isError: true` result is projected to the model as tool output. S0 decides
+  which, records the reason, and tests it; this is not left to whatever the
+  chosen validator happens to do.
 - Load files at startup. Editing requires restart in v1, stated in the README.
   This makes concurrent calls deterministic and avoids partial-file reloads.
 - Log readiness, tool name, and success/failure without logging argument or
@@ -341,7 +396,7 @@ is down when the result only establishes a timeout.
 | Decision | Options and tradeoff | Recommendation |
 | --- | --- | --- |
 | Product scope | General workflow translation versus contract-and-response scaffold. Translation brings n8n execution semantics and service integrations into scope. | Scaffold only. |
-| Source requirement | Child-only convenience versus parent-aware extraction. Child-only misses agent-visible mappings. | Parent first; optional child; explicit manual fallback. |
+| Source requirement | Child-only convenience versus parent-aware extraction. The model-facing schema is decided by the parent: which inputs are `$fromAI`, which are fixed, and the `input` property n8n synthesizes when none are. None of that is visible in the child. | Parent first; optional child; explicit manual fallback. |
 | Generated behavior | Static text versus argument rules or editable generated functions. Rich behavior adds matching/state semantics immediately. | One static response, editable as a data file. |
 | Schema fidelity | Python-inferred schema versus explicit reviewed schema. Inference is simpler but known to change constraints. | Explicit schema; prove SDK and validator support first. |
 | Result presentation | Infer n8n formatting versus explicit reviewed text. Inference risks changing model-visible output. | Exact text, no whole-request parity claim. |
@@ -357,19 +412,24 @@ are reversible details that can be resolved during implementation.
 
 ### S0 — Settle contracts and prove schema fidelity
 
-Agree the decisions above. Build a bounded SDK experiment that advertises an
-explicit descriptor with required fields and `additionalProperties: false`,
-then validates valid/invalid calls and returns exact text. Use supported public
-APIs; record actual discovered schema, response, package versions, and limits.
-Choose validator dialect/subset and concrete size limits. Stop for design
-review if fidelity cannot hold. This spike is not a shipping UI.
+Agree the decisions above. Build a bounded SDK experiment, starting with the
+low-level `Server`, that advertises an explicit descriptor with required fields,
+`additionalProperties: false`, the draft-07 `$schema` marker, and an untyped
+`json` property, then validates valid/invalid calls and returns exact text. Use
+supported public APIs; record actual discovered schema, response, package
+versions, and limits. Choose the validator dialect/subset, the response-file
+limit, and whether a rejected call is a protocol error or an `isError` result.
+Stop for design review if fidelity cannot hold. This spike is not a shipping UI.
 
 ### S1 — Extract and review n8n tool contracts
 
 Implement the pure parser with supported-version fixtures, unresolved diagnostics,
-and manual resolution types. Start with string and primitive inputs; prove
-fixed-versus-AI mapping separately. Build deterministic tests before parser
-behavior, including unsupported expressions and ambiguous source relationships.
+and manual resolution types. Cover the whole starting allowlist in §5 from the
+committed 2.39.10 captures: each test asserts the extracted schema equals the
+`tools/0/function/parameters` the capture's initial provider request actually
+sent, including the fixed-only and `json` cases. Build deterministic tests
+before parser behavior, including unsupported expressions, the uncaptured
+default argument, and ambiguous source relationships.
 Deliverable: a validated descriptor and provenance, with no runtime generation.
 
 ### S2 — Generate a standalone bundle
@@ -431,7 +491,9 @@ of an existing bug.
 Suggested new specs: `tests/e2e/local-mcp-scaffold.spec.ts` for the guided flow
 and a generated-Python integration spec in the existing Python MCP lane. The
 integration harness may prepare a temporary operator catalog and launch child
-processes; these are test responsibilities, not product capabilities. Ensure
+processes; these are test responsibilities, not product capabilities. The
+generated server's port must not collide with the fixture catalog's
+`44014`–`44030` range used by the repository's fixtures. Ensure
 fixtures are terminated and temporary ports/files cleaned up on failure.
 
 During implementation run scoped unit/contract tests, lint and both TypeScript
@@ -473,7 +535,10 @@ Setup instructions must be proven for every advertised deployment path.
 
 This document was prepared from source, existing fixtures, and the linked
 designs. No new implementation, SDK spike, provider call, Python runtime test,
-or browser run was performed for this planning task. The SDK registration API,
+or browser run was performed for this planning task. The review revision read
+the committed 2.39.10 provider requests for the schema, argument, and result
+observations in §4 and §5, and the discovery and execution modules for the
+size and error-path statements in §7; it ran nothing. The SDK registration API,
 schema validator choice, expanded n8n support matrix, and Docker Desktop recipe
 remain explicit implementation gates, not verified capabilities.
 
