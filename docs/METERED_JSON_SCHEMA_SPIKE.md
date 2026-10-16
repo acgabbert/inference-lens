@@ -65,6 +65,12 @@ this parsed-value experiment; production must enforce its budget on the actual
 original text. The budget values are evidence-gathering defaults, not settled
 product thresholds.
 
+The follow-up [latency measurements](JSON_SCHEMA_LATENCY.md) exercise candidate
+budgets in Node, Chromium, Playwright WebKit, and the actual native Tauri host.
+They do not support the four-million default as a synchronous UI budget;
+500,000 units is a provisional starting point to remeasure with the production
+evaluator before freezing accounting.
+
 Work charges cover indexing, string lengths, key comparisons, graph/reference
 traversal, pair evaluation, canonical encoding/equality, and diagnostics.
 `Array.sort` comparison counts can differ across engines, so sorting uses an
