@@ -165,6 +165,7 @@ export type EvaluationCheckAuthoringField =
   | "case-sensitive"
   | "trim-whitespace"
   | "negate"
+  | "structured-check"
   | "top-level"
   | "limit"
   | "tool-name"

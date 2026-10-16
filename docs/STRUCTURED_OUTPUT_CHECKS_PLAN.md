@@ -1,6 +1,6 @@
 # Structured output checks implementation plan
 
-Status: design settled in review; core JSON parsing, schema preflight, and internal parsed-value evaluation implemented.
+Status: portable vocabulary v4 implemented; example generation and suite authoring implemented. Reassessment editor reuse and results integration remain.
 Date: 2026-10-16.
 
 ## Implementation progress
@@ -88,6 +88,59 @@ Date: 2026-10-16.
   `npm run build:cli` passed. No UI/provider consumer changed, so application E2E
   was not run. Cross-runtime latency was not repeated for this diagnostic change;
   the saved lazy-encoding report is labeled as the earlier baseline.
+
+## Example generation and suite authoring follow-up
+
+- Added the core authoring action `generateJsonSchema`, owned by
+  `json-schema/generate.ts`. It parses strict JSON locally, infers all JSON root
+  types, requires observed fields, inspects every array item, deduplicates item
+  schemas, and offers recursive extra-property rejection. Empty-array warnings
+  are bounded and never enter saved checks.
+- Examples use the schema size/depth and structural budgets; generated schemas
+  must pass the production preflight. Generation is bounded and uses explicit
+  traversal. Prototype-shaped authored keys remain ordinary own properties.
+- Added `StructuredCheckEditor` as the suite's feature owner for schema and
+  example drafts, generation preview, extras choice, input policy, validation,
+  and explicit save/cancel. Invalid drafts stay editable and do not mutate
+  portable data. Only the committed definition is saved through existing suite
+  authoring. JSON Schema is now offered in the check picker; Valid JSON exposes
+  all three input policies. Unchecked formats are listed for loaded/saved schemas.
+- Tests were written before implementation. The core red established the absent
+  generation API (`undefined` versus `function`); inference assertions could not
+  execute until the API existed, so this was not a red demonstration of incorrect
+  inference. The browser red reached an imported schema check and found zero
+  schema draft controls versus the required one. Later label and dirty-project
+  replacement failures were test mechanics, not further behavioral red evidence.
+- `tests/json-schema-generation.test.ts` covers root types, nested required fields,
+  extras, array inference, resource rejection, prototype-shaped properties, and
+  exact evaluator agreement with an equivalent hand-authored schema, without
+  mutation. `tests/e2e/structured-output-checks.spec.ts` covers draft validation,
+  generation/editing, save/cancel, export/reopen, adding schemas, unchecked formats,
+  policy editing, and narrow-screen usability. This slice does not test new
+  provider responses or results rendering.
+- Validation: `npm run test:core` passed all 1,179 tests;
+  `npm run typecheck`, `npm run lint` (the same three existing warnings), and
+  `npm run build:cli` passed. `npm run build:tauri` passed after granting the
+  build's loopback access; this is frontend bundling, not native execution.
+  The scoped `npm run test:e2e -- tests/e2e/structured-output-checks.spec.ts`
+  passed the generation/save/cancel/export/reopen case. The full-suite run
+  exercised both new cases and the expanded suite-authoring spec; both new
+  cases passed, but that run ended at 266 passed, 7 skipped, and one Vite-overlay
+  failure in the unrelated folder-reopen workflow. A production build was
+  concurrent with that run. The clean rerun had 264 passed, 7 skipped, and
+  three dark-theme execution-settings tests blocked by the same Vite overlay.
+  Both new structured-output cases and the expanded authoring spec passed again.
+  This request-body overlay failure is also recorded in
+  [the earlier composition-root verification](PAGE_COMPOSITION_ROOT_EXECUTION_PLAN.md).
+  `npm run test:e2e -- tests/e2e/evaluation-suite-execution-settings.spec.ts`
+  then passed all 16 tests in isolation, including the three blocked cases.
+  After a small editor cleanup (shared unchecked-format listing with leading `/`
+  paths), a later full run with no concurrent build passed: 267 passed,
+  7 skipped, none failed. The earlier overlay failures did not recur.
+  Native Tauri editor interaction remains unverified; review the editor there.
+- Step 4 is not entirely complete: reuse the editor in saved-output reassessment
+  next. Step 5 still owns rendered result diagnostics, strict-versus-fenced
+  provider fixtures, CLI/browser outcome agreement, and the final profile docs.
 
 ## Outcome and scope
 
@@ -485,6 +538,7 @@ incompatibility state when a pairing is unsupported.
 4. **Example generation and authoring.** Test generation before implementation;
    add the editor, preview, invalid draft behavior, explicit extras policy, and
    persistence. Verify hand-authored and generated schemas use the same evaluator.
+   Done for suite authoring and core generation; reassessment editor reuse remains.
 5. **Results and end-to-end behavior.** Render diagnostics in suite and reassessment
    results; verify CLI/browser agreement and reopen exported history. Complete the
    supported-profile, provenance, deterministic-check, and artifact-format docs.
