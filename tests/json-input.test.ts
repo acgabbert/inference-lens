@@ -83,3 +83,28 @@ test("syntax diagnostics never copy engine errors, keys, or values from the answ
     assert.doesNotMatch(JSON.stringify(result), /secret-key|secret-value|SyntaxError/);
   }
 });
+
+test("inline backtick spans cannot open blocks that hide a later JSON fence", () => {
+  for (const prose of ['`x` is markdown', '```x` is markdown', '```language`inline`']) {
+    const result = parseJsonInput(`${prose}\n\x60\x60\x60json\n42\n\x60\x60\x60`, "first-json-fence");
+    assert.equal(result.valid ? result.value : result.diagnostic.code, 42, prose);
+  }
+});
+
+test("recognized fence info strings allow leading spaces and tabs", () => {
+  for (const marker of [' json', '\tJSON', ' \t JsOn \t']) {
+    for (const policy of ["surrounding-fence", "first-json-fence"] as const) {
+      const result = parseJsonInput(`\x60\x60\x60${marker}\n{"answer":42}\n\x60\x60\x60`, policy);
+      assert.deepEqual(result.valid ? result.value : result.diagnostic.code, { answer: 42 }, `${policy}: ${marker}`);
+    }
+  }
+});
+
+test("other-language fences hide nested JSON-looking blocks through their close or EOF", () => {
+  // The three-backtick block closes at the last line; the other two never close.
+  for (const opening of ['```python', '````python', '~~~python']) {
+    const result = parseJsonInput(`${opening}\nprint(42)\n\x60\x60\x60json\n42\n\x60\x60\x60`, "first-json-fence");
+    assert.equal(result.valid, false, opening);
+    if (!result.valid) assert.equal(result.diagnostic.code, "invalid-json");
+  }
+});

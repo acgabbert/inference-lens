@@ -88,11 +88,20 @@ test("enum uniqueness uses JSON equality, including key order and negative zero"
 });
 
 test("rejects unsupported assertions and identifiers even in unused schemas", () => {
-  for (const key of ["pattern", "patternProperties", "$id", "unknown", "unevaluatedProperties", "$async"]) {
+  for (const key of ["$id", "require", "unknown", "unevaluatedProperties", "$async"]) {
     rejected({ [key]: true }, "unsupported-keyword", [key]);
     rejected({ definitions: { unused: { [key]: true } } }, "unsupported-keyword", ["definitions", "unused", key]);
   }
-  rejected({ pattern: "private-pattern" }, "unsupported-keyword");
+  for (const key of ["pattern", "patternProperties"]) {
+    rejected({ [key]: {} }, "unsupported-pattern", [key]);
+    rejected({ definitions: { unused: { [key]: {} } } }, "unsupported-pattern", ["definitions", "unused", key]);
+  }
+  rejected({ pattern: "private-pattern" }, "unsupported-pattern");
+  for (const key of ["require", "$id"]) {
+    const generic = preflightJsonSchema({ [key]: true }, limits);
+    assert.equal(generic.status, "not-evaluated");
+    if (generic.status === "not-evaluated") assert.doesNotMatch(generic.diagnostic.message, /pattern|Safe regex/i);
+  }
   const result = preflightJsonSchema({ pattern: "private-pattern" }, limits);
   assert.ok(!JSON.stringify(result).includes("private-pattern"));
   if (result.status === "not-evaluated") assert.match(result.diagnostic.message, /Safe regex/);
@@ -146,7 +155,14 @@ test("resolves local pointers, URI escapes, array positions, and special own key
   assert.equal(refs.length, 3);
   for (const ref of refs) assert.ok(result.prepared.nodes.has(ref.reference!));
   ready({ definitions: { a: { allOf: [true] } }, $ref: "#/definitions/a/allOf/0" });
-  ready({ const: { nested: { type: "number" } }, allOf: [{ $ref: "#/const/nested" }] });
+  for (const keyword of ["const", "default", "examples", "enum"]) {
+    const array = keyword === "examples" || keyword === "enum";
+    const literal = { nested: { type: "number" } };
+    ready({
+      [keyword]: array ? [literal] : literal,
+      allOf: [{ $ref: `#/${keyword}/${array ? "0/" : ""}nested` }],
+    });
+  }
   ready({ definitions: { "x y": true, "%": true }, allOf: [{ $ref: "#/definitions/x%20y" }, { $ref: "#/definitions/%25" }] });
 });
 

@@ -35,8 +35,9 @@ The supported surface is a restricted draft-07 profile:
   editor/results display. Defaults are never applied to data.
 
 Other dialects, remote references, `$id` rebasing, unknown keywords, `pattern`,
-and `patternProperties` are rejected. Pattern diagnostics direct authors to
-Safe regex checks rather than substituting RE2 for JSON Schema's ECMA-262 rules.
+and `patternProperties` are rejected. The `unsupported-pattern` diagnostic
+directs authors to Safe regex checks rather than substituting RE2 for JSON Schema's ECMA-262 rules.
+Other unsupported keywords receive a generic `unsupported-keyword` message.
 
 Schema size is the compact JSON encoding of the entire schema, including
 annotations and literals. The limit counts UTF-16 code units. Nesting counts the
@@ -48,6 +49,10 @@ are not copied into failures.
 
 `tests/json-schema-preflight.test.ts` covers profile acceptance/rejection,
 reference resolution, consuming and non-consuming recursion, nonmutation,
-enum equality, annotation reporting, and exact resource boundaries. It does not
-yet validate model answers or establish upstream evaluator conformance, browser
-latency, or native Tauri behavior.
+enum equality, annotation reporting, and exact resource boundaries. The core test
+run also includes `tests/json-schema-profile.test.ts`, which sweeps
+all 258 groups in the pinned upstream snapshot: selected schemas must prepare,
+and excluded schemas must return the manifest's explicit rejection code. The
+selection covers 804 answer cases, with 125 cases excluded; each group schema is
+prepared once. This does not yet validate model answers or establish upstream
+evaluator conformance, browser latency, or native Tauri behavior.

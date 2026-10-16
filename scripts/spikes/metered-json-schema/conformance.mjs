@@ -10,4 +10,4 @@ for (const { name, schema, data, expected } of tasks) {
 }
 console.log(JSON.stringify({ revision, passed: tasks.length - failures.length, excluded, failures }, null, 2));
 assert.deepEqual(failures, []);
-assert.equal(tasks.length, 807, 'Update the reviewed manifest and count deliberately');
+assert.equal(tasks.length, 804, 'Update the reviewed manifest and count deliberately');

@@ -6,6 +6,7 @@ import {
 
 export type SchemaPreflightCode = SchemaResourceCode
   | "invalid-schema"
+  | "unsupported-pattern"
   | "unsupported-keyword"
   | "unsupported-dialect"
   | "unsupported-reference"
@@ -58,7 +59,8 @@ const dialects = new Set([
 ]);
 const messages: Record<SchemaPreflightCode, string> = {
   "invalid-schema": "Expected a valid schema in the supported draft-07 profile.",
-  "unsupported-keyword": "This keyword is unsupported. For pattern constraints, use a Safe regex check.",
+  "unsupported-pattern": "Pattern constraints are unsupported. Use a Safe regex check.",
+  "unsupported-keyword": "This keyword is unsupported in the draft-07 profile.",
   "unsupported-dialect": "Only the JSON Schema draft-07 dialect is supported.",
   "unsupported-reference": "Only local JSON Pointer references within this schema are supported.",
   "unresolved-reference": "The local reference does not resolve to a schema.",
@@ -162,6 +164,7 @@ export function preflightJsonSchema(schema: unknown, limits: SchemaLimits): Sche
       const child = (key: string): SchemaJsonNode => node.children.get(key)!;
       for (const [key, value] of node.children) {
         meter.work(key.length + 1);
+        if (key === "pattern" || key === "patternProperties") fail("unsupported-pattern", value);
         if (!allowed.has(key)) fail("unsupported-keyword", value);
         if (key === "$schema" && (typeof value.value !== "string" || !dialects.has(value.value))) {
           fail("unsupported-dialect", value);

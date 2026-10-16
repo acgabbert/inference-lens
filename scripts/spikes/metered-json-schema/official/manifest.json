@@ -55,13 +55,15 @@
       "file": "additionalProperties.json",
       "description": "additionalProperties being false does not allow other properties",
       "tests": 6,
-      "exclude": "Outside profile: patternProperties"
+      "exclude": "Outside profile: patternProperties",
+      "rejectionCode": "unsupported-pattern"
     },
     {
       "file": "additionalProperties.json",
       "description": "non-ASCII pattern with additionalProperties",
       "tests": 2,
-      "exclude": "Outside profile: patternProperties"
+      "exclude": "Outside profile: patternProperties",
+      "rejectionCode": "unsupported-pattern"
     },
     {
       "file": "additionalProperties.json",
@@ -337,7 +339,8 @@
       "file": "definitions.json",
       "description": "validate definition against metaschema",
       "tests": 2,
-      "exclude": "Outside profile: non-pointer reference"
+      "exclude": "Outside profile: non-pointer reference",
+      "rejectionCode": "unsupported-reference"
     },
     {
       "file": "dependencies.json",
@@ -863,43 +866,50 @@
       "file": "pattern.json",
       "description": "pattern validation",
       "tests": 8,
-      "exclude": "Outside profile: pattern"
+      "exclude": "Outside profile: pattern",
+      "rejectionCode": "unsupported-pattern"
     },
     {
       "file": "pattern.json",
       "description": "pattern is not anchored",
       "tests": 1,
-      "exclude": "Outside profile: pattern"
+      "exclude": "Outside profile: pattern",
+      "rejectionCode": "unsupported-pattern"
     },
     {
       "file": "patternProperties.json",
       "description": "patternProperties validates properties matching a regex",
       "tests": 7,
-      "exclude": "Outside profile: patternProperties"
+      "exclude": "Outside profile: patternProperties",
+      "rejectionCode": "unsupported-pattern"
     },
     {
       "file": "patternProperties.json",
       "description": "multiple simultaneous patternProperties are validated",
       "tests": 6,
-      "exclude": "Outside profile: patternProperties"
+      "exclude": "Outside profile: patternProperties",
+      "rejectionCode": "unsupported-pattern"
     },
     {
       "file": "patternProperties.json",
       "description": "regexes are not anchored by default and are case sensitive",
       "tests": 4,
-      "exclude": "Outside profile: patternProperties"
+      "exclude": "Outside profile: patternProperties",
+      "rejectionCode": "unsupported-pattern"
     },
     {
       "file": "patternProperties.json",
       "description": "patternProperties with boolean schemas",
       "tests": 5,
-      "exclude": "Outside profile: patternProperties"
+      "exclude": "Outside profile: patternProperties",
+      "rejectionCode": "unsupported-pattern"
     },
     {
       "file": "patternProperties.json",
       "description": "patternProperties with null valued instance properties",
       "tests": 1,
-      "exclude": "Outside profile: patternProperties"
+      "exclude": "Outside profile: patternProperties",
+      "rejectionCode": "unsupported-pattern"
     },
     {
       "file": "properties.json",
@@ -910,7 +920,8 @@
       "file": "properties.json",
       "description": "properties, patternProperties, additionalProperties interaction",
       "tests": 8,
-      "exclude": "Outside profile: patternProperties"
+      "exclude": "Outside profile: patternProperties",
+      "rejectionCode": "unsupported-pattern"
     },
     {
       "file": "properties.json",
@@ -941,7 +952,8 @@
       "file": "propertyNames.json",
       "description": "propertyNames validation with pattern",
       "tests": 3,
-      "exclude": "Outside profile: pattern"
+      "exclude": "Outside profile: pattern",
+      "rejectionCode": "unsupported-pattern"
     },
     {
       "file": "propertyNames.json",
@@ -991,19 +1003,23 @@
     {
       "file": "ref.json",
       "description": "ref overrides any sibling keywords",
-      "tests": 3
+      "tests": 3,
+      "exclude": "Outside profile: assertions beside $ref are rejected rather than ignored",
+      "rejectionCode": "ref-sibling-assertion"
     },
     {
       "file": "ref.json",
       "description": "$ref prevents a sibling $id from changing the base uri",
       "tests": 2,
-      "exclude": "Outside profile: $id, non-pointer reference"
+      "exclude": "Outside profile: $id, non-pointer reference",
+      "rejectionCode": "unsupported-keyword"
     },
     {
       "file": "ref.json",
       "description": "remote ref, containing refs itself",
       "tests": 2,
-      "exclude": "Outside profile: non-pointer reference"
+      "exclude": "Outside profile: non-pointer reference",
+      "rejectionCode": "unsupported-reference"
     },
     {
       "file": "ref.json",
@@ -1029,7 +1045,8 @@
       "file": "ref.json",
       "description": "Recursive references between schemas",
       "tests": 2,
-      "exclude": "Outside profile: $id, non-pointer reference"
+      "exclude": "Outside profile: $id, non-pointer reference",
+      "rejectionCode": "unsupported-keyword"
     },
     {
       "file": "ref.json",
@@ -1040,19 +1057,22 @@
       "file": "ref.json",
       "description": "Location-independent identifier",
       "tests": 2,
-      "exclude": "Outside profile: $id, non-pointer reference"
+      "exclude": "Outside profile: $id, non-pointer reference",
+      "rejectionCode": "unsupported-reference"
     },
     {
       "file": "ref.json",
       "description": "Reference an anchor with a non-relative URI",
       "tests": 2,
-      "exclude": "Outside profile: $id, non-pointer reference"
+      "exclude": "Outside profile: $id, non-pointer reference",
+      "rejectionCode": "unsupported-keyword"
     },
     {
       "file": "ref.json",
       "description": "Location-independent identifier with base URI change in subschema",
       "tests": 2,
-      "exclude": "Outside profile: $id, non-pointer reference"
+      "exclude": "Outside profile: $id, non-pointer reference",
+      "rejectionCode": "unsupported-keyword"
     },
     {
       "file": "ref.json",
@@ -1063,97 +1083,113 @@
       "file": "ref.json",
       "description": "refs with relative uris and defs",
       "tests": 3,
-      "exclude": "Outside profile: $id, non-pointer reference"
+      "exclude": "Outside profile: $id, non-pointer reference",
+      "rejectionCode": "unsupported-keyword"
     },
     {
       "file": "ref.json",
       "description": "relative refs with absolute uris and defs",
       "tests": 3,
-      "exclude": "Outside profile: $id, non-pointer reference"
+      "exclude": "Outside profile: $id, non-pointer reference",
+      "rejectionCode": "unsupported-keyword"
     },
     {
       "file": "ref.json",
       "description": "$id must be resolved against nearest parent, not just immediate parent",
       "tests": 2,
-      "exclude": "Outside profile: $id, non-pointer reference"
+      "exclude": "Outside profile: $id, non-pointer reference",
+      "rejectionCode": "unsupported-keyword"
     },
     {
       "file": "ref.json",
       "description": "simple URN base URI with $ref via the URN",
       "tests": 2,
-      "exclude": "Outside profile: $id, non-pointer reference"
+      "exclude": "Outside profile: $id, non-pointer reference",
+      "rejectionCode": "unsupported-keyword"
     },
     {
       "file": "ref.json",
       "description": "simple URN base URI with JSON pointer",
       "tests": 2,
-      "exclude": "Outside profile: $id"
+      "exclude": "Outside profile: $id",
+      "rejectionCode": "unsupported-keyword"
     },
     {
       "file": "ref.json",
       "description": "URN base URI with NSS",
       "tests": 2,
-      "exclude": "Outside profile: $id"
+      "exclude": "Outside profile: $id",
+      "rejectionCode": "unsupported-keyword"
     },
     {
       "file": "ref.json",
       "description": "URN base URI with r-component",
       "tests": 2,
-      "exclude": "Outside profile: $id"
+      "exclude": "Outside profile: $id",
+      "rejectionCode": "unsupported-keyword"
     },
     {
       "file": "ref.json",
       "description": "URN base URI with q-component",
       "tests": 2,
-      "exclude": "Outside profile: $id"
+      "exclude": "Outside profile: $id",
+      "rejectionCode": "unsupported-keyword"
     },
     {
       "file": "ref.json",
       "description": "URN base URI with URN and JSON pointer ref",
       "tests": 2,
-      "exclude": "Outside profile: $id, non-pointer reference"
+      "exclude": "Outside profile: $id, non-pointer reference",
+      "rejectionCode": "unsupported-keyword"
     },
     {
       "file": "ref.json",
       "description": "URN base URI with URN and anchor ref",
       "tests": 2,
-      "exclude": "Outside profile: $id, non-pointer reference"
+      "exclude": "Outside profile: $id, non-pointer reference",
+      "rejectionCode": "unsupported-keyword"
     },
     {
       "file": "ref.json",
       "description": "ref to if",
       "tests": 2,
-      "exclude": "Outside profile: $id, non-pointer reference"
+      "exclude": "Outside profile: $id, non-pointer reference",
+      "rejectionCode": "unsupported-reference"
     },
     {
       "file": "ref.json",
       "description": "ref to then",
       "tests": 2,
-      "exclude": "Outside profile: $id, non-pointer reference"
+      "exclude": "Outside profile: $id, non-pointer reference",
+      "rejectionCode": "unsupported-reference"
     },
     {
       "file": "ref.json",
       "description": "ref to else",
       "tests": 2,
-      "exclude": "Outside profile: $id, non-pointer reference"
+      "exclude": "Outside profile: $id, non-pointer reference",
+      "rejectionCode": "unsupported-reference"
     },
     {
       "file": "ref.json",
       "description": "ref with absolute-path-reference",
       "tests": 2,
-      "exclude": "Outside profile: $id, non-pointer reference"
+      "exclude": "Outside profile: $id, non-pointer reference",
+      "rejectionCode": "unsupported-keyword"
     },
     {
       "file": "ref.json",
       "description": "$id with file URI still resolves pointers - *nix",
       "tests": 2,
-      "exclude": "Outside profile: $id"
+      "exclude": "Outside profile: $id",
+      "rejectionCode": "unsupported-keyword"
     },
     {
       "file": "ref.json",
       "description": "$id with file URI still resolves pointers - windows",
       "tests": 2,
-      "exclude": "Outside profile: $id"
+      "exclude": "Outside profile: $id",
+      "rejectionCode": "unsupported-keyword"
     },
     {
       "file": "ref.json",
@@ -1164,67 +1200,78 @@
       "file": "refRemote.json",
       "description": "remote ref",
       "tests": 2,
-      "exclude": "Outside profile: non-pointer reference"
+      "exclude": "Outside profile: non-pointer reference",
+      "rejectionCode": "unsupported-reference"
     },
     {
       "file": "refRemote.json",
       "description": "fragment within remote ref",
       "tests": 2,
-      "exclude": "Outside profile: non-pointer reference"
+      "exclude": "Outside profile: non-pointer reference",
+      "rejectionCode": "unsupported-reference"
     },
     {
       "file": "refRemote.json",
       "description": "ref within remote ref",
       "tests": 2,
-      "exclude": "Outside profile: non-pointer reference"
+      "exclude": "Outside profile: non-pointer reference",
+      "rejectionCode": "unsupported-reference"
     },
     {
       "file": "refRemote.json",
       "description": "base URI change",
       "tests": 2,
-      "exclude": "Outside profile: $id, non-pointer reference"
+      "exclude": "Outside profile: $id, non-pointer reference",
+      "rejectionCode": "unsupported-keyword"
     },
     {
       "file": "refRemote.json",
       "description": "base URI change - change folder",
       "tests": 2,
-      "exclude": "Outside profile: $id, non-pointer reference"
+      "exclude": "Outside profile: $id, non-pointer reference",
+      "rejectionCode": "unsupported-keyword"
     },
     {
       "file": "refRemote.json",
       "description": "base URI change - change folder in subschema",
       "tests": 2,
-      "exclude": "Outside profile: $id, non-pointer reference"
+      "exclude": "Outside profile: $id, non-pointer reference",
+      "rejectionCode": "unsupported-keyword"
     },
     {
       "file": "refRemote.json",
       "description": "root ref in remote ref",
       "tests": 3,
-      "exclude": "Outside profile: $id, non-pointer reference"
+      "exclude": "Outside profile: $id, non-pointer reference",
+      "rejectionCode": "unsupported-keyword"
     },
     {
       "file": "refRemote.json",
       "description": "remote ref with ref to definitions",
       "tests": 2,
-      "exclude": "Outside profile: $id, non-pointer reference"
+      "exclude": "Outside profile: $id, non-pointer reference",
+      "rejectionCode": "unsupported-keyword"
     },
     {
       "file": "refRemote.json",
       "description": "Location-independent identifier in remote ref",
       "tests": 2,
-      "exclude": "Outside profile: non-pointer reference"
+      "exclude": "Outside profile: non-pointer reference",
+      "rejectionCode": "unsupported-reference"
     },
     {
       "file": "refRemote.json",
       "description": "retrieved nested refs resolve relative to their URI not $id",
       "tests": 2,
-      "exclude": "Outside profile: $id, non-pointer reference"
+      "exclude": "Outside profile: $id, non-pointer reference",
+      "rejectionCode": "unsupported-keyword"
     },
     {
       "file": "refRemote.json",
       "description": "$ref to $ref finds location-independent $id",
       "tests": 2,
-      "exclude": "Outside profile: non-pointer reference"
+      "exclude": "Outside profile: non-pointer reference",
+      "rejectionCode": "unsupported-reference"
     },
     {
       "file": "required.json",
