@@ -1,0 +1,1340 @@
+{
+  "revision": "55719286c33ae0d1823bfb65fea10338a19bc37c",
+  "groups": [
+    {
+      "file": "additionalItems.json",
+      "description": "additionalItems as schema",
+      "tests": 2
+    },
+    {
+      "file": "additionalItems.json",
+      "description": "when items is schema, additionalItems does nothing",
+      "tests": 2
+    },
+    {
+      "file": "additionalItems.json",
+      "description": "when items is schema, boolean additionalItems does nothing",
+      "tests": 1
+    },
+    {
+      "file": "additionalItems.json",
+      "description": "array of items with no additionalItems permitted",
+      "tests": 5
+    },
+    {
+      "file": "additionalItems.json",
+      "description": "additionalItems as false without items",
+      "tests": 2
+    },
+    {
+      "file": "additionalItems.json",
+      "description": "additionalItems are allowed by default",
+      "tests": 1
+    },
+    {
+      "file": "additionalItems.json",
+      "description": "additionalItems does not look in applicators, invalid case",
+      "tests": 1
+    },
+    {
+      "file": "additionalItems.json",
+      "description": "items validation adjusts the starting index for additionalItems",
+      "tests": 2
+    },
+    {
+      "file": "additionalItems.json",
+      "description": "additionalItems with heterogeneous array",
+      "tests": 2
+    },
+    {
+      "file": "additionalItems.json",
+      "description": "additionalItems with null instance elements",
+      "tests": 1
+    },
+    {
+      "file": "additionalProperties.json",
+      "description": "additionalProperties being false does not allow other properties",
+      "tests": 6,
+      "exclude": "Outside profile: patternProperties"
+    },
+    {
+      "file": "additionalProperties.json",
+      "description": "non-ASCII pattern with additionalProperties",
+      "tests": 2,
+      "exclude": "Outside profile: patternProperties"
+    },
+    {
+      "file": "additionalProperties.json",
+      "description": "additionalProperties with schema",
+      "tests": 3
+    },
+    {
+      "file": "additionalProperties.json",
+      "description": "additionalProperties can exist by itself",
+      "tests": 2
+    },
+    {
+      "file": "additionalProperties.json",
+      "description": "additionalProperties are allowed by default",
+      "tests": 1
+    },
+    {
+      "file": "additionalProperties.json",
+      "description": "additionalProperties does not look in applicators",
+      "tests": 1
+    },
+    {
+      "file": "additionalProperties.json",
+      "description": "additionalProperties with null valued instance properties",
+      "tests": 1
+    },
+    {
+      "file": "allOf.json",
+      "description": "allOf",
+      "tests": 4
+    },
+    {
+      "file": "allOf.json",
+      "description": "allOf with base schema",
+      "tests": 5
+    },
+    {
+      "file": "allOf.json",
+      "description": "allOf simple types",
+      "tests": 2
+    },
+    {
+      "file": "allOf.json",
+      "description": "allOf with boolean schemas, all true",
+      "tests": 1
+    },
+    {
+      "file": "allOf.json",
+      "description": "allOf with boolean schemas, some false",
+      "tests": 1
+    },
+    {
+      "file": "allOf.json",
+      "description": "allOf with boolean schemas, all false",
+      "tests": 1
+    },
+    {
+      "file": "allOf.json",
+      "description": "allOf with one empty schema",
+      "tests": 1
+    },
+    {
+      "file": "allOf.json",
+      "description": "allOf with two empty schemas",
+      "tests": 1
+    },
+    {
+      "file": "allOf.json",
+      "description": "allOf with the first empty schema",
+      "tests": 2
+    },
+    {
+      "file": "allOf.json",
+      "description": "allOf with the last empty schema",
+      "tests": 2
+    },
+    {
+      "file": "allOf.json",
+      "description": "nested allOf, to check validation semantics",
+      "tests": 2
+    },
+    {
+      "file": "allOf.json",
+      "description": "allOf combined with anyOf, oneOf",
+      "tests": 8
+    },
+    {
+      "file": "anyOf.json",
+      "description": "anyOf",
+      "tests": 4
+    },
+    {
+      "file": "anyOf.json",
+      "description": "anyOf with base schema",
+      "tests": 3
+    },
+    {
+      "file": "anyOf.json",
+      "description": "anyOf with boolean schemas, all true",
+      "tests": 1
+    },
+    {
+      "file": "anyOf.json",
+      "description": "anyOf with boolean schemas, some true",
+      "tests": 1
+    },
+    {
+      "file": "anyOf.json",
+      "description": "anyOf with boolean schemas, all false",
+      "tests": 1
+    },
+    {
+      "file": "anyOf.json",
+      "description": "anyOf complex types",
+      "tests": 4
+    },
+    {
+      "file": "anyOf.json",
+      "description": "anyOf with one empty schema",
+      "tests": 2
+    },
+    {
+      "file": "anyOf.json",
+      "description": "nested anyOf, to check validation semantics",
+      "tests": 2
+    },
+    {
+      "file": "boolean_schema.json",
+      "description": "boolean schema 'true'",
+      "tests": 9
+    },
+    {
+      "file": "boolean_schema.json",
+      "description": "boolean schema 'false'",
+      "tests": 9
+    },
+    {
+      "file": "const.json",
+      "description": "const validation",
+      "tests": 3
+    },
+    {
+      "file": "const.json",
+      "description": "const with object",
+      "tests": 4
+    },
+    {
+      "file": "const.json",
+      "description": "const with array",
+      "tests": 3
+    },
+    {
+      "file": "const.json",
+      "description": "const with null",
+      "tests": 2
+    },
+    {
+      "file": "const.json",
+      "description": "const with false does not match 0",
+      "tests": 3
+    },
+    {
+      "file": "const.json",
+      "description": "const with true does not match 1",
+      "tests": 3
+    },
+    {
+      "file": "const.json",
+      "description": "const with [false] does not match [0]",
+      "tests": 3
+    },
+    {
+      "file": "const.json",
+      "description": "const with [true] does not match [1]",
+      "tests": 3
+    },
+    {
+      "file": "const.json",
+      "description": "const with {\"a\": false} does not match {\"a\": 0}",
+      "tests": 3
+    },
+    {
+      "file": "const.json",
+      "description": "const with {\"a\": true} does not match {\"a\": 1}",
+      "tests": 3
+    },
+    {
+      "file": "const.json",
+      "description": "const with 0 does not match other zero-like types",
+      "tests": 6
+    },
+    {
+      "file": "const.json",
+      "description": "const with 1 does not match true",
+      "tests": 3
+    },
+    {
+      "file": "const.json",
+      "description": "const with -2.0 matches integer and float types",
+      "tests": 5
+    },
+    {
+      "file": "const.json",
+      "description": "float and integers are equal up to 64-bit representation limits",
+      "tests": 4
+    },
+    {
+      "file": "const.json",
+      "description": "nul characters in strings",
+      "tests": 2
+    },
+    {
+      "file": "const.json",
+      "description": "characters with the same visual representation but different codepoint",
+      "tests": 2
+    },
+    {
+      "file": "const.json",
+      "description": "characters with the same visual representation, but different number of codepoints",
+      "tests": 2
+    },
+    {
+      "file": "contains.json",
+      "description": "contains keyword validation",
+      "tests": 6
+    },
+    {
+      "file": "contains.json",
+      "description": "contains keyword with const keyword",
+      "tests": 3
+    },
+    {
+      "file": "contains.json",
+      "description": "contains keyword with boolean schema true",
+      "tests": 2
+    },
+    {
+      "file": "contains.json",
+      "description": "contains keyword with boolean schema false",
+      "tests": 3
+    },
+    {
+      "file": "contains.json",
+      "description": "items + contains",
+      "tests": 4
+    },
+    {
+      "file": "contains.json",
+      "description": "contains with false if subschema",
+      "tests": 2
+    },
+    {
+      "file": "contains.json",
+      "description": "contains with null instance elements",
+      "tests": 1
+    },
+    {
+      "file": "default.json",
+      "description": "invalid type for default",
+      "tests": 2
+    },
+    {
+      "file": "default.json",
+      "description": "invalid string value for default",
+      "tests": 2
+    },
+    {
+      "file": "default.json",
+      "description": "the default keyword does not do anything if the property is missing",
+      "tests": 3
+    },
+    {
+      "file": "definitions.json",
+      "description": "validate definition against metaschema",
+      "tests": 2,
+      "exclude": "Outside profile: non-pointer reference"
+    },
+    {
+      "file": "dependencies.json",
+      "description": "dependencies",
+      "tests": 7
+    },
+    {
+      "file": "dependencies.json",
+      "description": "dependencies with empty array",
+      "tests": 3
+    },
+    {
+      "file": "dependencies.json",
+      "description": "multiple dependencies",
+      "tests": 6
+    },
+    {
+      "file": "dependencies.json",
+      "description": "multiple dependencies subschema",
+      "tests": 5
+    },
+    {
+      "file": "dependencies.json",
+      "description": "dependencies with boolean subschemas",
+      "tests": 4
+    },
+    {
+      "file": "dependencies.json",
+      "description": "dependencies with escaped characters",
+      "tests": 7
+    },
+    {
+      "file": "dependencies.json",
+      "description": "dependent subschema incompatible with root",
+      "tests": 4
+    },
+    {
+      "file": "enum.json",
+      "description": "simple enum validation",
+      "tests": 2
+    },
+    {
+      "file": "enum.json",
+      "description": "heterogeneous enum validation",
+      "tests": 5
+    },
+    {
+      "file": "enum.json",
+      "description": "heterogeneous enum-with-null validation",
+      "tests": 3
+    },
+    {
+      "file": "enum.json",
+      "description": "enums in properties",
+      "tests": 6
+    },
+    {
+      "file": "enum.json",
+      "description": "enum with escaped characters",
+      "tests": 3
+    },
+    {
+      "file": "enum.json",
+      "description": "enum with false does not match 0",
+      "tests": 3
+    },
+    {
+      "file": "enum.json",
+      "description": "enum with [false] does not match [0]",
+      "tests": 3
+    },
+    {
+      "file": "enum.json",
+      "description": "enum with true does not match 1",
+      "tests": 3
+    },
+    {
+      "file": "enum.json",
+      "description": "enum with [true] does not match [1]",
+      "tests": 3
+    },
+    {
+      "file": "enum.json",
+      "description": "enum with 0 does not match false",
+      "tests": 3
+    },
+    {
+      "file": "enum.json",
+      "description": "enum with [0] does not match [false]",
+      "tests": 3
+    },
+    {
+      "file": "enum.json",
+      "description": "enum with 1 does not match true",
+      "tests": 3
+    },
+    {
+      "file": "enum.json",
+      "description": "enum with [1] does not match [true]",
+      "tests": 3
+    },
+    {
+      "file": "enum.json",
+      "description": "nul characters in strings",
+      "tests": 2
+    },
+    {
+      "file": "enum.json",
+      "description": "characters with the same visual representation, but different number of codepoints",
+      "tests": 2
+    },
+    {
+      "file": "exclusiveMaximum.json",
+      "description": "exclusiveMaximum validation",
+      "tests": 4
+    },
+    {
+      "file": "exclusiveMinimum.json",
+      "description": "exclusiveMinimum validation",
+      "tests": 4
+    },
+    {
+      "file": "format.json",
+      "description": "email format",
+      "tests": 6
+    },
+    {
+      "file": "format.json",
+      "description": "idn-email format",
+      "tests": 6
+    },
+    {
+      "file": "format.json",
+      "description": "regex format",
+      "tests": 6
+    },
+    {
+      "file": "format.json",
+      "description": "ipv4 format",
+      "tests": 6
+    },
+    {
+      "file": "format.json",
+      "description": "ipv6 format",
+      "tests": 6
+    },
+    {
+      "file": "format.json",
+      "description": "idn-hostname format",
+      "tests": 6
+    },
+    {
+      "file": "format.json",
+      "description": "hostname format",
+      "tests": 6
+    },
+    {
+      "file": "format.json",
+      "description": "date format",
+      "tests": 6
+    },
+    {
+      "file": "format.json",
+      "description": "date-time format",
+      "tests": 6
+    },
+    {
+      "file": "format.json",
+      "description": "time format",
+      "tests": 6
+    },
+    {
+      "file": "format.json",
+      "description": "json-pointer format",
+      "tests": 6
+    },
+    {
+      "file": "format.json",
+      "description": "relative-json-pointer format",
+      "tests": 6
+    },
+    {
+      "file": "format.json",
+      "description": "iri format",
+      "tests": 6
+    },
+    {
+      "file": "format.json",
+      "description": "iri-reference format",
+      "tests": 6
+    },
+    {
+      "file": "format.json",
+      "description": "uri format",
+      "tests": 6
+    },
+    {
+      "file": "format.json",
+      "description": "uri-reference format",
+      "tests": 6
+    },
+    {
+      "file": "format.json",
+      "description": "uri-template format",
+      "tests": 6
+    },
+    {
+      "file": "if-then-else.json",
+      "description": "ignore if without then or else",
+      "tests": 2
+    },
+    {
+      "file": "if-then-else.json",
+      "description": "ignore then without if",
+      "tests": 2
+    },
+    {
+      "file": "if-then-else.json",
+      "description": "ignore else without if",
+      "tests": 2
+    },
+    {
+      "file": "if-then-else.json",
+      "description": "if and then without else",
+      "tests": 3
+    },
+    {
+      "file": "if-then-else.json",
+      "description": "if and else without then",
+      "tests": 3
+    },
+    {
+      "file": "if-then-else.json",
+      "description": "validate against correct branch, then vs else",
+      "tests": 4
+    },
+    {
+      "file": "if-then-else.json",
+      "description": "non-interference across combined schemas",
+      "tests": 2
+    },
+    {
+      "file": "if-then-else.json",
+      "description": "if with boolean schema true",
+      "tests": 2
+    },
+    {
+      "file": "if-then-else.json",
+      "description": "if with boolean schema false",
+      "tests": 2
+    },
+    {
+      "file": "if-then-else.json",
+      "description": "if appears at the end when serialized (keyword processing sequence)",
+      "tests": 4
+    },
+    {
+      "file": "if-then-else.json",
+      "description": "then: false fails when condition matches",
+      "tests": 2
+    },
+    {
+      "file": "if-then-else.json",
+      "description": "else: false fails when condition does not match",
+      "tests": 2
+    },
+    {
+      "file": "infinite-loop-detection.json",
+      "description": "evaluating the same schema location against the same data location twice is not a sign of an infinite loop",
+      "tests": 2
+    },
+    {
+      "file": "items.json",
+      "description": "a schema given for items",
+      "tests": 4
+    },
+    {
+      "file": "items.json",
+      "description": "an array of schemas for items",
+      "tests": 6
+    },
+    {
+      "file": "items.json",
+      "description": "items with boolean schema (true)",
+      "tests": 2
+    },
+    {
+      "file": "items.json",
+      "description": "items with boolean schema (false)",
+      "tests": 2
+    },
+    {
+      "file": "items.json",
+      "description": "items with boolean schemas",
+      "tests": 3
+    },
+    {
+      "file": "items.json",
+      "description": "items and subitems",
+      "tests": 6
+    },
+    {
+      "file": "items.json",
+      "description": "nested items",
+      "tests": 3
+    },
+    {
+      "file": "items.json",
+      "description": "single-form items with null instance elements",
+      "tests": 1
+    },
+    {
+      "file": "items.json",
+      "description": "array-form items with null instance elements",
+      "tests": 1
+    },
+    {
+      "file": "maxItems.json",
+      "description": "maxItems validation",
+      "tests": 4
+    },
+    {
+      "file": "maxItems.json",
+      "description": "maxItems validation with a decimal",
+      "tests": 2
+    },
+    {
+      "file": "maxLength.json",
+      "description": "maxLength validation",
+      "tests": 5
+    },
+    {
+      "file": "maxLength.json",
+      "description": "maxLength validation with a decimal",
+      "tests": 2
+    },
+    {
+      "file": "maxProperties.json",
+      "description": "maxProperties validation",
+      "tests": 6
+    },
+    {
+      "file": "maxProperties.json",
+      "description": "maxProperties validation with a decimal",
+      "tests": 2
+    },
+    {
+      "file": "maxProperties.json",
+      "description": "maxProperties = 0 means the object is empty",
+      "tests": 2
+    },
+    {
+      "file": "maximum.json",
+      "description": "maximum validation",
+      "tests": 4
+    },
+    {
+      "file": "maximum.json",
+      "description": "maximum validation with unsigned integer",
+      "tests": 4
+    },
+    {
+      "file": "minItems.json",
+      "description": "minItems validation",
+      "tests": 4
+    },
+    {
+      "file": "minItems.json",
+      "description": "minItems validation with a decimal",
+      "tests": 2
+    },
+    {
+      "file": "minLength.json",
+      "description": "minLength validation",
+      "tests": 5
+    },
+    {
+      "file": "minLength.json",
+      "description": "minLength validation with a decimal",
+      "tests": 2
+    },
+    {
+      "file": "minProperties.json",
+      "description": "minProperties validation",
+      "tests": 8
+    },
+    {
+      "file": "minProperties.json",
+      "description": "minProperties validation with a decimal",
+      "tests": 2
+    },
+    {
+      "file": "minimum.json",
+      "description": "minimum validation",
+      "tests": 4
+    },
+    {
+      "file": "minimum.json",
+      "description": "minimum validation with signed integer",
+      "tests": 7
+    },
+    {
+      "file": "multipleOf.json",
+      "description": "by int",
+      "tests": 3
+    },
+    {
+      "file": "multipleOf.json",
+      "description": "by number",
+      "tests": 4
+    },
+    {
+      "file": "multipleOf.json",
+      "description": "by small number",
+      "tests": 2
+    },
+    {
+      "file": "multipleOf.json",
+      "description": "float division = inf",
+      "tests": 1
+    },
+    {
+      "file": "multipleOf.json",
+      "description": "small multiple of large integer",
+      "tests": 1
+    },
+    {
+      "file": "not.json",
+      "description": "not",
+      "tests": 2
+    },
+    {
+      "file": "not.json",
+      "description": "not multiple types",
+      "tests": 3
+    },
+    {
+      "file": "not.json",
+      "description": "not more complex schema",
+      "tests": 3
+    },
+    {
+      "file": "not.json",
+      "description": "forbidden property",
+      "tests": 2
+    },
+    {
+      "file": "not.json",
+      "description": "forbid everything with empty schema",
+      "tests": 9
+    },
+    {
+      "file": "not.json",
+      "description": "forbid everything with boolean schema true",
+      "tests": 9
+    },
+    {
+      "file": "not.json",
+      "description": "allow everything with boolean schema false",
+      "tests": 9
+    },
+    {
+      "file": "not.json",
+      "description": "double negation",
+      "tests": 1
+    },
+    {
+      "file": "oneOf.json",
+      "description": "oneOf",
+      "tests": 4
+    },
+    {
+      "file": "oneOf.json",
+      "description": "oneOf with base schema",
+      "tests": 3
+    },
+    {
+      "file": "oneOf.json",
+      "description": "oneOf with boolean schemas, all true",
+      "tests": 1
+    },
+    {
+      "file": "oneOf.json",
+      "description": "oneOf with boolean schemas, one true",
+      "tests": 1
+    },
+    {
+      "file": "oneOf.json",
+      "description": "oneOf with boolean schemas, more than one true",
+      "tests": 1
+    },
+    {
+      "file": "oneOf.json",
+      "description": "oneOf with boolean schemas, all false",
+      "tests": 1
+    },
+    {
+      "file": "oneOf.json",
+      "description": "oneOf complex types",
+      "tests": 4
+    },
+    {
+      "file": "oneOf.json",
+      "description": "oneOf with empty schema",
+      "tests": 2
+    },
+    {
+      "file": "oneOf.json",
+      "description": "oneOf with required",
+      "tests": 4
+    },
+    {
+      "file": "oneOf.json",
+      "description": "oneOf with missing optional property",
+      "tests": 4
+    },
+    {
+      "file": "oneOf.json",
+      "description": "nested oneOf, to check validation semantics",
+      "tests": 2
+    },
+    {
+      "file": "pattern.json",
+      "description": "pattern validation",
+      "tests": 8,
+      "exclude": "Outside profile: pattern"
+    },
+    {
+      "file": "pattern.json",
+      "description": "pattern is not anchored",
+      "tests": 1,
+      "exclude": "Outside profile: pattern"
+    },
+    {
+      "file": "patternProperties.json",
+      "description": "patternProperties validates properties matching a regex",
+      "tests": 7,
+      "exclude": "Outside profile: patternProperties"
+    },
+    {
+      "file": "patternProperties.json",
+      "description": "multiple simultaneous patternProperties are validated",
+      "tests": 6,
+      "exclude": "Outside profile: patternProperties"
+    },
+    {
+      "file": "patternProperties.json",
+      "description": "regexes are not anchored by default and are case sensitive",
+      "tests": 4,
+      "exclude": "Outside profile: patternProperties"
+    },
+    {
+      "file": "patternProperties.json",
+      "description": "patternProperties with boolean schemas",
+      "tests": 5,
+      "exclude": "Outside profile: patternProperties"
+    },
+    {
+      "file": "patternProperties.json",
+      "description": "patternProperties with null valued instance properties",
+      "tests": 1,
+      "exclude": "Outside profile: patternProperties"
+    },
+    {
+      "file": "properties.json",
+      "description": "object properties validation",
+      "tests": 6
+    },
+    {
+      "file": "properties.json",
+      "description": "properties, patternProperties, additionalProperties interaction",
+      "tests": 8,
+      "exclude": "Outside profile: patternProperties"
+    },
+    {
+      "file": "properties.json",
+      "description": "properties with boolean schema",
+      "tests": 4
+    },
+    {
+      "file": "properties.json",
+      "description": "properties with escaped characters",
+      "tests": 2
+    },
+    {
+      "file": "properties.json",
+      "description": "properties with null valued instance properties",
+      "tests": 1
+    },
+    {
+      "file": "properties.json",
+      "description": "properties whose names are Javascript object property names",
+      "tests": 7
+    },
+    {
+      "file": "propertyNames.json",
+      "description": "propertyNames validation",
+      "tests": 8
+    },
+    {
+      "file": "propertyNames.json",
+      "description": "propertyNames validation with pattern",
+      "tests": 3,
+      "exclude": "Outside profile: pattern"
+    },
+    {
+      "file": "propertyNames.json",
+      "description": "propertyNames with boolean schema true",
+      "tests": 2
+    },
+    {
+      "file": "propertyNames.json",
+      "description": "propertyNames with boolean schema false",
+      "tests": 2
+    },
+    {
+      "file": "propertyNames.json",
+      "description": "propertyNames with const",
+      "tests": 3
+    },
+    {
+      "file": "propertyNames.json",
+      "description": "propertyNames with enum",
+      "tests": 4
+    },
+    {
+      "file": "ref.json",
+      "description": "root pointer ref",
+      "tests": 4
+    },
+    {
+      "file": "ref.json",
+      "description": "relative pointer ref to object",
+      "tests": 2
+    },
+    {
+      "file": "ref.json",
+      "description": "relative pointer ref to array",
+      "tests": 2
+    },
+    {
+      "file": "ref.json",
+      "description": "escaped pointer ref",
+      "tests": 6
+    },
+    {
+      "file": "ref.json",
+      "description": "nested refs",
+      "tests": 2
+    },
+    {
+      "file": "ref.json",
+      "description": "ref overrides any sibling keywords",
+      "tests": 3
+    },
+    {
+      "file": "ref.json",
+      "description": "$ref prevents a sibling $id from changing the base uri",
+      "tests": 2,
+      "exclude": "Outside profile: $id, non-pointer reference"
+    },
+    {
+      "file": "ref.json",
+      "description": "remote ref, containing refs itself",
+      "tests": 2,
+      "exclude": "Outside profile: non-pointer reference"
+    },
+    {
+      "file": "ref.json",
+      "description": "property named $ref that is not a reference",
+      "tests": 2
+    },
+    {
+      "file": "ref.json",
+      "description": "property named $ref, containing an actual $ref",
+      "tests": 2
+    },
+    {
+      "file": "ref.json",
+      "description": "$ref to boolean schema true",
+      "tests": 1
+    },
+    {
+      "file": "ref.json",
+      "description": "$ref to boolean schema false",
+      "tests": 1
+    },
+    {
+      "file": "ref.json",
+      "description": "Recursive references between schemas",
+      "tests": 2,
+      "exclude": "Outside profile: $id, non-pointer reference"
+    },
+    {
+      "file": "ref.json",
+      "description": "refs with quote",
+      "tests": 2
+    },
+    {
+      "file": "ref.json",
+      "description": "Location-independent identifier",
+      "tests": 2,
+      "exclude": "Outside profile: $id, non-pointer reference"
+    },
+    {
+      "file": "ref.json",
+      "description": "Reference an anchor with a non-relative URI",
+      "tests": 2,
+      "exclude": "Outside profile: $id, non-pointer reference"
+    },
+    {
+      "file": "ref.json",
+      "description": "Location-independent identifier with base URI change in subschema",
+      "tests": 2,
+      "exclude": "Outside profile: $id, non-pointer reference"
+    },
+    {
+      "file": "ref.json",
+      "description": "naive replacement of $ref with its destination is not correct",
+      "tests": 3
+    },
+    {
+      "file": "ref.json",
+      "description": "refs with relative uris and defs",
+      "tests": 3,
+      "exclude": "Outside profile: $id, non-pointer reference"
+    },
+    {
+      "file": "ref.json",
+      "description": "relative refs with absolute uris and defs",
+      "tests": 3,
+      "exclude": "Outside profile: $id, non-pointer reference"
+    },
+    {
+      "file": "ref.json",
+      "description": "$id must be resolved against nearest parent, not just immediate parent",
+      "tests": 2,
+      "exclude": "Outside profile: $id, non-pointer reference"
+    },
+    {
+      "file": "ref.json",
+      "description": "simple URN base URI with $ref via the URN",
+      "tests": 2,
+      "exclude": "Outside profile: $id, non-pointer reference"
+    },
+    {
+      "file": "ref.json",
+      "description": "simple URN base URI with JSON pointer",
+      "tests": 2,
+      "exclude": "Outside profile: $id"
+    },
+    {
+      "file": "ref.json",
+      "description": "URN base URI with NSS",
+      "tests": 2,
+      "exclude": "Outside profile: $id"
+    },
+    {
+      "file": "ref.json",
+      "description": "URN base URI with r-component",
+      "tests": 2,
+      "exclude": "Outside profile: $id"
+    },
+    {
+      "file": "ref.json",
+      "description": "URN base URI with q-component",
+      "tests": 2,
+      "exclude": "Outside profile: $id"
+    },
+    {
+      "file": "ref.json",
+      "description": "URN base URI with URN and JSON pointer ref",
+      "tests": 2,
+      "exclude": "Outside profile: $id, non-pointer reference"
+    },
+    {
+      "file": "ref.json",
+      "description": "URN base URI with URN and anchor ref",
+      "tests": 2,
+      "exclude": "Outside profile: $id, non-pointer reference"
+    },
+    {
+      "file": "ref.json",
+      "description": "ref to if",
+      "tests": 2,
+      "exclude": "Outside profile: $id, non-pointer reference"
+    },
+    {
+      "file": "ref.json",
+      "description": "ref to then",
+      "tests": 2,
+      "exclude": "Outside profile: $id, non-pointer reference"
+    },
+    {
+      "file": "ref.json",
+      "description": "ref to else",
+      "tests": 2,
+      "exclude": "Outside profile: $id, non-pointer reference"
+    },
+    {
+      "file": "ref.json",
+      "description": "ref with absolute-path-reference",
+      "tests": 2,
+      "exclude": "Outside profile: $id, non-pointer reference"
+    },
+    {
+      "file": "ref.json",
+      "description": "$id with file URI still resolves pointers - *nix",
+      "tests": 2,
+      "exclude": "Outside profile: $id"
+    },
+    {
+      "file": "ref.json",
+      "description": "$id with file URI still resolves pointers - windows",
+      "tests": 2,
+      "exclude": "Outside profile: $id"
+    },
+    {
+      "file": "ref.json",
+      "description": "empty tokens in $ref json-pointer",
+      "tests": 2
+    },
+    {
+      "file": "refRemote.json",
+      "description": "remote ref",
+      "tests": 2,
+      "exclude": "Outside profile: non-pointer reference"
+    },
+    {
+      "file": "refRemote.json",
+      "description": "fragment within remote ref",
+      "tests": 2,
+      "exclude": "Outside profile: non-pointer reference"
+    },
+    {
+      "file": "refRemote.json",
+      "description": "ref within remote ref",
+      "tests": 2,
+      "exclude": "Outside profile: non-pointer reference"
+    },
+    {
+      "file": "refRemote.json",
+      "description": "base URI change",
+      "tests": 2,
+      "exclude": "Outside profile: $id, non-pointer reference"
+    },
+    {
+      "file": "refRemote.json",
+      "description": "base URI change - change folder",
+      "tests": 2,
+      "exclude": "Outside profile: $id, non-pointer reference"
+    },
+    {
+      "file": "refRemote.json",
+      "description": "base URI change - change folder in subschema",
+      "tests": 2,
+      "exclude": "Outside profile: $id, non-pointer reference"
+    },
+    {
+      "file": "refRemote.json",
+      "description": "root ref in remote ref",
+      "tests": 3,
+      "exclude": "Outside profile: $id, non-pointer reference"
+    },
+    {
+      "file": "refRemote.json",
+      "description": "remote ref with ref to definitions",
+      "tests": 2,
+      "exclude": "Outside profile: $id, non-pointer reference"
+    },
+    {
+      "file": "refRemote.json",
+      "description": "Location-independent identifier in remote ref",
+      "tests": 2,
+      "exclude": "Outside profile: non-pointer reference"
+    },
+    {
+      "file": "refRemote.json",
+      "description": "retrieved nested refs resolve relative to their URI not $id",
+      "tests": 2,
+      "exclude": "Outside profile: $id, non-pointer reference"
+    },
+    {
+      "file": "refRemote.json",
+      "description": "$ref to $ref finds location-independent $id",
+      "tests": 2,
+      "exclude": "Outside profile: non-pointer reference"
+    },
+    {
+      "file": "required.json",
+      "description": "required validation",
+      "tests": 7
+    },
+    {
+      "file": "required.json",
+      "description": "required default validation",
+      "tests": 1
+    },
+    {
+      "file": "required.json",
+      "description": "required with empty array",
+      "tests": 1
+    },
+    {
+      "file": "required.json",
+      "description": "required with escaped characters",
+      "tests": 2
+    },
+    {
+      "file": "required.json",
+      "description": "required properties whose names are Javascript object property names",
+      "tests": 7
+    },
+    {
+      "file": "type.json",
+      "description": "integer type matches integers",
+      "tests": 9
+    },
+    {
+      "file": "type.json",
+      "description": "number type matches numbers",
+      "tests": 9
+    },
+    {
+      "file": "type.json",
+      "description": "string type matches strings",
+      "tests": 9
+    },
+    {
+      "file": "type.json",
+      "description": "object type matches objects",
+      "tests": 7
+    },
+    {
+      "file": "type.json",
+      "description": "array type matches arrays",
+      "tests": 7
+    },
+    {
+      "file": "type.json",
+      "description": "boolean type matches booleans",
+      "tests": 10
+    },
+    {
+      "file": "type.json",
+      "description": "null type matches only the null object",
+      "tests": 10
+    },
+    {
+      "file": "type.json",
+      "description": "multiple types can be specified in an array",
+      "tests": 7
+    },
+    {
+      "file": "type.json",
+      "description": "type as array with one item",
+      "tests": 2
+    },
+    {
+      "file": "type.json",
+      "description": "type: array or object",
+      "tests": 5
+    },
+    {
+      "file": "type.json",
+      "description": "type: array, object or null",
+      "tests": 5
+    },
+    {
+      "file": "uniqueItems.json",
+      "description": "uniqueItems validation",
+      "tests": 28
+    },
+    {
+      "file": "uniqueItems.json",
+      "description": "uniqueItems with an array of items",
+      "tests": 8
+    },
+    {
+      "file": "uniqueItems.json",
+      "description": "uniqueItems with an array of items and additionalItems=false",
+      "tests": 5
+    },
+    {
+      "file": "uniqueItems.json",
+      "description": "uniqueItems=false validation",
+      "tests": 15
+    },
+    {
+      "file": "uniqueItems.json",
+      "description": "uniqueItems=false with an array of items",
+      "tests": 8
+    },
+    {
+      "file": "uniqueItems.json",
+      "description": "uniqueItems=false with an array of items and additionalItems=false",
+      "tests": 5
+    }
+  ]
+}
