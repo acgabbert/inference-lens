@@ -1,6 +1,9 @@
 import { z } from "zod";
 
-import { parseJsonInput } from "./json-input.ts";
+import { parseJsonInput, type JsonInputPolicy } from "./json-input.ts";
+import { evaluateJsonSchema, type SafeLocationSegment, type SchemaIssue } from "./json-schema/evaluator.ts";
+import { MAX_SCHEMA_OUTPUT_CODE_UNITS, SCHEMA_CHECK_LIMITS } from "./json-schema/limits.ts";
+import { preflightJsonSchema } from "./json-schema/preflight.ts";
 import { runMetrics } from "./run-metrics.ts";
 import type { AttemptUsageCoverage } from "./run-metrics.ts";
 import { finalAssistantOutput, outputCharacterCount, toolCallsInRun } from "./run-output.ts";
@@ -27,7 +30,27 @@ import type {
  * Adding, removing, or changing the meaning of a kind requires bumping this
  * constant and the version of every container that stores checks.
  */
-export const CHECK_SCHEMA_VERSION = 3;
+export const CHECK_SCHEMA_VERSION = 4;
+
+/** Vocabulary versions a container may declare; each still means what it meant. */
+export const SUPPORTED_CHECK_SCHEMA_VERSIONS = [3, 4] as const;
+export type CheckSchemaVersion = (typeof SUPPORTED_CHECK_SCHEMA_VERSIONS)[number];
+
+/**
+ * Why `definition` cannot appear in a container that declares `version`, or
+ * undefined when it can. Version 4 added JSON Schema checks and JSON input
+ * policies; an older container must reject them rather than acquire them.
+ */
+export function checkVocabularyIssue(
+  definition: CheckDefinition,
+  version: CheckSchemaVersion,
+): string | undefined {
+  if (version >= 4) return undefined;
+  if (definition.kind === "json-schema" || (definition.kind === "valid-json" && definition.inputPolicy !== undefined)) {
+    return `This check requires check vocabulary version 4; the container declares version ${version}.`;
+  }
+  return undefined;
+}
 
 export class CheckValidationError extends Error {
   constructor(message: string) {
@@ -46,6 +69,7 @@ export const CHECK_KINDS = [
   "contains",
   "regex",
   "valid-json",
+  "json-schema",
   "max-output-characters",
   "max-duration-ms",
   "max-total-tokens",
@@ -111,6 +135,22 @@ export interface ValidJsonCheck extends NegatableCheckBase {
   kind: "valid-json";
   /** Defaults to `"any"`. */
   topLevel?: CheckJsonTopLevel;
+  /** Where the JSON may sit in the answer. Defaults to `"strict"`: the whole answer. */
+  inputPolicy?: JsonInputPolicy;
+}
+
+/**
+ * Validates the answer's JSON payload against an authored schema in IF's
+ * draft-07 profile (docs/JSON_SCHEMA_PREFLIGHT.md). The schema describes the
+ * payload directly. Not negatable: "does not satisfy this schema" would make
+ * invalid JSON pass, and nobody means to assert that.
+ */
+export interface JsonSchemaCheck extends CheckDefinitionBase {
+  kind: "json-schema";
+  dialect: "draft-07";
+  schema: JsonObject | boolean;
+  /** Defaults to `"strict"`. */
+  inputPolicy?: JsonInputPolicy;
 }
 
 export interface MaxOutputCharactersCheck extends CheckDefinitionBase {
@@ -172,6 +212,7 @@ export type CheckDefinition =
   | ContainsCheck
   | RegexCheck
   | ValidJsonCheck
+  | JsonSchemaCheck
   | MaxOutputCharactersCheck
   | MaxDurationCheck
   | MaxTotalTokensCheck
@@ -273,6 +314,28 @@ const jsonObjectSchema = z.record(z.string(), jsonValueSchema) as z.ZodType<Json
 
 const toolCallCountComparator = z.enum(["exact", "at-least", "at-most"]);
 
+const inputPolicy = z.enum(["strict", "surrounding-fence", "first-json-fence"]).optional();
+const jsonSchemaShape = {
+  ...definitionBase,
+  kind: z.literal("json-schema"),
+  dialect: z.literal("draft-07"),
+  schema: z.union([z.boolean(), jsonObjectSchema]),
+  inputPolicy,
+};
+
+/** A runnable schema check must pass preflight; authored drafts need not. */
+function refineRunnableSchema(definition: CheckDefinition, context: z.RefinementCtx): void {
+  if (definition.kind !== "json-schema") return;
+  const preflight = preflightJsonSchema(definition.schema, SCHEMA_CHECK_LIMITS.schema);
+  if (preflight.status === "not-evaluated") {
+    context.addIssue({
+      code: "custom",
+      path: ["schema", ...preflight.diagnostic.schemaPath],
+      message: preflight.diagnostic.message,
+    });
+  }
+}
+
 const calledToolShape = { ...definitionBase, toolName: z.string() };
 const toolCallCountShape = {
   ...definitionBase,
@@ -320,8 +383,10 @@ export const checkDefinitionSchema: z.ZodType<CheckDefinition> = z
         ...negatableBase,
         kind: z.literal("valid-json"),
         topLevel: z.enum(["any", "object", "array"]).optional(),
+        inputPolicy,
       })
       .strict(),
+    z.object(jsonSchemaShape).strict(),
     z
       .object({ ...definitionBase, kind: z.literal("max-output-characters"), limit })
       .strict(),
@@ -337,6 +402,7 @@ export const checkDefinitionSchema: z.ZodType<CheckDefinition> = z
     z.object({ ...toolCallArgumentsShape, kind: z.literal("tool-call-arguments") }).strict(),
   ])
   .superRefine((definition, context) => {
+    refineRunnableSchema(definition, context);
     if (definition.kind !== "regex") return;
     const issue = validateSafeRegex(definition);
     if (issue) {
@@ -349,10 +415,10 @@ export const checkDefinitionSchema: z.ZodType<CheckDefinition> = z
   }) as z.ZodType<CheckDefinition>;
 
 /**
- * Portable project authoring permits one intentionally incomplete state: an
- * empty regex pattern. Preflight blocks it before an executable plan is
- * created, while every non-empty pattern still receives the exact runtime
- * Safe regex validation here.
+ * Portable project authoring permits two intentionally incomplete states: an
+ * empty regex pattern, and a JSON Schema the evaluator does not support yet.
+ * Preflight blocks both before an executable plan is created, while every
+ * non-empty pattern still receives the exact runtime Safe regex validation here.
  */
 export const authoredCheckDefinitionSchema: z.ZodType<CheckDefinition> = z
   .discriminatedUnion("kind", [
@@ -365,7 +431,8 @@ export const authoredCheckDefinitionSchema: z.ZodType<CheckDefinition> = z
       pattern: z.string(),
       flags: z.string().optional(),
     }).strict(),
-    z.object({ ...negatableBase, kind: z.literal("valid-json"), topLevel: z.enum(["any", "object", "array"]).optional() }).strict(),
+    z.object({ ...negatableBase, kind: z.literal("valid-json"), topLevel: z.enum(["any", "object", "array"]).optional(), inputPolicy }).strict(),
+    z.object(jsonSchemaShape).strict(),
     z.object({ ...definitionBase, kind: z.literal("max-output-characters"), limit }).strict(),
     z.object({ ...definitionBase, kind: z.literal("max-duration-ms"), limit }).strict(),
     z.object({ ...definitionBase, kind: z.literal("max-total-tokens"), limit }).strict(),
@@ -530,7 +597,7 @@ function toolCallsNamed(
 }
 
 function evaluateOutputCheck(
-  definition: ExactMatchCheck | ContainsCheck | RegexCheck | ValidJsonCheck,
+  definition: ExactMatchCheck | ContainsCheck | RegexCheck | ValidJsonCheck | JsonSchemaCheck,
   output: string,
 ): CheckOutcome {
   switch (definition.kind) {
@@ -609,7 +676,7 @@ function evaluateOutputCheck(
     }
     case "valid-json": {
       const required = definition.topLevel ?? "any";
-      const parsed = parseJsonInput(output);
+      const parsed = parseJsonInput(output, definition.inputPolicy);
       const topLevel = parsed.valid ? parsed.topLevel : undefined;
       const satisfied =
         topLevel !== undefined && (required === "any" || topLevel === required);
@@ -625,10 +692,93 @@ function evaluateOutputCheck(
           valid: topLevel !== undefined,
           characters: outputCharacterCount(output),
           ...(topLevel !== undefined ? { topLevel } : {}),
+          // Evidence for a definition without a policy is unchanged from v3.
+          ...(definition.inputPolicy !== undefined
+            ? { inputPolicy: definition.inputPolicy, ...(parsed.valid ? { path: parsed.path } : {}) }
+            : {}),
         },
       );
     }
+    case "json-schema":
+      return evaluateJsonSchemaCheck(definition, output);
   }
+}
+
+/** Typed location segments rendered for a person; redacted keys stay unnamed. */
+function displayLocation(location: readonly SafeLocationSegment[]): string {
+  if (location.length === 0) return "the root";
+  let text = "";
+  for (const segment of location) {
+    if ("index" in segment) text += `[${segment.index}]`;
+    else if ("property" in segment) text += text ? `.${segment.property}` : segment.property;
+    else text += text ? ".<additional property>" : "<additional property>";
+  }
+  return text;
+}
+
+function describeIssue(issue: SchemaIssue): string {
+  const at = displayLocation(issue.location);
+  switch (issue.keyword) {
+    case "type": {
+      const expected = Array.isArray(issue.expectedType) ? issue.expectedType.join(" or ") : issue.expectedType;
+      return `Schema mismatch at ${at}: expected ${expected}.`;
+    }
+    case "required": return `Schema mismatch at ${at}: missing required property "${issue.missingProperty}".`;
+    case "dependencies": return `Schema mismatch at ${at}: missing property "${issue.missingProperty}" required by a dependency.`;
+    case "additionalProperties": return `Schema mismatch at ${at}: unexpected property.`;
+    case "false": return `Schema mismatch at ${at}: no value is allowed here.`;
+    default: return `Schema mismatch at ${at}: violates ${issue.keyword}.`;
+  }
+}
+
+function evaluateJsonSchemaCheck(definition: JsonSchemaCheck, output: string): CheckOutcome {
+  const policy = definition.inputPolicy ?? "strict";
+  // The output limit applies to the original text, before anything parses it.
+  if (output.length > MAX_SCHEMA_OUTPUT_CODE_UNITS) {
+    return {
+      status: "failed",
+      message: `Final assistant output is ${output.length} UTF-16 code units; JSON Schema checks accept at most ${MAX_SCHEMA_OUTPUT_CODE_UNITS}.`,
+      evidence: { code: "output-too-large", codeUnits: output.length, limit: MAX_SCHEMA_OUTPUT_CODE_UNITS },
+    };
+  }
+  const characters = outputCharacterCount(output);
+  const parsed = parseJsonInput(output, policy);
+  if (!parsed.valid) {
+    return {
+      status: "failed",
+      message: `Final assistant output is not valid JSON under the ${policy} input policy.`,
+      evidence: { code: "invalid-json", inputPolicy: policy, characters },
+    };
+  }
+  const result = evaluateJsonSchema(definition.schema, parsed.value, SCHEMA_CHECK_LIMITS);
+  if (result.status === "not-evaluated") return { status: "not-evaluated", reason: result.diagnostic.message };
+  const evidence = {
+    inputPolicy: policy,
+    path: parsed.path,
+    characters,
+    topLevel: parsed.topLevel,
+    ...(result.uncheckedFormats.length > 0
+      ? { uncheckedFormats: result.uncheckedFormats.map(({ format, schemaPath }) => ({ format, schemaPath: [...schemaPath] })) }
+      : {}),
+  };
+  if (result.status === "valid") return { status: "passed", evidence };
+  // Issues hold authored keywords, property names, and indices; never answer data.
+  const issues: JsonObject[] = result.issues.map(({ keyword, location, expectedType, missingProperty }) => ({
+    keyword,
+    location: location.map((segment): JsonObject => ({ ...segment })),
+    ...(expectedType !== undefined ? { expectedType: typeof expectedType === "string" ? expectedType : [...expectedType] } : {}),
+    ...(missingProperty !== undefined ? { missingProperty } : {}),
+  }));
+  // Diagnostics may stop before locating anything; the verdict stands either way.
+  const summary = issues.length > 0 ? describeIssue(result.issues[0]) : "Final assistant output does not satisfy the schema.";
+  const suffix = result.truncated
+    ? " More issues may exist than are listed."
+    : issues.length > 1 ? ` ${issues.length - 1} more issue${issues.length === 2 ? "" : "s"}.` : "";
+  return {
+    status: "failed",
+    message: summary + suffix,
+    evidence: { code: "schema-mismatch", ...evidence, issues, truncated: result.truncated },
+  };
 }
 
 /**
@@ -648,7 +798,8 @@ export function evaluateCheck(
     case "exact-match":
     case "contains":
     case "regex":
-    case "valid-json": {
+    case "valid-json":
+    case "json-schema": {
       if (subject.output === undefined) {
         return {
           status: "not-evaluated",

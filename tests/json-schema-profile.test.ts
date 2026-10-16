@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import test from "node:test";
+import { evaluateJsonSchema } from "../packages/core/src/json-schema/evaluator.ts";
+import type { JsonValue } from "../packages/core/src/run-kernel/types.ts";
 import { preflightJsonSchema } from "../packages/core/src/json-schema/preflight.ts";
 
 const root = new URL("../scripts/spikes/metered-json-schema/official/", import.meta.url);
 interface Group {
   description: string;
   schema: unknown;
-  tests: unknown[];
+  tests: { description: string; data: JsonValue; valid: boolean }[];
 }
 interface Entry {
   file: string;
@@ -17,7 +19,7 @@ interface Entry {
   rejectionCode?: string;
 }
 
-test("the pinned upstream snapshot fixes the supported core preflight profile", async (t) => {
+test("the pinned upstream snapshot fixes the supported core schema profile", async (t) => {
   const manifest: { revision: string; groups: Entry[] } = JSON.parse(await readFile(new URL("manifest.json", root), "utf8"));
   assert.equal(manifest.revision, "55719286c33ae0d1823bfb65fea10338a19bc37c");
   const groups = new Map<string, Group>();
@@ -56,6 +58,15 @@ test("the pinned upstream snapshot fixes the supported core preflight profile", 
       } else {
         assert.equal(entry.rejectionCode, undefined, "Supported entries cannot carry a rejection code");
         assert.equal(result.status, "ready", JSON.stringify(result));
+        for (const example of group.tests) {
+          const evaluated = evaluateJsonSchema(group.schema, example.data, {
+            schema: { workLimit: 4_000_000, storageLimit: 4_000_000, maxSchemaCodeUnits: 65_536, maxDepth: 64 },
+            verdict: { workLimit: 4_000_000, storageLimit: 4_000_000 },
+            diagnostics: { workLimit: 4_000_000, storageLimit: 4_000_000, maxIssues: 20 },
+            maxDataDepth: 64,
+          });
+          assert.equal(evaluated.status, example.valid ? "valid" : "invalid", `${example.description}: ${JSON.stringify(evaluated)}`);
+        }
       }
     });
   }

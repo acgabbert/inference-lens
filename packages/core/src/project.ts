@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { authoredCheckDefinitionSchema } from "./checks.ts";
+import { authoredCheckDefinitionSchema, checkVocabularyIssue } from "./checks.ts";
 import { templateUseVariableIndex } from "./template-use-variable-index.ts";
 import type {
   EvaluationCase,
@@ -75,9 +75,9 @@ export const PROJECT_DIRECTORY_SUFFIX = ".inference-lens";
 export const PROJECT_FILE_NAME = "project.json";
 export const PROJECT_EXPORT_FILE_SUFFIX = ".project.json";
 export const PROJECT_GITIGNORE_CONTENTS = "*\n";
-export const PROJECT_SCHEMA_VERSION = 11;
-/** Older versions this build still opens; see `migrateV10Project`. */
-const OPENABLE_PROJECT_SCHEMA_VERSIONS: readonly number[] = [10];
+export const PROJECT_SCHEMA_VERSION = 12;
+/** Older versions this build still opens; see `migrateV10Project` and `migrateV11Project`. */
+const OPENABLE_PROJECT_SCHEMA_VERSIONS: readonly number[] = [10, 11];
 
 /**
  * Turns the portable project display name into one safe, visible directory
@@ -310,8 +310,8 @@ interface ProjectReferenceValidationShape {
   defaults: ProjectDefaults;
 }
 
-export interface ProjectFileV11 {
-  schemaVersion: 11;
+export interface ProjectFileV12 {
+  schemaVersion: 12;
   projectId: ProjectId;
   name: string;
   connectionRequirements: ConnectionRequirement[];
@@ -325,7 +325,7 @@ export interface ProjectFileV11 {
   defaults: ProjectDefaults;
 }
 
-export type ProjectFile = ProjectFileV11;
+export type ProjectFile = ProjectFileV12;
 
 const entityId = <Kind extends Parameters<typeof createEntityId>[0]>(
   kind: Kind,
@@ -787,7 +787,7 @@ const evaluationSuiteSchema: z.ZodType<EvaluationSuite> = z
   })
   .strict();
 
-const projectFileV11Schema: z.ZodType<ProjectFileV11> = z
+const projectFileV12Schema: z.ZodType<ProjectFileV12> = z
   .object({
     schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
     projectId: entityId("project"),
@@ -1037,7 +1037,7 @@ function validateSharedProjectReferences(
 }
 
 function validateProjectReferences(
-  project: ProjectFileV11,
+  project: ProjectFileV12,
   context: z.RefinementCtx,
 ): void {
   validateSharedProjectReferences(
@@ -1306,7 +1306,7 @@ function validateProjectReferences(
 }
 
 function validateEvaluationSuites(
-  project: ProjectFileV11,
+  project: ProjectFileV12,
   templates: ReadonlyMap<PromptTemplateId, PromptTemplate>,
   context: z.RefinementCtx,
 ): void {
@@ -1484,9 +1484,11 @@ export class ProjectValidationError extends Error {
 }
 
 function unsupportedSchemaMessage(version: unknown): string {
-  const openable = [...OPENABLE_PROJECT_SCHEMA_VERSIONS, PROJECT_SCHEMA_VERSION]
-    .map((openableVersion) => `v${openableVersion}`)
-    .join(" and ");
+  const versions = [...OPENABLE_PROJECT_SCHEMA_VERSIONS, PROJECT_SCHEMA_VERSION]
+    .map((openableVersion) => `v${openableVersion}`);
+  const openable = versions.length > 2
+    ? `${versions.slice(0, -1).join(", ")}, and ${versions.at(-1)}`
+    : versions.join(" and ");
   const prefix = `Project schema v${String(version)} is not supported: this build opens schema ${openable}.`;
   return typeof version === "number" && version > PROJECT_SCHEMA_VERSION
     ? `${prefix} It was saved by a newer Inference Lens; update this build to open it.`
@@ -1517,7 +1519,7 @@ function migrateV10Project(value: object): unknown {
   const defaults = project.defaults;
   return {
     ...project,
-    schemaVersion: PROJECT_SCHEMA_VERSION,
+    schemaVersion: 11,
     connectionRequirements: requirements.map((requirement) => {
       if (!isRecord(requirement)) return requirement;
       const { protocol: _protocol, ...rest } = requirement;
@@ -1536,6 +1538,35 @@ function migrateV10Project(value: object): unknown {
   };
 }
 
+/**
+ * v12 adds check vocabulary 4: JSON Schema checks and JSON input policies. A
+ * v11 project was written with vocabulary 3, so it cannot contain them; one
+ * that does is rejected rather than reinterpreted. Nothing else changes.
+ * Malformed checks pass through for the v12 schema to reject as usual.
+ */
+function migrateV11Project(value: object): unknown {
+  const project = value as Record<string, unknown>;
+  const suites = Array.isArray(project.evaluationSuites) ? (project.evaluationSuites as unknown[]) : [];
+  suites.forEach((suite, suiteIndex) => {
+    const cases = isRecord(suite) && Array.isArray(suite.cases) ? (suite.cases as unknown[]) : [];
+    cases.forEach((evaluationCase, caseIndex) => {
+      const checks = isRecord(evaluationCase) && Array.isArray(evaluationCase.checks) ? (evaluationCase.checks as unknown[]) : [];
+      checks.forEach((check, checkIndex) => {
+        const parsed = authoredCheckDefinitionSchema.safeParse(check);
+        const issue = parsed.success ? checkVocabularyIssue(parsed.data, 3) : undefined;
+        if (issue) {
+          throw new ProjectValidationError([{
+            code: "custom",
+            path: ["evaluationSuites", suiteIndex, "cases", caseIndex, "checks", checkIndex],
+            message: issue,
+          }]);
+        }
+      });
+    });
+  });
+  return { ...project, schemaVersion: PROJECT_SCHEMA_VERSION };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -1549,9 +1580,10 @@ export function parseProjectFile(value: unknown): ProjectFile {
         message: unsupportedSchemaMessage(value.schemaVersion),
       }]);
     }
-    value = migrateV10Project(value);
+    if (value.schemaVersion === 10) value = migrateV10Project(value);
+    value = migrateV11Project(value as object);
   }
-  const parsed = projectFileV11Schema.safeParse(value);
+  const parsed = projectFileV12Schema.safeParse(value);
   if (!parsed.success) throw new ProjectValidationError(parsed.error.issues);
   return parsed.data;
 }

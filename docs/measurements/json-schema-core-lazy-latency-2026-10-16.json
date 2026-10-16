@@ -1,0 +1,6283 @@
+{
+  "engine": "core",
+  "date": "2026-10-16T20:07:21.362Z",
+  "host": {
+    "platform": "darwin",
+    "release": "25.6.0",
+    "cpu": "Apple M4 Pro"
+  },
+  "runtimes": [
+    {
+      "runtime": "node",
+      "version": "v24.3.0",
+      "samples": 15,
+      "warmups": 3,
+      "results": [
+        {
+          "name": "realistic 100 records",
+          "workLimit": 100000,
+          "schemaUnits": 178,
+          "outputUnits": 5601,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 11694,
+              "storage": 10315
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1.7275000000000205,
+          "medianMs": 0.2832920000000172,
+          "p95Ms": 0.4657090000000039,
+          "maxMs": 0.4657090000000039
+        },
+        {
+          "name": "realistic 100 records",
+          "workLimit": 250000,
+          "schemaUnits": 178,
+          "outputUnits": 5601,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 11694,
+              "storage": 10315
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.244624999999985,
+          "medianMs": 0.19516699999996945,
+          "p95Ms": 2.9460000000000264,
+          "maxMs": 2.9460000000000264
+        },
+        {
+          "name": "realistic 100 records",
+          "workLimit": 500000,
+          "schemaUnits": 178,
+          "outputUnits": 5601,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 11694,
+              "storage": 10315
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.1927909999999997,
+          "medianMs": 0.19225000000000136,
+          "p95Ms": 0.22750000000002046,
+          "maxMs": 0.22750000000002046
+        },
+        {
+          "name": "realistic 100 records",
+          "workLimit": 1000000,
+          "schemaUnits": 178,
+          "outputUnits": 5601,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 11694,
+              "storage": 10315
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.1927079999999819,
+          "medianMs": 0.20987500000001091,
+          "p95Ms": 0.24633399999999028,
+          "maxMs": 0.24633399999999028
+        },
+        {
+          "name": "realistic 100 records",
+          "workLimit": 2000000,
+          "schemaUnits": 178,
+          "outputUnits": 5601,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 11694,
+              "storage": 10315
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.23604100000000017,
+          "medianMs": 0.21620799999999463,
+          "p95Ms": 0.240333000000021,
+          "maxMs": 0.240333000000021
+        },
+        {
+          "name": "realistic 100 records",
+          "workLimit": 4000000,
+          "schemaUnits": 178,
+          "outputUnits": 5601,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 11694,
+              "storage": 10315
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.2017500000000041,
+          "medianMs": 0.17537499999997408,
+          "p95Ms": 0.7903329999999755,
+          "maxMs": 0.7903329999999755
+        },
+        {
+          "name": "realistic 1000 records",
+          "workLimit": 100000,
+          "schemaUnits": 178,
+          "outputUnits": 56001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 100000,
+              "storage": 96235
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1.1555839999999762,
+          "medianMs": 0.970957999999996,
+          "p95Ms": 1.4600000000000364,
+          "maxMs": 1.4600000000000364
+        },
+        {
+          "name": "realistic 1000 records",
+          "workLimit": 250000,
+          "schemaUnits": 178,
+          "outputUnits": 56001,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 117894,
+              "storage": 103915
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1.227125000000001,
+          "medianMs": 1.1677500000000123,
+          "p95Ms": 1.5389579999999796,
+          "maxMs": 1.5389579999999796
+        },
+        {
+          "name": "realistic 1000 records",
+          "workLimit": 500000,
+          "schemaUnits": 178,
+          "outputUnits": 56001,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 117894,
+              "storage": 103915
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1.5232919999999694,
+          "medianMs": 1.18587500000001,
+          "p95Ms": 1.5247079999999755,
+          "maxMs": 1.5247079999999755
+        },
+        {
+          "name": "realistic 1000 records",
+          "workLimit": 1000000,
+          "schemaUnits": 178,
+          "outputUnits": 56001,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 117894,
+              "storage": 103915
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1.1173749999999814,
+          "medianMs": 1.185624999999959,
+          "p95Ms": 1.3982920000000263,
+          "maxMs": 1.3982920000000263
+        },
+        {
+          "name": "realistic 1000 records",
+          "workLimit": 2000000,
+          "schemaUnits": 178,
+          "outputUnits": 56001,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 117894,
+              "storage": 103915
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1.1022080000000187,
+          "medianMs": 1.170833000000016,
+          "p95Ms": 1.5836249999999836,
+          "maxMs": 1.5836249999999836
+        },
+        {
+          "name": "realistic 1000 records",
+          "workLimit": 4000000,
+          "schemaUnits": 178,
+          "outputUnits": 56001,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 117894,
+              "storage": 103915
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1.1775410000000193,
+          "medianMs": 1.1853330000000142,
+          "p95Ms": 1.4665830000000142,
+          "maxMs": 1.4665830000000142
+        },
+        {
+          "name": "number traversal",
+          "workLimit": 100000,
+          "schemaUnits": 68,
+          "outputUnits": 200001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 442,
+              "storage": 475
+            },
+            "verdict": {
+              "work": 99999,
+              "storage": 118526
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 2.1172919999999067,
+          "medianMs": 2.0008329999999432,
+          "p95Ms": 3.773249999999962,
+          "maxMs": 3.773249999999962
+        },
+        {
+          "name": "number traversal",
+          "workLimit": 250000,
+          "schemaUnits": 68,
+          "outputUnits": 200001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 442,
+              "storage": 475
+            },
+            "verdict": {
+              "work": 249999,
+              "storage": 293526
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 2.3401250000000573,
+          "medianMs": 2.3589170000000195,
+          "p95Ms": 2.4035840000000235,
+          "maxMs": 2.4035840000000235
+        },
+        {
+          "name": "number traversal",
+          "workLimit": 500000,
+          "schemaUnits": 68,
+          "outputUnits": 200001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 442,
+              "storage": 475
+            },
+            "verdict": {
+              "work": 499995,
+              "storage": 585188
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 3.0683749999999463,
+          "medianMs": 2.985125000000039,
+          "p95Ms": 5.375499999999988,
+          "maxMs": 5.375499999999988
+        },
+        {
+          "name": "number traversal",
+          "workLimit": 1000000,
+          "schemaUnits": 68,
+          "outputUnits": 200001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 442,
+              "storage": 475
+            },
+            "verdict": {
+              "work": 1000000,
+              "storage": 1701866
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 13.85287500000004,
+          "medianMs": 14.607958999999937,
+          "p95Ms": 20.64320799999996,
+          "maxMs": 20.64320799999996
+        },
+        {
+          "name": "number traversal",
+          "workLimit": 2000000,
+          "schemaUnits": 68,
+          "outputUnits": 200001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 442,
+              "storage": 475
+            },
+            "verdict": {
+              "work": 2000000,
+              "storage": 2868535
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 60.89691700000003,
+          "medianMs": 64.20674999999983,
+          "p95Ms": 79.20950000000016,
+          "maxMs": 79.20950000000016
+        },
+        {
+          "name": "number traversal",
+          "workLimit": 4000000,
+          "schemaUnits": 68,
+          "outputUnits": 200001,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 442,
+              "storage": 475
+            },
+            "verdict": {
+              "work": 3388894,
+              "storage": 4488917
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 128.3196250000001,
+          "medianMs": 133.10125000000016,
+          "p95Ms": 152.73579199999995,
+          "maxMs": 152.73579199999995
+        },
+        {
+          "name": "invalid item diagnostics",
+          "workLimit": 100000,
+          "schemaUnits": 27,
+          "outputUnits": 400001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 124,
+              "storage": 130
+            },
+            "verdict": {
+              "work": 99999,
+              "storage": 118526
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 2.2960409999996045,
+          "medianMs": 2.1640840000000026,
+          "p95Ms": 2.217000000000553,
+          "maxMs": 2.217000000000553
+        },
+        {
+          "name": "invalid item diagnostics",
+          "workLimit": 250000,
+          "schemaUnits": 27,
+          "outputUnits": 400001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 124,
+              "storage": 130
+            },
+            "verdict": {
+              "work": 249999,
+              "storage": 293526
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 2.5094579999995403,
+          "medianMs": 2.5023330000003625,
+          "p95Ms": 4.426542000000154,
+          "maxMs": 4.426542000000154
+        },
+        {
+          "name": "invalid item diagnostics",
+          "workLimit": 500000,
+          "schemaUnits": 27,
+          "outputUnits": 400001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 124,
+              "storage": 130
+            },
+            "verdict": {
+              "work": 499995,
+              "storage": 585188
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 3.0850829999999405,
+          "medianMs": 3.1201249999994616,
+          "p95Ms": 4.968667000000096,
+          "maxMs": 4.968667000000096
+        },
+        {
+          "name": "invalid item diagnostics",
+          "workLimit": 1000000,
+          "schemaUnits": 27,
+          "outputUnits": 400001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 124,
+              "storage": 130
+            },
+            "verdict": {
+              "work": 1000000,
+              "storage": 1544447
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 9.397874999999658,
+          "medianMs": 10.988416999999572,
+          "p95Ms": 19.009124999999585,
+          "maxMs": 19.009124999999585
+        },
+        {
+          "name": "invalid item diagnostics",
+          "workLimit": 2000000,
+          "schemaUnits": 27,
+          "outputUnits": 400001,
+          "status": "invalid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 124,
+              "storage": 130
+            },
+            "verdict": {
+              "work": 1788894,
+              "storage": 2488911
+            },
+            "diagnostics": {
+              "work": 100000,
+              "storage": 233321
+            }
+          },
+          "firstMs": 58.90716599999996,
+          "medianMs": 46.65741600000001,
+          "p95Ms": 60.16541700000016,
+          "maxMs": 60.16541700000016
+        },
+        {
+          "name": "invalid item diagnostics",
+          "workLimit": 4000000,
+          "schemaUnits": 27,
+          "outputUnits": 400001,
+          "status": "invalid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 124,
+              "storage": 130
+            },
+            "verdict": {
+              "work": 1788894,
+              "storage": 2488911
+            },
+            "diagnostics": {
+              "work": 100000,
+              "storage": 233321
+            }
+          },
+          "firstMs": 45.4708329999994,
+          "medianMs": 48.29179199999999,
+          "p95Ms": 62.759000000000015,
+          "maxMs": 62.759000000000015
+        },
+        {
+          "name": "unique objects",
+          "workLimit": 100000,
+          "schemaUnits": 20,
+          "outputUnits": 528891,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 83,
+              "storage": 79
+            },
+            "verdict": {
+              "work": 99999,
+              "storage": 118526
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 2.7467920000008235,
+          "medianMs": 2.5742089999994278,
+          "p95Ms": 2.6384579999994457,
+          "maxMs": 2.6384579999994457
+        },
+        {
+          "name": "unique objects",
+          "workLimit": 250000,
+          "schemaUnits": 20,
+          "outputUnits": 528891,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 83,
+              "storage": 79
+            },
+            "verdict": {
+              "work": 249999,
+              "storage": 293526
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 2.9420000000000073,
+          "medianMs": 2.9625000000005457,
+          "p95Ms": 8.095625000000837,
+          "maxMs": 8.095625000000837
+        },
+        {
+          "name": "unique objects",
+          "workLimit": 500000,
+          "schemaUnits": 20,
+          "outputUnits": 528891,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 83,
+              "storage": 79
+            },
+            "verdict": {
+              "work": 500000,
+              "storage": 867712
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 7.526957999999468,
+          "medianMs": 7.159125000000131,
+          "p95Ms": 9.151208000000224,
+          "maxMs": 9.151208000000224
+        },
+        {
+          "name": "unique objects",
+          "workLimit": 1000000,
+          "schemaUnits": 20,
+          "outputUnits": 528891,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 83,
+              "storage": 79
+            },
+            "verdict": {
+              "work": 999995,
+              "storage": 1667111
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 15.343667000000096,
+          "medianMs": 16.350916999999754,
+          "p95Ms": 29.0303329999997,
+          "maxMs": 29.0303329999997
+        },
+        {
+          "name": "unique objects",
+          "workLimit": 2000000,
+          "schemaUnits": 20,
+          "outputUnits": 528891,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 83,
+              "storage": 79
+            },
+            "verdict": {
+              "work": 1999997,
+              "storage": 2645236
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 28.501915999999255,
+          "medianMs": 24.025249999999687,
+          "p95Ms": 36.72491699999955,
+          "maxMs": 36.72491699999955
+        },
+        {
+          "name": "unique objects",
+          "workLimit": 4000000,
+          "schemaUnits": 20,
+          "outputUnits": 528891,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 83,
+              "storage": 79
+            },
+            "verdict": {
+              "work": 2700565,
+              "storage": 3330579
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 30.78979199999958,
+          "medianMs": 30.690332999999555,
+          "p95Ms": 41.84379199999967,
+          "maxMs": 41.84379199999967
+        },
+        {
+          "name": "long unicode string",
+          "workLimit": 100000,
+          "schemaUnits": 31,
+          "outputUnits": 480002,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 138,
+              "storage": 117
+            },
+            "verdict": {
+              "work": 1,
+              "storage": 10
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.4608749999988504,
+          "medianMs": 0.39266700000007404,
+          "p95Ms": 0.4784170000002632,
+          "maxMs": 0.4784170000002632
+        },
+        {
+          "name": "long unicode string",
+          "workLimit": 250000,
+          "schemaUnits": 31,
+          "outputUnits": 480002,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 138,
+              "storage": 117
+            },
+            "verdict": {
+              "work": 1,
+              "storage": 10
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.39562499999919964,
+          "medianMs": 0.38841599999977916,
+          "p95Ms": 0.41899999999986903,
+          "maxMs": 0.41899999999986903
+        },
+        {
+          "name": "long unicode string",
+          "workLimit": 500000,
+          "schemaUnits": 31,
+          "outputUnits": 480002,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 138,
+              "storage": 117
+            },
+            "verdict": {
+              "work": 500000,
+              "storage": 480014
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.6018329999988055,
+          "medianMs": 0.5062080000006972,
+          "p95Ms": 0.6092499999995198,
+          "maxMs": 0.6092499999995198
+        },
+        {
+          "name": "long unicode string",
+          "workLimit": 1000000,
+          "schemaUnits": 31,
+          "outputUnits": 480002,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 138,
+              "storage": 117
+            },
+            "verdict": {
+              "work": 960007,
+              "storage": 480019
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 5.272458000001279,
+          "medianMs": 1.9396249999990687,
+          "p95Ms": 2.5887089999996533,
+          "maxMs": 2.5887089999996533
+        },
+        {
+          "name": "long unicode string",
+          "workLimit": 2000000,
+          "schemaUnits": 31,
+          "outputUnits": 480002,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 138,
+              "storage": 117
+            },
+            "verdict": {
+              "work": 960007,
+              "storage": 480019
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 2.0681660000009288,
+          "medianMs": 1.2636249999995925,
+          "p95Ms": 2.1035420000007434,
+          "maxMs": 2.1035420000007434
+        },
+        {
+          "name": "long unicode string",
+          "workLimit": 4000000,
+          "schemaUnits": 31,
+          "outputUnits": 480002,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 138,
+              "storage": 117
+            },
+            "verdict": {
+              "work": 960007,
+              "storage": 480019
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1.2634159999997792,
+          "medianMs": 1.2482920000002196,
+          "p95Ms": 1.5593340000013995,
+          "maxMs": 1.5593340000013995
+        },
+        {
+          "name": "wide object sorting",
+          "workLimit": 100000,
+          "schemaUnits": 4,
+          "outputUnits": 517785,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 99991,
+              "storage": 109999
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 5.706249999999272,
+          "medianMs": 4.725542000000132,
+          "p95Ms": 4.846999999999753,
+          "maxMs": 4.846999999999753
+        },
+        {
+          "name": "wide object sorting",
+          "workLimit": 250000,
+          "schemaUnits": 4,
+          "outputUnits": 517785,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 249997,
+              "storage": 275561
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 5.069000000001324,
+          "medianMs": 5.021500000000742,
+          "p95Ms": 6.600666000000274,
+          "maxMs": 6.600666000000274
+        },
+        {
+          "name": "wide object sorting",
+          "workLimit": 500000,
+          "schemaUnits": 4,
+          "outputUnits": 517785,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 499988,
+              "storage": 480136
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 5.312082999998893,
+          "medianMs": 5.362375000000611,
+          "p95Ms": 5.430292000000918,
+          "maxMs": 5.430292000000918
+        },
+        {
+          "name": "wide object sorting",
+          "workLimit": 1000000,
+          "schemaUnits": 4,
+          "outputUnits": 517785,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 999991,
+              "storage": 577900
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 6.015957999999955,
+          "medianMs": 5.805707999999868,
+          "p95Ms": 7.259207999999489,
+          "maxMs": 7.259207999999489
+        },
+        {
+          "name": "wide object sorting",
+          "workLimit": 2000000,
+          "schemaUnits": 4,
+          "outputUnits": 517785,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 1999985,
+              "storage": 773830
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 6.980916000000434,
+          "medianMs": 7.053249999999025,
+          "p95Ms": 7.870208000000275,
+          "maxMs": 7.870208000000275
+        },
+        {
+          "name": "wide object sorting",
+          "workLimit": 4000000,
+          "schemaUnits": 4,
+          "outputUnits": 517785,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 3999989,
+              "storage": 1172464
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 8.864332999999533,
+          "medianMs": 9.066415999999663,
+          "p95Ms": 9.890833999999813,
+          "maxMs": 9.890833999999813
+        },
+        {
+          "name": "schema preflight",
+          "workLimit": 100000,
+          "schemaUnits": 43107,
+          "outputUnits": 4,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 99996,
+              "storage": 47537
+            },
+            "verdict": {
+              "work": 0,
+              "storage": 0
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.6990000000005239,
+          "medianMs": 0.5485829999997804,
+          "p95Ms": 0.5857500000001892,
+          "maxMs": 0.5857500000001892
+        },
+        {
+          "name": "schema preflight",
+          "workLimit": 250000,
+          "schemaUnits": 43107,
+          "outputUnits": 4,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 236015,
+              "storage": 158627
+            },
+            "verdict": {
+              "work": 0,
+              "storage": 0
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 2.099333000000115,
+          "medianMs": 1.4348749999990105,
+          "p95Ms": 3.144458000000668,
+          "maxMs": 3.144458000000668
+        },
+        {
+          "name": "schema preflight",
+          "workLimit": 500000,
+          "schemaUnits": 43107,
+          "outputUnits": 4,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 337530,
+              "storage": 265238
+            },
+            "verdict": {
+              "work": 4,
+              "storage": 19
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 6.223082999998951,
+          "medianMs": 2.2474160000001575,
+          "p95Ms": 5.21966699999939,
+          "maxMs": 5.21966699999939
+        },
+        {
+          "name": "schema preflight",
+          "workLimit": 1000000,
+          "schemaUnits": 43107,
+          "outputUnits": 4,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 337530,
+              "storage": 265238
+            },
+            "verdict": {
+              "work": 4,
+              "storage": 19
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1.936415999998644,
+          "medianMs": 1.8919999999998254,
+          "p95Ms": 7.4675830000014685,
+          "maxMs": 7.4675830000014685
+        },
+        {
+          "name": "schema preflight",
+          "workLimit": 2000000,
+          "schemaUnits": 43107,
+          "outputUnits": 4,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 337530,
+              "storage": 265238
+            },
+            "verdict": {
+              "work": 4,
+              "storage": 19
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1.8456660000010743,
+          "medianMs": 1.8781660000004194,
+          "p95Ms": 4.111958000001323,
+          "maxMs": 4.111958000001323
+        },
+        {
+          "name": "schema preflight",
+          "workLimit": 4000000,
+          "schemaUnits": 43107,
+          "outputUnits": 4,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 337530,
+              "storage": 265238
+            },
+            "verdict": {
+              "work": 4,
+              "storage": 19
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1.8332499999996799,
+          "medianMs": 1.8543750000008004,
+          "p95Ms": 3.975666000000274,
+          "maxMs": 3.975666000000274
+        },
+        {
+          "name": "large payload at depth 64",
+          "workLimit": 100000,
+          "schemaUnits": 4,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 10508,
+              "storage": 11027
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.03995800000120653,
+          "medianMs": 0.03070800000023155,
+          "p95Ms": 0.05029199999989942,
+          "maxMs": 0.05029199999989942
+        },
+        {
+          "name": "large payload at depth 64",
+          "workLimit": 250000,
+          "schemaUnits": 4,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 10508,
+              "storage": 11027
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.03279199999997218,
+          "medianMs": 0.02449999999953434,
+          "p95Ms": 0.02520899999944959,
+          "maxMs": 0.02520899999944959
+        },
+        {
+          "name": "large payload at depth 64",
+          "workLimit": 500000,
+          "schemaUnits": 4,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 10508,
+              "storage": 11027
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.023417000000335975,
+          "medianMs": 0.02454100000068138,
+          "p95Ms": 0.025207999999111053,
+          "maxMs": 0.025207999999111053
+        },
+        {
+          "name": "large payload at depth 64",
+          "workLimit": 1000000,
+          "schemaUnits": 4,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 10508,
+              "storage": 11027
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.022499999999126885,
+          "medianMs": 0.024374999999054126,
+          "p95Ms": 0.024917000000641565,
+          "maxMs": 0.024917000000641565
+        },
+        {
+          "name": "large payload at depth 64",
+          "workLimit": 2000000,
+          "schemaUnits": 4,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 10508,
+              "storage": 11027
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.02974999999969441,
+          "medianMs": 0.024083000000246102,
+          "p95Ms": 0.02491600000030303,
+          "maxMs": 0.02491600000030303
+        },
+        {
+          "name": "large payload at depth 64",
+          "workLimit": 4000000,
+          "schemaUnits": 4,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 10508,
+              "storage": 11027
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.0245840000006865,
+          "medianMs": 0.024000000001251465,
+          "p95Ms": 0.024457999999867752,
+          "maxMs": 0.024457999999867752
+        },
+        {
+          "name": "lazy equality at depth 64",
+          "workLimit": 100000,
+          "schemaUnits": 10579,
+          "outputUnits": 10569,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 91568,
+              "storage": 83645
+            },
+            "verdict": {
+              "work": 0,
+              "storage": 0
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.06662499999947613,
+          "medianMs": 0.040415999999822816,
+          "p95Ms": 0.05045900000004622,
+          "maxMs": 0.05045900000004622
+        },
+        {
+          "name": "lazy equality at depth 64",
+          "workLimit": 250000,
+          "schemaUnits": 10579,
+          "outputUnits": 10569,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 243653,
+              "storage": 235715
+            },
+            "verdict": {
+              "work": 0,
+              "storage": 0
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.04216599999926984,
+          "medianMs": 0.041332999999212916,
+          "p95Ms": 0.044125000000349246,
+          "maxMs": 0.044125000000349246
+        },
+        {
+          "name": "lazy equality at depth 64",
+          "workLimit": 500000,
+          "schemaUnits": 10579,
+          "outputUnits": 10569,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 491201,
+              "storage": 483239
+            },
+            "verdict": {
+              "work": 0,
+              "storage": 0
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.043749999998908606,
+          "medianMs": 0.04345800000010058,
+          "p95Ms": 0.04674999999951979,
+          "maxMs": 0.04674999999951979
+        },
+        {
+          "name": "lazy equality at depth 64",
+          "workLimit": 1000000,
+          "schemaUnits": 10579,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 680272,
+              "storage": 672296
+            },
+            "verdict": {
+              "work": 63488,
+              "storage": 32672
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.16295799999898009,
+          "medianMs": 0.07804200000100536,
+          "p95Ms": 0.09366699999918637,
+          "maxMs": 0.09366699999918637
+        },
+        {
+          "name": "lazy equality at depth 64",
+          "workLimit": 2000000,
+          "schemaUnits": 10579,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 680272,
+              "storage": 672296
+            },
+            "verdict": {
+              "work": 63488,
+              "storage": 32672
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.0779579999998532,
+          "medianMs": 0.08212500000081491,
+          "p95Ms": 2.488500000001295,
+          "maxMs": 2.488500000001295
+        },
+        {
+          "name": "lazy equality at depth 64",
+          "workLimit": 4000000,
+          "schemaUnits": 10579,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 680272,
+              "storage": 672296
+            },
+            "verdict": {
+              "work": 63488,
+              "storage": 32672
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.0656249999992724,
+          "medianMs": 0.06583300000056624,
+          "p95Ms": 0.08104099999945902,
+          "maxMs": 0.08104099999945902
+        }
+      ]
+    },
+    {
+      "runtime": "chromium",
+      "version": "145.0.7632.6",
+      "samples": 15,
+      "warmups": 3,
+      "results": [
+        {
+          "name": "realistic 100 records",
+          "workLimit": 100000,
+          "schemaUnits": 178,
+          "outputUnits": 5601,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 11694,
+              "storage": 10315
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1.5,
+          "medianMs": 0.20000004768371582,
+          "p95Ms": 0.3999999761581421,
+          "maxMs": 0.3999999761581421
+        },
+        {
+          "name": "realistic 100 records",
+          "workLimit": 250000,
+          "schemaUnits": 178,
+          "outputUnits": 5601,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 11694,
+              "storage": 10315
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.19999992847442627,
+          "medianMs": 0.20000004768371582,
+          "p95Ms": 0.20000004768371582,
+          "maxMs": 0.20000004768371582
+        },
+        {
+          "name": "realistic 100 records",
+          "workLimit": 500000,
+          "schemaUnits": 178,
+          "outputUnits": 5601,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 11694,
+              "storage": 10315
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.30000007152557373,
+          "medianMs": 0.19999992847442627,
+          "p95Ms": 0.30000007152557373,
+          "maxMs": 0.30000007152557373
+        },
+        {
+          "name": "realistic 100 records",
+          "workLimit": 1000000,
+          "schemaUnits": 178,
+          "outputUnits": 5601,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 11694,
+              "storage": 10315
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.3999999761581421,
+          "medianMs": 0.20000004768371582,
+          "p95Ms": 0.6999999284744263,
+          "maxMs": 0.6999999284744263
+        },
+        {
+          "name": "realistic 100 records",
+          "workLimit": 2000000,
+          "schemaUnits": 178,
+          "outputUnits": 5601,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 11694,
+              "storage": 10315
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.10000002384185791,
+          "medianMs": 0.10000002384185791,
+          "p95Ms": 0.2999999523162842,
+          "maxMs": 0.2999999523162842
+        },
+        {
+          "name": "realistic 100 records",
+          "workLimit": 4000000,
+          "schemaUnits": 178,
+          "outputUnits": 5601,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 11694,
+              "storage": 10315
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.20000004768371582,
+          "medianMs": 0.19999992847442627,
+          "p95Ms": 0.20000004768371582,
+          "maxMs": 0.20000004768371582
+        },
+        {
+          "name": "realistic 1000 records",
+          "workLimit": 100000,
+          "schemaUnits": 178,
+          "outputUnits": 56001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 100000,
+              "storage": 96235
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 2,
+          "medianMs": 0.8999999761581421,
+          "p95Ms": 1.100000023841858,
+          "maxMs": 1.100000023841858
+        },
+        {
+          "name": "realistic 1000 records",
+          "workLimit": 250000,
+          "schemaUnits": 178,
+          "outputUnits": 56001,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 117894,
+              "storage": 103915
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1,
+          "medianMs": 1.100000023841858,
+          "p95Ms": 1.3000000715255737,
+          "maxMs": 1.3000000715255737
+        },
+        {
+          "name": "realistic 1000 records",
+          "workLimit": 500000,
+          "schemaUnits": 178,
+          "outputUnits": 56001,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 117894,
+              "storage": 103915
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1,
+          "medianMs": 1,
+          "p95Ms": 1.399999976158142,
+          "maxMs": 1.399999976158142
+        },
+        {
+          "name": "realistic 1000 records",
+          "workLimit": 1000000,
+          "schemaUnits": 178,
+          "outputUnits": 56001,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 117894,
+              "storage": 103915
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1,
+          "medianMs": 1,
+          "p95Ms": 1.2999999523162842,
+          "maxMs": 1.2999999523162842
+        },
+        {
+          "name": "realistic 1000 records",
+          "workLimit": 2000000,
+          "schemaUnits": 178,
+          "outputUnits": 56001,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 117894,
+              "storage": 103915
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1,
+          "medianMs": 1,
+          "p95Ms": 1.2000000476837158,
+          "maxMs": 1.2000000476837158
+        },
+        {
+          "name": "realistic 1000 records",
+          "workLimit": 4000000,
+          "schemaUnits": 178,
+          "outputUnits": 56001,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 117894,
+              "storage": 103915
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1,
+          "medianMs": 1,
+          "p95Ms": 1.2000000476837158,
+          "maxMs": 1.2000000476837158
+        },
+        {
+          "name": "number traversal",
+          "workLimit": 100000,
+          "schemaUnits": 68,
+          "outputUnits": 200001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 442,
+              "storage": 475
+            },
+            "verdict": {
+              "work": 99999,
+              "storage": 118526
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1.899999976158142,
+          "medianMs": 1.600000023841858,
+          "p95Ms": 1.7000000476837158,
+          "maxMs": 1.7000000476837158
+        },
+        {
+          "name": "number traversal",
+          "workLimit": 250000,
+          "schemaUnits": 68,
+          "outputUnits": 200001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 442,
+              "storage": 475
+            },
+            "verdict": {
+              "work": 249999,
+              "storage": 293526
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 4.400000095367432,
+          "medianMs": 1.7000000476837158,
+          "p95Ms": 1.8000000715255737,
+          "maxMs": 1.8000000715255737
+        },
+        {
+          "name": "number traversal",
+          "workLimit": 500000,
+          "schemaUnits": 68,
+          "outputUnits": 200001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 442,
+              "storage": 475
+            },
+            "verdict": {
+              "work": 499995,
+              "storage": 585188
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 2.100000023841858,
+          "medianMs": 2.1999999284744263,
+          "p95Ms": 2.299999952316284,
+          "maxMs": 2.299999952316284
+        },
+        {
+          "name": "number traversal",
+          "workLimit": 1000000,
+          "schemaUnits": 68,
+          "outputUnits": 200001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 442,
+              "storage": 475
+            },
+            "verdict": {
+              "work": 1000000,
+              "storage": 1701866
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 45.5,
+          "medianMs": 25.200000047683716,
+          "p95Ms": 29.5,
+          "maxMs": 29.5
+        },
+        {
+          "name": "number traversal",
+          "workLimit": 2000000,
+          "schemaUnits": 68,
+          "outputUnits": 200001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 442,
+              "storage": 475
+            },
+            "verdict": {
+              "work": 2000000,
+              "storage": 2868535
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 71,
+          "medianMs": 67.60000002384186,
+          "p95Ms": 72.20000004768372,
+          "maxMs": 72.20000004768372
+        },
+        {
+          "name": "number traversal",
+          "workLimit": 4000000,
+          "schemaUnits": 68,
+          "outputUnits": 200001,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 442,
+              "storage": 475
+            },
+            "verdict": {
+              "work": 3388894,
+              "storage": 4488917
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 125.69999992847443,
+          "medianMs": 128.20000004768372,
+          "p95Ms": 134.5,
+          "maxMs": 134.5
+        },
+        {
+          "name": "invalid item diagnostics",
+          "workLimit": 100000,
+          "schemaUnits": 27,
+          "outputUnits": 400001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 124,
+              "storage": 130
+            },
+            "verdict": {
+              "work": 99999,
+              "storage": 118526
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1.7000000476837158,
+          "medianMs": 1.600000023841858,
+          "p95Ms": 5.700000047683716,
+          "maxMs": 5.700000047683716
+        },
+        {
+          "name": "invalid item diagnostics",
+          "workLimit": 250000,
+          "schemaUnits": 27,
+          "outputUnits": 400001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 124,
+              "storage": 130
+            },
+            "verdict": {
+              "work": 249999,
+              "storage": 293526
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1.8000000715255737,
+          "medianMs": 1.899999976158142,
+          "p95Ms": 2,
+          "maxMs": 2
+        },
+        {
+          "name": "invalid item diagnostics",
+          "workLimit": 500000,
+          "schemaUnits": 27,
+          "outputUnits": 400001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 124,
+              "storage": 130
+            },
+            "verdict": {
+              "work": 499995,
+              "storage": 585188
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 2.200000047683716,
+          "medianMs": 2.200000047683716,
+          "p95Ms": 2.399999976158142,
+          "maxMs": 2.399999976158142
+        },
+        {
+          "name": "invalid item diagnostics",
+          "workLimit": 1000000,
+          "schemaUnits": 27,
+          "outputUnits": 400001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 124,
+              "storage": 130
+            },
+            "verdict": {
+              "work": 1000000,
+              "storage": 1544447
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 33.299999952316284,
+          "medianMs": 17.5,
+          "p95Ms": 31.199999928474426,
+          "maxMs": 31.199999928474426
+        },
+        {
+          "name": "invalid item diagnostics",
+          "workLimit": 2000000,
+          "schemaUnits": 27,
+          "outputUnits": 400001,
+          "status": "invalid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 124,
+              "storage": 130
+            },
+            "verdict": {
+              "work": 1788894,
+              "storage": 2488911
+            },
+            "diagnostics": {
+              "work": 100000,
+              "storage": 233321
+            }
+          },
+          "firstMs": 68,
+          "medianMs": 56.200000047683716,
+          "p95Ms": 64.29999995231628,
+          "maxMs": 64.29999995231628
+        },
+        {
+          "name": "invalid item diagnostics",
+          "workLimit": 4000000,
+          "schemaUnits": 27,
+          "outputUnits": 400001,
+          "status": "invalid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 124,
+              "storage": 130
+            },
+            "verdict": {
+              "work": 1788894,
+              "storage": 2488911
+            },
+            "diagnostics": {
+              "work": 100000,
+              "storage": 233321
+            }
+          },
+          "firstMs": 65.30000007152557,
+          "medianMs": 58,
+          "p95Ms": 86.29999995231628,
+          "maxMs": 86.29999995231628
+        },
+        {
+          "name": "unique objects",
+          "workLimit": 100000,
+          "schemaUnits": 20,
+          "outputUnits": 528891,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 83,
+              "storage": 79
+            },
+            "verdict": {
+              "work": 99999,
+              "storage": 118526
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 2.399999976158142,
+          "medianMs": 1.7999999523162842,
+          "p95Ms": 3,
+          "maxMs": 3
+        },
+        {
+          "name": "unique objects",
+          "workLimit": 250000,
+          "schemaUnits": 20,
+          "outputUnits": 528891,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 83,
+              "storage": 79
+            },
+            "verdict": {
+              "work": 249999,
+              "storage": 293526
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 2,
+          "medianMs": 2,
+          "p95Ms": 2.100000023841858,
+          "maxMs": 2.100000023841858
+        },
+        {
+          "name": "unique objects",
+          "workLimit": 500000,
+          "schemaUnits": 20,
+          "outputUnits": 528891,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 83,
+              "storage": 79
+            },
+            "verdict": {
+              "work": 500000,
+              "storage": 867712
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 8.600000023841858,
+          "medianMs": 8.299999952316284,
+          "p95Ms": 10.300000071525574,
+          "maxMs": 10.300000071525574
+        },
+        {
+          "name": "unique objects",
+          "workLimit": 1000000,
+          "schemaUnits": 20,
+          "outputUnits": 528891,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 83,
+              "storage": 79
+            },
+            "verdict": {
+              "work": 999995,
+              "storage": 1667111
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 22.399999976158142,
+          "medianMs": 19.200000047683716,
+          "p95Ms": 47.39999997615814,
+          "maxMs": 47.39999997615814
+        },
+        {
+          "name": "unique objects",
+          "workLimit": 2000000,
+          "schemaUnits": 20,
+          "outputUnits": 528891,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 83,
+              "storage": 79
+            },
+            "verdict": {
+              "work": 1999997,
+              "storage": 2645236
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 33,
+          "medianMs": 29,
+          "p95Ms": 47.700000047683716,
+          "maxMs": 47.700000047683716
+        },
+        {
+          "name": "unique objects",
+          "workLimit": 4000000,
+          "schemaUnits": 20,
+          "outputUnits": 528891,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 83,
+              "storage": 79
+            },
+            "verdict": {
+              "work": 2700565,
+              "storage": 3330579
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 38.800000071525574,
+          "medianMs": 34.299999952316284,
+          "p95Ms": 45.700000047683716,
+          "maxMs": 45.700000047683716
+        },
+        {
+          "name": "long unicode string",
+          "workLimit": 100000,
+          "schemaUnits": 31,
+          "outputUnits": 480002,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 138,
+              "storage": 117
+            },
+            "verdict": {
+              "work": 1,
+              "storage": 10
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.20000004768371582,
+          "medianMs": 0.19999992847442627,
+          "p95Ms": 0.30000007152557373,
+          "maxMs": 0.30000007152557373
+        },
+        {
+          "name": "long unicode string",
+          "workLimit": 250000,
+          "schemaUnits": 31,
+          "outputUnits": 480002,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 138,
+              "storage": 117
+            },
+            "verdict": {
+              "work": 1,
+              "storage": 10
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.20000004768371582,
+          "medianMs": 0.20000004768371582,
+          "p95Ms": 1.5,
+          "maxMs": 1.5
+        },
+        {
+          "name": "long unicode string",
+          "workLimit": 500000,
+          "schemaUnits": 31,
+          "outputUnits": 480002,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 138,
+              "storage": 117
+            },
+            "verdict": {
+              "work": 500000,
+              "storage": 480014
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.3999999761581421,
+          "medianMs": 0.2999999523162842,
+          "p95Ms": 0.5,
+          "maxMs": 0.5
+        },
+        {
+          "name": "long unicode string",
+          "workLimit": 1000000,
+          "schemaUnits": 31,
+          "outputUnits": 480002,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 138,
+              "storage": 117
+            },
+            "verdict": {
+              "work": 960007,
+              "storage": 480019
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1.6999999284744263,
+          "medianMs": 1.6999999284744263,
+          "p95Ms": 1.7999999523162842,
+          "maxMs": 1.7999999523162842
+        },
+        {
+          "name": "long unicode string",
+          "workLimit": 2000000,
+          "schemaUnits": 31,
+          "outputUnits": 480002,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 138,
+              "storage": 117
+            },
+            "verdict": {
+              "work": 960007,
+              "storage": 480019
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1.6999999284744263,
+          "medianMs": 0.8999999761581421,
+          "p95Ms": 1.7000000476837158,
+          "maxMs": 1.7000000476837158
+        },
+        {
+          "name": "long unicode string",
+          "workLimit": 4000000,
+          "schemaUnits": 31,
+          "outputUnits": 480002,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 138,
+              "storage": 117
+            },
+            "verdict": {
+              "work": 960007,
+              "storage": 480019
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.8999999761581421,
+          "medianMs": 0.8999999761581421,
+          "p95Ms": 1,
+          "maxMs": 1
+        },
+        {
+          "name": "wide object sorting",
+          "workLimit": 100000,
+          "schemaUnits": 4,
+          "outputUnits": 517785,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 99991,
+              "storage": 109999
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 4.100000023841858,
+          "medianMs": 3.3000000715255737,
+          "p95Ms": 3.5,
+          "maxMs": 3.5
+        },
+        {
+          "name": "wide object sorting",
+          "workLimit": 250000,
+          "schemaUnits": 4,
+          "outputUnits": 517785,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 249997,
+              "storage": 275561
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 3.5,
+          "medianMs": 3.5,
+          "p95Ms": 3.9000000953674316,
+          "maxMs": 3.9000000953674316
+        },
+        {
+          "name": "wide object sorting",
+          "workLimit": 500000,
+          "schemaUnits": 4,
+          "outputUnits": 517785,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 499988,
+              "storage": 480136
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 3.899999976158142,
+          "medianMs": 3.8000000715255737,
+          "p95Ms": 4,
+          "maxMs": 4
+        },
+        {
+          "name": "wide object sorting",
+          "workLimit": 1000000,
+          "schemaUnits": 4,
+          "outputUnits": 517785,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 999991,
+              "storage": 577900
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 4.299999952316284,
+          "medianMs": 4.300000071525574,
+          "p95Ms": 4.699999928474426,
+          "maxMs": 4.699999928474426
+        },
+        {
+          "name": "wide object sorting",
+          "workLimit": 2000000,
+          "schemaUnits": 4,
+          "outputUnits": 517785,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 1999985,
+              "storage": 773830
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 5.300000071525574,
+          "medianMs": 5.200000047683716,
+          "p95Ms": 5.700000047683716,
+          "maxMs": 5.700000047683716
+        },
+        {
+          "name": "wide object sorting",
+          "workLimit": 4000000,
+          "schemaUnits": 4,
+          "outputUnits": 517785,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 3999989,
+              "storage": 1172464
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 7,
+          "medianMs": 7,
+          "p95Ms": 7.599999904632568,
+          "maxMs": 7.599999904632568
+        },
+        {
+          "name": "schema preflight",
+          "workLimit": 100000,
+          "schemaUnits": 43107,
+          "outputUnits": 4,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 99996,
+              "storage": 47537
+            },
+            "verdict": {
+              "work": 0,
+              "storage": 0
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.8000000715255737,
+          "medianMs": 0.3999999761581421,
+          "p95Ms": 0.5,
+          "maxMs": 0.5
+        },
+        {
+          "name": "schema preflight",
+          "workLimit": 250000,
+          "schemaUnits": 43107,
+          "outputUnits": 4,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 236015,
+              "storage": 158627
+            },
+            "verdict": {
+              "work": 0,
+              "storage": 0
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1.8000000715255737,
+          "medianMs": 1.100000023841858,
+          "p95Ms": 1.399999976158142,
+          "maxMs": 1.399999976158142
+        },
+        {
+          "name": "schema preflight",
+          "workLimit": 500000,
+          "schemaUnits": 43107,
+          "outputUnits": 4,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 337530,
+              "storage": 265238
+            },
+            "verdict": {
+              "work": 4,
+              "storage": 19
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 2,
+          "medianMs": 1.899999976158142,
+          "p95Ms": 7.299999952316284,
+          "maxMs": 7.299999952316284
+        },
+        {
+          "name": "schema preflight",
+          "workLimit": 1000000,
+          "schemaUnits": 43107,
+          "outputUnits": 4,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 337530,
+              "storage": 265238
+            },
+            "verdict": {
+              "work": 4,
+              "storage": 19
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1.2999999523162842,
+          "medianMs": 1.399999976158142,
+          "p95Ms": 2.899999976158142,
+          "maxMs": 2.899999976158142
+        },
+        {
+          "name": "schema preflight",
+          "workLimit": 2000000,
+          "schemaUnits": 43107,
+          "outputUnits": 4,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 337530,
+              "storage": 265238
+            },
+            "verdict": {
+              "work": 4,
+              "storage": 19
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1.399999976158142,
+          "medianMs": 1.399999976158142,
+          "p95Ms": 2.6999999284744263,
+          "maxMs": 2.6999999284744263
+        },
+        {
+          "name": "schema preflight",
+          "workLimit": 4000000,
+          "schemaUnits": 43107,
+          "outputUnits": 4,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 337530,
+              "storage": 265238
+            },
+            "verdict": {
+              "work": 4,
+              "storage": 19
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 2.600000023841858,
+          "medianMs": 1.399999976158142,
+          "p95Ms": 2.799999952316284,
+          "maxMs": 2.799999952316284
+        },
+        {
+          "name": "large payload at depth 64",
+          "workLimit": 100000,
+          "schemaUnits": 4,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 10508,
+              "storage": 11027
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 0.10000002384185791,
+          "maxMs": 0.10000002384185791
+        },
+        {
+          "name": "large payload at depth 64",
+          "workLimit": 250000,
+          "schemaUnits": 4,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 10508,
+              "storage": 11027
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 0.10000002384185791,
+          "maxMs": 0.10000002384185791
+        },
+        {
+          "name": "large payload at depth 64",
+          "workLimit": 500000,
+          "schemaUnits": 4,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 10508,
+              "storage": 11027
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.10000002384185791,
+          "medianMs": 0,
+          "p95Ms": 0.10000002384185791,
+          "maxMs": 0.10000002384185791
+        },
+        {
+          "name": "large payload at depth 64",
+          "workLimit": 1000000,
+          "schemaUnits": 4,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 10508,
+              "storage": 11027
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 0.10000002384185791,
+          "maxMs": 0.10000002384185791
+        },
+        {
+          "name": "large payload at depth 64",
+          "workLimit": 2000000,
+          "schemaUnits": 4,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 10508,
+              "storage": 11027
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 0.10000002384185791,
+          "maxMs": 0.10000002384185791
+        },
+        {
+          "name": "large payload at depth 64",
+          "workLimit": 4000000,
+          "schemaUnits": 4,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 10508,
+              "storage": 11027
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 0.10000002384185791,
+          "maxMs": 0.10000002384185791
+        },
+        {
+          "name": "lazy equality at depth 64",
+          "workLimit": 100000,
+          "schemaUnits": 10579,
+          "outputUnits": 10569,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 91568,
+              "storage": 83645
+            },
+            "verdict": {
+              "work": 0,
+              "storage": 0
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 0.10000002384185791,
+          "maxMs": 0.10000002384185791
+        },
+        {
+          "name": "lazy equality at depth 64",
+          "workLimit": 250000,
+          "schemaUnits": 10579,
+          "outputUnits": 10569,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 243653,
+              "storage": 235715
+            },
+            "verdict": {
+              "work": 0,
+              "storage": 0
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.10000002384185791,
+          "medianMs": 0,
+          "p95Ms": 0.10000002384185791,
+          "maxMs": 0.10000002384185791
+        },
+        {
+          "name": "lazy equality at depth 64",
+          "workLimit": 500000,
+          "schemaUnits": 10579,
+          "outputUnits": 10569,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 491201,
+              "storage": 483239
+            },
+            "verdict": {
+              "work": 0,
+              "storage": 0
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.10000002384185791,
+          "medianMs": 0,
+          "p95Ms": 0.10000002384185791,
+          "maxMs": 0.10000002384185791
+        },
+        {
+          "name": "lazy equality at depth 64",
+          "workLimit": 1000000,
+          "schemaUnits": 10579,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 680272,
+              "storage": 672296
+            },
+            "verdict": {
+              "work": 63488,
+              "storage": 32672
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.10000002384185791,
+          "medianMs": 0,
+          "p95Ms": 0.10000002384185791,
+          "maxMs": 0.10000002384185791
+        },
+        {
+          "name": "lazy equality at depth 64",
+          "workLimit": 2000000,
+          "schemaUnits": 10579,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 680272,
+              "storage": 672296
+            },
+            "verdict": {
+              "work": 63488,
+              "storage": 32672
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 0.10000002384185791,
+          "maxMs": 0.10000002384185791
+        },
+        {
+          "name": "lazy equality at depth 64",
+          "workLimit": 4000000,
+          "schemaUnits": 10579,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 680272,
+              "storage": 672296
+            },
+            "verdict": {
+              "work": 63488,
+              "storage": 32672
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0.10000002384185791,
+          "medianMs": 0.10000002384185791,
+          "p95Ms": 1.6999999284744263,
+          "maxMs": 1.6999999284744263
+        }
+      ]
+    },
+    {
+      "runtime": "webkit",
+      "version": "26.0",
+      "samples": 15,
+      "warmups": 3,
+      "results": [
+        {
+          "name": "realistic 100 records",
+          "workLimit": 100000,
+          "schemaUnits": 178,
+          "outputUnits": 5601,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 11694,
+              "storage": 10315
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 3,
+          "medianMs": 0,
+          "p95Ms": 1,
+          "maxMs": 1
+        },
+        {
+          "name": "realistic 100 records",
+          "workLimit": 250000,
+          "schemaUnits": 178,
+          "outputUnits": 5601,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 11694,
+              "storage": 10315
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 1.000000000000007,
+          "maxMs": 1.000000000000007
+        },
+        {
+          "name": "realistic 100 records",
+          "workLimit": 500000,
+          "schemaUnits": 178,
+          "outputUnits": 5601,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 11694,
+              "storage": 10315
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 1,
+          "maxMs": 1
+        },
+        {
+          "name": "realistic 100 records",
+          "workLimit": 1000000,
+          "schemaUnits": 178,
+          "outputUnits": 5601,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 11694,
+              "storage": 10315
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 1.0000000000000142,
+          "maxMs": 1.0000000000000142
+        },
+        {
+          "name": "realistic 100 records",
+          "workLimit": 2000000,
+          "schemaUnits": 178,
+          "outputUnits": 5601,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 11694,
+              "storage": 10315
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 1,
+          "maxMs": 1
+        },
+        {
+          "name": "realistic 100 records",
+          "workLimit": 4000000,
+          "schemaUnits": 178,
+          "outputUnits": 5601,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 11694,
+              "storage": 10315
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 1,
+          "maxMs": 1
+        },
+        {
+          "name": "realistic 1000 records",
+          "workLimit": 100000,
+          "schemaUnits": 178,
+          "outputUnits": 56001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 100000,
+              "storage": 96235
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 2,
+          "medianMs": 1,
+          "p95Ms": 2,
+          "maxMs": 2
+        },
+        {
+          "name": "realistic 1000 records",
+          "workLimit": 250000,
+          "schemaUnits": 178,
+          "outputUnits": 56001,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 117894,
+              "storage": 103915
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 2,
+          "medianMs": 1,
+          "p95Ms": 2.999999999999986,
+          "maxMs": 2.999999999999986
+        },
+        {
+          "name": "realistic 1000 records",
+          "workLimit": 500000,
+          "schemaUnits": 178,
+          "outputUnits": 56001,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 117894,
+              "storage": 103915
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 2,
+          "medianMs": 1,
+          "p95Ms": 2,
+          "maxMs": 2
+        },
+        {
+          "name": "realistic 1000 records",
+          "workLimit": 1000000,
+          "schemaUnits": 178,
+          "outputUnits": 56001,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 117894,
+              "storage": 103915
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1,
+          "medianMs": 1,
+          "p95Ms": 3,
+          "maxMs": 3
+        },
+        {
+          "name": "realistic 1000 records",
+          "workLimit": 2000000,
+          "schemaUnits": 178,
+          "outputUnits": 56001,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 117894,
+              "storage": 103915
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1,
+          "medianMs": 1,
+          "p95Ms": 2.0000000000000284,
+          "maxMs": 2.0000000000000284
+        },
+        {
+          "name": "realistic 1000 records",
+          "workLimit": 4000000,
+          "schemaUnits": 178,
+          "outputUnits": 56001,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 117894,
+              "storage": 103915
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1,
+          "medianMs": 1,
+          "p95Ms": 2,
+          "maxMs": 2
+        },
+        {
+          "name": "number traversal",
+          "workLimit": 100000,
+          "schemaUnits": 68,
+          "outputUnits": 200001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 442,
+              "storage": 475
+            },
+            "verdict": {
+              "work": 99999,
+              "storage": 118526
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 2,
+          "medianMs": 2,
+          "p95Ms": 2.0000000000000284,
+          "maxMs": 2.0000000000000284
+        },
+        {
+          "name": "number traversal",
+          "workLimit": 250000,
+          "schemaUnits": 68,
+          "outputUnits": 200001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 442,
+              "storage": 475
+            },
+            "verdict": {
+              "work": 249999,
+              "storage": 293526
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 4.999999999999972,
+          "medianMs": 4,
+          "p95Ms": 4.000000000000057,
+          "maxMs": 4.000000000000057
+        },
+        {
+          "name": "number traversal",
+          "workLimit": 500000,
+          "schemaUnits": 68,
+          "outputUnits": 200001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 442,
+              "storage": 475
+            },
+            "verdict": {
+              "work": 499995,
+              "storage": 585188
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 6,
+          "medianMs": 6,
+          "p95Ms": 7.000000000000057,
+          "maxMs": 7.000000000000057
+        },
+        {
+          "name": "number traversal",
+          "workLimit": 1000000,
+          "schemaUnits": 68,
+          "outputUnits": 200001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 442,
+              "storage": 475
+            },
+            "verdict": {
+              "work": 1000000,
+              "storage": 1701866
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 19.999999999999943,
+          "medianMs": 20,
+          "p95Ms": 22,
+          "maxMs": 22
+        },
+        {
+          "name": "number traversal",
+          "workLimit": 2000000,
+          "schemaUnits": 68,
+          "outputUnits": 200001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 442,
+              "storage": 475
+            },
+            "verdict": {
+              "work": 2000000,
+              "storage": 2868535
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 97,
+          "medianMs": 84.99999999999977,
+          "p95Ms": 93,
+          "maxMs": 93
+        },
+        {
+          "name": "number traversal",
+          "workLimit": 4000000,
+          "schemaUnits": 68,
+          "outputUnits": 200001,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 442,
+              "storage": 475
+            },
+            "verdict": {
+              "work": 3388894,
+              "storage": 4488917
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 199,
+          "medianMs": 176,
+          "p95Ms": 210,
+          "maxMs": 210
+        },
+        {
+          "name": "invalid item diagnostics",
+          "workLimit": 100000,
+          "schemaUnits": 27,
+          "outputUnits": 400001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 124,
+              "storage": 130
+            },
+            "verdict": {
+              "work": 99999,
+              "storage": 118526
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 3,
+          "medianMs": 2,
+          "p95Ms": 2.0000000000009095,
+          "maxMs": 2.0000000000009095
+        },
+        {
+          "name": "invalid item diagnostics",
+          "workLimit": 250000,
+          "schemaUnits": 27,
+          "outputUnits": 400001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 124,
+              "storage": 130
+            },
+            "verdict": {
+              "work": 249999,
+              "storage": 293526
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 4,
+          "medianMs": 3,
+          "p95Ms": 4,
+          "maxMs": 4
+        },
+        {
+          "name": "invalid item diagnostics",
+          "workLimit": 500000,
+          "schemaUnits": 27,
+          "outputUnits": 400001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 124,
+              "storage": 130
+            },
+            "verdict": {
+              "work": 499995,
+              "storage": 585188
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 7,
+          "medianMs": 6,
+          "p95Ms": 7.0000000000009095,
+          "maxMs": 7.0000000000009095
+        },
+        {
+          "name": "invalid item diagnostics",
+          "workLimit": 1000000,
+          "schemaUnits": 27,
+          "outputUnits": 400001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 124,
+              "storage": 130
+            },
+            "verdict": {
+              "work": 1000000,
+              "storage": 1544447
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 14,
+          "medianMs": 16,
+          "p95Ms": 17,
+          "maxMs": 17
+        },
+        {
+          "name": "invalid item diagnostics",
+          "workLimit": 2000000,
+          "schemaUnits": 27,
+          "outputUnits": 400001,
+          "status": "invalid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 124,
+              "storage": 130
+            },
+            "verdict": {
+              "work": 1788894,
+              "storage": 2488911
+            },
+            "diagnostics": {
+              "work": 100000,
+              "storage": 233321
+            }
+          },
+          "firstMs": 76,
+          "medianMs": 79,
+          "p95Ms": 85,
+          "maxMs": 85
+        },
+        {
+          "name": "invalid item diagnostics",
+          "workLimit": 4000000,
+          "schemaUnits": 27,
+          "outputUnits": 400001,
+          "status": "invalid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 124,
+              "storage": 130
+            },
+            "verdict": {
+              "work": 1788894,
+              "storage": 2488911
+            },
+            "diagnostics": {
+              "work": 100000,
+              "storage": 233321
+            }
+          },
+          "firstMs": 78,
+          "medianMs": 55.00000000000182,
+          "p95Ms": 79,
+          "maxMs": 79
+        },
+        {
+          "name": "unique objects",
+          "workLimit": 100000,
+          "schemaUnits": 20,
+          "outputUnits": 528891,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 83,
+              "storage": 79
+            },
+            "verdict": {
+              "work": 99999,
+              "storage": 118526
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 3,
+          "medianMs": 2,
+          "p95Ms": 3,
+          "maxMs": 3
+        },
+        {
+          "name": "unique objects",
+          "workLimit": 250000,
+          "schemaUnits": 20,
+          "outputUnits": 528891,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 83,
+              "storage": 79
+            },
+            "verdict": {
+              "work": 249999,
+              "storage": 293526
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 4,
+          "medianMs": 4,
+          "p95Ms": 4,
+          "maxMs": 4
+        },
+        {
+          "name": "unique objects",
+          "workLimit": 500000,
+          "schemaUnits": 20,
+          "outputUnits": 528891,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 83,
+              "storage": 79
+            },
+            "verdict": {
+              "work": 500000,
+              "storage": 867712
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 10,
+          "medianMs": 10,
+          "p95Ms": 13,
+          "maxMs": 13
+        },
+        {
+          "name": "unique objects",
+          "workLimit": 1000000,
+          "schemaUnits": 20,
+          "outputUnits": 528891,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 83,
+              "storage": 79
+            },
+            "verdict": {
+              "work": 999995,
+              "storage": 1667111
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 20,
+          "medianMs": 18.99999999999818,
+          "p95Ms": 20,
+          "maxMs": 20
+        },
+        {
+          "name": "unique objects",
+          "workLimit": 2000000,
+          "schemaUnits": 20,
+          "outputUnits": 528891,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 83,
+              "storage": 79
+            },
+            "verdict": {
+              "work": 1999997,
+              "storage": 2645236
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 25,
+          "medianMs": 26,
+          "p95Ms": 32,
+          "maxMs": 32
+        },
+        {
+          "name": "unique objects",
+          "workLimit": 4000000,
+          "schemaUnits": 20,
+          "outputUnits": 528891,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 83,
+              "storage": 79
+            },
+            "verdict": {
+              "work": 2700565,
+              "storage": 3330579
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 33,
+          "medianMs": 32,
+          "p95Ms": 34,
+          "maxMs": 34
+        },
+        {
+          "name": "long unicode string",
+          "workLimit": 100000,
+          "schemaUnits": 31,
+          "outputUnits": 480002,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 138,
+              "storage": 117
+            },
+            "verdict": {
+              "work": 1,
+              "storage": 10
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 1,
+          "maxMs": 1
+        },
+        {
+          "name": "long unicode string",
+          "workLimit": 250000,
+          "schemaUnits": 31,
+          "outputUnits": 480002,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 138,
+              "storage": 117
+            },
+            "verdict": {
+              "work": 1,
+              "storage": 10
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 1,
+          "maxMs": 1
+        },
+        {
+          "name": "long unicode string",
+          "workLimit": 500000,
+          "schemaUnits": 31,
+          "outputUnits": 480002,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 138,
+              "storage": 117
+            },
+            "verdict": {
+              "work": 500000,
+              "storage": 480014
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1,
+          "medianMs": 0,
+          "p95Ms": 1.000000000001819,
+          "maxMs": 1.000000000001819
+        },
+        {
+          "name": "long unicode string",
+          "workLimit": 1000000,
+          "schemaUnits": 31,
+          "outputUnits": 480002,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 138,
+              "storage": 117
+            },
+            "verdict": {
+              "work": 960007,
+              "storage": 480019
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 10.999999999998181,
+          "medianMs": 9,
+          "p95Ms": 10,
+          "maxMs": 10
+        },
+        {
+          "name": "long unicode string",
+          "workLimit": 2000000,
+          "schemaUnits": 31,
+          "outputUnits": 480002,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 138,
+              "storage": 117
+            },
+            "verdict": {
+              "work": 960007,
+              "storage": 480019
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 9,
+          "medianMs": 8.999999999998181,
+          "p95Ms": 9.000000000001819,
+          "maxMs": 9.000000000001819
+        },
+        {
+          "name": "long unicode string",
+          "workLimit": 4000000,
+          "schemaUnits": 31,
+          "outputUnits": 480002,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 138,
+              "storage": 117
+            },
+            "verdict": {
+              "work": 960007,
+              "storage": 480019
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 9,
+          "medianMs": 9,
+          "p95Ms": 9,
+          "maxMs": 9
+        },
+        {
+          "name": "wide object sorting",
+          "workLimit": 100000,
+          "schemaUnits": 4,
+          "outputUnits": 517785,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 99991,
+              "storage": 109999
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 2.999999999998181,
+          "medianMs": 2,
+          "p95Ms": 2.000000000001819,
+          "maxMs": 2.000000000001819
+        },
+        {
+          "name": "wide object sorting",
+          "workLimit": 250000,
+          "schemaUnits": 4,
+          "outputUnits": 517785,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 249997,
+              "storage": 275561
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 3,
+          "medianMs": 2,
+          "p95Ms": 3.000000000001819,
+          "maxMs": 3.000000000001819
+        },
+        {
+          "name": "wide object sorting",
+          "workLimit": 500000,
+          "schemaUnits": 4,
+          "outputUnits": 517785,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 499988,
+              "storage": 480136
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 3,
+          "medianMs": 3,
+          "p95Ms": 3,
+          "maxMs": 3
+        },
+        {
+          "name": "wide object sorting",
+          "workLimit": 1000000,
+          "schemaUnits": 4,
+          "outputUnits": 517785,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 999991,
+              "storage": 577900
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 3,
+          "medianMs": 3,
+          "p95Ms": 4,
+          "maxMs": 4
+        },
+        {
+          "name": "wide object sorting",
+          "workLimit": 2000000,
+          "schemaUnits": 4,
+          "outputUnits": 517785,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 1999985,
+              "storage": 773830
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 4,
+          "medianMs": 4,
+          "p95Ms": 4.000000000001819,
+          "maxMs": 4.000000000001819
+        },
+        {
+          "name": "wide object sorting",
+          "workLimit": 4000000,
+          "schemaUnits": 4,
+          "outputUnits": 517785,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 3999989,
+              "storage": 1172464
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 5,
+          "medianMs": 5.000000000001819,
+          "p95Ms": 6.000000000001819,
+          "maxMs": 6.000000000001819
+        },
+        {
+          "name": "schema preflight",
+          "workLimit": 100000,
+          "schemaUnits": 43107,
+          "outputUnits": 4,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 99996,
+              "storage": 47537
+            },
+            "verdict": {
+              "work": 0,
+              "storage": 0
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 1,
+          "maxMs": 1
+        },
+        {
+          "name": "schema preflight",
+          "workLimit": 250000,
+          "schemaUnits": 43107,
+          "outputUnits": 4,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 236015,
+              "storage": 158627
+            },
+            "verdict": {
+              "work": 0,
+              "storage": 0
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1,
+          "medianMs": 1,
+          "p95Ms": 2,
+          "maxMs": 2
+        },
+        {
+          "name": "schema preflight",
+          "workLimit": 500000,
+          "schemaUnits": 43107,
+          "outputUnits": 4,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 337530,
+              "storage": 265238
+            },
+            "verdict": {
+              "work": 4,
+              "storage": 19
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1.999999999998181,
+          "medianMs": 2,
+          "p95Ms": 3,
+          "maxMs": 3
+        },
+        {
+          "name": "schema preflight",
+          "workLimit": 1000000,
+          "schemaUnits": 43107,
+          "outputUnits": 4,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 337530,
+              "storage": 265238
+            },
+            "verdict": {
+              "work": 4,
+              "storage": 19
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1,
+          "medianMs": 2,
+          "p95Ms": 3,
+          "maxMs": 3
+        },
+        {
+          "name": "schema preflight",
+          "workLimit": 2000000,
+          "schemaUnits": 43107,
+          "outputUnits": 4,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 337530,
+              "storage": 265238
+            },
+            "verdict": {
+              "work": 4,
+              "storage": 19
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1,
+          "medianMs": 2,
+          "p95Ms": 3,
+          "maxMs": 3
+        },
+        {
+          "name": "schema preflight",
+          "workLimit": 4000000,
+          "schemaUnits": 43107,
+          "outputUnits": 4,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 337530,
+              "storage": 265238
+            },
+            "verdict": {
+              "work": 4,
+              "storage": 19
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 2,
+          "medianMs": 2,
+          "p95Ms": 3,
+          "maxMs": 3
+        },
+        {
+          "name": "large payload at depth 64",
+          "workLimit": 100000,
+          "schemaUnits": 4,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 10508,
+              "storage": 11027
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 1,
+          "maxMs": 1
+        },
+        {
+          "name": "large payload at depth 64",
+          "workLimit": 250000,
+          "schemaUnits": 4,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 10508,
+              "storage": 11027
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 0,
+          "maxMs": 0
+        },
+        {
+          "name": "large payload at depth 64",
+          "workLimit": 500000,
+          "schemaUnits": 4,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 10508,
+              "storage": 11027
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 0,
+          "maxMs": 0
+        },
+        {
+          "name": "large payload at depth 64",
+          "workLimit": 1000000,
+          "schemaUnits": 4,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 10508,
+              "storage": 11027
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 0,
+          "maxMs": 0
+        },
+        {
+          "name": "large payload at depth 64",
+          "workLimit": 2000000,
+          "schemaUnits": 4,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 10508,
+              "storage": 11027
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 0,
+          "maxMs": 0
+        },
+        {
+          "name": "large payload at depth 64",
+          "workLimit": 4000000,
+          "schemaUnits": 4,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 10508,
+              "storage": 11027
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 1.000000000001819,
+          "maxMs": 1.000000000001819
+        },
+        {
+          "name": "lazy equality at depth 64",
+          "workLimit": 100000,
+          "schemaUnits": 10579,
+          "outputUnits": 10569,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 91568,
+              "storage": 83645
+            },
+            "verdict": {
+              "work": 0,
+              "storage": 0
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 0,
+          "maxMs": 0
+        },
+        {
+          "name": "lazy equality at depth 64",
+          "workLimit": 250000,
+          "schemaUnits": 10579,
+          "outputUnits": 10569,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 243653,
+              "storage": 235715
+            },
+            "verdict": {
+              "work": 0,
+              "storage": 0
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 0.999999999998181,
+          "maxMs": 0.999999999998181
+        },
+        {
+          "name": "lazy equality at depth 64",
+          "workLimit": 500000,
+          "schemaUnits": 10579,
+          "outputUnits": 10569,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 491201,
+              "storage": 483239
+            },
+            "verdict": {
+              "work": 0,
+              "storage": 0
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 1,
+          "maxMs": 1
+        },
+        {
+          "name": "lazy equality at depth 64",
+          "workLimit": 1000000,
+          "schemaUnits": 10579,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 680272,
+              "storage": 672296
+            },
+            "verdict": {
+              "work": 63488,
+              "storage": 32672
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1.000000000001819,
+          "medianMs": 0,
+          "p95Ms": 0.999999999998181,
+          "maxMs": 0.999999999998181
+        },
+        {
+          "name": "lazy equality at depth 64",
+          "workLimit": 2000000,
+          "schemaUnits": 10579,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 680272,
+              "storage": 672296
+            },
+            "verdict": {
+              "work": 63488,
+              "storage": 32672
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 1,
+          "maxMs": 1
+        },
+        {
+          "name": "lazy equality at depth 64",
+          "workLimit": 4000000,
+          "schemaUnits": 10579,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 680272,
+              "storage": 672296
+            },
+            "verdict": {
+              "work": 63488,
+              "storage": 32672
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 1,
+          "maxMs": 1
+        }
+      ]
+    },
+    {
+      "runtime": "native-tauri",
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)",
+      "samples": 15,
+      "warmups": 3,
+      "results": [
+        {
+          "name": "realistic 100 records",
+          "workLimit": 100000,
+          "schemaUnits": 178,
+          "outputUnits": 5601,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 11694,
+              "storage": 10315
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 3,
+          "medianMs": 0,
+          "p95Ms": 1,
+          "maxMs": 1
+        },
+        {
+          "name": "realistic 100 records",
+          "workLimit": 250000,
+          "schemaUnits": 178,
+          "outputUnits": 5601,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 11694,
+              "storage": 10315
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 1.0000000000000284,
+          "maxMs": 1.0000000000000284
+        },
+        {
+          "name": "realistic 100 records",
+          "workLimit": 500000,
+          "schemaUnits": 178,
+          "outputUnits": 5601,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 11694,
+              "storage": 10315
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 1,
+          "maxMs": 1
+        },
+        {
+          "name": "realistic 100 records",
+          "workLimit": 1000000,
+          "schemaUnits": 178,
+          "outputUnits": 5601,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 11694,
+              "storage": 10315
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 1,
+          "maxMs": 1
+        },
+        {
+          "name": "realistic 100 records",
+          "workLimit": 2000000,
+          "schemaUnits": 178,
+          "outputUnits": 5601,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 11694,
+              "storage": 10315
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 1,
+          "maxMs": 1
+        },
+        {
+          "name": "realistic 100 records",
+          "workLimit": 4000000,
+          "schemaUnits": 178,
+          "outputUnits": 5601,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 11694,
+              "storage": 10315
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 1,
+          "maxMs": 1
+        },
+        {
+          "name": "realistic 1000 records",
+          "workLimit": 100000,
+          "schemaUnits": 178,
+          "outputUnits": 56001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 100000,
+              "storage": 96235
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1,
+          "medianMs": 1,
+          "p95Ms": 2,
+          "maxMs": 2
+        },
+        {
+          "name": "realistic 1000 records",
+          "workLimit": 250000,
+          "schemaUnits": 178,
+          "outputUnits": 56001,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 117894,
+              "storage": 103915
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1,
+          "medianMs": 1,
+          "p95Ms": 2,
+          "maxMs": 2
+        },
+        {
+          "name": "realistic 1000 records",
+          "workLimit": 500000,
+          "schemaUnits": 178,
+          "outputUnits": 56001,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 117894,
+              "storage": 103915
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1,
+          "medianMs": 1,
+          "p95Ms": 1.9999999999999716,
+          "maxMs": 1.9999999999999716
+        },
+        {
+          "name": "realistic 1000 records",
+          "workLimit": 1000000,
+          "schemaUnits": 178,
+          "outputUnits": 56001,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 117894,
+              "storage": 103915
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1,
+          "medianMs": 1,
+          "p95Ms": 1,
+          "maxMs": 1
+        },
+        {
+          "name": "realistic 1000 records",
+          "workLimit": 2000000,
+          "schemaUnits": 178,
+          "outputUnits": 56001,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 117894,
+              "storage": 103915
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 1,
+          "p95Ms": 1,
+          "maxMs": 1
+        },
+        {
+          "name": "realistic 1000 records",
+          "workLimit": 4000000,
+          "schemaUnits": 178,
+          "outputUnits": 56001,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 1187,
+              "storage": 1001
+            },
+            "verdict": {
+              "work": 117894,
+              "storage": 103915
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1,
+          "medianMs": 1,
+          "p95Ms": 1,
+          "maxMs": 1
+        },
+        {
+          "name": "number traversal",
+          "workLimit": 100000,
+          "schemaUnits": 68,
+          "outputUnits": 200001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 442,
+              "storage": 475
+            },
+            "verdict": {
+              "work": 99999,
+              "storage": 118526
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 2,
+          "medianMs": 2,
+          "p95Ms": 2,
+          "maxMs": 2
+        },
+        {
+          "name": "number traversal",
+          "workLimit": 250000,
+          "schemaUnits": 68,
+          "outputUnits": 200001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 442,
+              "storage": 475
+            },
+            "verdict": {
+              "work": 249999,
+              "storage": 293526
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 4,
+          "medianMs": 3,
+          "p95Ms": 4,
+          "maxMs": 4
+        },
+        {
+          "name": "number traversal",
+          "workLimit": 500000,
+          "schemaUnits": 68,
+          "outputUnits": 200001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 442,
+              "storage": 475
+            },
+            "verdict": {
+              "work": 499995,
+              "storage": 585188
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 5,
+          "medianMs": 6,
+          "p95Ms": 6.000000000000057,
+          "maxMs": 6.000000000000057
+        },
+        {
+          "name": "number traversal",
+          "workLimit": 1000000,
+          "schemaUnits": 68,
+          "outputUnits": 200001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 442,
+              "storage": 475
+            },
+            "verdict": {
+              "work": 1000000,
+              "storage": 1701866
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 18,
+          "medianMs": 17,
+          "p95Ms": 19,
+          "maxMs": 19
+        },
+        {
+          "name": "number traversal",
+          "workLimit": 2000000,
+          "schemaUnits": 68,
+          "outputUnits": 200001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 442,
+              "storage": 475
+            },
+            "verdict": {
+              "work": 2000000,
+              "storage": 2868535
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 76,
+          "medianMs": 82,
+          "p95Ms": 91,
+          "maxMs": 91
+        },
+        {
+          "name": "number traversal",
+          "workLimit": 4000000,
+          "schemaUnits": 68,
+          "outputUnits": 200001,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 442,
+              "storage": 475
+            },
+            "verdict": {
+              "work": 3388894,
+              "storage": 4488917
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 204.00000000000045,
+          "medianMs": 165.99999999999955,
+          "p95Ms": 181,
+          "maxMs": 181
+        },
+        {
+          "name": "invalid item diagnostics",
+          "workLimit": 100000,
+          "schemaUnits": 27,
+          "outputUnits": 400001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 124,
+              "storage": 130
+            },
+            "verdict": {
+              "work": 99999,
+              "storage": 118526
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 3.0000000000009095,
+          "medianMs": 1.9999999999990905,
+          "p95Ms": 2.0000000000009095,
+          "maxMs": 2.0000000000009095
+        },
+        {
+          "name": "invalid item diagnostics",
+          "workLimit": 250000,
+          "schemaUnits": 27,
+          "outputUnits": 400001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 124,
+              "storage": 130
+            },
+            "verdict": {
+              "work": 249999,
+              "storage": 293526
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 4,
+          "medianMs": 3,
+          "p95Ms": 4,
+          "maxMs": 4
+        },
+        {
+          "name": "invalid item diagnostics",
+          "workLimit": 500000,
+          "schemaUnits": 27,
+          "outputUnits": 400001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 124,
+              "storage": 130
+            },
+            "verdict": {
+              "work": 499995,
+              "storage": 585188
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 6,
+          "medianMs": 5,
+          "p95Ms": 6,
+          "maxMs": 6
+        },
+        {
+          "name": "invalid item diagnostics",
+          "workLimit": 1000000,
+          "schemaUnits": 27,
+          "outputUnits": 400001,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 124,
+              "storage": 130
+            },
+            "verdict": {
+              "work": 1000000,
+              "storage": 1544447
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 14.00000000000091,
+          "medianMs": 13.99999999999909,
+          "p95Ms": 16,
+          "maxMs": 16
+        },
+        {
+          "name": "invalid item diagnostics",
+          "workLimit": 2000000,
+          "schemaUnits": 27,
+          "outputUnits": 400001,
+          "status": "invalid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 124,
+              "storage": 130
+            },
+            "verdict": {
+              "work": 1788894,
+              "storage": 2488911
+            },
+            "diagnostics": {
+              "work": 100000,
+              "storage": 233321
+            }
+          },
+          "firstMs": 55,
+          "medianMs": 66,
+          "p95Ms": 71,
+          "maxMs": 71
+        },
+        {
+          "name": "invalid item diagnostics",
+          "workLimit": 4000000,
+          "schemaUnits": 27,
+          "outputUnits": 400001,
+          "status": "invalid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 124,
+              "storage": 130
+            },
+            "verdict": {
+              "work": 1788894,
+              "storage": 2488911
+            },
+            "diagnostics": {
+              "work": 100000,
+              "storage": 233321
+            }
+          },
+          "firstMs": 65.99999999999909,
+          "medianMs": 65.00000000000091,
+          "p95Ms": 68,
+          "maxMs": 68
+        },
+        {
+          "name": "unique objects",
+          "workLimit": 100000,
+          "schemaUnits": 20,
+          "outputUnits": 528891,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 83,
+              "storage": 79
+            },
+            "verdict": {
+              "work": 99999,
+              "storage": 118526
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 2.9999999999990905,
+          "medianMs": 2,
+          "p95Ms": 2.0000000000009095,
+          "maxMs": 2.0000000000009095
+        },
+        {
+          "name": "unique objects",
+          "workLimit": 250000,
+          "schemaUnits": 20,
+          "outputUnits": 528891,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 83,
+              "storage": 79
+            },
+            "verdict": {
+              "work": 249999,
+              "storage": 293526
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 4,
+          "medianMs": 3,
+          "p95Ms": 4.0000000000009095,
+          "maxMs": 4.0000000000009095
+        },
+        {
+          "name": "unique objects",
+          "workLimit": 500000,
+          "schemaUnits": 20,
+          "outputUnits": 528891,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 83,
+              "storage": 79
+            },
+            "verdict": {
+              "work": 500000,
+              "storage": 867712
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 9.00000000000091,
+          "medianMs": 8.00000000000091,
+          "p95Ms": 10,
+          "maxMs": 10
+        },
+        {
+          "name": "unique objects",
+          "workLimit": 1000000,
+          "schemaUnits": 20,
+          "outputUnits": 528891,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 83,
+              "storage": 79
+            },
+            "verdict": {
+              "work": 999995,
+              "storage": 1667111
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 15.00000000000091,
+          "medianMs": 15,
+          "p95Ms": 17,
+          "maxMs": 17
+        },
+        {
+          "name": "unique objects",
+          "workLimit": 2000000,
+          "schemaUnits": 20,
+          "outputUnits": 528891,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 83,
+              "storage": 79
+            },
+            "verdict": {
+              "work": 1999997,
+              "storage": 2645236
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 20,
+          "medianMs": 21,
+          "p95Ms": 26.00000000000182,
+          "maxMs": 26.00000000000182
+        },
+        {
+          "name": "unique objects",
+          "workLimit": 4000000,
+          "schemaUnits": 20,
+          "outputUnits": 528891,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 83,
+              "storage": 79
+            },
+            "verdict": {
+              "work": 2700565,
+              "storage": 3330579
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 24,
+          "medianMs": 26,
+          "p95Ms": 29,
+          "maxMs": 29
+        },
+        {
+          "name": "long unicode string",
+          "workLimit": 100000,
+          "schemaUnits": 31,
+          "outputUnits": 480002,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 138,
+              "storage": 117
+            },
+            "verdict": {
+              "work": 1,
+              "storage": 10
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 1,
+          "maxMs": 1
+        },
+        {
+          "name": "long unicode string",
+          "workLimit": 250000,
+          "schemaUnits": 31,
+          "outputUnits": 480002,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 138,
+              "storage": 117
+            },
+            "verdict": {
+              "work": 1,
+              "storage": 10
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 0,
+          "maxMs": 0
+        },
+        {
+          "name": "long unicode string",
+          "workLimit": 500000,
+          "schemaUnits": 31,
+          "outputUnits": 480002,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 138,
+              "storage": 117
+            },
+            "verdict": {
+              "work": 500000,
+              "storage": 480014
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1.000000000001819,
+          "medianMs": 0,
+          "p95Ms": 1.000000000001819,
+          "maxMs": 1.000000000001819
+        },
+        {
+          "name": "long unicode string",
+          "workLimit": 1000000,
+          "schemaUnits": 31,
+          "outputUnits": 480002,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 138,
+              "storage": 117
+            },
+            "verdict": {
+              "work": 960007,
+              "storage": 480019
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 8,
+          "medianMs": 8,
+          "p95Ms": 11,
+          "maxMs": 11
+        },
+        {
+          "name": "long unicode string",
+          "workLimit": 2000000,
+          "schemaUnits": 31,
+          "outputUnits": 480002,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 138,
+              "storage": 117
+            },
+            "verdict": {
+              "work": 960007,
+              "storage": 480019
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 8,
+          "medianMs": 8,
+          "p95Ms": 9,
+          "maxMs": 9
+        },
+        {
+          "name": "long unicode string",
+          "workLimit": 4000000,
+          "schemaUnits": 31,
+          "outputUnits": 480002,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 138,
+              "storage": 117
+            },
+            "verdict": {
+              "work": 960007,
+              "storage": 480019
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 8,
+          "medianMs": 8,
+          "p95Ms": 8,
+          "maxMs": 8
+        },
+        {
+          "name": "wide object sorting",
+          "workLimit": 100000,
+          "schemaUnits": 4,
+          "outputUnits": 517785,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 99991,
+              "storage": 109999
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 3,
+          "medianMs": 2,
+          "p95Ms": 2.000000000001819,
+          "maxMs": 2.000000000001819
+        },
+        {
+          "name": "wide object sorting",
+          "workLimit": 250000,
+          "schemaUnits": 4,
+          "outputUnits": 517785,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 249997,
+              "storage": 275561
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 2,
+          "medianMs": 2,
+          "p95Ms": 3,
+          "maxMs": 3
+        },
+        {
+          "name": "wide object sorting",
+          "workLimit": 500000,
+          "schemaUnits": 4,
+          "outputUnits": 517785,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 499988,
+              "storage": 480136
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 2,
+          "medianMs": 2,
+          "p95Ms": 3.000000000001819,
+          "maxMs": 3.000000000001819
+        },
+        {
+          "name": "wide object sorting",
+          "workLimit": 1000000,
+          "schemaUnits": 4,
+          "outputUnits": 517785,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 999991,
+              "storage": 577900
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 3,
+          "medianMs": 3,
+          "p95Ms": 5,
+          "maxMs": 5
+        },
+        {
+          "name": "wide object sorting",
+          "workLimit": 2000000,
+          "schemaUnits": 4,
+          "outputUnits": 517785,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 1999985,
+              "storage": 773830
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 2.999999999998181,
+          "medianMs": 3.999999999998181,
+          "p95Ms": 4.000000000001819,
+          "maxMs": 4.000000000001819
+        },
+        {
+          "name": "wide object sorting",
+          "workLimit": 4000000,
+          "schemaUnits": 4,
+          "outputUnits": 517785,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 3999989,
+              "storage": 1172464
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 5,
+          "medianMs": 5,
+          "p95Ms": 6.000000000001819,
+          "maxMs": 6.000000000001819
+        },
+        {
+          "name": "schema preflight",
+          "workLimit": 100000,
+          "schemaUnits": 43107,
+          "outputUnits": 4,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 99996,
+              "storage": 47537
+            },
+            "verdict": {
+              "work": 0,
+              "storage": 0
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 1,
+          "maxMs": 1
+        },
+        {
+          "name": "schema preflight",
+          "workLimit": 250000,
+          "schemaUnits": 43107,
+          "outputUnits": 4,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 236015,
+              "storage": 158627
+            },
+            "verdict": {
+              "work": 0,
+              "storage": 0
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1,
+          "medianMs": 1,
+          "p95Ms": 2,
+          "maxMs": 2
+        },
+        {
+          "name": "schema preflight",
+          "workLimit": 500000,
+          "schemaUnits": 43107,
+          "outputUnits": 4,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 337530,
+              "storage": 265238
+            },
+            "verdict": {
+              "work": 4,
+              "storage": 19
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 2,
+          "medianMs": 1.999999999998181,
+          "p95Ms": 3,
+          "maxMs": 3
+        },
+        {
+          "name": "schema preflight",
+          "workLimit": 1000000,
+          "schemaUnits": 43107,
+          "outputUnits": 4,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 337530,
+              "storage": 265238
+            },
+            "verdict": {
+              "work": 4,
+              "storage": 19
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1,
+          "medianMs": 1,
+          "p95Ms": 2,
+          "maxMs": 2
+        },
+        {
+          "name": "schema preflight",
+          "workLimit": 2000000,
+          "schemaUnits": 43107,
+          "outputUnits": 4,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 337530,
+              "storage": 265238
+            },
+            "verdict": {
+              "work": 4,
+              "storage": 19
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 1,
+          "medianMs": 2,
+          "p95Ms": 3,
+          "maxMs": 3
+        },
+        {
+          "name": "schema preflight",
+          "workLimit": 4000000,
+          "schemaUnits": 43107,
+          "outputUnits": 4,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 337530,
+              "storage": 265238
+            },
+            "verdict": {
+              "work": 4,
+              "storage": 19
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 2,
+          "medianMs": 1,
+          "p95Ms": 2.000000000001819,
+          "maxMs": 2.000000000001819
+        },
+        {
+          "name": "large payload at depth 64",
+          "workLimit": 100000,
+          "schemaUnits": 4,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 10508,
+              "storage": 11027
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 0,
+          "maxMs": 0
+        },
+        {
+          "name": "large payload at depth 64",
+          "workLimit": 250000,
+          "schemaUnits": 4,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 10508,
+              "storage": 11027
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 1,
+          "maxMs": 1
+        },
+        {
+          "name": "large payload at depth 64",
+          "workLimit": 500000,
+          "schemaUnits": 4,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 10508,
+              "storage": 11027
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 0,
+          "maxMs": 0
+        },
+        {
+          "name": "large payload at depth 64",
+          "workLimit": 1000000,
+          "schemaUnits": 4,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 10508,
+              "storage": 11027
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 0,
+          "maxMs": 0
+        },
+        {
+          "name": "large payload at depth 64",
+          "workLimit": 2000000,
+          "schemaUnits": 4,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 10508,
+              "storage": 11027
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 0,
+          "maxMs": 0
+        },
+        {
+          "name": "large payload at depth 64",
+          "workLimit": 4000000,
+          "schemaUnits": 4,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 8,
+              "storage": 23
+            },
+            "verdict": {
+              "work": 10508,
+              "storage": 11027
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 0,
+          "maxMs": 0
+        },
+        {
+          "name": "lazy equality at depth 64",
+          "workLimit": 100000,
+          "schemaUnits": 10579,
+          "outputUnits": 10569,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 91568,
+              "storage": 83645
+            },
+            "verdict": {
+              "work": 0,
+              "storage": 0
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 1,
+          "maxMs": 1
+        },
+        {
+          "name": "lazy equality at depth 64",
+          "workLimit": 250000,
+          "schemaUnits": 10579,
+          "outputUnits": 10569,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 243653,
+              "storage": 235715
+            },
+            "verdict": {
+              "work": 0,
+              "storage": 0
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 0,
+          "maxMs": 0
+        },
+        {
+          "name": "lazy equality at depth 64",
+          "workLimit": 500000,
+          "schemaUnits": 10579,
+          "outputUnits": 10569,
+          "status": "not-evaluated",
+          "code": "work-limit",
+          "stats": {
+            "preflight": {
+              "work": 491201,
+              "storage": 483239
+            },
+            "verdict": {
+              "work": 0,
+              "storage": 0
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 1,
+          "maxMs": 1
+        },
+        {
+          "name": "lazy equality at depth 64",
+          "workLimit": 1000000,
+          "schemaUnits": 10579,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 680272,
+              "storage": 672296
+            },
+            "verdict": {
+              "work": 63488,
+              "storage": 32672
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 1,
+          "maxMs": 1
+        },
+        {
+          "name": "lazy equality at depth 64",
+          "workLimit": 2000000,
+          "schemaUnits": 10579,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 680272,
+              "storage": 672296
+            },
+            "verdict": {
+              "work": 63488,
+              "storage": 32672
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 0,
+          "maxMs": 0
+        },
+        {
+          "name": "lazy equality at depth 64",
+          "workLimit": 4000000,
+          "schemaUnits": 10579,
+          "outputUnits": 10569,
+          "status": "valid",
+          "code": null,
+          "stats": {
+            "preflight": {
+              "work": 680272,
+              "storage": 672296
+            },
+            "verdict": {
+              "work": 63488,
+              "storage": 32672
+            },
+            "diagnostics": {
+              "work": 0,
+              "storage": 0
+            }
+          },
+          "firstMs": 0,
+          "medianMs": 0,
+          "p95Ms": 1,
+          "maxMs": 1
+        }
+      ]
+    }
+  ]
+}

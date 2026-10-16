@@ -81,7 +81,8 @@ negated count or argument match is not an assertion anyone means to write.
 | `exact-match` | `value`, text options | The answer equals `value` |
 | `contains` | `value`, text options | The answer contains `value` |
 | `regex` | `syntax: "re2"`, `pattern`, `flags?` | The Safe regex pattern matches somewhere in the answer |
-| `valid-json` | `topLevel?` | The whole answer parses as JSON of that shape |
+| `valid-json` | `topLevel?`, `inputPolicy?` | The answer's JSON, located by the input policy, parses with that shape |
+| `json-schema` | `dialect: "draft-07"`, `schema`, `inputPolicy?` | The answer's JSON, located by the input policy, satisfies `schema` |
 | `max-output-characters` | `limit` | Character count ≤ `limit` |
 | `max-duration-ms` | `limit` | Total run duration ≤ `limit` |
 | `max-total-tokens` | `limit` | Reported total tokens ≤ `limit` |
@@ -162,17 +163,37 @@ pattern matches.
 
 ### JSON
 
-`valid-json` requires the **whole** answer to parse under `JSON.parse`.
-Markdown code fences are not stripped, and no substring is extracted; a fenced
-JSON block therefore fails. Unwrapping is a product decision that has not been
-made, and guessing at it would silently pass answers that a strict consumer
-would reject.
+`valid-json` and `json-schema` both read the answer through an explicit
+`inputPolicy`. Every policy first tries the whole answer under `JSON.parse`:
 
-`topLevel` narrows the accepted shape to `object` or `array`, and defaults to
-`any`, which accepts any JSON value including scalars and `null`.
+- `strict` (the default) stops there. A fenced JSON block fails.
+- `surrounding-fence` also accepts one complete fence that is the whole answer
+  apart from surrounding whitespace.
+- `first-json-fence` parses the first complete fence anywhere in the answer,
+  skipping fences in other languages, and never tries a later fence when the
+  first one holds invalid JSON. It can ignore the rest of the answer.
 
-JSON Schema is deliberately absent. It waits on choosing a real implementation
-and a supported draft rather than shipping an undocumented home-grown subset.
+A recognized fence opens with exactly three backticks, optionally followed by
+`json` in any case, and closes with exactly three backticks. Nothing is
+repaired: no trailing commas, single quotes, or extraction of unfenced JSON
+from prose. Evidence records the selected policy and the path that actually
+parsed. A definition without a policy produces exactly the evidence it did in
+vocabulary 3.
+
+`topLevel` narrows `valid-json` to `object` or `array`, and defaults to `any`,
+which accepts any JSON value including scalars and `null`.
+
+`json-schema` validates the parsed payload against `schema` in IF's draft-07
+profile ([JSON Schema preflight](JSON_SCHEMA_PREFLIGHT.md)) with the metered
+evaluator ([calibration](JSON_SCHEMA_CALIBRATION.md)). It is not negatable.
+A runnable definition must pass preflight; a project may keep an unsupported
+draft, which preflight then blocks. An answer over 150,000 UTF-16 code units,
+invalid JSON under the policy, or a schema mismatch is `failed`. Exhausting an
+evaluation budget is `not-evaluated`. Failure evidence lists typed issue
+locations — authored property names, array indices, and redacted additional
+properties — with the expected type or missing property name where known. It
+never contains answer values or unexpected keys. Unchecked `format` annotations
+are listed in the evidence.
 
 ### Tool calls
 
@@ -223,9 +244,17 @@ Check definitions carry no `schemaVersion` of their own. They are always
 embedded in a versioned container — the project document, or an evaluation
 execution artifact — and that container's version is what a parser negotiates.
 `CHECK_SCHEMA_VERSION` records the vocabulary's version. Safe regex was version
-2; the four tool-call kinds are version 3. Adding, removing, or changing the
-meaning of a kind requires bumping it and the version of every container that
-stores checks.
+2; the four tool-call kinds are version 3; JSON Schema checks and JSON input
+policies are version 4. Adding, removing, or changing the meaning of a kind
+requires bumping it and the version of every container that stores checks.
+
+Evaluation plans and reassessments record `checkSchemaVersion` and accept 3 or
+4; new ones always record 4. One parser serves both: `checkVocabularyIssue`
+rejects a v4 construct in a container that declares 3, so an older file never
+acquires a newer meaning. A reassessment's vocabulary is independent of its
+execution's, because it is saved separately and never changes how the
+execution was scored as run. Projects carry no vocabulary field; project v12
+means vocabulary 4, and v10–v11 mean vocabulary 3.
 
 Parsers reject unknown fields, unknown kinds, unsafe identifiers, `negate` on a
 threshold kind, unusable Safe regex definitions, and repeated check identities

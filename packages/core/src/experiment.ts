@@ -2,11 +2,12 @@ import { z } from "zod";
 
 import {
   CHECK_SCHEMA_VERSION,
+  checkVocabularyIssue,
   checkDefinitionSchema,
   checkOutcomeSummary,
   evaluateChecks,
 } from "./checks.ts";
-import type { CheckDefinition, CheckResult } from "./checks.ts";
+import type { CheckDefinition, CheckResult, CheckSchemaVersion } from "./checks.ts";
 import { isSensitiveTemplateVariableName } from "./project.ts";
 import { runMetrics } from "./run-metrics.ts";
 import { finalAssistantOutput, outputCharacterCount } from "./run-output.ts";
@@ -154,7 +155,8 @@ export interface EvaluationExperimentPlanV4 {
   experimentId: ExperimentId;
   kind: "evaluation";
   createdAt: string;
-  checkSchemaVersion: typeof CHECK_SCHEMA_VERSION;
+  /** New plans record `CHECK_SCHEMA_VERSION`; plans written by a v3 build keep 3. */
+  checkSchemaVersion: CheckSchemaVersion;
   scoringPolicy: "strict";
   repetitions: number;
   /** See `RepeatedExperimentPlanV4.turnCeiling`; the controller reads both. */
@@ -667,7 +669,7 @@ const evaluationVariantSnapshotSchema = z.object({
 const evaluationPlanSchema = planBaseSchema.extend({
   schemaVersion: z.literal(EXPERIMENT_SCHEMA_VERSION),
   kind: z.literal("evaluation"),
-  checkSchemaVersion: z.literal(CHECK_SCHEMA_VERSION),
+  checkSchemaVersion: z.union([z.literal(3), z.literal(CHECK_SCHEMA_VERSION)]),
   scoringPolicy: z.literal("strict"),
   repetitions: z.number().int().positive(),
   turnCeiling: turnCeilingSchema.optional(),
@@ -1180,6 +1182,17 @@ export function experimentArtifactIdentity(fileName: string): ExperimentArtifact
   };
 }
 
+/** An older vocabulary rejects newer constructs rather than acquiring them. */
+function assertPlanVocabulary(plan: ExperimentPlanV4): void {
+  if (plan.kind !== "evaluation") return;
+  for (const evaluationCase of plan.suite.cases) {
+    for (const check of evaluationCase.checks) {
+      const issue = checkVocabularyIssue(check, plan.checkSchemaVersion);
+      if (issue) throw new ExperimentValidationError(`Invalid experiment plan at case ${evaluationCase.caseId}, check ${check.checkId}: ${issue}`);
+    }
+  }
+}
+
 export function parseExperimentPlanFile(value: unknown): ExperimentPlanV4 {
   const version = unsupportedPlanVersionSchema.safeParse(value);
   if (version.success && version.data.schemaVersion !== EXPERIMENT_SCHEMA_VERSION) {
@@ -1188,6 +1201,7 @@ export function parseExperimentPlanFile(value: unknown): ExperimentPlanV4 {
     );
   }
   const plan = parseWith(planSchema, value, "experiment plan");
+  assertPlanVocabulary(plan);
   assertPlanReferences(plan);
   assertNoSensitiveProviderOptions(plan);
   return plan;
