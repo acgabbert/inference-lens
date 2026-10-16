@@ -48,6 +48,7 @@ const checkKindLabels: Record<CheckKind, string> = {
   contains: "Contains text",
   regex: "Regex",
   "valid-json": "Valid JSON",
+  "json-schema": "JSON Schema",
   "max-output-characters": "Maximum characters",
   "max-duration-ms": "Maximum duration",
   "max-total-tokens": "Maximum tokens",
@@ -58,8 +59,11 @@ const checkKindLabels: Record<CheckKind, string> = {
 };
 
 // Ordered by the vocabulary itself, so a new kind cannot be offered without a
-// label or silently left out of the picker.
+// label or silently left out of the picker. JSON Schema checks are listed but
+// not yet offered: the structured-check editor that edits their schema is the
+// next authoring slice, and it adds them to the picker.
 const checkKinds = CHECK_KINDS.map((kind) => ({ kind, label: checkKindLabels[kind] }));
+const offeredCheckKinds = checkKinds.filter(({ kind }) => kind !== "json-schema");
 
 function evaluationInputLabel(
   project: NonNullable<EvaluationSuiteAuthoringHandle["project"]>,
@@ -439,7 +443,7 @@ function CaseEditor({ evaluationCase, authoring, source, onOpenSourceTrace }: {
         {evaluationCase.checks.map((check) => <CheckEditor key={check.checkId} check={check} error={checkError?.target.kind === "check" && checkError.target.checkId === check.checkId ? { field: checkError.target.field, message: checkError.message } : undefined} onCommit={(next, field) => authoring.updateCheck(evaluationCase.id, next, field)} onRemove={() => authoring.deleteCheck(evaluationCase.id, check.checkId)} />)}
       </div>
       <div className="evaluation-add-row">
-        <select aria-label="New check kind" value={newKind} onChange={(event) => setNewKind(event.target.value as CheckKind)}>{checkKinds.map(({ kind, label }) => <option key={kind} value={kind}>{label}</option>)}</select>
+        <select aria-label="New check kind" value={newKind} onChange={(event) => setNewKind(event.target.value as CheckKind)}>{offeredCheckKinds.map(({ kind, label }) => <option key={kind} value={kind}>{label}</option>)}</select>
         <button className="button secondary" type="button" onClick={() => {
           authoring.addCheck(evaluationCase.id, { kind: newKind });
         }}>+ Add check</button>

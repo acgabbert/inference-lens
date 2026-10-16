@@ -507,6 +507,8 @@ export function defaultCheck(
       };
     }
     case "valid-json": return { checkId, kind: input.kind, topLevel: "any" };
+    // A mild real constraint rather than `{}`, which would pass every answer.
+    case "json-schema": return { checkId, kind: input.kind, dialect: "draft-07", schema: { type: "object" } };
     case "max-output-characters": return { checkId, kind: input.kind, limit: 1000 };
     case "max-duration-ms": return { checkId, kind: input.kind, limit: 30000 };
     case "max-total-tokens": return { checkId, kind: input.kind, limit: 1000 };

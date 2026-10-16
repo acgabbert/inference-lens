@@ -12,7 +12,7 @@ experiments/<experimentId>.result.json
 The v3 plan is written before provider work starts and is a discriminated
 `repeated-request | evaluation` union. A repeated plan freezes one common
 resolved input. An evaluation plan freezes the selected suite/cases and stable
-identities, the check-vocabulary version and strict scoring policy, and one
+identities, the check-vocabulary version (4 for new plans; 3 still opens) and strict scoring policy, and one
 fully resolved authored input per case. Evaluation cells reference a case and
 add only their preallocated run ID and repetition position. The
 optional terminal result records only the terminal experiment status and each

@@ -432,10 +432,12 @@ to establish usable controls or diagnostics. Run aggregation/scoring remains str
 
 ## Versioning and historical evidence
 
-Expand the vocabulary to version 4 and bump containers that actually embed check
-definitions: project, evaluation plan, and saved assessment. Current result files
-contain execution references rather than checks; audit before deciding whether a
-result version bump is needed. RunTrace format does not change.
+Expand the vocabulary to version 4. The project has no vocabulary field, so it
+moves to v12, and v10–v11 documents are gated to vocabulary 3. Evaluation plans
+and reassessments already record `checkSchemaVersion`, so they widen it to 3 or 4
+rather than bumping their own container versions; new ones always record 4.
+Result files contain execution references rather than checks and do not change.
+RunTrace format does not change.
 
 Retain readers for current artifacts rather than making existing experiment
 history unreadable after this additive feature. Use one check-definition parser,
@@ -475,7 +477,11 @@ incompatibility state when a pairing is unsupported.
    against the spike behavior. Port the evaluator from the spike into core with
    an explicit stack and frozen accounting rather than importing the prototype.
    Add vocabulary/container readers and migrations together, with legacy
-   history/reassessment fixtures before changing versions.
+   history/reassessment fixtures before changing versions. Done in core:
+   `json-schema` checks and input policies, the vocabulary gate, project v12,
+   and cross-version comparison (`tests/structured-output-checks.test.ts`). The
+   suite editor shows existing schema checks but does not offer new ones until
+   step 4 adds the structured-check editor.
 4. **Example generation and authoring.** Test generation before implementation;
    add the editor, preview, invalid draft behavior, explicit extras policy, and
    persistence. Verify hand-authored and generated schemas use the same evaluator.

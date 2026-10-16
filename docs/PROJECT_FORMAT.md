@@ -2,11 +2,16 @@
 
 Inference Lens projects use a visible `<name>.inference-lens/` directory bundle
 containing one canonical, portable JSON document named `project.json`. New
-saves use schema version 11. The parser also opens version 10 and upgrades it on
-load: the protocol v10 kept on each connection requirement (always chat
-completions) moves onto every execution target that names that requirement —
-the project default and each suite's `execution.target` — and the requirement
-loses the field. See [Connection protocols](#connection-protocols). Earlier project
+saves use schema version 12. The parser also opens versions 10 and 11 and
+upgrades them on load. From v10, the protocol it kept on each connection
+requirement (always chat completions) moves onto every execution target that
+names that requirement — the project default and each suite's
+`execution.target` — and the requirement loses the field. See
+[Connection protocols](#connection-protocols). v12 adds check vocabulary 4
+(JSON Schema checks and JSON input policies; see
+[Deterministic checks](DETERMINISTIC_CHECKS.md)); a v10 or v11 document was
+written with vocabulary 3, so one that contains a v4 construct is rejected
+rather than upgraded. Earlier project
 formats, including v5–v9, and the proof-of-concept request export are rejected
 with a version error rather than upgraded on load.
 Every schema is strict, so a reader rejects a document it does not understand

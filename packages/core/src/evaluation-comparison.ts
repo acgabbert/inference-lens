@@ -148,10 +148,9 @@ export interface EvaluationExecutionDrift {
    * has no result, because then nothing records how it ran.
    */
   concurrency?: EvaluationDriftField<EvaluationVariantConcurrency>;
-  // No `checkSchemaVersion` field: the plan pins it as a `z.literal`, so both
-  // sides must equal this build's version to have parsed at all. A version
-  // range — and the drift reporting it would justify — arrives with the PR
-  // that next bumps the check vocabulary.
+  // No `checkSchemaVersion` field. Plans record vocabulary 3 or 4, and 4 only
+  // adds constructs, so an identical check means the same on either side; a
+  // check that differs already appears in the case's check comparison.
   /** Convenience for callers that only need "is there anything to show". */
   any: boolean;
 }
