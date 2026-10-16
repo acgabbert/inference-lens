@@ -1,6 +1,6 @@
 # Structured output checks implementation plan
 
-Status: portable vocabulary v4, example generation, suite authoring, and reassessment editor reuse implemented. Results integration remains.
+Status: portable vocabulary v4, example generation, suite authoring, reassessment editor reuse, and expandable result diagnostics implemented. Step 5 scheduling and broader integration checks remain.
 Date: 2026-10-16.
 
 ## Implementation progress
@@ -166,6 +166,42 @@ Date: 2026-10-16.
 - Remaining: step 5 result diagnostics, whole-view scheduling, broader provider
   policy fixtures, CLI/browser agreement, and final supported-profile docs.
   Native Tauri reassessment interaction remains unchecked.
+
+## Results diagnostics follow-up
+
+- Added `StructuredCheckDiagnostics` as a presentation owner composed by the
+  results workspace. It consumes the existing check definition and sanitized
+  outcome evidence for As run, current-criteria previews, and saved reassessments.
+  It performs no schema evaluation, provider call, or persistence mutation.
+- Disclosures show policy, successful extraction, original output size and JSON
+  type, diagnostic code, bounded issues with authored expectations, truncation,
+  and unchecked formats. Typed location segments stay visibly distinct from
+  JSON pointers; additional property names remain redacted. The existing link
+  to the original response and trace remains the evidence navigation.
+- The browser regression was written first. Its initial run timed out on the
+  absent disclosure control; a second run explicitly asserted one disclosure
+  and failed with actual zero before implementation. The subsequent format
+  location failure was an incorrect test expectation: the schema location ends
+  in `/format`, which the renderer correctly preserved.
+- `tests/e2e/evaluation-reassessment.spec.ts` now checks strict syntax failure,
+  fenced successful saved reassessment, multiple mismatch issues, missing-property
+  and type expectations, redacted extra keys, unchecked formats, the 20-issue cap,
+  truncation, no copied answer, and narrow-screen layout. The existing buffered
+  provider supplies fenced `{"answer":2}` through the real execution path.
+- Validation: `npm run test:e2e -- tests/e2e/evaluation-reassessment.spec.ts
+  tests/e2e/structured-output-checks.spec.ts` passed all eight affected cases.
+  The final `npm run test:e2e` passed 271 tests with 7 skipped and none failed,
+  including the added strict-policy diagnostic assertions. `npm run test:core`
+  passed 1,180 tests. `npm run typecheck`, `npm run lint` (the same three existing
+  warnings), `npm run build:cli`, and `npm run build:tauri` passed. The latter is
+  frontend bundling, not native execution. `node --test --test-timeout=120000
+  tests/evaluation-results-render.test.mjs tests/evaluation-results-interaction.test.mjs`
+  passed all 10 existing render/interaction tests. No CLI schema execution or
+  cross-runtime evaluator calibration was repeated for this presentation change.
+- Remaining step 5 work: yielding between checks in results and reassessment
+  derivations, broader provider policy fixtures, CLI/browser outcome agreement,
+  and final supported-profile/provenance/artifact-format documentation.
+  Native Tauri interaction with the disclosures remains unchecked.
 
 ## Outcome and scope
 

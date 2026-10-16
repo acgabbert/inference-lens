@@ -195,6 +195,16 @@ properties — with the expected type or missing property name where known. It
 never contains answer values or unexpected keys. Unchecked `format` annotations
 are listed in the evidence.
 
+Evaluation results expose this evidence in an expandable **Structured check
+diagnostics** disclosure, shared by As run and saved reassessment readings.
+It shows the input policy, successful extraction path, original output size,
+observed JSON type, and any bounded issue list or unchecked format annotations
+present in the outcome. Locations use quoted authored property segments and
+array indices; additional properties appear as `<additional property>` without
+their names. A truncation notice means more issues may exist; it does not weaken
+the failed verdict. The existing **Open Response & Inspect** action opens the
+original evidence. Diagnostics do not include a parsed copy of the answer.
+
 ### Tool calls
 
 `packages/core/src/run-output.ts` also owns the tool-call analogue of the

@@ -7916,7 +7916,7 @@ label.experiment-retry-field {
   list-style: none;
 }
 
-.evaluation-check-results li {
+.evaluation-check-results > li {
   display: grid;
   grid-template-columns: minmax(110px, 0.35fr) minmax(0, 1fr);
   gap: var(--space-md);
