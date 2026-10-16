@@ -135,6 +135,13 @@ upstream tests** from JSON-Schema-Test-Suite revision
 `55719286c33ae0d1823bfb65fea10338a19bc37c`. The unchanged fixtures, MIT notice,
 and explicit exclusion manifest are [vendored with the spike](../scripts/spikes/metered-json-schema/official/README.md).
 
+These measurements used the original 807-test selection. The shared manifest
+now selects 804 tests: core preflight rejects assertions beside `$ref`, so the
+three upstream tests that require silently ignoring those assertions are
+explicitly excluded. `npm run test:core` now sweeps every selected and excluded
+schema against core preflight; the spike conformance runner uses the updated
+selection. The measured results below retain their original counts.
+
 The snapshot contains all 929 top-level draft-07 tests. The 122 excluded tests
 require features the profile rejects: 39 use `patternProperties`, 12 use
 `pattern`, 14 require non-pointer references, 12 use `$id`, and 45 combine `$id`

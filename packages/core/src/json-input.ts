@@ -56,7 +56,7 @@ function firstJsonFence(text: string): Fence | undefined {
     if (marker === "`" || marker === "~") {
       while (line[width] === marker) width += 1;
     }
-    const suffix = line.slice(width);
+    const suffix = line.slice(width).trim();
     if (block) {
       const closes = marker === block.marker && suffix === "" &&
         (block.recognized ? width === 3 : width >= block.width);
@@ -64,7 +64,7 @@ function firstJsonFence(text: string): Fence | undefined {
         if (block.recognized) return { start: block.start, bodyStart: block.bodyStart, bodyEnd: start, end };
         block = undefined;
       }
-    } else if (width >= 3) {
+    } else if (width >= 3 && !(marker === "`" && suffix.includes("`"))) {
       block = {
         marker, width, start, bodyStart: end,
         recognized: marker === "`" && width === 3 && (suffix === "" || suffix.toLowerCase() === "json"),
