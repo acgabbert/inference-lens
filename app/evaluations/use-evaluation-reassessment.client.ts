@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import type { CheckDefinition } from "../../packages/core/src/checks.ts";
+import { parseCheckDefinition, type CheckDefinition } from "../../packages/core/src/checks.ts";
 import {
   EvaluationAssessmentError,
   createEvaluationAssessment,
@@ -75,6 +75,14 @@ export interface ReassessmentRegexCheck {
   error?: string;
 }
 
+export type ReassessmentStructuredDefinition = Extract<CheckDefinition, { kind: "json-schema" | "valid-json" }>;
+
+export interface ReassessmentStructuredCheck {
+  caseId: EvaluationCaseId;
+  caseName: string;
+  check: ReassessmentStructuredDefinition;
+}
+
 /** A check the drawer carries through unchanged, listed so nothing looks lost. */
 export interface ReassessmentCarriedCheck {
   caseId: EvaluationCaseId;
@@ -106,6 +114,9 @@ export interface EvaluationReassessmentHandle {
   closeEditor(): void;
   /** The regex checks the drawer may correct, in execution case order. */
   regexChecks: ReassessmentRegexCheck[];
+  structuredChecks: ReassessmentStructuredCheck[];
+  /** Commits a validated definition to the interpretation draft, without persisting it. */
+  commitStructuredCheck(caseId: EvaluationCaseId, check: ReassessmentStructuredDefinition): boolean;
   carriedChecks: ReassessmentCarriedCheck[];
   setPattern(caseId: EvaluationCaseId, checkId: CheckId, pattern: string): void;
   setFlag(caseId: EvaluationCaseId, checkId: CheckId, flag: string, on: boolean): void;
@@ -340,11 +351,20 @@ export function useEvaluationReassessment({
     );
   }, [parsedPlan, draftCriteria]);
 
+  const structuredChecks = useMemo((): ReassessmentStructuredCheck[] => {
+    if (!parsedPlan || !draftCriteria) return [];
+    return parsedPlan.suite.cases.flatMap((evaluationCase) =>
+      (draftCriteria.get(evaluationCase.caseId) ?? evaluationCase.checks)
+        .filter((check): check is ReassessmentStructuredDefinition => check.kind === "json-schema" || check.kind === "valid-json")
+        .map((check) => ({ caseId: evaluationCase.caseId, caseName: evaluationCase.name, check })),
+    );
+  }, [parsedPlan, draftCriteria]);
+
   const carriedChecks = useMemo((): ReassessmentCarriedCheck[] => {
     if (!parsedPlan || !draftCriteria) return [];
     return parsedPlan.suite.cases.flatMap((evaluationCase) =>
       (draftCriteria.get(evaluationCase.caseId) ?? evaluationCase.checks)
-        .filter((check) => check.kind !== "regex")
+        .filter((check) => check.kind !== "regex" && check.kind !== "json-schema" && check.kind !== "valid-json")
         .map((check) => ({
           caseId: evaluationCase.caseId,
           caseName: evaluationCase.name,
@@ -482,6 +502,18 @@ export function useEvaluationReassessment({
     openEditor,
     closeEditor() { setEditor(undefined); setDraft(undefined); },
     regexChecks,
+    structuredChecks,
+    commitStructuredCheck(caseId, check) {
+      const existing = draftCriteria?.get(caseId)?.find(({ checkId }) => checkId === check.checkId);
+      if (!existing || existing.kind !== check.kind) return false;
+      try {
+        const validated = parseCheckDefinition(check);
+        editCheck(caseId, check.checkId, () => validated);
+        return true;
+      } catch {
+        return false;
+      }
+    },
     carriedChecks,
     setPattern(caseId, checkId, pattern) {
       editCheck(caseId, checkId, (check) => check.kind === "regex" ? { ...check, pattern } : check);

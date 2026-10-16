@@ -230,3 +230,84 @@ test("a wrong regex is corrected over saved outputs without another provider cal
 
   expect(providerRequests).toBe(afterRun);
 });
+
+test("structured checks correct saved criteria with validated drafts and preserve As run", async ({ page }) => {
+  let providerRequests = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === INFERENCE_API_PATH) providerRequests += 1;
+  });
+  let project = wrongRegexProject();
+  project = {
+    ...project,
+    evaluationSuites: project.evaluationSuites.map((suite) => ({
+      ...suite,
+      execution: {
+        ...suite.execution,
+        target: { ...suite.execution.target, model: "structured-output-model" },
+      },
+    })),
+  };
+  const suite = project.evaluationSuites[0]!;
+  const caseId = suite.cases[0]!.id;
+  project = updateEvaluationCheck(project, suite.id, caseId, {
+    checkId: "check_answered", kind: "json-schema", dialect: "draft-07",
+    label: "Answer shape", schema: { type: "object", required: ["wrong"] },
+  });
+  project = addEvaluationCheck(project, suite.id, caseId, { kind: "valid-json" }, () => "json");
+  project = addEvaluationCheck(project, suite.id, caseId, { kind: "max-output-characters" }, () => "length");
+  await openDurableProject(page, project);
+  await primaryAction(page, "evaluations").click();
+  await page.getByRole("dialog", { name: /Start “Topics”/ }).getByRole("button", { name: /^Start 1 call/ }).click();
+  const results = page.locator(".evaluation-results-workspace");
+  await expect(results).toContainText("0 / 1 passed");
+  const afterRun = providerRequests;
+  expect(afterRun).toBeGreaterThan(0);
+  await results.getByRole("button", { name: "Re-evaluate saved outputs…" }).click();
+  const drawer = page.getByRole("dialog", { name: "Re-evaluate saved outputs" });
+  await expect(drawer.getByLabel("Schema draft", { exact: true })).toHaveCount(1);
+  await expect(drawer.getByRole("region", { name: "Checks carried through unchanged" })).toContainText("max-output-characters");
+  await expect(drawer.getByRole("region", { name: "Checks carried through unchanged" })).not.toContainText("json-schema");
+  const schema = drawer.getByRole("region", { name: "migrations · Answer shape", exact: true });
+  const preview = drawer.getByRole("region", { name: "What would change" });
+  await schema.getByLabel("Schema draft", { exact: true }).fill('{"pattern":"unsupported"}');
+  await schema.getByRole("button", { name: "Save structured check" }).click();
+  await expect(schema.getByRole("alert")).toContainText("Pattern constraints are unsupported");
+  await expect(preview).toContainText("Nothing.");
+  await schema.getByRole("button", { name: "Cancel draft" }).click();
+  await schema.getByText("Generate from a JSON example", { exact: true }).click();
+  await schema.getByLabel("JSON example", { exact: true }).fill('{"answer":2}');
+  await schema.getByRole("button", { name: "Generate schema" }).click();
+  await schema.getByLabel("JSON input policy").selectOption("surrounding-fence");
+  await expect(preview).toContainText("Nothing.");
+  await schema.getByRole("button", { name: "Save structured check" }).click();
+  await expect(preview).toContainText("1 check outcome,");
+  const json = drawer.getByRole("region", { name: "Structured check editor" }).last();
+  await json.getByLabel("JSON input policy").selectOption("surrounding-fence");
+  await json.getByRole("button", { name: "Save structured check" }).click();
+  await expect(preview).toContainText("2 check outcomes,");
+  await expect(preview).toContainText("did not pass → passed");
+  await drawer.getByLabel("Name", { exact: true }).fill("Structured correction");
+  await drawer.getByRole("button", { name: "Save reassessment" }).click();
+  await expect(results).toContainText("1 / 1 passed");
+  await results.getByLabel("Reading").selectOption({ label: "As run" });
+  await expect(results).toContainText("0 / 1 passed");
+  await page.getByLabel("Run data menu").click();
+  await page.getByRole("button", { name: "Run history", exact: true }).click();
+  await page.locator(".runs-evidence-item.experiment").filter({ hasText: "Evaluation · Topics" }).first().click();
+  await results.getByLabel("Reading").selectOption({ label: "Structured correction" });
+  await expect(results).toContainText("1 / 1 passed");
+  await results.getByRole("button", { name: "Re-evaluate saved outputs…" }).click();
+  await drawer.getByRole("button", { name: /^Update 1 authored case$/ }).click();
+  await expect(results).toContainText("Updated 1 case in the authored suite");
+  await drawer.getByLabel("Schema draft", { exact: true }).fill("false");
+  await drawer.getByRole("button", { name: /^Close/ }).click();
+  await results.getByRole("button", { name: "Re-evaluate saved outputs…" }).click();
+  expect(JSON.parse(await drawer.getByLabel("Schema draft", { exact: true }).inputValue()).required).toEqual(["answer"]);
+  await drawer.getByRole("button", { name: /^Close/ }).click();
+  await openMode(page, "Evaluations");
+  const card = page.locator(".evaluation-check-card").first();
+  const committed = JSON.parse(await card.getByLabel("Schema draft", { exact: true }).inputValue());
+  expect(committed.required).toEqual(["answer"]);
+  await expect(card.getByLabel("JSON input policy")).toHaveValue("surrounding-fence");
+  expect(providerRequests).toBe(afterRun);
+});

@@ -9,6 +9,9 @@ const port = Number.parseInt(
   process.env.INFERENCE_LENS_BUFFERED_PORT ?? "4014",
   10,
 );
+// Deliberately fenced so strict JSON fails while explicit fence policies pass.
+const structuredModel = "structured-output-model";
+const structuredAnswer = '```json\n{"answer":2}\n```';
 const ordinaryAnswer = "Buffered fixture response: 2 + 2 = 4.";
 const providerDefaultModel = "provider-default-temperature-model";
 const providerDefaultAnswer = "Provider received no temperature override.";
@@ -123,6 +126,7 @@ const server = createServer(async (request, response) => {
         { id: providerDefaultModel, object: "model" },
         { id: echoTemperatureModel, object: "model" },
         { id: mathModel, object: "model" },
+        { id: structuredModel, object: "model" },
         { id: toolCallingModel, object: "model" },
         { id: mcpToolModel, object: "model" },
         { id: mcpErrorModel, object: "model" },
@@ -220,7 +224,9 @@ const server = createServer(async (request, response) => {
     await new Promise((resolve) => setTimeout(resolve, slowAnswerDelayMs));
   }
 
-  const answer = body.model === providerDefaultModel
+  const answer = body.model === structuredModel
+    ? structuredAnswer
+    : body.model === providerDefaultModel
     ? providerDefaultAnswer
     : body.model === echoTemperatureModel
       ? `Provider received temperature ${"temperature" in body ? String(body.temperature) : "absent"}.`
