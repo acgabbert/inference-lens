@@ -345,6 +345,10 @@ but must never decide a verdict.
 - Reject unsupported assertion keywords explicitly. Accept annotation keywords —
   `title`, `description`, `examples`, `default`, `$comment`, `readOnly`,
   `writeOnly` — without effect; `default` is never applied to the answer.
+  This is an explicit allowlist (plus `format` below), not blanket acceptance of
+  draft-07 annotations or extensions. `contentMediaType`, `contentEncoding`, and
+  unknown keywords such as OpenAPI's `nullable` and `discriminator` remain
+  unsupported.
 - `$schema` is optional. When present it must name draft-07; any other dialect
   (for example 2020-12) is rejected with a diagnostic, not reinterpreted.
 - Local references are required in the initial profile: `$ref` to a JSON pointer
@@ -371,8 +375,9 @@ but must never decide a verdict.
   unbounded main-thread regex.
 
 This is an explicitly documented draft-07 profile, not full-draft conformance.
-Unsupported assertion keywords are rejected; annotation keywords are accepted
-and listed. No assertion may degrade into an unconstrained successful check.
+Unsupported keywords are rejected; only the listed annotation keywords are
+accepted. Unchecked formats are disclosed. No assertion may degrade into an
+unconstrained successful check.
 Do not recreate n8n's JSON Schema-to-Zod converter or its reported `$ref` fallback.
 Vendor the upstream test-suite snapshot with its notice and exclusion manifest,
 as the spike does, and keep it in the core test run.
@@ -564,6 +569,12 @@ Evaluation needs no version branching, because an old `valid-json` with no
 newly introduced fields instead of acquiring new meanings, and each later
 vocabulary bump adds one gate rather than another parser. Existing archived plans and criteria
 remain immutable; opening them does not rewrite their vocabulary/version.
+
+Saved execution plans run full schema preflight when opened. Preflight acceptance
+is therefore a compatibility boundary as well as an evaluation rule: a change
+could reject the plan before its checks can return `not-evaluated`. Changes to
+acceptance rules, limits, or accounting require a vocabulary bump and a
+compatibility path preserving existing saved plans.
 
 Project upgrade can write the new container version on save with absent policy
 remaining strict. New reassessments over legacy traces may use the new vocabulary
