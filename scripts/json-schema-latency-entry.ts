@@ -1,9 +1,10 @@
 import { evaluateJsonSchema } from "../packages/core/src/json-schema/evaluator.ts";
+import { SCHEMA_CHECK_LIMITS } from "../packages/core/src/json-schema/limits.ts";
 import type { JsonValue } from "../packages/core/src/run-kernel/types.ts";
 import { latencyWorkloads as sharedWorkloads } from "./spikes/metered-json-schema/latency-entry.mjs";
 
-/** Measurement candidates only; these do not select portable check limits. */
-export const budgets = [100_000, 250_000, 500_000, 1_000_000, 2_000_000, 4_000_000];
+/** Candidate verdict budgets around the calibrated 750k. Schema and diagnostic limits are the calibrated ones. */
+export const budgets = [250_000, 500_000, 750_000, 1_000_000, 2_000_000];
 
 export function latencyWorkloads(): { name: string; schema: unknown; data: JsonValue }[] {
   const workloads = sharedWorkloads();
@@ -14,8 +15,33 @@ export function latencyWorkloads(): { name: string; schema: unknown; data: JsonV
   }
   let data: JsonValue = "x".repeat(10_000);
   for (let i = 1; i < 64; i++) data = { next: data };
+  const branches = Array.from({ length: 64 }, (_, i) => ({ const: i }));
+  const deep = (depth: number, leaf: JsonValue): JsonValue => {
+    let value = leaf;
+    for (let i = 1; i < depth; i++) value = [value];
+    return value;
+  };
   return [...workloads, { name: "large payload at depth 64", schema: true, data },
-    { name: "lazy equality at depth 64", schema: { const: data }, data }];
+    { name: "lazy equality at depth 64", schema: { const: data }, data },
+    // Calibration workloads: each stresses one charged operation.
+    { name: "index only: 200k small integers", schema: true, data: Array.from({ length: 200_000 }, (_, i) => i % 10) },
+    { name: "index only: 50k empty objects", schema: true, data: Array.from({ length: 50_000 }, () => ({})) },
+    { name: "node visits: 100k items, type only", schema: { items: { type: "number" } }, data: Array(100_000).fill(1) },
+    { name: "memo hits: anyOf of 64 refs to one definition", schema: { definitions: { n: { type: "number" } }, items: { anyOf: Array.from({ length: 64 }, () => ({ $ref: "#/definitions/n" })) } }, data: Array(5_000).fill(1) },
+    { name: "branches: anyOf of 64 distinct consts", schema: { items: { anyOf: branches } }, data: Array(5_000).fill(63) },
+    { name: "enum: 2k candidates", schema: { items: { enum: Array.from({ length: 2_000 }, (_, i) => `value-${i}`) } }, data: Array(200).fill("value-1999") },
+    { name: "multipleOf: large decimal shift", schema: { items: { multipleOf: 1e-300 } }, data: Array(5_000).fill(1e300) },
+    { name: "required: 2k keys", schema: { required: Array.from({ length: 2_000 }, (_, i) => `k${i}`) }, data: Object.fromEntries(Array.from({ length: 2_000 }, (_, i) => [`k${i}`, i])) },
+    { name: "propertyNames: 30k keys", schema: { propertyNames: { maxLength: 20 } }, data: Object.fromEntries(Array.from({ length: 30_000 }, (_, i) => [`key-${i}`, i])) },
+    { name: "uniqueItems: 100k small integers", schema: { uniqueItems: true }, data: Array.from({ length: 100_000 }, (_, i) => i) },
+    { name: "uniqueItems: nested arrays at depth 16", schema: { uniqueItems: true }, data: Array.from({ length: 4_000 }, (_, i) => deep(16, i)) },
+    { name: "ascii string length 1m", schema: { type: "string", maxLength: 2_000_000 }, data: "a".repeat(1_000_000) },
+    { name: "plain string, no length keyword", schema: { type: "string" }, data: "a".repeat(1_000_000) },
+    { name: "sorting: 900 keys, 1k-char shared prefix", schema: true, data: Object.fromEntries(Array.from({ length: 900 }, (_, i) => [`${"p".repeat(1_000)}${899 - i}`, 0])) },
+    { name: "enum: 50 candidates, 1k-char shared prefix", schema: { items: { enum: Array.from({ length: 50 }, (_, i) => `${"x".repeat(1_000)}${i}`) } }, data: Array(500).fill(`${"x".repeat(1_000)}49`) },
+    { name: "uniqueItems: 900 strings, 1k-char shared prefix", schema: { uniqueItems: true }, data: Array.from({ length: 900 }, (_, i) => `${"u".repeat(1_000)}${i}`) },
+    { name: "diagnostics: 100k failing nested items", schema: { items: { properties: { a: { type: "string" } } } }, data: Array.from({ length: 100_000 }, () => ({ a: 1 })) },
+  ];
 }
 
 export function measure({ samples = 15, warmups = 3 } = {}) {
@@ -33,10 +59,11 @@ export function measure({ samples = 15, warmups = 3 } = {}) {
       for (let i = 0; i < samples + warmups; i++) {
         const start = performance.now();
         const result = evaluateJsonSchema(JSON.parse(schemaText), JSON.parse(outputText), {
-          schema: { workLimit, storageLimit: 20_000_000, maxSchemaCodeUnits: 65_536, maxDepth: 65 },
-          verdict: { workLimit, storageLimit: 20_000_000 },
-          diagnostics: { workLimit: 100_000, storageLimit: 1_000_000, maxIssues: 20 },
-          maxDataDepth: 64,
+          // Depth 65 admits the `const` wrapper around the depth-64 equality fixture.
+          schema: { ...SCHEMA_CHECK_LIMITS.schema, maxDepth: 65 },
+          verdict: { ...SCHEMA_CHECK_LIMITS.verdict, workLimit },
+          diagnostics: SCHEMA_CHECK_LIMITS.diagnostics,
+          maxDataDepth: SCHEMA_CHECK_LIMITS.maxDataDepth,
         });
         const elapsed = performance.now() - start;
         const serialized = JSON.stringify(result);

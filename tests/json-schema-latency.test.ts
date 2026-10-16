@@ -17,7 +17,7 @@ test("the production latency probe exercises realistic, deep, and equality input
       assert.equal(result.outputUnits, 56_001);
     }
     if (result.name === "large payload at depth 64") assert.equal(result.status, "valid");
-    if (result.name === "lazy equality at depth 64" && result.workLimit === 4_000_000) assert.equal(result.status, "valid");
+    if (result.name === "lazy equality at depth 64" && result.workLimit >= 750_000) assert.equal(result.status, "valid");
   }
   assert.throws(() => measure({ samples: 0 }), /Invalid sample counts/);
 });

@@ -1,5 +1,5 @@
 import type { JsonValue } from "../run-kernel/types.ts";
-import { SchemaMeter, sortedKeys } from "./resources.ts";
+import { SchemaMeter, sortedKeys, textWork, WORK } from "./resources.ts";
 
 /** Answer nodes keep no copied paths or canonical encodings. */
 export interface JsonDataNode {
@@ -23,7 +23,7 @@ export function indexData(value: JsonValue, meter: SchemaMeter): JsonDataNode {
   let nextId = 0;
   function enter(raw: unknown, depth: number): Frame {
     if (depth > meter.limits.maxDepth) throw new DataStop("data-depth-limit");
-    meter.work(); meter.retain(10);
+    meter.work(WORK.node); meter.retain(10);
     const container = raw !== null && typeof raw === "object";
     if (!container && raw !== null && !["boolean", "number", "string"].includes(typeof raw)) {
       throw new DataStop("non-json-data");
@@ -36,7 +36,7 @@ export function indexData(value: JsonValue, meter: SchemaMeter): JsonDataNode {
       active.add(raw);
       for (const key in raw) {
         if (!Object.hasOwn(raw, key)) continue;
-        meter.work(key.length + 1); meter.retain(key.length + 2);
+        meter.work(WORK.key + textWork(key.length, WORK.scanText)); meter.retain(key.length + 2);
         keys.push(key);
       }
       if (Array.isArray(raw)) {
@@ -51,8 +51,8 @@ export function indexData(value: JsonValue, meter: SchemaMeter): JsonDataNode {
         keys = sortedKeys(keys, meter);
       }
     } else if (typeof raw === "string") {
-      // Account for retained input text without copying or escaping it.
-      meter.work(raw.length); meter.retain(raw.length);
+      // Indexing neither copies nor escapes the text; storage accounts for it.
+      meter.work(textWork(raw.length, WORK.copyText)); meter.retain(raw.length);
     }
     return { node, keys, next: 0 };
   }
@@ -93,12 +93,12 @@ export class DataEncodings {
     const chunks: string[] = [];
     let length = 0;
     function emit(text: string): void {
-      meter.work(text.length + 1); meter.retain(text.length + 1);
+      meter.work(WORK.node + textWork(text.length, WORK.copyText)); meter.retain(text.length + 1);
       chunks.push(text);
       length += text.length;
     }
     function quoted(text: string): string {
-      meter.work(text.length);
+      meter.work(textWork(text.length, WORK.scanText));
       return JSON.stringify(text);
     }
     const enter = (current: JsonDataNode): void => {
@@ -132,7 +132,7 @@ export class DataEncodings {
       }
     }
     // Charge the final copy and cache record before retaining the encoding.
-    meter.work(length + 1); meter.retain(length + 2);
+    meter.work(WORK.node + textWork(length, WORK.copyText)); meter.retain(length + 2);
     const encoding = chunks.join("");
     this.cache.set(node, encoding);
     return encoding;

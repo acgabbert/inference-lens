@@ -1,7 +1,7 @@
 import type { JsonObject, JsonValue } from "../run-kernel/types.ts";
 import { DataEncodings, DataStop, indexData, type JsonDataNode } from "./data.ts";
 import { preflightJsonSchema, type PreparedSchema, type SchemaPreflightDiagnostic } from "./preflight.ts";
-import { SchemaMeter, SchemaStop, type SchemaJsonNode, type SchemaLimits, type SchemaStats } from "./resources.ts";
+import { SchemaMeter, SchemaStop, textWork, WORK, type SchemaJsonNode, type SchemaLimits, type SchemaStats } from "./resources.ts";
 
 /** Internal calibration contract. No defaults are frozen into saved checks yet. */
 export interface SchemaEvaluationLimits {
@@ -80,12 +80,11 @@ export function evaluateJsonSchema(schema: unknown, data: JsonValue, limits: Sch
   }
   function equal(a: JsonDataNode, b: SchemaJsonNode): boolean {
     const encoding = encodings.canonical(a, meter);
-    meter.work(encoding.length + b.encoding.length + 1);
+    meter.work(WORK.node + textWork(encoding.length + b.encoding.length, WORK.copyText));
     return encoding === b.encoding;
   }
   function decimal(number: number): { coefficient: bigint; exponent: number } {
     const text = number.toString();
-    meter.work(text.length + 1);
     const [mantissa, exponent = "0"] = text.split("e");
     const dot = mantissa.indexOf(".");
     return { coefficient: BigInt(mantissa.replace(".", "")), exponent: Number(exponent) - (dot < 0 ? 0 : mantissa.length - dot - 1) };
@@ -94,7 +93,7 @@ export function evaluateJsonSchema(schema: unknown, data: JsonValue, limits: Sch
     const a = decimal(number);
     const b = decimal(divisor);
     const shift = a.exponent - b.exponent;
-    meter.work(Math.abs(shift) + 1); meter.retain(Math.abs(shift) + 1);
+    meter.work(WORK.multiple + textWork(Math.abs(shift), WORK.shiftDigits)); meter.retain(Math.abs(shift) + 1);
     return shift >= 0
       ? (a.coefficient * BigInt(10) ** BigInt(shift)) % b.coefficient === BigInt(0)
       : a.coefficient % (b.coefficient * BigInt(10) ** BigInt(-shift)) === BigInt(0);
@@ -142,8 +141,10 @@ export function evaluateJsonSchema(schema: unknown, data: JsonValue, limits: Sch
       if (has("multipleOf")) assert(multipleOf(n, s.multipleOf as number), "multipleOf");
     }
     if (typeof node.value === "string" && (has("minLength") || has("maxLength"))) {
+      // Charge the whole scan before it runs; the loop itself stays unmetered.
+      meter.work(WORK.node + textWork(node.value.length, WORK.scanText));
       let length = 0;
-      for (const character of node.value) { meter.work(character.length); length++; }
+      for (const character of node.value) { if (character) length++; }
       if (has("minLength")) assert(length >= (s.minLength as number), "minLength");
       if (has("maxLength")) assert(length <= (s.maxLength as number), "maxLength");
     }
@@ -151,12 +152,12 @@ export function evaluateJsonSchema(schema: unknown, data: JsonValue, limits: Sch
       if (has("minProperties")) assert(node.children.size >= (s.minProperties as number), "minProperties");
       if (has("maxProperties")) assert(node.children.size <= (s.maxProperties as number), "maxProperties");
       for (const key of (s.required ?? []) as string[]) {
-        meter.work(key.length + 1);
+        meter.work(WORK.key);
         assert(node.children.has(key), "required", { missingProperty: key });
       }
       const properties = sub("properties")?.children;
       for (const [key, value] of node.children) {
-        meter.work(key.length + 1);
+        meter.work(WORK.key);
         const declared = properties?.get(key);
         if (declared || has("additionalProperties")) {
           const safeLocation = segment(location, declared ? { property: key } : { redacted: true });
@@ -172,7 +173,7 @@ export function evaluateJsonSchema(schema: unknown, data: JsonValue, limits: Sch
         if (has("propertyNames")) {
           let name = names.get(value.id);
           if (!name) {
-            meter.work(key.length + 1); meter.retain(key.length + 8);
+            meter.work(WORK.key); meter.retain(key.length + 8);
             name = { id: syntheticId--, value: key, children: new Map() };
             names.set(value.id, name);
           }
@@ -180,11 +181,11 @@ export function evaluateJsonSchema(schema: unknown, data: JsonValue, limits: Sch
         }
       }
       for (const [key, dependency] of sub("dependencies")?.children ?? []) {
-        meter.work(key.length + 1);
+        meter.work(WORK.key);
         if (!node.children.has(key)) continue;
         if (Array.isArray(dependency.value)) {
           for (const required of dependency.value as string[]) {
-            meter.work(required.length + 1);
+            meter.work(WORK.key);
             assert(node.children.has(required), "dependencies", { missingProperty: required });
           }
         } else if (!(yield { sid: dependency.id, node, location, explain: true })) valid = false;
@@ -214,7 +215,8 @@ export function evaluateJsonSchema(schema: unknown, data: JsonValue, limits: Sch
         let unique = true;
         for (const item of node.children.values()) {
           const encoding = encodings.canonical(item, meter);
-          meter.work(encoding.length + 1); meter.retain(encoding.length + 1);
+          // Set membership hashes the encoding once.
+          meter.work(WORK.node + textWork(encoding.length, WORK.scanText)); meter.retain(encoding.length + 1);
           if (seen.has(encoding)) { unique = false; break; }
           seen.add(encoding);
         }
@@ -245,7 +247,7 @@ export function evaluateJsonSchema(schema: unknown, data: JsonValue, limits: Sch
     type Frame = { sid: number; node: JsonDataNode; iterator: Constraints };
     const stack: Frame[] = [];
     function push(sid: number, node: JsonDataNode): void {
-      meter.retain(4);
+      meter.work(WORK.frame); meter.retain(4);
       stack.push({ sid, node, iterator: constraints(sid, node, []) });
     }
     push(sid, node);
@@ -290,7 +292,7 @@ export function evaluateJsonSchema(schema: unknown, data: JsonValue, limits: Sch
         meter.work(key.length); meter.retain(key.length + 1);
         if (seen.has(key)) return;
         seen.add(key);
-        meter.retain(4);
+        meter.work(WORK.frame); meter.retain(4);
         frames.push({ iterator: constraints(task.sid, task.node, task.location), returned: false });
       }
       descend({ sid: prepared.root, node: root, location: [], explain: true });

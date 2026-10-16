@@ -20,6 +20,35 @@ export type SchemaResourceCode =
   | "schema-depth-limit"
   | "non-json-schema";
 
+/**
+ * Work charges, calibrated so one unit costs roughly the same time whichever
+ * operation spends it (docs/JSON_SCHEMA_CALIBRATION.md). Fixed charges price
+ * an operation; the text divisors price its length in code units. Outcomes are
+ * re-derived when evidence is opened, so once a check vocabulary ships these
+ * values, changing any of them is a vocabulary change.
+ */
+export const WORK = Object.freeze({
+  /** Index one JSON value, or advance one explicit traversal stack. */
+  node: 2,
+  /** Collect, merge-sort, or look up one object key, apart from its text. */
+  key: 1,
+  /** Start one subschema evaluation frame. */
+  frame: 10,
+  /** Decide one numeric multiple, apart from its decimal shift. */
+  multiple: 8,
+  /** Code units per unit when text is scanned code point by code point, quoted, or hashed. */
+  scanText: 4,
+  /** Code units per unit when text is copied or compared. */
+  copyText: 256,
+  /** Decimal digits of `multipleOf` shift per unit. */
+  shiftDigits: 16,
+});
+
+/** The length-proportional part of a charge, in whole units. */
+export function textWork(length: number, perUnit: number): number {
+  return Math.floor(length / perUnit);
+}
+
 export class SchemaStop extends Error {
   readonly code: SchemaResourceCode;
   constructor(code: SchemaResourceCode) {
@@ -73,7 +102,7 @@ export function sortedKeys(keys: string[], meter: SchemaMeter): string[] {
   let a = 0;
   let b = 0;
   while (a < left.length && b < right.length) {
-    meter.work(1 + left[a].length + right[b].length);
+    meter.work(WORK.key + textWork(left[a].length + right[b].length, WORK.copyText));
     result.push(left[a] <= right[b] ? left[a++] : right[b++]);
   }
   while (a < left.length) { meter.work(); result.push(left[a++]); }
@@ -94,12 +123,11 @@ export function indexSchema(value: unknown, meter: SchemaMeter): SchemaJsonNode 
   function size(units: number): void {
     if (units > meter.limits.maxSchemaCodeUnits - codeUnits) throw new SchemaStop("schema-too-large");
     codeUnits += units;
-    meter.work(units);
   }
   function quoted(text: string): string {
     // Bound input before invoking the native encoder; escaped size is checked next.
     if (text.length > meter.limits.maxSchemaCodeUnits - codeUnits) throw new SchemaStop("schema-too-large");
-    meter.work(text.length);
+    meter.work(WORK.node + textWork(text.length, WORK.scanText));
     const encoding = JSON.stringify(text);
     size(encoding.length);
     meter.retain(encoding.length);
@@ -107,7 +135,8 @@ export function indexSchema(value: unknown, meter: SchemaMeter): SchemaJsonNode 
   }
   function enter(raw: unknown, path: readonly string[]): Frame {
     if (path.length + 1 > meter.limits.maxDepth) throw new SchemaStop("schema-depth-limit");
-    meter.work();
+    // Each node copies its authored path, so deep schemas pay for that copy.
+    meter.work(WORK.node + textWork(path.length, WORK.scanText));
     meter.retain(8 + path.length);
     const container = raw !== null && typeof raw === "object";
     if (!container && raw !== null && !["boolean", "string", "number"].includes(typeof raw)) {
@@ -124,7 +153,7 @@ export function indexSchema(value: unknown, meter: SchemaMeter): SchemaJsonNode 
       size(2);
       for (const key in raw) {
         if (!Object.hasOwn(raw, key)) continue;
-        meter.work(key.length + 1);
+        meter.work(WORK.key + textWork(key.length, WORK.scanText));
         meter.retain(key.length + 2);
         keys.push(key);
       }
@@ -168,7 +197,7 @@ export function indexSchema(value: unknown, meter: SchemaMeter): SchemaJsonNode 
           return array ? child.encoding : frame.parts[i] + child.encoding;
         });
         const length = parts.reduce((sum, part) => sum + part.length + 1, 2);
-        meter.work(length);
+        meter.work(WORK.node + frame.keys.length + textWork(length, WORK.copyText));
         meter.retain(length);
         frame.node.encoding = array ? `[${parts.join(",")}]` : `{${parts.join(",")}}`;
         active.delete(frame.node.value);

@@ -1,6 +1,6 @@
 import type { JsonObject } from "../run-kernel/types.ts";
 import {
-  indexSchema, SchemaMeter, SchemaStop,
+  indexSchema, SchemaMeter, SchemaStop, textWork, WORK,
   type SchemaJsonNode, type SchemaLimits, type SchemaResourceCode, type SchemaStats,
 } from "./resources.ts";
 
@@ -104,7 +104,8 @@ export function preflightJsonSchema(schema: unknown, limits: SchemaLimits): Sche
     function register(node: SchemaJsonNode): number {
       if (typeof node.value !== "boolean" && !isObject(node.value)) fail("invalid-schema", node);
       if (!nodes.has(node.id)) {
-        meter.work();
+        // Preparing a schema node runs every keyword check plus graph bookkeeping.
+        meter.work(WORK.frame);
         meter.retain(8);
         const record: PreparedSchemaNode = { node, sameInstance: [] };
         nodes.set(node.id, record);
@@ -123,7 +124,7 @@ export function preflightJsonSchema(schema: unknown, limits: SchemaLimits): Sche
       const seen = new Set<string>();
       for (const child of node.children.values()) {
         const item = child.value;
-        meter.work(typeof item === "string" ? item.length + 1 : 1);
+        meter.work(WORK.key + (typeof item === "string" ? textWork(item.length, WORK.scanText) : 0));
         meter.retain();
         if (typeof item !== "string" || seen.has(item)) fail("invalid-schema", node);
         seen.add(item);
@@ -131,7 +132,7 @@ export function preflightJsonSchema(schema: unknown, limits: SchemaLimits): Sche
     }
     function resolve(node: SchemaJsonNode): SchemaJsonNode {
       const ref = node.value;
-      meter.work(typeof ref === "string" ? ref.length + 1 : 1);
+      meter.work(WORK.node + (typeof ref === "string" ? textWork(ref.length, WORK.scanText) : 0));
       if (typeof ref !== "string") fail("invalid-schema", node);
       if (!ref.startsWith("#")) fail("unsupported-reference", node);
       let pointer: string;
@@ -141,7 +142,7 @@ export function preflightJsonSchema(schema: unknown, limits: SchemaLimits): Sche
       let target = root;
       if (pointer) {
         for (const token of pointer.slice(1).split("/")) {
-          meter.work(token.length + 1);
+          meter.work(WORK.key + textWork(token.length, WORK.scanText));
           meter.retain(token.length + 1);
           if (/~(?:[^01]|$)/.test(token)) fail("unresolved-reference", node);
           const key = token.replace(/~1/g, "/").replace(/~0/g, "~");
@@ -163,7 +164,7 @@ export function preflightJsonSchema(schema: unknown, limits: SchemaLimits): Sche
       const s = node.value as JsonObject;
       const child = (key: string): SchemaJsonNode => node.children.get(key)!;
       for (const [key, value] of node.children) {
-        meter.work(key.length + 1);
+        meter.work(WORK.key);
         if (key === "pattern" || key === "patternProperties") fail("unsupported-pattern", value);
         if (!allowed.has(key)) fail("unsupported-keyword", value);
         if (key === "$schema" && (typeof value.value !== "string" || !dialects.has(value.value))) {
@@ -206,7 +207,7 @@ export function preflightJsonSchema(schema: unknown, limits: SchemaLimits): Sche
         if (!Array.isArray(values.value) || !values.value.length) fail("invalid-schema", values);
         const seen = new Set<string>();
         for (const value of values.children.values()) {
-          meter.work(value.encoding.length + 1); meter.retain(value.encoding.length + 1);
+          meter.work(WORK.node + textWork(value.encoding.length, WORK.scanText)); meter.retain(value.encoding.length + 1);
           if (seen.has(value.encoding)) fail("invalid-schema", values);
           seen.add(value.encoding);
         }
