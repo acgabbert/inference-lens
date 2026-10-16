@@ -1,3 +1,4 @@
+export { generateJsonSchema } from "./json-schema/generate.ts";
 import type { CheckDefinition, CheckKind } from "./checks.ts";
 import { evaluationSuitePreflight, templateUseVariableIndex } from "./evaluation-suites.ts";
 import type { EvaluationCase, EvaluationInputBinding, EvaluationSuite, EvaluationVariant } from "./evaluation-suites.ts";
