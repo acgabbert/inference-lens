@@ -33,6 +33,7 @@
     "test:metered-json-schema": "node --test scripts/spikes/metered-json-schema/evaluator.test.mjs scripts/spikes/metered-json-schema/latency.test.mjs && node scripts/spikes/metered-json-schema/conformance.mjs",
     "test:metered-json-schema:latency": "node scripts/spikes/metered-json-schema/latency.mjs",
     "test:metered-json-schema:runtimes": "node scripts/spikes/metered-json-schema/runtimes.mjs",
+    "test:json-schema:latency": "node --experimental-strip-types scripts/spikes/metered-json-schema/latency.mjs --core",
     "test:json-schema:node": "node scripts/spikes/json-schema/probe.mjs",
     "test:json-schema:bundles": "node scripts/spikes/json-schema/bundles.mjs",
     "test:safe-regex:node": "node --experimental-strip-types scripts/safe-regex-runtime-probe.mjs",

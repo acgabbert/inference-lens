@@ -58,12 +58,12 @@ export interface SchemaJsonNode {
   value: JsonValue;
   path: readonly string[];
   children: Map<string, SchemaJsonNode>;
-  /** Canonical JSON used only for schema enum equality and size accounting. */
+  /** Authored-schema canonical JSON for equality and size accounting. */
   encoding: string;
 }
 
 /** Stable merge sort keeps work independent of engine Array.sort behavior. */
-function sortedKeys(keys: string[], meter: SchemaMeter): string[] {
+export function sortedKeys(keys: string[], meter: SchemaMeter): string[] {
   if (keys.length < 2) return keys;
   meter.retain(keys.length * 2);
   const middle = Math.floor(keys.length / 2);

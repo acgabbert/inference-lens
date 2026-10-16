@@ -169,3 +169,50 @@ test("JSON parser number representation is used and non-finite values are reject
   assert.equal(result.status, "not-evaluated");
   if (result.status === "not-evaluated") assert.equal(result.diagnostic.code, "non-json-data");
 });
+
+test("ordinary validation of 1000 records leaves headroom below 200000 work units", () => {
+  const row = {
+    type: "object", required: ["answer", "score"],
+    properties: { answer: { type: "string" }, score: { type: "number", minimum: 0, maximum: 1 } },
+    additionalProperties: false,
+  };
+  const data = Array.from({ length: 1000 }, () => ({ answer: "A useful answer for the user.", score: 0.75 }));
+  const measured = evaluate({ items: row }, data);
+  assert.equal(measured.status, "valid");
+  assert.ok(measured.stats.verdict.work < 200_000, `Ordinary validation used ${measured.stats.verdict.work} work units`);
+  assert.equal(evaluate({ items: row }, data, { ...limits, verdict: { ...limits.verdict, workLimit: 200_000 } }).status, "valid");
+});
+
+test("wrapping an ordinary large payload charges for wrappers rather than recopying the payload", () => {
+  const flat = evaluate(true, "x".repeat(10_000));
+  let data: JsonValue = "x".repeat(10_000);
+  for (let depth = 2; depth <= 64; depth++) {
+    data = { next: data };
+    if (![16, 32, 64].includes(depth)) continue;
+    const nested = evaluate(true, data);
+    assert.equal(nested.status, "valid");
+    const workGrowth = nested.stats.verdict.work - flat.stats.verdict.work;
+    const storageGrowth = nested.stats.verdict.storage - flat.stats.verdict.storage;
+    assert.ok(workGrowth < depth * 100, `Depth ${depth} added ${workGrowth} work units`);
+    assert.ok(storageGrowth < depth * 100, `Depth ${depth} added ${storageGrowth} storage units`);
+  }
+});
+
+test("lazy equality remains invocation-local and diagnostics do not change encoding work", () => {
+  const schema = { allOf: [{ const: { a: [1, 2] } }, { enum: [{ a: [1, 3] }, { a: [1, 2] }] }] };
+  const data = { a: [1, 2] };
+  const first = evaluate(schema, data);
+  assert.equal(first.status, "valid");
+  data.a[0] = 3;
+  assert.equal(evaluate(schema, data).status, "invalid");
+  data.a[0] = 1;
+  assert.deepEqual(evaluate(schema, data), first);
+  const mismatch = { items: { const: { a: 1 } }, uniqueItems: true };
+  const repeated = [{ a: 2 }, { a: 2 }];
+  const explained = evaluate(mismatch, repeated);
+  const silent = evaluate(mismatch, repeated, { ...limits, diagnostics: { ...limits.diagnostics, workLimit: 0 } });
+  assert.equal(explained.status, "invalid");
+  assert.equal(silent.status, "invalid");
+  assert.equal(silent.truncated, true);
+  assert.deepEqual(silent.stats.verdict, explained.stats.verdict);
+});

@@ -1,6 +1,7 @@
 import type { JsonObject, JsonValue } from "../run-kernel/types.ts";
+import { DataEncodings, DataStop, indexData, type JsonDataNode } from "./data.ts";
 import { preflightJsonSchema, type PreparedSchema, type SchemaPreflightDiagnostic } from "./preflight.ts";
-import { indexSchema, SchemaMeter, SchemaStop, type SchemaJsonNode, type SchemaLimits, type SchemaStats } from "./resources.ts";
+import { SchemaMeter, SchemaStop, type SchemaJsonNode, type SchemaLimits, type SchemaStats } from "./resources.ts";
 
 /** Internal calibration contract. No defaults are frozen into saved checks yet. */
 export interface SchemaEvaluationLimits {
@@ -29,7 +30,7 @@ export type SchemaEvaluationResult =
   | { status: "not-evaluated"; diagnostic: SchemaPreflightDiagnostic | { code: EvaluationCode; message: string }; stats: EvaluationStats }
   | { status: "valid" | "invalid"; issues: SchemaIssue[]; truncated: boolean; uncheckedFormats: PreparedSchema["uncheckedFormats"]; stats: EvaluationStats };
 
-type Request = { sid: number; node: SchemaJsonNode; location: readonly SafeLocationSegment[]; explain: boolean };
+type Request = { sid: number; node: JsonDataNode; location: readonly SafeLocationSegment[]; explain: boolean };
 type Constraints = Generator<Request, boolean, boolean>;
 
 /**
@@ -50,17 +51,18 @@ export function evaluateJsonSchema(schema: unknown, data: JsonValue, limits: Sch
   let meter = verdictMeter;
   let explaining = false;
   const memo = new Map<number, Map<number, boolean>>();
-  const names = new Map<number, SchemaJsonNode>();
+  const names = new Map<number, JsonDataNode>();
+  const encodings = new DataEncodings();
   let syntheticId = -1;
   const tasks: Request[] = [];
   const issues: SchemaIssue[] = [];
   let truncated = false;
 
-  function lookup(sid: number, node: SchemaJsonNode): boolean | undefined {
+  function lookup(sid: number, node: JsonDataNode): boolean | undefined {
     meter.work();
     return memo.get(sid)?.get(node.id);
   }
-  function remember(sid: number, node: SchemaJsonNode, valid: boolean): void {
+  function remember(sid: number, node: JsonDataNode, valid: boolean): void {
     if (!memo.has(sid)) { meter.retain(2); memo.set(sid, new Map()); }
     meter.retain(3);
     memo.get(sid)!.set(node.id, valid);
@@ -77,9 +79,10 @@ export function evaluateJsonSchema(schema: unknown, data: JsonValue, limits: Sch
     meter.retain(keyword.length + location.length + 4);
     issues.push({ code: "schema-mismatch", keyword, location, ...expected });
   }
-  function equal(a: SchemaJsonNode, b: SchemaJsonNode): boolean {
-    meter.work(a.encoding.length + b.encoding.length + 1);
-    return a.encoding === b.encoding;
+  function equal(a: JsonDataNode, b: SchemaJsonNode): boolean {
+    const encoding = encodings.canonical(a, meter);
+    meter.work(encoding.length + b.encoding.length + 1);
+    return encoding === b.encoding;
   }
   function decimal(number: number): { coefficient: bigint; exponent: number } {
     const text = number.toString();
@@ -97,7 +100,7 @@ export function evaluateJsonSchema(schema: unknown, data: JsonValue, limits: Sch
       ? (a.coefficient * BigInt(10) ** BigInt(shift)) % b.coefficient === BigInt(0)
       : a.coefficient % (b.coefficient * BigInt(10) ** BigInt(-shift)) === BigInt(0);
   }
-  function* constraints(sid: number, node: SchemaJsonNode, location: readonly SafeLocationSegment[]): Constraints {
+  function* constraints(sid: number, node: JsonDataNode, location: readonly SafeLocationSegment[]): Constraints {
     meter.work();
     const record = prepared.nodes.get(sid)!;
     const schemaNode = record.node;
@@ -170,8 +173,8 @@ export function evaluateJsonSchema(schema: unknown, data: JsonValue, limits: Sch
         if (has("propertyNames")) {
           let name = names.get(value.id);
           if (!name) {
-            meter.work(key.length + 1); meter.retain(key.length * 2 + 8);
-            name = { id: syntheticId--, value: key, encoding: JSON.stringify(key), path: [], children: new Map() };
+            meter.work(key.length + 1); meter.retain(key.length + 8);
+            name = { id: syntheticId--, value: key, children: new Map() };
             names.set(value.id, name);
           }
           assert(yield { sid: sub("propertyNames").id, node: name, location, explain: false }, "propertyNames");
@@ -211,9 +214,10 @@ export function evaluateJsonSchema(schema: unknown, data: JsonValue, limits: Sch
         const seen = new Set<string>();
         let unique = true;
         for (const item of node.children.values()) {
-          meter.work(item.encoding.length + 1); meter.retain(item.encoding.length + 1);
-          if (seen.has(item.encoding)) { unique = false; break; }
-          seen.add(item.encoding);
+          const encoding = encodings.canonical(item, meter);
+          meter.work(encoding.length + 1); meter.retain(encoding.length + 1);
+          if (seen.has(encoding)) { unique = false; break; }
+          seen.add(encoding);
         }
         assert(unique, "uniqueItems");
       }
@@ -238,10 +242,10 @@ export function evaluateJsonSchema(schema: unknown, data: JsonValue, limits: Sch
     }
     return valid;
   }
-  function decide(sid: number, node: SchemaJsonNode): boolean {
-    type Frame = { sid: number; node: SchemaJsonNode; iterator: Constraints };
+  function decide(sid: number, node: JsonDataNode): boolean {
+    type Frame = { sid: number; node: JsonDataNode; iterator: Constraints };
     const stack: Frame[] = [];
-    function push(sid: number, node: SchemaJsonNode): void {
+    function push(sid: number, node: JsonDataNode): void {
       meter.retain(4);
       stack.push({ sid, node, iterator: constraints(sid, node, []) });
     }
@@ -263,15 +267,14 @@ export function evaluateJsonSchema(schema: unknown, data: JsonValue, limits: Sch
     }
     return returned;
   }
-  let root: SchemaJsonNode;
+  let root: JsonDataNode;
   let valid: boolean;
   try {
-    root = indexSchema(data, verdictMeter);
+    root = indexData(data, verdictMeter);
     valid = decide(prepared.root, root);
   } catch (error) {
-    if (!(error instanceof SchemaStop)) throw error;
-    const code: EvaluationCode = error.code === "schema-depth-limit" ? "data-depth-limit"
-      : error.code === "non-json-schema" ? "non-json-data"
+    if (!(error instanceof SchemaStop) && !(error instanceof DataStop)) throw error;
+    const code: EvaluationCode = error instanceof DataStop ? error.code
       : error.code === "storage-limit" ? "storage-limit" : "work-limit";
     return { status: "not-evaluated", diagnostic: { code, message: "Schema evaluation could not finish within the supported data and resource limits." }, stats };
   }

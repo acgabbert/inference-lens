@@ -6,12 +6,14 @@ import { spawn } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { build } from 'vite';
 import { chromium, webkit } from '@playwright/test';
-import { measure } from './latency-entry.mjs';
+const core = process.argv.includes('--core');
+const entry = new URL(core ? '../../json-schema-latency-entry.ts' : './latency-entry.mjs', import.meta.url);
+const { measure } = await import(entry.href);
 
 const native = process.argv.includes('--native');
 const outputIndex = process.argv.indexOf('--output');
 if (outputIndex !== -1 && !process.argv[outputIndex + 1]) throw new Error('--output needs a filename');
-const report = { date: new Date().toISOString(), host: { platform: platform(), release: release(), cpu: cpus()[0]?.model }, runtimes: [] };
+const report = { engine: core ? 'core' : 'spike', date: new Date().toISOString(), host: { platform: platform(), release: release(), cpu: cpus()[0]?.model }, runtimes: [] };
 let reference;
 function record(runtime, data) {
   if (data.results) {
@@ -32,7 +34,7 @@ let child;
 try {
   await build({ configFile: false, publicDir: false, logLevel: 'error', build: {
     outDir: directory, target: 'es2021', minify: true,
-    lib: { entry: new URL('./latency-entry.mjs', import.meta.url).pathname, formats: ['es'], fileName: () => 'probe.mjs' },
+    lib: { entry: entry.pathname, formats: ['es'], fileName: () => 'probe.mjs' },
   } });
   const bundle = await readFile(join(directory, 'probe.mjs'));
   let completeNative;
