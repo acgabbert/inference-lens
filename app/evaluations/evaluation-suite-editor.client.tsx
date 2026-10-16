@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { StructuredCheckEditor } from "./structured-check-editor.client";
 import { CHECK_KINDS } from "../../packages/core/src/checks";
 import type { CheckDefinition, CheckKind, ToolCallCountComparator } from "../../packages/core/src/checks";
 import type { JsonObject } from "../../packages/core/src/run-kernel";
@@ -58,12 +59,9 @@ const checkKindLabels: Record<CheckKind, string> = {
   "tool-call-arguments": "Tool call arguments",
 };
 
-// Ordered by the vocabulary itself, so a new kind cannot be offered without a
-// label or silently left out of the picker. JSON Schema checks are listed but
-// not yet offered: the structured-check editor that edits their schema is the
-// next authoring slice, and it adds them to the picker.
+// Every portable kind has usable authoring controls.
 const checkKinds = CHECK_KINDS.map((kind) => ({ kind, label: checkKindLabels[kind] }));
-const offeredCheckKinds = checkKinds.filter(({ kind }) => kind !== "json-schema");
+const offeredCheckKinds = checkKinds;
 
 function evaluationInputLabel(
   project: NonNullable<EvaluationSuiteAuthoringHandle["project"]>,
@@ -354,6 +352,7 @@ function CheckEditor({ check, error, onCommit, onRemove }: {
           <label><input type="checkbox" defaultChecked={check.negate ?? false} onChange={(event) => { if (!onCommit({ ...check, negate: event.target.checked }, "negate")) event.currentTarget.checked = check.negate ?? false; }} /> Negate</label>
         </div>
       )}
+      {(check.kind === "valid-json" || check.kind === "json-schema") && <StructuredCheckEditor check={check} onCommit={(next) => onCommit(next, "structured-check")} />}
       {(error?.field === "top-level" || (check.kind === "valid-json" && error?.field === "negate")) && <p className="evaluation-field-error" role="alert">{error.message}</p>}
       {(check.kind === "max-output-characters" || check.kind === "max-duration-ms" || check.kind === "max-total-tokens") && (
         <label>Limit <input type="number" min="0" step="1" defaultValue={check.limit} onBlur={(event) => { if (!onCommit({ ...check, limit: Math.max(0, Math.floor(Number(event.target.value) || 0)) }, "limit")) event.currentTarget.value = String(check.limit); }} /></label>
