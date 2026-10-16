@@ -355,6 +355,10 @@ test("structured results disclose bounded issues and unchecked formats without c
   await expect(row).toContainText("Issues listed: 2");
   await expect(row).toContainText('missing required property "missing"');
   await expect(row).toContainText("expected string");
+  const firstIssue = row.getByRole("list").first().getByRole("listitem").first();
+  await expect(firstIssue).toHaveText('Schema mismatch at the root: missing required property "missing".');
+  await expect(row.getByRole("list").first().getByRole("listitem").nth(1))
+    .toHaveText('Schema mismatch at ["answer"]: expected string.');
   await expect(row).toContainText("/properties/answer/format: date-time (not checked)");
   await expect(row).not.toContainText('{"answer":2}');
   const extras = results.locator(".evaluation-check-results > li").filter({ hasText: "Redacted extras" });
@@ -369,4 +373,52 @@ test("structured results disclose bounded issues and unchecked formats without c
   await expect(row.getByRole("group")).toBeVisible();
   const width = await page.evaluate(() => ({ content: document.body.scrollWidth, viewport: document.documentElement.clientWidth }));
   expect(width.content).toBeLessThanOrEqual(width.viewport);
+});
+
+test("oversized structured output shows the original UTF-16 size and limit", async ({ page }) => {
+  let project = wrongRegexProject();
+  project.evaluationSuites[0].execution.target.model = "oversized-json-model";
+  const suite = project.evaluationSuites[0];
+  project = updateEvaluationCheck(project, suite.id, suite.cases[0].id, {
+    checkId: "check_answered", kind: "json-schema", dialect: "draft-07", schema: true,
+  });
+  await openDurableProject(page, project);
+  await primaryAction(page, "evaluations").click();
+  await page.getByRole("dialog", { name: /Start “Topics”/ }).getByRole("button", { name: /^Start 1 call/ }).click();
+  const results = page.locator(".evaluation-results-workspace");
+  await expect(results).toContainText("0 / 1 passed");
+  const diagnostics = results.getByRole("group", { name: "Structured check diagnostics" });
+  await diagnostics.getByText("Structured check diagnostics", { exact: true }).click();
+  await expect(diagnostics).toContainText("Diagnostic code: output-too-large");
+  await expect(diagnostics).toContainText("Original output UTF-16 code units: 150002 · Limit: 150000");
+  await expect(diagnostics).not.toContainText("😀");
+});
+
+test("ordinary JSON passes omit disclosures while unchecked formats stay visible", async ({ page }) => {
+  let project = wrongRegexProject();
+  project.evaluationSuites[0].execution.target.model = "raw-json-model";
+  const suite = project.evaluationSuites[0];
+  const caseId = suite.cases[0].id;
+  project = updateEvaluationCheck(project, suite.id, caseId, {
+    checkId: "check_answered", kind: "json-schema", dialect: "draft-07", label: "Ordinary schema", schema: true,
+  });
+  project = addEvaluationCheck(project, suite.id, caseId, { kind: "valid-json" }, () => "json");
+  project = addEvaluationCheck(project, suite.id, caseId, { kind: "json-schema" }, () => "format");
+  project = updateEvaluationCheck(project, suite.id, caseId, {
+    checkId: "check_format", kind: "json-schema", dialect: "draft-07", label: "Unchecked format",
+    schema: { format: "custom-format" },
+  });
+  await openDurableProject(page, project);
+  await primaryAction(page, "evaluations").click();
+  await page.getByRole("dialog", { name: /Start “Topics”/ }).getByRole("button", { name: /^Start 1 call/ }).click();
+  const results = page.locator(".evaluation-results-workspace");
+  await expect(results).toContainText("1 / 1 passed");
+  const rows = results.locator(".evaluation-check-results > li");
+  await expect(rows).toHaveCount(3);
+  await expect(rows.nth(0).getByRole("group")).toHaveCount(0);
+  await expect(rows.nth(1).getByRole("group")).toHaveCount(0);
+  const diagnostics = rows.nth(2).getByRole("group");
+  await diagnostics.getByText("Structured check diagnostics", { exact: true }).click();
+  await expect(diagnostics).toContainText("/format: custom-format (not checked)");
+  await expect(diagnostics).toContainText("Extraction: whole-answer");
 });

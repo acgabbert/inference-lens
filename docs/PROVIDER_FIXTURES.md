@@ -34,6 +34,12 @@ failure, or an exact payload.
 Neither is part of `npm test`. They are development endpoints started by hand
 in a second terminal, and they bind to loopback only.
 
+The buffered fixture also offers `raw-json-model` (`{"answer":2}`) and
+`oversized-json-model` (a quoted JSON string of 75,000 emoji). The latter is
+150,002 UTF-16 code units but 75,002 Unicode characters, deliberately exceeding
+the schema output limit. Browser coverage checks that results display the
+original code-unit size and limit rather than character count or parsed size.
+
 ## Writing a fixture
 
 A fixture needs three routes at most:

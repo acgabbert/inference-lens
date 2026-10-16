@@ -203,6 +203,36 @@ Date: 2026-10-16.
   and final supported-profile/provenance/artifact-format documentation.
   Native Tauri interaction with the disclosures remains unchecked.
 
+## Shared diagnostic formatting and disclosure follow-up
+
+- Moved schema issue formatting into the core `json-schema/diagnostics.ts` owner,
+  exported as `formatSchemaIssue` through `checks.ts`. Both the outcome summary
+  and expanded result issues consume the same formatter over sanitized portable
+  issue evidence. Quoted bracket property segments distinguish literal dots,
+  brackets, and quotes from nested properties and array indices. The formatter
+  does not consume answer data; no persisted contracts or verdict budgets changed.
+- Routine passing whole-answer JSON/schema checks omit the disclosure. Passing
+  checks still disclose recorded fence extraction or unchecked formats. Results
+  no longer infer a whole-answer extraction path absent from legacy evidence.
+- Tests preceded fixes: the core regression failed on the actual ambiguous
+  `a.b[0].c[d]"` location; browser regressions failed on differing issue wording
+  and one disclosure where zero was expected. The output-limit browser test
+  passed before the fix, closing an existing coverage gap rather than establishing
+  a product regression. Its real buffered-provider response contains 150,002
+  UTF-16 code units but 75,002 characters, and the rendered code-unit size and
+  150,000 limit are asserted without copying the answer into diagnostics.
+- The affected browser command (`npm run test:e2e --
+  tests/e2e/evaluation-reassessment.spec.ts tests/e2e/structured-output-checks.spec.ts`)
+  passed all 10 cases. `npm run test:core` passed 1,181 tests. `npm run typecheck`,
+  `npm run lint` (three existing warnings), `npm run build:cli`, and
+  `npm run build:tauri` passed. Native Tauri disclosure interaction and CLI
+  schema execution remain unchecked; the Tauri build validates frontend bundling
+  only.
+- The final `npm run test:e2e` passed 273 tests with 7 skipped and none failed.
+  `node --test --test-timeout=120000 tests/evaluation-results-render.test.mjs
+  tests/evaluation-results-interaction.test.mjs tests/fixture-shutdown.test.mjs`
+  passed all 23 existing render, interaction, and fixture shutdown tests.
+
 ## Outcome and scope
 
 Add four capabilities to evaluation experiments: JSON Schema validation,
