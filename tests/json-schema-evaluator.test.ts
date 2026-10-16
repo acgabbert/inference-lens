@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { evaluateJsonSchema, type SchemaEvaluationLimits } from "../packages/core/src/json-schema/evaluator.ts";
 import type { JsonValue } from "../packages/core/src/run-kernel/types.ts";
+import { SchemaMeter } from "../packages/core/src/json-schema/resources.ts";
 
 const limits: SchemaEvaluationLimits = {
   schema: { workLimit: 4_000_000, storageLimit: 4_000_000, maxSchemaCodeUnits: 65_536, maxDepth: 64 },
@@ -153,7 +154,7 @@ test("a shared schema reports each safe path and retains issues before truncatio
   };
   const result = evaluate(schema, { a: "x", b: "x" });
   assert.equal(result.status, "invalid");
-  assert.deepEqual(result.issues.map((issue) => issue.location), [[{ property: "b" }], [{ property: "a" }]]);
+  assert.deepEqual(result.issues.map((issue) => issue.location), [[{ property: "a" }], [{ property: "b" }]]);
   const truncated = evaluate(schema, { a: "x", b: "x" }, {
     ...limits, diagnostics: { ...limits.diagnostics, maxIssues: 1 },
   });
@@ -215,4 +216,97 @@ test("lazy equality remains invocation-local and diagnostics do not change encod
   assert.equal(silent.status, "invalid");
   assert.equal(silent.truncated, true);
   assert.deepEqual(silent.stats.verdict, explained.stats.verdict);
+});
+
+
+test("small diagnostic budgets reach the first failing item before scanning its siblings", () => {
+  for (const diagnostics of [
+    { ...limits.diagnostics, workLimit: 100 },
+    { ...limits.diagnostics, storageLimit: 100 },
+  ]) {
+    const result = evaluate({ items: { type: "number" } }, Array(200).fill("x"), { ...limits, diagnostics });
+    assert.equal(result.status, "invalid");
+    assert.equal(result.truncated, true);
+    assert.ok(result.issues.length > 0, `Expected a located issue; got ${JSON.stringify(result)}`);
+    assert.deepEqual(result.issues[0], {
+      code: "schema-mismatch", keyword: "type", location: [{ index: 0 }], expectedType: "number",
+    });
+  }
+});
+
+test("a missing diagnostic verdict preserves invalidity and previously collected issues", (t) => {
+  const diagnosticWorkLimit = 123_456;
+  const schema = { items: { type: "number" } };
+  const data = ["private-answer", "private-answer"];
+  const complete = evaluate(schema, data);
+  assert.equal(complete.status, "invalid");
+  const work = SchemaMeter.prototype.work;
+  const get = Map.prototype.get;
+  for (const successfulLookups of [0, 1]) {
+    let diagnosticPhase = false;
+    let lookups = 0;
+    let injected = false;
+    // Fault injection is limited to boolean memo reads during diagnostics. No
+    // normal schema should produce a missing verdict after a completed decision.
+    t.mock.method(SchemaMeter.prototype, "work", function (this: SchemaMeter, units?: number) {
+      if (this.limits.workLimit === diagnosticWorkLimit) diagnosticPhase = true;
+      return work.call(this, units);
+    });
+    t.mock.method(Map.prototype, "get", function (this: Map<unknown, unknown>, key: unknown) {
+      const value = get.call(this, key);
+      if (diagnosticPhase && typeof value === "boolean" && lookups++ === successfulLookups) {
+        injected = true;
+        return undefined;
+      }
+      return value;
+    });
+    let result: ReturnType<typeof evaluate> | undefined;
+    try {
+      assert.doesNotThrow(() => {
+        result = evaluate(schema, data, {
+          ...limits, diagnostics: { ...limits.diagnostics, workLimit: diagnosticWorkLimit },
+        });
+      });
+    } finally {
+      t.mock.restoreAll();
+    }
+    assert.equal(injected, true, "The test must reach the missing-verdict branch");
+    assert.equal(result!.status, "invalid");
+    assert.equal(result!.truncated, true);
+    assert.equal(result!.issues.length, successfulLookups);
+    assert.deepEqual(result!.issues, complete.issues.slice(0, successfulLookups));
+    assert.deepEqual(result!.stats.verdict, complete.stats.verdict);
+    assert.doesNotMatch(JSON.stringify(result), /private-answer/);
+  }
+});
+
+
+test("depth-first diagnostics use explicit frames through deep consuming references", () => {
+  let data: JsonValue = "wrong-leaf";
+  for (let depth = 1; depth < 64; depth++) data = { next: data };
+  const schema = { type: "object", properties: { next: { allOf: [{ $ref: "#" }] } } };
+  const result = evaluate(schema, data);
+  assert.equal(result.status, "invalid");
+  assert.equal(result.truncated, false);
+  assert.equal(result.issues.length, 1);
+  assert.equal(result.issues[0].keyword, "type");
+  assert.equal(result.issues[0].expectedType, "object");
+  assert.deepEqual(result.issues[0].location, Array.from({ length: 63 }, () => ({ property: "next" })));
+});
+
+test("unexpected diagnostic exceptions remain visible", (t) => {
+  const diagnosticWorkLimit = 123_456;
+  const work = SchemaMeter.prototype.work;
+  const unexpected = new Error("Unexpected diagnostic failure");
+  t.mock.method(SchemaMeter.prototype, "work", function (this: SchemaMeter, units?: number) {
+    if (this.limits.workLimit === diagnosticWorkLimit) throw unexpected;
+    return work.call(this, units);
+  });
+  try {
+    assert.throws(() => evaluate({ items: { type: "number" } }, ["x"], {
+      ...limits, diagnostics: { ...limits.diagnostics, workLimit: diagnosticWorkLimit },
+    }), (error: unknown) => error === unexpected);
+  } finally {
+    t.mock.restoreAll();
+  }
 });

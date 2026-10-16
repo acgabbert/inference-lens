@@ -54,7 +54,6 @@ export function evaluateJsonSchema(schema: unknown, data: JsonValue, limits: Sch
   const names = new Map<number, JsonDataNode>();
   const encodings = new DataEncodings();
   let syntheticId = -1;
-  const tasks: Request[] = [];
   const issues: SchemaIssue[] = [];
   let truncated = false;
 
@@ -282,30 +281,36 @@ export function evaluateJsonSchema(schema: unknown, data: JsonValue, limits: Sch
     meter = diagnosticMeter;
     explaining = true;
     try {
-      meter.retain(4);
-      tasks.push({ sid: prepared.root, node: root, location: [], explain: true });
+      const frames: { iterator: Constraints; returned: boolean }[] = [];
       const seen = new Set<string>();
-      while (tasks.length && !truncated) {
-        meter.work();
-        const task = tasks.pop()!;
+      function descend(task: Request): void {
         // Paths contain authored property names, array indices, or redactions only.
         meter.work(task.location.length + 1);
         const key = `${task.sid}:${task.node.id}:${JSON.stringify(task.location)}`;
         meter.work(key.length); meter.retain(key.length + 1);
-        if (seen.has(key)) continue;
+        if (seen.has(key)) return;
         seen.add(key);
-        const iterator = constraints(task.sid, task.node, task.location);
-        let next = iterator.next(false);
-        while (!next.done && !truncated) {
-          const request = next.value;
-          const cached = lookup(request.sid, request.node);
-          if (cached === undefined) throw new Error("Missing schema verdict during diagnostics.");
-          if (!cached && request.explain) {
-            meter.retain(request.location.length + 4);
-            tasks.push(request);
-          }
-          next = iterator.next(cached);
+        meter.retain(4);
+        frames.push({ iterator: constraints(task.sid, task.node, task.location), returned: false });
+      }
+      descend({ sid: prepared.root, node: root, location: [], explain: true });
+      while (frames.length && !truncated) {
+        meter.work();
+        const frame = frames[frames.length - 1];
+        const next = frame.iterator.next(frame.returned);
+        if (next.done) { frames.pop(); continue; }
+        const request = next.value;
+        const cached = lookup(request.sid, request.node);
+        if (cached === undefined) {
+          // Diagnostics cannot invalidate a completed decision, even if an
+          // internal memo invariant is broken. Retain any issues found so far.
+          truncated = true;
+          break;
         }
+        frame.returned = cached;
+        // Suspend the parent at its first failing child. Wide nodes must not
+        // spend the diagnostic budget scheduling siblings before any location.
+        if (!cached && request.explain) descend(request);
       }
     } catch (error) {
       if (!(error instanceof SchemaStop)) throw error;

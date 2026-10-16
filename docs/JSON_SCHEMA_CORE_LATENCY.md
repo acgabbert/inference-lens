@@ -52,6 +52,9 @@ receive the candidate work ceiling and 20m storage units; diagnostics receive
 These are benchmark inputs, not public defaults.
 
 [The complete report](measurements/json-schema-core-lazy-latency-2026-10-16.json)
+captures the lazy-encoding baseline from commit `b9b74fb`, before the later
+depth-first diagnostic traversal change. Diagnostic costs and issue order can
+differ in newer revisions; rerun the probe for current measurements. The run
 started at 2026-10-16T20:07:21Z on an Apple M4 Pro, Darwin 25.6.0, Node 24.3.0,
 Chromium 145.0.7632.6, Playwright WebKit 26.0, and native Tauri/WKWebView
 (`AppleWebKit/605.1.15`). All four runtimes agreed on the complete outcomes and
