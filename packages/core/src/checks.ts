@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { parseJsonInput } from "./json-input.ts";
 import { runMetrics } from "./run-metrics.ts";
 import type { AttemptUsageCoverage } from "./run-metrics.ts";
 import { finalAssistantOutput, outputCharacterCount, toolCallsInRun } from "./run-output.ts";
@@ -499,12 +500,6 @@ function firstDifference(left: string, right: string): number | undefined {
   return leftPoints.length === rightPoints.length ? undefined : shared;
 }
 
-function jsonTopLevel(value: unknown): string {
-  if (value === null) return "null";
-  if (Array.isArray(value)) return "array";
-  return typeof value;
-}
-
 /**
  * True when every key of `expected` is present in `actual` with an equal
  * value. Nested objects recurse the same way; arrays and scalars compare by
@@ -614,16 +609,8 @@ function evaluateOutputCheck(
     }
     case "valid-json": {
       const required = definition.topLevel ?? "any";
-      let parsed: unknown;
-      let topLevel: string | undefined;
-      try {
-        parsed = JSON.parse(output);
-        topLevel = jsonTopLevel(parsed);
-      } catch {
-        // The engine-supplied parse message can quote the output itself, so it
-        // is deliberately dropped: evidence carries measurements only.
-        topLevel = undefined;
-      }
+      const parsed = parseJsonInput(output);
+      const topLevel = parsed.valid ? parsed.topLevel : undefined;
       const satisfied =
         topLevel !== undefined && (required === "any" || topLevel === required);
       const noun = required === "any" ? "valid JSON" : `a valid JSON ${required}`;
