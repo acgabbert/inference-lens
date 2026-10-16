@@ -8,8 +8,8 @@ not implemented or authorized by this record alone.
 The prototype is isolated under `scripts/spikes/metered-json-schema/`. It has no
 runtime dependencies and does not import either external schema engine. It does
 not change `evaluateCheck`, aggregation, portable checks, artifact versions,
-routes, authoring, or results. The earlier engine candidates remain development
-fixtures for the comparison spike.
+routes, authoring, or results. The earlier engine candidates are confined to an optional, isolated comparison
+package; neither is added to the application root dependency set.
 
 ## What was proved
 

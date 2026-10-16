@@ -3,8 +3,9 @@
 Date: 2026-10-16. Status: engine comparison complete; runtime integration gated
 on the worker boundary and a native Tauri webview probe. No check vocabulary,
 artifact version, authoring UI, or evaluation behavior changes in this slice.
-Both packages are exactly pinned **development dependencies**, used only by the
-spike. The interpreter is the preferred candidate, not yet a production engine.
+Both packages are exactly pinned **development dependencies in an isolated spike
+package**, used only by the comparison. They are absent from the application
+root dependency set. The interpreter is the preferred candidate, not yet a production engine.
 
 Follow-up: the [deterministic evaluator spike](METERED_JSON_SCHEMA_SPIKE.md)
 supersedes the worker-first recommendation below. This record preserves the
@@ -13,6 +14,7 @@ external-engine measurements and the earlier decision history.
 ## Candidates and reproducible probes
 
 ```sh
+npm ci --prefix scripts/spikes/json-schema --ignore-scripts
 npm run test:json-schema:node
 npm run test:json-schema:bundles
 ```

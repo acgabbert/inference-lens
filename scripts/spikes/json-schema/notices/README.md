@@ -1,6 +1,6 @@
 # Engine spike dependency notices
 
-The candidates are development-only. These files preserve the notices needed
+The candidates are development-only in the isolated comparison package. These files preserve the notices needed
 when distributing their probe bundles; no third-party implementation was copied
 into application core.
 
@@ -22,4 +22,4 @@ Its npm metadata reports git head `5409fdc2bd144f68e8b28c61c71fcb16600000a6`,
 but fetching the root license at that revision returned 404; the snapshots are
 from current upstream, not verified release-revision files. Recheck provenance
 before shipping a production dependency. Package versions and integrity hashes
-for the installed candidates and transitive dependencies are in the lockfile.
+for the installed candidates and transitive dependencies are in `../package-lock.json` for that isolated package.

@@ -1,0 +1,9 @@
+{
+  "name": "inference-lens-json-schema-comparison-spike",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@cfworker/json-schema": "4.1.1",
+    "ajv": "8.20.0"
+  }
+}
