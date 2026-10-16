@@ -15,7 +15,8 @@ import {
   serializeEvaluationAssessment,
   type EvaluationAssessmentV1,
 } from "../packages/core/src/evaluation-assessment.ts";
-import { createEvaluationExperimentPlan } from "../packages/core/src/evaluation-execution.ts";
+import { createEvaluationExperimentPlan, EvaluationSetupError } from "../packages/core/src/evaluation-execution.ts";
+import { evaluationSuitePreflight } from "../packages/core/src/evaluation-suites.ts";
 import { defaultCheck } from "../packages/core/src/evaluation-suite-authoring.ts";
 import { parseExperimentPlanJson, serializeExperimentPlan, type EvaluationExperimentPlanV4 } from "../packages/core/src/experiment.ts";
 import { MAX_SCHEMA_OUTPUT_CODE_UNITS } from "../packages/core/src/json-schema/limits.ts";
@@ -194,6 +195,14 @@ function planFor(project: ProjectFile): EvaluationExperimentPlanV4 {
 
 const schemaCheckJson = { checkId: "check_shape", kind: "json-schema", dialect: "draft-07", schema: answerSchema };
 const containsCheckJson = { checkId: "check_mentions", kind: "contains", value: "migration" };
+
+test("suite preflight reports an unsupported schema before plan creation", () => {
+  const project = suiteProject([{ ...schemaCheckJson, schema: { type: "string", pattern: "^a" } }]);
+  const diagnostics = evaluationSuitePreflight(project, "evaluation-suite_topics", project.defaults.conversationRevisionId);
+  assert.deepEqual(diagnostics.map(({ code }) => code), ["unsupported-schema"]);
+  assert.match(diagnostics[0].message, /Migrations.*Pattern constraints are unsupported/);
+  assert.throws(() => planFor(project), (error: unknown) => error instanceof EvaluationSetupError);
+});
 
 test("new plans record vocabulary 4, and a vocabulary 3 plan rejects v4 constructs instead of reinterpreting them", () => {
   const plan = planFor(suiteProject([schemaCheckJson]));

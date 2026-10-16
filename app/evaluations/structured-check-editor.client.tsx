@@ -45,7 +45,9 @@ export function StructuredCheckEditor({ check, onCommit }: {
   }
   function save() {
     setError(undefined); setSaved(false);
-    let next = { ...check, inputPolicy: policy };
+    // Strict is the default; spelling it out would make an unchanged check compare as edited.
+    let next: StructuredCheck = { ...check, inputPolicy: policy };
+    if (policy === "strict") delete next.inputPolicy;
     if (check.kind === "json-schema") {
       if (schemaText.length > SCHEMA_CHECK_LIMITS.schema.maxSchemaCodeUnits) {
         setError("The schema draft exceeds the size limit."); return;
@@ -56,7 +58,7 @@ export function StructuredCheckEditor({ check, onCommit }: {
       if (result.status !== "ready") {
         setError(`${result.diagnostic.message} Schema location: /${result.diagnostic.schemaPath.join("/")}`); return;
       }
-      next = { ...check, inputPolicy: policy, schema: parsed.value as JsonObject | boolean };
+      next = { ...next, schema: parsed.value as JsonObject | boolean } as StructuredCheck;
       setUncheckedFormats(uncheckedFormatsOf(next));
     }
     if (onCommit(next)) setSaved(true);
