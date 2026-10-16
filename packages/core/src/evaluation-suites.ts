@@ -12,6 +12,8 @@ import type {
 } from "./run-kernel/types.ts";
 import type { CheckDefinition } from "./checks.ts";
 import { resolveEvaluationCase } from "./evaluation-case-resolution.ts";
+import { SCHEMA_CHECK_LIMITS } from "./json-schema/limits.ts";
+import { preflightJsonSchema } from "./json-schema/preflight.ts";
 import type { ExecutionTarget, ProjectFile } from "./project.ts";
 import { templateUseVariableIndex } from "./template-use-variable-index.ts";
 export { templateUseVariableIndex } from "./template-use-variable-index.ts";
@@ -148,6 +150,13 @@ export type EvaluationSuitePreflightDiagnostic =
       message: string;
     }
   | {
+      /** Authoring keeps unsupported schemas editable; a run cannot evaluate them. */
+      code: "unsupported-schema";
+      caseId: EvaluationCaseId;
+      checkId: CheckId;
+      message: string;
+    }
+  | {
       code: "no-checks";
       caseId: EvaluationCaseId;
       message: string;
@@ -219,6 +228,17 @@ export function evaluationSuitePreflight(
         caseId: evaluationCase.id,
         inputBindingId: binding.id,
         message: `Case "${evaluationCase.name}" has no value for input "${binding.name}".`,
+      });
+    });
+    evaluationCase.checks.forEach((check) => {
+      if (check.kind !== "json-schema") return;
+      const preflight = preflightJsonSchema(check.schema, SCHEMA_CHECK_LIMITS.schema);
+      if (preflight.status === "ready") return;
+      diagnostics.push({
+        code: "unsupported-schema",
+        caseId: evaluationCase.id,
+        checkId: check.checkId,
+        message: `A JSON Schema check on case "${evaluationCase.name}" cannot run: ${preflight.diagnostic.message}`,
       });
     });
     evaluationCase.checks.forEach((check) => {

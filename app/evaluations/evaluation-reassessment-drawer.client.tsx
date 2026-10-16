@@ -2,6 +2,7 @@
 
 import { SAFE_REGEX_FLAGS } from "../../packages/core/src/safe-regex.ts";
 import { SideDrawer } from "../workbench-shell.client.tsx";
+import { StructuredCheckEditor } from "./structured-check-editor.client.tsx";
 import styles from "./evaluation-reassessment.module.css";
 import type { EvaluationReassessmentHandle } from "./use-evaluation-reassessment.client.ts";
 
@@ -23,16 +24,8 @@ function flip(from: string, to: string): string {
   return `${from} → ${to}`;
 }
 
-/**
- * Corrects the criteria a finished evaluation is read under.
- *
- * Regex only, deliberately. The corrections this exists for — a pattern written
- * against one sample's capitalization, an anchor that was never going to match
- * twice — are regex corrections, and every field here is one the Safe regex
- * engine already validates. Widening it to every check kind would rebuild the
- * suite editor's per-kind field logic over history, where a mistake is harder
- * to notice because there is no run to disagree with it.
- */
+/** Composes criteria editors over saved evidence. Structured drafts stay in
+ * their editor until validated; the handle owns preview and persistence. */
 export function EvaluationReassessmentDrawer({
   handle,
 }: {
@@ -51,9 +44,9 @@ export function EvaluationReassessmentDrawer({
       onClose={handle.closeEditor}
     >
       <div className={styles.drawer}>
-        {handle.regexChecks.length === 0 && (
+        {handle.regexChecks.length === 0 && handle.structuredChecks.length === 0 && (
           <p className={styles.empty}>
-            This execution ran no regex checks, so there is nothing this editor can correct.
+            This execution has no regex or structured checks to correct.
           </p>
         )}
 
@@ -96,6 +89,20 @@ export function EvaluationReassessmentDrawer({
                 Negate
               </label>
             </div>
+          </section>
+        ))}
+
+        {handle.structuredChecks.map(({ caseId, caseName, check }) => (
+          <section
+            aria-label={`${caseName} · ${check.label ?? check.checkId}`}
+            className={styles.check}
+            key={`${caseId}:${check.checkId}`}
+          >
+            <header>
+              <strong>{check.label ?? (check.kind === "json-schema" ? "JSON Schema" : "Valid JSON")}</strong>
+              <small>{caseName}</small>
+            </header>
+            <StructuredCheckEditor check={check} onCommit={(next) => handle.commitStructuredCheck(caseId, next)} />
           </section>
         ))}
 
@@ -158,7 +165,7 @@ export function EvaluationReassessmentDrawer({
             Name
             <input
               value={handle.draftName}
-              placeholder="Corrected regex"
+              placeholder="Corrected criteria"
               onChange={(event) => handle.setDraftName(event.target.value)}
             />
           </label>

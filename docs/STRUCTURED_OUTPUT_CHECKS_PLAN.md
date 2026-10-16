@@ -1,6 +1,6 @@
 # Structured output checks implementation plan
 
-Status: portable vocabulary v4 implemented; example generation and suite authoring implemented. Reassessment editor reuse and results integration remain.
+Status: portable vocabulary v4, example generation, suite authoring, and reassessment editor reuse implemented. Results integration remains.
 Date: 2026-10-16.
 
 ## Implementation progress
@@ -141,6 +141,31 @@ Date: 2026-10-16.
 - Step 4 is not entirely complete: reuse the editor in saved-output reassessment
   next. Step 5 still owns rendered result diagnostics, strict-versus-fenced
   provider fixtures, CLI/browser outcome agreement, and the final profile docs.
+
+## Reassessment editor reuse follow-up
+
+- Reused `StructuredCheckEditor` in the saved-output reassessment drawer for
+  JSON Schema and Valid JSON. The editor owns ephemeral schema/example/policy
+  drafts; the reassessment handle accepts validated definitions into its existing
+  criteria map for preview, immutable save, and separate authored-suite adoption.
+  No new persisted fields or version changes were needed. Other check kinds
+  continue to be listed as carried through unchanged.
+- The browser regression was written first and ran red on the missing schema
+  controls (zero versus one) in the open reassessment drawer. Subsequent failures
+  exposed test setup mistakes selecting the provider model, not further product
+  regressions. The fixture now selects the suite execution target explicitly.
+- The buffered fixture's `structured-output-model` returns fenced `{"answer":2}`.
+  `tests/e2e/evaluation-reassessment.spec.ts` covers invalid drafts, generation,
+  explicit per-check commits, strict-to-fenced outcome changes, saved assessment
+  reopening, unchanged As run, separate suite adoption, carried checks, discarded
+  drafts on close, and no additional provider requests. All three cases passed.
+- `npm run test:core` passed 1,179 tests; `npm run typecheck` passed;
+  `npm run lint` passed with the same three existing warnings.
+  `npm run test:e2e` passed: 268 passed, 7 skipped, none failed.
+  This included the existing structured-output authoring scenarios.
+- Remaining: step 5 result diagnostics, whole-view scheduling, broader provider
+  policy fixtures, CLI/browser agreement, and final supported-profile docs.
+  Native Tauri reassessment interaction remains unchecked.
 
 ## Outcome and scope
 
@@ -538,7 +563,7 @@ incompatibility state when a pairing is unsupported.
 4. **Example generation and authoring.** Test generation before implementation;
    add the editor, preview, invalid draft behavior, explicit extras policy, and
    persistence. Verify hand-authored and generated schemas use the same evaluator.
-   Done for suite authoring and core generation; reassessment editor reuse remains.
+   Done for suite authoring, core generation, and reassessment editor reuse.
 5. **Results and end-to-end behavior.** Render diagnostics in suite and reassessment
    results; verify CLI/browser agreement and reopen exported history. Complete the
    supported-profile, provenance, deterministic-check, and artifact-format docs.
