@@ -21,8 +21,10 @@ import { INFERENCE_API_PATH } from "../../packages/contracts/src/inference";
 import {
   BUFFERED_FIXTURE_ENDPOINT,
   PROJECT_PROFILE_MAP_STORAGE_KEY,
+  holdDerivations,
   openMode,
   primaryAction,
+  releaseDerivations,
   seedProfile,
   stubProjectDirectory,
   waitForHydration,
@@ -195,8 +197,18 @@ test("a wrong regex is corrected over saved outputs without another provider cal
   await expect(drawer).toContainText("No provider call is made");
   await expect(drawer.getByRole("textbox").first()).toHaveValue("BUFFERED FIXTURE");
 
-  await drawer.getByLabel("Ignore case").check();
   const preview = drawer.getByRole("region", { name: "What would change" });
+  await expect(preview).toContainText("Nothing. This reads");
+  await holdDerivations(page);
+  await drawer.getByLabel("Ignore case").check();
+  await expect(preview).toContainText("Computing reassessment preview…");
+  await expect(preview).not.toContainText("Nothing. This reads");
+  await expect(drawer.getByRole("button", { name: "Save reassessment" })).toBeDisabled();
+  // Supersede two unfinished drafts; only the last may publish.
+  await drawer.getByLabel("Ignore case").uncheck();
+  await drawer.getByLabel("Ignore case").check();
+  await drawer.getByLabel("Name").fill("Still responsive while scoring waits");
+  await releaseDerivations(page);
   await expect(preview).toContainText("failed → passed");
   await expect(preview).toContainText("did not pass → passed");
   await expect(preview).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
@@ -211,6 +223,15 @@ test("a wrong regex is corrected over saved outputs without another provider cal
 
   // The original verdict is intact, not overwritten: re-selecting As run
   // reproduces exactly what the batch reported when it finished.
+  await holdDerivations(page);
+  await results.getByLabel("Reading").selectOption({ label: "As run" });
+  await expect(results).toContainText("Computing check results…");
+  await expect(results.getByRole("table", { name: "Configuration results" })).toHaveCount(0);
+  // The reading selector stays usable while work is suspended.
+  await results.getByLabel("Reading").selectOption({ label: "Corrected regex" });
+  await releaseDerivations(page);
+  await expect(results).toContainText("1 / 1 passed");
+  await expect(results).not.toContainText("Computing check results…");
   await results.getByLabel("Reading").selectOption({ label: "As run" });
   await expect(results).toContainText("0 / 1 passed");
   await expect(results).not.toContainText("Saved reinterpretation");

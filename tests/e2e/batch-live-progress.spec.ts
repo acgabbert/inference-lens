@@ -10,12 +10,14 @@ import { INFERENCE_API_PATH } from "../../packages/contracts/src/inference";
 import {
   BUFFERED_FIXTURE_ENDPOINT,
   PROJECT_PROFILE_MAP_STORAGE_KEY,
+  holdDerivations,
   importProject,
   openInferenceSettings,
   seedProfile,
   waitForHydration,
   openMode,
   primaryAction,
+  releaseDerivations,
 } from "./support";
 
 const REPETITIONS = 3;
@@ -183,12 +185,19 @@ test("the evaluation finished count advances mid-batch, not only at the end", as
   const results = page.locator(".evaluation-results-workspace");
   await expect(results).toContainText(`0 of ${REPETITIONS} finished`);
 
+  const table = results.getByRole("table", { name: "Configuration results" });
   for (let finished = 1; finished < REPETITIONS; finished += 1) {
+    // From the second call on, hold check derivation at its task boundary: new
+    // live states must not replace the settled table with a loading state.
+    if (finished > 1) await holdDerivations(page);
     await releaseOne();
     await expect(results).toContainText(`${finished} of ${REPETITIONS} finished`);
     await expect(page.getByRole("progressbar", { name: "Evaluation progress" }))
       .toHaveAttribute("value", String(finished));
+    await expect(table).toBeVisible();
+    await expect(results).not.toContainText("Computing check results…");
   }
+  await releaseDerivations(page);
 
   await releaseOne();
   await expect(page.getByRole("progressbar", { name: "Evaluation progress" }))

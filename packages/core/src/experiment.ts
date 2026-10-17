@@ -5,7 +5,7 @@ import {
   checkVocabularyIssue,
   checkDefinitionSchema,
   checkOutcomeSummary,
-  evaluateChecks,
+  evaluateChecksSteps,
 } from "./checks.ts";
 import type { CheckDefinition, CheckResult, CheckSchemaVersion } from "./checks.ts";
 import { isSensitiveTemplateVariableName } from "./project.ts";
@@ -1518,6 +1518,21 @@ export function evaluationParsedExperimentAggregate(
   states: ReadonlyMap<RunId, RunState> = new Map(),
   criteria?: EvaluationCriteriaOverride,
 ): EvaluationBakeoffAssessment {
+  const steps = evaluationParsedExperimentAggregateSteps(plan, result, states, criteria);
+  let next = steps.next();
+  while (!next.done) next = steps.next();
+  return next.value;
+}
+
+/** Same derivation as the synchronous API, suspended after each check and cell.
+ * The generator owns only local work; abandoning it cannot mutate evidence.
+ * Consumers must publish only the returned complete aggregate. */
+export function* evaluationParsedExperimentAggregateSteps(
+  plan: EvaluationExperimentPlanV4,
+  result: ExperimentResultInput | undefined,
+  states: ReadonlyMap<RunId, RunState> = new Map(),
+  criteria?: EvaluationCriteriaOverride,
+): Generator<void, EvaluationBakeoffAssessment> {
   const parsed = plan;
   const parsedResult = result ? parseExperimentResultFile(result, parsed) : undefined;
   const dispositions = new Map(parsedResult?.cells.map((cell) => [cell.cellId, cell]));
@@ -1533,7 +1548,8 @@ export function evaluationParsedExperimentAggregate(
     return [evaluationCase.caseId, replacement ?? evaluationCase.checks] as const;
   }));
   const lifecycle = experimentLifecycle(parsed, parsedResult);
-  const variants = parsed.suite.variants.map((variant): EvaluationVariantAssessment => {
+  const variants: EvaluationVariantAssessment[] = [];
+  for (const variant of parsed.suite.variants) {
     const assessments = new Map<EvaluationCaseId, EvaluationRepetitionAssessment[]>();
     const repetitionCounts: Record<EvaluationRepetitionClassification, number> = {
       passed: 0, "check-failed": 0, "not-evaluated": 0, "run-failed": 0, "rate-limited": 0,
@@ -1564,15 +1580,15 @@ export function evaluationParsedExperimentAggregate(
         checkCounts.notEvaluated += caseChecks.length;
       } else if (state.status.kind === "failed") {
         classification = "run-failed";
-        checks = evaluateChecks(state, caseChecks);
+        checks = yield* evaluateChecksSteps(state, caseChecks);
       } else if (state.status.kind === "cancelled") {
         classification = "cancelled";
-        checks = evaluateChecks(state, caseChecks);
+        checks = yield* evaluateChecksSteps(state, caseChecks);
       } else if (state.status.kind !== "completed") {
         classification = "not-evaluated";
         checkCounts.notEvaluated += caseChecks.length;
       } else {
-        checks = evaluateChecks(state, caseChecks);
+        checks = yield* evaluateChecksSteps(state, caseChecks);
         const summary = checkOutcomeSummary(checks);
         classification = summary.notEvaluated > 0 ? "not-evaluated" : summary.failed > 0 ? "check-failed" : "passed";
       }
@@ -1593,6 +1609,7 @@ export function evaluationParsedExperimentAggregate(
       assessments.set(cell.caseId, [...(assessments.get(cell.caseId) ?? []), {
         cellId: cell.cellId, runId: cell.runId, repetition: cell.repetition, classification, checks,
       }]);
+      yield;
     }
     const caseAssessments = parsed.suite.cases.map((evaluationCase): EvaluationCaseAssessment => {
       const repetitions = assessments.get(evaluationCase.caseId) ?? [];
@@ -1607,7 +1624,7 @@ export function evaluationParsedExperimentAggregate(
     const failed = caseAssessments.filter(({ passed: casePassed, repetitions }) =>
       !casePassed && repetitions.some(({ classification }) => isFailingRepetition(classification)),
     ).length;
-    return {
+    variants.push({
       variant,
       lifecycle,
       passed: caseAssessments.length > 0 && passed === caseAssessments.length,
@@ -1619,8 +1636,8 @@ export function evaluationParsedExperimentAggregate(
       totalDurationMs: range(durations),
       totalTokens: usage(totalTokenValues),
       outputTokens: usage(outputTokenValues),
-    };
-  });
+    });
+  }
   return { lifecycle, variants };
 }
 

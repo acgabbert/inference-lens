@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import {
-  evaluationParsedExperimentAggregate,
+  evaluationParsedExperimentAggregateSteps,
   evaluationVariantAssessment,
   parseExperimentPlanFile,
   type EvaluationRepetitionAssessment,
@@ -28,6 +28,7 @@ import { SideDrawer } from "../workbench-shell.client.tsx";
 import { EvaluationReassessmentDrawer } from "./evaluation-reassessment-drawer.client.tsx";
 import { StructuredCheckDiagnostics } from "./structured-check-diagnostics.client.tsx";
 import type { EvaluationReassessmentHandle } from "./use-evaluation-reassessment.client.ts";
+import { useScheduledDerivation } from "./use-scheduled-derivation.client.ts";
 import type { EvaluationExecution } from "./use-evaluation-execution-session.client.ts";
 
 const classificationLabels: Record<EvaluationRepetitionClassification, string> = {
@@ -154,26 +155,30 @@ export function EvaluationResultsWorkspace({
     return plan;
   }, [execution.plan]);
   const criteria = reassessment?.criteria;
-  const aggregate = useMemo(
-    () => evaluationParsedExperimentAggregate(
+  const live = execution.result || execution.error ? undefined : execution.live;
+  // While a run streams, only its states change; the same reading keeps its
+  // last complete table rather than flickering to a loading state per update.
+  const liveReading = useMemo(() => ({ parsedPlan, criteria }), [parsedPlan, criteria]);
+  const derivation = useScheduledDerivation(useMemo(
+    () => () => evaluationParsedExperimentAggregateSteps(
       parsedPlan,
       execution.result,
       execution.states,
       criteria,
     ),
     [parsedPlan, execution.result, execution.states, criteria],
-  );
+  ), { retainKey: live ? liveReading : undefined });
+  const aggregate = derivation.value;
   const interpretation = reassessment?.selected;
   const reinterpreted = Boolean(interpretation && interpretation.id.kind !== "as-run");
-  const selectedVariantId = aggregate.variants.some(
+  const selectedVariantId = aggregate?.variants.some(
     ({ variant }) => variant.variantId === activeVariantId,
   )
     ? activeVariantId
-    : aggregate.variants[0]?.variant.variantId;
-  const activeVariant = selectedVariantId
+    : aggregate?.variants[0]?.variant.variantId;
+  const activeVariant = aggregate && selectedVariantId
     ? evaluationVariantAssessment(aggregate, selectedVariantId)
     : undefined;
-  const live = execution.result || execution.error ? undefined : execution.live;
   const runningOrdinals = live?.runningOrdinals ?? [];
   // One running cell is named; several are counted, because naming the
   // last to report would read as though it were the only one.
@@ -183,7 +188,7 @@ export function EvaluationResultsWorkspace({
   const activeCase = activeCell
     ? execution.plan.suite.cases.find(({ caseId }) => caseId === activeCell.caseId)
     : undefined;
-  const lifecycle = live ? "running" : execution.error ? "interrupted" : aggregate.lifecycle;
+  const lifecycle = live ? "running" : execution.error ? "interrupted" : execution.result?.status ?? "interrupted";
 
   function liveOverlay(cell: { ordinal: number; runId: RunId }): LiveCellOverlay | undefined {
     if (!live) return undefined;
@@ -204,7 +209,7 @@ export function EvaluationResultsWorkspace({
   const recordedRetries = recordedRetryLabel(execution.result?.retryPolicy);
 
   function comparisonSide(variantId: EvaluationVariantId): ComparisonSide {
-    const assessment = evaluationVariantAssessment(aggregate, variantId);
+    const assessment = evaluationVariantAssessment(aggregate!, variantId);
     const repetition = assessment.cases
       .find(({ caseId }) => caseId === comparison?.caseId)
       ?.repetitions.find((item) => item.repetition === comparison?.repetition);
@@ -221,7 +226,7 @@ export function EvaluationResultsWorkspace({
     };
   }
 
-  const comparisonSides = comparison
+  const comparisonSides = comparison && aggregate
     ? { left: comparisonSide(comparison.left), right: comparisonSide(comparison.right) }
     : undefined;
   const outputDiff = useMemo(() => {
@@ -244,7 +249,7 @@ export function EvaluationResultsWorkspace({
   }, [liveActive, liveStartedAtMs]);
 
   return (
-    <section aria-busy={live ? "true" : undefined} aria-label="Evaluation results" className={`evaluation-results-workspace ${placement === "request" ? "experiment-context-pane" : ""}`.trim()}>
+    <section aria-busy={live || derivation.pending ? "true" : undefined} aria-label="Evaluation results" className={`evaluation-results-workspace ${placement === "request" ? "experiment-context-pane" : ""}`.trim()}>
       <header className="evaluation-results-header">
         <div>
           <span className="eyebrow">{execution.storage === "durable" ? "Saved project evaluation" : "Unsaved session evaluation"}</span>
@@ -327,7 +332,9 @@ export function EvaluationResultsWorkspace({
         />
       )}
 
-      <div aria-label={reinterpreted && interpretation ? `${interpretation.name} summary` : "As run summary"} className="evaluation-configuration-table-scroll" role="region">
+      {derivation.pending && !aggregate && <p role="status">Computing check results…</p>}
+      {derivation.error && <p role="alert">Check results could not be computed: {derivation.error.message}</p>}
+      {aggregate && <div aria-label={reinterpreted && interpretation ? `${interpretation.name} summary` : "As run summary"} className="evaluation-configuration-table-scroll" role="region">
         <table className="evaluation-configuration-table" aria-label="Configuration results">
           <thead>
             <tr>
@@ -376,9 +383,9 @@ export function EvaluationResultsWorkspace({
             })}
           </tbody>
         </table>
-      </div>
+      </div>}
 
-      {activeVariant && <div className="evaluation-case-results">
+      {aggregate && activeVariant && <div className="evaluation-case-results">
         {activeVariant.cases.map((caseAssessment) => {
           const planCase = execution.plan.suite.cases.find(({ caseId }) => caseId === caseAssessment.caseId)!;
           // Labels and the check count follow the interpretation being read, so
@@ -443,7 +450,7 @@ export function EvaluationResultsWorkspace({
       </div>}
 
       <SideDrawer open={Boolean(comparison)} eyebrow="Evaluation evidence" title="Compare output" description={comparison ? `${execution.plan.suite.cases.find(({ caseId }) => caseId === comparison.caseId)?.name ?? "Case"} · repetition ${comparison.repetition}` : undefined} onClose={() => setComparison(undefined)}>
-        {comparison && comparisonSides && <>
+        {aggregate && comparison && comparisonSides && <>
           {aggregate.variants.length > 2 && <div className="diff-controls">
             <label>Left <select value={comparison.left} onChange={(event) => setComparison({ ...comparison, left: event.target.value as EvaluationVariantId })}>{aggregate.variants.filter(({ variant }) => variant.variantId !== comparison.right).map(({ variant }) => <option key={variant.variantId} value={variant.variantId}>{variant.name} · {variant.target.model}</option>)}</select></label>
             <label>Right <select value={comparison.right} onChange={(event) => setComparison({ ...comparison, right: event.target.value as EvaluationVariantId })}>{aggregate.variants.filter(({ variant }) => variant.variantId !== comparison.left).map(({ variant }) => <option key={variant.variantId} value={variant.variantId}>{variant.name} · {variant.target.model}</option>)}</select></label>

@@ -910,12 +910,29 @@ export function evaluateChecks(
   state: RunState,
   definitions: readonly CheckDefinition[],
 ): CheckResult[] {
+  const steps = evaluateChecksSteps(state, definitions);
+  let next = steps.next();
+  while (!next.done) next = steps.next();
+  return next.value;
+}
+
+/** Scheduling seam: each next() decides at most one check, with no partial
+ * results exposed. The caller owns when to resume; budgets remain per check. */
+export function* evaluateChecksSteps(
+  state: RunState,
+  definitions: readonly CheckDefinition[],
+): Generator<void, CheckResult[]> {
   const subject = runCheckSubject(state);
-  return definitions.map((definition) => ({
-    checkId: definition.checkId,
-    kind: definition.kind,
-    outcome: evaluateCheck(definition, subject),
-  }));
+  const results: CheckResult[] = [];
+  for (const definition of definitions) {
+    results.push({
+      checkId: definition.checkId,
+      kind: definition.kind,
+      outcome: evaluateCheck(definition, subject),
+    });
+    yield;
+  }
+  return results;
 }
 
 /**
