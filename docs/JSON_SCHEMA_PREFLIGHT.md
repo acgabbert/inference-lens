@@ -1,16 +1,17 @@
 # JSON Schema preflight
 
 `packages/core/src/json-schema/preflight.ts` prepares schemas for the core
-structured-output evaluator. It is an internal foundation: no schema check kind,
-editor, portable check fields, or container versions are exposed yet. A successful
-preflight means the schema is supported, not that an answer satisfies it.
+structured-output evaluator used by vocabulary v4's `json-schema` checks.
+A successful preflight means the schema is supported, not that an answer
+satisfies it.
 
 The owner accepts a JSON value and explicit resource limits, returning either an
 execution graph or an owned diagnostic. The graph, indexed values, and accounting
 statistics are temporary internal state, not persisted evidence. It does not
 mutate the caller's schema. Each invocation owns its meter; neither a clock nor a
-process-wide cache affects the result. The limits and charge table still require
-calibration before integration into a versioned check vocabulary.
+process-wide cache affects the result. The calibrated production limits and
+charge table are frozen with vocabulary v4; see the
+[calibration record](JSON_SCHEMA_CALIBRATION.md).
 
 The supported surface is a restricted draft-07 profile:
 
@@ -38,6 +39,17 @@ Other dialects, remote references, `$id` rebasing, unknown keywords, `pattern`,
 and `patternProperties` are rejected. The `unsupported-pattern` diagnostic
 directs authors to Safe regex checks rather than substituting RE2 for JSON Schema's ECMA-262 rules.
 Other unsupported keywords receive a generic `unsupported-keyword` message.
+The annotation allowlist above is intentional: `contentMediaType` and
+`contentEncoding` remain unsupported even though draft-07 treats them as
+annotations. OpenAPI keywords such as `nullable` and `discriminator` are also
+rejected. Pasted schemas must fit this profile before they can be committed as
+runnable checks; unrecognized keywords are not silently ignored.
+
+Saved execution plans run full schema preflight when parsed, rather than waiting
+for evaluation to return `not-evaluated`. Changing preflight acceptance can
+therefore make a previously readable plan fail to open. Acceptance rules, limits,
+and accounting are part of the declared check vocabulary: changes require a
+vocabulary bump and a compatibility path preserving existing saved plans.
 
 Schema size is the compact JSON encoding of the entire schema, including
 annotations and literals. The limit counts UTF-16 code units. Nesting counts the
@@ -54,5 +66,6 @@ run also includes `tests/json-schema-profile.test.ts`, which sweeps
 all 258 groups in the pinned upstream snapshot: selected schemas must prepare,
 and excluded schemas must return the manifest's explicit rejection code. The
 selection covers 804 answer cases, with 125 cases excluded; each group schema is
-prepared once. This does not yet validate model answers or establish upstream
-evaluator conformance, browser latency, or native Tauri behavior.
+prepared once. The sweep also evaluates all 804 selected answer cases. This is
+supported-profile coverage, not full draft-07 conformance or a measurement of
+browser latency or native Tauri behavior.

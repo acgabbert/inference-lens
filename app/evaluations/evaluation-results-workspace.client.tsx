@@ -26,6 +26,7 @@ import { recordedRetryLabel } from "../run/experiment-retry.client.tsx";
 import { formatTokens } from "../run-metrics-format.client.ts";
 import { SideDrawer } from "../workbench-shell.client.tsx";
 import { EvaluationReassessmentDrawer } from "./evaluation-reassessment-drawer.client.tsx";
+import { StructuredCheckDiagnostics } from "./structured-check-diagnostics.client.tsx";
 import type { EvaluationReassessmentHandle } from "./use-evaluation-reassessment.client.ts";
 import type { EvaluationExecution } from "./use-evaluation-execution-session.client.ts";
 
@@ -417,7 +418,7 @@ export function EvaluationResultsWorkspace({
                       <div className="evaluation-repetition-heading"><strong>Repetition {repetition.repetition}</strong><span className={`run-history-status ${presentation}`}>{overlay === "running" && <span className="experiment-row-activity-dot" aria-hidden="true" />}{overlay ?? classificationLabels[repetition.classification]}</span></div>
                       {repetition.checks.length > 0 && <ul className="evaluation-check-results">{repetition.checks.map((result) => {
                         const definition = caseChecks.find(({ checkId }) => checkId === result.checkId);
-                        return <li className={result.outcome.status} key={result.checkId}><strong>{definition?.label ?? result.kind}</strong><span>{checkMessage(result.outcome)}</span></li>;
+                        return <li className={result.outcome.status} key={result.checkId}><strong>{definition?.label ?? result.kind}</strong><div><span>{checkMessage(result.outcome)}</span>{definition && <StructuredCheckDiagnostics definition={definition} outcome={result.outcome} />}</div></li>;
                       })}</ul>}
                       <div className={`evaluation-evidence-row ${overlay ?? reachability.kind}`}>
                         <span><strong>Evidence</strong><small>{overlay ? overlay === "running" ? "Running… · Pending while this run is active" : "Queued · Pending until this run starts" : evidenceLabel(reachability)}</small></span>

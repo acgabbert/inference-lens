@@ -12,6 +12,10 @@ const port = Number.parseInt(
 // Deliberately fenced so strict JSON fails while explicit fence policies pass.
 const structuredModel = "structured-output-model";
 const structuredAnswer = '```json\n{"answer":2}\n```';
+const rawJsonModel = "raw-json-model";
+const oversizedJsonModel = "oversized-json-model";
+// 150,002 UTF-16 code units, but only 75,002 Unicode characters, with quotes.
+const oversizedJsonAnswer = JSON.stringify("😀".repeat(75_000));
 const ordinaryAnswer = "Buffered fixture response: 2 + 2 = 4.";
 const providerDefaultModel = "provider-default-temperature-model";
 const providerDefaultAnswer = "Provider received no temperature override.";
@@ -127,6 +131,8 @@ const server = createServer(async (request, response) => {
         { id: echoTemperatureModel, object: "model" },
         { id: mathModel, object: "model" },
         { id: structuredModel, object: "model" },
+        { id: rawJsonModel, object: "model" },
+        { id: oversizedJsonModel, object: "model" },
         { id: toolCallingModel, object: "model" },
         { id: mcpToolModel, object: "model" },
         { id: mcpErrorModel, object: "model" },
@@ -226,6 +232,10 @@ const server = createServer(async (request, response) => {
 
   const answer = body.model === structuredModel
     ? structuredAnswer
+    : body.model === rawJsonModel
+    ? '{"answer":2}'
+    : body.model === oversizedJsonModel
+    ? oversizedJsonAnswer
     : body.model === providerDefaultModel
     ? providerDefaultAnswer
     : body.model === echoTemperatureModel

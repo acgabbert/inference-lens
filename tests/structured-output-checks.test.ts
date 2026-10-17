@@ -94,7 +94,7 @@ test("a schema mismatch fails with a located, value-free diagnostic", () => {
   const outcome = run(schemaCheck(), JSON.stringify({ answer: 42, score: 3, "private-extra": "private-value" }));
   assert.equal(outcome.status, "failed");
   if (outcome.status !== "failed") return;
-  assert.equal(outcome.message, "Schema mismatch at answer: expected string. 1 more issue.");
+  assert.equal(outcome.message, 'Schema mismatch at ["answer"]: expected string. 1 more issue.');
   const evidence = outcome.evidence as { code: string; issues: unknown[]; truncated: boolean };
   assert.equal(evidence.code, "schema-mismatch");
   assert.deepEqual(evidence.issues, [
@@ -110,8 +110,19 @@ test("a schema mismatch fails with a located, value-free diagnostic", () => {
     parseCheckDefinition({ checkId, kind: "json-schema", dialect: "draft-07", schema: { additionalProperties: false } }),
     "{\"private-key\":1}",
   );
-  assert.equal(extra.status === "failed" && extra.message, "Schema mismatch at <additional property>: unexpected property.");
+  assert.equal(extra.status === "failed" && extra.message, "Schema mismatch at [<additional property>]: unexpected property.");
   assert.doesNotMatch(JSON.stringify(extra), /private-key/);
+});
+
+test("schema mismatch locations distinguish literal punctuation from nested properties", () => {
+  const definition = parseCheckDefinition({
+    checkId, kind: "json-schema", dialect: "draft-07",
+    schema: { properties: { "a.b": { items: { properties: { 'c[d]"': { type: "number" } } } } } },
+  });
+  const result = run(definition, JSON.stringify({ "a.b": [{ 'c[d]"': "private-value" }] }));
+  assert.equal(result.status === "failed" && result.message,
+    'Schema mismatch at ["a.b"][0]["c[d]\\\""]: expected number.');
+  assert.doesNotMatch(JSON.stringify(result), /private-value/);
 });
 
 test("JSON Schema checks fail invalid JSON and oversized answers before validating", () => {

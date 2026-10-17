@@ -1,6 +1,6 @@
 # Structured output checks implementation plan
 
-Status: portable vocabulary v4, example generation, suite authoring, and reassessment editor reuse implemented. Results integration remains.
+Status: portable vocabulary v4, example generation, suite authoring, reassessment editor reuse, and expandable result diagnostics implemented. Step 5 scheduling and broader integration checks remain.
 Date: 2026-10-16.
 
 ## Implementation progress
@@ -167,6 +167,72 @@ Date: 2026-10-16.
   policy fixtures, CLI/browser agreement, and final supported-profile docs.
   Native Tauri reassessment interaction remains unchecked.
 
+## Results diagnostics follow-up
+
+- Added `StructuredCheckDiagnostics` as a presentation owner composed by the
+  results workspace. It consumes the existing check definition and sanitized
+  outcome evidence for As run, current-criteria previews, and saved reassessments.
+  It performs no schema evaluation, provider call, or persistence mutation.
+- Disclosures show policy, successful extraction, original output size and JSON
+  type, diagnostic code, bounded issues with authored expectations, truncation,
+  and unchecked formats. Typed location segments stay visibly distinct from
+  JSON pointers; additional property names remain redacted. The existing link
+  to the original response and trace remains the evidence navigation.
+- The browser regression was written first. Its initial run timed out on the
+  absent disclosure control; a second run explicitly asserted one disclosure
+  and failed with actual zero before implementation. The subsequent format
+  location failure was an incorrect test expectation: the schema location ends
+  in `/format`, which the renderer correctly preserved.
+- `tests/e2e/evaluation-reassessment.spec.ts` now checks strict syntax failure,
+  fenced successful saved reassessment, multiple mismatch issues, missing-property
+  and type expectations, redacted extra keys, unchecked formats, the 20-issue cap,
+  truncation, no copied answer, and narrow-screen layout. The existing buffered
+  provider supplies fenced `{"answer":2}` through the real execution path.
+- Validation: `npm run test:e2e -- tests/e2e/evaluation-reassessment.spec.ts
+  tests/e2e/structured-output-checks.spec.ts` passed all eight affected cases.
+  The final `npm run test:e2e` passed 271 tests with 7 skipped and none failed,
+  including the added strict-policy diagnostic assertions. `npm run test:core`
+  passed 1,180 tests. `npm run typecheck`, `npm run lint` (the same three existing
+  warnings), `npm run build:cli`, and `npm run build:tauri` passed. The latter is
+  frontend bundling, not native execution. `node --test --test-timeout=120000
+  tests/evaluation-results-render.test.mjs tests/evaluation-results-interaction.test.mjs`
+  passed all 10 existing render/interaction tests. No CLI schema execution or
+  cross-runtime evaluator calibration was repeated for this presentation change.
+- Remaining step 5 work: yielding between checks in results and reassessment
+  derivations, broader provider policy fixtures, CLI/browser outcome agreement,
+  and final supported-profile/provenance/artifact-format documentation.
+  Native Tauri interaction with the disclosures remains unchecked.
+
+## Shared diagnostic formatting and disclosure follow-up
+
+- Moved schema issue formatting into the core `json-schema/diagnostics.ts` owner,
+  exported as `formatSchemaIssue` through `checks.ts`. Both the outcome summary
+  and expanded result issues consume the same formatter over sanitized portable
+  issue evidence. Quoted bracket property segments distinguish literal dots,
+  brackets, and quotes from nested properties and array indices. The formatter
+  does not consume answer data; no persisted contracts or verdict budgets changed.
+- Routine passing whole-answer JSON/schema checks omit the disclosure. Passing
+  checks still disclose recorded fence extraction or unchecked formats. Results
+  no longer infer a whole-answer extraction path absent from legacy evidence.
+- Tests preceded fixes: the core regression failed on the actual ambiguous
+  `a.b[0].c[d]"` location; browser regressions failed on differing issue wording
+  and one disclosure where zero was expected. The output-limit browser test
+  passed before the fix, closing an existing coverage gap rather than establishing
+  a product regression. Its real buffered-provider response contains 150,002
+  UTF-16 code units but 75,002 characters, and the rendered code-unit size and
+  150,000 limit are asserted without copying the answer into diagnostics.
+- The affected browser command (`npm run test:e2e --
+  tests/e2e/evaluation-reassessment.spec.ts tests/e2e/structured-output-checks.spec.ts`)
+  passed all 10 cases. `npm run test:core` passed 1,181 tests. `npm run typecheck`,
+  `npm run lint` (three existing warnings), `npm run build:cli`, and
+  `npm run build:tauri` passed. Native Tauri disclosure interaction and CLI
+  schema execution remain unchecked; the Tauri build validates frontend bundling
+  only.
+- The final `npm run test:e2e` passed 273 tests with 7 skipped and none failed.
+  `node --test --test-timeout=120000 tests/evaluation-results-render.test.mjs
+  tests/evaluation-results-interaction.test.mjs tests/fixture-shutdown.test.mjs`
+  passed all 23 existing render, interaction, and fixture shutdown tests.
+
 ## Outcome and scope
 
 Add four capabilities to evaluation experiments: JSON Schema validation,
@@ -309,6 +375,10 @@ but must never decide a verdict.
 - Reject unsupported assertion keywords explicitly. Accept annotation keywords —
   `title`, `description`, `examples`, `default`, `$comment`, `readOnly`,
   `writeOnly` — without effect; `default` is never applied to the answer.
+  This is an explicit allowlist (plus `format` below), not blanket acceptance of
+  draft-07 annotations or extensions. `contentMediaType`, `contentEncoding`, and
+  unknown keywords such as OpenAPI's `nullable` and `discriminator` remain
+  unsupported.
 - `$schema` is optional. When present it must name draft-07; any other dialect
   (for example 2020-12) is rejected with a diagnostic, not reinterpreted.
 - Local references are required in the initial profile: `$ref` to a JSON pointer
@@ -335,8 +405,9 @@ but must never decide a verdict.
   unbounded main-thread regex.
 
 This is an explicitly documented draft-07 profile, not full-draft conformance.
-Unsupported assertion keywords are rejected; annotation keywords are accepted
-and listed. No assertion may degrade into an unconstrained successful check.
+Unsupported keywords are rejected; only the listed annotation keywords are
+accepted. Unchecked formats are disclosed. No assertion may degrade into an
+unconstrained successful check.
 Do not recreate n8n's JSON Schema-to-Zod converter or its reported `$ref` fallback.
 Vendor the upstream test-suite snapshot with its notice and exclusion manifest,
 as the spike does, and keep it in the core test run.
@@ -528,6 +599,12 @@ Evaluation needs no version branching, because an old `valid-json` with no
 newly introduced fields instead of acquiring new meanings, and each later
 vocabulary bump adds one gate rather than another parser. Existing archived plans and criteria
 remain immutable; opening them does not rewrite their vocabulary/version.
+
+Saved execution plans run full schema preflight when opened. Preflight acceptance
+is therefore a compatibility boundary as well as an evaluation rule: a change
+could reject the plan before its checks can return `not-evaluated`. Changes to
+acceptance rules, limits, or accounting require a vocabulary bump and a
+compatibility path preserving existing saved plans.
 
 Project upgrade can write the new container version on save with absent policy
 remaining strict. New reassessments over legacy traces may use the new vocabulary

@@ -1,7 +1,9 @@
 import { z } from "zod";
 
 import { parseJsonInput, type JsonInputPolicy } from "./json-input.ts";
-import { evaluateJsonSchema, type SafeLocationSegment, type SchemaIssue } from "./json-schema/evaluator.ts";
+import { evaluateJsonSchema } from "./json-schema/evaluator.ts";
+import { formatSchemaIssue } from "./json-schema/diagnostics.ts";
+export { formatSchemaIssue } from "./json-schema/diagnostics.ts";
 import { MAX_SCHEMA_OUTPUT_CODE_UNITS, SCHEMA_CHECK_LIMITS } from "./json-schema/limits.ts";
 import { preflightJsonSchema } from "./json-schema/preflight.ts";
 import { runMetrics } from "./run-metrics.ts";
@@ -704,33 +706,6 @@ function evaluateOutputCheck(
   }
 }
 
-/** Typed location segments rendered for a person; redacted keys stay unnamed. */
-function displayLocation(location: readonly SafeLocationSegment[]): string {
-  if (location.length === 0) return "the root";
-  let text = "";
-  for (const segment of location) {
-    if ("index" in segment) text += `[${segment.index}]`;
-    else if ("property" in segment) text += text ? `.${segment.property}` : segment.property;
-    else text += text ? ".<additional property>" : "<additional property>";
-  }
-  return text;
-}
-
-function describeIssue(issue: SchemaIssue): string {
-  const at = displayLocation(issue.location);
-  switch (issue.keyword) {
-    case "type": {
-      const expected = Array.isArray(issue.expectedType) ? issue.expectedType.join(" or ") : issue.expectedType;
-      return `Schema mismatch at ${at}: expected ${expected}.`;
-    }
-    case "required": return `Schema mismatch at ${at}: missing required property "${issue.missingProperty}".`;
-    case "dependencies": return `Schema mismatch at ${at}: missing property "${issue.missingProperty}" required by a dependency.`;
-    case "additionalProperties": return `Schema mismatch at ${at}: unexpected property.`;
-    case "false": return `Schema mismatch at ${at}: no value is allowed here.`;
-    default: return `Schema mismatch at ${at}: violates ${issue.keyword}.`;
-  }
-}
-
 function evaluateJsonSchemaCheck(definition: JsonSchemaCheck, output: string): CheckOutcome {
   const policy = definition.inputPolicy ?? "strict";
   // The output limit applies to the original text, before anything parses it.
@@ -770,7 +745,7 @@ function evaluateJsonSchemaCheck(definition: JsonSchemaCheck, output: string): C
     ...(missingProperty !== undefined ? { missingProperty } : {}),
   }));
   // Diagnostics may stop before locating anything; the verdict stands either way.
-  const summary = issues.length > 0 ? describeIssue(result.issues[0]) : "Final assistant output does not satisfy the schema.";
+  const summary = issues.length > 0 ? formatSchemaIssue(issues[0]) : "Final assistant output does not satisfy the schema.";
   const suffix = result.truncated
     ? " More issues may exist than are listed."
     : issues.length > 1 ? ` ${issues.length - 1} more issue${issues.length === 2 ? "" : "s"}.` : "";

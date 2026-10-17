@@ -3,7 +3,8 @@ import { DataEncodings, DataStop, indexData, type JsonDataNode } from "./data.ts
 import { preflightJsonSchema, type PreparedSchema, type SchemaPreflightDiagnostic } from "./preflight.ts";
 import { SchemaMeter, SchemaStop, textWork, WORK, type SchemaJsonNode, type SchemaLimits, type SchemaStats } from "./resources.ts";
 
-/** Internal calibration contract. No defaults are frozen into saved checks yet. */
+/** Internal limits contract. Production limits and accounting are frozen with
+ * check vocabulary v4; see limits.ts. They are not serialized per check. */
 export interface SchemaEvaluationLimits {
   schema: SchemaLimits;
   verdict: { workLimit: number; storageLimit: number };
