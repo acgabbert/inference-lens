@@ -9,7 +9,7 @@ experiments/<experimentId>.plan.json
 experiments/<experimentId>.result.json
 ```
 
-The v3 plan is written before provider work starts and is a discriminated
+The v4 plan is written before provider work starts and is a discriminated
 `repeated-request | evaluation` union. A repeated plan freezes one common
 resolved input. An evaluation plan freezes the selected suite/cases and stable
 identities, the check-vocabulary version (4 for new plans; 3 still opens) and strict scoring policy, and one
@@ -118,3 +118,32 @@ contents again is idempotent, while different replacement contents are refused.
 Future incompatible shapes require a new schema version and a separately
 approved compatibility policy. Existing serializers always write the current
 supported version; they never silently reinterpret another version.
+
+## Structured checks and historical readings
+
+Evaluation plans embed check definitions and declare `checkSchemaVersion: 3 | 4`;
+new plans declare 4. Version 4 adds `kind: "json-schema"` with
+`dialect: "draft-07"`, a JSON-valued `schema`, and optional `inputPolicy`, and
+adds optional `inputPolicy` to `valid-json`. An omitted policy means strict
+whole-answer parsing. Vocabulary 3 rejects both the schema kind and explicit
+policies. These additions do not change the plan container version (4), result
+container version (6), or RunTrace format.
+
+Saved reassessments likewise declare vocabulary 3 or 4 independently of the
+execution plan. They store criteria, not replacement provider evidence or
+persisted outcomes. As run always derives from the original plan and traces;
+selecting a reassessment derives from its saved criteria and the same traces.
+Updating the authored suite is a separate action. The project container uses
+version 12 for vocabulary 4; versions 10 and 11 retain vocabulary 3 semantics.
+
+Opening a saved plan performs full schema preflight. Supported keywords,
+reference rules, resource limits, and charge accounting are frozen with
+vocabulary 4, because changing them could change both readability and historical
+verdicts. A future change needs a vocabulary bump and a compatibility path.
+See the [supported profile](JSON_SCHEMA_PREFLIGHT.md) and
+[deterministic check contract](DETERMINISTIC_CHECKS.md).
+
+The CLI JSON summary remains version 1: check totals and repetition
+classifications refer to plan/result/trace files rather than copying schema
+issues or provider output into the summary. The browser derives expanded
+structured diagnostics from those same artifacts when history is opened.

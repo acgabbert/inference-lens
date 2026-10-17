@@ -68,13 +68,14 @@ JSON" (failed) and "the pattern was invalid" (not-evaluated).
 
 ## Vocabulary
 
-Eleven kinds ship in v3. Four make a statement about the shape of the answer
-and accept `negate`, which asserts the opposite — "does not contain", "does
-not match", "is not JSON". Three are thresholds; their bound direction is
-already in the kind name, so they reject `negate` at parse time. Four assert
-on tool calls (see below); none of them accept `negate` — `called-tool` and
-`did-not-call-tool` already state both directions as separate kinds, and a
-negated count or argument match is not an assertion anyone means to write.
+Twelve kinds ship in v4 (eleven in v3). Five check the shape of the answer.
+Four of those accept `negate`, which asserts the opposite — "does not contain",
+"does not match", "is not JSON"; `json-schema` rejects `negate`. Three kinds
+are thresholds; their bound direction is already in the kind name, so they
+reject `negate` at parse time. Four assert on tool calls (see below); none of
+them accept `negate` — `called-tool` and `did-not-call-tool` already state both
+directions as separate kinds, and a negated count or argument match is not an
+assertion anyone means to write.
 
 | Kind | Parameters | Passes when |
 | --- | --- | --- |
@@ -171,14 +172,18 @@ pattern matches.
   apart from surrounding whitespace.
 - `first-json-fence` parses the first complete fence anywhere in the answer,
   skipping fences in other languages, and never tries a later fence when the
-  first one holds invalid JSON. It can ignore the rest of the answer.
+  first one holds invalid JSON. An unlabelled fence is also a JSON candidate:
+  a bare block containing `print(2)` fails even if a valid labelled JSON block
+  follows. Only a block labelled with another language is skipped. The policy
+  can ignore the rest of the answer.
 
 A recognized fence opens with exactly three backticks, optionally followed by
 `json` in any case, and closes with exactly three backticks. Nothing is
 repaired: no trailing commas, single quotes, or extraction of unfenced JSON
 from prose. Evidence records the selected policy and the path that actually
 parsed. A definition without a policy produces exactly the evidence it did in
-vocabulary 3.
+vocabulary 3. Surrounding JSON whitespace, including a trailing newline,
+is accepted under strict parsing. Four-backtick and tilde fences are unsupported.
 
 `topLevel` narrows `valid-json` to `object` or `array`, and defaults to `any`,
 which accepts any JSON value including scalars and `null`.

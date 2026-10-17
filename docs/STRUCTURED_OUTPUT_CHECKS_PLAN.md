@@ -1,6 +1,6 @@
 # Structured output checks implementation plan
 
-Status: portable vocabulary v4, example generation, suite authoring, reassessment editor reuse, expandable result diagnostics, and results/reassessment scheduling implemented. Broader step 5 integration checks remain.
+Status: portable vocabulary v4, example generation, suite authoring, reassessment editor reuse, expandable result diagnostics, and results/reassessment scheduling implemented. Provider-policy CLI/browser history agreement and final profile/artifact documentation are implemented; native interaction and broader runtime integration gaps remain.
 Date: 2026-10-16.
 
 ## Implementation progress
@@ -305,6 +305,67 @@ Date: 2026-10-16.
   passed 273 with 7 skipped. Tauri/WebKit timing was not measured.
 - Remaining step 5 work: broader provider policy fixtures, CLI/browser outcome
   agreement, and final supported-profile/provenance/artifact-format documentation.
+
+## Provider policy and CLI/browser history agreement follow-up
+
+- Added 17 original provider answers with independently authored expectations:
+  raw JSON, scalar/null, blank, complete/incomplete fences, CRLF/uppercase JSON,
+  prose, multiple blocks, backticks in string values, invalid first JSON,
+  other-language blocks, unsupported markers, bare fences, schema mismatch,
+  extras, and missing properties. The buffered fixture selects them by model ID
+  and refuses unknown IDs in that namespace.
+- `tests/e2e/headless-cli-artifacts.spec.ts` runs each through the CLI execution
+  owner and real buffered transport, checks six outcomes (Valid JSON and JSON
+  Schema under all three policies), checks the exact canonical saved answer,
+  then reopens the resulting folder in the browser and asserts all six rendered
+  verdicts. The schema disallows extras and requires a numeric answer, so scalar
+  and null parsing, no coercion, missing fields, and extra fields remain distinct.
+  CLI summary counts and browser per-check verdicts agree across 102 checks.
+- Tests preceded fixture wiring: the raw case failed on actual CLI exit 1
+  versus expected 0 because the provider returned its ordinary text answer.
+  This was missing fixture support, not a production parser regression. The
+  first scoped run then exposed a mistaken expected schema pass for the
+  backticks case: its extra `text` property correctly fails the strict schema.
+  Correcting that expectation required no production behavior change.
+- Updated the supported-profile provenance, frozen calibration status,
+  deterministic-check vocabulary count, provider fixture guide, and experiment
+  artifact documentation. Production contracts, formats, and budgets are unchanged.
+- Validation: `npm run test:e2e -- tests/e2e/headless-cli-artifacts.spec.ts`
+  passed all 20 cases. `npm run test:e2e` passed 290 with 7 skipped and none
+  failed. `npm run test:core` passed 1,182 tests; `npm run typecheck` and
+  `npm run lint` passed (the same three existing warnings).
+  `node --test --test-timeout=120000 tests/fixture-shutdown.test.mjs` passed
+  all 13 cases. `npm run build:cli` and `npm run build:tauri` passed; the
+  latter validates frontend bundling, not native interaction.
+- Coverage limits: the new spec invokes the CLI execution owner in process;
+  it does not spawn the executable or submit these cases through browser Run.
+  Existing browser-run strict/fenced, reassessment, diagnostics, and output-limit
+  scenarios remain in the full suite. The upstream schema sweep remains core
+  coverage; native Tauri interaction and slower-hardware scheduling latency
+  remain unchecked. There is no new native evaluator implementation to calibrate.
+
+## Integration review follow-up
+
+- Corrected the vocabulary breakdown to five answer-shape checks, three
+  thresholds, and four tool-call checks. Four shape checks accept negation;
+  JSON Schema does not.
+- The history integration spec now asserts verdict text alongside labels and
+  status classes. For the schema-mismatch case it opens the saved-history
+  disclosure and checks the visible schema-mismatch code, single issue, and
+  `Schema mismatch at ["answer"]: expected number.` message.
+- Added five provider cases: leading whitespace, trailing whitespace, a trailing
+  newline, an invalid unlabelled fence followed by valid labelled JSON, and
+  four-backtick fences. The matrix now covers 22 answers and 132 check outcomes.
+  Bare fences remain JSON candidates under the frozen vocabulary: invalid bare
+  contents fail without falling through to a later JSON block. This confirms
+  the existing contract rather than changing it.
+- All 25 cases in `npm run test:e2e -- tests/e2e/headless-cli-artifacts.spec.ts`
+  passed on the first run. These additions close coverage gaps, not production
+  regressions; no failing product behavior or red regression run is claimed.
+  `npm run test:e2e` then passed 295 tests with 7 skipped and none failed.
+  `npm run typecheck` and `npm run lint` passed (three existing warnings).
+  Core tests, builds, and native runtime calibration were not repeated because
+  this follow-up changes only tests, fixture data, and documentation.
 
 ## Outcome and scope
 
