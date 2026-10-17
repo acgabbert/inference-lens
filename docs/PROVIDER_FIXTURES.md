@@ -40,6 +40,14 @@ The buffered fixture also offers `raw-json-model` (`{"answer":2}`) and
 the schema output limit. Browser coverage checks that results display the
 original code-unit size and limit rather than character count or parsed size.
 
+The `structured-policy-<id>` models select the original cases in
+`tests/fixtures/structured-output/provider-cases.json`; unknown IDs in this
+namespace return HTTP 400. They cover raw/scalar/null/blank answers, complete
+and incomplete fences, CRLF and uppercase markers, prose, multiple blocks,
+backticks inside strings, an invalid first block, other languages, unsupported
+markers, and schema mismatches. The CLI/browser artifact spec checks exact saved
+answers plus all three policies for both Valid JSON and JSON Schema.
+
 ## Writing a fixture
 
 A fixture needs three routes at most:

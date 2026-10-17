@@ -1,10 +1,10 @@
 # JSON Schema charge calibration and limits
 
 Date: 2026-10-16. Status: charges rebalanced and limits chosen for the core
-evaluator under `packages/core/src/json-schema/`. No check kind, portable field,
-or container version exposes them yet. When check vocabulary v4 ships them, the
-charge table and limits become part of that vocabulary (evaluation requirement 4
-in [the plan](STRUCTURED_OUTPUT_CHECKS_PLAN.md)).
+evaluator under `packages/core/src/json-schema/`. The production `json-schema`
+check now exposes these limits through check vocabulary v4. The charge table
+and limits are frozen as part of that vocabulary (evaluation requirement 4 in
+[the plan](STRUCTURED_OUTPUT_CHECKS_PLAN.md)).
 
 ## Why recalibrate
 

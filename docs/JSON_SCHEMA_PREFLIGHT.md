@@ -69,3 +69,32 @@ selection covers 804 answer cases, with 125 cases excluded; each group schema is
 prepared once. The sweep also evaluates all 804 selected answer cases. This is
 supported-profile coverage, not full draft-07 conformance or a measurement of
 browser latency or native Tauri behavior.
+
+## Implementation and fixture provenance
+
+The production parser, schema preflight, metered evaluator, and example generator
+are IF-owned implementations in `packages/core/src/json-input.ts` and
+`packages/core/src/json-schema/`. The isolated engine comparison used Ajv and
+`@cfworker/json-schema`; neither engine is a production dependency or copied
+implementation. Their development probe notices remain in
+[the spike notice inventory](../scripts/spikes/json-schema/notices/README.md).
+n8n's Structured Output Parser without auto-fix was a behavioral reference for
+the selected features, not an imported implementation or a compatibility claim.
+IF does not repair, coerce, apply defaults, strip properties, or add item wrappers.
+
+The upstream draft-07 test data is pinned at
+`55719286c33ae0d1823bfb65fea10338a19bc37c`, with its MIT notice and explicit
+selection/exclusion manifest retained in
+[the snapshot directory](../scripts/spikes/metered-json-schema/official/README.md).
+It is test data, not the evaluator. The 804 selected answer cases and 125
+excluded cases describe this profile, not full draft-07 conformance.
+
+The original provider-policy cases in
+`tests/fixtures/structured-output/provider-cases.json` are separate from that
+upstream snapshot. `tests/e2e/headless-cli-artifacts.spec.ts` runs each through
+the buffered provider and CLI execution owner, checks the exact trace answer
+and CLI check counts, then opens the written history in the browser and asserts
+each rendered check verdict. These cases cover parsing policies and a strict
+object schema, including scalar/null inputs, fences, malformed JSON, missing
+properties, extra properties, and no string-to-number coercion. They do not
+repeat the full upstream sweep in a browser or establish native Tauri coverage.

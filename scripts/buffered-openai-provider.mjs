@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { readFileSync } from "node:fs";
 
 import { stopOnSignal } from "./fixture-shutdown.mjs";
 
@@ -9,6 +10,11 @@ const port = Number.parseInt(
   process.env.INFERENCE_LENS_BUFFERED_PORT ?? "4014",
   10,
 );
+// Shared, independently authored wire cases for CLI/browser policy coverage.
+const structuredPolicyCases = JSON.parse(readFileSync(
+  new URL("../tests/fixtures/structured-output/provider-cases.json", import.meta.url), "utf8",
+));
+const structuredPolicyAnswers = new Map(structuredPolicyCases.map(({ id, answer }) => [`structured-policy-${id}`, answer]));
 // Deliberately fenced so strict JSON fails while explicit fence policies pass.
 const structuredModel = "structured-output-model";
 const structuredAnswer = '```json\n{"answer":2}\n```';
@@ -131,6 +137,7 @@ const server = createServer(async (request, response) => {
         { id: echoTemperatureModel, object: "model" },
         { id: mathModel, object: "model" },
         { id: structuredModel, object: "model" },
+        ...[...structuredPolicyAnswers.keys()].map((id) => ({ id, object: "model" })),
         { id: rawJsonModel, object: "model" },
         { id: oversizedJsonModel, object: "model" },
         { id: toolCallingModel, object: "model" },
@@ -230,7 +237,14 @@ const server = createServer(async (request, response) => {
     await new Promise((resolve) => setTimeout(resolve, slowAnswerDelayMs));
   }
 
-  const answer = body.model === structuredModel
+  if (body.model?.startsWith("structured-policy-") && !structuredPolicyAnswers.has(body.model)) {
+    response.writeHead(400, { "content-type": "application/json" });
+    response.end(JSON.stringify({ error: "Unknown structured policy fixture case." }));
+    return;
+  }
+  const answer = structuredPolicyAnswers.has(body.model)
+    ? structuredPolicyAnswers.get(body.model)
+    : body.model === structuredModel
     ? structuredAnswer
     : body.model === rawJsonModel
     ? '{"answer":2}'

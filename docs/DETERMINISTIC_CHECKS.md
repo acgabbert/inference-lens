@@ -68,8 +68,8 @@ JSON" (failed) and "the pattern was invalid" (not-evaluated).
 
 ## Vocabulary
 
-Eleven kinds ship in v3. Four make a statement about the shape of the answer
-and accept `negate`, which asserts the opposite — "does not contain", "does
+Twelve kinds ship in v4 (eleven in v3). Four make a statement about the shape
+of the answer and accept `negate`, which asserts the opposite — "does not contain", "does
 not match", "is not JSON". Three are thresholds; their bound direction is
 already in the kind name, so they reject `negate` at parse time. Four assert
 on tool calls (see below); none of them accept `negate` — `called-tool` and
@@ -90,6 +90,8 @@ negated count or argument match is not an assertion anyone means to write.
 | `did-not-call-tool` | `toolName` | No turn of the run called `toolName` |
 | `tool-call-count` | `toolName?`, `count`, `comparator` | The number of calls (to `toolName`, or to any tool when omitted) satisfies `comparator` against `count` |
 | `tool-call-arguments` | `toolName`, `argumentsSubset` | Some call to `toolName` has parsed JSON-object arguments that are a superset of `argumentsSubset` |
+
+`json-schema`, added in v4, also rejects `negate`.
 
 Every maximum is inclusive at its exact edge.
 

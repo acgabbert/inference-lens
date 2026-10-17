@@ -1,0 +1,240 @@
+[
+  {
+    "id": "raw",
+    "answer": "{\"answer\":2}",
+    "json": [
+      true,
+      true,
+      true
+    ],
+    "schema": [
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "id": "scalar",
+    "answer": "42",
+    "json": [
+      true,
+      true,
+      true
+    ],
+    "schema": [
+      false,
+      false,
+      false
+    ]
+  },
+  {
+    "id": "null",
+    "answer": "null",
+    "json": [
+      true,
+      true,
+      true
+    ],
+    "schema": [
+      false,
+      false,
+      false
+    ]
+  },
+  {
+    "id": "blank",
+    "answer": "",
+    "json": [
+      false,
+      false,
+      false
+    ],
+    "schema": [
+      false,
+      false,
+      false
+    ]
+  },
+  {
+    "id": "complete",
+    "answer": "```json\n{\"answer\":2}\n```",
+    "json": [
+      false,
+      true,
+      true
+    ],
+    "schema": [
+      false,
+      true,
+      true
+    ]
+  },
+  {
+    "id": "incomplete",
+    "answer": "```json\n{\"answer\":2}",
+    "json": [
+      false,
+      false,
+      false
+    ],
+    "schema": [
+      false,
+      false,
+      false
+    ]
+  },
+  {
+    "id": "crlf",
+    "answer": "```JSON\r\n{\"answer\":2}\r\n```",
+    "json": [
+      false,
+      true,
+      true
+    ],
+    "schema": [
+      false,
+      true,
+      true
+    ]
+  },
+  {
+    "id": "prose",
+    "answer": "Before\n```json\n{\"answer\":2}\n```\nAfter",
+    "json": [
+      false,
+      false,
+      true
+    ],
+    "schema": [
+      false,
+      false,
+      true
+    ]
+  },
+  {
+    "id": "multiple",
+    "answer": "```json\n{\"answer\":2}\n```\n```json\n{\"answer\":\"wrong\"}\n```",
+    "json": [
+      false,
+      false,
+      true
+    ],
+    "schema": [
+      false,
+      false,
+      true
+    ]
+  },
+  {
+    "id": "backticks",
+    "answer": "```json\n{\"answer\":2,\"text\":\"```\"}\n```",
+    "json": [
+      false,
+      true,
+      true
+    ],
+    "schema": [
+      false,
+      false,
+      false
+    ]
+  },
+  {
+    "id": "invalid-first",
+    "answer": "```json\n{broken}\n```\n```json\n{\"answer\":2}\n```",
+    "json": [
+      false,
+      false,
+      false
+    ],
+    "schema": [
+      false,
+      false,
+      false
+    ]
+  },
+  {
+    "id": "other-language",
+    "answer": "```python\nprint(2)\n```\n```json\n{\"answer\":2}\n```",
+    "json": [
+      false,
+      false,
+      true
+    ],
+    "schema": [
+      false,
+      false,
+      true
+    ]
+  },
+  {
+    "id": "unsupported-marker",
+    "answer": "~~~json\n{\"answer\":2}\n~~~",
+    "json": [
+      false,
+      false,
+      false
+    ],
+    "schema": [
+      false,
+      false,
+      false
+    ]
+  },
+  {
+    "id": "bare-fence",
+    "answer": "```\n{\"answer\":2}\n```",
+    "json": [
+      false,
+      true,
+      true
+    ],
+    "schema": [
+      false,
+      true,
+      true
+    ]
+  },
+  {
+    "id": "schema-mismatch",
+    "answer": "{\"answer\":\"2\"}",
+    "json": [
+      true,
+      true,
+      true
+    ],
+    "schema": [
+      false,
+      false,
+      false
+    ]
+  },
+  {
+    "id": "extras",
+    "answer": "{\"answer\":2,\"extra\":true}",
+    "json": [
+      true,
+      true,
+      true
+    ],
+    "schema": [
+      false,
+      false,
+      false
+    ]
+  },
+  {
+    "id": "missing",
+    "answer": "{}",
+    "json": [
+      true,
+      true,
+      true
+    ],
+    "schema": [
+      false,
+      false,
+      false
+    ]
+  }
+]

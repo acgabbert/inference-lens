@@ -6,6 +6,9 @@ import { expect, test } from "@playwright/test";
 import { startHeadlessEvaluation } from "../../packages/cli/src/evaluation-run";
 import { startHeadlessRepeat } from "../../packages/cli/src/repeated-run";
 import { createInProcessTransport } from "../../packages/cli/src/transport";
+import { parseRunTraceJson, runStateFromTrace } from "../../packages/core/src/run-trace";
+import { finalAssistantOutput } from "../../packages/core/src/run-output";
+import type { CheckDefinition } from "../../packages/core/src/checks";
 import type { ToolDefinition } from "../../packages/core/src/run-kernel/types";
 import {
   HEADLESS_CONNECTION_ID,
@@ -14,7 +17,7 @@ import {
   writeHeadlessProjectFolder,
 } from "../fixtures/headless/project";
 import { toolCallingProvider } from "../fixtures/headless/tool-calling-provider";
-import { BUFFERED_FIXTURE_ENDPOINT, stubProjectDirectory } from "./support";
+import { BUFFERED_FIXTURE_ENDPOINT, seedProfile, stubProjectDirectory, waitForHydration } from "./support";
 
 async function readProjectFolder(directory: string): Promise<Record<string, string>> {
   const files: Record<string, string> = {};
@@ -184,3 +187,63 @@ test("the app opens an evaluation in which the headless CLI ran a granted comman
     await provider.close();
   }
 });
+
+// Expected values are authored independently of the production parser/evaluator.
+// The fixture selects an answer by model ID, so every case must reach the wire.
+const structuredCases = JSON.parse(await readFile(
+  new URL("../fixtures/structured-output/provider-cases.json", import.meta.url), "utf8",
+)) as Array<{ id: string; answer: string; json: boolean[]; schema: boolean[] }>;
+
+for (const scenario of structuredCases) {
+  test(`structured CLI evidence agrees with browser results: ${scenario.id}`, async ({ page }) => {
+    const policies = ["strict", "surrounding-fence", "first-json-fence"] as const;
+    const checks: CheckDefinition[] = policies.flatMap<CheckDefinition>((inputPolicy, index) => [
+      { checkId: `check_json_${index}`, label: `JSON ${inputPolicy}`, kind: "valid-json" as const, inputPolicy },
+      {
+        checkId: `check_schema_${index}`, label: `Schema ${inputPolicy}`,
+        kind: "json-schema" as const, dialect: "draft-07" as const, inputPolicy,
+        schema: { type: "object", required: ["answer"], properties: { answer: { type: "number" } }, additionalProperties: false },
+      },
+    ]);
+    const expected = policies.flatMap((_, index) => [scenario.json[index], scenario.schema[index]]);
+    const directory = await writeHeadlessProjectFolder(headlessProject({
+      endpoint: BUFFERED_FIXTURE_ENDPOINT,
+      model: `structured-policy-${scenario.id}`,
+      cases: [{ id: "evaluation-case_policy", name: "Policy matrix", topic: scenario.id, checks }],
+    }));
+    const outcome = await startHeadlessEvaluation({
+      projectDirectory: directory, environment: {}, noAuth: new Set([HEADLESS_CONNECTION_ID]),
+      transport: createInProcessTransport({ containerized: false }),
+    }).done;
+    expect(outcome.error).toBeUndefined();
+    const passed = expected.filter(Boolean).length;
+    expect(outcome.exitCode).toBe(passed === checks.length ? 0 : 1);
+    expect(outcome.summary?.configurations[0].cases[0].checks).toEqual({
+      total: 6, passed, failed: 6 - passed, notEvaluated: 0,
+    });
+    const files = await readProjectFolder(directory);
+    const traces = Object.entries(files).filter(([name]) => name.startsWith("traces/"));
+    expect(traces).toHaveLength(1);
+    // A successful transport carrying the wrong fixture answer must fail too.
+    expect(finalAssistantOutput(runStateFromTrace(parseRunTraceJson(traces[0][1])))).toBe(scenario.answer);
+    await stubProjectDirectory(page, { name: "structured.inference-lens", files });
+    await seedProfile(page);
+    await page.goto("/");
+    await waitForHydration(page);
+    await page.getByLabel("Project menu").click();
+    await page.getByRole("button", { name: "Open project folder…" }).click();
+    await expect(page.getByText(/Inspect every model run · Headless fixture/)).toBeVisible();
+    await page.getByLabel("Run data menu").click();
+    await page.getByRole("button", { name: "Run history", exact: true }).click();
+    await page.locator(".runs-evidence-item.experiment").filter({ hasText: "Evaluation · Arithmetic" }).click();
+    const workspace = page.getByRole("region", { name: "Evaluation results" });
+    const rows = workspace.locator(".evaluation-check-results > li");
+    await expect(rows).toHaveCount(checks.length);
+    for (let index = 0; index < checks.length; index += 1) {
+      await expect(rows.nth(index).locator("strong")).toHaveText(checks[index].label!);
+      await expect(rows.nth(index)).toHaveClass(expected[index] ? "passed" : "failed");
+    }
+    await expect(workspace).not.toContainText("Trace absent");
+    await expect(workspace).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
+  });
+}
