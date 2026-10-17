@@ -242,6 +242,28 @@ for (const scenario of structuredCases) {
     for (let index = 0; index < checks.length; index += 1) {
       await expect(rows.nth(index).locator("strong")).toHaveText(checks[index].label!);
       await expect(rows.nth(index)).toHaveClass(expected[index] ? "passed" : "failed");
+      const verdict = rows.nth(index).locator(":scope > div > span");
+      if (expected[index]) {
+        await expect(verdict).toHaveText("Passed");
+      } else if (checks[index].kind === "valid-json") {
+        await expect(verdict).toHaveText("Final assistant output is not valid JSON.");
+      } else if (!scenario.json[Math.floor(index / 2)]) {
+        await expect(verdict).toHaveText(`Final assistant output is not valid JSON under the ${policies[Math.floor(index / 2)]} input policy.`);
+      } else {
+        await expect(verdict).toHaveText(/^Schema mismatch at .+\.$/);
+      }
+    }
+    if (scenario.id === "schema-mismatch") {
+      const schemaRow = rows.nth(1);
+      await expect(schemaRow.locator(":scope > div > span"))
+        .toHaveText('Schema mismatch at ["answer"]: expected number.');
+      const diagnostics = schemaRow.getByRole("group", { name: "Structured check diagnostics" });
+      await diagnostics.getByText("Structured check diagnostics", { exact: true }).click();
+      await expect(diagnostics.getByText("Diagnostic code: schema-mismatch", { exact: true })).toBeVisible();
+      await expect(diagnostics.getByText("Issues listed: 1", { exact: true })).toBeVisible();
+      await expect(diagnostics.getByRole("listitem"))
+        .toHaveText('Schema mismatch at ["answer"]: expected number.');
+      await expect(diagnostics.getByRole("listitem")).toBeVisible();
     }
     await expect(workspace).not.toContainText("Trace absent");
     await expect(workspace).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);

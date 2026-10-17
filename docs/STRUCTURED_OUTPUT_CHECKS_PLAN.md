@@ -344,6 +344,29 @@ Date: 2026-10-16.
   coverage; native Tauri interaction and slower-hardware scheduling latency
   remain unchecked. There is no new native evaluator implementation to calibrate.
 
+## Integration review follow-up
+
+- Corrected the vocabulary breakdown to five answer-shape checks, three
+  thresholds, and four tool-call checks. Four shape checks accept negation;
+  JSON Schema does not.
+- The history integration spec now asserts verdict text alongside labels and
+  status classes. For the schema-mismatch case it opens the saved-history
+  disclosure and checks the visible schema-mismatch code, single issue, and
+  `Schema mismatch at ["answer"]: expected number.` message.
+- Added five provider cases: leading whitespace, trailing whitespace, a trailing
+  newline, an invalid unlabelled fence followed by valid labelled JSON, and
+  four-backtick fences. The matrix now covers 22 answers and 132 check outcomes.
+  Bare fences remain JSON candidates under the frozen vocabulary: invalid bare
+  contents fail without falling through to a later JSON block. This confirms
+  the existing contract rather than changing it.
+- All 25 cases in `npm run test:e2e -- tests/e2e/headless-cli-artifacts.spec.ts`
+  passed on the first run. These additions close coverage gaps, not production
+  regressions; no failing product behavior or red regression run is claimed.
+  `npm run test:e2e` then passed 295 tests with 7 skipped and none failed.
+  `npm run typecheck` and `npm run lint` passed (three existing warnings).
+  Core tests, builds, and native runtime calibration were not repeated because
+  this follow-up changes only tests, fixture data, and documentation.
+
 ## Outcome and scope
 
 Add four capabilities to evaluation experiments: JSON Schema validation,

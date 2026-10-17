@@ -45,8 +45,12 @@ The `structured-policy-<id>` models select the original cases in
 namespace return HTTP 400. They cover raw/scalar/null/blank answers, complete
 and incomplete fences, CRLF and uppercase markers, prose, multiple blocks,
 backticks inside strings, an invalid first block, other languages, unsupported
-markers, and schema mismatches. The CLI/browser artifact spec checks exact saved
-answers plus all three policies for both Valid JSON and JSON Schema.
+markers, and schema mismatches. Additional cases pin surrounding JSON whitespace,
+a trailing newline, four-backtick fences, and an invalid bare fence before a
+valid labelled JSON fence. The bare block is a JSON candidate: invalid contents
+fail without falling through to the later block. The CLI/browser artifact spec
+checks exact saved answers, all three policies for both Valid JSON and JSON
+Schema, rendered verdict text, and expanded saved-history type diagnostics.
 
 ## Writing a fixture
 

@@ -94,7 +94,9 @@ The original provider-policy cases in
 upstream snapshot. `tests/e2e/headless-cli-artifacts.spec.ts` runs each through
 the buffered provider and CLI execution owner, checks the exact trace answer
 and CLI check counts, then opens the written history in the browser and asserts
-each rendered check verdict. These cases cover parsing policies and a strict
+each rendered check verdict and its text. The schema-mismatch case also opens
+the saved-history diagnostics and asserts the numeric type issue at `["answer"]`.
+These cases cover parsing policies and a strict
 object schema, including scalar/null inputs, fences, malformed JSON, missing
 properties, extra properties, and no string-to-number coercion. They do not
 repeat the full upstream sweep in a browser or establish native Tauri coverage.

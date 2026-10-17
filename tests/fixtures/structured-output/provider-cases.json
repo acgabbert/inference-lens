@@ -236,5 +236,75 @@
       false,
       false
     ]
+  },
+  {
+    "id": "leading-whitespace",
+    "answer": " \t{\"answer\":2}",
+    "json": [
+      true,
+      true,
+      true
+    ],
+    "schema": [
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "id": "trailing-whitespace",
+    "answer": "{\"answer\":2} \t",
+    "json": [
+      true,
+      true,
+      true
+    ],
+    "schema": [
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "id": "trailing-newline",
+    "answer": "{\"answer\":2}\n",
+    "json": [
+      true,
+      true,
+      true
+    ],
+    "schema": [
+      true,
+      true,
+      true
+    ]
+  },
+  {
+    "id": "bare-invalid-first",
+    "answer": "```\nprint(2)\n```\n```json\n{\"answer\":2}\n```",
+    "json": [
+      false,
+      false,
+      false
+    ],
+    "schema": [
+      false,
+      false,
+      false
+    ]
+  },
+  {
+    "id": "four-backticks",
+    "answer": "````json\n{\"answer\":2}\n````",
+    "json": [
+      false,
+      false,
+      false
+    ],
+    "schema": [
+      false,
+      false,
+      false
+    ]
   }
 ]
