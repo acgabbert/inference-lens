@@ -442,3 +442,31 @@ export async function stubProjectDirectory(
     });
   }, fixture);
 }
+
+// Hold the real browser task boundary so loading/cancellation assertions do not
+// depend on schema cost or machine speed. Checks and the provider remain real.
+export async function holdDerivations(page: Page) {
+  await page.evaluate(() => {
+    const browser = globalThis as typeof globalThis & {
+      scheduler: { yield(): Promise<void> };
+      checkGate?: { hold: boolean; waiting: Array<() => void> };
+    };
+    if (browser.checkGate) { browser.checkGate.hold = true; return; }
+    const gate = { hold: true, waiting: [] as Array<() => void> };
+    browser.checkGate = gate;
+    const original = browser.scheduler.yield.bind(browser.scheduler);
+    browser.scheduler.yield = () => gate.hold
+      ? new Promise<void>((resolve) => gate.waiting.push(resolve))
+      : original();
+  });
+}
+
+export async function releaseDerivations(page: Page) {
+  await page.evaluate(() => {
+    const gate = (globalThis as typeof globalThis & {
+      checkGate?: { hold: boolean; waiting: Array<() => void> };
+    }).checkGate!;
+    gate.hold = false;
+    gate.waiting.splice(0).forEach((resume) => resume());
+  });
+}

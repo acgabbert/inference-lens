@@ -1,6 +1,6 @@
 # Structured output checks implementation plan
 
-Status: portable vocabulary v4, example generation, suite authoring, reassessment editor reuse, and expandable result diagnostics implemented. Step 5 scheduling and broader integration checks remain.
+Status: portable vocabulary v4, example generation, suite authoring, reassessment editor reuse, expandable result diagnostics, and results/reassessment scheduling implemented. Broader step 5 integration checks remain.
 Date: 2026-10-16.
 
 ## Implementation progress
@@ -232,6 +232,79 @@ Date: 2026-10-16.
   `node --test --test-timeout=120000 tests/evaluation-results-render.test.mjs
   tests/evaluation-results-interaction.test.mjs tests/fixture-shutdown.test.mjs`
   passed all 23 existing render, interaction, and fixture shutdown tests.
+
+## Results and reassessment scheduling follow-up
+
+- The user chose a loading state followed by complete results, rather than
+  retaining old scores while a new reading is computed. Results retain their
+  reading selector and navigation; the reassessment drawer retains its editors.
+  Saving waits for a complete current preview.
+- Core check-list and aggregate derivations now expose resumable generators.
+  Each check stays synchronous and pure, with unchanged verdicts and budgets;
+  the existing synchronous APIs drain the same derivation for CLI callers.
+  Generators yield after each check and cell, and return only a complete aggregate.
+- The shared app scheduling hook owns task boundaries, cancellation, errors,
+  and input identity. It uses browser `scheduler.yield()` when available and a
+  timer task otherwise. Changing execution or criteria hides the old aggregate
+  during render and cancels superseded work. Each effect creates fresh work,
+  including during React StrictMode replay. No artifact fields, versions, or
+  provider requests changed. Baseline reassessment work stays independent of
+  edits; changing only the draft name does not restart scoring.
+- The initial regression probes preceded implementation. The results-render
+  regression failed with the
+  actual synchronous “2 passed” summary and no loading state. The incremental
+  core API regression failed on `undefined` versus `function`; this establishes
+  an absent scheduling seam, not incorrect verdicts. Completed core derivations
+  agree for original and replacement criteria including JSON/schema checks.
+- The affected browser specs passed all 10 cases. Their existing provider-backed
+  correction scenario now holds the real browser task boundary to assert loading,
+  absence of stale summaries, disabled Save, usable controls, and cancellation
+  across successive drafts and reading changes, without new provider requests.
+  Separate React tests cover per-step task ordering, cancellation, errors, and
+  StrictMode replay. Existing results rendering tests now await actual scheduled
+  completion; an additional server-render test asserts the initial loading state.
+- `npm run test:core` passed 1,182 tests. The command
+  `node --test --test-timeout=120000 tests/evaluation-results-render.test.mjs
+  tests/evaluation-results-interaction.test.mjs` passed 11 tests, and
+  `node --test --test-timeout=120000 tests/scheduled-derivation-interaction.test.mjs`
+  passed two. The latter is included in `npm test`.
+- `npm run typecheck` and `npm run lint` passed (the same three existing
+  warnings). `npm run build:cli` and `npm run build:tauri` passed; the Tauri
+  command validates frontend bundling, not native execution. No CLI schema run
+  or evaluator latency calibration was repeated for this scheduling slice.
+- An initial full `npm run test:e2e` passed 273 tests with 7 skipped. After a
+  lifecycle-label cleanup, a second full run passed 269 with 7 skipped and four
+  click timeouts blocked by a Vite overlay: “Response body object should not be
+  disturbed or locked” from the vinext request-header cloning path. No build ran
+  concurrently. The affected structured-output cases passed in that run. The
+  four blocked specs (`rate-limit-retry`, `response-view`, `run-attempt-diff`, and
+  `runs-indicator`) then passed all eight cases together against a fresh server.
+  A final full `npm run test:e2e` passed 273 tests with 7 skipped and no
+  failures; the overlay did not recur.
+- Scheduling coverage controls when work resumes; it is not a whole-view latency
+  benchmark. Native Tauri interaction and timer-fallback latency on slower
+  hardware remain unchecked. Completion notification/indicator aggregation keeps
+  its existing synchronous API; this slice schedules the results and
+  reassessment feature owners.
+- Review follow-up: live progress replaces `execution.states` on every
+  provider state change, so hiding the aggregate per input made the results
+  table flicker to “Computing check results…” throughout a run. While a run is
+  live, the results owner passes a retain key for the current reading (plan
+  plus criteria); the last complete table stays visible, marked busy, until its
+  replacement completes. A changed reading, a finished run, or the reassessment
+  drawer still hides the old value. The task runner now also time-slices: it
+  continues steps within an 8 ms budget before yielding, because the timer
+  fallback (no `scheduler.yield`, as in WebKit and so Tauri on macOS) is clamped
+  to several milliseconds per nested task. Both regressions ran red first: the
+  extended `batch-live-progress` evaluation case showed “Computing check
+  results…” with no table at “2 of 3 finished” while derivation was held, and
+  the runner and hook unit tests showed a pause between every cheap step and no
+  retained value. After the fix, `npm run test:core` passed 1,182 tests, the
+  scheduling and results node tests passed 15, `npm run typecheck` and
+  `npm run lint` passed (same three warnings), and a full `npm run test:e2e`
+  passed 273 with 7 skipped. Tauri/WebKit timing was not measured.
+- Remaining step 5 work: broader provider policy fixtures, CLI/browser outcome
+  agreement, and final supported-profile/provenance/artifact-format documentation.
 
 ## Outcome and scope
 

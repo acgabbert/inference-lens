@@ -1,7 +1,35 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { after } from "node:test";
+import { JSDOM } from "jsdom";
 
 import { ssrLoadModule } from "./support/ssr.mjs";
+
+const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost" });
+Object.assign(globalThis, {
+  window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement,
+  Node: dom.window.Node, Event: dom.window.Event, IS_REACT_ACT_ENVIRONMENT: true,
+});
+Object.defineProperty(globalThis, "navigator", { configurable: true, value: dom.window.navigator });
+after(() => dom.window.close());
+
+async function renderSettled(element) {
+  const [{ createRoot }, { act }] = await Promise.all([import("react-dom/client"), import("react")]);
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(element));
+    for (let attempt = 0; container.textContent.includes("Computing check results…"); attempt++) {
+      assert.ok(attempt < 100, "results must settle");
+      await act(async () => new Promise((resolve) => setTimeout(resolve, 5)));
+    }
+    return container.innerHTML;
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+}
+
 
 async function fixture() {
   const [projectCore, executionCore, experimentCore, kernel, types, component, reactServer, reactModule] = await Promise.all([
@@ -62,7 +90,7 @@ function runningState(fx, cell) {
 
 test("renders live evaluation progress with the active case and repetition", async () => {
   const fx = await fixture();
-  const html = fx.renderToStaticMarkup(fx.createElement(fx.EvaluationResultsWorkspace, {
+  const html = await renderSettled(fx.createElement(fx.EvaluationResultsWorkspace, {
     execution: { plan: fx.plan, storage: "unsaved", workspace: null, states: new Map(), live: { startedAtMs: Date.now(), requested: 2, finished: 0, runningOrdinals: [1], pausedConnections: [] }, traces: new Map(), traceFileNames: new Map(), unreadableTraces: new Map(), selectedRunId: null },
     onStop() {}, onOpenTrace() {},
   }));
@@ -83,7 +111,7 @@ test("renders strict as-run case, repetition, check, usage, and evidence results
   const second = completedState(fx, fx.plan.cells[1], "Use backups.");
   const states = new Map([[first.runId, first], [second.runId, second]]);
   const result = { schemaVersion: 4, experimentId: fx.plan.experimentId, status: "completed", endedAt: "2026-08-01T12:11:00.000Z", cells: fx.plan.cells.map((cell) => ({ cellId: cell.cellId, runId: cell.runId, status: "completed" })) };
-  const html = fx.renderToStaticMarkup(fx.createElement(fx.EvaluationResultsWorkspace, {
+  const html = await renderSettled(fx.createElement(fx.EvaluationResultsWorkspace, {
     execution: { plan: fx.plan, result, storage: "durable", workspace: null, states, traces: new Map([[first.runId, {}], [second.runId, {}]]), traceFileNames: new Map(), unreadableTraces: new Map(), selectedRunId: null },
     onStop() {}, onOpenTrace() {},
   }));
@@ -110,7 +138,7 @@ test("a rate-limited repetition reads as rate limited and leaves its case incomp
   const second = coordinator.state;
   const states = new Map([[first.runId, first], [second.runId, second]]);
   const result = { schemaVersion: 4, experimentId: fx.plan.experimentId, status: "completed", endedAt: "2026-08-01T12:11:00.000Z", cells: fx.plan.cells.map((cell) => ({ cellId: cell.cellId, runId: cell.runId, status: "completed" })) };
-  const html = fx.renderToStaticMarkup(fx.createElement(fx.EvaluationResultsWorkspace, {
+  const html = await renderSettled(fx.createElement(fx.EvaluationResultsWorkspace, {
     execution: { plan: fx.plan, result, storage: "durable", workspace: null, states, traces: new Map([[first.runId, {}], [second.runId, {}]]), traceFileNames: new Map(), unreadableTraces: new Map(), selectedRunId: null },
     onStop() {}, onOpenTrace() {},
   }));
@@ -144,7 +172,7 @@ test("projects readable, unreadable, absent, and not-created evidence independen
 test("live evaluation progress marks every running repetition and counts them", async () => {
   const fx = await fixture();
   const [first, second] = fx.plan.cells;
-  const html = fx.renderToStaticMarkup(fx.createElement(fx.EvaluationResultsWorkspace, {
+  const html = await renderSettled(fx.createElement(fx.EvaluationResultsWorkspace, {
     execution: {
       plan: fx.plan, storage: "unsaved", workspace: null,
       states: new Map([first, second].map((cell) => [cell.runId, runningState(fx, cell)])),
@@ -163,7 +191,7 @@ test("live evaluation progress names the configurations a rate-limit pause holds
   const fx = await fixture();
   const [first] = fx.plan.cells;
   const variant = fx.plan.suite.variants[0];
-  const html = fx.renderToStaticMarkup(fx.createElement(fx.EvaluationResultsWorkspace, {
+  const html = await renderSettled(fx.createElement(fx.EvaluationResultsWorkspace, {
     execution: {
       plan: fx.plan, storage: "unsaved", workspace: null,
       states: new Map([[first.runId, completedState(fx, first, "Answer")]]),
@@ -194,12 +222,12 @@ test("a result that ran cells at once says so beside its latency", async () => {
     retryPolicy: { rateLimited: { maxRetries: 0 } },
     cells: fx.plan.cells.map((cell, index) => ({ cellId: cell.cellId, runId: cell.runId, status: "completed", startOrder: index + 1 })),
   });
-  const render = (maxInFlight) => fx.renderToStaticMarkup(fx.createElement(fx.EvaluationResultsWorkspace, {
+  const render = async (maxInFlight) => await renderSettled(fx.createElement(fx.EvaluationResultsWorkspace, {
     execution: { plan: fx.plan, result: result(maxInFlight), storage: "durable", workspace: null, states, traces: new Map(), traceFileNames: new Map(), unreadableTraces: new Map(), selectedRunId: null },
     onStop() {}, onOpenTrace() {},
   }));
-  assert.match(render(4), /As run · 1 cases · 2 repetitions · up to 4 at once/);
-  assert.doesNotMatch(render(1), /at once/);
+  assert.match(await render(4), /As run · 1 cases · 2 repetitions · up to 4 at once/);
+  assert.doesNotMatch(await render(1), /at once/);
 });
 
 test("a result that allowed retries says so, and counts the repetitions that needed them", async () => {
@@ -218,7 +246,7 @@ test("a result that allowed retries says so, and counts the repetitions that nee
   })();
   const states = new Map([[retried.runId, retried], [second.runId, completedState(fx, second, "Include a rollback plan.")]]);
   const variant = fx.plan.suite.variants[0];
-  const html = fx.renderToStaticMarkup(fx.createElement(fx.EvaluationResultsWorkspace, {
+  const html = await renderSettled(fx.createElement(fx.EvaluationResultsWorkspace, {
     execution: {
       plan: fx.plan, storage: "durable", workspace: null, states, traces: new Map(), traceFileNames: new Map(), unreadableTraces: new Map(), selectedRunId: null,
       result: {
@@ -234,4 +262,16 @@ test("a result that allowed retries says so, and counts the repetitions that nee
   assert.match(html, /As run · 1 cases · 2 repetitions · rate-limited requests retried up to 2 times/);
   assert.match(html, /0 incomplete · 1 retried after rate limiting/);
   assert.doesNotMatch(html, /NaN|Infinity|undefined|\[object Object\]/);
+});
+
+
+test("initial results show loading without synchronously publishing check verdicts", async () => {
+  const fx = await fixture();
+  const states = new Map(fx.plan.cells.map((cell) => [cell.runId, completedState(fx, cell, "Include a rollback plan.")]));
+  const html = fx.renderToStaticMarkup(fx.createElement(fx.EvaluationResultsWorkspace, {
+    execution: { plan: fx.plan, storage: "unsaved", workspace: null, states, traces: new Map(), traceFileNames: new Map(), unreadableTraces: new Map(), selectedRunId: null },
+    onStop() {}, onOpenTrace() {},
+  }));
+  assert.match(html, /Computing check results…/);
+  assert.doesNotMatch(html, /Configuration results|2 passed · 0 failed/);
 });

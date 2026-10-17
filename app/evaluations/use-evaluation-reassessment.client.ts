@@ -18,7 +18,7 @@ import {
 import type { SuiteCriteriaCase } from "../../packages/core/src/evaluation-reassessment.ts";
 import { updateEvaluationCheck } from "../../packages/core/src/evaluation-suite-authoring.ts";
 import {
-  evaluationParsedExperimentAggregate,
+  evaluationParsedExperimentAggregateSteps,
   parseExperimentPlanFile,
 } from "../../packages/core/src/experiment.ts";
 import type { EvaluationCriteriaOverride } from "../../packages/core/src/experiment.ts";
@@ -35,6 +35,7 @@ import {
   listEvaluationAssessmentsWorkspace,
   saveEvaluationAssessmentWorkspace,
 } from "../project-workspace.client.ts";
+import { useScheduledDerivation } from "./use-scheduled-derivation.client.ts";
 import type { EvaluationExecution } from "./use-evaluation-execution-session.client.ts";
 
 /**
@@ -125,6 +126,9 @@ export interface EvaluationReassessmentHandle {
   preview?: EvaluationOutcomeDiff;
   /** True while a drafted pattern this build refuses is holding the preview back. */
   previewBlocked: boolean;
+  /** No preview is published until both complete derivations are current. */
+  previewLoading: boolean;
+  previewError?: string;
   draftName: string;
   setDraftName(name: string): void;
   saving: boolean;
@@ -177,7 +181,7 @@ function flagsOf(check: CheckDefinition): string {
  * being drafted over it, and the two commitments that correction can lead to.
  *
  * It makes no provider calls and has no seam to make one through: every reading
- * it produces is `evaluationParsedExperimentAggregate` over traces already on
+ * it produces uses the shared aggregate derivation over traces already on
  * disk, with one argument substituted.
  */
 export function useEvaluationReassessment({
@@ -306,32 +310,32 @@ export function useEvaluationReassessment({
 
   const baseCriteria = selected.criteria;
 
-  const draftCriteria = useMemo((): EvaluationCriteriaOverride | undefined => {
-    if (!draft || draft.experimentId !== experimentId) return undefined;
-    return new Map(draft.cases);
-  }, [draft, experimentId]);
+  const draftCases = draft?.experimentId === experimentId ? draft?.cases : undefined;
+  const draftCriteria = useMemo(
+    (): EvaluationCriteriaOverride | undefined => draftCases ? new Map(draftCases) : undefined,
+    [draftCases],
+  );
 
-  const preview = useMemo(() => {
-    if (!parsedPlan || !execution || !draftCriteria) return undefined;
-    try {
-      const baseline = evaluationParsedExperimentAggregate(
-        parsedPlan,
-        execution.result,
-        execution.states,
-      );
-      const candidate = evaluationParsedExperimentAggregate(
-        parsedPlan,
-        execution.result,
-        execution.states,
-        draftCriteria,
-      );
-      return diffEvaluationOutcomes(baseline, candidate);
-    } catch {
-      // A drafted pattern this build refuses is reported per check below; the
-      // preview simply waits rather than showing a partial re-derivation.
-      return undefined;
-    }
-  }, [parsedPlan, execution, draftCriteria]);
+  const baseline = useScheduledDerivation(useMemo(
+    () => editorOpen && parsedPlan && execution
+      ? () => evaluationParsedExperimentAggregateSteps(parsedPlan, execution.result, execution.states)
+      : undefined,
+    [editorOpen, parsedPlan, execution],
+  ));
+  const candidate = useScheduledDerivation(useMemo(
+    () => editorOpen && parsedPlan && execution && draftCriteria
+      ? () => evaluationParsedExperimentAggregateSteps(parsedPlan, execution.result, execution.states, draftCriteria)
+      : undefined,
+    [editorOpen, parsedPlan, execution, draftCriteria],
+  ));
+  const preview = useMemo(
+    () => baseline.value && candidate.value
+      ? diffEvaluationOutcomes(baseline.value, candidate.value)
+      : undefined,
+    [baseline.value, candidate.value],
+  );
+  const previewLoading = baseline.pending || candidate.pending;
+  const previewError = baseline.error?.message ?? candidate.error?.message;
 
   const regexChecks = useMemo((): ReassessmentRegexCheck[] => {
     if (!parsedPlan || !draftCriteria) return [];
@@ -420,7 +424,7 @@ export function useEvaluationReassessment({
   const draftName = draft && draft.experimentId === experimentId ? draft.name : "";
 
   const save = useCallback(async () => {
-    if (!parsedPlan || !workspace || !draftCriteria || !experimentId) return;
+    if (!parsedPlan || !workspace || !draftCriteria || !experimentId || !preview || previewLoading || previewError) return;
     setSaving(true);
     try {
       const assessmentId = createAssessmentId();
@@ -448,7 +452,7 @@ export function useEvaluationReassessment({
     } finally {
       setSaving(false);
     }
-  }, [parsedPlan, workspace, draftCriteria, experimentId, draftName, now, createAssessmentId]);
+  }, [parsedPlan, workspace, draftCriteria, experimentId, draftName, now, createAssessmentId, preview, previewLoading, previewError]);
 
   const adoptIntoSuite = useCallback(() => {
     if (!parsedPlan || !project || !draftCriteria || !experimentId) return;
@@ -536,6 +540,8 @@ export function useEvaluationReassessment({
       });
     },
     ...(preview ? { preview } : {}),
+    previewLoading,
+    ...(previewError ? { previewError } : {}),
     previewBlocked: preview === undefined && regexChecks.some(({ error }) => error !== undefined),
     draftName,
     setDraftName(name) {

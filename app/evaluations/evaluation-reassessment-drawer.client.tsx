@@ -32,7 +32,7 @@ export function EvaluationReassessmentDrawer({
   handle: EvaluationReassessmentHandle;
 }) {
   const { preview } = handle;
-  const blocked = handle.previewBlocked;
+  const blocked = handle.previewBlocked || Boolean(handle.previewError);
   const nothingToSave = Boolean(preview?.unchanged);
 
   return (
@@ -122,7 +122,9 @@ export function EvaluationReassessmentDrawer({
 
         <section aria-label="What would change" className={styles.preview}>
           <h3>What would change</h3>
-          {blocked && (
+          {handle.previewLoading && <p role="status">Computing reassessment preview…</p>}
+          {handle.previewError && <p role="alert">Preview could not be computed: {handle.previewError}</p>}
+          {handle.previewBlocked && (
             <p className={styles.error} role="alert">
               Fix the pattern above to see what it would change.
             </p>
@@ -176,7 +178,7 @@ export function EvaluationReassessmentDrawer({
           <button
             className="button primary"
             type="button"
-            disabled={handle.saving || blocked || nothingToSave}
+            disabled={handle.saving || handle.previewLoading || !preview || blocked || nothingToSave}
             onClick={() => { void handle.save(); }}
           >
             {handle.saving ? "Saving…" : "Save reassessment"}

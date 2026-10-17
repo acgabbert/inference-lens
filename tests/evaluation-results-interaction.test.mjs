@@ -94,6 +94,10 @@ async function renderFixture(variantCount) {
   await act(async () => root.render(createElement(fx.component.EvaluationResultsWorkspace, {
     execution: fx.execution, onStop() {}, onOpenTrace() {},
   })));
+  for (let attempt = 0; container.textContent.includes("Computing check results…"); attempt++) {
+    assert.ok(attempt < 100, "results must settle");
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 5)));
+  }
   return { container, root, act };
 }
 
