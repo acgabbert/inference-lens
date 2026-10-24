@@ -1,6 +1,6 @@
 # System One protocol plan
 
-Status: **D1–D9 and U1–U6 accepted; Phase 1 complete. llama.cpp and
+Status: **D1–D15 and U1–U6 accepted; Phase 1 complete, Phase 2 in progress. llama.cpp and
 OpenRouter captured on 2026-10-24, Ollama on 2026-10-23; direct TypeSafe still
 doc-derived only.** On 2026-10-24 each implementation's
 documentation was read directly (see [Sources](#sources)). What it showed is
@@ -191,7 +191,7 @@ contract design, not the adapter.
 
 ## Decisions
 
-The user accepted every recommendation below (D1–D11) and the UI decisions in
+The user accepted every recommendation below (D1–D15) and the UI decisions in
 [U1–U6](#ui-decisions-u1u6). Changes made after the source check are marked *(revised)*.
 
 ### D1. Where the protocol lives in the type system
@@ -513,6 +513,67 @@ The earlier Phase 2 bullet had the fixture serve TypeSafe's 422 `detail` and a
 - **Recommendation: B.** The personalities are a few dozen lines of routing and
   the only way to exercise every D10 step and every error-message path in a
   browser without three live runtimes.
+- **Accepted: B.** Which capture a request gets is settled in
+  [D15](#d15-how-the-fixture-provider-picks-a-capture-accepted-b).
+
+### D12. The host decision transport *(accepted: A)*
+
+Found while starting Phase 2. Chat hosts return a stream of transport events
+(`request`, `response_started`, frames, deltas, then `completed` or `failed`).
+
+- **A. A separate `DecisionTransport` contract** whose `executeDecision`
+  returns a stream of `DecisionTransportEvent`s: `request`,
+  `response_started`, one `frame` holding the raw body, `completed` with the
+  normalized `DecisionResult`, and `failed` or `cancelled`. The web service
+  and the Tauri webview each normalize with the same core adapter, as chat
+  does.
+- **B. One buffered JSON reply** (`{request, response, raw, result | error}`).
+  Simpler, but a transport failure or a cancellation loses the request
+  evidence.
+- **Recommendation: A.** Request evidence survives a failure, cancellation
+  works as it does for chat, and the Phase 3 run workflow can follow the chat
+  coordinator's shape. Keeping it a separate contract keeps decision runs out
+  of the chat-only types (D1-B).
+- **Accepted: A.** Retry on 429 needs no host change: `retry-after` is already
+  in the recorded response headers, which the Phase 3 workflow reads.
+
+### D13. Running the discovery steps *(accepted)*
+
+D10 keeps Rust from inspecting a body, but whether step 2 runs depends on the
+step 1 body.
+
+- One core function runs D10's three steps with an injected fetcher. The web
+  service passes `fetch`. Tauri passes a command that takes only a listing
+  selector (`"chat" | "decisions" | "ollama-tags"`) and builds the URL itself,
+  so the webview still cannot direct a credential to an arbitrary URL.
+- `ModelDiscoveryResponse` gains `unfiltered?: true` for step 3, so the
+  picker can say the list is not filtered. `ModelDiscoveryRequest.protocol`
+  widens to `ConnectionProtocol` so it can name `systemone`.
+
+### D14. The web decision route *(accepted)*
+
+- A separate `POST /api/decisions` (`DECISIONS_API_PATH`) beside
+  `/api/inference`, with its own request validation and the same credential
+  redaction, rather than a kind discriminator on the chat route.
+
+### D15. How the fixture provider picks a capture *(accepted: B)*
+
+Several captures share a model id (`local-decision` serves all-types,
+non-ASCII, and message-state), and replaying answers to questions that were
+not asked fails normalization.
+
+- **A. Match the request exactly.** Faithful, but an e2e spec must reproduce
+  the captured request byte for byte.
+- **B. The model id names the scenario, with a guard.** Under each runtime's
+  prefix, the model id is the capture's name without the runtime prefix
+  (`all-types`, `401`), plus the synthetic `429`. If the questions asked do
+  not match the capture's, the server answers with that runtime's 400 envelope
+  and a "fixture expects …" message. Listings are served as captured; a
+  scenario id is typed.
+- **C. Synthesize answers for any question.** Drifts from the captures being
+  the single source of truth.
+- **Recommendation: B.** Specs stay readable, and a mismatched spec fails
+  loudly instead of passing on garbage.
 - **Accepted: B.**
 
 ## Phases
