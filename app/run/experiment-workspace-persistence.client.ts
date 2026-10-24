@@ -29,7 +29,7 @@ export function createExperimentWorkspacePersistence(
       await saveExperimentResultWorkspace(workspace, result, plan);
     },
     async onTerminalTrace(trace) {
-      await saveRunTraceWorkspace(workspace, trace);
+      await saveRunTraceWorkspace(workspace, { kind: "chat", trace });
     },
   };
 }

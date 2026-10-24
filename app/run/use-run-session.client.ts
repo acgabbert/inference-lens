@@ -138,10 +138,10 @@ export function useRunSession(options: UseRunSessionOptions): RunSessionHandle {
     if (persistedRunIdsRef.current.has(next.runId)) return;
     let trace: RunTrace;
     try { trace = createRunTrace(next, { branchedFrom: provenanceRef.current.get(next.runId) }); } catch { return; }
-    const location = runTraceWorkspaceLocation(workspace, trace);
+    const location = runTraceWorkspaceLocation(workspace, { kind: "chat", trace });
     setTraceStorage({ kind: "saving", location });
     persistedRunIdsRef.current.add(next.runId);
-    void saveRunTraceWorkspace(workspace, trace).then(() => {
+    void saveRunTraceWorkspace(workspace, { kind: "chat", trace }).then(() => {
       if (runStateRef.current?.runId === next.runId) setTraceStorage({ kind: "saved", location });
       options.onTraceSaved();
     }).catch((error) => {
@@ -363,7 +363,7 @@ export function useRunSession(options: UseRunSessionOptions): RunSessionHandle {
   function reset(): void { stop(); coordinatorRef.current = null; setToolResultDrafts({}); diagnosticRef.current = null; setHasDiagnosticCapture(false); parentGenerationRef.current += 1; setParentTrace({ status: "idle" }); replaceState(null); }
   function downloadDiagnostics(): void { const capture = diagnosticRef.current; if (!capture) return; const exportedAt = new Date().toISOString(); const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([JSON.stringify({ schemaVersion: 1, exportedAt, privacy: { credentials: "redacted", messageBodies: "included" }, capture }, null, 2)], { type: "application/json" })); link.download = `inference-lens-diagnostics-${exportedAt.replaceAll(":", "-")}.json`; link.click(); URL.revokeObjectURL(link.href); }
   function traceForState(): RunTrace | undefined { const state = runStateRef.current; if (!state || !isTerminalRunState(state)) return; try { return createRunTrace(state, { branchedFrom: provenanceRef.current.get(state.runId) }); } catch { return; } }
-  async function exportTrace(): Promise<void> { const trace = traceForState(); if (!trace) return; const previous = traceStorage; const preserve = previous?.kind === "saved" && Boolean(workspaceRef.current); setTraceStorage({ kind: "saving" }); try { const result = await exportRunTraceFile(trace); setTraceStorage(result.kind === "saved" ? (preserve ? previous! : { kind: "saved", location: result.location }) : result.kind === "downloaded" ? (preserve ? previous! : { kind: "downloaded", fileName: result.fileName }) : previous ?? { kind: "unsaved" }); } catch (error) { setTraceStorage({ kind: "error", message: error instanceof Error ? error.message : "The trace could not be saved." }); } }
+  async function exportTrace(): Promise<void> { const trace = traceForState(); if (!trace) return; const previous = traceStorage; const preserve = previous?.kind === "saved" && Boolean(workspaceRef.current); setTraceStorage({ kind: "saving" }); try { const result = await exportRunTraceFile({ kind: "chat", trace }); setTraceStorage(result.kind === "saved" ? (preserve ? previous! : { kind: "saved", location: result.location }) : result.kind === "downloaded" ? (preserve ? previous! : { kind: "downloaded", fileName: result.fileName }) : previous ?? { kind: "unsaved" }); } catch (error) { setTraceStorage({ kind: "error", message: error instanceof Error ? error.message : "The trace could not be saved." }); } }
   function adoptTrace(trace: RunTrace, origin: TraceOrigin): void {
     stop();
     if (trace.branchedFrom) provenanceRef.current.set(trace.runId, trace.branchedFrom);

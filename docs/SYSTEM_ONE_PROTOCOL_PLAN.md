@@ -2,8 +2,9 @@
 
 Status: **D1–D30 and U1–U6 accepted. Phases 1 and 2 are merged; D16's fixes
 and host tests are in, with its native-app check still to run on a desktop
-build. The D22 trace format and the D26 evidence extraction are in; the
-decision session and UI are next. Phases 3 and 4 ship together, with trace
+build. The D22 trace format, the D26 evidence extraction, D27's run
+transitions, and D29's decision session are in; the Compose owner and topbar
+are next. Phases 3 and 4 ship together, with trace
 support implemented early (D20). llama.cpp and
 OpenRouter captured on 2026-10-24, Ollama on 2026-10-23; direct TypeSafe still
 doc-derived only.** On 2026-10-24 each implementation's
@@ -1076,6 +1077,22 @@ interface ComposeHandle {
   `runTraceWorkspaceLocation`) widen from `RunTrace` to `SavedRunTrace` and
   serialize by kind.
 
+Done (2026-10-24): the session and the widened persistence helpers.
+`app/decisions/use-decision-session.client.ts` implements the handle above
+over D27's transitions. Its `open` composes `prepareCredential` and
+`executeDecision`; a paused run sets `retryAvailableAt` from the 429's headers
+when it pauses, and a timer clears it once the wait is over, so Retry reads
+as available without the view polling. A finished run autosaves once, as
+chat's does; a trace opened from the project is not saved back. Chat callers
+pass `{ kind: "chat", trace }`, and chat's saved bytes are unchanged.
+
+`tests/decision-session-interaction.test.mjs` drives the hook in jsdom:
+completion, Stop in flight with late events ignored, the 429 wait and a retry
+of the frozen input, Stop while paused, autosave, and adoption. It was written
+after the hook, so it was not run red first. Removing the wait guard, the
+invalidation, the paused Stop, or the persisted-run guard each made it fail.
+The hook has no user-visible surface until the Compose owner mounts it.
+
 ### D30. Opening a trace of either kind *(accepted: A)*
 
 History and Import run trace now get a `SavedRunTrace` of either kind.
@@ -1232,9 +1249,8 @@ error body on the shared path (D25), is in; its native-app check is still owed. 
 
 Order: D16 → the decision trace format (D22) → the behaviour-preserving
 evidence extraction (D26) → the decision session and UI. The first three are
-in, and so are D27's core run transitions. The session and UI follow
-D27–D30: the core run transitions first, then
-the session, then the Compose owner and topbar, then the draft, target, and
+in, and so are D27's core run transitions and D29's session. The rest
+follows D29–D30: the Compose owner and topbar, then the draft, target, and
 views.
 
 - Ownership and shell integration follow D19: the decision feature owns its
