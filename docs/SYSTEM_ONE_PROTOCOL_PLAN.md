@@ -1,6 +1,6 @@
 # System One protocol plan
 
-Status: **D1–D8 and U1–U6 accepted; Phase 1 in progress against doc-derived
+Status: **D1–D9 and U1–U6 accepted; Phase 1 complete against doc-derived
 fixtures. No live captures yet.** On 2026-10-24 each implementation's
 documentation was read directly (see [Sources](#sources)). What it showed is
 recorded in [Phase 0](#phase-0-verify-the-wire-format), along with what is still
@@ -181,9 +181,8 @@ contract design, not the adapter.
 
 ## Decisions
 
-The user accepted every recommendation below (D1–D8) and the UI decisions in
-[U1–U6](#ui-decisions-u1u6). [D9](#d9-where-systemone-is-declared-open) is
-still open. Changes made after the source check are marked *(revised)*.
+The user accepted every recommendation below (D1–D9) and the UI decisions in
+[U1–U6](#ui-decisions-u1u6). Changes made after the source check are marked *(revised)*.
 
 ### D1. Where the protocol lives in the type system
 
@@ -356,7 +355,7 @@ Accepted with D1–D8. They refine Phase 3.
 - **U6. Comparing runs.** Decision diffs (per-question probability changes)
   are out of v1 and arrive with the Phase 5 checks.
 
-### D9. Where `systemOne` is declared *(open)*
+### D9. Where `systemOne` is declared *(accepted: B)*
 
 Found while starting Phase 1. A connection's capability snapshot is portable
 data: `createProjectFile` writes it into the connection requirement's
@@ -377,8 +376,14 @@ project format change yet".
 - **Recommendation: B.** It keeps D4-B's promise. Until a project can own a
   decision request, it has nothing that needs to know whether a connection
   speaks System One.
-
-Phase 1 doesn't depend on this decision: the adapter takes the target as given.
+- **Accepted: B.** `StoredInferenceProfile.systemOne?: true`, read with
+  `servesSystemOne` and set with `withSystemOne` (`app/profile-store.client.ts`).
+  It is stored only when declared. A malformed stored value drops the
+  declaration, not the profile. `withServerProtocols` doesn't touch it.
+- This supersedes the "one capability, `systemOne`" wording in D6: the
+  declaration is a profile flag, not a capability.
+- Phase 2 still has to decide how the server-provisioned profile declares it.
+  `INFERENCE_LENS_API_PROTOCOLS` currently names chat protocols only.
 
 ## Phases
 
@@ -423,7 +428,9 @@ docs; ⬜ items still need a live run or a credential.
   and credential headers to `systemone`, and a pasted `…/systemone` URL reduces
   to its base. Run-protocol selection and the chat adapter registry remain
   chat-only (`provider-protocols.ts`).
-- ⬜ The `systemOne` declaration waits on [D9](#d9-where-systemone-is-declared-open).
+- ✅ The System One declaration is a device-local profile flag (D9-B), covered
+  by `tests/connection-profiles.test.ts`. The reload test was run red first and
+  failed on the value: the stored declaration was lost.
 - ✅ `DecisionInput`, `DecisionQuestion`, `DecisionAnswer`, `DecisionResult`,
   `DecisionRun` types and the `DecisionProtocolAdapter` contract
   (`decision.ts`). The authored request is `DecisionInput` (`state` plus
@@ -467,7 +474,7 @@ docs; ⬜ items still need a live run or a credential.
   - Noul: P(true).
 
   The raw request and response go in the existing evidence panel.
-- Connection drawer: the `systemOne` capability toggle.
+- Connection drawer: the System One profile toggle (D9-B).
 - E2E spec against the fixture provider; see `tests/e2e/README.md`.
 
 ### Phase 4: traces and history
