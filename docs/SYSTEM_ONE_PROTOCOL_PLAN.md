@@ -401,7 +401,8 @@ project format change yet".
 - **Accepted: B.** `StoredInferenceProfile.systemOne?: true`, read with
   `servesSystemOne` and set with `withSystemOne` (`app/profile-store.client.ts`).
   It is stored only when declared. A malformed stored value drops the
-  declaration, not the profile. `withServerProtocols` doesn't touch it.
+  declaration, not the profile. *(revised by D9a)* While
+  `INFERENCE_LENS_API_PROTOCOLS` is set, `withServerProtocols` sets it too.
 - This supersedes the "one capability, `systemOne`" wording in D6: the
   declaration is a profile flag, not a capability.
 - Phase 2 still has to decide how the server-provisioned profile declares it.

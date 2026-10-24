@@ -4,6 +4,9 @@ import type {
   ExchangeTrace,
   JsonObject,
   JsonValue,
+  ProviderFrame,
+  RedactedProviderRequest,
+  RedactedProviderResponse,
   RunError,
   RunId,
   RunTokenUsage,
@@ -109,6 +112,30 @@ export interface DecisionProviderInput {
   decision: DecisionInput;
 }
 
+/** One attempt at a decision exchange, as a host is asked to execute it. */
+export interface DecisionExecution {
+  runId: RunId;
+  attempt: number;
+  exchangeId: ExchangeId;
+  input: DecisionProviderInput;
+}
+
+/**
+ * What a host observed for one decision exchange, in order: the redacted
+ * request, the response status, the whole body as a single frame (an error
+ * body included), then the normalized result.
+ */
+export type DecisionEvent =
+  | { type: "request"; request: RedactedProviderRequest }
+  | { type: "response_started"; response: RedactedProviderResponse }
+  | { type: "frame"; frame: ProviderFrame }
+  | { type: "completed"; result: DecisionResult };
+
+export type DecisionTransportEvent =
+  | DecisionEvent
+  | { type: "failed"; error: RunError }
+  | { type: "cancelled"; reason?: string };
+
 /** A serializable, secret-free snapshot of what a decision run sends. */
 export interface ResolvedDecisionRunInput extends DecisionProviderInput {
   runId: RunId;
@@ -166,4 +193,46 @@ export interface DecisionProtocolAdapter {
    * when the body is in none, so the host can show the raw text instead.
    */
   errorMessage(raw: string): string | undefined;
+}
+
+function isJsonObject(value: unknown): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isDecisionQuestion(value: unknown): value is DecisionQuestion {
+  if (!isJsonObject(value) || value.instructions === undefined) return false;
+  switch (value.type) {
+    case "choice":
+      return isJsonObject(value.criteria);
+    case "score":
+      return Array.isArray(value.criteria);
+    case "noul":
+      return (
+        value.criteria === undefined ||
+        (isJsonObject(value.criteria) &&
+          value.criteria.true !== undefined &&
+          value.criteria.false !== undefined)
+      );
+    default:
+      return false;
+  }
+}
+
+/**
+ * Whether a value has the shape of a decision request: a state and at least
+ * one question of a known type with criteria of that type's shape. Limits
+ * (option counts, level counts, criterion types) are the server's to enforce;
+ * its error is the evidence (D6).
+ */
+export function isDecisionInput(value: unknown): value is DecisionInput {
+  if (!isJsonObject(value)) return false;
+  const { state, questions } = value;
+  if (typeof state !== "string" && !isJsonObject(state) && !Array.isArray(state)) {
+    return false;
+  }
+  return (
+    isJsonObject(questions) &&
+    Object.keys(questions).length > 0 &&
+    Object.values(questions).every(isDecisionQuestion)
+  );
 }

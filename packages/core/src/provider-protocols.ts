@@ -82,6 +82,18 @@ export const PROTOCOL_CONFIGURATION_NAMES = {
   "anthropic-messages": "anthropic-messages",
 } as const satisfies Record<string, ProviderWireProtocol>;
 
+/**
+ * The name that declares System One in `INFERENCE_LENS_API_PROTOCOLS` (D9a).
+ * It matches the path and the protocol id; OpenRouter's `decisions` is not an
+ * alias, since D1 decided that path is not a separate protocol.
+ */
+export const SYSTEM_ONE_CONFIGURATION_NAME = "systemone" satisfies DecisionWireProtocol;
+
+/** Every short name `INFERENCE_LENS_API_PROTOCOLS` accepts, for messages. */
+export function protocolConfigurationNames(): string[] {
+  return [...Object.keys(PROTOCOL_CONFIGURATION_NAMES), SYSTEM_ONE_CONFIGURATION_NAME];
+}
+
 export function isProviderWireProtocol(value: unknown): value is ProviderWireProtocol {
   return (PROVIDER_WIRE_PROTOCOLS as readonly unknown[]).includes(value);
 }

@@ -47,7 +47,10 @@ interface RuntimeStatus {
   configured: boolean;
   endpoint?: string;
   model?: string;
+  /** Present whenever the server's protocol list is set; may be empty. */
   protocols?: ProviderWireProtocol[];
+  /** Set with `protocols`: whether the list names `systemone` (D9a). */
+  systemOne?: boolean;
   unrecognizedProtocols?: string[];
 }
 
@@ -67,6 +70,8 @@ export interface ServerDefaultStatus {
   endpoint?: string;
   /** Present when the server states which protocols that provider speaks. */
   protocols?: ProviderWireProtocol[];
+  /** Set with `protocols`: the System One declaration the server locks. */
+  systemOne?: boolean;
   /**
    * Present when the server's protocol list names something it does not
    * recognize. The list is then ignored whole, exactly as if it were unset,
@@ -111,10 +116,11 @@ function parseRuntimeStatus(body: unknown): RuntimeStatus {
     configured: value.serverDefaultCredentialConfigured === true,
     endpoint: text("endpoint"),
     model: text("model"),
+    // An empty list is a decision-only server (D9a): it is still set, so the
+    // chat switches are still the server's.
     ...(Array.isArray(value.protocols) &&
-    value.protocols.length > 0 &&
     value.protocols.every(isProviderWireProtocol)
-      ? { protocols: value.protocols }
+      ? { protocols: value.protocols, systemOne: value.systemOne === true }
       : {}),
     ...(Array.isArray(value.unrecognizedProtocols) &&
     value.unrecognizedProtocols.length > 0 &&
@@ -316,7 +322,9 @@ export function useConnectionProfiles(input: {
         containerized: status.containerized,
         configured: status.configured,
         ...(status.endpoint ? { endpoint: status.endpoint } : {}),
-        ...(status.protocols ? { protocols: status.protocols } : {}),
+        ...(status.protocols
+          ? { protocols: status.protocols, systemOne: status.systemOne === true }
+          : {}),
         ...(status.unrecognizedProtocols
           ? { unrecognizedProtocols: status.unrecognizedProtocols }
           : {}),
@@ -414,7 +422,9 @@ export function useConnectionProfiles(input: {
     // Like the endpoint, the protocols a server declares are its own to state;
     // a server that declares none leaves the profile's choices with the user.
     const withProtocols = (profile: StoredInferenceProfile) =>
-      status.protocols ? withServerProtocols(profile, status.protocols) : profile;
+      status.protocols
+        ? withServerProtocols(profile, status.protocols, status.systemOne)
+        : profile;
 
     if (existing) {
       const next: StoredInferenceProfile = withProtocols({
@@ -431,7 +441,8 @@ export function useConnectionProfiles(input: {
         existing.endpoint === next.endpoint &&
         existing.model === next.model &&
         JSON.stringify(existing.capabilityOverrides) ===
-          JSON.stringify(next.capabilityOverrides)
+          JSON.stringify(next.capabilityOverrides) &&
+        existing.systemOne === next.systemOne
       ) {
         return;
       }

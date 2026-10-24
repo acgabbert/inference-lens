@@ -127,14 +127,15 @@ export function nextCapabilityOverrides(
 }
 
 /**
- * The profile with its protocol capabilities set to exactly `protocols`. The
- * server owns which protocols its default connection speaks, the way it owns
- * the endpoint, so this replaces those three answers and leaves every other
- * override to the user.
+ * The profile with its protocol capabilities set to exactly `protocols`, and
+ * its System One declaration to `systemOne`. The server owns which APIs its
+ * default connection speaks, the way it owns the endpoint, so this replaces
+ * those answers and leaves every other override to the user.
  */
 export function withServerProtocols<Profile extends StoredInferenceProfile>(
   profile: Profile,
   protocols: readonly ProviderWireProtocol[],
+  systemOne = false,
 ): Profile {
   let next = profile;
   for (const protocol of PROVIDER_WIRE_PROTOCOLS) {
@@ -145,7 +146,7 @@ export function withServerProtocols<Profile extends StoredInferenceProfile>(
     );
     next = { ...next, capabilityOverrides };
   }
-  return next;
+  return withSystemOne(next, systemOne);
 }
 
 export function servesSystemOne(profile: StoredInferenceProfile): boolean {

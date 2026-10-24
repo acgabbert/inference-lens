@@ -540,6 +540,30 @@ test("the server states which protocols its default connection speaks", () => {
       "openai-responses",
       "anthropic-messages",
     ],
+    systemOne: false,
+  });
+});
+
+test("systemone in the server protocol list is reported apart from the chat protocols", () => {
+  const store = new EnvironmentCredentialStore({
+    INFERENCE_LENS_API_ENDPOINT: "http://ollama:11434/v1",
+    INFERENCE_LENS_API_PROTOCOLS: "chat-completions, systemone",
+  });
+  assert.deepEqual(store.connectionConfiguration(), {
+    endpoint: "http://ollama:11434/v1",
+    protocols: ["openai-compatible-chat-completions"],
+    systemOne: true,
+  });
+  // A decision-only server speaks no chat protocol at all.
+  assert.deepEqual(parseServerProtocols("systemone"), {
+    kind: "valid",
+    protocols: [],
+    systemOne: true,
+  });
+  // `decisions` is OpenRouter's alpha path, not a protocol name (D9a).
+  assert.deepEqual(parseServerProtocols("systemone,decisions"), {
+    kind: "invalid",
+    unrecognized: ["decisions"],
   });
 });
 
@@ -560,6 +584,7 @@ test("unset, blank and recognized protocol lists are told apart from invalid one
   assert.deepEqual(parseServerProtocols("responses"), {
     kind: "valid",
     protocols: ["openai-responses"],
+    systemOne: false,
   });
   assert.deepEqual(parseServerProtocols("responses,assistants"), {
     kind: "invalid",
