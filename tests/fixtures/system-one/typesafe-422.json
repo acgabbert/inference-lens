@@ -1,0 +1,42 @@
+{
+  "provenance": {
+    "kind": "doc-derived",
+    "implementation": "TypeSafe /v1/systemone (Databricks documents the same shape)",
+    "sources": [
+      "https://docs.typesafe.ai/api",
+      "https://docs.databricks.com/aws/en/machine-learning/model-serving/query-systemone-models"
+    ],
+    "notes": "Only the envelope (detail[] of loc, msg, type, input?, ctx?) is documented. The msg and ctx values are illustrative pydantic wording."
+  },
+  "response": {
+    "status": 422,
+    "body": {
+      "detail": [
+        {
+          "loc": [
+            "body",
+            "questions",
+            "severity",
+            "criteria"
+          ],
+          "msg": "List should have at most 10 items after validation, not 12",
+          "type": "too_long",
+          "ctx": {
+            "field_type": "List",
+            "max_length": 10,
+            "actual_length": 12
+          }
+        },
+        {
+          "loc": [
+            "body",
+            "model"
+          ],
+          "msg": "Field required",
+          "type": "missing",
+          "input": {}
+        }
+      ]
+    }
+  }
+}

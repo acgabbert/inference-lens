@@ -1,12 +1,19 @@
 # System One protocol plan
 
-Status: **draft. The wire format has been checked against the primary docs;
-no live captures yet.** On 2026-10-24 each implementation's documentation was
-read directly (see [Sources](#sources)). What it showed is recorded in
-[Phase 0](#phase-0-verify-the-wire-format), along with what is still open. The
-items still open need credentials or a local runtime: real captures, error
-bodies other than 422, and model discovery on Ollama. No implementation starts
-until those captures exist and the [open decisions](#decisions) are settled.
+Status: **D1–D8 and U1–U6 accepted; Phase 1 in progress against doc-derived
+fixtures. No live captures yet.** On 2026-10-24 each implementation's
+documentation was read directly (see [Sources](#sources)). What it showed is
+recorded in [Phase 0](#phase-0-verify-the-wire-format), along with what is still
+open. The items still open need credentials or a local runtime: real captures,
+error bodies other than 422, and model discovery on Ollama.
+
+The user chose to start Phase 1 before captures exist. The core adapter is
+tested against fixtures assembled from the docs, each labelled `doc-derived`
+(`tests/fixtures/system-one/`). Those fixtures are replaced with redacted
+captures before host or UI work (Phase 2 onward) depends on them. Neither local
+runtime on the development machine could produce one: Ollama was 0.6.2 (the
+endpoint needs ≥ 0.35) and the installed `llama-server` (build 10090) has no
+`/v1/systemone` route.
 
 ## Goal
 
@@ -174,9 +181,9 @@ contract design, not the adapter.
 
 ## Decisions
 
-Per `AGENTS.md`, these are open until the user confirms them. Each lists the
-options and a recommendation. Changes made after the source check are marked
-*(revised)*.
+The user accepted every recommendation below (D1–D8) and the UI decisions in
+[U1–U6](#ui-decisions-u1u6). [D9](#d9-where-systemone-is-declared-open) is
+still open. Changes made after the source check are marked *(revised)*.
 
 ### D1. Where the protocol lives in the type system
 
@@ -318,6 +325,61 @@ What does a user edit and save?
   long-context header falls under the same decision: TypeSafe-specific, so out
   of scope for now.
 
+### UI decisions (U1–U6)
+
+Accepted with D1–D8. They refine Phase 3.
+
+- **U1. Navigation.** A Chat / Decision request-kind switch inside Compose, not
+  a new top-level mode. The task is the same write → run → inspect → revise
+  loop with the same Run action and the same Runs history. The `app/decisions/`
+  owner fills both Compose panes. Switching kinds never discards the other
+  kind's draft.
+- **U2. Target per kind.** Each kind keeps its own connection and model.
+  Switching to Decision never sends to whichever chat model was selected. The
+  decision model picker offers only connections that declare System One.
+- **U3. JSON-valued fields.** A string-first structured form, plus one "Edit as
+  JSON" view of the whole request. Both views edit the same `DecisionInput`.
+  Only `state` gets its own text/JSON toggle. This replaces the per-field toggle
+  sketched in D4.
+- **U4. Changing a question's type.** Labels keep their authored order, and
+  descriptions are kept wherever the new type has a slot for them. Switching to
+  noul keeps the old options so they come back on undo, instead of deleting them
+  silently.
+- **U5. Result layout.**
+  - Choice: bars in authored order (not sorted by probability), so runs read
+    the same side by side, with the winner highlighted.
+  - Score: a number line across the levels with a marker at the fractional
+    score, plus per-level bars labelled from `legend`.
+  - Noul: a single P(true) bar.
+  - Confidence is shown only when the wire includes it. Noul has none, and the
+    UI shows no placeholder for it.
+- **U6. Comparing runs.** Decision diffs (per-question probability changes)
+  are out of v1 and arrive with the Phase 5 checks.
+
+### D9. Where `systemOne` is declared *(open)*
+
+Found while starting Phase 1. A connection's capability snapshot is portable
+data: `createProjectFile` writes it into the connection requirement's
+`capabilityOverrides`, a strict schema, and experiment traces record it under a
+strict schema too. Adding a `systemOne` key to `ProviderCapabilities` therefore
+writes a key that every earlier release rejects. That contradicts D4-B's "no
+project format change yet".
+
+- **A. A `ProviderCapabilities` key, with project schema 13.** v12 files still
+  open. Old snapshots read the key as `false`, the way `anthropicMessages` was
+  added in v11. This is the simplest model, but it is a format bump for a
+  feature that is not yet project-owned.
+- **B. A device-local profile flag, outside the portable snapshot.** The
+  connection profile records that it serves System One. Readiness and the
+  decision model picker read the flag, and a decision trace records the target
+  it actually used. Projects and chat traces don't change. It moves into the
+  snapshot when D4-A makes decision requests project-owned.
+- **Recommendation: B.** It keeps D4-B's promise. Until a project can own a
+  decision request, it has nothing that needs to know whether a connection
+  speaks System One.
+
+Phase 1 doesn't depend on this decision: the adapter takes the target as given.
+
 ## Phases
 
 ### Phase 0: verify the wire format
@@ -357,12 +419,21 @@ docs; ⬜ items still need a live run or a credential.
 
 ### Phase 1: core contracts and adapter (no UI)
 
-- Connection-level protocol entry, `systemOne` capability, path
-  `/systemone`, label, credential headers (`provider-protocols.ts`, `types.ts`).
-- `DecisionRequest`, `DecisionQuestion`, `DecisionAnswer`, `DecisionRun` types
-  and a pure `DecisionProtocolAdapter` (build request, normalize response) in
-  `packages/core`.
-- Unit tests from the Phase 0 captures, written red first. They cover:
+- ✅ Connection-level protocol entry: `ConnectionProtocol` widens path, label,
+  and credential headers to `systemone`, and a pasted `…/systemone` URL reduces
+  to its base. Run-protocol selection and the chat adapter registry remain
+  chat-only (`provider-protocols.ts`).
+- ⬜ The `systemOne` declaration waits on [D9](#d9-where-systemone-is-declared-open).
+- ✅ `DecisionInput`, `DecisionQuestion`, `DecisionAnswer`, `DecisionResult`,
+  `DecisionRun` types and the `DecisionProtocolAdapter` contract
+  (`decision.ts`). The authored request is `DecisionInput` (`state` plus
+  `questions`); `model` lives in the resolved target, as it does for chat runs.
+- ✅ The pure System One adapter (`system-one.ts`), which builds the request,
+  normalizes the response, and reads the message out of an error body.
+- ✅ Unit tests (`tests/system-one.test.ts`) against **doc-derived** fixtures;
+  captures replace them later. The URL-reduction test was run red against the
+  old behaviour first. The adapter tests were red only because the module
+  didn't exist yet. They cover:
   - each question type
   - fractional score
   - `null` choice descriptions
