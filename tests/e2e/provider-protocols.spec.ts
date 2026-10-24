@@ -376,6 +376,36 @@ test("a protocol the server has not listed offers another API, never the locked 
   await expect(run).toBeEnabled();
 });
 
+test("a decision-only server list still manages the server default, so a chat run is blocked", async ({ page }) => {
+  // `INFERENCE_LENS_API_PROTOCOLS=systemone`: set, and naming no chat API.
+  await serveManagedProfile(page, { protocols: [], systemOne: true });
+  const project = createProjectFile({
+    name: "Decision-only server project",
+    request: {
+      provider: "openai-compatible",
+      endpoint: BUFFERED_FIXTURE_ENDPOINT,
+      model: "buffered-test-model",
+      messages: [{ role: "user", content: "Hello" }],
+    },
+    idSuffix: "decision-only-server",
+    createdAt: "2026-10-24T12:00:00.000Z",
+  });
+  await page.goto("/");
+  await waitForHydration(page, "Server default");
+  await importProject(page, project, "Decision-only server project");
+  await page.getByRole("button", { name: 'Map "Server default"' }).first().click();
+  const mapping = page.getByRole("dialog", { name: "Connections" });
+  await mapping.getByLabel("Profile for Default connection").selectOption({ label: "Server default" });
+  await mapping.getByRole("button", { name: /close/i }).first().click();
+
+  await expect(page.getByRole("button", { name: /run current conversation/i })).toBeDisabled();
+  const notice = page.locator(".run-readiness-slot").first();
+  await expect(notice).toContainText('"Server default" does not have Chat Completions enabled');
+  await notice.getByRole("button", { name: "Details" }).click();
+  await expect(notice).toContainText("INFERENCE_LENS_API_PROTOCOLS");
+  await expect(page.getByRole("button", { name: "Enable Chat Completions" })).toHaveCount(0);
+});
+
 test("an unrecognized INFERENCE_LENS_API_PROTOCOLS is reported rather than silently ignored", async ({ page }) => {
   await serveManagedProfile(page, { unrecognizedProtocols: ["assistants"] });
   await page.goto("/");
@@ -384,7 +414,7 @@ test("an unrecognized INFERENCE_LENS_API_PROTOCOLS is reported rather than silen
   const banner = page.locator('[data-app-banner="server-protocols-invalid"]');
   await expect(banner).toContainText("INFERENCE_LENS_API_PROTOCOLS was ignored");
   await expect(banner).toContainText('"assistants"');
-  await expect(banner).toContainText("chat-completions, responses, anthropic-messages");
+  await expect(banner).toContainText("chat-completions, responses, anthropic-messages, systemone");
 
   await banner.getByRole("button", { name: "Review Connections" }).click();
   const drawer = page.getByRole("dialog", { name: "Connections" });

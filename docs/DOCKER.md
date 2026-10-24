@@ -214,6 +214,16 @@ the run is blocked with a notice offering another protocol or another
 connection: the protocol switches are the server's, so enabling one means
 changing `INFERENCE_LENS_API_PROTOCOLS` and restarting.
 
+Add `systemone` to the list when the endpoint also answers System One decision
+requests at `<endpoint>/systemone`, as Ollama, llama.cpp, and OpenRouter do:
+`chat-completions,systemone`. Its key is presented as `Authorization: Bearer`.
+While the list is set, the profile's System One declaration follows it like the
+chat switches do; unset, the declaration is the browser's own. A list of only
+`systemone` is a decision-only server, and a chat run on it is blocked with the
+same notice. OpenRouter's `decisions` path is not a separate API, so
+`decisions` is not an accepted name, and an older release given `systemone`
+ignores the whole list with the warning and banner above.
+
 Leave `INFERENCE_LENS_MODEL` unset and the profile starts with no model rather
 than a guess: a local llama.cpp server has never heard of `gpt-4.1-mini`. A run
 is blocked until you pick one, with a notice pointing at the model picker,

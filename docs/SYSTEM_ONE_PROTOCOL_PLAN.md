@@ -1,6 +1,6 @@
 # System One protocol plan
 
-Status: **D1–D15 and U1–U6 accepted; Phase 1 complete, Phase 2 in progress. llama.cpp and
+Status: **D1–D15 and U1–U6 accepted; Phases 1 and 2 complete. llama.cpp and
 OpenRouter captured on 2026-10-24, Ollama on 2026-10-23; direct TypeSafe still
 doc-derived only.** On 2026-10-24 each implementation's
 documentation was read directly (see [Sources](#sources)). What it showed is
@@ -550,6 +550,10 @@ step 1 body.
 - `ModelDiscoveryResponse` gains `unfiltered?: true` for step 3, so the
   picker can say the list is not filtered. `ModelDiscoveryRequest.protocol`
   widens to `ConnectionProtocol` so it can name `systemone`.
+- *(revised while implementing)* `protocol: "systemone"` is itself the request
+  for the decision listing, so the web discovery request has no separate
+  `listing` field: no protocol needs the other listing. The selector exists
+  only on the Tauri command, which is asked for one step at a time.
 
 ### D14. The web decision route *(accepted)*
 
@@ -669,26 +673,43 @@ docs; ⬜ items still need a live run or a credential.
 
 ### Phase 2: hosts
 
-- Web service HTTP route executes a decision request with the server-held
-  credential, mirroring the chat transport's redaction.
-- `INFERENCE_LENS_API_PROTOCOLS` accepts `systemone` (D9a-A): parsed apart
-  from the chat protocols, reported in runtime status, locking the drawer
-  toggle while set. `docs/DOCKER.md` documents it.
-- Tauri: add the protocol to the closed `WireProtocol` enum, with its path and
-  credential handling; Rust still does no protocol parsing. Add `/systemone` to
-  `PROTOCOL_PATHS`, so a pasted full URL still reduces to its base.
-- Decision-model discovery (D10-B): `listing: "decisions"` on the discovery
-  request, the marker-following URLs in core and Rust, and a pure core parser
-  for both listing shapes, unit-tested against `openrouter-models`,
-  `ollama-models`, and `llamacpp-models`.
-- A fixture provider, `npm run dev:systemone-provider` (D11-B), next to the
-  flaky and paced fixtures. It replays the committed captures by model id
-  under `/llamacpp/v1`, `/ollama/v1`, and `/openrouter/v1`, each with its own
-  listing and error envelope, plus a synthetic 429 with `retry-after`.
+- ✅ Web service: `POST /api/decisions` (D14) executes one exchange with the
+  server-held credential and streams D12's `DecisionTransportEvent`s as NDJSON.
+  Core owns the pieces (`decision-execution.ts`): the redacted request, the
+  whole body as frame 0 (an error body included), then the normalized result,
+  or the protocol's own error message with the status. `executeDecision`
+  shares the chat turn's failure mapping. `HttpInferenceTransport` implements
+  the separate `DecisionTransport` contract.
+- ✅ `INFERENCE_LENS_API_PROTOCOLS` accepts `systemone` (D9a-A): parsed apart
+  from the chat protocols, reported as `systemOne` in runtime status beside
+  `protocols` (empty for a decision-only list), and applied to the server
+  default profile by `withServerProtocols`. The drawer toggle it locks arrives
+  with the toggle in Phase 3. `docs/DOCKER.md` documents it.
+- ✅ Tauri: `WireProtocol::SystemOne` with its path and Bearer credential, and
+  `/systemone` in `PROTOCOL_PATHS`. Decisions use the existing buffered raw
+  proxy (`start_provider_turn`, `streaming: false`); Rust still parses
+  nothing. The webview reads the body with the same core pieces as the web
+  service.
+- ✅ Decision-model discovery (D10-B, D13): `discoverDecisionModels` runs the
+  three steps against an injected fetcher, unit-tested against
+  `openrouter-models`, `ollama-models`, and `llamacpp-models`. Rust's
+  `discover_models` takes a `listing` name (`chat`, `decisions`,
+  `ollama-tags`) and builds each URL itself.
+- ✅ The fixture provider, `npm run dev:systemone-provider` (D11-B, D15), with
+  a fourth personality, `/ollama-proxied/v1`, for D10's step 3 (a proxy that
+  forwards only `/v1/*`). `tests/system-one-provider.test.ts` runs it as a
+  process and reaches every discovery step and each runtime's error envelope
+  through the host code.
+- Verified against the running dev server (2026-10-24): `/api/models` returned
+  each personality's decision listing (the proxied one flagged `unfiltered`),
+  and `/api/decisions` returned answers, the synthetic 429 with its
+  `retry-after`, and a 400 for a request with no questions. The Tauri webview
+  path was exercised only in a scratch harness with mocked IPC, not in the
+  desktop app; the Rust tests ran on Linux.
 - The four doc-derived fixtures (`typesafe-all-types`, `typesafe-422`,
   `openrouter-extras`, `openrouter-error`) don't block this phase: captured
   fixtures cover every response shape it uses. They are replaced when a
-  TypeSafe key is available.
+  TypeSafe key is available. The fixture provider never serves them.
 
 ### Phase 3: UI
 

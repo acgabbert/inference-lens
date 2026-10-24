@@ -22,6 +22,7 @@
     "dev:responses-provider": "node scripts/responses-provider.mjs",
     "dev:anthropic-provider": "node scripts/anthropic-provider.mjs",
     "dev:large-catalogue-provider": "node scripts/large-catalogue-provider.mjs",
+    "dev:systemone-provider": "node scripts/system-one-provider.mjs",
     "build": "npm run typecheck && vinext build",
     "build:tauri": "npm run typecheck && INFERENCE_LENS_TARGET=tauri vinext build",
     "start": "vinext start",
