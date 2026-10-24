@@ -8,10 +8,13 @@ import {
   profileDeletionRefusal,
   readProfiles,
   removeProfile,
+  servesSystemOne,
   toggleFavoriteModel,
+  withSystemOne,
   writeProfiles,
 } from "../app/profile-store.client.ts";
 import type { StoredInferenceProfile } from "../app/profile-store.client.ts";
+import { resolveProviderCapabilities } from "../packages/core/src/types.ts";
 
 // The openai-compatible baseline enables modelDiscovery and disables tools.
 function profile(
@@ -345,6 +348,82 @@ test("a stored protocol preference survives a reload, and an unknown one is drop
     // profile: the run falls back to a protocol the profile supports.
     assert.equal(snapshot.profiles[1]!.id, "future");
     assert.equal(snapshot.profiles[1]!.protocol, undefined);
+  } finally {
+    if (originalWindow) {
+      Object.defineProperty(globalThis, "window", originalWindow);
+    } else {
+      delete (globalThis as { window?: unknown }).window;
+    }
+  }
+});
+
+test("System One is a device-local declaration, never part of the capability snapshot", () => {
+  const base = profile({ tools: true });
+  assert.equal(servesSystemOne(base), false);
+
+  const declared = withSystemOne(base, true);
+  assert.equal(servesSystemOne(declared), true);
+  assert.equal(servesSystemOne(base), false, "the given profile is not mutated");
+  // The portable snapshot a project or trace records is unchanged by it.
+  assert.deepEqual(declared.capabilityOverrides, { tools: true });
+  assert.equal(
+    "systemOne" in resolveProviderCapabilities(declared.provider, declared.capabilityOverrides),
+    false,
+  );
+  // The server owns the chat protocols, not this declaration.
+  assert.equal(
+    servesSystemOne(withServerProtocols(declared, ["anthropic-messages"])),
+    true,
+  );
+
+  const withdrawn = withSystemOne(declared, false);
+  assert.equal(servesSystemOne(withdrawn), false);
+  assert.equal("systemOne" in withdrawn, false, "an undeclared profile stores nothing");
+});
+
+test("a System One declaration survives a reload, and a malformed one is dropped", () => {
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const stored = (id: string, extra: Record<string, unknown>) => ({
+    id,
+    name: id,
+    provider: "openai-compatible",
+    endpoint: "http://localhost:11434/v1",
+    model: "nimble",
+    ...extra,
+  });
+  let storage = JSON.stringify({
+    profiles: [
+      stored("legacy", {}),
+      stored("declared", { systemOne: true }),
+      stored("false", { systemOne: false }),
+      stored("malformed", { systemOne: "yes" }),
+    ],
+    activeProfileId: "legacy",
+  });
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      localStorage: {
+        getItem: () => storage,
+        setItem: (_key: string, value: string) => {
+          storage = value;
+        },
+      },
+    },
+  });
+
+  try {
+    const snapshot = readProfiles();
+    // A malformed declaration costs the declaration, not the profile.
+    assert.deepEqual(snapshot.profiles.map(({ id }) => id), ["legacy", "declared", "false", "malformed"]);
+    assert.deepEqual(snapshot.profiles.map(servesSystemOne), [false, true, false, false]);
+    assert.equal(snapshot.profiles.some((p) => "systemOne" in p && p.systemOne !== true), false);
+
+    writeProfiles({
+      ...snapshot,
+      profiles: [withSystemOne(snapshot.profiles[0]!, true), ...snapshot.profiles.slice(1)],
+    });
+    assert.deepEqual(readProfiles().profiles.map(servesSystemOne), [true, true, false, false]);
   } finally {
     if (originalWindow) {
       Object.defineProperty(globalThis, "window", originalWindow);

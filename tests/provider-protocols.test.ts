@@ -4,6 +4,9 @@ import test from "node:test";
 import {
   credentialHeaders,
   effectiveProtocol,
+  isConnectionProtocol,
+  isProviderWireProtocol,
+  protocolLabel,
   protocolHeaders,
   providerBaseEndpoint,
   providerModelsUrl,
@@ -105,4 +108,33 @@ test("a run's protocol is the preference when supported, else the first supporte
   ]);
   const none = { ...OPENAI_COMPATIBLE_CAPABILITIES, chatCompletions: false };
   assert.equal(effectiveProtocol(none), "openai-compatible-chat-completions");
+});
+
+test("System One is reached at the shared base with a Bearer key", () => {
+  for (const endpoint of [
+    "https://api.typesafe.ai/v1",
+    "https://api.typesafe.ai/v1/systemone",
+    "https://api.typesafe.ai/v1/chat/completions",
+  ]) {
+    assert.equal(providerBaseEndpoint(endpoint), "https://api.typesafe.ai/v1");
+    assert.equal(
+      providerRequestUrl(endpoint, "systemone"),
+      "https://api.typesafe.ai/v1/systemone",
+    );
+  }
+  assert.equal(protocolLabel("systemone"), "System One");
+  assert.deepEqual(protocolHeaders("systemone"), {});
+  assert.deepEqual(credentialHeaders("systemone", "key"), { authorization: "Bearer key" });
+  assert.deepEqual(redactedCredentialHeaders("systemone", true), {
+    authorization: "Bearer ••••••••",
+  });
+});
+
+test("a connection protocol is not a run protocol", () => {
+  // The chat registry and run-protocol selection never see System One, so a
+  // conversation cannot be routed to a decision endpoint.
+  assert.equal(isProviderWireProtocol("systemone"), false);
+  assert.equal(isConnectionProtocol("systemone"), true);
+  assert.equal(isConnectionProtocol("anthropic-messages"), true);
+  assert.equal(isConnectionProtocol("mock"), false);
 });

@@ -1,0 +1,63 @@
+{
+  "provenance": {
+    "kind": "doc-derived",
+    "implementation": "TypeSafe /v1/systemone",
+    "sources": [
+      "https://docs.typesafe.ai/api",
+      "https://docs.typesafe.ai/primitives/choice",
+      "https://docs.typesafe.ai/primitives/score",
+      "https://docs.typesafe.ai/primitives/noul"
+    ]
+  },
+  "request": {
+    "model": "jev-latest",
+    "state": {
+      "ticket": "I was charged twice for October and the app crashes when I open invoices.",
+      "plan": "pro"
+    },
+    "questions": {
+      "intent": {
+        "type": "choice",
+        "instructions": "What is the customer mainly asking about?",
+        "criteria": {
+          "billing": "Charges, refunds, invoices, or plan changes.",
+          "bug": "Something in the product is broken.",
+          "other": null
+        }
+      },
+      "severity": {
+        "type": "score",
+        "instructions": ["How urgent is this ticket?", { "consider": "customer impact" }],
+        "criteria": ["minor", "major", { "label": "critical", "note": "data loss or money lost" }]
+      },
+      "is_spam": {
+        "type": "noul",
+        "instructions": "Is this ticket spam?",
+        "criteria": { "true": "Unsolicited advertising.", "false": "A real customer request." }
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "model": "jev-1.14.0",
+      "answers": {
+        "intent": {
+          "type": "choice",
+          "choice": "billing",
+          "confidence": 0.91,
+          "probabilities": { "billing": 0.95, "bug": 0.04, "other": 0.01 }
+        },
+        "severity": {
+          "type": "score",
+          "score": 1.3,
+          "confidence": 0.62,
+          "legend": { "0": "minor", "1": "major", "2": { "label": "critical", "note": "data loss or money lost" } },
+          "probabilities": { "0": 0.1, "1": 0.5, "2": 0.4 }
+        },
+        "is_spam": { "type": "noul", "noul": 0.03 }
+      },
+      "usage": { "input_tokens": 841, "output_tokens": 0 }
+    }
+  }
+}

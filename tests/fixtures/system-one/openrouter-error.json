@@ -1,0 +1,19 @@
+{
+  "provenance": {
+    "kind": "doc-derived",
+    "implementation": "OpenRouter /api/v1/systemone",
+    "sources": [
+      "https://openrouter.ai/docs/api/api-reference/alphadecisions/submit-a-decisions-questions-and-answers-request.md"
+    ]
+  },
+  "response": {
+    "status": 402,
+    "body": {
+      "error": {
+        "code": 402,
+        "message": "Insufficient credits to run this request.",
+        "metadata": { "required": 0.0001 }
+      }
+    }
+  }
+}
