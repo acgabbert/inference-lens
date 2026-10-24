@@ -725,3 +725,38 @@ an unbound tool, the default of 5 repetitions through the command line,
 Run history and the repeated-experiment workspace. It passed on its first run:
 it could only fail before `repeat` existed at the import.
 
+### Decision suites (System One 5c): what exists
+
+`run` dispatches on the suite's kind, as
+[System One D36](SYSTEM_ONE_PROTOCOL_PLAN.md#d36-cli-surface-accepted) set out:
+flags, credentials, `--no-auth`, `--retry-rate-limits`, and exit codes are
+unchanged, and `repeat` stays chat-only. D54 there records the two choices
+made for it.
+
+| Piece | Owns |
+| --- | --- |
+| `packages/cli/src/evaluation-run.ts` | Suite and item selection, then `prepareChatEvaluation` or `prepareDecisionEvaluation`, which resolve connections, check the start blocker, and freeze the plan |
+| `packages/cli/src/headless-experiment.ts` | `driveHeadlessExperiment` for either plan kind: an `ExperimentController<DecisionRun>` with the decision transport and decision traces, or the chat controller with tools |
+| `packages/cli/src/transport.ts` | `executeDecision` beside `executeTurn`, crossing `resolveDecisionRequest` as the service's `/api/decisions` does |
+| `packages/cli/src/start-blockers.ts` | `describeDecisionStartBlocker` |
+| `packages/cli/src/summary.ts` | `runKind` on summary v1 |
+
+- **The suite declares System One** (D54). There is no device profile, so a
+  connection a decision suite names is taken to serve decisions. An endpoint
+  that does not is a provider error in the trace, not a setup error.
+- **`runKind: "chat" | "decision"`** is added to summary v1 and always
+  present. A decision suite's configurations report protocol `systemone`.
+- `--allow-tool` naming a project tool is accepted and unused, as it is for
+  a chat suite that does not expose that tool.
+
+Verification: `tests/cli-decision-run.test.ts`, run red first on the old
+refusal ("is a decision suite, which this build cannot run yet") for all
+five tests. It runs against a local endpoint answering with the committed
+llama.cpp capture and covers the request on the wire (`/systemone`, the key,
+the model, the case value in the state), artifacts parsed by core and
+grouped by history as a decision evaluation, `project.json` untouched, exit
+codes 1, 2, and 3, the retry flag, and `runKind` through `run --json`. A new
+case in `tests/e2e/headless-cli-artifacts.spec.ts` runs the CLI against the
+System One capture replay and opens the result in Run history, the
+evaluation results, and Decision Compose. It was written after the code and
+not shown failing.

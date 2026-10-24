@@ -20,7 +20,8 @@ export const USAGE = `Usage: inference-lens run <project-folder> [options]
 Runs work from a project folder with no browser and no server, writing the
 same plan, result, and trace files the app writes. Never writes project.json.
 
-  run      Runs one evaluation suite.
+  run      Runs one evaluation suite, chat or decision (System One). A
+           decision suite's connections are called as System One endpoints.
   repeat   Repeats the project's current conversation, as last saved, with
            its saved model, temperature, and enabled tools.
 

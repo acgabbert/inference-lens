@@ -11,6 +11,8 @@ import {
 } from "../../../packages/core/src/project.ts";
 import type { ProjectFile } from "../../../packages/core/src/project.ts";
 import type { CheckDefinition } from "../../../packages/core/src/checks.ts";
+import type { DecisionInput } from "../../../packages/core/src/decision.ts";
+import { updateDecisionRequestDraft } from "../../../packages/core/src/decision-request.ts";
 import type { ToolDefinition } from "../../../packages/core/src/run-kernel/types.ts";
 
 export const HEADLESS_CONNECTION_ID = "connection_headless-default";
@@ -123,4 +125,70 @@ export async function writeHeadlessProjectFolder(project: ProjectFile): Promise<
   await mkdir(directory);
   await writeFile(path.join(directory, "project.json"), serializeProjectFile(project));
   return directory;
+}
+
+/**
+ * A project with one decision request asking the captured llama.cpp questions
+ * and a decision suite on it, against `recordingDecisionProvider`. The capture
+ * answers `intent` with billing and `severity` about 1.09, so the first case
+ * passes and the second (`expectBug`) fails.
+ */
+export function headlessDecisionProject(options: {
+  endpoint: string;
+  questions: DecisionInput["questions"];
+  model?: string;
+  repetitions?: number;
+  expectBug?: boolean;
+}): ProjectFile {
+  const base = createProjectFile({
+    name: "Headless decisions",
+    idSuffix: "headless",
+    createdAt: "2026-10-01T12:00:00.000Z",
+    request: {
+      provider: "openai-compatible",
+      endpoint: options.endpoint,
+      model: "chat-model",
+      messages: [{ role: "user", content: "Hello" }],
+    },
+  });
+  const project = updateDecisionRequestDraft(base, {
+    decision: { state: { ticket: "{{ticket}}", plan: "pro" }, questions: options.questions },
+    values: { ticket: "Charged twice" },
+    branch: false,
+    idSuffix: "triage",
+    createdAt: "2026-10-01T12:00:01.000Z",
+  });
+  return parseProjectFile({
+    ...project,
+    evaluationSuites: [{
+      id: "evaluation-suite_triage",
+      name: "Triage",
+      input: { kind: "decision-request-revision", decisionRequestRevisionId: "decision-revision_triage" },
+      execution: {
+        target: { connectionRequirementId: HEADLESS_CONNECTION_ID, model: options.model ?? "local-decision", protocol: "systemone" },
+        repetitions: options.repetitions ?? 1,
+      },
+      variants: [{ id: "evaluation-variant_default", name: "Default", overrides: {} }],
+      inputBindings: [{ id: "evaluation-input_ticket", name: "ticket", target: { kind: "decision-variable", variableName: "ticket" } }],
+      cases: [
+        {
+          id: "evaluation-case_billing",
+          name: "Routes billing",
+          values: { "evaluation-input_ticket": "I was charged twice." },
+          checks: [
+            { checkId: "check_billing", kind: "decision-choice", questionId: "intent", option: "billing" },
+            { checkId: "check_major", kind: "decision-score-range", questionId: "severity", min: 1 },
+          ],
+        },
+        ...(options.expectBug
+          ? [{
+            id: "evaluation-case_crash",
+            name: "Routes a crash",
+            values: { "evaluation-input_ticket": "The app crashes." },
+            checks: [{ checkId: "check_bug", kind: "decision-choice", questionId: "intent", option: "bug" }],
+          }]
+          : []),
+      ],
+    }],
+  } as unknown as ProjectFile);
 }

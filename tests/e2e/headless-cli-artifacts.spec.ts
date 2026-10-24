@@ -10,14 +10,16 @@ import { parseRunTraceJson, runStateFromTrace } from "../../packages/core/src/ru
 import { finalAssistantOutput } from "../../packages/core/src/run-output";
 import type { CheckDefinition } from "../../packages/core/src/checks";
 import type { ToolDefinition } from "../../packages/core/src/run-kernel/types";
+import { CAPTURED_QUESTIONS } from "../fixtures/headless/decision-provider";
 import {
   HEADLESS_CONNECTION_ID,
+  headlessDecisionProject,
   headlessProject,
   headlessToolProject,
   writeHeadlessProjectFolder,
 } from "../fixtures/headless/project";
 import { toolCallingProvider } from "../fixtures/headless/tool-calling-provider";
-import { BUFFERED_FIXTURE_ENDPOINT, seedProfile, stubProjectDirectory, waitForHydration } from "./support";
+import { BUFFERED_FIXTURE_ENDPOINT, SYSTEM_ONE_FIXTURE_ORIGIN, seedProfile, stubProjectDirectory, waitForHydration } from "./support";
 
 async function readProjectFolder(directory: string): Promise<Record<string, string>> {
   const files: Record<string, string> = {};
@@ -91,6 +93,60 @@ test("the app opens an evaluation the headless CLI wrote", async ({ page }) => {
   // Every trace the CLI wrote was found and read back as evidence.
   await expect(workspace).not.toContainText("Trace absent");
   await expect(workspace).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
+});
+
+/**
+ * 5c: the CLI runs a decision suite against the capture replay, which routes
+ * every ticket to billing, and the app reads the folder back as a decision
+ * evaluation whose repetitions open in Decision Compose.
+ */
+test("the app opens a decision evaluation the headless CLI wrote", async ({ page }) => {
+  const directory = await writeHeadlessProjectFolder(headlessDecisionProject({
+    endpoint: `${SYSTEM_ONE_FIXTURE_ORIGIN}/llamacpp/v1`,
+    model: "all-types",
+    questions: CAPTURED_QUESTIONS,
+    expectBug: true,
+  }));
+  const outcome = await startHeadlessEvaluation({
+    projectDirectory: directory,
+    environment: {},
+    noAuth: new Set([HEADLESS_CONNECTION_ID]),
+    transport: createInProcessTransport({ containerized: false }),
+  }).done;
+  // The precondition the browser half depends on: billing passes, bug fails.
+  expect(outcome.error).toBeUndefined();
+  expect(outcome.exitCode).toBe(1);
+  expect(outcome.summary?.runKind).toBe("decision");
+
+  const files = await readProjectFolder(directory);
+  expect(Object.keys(files).filter((name) => name.startsWith("traces/"))).toHaveLength(2);
+  await stubProjectDirectory(page, { name: "fixture.inference-lens", files });
+
+  await page.goto("/");
+  await page.getByLabel("Project menu").click();
+  await page.getByRole("button", { name: "Open project folder…" }).click();
+  await expect(page.getByText(/Inspect every model run · Headless decisions/)).toBeVisible();
+
+  await page.getByLabel("Run data menu").click();
+  await page.getByRole("button", { name: "Run history", exact: true }).click();
+  const grouped = page.locator(".runs-evidence-item.experiment").filter({ hasText: "Triage" });
+  await expect(grouped).toHaveCount(1);
+  await expect(grouped).toContainText("1/2 cases passed");
+  await expect(grouped).toContainText("completed");
+  await grouped.click();
+
+  const workspace = page.getByRole("region", { name: "Evaluation results" });
+  await expect(workspace).toContainText("Triage");
+  await expect(workspace).toContainText("1 / 2 passed");
+  await expect(workspace).toContainText("intent: billing");
+  await expect(workspace).not.toContainText("Trace absent");
+  await expect(workspace).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
+
+  const crash = workspace.locator("details.evaluation-case-result", { hasText: "Routes a crash" });
+  await crash.locator("summary").click();
+  await expect(crash).toContainText("check failed");
+  await crash.getByRole("button", { name: "Open Response & Inspect" }).click();
+  await expect(page.getByRole("article", { name: "Answer intent" })).toContainText("Choice billing");
 });
 
 /**

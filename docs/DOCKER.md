@@ -274,8 +274,9 @@ it — the workbench itself has no user accounts.
 The image also contains the headless CLI, `inference-lens`. It runs one suite
 from a project folder with no browser and no server, and writes the same plan,
 result, and trace files the app writes, so the app's Runs and Evaluations
-workspaces open them afterwards. Give the image that command in place of the
-server:
+workspaces open them afterwards. A decision (System One) suite runs the same
+way, with the same flags and credentials. Give the image that command in place
+of the server:
 
 ```sh
 docker run --rm \

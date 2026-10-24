@@ -1,6 +1,6 @@
 # System One protocol plan
 
-Status: **D1–D53 and U1–U6 accepted. Phases 5a (project-owned decision requests) and 5b (decision suites) are implemented, 5c is not. Phases 1 and 2 are merged; D16's fixes
+Status: **D1–D54 and U1–U6 accepted. Phase 5 is implemented: 5a (project-owned decision requests), 5b (decision suites), and 5c (`inference-lens run` for decision suites). Phases 1 and 2 are merged; D16's fixes
 and host tests are in, with its native-app check still to run on a desktop
 build. Phases 3 and 4 are implemented together (D20): the Compose owner and
 topbar (D29-A), trace opening by kind (D30), the decision draft, target, and
@@ -1536,6 +1536,25 @@ The user chose each recommendation.
   endpoint, and the route maps it to that profile on this device when it is
   unmapped. The default chat requirement is left alone.
 
+#### D54. 5c CLI decisions *(accepted)*
+
+The user chose each recommendation.
+
+- **The suite is the System One declaration.** The CLI has no device
+  profile, and a connection requirement carries no System One flag (D9-B).
+  A connection a decision suite names is taken to serve decisions, as a chat
+  suite's connection is taken to have the capabilities the project declares.
+  This keeps D36's "flags unchanged": no new flag or variable. An endpoint
+  that does not serve System One fails in the provider exchange and is
+  recorded in the trace, not refused at setup. Rejected: a per-connection
+  variable (a setup error the app does not have), and moving `systemOne`
+  into the portable capability snapshot (a project schema bump).
+- **`runKind` on summary v1.** The `--json` summary keeps
+  `kind: "evaluation"` and version 1 and gains an always-present
+  `runKind: "chat" | "decision"`, an additive field under its contract.
+  Rejected: inferring the kind from `protocol: "systemone"`, and a new
+  `kind` value, which consumers matching `"evaluation"` would miss.
+
 ## Phases
 
 ### Phase 0: verify the wire format
@@ -1895,7 +1914,27 @@ Decided in D31–D37, with 5a's details in D38–D43. Delivered in order:
     and decision suites alike.
   - Not covered: a decision suite on the Tauri desktop paths, a 429 inside
     a decision batch in the browser, and the CLI (5c).
-- **5c.** `inference-lens run` for decision suites (D36).
+- **5c.** `inference-lens run` for decision suites (D36, D54).
+  Implemented (2026-10-24). `run` resolves the suite, then prepares a chat
+  or a decision plan; the decision path resolves connections and
+  credentials as chat does, checks `decisionEvaluationStartBlocker` with
+  every named connection declared System One, and freezes
+  `createDecisionEvaluationStartPlan`. `driveHeadlessExperiment` runs either
+  plan kind, writing decision traces with `serializeDecisionRunTrace`. The
+  in-process transport gains `executeDecision`, which crosses
+  `resolveDecisionRequest` like the service route. Summary v1 gains
+  `runKind`. `docs/HEADLESS_CLI_DESIGN.md` lists the pieces.
+  Covered by `tests/cli-decision-run.test.ts`, all five tests red first on
+  the old refusal, against a local endpoint answering with the committed
+  llama.cpp capture: the wire request, the artifacts and history, exit codes
+  0–3, the retry flag, and `runKind` through `run --json`. A new case in
+  `tests/e2e/headless-cli-artifacts.spec.ts` runs the CLI against the capture
+  replay and opens the result in the app, down to Decision Compose; it was
+  written after the code and not shown failing.
+  Not covered: the CLI inside the Docker image (`npm run test:docker-cli`
+  was not run), and a 429 retry that succeeds against the capture replay,
+  which answers every `429` request with 429 (the unit test's own endpoint
+  covers it).
 
 ## Out of scope
 
