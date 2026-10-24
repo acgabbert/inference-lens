@@ -3,6 +3,9 @@ import type { CheckDefinition, CheckKind } from "./checks.ts";
 import { evaluationSuitePreflight, templateUseVariableIndex } from "./evaluation-suites.ts";
 import type {
   ChatEvaluationSuite,
+  DecisionEvaluationSuite,
+  DecisionEvaluationVariant,
+  DecisionInputBinding,
   EvaluationCase,
   EvaluationInputBinding,
   EvaluationSuite,
@@ -17,11 +20,13 @@ import {
 import type { ProjectFile, PromptTemplateMessage } from "./project.ts";
 import { randomUUID } from "./random-id.ts";
 import { createEntityId } from "./run-kernel/types.ts";
+import { discoverDecisionVariables } from "./decision-variables.ts";
 import { discoverTemplateVariables } from "./template-engine.ts";
 import type {
   CheckId,
   ConnectionRequirementId,
   ConversationRevisionId,
+  DecisionRequestRevisionId,
   EvaluationCaseId,
   EvaluationInputBindingId,
   EvaluationSuiteId,
@@ -264,6 +269,28 @@ function mapChatSuite(
   });
 }
 
+/** Edits only a decision suite has: its pinned revision, target, and decision bindings. */
+function mapDecisionSuite(
+  project: ProjectFile,
+  suiteId: EvaluationSuiteId,
+  update: (suite: DecisionEvaluationSuite) => DecisionEvaluationSuite,
+): ProjectFile {
+  return mapSuite(project, suiteId, (suite) => {
+    if (suite.input.kind !== "decision-request-revision") {
+      throw new ProjectValidationError([{ code: "custom", path: ["evaluationSuites", suiteId], message: "This edit applies to decision suites only." }]);
+    }
+    return update(suite as DecisionEvaluationSuite);
+  });
+}
+
+function requireDecisionRevision(project: ProjectFile, revisionId: DecisionRequestRevisionId, path: Array<string | number>) {
+  const revision = project.decisionRequestRevisions.find(({ id }) => id === revisionId);
+  if (!revision) {
+    throw new ProjectValidationError([{ code: "custom", path, message: `Decision request revision "${revisionId}" does not exist.` }]);
+  }
+  return revision;
+}
+
 function uniqueName(base: string, occupied: readonly string[]): string {
   const names = new Set(occupied.map((name) => name.toLowerCase()));
   if (!names.has(base.toLowerCase())) return base;
@@ -309,6 +336,127 @@ export function createEvaluationSuite(
       cases: [],
     }]),
   };
+}
+
+/**
+ * A decision suite pinned to one request revision (D44). Its connection is the
+ * project's default requirement; the model comes from the caller, since the
+ * model Decision Compose targets is session state (D29).
+ */
+export function createDecisionEvaluationSuite(
+  project: ProjectFile,
+  { decisionRequestRevisionId, name, model }: {
+    decisionRequestRevisionId: DecisionRequestRevisionId;
+    name?: string;
+    model: string;
+  },
+  suffix: IdSuffix = generatedSuffix,
+): { project: ProjectFile; suiteId: EvaluationSuiteId } {
+  const revision = requireDecisionRevision(project, decisionRequestRevisionId, ["evaluationSuites"]);
+  const request = project.decisionRequests.find(({ id }) => id === revision.decisionRequestId);
+  const suiteId = createEntityId("evaluation-suite", suffix());
+  const suite: DecisionEvaluationSuite = {
+    id: suiteId,
+    name: uniqueName(name ?? `${request?.name ?? "Decision"} evaluation`, project.evaluationSuites.map(({ name: existing }) => existing)),
+    input: { kind: "decision-request-revision", decisionRequestRevisionId },
+    execution: {
+      target: {
+        connectionRequirementId: project.defaults.target.connectionRequirementId,
+        model,
+        protocol: "systemone",
+      },
+      repetitions: 1,
+    },
+    variants: [{
+      id: createEntityId("evaluation-variant", `${suiteId}-default`),
+      name: "Default",
+      overrides: {},
+    }],
+    inputBindings: [],
+    cases: [],
+  };
+  return { suiteId, project: updatedSuites(project, [...project.evaluationSuites, suite]) };
+}
+
+export function updateDecisionSuiteInput(
+  project: ProjectFile,
+  suiteId: EvaluationSuiteId,
+  decisionRequestRevisionId: DecisionRequestRevisionId,
+): ProjectFile {
+  requireDecisionRevision(project, decisionRequestRevisionId, ["evaluationSuites", suiteId, "input"]);
+  return mapDecisionSuite(project, suiteId, (suite) => ({
+    ...suite,
+    input: { kind: "decision-request-revision", decisionRequestRevisionId },
+  }));
+}
+
+export function updateDecisionSuiteExecution(
+  project: ProjectFile,
+  suiteId: EvaluationSuiteId,
+  execution: DecisionEvaluationSuite["execution"],
+): ProjectFile {
+  return mapDecisionSuite(project, suiteId, (suite) => ({ ...suite, execution }));
+}
+
+export function updateDecisionEvaluationVariant(
+  project: ProjectFile,
+  suiteId: EvaluationSuiteId,
+  variantId: EvaluationVariantId,
+  patch: Pick<DecisionEvaluationVariant, "name" | "overrides">,
+): ProjectFile {
+  return mapDecisionSuite(project, suiteId, (suite) => ({
+    ...suite,
+    variants: suite.variants.map((variant) => variant.id === variantId ? { ...variant, ...patch } : variant),
+  }));
+}
+
+/** Variables the pinned revision uses that no input of the suite fills yet, in authored order. */
+export function decisionBindingCandidates(
+  project: Pick<ProjectFile, "decisionRequestRevisions">,
+  suite: DecisionEvaluationSuite,
+): string[] {
+  const revision = project.decisionRequestRevisions.find(({ id }) => id === suite.input.decisionRequestRevisionId);
+  if (!revision) return [];
+  const bound = new Set(suite.inputBindings.map(({ target }) => target.variableName));
+  return discoverDecisionVariables(revision.decision).variables.filter((name) => !bound.has(name));
+}
+
+/**
+ * Adds a case input for one of the pinned revision's variables (D45). Every
+ * existing case gains an empty value, which preflight names until it is
+ * filled, as for a chat input.
+ */
+export function addDecisionEvaluationInput(
+  project: ProjectFile,
+  suiteId: EvaluationSuiteId,
+  variableName: string,
+  suffix: IdSuffix = generatedSuffix,
+): { project: ProjectFile; inputId: EvaluationInputBindingId } {
+  const inputId = createEntityId("evaluation-input", suffix());
+  const next = mapDecisionSuite(project, suiteId, (suite) => {
+    const revision = requireDecisionRevision(project, suite.input.decisionRequestRevisionId, ["evaluationSuites", suiteId, "input"]);
+    if (!discoverDecisionVariables(revision.decision).variables.includes(variableName)) {
+      throw new ProjectValidationError([{
+        code: "custom",
+        path: ["evaluationSuites", suiteId, "inputBindings"],
+        message: `The pinned decision request does not use variable "${variableName}".`,
+      }]);
+    }
+    const binding: DecisionInputBinding = {
+      id: inputId,
+      name: uniqueName(variableName, suite.inputBindings.map(({ name }) => name)),
+      target: { kind: "decision-variable", variableName },
+    };
+    return {
+      ...suite,
+      inputBindings: [...suite.inputBindings, binding],
+      cases: suite.cases.map((evaluationCase) => ({
+        ...evaluationCase,
+        values: { ...evaluationCase.values, [inputId]: "" },
+      })),
+    };
+  });
+  return { project: next, inputId };
 }
 
 export function updateEvaluationSuiteInput(

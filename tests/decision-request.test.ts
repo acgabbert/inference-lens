@@ -9,6 +9,7 @@ import {
   updateDecisionRequestDraft,
 } from "../packages/core/src/decision-request.ts";
 import { discoverDecisionVariables } from "../packages/core/src/decision-variables.ts";
+import { createDecisionEvaluationSuite } from "../packages/core/src/evaluation-suite-authoring.ts";
 import {
   PROJECT_SCHEMA_VERSION,
   createProjectFile,
@@ -95,6 +96,21 @@ test("an unfrozen revision is edited in place; a frozen one branches", () => {
   assert.equal(child.parentRevisionId, "decision-revision_one");
   assert.equal(child.decisionRequestId, "decision-request_one");
   assert.equal(branched.decisionRequestRevisions[0]!.decision.state, "Ticket: {{ticket}}");
+});
+
+test("a revision a suite pins is never edited in place, so the suite keeps what it pinned", () => {
+  const first = updateDecisionRequestDraft(project(), { decision: ordered, values: {}, branch: false, ...at });
+  const pinned = createDecisionEvaluationSuite(first, {
+    decisionRequestRevisionId: "decision-revision_one",
+    model: "local-decision",
+  }).project;
+  const changed: DecisionInput = { ...ordered, state: "Ticket {{ticket}} again" };
+  // The editor has not frozen the revision; the suite's pin is what forbids the in-place edit.
+  const edited = updateDecisionRequestDraft(pinned, { decision: changed, values: {}, branch: false, idSuffix: "two", createdAt: at.createdAt });
+  assert.equal(edited.decisionRequestRevisions.length, 2);
+  assert.equal(edited.decisionRequestRevisions[0]!.decision.state, "Ticket: {{ticket}}");
+  assert.equal(activeDecisionRequestRevision(edited)?.id, "decision-revision_two");
+  assert.equal(activeDecisionRequestRevision(edited)?.decision.state, "Ticket {{ticket}} again");
 });
 
 test("an unchanged draft never branches, whatever its key order", () => {
