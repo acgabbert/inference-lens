@@ -1351,7 +1351,8 @@ function HomeContent() {
         projectDirty={projectDirty}
         {...(projectStorageState ? { projectStorageState } : {})}
         folderAccessAvailable={folderAccessAvailable}
-        hasDiagnosticCapture={hasDiagnosticCapture}
+        // Diagnostics capture chat's stream; a decision exchange has its evidence in Inspect.
+        hasDiagnosticCapture={hasDiagnosticCapture && compose.kind === "chat"}
         hasRunTrace={compose.trace.available}
         hasProjectWorkspace={Boolean(projectWorkspace)}
         composeExecuting={compose.executing}

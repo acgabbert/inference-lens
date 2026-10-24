@@ -115,6 +115,7 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
           run={run}
           traceStorage={session.traceStorage}
           {...(session.retryAvailableAt !== undefined ? { retryAvailableAt: session.retryAvailableAt } : {})}
+          {...(options.otherActivity ? { retryBlockedReason: options.otherActivity } : {})}
           onDiscard={session.stop}
           onRetry={retry}
           onSaveTrace={() => void session.exportTrace()}

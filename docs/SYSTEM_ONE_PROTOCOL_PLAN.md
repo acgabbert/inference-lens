@@ -1281,7 +1281,10 @@ appears only once Decision is usable:
   covered by `tests/decision-draft.test.ts`. Strings are edited as text; any
   other JSON value is shown and left to the JSON view, so nothing is
   stringified. Option rows are kept across every type change (U4): a score
-  reads an option's label as the level and keeps its description.
+  reads an option's label as the level and keeps its description. A
+  structured level kept on a choice question is refused by validation and by
+  the switch to the JSON view, since a choice label is an object key; it is
+  never stringified, so changing back to score restores it.
 - ✅ The decision target (`use-decision-target.client.ts`): System One
   profiles only, a model remembered per connection for the session, and
   discovery through `useModelDiscovery`, which now takes a
@@ -1305,6 +1308,15 @@ selected target changed, and the native desktop paths. The 429 coverage is
 limited as D23 says: the fixture answers every request with 429, so a
 success after the wait is not shown. The specs and the two unit test files
 were written after the code they cover, so none was run red first.
+
+Review fixes (2026-10-24), each with its test run red first: a structured
+level on a choice question no longer stringifies in the JSON view
+(`decision-draft`); a paused run's Retry is disabled with the refusing
+activity stated beside it (`decision-response-render`); the editor and state
+format tabs are inert while a decision runs, and chat's diagnostics are not
+offered while Decision is on screen (`system-one-decisions`). That spec now
+also checks that ⌘↵ sends no second request during a run and that a retry
+sends the run's frozen input; both held before and were not shown failing.
 
 - Ownership and shell integration follow D19: the decision feature owns its
   state and workflow; the Compose owner selects the active kind's panes,

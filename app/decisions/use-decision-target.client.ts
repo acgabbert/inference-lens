@@ -111,8 +111,9 @@ export function useDecisionTarget(options: UseDecisionTargetOptions): DecisionTa
       };
     },
     prepareCredential(target) {
-      const profileId = target.profileId.slice("profile_".length);
-      return options.prepareCredentialForProfile(profileId, target.endpoint);
+      const resolved = options.profiles.find(({ id }) => createEntityId("profile", id) === target.profileId);
+      if (!resolved) return Promise.reject(new Error(`No connection exists for ${target.profileId}.`));
+      return options.prepareCredentialForProfile(resolved.id, target.endpoint);
     },
   };
 }

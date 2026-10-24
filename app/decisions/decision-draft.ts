@@ -156,6 +156,14 @@ export function createDecisionDraft(newRowId: NewRowId = defaultRowId): Decision
   );
 }
 
+/**
+ * A choice label is a JSON object key, so only text can be one. A structured
+ * score level kept across a type change (U4) is refused here rather than
+ * stringified, so changing back to score still restores it.
+ */
+const NON_TEXT_CHOICE_LABEL =
+  "A choice option's label must be text. Change the question back to score, or remove this option.";
+
 function questionLocation(row: DecisionQuestionRow, index: number): string {
   return `Question ${index + 1}${row.id.trim() ? ` (${row.id})` : ""}`;
 }
@@ -177,7 +185,7 @@ function questionFromRow(
       row.options.forEach((option, index) => {
         const where = `${location} · option ${index + 1}`;
         if (option.label.kind !== "text") {
-          problems.push({ location: where, message: "A choice option's label must be text. Edit it in the JSON view." });
+          problems.push({ location: where, message: NON_TEXT_CHOICE_LABEL });
           return;
         }
         const label = option.label.text;
@@ -322,8 +330,8 @@ export function validateDecisionDraft(
 
 /**
  * Form → JSON. Values are kept as they are; incomplete rows come across as
- * they stand. Only a form whose keys collide is refused, since one JSON
- * object cannot hold both.
+ * they stand. Only a form whose keys collide, or whose choice label is not
+ * text, is refused, since one JSON object cannot hold it without loss.
  */
 export function showDecisionJsonView(
   draft: DecisionDraft,
@@ -349,9 +357,14 @@ export function showDecisionJsonView(
     if (row.type === "choice") {
       const criteria: JsonObject = {};
       for (const [optionIndex, option] of row.options.entries()) {
-        const label = option.label.kind === "text" ? option.label.text : JSON.stringify(option.label.value);
+        const where = `${location} · option ${optionIndex + 1}`;
+        if (option.label.kind !== "text") {
+          problems.push({ location: where, message: NON_TEXT_CHOICE_LABEL });
+          continue;
+        }
+        const label = option.label.text;
         if (label in criteria) {
-          problems.push({ location: `${location} · option ${optionIndex + 1}`, message: `Another option is already labelled “${label}”.` });
+          problems.push({ location: where, message: `Another option is already labelled “${label}”.` });
         }
         criteria[label] = option.description === null ? null : jsonValue(option.description);
       }

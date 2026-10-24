@@ -158,20 +158,30 @@ test("a decision run locks the kind switch until it is stopped", async ({ page }
   await seedDecisionProfiles(page);
   // Park the decision so the run is observably in flight.
   let release: (() => void) | undefined;
+  let sent = 0;
   await page.route(`**${DECISIONS_API_PATH}`, async (route) => {
+    sent += 1;
     await new Promise<void>((resolve) => { release = resolve; });
     await route.continue().catch(() => {});
   });
   await openDecision(page);
   await chooseModel(page, "all-types");
   await enterJson(page, ALL_TYPES);
+  await decisionPane(page).getByRole("tab", { name: "Form" }).first().click();
   await runDecision(page).click();
 
   await expect(page.locator(".decision-response")).toContainText("Waiting for decision…");
   await expect(page.getByRole("radio", { name: "Chat" })).toBeDisabled();
   await expect(page.getByText("Stop the running request to switch.")).toBeVisible();
+  // The draft is read-only while it runs, its view and state format included (D17).
+  const editorTabs = decisionPane(page).getByRole("tablist", { name: "Decision editor" }).getByRole("tab");
+  const stateTabs = decisionPane(page).getByRole("tablist", { name: "State format" }).getByRole("tab");
+  for (const tab of [...await editorTabs.all(), ...await stateTabs.all()]) await expect(tab).toBeDisabled();
   // The shortcut does not start a second run while one executes.
+  expect(sent).toBe(1);
   await page.keyboard.press("Control+Enter");
+  await page.waitForTimeout(300);
+  expect(sent).toBe(1);
 
   await page.getByRole("button", { name: "Stop", exact: true }).click();
   await expect(page.locator(".decision-response")).toContainText("Request stopped");
@@ -201,6 +211,10 @@ test("a running chat request locks the switch to Decision", async ({ page }) => 
 
 test("a 429 waits out retry-after, then retries the same input with attempts kept", async ({ page }) => {
   await seedDecisionProfiles(page);
+  const bodies: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().endsWith(DECISIONS_API_PATH)) bodies.push(request.postData() ?? "");
+  });
   await openDecision(page);
   await chooseModel(page, "429");
   await enterJson(page, ALL_TYPES);
@@ -220,6 +234,12 @@ test("a 429 waits out retry-after, then retries the same input with attempts kep
   const evidence = page.getByRole("region", { name: "Decision evidence" });
   await expect(evidence.getByRole("article")).toHaveCount(2);
   await expect(evidence.getByLabel("Attempt 2 raw response body")).toContainText("Synthetic rate limit");
+  // The retry sent the frozen input, not a re-read of the editor (D17).
+  expect(bodies).toHaveLength(2);
+  const [first, second] = bodies.map((body) => JSON.parse(body).execution);
+  expect(second.attempt).toBe(2);
+  expect(second.runId).toBe(first.runId);
+  expect(second.input).toEqual(first.input);
 
   await response.getByRole("button", { name: "Discard failed run" }).click();
   await expect(response).toContainText("Request failed");
@@ -296,4 +316,20 @@ test("Connections declares System One, which offers the connection for decisions
   await drawer.getByRole("checkbox", { name: /System One/ }).check();
   await drawer.getByRole("button", { name: /close/i }).first().click();
   await expect(decisionPane(page).getByLabel("Decision connection").locator("option")).toHaveText([/Buffered fixture/]);
+});
+
+test("chat's diagnostics are not offered while Decision is on screen", async ({ page }) => {
+  await seedDecisionProfiles(page);
+  await page.goto("/");
+  await waitForHydration(page);
+  await page.getByRole("button", { name: /^Run current conversation/ }).click();
+  await expect(page.locator(".result .status.complete")).toBeVisible();
+  const menu = page.locator(".run-data-menu");
+  await menu.locator("> summary").click();
+  await expect(menu.getByRole("button", { name: "Download diagnostics" })).toBeEnabled();
+  await menu.locator("> summary").click();
+
+  await page.getByRole("radio", { name: "Decision" }).click();
+  await menu.locator("> summary").click();
+  await expect(menu.getByRole("button", { name: "Download diagnostics" })).toBeDisabled();
 });

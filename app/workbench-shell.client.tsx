@@ -247,6 +247,8 @@ type PaneTabsProps = {
   value: string;
   onChange: (value: string) => void;
   idPrefix?: string;
+  /** Every tab is inert, such as while the content it switches is read-only. */
+  disabled?: boolean;
 };
 
 export function PaneTabs({
@@ -255,6 +257,7 @@ export function PaneTabs({
   value,
   onChange,
   idPrefix,
+  disabled = false,
 }: PaneTabsProps) {
   function moveSelection(
     event: ReactKeyboardEvent<HTMLButtonElement>,
@@ -284,6 +287,7 @@ export function PaneTabs({
           aria-controls={idPrefix ? `${idPrefix}-${tab.id}-panel` : undefined}
           aria-selected={value === tab.id}
           className={value === tab.id ? "active" : undefined}
+          disabled={disabled}
           id={idPrefix ? `${idPrefix}-${tab.id}-tab` : undefined}
           key={tab.id}
           role="tab"

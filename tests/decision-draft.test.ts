@@ -170,6 +170,31 @@ test("changing a question's type is reversible and keeps options in order", () =
   assert.deepEqual(valid(draft).questions.intent, captured().questions.intent);
 });
 
+test("a structured level kept on a choice question is refused by the JSON view, not stringified", () => {
+  const ids = rowIds();
+  const level = { label: "low", note: "cosmetic" };
+  let draft = decisionDraftFromInput(
+    { state: "s", questions: { q: { type: "score", instructions: "i", criteria: [level, "high"] } } },
+    ids,
+  );
+  const q = draft.questions[0]!;
+  draft = changeDecisionQuestionType(draft, q.rowId, "choice");
+
+  const json = showDecisionJsonView(draft);
+  assert.ok("problems" in json, `expected the switch to be refused, got ${JSON.stringify(json)}`);
+  assert.deepEqual(json.problems, [{
+    location: "Question 1 (q) · option 1",
+    message: "A choice option's label must be text. Change the question back to score, or remove this option.",
+  }]);
+  const invalid = validateDecisionDraft(draft);
+  assert.ok("problems" in invalid);
+  assert.deepEqual(invalid.problems, json.problems);
+
+  // The value was never rewritten, so the type change is still reversible (U4).
+  draft = changeDecisionQuestionType(draft, q.rowId, "score");
+  assert.deepEqual(valid(draft).questions.q, { type: "score", instructions: "i", criteria: [level, "high"] });
+});
+
 test("options kept for a noul question survive JSON view while it stays noul", () => {
   const ids = rowIds();
   let draft = decisionDraftFromInput(captured(), ids);

@@ -173,6 +173,7 @@ function QuestionCard({
                 )}
                 <div className="decision-row-actions">
                   <button aria-label={`Move ${row.type === "choice" ? "option" : "level"} ${optionIndex + 1} up`} className="text-button" disabled={disabled || optionIndex === 0} type="button" onClick={() => draft.moveOption(row.rowId, option.rowId, optionIndex - 1)}>↑</button>
+                  <button aria-label={`Move ${row.type === "choice" ? "option" : "level"} ${optionIndex + 1} down`} className="text-button" disabled={disabled || optionIndex === row.options.length - 1} type="button" onClick={() => draft.moveOption(row.rowId, option.rowId, optionIndex + 1)}>↓</button>
                   <button aria-label={`Remove ${row.type === "choice" ? "option" : "level"} ${optionIndex + 1}`} className="text-button" disabled={disabled} type="button" onClick={() => draft.removeOption(row.rowId, option.rowId)}>Remove</button>
                 </div>
               </li>
@@ -199,6 +200,7 @@ export function DecisionComposer({ draft: handle, target, blockers, locked, onOp
           <h2>Decision</h2>
         </div>
         <PaneTabs
+          disabled={locked}
           label="Decision editor"
           value={draft.view}
           onChange={(value) => (value === "json" ? handle.showJson() : handle.showForm())}
@@ -286,6 +288,7 @@ export function DecisionComposer({ draft: handle, target, blockers, locked, onOp
               <div className="decision-section-heading">
                 <span className="decision-field-label">State</span>
                 <PaneTabs
+                  disabled={locked}
                   label="State format"
                   value={draft.state.mode}
                   onChange={(value) => handle.setStateMode(value as "text" | "json")}

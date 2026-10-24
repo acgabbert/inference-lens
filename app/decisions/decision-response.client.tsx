@@ -17,6 +17,8 @@ export interface DecisionResponseProps {
   run: DecisionRun | null;
   executing: boolean;
   retryAvailableAt?: number;
+  /** Why another foreground activity refuses Retry now (D24); stated beside the button. */
+  retryBlockedReason?: string;
   traceStorage: TraceStorageStatus | null;
   /** What to do first while nothing has run; the readiness summary when blocked. */
   emptyDetail: string;
@@ -25,6 +27,8 @@ export interface DecisionResponseProps {
   onDiscard(): void;
   onSaveTrace(): void;
 }
+
+const RETRY_BLOCKED_ID = "decision-retry-blocked";
 
 /** Whole seconds left until `at`, re-rendered while it counts down (D23). */
 function useSecondsUntil(at: number | undefined): number | undefined {
@@ -101,6 +105,7 @@ export function DecisionResponse({
   run,
   executing,
   retryAvailableAt,
+  retryBlockedReason,
   traceStorage,
   emptyDetail,
   onRetry,
@@ -137,8 +142,17 @@ export function DecisionResponse({
                     The server asked to wait. Retry is available in {secondsLeft} {secondsLeft === 1 ? "second" : "seconds"}.
                   </p>
                 )}
+                {retryBlockedReason && (
+                  <p className="decision-retry-blocked" id={RETRY_BLOCKED_ID}>{retryBlockedReason}</p>
+                )}
                 <div className="run-failure-actions">
-                  <button className="button primary" disabled={waiting} type="button" onClick={onRetry}>
+                  <button
+                    aria-describedby={retryBlockedReason ? RETRY_BLOCKED_ID : undefined}
+                    className="button primary"
+                    disabled={waiting || Boolean(retryBlockedReason)}
+                    type="button"
+                    onClick={onRetry}
+                  >
                     Retry attempt <span className="shortcut">⌘↵</span>
                   </button>
                   <button className="text-button" type="button" onClick={onDiscard}>

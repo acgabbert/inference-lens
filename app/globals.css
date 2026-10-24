@@ -9056,7 +9056,8 @@ label.experiment-retry-field {
   background: var(--accent-solid);
 }
 
-.decision-retry-wait {
+.decision-retry-wait,
+.decision-retry-blocked {
   color: var(--warning-strong);
 }
 
