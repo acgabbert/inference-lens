@@ -1,6 +1,6 @@
 # System One protocol plan
 
-Status: **D1–D52 and U1–U6 accepted. Phase 5a (project-owned decision requests) is implemented, 5b and 5c are not. Phases 1 and 2 are merged; D16's fixes
+Status: **D1–D53 and U1–U6 accepted. Phases 5a (project-owned decision requests) and 5b (decision suites) are implemented, 5c is not. Phases 1 and 2 are merged; D16's fixes
 and host tests are in, with its native-app check still to run on a desktop
 build. Phases 3 and 4 are implemented together (D20): the Compose owner and
 topbar (D29-A), trace opening by kind (D30), the decision draft, target, and
@@ -1517,6 +1517,25 @@ What each kind could report:
   Its cost over B is small, and it keeps the per-kind pattern D47 and D49
   set. The user accepted it.
 
+#### D53. Step 4 app decisions *(accepted)*
+
+The user chose each recommendation.
+
+- **Execution owner:** one evaluation session for both kinds, whose
+  execution is a union on `kind` (as D49's one controller), rather than a
+  second decision session beside it.
+- **Result row:** a decision repetition shows the answer to each question
+  its checks read, not every answer and not checks only.
+- **Creation:** from Decision Compose ("New suite from this request") and
+  from the rail, both pinning Compose's active revision with the draft
+  folded in and Compose's model.
+- **Configurations:** decision configurations can be added, renamed,
+  removed, and given a model override. Connection overrides wait.
+- **Connection:** a decision suite targets its own portable requirement at
+  the System One profile's endpoint, reusing a requirement at the same
+  endpoint, and the route maps it to that profile on this device when it is
+  unmapped. The default chat requirement is left alone.
+
 ## Phases
 
 ### Phase 0: verify the wire format
@@ -1836,8 +1855,46 @@ Decided in D31–D37, with 5a's details in D38–D43. Delivered in order:
   decision plans), two additions to `tests/evaluation-comparison.test.ts`
   (red on the missing `kind` and on the wrong refusal message), and one to
   `tests/experiment-history.test.ts` (red on the "cannot be shown by this
-  build yet" failure). The app half (authoring, start, results, Compose
-  entry) is still to come.
+  build yet" failure).
+  Fourth step, app half (2026-10-24), under D51 and D53: decision suites
+  are authored, run, read, and compared in Evaluations, and Decision
+  Compose starts one from its request.
+  - Authoring: `useDecisionSuiteSettings` owns the decision setup band
+    (`DecisionSuiteSetup`): the pinned revision, connection, model,
+    repetitions, configurations' models, and request variables. Core gains
+    `createDecisionEvaluationSuite`, `updateDecisionSuiteInput`,
+    `updateDecisionSuiteExecution`, `updateDecisionEvaluationVariant`,
+    `addDecisionEvaluationInput`, and `decisionBindingCandidates`. The check
+    picker offers the decision and shared kinds only, and the decision check
+    fields list the pinned revision's questions and options. The rail labels
+    each suite's kind and adds "+ New decision suite".
+  - A revision a suite pins is never edited in place:
+    `updateDecisionRequestDraft` branches whenever a suite pins the active
+    revision, whatever the editor has frozen. Without this, Compose edits
+    after "New suite from this request" silently changed the suite's input.
+  - Start: the runner gains `resolveDecisionEvaluationLocalTargets`,
+    `decisionEvaluationStartBlocker` (adding `system_one_undeclared`), and
+    `createDecisionEvaluationStartPlan`. The one execution session holds an
+    `EvaluationExecution` union on `kind` and runs a decision draft through
+    `ExperimentController<DecisionRun>`, saving decision traces.
+  - Results score through `evaluationExecutionAggregateSteps` (either kind).
+    A decision repetition shows the answers its checks read
+    (`decisionAnswerSummary`) and opens its trace in Decision Compose.
+    Promotion stays chat-only. Saved executions reopen from history with
+    their decision traces, and baselines and comparison load decision sides.
+  - Covered by `tests/decision-suite-authoring.test.ts` and
+    `tests/decision-evaluation-start.test.ts` (red only on the missing
+    exports), an addition to `tests/decision-request.test.ts` (red on one
+    revision edited in place), and
+    `tests/e2e/system-one-decision-suites.spec.ts`. That spec's run test was
+    red on the start gate's "Create an evaluation suite first." before the
+    start path existed. Its other three tests were written after the code
+    and were not shown failing. The spec sets a 1440×900 viewport as the
+    chat evaluation specs do: at the default 720px height the cases' 360px
+    floor squeezes the setup band to its toggle and overlaps it, for chat
+    and decision suites alike.
+  - Not covered: a decision suite on the Tauri desktop paths, a 429 inside
+    a decision batch in the browser, and the CLI (5c).
 - **5c.** `inference-lens run` for decision suites (D36).
 
 ## Out of scope
