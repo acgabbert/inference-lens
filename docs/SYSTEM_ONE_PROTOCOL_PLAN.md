@@ -1,6 +1,6 @@
 # System One protocol plan
 
-Status: **D1–D51 and U1–U6 accepted; D52 (decision execution drift) proposed. Phase 5a (project-owned decision requests) is implemented, 5b and 5c are not. Phases 1 and 2 are merged; D16's fixes
+Status: **D1–D52 and U1–U6 accepted. Phase 5a (project-owned decision requests) is implemented, 5b and 5c are not. Phases 1 and 2 are merged; D16's fixes
 and host tests are in, with its native-app check still to run on a desktop
 build. Phases 3 and 4 are implemented together (D20): the Compose owner and
 topbar (D29-A), trace opening by kind (D30), the decision draft, target, and
@@ -1461,7 +1461,7 @@ Checks are stored on cases, so the vocabulary bump forces a project bump
   chat's input-and-execution block into its own owner. That move is
   behavior-preserving and lands first, under the existing specs.
 
-#### D52. Execution drift between decision executions *(proposed; refines D50)*
+#### D52. Execution drift between decision executions *(accepted: A; refines D50)*
 
 D50 has comparison and baselines work for decision suites without kind
 branches. Step 3 left them refusing a decision execution: `derive()` in
@@ -1515,7 +1515,7 @@ What each kind could report:
   - Comparing different suites behaves as it does for chat.
 - **Recommendation: A, with protocol drift and without capability drift.**
   Its cost over B is small, and it keeps the per-kind pattern D47 and D49
-  set.
+  set. The user accepted it.
 
 ## Phases
 
@@ -1821,7 +1821,7 @@ Decided in D31–D37, with 5a's details in D38–D43. Delivered in order:
   start path and the CLI (5c) keep refusing decision suites, project history
   lists a decision plan as one it cannot show, and comparison and baselines
   refuse a decision execution, because their drift fields are chat-shaped
-  (proposed D52).
+  (D52).
 - **5c.** `inference-lens run` for decision suites (D36).
 
 ## Out of scope
