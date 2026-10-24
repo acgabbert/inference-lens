@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { EvaluationSuite } from "../../packages/core/src/project";
+import type { ChatEvaluationSuite } from "../../packages/core/src/project";
 import { resolveEvaluationVariant } from "../../packages/core/src/evaluation-suites";
 import type { EvaluationInputBinding, EvaluationVariant } from "../../packages/core/src/evaluation-suites";
 import type { ConversationRevisionDescriptor } from "../../packages/core/src/conversation-revision-description";
@@ -43,7 +43,7 @@ export interface SuiteSetupFacts {
 
 export function chatSuiteSetupFacts(
   project: AuthoredProject,
-  suite: EvaluationSuite,
+  suite: ChatEvaluationSuite,
   execution: EvaluationSuiteExecutionActions | undefined,
 ): SuiteSetupFacts {
   const exposedToolIds = suite.execution.toolIds;
@@ -85,7 +85,7 @@ export function chatSuiteSetupFacts(
 
 // Named in the collapsed summary, so which connection a suite targets stays
 // readable without expanding the panel that chooses it.
-function connectionName(project: AuthoredProject, suite: EvaluationSuite): string {
+function connectionName(project: AuthoredProject, suite: ChatEvaluationSuite): string {
   return project.connectionRequirements.find(({ id }) => id === suite.execution.target.connectionRequirementId)?.name
     ?? suite.execution.target.connectionRequirementId;
 }
@@ -93,7 +93,7 @@ function connectionName(project: AuthoredProject, suite: EvaluationSuite): strin
 /** Prompt variables of the selected revision that no binding maps yet. */
 export function availableBindingCandidates(
   authoring: EvaluationSuiteAuthoringHandle,
-  suite: EvaluationSuite | undefined,
+  suite: ChatEvaluationSuite | undefined,
 ): EvaluationSuiteAuthoringHandle["candidates"] {
   return authoring.candidates.filter((candidate) => !suite?.inputBindings.some((binding) =>
     binding.target.templateUseId === candidate.templateUseId && binding.target.variableName === candidate.variableName
@@ -170,7 +170,7 @@ function ConfigurationsSection({
   authoring,
   preview,
 }: {
-  suite: EvaluationSuite;
+  suite: ChatEvaluationSuite;
   project: AuthoredProject;
   authoring: EvaluationSuiteAuthoringHandle;
   preview?: EvaluationSuiteExecutionActions["preview"];
@@ -289,7 +289,7 @@ function ConfigurationRow({
   index,
 }: {
   variant: EvaluationVariant;
-  suite: EvaluationSuite;
+  suite: ChatEvaluationSuite;
   project: AuthoredProject;
   authoring: EvaluationSuiteAuthoringHandle;
   index: number;
@@ -346,7 +346,7 @@ export function ChatSuiteSetup({
 }: {
   open: boolean;
   className: string;
-  suite: EvaluationSuite;
+  suite: ChatEvaluationSuite;
   project: AuthoredProject;
   authoring: EvaluationSuiteAuthoringHandle;
   execution?: EvaluationSuiteExecutionActions;

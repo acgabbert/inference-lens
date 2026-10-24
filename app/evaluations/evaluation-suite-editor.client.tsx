@@ -5,7 +5,8 @@ import { StructuredCheckEditor } from "./structured-check-editor.client";
 import { CHECK_KINDS, isDecisionCheckKind } from "../../packages/core/src/checks";
 import type { CheckDefinition, CheckKind, ToolCallCountComparator } from "../../packages/core/src/checks";
 import type { JsonObject } from "../../packages/core/src/run-kernel";
-import type { EvaluationCase } from "../../packages/core/src/project";
+import type { EvaluationCase, EvaluationInputBinding } from "../../packages/core/src/project";
+import { isChatEvaluationSuite } from "../../packages/core/src/evaluation-suites";
 import type { EvaluationCaseSource } from "../../packages/core/src/evaluation-case-sources";
 import type { InferenceOptions, ProviderProtocol } from "../../packages/core/src/run-kernel";
 import { DEFAULT_EXPERIMENT_TURN_CEILING } from "../../packages/core/src/experiment";
@@ -193,7 +194,9 @@ function CaseEditor({ evaluationCase, authoring, source, onOpenSourceTrace }: {
         <div className="evaluation-case-values">
           <div><span className="eyebrow">Case inputs</span><p>Values inserted into this case’s prompt variables.</p></div>
           {suite.inputBindings.map((binding) => {
-            const input = evaluationInputLabel(project!, authoring.revisionId, binding);
+            const input = binding.target.kind === "template-variable"
+              ? evaluationInputLabel(project!, authoring.revisionId, binding as EvaluationInputBinding)
+              : { variableName: binding.target.variableName, label: binding.target.variableName };
             return <label key={binding.id}>{input.label}
               <textarea aria-label={`${evaluationCase.name} ${input.variableName}`} rows={3} value={evaluationCase.values[binding.id] ?? ""} onChange={(event) => authoring.updateCase(evaluationCase.id, { values: { ...evaluationCase.values, [binding.id]: event.target.value } })} />
             </label>;
@@ -319,13 +322,16 @@ export function EvaluationSuiteEditor({
   const focusedCase = suite?.cases.find(({ id }) => id === authoring.focusedCaseId);
   const selectedCount = authoring.selectedCaseIds.size;
   const selectedVariantCount = authoring.selectedVariantIds.size;
-  const setupFacts = project && suite ? chatSuiteSetupFacts(project, suite, execution) : undefined;
+  // Decision suites gain their own setup in a later step (D51); until then the
+  // band holds only a chat suite's.
+  const chatSuite = suite && isChatEvaluationSuite(suite) ? suite : undefined;
+  const setupFacts = project && chatSuite ? chatSuiteSetupFacts(project, chatSuite, execution) : undefined;
   const exposedToolCount = setupFacts?.batchShape.exposedToolCount ?? 0;
   const batch = evaluationBatchGuardrail(selectedCount, selectedVariantCount, authoring.repetitions, {
     exposedToolCount,
     turnCeiling: setupFacts?.batchShape.turnCeiling ?? DEFAULT_EXPERIMENT_TURN_CEILING,
   });
-  const availableCandidates = availableBindingCandidates(authoring, suite);
+  const availableCandidates = availableBindingCandidates(authoring, chatSuite);
   const resolvableMissingInput = authoring.diagnostics.find(
     (diagnostic) => diagnostic.code === "unresolved-template-variable" &&
       availableCandidates.some((candidate) => candidate.templateUseId === diagnostic.templateUseId && candidate.variableName === diagnostic.variableName),
@@ -424,15 +430,15 @@ export function EvaluationSuiteEditor({
               <span className={styles.setupFacts}>{setupSummary}</span>
               <span className={styles.setupHint}>{setupOpen ? "Hide" : "Show input, settings, and tools"}</span>
             </button>
-            <ChatSuiteSetup
+            {chatSuite && <ChatSuiteSetup
               open={setupOpen}
               className={`evaluation-setup ${styles.setupBody}`}
-              suite={suite}
+              suite={chatSuite}
               project={project}
               authoring={authoring}
               {...(execution ? { execution } : {})}
               {...(modelFavorites ? { modelFavorites } : {})}
-            />
+            />}
           </div>
 
           <section className={`evaluation-cases ${styles.cases}`}>

@@ -39,7 +39,8 @@ import {
   retargetPromptTemplateUseRevision,
 } from "../../packages/core/src/project";
 import type { EvaluationSuite, ProjectFile } from "../../packages/core/src/project";
-import type { EvaluationVariant } from "../../packages/core/src/evaluation-suites";
+import type { ChatEvaluationSuite, EvaluationVariant } from "../../packages/core/src/evaluation-suites";
+import { isChatEvaluationSuite } from "../../packages/core/src/evaluation-suites";
 import type {
   CheckId,
   ConversationRevisionId,
@@ -129,7 +130,7 @@ export interface EvaluationSuiteAuthoringHandle {
   setToolExposed(id: ToolId, exposed: boolean): void;
   /** Provider turns one repetition may spend; clamped to the supported range. */
   setTurnCeiling(value: number): void;
-  updateExecution(execution: EvaluationSuite["execution"]): boolean;
+  updateExecution(execution: ChatEvaluationSuite["execution"]): boolean;
   addVariant(): void;
   updateVariant(id: EvaluationVariantId, patch: Pick<EvaluationVariant, "name" | "overrides">): boolean;
   moveVariant(id: EvaluationVariantId, destinationIndex: number): void;
@@ -242,7 +243,10 @@ export function useEvaluationSuiteAuthoring({
     ? suiteId
     : project?.evaluationSuites[0]?.id;
   const suite = project?.evaluationSuites.find(({ id }) => id === effectiveSuiteId);
-  const effectiveRevisionId = suite?.input.conversationRevisionId;
+  // Chat-only authoring (the conversation input, tools, bindings to template
+  // uses) reads this; a decision suite's setup has its own owner (D51).
+  const chatSuite = suite && isChatEvaluationSuite(suite) ? suite : undefined;
+  const effectiveRevisionId = chatSuite?.input.conversationRevisionId;
   const validCaseIds = new Set(suite?.cases.map(({ id }) => id) ?? []);
   const explicitSelection = selection &&
     selection.projectId === project?.projectId &&
@@ -319,8 +323,8 @@ export function useEvaluationSuiteAuthoring({
   const selectedRevisionDocument = project?.conversationRevisions.find(
     ({ id }) => id === effectiveRevisionId,
   );
-  const focusedCaseResolution = project && suite && selectedRevisionDocument && focusedCase
-    ? resolveEvaluationCase(project, selectedRevisionDocument, suite, focusedCase)
+  const focusedCaseResolution = project && chatSuite && selectedRevisionDocument && focusedCase
+    ? resolveEvaluationCase(project, selectedRevisionDocument, chatSuite, focusedCase)
     : undefined;
 
   // Both are discarded when the project changes, so a message never survives
@@ -399,6 +403,7 @@ export function useEvaluationSuiteAuthoring({
       const requestedSuite = requestedSuiteId && project.evaluationSuites.find(({ id }) => id === requestedSuiteId);
       let landedSuiteId: EvaluationSuiteId;
       if (requestedSuite) {
+        if (!isChatEvaluationSuite(requestedSuite)) throw new Error("A saved prompt can only start a chat suite's input.");
         const parentRevisionId = requestedSuite.input.conversationRevisionId;
         const parent = project.conversationRevisions.find(({ id }) => id === parentRevisionId);
         const use = parent?.items.find((item) => item.kind === "template-use" && item.use.templateId === templateId);
@@ -492,27 +497,27 @@ export function useEvaluationSuiteAuthoring({
       setFocusedCaseId(id);
     },
     setRepetitions(value) {
-      if (!suite || !effectiveSuiteId) return;
+      if (!chatSuite || !effectiveSuiteId) return;
       commit((current) => updateEvaluationSuiteExecution(current, effectiveSuiteId, {
-        ...suite.execution,
+        ...chatSuite.execution,
         repetitions: value,
       }));
     },
     setToolExposed(id, exposed) {
-      if (!suite || !effectiveSuiteId) return;
-      const current = suite.execution.toolIds;
+      if (!chatSuite || !effectiveSuiteId) return;
+      const current = chatSuite.execution.toolIds;
       if (exposed === current.includes(id)) return;
       commit((project) => updateEvaluationSuiteExecution(project, effectiveSuiteId, {
-        ...suite.execution,
+        ...chatSuite.execution,
         toolIds: exposed
           ? [...current, id]
           : current.filter((toolId) => toolId !== id),
       }));
     },
     setTurnCeiling(value) {
-      if (!suite || !effectiveSuiteId) return;
+      if (!chatSuite || !effectiveSuiteId) return;
       commit((project) => updateEvaluationSuiteExecution(project, effectiveSuiteId, {
-        ...suite.execution,
+        ...chatSuite.execution,
         turnCeiling: normalizedTurnCeiling(value),
       }));
     },

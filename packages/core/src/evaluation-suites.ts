@@ -1,7 +1,9 @@
+import type { DecisionWireProtocol } from "./decision.ts";
 import type {
   CheckId,
   ConnectionRequirementId,
   ConversationRevisionId,
+  DecisionRequestRevisionId,
   EvaluationCaseId,
   EvaluationInputBindingId,
   EvaluationSuiteId,
@@ -10,7 +12,10 @@ import type {
   InferenceOptions,
   ToolId,
 } from "./run-kernel/types.ts";
-import type { CheckDefinition } from "./checks.ts";
+import type { CheckDefinition, DecisionCheckDefinition } from "./checks.ts";
+import { isDecisionCheckKind } from "./checks.ts";
+import type { DecisionInput, DecisionQuestion } from "./decision.ts";
+import { discoverDecisionVariables, renderDecisionInput } from "./decision-variables.ts";
 import { resolveEvaluationCase } from "./evaluation-case-resolution.ts";
 import { SCHEMA_CHECK_LIMITS } from "./json-schema/limits.ts";
 import { preflightJsonSchema } from "./json-schema/preflight.ts";
@@ -18,12 +23,26 @@ import type { ExecutionTarget, ProjectFile } from "./project.ts";
 import { templateUseVariableIndex } from "./template-use-variable-index.ts";
 export { templateUseVariableIndex } from "./template-use-variable-index.ts";
 
+/** A chat suite's binding: a case value fills one template use's variable. */
 export interface EvaluationInputBinding {
   id: EvaluationInputBindingId;
   name: string;
   target: {
     kind: "template-variable";
     templateUseId: PromptTemplateUseId;
+    variableName: string;
+  };
+}
+
+/**
+ * A decision suite's binding (D45): a case value overrides the pinned
+ * revision's value for one `{{variable}}` of its decision input (D40).
+ */
+export interface DecisionInputBinding {
+  id: EvaluationInputBindingId;
+  name: string;
+  target: {
+    kind: "decision-variable";
     variableName: string;
   };
 }
@@ -41,8 +60,8 @@ export interface EvaluationVariant {
   id: EvaluationVariantId;
   name: string;
   overrides: {
-    target?: Partial<EvaluationSuite["execution"]["target"]>;
-    responseMode?: EvaluationSuite["execution"]["responseMode"];
+    target?: Partial<ChatEvaluationSuite["execution"]["target"]>;
+    responseMode?: ChatEvaluationSuite["execution"]["responseMode"];
     options?: {
       temperature?: number | null;
       maxOutputTokens?: number | null;
@@ -53,14 +72,14 @@ export interface EvaluationVariant {
   };
 }
 
-export type ResolvedEvaluationVariantExecution = Pick<EvaluationSuite["execution"], "target" | "responseMode" | "options">;
+export type ResolvedEvaluationVariantExecution = Pick<ChatEvaluationSuite["execution"], "target" | "responseMode" | "options">;
 
 /**
  * Resolves the one-level sparse override contract. Option fields inherit
  * individually; a present providerOptions object replaces the base object.
  */
 export function resolveEvaluationVariant(
-  suite: Pick<EvaluationSuite, "execution">,
+  suite: Pick<ChatEvaluationSuite, "execution">,
   variant: EvaluationVariant,
 ): ResolvedEvaluationVariantExecution {
   const optionOverrides = variant.overrides.options ?? {};
@@ -85,8 +104,57 @@ export function resolveEvaluationVariant(
   };
 }
 
-/** Authored, provider-neutral evaluation content. */
-export interface EvaluationSuite {
+/**
+ * The portable target a decision suite runs against (D44). Nothing about
+ * System One enters the connection requirement: D9 keeps the declaration on
+ * the device-local profile.
+ */
+export interface DecisionExecutionTarget {
+  connectionRequirementId: ConnectionRequirementId;
+  model: string;
+  protocol: DecisionWireProtocol;
+}
+
+/** A decision configuration may override the target only (D33). */
+export interface DecisionEvaluationVariant {
+  id: EvaluationVariantId;
+  name: string;
+  overrides: {
+    target?: Partial<DecisionExecutionTarget>;
+  };
+}
+
+/** Authored, provider-neutral evaluation content; one arm per run kind (D44). */
+export type EvaluationSuite = ChatEvaluationSuite | DecisionEvaluationSuite;
+
+export function isChatEvaluationSuite(suite: EvaluationSuite): suite is ChatEvaluationSuite {
+  return suite.input.kind === "conversation-revision";
+}
+
+export function isDecisionEvaluationSuite(suite: EvaluationSuite): suite is DecisionEvaluationSuite {
+  return suite.input.kind === "decision-request-revision";
+}
+
+/** A suite that runs a pinned decision request revision. */
+export interface DecisionEvaluationSuite {
+  id: EvaluationSuiteId;
+  name: string;
+  input: {
+    kind: "decision-request-revision";
+    decisionRequestRevisionId: DecisionRequestRevisionId;
+  };
+  /** A target and repetitions only: no response mode, options, tools, or turn ceiling. */
+  execution: {
+    target: DecisionExecutionTarget;
+    repetitions: number;
+  };
+  variants: DecisionEvaluationVariant[];
+  inputBindings: DecisionInputBinding[];
+  cases: EvaluationCase[];
+}
+
+/** A suite that runs a pinned conversation revision. */
+export interface ChatEvaluationSuite {
   id: EvaluationSuiteId;
   name: string;
   /** The immutable authored input this suite resolves independently of Messages. */
@@ -164,8 +232,36 @@ export type EvaluationSuitePreflightDiagnostic =
   | {
       code: "unresolved-template-variable";
       caseId: EvaluationCaseId;
-      templateUseId: PromptTemplateUseId;
+      /** Absent for a decision suite, whose variables belong to no template use. */
+      templateUseId?: PromptTemplateUseId;
       variableName: string;
+      message: string;
+    }
+  | {
+      /** A decision binding names a variable the pinned revision does not use. */
+      code: "missing-decision-variable";
+      inputBindingId: EvaluationInputBindingId;
+      variableName: string;
+      message: string;
+    }
+  | {
+      /** The pinned revision's input has a malformed `{{` token. */
+      code: "invalid-decision-template";
+      message: string;
+    }
+  | {
+      code: "missing-decision-question" | "wrong-question-type";
+      caseId: EvaluationCaseId;
+      checkId: CheckId;
+      questionId: string;
+      message: string;
+    }
+  | {
+      code: "unknown-decision-option";
+      caseId: EvaluationCaseId;
+      checkId: CheckId;
+      questionId: string;
+      option: string;
       message: string;
     };
 
@@ -187,14 +283,20 @@ function unfinishedCheckText(check: CheckDefinition): boolean {
     );
 }
 
-/** Pure, provider-free authoring preflight for a selected suite and revision. */
+/**
+ * Pure, provider-free authoring preflight for a selected suite and revision.
+ * A decision suite reads its own pinned revision, so `conversationRevisionId`
+ * applies to chat suites only.
+ */
 export function evaluationSuitePreflight(
-  project: Pick<ProjectFile, "evaluationSuites" | "conversationRevisions" | "promptTemplates">,
+  project: Pick<ProjectFile, "evaluationSuites" | "conversationRevisions" | "promptTemplates" | "decisionRequestRevisions">,
   evaluationSuiteId: EvaluationSuiteId,
   conversationRevisionId: ConversationRevisionId,
   selectedCaseIds?: readonly EvaluationCaseId[],
 ): EvaluationSuitePreflightDiagnostic[] {
-  const suite = project.evaluationSuites.find(({ id }) => id === evaluationSuiteId);
+  const found = project.evaluationSuites.find(({ id }) => id === evaluationSuiteId);
+  if (found && isDecisionEvaluationSuite(found)) return decisionSuitePreflight(project, found, selectedCaseIds);
+  const suite = found as ChatEvaluationSuite | undefined;
   const revision = project.conversationRevisions.find(({ id }) => id === conversationRevisionId);
   if (!suite || !revision) return [];
 
@@ -292,6 +394,152 @@ export function evaluationSuitePreflight(
         message: `Template use "${binding.target.templateUseId}" does not contain variable "${binding.target.variableName}" in the selected revision.`,
       });
     }
+  });
+  return diagnostics;
+}
+
+const decisionCheckNoun: Record<DecisionCheckDefinition["kind"], string> = {
+  "decision-choice": "choice",
+  "decision-option-probability": "option probability",
+  "decision-score-range": "score range",
+  "decision-noul": "noul",
+  "decision-confidence": "confidence",
+};
+
+const decisionCheckQuestionTypes: Record<DecisionCheckDefinition["kind"], readonly DecisionQuestion["type"][]> = {
+  "decision-choice": ["choice"],
+  "decision-option-probability": ["choice", "score"],
+  "decision-score-range": ["score"],
+  "decision-noul": ["noul"],
+  "decision-confidence": ["choice", "score"],
+};
+
+/** A choice option is its label; a score option is its level number as a string. */
+function decisionOptions(question: DecisionQuestion): string[] {
+  if (question.type === "choice") return Object.keys(question.criteria);
+  if (question.type === "score") return question.criteria.map((_level, index) => String(index));
+  return [];
+}
+
+/** D34's question checks: each names a question of the right type and, where it names one, a real option. */
+function decisionCheckDiagnostics(
+  decision: DecisionInput,
+  evaluationCase: EvaluationCase,
+  check: DecisionCheckDefinition,
+): EvaluationSuitePreflightDiagnostic[] {
+  const noun = decisionCheckNoun[check.kind];
+  const question = Object.hasOwn(decision.questions, check.questionId) ? decision.questions[check.questionId] : undefined;
+  const base = { caseId: evaluationCase.id, checkId: check.checkId, questionId: check.questionId };
+  if (!question) {
+    return [{
+      code: "missing-decision-question",
+      ...base,
+      message: check.questionId === ""
+        ? `A ${noun} check on case "${evaluationCase.name}" needs a question.`
+        : `A ${noun} check on case "${evaluationCase.name}" names question "${check.questionId}", which the pinned revision does not ask.`,
+    }];
+  }
+  const types = decisionCheckQuestionTypes[check.kind];
+  if (!types.includes(question.type)) {
+    return [{
+      code: "wrong-question-type",
+      ...base,
+      message: `A ${noun} check on case "${evaluationCase.name}" needs a ${types.join(" or ")} question; "${check.questionId}" is a ${question.type} question.`,
+    }];
+  }
+  if (check.kind !== "decision-choice" && check.kind !== "decision-option-probability") return [];
+  if (decisionOptions(question).includes(check.option)) return [];
+  return [{
+    code: "unknown-decision-option",
+    ...base,
+    option: check.option,
+    message: check.option === ""
+      ? `A ${noun} check on case "${evaluationCase.name}" needs an option.`
+      : question.type === "score"
+        ? `A ${noun} check on case "${evaluationCase.name}" names level "${check.option}"; question "${check.questionId}" has levels 0 to ${question.criteria.length - 1}.`
+        : `A ${noun} check on case "${evaluationCase.name}" names option "${check.option}", which question "${check.questionId}" does not offer.`,
+  }];
+}
+
+/**
+ * Preflight for a decision suite against its pinned revision (D45, D46). A
+ * case value overrides the revision's value for its bound variable; anything
+ * still unfilled blocks the run, as an unresolved chat variable does.
+ */
+function decisionSuitePreflight(
+  project: Pick<ProjectFile, "decisionRequestRevisions">,
+  suite: DecisionEvaluationSuite,
+  selectedCaseIds?: readonly EvaluationCaseId[],
+): EvaluationSuitePreflightDiagnostic[] {
+  const revision = project.decisionRequestRevisions.find(({ id }) => id === suite.input.decisionRequestRevisionId);
+  if (!revision) return [];
+
+  const diagnostics: EvaluationSuitePreflightDiagnostic[] = [];
+  if (suite.cases.length === 0) {
+    diagnostics.push({ code: "empty-suite", message: "Add at least one case before running this suite." });
+  } else if (selectedCaseIds && selectedCaseIds.length === 0) {
+    diagnostics.push({ code: "no-cases-selected", message: "Select at least one case before running this suite." });
+  }
+  const selectedCases = selectedCaseIds
+    ? suite.cases.filter(({ id }) => selectedCaseIds.includes(id))
+    : suite.cases;
+  const discovered = discoverDecisionVariables(revision.decision);
+  const used = new Set(discovered.variables);
+  const invalidToken = discovered.diagnostics.find(({ diagnostic }) => diagnostic.code === "invalid-template-token");
+
+  selectedCases.forEach((evaluationCase) => {
+    if (evaluationCase.checks.length === 0) {
+      diagnostics.push({
+        code: "no-checks",
+        caseId: evaluationCase.id,
+        message: `Case "${evaluationCase.name}" needs at least one deterministic check before it can run.`,
+      });
+    }
+    suite.inputBindings.forEach((binding) => {
+      if ((evaluationCase.values[binding.id] ?? "").trim() !== "") return;
+      diagnostics.push({
+        code: "empty-case-value",
+        caseId: evaluationCase.id,
+        inputBindingId: binding.id,
+        message: `Case "${evaluationCase.name}" has no value for input "${binding.name}".`,
+      });
+    });
+    evaluationCase.checks.forEach((check) => {
+      if (isDecisionCheckKind(check.kind)) diagnostics.push(...decisionCheckDiagnostics(revision.decision, evaluationCase, check as DecisionCheckDefinition));
+    });
+    if (invalidToken) return;
+    const values: Record<string, string> = { ...revision.values };
+    suite.inputBindings.forEach((binding) => {
+      const value = evaluationCase.values[binding.id];
+      if (value !== undefined) values[binding.target.variableName] = value;
+    });
+    const reported = new Set<string>();
+    renderDecisionInput(revision.decision, values).diagnostics.forEach(({ diagnostic }) => {
+      if (diagnostic.code !== "missing-template-variable" || reported.has(diagnostic.name)) return;
+      reported.add(diagnostic.name);
+      diagnostics.push({
+        code: "unresolved-template-variable",
+        caseId: evaluationCase.id,
+        variableName: diagnostic.name,
+        message: `Case "${evaluationCase.name}" cannot resolve template variable "${diagnostic.name}": ${diagnostic.message}`,
+      });
+    });
+  });
+
+  if (invalidToken) {
+    diagnostics.push({
+      code: "invalid-decision-template",
+      message: `The pinned decision request cannot be rendered: ${invalidToken.diagnostic.message}`,
+    });
+  }
+  suite.inputBindings.forEach((binding) => {
+    if (used.has(binding.target.variableName)) return;
+    diagnostics.push({
+      code: "missing-decision-variable",
+      inputBindingId: binding.id,
+      variableName: binding.target.variableName,
+      message: `Input "${binding.name}" fills variable "${binding.target.variableName}", which the pinned decision request does not use.`,
+    });
   });
   return diagnostics;
 }

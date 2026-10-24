@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import type { ChatEvaluationSuite } from "../packages/core/src/evaluation-suites.ts";
 import test from "node:test";
 
 import {
@@ -124,7 +125,7 @@ function projectWithEvaluationSuite() {
   });
 }
 
-test("creates a strict, portable Project v13 document", () => {
+test("creates a strict, portable Project v14 document", () => {
   const project = createProjectFile({
     name: "Example",
     request,
@@ -151,8 +152,8 @@ test("creates a strict, portable Project v13 document", () => {
   assert.equal(projectDirectoryName("   "), "Untitled.inference-lens");
   assert.equal(projectExportFileName("Prompt Lab"), "Prompt Lab.project.json");
   assert.equal(projectExportFileName("CON"), "CON-project.project.json");
-  assert.equal(PROJECT_SCHEMA_VERSION, 13);
-  assert.equal(project.schemaVersion, 13);
+  assert.equal(PROJECT_SCHEMA_VERSION, 14);
+  assert.equal(project.schemaVersion, 14);
   assert.equal(project.projectId, "project_example");
   const draft = projectDraft(project);
   assert.deepEqual(projectDraft(project), {
@@ -176,7 +177,7 @@ test("creates a strict, portable Project v13 document", () => {
   });
   assert.deepEqual(project.externalImports, []);
   assert.deepEqual(project.evaluationSuites, []);
-  assert.equal(JSON.parse(serializeProjectFile(project)).schemaVersion, 13);
+  assert.equal(JSON.parse(serializeProjectFile(project)).schemaVersion, 14);
 });
 
 test("resolves native formatting-whitespace tokens without rewriting authored project JSON", () => {
@@ -323,7 +324,7 @@ test("rejects pre-v10 project artifacts with an actionable version error", () =>
       (error: unknown) => {
         const message = (error as Error).message;
         assert.match(message, new RegExp(`schema v${schemaVersion} is not supported`));
-        assert.match(message, /opens schema v10, v11, v12, and v13/);
+        assert.match(message, /opens schema v10, v11, v12, v13, and v14/);
         assert.match(message, /earlier Inference Lens release/);
         assert.doesNotMatch(message, /v10-compatible/);
         return true;
@@ -334,16 +335,16 @@ test("rejects pre-v10 project artifacts with an actionable version error", () =>
 
 test("a project from a newer schema asks for an updated build, not an older release", () => {
   const current = createProjectFile({
-    name: "Version 14",
+    name: "Version 15",
     request,
-    idSuffix: "version-14",
+    idSuffix: "version-15",
     createdAt: "2026-08-01T12:00:00.000Z",
   });
   assert.throws(
-    () => parseProjectFile({ ...current, schemaVersion: 14 }),
+    () => parseProjectFile({ ...current, schemaVersion: 15 }),
     (error: unknown) => {
       const message = (error as Error).message;
-      assert.match(message, /schema v14 is not supported/);
+      assert.match(message, /schema v15 is not supported/);
       assert.match(message, /newer Inference Lens/);
       assert.doesNotMatch(message, /earlier Inference Lens release/);
       return true;
@@ -378,7 +379,7 @@ test("a v10 project moves its connection's protocol onto every execution target"
     })),
   };
   const opened = parseProjectFile(v10);
-  assert.equal(opened.schemaVersion, 13);
+  assert.equal(opened.schemaVersion, 14);
   assert.deepEqual(opened, current);
   assert.equal(opened.defaults.target.protocol, "openai-compatible-chat-completions");
   assert.equal(
@@ -436,13 +437,13 @@ test("an evaluation configuration may override the suite's protocol", () => {
     "Suite",
     () => "variants-suite",
   );
-  const suite = project.evaluationSuites.find(({ id }) => id === suiteId)!;
+  const suite = project.evaluationSuites.find(({ id }) => id === suiteId) as ChatEvaluationSuite;
   const variant = { ...suite.variants[0]!, overrides: { target: { protocol: "openai-responses" as const } } };
   const updated = parseProjectFile({
     ...project,
     evaluationSuites: [{ ...suite, variants: [variant] }],
   });
-  const resolved = resolveEvaluationVariant(updated.evaluationSuites[0]!, updated.evaluationSuites[0]!.variants[0]!);
+  const resolved = resolveEvaluationVariant(updated.evaluationSuites[0] as ChatEvaluationSuite, (updated.evaluationSuites[0] as ChatEvaluationSuite).variants[0]!);
   assert.equal(resolved.target.protocol, "openai-responses");
   assert.equal(
     resolveEvaluationVariant(suite, suite.variants[0]!).target.protocol,
@@ -478,7 +479,7 @@ test("a suite cannot expose a tool the project does not have, or expose one twic
       execution: { ...suite.execution, toolIds: ["tool_weather"] },
     }],
   });
-  assert.deepEqual(withTool.evaluationSuites[0]!.execution.toolIds, ["tool_weather"]);
+  assert.deepEqual((withTool.evaluationSuites[0] as ChatEvaluationSuite).execution.toolIds, ["tool_weather"]);
   assert.throws(
     () => parseProjectFile({
       ...withTool,
@@ -495,7 +496,7 @@ test("a suite cannot expose a tool the project does not have, or expose one twic
     tools: [],
     enabledToolIds: [],
   });
-  assert.deepEqual(afterDelete.evaluationSuites[0]!.execution.toolIds, []);
+  assert.deepEqual((afterDelete.evaluationSuites[0] as ChatEvaluationSuite).execution.toolIds, []);
 });
 
 test("stores ordered evaluation suites, cases, bindings, checks, and reference answers", () => {

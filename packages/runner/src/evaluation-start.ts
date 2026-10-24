@@ -1,5 +1,5 @@
 import { createEvaluationExperimentPlan } from "../../core/src/evaluation-execution.ts";
-import { resolveEvaluationVariant } from "../../core/src/evaluation-suites.ts";
+import { isChatEvaluationSuite, resolveEvaluationVariant } from "../../core/src/evaluation-suites.ts";
 import { experimentExposedTools } from "../../core/src/experiment.ts";
 import type { ProjectFile } from "../../core/src/project.ts";
 import { supportsProtocol } from "../../core/src/provider-protocols.ts";
@@ -48,7 +48,7 @@ export function resolveEvaluationLocalTargets(input: {
   mappedProfileIds: Readonly<Record<string, string>>;
 }): EvaluationResolvedLocalTarget[] {
   const suite = input.project.evaluationSuites.find(({ id }) => id === input.suiteId);
-  if (!suite) return [];
+  if (!suite || !isChatEvaluationSuite(suite)) return [];
   return suite.variants
     .filter(({ id }) => input.selectedVariantIds.includes(id))
     .map((variant) => {

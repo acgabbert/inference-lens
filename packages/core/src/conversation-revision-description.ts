@@ -1,4 +1,5 @@
 import type { EvaluationSuite } from "./evaluation-suites.ts";
+import { isChatEvaluationSuite } from "./evaluation-suites.ts";
 import { resolveProjectRevision } from "./project.ts";
 import type { ProjectConversationRevision, ProjectFile } from "./project.ts";
 import { templateUseVariableIndex } from "./template-use-variable-index.ts";
@@ -90,7 +91,8 @@ function revisionCompatibility(
   project: Pick<ProjectFile, "promptTemplates">,
   suite: EvaluationSuite | undefined,
 ): RevisionSuiteCompatibility {
-  if (!suite || suite.inputBindings.length === 0) return { kind: "unbound" };
+  // A decision suite pins no conversation revision, so none binds to it.
+  if (!suite || !isChatEvaluationSuite(suite) || suite.inputBindings.length === 0) return { kind: "unbound" };
   const uses = templateUseVariableIndex([revision], project.promptTemplates);
   const mismatches = suite.inputBindings.flatMap((binding): RevisionBindingMismatch[] => {
     const occurrence = uses.get(binding.target.templateUseId)?.[0];

@@ -2,8 +2,8 @@
 
 Inference Lens projects use a visible `<name>.inference-lens/` directory bundle
 containing one canonical, portable JSON document named `project.json`. New
-saves use schema version 13. The parser also opens versions 10, 11, and 12 and
-upgrades them on load. From v10, the protocol it kept on each connection
+saves use schema version 14. The parser also opens versions 10, 11, 12, and 13
+and upgrades them on load. From v10, the protocol it kept on each connection
 requirement (always chat completions) moves onto every execution target that
 names that requirement — the project default and each suite's
 `execution.target` — and the requirement loses the field. See
@@ -12,7 +12,10 @@ names that requirement — the project default and each suite's
 [Deterministic checks](DETERMINISTIC_CHECKS.md)); a v10 or v11 document was
 written with vocabulary 3, so one that contains a v4 construct is rejected
 rather than upgraded. v13 adds project-owned [decision requests](#decision-requests);
-a v12 document opens with none, and one that already holds any is rejected. Earlier project
+a v12 document opens with none, and one that already holds any is rejected. v14
+adds [decision suites](#decision-suites) and check vocabulary 5 (the decision
+checks); a v13 document was written with chat suites and vocabulary 4, so one
+holding either is rejected rather than upgraded. Earlier project
 formats, including v5–v9, and the proof-of-concept request export are rejected
 with a version error rather than upgraded on load.
 Every schema is strict, so a reader rejects a document it does not understand
@@ -295,6 +298,42 @@ provider default. A variant's connection requirement must exist in the project.
 Repetitions, `toolIds`, and `turnCeiling` are shared by every variant. See
 [the evaluation suite authoring guide](EVALUATION_SUITE_AUTHORING.md) for how
 configurations are authored and compared.
+
+### Decision suites
+
+A suite whose `input.kind` is `decision-request-revision` runs a pinned
+[decision request](#decision-requests) revision instead of a conversation. Its
+`execution` holds only a target and repetitions; there is no response mode,
+inference options, tools, or turn ceiling:
+
+```json
+"input": { "kind": "decision-request-revision", "decisionRequestRevisionId": "decision-revision_example" },
+"execution": {
+  "target": {
+    "connectionRequirementId": "connection_default",
+    "model": "local-decision",
+    "protocol": "systemone"
+  },
+  "repetitions": 3
+}
+```
+
+The connection requirement carries nothing about System One: whether a profile
+speaks it stays a device-local declaration. A configuration may override the
+target only.
+
+An input binding targets `{ "kind": "decision-variable", "variableName": … }`.
+A case value overrides the pinned revision's own value for that variable; a
+variable with no binding keeps the revision's value. The parser rejects a
+secret-like variable name. Whether the pinned revision uses each bound
+variable, whether every variable resolves for each case, and whether each
+decision check names a question of the right type and a real option are
+preflight diagnostics, since the suite stays valid while its author repoints it.
+
+Each suite kind holds only its own checks: a decision suite refuses checks that
+read chat output or tool calls, and a chat suite refuses decision checks.
+`max-duration-ms` and `max-total-tokens` fit both. A hand-edited document that
+mixes them is rejected.
 
 ### Starting an evaluation from a saved prompt
 

@@ -13,6 +13,7 @@ import { PaneEmptyState } from "../pane-empty-state.client";
 import { revisionChoice, revisionTime } from "./revision-choice.client";
 import type { EvaluationSuiteExecutionActions } from "./evaluation-suite-editor.client";
 import type { EvaluationSuiteAuthoringHandle } from "./use-evaluation-suite-authoring.client";
+import { isChatEvaluationSuite } from "../../packages/core/src/evaluation-suites";
 
 const valueSourceLabels: Record<EvaluationValueSource, string> = {
   case: "Case value",
@@ -267,7 +268,7 @@ export function EvaluationCasePreview({ evaluationCase, authoring, execution }: 
           caseName={evaluationCase.name}
           preview={execution.preview}
           toolNames={project.tools
-            .filter(({ id }) => suite.execution.toolIds.includes(id))
+            .filter(({ id }) => isChatEvaluationSuite(suite) && suite.execution.toolIds.includes(id))
             .map(({ name }) => name)}
         />
       )}

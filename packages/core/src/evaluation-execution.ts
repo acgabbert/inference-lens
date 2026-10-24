@@ -2,7 +2,7 @@ import { CHECK_SCHEMA_VERSION } from "./checks.ts";
 import { parseExperimentPlanFile } from "./experiment.ts";
 import type { EvaluationExperimentPlanV4 } from "./experiment.ts";
 import { resolveEvaluationCase } from "./evaluation-case-resolution.ts";
-import { evaluationSuitePreflight, resolveEvaluationVariant } from "./evaluation-suites.ts";
+import { evaluationSuitePreflight, isChatEvaluationSuite, resolveEvaluationVariant } from "./evaluation-suites.ts";
 import type { ProjectFile } from "./project.ts";
 import { randomUUID } from "./random-id.ts";
 import { createEntityId } from "./run-kernel/types.ts";
@@ -49,7 +49,14 @@ export function createEvaluationExperimentPlan(
     suiteId,
     selectedCaseIds,
   } = options;
-  const suite = project.evaluationSuites.find(({ id }) => id === suiteId);
+  const found = project.evaluationSuites.find(({ id }) => id === suiteId);
+  if (found && !isChatEvaluationSuite(found)) {
+    throw new EvaluationSetupError([{
+      code: "unsupported-suite-kind",
+      message: "Decision suites cannot be run by this build yet.",
+    }]);
+  }
+  const suite = found;
   const conversationRevisionId = suite?.input.conversationRevisionId;
   if (!suite || !conversationRevisionId) {
     throw new EvaluationSetupError([{

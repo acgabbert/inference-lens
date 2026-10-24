@@ -1728,6 +1728,20 @@ Decided in D31–D37, with 5a's details in D38–D43. Delivered in order:
   preflight, band, and cases. It has no new test of its own, since nothing
   observable changed; the existing evaluation render, interaction, and
   browser specs cover it.
+  Second step done (2026-10-24): check vocabulary 5 with the decision check
+  subject (D46, D48) in `checks.ts`, covered by `tests/decision-checks.test.ts`;
+  and the decision suite arm with project schema 14 (D44, D45, D46), with
+  decision preflight in `evaluation-suites.ts`, covered by
+  `tests/decision-suites.test.ts`. The evaluator tests were run red on wrong
+  values (decision kinds returned nothing; `called-tool` on a decision run
+  reported failed); the vocabulary and subject tests were first red only on the
+  missing exports. The suite tests were run red on the parser rejecting
+  decision suites and on the missing preflight; the one asserting that
+  malformed decision suites are refused could not fail on the old code. Plans and assessments written with vocabulary 4 still open
+  (`structured-output-checks`, also run red first). Chat-only paths narrow to
+  `ChatEvaluationSuite`; the plan builder, the app's start path, and the CLI
+  refuse a decision suite until step 3, and the editor shows no setup band
+  for one until step 4.
 - **5c.** `inference-lens run` for decision suites (D36).
 
 ## Out of scope

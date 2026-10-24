@@ -7,6 +7,7 @@ import { ProjectTemplatesPane } from "../project-templates-pane.client";
 import type { CompatibleEvaluationSuite } from "../project-templates-pane.client";
 import type { PromptNavigation } from "../templates/use-prompt-navigation.client";
 import type { ProjectTemplatesHandle } from "../templates/use-project-templates.client";
+import { isChatEvaluationSuite } from "../../packages/core/src/evaluation-suites";
 
 interface PromptsModeProps {
   project?: ProjectFile;
@@ -36,6 +37,7 @@ function compatibleEvaluationSuitesByTemplate(
 ): Map<PromptTemplateId, CompatibleEvaluationSuite[]> {
   const suitesByTemplate = new Map<PromptTemplateId, CompatibleEvaluationSuite[]>();
   project?.evaluationSuites.forEach((suite) => {
+    if (!isChatEvaluationSuite(suite)) return;
     const revision = project.conversationRevisions.find(
       ({ id }) => id === suite.input.conversationRevisionId,
     );
