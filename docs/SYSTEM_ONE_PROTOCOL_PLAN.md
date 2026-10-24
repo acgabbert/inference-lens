@@ -1742,6 +1742,29 @@ Decided in D31–D37, with 5a's details in D38–D43. Delivered in order:
   `ChatEvaluationSuite`; the plan builder, the app's start path, and the CLI
   refuse a decision suite until step 3, and the editor shows no setup band
   for one until step 4.
+  Third step done (2026-10-24): decision suites execute through the shared
+  pipeline. Plan schema 5 adds the `decision-evaluation` kind (D47), built by
+  `createDecisionEvaluationExperimentPlan`; Version 4 plans open as Version 5.
+  `repetitionEvidence` projects either run kind before scoring (D50), so the
+  aggregate and reassessments score decision executions with no kind
+  branches. `ExperimentController` hands each cell to a per-kind executor
+  (`ChatCellExecutor`, today's cell loop moved unchanged, and
+  `DecisionCellExecutor`) behind one scheduler (D49); a decision batch is
+  `new ExperimentController<DecisionRun>({ decisionTransport, … })`. Covered
+  by `tests/decision-experiment-plan.test.ts`,
+  `tests/decision-experiment-scoring.test.ts`, and
+  `tests/decision-experiment-controller.test.ts`. The controller tests were
+  run red on the old controller refusing decision plans. The scoring tests
+  were red on the old aggregate throwing on a decision run (it read chat
+  events), not on a wrong value. The plan tests were red only on the missing
+  exports. Chat behavior is unchanged under the existing unit suites and the
+  batch browser specs. One difference is forced by D22: a decision cell
+  stopped during its 429 wait ends failed with that 429, which scores as
+  rate-limited, where a chat cell ends cancelled. A decision trace cannot be
+  cancelled from a paused attempt. Still chat-only until step 4: the app's
+  start path and the CLI (5c) keep refusing decision suites, project history
+  lists a decision plan as one it cannot show, and comparison and baselines
+  refuse a decision execution, because their drift fields are chat-shaped.
 - **5c.** `inference-lens run` for decision suites (D36).
 
 ## Out of scope

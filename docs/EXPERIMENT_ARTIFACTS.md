@@ -9,11 +9,18 @@ experiments/<experimentId>.plan.json
 experiments/<experimentId>.result.json
 ```
 
-The v4 plan is written before provider work starts and is a discriminated
-`repeated-request | evaluation` union. A repeated plan freezes one common
-resolved input. An evaluation plan freezes the selected suite/cases and stable
-identities, the check-vocabulary version (4 for new plans; 3 still opens) and strict scoring policy, and one
-fully resolved authored input per case. Evaluation cells reference a case and
+The v5 plan is written before provider work starts and is a discriminated
+`repeated-request | evaluation | decision-evaluation` union. A repeated plan
+freezes one common resolved input. An evaluation plan freezes the selected
+suite/cases and stable identities, the check-vocabulary version (5 for new
+plans; 3 and 4 still open) and strict scoring policy, and one fully resolved
+authored input per case. A decision evaluation (System One D47) is shaped the
+same way, but each case freezes the resolved `DecisionInput` it sends, with
+the decision request and revision it came from, and each configuration holds
+only its decision target: there are no tools, response mode, options, or turn
+ceiling. Its check vocabulary is always 5, and like a decision trace, the
+`decision` subtree keeps its authored key order, because question and option
+order are what was sent. Evaluation cells of either kind reference a case and
 add only their preallocated run ID and repetition position. The
 optional terminal result records only the terminal experiment status and each
 cell’s disposition. Run evidence, including output, events, timing, usage,
@@ -67,7 +74,13 @@ never ran. A repetition with no openable trace is presented as `Waiting`,
 `Not run`, `Trace missing`, or `Trace could not be read` — never as one
 undifferentiated blank.
 
-Plans use `schemaVersion: 4`. Results use `schemaVersion: 6`.
+Plans use `schemaVersion: 5`. Results use `schemaVersion: 6`.
+
+- Plan Version 5 added the `decision-evaluation` kind. A Version 4 plan is a
+  Version 5 plan that cannot be a decision evaluation, so it opens as its
+  Version 5 equivalent; an older build reports a Version 5 plan as a newer
+  version rather than invalid. A decision cell's disposition means what a chat
+  cell's does, so results did not change version.
 
 - Version 5 added one terminal status, `stopped`, for a batch that stopped
   itself because a tool binding became unavailable. A stopped result carries
