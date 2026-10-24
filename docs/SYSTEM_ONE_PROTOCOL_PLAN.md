@@ -1,6 +1,6 @@
 # System One protocol plan
 
-Status: **D1–D43 and U1–U6 accepted; D44–D51 (Phase 5b contracts) proposed. Phase 5a (project-owned decision requests) is implemented, 5b and 5c are not. Phases 1 and 2 are merged; D16's fixes
+Status: **D1–D51 and U1–U6 accepted. Phase 5a (project-owned decision requests) is implemented, 5b and 5c are not. Phases 1 and 2 are merged; D16's fixes
 and host tests are in, with its native-app check still to run on a desktop
 build. Phases 3 and 4 are implemented together (D20): the Compose owner and
 topbar (D29-A), trace opening by kind (D30), the decision draft, target, and
@@ -1274,11 +1274,11 @@ The project holds only a draft that validates (D18): while the editor shows
 problems, the revision keeps its last valid content and the composer says the
 draft is not saved to the project.
 
-### 5b decisions (D44–D51) *(proposed)*
+### 5b decisions (D44–D51) *(accepted)*
 
 D33–D35 fixed the direction: a suite union, check vocabulary 5, and one
 shared experiment pipeline. These settle the contracts 5b builds against.
-Nothing in 5b starts while one is open. Where an option refines the wording
+The user accepted each recommendation. Where an option refines the wording
 of D34 or D35, it says so.
 
 What exists today, which shapes the options: `EvaluationSuite` is chat-only
@@ -1291,7 +1291,7 @@ chat input per case. Both `ExperimentController` and
 cell dispositions, concurrency, and the retry policy, so it does not depend
 on what a cell ran.
 
-#### D44. The decision suite shape *(proposed)*
+#### D44. The decision suite shape *(accepted: A)*
 
 - **A. Two arms under one `EvaluationSuite` union**, with a shared base
   (`id`, `name`, `variants`, `inputBindings`, `cases`):
@@ -1310,7 +1310,7 @@ on what a cell ran.
   `input.kind: "conversation-revision"`, so they parse unchanged and need no
   migration.
 
-#### D45. How case values reach decision variables *(proposed)*
+#### D45. How case values reach decision variables *(accepted: A)*
 
 - **A. Reuse input bindings with a new target kind,** `{ kind:
   "decision-variable", variableName }`. `EvaluationCase` stays exactly as it
@@ -1325,7 +1325,7 @@ on what a cell ran.
 - **Recommendation: A.** Bindings must name a variable the pinned revision
   uses, and a secret-like name is refused, as in D40.
 
-#### D46. Check vocabulary 5 and project schema 14 *(proposed)*
+#### D46. Check vocabulary 5 and project schema 14 *(accepted: A)*
 
 Checks are stored on cases, so the vocabulary bump forces a project bump
 (see `CHECK_SCHEMA_VERSION`).
@@ -1347,7 +1347,7 @@ Checks are stored on cases, so the vocabulary bump forces a project bump
   checks.
 - **Recommendation: A.**
 
-#### D47. Experiment plan and result versions *(proposed; refines D35)*
+#### D47. Experiment plan and result versions *(accepted: A; refines D35)*
 
 - **A. A plan-level kind, plan schema 5, result unchanged.**
   - The plan union gains `kind: "decision-evaluation"`. Its `suite`
@@ -1374,7 +1374,7 @@ Checks are stored on cases, so the vocabulary bump forces a project bump
   version always moves with its plan.
 - **Recommendation: A.**
 
-#### D48. The decision check subject and evaluation *(proposed)*
+#### D48. The decision check subject and evaluation *(accepted: A)*
 
 - **A. One `evaluateCheck` over a subject union,** `{ kind: "chat", … } |
   { kind: "decision", … }`.
@@ -1399,7 +1399,7 @@ Checks are stored on cases, so the vocabulary bump forces a project bump
   asked for, behind one entry point. Check evidence stays measurements only:
   the observed choice, probability, or score, never instructions or state.
 
-#### D49. Generalizing the experiment controller *(proposed)*
+#### D49. Generalizing the experiment controller *(accepted: A)*
 
 - **A. A per-kind cell executor behind the shared scheduler.** The
   controller keeps planning order, connection limits, the 429 connection
@@ -1420,7 +1420,7 @@ Checks are stored on cases, so the vocabulary bump forces a project bump
 - **Recommendation: A.** D35 rejected a separate controller. A is how one
   controller serves two kinds without a branch inside each method.
 
-#### D50. Scoring decision repetitions *(proposed)*
+#### D50. Scoring decision repetitions *(accepted: A)*
 
 - **A. Project each cell into common repetition evidence before scoring.**
   The projection, `{ status, rateLimited, rateLimitRetries, metrics,
@@ -1436,7 +1436,7 @@ Checks are stored on cases, so the vocabulary bump forces a project bump
   rather than failure.
 - **Recommendation: A.**
 
-#### D51. Authoring and results in the app *(proposed)*
+#### D51. Authoring and results in the app *(accepted: A)*
 
 - **A. The same Evaluations surface, with a kind-specific settings owner.**
   - The rail lists both kinds, with a kind label.
@@ -1719,8 +1719,7 @@ Decided in D31–D37, with 5a's details in D38–D43. Delivered in order:
   while a decision run executes.
 - **5b.** Check vocabulary 5 (D34), decision suites (D33), and their
   execution through the shared experiment pipeline (D35), with suite
-  authoring in the app. Contracts proposed in D44–D51, which are awaiting
-  acceptance.
+  authoring in the app. Contracts accepted in D44–D51.
 - **5c.** `inference-lens run` for decision suites (D36).
 
 ## Out of scope
