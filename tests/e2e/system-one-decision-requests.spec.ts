@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 
 import { expect, test, type Page } from "@playwright/test";
 
-import { createProjectFile, serializeProjectFile } from "../../packages/core/src/project";
+import { createProjectFile, PROJECT_SCHEMA_VERSION, serializeProjectFile } from "../../packages/core/src/project";
 import type { ProjectFile } from "../../packages/core/src/project";
 import { resolveProviderCapabilities } from "../../packages/core/src/types";
 import {
@@ -120,7 +120,7 @@ test("a decision request saves into the project, resolves its variables on the w
 
   // The project keeps the authored request, in authored order, and its values.
   const saved = await waitForSavedRevisions(page, 1);
-  expect(saved.schemaVersion).toBe(13);
+  expect(saved.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
   const revision = saved.decisionRequestRevisions[0]!;
   expect(saved.defaults.decisionRequestRevisionId).toBe(revision.id);
   expect(saved.decisionRequests).toEqual([{ id: revision.decisionRequestId, name: "Decision request" }]);
