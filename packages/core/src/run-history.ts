@@ -7,8 +7,8 @@ import type {
   RunTrace,
   TerminalRunStatus,
 } from "./run-kernel/types.ts";
-import type { DecisionWireProtocol } from "./decision.ts";
-import type { DecisionRunTrace } from "./decision-trace.ts";
+import type { DecisionRun, DecisionWireProtocol } from "./decision.ts";
+import { decisionRunFromTrace, type DecisionRunTrace } from "./decision-trace.ts";
 import { runMetrics } from "./run-metrics.ts";
 import { parseSavedRunTraceJson, runStateFromTrace, traceFileName } from "./run-trace.ts";
 
@@ -84,6 +84,8 @@ export interface LoadedRunHistoryFiles {
    */
   /** Chat runs only; a decision run has no event-reduced state. */
   statesByRunId: ReadonlyMap<RunId, { fileName: string; state: RunState }>;
+  /** Decision runs, as their traces restore them, for decision evaluations. */
+  decisionRunsByRunId: ReadonlyMap<RunId, { fileName: string; run: DecisionRun }>;
 }
 
 /** Builds the list projection through the same validated state used by the UI. */
@@ -191,6 +193,7 @@ export function loadRunHistoryFilesWithStates(
   const items: RunHistoryItem[] = [];
   const failures: RunHistoryFailure[] = [];
   const statesByRunId = new Map<RunId, { fileName: string; state: RunState }>();
+  const decisionRunsByRunId = new Map<RunId, { fileName: string; run: DecisionRun }>();
 
   for (const file of files) {
     try {
@@ -200,6 +203,10 @@ export function loadRunHistoryFilesWithStates(
           fileName: file.fileName,
           summary: summarizeDecisionRunTrace(saved.trace),
         });
+        const current = decisionRunsByRunId.get(saved.trace.runId);
+        if (!current || file.fileName === traceFileName(saved.trace.runId)) {
+          decisionRunsByRunId.set(saved.trace.runId, { fileName: file.fileName, run: decisionRunFromTrace(saved.trace) });
+        }
         continue;
       }
       const { trace } = saved;
@@ -224,7 +231,7 @@ export function loadRunHistoryFilesWithStates(
   }
 
   items.sort(compareHistoryItems);
-  return { items, failures, statesByRunId };
+  return { items, failures, statesByRunId, decisionRunsByRunId };
 }
 
 /**

@@ -201,7 +201,7 @@ export function EvaluationSuiteHistory({ history }: { history: EvaluationSuiteHi
           const drifted = Boolean(
             history.currentRevisionId &&
               item.evaluation &&
-              item.evaluation.conversationRevisionId !== history.currentRevisionId,
+              item.evaluation.inputRevisionId !== history.currentRevisionId,
           );
           const pending = item.planFileName === pendingPlanFileName;
           const pinnedAs = (baselines?.items ?? []).filter(
