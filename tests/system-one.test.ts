@@ -349,6 +349,46 @@ test("captured OpenRouter error envelopes read as their message", () => {
   }
 });
 
+const ollamaEndpoint = "http://localhost:11434/v1";
+
+test("a captured Ollama answer to every question type normalizes", () => {
+  const captured = fixture("ollama-all-types");
+  const input = providerInput(captured.request!, ollamaEndpoint);
+  assert.equal(systemOneAdapter.buildRequest(input).url, "http://localhost:11434/v1/systemone");
+  assert.equal(JSON.stringify(systemOneAdapter.buildRequest(input).body), JSON.stringify(captured.request));
+  const result = systemOneAdapter.normalizeResponse(input, JSON.stringify(captured.response.body));
+  assert.equal(result.model, "tev1:0.8b");
+  assert.deepEqual(Object.keys(result.answers), ["intent", "severity", "is_spam"]);
+  assert.equal(result.answers.intent!.type === "choice" && result.answers.intent!.choice, "billing");
+  assert.equal("confidence" in result.answers.is_spam!, false);
+  // prompt_eval_cached_count is an Ollama extra and stays in the raw body.
+  assert.deepEqual(result.usage, { inputTokens: 453, outputTokens: 0, totalTokens: 453 });
+});
+
+test("captured Ollama answers for other states and labels normalize", () => {
+  for (const name of ["ollama-non-ascii", "ollama-message-state"]) {
+    const captured = fixture(name);
+    const result = systemOneAdapter.normalizeResponse(
+      providerInput(captured.request!, ollamaEndpoint),
+      JSON.stringify(captured.response.body),
+    );
+    assert.deepEqual(Object.keys(result.answers), Object.keys(captured.request!.questions), name);
+  }
+});
+
+test("captured Ollama errors, a bare string under error, read as their message", () => {
+  for (const [name, message] of [
+    ["ollama-400-object-level", 'question "severity": score criteria must be an array of descriptions'],
+    ["ollama-400-too-many-options", 'question "c": Tev1 supports at most 24 candidates'],
+    ["ollama-400-context", "prompt 0 has 2199 tokens; expected 1–2048 (input is never truncated)"],
+    ["ollama-404-unknown-model", "model 'nimble' not found"],
+    ["ollama-413-oversized", "text and schema must not exceed 64 KiB"],
+  ] as const) {
+    const captured = fixture(name);
+    assert.equal(systemOneAdapter.errorMessage(JSON.stringify(captured.response.body)), message, name);
+  }
+});
+
 test("every fixture here is labelled with where it came from", () => {
   for (const name of [
     "typesafe-all-types",
@@ -373,6 +413,15 @@ test("every fixture here is labelled with where it came from", () => {
     "openrouter-400-unknown-model",
     "openrouter-401",
     "openrouter-422-too-many-options",
+    "ollama-all-types",
+    "ollama-non-ascii",
+    "ollama-message-state",
+    "ollama-400-object-level",
+    "ollama-400-too-many-options",
+    "ollama-400-context",
+    "ollama-404-unknown-model",
+    "ollama-413-oversized",
+    "ollama-models",
   ]) {
     assert.match(fixture(name).provenance.kind, /^(doc-derived|captured)$/);
   }

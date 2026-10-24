@@ -212,7 +212,7 @@ function openRouterMessage(message: string): string {
 /**
  * TypeSafe and Databricks answer validation failures FastAPI-style (`detail`
  * as a list of `{loc, msg}`, or a string); OpenRouter wraps every error in
- * `{error: {message}}`.
+ * `{error: {message}}`; Ollama sends `{error: "…"}`.
  */
 function systemOneErrorMessage(raw: string): string | undefined {
   let body: unknown;
@@ -225,6 +225,7 @@ function systemOneErrorMessage(raw: string): string | undefined {
 
   if (typeof body.detail === "string" && body.detail) return body.detail;
   if (Array.isArray(body.detail)) return issueLines(body.detail, "msg", "loc");
+  if (typeof body.error === "string" && body.error) return body.error;
   if (isObject(body.error) && typeof body.error.message === "string" && body.error.message) {
     return openRouterMessage(body.error.message);
   }
