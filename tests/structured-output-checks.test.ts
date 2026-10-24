@@ -40,7 +40,7 @@ function run(definition: CheckDefinition, output: string): CheckOutcome {
 }
 
 test("the check vocabulary is version 4", () => {
-  assert.equal(CHECK_SCHEMA_VERSION, 4);
+  assert.ok(CHECK_SCHEMA_VERSION >= 4);
 });
 
 test("JSON Schema checks parse as portable, non-negatable definitions", () => {
@@ -215,9 +215,9 @@ test("suite preflight reports an unsupported schema before plan creation", () =>
   assert.throws(() => planFor(project), (error: unknown) => error instanceof EvaluationSetupError);
 });
 
-test("new plans record vocabulary 4, and a vocabulary 3 plan rejects v4 constructs instead of reinterpreting them", () => {
+test("new plans record the current vocabulary, and a vocabulary 3 plan rejects v4 constructs instead of reinterpreting them", () => {
   const plan = planFor(suiteProject([schemaCheckJson]));
-  assert.equal(plan.checkSchemaVersion, 4);
+  assert.equal(plan.checkSchemaVersion, CHECK_SCHEMA_VERSION);
   const written = JSON.parse(serializeExperimentPlan(plan));
   assert.equal(parseExperimentPlanJson(JSON.stringify(written)).experimentId, plan.experimentId);
 
@@ -232,9 +232,12 @@ test("new plans record vocabulary 4, and a vocabulary 3 plan rejects v4 construc
   const legacy = JSON.parse(serializeExperimentPlan(planFor(suiteProject([containsCheckJson]))));
   assert.equal((parseExperimentPlanJson(JSON.stringify({ ...legacy, checkSchemaVersion: 3 })) as EvaluationExperimentPlanV4).checkSchemaVersion, 3);
   assert.throws(() => parseExperimentPlanJson(JSON.stringify({ ...legacy, checkSchemaVersion: 2 })));
+
+  // A plan written by a v4 build keeps opening after vocabulary 5, schema checks included.
+  assert.equal((parseExperimentPlanJson(JSON.stringify({ ...written, checkSchemaVersion: 4 })) as EvaluationExperimentPlanV4).checkSchemaVersion, 4);
 });
 
-test("assessments accept vocabularies 3 and 4 and gate v4 constructs the same way", () => {
+test("assessments accept vocabularies 3 to 5 and gate v4 constructs the same way", () => {
   const plan = planFor(suiteProject([containsCheckJson]));
   const assessment: EvaluationAssessmentV1 = {
     schemaVersion: 1,
@@ -247,7 +250,9 @@ test("assessments accept vocabularies 3 and 4 and gate v4 constructs the same wa
     cases: [{ caseId: "evaluation-case_migrations", checks: [parseCheckDefinition({ ...schemaCheckJson, checkId: "check_mentions" })] }],
   };
   const written = JSON.parse(serializeEvaluationAssessment(assessment, plan));
-  assert.equal(parseEvaluationAssessmentJson(JSON.stringify(written), plan).checkSchemaVersion, 4);
+  assert.equal(parseEvaluationAssessmentJson(JSON.stringify(written), plan).checkSchemaVersion, CHECK_SCHEMA_VERSION);
+  // An assessment written by a v4 build keeps opening after vocabulary 5.
+  assert.equal(parseEvaluationAssessmentJson(JSON.stringify({ ...written, checkSchemaVersion: 4 }), plan).checkSchemaVersion, 4);
   assert.throws(
     () => parseEvaluationAssessmentJson(JSON.stringify({ ...written, checkSchemaVersion: 3 }), plan),
     (error: unknown) => error instanceof EvaluationAssessmentError && /check vocabulary version 4/.test(error.message),

@@ -155,7 +155,7 @@ export interface EvaluationExperimentPlanV4 {
   experimentId: ExperimentId;
   kind: "evaluation";
   createdAt: string;
-  /** New plans record `CHECK_SCHEMA_VERSION`; plans written by a v3 build keep 3. */
+  /** New plans record `CHECK_SCHEMA_VERSION`; plans written by an older build keep its version. */
   checkSchemaVersion: CheckSchemaVersion;
   scoringPolicy: "strict";
   repetitions: number;
@@ -669,7 +669,7 @@ const evaluationVariantSnapshotSchema = z.object({
 const evaluationPlanSchema = planBaseSchema.extend({
   schemaVersion: z.literal(EXPERIMENT_SCHEMA_VERSION),
   kind: z.literal("evaluation"),
-  checkSchemaVersion: z.union([z.literal(3), z.literal(CHECK_SCHEMA_VERSION)]),
+  checkSchemaVersion: z.union([z.literal(3), z.literal(4), z.literal(CHECK_SCHEMA_VERSION)]),
   scoringPolicy: z.literal("strict"),
   repetitions: z.number().int().positive(),
   turnCeiling: turnCeilingSchema.optional(),

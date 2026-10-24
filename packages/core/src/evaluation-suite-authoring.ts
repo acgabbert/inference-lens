@@ -517,6 +517,13 @@ export function defaultCheck(
     case "did-not-call-tool": return { checkId, kind: input.kind, toolName: "" };
     case "tool-call-count": return { checkId, kind: input.kind, count: 1, comparator: "at-least" };
     case "tool-call-arguments": return { checkId, kind: input.kind, toolName: "", argumentsSubset: {} };
+    // The question and option are left for the author; preflight names them
+    // until they match the pinned revision.
+    case "decision-choice": return { checkId, kind: input.kind, questionId: "", option: "" };
+    case "decision-option-probability": return { checkId, kind: input.kind, questionId: "", option: "", comparator: "at-least", value: 0.5 };
+    case "decision-score-range": return { checkId, kind: input.kind, questionId: "", min: 0 };
+    case "decision-noul": return { checkId, kind: input.kind, questionId: "", comparator: "at-most", value: 0.5 };
+    case "decision-confidence": return { checkId, kind: input.kind, questionId: "", atLeast: 0.5 };
   }
 }
 

@@ -92,7 +92,7 @@ const assessmentSchema = z
     experimentId: entityId("experiment"),
     name: z.string().trim().min(1).max(EVALUATION_ASSESSMENT_NAME_MAX_LENGTH),
     createdAt: z.string().datetime(),
-    checkSchemaVersion: z.union([z.literal(3), z.literal(CHECK_SCHEMA_VERSION)]),
+    checkSchemaVersion: z.union([z.literal(3), z.literal(4), z.literal(CHECK_SCHEMA_VERSION)]),
     scoringPolicy: z.literal("strict"),
     cases: z.array(assessmentCaseSchema).min(1),
   })

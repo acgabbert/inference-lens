@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { StructuredCheckEditor } from "./structured-check-editor.client";
-import { CHECK_KINDS } from "../../packages/core/src/checks";
+import { CHECK_KINDS, isDecisionCheckKind } from "../../packages/core/src/checks";
 import type { CheckDefinition, CheckKind, ToolCallCountComparator } from "../../packages/core/src/checks";
 import type { JsonObject } from "../../packages/core/src/run-kernel";
 import type { EvaluationCase } from "../../packages/core/src/project";
@@ -45,11 +45,17 @@ const checkKindLabels: Record<CheckKind, string> = {
   "did-not-call-tool": "Did not call tool",
   "tool-call-count": "Tool call count",
   "tool-call-arguments": "Tool call arguments",
+  "decision-choice": "Choice is",
+  "decision-option-probability": "Option probability",
+  "decision-score-range": "Score range",
+  "decision-noul": "Noul probability",
+  "decision-confidence": "Confidence",
 };
 
-// Every portable kind has usable authoring controls.
 const checkKinds = CHECK_KINDS.map((kind) => ({ kind, label: checkKindLabels[kind] }));
-const offeredCheckKinds = checkKinds;
+// A chat suite is offered every kind that reads a chat run; decision kinds
+// arrive with decision suites.
+const offeredCheckKinds = checkKinds.filter(({ kind }) => !isDecisionCheckKind(kind));
 
 function CheckEditor({ check, error, onCommit, onRemove }: {
   check: CheckDefinition;
