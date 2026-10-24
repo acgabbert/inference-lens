@@ -50,7 +50,7 @@ async function openFolder(page: import("@playwright/test").Page, files: Record<s
 
 function fixture(): Record<string, string> {
   const project: ProjectFile = {
-    schemaVersion: 12,
+    schemaVersion: 13,
     projectId: ids.project,
     name: "Promotion browser fixture",
     defaults: { conversationRevisionId: ids.revision, target: { connectionRequirementId: ids.connection, model: "fixture-model", protocol: "openai-compatible-chat-completions" }, options: {}, enabledToolIds: [] },
@@ -59,7 +59,7 @@ function fixture(): Record<string, string> {
     conversationRevisions: [{ id: ids.revision, conversationId: ids.conversation, createdAt: "2026-08-06T12:00:00.000Z", items: [{ kind: "template-use", use: { id: ids.use, templateId: ids.template, templateRevisionId: ids.templateRevision, values: {}, outputMessageIds: [ids.message] } }] }],
     promptTemplates: [{ id: ids.template, name: "Incident prompt", currentRevisionId: ids.templateRevision, revisions: [{ id: ids.templateRevision, createdAt: "2026-08-06T12:00:00.000Z", messages: [{ role: "user", content: "Investigate {{topic}}" }], variableDefaults: {} }] }],
     externalImports: [], tools: [], toolMocks: [],
-    evaluationSuites: [{
+    decisionRequests: [], decisionRequestRevisions: [], evaluationSuites: [{
       id: ids.suite, name: "Incidents", input: { kind: "conversation-revision", conversationRevisionId: ids.revision },
       execution: { target: { connectionRequirementId: ids.connection, model: "fixture-model", protocol: "openai-compatible-chat-completions" }, responseMode: "buffered", options: {}, repetitions: 1, toolIds: [] },
       variants: [{ id: ids.variant, name: "Default", overrides: {} }],

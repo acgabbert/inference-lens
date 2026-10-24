@@ -126,6 +126,13 @@ export function useProjectWorkspace(input: {
   currentDraft(): UpdateProjectDraft;
   onApplyDraft(draft: ProjectDraft, projectId: ProjectFile["projectId"]): void;
   /**
+   * Writes the decision editor's draft into a document being saved (D42). The
+   * decision feature owns its draft, as the chat request owns `currentDraft`.
+   */
+  withDecisionDraft(project: ProjectFile): ProjectFile;
+  /** Hands a newly applied document's active decision request to its owner. */
+  onApplyDecisionRequest(project: ProjectFile): void;
+  /**
    * A save the user asked for landed. Deliberately not called by the auto-save
    * loop below: auto-save is continuous and unremarkable, and confirming it
    * every eight hundred milliseconds would train the user to ignore the only
@@ -143,6 +150,8 @@ export function useProjectWorkspace(input: {
     createProject,
     currentDraft,
     onApplyDraft,
+    withDecisionDraft,
+    onApplyDecisionRequest,
     onSaved,
   } = input;
   const [projectFile, setProjectFile] = useState<ProjectFile | null>(null);
@@ -359,7 +368,7 @@ export function useProjectWorkspace(input: {
   }
 
   function currentProjectDocument(): ProjectFile {
-    return updateProjectDraft(projectFile ?? createProject(), currentDraft());
+    return withDecisionDraft(updateProjectDraft(projectFile ?? createProject(), currentDraft()));
   }
 
   /**
@@ -390,6 +399,7 @@ export function useProjectWorkspace(input: {
     setProjectFile(project);
     setCurrentWorkspace(workspace);
     onApplyDraft(draft, project.projectId);
+    onApplyDecisionRequest(project);
     if (profileId && resolvedProfile) {
       rememberMappedProfile(project.projectId, baseRequirementId, resolvedProfile);
     }

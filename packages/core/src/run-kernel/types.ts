@@ -12,6 +12,8 @@ export type EntityIdKind =
   | "connection"
   | "conversation"
   | "revision"
+  | "decision-request"
+  | "decision-revision"
   | "message"
   | "profile"
   | "run"
@@ -41,6 +43,8 @@ export type EntityId<Kind extends EntityIdKind> = `${Kind}_${string}`;
 
 export type ConversationId = EntityId<"conversation">;
 export type ConversationRevisionId = EntityId<"revision">;
+export type DecisionRequestId = EntityId<"decision-request">;
+export type DecisionRequestRevisionId = EntityId<"decision-revision">;
 export type ProjectId = EntityId<"project">;
 export type ConnectionRequirementId = EntityId<"connection">;
 export type MessageId = EntityId<"message">;

@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import type { DecisionInput, DecisionQuestionType } from "../../packages/core/src/decision";
+import { discoverDecisionVariables } from "../../packages/core/src/decision-variables";
 import {
   addDecisionOption,
   addDecisionQuestion,
   changeDecisionQuestionType,
   createDecisionDraft,
+  decisionDraftFromInput,
   moveDecisionOption,
   moveDecisionQuestion,
   removeDecisionOption,
@@ -22,6 +24,23 @@ import type { DecisionDraft, DecisionDraftProblem, DecisionOptionRow, DecisionQu
 
 export interface DecisionDraftHandle {
   draft: DecisionDraft;
+  /** One value per template variable (D40); key presence is significant. */
+  values: Readonly<Record<string, string>>;
+  /**
+   * The variables the draft uses, in first-use order. While the draft does not
+   * validate, the names that already hold a value, so none disappears mid-edit.
+   */
+  variables: string[];
+  /**
+   * The user has edited this draft, or it came from a project. An untouched
+   * starting draft is never written into a project (D43).
+   */
+  touched: boolean;
+  /** Replaces the draft with a saved request, which counts as touched. */
+  adopt(input: DecisionInput, values: Readonly<Record<string, string>>): void;
+  /** Back to the untouched starting draft. */
+  reset(): void;
+  setValue(name: string, value: string): void;
   /** Why the last view switch was refused; cleared by the next edit or switch. */
   viewProblems: DecisionDraftProblem[];
   /** Derived from the draft as it is now; never a retained last-valid input (D18). */
@@ -46,19 +65,48 @@ export interface DecisionDraftHandle {
  * The decision kind's editor draft (D18, D29). Held above any conditional pane
  * mount, so switching kinds or views never loses it (D17).
  */
-export function useDecisionDraft(): DecisionDraftHandle {
+export function useDecisionDraft(options: { onEdited?(): void } = {}): DecisionDraftHandle {
   const [draft, setDraft] = useState<DecisionDraft>(() => createDecisionDraft());
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [touched, setTouched] = useState(false);
   const [viewProblems, setViewProblems] = useState<DecisionDraftProblem[]>([]);
 
   function edit(update: (current: DecisionDraft) => DecisionDraft): void {
     setViewProblems([]);
     setDraft(update);
+    setTouched(true);
+    options.onEdited?.();
   }
+
+  const validated = validateDecisionDraft(draft);
+  const variables = "input" in validated
+    ? discoverDecisionVariables(validated.input).variables
+    : Object.keys(values);
 
   return {
     draft,
+    values,
+    variables,
+    touched,
     viewProblems,
-    validated: () => validateDecisionDraft(draft),
+    validated: () => validated,
+    adopt(input, adopted) {
+      setViewProblems([]);
+      setDraft(decisionDraftFromInput(input));
+      setValues({ ...adopted });
+      setTouched(true);
+    },
+    reset() {
+      setViewProblems([]);
+      setDraft(createDecisionDraft());
+      setValues({});
+      setTouched(false);
+    },
+    setValue(name, value) {
+      setValues((current) => ({ ...current, [name]: value }));
+      setTouched(true);
+      options.onEdited?.();
+    },
     showJson() {
       const result = showDecisionJsonView(draft);
       if ("problems" in result) { setViewProblems(result.problems); return; }

@@ -257,13 +257,13 @@ test("assessments accept vocabularies 3 and 4 and gate v4 constructs the same wa
   assert.throws(() => parseEvaluationAssessmentJson(JSON.stringify({ ...legacy, checkSchemaVersion: 2 }), plan), EvaluationAssessmentError);
 });
 
-test("projects move to v12; a v11 project opens unless it carries a v4 construct", () => {
-  assert.equal(PROJECT_SCHEMA_VERSION, 12);
+test("a v11 project opens as the current schema unless it carries a v4 construct", () => {
+  assert.equal(PROJECT_SCHEMA_VERSION, 13);
   const current = suiteProject([schemaCheckJson]);
-  assert.equal(current.schemaVersion, 12);
+  assert.equal(current.schemaVersion, 13);
 
   const v11 = { ...suiteProject([containsCheckJson]), schemaVersion: 11 };
-  assert.equal(parseProjectFile(v11).schemaVersion, 12);
+  assert.equal(parseProjectFile(v11).schemaVersion, 13);
   assert.throws(() => parseProjectFile({ ...current, schemaVersion: 11 }), /check vocabulary version 4/);
   const policy = suiteProject([{ checkId: "check_json", kind: "valid-json", inputPolicy: "surrounding-fence" }]);
   assert.throws(() => parseProjectFile({ ...policy, schemaVersion: 11 }), /check vocabulary version 4/);
