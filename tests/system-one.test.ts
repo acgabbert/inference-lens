@@ -422,6 +422,7 @@ test("every fixture here is labelled with where it came from", () => {
     "ollama-404-unknown-model",
     "ollama-413-oversized",
     "ollama-models",
+    "llamacpp-models",
   ]) {
     assert.match(fixture(name).provenance.kind, /^(doc-derived|captured)$/);
   }

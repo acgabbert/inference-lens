@@ -1,0 +1,74 @@
+{
+  "provenance": {
+    "kind": "captured",
+    "implementation": "llama.cpp llama-server GET /v1/models",
+    "server": "llama-server b11669-620d2225c behind Caddy, --api-key set",
+    "model": "Laya BF16 GGUF, served as \"local-decision\"",
+    "captured": "2026-10-23",
+    "note": "The whole body. data[] marks the decision model with architecture.output_modalities: [\"decisions\"], but the Ollama-style models[] beside it says capabilities: [\"completion\"]. ?output_modalities=decisions returns this same body, and /api/tags is a 404."
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "models": [
+        {
+          "name": "local-decision",
+          "model": "local-decision",
+          "modified_at": "",
+          "size": "",
+          "digest": "",
+          "type": "model",
+          "description": "",
+          "tags": [
+            ""
+          ],
+          "capabilities": [
+            "completion"
+          ],
+          "parameters": "",
+          "details": {
+            "parent_model": "",
+            "format": "gguf",
+            "family": "",
+            "families": [
+              ""
+            ],
+            "parameter_size": "",
+            "quantization_level": ""
+          }
+        }
+      ],
+      "object": "list",
+      "data": [
+        {
+          "id": "local-decision",
+          "aliases": [
+            "local-decision"
+          ],
+          "tags": [],
+          "object": "model",
+          "architecture": {
+            "input_modalities": [
+              "text"
+            ],
+            "output_modalities": [
+              "decisions"
+            ]
+          },
+          "created": 1792811882,
+          "owned_by": "llamacpp",
+          "meta": {
+            "vocab_type": 2,
+            "n_vocab": 50368,
+            "n_ctx": 8192,
+            "n_ctx_train": 8192,
+            "n_embd": 1024,
+            "n_params": 421029889,
+            "size": 842242052,
+            "ftype": "BF16"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -406,6 +406,38 @@ project format change yet".
   declaration is a profile flag, not a capability.
 - Phase 2 still has to decide how the server-provisioned profile declares it.
   `INFERENCE_LENS_API_PROTOCOLS` currently names chat protocols only.
+  Settled below.
+
+#### D9a. The server-default profile's declaration *(accepted: A)*
+
+Today `INFERENCE_LENS_API_PROTOCOLS` sets which chat APIs the **Server default**
+profile speaks and locks its protocol switches while set; a list naming
+anything unrecognized is ignored whole, with a server warning and a UI banner.
+
+- **A. `systemone` becomes an accepted name in that list**
+  (`chat-completions,systemone`). The parser splits it out, and runtime status
+  carries `systemOne: true` beside the chat `protocols`.
+- **B. A separate variable** (`INFERENCE_LENS_API_SYSTEM_ONE=true`). Older
+  releases ignore it silently, but "which APIs this endpoint speaks" is split
+  across two variables, and the toggle needs its own locking rules.
+- **C. Not provisioned.** Each browser toggles it, while every other connection
+  fact comes from the server.
+- **Recommendation: A.** The variable already says which APIs the endpoint
+  speaks, and parsing, locking, the banner, and old-release behaviour all
+  carry over.
+- **Accepted: A**, with these rules:
+  - The accepted name is `systemone` only. It matches the path
+    (`/systemone`) and the connection protocol id, the way the other names
+    follow their wire API. `decisions` is not accepted: it is OpenRouter's
+    alpha path and output modality, and D1 decided that path is not a separate
+    protocol, so an alias would suggest otherwise. Adding an alias later is
+    compatible; removing one is not.
+  - While the variable is set, the System One toggle is locked to whether the
+    list names `systemone`; unset, it stays the browser's (D9-B).
+  - A list of only `systemone` is valid, for a decision-only server; chat runs
+    then get the existing unlisted-API notice.
+  - An older release given `systemone` rejects the whole list with the
+    existing warning and banner, as designed for unknown names.
 
 ### D10. Decision-model discovery *(accepted: B)*
 
@@ -419,7 +451,7 @@ differently:
 | Runtime | Marker |
 | --- | --- |
 | OpenRouter | Listed only by `<base>/models?output_modalities=decisions`; entries carry `architecture.output_modalities: ["decisions"]` |
-| llama.cpp | `<base>/models` entries carry `architecture.output_modalities: ["decisions"]` |
+| llama.cpp | `<base>/models` `data[]` entries carry `architecture.output_modalities: ["decisions"]`; the Ollama-style `models[]` in the same body says `capabilities: ["completion"]` for the same model (captured) |
 | Ollama | None in `/v1/models`; `capabilities: ["decision"]` in `/api/tags` at the server root |
 
 - **A. Free text only.** No decision listing; the picker shows the chat
@@ -447,9 +479,18 @@ differently:
   an arbitrary URL to send a credential to, and it still never inspects a
   body. Step 2 costs a second request only on servers that mark nothing, and
   only when a decision picker opens.
-- Unverified, to check during Phase 2: that llama.cpp and Ollama ignore the
-  `?output_modalities` query, and that stripping `/v1` finds Ollama's root
-  behind a proxy. Step 2 is a layout guess, which is why it runs only after
+- The parser trusts `data[].architecture.output_modalities` over any
+  `models[].capabilities` in the same body: llama.cpp sends both, and its
+  `models[]` mislabels the decision model as `completion` (captured,
+  `llamacpp-models`). `models[].capabilities` counts only in the step 2
+  `/api/tags` body.
+- Verified: llama.cpp and Ollama 0.40.10 both ignore `?output_modalities`
+  (identical bodies). llama.cpp 404s `/api/tags`; Ollama serves it only at the
+  root (`/v1/api/tags` is a 404), so removing `/v1` is the right derivation.
+- Known degradation: behind a reverse proxy, step 2 works only when the proxy
+  forwards the whole server under its prefix. One that forwards only `/v1/*`
+  404s `/api/tags`, and discovery falls to step 3 (unfiltered, typed id still
+  works). That is the operator's proxy, not something Phase 2 can verify. Step 2 is a layout guess, which is why it runs only after
   step 1 finds nothing marked.
 
 ### D11. The fixture provider *(accepted: B)*
@@ -568,15 +609,16 @@ docs; ⬜ items still need a live run or a credential.
 
 - Web service HTTP route executes a decision request with the server-held
   credential, mirroring the chat transport's redaction.
+- `INFERENCE_LENS_API_PROTOCOLS` accepts `systemone` (D9a-A): parsed apart
+  from the chat protocols, reported in runtime status, locking the drawer
+  toggle while set. `docs/DOCKER.md` documents it.
 - Tauri: add the protocol to the closed `WireProtocol` enum, with its path and
   credential handling; Rust still does no protocol parsing. Add `/systemone` to
   `PROTOCOL_PATHS`, so a pasted full URL still reduces to its base.
 - Decision-model discovery (D10-B): `listing: "decisions"` on the discovery
   request, the marker-following URLs in core and Rust, and a pure core parser
   for both listing shapes, unit-tested against `openrouter-models`,
-  `ollama-models`, and a llama.cpp listing (not yet captured; take it from the
-  home server). Check the two unverified D10
-  assumptions against live servers.
+  `ollama-models`, and `llamacpp-models`.
 - A fixture provider, `npm run dev:systemone-provider` (D11-B), next to the
   flaky and paced fixtures. It replays the committed captures by model id
   under `/llamacpp/v1`, `/ollama/v1`, and `/openrouter/v1`, each with its own
