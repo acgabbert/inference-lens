@@ -51,7 +51,13 @@ import { ResponseOutput, type TraceStorageStatus } from "./response-output.clien
 import { WorkbenchShell } from "./workbench-shell.client";
 import type { WorkbenchView } from "./workbench-shell.client";
 import { RunTracePanel } from "./run-trace-panel.client";
-import { traceFileName } from "../packages/core/src/run-trace";
+import { parseSavedRunTraceJson, traceFileName } from "../packages/core/src/run-trace";
+import type { SavedRunTrace } from "../packages/core/src/run-trace";
+import { useCompose } from "./compose/use-compose.client";
+import type { ComposeKindHandle } from "./compose/use-compose.client";
+import { ComposeKindSwitch } from "./compose/compose-kind-switch.client";
+import { useDecisionCompose } from "./decisions/use-decision-compose.client";
+import type { TraceOrigin } from "./run/use-run-session.client";
 import { runRequestExcerpt } from "../packages/core/src/run-history";
 import { useEvaluationBaselines } from "./evaluations/use-evaluation-baselines.client";
 import type { ProjectExperimentHistoryItem } from "./use-project-run-history.client";
@@ -150,6 +156,7 @@ function HomeContent() {
     addProfile,
     updateProfile,
     updateActiveProfile,
+    setActiveSystemOne,
     activeProfileDeletionRefusal,
     removeActiveProfile,
     setCapabilityOverride,
@@ -432,6 +439,28 @@ function HomeContent() {
     onError(message) { project.setError(message); },
   });
 
+  const batchActive = repeatedExperiment.isRunning || evaluationExecution.isRunning;
+  // The decision feature owns its draft, target, session, and panes (D19,
+  // D29). The route supplies only what crosses features: the activity guard
+  // (D24) and where results are shown.
+  const decision = useDecisionCompose({
+    profiles,
+    transport: inferenceTransport,
+    prepareCredentialForProfile: credential.prepareForProfile,
+    updateProfile,
+    workspace: projectWorkspace,
+    ...(isRequestActive
+      ? { otherActivity: "A chat request is running. Stop it before running a decision." }
+      : batchActive
+        ? { otherActivity: "A batch is running. Wait for it or stop it before running a decision." }
+        : {}),
+    onShowResponse() { setWorkbenchView("response"); },
+    onTraceSaved() { setSavedRunVersion((current) => current + 1); },
+    onError(message) { project.setError(message, { clearKind: true }); },
+    onOpenConnections() { setConnectionDrawerOpen(true); },
+  });
+  const decisionExecuting = decision.compose.executing;
+
   const selectedProjectToolCount = tools.filter(({ id }) =>
     enabledToolIds.includes(id),
   ).length;
@@ -537,7 +566,7 @@ function HomeContent() {
     mappedProfileIds,
     bindingForTool,
     commandToolsUnavailableReason: commandToolUnavailableMessage(commandTools),
-    activityInProgress: isRequestActive || repeatedExperiment.isRunning || evaluationExecution.isRunning,
+    activityInProgress: isRequestActive || decisionExecuting || repeatedExperiment.isRunning || evaluationExecution.isRunning,
     running: evaluationExecution.isRunning,
     onBegin: evaluationExecution.begin,
     onError(message) { project.setError(message); },
@@ -569,7 +598,7 @@ function HomeContent() {
       setMode("evaluations");
     },
     onOpenTrace(trace, origin) {
-      runSession.adoptTrace(trace, origin);
+      openSavedTrace({ kind: "chat", trace }, origin);
       setTraceOpen(true);
       setMode("compose");
       setWorkbenchView("inspect");
@@ -920,36 +949,6 @@ function HomeContent() {
     });
   }
   const responseEmptyState = runEmptyStatePresentation(readiness);
-  const onContextualRunShortcut = useEffectEvent((event: KeyboardEvent) => {
-    if (!(event.metaKey || event.ctrlKey) || event.key !== "Enter") return;
-    event.preventDefault();
-    if (
-      modalOwnsKeyboardCommands() ||
-      confirmation ||
-      repeatedExperiment.draft ||
-      evaluationExecution.draft ||
-      isRequestActive ||
-      repeatedExperiment.isRunning ||
-      evaluationExecution.isRunning
-    ) return;
-    // Each mode's primary action is what the shortcut fires. Runs has none:
-    // it is where results are read, not where work is started.
-    if (mode === "evaluations") {
-      if (!evaluationWorkspace.startDisabledReason) evaluationWorkspace.start();
-      return;
-    }
-    if (mode !== "compose") return;
-    if (readiness?.blocked) return;
-    if (runState?.status.kind === "paused" && runState.status.reason === "attempt_failed") {
-      void runSession.retry();
-    } else if (runState?.status.kind !== "awaiting_tool_results") {
-      void run();
-    }
-  });
-  useEffect(() => {
-    window.addEventListener("keydown", onContextualRunShortcut);
-    return () => window.removeEventListener("keydown", onContextualRunShortcut);
-  }, []);
 
   /**
    * The one banner slot, in priority order.
@@ -1155,6 +1154,175 @@ function HomeContent() {
       {...(projectFile ? { onPromoteTrace: (trace: RunTrace) => evaluationCaseSource.requestPromotion(trace) } : {})}
     />
   );
+  // Chat's request pane, unchanged; Compose selects it by kind.
+  const chatRequestPane = (
+    <RequestComposer
+      requestDraft={{
+        messages, tools, requestTools, enabledToolIds, addTool, removeTool, moveTool, updateTool,
+        setToolEnabled, mockForTool, updateToolMock, removeRequestTool, saveRequestToolToProject,
+        attachMcpToolToProject, attachMcpToolToRequest,
+      }}
+      commandTools={commandTools}
+      mcpConsents={mcpConsents}
+      templates={projectTemplates}
+      project={projectFile}
+      settings={{
+        model: requestSettings.model,
+        temperature: requestSettings.temperature,
+        responseMode: requestSettings.responseMode,
+        protocol: requestSettings.protocol,
+        supportedProtocols: requestSettings.supportedProtocols,
+        onProtocolChange: requestSettings.setProtocol,
+        protocolScope: projectFile
+          ? "Project default. Evaluations set their own protocol in their execution settings."
+          : `Remembered for "${requestSettings.profile.name}".`,
+        streamingAvailable: requestSettings.capabilities.streaming,
+        toolsEnabled: requestSettings.capabilities.tools,
+        modelDiscovery: activeModelDiscovery,
+        favoriteModels: requestSettings.profile.favoriteModels ?? [],
+        onModelChange: requestSettings.setModel,
+        onTemperatureChange: requestSettings.setTemperature,
+        onStreamingPreferenceChange: requestSettings.setStreamingPreferred,
+        onLoadModels: (force) => void loadModels(force),
+        onToggleFavoriteModel: (model) =>
+          updateProfile(requestSettings.profile.id, {
+            favoriteModels: toggleFavoriteModel(
+              requestSettings.profile.favoriteModels,
+              model,
+            ),
+          }),
+        ...(projectFile
+          ? {
+              inherited: {
+                label: "profile defaults",
+                value: {
+                  model: requestSettings.profile.model,
+                  temperature: requestSettings.profile.temperature,
+                  responseMode: requestSettings.responseMode,
+                },
+              },
+            }
+          : {}),
+      }}
+      {...(readiness ? { readiness } : {})}
+      repeat={{
+        disabled: Boolean(readiness?.blocked) || unservableToolNames.length > 0,
+        ...(readiness?.blocked
+          ? { disabledReason: readiness.summary }
+          : unservableToolNames.length > 0
+            ? { disabledReason: `Nothing on this device serves ${unservableToolNames.join(", ")}.` }
+            : {}),
+        onRepeat: repeat,
+      }}
+      pendingDestination={pendingReadinessDestination}
+      importedRevision={importedRevision}
+      onReadinessAction={resolveReadiness}
+      onDestinationHandled={() => setPendingReadinessDestination(undefined)}
+      activeProfile={requestSettings.profile}
+      {...(pendingBranch.pending ? { pendingBranch: pendingBranch.pending } : {})}
+      {...(requestPreview ? { requestPreview } : {})}
+      onOpenConnectionSettings={() => setConnectionDrawerOpen(true)}
+      onOpenPrompts={() => {
+        promptNavigation.clearReturn();
+        setMode("prompts");
+      }}
+      onEditPromptSource={editPromptSource}
+      onOpenToolLibrary={() => setToolRegistryOpen(true)}
+      onSaveParentTrace={() => void runSession.exportTrace()}
+      onDiscardPendingBranch={pendingBranch.clear}
+    />
+  );
+  const chatRetryableFailure =
+    runState?.status.kind === "paused" && runState.status.reason === "attempt_failed";
+  // Chat's handle for Compose (D29-A). Chat's session, response, and inspector
+  // are unchanged; only how the topbar and shortcut reach them is shared.
+  const chatCompose: ComposeKindHandle = {
+    executing: isRequestActive,
+    primary:
+      isRequestActive || runState?.status.kind === "awaiting_tool_results"
+        ? { kind: "stop", stop: runSession.stop }
+        : chatRetryableFailure
+          ? { kind: "none" }
+          : {
+              kind: "run",
+              label: "Run current conversation",
+              disabled: Boolean(readiness?.blocked),
+              ...(readiness?.blocked ? { disabledReasonId: RUN_READINESS_SUMMARY_ID } : {}),
+              run: () => void run(),
+            },
+    shortcut() {
+      if (readiness?.blocked) return;
+      if (chatRetryableFailure) {
+        void runSession.retry();
+      } else if (runState?.status.kind !== "awaiting_tool_results") {
+        void run();
+      }
+    },
+    panes: { request: chatRequestPane, response: responseSurface, inspect: traceSurface },
+    inspectAvailable: Boolean(runState && runState.status.kind !== "not_started"),
+    responseStatus: responseView.status,
+    trace: { available: runReachedTerminalStatus, export: () => void runSession.exportTrace() },
+    stop: runSession.stop,
+  };
+  const compose = useCompose({ chat: chatCompose, decision: decision.compose });
+  const onContextualRunShortcut = useEffectEvent((event: KeyboardEvent) => {
+    if (!(event.metaKey || event.ctrlKey) || event.key !== "Enter") return;
+    event.preventDefault();
+    if (
+      modalOwnsKeyboardCommands() ||
+      confirmation ||
+      repeatedExperiment.draft ||
+      evaluationExecution.draft ||
+      compose.executing ||
+      batchActive
+    ) return;
+    // Each mode's primary action is what the shortcut fires. Runs has none:
+    // it is where results are read, not where work is started.
+    if (mode === "evaluations") {
+      if (!evaluationWorkspace.startDisabledReason) evaluationWorkspace.start();
+      return;
+    }
+    if (mode !== "compose") return;
+    compose.shortcut();
+  });
+  useEffect(() => {
+    window.addEventListener("keydown", onContextualRunShortcut);
+    return () => window.removeEventListener("keydown", onContextualRunShortcut);
+  }, []);
+
+  /**
+   * Opens a saved or imported trace of either kind in Compose (D30). Whichever
+   * kind is executing is stopped first, as opening a chat trace always did.
+   */
+  function openSavedTrace(saved: SavedRunTrace, origin: TraceOrigin): void {
+    compose.openKind(saved.kind);
+    if (saved.kind === "chat") {
+      runSession.adoptTrace(saved.trace, origin);
+      return;
+    }
+    decision.adoptTrace(saved.trace, origin);
+    setMode("compose");
+    setWorkbenchView("inspect");
+  }
+
+  async function importRunTrace(file: File): Promise<void> {
+    try {
+      openSavedTrace(parseSavedRunTraceJson(await file.text()), { workspace: null, fileName: file.name });
+    } catch (error) {
+      project.setError(error instanceof Error ? error.message : "Could not import the run trace.", { clearKind: true });
+    }
+  }
+
+  async function openHistoryDecision(fileName: string): Promise<void> {
+    const workspace = projectWorkspace;
+    if (!workspace) return;
+    try {
+      openSavedTrace(await runHistory.readSavedTrace(fileName), { workspace, fileName });
+    } catch (error) {
+      project.setError(error instanceof Error ? error.message : "Could not open the saved decision run.", { clearKind: true });
+    }
+  }
+
   const n8nImportDisabledReason = pendingBranch.pending
     ? "Finish or discard the pending branch before importing a prompt."
     : Boolean(runState) && !runReachedTerminalStatus
@@ -1183,21 +1351,16 @@ function HomeContent() {
         projectDirty={projectDirty}
         {...(projectStorageState ? { projectStorageState } : {})}
         folderAccessAvailable={folderAccessAvailable}
-        hasDiagnosticCapture={hasDiagnosticCapture}
-        hasRunTrace={runReachedTerminalStatus}
+        // Diagnostics capture chat's stream; a decision exchange has its evidence in Inspect.
+        hasDiagnosticCapture={hasDiagnosticCapture && compose.kind === "chat"}
+        hasRunTrace={compose.trace.available}
         hasProjectWorkspace={Boolean(projectWorkspace)}
-        isRequestActive={isRequestActive}
-        isExperimentActive={repeatedExperiment.isRunning || evaluationExecution.isRunning}
+        composeExecuting={compose.executing}
+        isExperimentActive={batchActive}
         mode={mode}
         onModeChange={changeMode}
         modeIndicators={batchCompletion.indicator ? { runs: batchCompletion.indicator } : {}}
-        awaitingToolResults={runState?.status.kind === "awaiting_tool_results"}
-        retryableFailure={
-          runState?.status.kind === "paused" &&
-          runState.status.reason === "attempt_failed"
-        }
-        runDisabled={Boolean(readiness?.blocked)}
-        runDisabledReasonId={RUN_READINESS_SUMMARY_ID}
+        composePrimary={compose.primary}
         evaluationStartDisabled={Boolean(evaluationWorkspace.startDisabledReason)}
         evaluationStartDisabledReasonId={EVALUATION_PREFLIGHT_SUMMARY_ID}
         onChooseProfile={chooseProfile}
@@ -1210,18 +1373,16 @@ function HomeContent() {
         {...(n8nImportDisabledReason ? { n8nImportDisabledReason } : {})}
         onOpenN8nImport={() => setN8nImportOpen(true)}
         onDownloadDiagnostics={runSession.downloadDiagnostics}
-        onDownloadRunTrace={() => void runSession.exportTrace()}
+        onDownloadRunTrace={compose.trace.export}
         onImportRunTrace={(event) => {
           const file = event.target.files?.[0];
           if (file) {
-            void runSession.importTrace(file);
+            void importRunTrace(file);
           }
           event.target.value = "";
         }}
         onOpenRunHistory={() => changeMode("runs")}
-        onStop={runSession.stop}
         onStopExperiment={evaluationExecution.isRunning ? evaluationExecution.cancel : repeatedExperiment.cancel}
-        onRun={() => void run()}
         onStartEvaluation={evaluationWorkspace.start}
       />
 
@@ -1246,6 +1407,7 @@ function HomeContent() {
         onDeleteProfile={confirmDeleteActiveProfile}
         deleteProfileRefusal={activeProfileDeletionRefusal}
         onUpdateProfile={updateActiveProfile}
+        onSystemOneChange={setActiveSystemOne}
         onCapabilityChange={changeCapability}
         connectionRequirements={projectFile?.connectionRequirements}
         mappedProfileIds={mappedProfileIds}
@@ -1268,87 +1430,12 @@ function HomeContent() {
       <WorkbenchShell
         view={workbenchView}
         onViewChange={setWorkbenchView}
-        inspectAvailable={Boolean(runState && runState.status.kind !== "not_started")}
-        responseStatus={responseView.status}
-        request={
-        <RequestComposer
-          requestDraft={{
-            messages, tools, requestTools, enabledToolIds, addTool, removeTool, moveTool, updateTool,
-            setToolEnabled, mockForTool, updateToolMock, removeRequestTool, saveRequestToolToProject,
-            attachMcpToolToProject, attachMcpToolToRequest,
-          }}
-          commandTools={commandTools}
-          mcpConsents={mcpConsents}
-          templates={projectTemplates}
-          project={projectFile}
-          settings={{
-            model: requestSettings.model,
-            temperature: requestSettings.temperature,
-            responseMode: requestSettings.responseMode,
-            protocol: requestSettings.protocol,
-            supportedProtocols: requestSettings.supportedProtocols,
-            onProtocolChange: requestSettings.setProtocol,
-            protocolScope: projectFile
-              ? "Project default. Evaluations set their own protocol in their execution settings."
-              : `Remembered for "${requestSettings.profile.name}".`,
-            streamingAvailable: requestSettings.capabilities.streaming,
-            toolsEnabled: requestSettings.capabilities.tools,
-            modelDiscovery: activeModelDiscovery,
-            favoriteModels: requestSettings.profile.favoriteModels ?? [],
-            onModelChange: requestSettings.setModel,
-            onTemperatureChange: requestSettings.setTemperature,
-            onStreamingPreferenceChange: requestSettings.setStreamingPreferred,
-            onLoadModels: (force) => void loadModels(force),
-            onToggleFavoriteModel: (model) =>
-              updateProfile(requestSettings.profile.id, {
-                favoriteModels: toggleFavoriteModel(
-                  requestSettings.profile.favoriteModels,
-                  model,
-                ),
-              }),
-            ...(projectFile
-              ? {
-                  inherited: {
-                    label: "profile defaults",
-                    value: {
-                      model: requestSettings.profile.model,
-                      temperature: requestSettings.profile.temperature,
-                      responseMode: requestSettings.responseMode,
-                    },
-                  },
-                }
-              : {}),
-          }}
-          {...(readiness ? { readiness } : {})}
-          repeat={{
-            disabled: Boolean(readiness?.blocked) || unservableToolNames.length > 0,
-            ...(readiness?.blocked
-              ? { disabledReason: readiness.summary }
-              : unservableToolNames.length > 0
-                ? { disabledReason: `Nothing on this device serves ${unservableToolNames.join(", ")}.` }
-                : {}),
-            onRepeat: repeat,
-          }}
-          pendingDestination={pendingReadinessDestination}
-          importedRevision={importedRevision}
-          onReadinessAction={resolveReadiness}
-          onDestinationHandled={() => setPendingReadinessDestination(undefined)}
-          activeProfile={requestSettings.profile}
-          {...(pendingBranch.pending ? { pendingBranch: pendingBranch.pending } : {})}
-          {...(requestPreview ? { requestPreview } : {})}
-          onOpenConnectionSettings={() => setConnectionDrawerOpen(true)}
-          onOpenPrompts={() => {
-            promptNavigation.clearReturn();
-            setMode("prompts");
-          }}
-          onEditPromptSource={editPromptSource}
-          onOpenToolLibrary={() => setToolRegistryOpen(true)}
-          onSaveParentTrace={() => void runSession.exportTrace()}
-          onDiscardPendingBranch={pendingBranch.clear}
-        />
-        }
-        response={responseSurface}
-        inspect={traceSurface}
+        inspectAvailable={compose.inspectAvailable}
+        {...(compose.responseStatus ? { responseStatus: compose.responseStatus } : {})}
+        toolbar={<ComposeKindSwitch kind={compose.kind} locked={compose.kindLocked} onChange={compose.setKind} />}
+        request={compose.panes.request}
+        response={compose.panes.response}
+        inspect={compose.panes.inspect}
       />
       ) : mode === "prompts" ? (
         <PromptsMode
@@ -1463,7 +1550,10 @@ function HomeContent() {
             onScrollTopChange: runsNavigation.setScrollTop,
             onSelectCurrent: runsNavigation.selectCurrent,
             onSelectCurrentBatch: runsNavigation.selectCurrentBatch,
-            onSelectRun: (item) => void runsNavigation.selectSavedRun(item),
+            onSelectRun: (item) =>
+              item.summary.kind === "decision"
+                ? void openHistoryDecision(item.fileName)
+                : void runsNavigation.selectSavedRun(item),
             onSelectExperiment: (item) => {
               openHistoryExperiment(item).catch((error: unknown) => {
                 project.setError(error instanceof Error ? error.message : "Could not open the saved batch.", { clearKind: true });
@@ -1486,6 +1576,7 @@ function HomeContent() {
                     if (!trace || !projectWorkspace) return;
                     setComparisonReturnTarget(target);
                     setComparisonTraceOpen(true);
+                    compose.openKind("chat");
                     runSession.adoptTrace(trace, {
                       workspace: projectWorkspace,
                       fileName: side.traceFileNames.get(runId) ?? traceFileName(runId),

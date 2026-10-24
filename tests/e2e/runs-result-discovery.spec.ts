@@ -225,7 +225,7 @@ test("Runs inspects saved evidence without replacing the Compose draft", async (
   await expect(page.getByLabel("Message 2 content")).toHaveValue("Saved evidence response");
 });
 
-test("a saved decision run is listed beside chat runs and is not yet opened", async ({ page }) => {
+test("a saved decision run is listed beside chat runs and opens in Decision Compose", async ({ page }) => {
   const decision = savedDecisionTrace();
   await openFolderWithSavedRun(page, {
     [`traces/${decision.runId}.json`]: serializeDecisionRunTrace(decision),
@@ -243,19 +243,27 @@ test("a saved decision run is listed beside chat runs and is not yet opened", as
   await expect(row).toContainText("2.50 s · 2 attempts");
   await expect(row).toContainText("Saved to folder");
   await expect(row).not.toContainText(/tokens|turn/);
-  await expect(row).toBeDisabled();
-  await expect(row).toHaveAttribute(
-    "title",
-    "Decision runs open in Decision Compose, which is not available yet.",
-  );
   for (const marker of ["NaN", "Infinity", "undefined"]) {
     await expect(list).not.toContainText(marker);
   }
 
-  // The chat run beside it still opens.
+  // The chat run beside it still opens in place.
   await list.getByRole("button", { name: /Saved evidence request/ }).click();
   await expect(page.getByRole("region", { name: "Selected run evidence" }))
     .toContainText("Saved evidence response");
+
+  // The decision row opens Decision Compose's inspection state (D22, D30).
+  await row.click();
+  await expect(
+    page.getByRole("navigation", { name: "Application mode" })
+      .getByRole("button", { name: "Compose" }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("radio", { name: "Decision" })).toHaveAttribute("aria-checked", "true");
+  await expect(page.locator(".decision-response")).toContainText("Run trace saved");
+  await expect(page.getByRole("article", { name: "Answer intent" })).toContainText("Choice billing");
+  const evidence = page.getByRole("region", { name: "Decision evidence" });
+  await expect(evidence.getByRole("article")).toHaveCount(2);
+  await expect(evidence.getByLabel("Attempt 1 raw response body")).toHaveText("slow down");
 });
 
 test("an unsaved current run says the next run replaces it", async ({ page }) => {

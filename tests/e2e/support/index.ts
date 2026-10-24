@@ -25,6 +25,11 @@ export const BUFFERED_FIXTURE_ENDPOINT = "http://127.0.0.1:44014/v1";
 export const RESPONSES_FIXTURE_ENDPOINT = "http://127.0.0.1:44026/v1";
 /** The Anthropic Messages fixture (`scripts/anthropic-provider.mjs`). */
 export const ANTHROPIC_FIXTURE_ENDPOINT = "http://127.0.0.1:44027/v1";
+/**
+ * The System One capture replay (`scripts/system-one-provider.mjs`). Append a
+ * runtime and `/v1`: `llamacpp`, `ollama`, `ollama-proxied`, or `openrouter`.
+ */
+export const SYSTEM_ONE_FIXTURE_ORIGIN = "http://127.0.0.1:44028";
 
 export interface SeedProfileOptions {
   endpoint?: string;
@@ -44,6 +49,8 @@ export interface SeedProfileOptions {
    * them and the assertion passes against an empty manifest.
    */
   capabilityOverrides?: Record<string, boolean>;
+  /** The device-local System One declaration (D9-B). */
+  systemOne?: true;
 }
 
 export interface SeededProfile extends SeedProfileOptions {
@@ -70,6 +77,7 @@ export async function seedProfiles(
         ...(profile.temperature === undefined ? {} : { temperature: profile.temperature }),
         ...(profile.favoriteModels ? { favoriteModels: profile.favoriteModels } : {}),
         ...(profile.capabilityOverrides ? { capabilityOverrides: profile.capabilityOverrides } : {}),
+        ...(profile.systemOne ? { systemOne: true } : {}),
       })),
       activeProfileId,
     }));

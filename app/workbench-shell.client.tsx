@@ -13,6 +13,8 @@ import {
 export type WorkbenchView = "request" | "response" | "inspect";
 
 type WorkbenchShellProps = {
+  /** Above the request pane's own header, such as Compose's request-kind switch. */
+  toolbar?: ReactNode;
   request: ReactNode;
   response: ReactNode;
   inspect: ReactNode;
@@ -37,6 +39,7 @@ function clamp(value: number, minimum: number, maximum: number): number {
  * them. Each pane now has exactly one occupant, so the labels are constants.
  */
 export function WorkbenchShell({
+  toolbar,
   request,
   response,
   inspect,
@@ -136,6 +139,7 @@ export function WorkbenchShell({
               : "workbench-pane request-pane mobile-pane-hidden"
           }
         >
+          {toolbar}
           {request}
         </div>
         <button
@@ -243,6 +247,8 @@ type PaneTabsProps = {
   value: string;
   onChange: (value: string) => void;
   idPrefix?: string;
+  /** Every tab is inert, such as while the content it switches is read-only. */
+  disabled?: boolean;
 };
 
 export function PaneTabs({
@@ -251,6 +257,7 @@ export function PaneTabs({
   value,
   onChange,
   idPrefix,
+  disabled = false,
 }: PaneTabsProps) {
   function moveSelection(
     event: ReactKeyboardEvent<HTMLButtonElement>,
@@ -280,6 +287,7 @@ export function PaneTabs({
           aria-controls={idPrefix ? `${idPrefix}-${tab.id}-panel` : undefined}
           aria-selected={value === tab.id}
           className={value === tab.id ? "active" : undefined}
+          disabled={disabled}
           id={idPrefix ? `${idPrefix}-${tab.id}-tab` : undefined}
           key={tab.id}
           role="tab"

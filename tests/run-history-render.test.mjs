@@ -152,8 +152,9 @@ test("lists a saved decision run by its questions and target, without offering t
   assert.match(html, /1\.25 s · 2 attempts/);
   // Chat-only numbers a decision summary does not have.
   assert.doesNotMatch(html, /tokens|turns?\b/);
-  // Opening a decision run arrives with Decision Compose.
-  assert.match(html, /<button[^>]*disabled=""[^>]*title="Decision runs open in Decision Compose, which is not available yet\."/);
+  // A decision run opens in Decision Compose (D30), so its row is a live button.
+  assert.match(html, /<button[^>]*title="[^"]*· Opens in Compose, as a decision"/);
+  assert.doesNotMatch(html, /<button[^>]*disabled=""[^>]*Decision · 3 questions/);
   assertNoBrokenNumbers(html);
 });
 

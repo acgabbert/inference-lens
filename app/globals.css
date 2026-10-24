@@ -300,7 +300,10 @@ textarea,
 .evaluation-portable-warning,
 .evaluation-empty-inline,
 .evaluation-regex-dialect,
-.tool-name-warning {
+.tool-name-warning,
+.compose-kind-caption,
+.decision-target legend,
+.decision-field-label {
   font-size: var(--type-compact);
 }
 
@@ -440,7 +443,9 @@ pre,
 .inference-settings-scope,
 .inference-settings-override,
 .target-caption,
-.mcp-permission-note {
+.mcp-permission-note,
+.decision-answer-type,
+.decision-scale-tick {
   font-size: var(--type-metadata);
 }
 
@@ -8712,4 +8717,395 @@ label.experiment-retry-field {
   margin: 0;
   padding: 0 var(--space-md) var(--space-sm);
   color: var(--text-secondary);
+}
+
+/* Compose's request-kind switch (U1), above whichever kind's request pane. */
+/* Not on a pane the narrow layout hides: that rule must keep winning. */
+.request-pane:not(.mobile-pane-hidden):has(> .compose-kind-bar) {
+  display: flex;
+  flex-direction: column;
+}
+
+.request-pane > .compose-kind-bar + * {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+}
+
+.compose-kind-bar {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs) var(--space-sm);
+  padding: var(--space-sm) var(--space-xl);
+  border-bottom: 1px solid var(--border-default);
+  background: var(--surface-sunken);
+}
+
+.compose-kind-caption {
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.compose-kind-switch {
+  justify-self: start;
+}
+
+.compose-kind-switch button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.compose-kind-locked {
+  color: var(--text-secondary);
+}
+
+/* Decision request pane (D18, U3). */
+.decision-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  padding: var(--space-lg) var(--space-xl);
+}
+
+.decision-target {
+  display: grid;
+  gap: var(--space-sm);
+  margin: 0;
+  padding: var(--space-md);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+
+.decision-target legend,
+.decision-field-label {
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.decision-target-empty,
+.decision-unfiltered,
+.decision-kept-note,
+.decision-inspect-empty,
+.decision-evidence-missing {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.decision-unfiltered {
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-sm);
+  background: var(--warning-surface);
+}
+
+.decision-field {
+  display: grid;
+  gap: var(--space-2xs);
+  min-width: 0;
+}
+
+.decision-field input,
+.decision-field select,
+.decision-field textarea,
+.decision-state textarea {
+  width: 100%;
+  min-width: 0;
+}
+
+.decision-state,
+.decision-questions {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.decision-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.decision-state textarea,
+.decision-json-editor textarea {
+  font-family: var(--font-geist-mono), monospace;
+}
+
+.decision-question {
+  display: grid;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+}
+
+.decision-question-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--space-sm);
+}
+
+.decision-row-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.decision-options {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.decision-option-list {
+  display: grid;
+  gap: var(--space-sm);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.decision-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
+  align-items: end;
+  gap: var(--space-sm);
+}
+
+.decision-json-value {
+  display: grid;
+  gap: var(--space-2xs);
+  min-width: 0;
+}
+
+.decision-json-value code {
+  overflow-wrap: anywhere;
+}
+
+.decision-json-value small {
+  color: var(--text-muted);
+}
+
+.decision-json-error {
+  color: var(--danger);
+}
+
+.decision-view-problems {
+  margin: var(--space-sm) var(--space-xl) 0;
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-sm);
+  background: var(--danger-surface);
+}
+
+.decision-view-problems ul {
+  margin: var(--space-2xs) 0 0;
+  padding-left: var(--space-lg);
+}
+
+@container (max-width: 560px) {
+  .decision-question-header,
+  .decision-option {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Decision result (U5). */
+.decision-output {
+  display: grid;
+  gap: var(--space-lg);
+}
+
+.decision-run-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs) var(--space-lg);
+  margin: 0;
+}
+
+.decision-run-facts div {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.decision-run-facts dt {
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.decision-run-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.decision-answers {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.decision-answer {
+  display: grid;
+  gap: var(--space-xs);
+  padding: var(--space-md);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+}
+
+.decision-answer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.decision-answer-type {
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.decision-answer-instructions,
+.decision-answer-headline,
+.decision-answer-missing {
+  margin: 0;
+}
+
+.decision-answer-instructions,
+.decision-confidence {
+  color: var(--text-secondary);
+}
+
+.decision-bars {
+  display: grid;
+  gap: var(--space-2xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.decision-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(60px, 2fr) 4.5em;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.decision-bar-label {
+  overflow-wrap: anywhere;
+}
+
+.decision-bar.selected .decision-bar-label {
+  font-weight: 700;
+}
+
+.decision-bar-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--surface-inset);
+}
+
+.decision-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--text-faint);
+}
+
+.decision-bar.selected .decision-bar-fill {
+  background: var(--accent-solid);
+}
+
+.decision-bar-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.decision-scale {
+  position: relative;
+  height: 28px;
+  margin: 0 var(--space-sm);
+}
+
+.decision-scale-line {
+  position: absolute;
+  top: 8px;
+  right: 0;
+  left: 0;
+  height: 2px;
+  background: var(--border-strong);
+}
+
+.decision-scale-tick {
+  position: absolute;
+  top: 12px;
+  transform: translateX(-50%);
+  color: var(--text-muted);
+}
+
+.decision-scale-marker {
+  position: absolute;
+  top: 3px;
+  width: 12px;
+  height: 12px;
+  transform: translateX(-50%);
+  border: 2px solid var(--surface-panel);
+  border-radius: 50%;
+  background: var(--accent-solid);
+}
+
+.decision-retry-wait,
+.decision-retry-blocked {
+  color: var(--warning-strong);
+}
+
+/* Decision inspection (D19): the attempts' exchange evidence. */
+.decision-inspect {
+  flex: 0 1 45%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border-default);
+  background: var(--surface-subtle);
+}
+
+.decision-inspect-empty {
+  padding: var(--space-md) var(--space-xl);
+}
+
+.decision-inspect-body {
+  display: grid;
+  align-content: start;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-xl);
+}
+
+.decision-attempt {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.decision-attempt h3,
+.decision-attempt h4 {
+  margin: 0;
+}
+
+.decision-attempt-error {
+  margin: 0;
+  color: var(--danger);
+}
+
+.decision-response-evidence p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.decision-raw-body {
+  max-height: 340px;
+  margin: var(--space-xs) 0 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }

@@ -11,6 +11,7 @@ const mcpBatchFixturePort = 44020;
 const mcpInterruptionFixturePort = 44023;
 const responsesFixturePort = 44026;
 const anthropicFixturePort = 44027;
+const systemOneFixturePort = 44028;
 
 /**
  * The only reason the suite's dev server can run anything at all.
@@ -109,6 +110,13 @@ export default defineConfig({
     {
       command: `INFERENCE_LENS_ANTHROPIC_PORT=${anthropicFixturePort} npm run dev:anthropic-provider`,
       url: `http://127.0.0.1:${anthropicFixturePort}/health`,
+      reuseExistingServer: false,
+      timeout: 10_000,
+    },
+    {
+      // Replays the committed System One captures (D11, D15, D21).
+      command: `INFERENCE_LENS_SYSTEM_ONE_PORT=${systemOneFixturePort} npm run dev:systemone-provider`,
+      url: `http://127.0.0.1:${systemOneFixturePort}/llamacpp/v1/models`,
       reuseExistingServer: false,
       timeout: 10_000,
     },
