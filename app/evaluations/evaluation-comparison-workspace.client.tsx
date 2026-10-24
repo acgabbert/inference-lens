@@ -77,14 +77,22 @@ function concurrencyText({ maxInFlight, connectionLimit }: EvaluationVariantConc
 function DriftList({ drift }: { drift: EvaluationExecutionDrift }) {
   const rows: Array<[string, string, string]> = [];
   if (drift.inputRevision) {
-    rows.push(["Input revision", drift.inputRevision.baseline, drift.inputRevision.candidate]);
+    rows.push([
+      drift.kind === "decision" ? "Request revision" : "Input revision",
+      drift.inputRevision.baseline,
+      drift.inputRevision.candidate,
+    ]);
   }
   if (drift.model) rows.push(["Model", drift.model.baseline, drift.model.candidate]);
   if (drift.endpoint) rows.push(["Endpoint", drift.endpoint.baseline, drift.endpoint.candidate]);
-  if (drift.responseMode) {
-    rows.push(["Response mode", drift.responseMode.baseline, drift.responseMode.candidate]);
+  if (drift.kind === "chat") {
+    if (drift.responseMode) {
+      rows.push(["Response mode", drift.responseMode.baseline, drift.responseMode.candidate]);
+    }
+    if (drift.optionsChanged) rows.push(["Inference options", "changed", "changed"]);
+  } else if (drift.protocol) {
+    rows.push(["Wire protocol", drift.protocol.baseline, drift.protocol.candidate]);
   }
-  if (drift.optionsChanged) rows.push(["Inference options", "changed", "changed"]);
   if (drift.repetitions) {
     rows.push([
       "Repetitions",
