@@ -15,7 +15,6 @@ import type {
   JsonObject,
   ProviderExecution,
   ProviderEvent,
-  ProviderWireProtocol,
   RunTokenUsage,
   ToolCallId,
 } from "./run-kernel/types.ts";
