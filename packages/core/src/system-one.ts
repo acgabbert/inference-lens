@@ -116,6 +116,9 @@ function normalizeAnswer(
       return { type: "noul", noul: answer.noul };
     }
   }
+  // A box question (D8) or any other type outside the contract reaches here
+  // only from unvalidated input; OpenRouter answers box without the image header.
+  return fail(questionId, `is of type ${JSON.stringify(answer.type)}, which is not supported`);
 }
 
 function normalizedUsage(value: unknown): RunTokenUsage | undefined {

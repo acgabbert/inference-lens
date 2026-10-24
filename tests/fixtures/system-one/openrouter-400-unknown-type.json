@@ -1,0 +1,29 @@
+{
+  "provenance": {
+    "kind": "captured",
+    "implementation": "OpenRouter /api/v1/systemone",
+    "server": "https://openrouter.ai",
+    "captured": "2026-10-24",
+    "note": "OpenRouter validates before routing: 400, and error.message is a JSON-encoded zod issue list. user_id is redacted."
+  },
+  "request": {
+    "model": "~typesafe/jev-latest",
+    "state": "x",
+    "questions": {
+      "q": {
+        "type": "zzz",
+        "instructions": "?"
+      }
+    }
+  },
+  "response": {
+    "status": 400,
+    "body": {
+      "error": {
+        "message": "[\n  {\n    \"code\": \"invalid_union\",\n    \"errors\": [],\n    \"note\": \"No matching discriminator\",\n    \"discriminator\": \"type\",\n    \"options\": [\n      \"noul\",\n      \"choice\",\n      \"score\",\n      \"box\"\n    ],\n    \"path\": [\n      \"questions\",\n      \"q\",\n      \"type\"\n    ],\n    \"message\": \"Invalid discriminator value. Expected 'noul' | 'choice' | 'score' | 'box'\"\n  }\n]",
+        "code": 400
+      },
+      "user_id": "user_REDACTED"
+    }
+  }
+}
