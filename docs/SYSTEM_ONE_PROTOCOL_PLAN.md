@@ -963,6 +963,33 @@ has `RunCoordinator` (core) and `driveProviderTurn` (runner).
   invalidation refs, persistence, and the countdown timer.
 - **Accepted: A.**
 
+Done (2026-10-24), with D28 and D23's move: `packages/core/src/decision-run.ts`
+has `createDecisionRun`, `beginDecisionAttempt`, `retryDecisionRun`,
+`applyDecisionEvent`, `finishDecisionAttemptStream`, `stopDecisionRun`,
+`decisionRetryWaitMs`, and `driveDecisionAttempt`.
+
+- The driver takes `open(execution, signal)` rather than a
+  `DecisionTransport`, because core does not import `packages/contracts`. The
+  session composes `prepareCredential` and `executeDecision` into it.
+- A thrown error is classified as chat's driver does. It reads a numeric
+  `status` from the error, since core cannot import the runner's
+  `InferenceTransportError`.
+- An abort is returned to the caller, whose Stop decides the terminal state.
+  A superseded attempt reports nothing.
+- A second frame fails the attempt as a protocol error rather than breaking
+  D22's one-frame rule. A stream that ends without an outcome fails it the
+  same way, non-retryable.
+- `decisionRetryWaitMs` uses the batch rule for which failure is a 429
+  (`provider_error` with `providerStatus` 429).
+- `rateLimitPauseMs` and its constants now live in
+  `packages/core/src/rate-limit-pause.ts`. The runner re-exports them and
+  keeps `rateLimitedAttempt`.
+
+`tests/decision-run.test.ts` checks that every terminal run is accepted by
+the D22 trace format. The tests were red only because the module did not
+exist yet. Breaking the retryable check, the second-frame check, or the
+superseded check each made them fail.
+
 ### D28. A retryable failure's live status *(accepted: A)*
 
 `DecisionRunStatus` is `not_started | running | terminal`. D22 and D23 keep a
@@ -1205,7 +1232,8 @@ error body on the shared path (D25), is in; its native-app check is still owed. 
 
 Order: D16 → the decision trace format (D22) → the behaviour-preserving
 evidence extraction (D26) → the decision session and UI. The first three are
-in. The session and UI follow D27–D30: the core run transitions first, then
+in, and so are D27's core run transitions. The session and UI follow
+D27–D30: the core run transitions first, then
 the session, then the Compose owner and topbar, then the draft, target, and
 views.
 
