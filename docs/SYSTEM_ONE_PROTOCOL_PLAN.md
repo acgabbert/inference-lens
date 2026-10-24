@@ -191,7 +191,7 @@ contract design, not the adapter.
 
 ## Decisions
 
-The user accepted every recommendation below (D1–D9) and the UI decisions in
+The user accepted every recommendation below (D1–D11) and the UI decisions in
 [U1–U6](#ui-decisions-u1u6). Changes made after the source check are marked *(revised)*.
 
 ### D1. Where the protocol lives in the type system
@@ -218,7 +218,8 @@ The user accepted every recommendation below (D1–D9) and the UI decisions in
   already does. *(revised after the Ollama capture)* Ollama's `/v1/models`
   indeed has no marker, but its native `GET /api/tags` lists
   `capabilities: ["decision"]` per model (chat models list `completion`), as
-  does `POST /api/show`. Phase 2 discovery can use it.
+  does `POST /api/show`. [D10](#d10-decision-model-discovery-accepted-b) settles
+  how Phase 2 uses the markers.
 
 ### D2. Run model
 
@@ -406,6 +407,73 @@ project format change yet".
 - Phase 2 still has to decide how the server-provisioned profile declares it.
   `INFERENCE_LENS_API_PROTOCOLS` currently names chat protocols only.
 
+### D10. Decision-model discovery *(accepted: B)*
+
+Found after the captures. Discovery today is one `GET <base>/models` per host;
+core (`providerModelsUrl`) and Rust (`models_url`) each build the URL,
+`parseModelsResponse` reads only `data[].id`, and Rust returns the raw body
+without inspecting it. A profile records no runtime identity, only a chat
+protocol plus the D9 flag. Each captured runtime marks decision models
+differently:
+
+| Runtime | Marker |
+| --- | --- |
+| OpenRouter | Listed only by `<base>/models?output_modalities=decisions`; entries carry `architecture.output_modalities: ["decisions"]` |
+| llama.cpp | `<base>/models` entries carry `architecture.output_modalities: ["decisions"]` |
+| Ollama | None in `/v1/models`; `capabilities: ["decision"]` in `/api/tags` at the server root |
+
+- **A. Free text only.** No decision listing; the picker shows the chat
+  listing or takes a typed id. No new contracts, but OpenRouter's default
+  listing has no decision models and Ollama's mixes them with chat models.
+- **B. Follow whatever marker the listing carries.** The discovery request
+  gains `listing: "chat" | "decisions"`. For `decisions`, a host:
+  1. requests `<base>/models?output_modalities=decisions` and, if any entry
+     carries the `output_modalities` marker, returns only the marked entries
+     (OpenRouter, llama.cpp);
+  2. otherwise, if the base ends in `/v1`, requests `/api/tags` at the base
+     with `/v1` removed and keeps entries whose `capabilities` include
+     `"decision"` (Ollama);
+  3. otherwise returns the plain listing flagged unfiltered, so the picker can
+     say so. A typed id always works.
+- **C. Pick the runtime per profile.** Widen the D9 flag to a runtime choice
+  (none, OpenRouter, llama.cpp, Ollama) with one known request each. Precise,
+  but a persisted field and a drawer control for something the server already
+  says.
+- **Recommendation: B.** No new profile state, covers every captured runtime,
+  and degrades to today's behaviour.
+- **Accepted: B.** A pure parser in core reads both listing shapes and the
+  three outcomes; hosts only build URLs and relay bodies. Rust gains the
+  decision listing URLs in its own URL builder, so the UI still cannot hand it
+  an arbitrary URL to send a credential to, and it still never inspects a
+  body. Step 2 costs a second request only on servers that mark nothing, and
+  only when a decision picker opens.
+- Unverified, to check during Phase 2: that llama.cpp and Ollama ignore the
+  `?output_modalities` query, and that stripping `/v1` finds Ollama's root
+  behind a proxy. Step 2 is a layout guess, which is why it runs only after
+  step 1 finds nothing marked.
+
+### D11. The fixture provider *(accepted: B)*
+
+The earlier Phase 2 bullet had the fixture serve TypeSafe's 422 `detail` and a
+429. No captured runtime returns a 422: llama.cpp and OpenRouter send
+`{error: {message}}` (OpenRouter's sometimes encoded), Ollama a bare
+`{error: "…"}`.
+
+- **A. As first planned.** The least likely local error shape, and nothing for
+  discovery.
+- **B. Replay the committed captures, with runtime personalities.** Answers and
+  errors come from `tests/fixtures/system-one/*.json`, selected by model id,
+  so the fixtures stay the single source of truth. One server, three path
+  prefixes: `/llamacpp/v1`, `/ollama/v1` (plus `/ollama/api/tags`), and
+  `/openrouter/v1`, each with its own listing and error envelope. A 429 with
+  `retry-after` stays, labelled synthetic because none was captured.
+- **C. B without personalities.** One base and one listing; it cannot drive
+  D10's fallback steps.
+- **Recommendation: B.** The personalities are a few dozen lines of routing and
+  the only way to exercise every D10 step and every error-message path in a
+  browser without three live runtimes.
+- **Accepted: B.**
+
 ## Phases
 
 ### Phase 0: verify the wire format
@@ -503,9 +571,20 @@ docs; ⬜ items still need a live run or a credential.
 - Tauri: add the protocol to the closed `WireProtocol` enum, with its path and
   credential handling; Rust still does no protocol parsing. Add `/systemone` to
   `PROTOCOL_PATHS`, so a pasted full URL still reduces to its base.
-- A fixture provider, `npm run dev:systemone-provider`, next to the flaky and
-  paced fixtures. It serves deterministic answers for all three question types,
-  a 422 `detail` error, and a 429 with `retry-after`.
+- Decision-model discovery (D10-B): `listing: "decisions"` on the discovery
+  request, the marker-following URLs in core and Rust, and a pure core parser
+  for both listing shapes, unit-tested against `openrouter-models`,
+  `ollama-models`, and a llama.cpp listing (not yet captured; take it from the
+  home server). Check the two unverified D10
+  assumptions against live servers.
+- A fixture provider, `npm run dev:systemone-provider` (D11-B), next to the
+  flaky and paced fixtures. It replays the committed captures by model id
+  under `/llamacpp/v1`, `/ollama/v1`, and `/openrouter/v1`, each with its own
+  listing and error envelope, plus a synthetic 429 with `retry-after`.
+- The four doc-derived fixtures (`typesafe-all-types`, `typesafe-422`,
+  `openrouter-extras`, `openrouter-error`) don't block this phase: captured
+  fixtures cover every response shape it uses. They are replaced when a
+  TypeSafe key is available.
 
 ### Phase 3: UI
 
