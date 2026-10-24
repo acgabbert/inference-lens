@@ -307,6 +307,24 @@ test("the server's protocol list becomes the profile's protocol capabilities", (
   assert.equal(plain.capabilityOverrides, undefined);
 });
 
+test("the server's protocol list also states whether the profile serves System One", () => {
+  // Named in the list: declared, whatever the browser had.
+  const declared = withServerProtocols(profile(), ["openai-compatible-chat-completions"], true);
+  assert.equal(servesSystemOne(declared), true);
+  // A set list that does not name it withdraws a browser-made declaration (D9a).
+  const withdrawn = withServerProtocols(
+    withSystemOne(profile(), true),
+    ["openai-compatible-chat-completions"],
+    false,
+  );
+  assert.equal(servesSystemOne(withdrawn), false);
+  assert.equal("systemOne" in withdrawn, false);
+  // A decision-only server turns every chat protocol off.
+  const decisionOnly = withServerProtocols(profile(), [], true);
+  assert.deepEqual(decisionOnly.capabilityOverrides, { chatCompletions: false });
+  assert.equal(servesSystemOne(decisionOnly), true);
+});
+
 test("a stored protocol preference survives a reload, and an unknown one is dropped", () => {
   const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
   let stored = JSON.stringify({
@@ -370,11 +388,8 @@ test("System One is a device-local declaration, never part of the capability sna
     "systemOne" in resolveProviderCapabilities(declared.provider, declared.capabilityOverrides),
     false,
   );
-  // The server owns the chat protocols, not this declaration.
-  assert.equal(
-    servesSystemOne(withServerProtocols(declared, ["anthropic-messages"])),
-    true,
-  );
+  // While the server's protocol list is set, it owns this declaration too;
+  // see the System One server-list test above.
 
   const withdrawn = withSystemOne(declared, false);
   assert.equal(servesSystemOne(withdrawn), false);

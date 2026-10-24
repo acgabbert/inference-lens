@@ -1,8 +1,9 @@
+import { discoverDecisionModelsOverHttp } from "../../../packages/core/src/decision-discovery";
 import { discoverOpenAICompatibleModels } from "../../../packages/core/src/openai-compatible";
-import type { ResolvedInferenceRequest } from "../../../packages/core/src/types";
 import {
   explainProviderTransportError,
   resolveModelDiscoveryRequest,
+  type ResolvedModelDiscoveryRequest,
   validateWorkbenchRequest,
   WorkbenchRequestError,
 } from "../../../services/api/src";
@@ -17,17 +18,18 @@ import {
 export const runtime = "nodejs";
 
 export async function POST(incoming: Request): Promise<Response> {
-  let request:
-    | Pick<ResolvedInferenceRequest, "endpoint" | "apiKey" | "capabilities" | "protocol">
-    | undefined;
+  let request: ResolvedModelDiscoveryRequest | undefined;
   try {
     validateWorkbenchRequest(incoming, runtimeRequestPolicy());
     request = resolveModelDiscoveryRequest(
       await incoming.json(),
       runtimeCredentialStore(),
     );
-    const models = await discoverOpenAICompatibleModels(request, incoming.signal);
-    return Response.json({ models }, { headers: { "cache-control": "no-store" } });
+    const { protocol } = request;
+    const discovery = protocol === "systemone"
+      ? await discoverDecisionModelsOverHttp(request, incoming.signal)
+      : { models: await discoverOpenAICompatibleModels({ ...request, protocol }, incoming.signal) };
+    return Response.json(discovery, { headers: { "cache-control": "no-store" } });
   } catch (error) {
     const providerStatus =
       error &&

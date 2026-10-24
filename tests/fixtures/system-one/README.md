@@ -32,3 +32,7 @@ Shape:
   }
 }
 ```
+
+`scripts/system-one-provider.mjs` (`npm run dev:systemone-provider`) serves the
+captured files here to the browser, selected by model id; see
+[the provider fixture guide](../../../docs/PROVIDER_FIXTURES.md).

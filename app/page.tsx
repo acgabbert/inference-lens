@@ -13,8 +13,8 @@ import {
 } from "../packages/core/src/project";
 import { createEntityId } from "../packages/core/src/run-kernel";
 import {
-  PROTOCOL_CONFIGURATION_NAMES,
   effectiveProtocol,
+  protocolConfigurationNames,
 } from "../packages/core/src/provider-protocols";
 import { modalOwnsKeyboardCommands } from "./keyboard-command-scope.client";
 import type {
@@ -1019,9 +1019,7 @@ function HomeContent() {
       title: "INFERENCE_LENS_API_PROTOCOLS was ignored",
       detail: `It names ${names}, which ${
         serverProtocolsNotice.unrecognized.length === 1 ? "is" : "are"
-      } not a recognized API, so the server default profile falls back to the APIs enabled in Connections. Use ${Object.keys(
-        PROTOCOL_CONFIGURATION_NAMES,
-      ).join(", ")} and restart the server.`,
+      } not a recognized API, so the server default profile falls back to the APIs enabled in Connections. Use ${protocolConfigurationNames().join(", ")} and restart the server.`,
       actions: [
         {
           key: "review",

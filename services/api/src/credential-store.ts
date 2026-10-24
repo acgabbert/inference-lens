@@ -1,5 +1,8 @@
 import type { CredentialSelection } from "../../../packages/contracts/src/index.ts";
-import { PROTOCOL_CONFIGURATION_NAMES } from "../../../packages/core/src/provider-protocols.ts";
+import {
+  PROTOCOL_CONFIGURATION_NAMES,
+  SYSTEM_ONE_CONFIGURATION_NAME,
+} from "../../../packages/core/src/provider-protocols.ts";
 import { PROVIDER_WIRE_PROTOCOLS } from "../../../packages/core/src/run-kernel/types.ts";
 import type { ProviderWireProtocol } from "../../../packages/core/src/run-kernel/types.ts";
 
@@ -16,7 +19,13 @@ const protocolNames: Record<string, ProviderWireProtocol> = {
  */
 export type ServerProtocolConfiguration =
   | { kind: "unset" }
-  | { kind: "valid"; protocols: ProviderWireProtocol[] }
+  | {
+      kind: "valid";
+      /** The chat protocols named; empty for a decision-only server. */
+      protocols: ProviderWireProtocol[];
+      /** Whether the list names `systemone` (D9a). */
+      systemOne: boolean;
+    }
   | { kind: "invalid"; unrecognized: string[] };
 
 /**
@@ -29,12 +38,15 @@ export function parseServerProtocols(
 ): ServerProtocolConfiguration {
   const names = value?.split(",").map((name) => name.trim()).filter(Boolean) ?? [];
   if (names.length === 0) return { kind: "unset" };
-  const unrecognized = names.filter((name) => !Object.hasOwn(protocolNames, name));
+  const unrecognized = names.filter(
+    (name) => !Object.hasOwn(protocolNames, name) && name !== SYSTEM_ONE_CONFIGURATION_NAME,
+  );
   if (unrecognized.length > 0) return { kind: "invalid", unrecognized };
   const protocols = names.map((name) => protocolNames[name]);
   return {
     kind: "valid",
     protocols: PROVIDER_WIRE_PROTOCOLS.filter((protocol) => protocols.includes(protocol)),
+    systemOne: names.includes(SYSTEM_ONE_CONFIGURATION_NAME),
   };
 }
 
@@ -90,6 +102,8 @@ export class EnvironmentCredentialStore implements CredentialStore {
         endpoint: string;
         model?: string;
         protocols?: ProviderWireProtocol[];
+        /** Set with `protocols`: whether the list declares System One. */
+        systemOne?: boolean;
         /** Set instead of `protocols` when the list names something unknown. */
         unrecognizedProtocols?: string[];
       }
@@ -105,7 +119,9 @@ export class EnvironmentCredentialStore implements CredentialStore {
     return {
       endpoint: safeEndpoint,
       ...(model ? { model } : {}),
-      ...(protocols.kind === "valid" ? { protocols: protocols.protocols } : {}),
+      ...(protocols.kind === "valid"
+        ? { protocols: protocols.protocols, systemOne: protocols.systemOne }
+        : {}),
       ...(protocols.kind === "invalid"
         ? { unrecognizedProtocols: protocols.unrecognized }
         : {}),

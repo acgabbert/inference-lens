@@ -99,10 +99,28 @@ enum WireProtocol {
     Responses,
     #[serde(rename = "anthropic-messages")]
     AnthropicMessages,
+    /// Decision requests. Sent like a buffered turn; the webview builds the
+    /// body and reads the answer, so Rust still only knows path and header.
+    #[serde(rename = "systemone")]
+    SystemOne,
 }
 
 /// Every protocol path, so a pasted full URL reduces to its base.
-const PROTOCOL_PATHS: [&str; 3] = ["/chat/completions", "/responses", "/messages"];
+const PROTOCOL_PATHS: [&str; 4] = ["/chat/completions", "/responses", "/messages", "/systemone"];
+
+/// Which model listing discovery asks for (D13). Named rather than given as a
+/// URL, so a webview cannot direct a credential anywhere but the endpoint's
+/// own listings.
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+enum ModelListing {
+    #[default]
+    Chat,
+    /// `<base>/models?output_modalities=decisions` (OpenRouter, llama.cpp).
+    Decisions,
+    /// Ollama's native `/api/tags`, at the base with its `/v1` removed.
+    OllamaTags,
+}
 
 impl WireProtocol {
     fn path(self) -> &'static str {
@@ -110,6 +128,7 @@ impl WireProtocol {
             Self::ChatCompletions => "/chat/completions",
             Self::Responses => "/responses",
             Self::AnthropicMessages => "/messages",
+            Self::SystemOne => "/systemone",
         }
     }
 
@@ -126,7 +145,7 @@ impl WireProtocol {
                     None => request,
                 }
             }
-            Self::ChatCompletions | Self::Responses => match api_key {
+            Self::ChatCompletions | Self::Responses | Self::SystemOne => match api_key {
                 Some(api_key) => request.bearer_auth(api_key),
                 None => request,
             },
@@ -1031,18 +1050,20 @@ struct ModelDiscoveryProxyResponse {
     body: String,
 }
 
-/// Streaming HTTP proxy for `GET /models`: attaches the resolved credential
+/// Streaming HTTP proxy for a model listing: attaches the resolved credential
 /// and returns the raw response body. TypeScript already enforces the
-/// `modelDiscovery` capability check and parses/normalizes the body — Rust
-/// never inspects provider protocol shape.
+/// `modelDiscovery` capability check, decides which listing to ask for next,
+/// and parses/normalizes the body — Rust never inspects provider protocol
+/// shape.
 #[tauri::command]
 async fn discover_models(
     endpoint: String,
     protocol: WireProtocol,
+    listing: Option<ModelListing>,
     credential: CredentialSelection,
 ) -> Result<ModelDiscoveryProxyResponse, String> {
     let credential = resolve_credential(credential, &endpoint)?;
-    let models_url = models_url(&endpoint, protocol)?;
+    let models_url = models_url(&endpoint, protocol, listing.unwrap_or_default())?;
     let request = protocol.authorize(Client::new().get(models_url), credential.api_key.as_deref());
     let response = request
         .send()
@@ -1368,12 +1389,30 @@ fn provider_request_url(endpoint: &str, protocol: WireProtocol) -> Result<String
     Ok(endpoint_with_path(endpoint, protocol.path())?.to_string())
 }
 
-/// Mirrors `discoveryUrl` in TypeScript. Anthropic pages its listing at 20 by
-/// default, so discovery asks for its maximum.
-fn models_url(endpoint: &str, protocol: WireProtocol) -> Result<String, String> {
+/// Mirrors `modelListingUrl` in TypeScript. Anthropic pages its listing at 20
+/// by default, so discovery asks for its maximum.
+fn models_url(
+    endpoint: &str,
+    protocol: WireProtocol,
+    listing: ModelListing,
+) -> Result<String, String> {
+    if listing == ModelListing::OllamaTags {
+        let mut parsed = endpoint_with_path(endpoint, "")?;
+        let base = parsed.path().trim_end_matches('/').to_owned();
+        let Some(root) = base.strip_suffix("/v1") else {
+            return Err(command_error(
+                "Ollama's model listing needs an endpoint ending in /v1.",
+            ));
+        };
+        parsed.set_path(&format!("{root}/api/tags"));
+        parsed.set_query(None);
+        return Ok(parsed.to_string());
+    }
     let mut parsed = endpoint_with_path(endpoint, "/models")?;
     parsed.set_query(None);
-    if protocol == WireProtocol::AnthropicMessages {
+    if listing == ModelListing::Decisions {
+        parsed.set_query(Some("output_modalities=decisions"));
+    } else if protocol == WireProtocol::AnthropicMessages {
         parsed.set_query(Some("limit=1000"));
     }
     Ok(parsed.to_string())
@@ -1897,7 +1936,7 @@ mod tests {
                 "https://api.example.com/v1/messages"
             );
             assert_eq!(
-                models_url(endpoint, WireProtocol::ChatCompletions).unwrap(),
+                models_url(endpoint, WireProtocol::ChatCompletions, ModelListing::Chat).unwrap(),
                 "https://api.example.com/v1/models"
             );
         }
@@ -1916,12 +1955,73 @@ mod tests {
         assert_eq!(
             models_url(
                 "https://api.anthropic.com/v1?ignored=1",
-                WireProtocol::AnthropicMessages
+                WireProtocol::AnthropicMessages,
+                ModelListing::Chat
             )
             .unwrap(),
             "https://api.anthropic.com/v1/models?limit=1000"
         );
         assert!(provider_request_url("file:///tmp", WireProtocol::Responses).is_err());
+    }
+
+    #[test]
+    fn derives_system_one_and_its_decision_listings_from_the_same_base() {
+        for endpoint in [
+            "http://localhost:11434/v1",
+            "http://localhost:11434/v1/systemone/",
+            "http://localhost:11434/v1/chat/completions",
+        ] {
+            assert_eq!(
+                provider_request_url(endpoint, WireProtocol::SystemOne).unwrap(),
+                "http://localhost:11434/v1/systemone"
+            );
+            assert_eq!(
+                models_url(endpoint, WireProtocol::SystemOne, ModelListing::Decisions).unwrap(),
+                "http://localhost:11434/v1/models?output_modalities=decisions"
+            );
+            assert_eq!(
+                models_url(endpoint, WireProtocol::SystemOne, ModelListing::OllamaTags).unwrap(),
+                "http://localhost:11434/api/tags"
+            );
+        }
+        // A pasted System One URL is the same connection for chat runs too.
+        assert_eq!(
+            provider_request_url(
+                "http://localhost:11434/v1/systemone",
+                WireProtocol::ChatCompletions
+            )
+            .unwrap(),
+            "http://localhost:11434/v1/chat/completions"
+        );
+        assert_eq!(
+            models_url(
+                "https://proxy.example/ollama/v1?key=1",
+                WireProtocol::SystemOne,
+                ModelListing::OllamaTags
+            )
+            .unwrap(),
+            "https://proxy.example/ollama/api/tags"
+        );
+        // Without `/v1` there is no server root to guess at.
+        assert!(models_url(
+            "http://localhost:8080",
+            WireProtocol::SystemOne,
+            ModelListing::OllamaTags
+        )
+        .is_err());
+
+        let request = WireProtocol::SystemOne
+            .authorize(Client::new().get("https://example.test"), Some("secret"))
+            .build()
+            .expect("build system one request");
+        assert_eq!(request.headers()["authorization"], "Bearer secret");
+        let parsed: WireProtocol =
+            serde_json::from_value(json!("systemone")).expect("parse protocol");
+        assert_eq!(parsed, WireProtocol::SystemOne);
+        let listing: ModelListing =
+            serde_json::from_value(json!("ollama-tags")).expect("parse listing");
+        assert_eq!(listing, ModelListing::OllamaTags);
+        assert!(serde_json::from_value::<ModelListing>(json!("https://evil.test")).is_err());
     }
 
     #[test]

@@ -7,7 +7,7 @@ import {
   runtimeCredentialStore,
   runtimeRequestPolicy,
 } from "../credential-store";
-import { PROTOCOL_CONFIGURATION_NAMES } from "../../../packages/core/src/provider-protocols";
+import { protocolConfigurationNames } from "../../../packages/core/src/provider-protocols";
 
 export const runtime = "nodejs";
 
@@ -42,9 +42,7 @@ export function GET(incoming: Request): Response {
         .map((name) => `"${name}"`)
         .join(", ")}, which ${
         connection.unrecognizedProtocols.length === 1 ? "is" : "are"
-      } not a recognized API. The whole list is ignored; accepted names are ${Object.keys(
-        PROTOCOL_CONFIGURATION_NAMES,
-      ).join(", ")}.`,
+      } not a recognized API. The whole list is ignored; accepted names are ${protocolConfigurationNames().join(", ")}.`,
     );
   }
   return Response.json(
