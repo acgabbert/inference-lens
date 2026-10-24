@@ -419,7 +419,7 @@ differently:
 | Runtime | Marker |
 | --- | --- |
 | OpenRouter | Listed only by `<base>/models?output_modalities=decisions`; entries carry `architecture.output_modalities: ["decisions"]` |
-| llama.cpp | `<base>/models` entries carry `architecture.output_modalities: ["decisions"]` |
+| llama.cpp | `<base>/models` `data[]` entries carry `architecture.output_modalities: ["decisions"]`; the Ollama-style `models[]` in the same body says `capabilities: ["completion"]` for the same model (captured) |
 | Ollama | None in `/v1/models`; `capabilities: ["decision"]` in `/api/tags` at the server root |
 
 - **A. Free text only.** No decision listing; the picker shows the chat
@@ -447,9 +447,15 @@ differently:
   an arbitrary URL to send a credential to, and it still never inspects a
   body. Step 2 costs a second request only on servers that mark nothing, and
   only when a decision picker opens.
-- Unverified, to check during Phase 2: that llama.cpp and Ollama ignore the
-  `?output_modalities` query, and that stripping `/v1` finds Ollama's root
-  behind a proxy. Step 2 is a layout guess, which is why it runs only after
+- The parser trusts `data[].architecture.output_modalities` over any
+  `models[].capabilities` in the same body: llama.cpp sends both, and its
+  `models[]` mislabels the decision model as `completion` (captured,
+  `llamacpp-models`). `models[].capabilities` counts only in the step 2
+  `/api/tags` body.
+- Verified: llama.cpp ignores `?output_modalities` (identical body) and 404s
+  `/api/tags` (captured). Unverified, to check during Phase 2: that Ollama
+  ignores the query, and that stripping `/v1` finds Ollama's root behind a
+  proxy. Step 2 is a layout guess, which is why it runs only after
   step 1 finds nothing marked.
 
 ### D11. The fixture provider *(accepted: B)*
@@ -574,9 +580,8 @@ docs; ⬜ items still need a live run or a credential.
 - Decision-model discovery (D10-B): `listing: "decisions"` on the discovery
   request, the marker-following URLs in core and Rust, and a pure core parser
   for both listing shapes, unit-tested against `openrouter-models`,
-  `ollama-models`, and a llama.cpp listing (not yet captured; take it from the
-  home server). Check the two unverified D10
-  assumptions against live servers.
+  `ollama-models`, and `llamacpp-models`. Check the two unverified D10
+  assumptions against a live Ollama.
 - A fixture provider, `npm run dev:systemone-provider` (D11-B), next to the
   flaky and paced fixtures. It replays the committed captures by model id
   under `/llamacpp/v1`, `/ollama/v1`, and `/openrouter/v1`, each with its own
