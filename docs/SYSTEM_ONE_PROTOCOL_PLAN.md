@@ -1,6 +1,6 @@
 # System One protocol plan
 
-Status: **D1–D24 and U1–U6 accepted. Phases 1 and 2 are merged; the Phase 2
+Status: **D1–D26 and U1–U6 accepted. Phases 1 and 2 are merged; the Phase 2
 correctness gate in D16 remains open. Phases 3 and 4 ship together, with trace
 support implemented early (D20). llama.cpp and
 OpenRouter captured on 2026-10-24, Ollama on 2026-10-23; direct TypeSafe still
@@ -193,7 +193,7 @@ contract design, not the adapter.
 
 ## Decisions
 
-The user accepted every recommendation below (D1–D24) and the UI decisions in
+The user accepted every recommendation below (D1–D26) and the UI decisions in
 [U1–U6](#ui-decisions-u1u6).
 Changes made after the source check are marked *(revised)*; a later decision
 that changes an earlier one is named in the marker, as in *(revised by D18)*.
@@ -600,6 +600,7 @@ incorrect values before each fix:
   characters. Preserve the complete body independently of any shortened
   display summary. A validation response over 4,000 characters must retain
   the full raw frame and yield the same readable message on web and desktop.
+  D25 settles where the body is preserved.
 - **Startup cancellation.** An already-aborted signal, or an abort while
   registering the listener or starting the native command, must not be lost.
   Prevent dispatch where possible; cancel any native work already started,
@@ -675,9 +676,9 @@ the provider input, project format, or saved execution trace.
 - `app/page.tsx` composes these owners and genuine cross-feature adapters;
   decision effects, refs, and mutation workflows stay with their owner.
 - Extract reusable request/response/frame evidence presentation from the
-  chat-specific inspector. Feed it the shared exchange evidence structures;
-  keep chat-only tools, transcript, comparison, and template resolution with
-  chat. Decisions show duration and reported token usage, with missing usage
+  chat-specific inspector as its own step (D26). Feed it the shared exchange
+  evidence structures; keep chat-only tools, transcript, comparison, and
+  template resolution with chat. Decisions show duration and reported token usage, with missing usage
   kept missing, rather than token-stream timing or throughput.
 - Extend model discovery's UI state and cache to retain `unfiltered` along
   with model ids and accept `ConnectionProtocol`. Keep catalogues distinct
@@ -825,6 +826,51 @@ others can't start, and the keyboard shortcut does nothing.
   the cross-feature adapter that the route is meant to keep. Add the guard in
   both directions to D21's switch-lock coverage.
 
+### D25. Where the complete error body is preserved *(accepted: A)*
+
+D16 requires the complete error body, but the truncation is shared with chat.
+`stream_provider_turn` in `src-tauri/src/lib.rs` cuts the provider error
+message at 4,000 characters. The same cut is copied in
+`app/tauri-inference-transport.client.ts`,
+`packages/core/src/decision-execution.ts`,
+`packages/core/src/openai-compatible.ts`, and
+`packages/core/src/provider-adapters.ts`, so long chat error bodies are
+truncated too, on both web and desktop.
+
+- **A. Shared path, additive.** The Rust error event gains a field carrying
+  the complete response body; `message` stays the shortened summary. The
+  decision reader records the complete body as its frame and derives the
+  readable message from it, so web and desktop agree. Chat ignores the new
+  field, and its behaviour is unchanged.
+- **B. A decision-only Rust branch.** Leaves chat code untouched, but
+  duplicates the request and response handling D12 deliberately shares.
+- **C. Fix chat's evidence in the same step.** Changes chat traces and the
+  chat UI, widening Phase 3.
+- **Accepted: A.** The only chat-facing change is the event shape. Cover it
+  with the existing Rust tests plus a new one asserting that `message` is still
+  truncated and the body is complete. Keeping the full body in chat's own
+  evidence is a separate follow-up, not part of Phase 3.
+
+### D26. Extracting the shared evidence presentation *(accepted: A)*
+
+D19 extracts the request, response, and frame presentation from the
+chat-specific inspector in `app/run-trace-panel.client.tsx`. That is a
+refactor of chat UI.
+
+- **A. A separate behaviour-preserving step before the decision result
+  view.** Move the presentation into a shared component that takes only
+  exchange evidence; tools, transcript, comparison, and template resolution
+  stay with chat. Run the browser specs covering the inspector before and
+  after, and they must pass unchanged: at least `raw-request-evidence`,
+  `tool-execution-evidence`, `runs-result-discovery`, `pr2-workbench`, and
+  `experiment-history`. Confirm which evaluation specs open the inspector
+  before relying on them. Then build the decision view on the shared
+  component with D21's coverage.
+- **B. Extract it while building the decision view.** No clean
+  before-and-after for chat, so a chat regression would surface mixed into
+  decision work.
+- **Accepted: A.**
+
 ## Phases
 
 ### Phase 0: verify the wire format
@@ -960,8 +1006,12 @@ gate that must close before Phase 3 work begins.
 
 ### Phase 3: UI
 
-Prerequisite: close D16 with committed regression coverage. Delivery: ship
-with Phase 4 (D20), implementing trace support early.
+Prerequisite: close D16 with committed regression coverage, preserving the
+complete error body on the shared path (D25). Delivery: ship with Phase 4
+(D20), implementing trace support early.
+
+Order: D16 → the decision trace format (D22) → the behaviour-preserving
+evidence extraction (D26) → the decision session and UI.
 
 - Ownership and shell integration follow D19: the decision feature owns its
   state and workflow; the Compose owner selects the active kind's panes,
