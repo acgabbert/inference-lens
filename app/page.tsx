@@ -268,6 +268,10 @@ function HomeContent() {
       requestSettings.applyDraft(draft);
       runSession.reset();
     },
+    // The decision owner is declared below; like `pendingBranch` above, it is
+    // reached only from project commands and saves, never during render.
+    withDecisionDraft(document) { return decision.project.fold(document); },
+    onApplyDecisionRequest(document) { decision.project.adopt(document); },
     onSaved({ name, destination }) {
       toasts.publish({
         key: "project-saved",
@@ -449,6 +453,9 @@ function HomeContent() {
     prepareCredentialForProfile: credential.prepareForProfile,
     updateProfile,
     workspace: projectWorkspace,
+    project: projectFile,
+    adoptProjectMutation: project.adoptProjectMutation,
+    onProjectEdited: project.markDirty,
     ...(isRequestActive
       ? { otherActivity: "A chat request is running. Stop it before running a decision." }
       : batchActive

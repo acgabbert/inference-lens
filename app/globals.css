@@ -8815,9 +8815,16 @@ label.experiment-retry-field {
 }
 
 .decision-state,
-.decision-questions {
+.decision-questions,
+.decision-variables {
   display: grid;
   gap: var(--space-sm);
+}
+
+.decision-unsaved {
+  margin: 0;
+  padding: var(--space-xs) var(--space-xl);
+  color: var(--text-secondary);
 }
 
 .decision-section-heading {

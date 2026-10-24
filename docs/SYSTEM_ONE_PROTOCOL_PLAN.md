@@ -1,6 +1,6 @@
 # System One protocol plan
 
-Status: **D1–D37 and U1–U6 accepted; Phase 5 (D31–D37) is decided, not built. Phases 1 and 2 are merged; D16's fixes
+Status: **D1–D43 and U1–U6 accepted; Phase 5a (project-owned decision requests) is implemented, 5b and 5c are not. Phases 1 and 2 are merged; D16's fixes
 and host tests are in, with its native-app check still to run on a desktop
 build. Phases 3 and 4 are implemented together (D20): the Compose owner and
 topbar (D29-A), trace opening by kind (D30), the decision draft, target, and
@@ -196,7 +196,7 @@ contract design, not the adapter.
 
 ## Decisions
 
-The user accepted every recommendation below (D1–D37) and the UI decisions in
+The user accepted every recommendation below (D1–D43) and the UI decisions in
 [U1–U6](#ui-decisions-u1u6).
 Changes made after the source check are marked *(revised)*; a later decision
 that changes an earlier one is named in the marker, as in *(revised by D18)*.
@@ -1515,11 +1515,21 @@ once it is saved.
 
 ### Phase 5: checks, CLI, evaluations
 
-Decided in D31–D37; nothing is implemented yet. Delivered in order:
+Decided in D31–D37, with 5a's details in D38–D43. Delivered in order:
 
 - **5a.** Project-owned decision requests and revisions (D31) in project
   schema 13, with template variables (D32), and Decision Compose editing and
   saving them (D37).
+  Implemented (2026-10-24): `decision-request.ts` and `decision-variables.ts`
+  in core, project schema 13, and `useDecisionProject` beside the draft.
+  Covered by `tests/decision-request.test.ts` (run red first; the key-order
+  test was also shown red with `decision` removed from the order-sensitive
+  keys) and `tests/e2e/system-one-decision-requests.spec.ts`. The browser
+  spec was written after the app code; with the app changes stashed, its two
+  main tests failed on the missing Variables fields and the unsaved request.
+  The third, that an untouched draft creates no request, cannot fail on the
+  old code. Not covered: the Tauri project folder, and opening a request
+  while a decision run executes.
 - **5b.** Check vocabulary 5 (D34), decision suites (D33), and their
   execution through the shared experiment pipeline (D35), with suite
   authoring in the app.

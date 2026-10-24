@@ -2,7 +2,7 @@
 
 Inference Lens projects use a visible `<name>.inference-lens/` directory bundle
 containing one canonical, portable JSON document named `project.json`. New
-saves use schema version 12. The parser also opens versions 10 and 11 and
+saves use schema version 13. The parser also opens versions 10, 11, and 12 and
 upgrades them on load. From v10, the protocol it kept on each connection
 requirement (always chat completions) moves onto every execution target that
 names that requirement — the project default and each suite's
@@ -11,7 +11,8 @@ names that requirement — the project default and each suite's
 (JSON Schema checks and JSON input policies; see
 [Deterministic checks](DETERMINISTIC_CHECKS.md)); a v10 or v11 document was
 written with vocabulary 3, so one that contains a v4 construct is rejected
-rather than upgraded. Earlier project
+rather than upgraded. v13 adds project-owned [decision requests](#decision-requests);
+a v12 document opens with none, and one that already holds any is rejected. Earlier project
 formats, including v5–v9, and the proof-of-concept request export are rejected
 with a version error rather than upgraded on load.
 Every schema is strict, so a reader rejects a document it does not understand
@@ -149,6 +150,7 @@ Project documents contain authored, shareable definitions:
 - project-scoped prompt templates and immutable template revisions
 - the default conversation revision, model target, inference options, and
   enabled tools
+- decision requests and their revisions
 
 External prompt imports retain a secret-free receipt containing source
 identity, authored fields, expression evidence, warnings, and the deterministic
@@ -329,6 +331,52 @@ is warned before the revision is created rather than silently rewritten.
 Human revision descriptions are projected on demand from this data and are not
 stored. A mutable `revisionName` on portable content would let a label drift
 from the immutable revision an execution actually snapshotted.
+
+## Decision requests
+
+System One decision requests (see [the protocol plan](SYSTEM_ONE_PROTOCOL_PLAN.md),
+D31 and D38–D43) are authored, portable content beside conversations.
+`decisionRequests` holds `{ id, name }`; `decisionRequestRevisions` holds each
+revision:
+
+```json
+{
+  "id": "decision-revision_example",
+  "decisionRequestId": "decision-request_example",
+  "decision": {
+    "state": { "ticket": "{{ticket}}" },
+    "questions": {
+      "intent": {
+        "type": "choice",
+        "instructions": "What is the customer asking about?",
+        "criteria": { "billing": "Charges or refunds.", "other": null }
+      }
+    }
+  },
+  "values": { "ticket": "I was charged twice." },
+  "createdAt": "2026-10-24T12:00:00.000Z"
+}
+```
+
+`decision` is sent as written, so it keeps its authored key order in every
+serialization: question order and option order are meaning. An optional
+`parentRevisionId` names the revision of the same request it was branched
+from, and the optional `defaults.decisionRequestRevisionId` names the revision
+Decision Compose opens. No decision target is stored; the connection and model
+are chosen per session.
+
+Native template variables (the grammar above, `\{{` escaping) may appear in
+string values anywhere in `state` and in question `instructions`, never in
+object keys or criteria. `values` gives one string per variable, may name only
+variables the revision uses, and never a secret-like name. A variable with no
+value is valid authored state; a run is refused until every variable resolves,
+and the run trace records the resolved request that was sent.
+
+Decision Compose edits the active revision in place until it has run in the
+session or was loaded from disk; the next edit then appends a child and moves
+the default. Only a draft that validates is written: while the editor shows
+problems, the project keeps the last valid revision. An untouched starting
+draft never creates a request.
 
 ## Tool definition source
 

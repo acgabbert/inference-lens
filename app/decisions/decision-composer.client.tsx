@@ -24,6 +24,8 @@ export interface DecisionComposerProps {
   blockers: DecisionDraftProblem[];
   /** A run is executing, so the draft and target are read-only (D17). */
   locked: boolean;
+  /** The open project keeps the last valid request until the problems are fixed. */
+  unsaved: boolean;
   onOpenConnections(): void;
 }
 
@@ -189,7 +191,32 @@ function QuestionCard({
 }
 
 /** The Decision kind's request pane: target, readiness, and the D18 editor. */
-export function DecisionComposer({ draft: handle, target, blockers, locked, onOpenConnections }: DecisionComposerProps) {
+/**
+ * One field per template variable the request uses (D40). An absent value and
+ * an empty one differ: only the first blocks Run.
+ */
+function DecisionVariables({ handle, disabled }: { handle: DecisionDraftHandle; disabled: boolean }) {
+  if (handle.variables.length === 0) return null;
+  return (
+    <section className="decision-variables" aria-label="Variables">
+      <span className="decision-field-label">Variables</span>
+      {handle.variables.map((name) => (
+        <label className="decision-field" key={name}>
+          <span className="decision-variable-name"><code>{`{{${name}}}`}</code></span>
+          <input
+            disabled={disabled}
+            placeholder="No value"
+            type="text"
+            value={handle.values[name] ?? ""}
+            onChange={(event) => handle.setValue(name, event.target.value)}
+          />
+        </label>
+      ))}
+    </section>
+  );
+}
+
+export function DecisionComposer({ draft: handle, target, blockers, locked, unsaved, onOpenConnections }: DecisionComposerProps) {
   const { draft } = handle;
   const discovery = target.discovery;
   return (
@@ -222,6 +249,11 @@ export function DecisionComposer({ draft: handle, target, blockers, locked, onOp
               : {})}
           />
         </div>
+      )}
+      {unsaved && (
+        <p className="decision-unsaved" role="status">
+          Not saved to the project until the request is valid. The project keeps its last valid version.
+        </p>
       )}
       {handle.viewProblems.length > 0 && (
         <div className="decision-view-problems" role="alert">
@@ -321,6 +353,7 @@ export function DecisionComposer({ draft: handle, target, blockers, locked, onOp
             </section>
           </>
         )}
+        <DecisionVariables disabled={locked} handle={handle} />
       </div>
     </section>
   );

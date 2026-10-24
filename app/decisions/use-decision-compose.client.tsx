@@ -1,7 +1,9 @@
 "use client";
 
 import type { CredentialSelection, DecisionTransport, ProviderTurnTransport } from "../../packages/contracts/src";
+import { prepareDecisionRequestRun } from "../../packages/core/src/decision-request";
 import type { DecisionRunTrace } from "../../packages/core/src/decision-trace";
+import type { ProjectFile } from "../../packages/core/src/project";
 import type { ComposeKindHandle } from "../compose/use-compose.client";
 import type { ProjectWorkspaceHandle } from "../project-workspace.client";
 import type { StoredInferenceProfile, StoredInferenceProfilePatch } from "../profile-store.client";
@@ -12,6 +14,8 @@ import { DecisionInspect } from "./decision-inspect.client";
 import { decisionDisplayStatus } from "./decision-result-view";
 import { DecisionResponse } from "./decision-response.client";
 import { useDecisionDraft } from "./use-decision-draft.client";
+import { useDecisionProject } from "./use-decision-project.client";
+import type { DecisionProjectHandle } from "./use-decision-project.client";
 import { useDecisionSession } from "./use-decision-session.client";
 import { useDecisionTarget } from "./use-decision-target.client";
 
@@ -21,6 +25,11 @@ export interface UseDecisionComposeOptions {
   prepareCredentialForProfile(profileId: string, endpoint: string): Promise<CredentialSelection>;
   updateProfile(profileId: string, patch: StoredInferenceProfilePatch): void;
   workspace: ProjectWorkspaceHandle | null;
+  /** The open project, which owns the active decision request (D37, D42). */
+  project: ProjectFile | null;
+  adoptProjectMutation(project: ProjectFile): void;
+  /** The draft changed; the project, if one is open, needs saving. */
+  onProjectEdited(): void;
   /**
    * Why another foreground activity refuses a decision run now (D24): a chat
    * request or a batch. Absent when nothing else is running.
@@ -36,6 +45,11 @@ export interface DecisionComposeHandle {
   compose: ComposeKindHandle;
   /** For D30: open a saved or imported decision trace. */
   adoptTrace(trace: DecisionRunTrace, origin: TraceOrigin): void;
+  /** What the project workspace folds in and hands over (D42). */
+  project: Pick<DecisionProjectHandle, "fold"> & {
+    /** A project was opened or replaced: load its request and clear the result. */
+    adopt(project: ProjectFile): void;
+  };
 }
 
 /**
@@ -44,7 +58,12 @@ export interface DecisionComposeHandle {
  * workflows stay here rather than in the route.
  */
 export function useDecisionCompose(options: UseDecisionComposeOptions): DecisionComposeHandle {
-  const draft = useDecisionDraft();
+  const draft = useDecisionDraft({ onEdited: options.onProjectEdited });
+  const decisionProject = useDecisionProject({
+    draft,
+    project: options.project,
+    adoptProjectMutation: options.adoptProjectMutation,
+  });
   const target = useDecisionTarget({
     profiles: options.profiles,
     transport: options.transport,
@@ -60,21 +79,26 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
   });
 
   const validated = draft.validated();
+  // Variables resolve at the run boundary (D40): nothing is sent while one is
+  // unfilled or a token is malformed.
+  const prepared = "input" in validated ? prepareDecisionRequestRun(validated.input, draft.values) : undefined;
   const blockers: DecisionDraftProblem[] = [
     ...(options.otherActivity ? [{ location: "Activity", message: options.otherActivity }] : []),
     ...(target.blocker
       ? [{ location: target.blocker.kind === "no-model" ? "Model" : "Connection", message: target.blocker.message }]
       : []),
     ...("problems" in validated ? validated.problems : []),
+    ...(prepared && !prepared.ok ? prepared.diagnostics.map(({ location, message }) => ({ location, message })) : []),
   ];
   const run = session.run;
   const paused = run?.status.kind === "paused";
   const retryWaiting = session.retryAvailableAt !== undefined;
 
   function start(): void {
-    if (session.executing || blockers.length > 0 || !("input" in validated)) return;
-    const resolved = target.resolveRun(validated.input);
+    if (session.executing || blockers.length > 0 || !prepared?.ok) return;
+    const resolved = target.resolveRun(prepared.decision);
     if (!resolved) return;
+    decisionProject.freezeForRun();
     void session.start(resolved, { workspace: options.workspace });
   }
 
@@ -102,6 +126,7 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
       request: (
         <DecisionComposer
           blockers={blockers}
+          unsaved={decisionProject.unsaved}
           draft={draft}
           locked={session.executing}
           target={target}
@@ -128,5 +153,15 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
     trace: { available: finished, export: () => void session.exportTrace() },
     stop: session.stop,
   };
-  return { compose, adoptTrace: session.adoptTrace };
+  return {
+    compose,
+    adoptTrace: session.adoptTrace,
+    project: {
+      fold: decisionProject.fold,
+      adopt(project) {
+        session.reset();
+        decisionProject.adopt(project);
+      },
+    },
+  };
 }
