@@ -1,7 +1,8 @@
 # System One protocol plan
 
-Status: **D1–D26 and U1–U6 accepted. Phases 1 and 2 are merged; the Phase 2
-correctness gate in D16 remains open. Phases 3 and 4 ship together, with trace
+Status: **D1–D26 and U1–U6 accepted. Phases 1 and 2 are merged; D16's fixes
+and host tests are in, with its native-app check still to run on a desktop
+build. Phases 3 and 4 ship together, with trace
 support implemented early (D20). llama.cpp and
 OpenRouter captured on 2026-10-24, Ollama on 2026-10-23; direct TypeSafe still
 doc-derived only.** On 2026-10-24 each implementation's
@@ -619,6 +620,29 @@ committed regression coverage or a native-app verification. Add reproducible
 host tests and check desktop cancellation and error evidence in the native
 app, reporting any part that could not be exercised.
 
+Done, each test run red on the incorrect value first:
+
+- `tests/tauri-decision-transport.test.mjs` drives the shipped desktop
+  transport through `window.__TAURI_INTERNALS__` against a stand-in for the
+  raw proxy. A synthetic 12,122-character 422 kept only 4,000 characters as
+  its frame; it is now whole on both hosts with the same failure. An abort
+  before or during startup now rejects with the signal's reason, as `fetch`
+  does on the web, without dispatching (or, once started, with a cancel sent
+  after the start). After the stream is returned, a stop ends it as
+  `cancelled` even if a completion was already queued or the native side never
+  answers, and the listener is released either way.
+- Rust: `provider_error_event` keeps `message` cut at 4,000 characters and
+  adds `body`, the complete response (D25); covered by `cargo test`.
+- `tests/system-one.test.ts`: `__proto__`, `constructor`, and `toString`
+  question ids stay own keys in authored order through normalization and JSON,
+  a missing `constructor` answer reads as missing, and empty choice or score
+  probability maps are protocol errors.
+
+Not yet exercised: the native app itself. These ran on Linux; the desktop
+cancellation and error-evidence check in a built app is still owed, and the
+decision UI that would drive it arrives in Phase 3. Chat's `executeTurn` has
+the same startup race; it is out of D16's scope.
+
 ### D17. Switching request kinds and run lifecycle *(accepted)*
 
 The alternatives were to lock switching during execution, cancel on switch,
@@ -963,8 +987,8 @@ docs; ⬜ items still need a live run or a credential.
 
 ### Phase 2: hosts
 
-The implementation below is merged. D16 records the outstanding correctness
-gate that must close before Phase 3 work begins.
+The implementation below is merged. D16 records the correctness fixes made
+before Phase 3 work begins.
 
 - ✅ Web service: `POST /api/decisions` (D14) executes one exchange with the
   server-held credential and streams D12's `DecisionTransportEvent`s as NDJSON.
@@ -1006,8 +1030,8 @@ gate that must close before Phase 3 work begins.
 
 ### Phase 3: UI
 
-Prerequisite: close D16 with committed regression coverage, preserving the
-complete error body on the shared path (D25). Delivery: ship with Phase 4
+Prerequisite: D16's committed regression coverage, preserving the complete
+error body on the shared path (D25), is in; its native-app check is still owed. Delivery: ship with Phase 4
 (D20), implementing trace support early.
 
 Order: D16 → the decision trace format (D22) → the behaviour-preserving

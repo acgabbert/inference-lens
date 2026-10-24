@@ -187,9 +187,14 @@ enum RawStreamEvent {
     End,
     Error {
         kind: &'static str,
+        /// A summary, cut at 4,000 characters for a provider error body.
         message: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         status: Option<u16>,
+        /// The complete provider error body, for readers that keep it as
+        /// evidence. Chat reads only `message`.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        body: Option<String>,
     },
     Cancelled,
 }
@@ -1183,6 +1188,23 @@ async fn execute_provider_turn(
     active_runs.remove(&request_id);
 }
 
+fn provider_error_event(status: reqwest::StatusCode, detail: String) -> RawStreamEvent {
+    if detail.is_empty() {
+        return RawStreamEvent::Error {
+            kind: "provider",
+            message: format!("Provider returned HTTP {status}."),
+            status: Some(status.as_u16()),
+            body: None,
+        };
+    }
+    RawStreamEvent::Error {
+        kind: "provider",
+        message: detail.chars().take(4_000).collect(),
+        status: Some(status.as_u16()),
+        body: Some(detail),
+    }
+}
+
 async fn stream_provider_turn(
     events: &ProviderEvents,
     endpoint: &str,
@@ -1199,6 +1221,7 @@ async fn stream_provider_turn(
                 kind: "transport",
                 message,
                 status: None,
+                body: None,
             });
             return;
         }
@@ -1225,6 +1248,7 @@ async fn stream_provider_turn(
                 kind: "transport",
                 message: format!("Could not reach provider: {error}"),
                 status: None,
+                body: None,
             });
             return;
         }
@@ -1238,16 +1262,7 @@ async fn stream_provider_turn(
     });
     if !status.is_success() {
         let detail = response.text().await.unwrap_or_default();
-        let message = if detail.is_empty() {
-            format!("Provider returned HTTP {status}.")
-        } else {
-            detail.chars().take(4_000).collect()
-        };
-        events.emit(&RawStreamEvent::Error {
-            kind: "provider",
-            message,
-            status: Some(status.as_u16()),
-        });
+        events.emit(&provider_error_event(status, detail));
         return;
     }
 
@@ -1266,6 +1281,7 @@ async fn stream_provider_turn(
                     kind: "transport",
                     message: format!("Could not read provider response: {error}"),
                     status: None,
+                    body: None,
                 });
                 return;
             }
@@ -1292,6 +1308,7 @@ async fn stream_provider_turn(
                     kind: "transport",
                     message: format!("Provider stream failed: {error}"),
                     status: None,
+                    body: None,
                 });
                 return;
             }
@@ -1806,6 +1823,35 @@ mod tests {
         }))
         .expect("deserialize no credential selection");
         assert!(matches!(no_credential, CredentialSelection::None));
+    }
+
+    #[test]
+    fn a_provider_error_keeps_its_complete_body_beside_the_shortened_message() {
+        let detail = format!("{{\"detail\":\"{}\"}}", "é".repeat(5_000));
+        let event = serde_json::to_value(provider_error_event(
+            reqwest::StatusCode::UNPROCESSABLE_ENTITY,
+            detail.clone(),
+        ))
+        .unwrap();
+        assert_eq!(event["type"], "error");
+        assert_eq!(event["kind"], "provider");
+        assert_eq!(event["status"], 422);
+        let message = event["message"].as_str().unwrap();
+        assert_eq!(message.chars().count(), 4_000);
+        assert!(detail.starts_with(message));
+        assert_eq!(event["body"].as_str().map(str::len), Some(detail.len()));
+        assert_eq!(event["body"], detail);
+    }
+
+    #[test]
+    fn an_empty_provider_error_has_no_body() {
+        let event = serde_json::to_value(provider_error_event(
+            reqwest::StatusCode::BAD_GATEWAY,
+            String::new(),
+        ))
+        .unwrap();
+        assert_eq!(event["message"], "Provider returned HTTP 502 Bad Gateway.");
+        assert!(event.get("body").is_none());
     }
 
     #[test]
