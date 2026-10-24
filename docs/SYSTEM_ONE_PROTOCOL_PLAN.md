@@ -1233,6 +1233,47 @@ and there is no ad hoc `decide <file>` command.
   owner of the project-backed decision draft and its contract.
 - **Accepted: A.**
 
+### 5a decisions (D38–D43) *(accepted)*
+
+The user accepted each recommendation.
+
+- **D38. Revisions like conversations.** `decisionRequests[{ id, name }]` and
+  `decisionRequestRevisions[{ id, decisionRequestId, parentRevisionId?,
+  decision, values, createdAt }]`, with ids `decision-request_…` and
+  `decision-revision_…`. `decision` is a `DecisionInput` and is
+  order-sensitive in every serialization, as in traces. The active revision
+  is edited in place; once it has run in this session or was loaded from
+  disk, the next edit appends a child revision and moves the pointer, as
+  template edits on a conversation do.
+- **D39. The active request.** Optional `defaults.decisionRequestRevisionId`.
+  No decision target is stored in 5a: the target stays session-local, and
+  suites carry their own in 5b.
+- **D40. Variables.** `{{name}}` may appear in string values anywhere in
+  `state` and in question `instructions` (string leaves included), never in
+  object keys or criteria; `\{{` escapes. A revision's `values` hold one
+  string per variable, may name only variables its input uses, and never a
+  secret-like name. Resolution reports the template engine's diagnostics, and
+  any diagnostic blocks the run, as `prepareProjectRevisionRun` does for
+  chat. The trace keeps the resolved input that was sent, so its format is
+  unchanged. Case values override `values` in 5b.
+- **D41. Project schema 13.** v12 opens by adding the two empty arrays; v10
+  and v11 upgrade through it. Check vocabulary stays 4 until 5b.
+- **D42. Ownership.** Pure core functions in `decision-request.ts`
+  (create, update-or-branch, resolve) and project validation in `project.ts`.
+  `useDecisionCompose` stays the feature owner; `useDecisionDraft` gains the
+  revision's values and an `adopt`. The project workspace folds the decision
+  owner's contribution into `currentProjectDocument()` and hands it the
+  active revision on load. The route keeps one adapter connecting the two,
+  because the workspace is built before the decision owner.
+- **D43. No project open.** Compose is ad hoc as today. Materializing or
+  saving a project includes the draft as a request named "Decision request"
+  when the draft is valid. A project with no request gains one at the first
+  valid decision edit.
+
+The project holds only a draft that validates (D18): while the editor shows
+problems, the revision keeps its last valid content and the composer says the
+draft is not saved to the project.
+
 ## Phases
 
 ### Phase 0: verify the wire format

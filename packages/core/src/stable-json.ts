@@ -2,15 +2,17 @@
  * Keys whose value is authored data where key order is itself meaning, not
  * incidental shape. A tool's input schema is serialized verbatim into the
  * provider request, so the order its properties are declared in is the order
- * the model reads them in. Canonicalizing that order would silently rewrite an
- * authored request, so these subtrees keep the order they were written in.
+ * the model reads them in. A decision request's questions and options are
+ * likewise sent, and answered, in authored order. Canonicalizing that order
+ * would silently rewrite an authored request, so these subtrees keep the order
+ * they were written in.
  *
  * This is a default rather than an opt-in because every writer and every
  * equality check has to agree. If serialization preserved order but the
  * project-equality check sorted, reordering a tool's parameters would not even
  * register as an unsaved change.
  */
-export const ORDER_SENSITIVE_KEYS: ReadonlySet<string> = new Set(["inputSchema"]);
+export const ORDER_SENSITIVE_KEYS: ReadonlySet<string> = new Set(["inputSchema", "decision"]);
 
 export interface StableJsonOptions {
   /**

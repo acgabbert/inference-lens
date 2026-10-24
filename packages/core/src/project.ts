@@ -14,6 +14,9 @@ export type {
   EvaluationVariant,
 } from "./evaluation-suites.ts";
 import { stableJsonValue } from "./stable-json.ts";
+import { isDecisionInput } from "./decision.ts";
+import type { DecisionInput } from "./decision.ts";
+import { discoverDecisionVariables } from "./decision-variables.ts";
 import { toolNameSchema } from "./tool-name.ts";
 import {
   MAX_EXPERIMENT_TURN_CEILING,
@@ -41,6 +44,8 @@ import type {
   ConversationId,
   ConversationMessage,
   ConversationRevisionId,
+  DecisionRequestId,
+  DecisionRequestRevisionId,
   ExternalImportId,
   InferenceOptions,
   JsonObject,
@@ -75,9 +80,9 @@ export const PROJECT_DIRECTORY_SUFFIX = ".inference-lens";
 export const PROJECT_FILE_NAME = "project.json";
 export const PROJECT_EXPORT_FILE_SUFFIX = ".project.json";
 export const PROJECT_GITIGNORE_CONTENTS = "*\n";
-export const PROJECT_SCHEMA_VERSION = 12;
-/** Older versions this build still opens; see `migrateV10Project` and `migrateV11Project`. */
-const OPENABLE_PROJECT_SCHEMA_VERSIONS: readonly number[] = [10, 11];
+export const PROJECT_SCHEMA_VERSION = 13;
+/** Older versions this build still opens; see `migrateV10Project`, `migrateV11Project`, and `migrateV12Project`. */
+const OPENABLE_PROJECT_SCHEMA_VERSIONS: readonly number[] = [10, 11, 12];
 
 /**
  * Turns the portable project display name into one safe, visible directory
@@ -251,6 +256,29 @@ export interface ProjectDefaults {
   target: ExecutionTarget;
   options: InferenceOptions;
   enabledToolIds: ToolId[];
+  /** The decision request Decision Compose opens (D39); absent until there is one. */
+  decisionRequestRevisionId?: DecisionRequestRevisionId;
+}
+
+/** A project-owned System One request (D31, D38). Its content is in revisions. */
+export interface ProjectDecisionRequest {
+  id: DecisionRequestId;
+  name: string;
+}
+
+/**
+ * One revision of a decision request. `decision` is authored content whose key
+ * order is meaning, so every serialization keeps it as written. `values` holds
+ * one string per variable the input uses (D40); key presence is significant,
+ * as on template uses.
+ */
+export interface ProjectDecisionRequestRevision {
+  id: DecisionRequestRevisionId;
+  decisionRequestId: DecisionRequestId;
+  parentRevisionId?: DecisionRequestRevisionId;
+  decision: DecisionInput;
+  values: Record<string, string>;
+  createdAt: string;
 }
 
 /**
@@ -310,8 +338,8 @@ interface ProjectReferenceValidationShape {
   defaults: ProjectDefaults;
 }
 
-export interface ProjectFileV12 {
-  schemaVersion: 12;
+export interface ProjectFileV13 {
+  schemaVersion: 13;
   projectId: ProjectId;
   name: string;
   connectionRequirements: ConnectionRequirement[];
@@ -322,10 +350,12 @@ export interface ProjectFileV12 {
   promptTemplates: PromptTemplate[];
   externalImports: ExternalImportReceipt[];
   evaluationSuites: EvaluationSuite[];
+  decisionRequests: ProjectDecisionRequest[];
+  decisionRequestRevisions: ProjectDecisionRequestRevision[];
   defaults: ProjectDefaults;
 }
 
-export type ProjectFile = ProjectFileV12;
+export type ProjectFile = ProjectFileV13;
 
 const entityId = <Kind extends Parameters<typeof createEntityId>[0]>(
   kind: Kind,
@@ -711,6 +741,30 @@ const projectDefaultsSchema = z
     target: executionTargetSchema,
     options: inferenceOptionsSchema,
     enabledToolIds: z.array(entityId("tool")),
+    decisionRequestRevisionId: entityId("decision-revision").optional(),
+  })
+  .strict();
+
+const decisionRequestSchema = z
+  .object({
+    id: entityId("decision-request"),
+    name: z.string().trim().min(1),
+  })
+  .strict();
+
+const decisionRequestRevisionSchema = z
+  .object({
+    id: entityId("decision-revision"),
+    decisionRequestId: entityId("decision-request"),
+    parentRevisionId: entityId("decision-revision").optional(),
+    // The shape check leaves the value as written: question and option order
+    // are authored meaning, and a rebuilt object could reorder them.
+    decision: z.custom<DecisionInput>(
+      isDecisionInput,
+      "Expected a decision request: a state and at least one question.",
+    ),
+    values: z.record(z.string(), z.string()),
+    createdAt: z.string().datetime(),
   })
   .strict();
 
@@ -787,7 +841,7 @@ const evaluationSuiteSchema: z.ZodType<EvaluationSuite> = z
   })
   .strict();
 
-const projectFileV12Schema: z.ZodType<ProjectFileV12> = z
+const projectFileV13Schema: z.ZodType<ProjectFileV13> = z
   .object({
     schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
     projectId: entityId("project"),
@@ -800,6 +854,8 @@ const projectFileV12Schema: z.ZodType<ProjectFileV12> = z
     promptTemplates: z.array(promptTemplateSchema),
     externalImports: z.array(externalImportReceiptSchema),
     evaluationSuites: z.array(evaluationSuiteSchema),
+    decisionRequests: z.array(decisionRequestSchema),
+    decisionRequestRevisions: z.array(decisionRequestRevisionSchema),
     defaults: projectDefaultsSchema,
   })
   .strict()
@@ -1037,7 +1093,7 @@ function validateSharedProjectReferences(
 }
 
 function validateProjectReferences(
-  project: ProjectFileV12,
+  project: ProjectFileV13,
   context: z.RefinementCtx,
 ): void {
   validateSharedProjectReferences(
@@ -1212,6 +1268,7 @@ function validateProjectReferences(
   if ("evaluationSuites" in project) {
     validateEvaluationSuites(project, templates, context);
   }
+  validateDecisionRequests(project, context);
 
   project.externalImports.forEach((receipt, receiptIndex) => {
     if (!referencedExternalImportIds.has(receipt.id)) {
@@ -1305,8 +1362,75 @@ function validateProjectReferences(
   });
 }
 
+/**
+ * Decision requests (D38): every revision names an existing request and, when
+ * it has one, a parent of the same request; every request has a revision; and
+ * a revision's values name only variables its input uses, never a secret-like
+ * one, because values are portable project data (D40).
+ */
+function validateDecisionRequests(
+  project: ProjectFileV13,
+  context: z.RefinementCtx,
+): void {
+  addDuplicateIssues(project.decisionRequests.map(({ id }) => id), ["decisionRequests"], context);
+  addDuplicateIssues(project.decisionRequestRevisions.map(({ id }) => id), ["decisionRequestRevisions"], context);
+  const requestIds = new Set(project.decisionRequests.map(({ id }) => id));
+  const revisions = new Map(project.decisionRequestRevisions.map((revision) => [revision.id, revision]));
+  project.decisionRequestRevisions.forEach((revision, revisionIndex) => {
+    const path = ["decisionRequestRevisions", revisionIndex];
+    requireReference(
+      requestIds.has(revision.decisionRequestId),
+      [...path, "decisionRequestId"],
+      "Decision request revision references a missing request.",
+      context,
+    );
+    if (revision.parentRevisionId) {
+      requireReference(
+        revisions.get(revision.parentRevisionId)?.decisionRequestId === revision.decisionRequestId,
+        [...path, "parentRevisionId"],
+        "Decision request revision references a missing parent in the same request.",
+        context,
+      );
+    }
+    if (!isDecisionInput(revision.decision)) return;
+    const used = new Set(discoverDecisionVariables(revision.decision).variables);
+    Object.keys(revision.values).forEach((name) => {
+      if (!used.has(name)) {
+        context.addIssue({
+          code: "custom",
+          path: [...path, "values", name],
+          message: `Decision request value "${name}" names a variable the request does not use.`,
+        });
+      } else if (isSensitiveTemplateVariableName(name)) {
+        context.addIssue({
+          code: "custom",
+          path: [...path, "values", name],
+          message: "Secret-like template variables cannot hold project values.",
+        });
+      }
+    });
+  });
+  const requestsWithRevisions = new Set(project.decisionRequestRevisions.map(({ decisionRequestId }) => decisionRequestId));
+  project.decisionRequests.forEach((decisionRequest, requestIndex) => {
+    requireReference(
+      requestsWithRevisions.has(decisionRequest.id),
+      ["decisionRequests", requestIndex],
+      "Decision request has no revisions.",
+      context,
+    );
+  });
+  if (project.defaults.decisionRequestRevisionId) {
+    requireReference(
+      revisions.has(project.defaults.decisionRequestRevisionId),
+      ["defaults", "decisionRequestRevisionId"],
+      "Default decision request revision does not exist.",
+      context,
+    );
+  }
+}
+
 function validateEvaluationSuites(
-  project: ProjectFileV12,
+  project: ProjectFileV13,
   templates: ReadonlyMap<PromptTemplateId, PromptTemplate>,
   context: z.RefinementCtx,
 ): void {
@@ -1564,7 +1688,31 @@ function migrateV11Project(value: object): unknown {
       });
     });
   });
-  return { ...project, schemaVersion: PROJECT_SCHEMA_VERSION };
+  return { ...project, schemaVersion: 12 };
+}
+
+/**
+ * v13 adds project-owned decision requests (D31, D41). A v12 project has none,
+ * so it gains two empty lists. One that already holds any was not written by a
+ * v12 build, and is rejected rather than reinterpreted.
+ */
+function migrateV12Project(value: object): unknown {
+  const project = value as Record<string, unknown>;
+  for (const field of ["decisionRequests", "decisionRequestRevisions"]) {
+    if (field in project && !(Array.isArray(project[field]) && project[field].length === 0)) {
+      throw new ProjectValidationError([{
+        code: "custom",
+        path: [field],
+        message: "Decision requests require project schema v13; this document declares v12.",
+      }]);
+    }
+  }
+  return {
+    ...project,
+    schemaVersion: PROJECT_SCHEMA_VERSION,
+    decisionRequests: [],
+    decisionRequestRevisions: [],
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1581,9 +1729,10 @@ export function parseProjectFile(value: unknown): ProjectFile {
       }]);
     }
     if (value.schemaVersion === 10) value = migrateV10Project(value);
-    value = migrateV11Project(value as object);
+    if ((value as { schemaVersion: unknown }).schemaVersion === 11) value = migrateV11Project(value as object);
+    value = migrateV12Project(value as object);
   }
-  const parsed = projectFileV12Schema.safeParse(value);
+  const parsed = projectFileV13Schema.safeParse(value);
   if (!parsed.success) throw new ProjectValidationError(parsed.error.issues);
   return parsed.data;
 }
@@ -1601,6 +1750,8 @@ const preferredFieldOrder = new Map(
     "promptTemplates",
     "externalImports",
     "evaluationSuites",
+    "decisionRequests",
+    "decisionRequestRevisions",
     "defaults",
     "id",
     "provider",
@@ -1608,7 +1759,9 @@ const preferredFieldOrder = new Map(
     "endpoint",
     "capabilityOverrides",
     "conversationId",
+    "decisionRequestId",
     "parentRevisionId",
+    "decision",
     "items",
     "kind",
     "message",
@@ -1667,6 +1820,7 @@ const preferredFieldOrder = new Map(
     "model",
     "options",
     "enabledToolIds",
+    "decisionRequestRevisionId",
   ].map((field, index) => [field, index]),
 );
 
@@ -3212,6 +3366,8 @@ export function createProjectFile({
     promptTemplates: [],
     externalImports: [],
     evaluationSuites: [],
+    decisionRequests: [],
+    decisionRequestRevisions: [],
     defaults: {
       conversationRevisionId: revisionId,
       target: {
