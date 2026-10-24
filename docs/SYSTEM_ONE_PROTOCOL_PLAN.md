@@ -1,6 +1,6 @@
 # System One protocol plan
 
-Status: **D1–D30 and U1–U6 accepted. Phases 1 and 2 are merged; D16's fixes
+Status: **D1–D37 and U1–U6 accepted; Phase 5 (D31–D37) is decided, not built. Phases 1 and 2 are merged; D16's fixes
 and host tests are in, with its native-app check still to run on a desktop
 build. Phases 3 and 4 are implemented together (D20): the Compose owner and
 topbar (D29-A), trace opening by kind (D30), the decision draft, target, and
@@ -196,7 +196,7 @@ contract design, not the adapter.
 
 ## Decisions
 
-The user accepted every recommendation below (D1–D30) and the UI decisions in
+The user accepted every recommendation below (D1–D37) and the UI decisions in
 [U1–U6](#ui-decisions-u1u6).
 Changes made after the source check are marked *(revised)*; a later decision
 that changes an earlier one is named in the marker, as in *(revised by D18)*.
@@ -1130,6 +1130,109 @@ evaluation case or a baseline comparison also switches Compose to Chat first.
 A chat import still leaves the mode as it was; a decision opens Compose's
 inspect view.
 
+### Phase 5 decisions (D31–D37)
+
+Checks run only inside experiments (evaluation suites and repeated runs), a
+check is stored only on an evaluation case, and the CLI runs only what the
+project owns. Decision checks and CLI support therefore both wait on
+project-owned decision requests (D4-A), which fixes the order: 5a, then 5b,
+then 5c (see [Phase 5](#phase-5-checks-cli-evaluations)).
+
+### D31. Project-owned decision requests *(accepted: A)*
+
+D4-A, in project schema 13.
+
+- **A. A request with immutable revisions,** like conversations:
+  `decisionRequests` and `decisionRequestRevisions`, each revision holding
+  the `DecisionInput` (`state` and `questions`). A suite pins one revision.
+- **B. One mutable object per request.** Simpler, but editing it would
+  change what a past suite result claims to have run.
+- **C. Input owned by the suite.** Nothing to share, and nothing for Compose
+  to save into.
+- **Recommendation: A.** It gives decision suites the reproducibility chat
+  suites already have.
+- **Accepted: A.**
+
+### D32. How cases vary a decision request *(accepted: A)*
+
+- **A. Template variables in string leaves** of `state` and `instructions`,
+  through the existing template engine. Case values stay strings, as they are
+  today.
+- **B. A whole `state` per case** (string or JSON); questions stay fixed.
+- **C. Bindings that target a JSON location** and take any JSON value. Most
+  flexible, but case values stop being strings, which ripples through the
+  project format.
+- **Recommendation: A.** D4 deferred template variables in `state` to A. A
+  `state` that is a single `{{state}}` string covers B.
+- **Accepted: A.**
+
+### D33. Decision suites beside chat suites *(accepted: A)*
+
+- **A. A suite union discriminated by `input.kind`.** A decision suite's
+  execution holds a target and repetitions only: no response mode, options,
+  tools, or turn ceiling. Its configurations override the target only.
+- **B. A separate `decisionEvaluationSuites` list.**
+- **C. One shape with chat-only fields ignored.**
+- **Recommendation: A.** The decision target is typed to
+  `DecisionWireProtocol`, since `ExecutionTarget.protocol` is chat-only. The
+  connection requirement is unchanged: D9 keeps the System One declaration
+  device-local.
+- **Accepted: A.**
+
+### D34. Decision check vocabulary *(accepted)*
+
+Check vocabulary 5. Each kind names one question id:
+
+- `decision-choice`: `{ questionId, option, negate? }`.
+- `decision-option-probability`: `{ questionId, option, comparator:
+  "at-least" | "at-most", value }`. For a score question, `option` is the
+  level number as a string, the key the answer's `probabilities` use.
+- `decision-score-range`: `{ questionId, min?, max? }`, inclusive, against
+  the fractional score; at least one bound.
+- `decision-noul`: `{ questionId, comparator: "at-least" | "at-most", value }`,
+  one kind with a comparator like `tool-call-count`.
+- `decision-confidence`: `{ questionId, atLeast }`. Choice and score only;
+  an answer without confidence is `not-evaluated`.
+
+Probability and confidence values are in [0, 1]. A question id missing from
+the pinned revision, or a question of the wrong type for the kind, is a
+preflight diagnostic, not a parse error, as a missing template variable is.
+A decision suite refuses chat output checks when authored, rather than
+storing them to report `not-evaluated` (D7 still holds for that case
+elsewhere); chat suites refuse decision kinds. `max-duration-ms` and
+`max-total-tokens` apply to both.
+
+**Accepted** as recommended, adding `decision-option-probability`.
+
+### D35. Running a decision suite *(accepted: A)*
+
+- **A. Extend the experiment plan, result, and scheduler** with a decision
+  cell `kind`, as D5 did for traces, bumping both schemas. Checks read a
+  separate decision check subject (the normalized answers plus duration and
+  usage) rather than overloading `RunCheckSubject`'s chat fields.
+- **B. A separate decision experiment pipeline.** Isolated, but it duplicates
+  scheduling, concurrency, result writing, and assessment that the app and
+  CLI already share.
+- **Recommendation: A.** Rate-limit retry follows D23.
+- **Accepted: A.**
+
+### D36. CLI surface *(accepted)*
+
+`run` dispatches on the suite's kind; flags, credentials, `--no-auth`,
+`--retry-rate-limits`, and exit codes are unchanged. `repeat` stays
+chat-only, since it would need a "current decision request" project default,
+and there is no ad hoc `decide <file>` command.
+
+### D37. Decision Compose and the project *(accepted: A)*
+
+- **A. Decision Compose edits a project-owned request,** as Messages edits a
+  conversation: saving appends a revision, and a suite can start from it.
+- **B. Compose stays ad hoc,** with a "Save as decision request" action.
+- **Recommendation: A.** D18's draft is already a portable `DecisionInput`,
+  so the change is mostly persistence. Before the route grows, 5a names the
+  owner of the project-backed decision draft and its contract.
+- **Accepted: A.**
+
 ## Phases
 
 ### Phase 0: verify the wire format
@@ -1371,9 +1474,15 @@ once it is saved.
 
 ### Phase 5: checks, CLI, evaluations
 
-- Decision check kinds (D7).
-- Headless CLI support for decision requests.
-- Project-owned decision requests (D4-A) and evaluation suites over them.
+Decided in D31–D37; nothing is implemented yet. Delivered in order:
+
+- **5a.** Project-owned decision requests and revisions (D31) in project
+  schema 13, with template variables (D32), and Decision Compose editing and
+  saving them (D37).
+- **5b.** Check vocabulary 5 (D34), decision suites (D33), and their
+  execution through the shared experiment pipeline (D35), with suite
+  authoring in the app.
+- **5c.** `inference-lens run` for decision suites (D36).
 
 ## Out of scope
 
