@@ -598,9 +598,7 @@ function HomeContent() {
       setMode("evaluations");
     },
     onOpenTrace(trace, origin) {
-      // Declared after this hook. Safe: it opens a trace only from a command.
-      compose.openKind("chat");
-      runSession.adoptTrace(trace, origin);
+      openSavedTrace({ kind: "chat", trace }, origin);
       setTraceOpen(true);
       setMode("compose");
       setWorkbenchView("inspect");
@@ -951,30 +949,6 @@ function HomeContent() {
     });
   }
   const responseEmptyState = runEmptyStatePresentation(readiness);
-  const onContextualRunShortcut = useEffectEvent((event: KeyboardEvent) => {
-    if (!(event.metaKey || event.ctrlKey) || event.key !== "Enter") return;
-    event.preventDefault();
-    if (
-      modalOwnsKeyboardCommands() ||
-      confirmation ||
-      repeatedExperiment.draft ||
-      evaluationExecution.draft ||
-      compose.executing ||
-      batchActive
-    ) return;
-    // Each mode's primary action is what the shortcut fires. Runs has none:
-    // it is where results are read, not where work is started.
-    if (mode === "evaluations") {
-      if (!evaluationWorkspace.startDisabledReason) evaluationWorkspace.start();
-      return;
-    }
-    if (mode !== "compose") return;
-    compose.shortcut();
-  });
-  useEffect(() => {
-    window.addEventListener("keydown", onContextualRunShortcut);
-    return () => window.removeEventListener("keydown", onContextualRunShortcut);
-  }, []);
 
   /**
    * The one banner slot, in priority order.
@@ -1291,6 +1265,30 @@ function HomeContent() {
     stop: runSession.stop,
   };
   const compose = useCompose({ chat: chatCompose, decision: decision.compose });
+  const onContextualRunShortcut = useEffectEvent((event: KeyboardEvent) => {
+    if (!(event.metaKey || event.ctrlKey) || event.key !== "Enter") return;
+    event.preventDefault();
+    if (
+      modalOwnsKeyboardCommands() ||
+      confirmation ||
+      repeatedExperiment.draft ||
+      evaluationExecution.draft ||
+      compose.executing ||
+      batchActive
+    ) return;
+    // Each mode's primary action is what the shortcut fires. Runs has none:
+    // it is where results are read, not where work is started.
+    if (mode === "evaluations") {
+      if (!evaluationWorkspace.startDisabledReason) evaluationWorkspace.start();
+      return;
+    }
+    if (mode !== "compose") return;
+    compose.shortcut();
+  });
+  useEffect(() => {
+    window.addEventListener("keydown", onContextualRunShortcut);
+    return () => window.removeEventListener("keydown", onContextualRunShortcut);
+  }, []);
 
   /**
    * Opens a saved or imported trace of either kind in Compose (D30). Whichever
