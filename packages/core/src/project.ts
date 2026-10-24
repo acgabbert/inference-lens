@@ -2,9 +2,8 @@ import { z } from "zod";
 import type { CheckDefinition } from "./checks.ts";
 import {
   authoredCheckDefinitionSchema,
+  checkRunKindIssue,
   checkVocabularyIssue,
-  isDecisionCheckKind,
-  SHARED_CHECK_KINDS,
 } from "./checks.ts";
 import { templateUseVariableIndex } from "./template-use-variable-index.ts";
 import type {
@@ -1510,23 +1509,11 @@ function validateDecisionRequests(
   }
 }
 
-/**
- * D34 refuses each suite kind the other kind's checks when authored; this
- * makes a hand-edited document fail the same way. Shared kinds fit both.
- */
 function checkSuiteKindIssue(
   kind: CheckDefinition["kind"],
   input: EvaluationSuite["input"]["kind"],
 ): string | undefined {
-  if ((SHARED_CHECK_KINDS as readonly string[]).includes(kind)) return undefined;
-  const decision = isDecisionCheckKind(kind);
-  if (input === "decision-request-revision" && !decision) {
-    return `"${kind}" checks read a chat run's output or tool calls; a decision suite cannot hold them.`;
-  }
-  if (input === "conversation-revision" && decision) {
-    return `"${kind}" checks read a decision run's answers; a chat suite cannot hold them.`;
-  }
-  return undefined;
+  return checkRunKindIssue(kind, input === "decision-request-revision" ? "decision" : "chat");
 }
 
 function validateEvaluationSuites(

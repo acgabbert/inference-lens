@@ -124,6 +124,20 @@ export interface DecisionEvaluationVariant {
   };
 }
 
+/** A decision configuration's target: each field it names replaces the suite's. */
+export function resolveDecisionEvaluationVariant(
+  suite: Pick<DecisionEvaluationSuite, "execution">,
+  variant: DecisionEvaluationVariant,
+): DecisionExecutionTarget {
+  const base = suite.execution.target;
+  const override = variant.overrides.target ?? {};
+  return {
+    connectionRequirementId: override.connectionRequirementId ?? base.connectionRequirementId,
+    model: override.model ?? base.model,
+    protocol: override.protocol ?? base.protocol,
+  };
+}
+
 /** Authored, provider-neutral evaluation content; one arm per run kind (D44). */
 export type EvaluationSuite = ChatEvaluationSuite | DecisionEvaluationSuite;
 

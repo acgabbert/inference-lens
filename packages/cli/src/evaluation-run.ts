@@ -6,7 +6,7 @@ import {
 import type { EvaluationLocalProfile } from "../../runner/src/evaluation-start.ts";
 import { evaluationSuitePreflight, isChatEvaluationSuite, resolveEvaluationVariant } from "../../core/src/evaluation-suites.ts";
 import { evaluationParsedExperimentAggregate } from "../../core/src/experiment.ts";
-import type { EvaluationExperimentPlanV4 } from "../../core/src/experiment.ts";
+import type { EvaluationExperimentPlan } from "../../core/src/experiment.ts";
 import type { EvaluationSuite, ProjectFile } from "../../core/src/project.ts";
 import {
   driveHeadlessExperiment,
@@ -210,7 +210,7 @@ async function prepareHeadlessEvaluation(options: HeadlessEvaluationOptions) {
     mappedProfileIds,
     bindingForTool,
   });
-  const plan: EvaluationExperimentPlanV4 = draft.plan;
+  const plan: EvaluationExperimentPlan = draft.plan;
   return {
     folder,
     plan,

@@ -9,7 +9,7 @@ import {
 import type {
   ExperimentCell,
   ExperimentConcurrencySetting,
-  ExperimentPlanV4,
+  ExperimentPlan,
   ExperimentResult,
 } from "../../core/src/experiment.ts";
 import type { ConnectionRequirement, ProjectFile } from "../../core/src/project.ts";
@@ -191,7 +191,7 @@ export interface HeadlessExperimentRecord {
  */
 export async function driveHeadlessExperiment(input: {
   folder: NodeProjectFolder;
-  plan: ExperimentPlanV4;
+  plan: ExperimentPlan;
   toolBindings: readonly ToolBinding[];
   tools: readonly ToolDefinition[];
   connections: readonly HeadlessConnection[];

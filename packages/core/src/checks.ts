@@ -117,6 +117,23 @@ export function isDecisionCheckKind(kind: CheckKind): kind is DecisionCheckKind 
   return (DECISION_CHECK_KINDS as readonly string[]).includes(kind);
 }
 
+/**
+ * D34 gives each run kind only the checks that read its evidence; shared kinds
+ * fit both. Authoring offers only those, so this refuses a hand-edited project
+ * or plan the same way.
+ */
+export function checkRunKindIssue(kind: CheckKind, runKind: "chat" | "decision"): string | undefined {
+  if ((SHARED_CHECK_KINDS as readonly string[]).includes(kind)) return undefined;
+  const decision = isDecisionCheckKind(kind);
+  if (runKind === "decision" && !decision) {
+    return `"${kind}" checks read a chat run's output or tool calls; a decision suite cannot hold them.`;
+  }
+  if (runKind === "chat" && decision) {
+    return `"${kind}" checks read a decision run's answers; a chat suite cannot hold them.`;
+  }
+  return undefined;
+}
+
 export type CheckJsonTopLevel = "any" | "object" | "array";
 
 interface CheckDefinitionBase {

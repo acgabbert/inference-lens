@@ -30,7 +30,7 @@ import { OPENAI_COMPATIBLE_CAPABILITIES } from "../packages/core/src/types.ts";
 function plan(suffix: string, createdAt = "2026-07-31T12:00:00.000Z"): RepeatedExperimentPlanV3 {
   const experimentId = createEntityId("experiment", suffix);
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     experimentId,
     kind: "repeated-request",
     createdAt,

@@ -18,7 +18,7 @@ import {
 import { createEvaluationExperimentPlan, EvaluationSetupError } from "../packages/core/src/evaluation-execution.ts";
 import { evaluationSuitePreflight } from "../packages/core/src/evaluation-suites.ts";
 import { defaultCheck } from "../packages/core/src/evaluation-suite-authoring.ts";
-import { parseExperimentPlanJson, serializeExperimentPlan, type EvaluationExperimentPlanV4 } from "../packages/core/src/experiment.ts";
+import { parseExperimentPlanJson, serializeExperimentPlan, type EvaluationExperimentPlan } from "../packages/core/src/experiment.ts";
 import { MAX_SCHEMA_OUTPUT_CODE_UNITS } from "../packages/core/src/json-schema/limits.ts";
 import { createProjectFile, parseProjectFile, PROJECT_SCHEMA_VERSION, type ProjectFile } from "../packages/core/src/project.ts";
 import type { CheckId } from "../packages/core/src/run-kernel/types.ts";
@@ -187,7 +187,7 @@ function suiteProject(checks: unknown[]): ProjectFile {
   });
 }
 
-function planFor(project: ProjectFile): EvaluationExperimentPlanV4 {
+function planFor(project: ProjectFile): EvaluationExperimentPlan {
   let suffix = 0;
   return createEvaluationExperimentPlan({
     project,
@@ -201,7 +201,7 @@ function planFor(project: ProjectFile): EvaluationExperimentPlanV4 {
       endpoint: "https://provider.example.test/v1",
       capabilities: OPENAI_COMPATIBLE_CAPABILITIES,
     },
-  }) as EvaluationExperimentPlanV4;
+  }) as EvaluationExperimentPlan;
 }
 
 const schemaCheckJson = { checkId: "check_shape", kind: "json-schema", dialect: "draft-07", schema: answerSchema };
@@ -230,11 +230,11 @@ test("new plans record the current vocabulary, and a vocabulary 3 plan rejects v
 
   // A plan written by a v3 build keeps opening, with unchanged meaning.
   const legacy = JSON.parse(serializeExperimentPlan(planFor(suiteProject([containsCheckJson]))));
-  assert.equal((parseExperimentPlanJson(JSON.stringify({ ...legacy, checkSchemaVersion: 3 })) as EvaluationExperimentPlanV4).checkSchemaVersion, 3);
+  assert.equal((parseExperimentPlanJson(JSON.stringify({ ...legacy, checkSchemaVersion: 3 })) as EvaluationExperimentPlan).checkSchemaVersion, 3);
   assert.throws(() => parseExperimentPlanJson(JSON.stringify({ ...legacy, checkSchemaVersion: 2 })));
 
   // A plan written by a v4 build keeps opening after vocabulary 5, schema checks included.
-  assert.equal((parseExperimentPlanJson(JSON.stringify({ ...written, checkSchemaVersion: 4 })) as EvaluationExperimentPlanV4).checkSchemaVersion, 4);
+  assert.equal((parseExperimentPlanJson(JSON.stringify({ ...written, checkSchemaVersion: 4 })) as EvaluationExperimentPlan).checkSchemaVersion, 4);
 });
 
 test("assessments accept vocabularies 3 to 5 and gate v4 constructs the same way", () => {

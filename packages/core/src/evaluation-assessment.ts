@@ -4,7 +4,7 @@ import { CHECK_SCHEMA_VERSION, checkDefinitionSchema, checkVocabularyIssue } fro
 import type { CheckSchemaVersion } from "./checks.ts";
 import type { CheckDefinition } from "./checks.ts";
 import { EVALUATION_ASSESSMENT_FILE_SUFFIX } from "./experiment.ts";
-import type { EvaluationCriteriaOverride, ExperimentPlanV4 } from "./experiment.ts";
+import type { EvaluationCriteriaOverride, ExperimentPlan } from "./experiment.ts";
 import { stableJsonValue } from "./stable-json.ts";
 import type {
   EntityId,
@@ -123,7 +123,7 @@ export function evaluationAssessmentFileName(assessmentId: EvaluationAssessmentI
 
 function assertAssessmentReferences(
   assessment: EvaluationAssessmentV1,
-  plan: ExperimentPlanV4,
+  plan: ExperimentPlan,
 ): void {
   if (plan.kind !== "evaluation") {
     throw new EvaluationAssessmentError(
@@ -172,7 +172,7 @@ function assertAssessmentReferences(
 
 export function parseEvaluationAssessmentFile(
   value: unknown,
-  plan: ExperimentPlanV4,
+  plan: ExperimentPlan,
 ): EvaluationAssessmentV1 {
   const version = unsupportedAssessmentVersionSchema.safeParse(value);
   if (version.success && version.data.schemaVersion !== EVALUATION_ASSESSMENT_SCHEMA_VERSION) {
@@ -187,7 +187,7 @@ export function parseEvaluationAssessmentFile(
 
 export function parseEvaluationAssessmentJson(
   contents: string,
-  plan: ExperimentPlanV4,
+  plan: ExperimentPlan,
 ): EvaluationAssessmentV1 {
   let value: unknown;
   try {
@@ -231,7 +231,7 @@ export interface NewEvaluationAssessment {
  */
 export function createEvaluationAssessment(
   input: NewEvaluationAssessment,
-  plan: ExperimentPlanV4,
+  plan: ExperimentPlan,
 ): EvaluationAssessmentV1 {
   if (plan.kind !== "evaluation") {
     throw new EvaluationAssessmentError(
@@ -270,7 +270,7 @@ function sameChecks(left: readonly CheckDefinition[], right: readonly CheckDefin
 
 export function serializeEvaluationAssessment(
   assessment: EvaluationAssessmentV1,
-  plan: ExperimentPlanV4,
+  plan: ExperimentPlan,
 ): string {
   return `${JSON.stringify(stableJsonValue(parseEvaluationAssessmentFile(assessment, plan)), null, 2)}\n`;
 }

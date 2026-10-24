@@ -7,7 +7,7 @@ import {
   serializeExperimentPlan,
   serializeExperimentResult,
   type EvaluationExperimentCellV4,
-  type EvaluationExperimentPlanV4,
+  type EvaluationExperimentPlan,
 } from "../../packages/core/src/experiment";
 import { createProjectFile, parseProjectFile, serializeProjectFile } from "../../packages/core/src/project";
 import {
@@ -22,7 +22,7 @@ import { OPENAI_COMPATIBLE_CAPABILITIES } from "../../packages/core/src/types";
 import { openMode, seedProfile, stubProjectDirectory, waitForHydration } from "./support";
 
 function completedTrace(
-  plan: EvaluationExperimentPlanV4,
+  plan: EvaluationExperimentPlan,
   cell: EvaluationExperimentCellV4,
   output: string,
   durationMs: number,

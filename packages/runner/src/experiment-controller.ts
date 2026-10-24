@@ -12,9 +12,10 @@ import {
   EXPERIMENT_RESULT_SCHEMA_VERSION,
 } from "../../core/src/experiment.ts";
 import type {
+  ChatExperimentPlan,
   ExperimentCell,
   ExperimentConcurrencySetting,
-  ExperimentPlanV4,
+  ExperimentPlan,
   ExperimentResult,
   ExperimentRetryPolicy,
   ExperimentStopV6,
@@ -59,12 +60,12 @@ export interface ExperimentProgress {
 }
 
 export interface ExperimentControllerOptions {
-  plan: ExperimentPlanV4;
+  plan: ExperimentPlan;
   transport: ProviderTurnTransport;
   /** Resolves and verifies a local credential before any provider traffic. */
   prepareCredential(target: ResolvedRunInput["target"]): Promise<CredentialSelection>;
   /** Must durably save the plan before resolving. Omit for an ad hoc session experiment. */
-  savePlan?(plan: ExperimentPlanV4, serialized: string): Promise<void>;
+  savePlan?(plan: ExperimentPlan, serialized: string): Promise<void>;
   /** Must durably save the final result before resolving. Omit for an ad hoc session experiment. */
   saveResult?(result: ExperimentResult, serialized: string): Promise<void>;
   onProgress?(progress: ExperimentProgress): void;
@@ -150,7 +151,7 @@ export class ExperimentController {
   private readonly cellAbortControllers = new Set<AbortController>();
   /** Aborted on cancellation or interruption, ending any rate-limit pause. */
   private readonly runAbortController = new AbortController();
-  private frozenPlan: ExperimentPlanV4 | undefined;
+  private frozenPlan: ChatExperimentPlan | undefined;
   private readonly credentials = new Map<string, CredentialSelection>();
   private cancellationRequested = false;
   /** Set when a binding turned out unable to serve any later repetition. */
@@ -202,7 +203,11 @@ export class ExperimentController {
     if (this.hasRun) throw new Error("The experiment has already run.");
     // Parse before any observable work, including optional persistence. This
     // keeps durable and ad hoc experiments on the same validation boundary.
-    const plan = parseExperimentPlanFile(this.options.plan);
+    const parsed = parseExperimentPlanFile(this.options.plan);
+    if (parsed.kind === "decision-evaluation") {
+      throw new Error("Decision evaluations cannot be run by this build yet.");
+    }
+    const plan = parsed;
     this.frozenPlan = plan;
     // The gate is "every exposed tool can be resolved automatically", not "no
     // tools". The caller's confirmation should have said the same thing already;
@@ -311,7 +316,7 @@ export class ExperimentController {
    * starts, but cells already running are always awaited.
    */
   private async schedule(
-    plan: ExperimentPlanV4,
+    plan: ChatExperimentPlan,
     inputs: readonly ResolvedRunInput[],
     concurrency: ReturnType<typeof resolveExperimentConcurrency>,
     cells: ResultCells,
@@ -423,7 +428,7 @@ export class ExperimentController {
     input: ResolvedRunInput,
     connection: string,
     cells: ResultCells,
-    plan: ExperimentPlanV4,
+    plan: ChatExperimentPlan,
   ): Promise<void> {
     const coordinator = new RunCoordinator(input);
     let command = coordinator.start();
