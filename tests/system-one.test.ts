@@ -160,6 +160,16 @@ for (const [name, answers, pattern] of [
     /intent.*probabilit/,
   ],
   [
+    "an empty choice probability map",
+    { ...goodAnswers, intent: { ...(goodAnswers.intent as JsonObject), probabilities: {} } },
+    /intent.*no probabilities/,
+  ],
+  [
+    "an empty score probability map",
+    { ...goodAnswers, severity: { ...(goodAnswers.severity as JsonObject), probabilities: {} } },
+    /severity.*no probabilities/,
+  ],
+  [
     "a score probability keyed by something other than a level number",
     {
       ...goodAnswers,
@@ -191,6 +201,48 @@ for (const [name, answers, pattern] of [
     );
   });
 }
+
+test("caller-chosen question ids that name Object members are kept as own keys", () => {
+  // Parsed, as every host receives them, so `__proto__` is an own key here too.
+  const questions = JSON.parse(`{
+    "__proto__": { "type": "noul", "instructions": "Is this a test?" },
+    "constructor": { "type": "noul", "instructions": "Is this urgent?" },
+    "toString": { "type": "noul", "instructions": "Is this spam?" }
+  }`) as DecisionInput["questions"];
+  const input = providerInput({ model: "jev", state: "hello", questions });
+  const answers = JSON.parse(`{
+    "toString": { "type": "noul", "noul": 0.1 },
+    "__proto__": { "type": "noul", "noul": 0.9 },
+    "constructor": { "type": "noul", "noul": 0.2 }
+  }`) as JsonObject;
+
+  const result = systemOneAdapter.normalizeResponse(input, JSON.stringify({ answers }));
+
+  assert.ok(Object.hasOwn(result.answers, "__proto__"));
+  assert.equal(Object.getPrototypeOf(result.answers), Object.prototype);
+  // Authored order, every id, and the values survive serialization.
+  assert.deepEqual(Object.keys(result.answers), ["__proto__", "constructor", "toString"]);
+  const serialized = JSON.parse(JSON.stringify(result)) as { answers: JsonObject };
+  assert.deepEqual(Object.keys(serialized.answers), ["__proto__", "constructor", "toString"]);
+  assert.deepEqual(
+    Object.values(serialized.answers),
+    [0.9, 0.2, 0.1].map((noul) => ({ type: "noul", noul })),
+  );
+});
+
+test("a question id that names an Object member still needs its own answer", () => {
+  const questions = JSON.parse(`{
+    "constructor": { "type": "noul", "instructions": "Is this urgent?" }
+  }`) as DecisionInput["questions"];
+  assert.throws(
+    () =>
+      systemOneAdapter.normalizeResponse(
+        providerInput({ model: "jev", state: "hello", questions }),
+        JSON.stringify({ answers: {} }),
+      ),
+    /Question "constructor" has no answer/,
+  );
+});
 
 test("a body that is not a decision response is a protocol error", () => {
   for (const raw of ["not json", "[]", JSON.stringify({ model: "jev" })]) {

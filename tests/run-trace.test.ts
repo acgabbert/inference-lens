@@ -85,7 +85,7 @@ test("serializes and parses a deterministic run trace", () => {
   assert.deepEqual(runStateFromTrace(trace).events, trace.events);
   assert.match(serialized, /"raw": "data: \{/);
   assert.match(serialized, /"body": "\{\\"model\\"/);
-  assert.match(serialized, /"schemaVersion": 7/);
+  assert.match(serialized, /"schemaVersion": 8/);
   assert.match(serialized, /"toolExecutions": \[\]/);
 });
 
@@ -111,12 +111,12 @@ test("migrates Version 1 evidence but rejects Version 1 branch provenance", () =
     }
   }
   const migrated = parseRunTraceJson(JSON.stringify(v1));
-  assert.equal(migrated.schemaVersion, 7);
+  assert.equal(migrated.schemaVersion, 8);
   assert.deepEqual(migrated.toolExecutions, []);
   assert.deepEqual(migrated.input.templateResolutions, []);
   assert.equal(migrated.input.responseMode, "streaming");
   assert.equal(migrated.turns[0]?.attempts[0]?.input.responseMode, "streaming");
-  assert.match(serializeRunTrace(v1), /"schemaVersion": 7/);
+  assert.match(serializeRunTrace(v1), /"schemaVersion": 8/);
 
   assert.throws(
     () => parseRunTraceJson(JSON.stringify({
@@ -430,4 +430,16 @@ test("a version 6 trace still opens, but cannot carry a version 7 event", () => 
     event.sequence = (v6.events[0]!.sequence) + index;
   });
   assert.throws(() => parseRunTraceFile(smuggled), /schema version does not define/);
+});
+
+test("a chat trace is written as version 8 without a kind, and a kind other than decision is refused", () => {
+  const trace = completedTrace();
+  const serialized = JSON.parse(serializeRunTrace(trace)) as Record<string, unknown>;
+  assert.equal(serialized.schemaVersion, 8);
+  assert.equal(Object.hasOwn(serialized, "kind"), false);
+  assert.equal(parseRunTraceFile(serialized).schemaVersion, 8);
+  assert.throws(
+    () => parseRunTraceFile({ ...serialized, kind: "chat" }),
+    /kind/,
+  );
 });

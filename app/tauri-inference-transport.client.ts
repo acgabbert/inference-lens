@@ -76,8 +76,11 @@ type RawStreamEvent =
   | {
       type: "error";
       kind: "transport" | "provider";
+      /** A summary; Rust cuts a provider error body at 4,000 characters. */
       message: string;
       status?: number;
+      /** The complete provider error body, when there was one. */
+      body?: string;
     }
   | { type: "cancelled" };
 
@@ -266,55 +269,72 @@ async function* toProviderTransportEvents(
 
 /**
  * The decision counterpart of `toProviderTransportEvents`. A decision is
- * always buffered, and Rust relays an error body as the error's message, so
- * both outcomes reach the same core reader and record the same evidence.
+ * always buffered, and Rust relays a provider error's complete body beside its
+ * shortened message, so both outcomes reach the same core reader and record
+ * the same evidence as the web service.
  */
-async function* toDecisionTransportEvents(
+async function* readDecisionTransportEvents(
   execution: DecisionExecution,
   hasCredential: boolean,
   queue: AsyncEventQueue<RawStreamEvent>,
-  signal: AbortSignal | undefined,
-  abort: () => void,
-  unlisten: () => void,
 ): AsyncGenerator<DecisionTransportEvent> {
-  try {
-    yield decisionRequestEvent(buildDecisionHttpRequest(execution), hasCredential);
+  yield decisionRequestEvent(buildDecisionHttpRequest(execution), hasCredential);
 
-    const first = await queue.next();
-    if (first.done) return;
-    if (first.value.type !== "response") {
-      yield* terminalTransportEvent(first.value);
+  const first = await queue.next();
+  if (first.done) return;
+  if (first.value.type !== "response") {
+    yield* terminalTransportEvent(first.value);
+    return;
+  }
+  const { status } = first.value;
+  yield {
+    type: "response_started",
+    response: { status, headers: first.value.headers },
+  };
+
+  let terminal: RawStreamEvent | undefined;
+  let raw: string;
+  try {
+    raw = await bodyFromQueue(queue, (event) => {
+      terminal = event;
+    });
+  } catch (error) {
+    if (!(error instanceof TerminalStreamSignal)) throw error;
+    const failed = terminal;
+    if (failed?.type !== "error" || failed.kind !== "provider" || failed.status === undefined) {
+      yield* terminalTransportEvent(failed);
       return;
     }
-    const { status } = first.value;
-    yield {
-      type: "response_started",
-      response: { status, headers: first.value.headers },
-    };
+    raw = failed.body ?? "";
+  }
+  try {
+    yield* decisionResponseEvents(execution, status, raw);
+  } catch (error) {
+    yield { type: "failed", error: decisionFailure(error) };
+  }
+}
 
-    let terminal: RawStreamEvent | undefined;
-    let raw: string;
-    try {
-      raw = await bodyFromQueue(queue, (event) => {
-        terminal = event;
-      });
-    } catch (error) {
-      if (!(error instanceof TerminalStreamSignal)) throw error;
-      const failed = terminal;
-      if (failed?.type !== "error" || failed.kind !== "provider" || failed.status === undefined) {
-        yield* terminalTransportEvent(failed);
+/**
+ * Ends the exchange as cancelled once `signal` aborts, whatever the native
+ * side has sent or still sends: a completion that arrives, or was queued,
+ * after the stop never replaces it. Releases the listener however it ends.
+ */
+async function* toDecisionTransportEvents(
+  events: AsyncGenerator<DecisionTransportEvent>,
+  signal: AbortSignal | undefined,
+  release: () => void,
+): AsyncGenerator<DecisionTransportEvent> {
+  try {
+    for await (const event of events) {
+      if (signal?.aborted) break;
+      yield event;
+      if (event.type === "failed" || event.type === "cancelled" || event.type === "completed") {
         return;
       }
-      raw = failed.message;
     }
-    try {
-      yield* decisionResponseEvents(execution, status, raw);
-    } catch (error) {
-      yield { type: "failed", error: decisionFailure(error) };
-    }
+    if (signal?.aborted) yield { type: "cancelled", reason: "Request aborted." };
   } finally {
-    signal?.removeEventListener("abort", abort);
-    unlisten();
+    release();
   }
 }
 
@@ -415,12 +435,19 @@ export class TauriInferenceTransport implements ProviderTurnTransport, DecisionT
     }
   }
 
+  /**
+   * Like `fetch`, rejects with the signal's reason when it aborts before the
+   * stream is returned; after that, the stream ends as `cancelled`. Native
+   * work never starts for an already-aborted signal, and work already started
+   * is cancelled.
+   */
   async executeDecision(
     request: DecisionExecutionRequest,
     signal?: AbortSignal,
   ): Promise<DecisionStream> {
     const credential = nativeCredential(request.credential);
     const decisionRequest = buildDecisionHttpRequest(request.execution);
+    signal?.throwIfAborted();
     const requestId = `provider-turn_${randomUUID()}`;
     const queue = new AsyncEventQueue<RawStreamEvent>();
     const unlisten = await listen<RawStreamEvent>(
@@ -430,11 +457,22 @@ export class TauriInferenceTransport implements ProviderTurnTransport, DecisionT
         if (isTerminalStreamEvent(payload)) queue.close();
       },
     );
-    const abort = () => {
+    const cancelNative = () => {
       void invoke("cancel_provider_turn", { requestId });
     };
-    signal?.addEventListener("abort", abort, { once: true });
+    const abort = () => {
+      cancelNative();
+      // Wakes a reader waiting on a native side that may never answer.
+      queue.push({ type: "cancelled" });
+      queue.close();
+    };
+    const release = () => {
+      signal?.removeEventListener("abort", abort);
+      void unlisten();
+    };
     try {
+      signal?.throwIfAborted();
+      signal?.addEventListener("abort", abort, { once: true });
       // The same raw proxy as a buffered chat turn: Rust derives the URL from
       // the endpoint and protocol, so the body is all the webview supplies.
       const accepted = await invoke<ProviderTurnAccepted>("start_provider_turn", {
@@ -447,21 +485,23 @@ export class TauriInferenceTransport implements ProviderTurnTransport, DecisionT
           streaming: false,
         },
       });
+      if (signal?.aborted) {
+        // A cancel sent while the command was starting can reach Rust before
+        // the turn is registered, where it does nothing.
+        cancelNative();
+        signal.throwIfAborted();
+      }
       return {
         status: accepted.status,
         headers: new Headers({ "x-inference-lens-transport": "tauri" }),
         events: toDecisionTransportEvents(
-          request.execution,
-          credential.kind !== "none",
-          queue,
+          readDecisionTransportEvents(request.execution, credential.kind !== "none", queue),
           signal,
-          abort,
-          unlisten,
+          release,
         ),
       };
     } catch (error) {
-      signal?.removeEventListener("abort", abort);
-      unlisten();
+      release();
       throw error;
     }
   }

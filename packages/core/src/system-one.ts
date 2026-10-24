@@ -36,14 +36,20 @@ function optionalConfidence(questionId: string, answer: JsonObject): { confidenc
   return { confidence: answer.confidence };
 }
 
-/** Probabilities keyed only by `allowed`, each in [0, 1]. */
+/**
+ * At least one probability, keyed only by `allowed`, each in [0, 1]. Reported
+ * values are kept as sent: captured servers round them, so they need not sum
+ * to exactly 1.
+ */
 function probabilities(
   questionId: string,
   value: unknown,
   allowed: ReadonlySet<string>,
   describe: (key: string) => string,
 ): Record<string, number> {
-  if (!isObject(value)) fail(questionId, "has no probabilities");
+  if (!isObject(value) || Object.keys(value).length === 0) {
+    fail(questionId, "has no probabilities");
+  }
   for (const [key, probability] of Object.entries(value)) {
     if (!allowed.has(key)) fail(questionId, `has a probability for ${describe(key)}`);
     if (!isProbability(probability)) {
@@ -159,13 +165,19 @@ function normalizeSystemOneResponse(
     if (!Object.hasOwn(questions, questionId)) fail(questionId, "is for a question that was not asked");
   }
   const answers: Record<string, DecisionAnswer> = {};
-  // Authored question order, whatever order the server answered in.
+  // Authored question order, whatever order the server answered in. Ids are
+  // caller-chosen, so each is defined as an own key: assigning `__proto__`
+  // would set the prototype instead.
   for (const [questionId, question] of Object.entries(questions)) {
-    const answer = body.answers[questionId];
-    if (answer === undefined) {
+    if (!Object.hasOwn(body.answers, questionId)) {
       throw new ProviderProtocolError(`Question "${questionId}" has no answer.`);
     }
-    answers[questionId] = normalizeAnswer(questionId, question, answer);
+    Object.defineProperty(answers, questionId, {
+      value: normalizeAnswer(questionId, question, body.answers[questionId]!),
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
   }
 
   const usage = normalizedUsage(body.usage);
