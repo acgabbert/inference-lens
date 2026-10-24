@@ -2,7 +2,8 @@
 
 Status: **D1–D26 and U1–U6 accepted. Phases 1 and 2 are merged; D16's fixes
 and host tests are in, with its native-app check still to run on a desktop
-build. The D22 trace format is in; the evidence extraction (D26) is next. Phases 3 and 4 ship together, with trace
+build. The D22 trace format and the D26 evidence extraction are in; the
+decision session and UI are next. Phases 3 and 4 ship together, with trace
 support implemented early (D20). llama.cpp and
 OpenRouter captured on 2026-10-24, Ollama on 2026-10-23; direct TypeSafe still
 doc-derived only.** On 2026-10-24 each implementation's
@@ -924,6 +925,26 @@ refactor of chat UI.
   decision work.
 - **Accepted: A.**
 
+Done (2026-10-24): the inspector had one dedicated evidence presentation, the
+request (`RequestEvidence`: method and URL, the body reformatted for reading,
+a copy of the exact bytes, and the redacted header list). The response status
+and headers and the raw frames appeared only inside each event's JSON dump, so
+there was no response or frame presentation to move. `RequestEvidence` moved
+unchanged to `app/evidence/exchange-evidence.client.tsx`, which takes only
+exchange evidence; chat's inspector imports it and keeps its event stream,
+metrics, templates, and attempt diff. The response and raw-body presentation
+is new decision-view work in that module. Chat keeps its event JSON: adopting
+the new pieces would change chat UI, which D26 rules out.
+
+`tests/exchange-evidence-render.test.mjs` pins the shared component's output.
+It was written for the moved component, not as a regression test, so it was
+not run red. The inspector's browser specs passed before and after (51 tests
+in each run, light and dark): `raw-request-evidence`, `tool-execution-evidence`,
+`runs-result-discovery`, `pr2-workbench`, `experiment-history`,
+`provider-protocols`, `run-attempt-diff`, `tool-parameter-order`, and
+`ui-ux-workflow-review`, plus `evaluation-baseline-comparison`, the only
+evaluation spec that opens Run details.
+
 ## Phases
 
 ### Phase 0: verify the wire format
@@ -1064,7 +1085,8 @@ error body on the shared path (D25), is in; its native-app check is still owed. 
 (D20), implementing trace support early.
 
 Order: D16 → the decision trace format (D22) → the behaviour-preserving
-evidence extraction (D26) → the decision session and UI.
+evidence extraction (D26) → the decision session and UI. The first three are
+in.
 
 - Ownership and shell integration follow D19: the decision feature owns its
   state and workflow; the Compose owner selects the active kind's panes,
