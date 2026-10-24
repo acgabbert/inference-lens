@@ -12,8 +12,9 @@ npm run test:e2e -- --list                        # what exists
 ```
 
 `npm run test:e2e` starts everything the suite needs: the dev server on
-`127.0.0.1:4300`, the buffered provider fixture on `44014`, and the flaky
-provider fixture on `44015`. **Do not start a dev server or a fixture by hand
+`127.0.0.1:4300`, the buffered provider fixture on `44014`, the flaky
+provider fixture on `44015`, and the System One capture replay on `44028`
+(`SYSTEM_ONE_FIXTURE_ORIGIN` in `support/`). **Do not start a dev server or a fixture by hand
 for a Playwright run, and do not run a Playwright install step first.** The
 config owns all of it, with `reuseExistingServer: false` — a server you started
 yourself is not the server the suite talks to, and leaving one running is how a

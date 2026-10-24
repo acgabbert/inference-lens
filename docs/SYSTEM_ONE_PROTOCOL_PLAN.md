@@ -2,10 +2,10 @@
 
 Status: **D1–D30 and U1–U6 accepted. Phases 1 and 2 are merged; D16's fixes
 and host tests are in, with its native-app check still to run on a desktop
-build. The D22 trace format, the D26 evidence extraction, D27's run
-transitions, and D29's decision session are in; the Compose owner and topbar
-are next. Phases 3 and 4 ship together, with trace
-support implemented early (D20). llama.cpp and
+build. Phases 3 and 4 are implemented together (D20): the Compose owner and
+topbar (D29-A), trace opening by kind (D30), the decision draft, target, and
+views, the Connections declaration, and D21's browser coverage. What D21
+leaves uncovered is listed under [Phase 3](#phase-3-ui). llama.cpp and
 OpenRouter captured on 2026-10-24, Ollama on 2026-10-23; direct TypeSafe still
 doc-derived only.** On 2026-10-24 each implementation's
 documentation was read directly (see [Sources](#sources)). What it showed is
@@ -823,9 +823,10 @@ Settled when implementing (2026-10-24):
 - Decision traces keep authored key order under `decision` and `result`
   (questions, options, answers, probabilities); the rest of the file uses the
   usual deterministic order.
-- History lists decision entries now; opening one from history or import is
-  wired with the decision UI. Until then the chat-only parser and chat import
-  reject a decision trace with a readable message.
+- History lists decision entries; opening one from history or import is
+  wired with the decision UI (D30). The chat-only parser still rejects a
+  decision trace with a readable message; import now uses the parser for
+  either kind.
 
 Done: `packages/core/src/decision-trace.ts` (shape and consistency) and the
 version 8 envelope, `parseSavedRunTrace`, and `serializeDecisionRunTrace` in
@@ -1079,7 +1080,9 @@ interface ComposeHandle {
 
 Done (2026-10-24): the session and the widened persistence helpers.
 `app/decisions/use-decision-session.client.ts` implements the handle above
-over D27's transitions. Its `open` composes `prepareCredential` and
+over D27's transitions. Its `prepareCredential` option takes the run's frozen
+`ResolvedDecisionTarget`, so a retry never follows a target selection changed
+since the run started. Its `open` composes `prepareCredential` and
 `executeDecision`; a paused run sets `retryAvailableAt` from the 429's headers
 when it pauses, and a timer clears it once the wait is over, so Retry reads
 as available without the view polling. A finished run autosaves once, as
@@ -1092,6 +1095,18 @@ of the frozen input, Stop while paused, autosave, and adoption. It was written
 after the hook, so it was not run red first. Removing the wait guard, the
 invalidation, the paused Stop, or the persisted-run guard each made it fail.
 The hook has no user-visible surface until the Compose owner mounts it.
+
+Done (2026-10-24): the Compose owner and topbar.
+`app/compose/use-compose.client.ts` selects one `ComposeKindHandle` per kind;
+`app/decisions/use-decision-compose.client.tsx` builds the decision handle
+from its draft, target, and session, and the route builds chat's from its
+existing session, response, and inspector. Two changes from the sketch above:
+the `run` primary carries `disabled` and `disabledReasonId` instead of a
+reason string, because the topbar names the element that states the reason
+in visible text rather than using a tooltip; and the handle also carries
+`shortcut`, `inspectAvailable`, and `responseStatus`, which the shell and ⌘↵
+read. The Chat / Decision switch (`app/compose/compose-kind-switch.client.tsx`)
+sits above the request pane in the shell's new `toolbar` slot.
 
 ### D30. Opening a trace of either kind *(accepted: A)*
 
@@ -1107,6 +1122,13 @@ History and Import run trace now get a `SavedRunTrace` of either kind.
 - **Recommendation: A.** The decision row in Runs becomes selectable and, as
   D22 says, opens Decision Compose's inspection state.
 - **Accepted: A.**
+
+Done (2026-10-24): `Import run trace…` parses either kind and the route's
+`openSavedTrace` dispatches it; the Runs decision row reads the file through
+`readSavedTrace` and opens the same way. Opening a chat trace from an
+evaluation case or a baseline comparison also switches Compose to Chat first.
+A chat import still leaves the mode as it was; a decision opens Compose's
+inspect view.
 
 ## Phases
 
@@ -1248,10 +1270,41 @@ error body on the shared path (D25), is in; its native-app check is still owed. 
 (D20), implementing trace support early.
 
 Order: D16 → the decision trace format (D22) → the behaviour-preserving
-evidence extraction (D26) → the decision session and UI. The first three are
-in, and so are D27's core run transitions and D29's session. The rest
-follows D29–D30: the Compose owner and topbar, then the draft, target, and
-views.
+evidence extraction (D26) → the decision session and UI. All of it is in.
+
+Implemented (2026-10-24), in one change at the user's choice so the switch
+appears only once Decision is usable:
+
+- ✅ Compose owner, topbar `primary`, ⌘↵, and the kind switch (D29-A); trace
+  opening by kind (D30); the activity guard (D24).
+- ✅ The D18 draft (`app/decisions/decision-draft.ts`, pure, and its hook),
+  covered by `tests/decision-draft.test.ts`. Strings are edited as text; any
+  other JSON value is shown and left to the JSON view, so nothing is
+  stringified. Option rows are kept across every type change (U4): a score
+  reads an option's label as the level and keeps its description.
+- ✅ The decision target (`use-decision-target.client.ts`): System One
+  profiles only, a model remembered per connection for the session, and
+  discovery through `useModelDiscovery`, which now takes a
+  `ConnectionProtocol` and keeps `unfiltered`.
+- ✅ Views: the composer, the result (`decision-result-view.ts`, covered by
+  `tests/decision-result-view.test.ts` against the captured all-types values),
+  the failure card with the D23 countdown, and the inspect pane on the shared
+  `RequestEvidence` plus the response status, headers, and raw body. The
+  trace-storage notice moved out of chat's response pane unchanged so both
+  kinds share it.
+- ✅ The Connections switch for System One (D9-B), locked with the chat APIs
+  when the server declares its list (D9a).
+
+D21 browser coverage: `tests/e2e/system-one-decisions.spec.ts` against the
+fixture provider, which the suite now starts on port 44028, plus additions to
+`runs-result-discovery` (the history row opens Decision Compose) and
+`provider-protocols` (the server's declaration is shown locked and offered
+for decisions). Not covered in the browser: the batch direction of D24 (a
+decision Run refused while a batch runs), retry of a frozen input after the
+selected target changed, and the native desktop paths. The 429 coverage is
+limited as D23 says: the fixture answers every request with 429, so a
+success after the wait is not shown. The specs and the two unit test files
+were written after the code they cover, so none was run red first.
 
 - Ownership and shell integration follow D19: the decision feature owns its
   state and workflow; the Compose owner selects the active kind's panes,
@@ -1284,6 +1337,14 @@ views.
 ### Phase 4: traces and history
 
 Implement trace support early in the combined Phase 3/4 delivery (D20).
+
+Implemented with Phase 3 (2026-10-24). Decision runs export and import
+through Run data and render the same answers and evidence after import
+(`system-one-decisions` round trip), and a saved one reopens from Runs
+(`runs-result-discovery`). Autosave into the project folder is covered by
+`decision-session-interaction` in jsdom, not by a browser spec. Runs lists
+only chat's live run as the current entry; a live decision run appears there
+once it is saved.
 
 - Trace schema 8 with the `kind` discriminator (D5) and the decision trace
   shape in D22; decision traces save, reload, import, and export with executed

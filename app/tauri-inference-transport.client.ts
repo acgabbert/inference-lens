@@ -516,7 +516,7 @@ export const desktopCredentialStore = {
   },
 };
 
-export function createInferenceTransport(): ProviderTurnTransport {
+export function createInferenceTransport(): ProviderTurnTransport & DecisionTransport {
   return isTauriRuntime()
     ? new TauriInferenceTransport()
     : new HttpInferenceTransport();

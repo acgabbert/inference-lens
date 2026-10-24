@@ -13,6 +13,7 @@ import {
   createProfile,
   nextCapabilityOverrides,
   withServerProtocols,
+  withSystemOne,
   profileDeletionRefusal,
   readProfiles,
   removeProfile,
@@ -161,6 +162,8 @@ export interface ConnectionProfilesHandle {
   /** Updates one profile without changing which profile the drawer edits. */
   updateProfile(profileId: string, patch: StoredInferenceProfilePatch): void;
   updateActiveProfile(patch: StoredInferenceProfilePatch): void;
+  /** The active profile's device-local System One declaration (D9-B). */
+  setActiveSystemOne(enabled: boolean): void;
   /** Absent when the active profile can be deleted; otherwise why it cannot. */
   activeProfileDeletionRefusal?: string;
   /**
@@ -497,6 +500,14 @@ export function useConnectionProfiles(input: {
     updateProfile(activeProfile.id, patch);
   }
 
+  /** Declares or withdraws System One for the active profile (D9-B). */
+  function setActiveSystemOne(enabled: boolean): void {
+    const profileId = activeProfile.id;
+    setProfiles((current) =>
+      current.map((profile) => (profile.id === profileId ? withSystemOne(profile, enabled) : profile)),
+    );
+  }
+
   function addProfile(): StoredInferenceProfile {
     const profile = createProfile();
     setProfiles((current) => [...current, profile]);
@@ -647,6 +658,7 @@ export function useConnectionProfiles(input: {
     addProfile,
     updateProfile,
     updateActiveProfile,
+    setActiveSystemOne,
     ...(activeProfileDeletionRefusal ? { activeProfileDeletionRefusal } : {}),
     removeActiveProfile,
     setCapabilityOverride,

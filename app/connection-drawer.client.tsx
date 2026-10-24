@@ -12,6 +12,7 @@ import {
 import { PROVIDER_WIRE_PROTOCOLS } from "../packages/core/src/run-kernel/types";
 import type { ProviderWireProtocol } from "../packages/core/src/run-kernel/types";
 import type { ProviderCapabilities } from "../packages/core/src/types";
+import { servesSystemOne } from "./profile-store.client";
 import type {
   StoredInferenceProfile,
   StoredInferenceProfilePatch,
@@ -92,6 +93,8 @@ interface ConnectionDrawerProps {
   /** Absent when the active profile can be deleted; otherwise why it cannot. */
   deleteProfileRefusal?: string;
   onUpdateProfile(patch: StoredInferenceProfilePatch): void;
+  /** The device-local System One declaration (D9-B). */
+  onSystemOneChange(enabled: boolean): void;
   onCapabilityChange(key: keyof ProviderCapabilities, enabled: boolean): void;
   /** Portable requirements in the open project and their device-local joins. */
   connectionRequirements?: readonly ConnectionRequirement[];
@@ -197,6 +200,7 @@ export function ConnectionDrawer({
   onDeleteProfile,
   deleteProfileRefusal,
   onUpdateProfile,
+  onSystemOneChange,
   onCapabilityChange,
   connectionRequirements = [],
   mappedProfileIds,
@@ -438,6 +442,23 @@ export function ConnectionDrawer({
               </label>
             );
           })}
+          {/*
+            Device-local, outside the portable snapshot (D9-B): it decides
+            only which connections Compose → Decision offers. The server
+            locks it with the chat APIs when it declares its list (D9a).
+          */}
+          <label className="capability-toggle">
+            <input
+              type="checkbox"
+              checked={servesSystemOne(activeProfile)}
+              disabled={protocolsManaged}
+              onChange={(event) => onSystemOneChange(event.target.checked)}
+            />
+            <span>
+              {protocolLabel("systemone")} <code>{protocolPath("systemone")}</code>
+              <small>Decision requests: choice, score, and true/false questions. Offered in Compose → Decision.</small>
+            </span>
+          </label>
           {protocolsManaged && (
             <span className="credential-status">
               Managed by <code>INFERENCE_LENS_API_PROTOCOLS</code>. Enabling

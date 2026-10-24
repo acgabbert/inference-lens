@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { CredentialSelection, DecisionTransport } from "../../packages/contracts/src";
-import type { DecisionExecution, DecisionRun, ResolvedDecisionRunInput } from "../../packages/core/src/decision";
+import type { DecisionExecution, DecisionRun, ResolvedDecisionRunInput, ResolvedDecisionTarget } from "../../packages/core/src/decision";
 import {
   beginDecisionAttempt,
   createDecisionRun,
@@ -28,7 +28,8 @@ export interface DecisionSessionStartContext {
  */
 export interface UseDecisionSessionOptions {
   transport: DecisionTransport;
-  prepareCredential(): Promise<CredentialSelection>;
+  /** For the run's frozen target, so a retry never follows a changed selection. */
+  prepareCredential(target: ResolvedDecisionTarget): Promise<CredentialSelection>;
   /** Synchronous in start and retry. */
   onShowResponse(): void;
   /** After an autosave succeeds; may arrive after another run has become visible. */
@@ -147,7 +148,7 @@ export function useDecisionSession(options: UseDecisionSessionOptions): Decision
         isCurrent: () => generationRef.current === generation,
         onRunChange: replaceRun,
         async open(execution, signal) {
-          const credential = await options.prepareCredential();
+          const credential = await options.prepareCredential(execution.input.target);
           const stream = await options.transport.executeDecision({ execution, credential }, signal);
           return stream.events;
         },

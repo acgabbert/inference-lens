@@ -5,6 +5,7 @@ import type { StoredInferenceProfile } from "./profile-store.client";
 import type { ProjectStorageState } from "./use-project-workspace.client";
 import { ModeStrip } from "./modes/mode-strip.client";
 import type { AppMode, ModeIndicator } from "./modes/app-mode";
+import type { ComposePrimary } from "./compose/use-compose.client";
 
 interface TopbarProps {
   profiles: StoredInferenceProfile[];
@@ -19,7 +20,8 @@ interface TopbarProps {
   hasDiagnosticCapture: boolean;
   hasRunTrace: boolean;
   hasProjectWorkspace: boolean;
-  isRequestActive: boolean;
+  /** Either Compose kind has an attempt in flight; its Stop shows in every mode. */
+  composeExecuting: boolean;
   isExperimentActive: boolean;
   /**
    * Which mode is on screen. The run controls belong to Compose; the other
@@ -30,15 +32,13 @@ interface TopbarProps {
   onModeChange(mode: AppMode): void;
   /** Per-mode running and unread-results state, shown on the strip. */
   modeIndicators?: Partial<Record<AppMode, ModeIndicator>>;
-  awaitingToolResults: boolean;
-  retryableFailure: boolean;
-  runDisabled: boolean;
   /**
-   * Id of the element that states, in visible text, why the run is refused.
-   * The reason itself is never carried by a `title` here: a native tooltip is
-   * invisible on touch and unreachable from the keyboard.
+   * Compose's primary action for the request kind on screen (D29-A). A refused
+   * run names, by id, the element that states why in visible text; the reason
+   * is never carried by a `title` here, since a native tooltip is invisible on
+   * touch and unreachable from the keyboard.
    */
-  runDisabledReasonId?: string;
+  composePrimary: ComposePrimary;
   evaluationStartDisabled: boolean;
   /** Same contract as `runDisabledReasonId`, for the Evaluations primary. */
   evaluationStartDisabledReasonId?: string;
@@ -55,9 +55,7 @@ interface TopbarProps {
   onDownloadRunTrace(): void;
   onImportRunTrace(event: ChangeEvent<HTMLInputElement>): void;
   onOpenRunHistory(): void;
-  onStop(): void;
   onStopExperiment(): void;
-  onRun(): void;
   onStartEvaluation(): void;
 }
 
@@ -69,17 +67,15 @@ function closeContainingMenu(element: HTMLElement): void {
 export function Topbar({
   profiles, activeProfile, projectConnectionName, hasCredential, projectName, projectDirty,
   projectStorageState,
-  folderAccessAvailable, hasDiagnosticCapture, isRequestActive, isExperimentActive, awaitingToolResults,
+  folderAccessAvailable, hasDiagnosticCapture, composeExecuting, isExperimentActive, composePrimary,
   mode, onModeChange, modeIndicators,
   hasRunTrace,
   hasProjectWorkspace,
-  retryableFailure,
-  runDisabled, onChooseProfile, onOpenConnections, onNewProject, onOpenProject,
-  runDisabledReasonId,
+  onChooseProfile, onOpenConnections, onNewProject, onOpenProject,
   evaluationStartDisabled, evaluationStartDisabledReasonId,
   onSaveProject, onImportProject, onExportProject,
   n8nImportDisabledReason, onOpenN8nImport,
-  onDownloadDiagnostics, onStop, onStopExperiment, onRun, onStartEvaluation,
+  onDownloadDiagnostics, onStopExperiment, onStartEvaluation,
   onDownloadRunTrace,
   onImportRunTrace,
   onOpenRunHistory,
@@ -186,22 +182,22 @@ export function Topbar({
         */}
         {isExperimentActive ? (
           <button className="button stop" onClick={onStopExperiment}>Stop remaining</button>
-        ) : isRequestActive ? (
-          <button className="button stop" onClick={onStop}>Stop</button>
+        ) : composeExecuting && composePrimary.kind === "stop" ? (
+          <button className="button stop" onClick={composePrimary.stop}>Stop</button>
         ) : mode === "compose" ? (
-          // A paused run owns its own way out. Offering a fresh request beside
-          // it would be a third exit from a state that already has two, and
-          // starting one would silently abandon the pause.
-          awaitingToolResults ? (
-            <button className="button stop" onClick={onStop}>Stop</button>
-          ) : retryableFailure ? null : (
+          // A paused run owns its own way out (`none`). Offering a fresh request
+          // beside it would be a third exit from a state that already has two,
+          // and starting one would silently abandon the pause.
+          composePrimary.kind === "stop" ? (
+            <button className="button stop" onClick={composePrimary.stop}>Stop</button>
+          ) : composePrimary.kind === "none" ? null : (
             <button
-              aria-describedby={runDisabled ? runDisabledReasonId : undefined}
+              aria-describedby={composePrimary.disabled ? composePrimary.disabledReasonId : undefined}
               className="button primary"
-              disabled={runDisabled}
-              onClick={onRun}
+              disabled={composePrimary.disabled}
+              onClick={composePrimary.run}
             >
-              Run current conversation <span className="shortcut">⌘↵</span>
+              {composePrimary.label} <span className="shortcut">⌘↵</span>
             </button>
           )
         ) : mode === "evaluations" ? (

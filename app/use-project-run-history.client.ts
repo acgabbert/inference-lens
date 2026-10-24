@@ -18,7 +18,8 @@ import {
   type ExperimentPlanV3,
 } from "../packages/core/src/experiment.ts";
 import type { RunId, RunTrace } from "../packages/core/src/run-kernel";
-import { parseRunTraceJson } from "../packages/core/src/run-trace";
+import { parseRunTraceJson, parseSavedRunTraceJson } from "../packages/core/src/run-trace";
+import type { SavedRunTrace } from "../packages/core/src/run-trace";
 import {
   listExperimentArtifactsWorkspace,
   listRunTraceWorkspace,
@@ -57,6 +58,8 @@ export interface ProjectRunHistoryState {
   error?: string;
   refresh(): Promise<void>;
   readTrace(fileName: string): Promise<RunTrace>;
+  /** Either kind, for opening a history entry in Compose (D30). */
+  readSavedTrace(fileName: string): Promise<SavedRunTrace>;
   readExperiment(item: ProjectExperimentHistoryItem): Promise<OpenedProjectExperiment>;
 }
 
@@ -167,6 +170,14 @@ export function useProjectRunHistory(
     [workspace],
   );
 
+  const readSavedTrace = useCallback(
+    async (fileName: string): Promise<SavedRunTrace> => {
+      if (!workspace) throw new Error("The project folder is no longer open.");
+      return parseSavedRunTraceJson(await readRunTraceWorkspace(workspace, fileName));
+    },
+    [workspace],
+  );
+
   const readExperiment = useCallback(
     async (item: ProjectExperimentHistoryItem): Promise<OpenedProjectExperiment> => {
       if (!workspace) throw new Error("The project folder is no longer open.");
@@ -232,6 +243,7 @@ export function useProjectRunHistory(
     error,
     refresh,
     readTrace,
+    readSavedTrace,
     readExperiment,
   };
 }

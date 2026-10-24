@@ -167,15 +167,15 @@ test("the topbar hides ordinary run actions outside the Compose mode", async () 
     profiles: [profile], activeProfile: profile,
     hasCredential: false, projectDirty: false, folderAccessAvailable: false,
     hasDiagnosticCapture: false, hasRunTrace: false, hasProjectWorkspace: false,
-    runHistoryBlocked: false, isRequestActive: false, isExperimentActive: false,
+    runHistoryBlocked: false, composeExecuting: false, isExperimentActive: false,
     mode: "evaluations", onModeChange: noop,
-    awaitingToolResults: false, retryableFailure: false,
-    runDisabled: false, evaluationStartDisabled: false,
+    composePrimary: { kind: "run", label: "Run current conversation", disabled: false, run: noop },
+    evaluationStartDisabled: false,
     onChooseProfile: noop, onOpenConnections: noop, onNewProject: noop,
     onOpenProject: noop, onSaveProject: noop, onImportProject: noop,
     onExportProject: noop, onOpenN8nImport: noop, onDownloadDiagnostics: noop, onDownloadRunTrace: noop,
-    onImportRunTrace: noop, onOpenRunHistory: noop, onStop: noop,
-    onStopExperiment: noop, onRun: noop, onStartEvaluation: noop,
+    onImportRunTrace: noop, onOpenRunHistory: noop,
+    onStopExperiment: noop, onStartEvaluation: noop,
   });
   // One primary action, and it is this mode's own. Compose's run controls and
   // the lifecycle actions that used to crowd beside them are all gone.
@@ -190,15 +190,15 @@ test("the topbar target control names the connection and states no model", async
     profiles: [profile], activeProfile: profile,
     hasCredential: true, projectDirty: false, folderAccessAvailable: false,
     hasDiagnosticCapture: false, hasRunTrace: false, hasProjectWorkspace: false,
-    runHistoryBlocked: false, isRequestActive: false, isExperimentActive: false,
+    runHistoryBlocked: false, composeExecuting: false, isExperimentActive: false,
     mode: "evaluations", onModeChange: noop,
-    awaitingToolResults: false, retryableFailure: false,
-    runDisabled: false, evaluationStartDisabled: false,
+    composePrimary: { kind: "run", label: "Run current conversation", disabled: false, run: noop },
+    evaluationStartDisabled: false,
     onChooseProfile: noop, onOpenConnections: noop, onNewProject: noop,
     onOpenProject: noop, onSaveProject: noop, onImportProject: noop,
     onExportProject: noop, onOpenN8nImport: noop, onDownloadDiagnostics: noop, onDownloadRunTrace: noop,
-    onImportRunTrace: noop, onOpenRunHistory: noop, onStop: noop,
-    onStopExperiment: noop, onRun: noop, onStartEvaluation: noop,
+    onImportRunTrace: noop, onOpenRunHistory: noop,
+    onStopExperiment: noop, onStartEvaluation: noop,
   });
   // The caption is what makes the profile name read as a chosen value, and the
   // credential dot's meaning is stated rather than left to colour alone.

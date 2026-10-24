@@ -13,6 +13,8 @@ import {
 export type WorkbenchView = "request" | "response" | "inspect";
 
 type WorkbenchShellProps = {
+  /** Above the request pane's own header, such as Compose's request-kind switch. */
+  toolbar?: ReactNode;
   request: ReactNode;
   response: ReactNode;
   inspect: ReactNode;
@@ -37,6 +39,7 @@ function clamp(value: number, minimum: number, maximum: number): number {
  * them. Each pane now has exactly one occupant, so the labels are constants.
  */
 export function WorkbenchShell({
+  toolbar,
   request,
   response,
   inspect,
@@ -136,6 +139,7 @@ export function WorkbenchShell({
               : "workbench-pane request-pane mobile-pane-hidden"
           }
         >
+          {toolbar}
           {request}
         </div>
         <button

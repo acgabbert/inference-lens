@@ -404,6 +404,18 @@ test("a decision-only server list still manages the server default, so a chat ru
   await notice.getByRole("button", { name: "Details" }).click();
   await expect(notice).toContainText("INFERENCE_LENS_API_PROTOCOLS");
   await expect(page.getByRole("button", { name: "Enable Chat Completions" })).toHaveCount(0);
+
+  // The same list declares System One, and the drawer shows that locked (D9a).
+  await page.locator(".target-menu > summary").click();
+  await page.getByRole("button", { name: /Manage connections/ }).click();
+  const drawer = page.getByRole("dialog", { name: "Connections" });
+  const systemOne = drawer.getByRole("checkbox", { name: /System One/ });
+  await expect(systemOne).toBeChecked();
+  await expect(systemOne).toBeDisabled();
+  await drawer.getByRole("button", { name: /close/i }).first().click();
+  // So Decision Compose offers it without any local declaration.
+  await page.getByRole("radio", { name: "Decision" }).click();
+  await expect(page.getByLabel("Decision connection").locator("option")).toHaveText([/Server default/]);
 });
 
 test("an unrecognized INFERENCE_LENS_API_PROTOCOLS is reported rather than silently ignored", async ({ page }) => {

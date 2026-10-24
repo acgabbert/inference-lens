@@ -70,6 +70,81 @@ type ResponseOutputProps = {
 };
 
 /**
+ * Where the run's trace was saved, or why it was not, with the save action
+ * when one applies. Shared by every run kind's response pane.
+ */
+export function TraceStorageNotice({
+  storage,
+  onSaveTrace,
+}: {
+  storage: TraceStorageStatus;
+  onSaveTrace?: () => void;
+}) {
+  return (
+    <div
+      className={`trace-storage trace-storage-${storage.kind}`}
+      role={storage.kind === "error" ? "alert" : "status"}
+    >
+      <span className="trace-storage-icon" aria-hidden="true">
+        {storage.kind === "saved" ||
+        storage.kind === "downloaded" ||
+        storage.kind === "loaded"
+          ? "✓"
+          : storage.kind === "error"
+            ? "!"
+            : "·"}
+      </span>
+      <span className="trace-storage-copy">
+        {storage.kind === "saving" ? (
+          <>
+            <strong>Saving run trace…</strong>
+            {storage.location && <code>{storage.location}</code>}
+          </>
+        ) : storage.kind === "saved" ? (
+          <>
+            <strong>Run trace saved</strong>
+            <code>{storage.location}</code>
+          </>
+        ) : storage.kind === "downloaded" ? (
+          <>
+            <strong>Run trace download requested</strong>
+            <span>
+              {storage.fileName} · your browser controls the download
+              location
+            </span>
+          </>
+        ) : storage.kind === "loaded" ? (
+          <>
+            <strong>Imported run trace</strong>
+            <code>{storage.fileName}</code>
+          </>
+        ) : storage.kind === "error" ? (
+          <>
+            <strong>Run trace not saved</strong>
+            <span>{storage.message}</span>
+          </>
+        ) : (
+          <>
+            <strong>Run trace not saved</strong>
+            <span>No project folder was open for this run, so the next run replaces it.</span>
+          </>
+        )}
+      </span>
+      {onSaveTrace && (storage.kind === "unsaved" ||
+        storage.kind === "error") && (
+        <button
+          className="button secondary trace-storage-action"
+          type="button"
+          onClick={onSaveTrace}
+        >
+          Save trace…
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
  * A failed attempt and everything that can be done about it, in one place.
  *
  * Both actions used to live in the topbar, where `Discard failed run` sat one
@@ -140,66 +215,10 @@ export function ResponseOutput({
         </div>
       </div>
       {traceStorage && (
-        <div
-          className={`trace-storage trace-storage-${traceStorage.kind}`}
-          role={traceStorage.kind === "error" ? "alert" : "status"}
-        >
-          <span className="trace-storage-icon" aria-hidden="true">
-            {traceStorage.kind === "saved" ||
-            traceStorage.kind === "downloaded" ||
-            traceStorage.kind === "loaded"
-              ? "✓"
-              : traceStorage.kind === "error"
-                ? "!"
-                : "·"}
-          </span>
-          <span className="trace-storage-copy">
-            {traceStorage.kind === "saving" ? (
-              <>
-                <strong>Saving run trace…</strong>
-                {traceStorage.location && <code>{traceStorage.location}</code>}
-              </>
-            ) : traceStorage.kind === "saved" ? (
-              <>
-                <strong>Run trace saved</strong>
-                <code>{traceStorage.location}</code>
-              </>
-            ) : traceStorage.kind === "downloaded" ? (
-              <>
-                <strong>Run trace download requested</strong>
-                <span>
-                  {traceStorage.fileName} · your browser controls the download
-                  location
-                </span>
-              </>
-            ) : traceStorage.kind === "loaded" ? (
-              <>
-                <strong>Imported run trace</strong>
-                <code>{traceStorage.fileName}</code>
-              </>
-            ) : traceStorage.kind === "error" ? (
-              <>
-                <strong>Run trace not saved</strong>
-                <span>{traceStorage.message}</span>
-              </>
-            ) : (
-              <>
-                <strong>Run trace not saved</strong>
-                <span>No project folder was open for this run, so the next run replaces it.</span>
-              </>
-            )}
-          </span>
-          {!readOnly && (traceStorage.kind === "unsaved" ||
-            traceStorage.kind === "error") && (
-            <button
-              className="button secondary trace-storage-action"
-              type="button"
-              onClick={onSaveTrace}
-            >
-              Save trace…
-            </button>
-          )}
-        </div>
+        <TraceStorageNotice
+          storage={traceStorage}
+          {...(readOnly ? {} : { onSaveTrace })}
+        />
       )}
       {terminal && branchedFrom && (
         <p className="branch-provenance" role="status">

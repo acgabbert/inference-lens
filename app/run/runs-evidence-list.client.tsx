@@ -100,9 +100,8 @@ function decisionMeta(summary: DecisionRunHistorySummary): string {
   ].join(" · ");
 }
 
-/** Until Decision Compose can show one, a saved decision run is listed only. */
-const DECISION_OPEN_UNAVAILABLE =
-  "Decision runs open in Decision Compose, which is not available yet.";
+/** A saved decision run opens in Decision Compose's inspection state (D22, D30). */
+const DECISION_OPENS_IN_COMPOSE = "Opens in Compose, as a decision";
 
 function runTarget(
   model: string,
@@ -304,10 +303,10 @@ export function RunsEvidenceList({
             if (summary.kind === "decision") return (
               <button
                 className={itemClass(false)}
-                disabled
                 key={item.fileName}
-                title={DECISION_OPEN_UNAVAILABLE}
+                title={`${item.fileName} · ${DECISION_OPENS_IN_COMPOSE}`}
                 type="button"
+                onClick={() => onSelectRun(item)}
               >
                 <span className="runs-evidence-item-heading">
                   <strong className="runs-evidence-excerpt">
