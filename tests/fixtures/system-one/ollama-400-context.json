@@ -1,0 +1,16 @@
+{
+  "provenance": {
+    "kind": "captured",
+    "implementation": "Ollama /v1/systemone",
+    "server": "Ollama 0.40.10 on macOS (Ollama.app), keyless, default 2048-token context",
+    "model": "tev1:0.8b (b661d5650816, 752M BF16, mlx runner)",
+    "captured": "2026-10-23",
+    "note": "state was \"word \" repeated 2100 times (not stored). Each prompt must fit the loaded context (2048 tokens here, not the model's 262144); input is never truncated."
+  },
+  "response": {
+    "status": 400,
+    "body": {
+      "error": "prompt 0 has 2199 tokens; expected 1–2048 (input is never truncated)"
+    }
+  }
+}

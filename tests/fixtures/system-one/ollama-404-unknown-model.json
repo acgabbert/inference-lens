@@ -1,0 +1,26 @@
+{
+  "provenance": {
+    "kind": "captured",
+    "implementation": "Ollama /v1/systemone",
+    "server": "Ollama 0.40.10 on macOS (Ollama.app), keyless, default 2048-token context",
+    "model": "tev1:0.8b (b661d5650816, 752M BF16, mlx runner)",
+    "captured": "2026-10-23",
+    "note": "A model that is not pulled is a 404."
+  },
+  "request": {
+    "model": "nimble",
+    "state": "x",
+    "questions": {
+      "n": {
+        "type": "noul",
+        "instructions": "?"
+      }
+    }
+  },
+  "response": {
+    "status": 404,
+    "body": {
+      "error": "model 'nimble' not found"
+    }
+  }
+}

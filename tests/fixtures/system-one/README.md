@@ -1,13 +1,13 @@
 # System One wire fixtures
 
-The `llamacpp-*` files and the `openrouter-*` files other than
-`openrouter-extras` and `openrouter-error` are **captured**, from a live
-`llama-server` and from `https://openrouter.ai`; their
+The `llamacpp-*` and `ollama-*` files and the `openrouter-*` files other
+than `openrouter-extras` and `openrouter-error` are **captured**, from a live
+`llama-server`, a local Ollama, and `https://openrouter.ai`; their
 `provenance` block records the build, model, and date. Each one is the
 request body sent and the response body exactly as received. The Bearer key
 went only in a request header, which isn't stored. OpenRouter's `user_id` is
-replaced with `user_REDACTED`, and the oversized request isn't stored (its
-`note` describes it). The rest are
+replaced with `user_REDACTED`, and oversized requests aren't stored (each
+`note` describes it). The Ollama model listing keeps two of its entries. The rest are
 **doc-derived**: assembled from the field names and examples
 in the primary docs listed in
 [the System One plan](../../../docs/SYSTEM_ONE_PROTOCOL_PLAN.md#sources), not
