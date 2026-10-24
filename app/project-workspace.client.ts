@@ -11,11 +11,12 @@ import {
 import type { ProjectFile } from "../packages/core/src/project.ts";
 import {
   assertTraceEntryName,
+  serializeDecisionRunTrace,
   serializeRunTrace,
   TRACES_DIRECTORY_NAME,
   traceFileName,
 } from "../packages/core/src/run-trace.ts";
-import type { RunTrace } from "../packages/core/src/run-kernel/index.ts";
+import type { SavedRunTrace } from "../packages/core/src/run-trace.ts";
 import {
   EVALUATION_ASSESSMENT_FILE_SUFFIX,
   assertExperimentEntryName,
@@ -648,14 +649,21 @@ export async function saveProjectWorkspace(
   await handle.storage.save(serializeProjectFile(project));
 }
 
+/** Serializes a saved run by its kind (D22, D29). */
+function serializeSavedRunTrace(saved: SavedRunTrace): string {
+  return saved.kind === "decision"
+    ? serializeDecisionRunTrace(saved.trace)
+    : serializeRunTrace(saved.trace);
+}
+
 export async function saveRunTraceWorkspace(
   handle: ProjectWorkspaceHandle,
-  trace: RunTrace,
+  saved: SavedRunTrace,
 ): Promise<void> {
-  const contents = serializeRunTrace(trace);
+  const contents = serializeSavedRunTrace(saved);
   await handle.storage.saveTrace(
-    trace.runId,
-    traceFileName(trace.runId),
+    saved.trace.runId,
+    traceFileName(saved.trace.runId),
     contents,
   );
 }
@@ -846,36 +854,36 @@ export function runTraceWorkspacePath(
 
 export function runTraceWorkspaceLocation(
   handle: ProjectWorkspaceHandle,
-  trace: RunTrace,
+  saved: SavedRunTrace,
 ): string {
-  return runTraceWorkspacePath(handle, traceFileName(trace.runId));
+  return runTraceWorkspacePath(handle, traceFileName(saved.trace.runId));
 }
 
-export function downloadRunTrace(trace: RunTrace): void {
-  const blob = new Blob([serializeRunTrace(trace)], {
+export function downloadRunTrace(saved: SavedRunTrace): void {
+  const blob = new Blob([serializeSavedRunTrace(saved)], {
     type: "application/json",
   });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = traceFileName(trace.runId);
+  link.download = traceFileName(saved.trace.runId);
   link.click();
   URL.revokeObjectURL(url);
 }
 
 export async function exportRunTraceFile(
-  trace: RunTrace,
+  saved: SavedRunTrace,
 ): Promise<RunTraceExportResult> {
-  const contents = serializeRunTrace(trace);
-  const fileName = traceFileName(trace.runId);
+  const contents = serializeSavedRunTrace(saved);
+  const fileName = traceFileName(saved.trace.runId);
   if (isTauriRuntime()) {
     const location = await invokeNative<string | null>("export_run_trace", {
-      runId: trace.runId,
+      runId: saved.trace.runId,
       contents,
     });
     return location ? { kind: "saved", location } : { kind: "cancelled" };
   }
-  downloadRunTrace(trace);
+  downloadRunTrace(saved);
   return { kind: "downloaded", fileName };
 }
 
