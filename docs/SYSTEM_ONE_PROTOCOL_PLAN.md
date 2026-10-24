@@ -1,6 +1,6 @@
 # System One protocol plan
 
-Status: **D1–D21 and U1–U6 accepted; D22–D24 proposed. Phases 1 and 2 are merged; the Phase 2
+Status: **D1–D24 and U1–U6 accepted. Phases 1 and 2 are merged; the Phase 2
 correctness gate in D16 remains open. Phases 3 and 4 ship together, with trace
 support implemented early (D20). llama.cpp and
 OpenRouter captured on 2026-10-24, Ollama on 2026-10-23; direct TypeSafe still
@@ -193,8 +193,8 @@ contract design, not the adapter.
 
 ## Decisions
 
-The user accepted every recommendation below (D1–D21) and the UI decisions in
-[U1–U6](#ui-decisions-u1u6). D22–D24 are proposed and await acceptance.
+The user accepted every recommendation below (D1–D24) and the UI decisions in
+[U1–U6](#ui-decisions-u1u6).
 Changes made after the source check are marked *(revised)*; a later decision
 that changes an earlier one is named in the marker, as in *(revised by D18)*.
 
@@ -624,7 +624,7 @@ The alternatives were to lock switching during execution, cancel on switch,
 or allow background execution. **Lock the Chat / Decision switch during
 execution.** Compose has one foreground execution; switching kinds cannot
 implicitly cancel it or start another. Keep existing batch execution guards;
-D24 proposes how decision runs join them.
+D24 settles how decision runs join them.
 
 - Preserve each kind's draft, independent connection/model selection, and
   latest result when switching after execution ends, including failed or
@@ -635,7 +635,7 @@ D24 proposes how decision runs join them.
 - A run captures its validated input and target before dispatch. Retry uses
   that exact snapshot and retains earlier attempt evidence; edits belong to
   a new run. Honour `retry-after` on 429 when permitting a retry; D23
-  proposes how.
+  settles how.
 - The decision session owns cancellation and invalidation of asynchronous
   work, so late events cannot revive a stopped or superseded run.
 
@@ -731,7 +731,7 @@ before handoff. Report the commands, skipped checks, fixture limitations, and
 the native desktop paths actually exercised. Keep tests introduced for D16
 red for the relevant incorrect value before fixing it, per `AGENTS.md`.
 
-### D22. Decision trace shape *(proposed)*
+### D22. Decision trace shape *(accepted: A)*
 
 D5 settles where decision traces live, but not what they hold, and D20 builds
 the format first. Core already defines the run: `DecisionRun` carries
@@ -779,7 +779,7 @@ ordered event log and re-derives its projections on import.
   model, question count, and status, and selecting the entry opens Decision
   Compose's inspection state.
 
-### D23. Retry after a 429 *(proposed)*
+### D23. Retry after a 429 *(accepted: A)*
 
 D2 and D17 say Retry honours `retry-after`, but not how. In Compose, chat
 Retry doesn't read the header today. Only batches pause:
@@ -807,7 +807,7 @@ Retry doesn't read the header today. Only batches pause:
   wait, the re-enabled Retry, and a second retained 429 attempt, but not a
   success after waiting. Say so when reporting D21's 429 coverage.
 
-### D24. Decision runs and other activity *(proposed)*
+### D24. Decision runs and other activity *(accepted: A)*
 
 `app/page.tsx` already treats a single chat request, a repeated experiment,
 and an evaluation run as one foreground activity. While any of them runs, the
