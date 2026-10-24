@@ -15,6 +15,7 @@ import {
   SAFE_REGEX_SYNTAX,
   validateSafeRegex,
 } from "./safe-regex.ts";
+import type { DecisionAnswer, DecisionRun } from "./decision.ts";
 import type {
   CheckId,
   EntityId,
@@ -32,21 +33,25 @@ import type {
  * Adding, removing, or changing the meaning of a kind requires bumping this
  * constant and the version of every container that stores checks.
  */
-export const CHECK_SCHEMA_VERSION = 4;
+export const CHECK_SCHEMA_VERSION = 5;
 
 /** Vocabulary versions a container may declare; each still means what it meant. */
-export const SUPPORTED_CHECK_SCHEMA_VERSIONS = [3, 4] as const;
+export const SUPPORTED_CHECK_SCHEMA_VERSIONS = [3, 4, 5] as const;
 export type CheckSchemaVersion = (typeof SUPPORTED_CHECK_SCHEMA_VERSIONS)[number];
 
 /**
  * Why `definition` cannot appear in a container that declares `version`, or
  * undefined when it can. Version 4 added JSON Schema checks and JSON input
- * policies; an older container must reject them rather than acquire them.
+ * policies, and version 5 the decision kinds; an older container must reject
+ * them rather than acquire them.
  */
 export function checkVocabularyIssue(
   definition: CheckDefinition,
   version: CheckSchemaVersion,
 ): string | undefined {
+  if (version < 5 && isDecisionCheckKind(definition.kind)) {
+    return `This check requires check vocabulary version 5; the container declares version ${version}.`;
+  }
   if (version >= 4) return undefined;
   if (definition.kind === "json-schema" || (definition.kind === "valid-json" && definition.inputPolicy !== undefined)) {
     return `This check requires check vocabulary version 4; the container declares version ${version}.`;
@@ -79,9 +84,55 @@ export const CHECK_KINDS = [
   "did-not-call-tool",
   "tool-call-count",
   "tool-call-arguments",
+  "decision-choice",
+  "decision-option-probability",
+  "decision-score-range",
+  "decision-noul",
+  "decision-confidence",
 ] as const;
 
 export type CheckKind = (typeof CHECK_KINDS)[number];
+
+/** Kinds that read only what both run kinds report: wall time and usage. */
+export const SHARED_CHECK_KINDS = ["max-duration-ms", "max-total-tokens"] as const satisfies readonly CheckKind[];
+
+/** Kinds that read a decision run's answers. Each names one question id (D34). */
+export const DECISION_CHECK_KINDS = [
+  "decision-choice",
+  "decision-option-probability",
+  "decision-score-range",
+  "decision-noul",
+  "decision-confidence",
+] as const satisfies readonly CheckKind[];
+
+export type DecisionCheckKind = (typeof DECISION_CHECK_KINDS)[number];
+
+/** Kinds that read a chat run's output or tool calls. */
+export const CHAT_CHECK_KINDS = CHECK_KINDS.filter(
+  (kind): kind is Exclude<CheckKind, DecisionCheckKind | (typeof SHARED_CHECK_KINDS)[number]> =>
+    !(DECISION_CHECK_KINDS as readonly string[]).includes(kind) && !(SHARED_CHECK_KINDS as readonly string[]).includes(kind),
+);
+
+export function isDecisionCheckKind(kind: CheckKind): kind is DecisionCheckKind {
+  return (DECISION_CHECK_KINDS as readonly string[]).includes(kind);
+}
+
+/**
+ * D34 gives each run kind only the checks that read its evidence; shared kinds
+ * fit both. Authoring offers only those, so this refuses a hand-edited project
+ * or plan the same way.
+ */
+export function checkRunKindIssue(kind: CheckKind, runKind: "chat" | "decision"): string | undefined {
+  if ((SHARED_CHECK_KINDS as readonly string[]).includes(kind)) return undefined;
+  const decision = isDecisionCheckKind(kind);
+  if (runKind === "decision" && !decision) {
+    return `"${kind}" checks read a chat run's output or tool calls; a decision suite cannot hold them.`;
+  }
+  if (runKind === "chat" && decision) {
+    return `"${kind}" checks read a decision run's answers; a chat suite cannot hold them.`;
+  }
+  return undefined;
+}
 
 export type CheckJsonTopLevel = "any" | "object" | "array";
 
@@ -209,6 +260,59 @@ export interface ToolCallArgumentsCheck extends CheckDefinitionBase {
   argumentsSubset: JsonObject;
 }
 
+/**
+ * Decision kinds (D34). Each names one question id. Probability and
+ * confidence values are in [0, 1]. A question id the pinned revision lacks, or
+ * a question of the wrong type for the kind, is a preflight diagnostic; at
+ * evaluation it reads as `not-evaluated`.
+ */
+export interface DecisionChoiceCheck extends NegatableCheckBase {
+  kind: "decision-choice";
+  questionId: string;
+  option: string;
+}
+
+export type DecisionBoundComparator = "at-least" | "at-most";
+
+/** For a score question, `option` is the level number as a string. */
+export interface DecisionOptionProbabilityCheck extends CheckDefinitionBase {
+  kind: "decision-option-probability";
+  questionId: string;
+  option: string;
+  comparator: DecisionBoundComparator;
+  value: number;
+}
+
+/** Inclusive bounds on the fractional score; at least one is present. */
+export interface DecisionScoreRangeCheck extends CheckDefinitionBase {
+  kind: "decision-score-range";
+  questionId: string;
+  min?: number;
+  max?: number;
+}
+
+/** Bounds P(true). */
+export interface DecisionNoulCheck extends CheckDefinitionBase {
+  kind: "decision-noul";
+  questionId: string;
+  comparator: DecisionBoundComparator;
+  value: number;
+}
+
+/** Choice and score only; an answer without confidence is `not-evaluated`. */
+export interface DecisionConfidenceCheck extends CheckDefinitionBase {
+  kind: "decision-confidence";
+  questionId: string;
+  atLeast: number;
+}
+
+export type DecisionCheckDefinition =
+  | DecisionChoiceCheck
+  | DecisionOptionProbabilityCheck
+  | DecisionScoreRangeCheck
+  | DecisionNoulCheck
+  | DecisionConfidenceCheck;
+
 export type CheckDefinition =
   | ExactMatchCheck
   | ContainsCheck
@@ -221,7 +325,8 @@ export type CheckDefinition =
   | CalledToolCheck
   | DidNotCallToolCheck
   | ToolCallCountCheck
-  | ToolCallArgumentsCheck;
+  | ToolCallArgumentsCheck
+  | DecisionCheckDefinition;
 
 /**
  * The outcome of one check against one run.
@@ -276,6 +381,29 @@ export interface RunCheckSubject {
    */
   toolCalls?: ToolCallEvidence[];
 }
+
+/**
+ * Everything the check vocabulary may read about a decision run (D48),
+ * projected once. Absence is preserved as for `RunCheckSubject`: usage the
+ * provider never reported stays absent rather than reading as zero.
+ */
+export interface DecisionCheckSubject {
+  kind: "decision";
+  /** Set when the run itself cannot support any assertion. */
+  unavailable?: string;
+  /** The completed attempt's normalized answers, keyed by question id. */
+  answers?: Record<string, DecisionAnswer>;
+  /** Wall time from the run's start to its end, retries included. */
+  totalDurationMs?: number;
+  totalTokenCoverage?: AttemptUsageCoverage;
+  reportedTotalTokens?: number;
+}
+
+/**
+ * What one check is evaluated against. A chat subject carries no `kind`, which
+ * kept every existing caller unchanged when decision subjects arrived.
+ */
+export type CheckSubject = (RunCheckSubject & { kind?: "chat" }) | DecisionCheckSubject;
 
 function entityId<Kind extends EntityIdKind>(
   kind: Kind,
@@ -351,6 +479,52 @@ const toolCallArgumentsShape = {
   argumentsSubset: jsonObjectSchema,
 };
 
+const probability = z.number().min(0).max(1);
+const decisionBoundComparator = z.enum(["at-least", "at-most"]);
+
+/**
+ * The decision kinds' shapes. `text` is a runnable plan's identifier rule,
+ * where an empty question or option cannot run; authoring relaxes it so
+ * "+ Add check" can leave them for preflight to name.
+ */
+function decisionCheckShapes(text: z.ZodString) {
+  return [
+    z.object({ ...negatableBase, kind: z.literal("decision-choice"), questionId: text, option: text }).strict(),
+    z.object({
+      ...definitionBase,
+      kind: z.literal("decision-option-probability"),
+      questionId: text,
+      option: text,
+      comparator: decisionBoundComparator,
+      value: probability,
+    }).strict(),
+    z.object({
+      ...definitionBase,
+      kind: z.literal("decision-score-range"),
+      questionId: text,
+      min: z.number().finite().optional(),
+      max: z.number().finite().optional(),
+    }).strict(),
+    z.object({
+      ...definitionBase,
+      kind: z.literal("decision-noul"),
+      questionId: text,
+      comparator: decisionBoundComparator,
+      value: probability,
+    }).strict(),
+    z.object({ ...definitionBase, kind: z.literal("decision-confidence"), questionId: text, atLeast: probability }).strict(),
+  ] as const;
+}
+
+function refineScoreRange(definition: CheckDefinition, context: z.RefinementCtx): void {
+  if (definition.kind !== "decision-score-range") return;
+  if (definition.min === undefined && definition.max === undefined) {
+    context.addIssue({ code: "custom", path: ["min"], message: "A score range needs a minimum, a maximum, or both." });
+  } else if (definition.min !== undefined && definition.max !== undefined && definition.min > definition.max) {
+    context.addIssue({ code: "custom", path: ["max"], message: "A score range's maximum must be at least its minimum." });
+  }
+}
+
 export const checkDefinitionSchema: z.ZodType<CheckDefinition> = z
   .discriminatedUnion("kind", [
     z
@@ -402,9 +576,11 @@ export const checkDefinitionSchema: z.ZodType<CheckDefinition> = z
     z.object({ ...calledToolShape, kind: z.literal("did-not-call-tool") }).strict(),
     z.object({ ...toolCallCountShape, kind: z.literal("tool-call-count") }).strict(),
     z.object({ ...toolCallArgumentsShape, kind: z.literal("tool-call-arguments") }).strict(),
+    ...decisionCheckShapes(z.string().min(1)),
   ])
   .superRefine((definition, context) => {
     refineRunnableSchema(definition, context);
+    refineScoreRange(definition, context);
     if (definition.kind !== "regex") return;
     const issue = validateSafeRegex(definition);
     if (issue) {
@@ -442,8 +618,10 @@ export const authoredCheckDefinitionSchema: z.ZodType<CheckDefinition> = z
     z.object({ ...calledToolShape, kind: z.literal("did-not-call-tool") }).strict(),
     z.object({ ...toolCallCountShape, kind: z.literal("tool-call-count") }).strict(),
     z.object({ ...toolCallArgumentsShape, kind: z.literal("tool-call-arguments") }).strict(),
+    ...decisionCheckShapes(z.string()),
   ])
   .superRefine((definition, context) => {
+    refineScoreRange(definition, context);
     if (definition.kind !== "regex" || definition.pattern === "") return;
     const issue = validateSafeRegex(definition);
     if (issue) context.addIssue({ code: "custom", path: [issue.field], message: issue.message });
@@ -519,6 +697,44 @@ export function runCheckSubject(state: RunState): RunCheckSubject {
       ? { reportedTotalTokens: metrics.usage.totalTokens }
       : {}),
     toolCalls: toolCallsInRun(state),
+  };
+}
+
+/**
+ * Projects a decision run for the check vocabulary (D48). As for chat, only a
+ * completed run can be asserted about. Tokens come from the completed
+ * attempt's reported usage: an attempt that failed before an answer reports
+ * none, so there is nothing else to add.
+ */
+export function decisionCheckSubject(run: DecisionRun): DecisionCheckSubject {
+  switch (run.status.kind) {
+    case "failed":
+      return {
+        kind: "decision",
+        unavailable: `The run failed (${run.status.error.code}) and produced no checkable result.`,
+      };
+    case "cancelled":
+      return { kind: "decision", unavailable: "The run was cancelled and produced no checkable result." };
+    case "completed":
+      break;
+    default:
+      return { kind: "decision", unavailable: "The run has not reached a terminal status." };
+  }
+  const completed = run.attempts.findLast(({ status }) => status === "completed");
+  const result = completed?.result;
+  if (!result) {
+    return { kind: "decision", unavailable: "The run completed without a recorded answer." };
+  }
+  const startedAt = run.startedAt === undefined ? Number.NaN : Date.parse(run.startedAt);
+  const endedAt = run.endedAt === undefined ? Number.NaN : Date.parse(run.endedAt);
+  const totalDurationMs = Number.isFinite(startedAt) && Number.isFinite(endedAt) ? endedAt - startedAt : undefined;
+  const totalTokens = result.usage?.totalTokens;
+  return {
+    kind: "decision",
+    answers: result.answers,
+    ...(totalDurationMs !== undefined ? { totalDurationMs } : {}),
+    totalTokenCoverage: { reportedAttempts: totalTokens === undefined ? 0 : 1, totalAttempts: 1 },
+    ...(totalTokens !== undefined ? { reportedTotalTokens: totalTokens } : {}),
   };
 }
 
@@ -763,34 +979,51 @@ function evaluateJsonSchemaCheck(definition: JsonSchemaCheck, output: string): C
  */
 export function evaluateCheck(
   definition: CheckDefinition,
-  subject: RunCheckSubject,
+  subject: CheckSubject,
 ): CheckOutcome {
   if (subject.unavailable) {
     return { status: "not-evaluated", reason: subject.unavailable };
   }
+  // Authoring and project validation keep each kind to its own suites, so
+  // these guard old or hand-edited artifacts only.
+  if (subject.kind === "decision") {
+    if (isDecisionCheckKind(definition.kind)) return evaluateDecisionCheck(definition as DecisionCheckDefinition, subject);
+    if (!(SHARED_CHECK_KINDS as readonly string[]).includes(definition.kind)) {
+      return { status: "not-evaluated", reason: "This check reads a chat run's output or tool calls, which a decision run does not have." };
+    }
+  } else if (isDecisionCheckKind(definition.kind)) {
+    return { status: "not-evaluated", reason: "This check reads a decision run's answers, which a chat run does not have." };
+  }
+  return evaluateSubjectCheck(definition, subject);
+}
 
+function evaluateSubjectCheck(
+  definition: CheckDefinition,
+  subject: CheckSubject,
+): CheckOutcome {
+  const chat: Partial<RunCheckSubject> = subject.kind === "decision" ? {} : subject;
   switch (definition.kind) {
     case "exact-match":
     case "contains":
     case "regex":
     case "valid-json":
     case "json-schema": {
-      if (subject.output === undefined) {
+      if (chat.output === undefined) {
         return {
           status: "not-evaluated",
           reason: "The run produced no final assistant output.",
         };
       }
-      return evaluateOutputCheck(definition, subject.output);
+      return evaluateOutputCheck(definition, chat.output);
     }
     case "max-output-characters": {
-      if (subject.output === undefined) {
+      if (chat.output === undefined) {
         return {
           status: "not-evaluated",
           reason: "The run produced no final assistant output.",
         };
       }
-      const characters = outputCharacterCount(subject.output);
+      const characters = outputCharacterCount(chat.output);
       return outcome(
         { characters, limit: definition.limit },
         characters <= definition.limit
@@ -836,7 +1069,7 @@ export function evaluateCheck(
       );
     }
     case "called-tool": {
-      const matches = toolCallsNamed(subject.toolCalls, definition.toolName);
+      const matches = toolCallsNamed(chat.toolCalls, definition.toolName);
       return outcome(
         { called: matches.length > 0, matchingCalls: matches.length },
         matches.length > 0
@@ -845,7 +1078,7 @@ export function evaluateCheck(
       );
     }
     case "did-not-call-tool": {
-      const matches = toolCallsNamed(subject.toolCalls, definition.toolName);
+      const matches = toolCallsNamed(chat.toolCalls, definition.toolName);
       return outcome(
         { called: matches.length > 0, matchingCalls: matches.length },
         matches.length === 0
@@ -855,8 +1088,8 @@ export function evaluateCheck(
     }
     case "tool-call-count": {
       const relevant = definition.toolName === undefined
-        ? (subject.toolCalls ?? [])
-        : toolCallsNamed(subject.toolCalls, definition.toolName);
+        ? (chat.toolCalls ?? [])
+        : toolCallsNamed(chat.toolCalls, definition.toolName);
       const actual = relevant.length;
       const satisfied = definition.comparator === "exact"
         ? actual === definition.count
@@ -884,7 +1117,7 @@ export function evaluateCheck(
       );
     }
     case "tool-call-arguments": {
-      const matches = toolCallsNamed(subject.toolCalls, definition.toolName);
+      const matches = toolCallsNamed(chat.toolCalls, definition.toolName);
       const matched = matches.some(
         (call) =>
           call.arguments.parsed !== undefined &&
@@ -897,6 +1130,106 @@ export function evaluateCheck(
           : matches.length === 0
             ? `The run did not call tool "${definition.toolName}".`
             : `No call to tool "${definition.toolName}" had arguments matching the expected subset.`,
+      );
+    }
+    case "decision-choice":
+    case "decision-option-probability":
+    case "decision-score-range":
+    case "decision-noul":
+    case "decision-confidence":
+      return { status: "not-evaluated", reason: "This check reads a decision run's answers, which a chat run does not have." };
+  }
+}
+
+function bounded(actual: number, comparator: DecisionBoundComparator, value: number): boolean {
+  return comparator === "at-least" ? actual >= value : actual <= value;
+}
+
+function comparatorWords(comparator: DecisionBoundComparator): string {
+  return comparator === "at-least" ? "at least" : "at most";
+}
+
+/**
+ * Evidence holds the observed choice, probability, score, or confidence and
+ * the authored bound: measurements, never state or instructions.
+ */
+function evaluateDecisionCheck(
+  definition: DecisionCheckDefinition,
+  subject: DecisionCheckSubject,
+): CheckOutcome {
+  const answer = subject.answers?.[definition.questionId];
+  if (!answer) {
+    return { status: "not-evaluated", reason: `The run has no answer for question "${definition.questionId}".` };
+  }
+  const wrongType = (expected: string): CheckOutcome => ({
+    status: "not-evaluated",
+    reason: `Question "${definition.questionId}" was answered as a ${answer.type} question; this check needs ${expected}.`,
+  });
+  switch (definition.kind) {
+    case "decision-choice": {
+      if (answer.type !== "choice") return wrongType("a choice question");
+      return decide(
+        answer.choice === definition.option,
+        definition.negate,
+        {
+          whenUnsatisfied: `Question "${definition.questionId}" chose "${answer.choice}", not "${definition.option}".`,
+          whenSatisfied: `Question "${definition.questionId}" chose "${definition.option}", which it must not choose.`,
+        },
+        { choice: answer.choice, expected: definition.option },
+      );
+    }
+    case "decision-option-probability": {
+      if (answer.type === "noul") return wrongType("a choice or score question");
+      const probability = answer.probabilities[definition.option];
+      if (probability === undefined) {
+        return {
+          status: "not-evaluated",
+          reason: `The answer to question "${definition.questionId}" reports no probability for "${definition.option}".`,
+        };
+      }
+      return outcome(
+        { probability, comparator: definition.comparator, value: definition.value },
+        bounded(probability, definition.comparator, definition.value)
+          ? undefined
+          : `P("${definition.option}") for question "${definition.questionId}" is ${probability}; expected ${comparatorWords(definition.comparator)} ${definition.value}.`,
+      );
+    }
+    case "decision-score-range": {
+      if (answer.type !== "score") return wrongType("a score question");
+      const { score } = answer;
+      const inRange = (definition.min === undefined || score >= definition.min)
+        && (definition.max === undefined || score <= definition.max);
+      const range = definition.min !== undefined && definition.max !== undefined
+        ? `between ${definition.min} and ${definition.max}`
+        : definition.min !== undefined ? `at least ${definition.min}` : `at most ${definition.max}`;
+      return outcome(
+        {
+          score,
+          ...(definition.min !== undefined ? { min: definition.min } : {}),
+          ...(definition.max !== undefined ? { max: definition.max } : {}),
+        },
+        inRange ? undefined : `Question "${definition.questionId}" scored ${score}; expected ${range}.`,
+      );
+    }
+    case "decision-noul": {
+      if (answer.type !== "noul") return wrongType("a noul question");
+      return outcome(
+        { noul: answer.noul, comparator: definition.comparator, value: definition.value },
+        bounded(answer.noul, definition.comparator, definition.value)
+          ? undefined
+          : `P(true) for question "${definition.questionId}" is ${answer.noul}; expected ${comparatorWords(definition.comparator)} ${definition.value}.`,
+      );
+    }
+    case "decision-confidence": {
+      if (answer.type === "noul") return wrongType("a choice or score question");
+      if (answer.confidence === undefined) {
+        return { status: "not-evaluated", reason: `The answer to question "${definition.questionId}" reports no confidence.` };
+      }
+      return outcome(
+        { confidence: answer.confidence, atLeast: definition.atLeast },
+        answer.confidence >= definition.atLeast
+          ? undefined
+          : `Confidence for question "${definition.questionId}" is ${answer.confidence}; expected at least ${definition.atLeast}.`,
       );
     }
   }
@@ -922,7 +1255,14 @@ export function* evaluateChecksSteps(
   state: RunState,
   definitions: readonly CheckDefinition[],
 ): Generator<void, CheckResult[]> {
-  const subject = runCheckSubject(state);
+  return yield* evaluateSubjectChecksSteps(runCheckSubject(state), definitions);
+}
+
+/** As `evaluateChecksSteps`, for evidence already projected from either run kind. */
+export function* evaluateSubjectChecksSteps(
+  subject: CheckSubject,
+  definitions: readonly CheckDefinition[],
+): Generator<void, CheckResult[]> {
   const results: CheckResult[] = [];
   for (const definition of definitions) {
     results.push({

@@ -22,7 +22,7 @@ import {
 } from "../packages/core/src/experiment.ts";
 import type {
   EvaluationCriteriaOverride,
-  EvaluationExperimentPlanV4,
+  EvaluationExperimentPlan,
   ExperimentResultV4,
 } from "../packages/core/src/experiment.ts";
 import type { CheckDefinition } from "../packages/core/src/checks.ts";
@@ -51,7 +51,7 @@ const AS_RUN_CHECK: CheckDefinition = {
 
 const CORRECTED_CHECK: CheckDefinition = { ...AS_RUN_CHECK, flags: "i" };
 
-function planFixture(): EvaluationExperimentPlanV4 {
+function planFixture(): EvaluationExperimentPlan {
   const initial = createProjectFile({
     name: "Reassessment fixture",
     idSuffix: "reassessment-fixture",
@@ -115,7 +115,7 @@ function completed(input: ResolvedRunInput, text: string): RunState {
 
 /** Both repetitions say the right thing in the wrong case, so As run reads all-failed. */
 function executionFixture(): {
-  plan: EvaluationExperimentPlanV4;
+  plan: EvaluationExperimentPlan;
   result: ExperimentResultV4;
   states: ReadonlyMap<RunId, RunState>;
 } {

@@ -46,9 +46,9 @@ export function currentRunStorageLabel(
 
 /** Matches the title a saved batch carries in project history. */
 export function batchTitle(plan: ExperimentPlanV3): string {
-  return plan.kind === "evaluation"
-    ? `Evaluation · ${plan.suite.name}`
-    : `Repeated experiment · ${plan.commonInput.target.model}`;
+  return plan.kind === "repeated-request"
+    ? `Repeated experiment · ${plan.commonInput.target.model}`
+    : `Evaluation · ${plan.suite.name}`;
 }
 
 /**

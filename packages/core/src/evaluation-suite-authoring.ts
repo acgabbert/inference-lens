@@ -1,7 +1,13 @@
 export { generateJsonSchema } from "./json-schema/generate.ts";
 import type { CheckDefinition, CheckKind } from "./checks.ts";
 import { evaluationSuitePreflight, templateUseVariableIndex } from "./evaluation-suites.ts";
-import type { EvaluationCase, EvaluationInputBinding, EvaluationSuite, EvaluationVariant } from "./evaluation-suites.ts";
+import type {
+  ChatEvaluationSuite,
+  EvaluationCase,
+  EvaluationInputBinding,
+  EvaluationSuite,
+  EvaluationVariant,
+} from "./evaluation-suites.ts";
 import {
   createBranchRevision,
   insertPromptTemplateUse,
@@ -240,6 +246,24 @@ function mapSuite(
   ));
 }
 
+/**
+ * Edits only a chat suite has: its conversation input, chat execution,
+ * configurations' delivery and options, and template bindings. Reaching one
+ * with a decision suite is a caller error, refused rather than half-applied.
+ */
+function mapChatSuite(
+  project: ProjectFile,
+  suiteId: EvaluationSuiteId,
+  update: (suite: ChatEvaluationSuite) => ChatEvaluationSuite,
+): ProjectFile {
+  return mapSuite(project, suiteId, (suite) => {
+    if (suite.input.kind !== "conversation-revision") {
+      throw new ProjectValidationError([{ code: "custom", path: ["evaluationSuites", suiteId], message: "This edit applies to chat suites only." }]);
+    }
+    return update(suite as ChatEvaluationSuite);
+  });
+}
+
 function uniqueName(base: string, occupied: readonly string[]): string {
   const names = new Set(occupied.map((name) => name.toLowerCase()));
   if (!names.has(base.toLowerCase())) return base;
@@ -292,7 +316,7 @@ export function updateEvaluationSuiteInput(
   suiteId: EvaluationSuiteId,
   conversationRevisionId: ConversationRevisionId,
 ): ProjectFile {
-  return mapSuite(project, suiteId, (suite) => ({
+  return mapChatSuite(project, suiteId, (suite) => ({
     ...suite,
     input: { kind: "conversation-revision", conversationRevisionId },
   }));
@@ -301,9 +325,9 @@ export function updateEvaluationSuiteInput(
 export function updateEvaluationSuiteExecution(
   project: ProjectFile,
   suiteId: EvaluationSuiteId,
-  execution: EvaluationSuite["execution"],
+  execution: ChatEvaluationSuite["execution"],
 ): ProjectFile {
-  return mapSuite(project, suiteId, (suite) => ({ ...suite, execution }));
+  return mapChatSuite(project, suiteId, (suite) => ({ ...suite, execution }));
 }
 
 export function addEvaluationVariant(
@@ -314,12 +338,13 @@ export function addEvaluationVariant(
   const variantId = createEntityId("evaluation-variant", suffix());
   const next = mapSuite(project, suiteId, (suite) => ({
     ...suite,
+    // An empty override is valid for either kind.
     variants: [...suite.variants, {
       id: variantId,
       name: uniqueName("New configuration", suite.variants.map(({ name }) => name)),
       overrides: {},
     }],
-  }));
+  }) as EvaluationSuite);
   return { project: next, variantId };
 }
 
@@ -329,7 +354,7 @@ export function updateEvaluationVariant(
   variantId: EvaluationVariantId,
   patch: Pick<EvaluationVariant, "name" | "overrides">,
 ): ProjectFile {
-  return mapSuite(project, suiteId, (suite) => ({
+  return mapChatSuite(project, suiteId, (suite) => ({
     ...suite,
     variants: suite.variants.map((variant) => variant.id === variantId ? { ...variant, ...patch } : variant),
   }));
@@ -347,7 +372,7 @@ export function reorderEvaluationVariant(
     const variants = [...suite.variants];
     const [variant] = variants.splice(sourceIndex, 1);
     variants.splice(Math.max(0, Math.min(destinationIndex, variants.length)), 0, variant!);
-    return { ...suite, variants };
+    return { ...suite, variants } as EvaluationSuite;
   });
 }
 
@@ -363,7 +388,7 @@ export function removeEvaluationVariant(
   return mapSuite(project, suiteId, (current) => ({
     ...current,
     variants: current.variants.filter(({ id }) => id !== variantId),
-  }));
+  }) as EvaluationSuite);
 }
 
 export function renameEvaluationSuite(
@@ -385,7 +410,7 @@ export function addEvaluationInput(
   suffix: IdSuffix = generatedSuffix,
 ): { project: ProjectFile; inputId: EvaluationInputBindingId } {
   const inputId = createEntityId("evaluation-input", suffix());
-  const next = mapSuite(project, suiteId, (suite) => {
+  const next = mapChatSuite(project, suiteId, (suite) => {
     const binding: EvaluationInputBinding = {
       id: inputId,
       name: uniqueName(candidate.variableName, suite.inputBindings.map(({ name }) => name)),
@@ -418,7 +443,7 @@ export function renameEvaluationInput(
     inputBindings: suite.inputBindings.map((binding) =>
       binding.id === inputId ? { ...binding, name } : binding,
     ),
-  }));
+  }) as EvaluationSuite);
 }
 
 export function removeEvaluationInput(
@@ -434,7 +459,7 @@ export function removeEvaluationInput(
       delete values[inputId];
       return { ...evaluationCase, values };
     }),
-  }));
+  }) as EvaluationSuite);
 }
 
 export function addEvaluationCase(
@@ -517,6 +542,13 @@ export function defaultCheck(
     case "did-not-call-tool": return { checkId, kind: input.kind, toolName: "" };
     case "tool-call-count": return { checkId, kind: input.kind, count: 1, comparator: "at-least" };
     case "tool-call-arguments": return { checkId, kind: input.kind, toolName: "", argumentsSubset: {} };
+    // The question and option are left for the author; preflight names them
+    // until they match the pinned revision.
+    case "decision-choice": return { checkId, kind: input.kind, questionId: "", option: "" };
+    case "decision-option-probability": return { checkId, kind: input.kind, questionId: "", option: "", comparator: "at-least", value: 0.5 };
+    case "decision-score-range": return { checkId, kind: input.kind, questionId: "", min: 0 };
+    case "decision-noul": return { checkId, kind: input.kind, questionId: "", comparator: "at-most", value: 0.5 };
+    case "decision-confidence": return { checkId, kind: input.kind, questionId: "", atLeast: 0.5 };
   }
 }
 

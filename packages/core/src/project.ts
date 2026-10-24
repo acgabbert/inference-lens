@@ -1,20 +1,35 @@
 import { z } from "zod";
-import { authoredCheckDefinitionSchema, checkVocabularyIssue } from "./checks.ts";
+import type { CheckDefinition } from "./checks.ts";
+import {
+  authoredCheckDefinitionSchema,
+  checkRunKindIssue,
+  checkVocabularyIssue,
+} from "./checks.ts";
 import { templateUseVariableIndex } from "./template-use-variable-index.ts";
 import type {
+  ChatEvaluationSuite,
+  DecisionEvaluationSuite,
+  DecisionEvaluationVariant,
+  DecisionInputBinding,
   EvaluationCase,
   EvaluationInputBinding,
   EvaluationSuite,
   EvaluationVariant,
 } from "./evaluation-suites.ts";
 export type {
+  ChatEvaluationSuite,
+  DecisionEvaluationSuite,
+  DecisionEvaluationVariant,
+  DecisionExecutionTarget,
+  DecisionInputBinding,
   EvaluationCase,
   EvaluationInputBinding,
   EvaluationSuite,
   EvaluationVariant,
 } from "./evaluation-suites.ts";
+import { isChatEvaluationSuite } from "./evaluation-suites.ts";
 import { stableJsonValue } from "./stable-json.ts";
-import { isDecisionInput } from "./decision.ts";
+import { DECISION_WIRE_PROTOCOLS, isDecisionInput } from "./decision.ts";
 import type { DecisionInput } from "./decision.ts";
 import { discoverDecisionVariables } from "./decision-variables.ts";
 import { toolNameSchema } from "./tool-name.ts";
@@ -80,9 +95,9 @@ export const PROJECT_DIRECTORY_SUFFIX = ".inference-lens";
 export const PROJECT_FILE_NAME = "project.json";
 export const PROJECT_EXPORT_FILE_SUFFIX = ".project.json";
 export const PROJECT_GITIGNORE_CONTENTS = "*\n";
-export const PROJECT_SCHEMA_VERSION = 13;
+export const PROJECT_SCHEMA_VERSION = 14;
 /** Older versions this build still opens; see `migrateV10Project`, `migrateV11Project`, and `migrateV12Project`. */
-const OPENABLE_PROJECT_SCHEMA_VERSIONS: readonly number[] = [10, 11, 12];
+const OPENABLE_PROJECT_SCHEMA_VERSIONS: readonly number[] = [10, 11, 12, 13];
 
 /**
  * Turns the portable project display name into one safe, visible directory
@@ -338,8 +353,8 @@ interface ProjectReferenceValidationShape {
   defaults: ProjectDefaults;
 }
 
-export interface ProjectFileV13 {
-  schemaVersion: 13;
+export interface ProjectFileV14 {
+  schemaVersion: 14;
   projectId: ProjectId;
   name: string;
   connectionRequirements: ConnectionRequirement[];
@@ -355,7 +370,7 @@ export interface ProjectFileV13 {
   defaults: ProjectDefaults;
 }
 
-export type ProjectFile = ProjectFileV13;
+export type ProjectFile = ProjectFileV14;
 
 const entityId = <Kind extends Parameters<typeof createEntityId>[0]>(
   kind: Kind,
@@ -814,7 +829,7 @@ const evaluationVariantSchema: z.ZodType<EvaluationVariant> = z.object({
   }).strict(),
 }).strict();
 
-const evaluationSuiteSchema: z.ZodType<EvaluationSuite> = z
+const chatEvaluationSuiteSchema: z.ZodType<ChatEvaluationSuite> = z
   .object({
     id: entityId("evaluation-suite"),
     name: z.string().trim().min(1),
@@ -841,7 +856,72 @@ const evaluationSuiteSchema: z.ZodType<EvaluationSuite> = z
   })
   .strict();
 
-const projectFileV13Schema: z.ZodType<ProjectFileV13> = z
+const decisionInputBindingSchema: z.ZodType<DecisionInputBinding> = z
+  .object({
+    id: entityId("evaluation-input"),
+    name: z.string().trim().min(1),
+    target: z
+      .object({
+        kind: z.literal("decision-variable"),
+        variableName: z.string().regex(variableName, "Invalid template variable name."),
+      })
+      .strict(),
+  })
+  .strict();
+
+const decisionExecutionTargetSchema = z
+  .object({
+    connectionRequirementId: entityId("connection"),
+    model: z.string().trim().min(1),
+    protocol: z.enum(DECISION_WIRE_PROTOCOLS),
+  })
+  .strict();
+
+const decisionEvaluationVariantSchema: z.ZodType<DecisionEvaluationVariant> = z.object({
+  id: entityId("evaluation-variant"),
+  name: z.string().trim().min(1),
+  overrides: z.object({
+    target: z.object({
+      connectionRequirementId: entityId("connection").optional(),
+      model: z.string().trim().min(1).optional(),
+      protocol: z.enum(DECISION_WIRE_PROTOCOLS).optional(),
+    }).strict().optional(),
+  }).strict(),
+}).strict();
+
+const decisionEvaluationSuiteSchema: z.ZodType<DecisionEvaluationSuite> = z
+  .object({
+    id: entityId("evaluation-suite"),
+    name: z.string().trim().min(1),
+    input: z.object({
+      kind: z.literal("decision-request-revision"),
+      decisionRequestRevisionId: entityId("decision-revision"),
+    }).strict(),
+    execution: z.object({
+      target: decisionExecutionTargetSchema,
+      repetitions: z.number().int().min(1).max(100),
+    }).strict(),
+    variants: z.array(decisionEvaluationVariantSchema).min(1),
+    inputBindings: z.array(decisionInputBindingSchema),
+    cases: z.array(evaluationCaseSchema),
+  })
+  .strict();
+
+/**
+ * Picks the arm by `input.kind` before validating, so a malformed suite is
+ * reported against its own shape rather than as a mismatch with both (D44).
+ * Anything without a recognizable decision input is read as a chat suite,
+ * which is what every suite before schema 14 is.
+ */
+const evaluationSuiteSchema = z.unknown().transform((value, context): EvaluationSuite => {
+  const decision = isRecord(value) && isRecord(value.input) && value.input.kind === "decision-request-revision";
+  const parsed = (decision ? decisionEvaluationSuiteSchema : chatEvaluationSuiteSchema).safeParse(value);
+  if (parsed.success) return parsed.data;
+  parsed.error.issues.forEach(({ path, message }) => context.addIssue({ code: "custom", path, message }));
+  return z.NEVER;
+});
+
+const projectFileV14Schema: z.ZodType<ProjectFileV14> = z
   .object({
     schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
     projectId: entityId("project"),
@@ -1093,7 +1173,7 @@ function validateSharedProjectReferences(
 }
 
 function validateProjectReferences(
-  project: ProjectFileV13,
+  project: ProjectFileV14,
   context: z.RefinementCtx,
 ): void {
   validateSharedProjectReferences(
@@ -1369,7 +1449,7 @@ function validateProjectReferences(
  * one, because values are portable project data (D40).
  */
 function validateDecisionRequests(
-  project: ProjectFileV13,
+  project: ProjectFileV14,
   context: z.RefinementCtx,
 ): void {
   addDuplicateIssues(project.decisionRequests.map(({ id }) => id), ["decisionRequests"], context);
@@ -1429,8 +1509,15 @@ function validateDecisionRequests(
   }
 }
 
+function checkSuiteKindIssue(
+  kind: CheckDefinition["kind"],
+  input: EvaluationSuite["input"]["kind"],
+): string | undefined {
+  return checkRunKindIssue(kind, input === "decision-request-revision" ? "decision" : "chat");
+}
+
 function validateEvaluationSuites(
-  project: ProjectFileV13,
+  project: ProjectFileV14,
   templates: ReadonlyMap<PromptTemplateId, PromptTemplate>,
   context: z.RefinementCtx,
 ): void {
@@ -1449,14 +1536,24 @@ function validateEvaluationSuites(
   const caseIds = new Set<string>();
   const checkIds = new Set<string>();
   const projectToolIds = new Set(project.tools.map(({ id }) => id));
+  const decisionRevisionIds = new Set(project.decisionRequestRevisions.map(({ id }) => id));
   project.evaluationSuites.forEach((suite, suiteIndex) => {
     const suitePath = ["evaluationSuites", suiteIndex];
-    requireReference(
-      project.conversationRevisions.some(({ id }) => id === suite.input.conversationRevisionId),
-      [...suitePath, "input", "conversationRevisionId"],
-      "Evaluation input references an unknown conversation revision.",
-      context,
-    );
+    if (suite.input.kind === "decision-request-revision") {
+      requireReference(
+        decisionRevisionIds.has(suite.input.decisionRequestRevisionId),
+        [...suitePath, "input", "decisionRequestRevisionId"],
+        "Evaluation input references an unknown decision request revision.",
+        context,
+      );
+    } else {
+      requireReference(
+        project.conversationRevisions.some(({ id }) => id === (suite as ChatEvaluationSuite).input.conversationRevisionId),
+        [...suitePath, "input", "conversationRevisionId"],
+        "Evaluation input references an unknown conversation revision.",
+        context,
+      );
+    }
     requireReference(
       project.connectionRequirements.some(({ id }) => id === suite.execution.target.connectionRequirementId),
       [...suitePath, "execution", "target", "connectionRequirementId"],
@@ -1467,7 +1564,7 @@ function validateEvaluationSuites(
     // deleted tool can never be saved or imported, so nothing downstream —
     // preflight, plan snapshotting, the binding join — has to invent an
     // answer for a descriptor that is not there.
-    const { toolIds } = suite.execution;
+    const toolIds = suite.input.kind === "conversation-revision" ? (suite as ChatEvaluationSuite).execution.toolIds : [];
     toolIds.forEach((id, index) =>
       requireReference(
         projectToolIds.has(id),
@@ -1482,7 +1579,7 @@ function validateEvaluationSuites(
       context,
     );
     const normalizedVariantNames = new Set<string>();
-    suite.variants.forEach((variant, variantIndex) => {
+    (suite.variants as Array<EvaluationVariant | DecisionEvaluationVariant>).forEach((variant, variantIndex) => {
       const variantPath = [...suitePath, "variants", variantIndex];
       const normalizedName = variant.name.trim().toLocaleLowerCase();
       if (normalizedVariantNames.has(normalizedName)) {
@@ -1499,7 +1596,7 @@ function validateEvaluationSuites(
     const localInputIds = new Set<string>();
     const inputNames = new Set<string>();
 
-    suite.inputBindings.forEach((binding, bindingIndex) => {
+    (suite.inputBindings as Array<EvaluationInputBinding | DecisionInputBinding>).forEach((binding, bindingIndex) => {
       const path = [...suitePath, "inputBindings", bindingIndex];
       if (inputIds.has(binding.id)) {
         context.addIssue({
@@ -1519,6 +1616,20 @@ function validateEvaluationSuites(
       }
       inputNames.add(binding.name);
 
+      if (binding.target.kind === "decision-variable") {
+        // Whether the pinned revision uses the variable is preflight's to
+        // say, as it is for a chat binding and the selected revision: the
+        // suite stays valid while its author repoints it.
+        if (isSensitiveTemplateVariableName(binding.target.variableName)) {
+          context.addIssue({
+            code: "custom",
+            path: [...path, "target", "variableName"],
+            message:
+              "Secret-like template variables cannot be evaluation inputs because case values are portable project data.",
+          });
+        }
+        return;
+      }
       const occurrences = uses.get(binding.target.templateUseId);
       requireReference(
         Boolean(occurrences?.length),
@@ -1588,6 +1699,8 @@ function validateEvaluationSuites(
           });
         }
         checkIds.add(check.checkId);
+        const issue = checkSuiteKindIssue(check.kind, suite.input.kind);
+        if (issue) context.addIssue({ code: "custom", path: [...path, "checks", checkIndex, "kind"], message: issue });
       });
     });
   });
@@ -1709,10 +1822,45 @@ function migrateV12Project(value: object): unknown {
   }
   return {
     ...project,
-    schemaVersion: PROJECT_SCHEMA_VERSION,
+    schemaVersion: 13,
     decisionRequests: [],
     decisionRequestRevisions: [],
   };
+}
+
+/**
+ * v14 adds decision suites (D44) and check vocabulary 5 (D46). A v13 project
+ * was written with vocabulary 4 and chat suites only, so one holding either is
+ * rejected rather than reinterpreted. Nothing else changes.
+ */
+function migrateV13Project(value: object): unknown {
+  const project = value as Record<string, unknown>;
+  const suites = Array.isArray(project.evaluationSuites) ? (project.evaluationSuites as unknown[]) : [];
+  suites.forEach((suite, suiteIndex) => {
+    if (isRecord(suite) && isRecord(suite.input) && suite.input.kind === "decision-request-revision") {
+      throw new ProjectValidationError([{
+        code: "custom",
+        path: ["evaluationSuites", suiteIndex, "input", "kind"],
+        message: "Decision suites require project schema v14; this document declares v13.",
+      }]);
+    }
+    const cases = isRecord(suite) && Array.isArray(suite.cases) ? (suite.cases as unknown[]) : [];
+    cases.forEach((evaluationCase, caseIndex) => {
+      const checks = isRecord(evaluationCase) && Array.isArray(evaluationCase.checks) ? (evaluationCase.checks as unknown[]) : [];
+      checks.forEach((check, checkIndex) => {
+        const parsed = authoredCheckDefinitionSchema.safeParse(check);
+        const issue = parsed.success ? checkVocabularyIssue(parsed.data, 4) : undefined;
+        if (issue) {
+          throw new ProjectValidationError([{
+            code: "custom",
+            path: ["evaluationSuites", suiteIndex, "cases", caseIndex, "checks", checkIndex],
+            message: issue,
+          }]);
+        }
+      });
+    });
+  });
+  return { ...project, schemaVersion: PROJECT_SCHEMA_VERSION };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1730,9 +1878,10 @@ export function parseProjectFile(value: unknown): ProjectFile {
     }
     if (value.schemaVersion === 10) value = migrateV10Project(value);
     if ((value as { schemaVersion: unknown }).schemaVersion === 11) value = migrateV11Project(value as object);
-    value = migrateV12Project(value as object);
+    if ((value as { schemaVersion: unknown }).schemaVersion === 12) value = migrateV12Project(value as object);
+    value = migrateV13Project(value as object);
   }
-  const parsed = projectFileV13Schema.safeParse(value);
+  const parsed = projectFileV14Schema.safeParse(value);
   if (!parsed.success) throw new ProjectValidationError(parsed.error.issues);
   return parsed.data;
 }
@@ -2206,7 +2355,7 @@ export function updateProjectDraft(
   // exposed it rather than making the project unsaveable from the tools pane.
   const draftToolIds = new Set(draft.tools.map(({ id }) => id));
   const evaluationSuites = project.evaluationSuites.map((suite) =>
-    suite.execution.toolIds.every((id) => draftToolIds.has(id))
+    !isChatEvaluationSuite(suite) || suite.execution.toolIds.every((id) => draftToolIds.has(id))
       ? suite
       : {
           ...suite,

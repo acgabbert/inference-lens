@@ -2,12 +2,17 @@ import { z } from "zod";
 
 import {
   CHECK_SCHEMA_VERSION,
+  checkRunKindIssue,
   checkVocabularyIssue,
   checkDefinitionSchema,
   checkOutcomeSummary,
-  evaluateChecksSteps,
+  decisionCheckSubject,
+  evaluateSubjectChecksSteps,
+  runCheckSubject,
 } from "./checks.ts";
-import type { CheckDefinition, CheckResult, CheckSchemaVersion } from "./checks.ts";
+import type { CheckDefinition, CheckResult, CheckSchemaVersion, CheckSubject } from "./checks.ts";
+import { DECISION_WIRE_PROTOCOLS, isDecisionInput } from "./decision.ts";
+import type { DecisionInput, DecisionRun, ResolvedDecisionTarget, ResolvedDecisionRunInput } from "./decision.ts";
 import { isSensitiveTemplateVariableName } from "./project.ts";
 import { runMetrics } from "./run-metrics.ts";
 import { finalAssistantOutput, outputCharacterCount } from "./run-output.ts";
@@ -22,6 +27,8 @@ import type {
   ConnectionProfileId,
   ConversationMessage,
   ConversationRevisionId,
+  DecisionRequestId,
+  DecisionRequestRevisionId,
   EntityId,
   EntityIdKind,
   EvaluationAssessmentId,
@@ -44,11 +51,16 @@ import type {
 } from "./run-kernel/types.ts";
 import { PROVIDER_WIRE_PROTOCOLS } from "./run-kernel/types.ts";
 
-export const EXPERIMENT_SCHEMA_VERSION = 4;
+/**
+ * Plans moved to Version 5 to add decision evaluations (D47). A Version 4 plan
+ * is a Version 5 plan that cannot be a decision evaluation, so it opens as one.
+ */
+export const EXPERIMENT_SCHEMA_VERSION = 5;
 /**
  * Results moved to Version 5 alone, to record a batch that stopped itself, and
  * to Version 6 to record the concurrency and retry policy they ran under and
- * the order their cells started in. Plans did not change shape, so they keep Version 4.
+ * the order their cells started in. A decision cell's disposition means what
+ * a chat cell's does, so decision plans did not move results past Version 6.
  */
 export const EXPERIMENT_RESULT_SCHEMA_VERSION = 6;
 /** The project-folder directory that holds experiment plans, results, and assessments. */
@@ -96,8 +108,8 @@ export interface ExperimentCellBase {
 
 export type RepeatedExperimentCell = ExperimentCellBase;
 
-export interface RepeatedExperimentPlanV4 {
-  schemaVersion: 4;
+export interface RepeatedExperimentPlan {
+  schemaVersion: typeof EXPERIMENT_SCHEMA_VERSION;
   experimentId: ExperimentId;
   kind: "repeated-request";
   createdAt: string;
@@ -150,16 +162,17 @@ export interface EvaluationExperimentCellV4 extends ExperimentCellBase {
   repetition: number;
 }
 
-export interface EvaluationExperimentPlanV4 {
-  schemaVersion: 4;
+/** A chat evaluation: a conversation revision run per case and configuration. */
+export interface EvaluationExperimentPlan {
+  schemaVersion: typeof EXPERIMENT_SCHEMA_VERSION;
   experimentId: ExperimentId;
   kind: "evaluation";
   createdAt: string;
-  /** New plans record `CHECK_SCHEMA_VERSION`; plans written by a v3 build keep 3. */
+  /** New plans record `CHECK_SCHEMA_VERSION`; plans written by an older build keep its version. */
   checkSchemaVersion: CheckSchemaVersion;
   scoringPolicy: "strict";
   repetitions: number;
-  /** See `RepeatedExperimentPlanV4.turnCeiling`; the controller reads both. */
+  /** See `RepeatedExperimentPlan.turnCeiling`; the controller reads both. */
   turnCeiling?: number;
   suite: {
     suiteId: EvaluationSuiteId;
@@ -173,13 +186,73 @@ export interface EvaluationExperimentPlanV4 {
   cells: EvaluationExperimentCellV4[];
 }
 
-export type ExperimentPlanV4 = RepeatedExperimentPlanV4 | EvaluationExperimentPlanV4;
+export interface DecisionInputBindingSnapshot {
+  id: EvaluationInputBindingId;
+  name: string;
+  target: { kind: "decision-variable"; variableName: string };
+}
+
+/** One decision case as it was sent (D47). */
+export interface DecisionEvaluationCaseSnapshot {
+  caseId: EvaluationCaseId;
+  name: string;
+  values: Record<EvaluationInputBindingId, string>;
+  checks: CheckDefinition[];
+  referenceAnswer?: string;
+  input: {
+    decisionRequestId: DecisionRequestId;
+    decisionRequestRevisionId: DecisionRequestRevisionId;
+    /** The resolved request that is sent; its key order is authored meaning. */
+    decision: DecisionInput;
+    resolvedAt: string;
+  };
+}
+
+/** A decision configuration varies only its target (D33). */
+export interface DecisionEvaluationVariantSnapshot {
+  variantId: EvaluationVariantId;
+  name: string;
+  target: ResolvedDecisionTarget;
+}
+
+/**
+ * A decision evaluation (D47): a pinned decision request revision run per
+ * case and configuration. No tools, response mode, options, or turn ceiling:
+ * a decision run is one exchange.
+ */
+export interface DecisionEvaluationExperimentPlan {
+  schemaVersion: typeof EXPERIMENT_SCHEMA_VERSION;
+  experimentId: ExperimentId;
+  kind: "decision-evaluation";
+  createdAt: string;
+  /** Decision checks exist only from vocabulary 5. */
+  checkSchemaVersion: typeof CHECK_SCHEMA_VERSION;
+  scoringPolicy: "strict";
+  repetitions: number;
+  suite: {
+    suiteId: EvaluationSuiteId;
+    name: string;
+    decisionRequestRevisionId: DecisionRequestRevisionId;
+    inputBindings: DecisionInputBindingSnapshot[];
+    cases: DecisionEvaluationCaseSnapshot[];
+    variants: DecisionEvaluationVariantSnapshot[];
+  };
+  cells: EvaluationExperimentCellV4[];
+}
+
+/** The plans a chat run executes. */
+export type ChatExperimentPlan = RepeatedExperimentPlan | EvaluationExperimentPlan;
+/** The plans that score cases with checks, of either run kind. */
+export type SuiteExperimentPlan = EvaluationExperimentPlan | DecisionEvaluationExperimentPlan;
+export type ExperimentPlan = ChatExperimentPlan | DecisionEvaluationExperimentPlan;
 export type ExperimentCell = RepeatedExperimentCell | EvaluationExperimentCellV4;
-// Source-level aliases keep feature owners compiling while they adopt the v4
-// snapshot shape. They never accept or emit a v3 artifact.
-export type RepeatedExperimentPlanV3 = RepeatedExperimentPlanV4;
-export type EvaluationExperimentPlanV3 = EvaluationExperimentPlanV4;
-export type ExperimentPlanV3 = ExperimentPlanV4;
+/** Where one configuration sends its runs, of either kind. */
+export type ExperimentTarget = ResolvedRunInput["target"] | ResolvedDecisionTarget;
+// Source-level aliases keep feature owners compiling while they adopt the
+// current names. They never accept or emit a v3 artifact.
+export type RepeatedExperimentPlanV3 = RepeatedExperimentPlan;
+export type EvaluationExperimentPlanV3 = EvaluationExperimentPlan;
+export type ExperimentPlanV3 = ExperimentPlan;
 export type ExperimentResultV3 = ExperimentResultV4;
 /** The current in-memory result. Every accepted result is read as this. */
 export type ExperimentResult = ExperimentResultV6;
@@ -353,9 +426,15 @@ export interface EvaluationCaseCounts {
   incomplete: number;
 }
 
-/** One configuration's independently-scored view of an evaluation bakeoff. */
-export interface EvaluationVariantAssessment {
-  variant: EvaluationVariantSnapshotV4;
+/** A configuration snapshot of either evaluation kind. */
+export type EvaluationVariantSnapshot = EvaluationVariantSnapshotV4 | DecisionEvaluationVariantSnapshot;
+
+/**
+ * One configuration's independently-scored view of an evaluation bakeoff.
+ * `Variant` is the plan kind's configuration snapshot; chat's is the default.
+ */
+export interface EvaluationVariantAssessment<Variant extends EvaluationVariantSnapshot = EvaluationVariantSnapshotV4> {
+  variant: Variant;
   lifecycle: ExperimentLifecycle;
   passed: boolean;
   cases: EvaluationCaseAssessment[];
@@ -386,9 +465,9 @@ export interface EvaluationVariantAssessment {
 export type EvaluationCriteriaOverride = ReadonlyMap<EvaluationCaseId, readonly CheckDefinition[]>;
 
 /** Ordered results for the immutable configuration snapshots in a plan. */
-export interface EvaluationBakeoffAssessment {
+export interface EvaluationBakeoffAssessment<Variant extends EvaluationVariantSnapshot = EvaluationVariantSnapshotV4> {
   lifecycle: ExperimentLifecycle;
-  variants: EvaluationVariantAssessment[];
+  variants: EvaluationVariantAssessment<Variant>[];
 }
 
 export type ExperimentLifecycle = "interrupted" | "completed" | "cancelled" | "stopped";
@@ -569,6 +648,22 @@ const capabilitiesSchema = z
   })
   .strict();
 
+const endpointSchema = z
+  .url()
+  .refine(
+    (value) => {
+      const endpoint = new URL(value);
+      return (
+        (endpoint.protocol === "http:" || endpoint.protocol === "https:") &&
+        !endpoint.username &&
+        !endpoint.password &&
+        !endpoint.search &&
+        !endpoint.hash
+      );
+    },
+    "Endpoint must use HTTP or HTTPS without credentials, query parameters, or fragments.",
+  );
+
 const commonInputBaseSchema = z
   .object({
     conversationId: entityId("conversation"),
@@ -577,21 +672,7 @@ const commonInputBaseSchema = z
       .object({
         profileId: entityId("profile"),
         protocol: z.enum([...PROVIDER_WIRE_PROTOCOLS, "mock"]),
-        endpoint: z
-          .url()
-          .refine(
-            (value) => {
-              const endpoint = new URL(value);
-              return (
-                (endpoint.protocol === "http:" || endpoint.protocol === "https:") &&
-                !endpoint.username &&
-                !endpoint.password &&
-                !endpoint.search &&
-                !endpoint.hash
-              );
-            },
-            "Endpoint must use HTTP or HTTPS without credentials, query parameters, or fragments.",
-          ),
+        endpoint: endpointSchema,
         model: z.string().min(1),
         capabilities: capabilitiesSchema,
       })
@@ -624,8 +705,11 @@ const planBaseSchema = z.object({
   createdAt: z.string().datetime(),
 });
 
+/** Chat plans written as Version 4 open as Version 5; `parseExperimentPlanFile` relabels them. */
+const chatPlanVersionSchema = z.union([z.literal(4), z.literal(EXPERIMENT_SCHEMA_VERSION)]);
+
 const repeatedPlanSchema = planBaseSchema.extend({
-    schemaVersion: z.literal(EXPERIMENT_SCHEMA_VERSION),
+    schemaVersion: chatPlanVersionSchema,
     kind: z.literal("repeated-request"),
     commonInput: commonInputSchema,
     turnCeiling: turnCeilingSchema.optional(),
@@ -666,10 +750,16 @@ const evaluationVariantSnapshotSchema = z.object({
   options: inferenceOptionsSchema,
 }).strict();
 
+const evaluationCellSchema = experimentCellBaseSchema.extend({
+  caseId: entityId("evaluation-case"),
+  variantId: entityId("evaluation-variant"),
+  repetition: z.number().int().positive(),
+}).strict();
+
 const evaluationPlanSchema = planBaseSchema.extend({
-  schemaVersion: z.literal(EXPERIMENT_SCHEMA_VERSION),
+  schemaVersion: chatPlanVersionSchema,
   kind: z.literal("evaluation"),
-  checkSchemaVersion: z.union([z.literal(3), z.literal(CHECK_SCHEMA_VERSION)]),
+  checkSchemaVersion: z.union([z.literal(3), z.literal(4), z.literal(CHECK_SCHEMA_VERSION)]),
   scoringPolicy: z.literal("strict"),
   repetitions: z.number().int().positive(),
   turnCeiling: turnCeilingSchema.optional(),
@@ -682,17 +772,69 @@ const evaluationPlanSchema = planBaseSchema.extend({
     cases: z.array(evaluationCaseSnapshotSchema).min(1),
     variants: z.array(evaluationVariantSnapshotSchema).min(1),
   }).strict(),
-  cells: z.array(experimentCellBaseSchema.extend({
-    caseId: entityId("evaluation-case"),
-    variantId: entityId("evaluation-variant"),
-    repetition: z.number().int().positive(),
-  }).strict()).min(1),
+  cells: z.array(evaluationCellSchema).min(1),
 }).strict();
 
-const planSchema: z.ZodType<ExperimentPlanV4> = z.discriminatedUnion("kind", [
+const decisionTargetSchema = z.object({
+  profileId: entityId("profile"),
+  protocol: z.enum(DECISION_WIRE_PROTOCOLS),
+  endpoint: endpointSchema,
+  model: z.string().min(1),
+  capabilities: capabilitiesSchema,
+}).strict();
+
+// Checked for shape only and kept as written, as decision traces are: the
+// request's key order is what was sent, and rebuilding it could reorder it.
+const decisionInputSchema = z.custom<DecisionInput>(
+  (value) => isDecisionInput(value),
+  "Expected a decision request with a state and at least one question.",
+);
+
+const decisionPlanSchema = planBaseSchema.extend({
+  schemaVersion: z.literal(EXPERIMENT_SCHEMA_VERSION),
+  kind: z.literal("decision-evaluation"),
+  checkSchemaVersion: z.literal(CHECK_SCHEMA_VERSION),
+  scoringPolicy: z.literal("strict"),
+  repetitions: z.number().int().positive(),
+  suite: z.object({
+    suiteId: entityId("evaluation-suite"),
+    name: z.string().trim().min(1),
+    decisionRequestRevisionId: entityId("decision-revision"),
+    inputBindings: z.array(z.object({
+      id: entityId("evaluation-input"),
+      name: z.string().trim().min(1),
+      target: z.object({
+        kind: z.literal("decision-variable"),
+        variableName: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/),
+      }).strict(),
+    }).strict()),
+    cases: z.array(z.object({
+      caseId: entityId("evaluation-case"),
+      name: z.string().trim().min(1),
+      values: z.record(entityId("evaluation-input"), z.string()),
+      checks: z.array(checkDefinitionSchema).min(1),
+      referenceAnswer: z.string().optional(),
+      input: z.object({
+        decisionRequestId: entityId("decision-request"),
+        decisionRequestRevisionId: entityId("decision-revision"),
+        decision: decisionInputSchema,
+        resolvedAt: z.string().datetime(),
+      }).strict(),
+    }).strict()).min(1),
+    variants: z.array(z.object({
+      variantId: entityId("evaluation-variant"),
+      name: z.string().trim().min(1),
+      target: decisionTargetSchema,
+    }).strict()).min(1),
+  }).strict(),
+  cells: z.array(evaluationCellSchema).min(1),
+}).strict();
+
+const planSchema = z.discriminatedUnion("kind", [
   repeatedPlanSchema,
   evaluationPlanSchema,
-]);
+  decisionPlanSchema,
+]) as unknown as z.ZodType<ExperimentPlan | (ChatExperimentPlan & { schemaVersion: 4 })>;
 
 // Kept only as schemas for clear rejection diagnostics when stale artifacts
 // are encountered. PR10 intentionally does not migrate pre-v3 artifacts.
@@ -814,14 +956,11 @@ function parseWith<T>(schema: z.ZodType<T>, value: unknown, label: string): T {
   return parsed.data;
 }
 
-function planInputs(plan: ExperimentPlanV4): Array<Omit<ResolvedRunInput, "runId">> {
+/** The connection each configuration reaches, in plan order. */
+function planTargets(plan: ExperimentPlan): Array<ExperimentTarget> {
   return plan.kind === "repeated-request"
-    ? [plan.commonInput]
-    : plan.suite.variants.map((variant) => ({
-        ...plan.suite.cases[0]!.input,
-        ...variant,
-        tools: plan.suite.tools,
-      }));
+    ? [plan.commonInput.target]
+    : plan.suite.variants.map(({ target }) => target);
 }
 
 /**
@@ -830,10 +969,10 @@ function planInputs(plan: ExperimentPlanV4): Array<Omit<ResolvedRunInput, "runId
  * every result before Version 6 ran at, and the default.
  */
 export function sequentialExperimentConcurrency(
-  plan: ExperimentPlanV4,
+  plan: ExperimentPlan,
 ): ExperimentConcurrency {
   const connections = new Map<string, ExperimentConnectionConcurrency>();
-  for (const { target } of planInputs(plan)) {
+  for (const target of planTargets(plan)) {
     const key = experimentConnectionKey(target);
     if (!connections.has(key)) {
       connections.set(key, { profileId: target.profileId, endpoint: target.endpoint, limit: 1 });
@@ -861,7 +1000,7 @@ export interface ExperimentConcurrencySetting {
  * overall limit, because it could never be reached.
  */
 export function resolveExperimentConcurrency(
-  plan: ExperimentPlanV4,
+  plan: ExperimentPlan,
   setting: ExperimentConcurrencySetting = {},
 ): ExperimentConcurrency {
   const maxInFlight = concurrencyLimit(setting.maxInFlight, "The overall limit");
@@ -891,12 +1030,12 @@ function concurrencyLimit(value: number | undefined, label: string): number {
 
 /** The key the scheduler and the result both use for one connection. */
 export function experimentConnectionKey(
-  target: Pick<ResolvedRunInput["target"], "profileId" | "endpoint">,
+  target: Pick<ExperimentTarget, "profileId" | "endpoint">,
 ): string {
   return `${target.profileId}\u0000${target.endpoint}`;
 }
 
-function assertNoSensitiveProviderOptions(plan: ExperimentPlanV4): void {
+function assertNoSensitiveProviderOptions(plan: ExperimentPlan): void {
   function inspect(value: JsonValue | undefined, path: string): void {
     if (!value || typeof value !== "object" || Array.isArray(value)) return;
     for (const [key, nested] of Object.entries(value)) {
@@ -909,7 +1048,12 @@ function assertNoSensitiveProviderOptions(plan: ExperimentPlanV4): void {
     }
   }
 
-  planInputs(plan).forEach((input, inputIndex) => {
+  // A decision plan carries no options or tools to hold any.
+  if (plan.kind === "decision-evaluation") return;
+  const inputs = plan.kind === "repeated-request"
+    ? [plan.commonInput]
+    : plan.suite.variants.map((variant) => ({ options: variant.options, tools: plan.suite.tools }));
+  inputs.forEach((input, inputIndex) => {
     const prefix = plan.kind === "repeated-request" ? "commonInput" : `suite.variants.${inputIndex}`;
     inspect(input.options.providerOptions, `${prefix}.options.providerOptions`);
     input.tools.forEach((tool, toolIndex) =>
@@ -918,7 +1062,7 @@ function assertNoSensitiveProviderOptions(plan: ExperimentPlanV4): void {
   });
 }
 
-function assertPlanReferences(plan: ExperimentPlanV4): void {
+function assertPlanReferences(plan: ExperimentPlan): void {
   const cellIds = new Set<string>();
   const runIds = new Set<string>();
   plan.cells.forEach((cell, index) => {
@@ -935,12 +1079,12 @@ function assertPlanReferences(plan: ExperimentPlanV4): void {
     runIds.add(cell.runId);
   });
 
-  if (plan.kind !== "evaluation") return;
+  if (plan.kind === "repeated-request") return;
   const bindingIds = new Set(plan.suite.inputBindings.map(({ id }) => id));
   if (bindingIds.size !== plan.suite.inputBindings.length) {
     throw new ExperimentValidationError("Evaluation input binding identities must be unique.");
   }
-  const cases = new Map<EvaluationCaseId, EvaluationCaseSnapshotV4>();
+  const cases = new Set<EvaluationCaseId>();
   plan.suite.cases.forEach((evaluationCase) => {
     if (cases.has(evaluationCase.caseId)) {
       throw new ExperimentValidationError(`Evaluation repeats case ${evaluationCase.caseId}.`);
@@ -949,17 +1093,21 @@ function assertPlanReferences(plan: ExperimentPlanV4): void {
     if (valueIds.length !== bindingIds.size || valueIds.some((id) => !bindingIds.has(id as EvaluationInputBindingId))) {
       throw new ExperimentValidationError(`Evaluation case ${evaluationCase.caseId} must snapshot exactly one value for every input binding.`);
     }
-    if (evaluationCase.input.conversationRevisionId !== plan.suite.conversationRevisionId) {
-      throw new ExperimentValidationError(`Evaluation case ${evaluationCase.caseId} resolves a different conversation revision.`);
+    if (plan.kind === "evaluation"
+      ? (evaluationCase.input as EvaluationCaseSnapshotV4["input"]).conversationRevisionId !== plan.suite.conversationRevisionId
+      : (evaluationCase.input as DecisionEvaluationCaseSnapshot["input"]).decisionRequestRevisionId !== plan.suite.decisionRequestRevisionId) {
+      throw new ExperimentValidationError(
+        `Evaluation case ${evaluationCase.caseId} resolves a different ${plan.kind === "evaluation" ? "conversation" : "decision request"} revision.`,
+      );
     }
-    cases.set(evaluationCase.caseId, evaluationCase);
+    cases.add(evaluationCase.caseId);
   });
-  const variants = new Map<EvaluationVariantId, EvaluationVariantSnapshotV4>();
+  const variants = new Set<EvaluationVariantId>();
   plan.suite.variants.forEach((variant) => {
     if (variants.has(variant.variantId)) {
       throw new ExperimentValidationError(`Evaluation repeats configuration ${variant.variantId}.`);
     }
-    variants.set(variant.variantId, variant);
+    variants.add(variant.variantId);
   });
   if (plan.cells.length !== plan.suite.cases.length * plan.suite.variants.length * plan.repetitions) {
     throw new ExperimentValidationError("Evaluation cells must include every planned case, configuration, and repetition exactly once.");
@@ -978,7 +1126,7 @@ function assertPlanReferences(plan: ExperimentPlanV4): void {
 
 function assertResultReferences(
   result: ExperimentResultV6,
-  plan: ExperimentPlanV4,
+  plan: ExperimentPlan,
 ): void {
   if (result.experimentId !== plan.experimentId) {
     throw new ExperimentValidationError("Experiment result belongs to a different experiment.");
@@ -1044,7 +1192,7 @@ function assertResultReferences(
  * connection the started cells are a prefix of its cells, in rising start
  * order. Different connections are independent of each other.
  */
-function assertConnectionStartOrder(result: ExperimentResultV6, plan: ExperimentPlanV4): void {
+function assertConnectionStartOrder(result: ExperimentResultV6, plan: ExperimentPlan): void {
   const connectionOf = cellConnectionKeys(plan);
   const lastStart = new Map<string, number>();
   const unstarted = new Set<string>();
@@ -1063,12 +1211,12 @@ function assertConnectionStartOrder(result: ExperimentResultV6, plan: Experiment
   }
 }
 
-function cellConnectionKeys(plan: ExperimentPlanV4): (cellId: ExperimentCellId) => string {
+function cellConnectionKeys(plan: ExperimentPlan): (cellId: ExperimentCellId) => string {
   if (plan.kind === "repeated-request") {
     const key = experimentConnectionKey(plan.commonInput.target);
     return () => key;
   }
-  const byVariant = new Map(
+  const byVariant = new Map<EvaluationVariantId, string>(
     plan.suite.variants.map((variant) => [variant.variantId, experimentConnectionKey(variant.target)]),
   );
   const byCell = new Map(plan.cells.map((cell) => [cell.cellId, byVariant.get(cell.variantId)!]));
@@ -1077,7 +1225,7 @@ function cellConnectionKeys(plan: ExperimentPlanV4): (cellId: ExperimentCellId) 
 
 function assertConcurrency(
   concurrency: ExperimentConcurrency,
-  plan: ExperimentPlanV4,
+  plan: ExperimentPlan,
 ): void {
   const expected = sequentialExperimentConcurrency(plan).connections.map(experimentConnectionKey);
   const actual = concurrency.connections.map(experimentConnectionKey);
@@ -1100,7 +1248,7 @@ function assertConcurrency(
  */
 function upgradeSequentialResult(
   result: ExperimentResultV5,
-  plan: ExperimentPlanV4,
+  plan: ExperimentPlan,
 ): ExperimentResultV6 {
   let started = 0;
   const cells = result.cells.map((cell): ExperimentCellResultV6 =>
@@ -1182,32 +1330,40 @@ export function experimentArtifactIdentity(fileName: string): ExperimentArtifact
   };
 }
 
-/** An older vocabulary rejects newer constructs rather than acquiring them. */
-function assertPlanVocabulary(plan: ExperimentPlanV4): void {
-  if (plan.kind !== "evaluation") return;
+/**
+ * An older vocabulary rejects newer constructs rather than acquiring them, and
+ * each run kind refuses the checks that read the other kind's evidence (D46).
+ */
+function assertPlanVocabulary(plan: ExperimentPlan): void {
+  if (plan.kind === "repeated-request") return;
+  const runKind = plan.kind === "evaluation" ? "chat" : "decision";
   for (const evaluationCase of plan.suite.cases) {
     for (const check of evaluationCase.checks) {
-      const issue = checkVocabularyIssue(check, plan.checkSchemaVersion);
+      const issue = checkVocabularyIssue(check, plan.checkSchemaVersion) ?? checkRunKindIssue(check.kind, runKind);
       if (issue) throw new ExperimentValidationError(`Invalid experiment plan at case ${evaluationCase.caseId}, check ${check.checkId}: ${issue}`);
     }
   }
 }
 
-export function parseExperimentPlanFile(value: unknown): ExperimentPlanV4 {
+export function parseExperimentPlanFile(value: unknown): ExperimentPlan {
   const version = unsupportedPlanVersionSchema.safeParse(value);
-  if (version.success && version.data.schemaVersion !== EXPERIMENT_SCHEMA_VERSION) {
+  if (version.success && version.data.schemaVersion !== 4 && version.data.schemaVersion !== EXPERIMENT_SCHEMA_VERSION) {
     throw new ExperimentValidationError(
-      `Experiment plan schema Version ${version.data.schemaVersion} is unsupported; expected Version ${EXPERIMENT_SCHEMA_VERSION}.`,
+      `Experiment plan schema Version ${version.data.schemaVersion} is unsupported; expected Version 4 or ${EXPERIMENT_SCHEMA_VERSION}.`,
     );
   }
-  const plan = parseWith(planSchema, value, "experiment plan");
+  const parsed = parseWith(planSchema, value, "experiment plan");
+  // A Version 4 plan is already its Version 5 equivalent; only the label moves.
+  const plan: ExperimentPlan = parsed.schemaVersion === EXPERIMENT_SCHEMA_VERSION
+    ? parsed as ExperimentPlan
+    : { ...parsed, schemaVersion: EXPERIMENT_SCHEMA_VERSION } as ExperimentPlan;
   assertPlanVocabulary(plan);
   assertPlanReferences(plan);
   assertNoSensitiveProviderOptions(plan);
   return plan;
 }
 
-export function parseExperimentPlanJson(contents: string): ExperimentPlanV4 {
+export function parseExperimentPlanJson(contents: string): ExperimentPlan {
   try {
     return parseExperimentPlanFile(JSON.parse(contents));
   } catch (error) {
@@ -1218,7 +1374,7 @@ export function parseExperimentPlanJson(contents: string): ExperimentPlanV4 {
 
 export function parseExperimentResultFile(
   value: unknown,
-  plan: ExperimentPlanV4,
+  plan: ExperimentPlan,
 ): ExperimentResultV6 {
   const parsedPlan = parseExperimentPlanFile(plan);
   const version = unsupportedPlanVersionSchema.safeParse(value);
@@ -1254,7 +1410,7 @@ export function parseExperimentResultFile(
 
 export function parseExperimentResultJson(
   contents: string,
-  plan: ExperimentPlanV4,
+  plan: ExperimentPlan,
 ): ExperimentResultV6 {
   let value: unknown;
   try {
@@ -1265,7 +1421,7 @@ export function parseExperimentResultJson(
   return parseExperimentResultFile(value, plan);
 }
 
-export function serializeExperimentPlan(plan: ExperimentPlanV4): string {
+export function serializeExperimentPlan(plan: ExperimentPlan): string {
   return serializeParsedExperimentPlan(parseExperimentPlanFile(plan));
 }
 
@@ -1274,19 +1430,19 @@ export function serializeExperimentPlan(plan: ExperimentPlanV4): string {
  * This is useful to execution owners that must validate an ad hoc plan before
  * starting, but must not re-parse the full frozen input for every cell.
  */
-export function serializeParsedExperimentPlan(plan: ExperimentPlanV4): string {
+export function serializeParsedExperimentPlan(plan: ExperimentPlan): string {
   return `${JSON.stringify(stableJsonValue(plan), null, 2)}\n`;
 }
 
 export function serializeExperimentResult(
   result: ExperimentResultInput,
-  plan: ExperimentPlanV4,
+  plan: ExperimentPlan,
 ): string {
   return `${JSON.stringify(stableJsonValue(parseExperimentResultFile(result, plan)), null, 2)}\n`;
 }
 
 /** The cost bound this plan runs under, whether or not it recorded one. */
-export function experimentTurnCeiling(plan: ExperimentPlanV4): number {
+export function experimentTurnCeiling(plan: ChatExperimentPlan): number {
   return plan.turnCeiling ?? DEFAULT_EXPERIMENT_TURN_CEILING;
 }
 
@@ -1299,7 +1455,8 @@ export function experimentTurnCeiling(plan: ExperimentPlanV4): number {
  * starting? An evaluation plan may expose a different set per case, so the
  * union is what has to be satisfiable, not any one case's selection.
  */
-export function experimentExposedTools(plan: ExperimentPlanV4): ToolDefinition[] {
+export function experimentExposedTools(plan: ExperimentPlan): ToolDefinition[] {
+  if (plan.kind === "decision-evaluation") return [];
   const inputs = plan.kind === "repeated-request"
     ? [plan.commonInput]
     : [{ tools: plan.suite.tools }];
@@ -1312,10 +1469,13 @@ export function experimentExposedTools(plan: ExperimentPlanV4): ToolDefinition[]
 
 /** Materializes exactly one preallocated repetition without changing its frozen input. */
 export function materializeExperimentCellInput(
-  plan: ExperimentPlanV4,
+  plan: ChatExperimentPlan,
   cellId: ExperimentCellId,
 ): ResolvedRunInput {
   const parsed = parseExperimentPlanFile(plan);
+  if (parsed.kind === "decision-evaluation") {
+    throw new ExperimentValidationError("A decision plan's cells are decision runs; materialize them with materializeParsedDecisionCellInput.");
+  }
   const cell = parsed.cells.find((candidate) => candidate.cellId === cellId);
   if (!cell) throw new ExperimentValidationError(`Unknown experiment cell ${cellId}.`);
   return materializeParsedExperimentCellInput(parsed, cell);
@@ -1327,7 +1487,7 @@ export function materializeExperimentCellInput(
  * or parse first.
  */
 export function materializeParsedExperimentCellInput(
-  plan: ExperimentPlanV4,
+  plan: ChatExperimentPlan,
   cell: ExperimentCell,
 ): ResolvedRunInput {
   const plannedCell = plan.cells.find((candidate) => candidate.cellId === cell.cellId);
@@ -1345,9 +1505,34 @@ export function materializeParsedExperimentCellInput(
   return { ...evaluationCase.input, ...variant, tools: plan.suite.tools, runId: plannedCell.runId };
 }
 
+/**
+ * Materializes one decision cell from a plan already accepted by
+ * `parseExperimentPlanFile`: the frozen request its case resolved, sent to its
+ * configuration's target.
+ */
+export function materializeParsedDecisionCellInput(
+  plan: DecisionEvaluationExperimentPlan,
+  cell: ExperimentCell,
+): ResolvedDecisionRunInput {
+  const plannedCell = plan.cells.find((candidate) => candidate.cellId === cell.cellId);
+  if (!plannedCell || plannedCell.runId !== cell.runId) {
+    throw new ExperimentValidationError(`Unknown experiment cell ${cell.cellId}.`);
+  }
+  const evaluationCase = plan.suite.cases.find(({ caseId }) => caseId === plannedCell.caseId);
+  if (!evaluationCase) throw new ExperimentValidationError(`Unknown evaluation case ${plannedCell.caseId}.`);
+  const variant = plan.suite.variants.find(({ variantId }) => variantId === plannedCell.variantId);
+  if (!variant) throw new ExperimentValidationError(`Unknown evaluation configuration ${plannedCell.variantId}.`);
+  return {
+    runId: plannedCell.runId,
+    resolvedAt: evaluationCase.input.resolvedAt,
+    target: variant.target,
+    decision: evaluationCase.input.decision,
+  };
+}
+
 /** A plan with no result survived an interrupted application session. */
 export function experimentLifecycle(
-  _plan: ExperimentPlanV4,
+  _plan: ExperimentPlan,
   result?: ExperimentResultInput,
 ): ExperimentLifecycle {
   return result ? result.status : "interrupted";
@@ -1393,13 +1578,77 @@ export function rateLimitRetryCount(state: RunState): number {
       status === "failed" && error?.code === "provider_error" && error.providerStatus === 429).length, 0);
 }
 
+/** Whether a decision run failed because the provider answered its last attempt with 429. */
+function isRateLimitedDecisionRun(run: DecisionRun): boolean {
+  return run.status.kind === "failed" &&
+    run.status.error.code === "provider_error" &&
+    run.status.error.providerStatus === 429;
+}
+
+/**
+ * What scoring reads from one repetition, whichever kind of run it was (D50).
+ * Classification, counting, and scoring then happen once, so rules such as a
+ * 429 counting as missing evidence cannot drift between the kinds.
+ */
+export interface RepetitionEvidence {
+  /** `pending` for a run that never reached a terminal status. */
+  status: TerminalRunStatus["kind"] | "pending";
+  /** The run failed because the provider answered 429. */
+  rateLimited: boolean;
+  /** Attempts the provider answered with 429 and that were then retried. */
+  rateLimitRetries: number;
+  /** Absent where the run or provider never reported the quantity. */
+  metrics: { totalDurationMs?: number; totalTokens?: number; outputTokens?: number };
+  subject: CheckSubject;
+}
+
+function terminalKind(status: RunState["status"] | DecisionRun["status"]): RepetitionEvidence["status"] {
+  return status.kind === "completed" || status.kind === "failed" || status.kind === "cancelled"
+    ? status.kind
+    : "pending";
+}
+
+export function repetitionEvidence(run: RunState | DecisionRun): RepetitionEvidence {
+  if ("kind" in run && run.kind === "decision") {
+    const startedAt = run.startedAt === undefined ? Number.NaN : Date.parse(run.startedAt);
+    const endedAt = run.endedAt === undefined ? Number.NaN : Date.parse(run.endedAt);
+    // Only a completed attempt carries usage; a failed one reported none.
+    const usage = run.attempts.findLast(({ status }) => status === "completed")?.result?.usage;
+    return {
+      status: terminalKind(run.status),
+      rateLimited: isRateLimitedDecisionRun(run),
+      rateLimitRetries: run.attempts.slice(0, -1).filter(({ status, error }) =>
+        status === "failed" && error?.code === "provider_error" && error.providerStatus === 429).length,
+      metrics: {
+        ...(Number.isFinite(startedAt) && Number.isFinite(endedAt) ? { totalDurationMs: endedAt - startedAt } : {}),
+        ...(usage?.totalTokens === undefined ? {} : { totalTokens: usage.totalTokens }),
+        ...(usage?.outputTokens === undefined ? {} : { outputTokens: usage.outputTokens }),
+      },
+      subject: decisionCheckSubject(run),
+    };
+  }
+  const state = run as RunState;
+  const metrics = runMetrics(state);
+  return {
+    status: terminalKind(state.status),
+    rateLimited: isRateLimitedRun(state),
+    rateLimitRetries: rateLimitRetryCount(state),
+    metrics: {
+      ...(metrics.totalDurationMs === undefined ? {} : { totalDurationMs: metrics.totalDurationMs }),
+      ...(metrics.usage.totalTokens === undefined ? {} : { totalTokens: metrics.usage.totalTokens }),
+      ...(metrics.usage.outputTokens === undefined ? {} : { outputTokens: metrics.usage.outputTokens }),
+    },
+    subject: runCheckSubject(state),
+  };
+}
+
 /**
  * Derives summary evidence from immutable artifacts and ordinary run states.
  * Missing states are explicitly represented rather than treated as zero-valued
  * metrics or successful repetitions.
  */
 export function repeatedExperimentAggregate(
-  plan: RepeatedExperimentPlanV4,
+  plan: RepeatedExperimentPlan,
   result: ExperimentResultInput | undefined,
   states: ReadonlyMap<RunId, RunState> = new Map(),
 ): RepeatedExperimentAggregate {
@@ -1490,7 +1739,7 @@ export function repeatedExperimentAggregate(
  * pass only when all required lower-level evidence passes.
  */
 export function evaluationExperimentAggregate(
-  plan: EvaluationExperimentPlanV4,
+  plan: EvaluationExperimentPlan,
   result: ExperimentResultInput | undefined,
   states: ReadonlyMap<RunId, RunState> = new Map(),
 ): EvaluationBakeoffAssessment {
@@ -1513,12 +1762,24 @@ export function evaluationExperimentAggregate(
  * that does not opt in cannot be shown a reinterpretation by accident.
  */
 export function evaluationParsedExperimentAggregate(
-  plan: EvaluationExperimentPlanV4,
+  plan: EvaluationExperimentPlan,
   result: ExperimentResultInput | undefined,
-  states: ReadonlyMap<RunId, RunState> = new Map(),
+  states?: ReadonlyMap<RunId, RunState>,
   criteria?: EvaluationCriteriaOverride,
-): EvaluationBakeoffAssessment {
-  const steps = evaluationParsedExperimentAggregateSteps(plan, result, states, criteria);
+): EvaluationBakeoffAssessment;
+export function evaluationParsedExperimentAggregate(
+  plan: DecisionEvaluationExperimentPlan,
+  result: ExperimentResultInput | undefined,
+  states?: ReadonlyMap<RunId, DecisionRun>,
+  criteria?: EvaluationCriteriaOverride,
+): EvaluationBakeoffAssessment<DecisionEvaluationVariantSnapshot>;
+export function evaluationParsedExperimentAggregate(
+  plan: SuiteExperimentPlan,
+  result: ExperimentResultInput | undefined,
+  states: ReadonlyMap<RunId, RunState | DecisionRun> = new Map(),
+  criteria?: EvaluationCriteriaOverride,
+): EvaluationBakeoffAssessment<EvaluationVariantSnapshot> {
+  const steps = scoreSuiteExperimentSteps(plan, result, states, criteria);
   let next = steps.next();
   while (!next.done) next = steps.next();
   return next.value;
@@ -1527,12 +1788,37 @@ export function evaluationParsedExperimentAggregate(
 /** Same derivation as the synchronous API, suspended after each check and cell.
  * The generator owns only local work; abandoning it cannot mutate evidence.
  * Consumers must publish only the returned complete aggregate. */
-export function* evaluationParsedExperimentAggregateSteps(
-  plan: EvaluationExperimentPlanV4,
+export function evaluationParsedExperimentAggregateSteps(
+  plan: EvaluationExperimentPlan,
   result: ExperimentResultInput | undefined,
-  states: ReadonlyMap<RunId, RunState> = new Map(),
+  states?: ReadonlyMap<RunId, RunState>,
   criteria?: EvaluationCriteriaOverride,
-): Generator<void, EvaluationBakeoffAssessment> {
+): Generator<void, EvaluationBakeoffAssessment>;
+export function evaluationParsedExperimentAggregateSteps(
+  plan: DecisionEvaluationExperimentPlan,
+  result: ExperimentResultInput | undefined,
+  states?: ReadonlyMap<RunId, DecisionRun>,
+  criteria?: EvaluationCriteriaOverride,
+): Generator<void, EvaluationBakeoffAssessment<DecisionEvaluationVariantSnapshot>>;
+export function evaluationParsedExperimentAggregateSteps(
+  plan: SuiteExperimentPlan,
+  result: ExperimentResultInput | undefined,
+  states: ReadonlyMap<RunId, RunState | DecisionRun> = new Map(),
+  criteria?: EvaluationCriteriaOverride,
+): Generator<void, EvaluationBakeoffAssessment<EvaluationVariantSnapshot>> {
+  return scoreSuiteExperimentSteps(plan, result, states, criteria);
+}
+
+/**
+ * Scores either evaluation kind. Each repetition is projected into
+ * `RepetitionEvidence` first (D50), so nothing below branches on the kind.
+ */
+function* scoreSuiteExperimentSteps(
+  plan: SuiteExperimentPlan,
+  result: ExperimentResultInput | undefined,
+  states: ReadonlyMap<RunId, RunState | DecisionRun>,
+  criteria?: EvaluationCriteriaOverride,
+): Generator<void, EvaluationBakeoffAssessment<EvaluationVariantSnapshot>> {
   const parsed = plan;
   const parsedResult = result ? parseExperimentResultFile(result, parsed) : undefined;
   const dispositions = new Map(parsedResult?.cells.map((cell) => [cell.cellId, cell]));
@@ -1548,8 +1834,8 @@ export function* evaluationParsedExperimentAggregateSteps(
     return [evaluationCase.caseId, replacement ?? evaluationCase.checks] as const;
   }));
   const lifecycle = experimentLifecycle(parsed, parsedResult);
-  const variants: EvaluationVariantAssessment[] = [];
-  for (const variant of parsed.suite.variants) {
+  const variants: EvaluationVariantAssessment<EvaluationVariantSnapshot>[] = [];
+  for (const variant of parsed.suite.variants as readonly EvaluationVariantSnapshot[]) {
     const assessments = new Map<EvaluationCaseId, EvaluationRepetitionAssessment[]>();
     const repetitionCounts: Record<EvaluationRepetitionClassification, number> = {
       passed: 0, "check-failed": 0, "not-evaluated": 0, "run-failed": 0, "rate-limited": 0,
@@ -1565,30 +1851,31 @@ export function* evaluationParsedExperimentAggregateSteps(
       const caseChecks = effectiveChecks.get(cell.caseId)!;
       const disposition = dispositions.get(cell.cellId);
       const state = states.get(cell.runId);
+      const evidence = state ? repetitionEvidence(state) : undefined;
       checkCounts.total += caseChecks.length;
       let classification: EvaluationRepetitionClassification;
       let checks: CheckResult[] = [];
       if (disposition?.status === "not-run") {
         classification = "not-run";
         checkCounts.notEvaluated += caseChecks.length;
-      } else if (!state) {
+      } else if (!evidence) {
         classification = parsedResult ? "trace-unavailable" : "not-evaluated";
         checkCounts.notEvaluated += caseChecks.length;
-      } else if (isRateLimitedRun(state)) {
+      } else if (evidence.rateLimited) {
         // The run ended before a final answer, so its checks have nothing to read.
         classification = "rate-limited";
         checkCounts.notEvaluated += caseChecks.length;
-      } else if (state.status.kind === "failed") {
+      } else if (evidence.status === "failed") {
         classification = "run-failed";
-        checks = yield* evaluateChecksSteps(state, caseChecks);
-      } else if (state.status.kind === "cancelled") {
+        checks = yield* evaluateSubjectChecksSteps(evidence.subject, caseChecks);
+      } else if (evidence.status === "cancelled") {
         classification = "cancelled";
-        checks = yield* evaluateChecksSteps(state, caseChecks);
-      } else if (state.status.kind !== "completed") {
+        checks = yield* evaluateSubjectChecksSteps(evidence.subject, caseChecks);
+      } else if (evidence.status !== "completed") {
         classification = "not-evaluated";
         checkCounts.notEvaluated += caseChecks.length;
       } else {
-        checks = yield* evaluateChecksSteps(state, caseChecks);
+        checks = yield* evaluateSubjectChecksSteps(evidence.subject, caseChecks);
         const summary = checkOutcomeSummary(checks);
         classification = summary.notEvaluated > 0 ? "not-evaluated" : summary.failed > 0 ? "check-failed" : "passed";
       }
@@ -1598,14 +1885,14 @@ export function* evaluationParsedExperimentAggregateSteps(
         checkCounts.failed += summary.failed;
         checkCounts.notEvaluated += summary.notEvaluated;
       }
-      if (state && ["completed", "failed", "cancelled"].includes(state.status.kind)) {
-        const metrics = runMetrics(state);
-        totalTokenValues.push(metrics.usage.totalTokens);
-        outputTokenValues.push(metrics.usage.outputTokens);
-        if (state.status.kind === "completed" && metrics.totalDurationMs !== undefined) durations.push(metrics.totalDurationMs);
+      if (evidence && evidence.status !== "pending") {
+        const { metrics } = evidence;
+        totalTokenValues.push(metrics.totalTokens);
+        outputTokenValues.push(metrics.outputTokens);
+        if (evidence.status === "completed" && metrics.totalDurationMs !== undefined) durations.push(metrics.totalDurationMs);
       }
       repetitionCounts[classification] += 1;
-      if (state && rateLimitRetryCount(state) > 0) retriedAfterRateLimit += 1;
+      if (evidence && evidence.rateLimitRetries > 0) retriedAfterRateLimit += 1;
       assessments.set(cell.caseId, [...(assessments.get(cell.caseId) ?? []), {
         cellId: cell.cellId, runId: cell.runId, repetition: cell.repetition, classification, checks,
       }]);
@@ -1641,10 +1928,10 @@ export function* evaluationParsedExperimentAggregateSteps(
   return { lifecycle, variants };
 }
 
-export function evaluationVariantAssessment(
-  aggregate: EvaluationBakeoffAssessment,
+export function evaluationVariantAssessment<Variant extends EvaluationVariantSnapshot>(
+  aggregate: EvaluationBakeoffAssessment<Variant>,
   variantId: EvaluationVariantId,
-): EvaluationVariantAssessment {
+): EvaluationVariantAssessment<Variant> {
   const assessment = aggregate.variants.find((item) => item.variant.variantId === variantId);
   if (!assessment) throw new ExperimentValidationError(`Unknown evaluation configuration ${variantId}.`);
   return assessment;

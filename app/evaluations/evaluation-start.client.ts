@@ -24,6 +24,7 @@ import type {
 } from "../../packages/runner/src/evaluation-start.ts";
 import { evaluationBatchLimitMessage } from "./evaluation-batch.client.ts";
 import { revisionChoice } from "./revision-choice.client.ts";
+import { isChatEvaluationSuite } from "../../packages/core/src/evaluation-suites.ts";
 
 export interface EvaluationStartReadinessInput {
   projectOpen: boolean;
@@ -147,7 +148,9 @@ export interface EvaluationWorkspaceExecution {
 export function evaluationWorkspaceExecution(
   input: EvaluationWorkspaceExecutionInput,
 ): EvaluationWorkspaceExecution {
-  const suite = input.project?.evaluationSuites.find(({ id }) => id === input.suiteId);
+  const found = input.project?.evaluationSuites.find(({ id }) => id === input.suiteId);
+  // Decision suites start through their own path once they can run (D49).
+  const suite = found && isChatEvaluationSuite(found) ? found : undefined;
   const targets = input.project && suite
     ? resolveEvaluationLocalTargets({
         project: input.project,
@@ -207,7 +210,8 @@ export interface EvaluationStartDraftInput extends EvaluationStartPlanInput {
 export function createEvaluationStartDraft(input: EvaluationStartDraftInput) {
   const suite = input.project.evaluationSuites.find(({ id }) => id === input.suiteId);
   if (!suite) throw new Error("The selected evaluation suite no longer exists.");
-  const revision = input.project.conversationRevisions.find(({ id }) => id === suite?.input.conversationRevisionId);
+  if (!isChatEvaluationSuite(suite)) throw new Error("Decision suites cannot be run by this build yet.");
+  const revision = input.project.conversationRevisions.find(({ id }) => id === suite.input.conversationRevisionId);
   if (!revision) throw new Error("The selected conversation revision no longer exists.");
   // Confirmation names the revision the same way the selector and preflight did,
   // so the author confirms something they recognize rather than a bare timestamp.

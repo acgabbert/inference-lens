@@ -7,9 +7,9 @@ import {
   rateLimitRetries,
 } from "../../core/src/experiment.ts";
 import type {
+  ChatExperimentPlan,
   ExperimentCell,
   ExperimentConcurrencySetting,
-  ExperimentPlanV4,
   ExperimentResult,
 } from "../../core/src/experiment.ts";
 import type { ConnectionRequirement, ProjectFile } from "../../core/src/project.ts";
@@ -191,7 +191,7 @@ export interface HeadlessExperimentRecord {
  */
 export async function driveHeadlessExperiment(input: {
   folder: NodeProjectFolder;
-  plan: ExperimentPlanV4;
+  plan: ChatExperimentPlan;
   toolBindings: readonly ToolBinding[];
   tools: readonly ToolDefinition[];
   connections: readonly HeadlessConnection[];

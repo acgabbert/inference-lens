@@ -13,7 +13,7 @@ import type { ProjectWorkspaceHandle } from "../app/project-workspace.client.ts"
 
 function plan(count: number): RepeatedExperimentPlanV3 {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     experimentId: "experiment_controller",
     kind: "repeated-request",
     createdAt: "2026-07-30T12:00:00.000Z",

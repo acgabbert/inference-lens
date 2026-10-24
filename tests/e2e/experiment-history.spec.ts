@@ -14,7 +14,7 @@ import { stubProjectDirectory } from "./support";
 function interruptedPlan(): RepeatedExperimentPlanV3 {
   const createdAt = "2026-07-31T12:00:00.000Z";
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     experimentId: createEntityId("experiment", "browser-history"),
     kind: "repeated-request",
     createdAt,
@@ -51,7 +51,7 @@ function interruptedEvaluationPlan(): EvaluationExperimentPlanV3 {
   const repeated = interruptedPlan();
   const caseId = createEntityId("evaluation-case", "browser-history");
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     experimentId: createEntityId("experiment", "evaluation-browser-history"),
     kind: "evaluation",
     createdAt: "2026-07-31T12:30:00.000Z",

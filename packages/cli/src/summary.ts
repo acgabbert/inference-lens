@@ -1,7 +1,7 @@
 import { isRateLimitedRun } from "../../core/src/experiment.ts";
 import type {
   EvaluationBakeoffAssessment,
-  EvaluationExperimentPlanV4,
+  EvaluationExperimentPlan,
   EvaluationRepetitionClassification,
   ExperimentConcurrency,
   ExperimentLifecycle,
@@ -11,7 +11,7 @@ import type {
   ExperimentStop,
   ExperimentUsageAggregate,
   RepeatedExperimentAggregate,
-  RepeatedExperimentPlanV4,
+  RepeatedExperimentPlan,
 } from "../../core/src/experiment.ts";
 import type { RunId, RunState } from "../../core/src/run-kernel/index.ts";
 
@@ -121,7 +121,7 @@ export function exitCodeForVerdict(verdict: HeadlessVerdict): number {
 }
 
 export function createHeadlessSummary(input: {
-  plan: EvaluationExperimentPlanV4;
+  plan: EvaluationExperimentPlan;
   scope: HeadlessScope;
   result?: ExperimentResult;
   assessment: EvaluationBakeoffAssessment;
@@ -355,7 +355,7 @@ function repetitionStatus(
 }
 
 export function createHeadlessRepeatedSummary(input: {
-  plan: RepeatedExperimentPlanV4;
+  plan: RepeatedExperimentPlan;
   result?: ExperimentResult;
   aggregate: RepeatedExperimentAggregate;
   states: ReadonlyMap<RunId, RunState>;

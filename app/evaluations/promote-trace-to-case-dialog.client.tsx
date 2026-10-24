@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { evaluationCasePromotionCompatibility } from "../../packages/core/src/evaluation-case-promotion.ts";
+import { isChatEvaluationSuite } from "../../packages/core/src/evaluation-suites.ts";
 import type { ProjectFile } from "../../packages/core/src/project.ts";
 import type { EvaluationSuiteId, RunTrace } from "../../packages/core/src/run-kernel/index.ts";
 
@@ -17,6 +18,7 @@ export function PromoteTraceToCaseDialog({
   onPromote(suiteId: EvaluationSuiteId, name: string): void;
 }) {
   const compatible = useMemo(() => project.evaluationSuites.flatMap((suite) => {
+    if (!isChatEvaluationSuite(suite)) return [];
     const result = evaluationCasePromotionCompatibility(suite, trace);
     return result.ok ? [{ suite, values: result.values }] : [];
   }), [project, trace]);

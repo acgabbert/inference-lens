@@ -4,9 +4,9 @@ import {
   resolveEvaluationLocalTargets,
 } from "../../runner/src/evaluation-start.ts";
 import type { EvaluationLocalProfile } from "../../runner/src/evaluation-start.ts";
-import { evaluationSuitePreflight, resolveEvaluationVariant } from "../../core/src/evaluation-suites.ts";
+import { evaluationSuitePreflight, isChatEvaluationSuite, resolveEvaluationVariant } from "../../core/src/evaluation-suites.ts";
 import { evaluationParsedExperimentAggregate } from "../../core/src/experiment.ts";
-import type { EvaluationExperimentPlanV4 } from "../../core/src/experiment.ts";
+import type { EvaluationExperimentPlan } from "../../core/src/experiment.ts";
 import type { EvaluationSuite, ProjectFile } from "../../core/src/project.ts";
 import {
   driveHeadlessExperiment,
@@ -160,7 +160,12 @@ async function runHeadlessEvaluation(
 async function prepareHeadlessEvaluation(options: HeadlessEvaluationOptions) {
   const folder = await openNodeProjectFolder(options.projectDirectory);
   const { project } = folder;
-  const suite = selectSuite(project, options.suite);
+  const selected = selectSuite(project, options.suite);
+  // `run` dispatches on the suite's kind once decision suites can run (D36).
+  if (!isChatEvaluationSuite(selected)) {
+    throw new HeadlessSetupError(`Suite "${selected.name}" is a decision suite, which this build cannot run yet.`);
+  }
+  const suite = selected;
   const revisionId = suite.input.conversationRevisionId;
   const selectedCaseIds = selectSuiteItems(suite, suite.cases, options.cases, "case");
   const selectedVariantIds = selectSuiteItems(suite, suite.variants, options.configurations, "configuration");
@@ -205,7 +210,7 @@ async function prepareHeadlessEvaluation(options: HeadlessEvaluationOptions) {
     mappedProfileIds,
     bindingForTool,
   });
-  const plan: EvaluationExperimentPlanV4 = draft.plan;
+  const plan: EvaluationExperimentPlan = draft.plan;
   return {
     folder,
     plan,

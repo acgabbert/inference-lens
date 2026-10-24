@@ -1,4 +1,4 @@
-import type { EvaluationCase, EvaluationSuite } from "./evaluation-suites.ts";
+import type { ChatEvaluationSuite, EvaluationCase } from "./evaluation-suites.ts";
 import { ProjectValidationError, resolveProjectRevision } from "./project.ts";
 import type {
   ProjectConversationRevision,
@@ -94,7 +94,7 @@ function unresolvableReason(cause: unknown): string {
 export function resolveEvaluationCase(
   project: Pick<ProjectFile, "promptTemplates">,
   revision: ProjectConversationRevision,
-  suite: Pick<EvaluationSuite, "inputBindings">,
+  suite: Pick<ChatEvaluationSuite, "inputBindings">,
   evaluationCase: Pick<EvaluationCase, "values">,
 ): EvaluationCaseResolution {
   const templatesById = new Map(project.promptTemplates.map((template) => [template.id, template]));

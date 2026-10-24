@@ -1,6 +1,6 @@
 # System One protocol plan
 
-Status: **D1–D43 and U1–U6 accepted; Phase 5a (project-owned decision requests) is implemented, 5b and 5c are not. Phases 1 and 2 are merged; D16's fixes
+Status: **D1–D51 and U1–U6 accepted. Phase 5a (project-owned decision requests) is implemented, 5b and 5c are not. Phases 1 and 2 are merged; D16's fixes
 and host tests are in, with its native-app check still to run on a desktop
 build. Phases 3 and 4 are implemented together (D20): the Compose owner and
 topbar (D29-A), trace opening by kind (D30), the decision draft, target, and
@@ -1274,6 +1274,193 @@ The project holds only a draft that validates (D18): while the editor shows
 problems, the revision keeps its last valid content and the composer says the
 draft is not saved to the project.
 
+### 5b decisions (D44–D51) *(accepted)*
+
+D33–D35 fixed the direction: a suite union, check vocabulary 5, and one
+shared experiment pipeline. These settle the contracts 5b builds against.
+The user accepted each recommendation. Where an option refines the wording
+of D34 or D35, it says so.
+
+What exists today, which shapes the options: `EvaluationSuite` is chat-only
+(`input.kind: "conversation-revision"`, tools, response mode, options, turn
+ceiling). Cases key their values by input binding, and a binding targets a
+template use's variable. The experiment plan (schema 4) snapshots resolved
+chat input per case. Both `ExperimentController` and
+`evaluationParsedExperimentAggregateSteps` are typed to `RunState`,
+`RunTrace`, and `ProviderTurnTransport`. The result (schema 6) records only
+cell dispositions, concurrency, and the retry policy, so it does not depend
+on what a cell ran.
+
+#### D44. The decision suite shape *(accepted: A)*
+
+- **A. Two arms under one `EvaluationSuite` union**, with a shared base
+  (`id`, `name`, `variants`, `inputBindings`, `cases`):
+  - `ChatEvaluationSuite`: today's shape, unchanged.
+  - `DecisionEvaluationSuite`: `input: { kind: "decision-request-revision",
+    decisionRequestRevisionId }`, `execution: { target:
+    DecisionExecutionTarget, repetitions }`. Variants are `{ id, name,
+    overrides: { target?: Partial<DecisionExecutionTarget> } }`.
+  - `DecisionExecutionTarget` is `{ connectionRequirementId, model,
+    protocol: DecisionWireProtocol }`. Nothing about System One goes into
+    `ConnectionRequirement`, because D9 keeps the declaration device-local.
+- **B. Make the shared fields generic** (`EvaluationSuite<Input,
+  Execution>`). Saves a little repetition, but generic Zod schemas and error
+  messages get harder to read.
+- **Recommendation: A.** Existing suites already carry
+  `input.kind: "conversation-revision"`, so they parse unchanged and need no
+  migration.
+
+#### D45. How case values reach decision variables *(accepted: A)*
+
+- **A. Reuse input bindings with a new target kind,** `{ kind:
+  "decision-variable", variableName }`. `EvaluationCase` stays exactly as it
+  is (`values` keyed by binding id), so the case table, promotion, alignment,
+  and comparison keep one code path. A case value overrides the revision's
+  `values` for that variable (D40). A variable with no binding keeps the
+  revision's value. A variable that still has no value after that is the
+  existing `unresolved-template-variable` diagnostic, which blocks the run.
+- **B. Key case values by variable name** for decision suites. There are
+  fewer concepts for the author, but cases split into two shapes, and every
+  case consumer has to branch.
+- **Recommendation: A.** Bindings must name a variable the pinned revision
+  uses, and a secret-like name is refused, as in D40.
+
+#### D46. Check vocabulary 5 and project schema 14 *(accepted: A)*
+
+Checks are stored on cases, so the vocabulary bump forces a project bump
+(see `CHECK_SCHEMA_VERSION`).
+
+- **A. One bump.** `CHECK_SCHEMA_VERSION = 5` adds D34's five kinds, and
+  `checkVocabularyIssue` refuses them below 5. `PROJECT_SCHEMA_VERSION = 14`
+  adds the decision suite arm and the decision binding target. v13 opens
+  as-is, and v10–v12 upgrade through it, as today.
+  - Project validation also refuses, structurally, a decision kind in a chat
+    suite, a chat output check in a decision suite, and a binding target of
+    the wrong kind. D34 says these are refused when authored. This makes a
+    hand-edited file fail the same way.
+  - The D34 preflight problems need the pinned revision, so they stay
+    diagnostics: `missing-decision-question`, `wrong-question-type`, and
+    `unknown-decision-option` (an option or level that is not in the
+    question's criteria).
+- **B. Ship suites in 14 and checks in 15.** That bumps twice for one
+  feature, and a decision suite in 14 could hold only duration and token
+  checks.
+- **Recommendation: A.**
+
+#### D47. Experiment plan and result versions *(accepted: A; refines D35)*
+
+- **A. A plan-level kind, plan schema 5, result unchanged.**
+  - The plan union gains `kind: "decision-evaluation"`. Its `suite`
+    snapshot holds `decisionRequestRevisionId`, `inputBindings`, the case
+    snapshots, and the variant snapshots, with no tools.
+  - A case snapshot holds `input: { decisionRequestId,
+    decisionRequestRevisionId, decision, resolvedAt }`. `decision` is the
+    resolved `DecisionInput` that is sent, and it is order-sensitive in
+    serialization, as in traces (D38).
+  - A variant snapshot holds `{ variantId, name, target }`.
+  - Cells keep today's shape (`caseId`, `variantId`, `repetition`, `runId`).
+    One suite is one kind, so a per-cell `kind` would allow mixed plans that
+    can never happen.
+  - `EXPERIMENT_SCHEMA_VERSION = 5`, so an older build reports "newer
+    version" rather than "invalid". Version 4 plans keep opening, read as
+    their v5 equivalent.
+  - The result stays at schema 6. A decision cell's disposition is the same
+    `TerminalRunStatus` kind, and concurrency and the retry policy mean the
+    same thing. D35 said "bumping both"; this narrows it to the plan, the
+    only file whose shape changes.
+- **B. A per-cell `kind` in a single evaluation plan,** as D35 literally
+  worded it.
+- **C. Bump the result to 7 as well,** with no field changes, so that a
+  version always moves with its plan.
+- **Recommendation: A.**
+
+#### D48. The decision check subject and evaluation *(accepted: A)*
+
+- **A. One `evaluateCheck` over a subject union,** `{ kind: "chat", … } |
+  { kind: "decision", … }`.
+  - `DecisionCheckSubject` is `{ unavailable?, answers?:
+    Record<questionId, DecisionAnswer>, totalDurationMs?,
+    totalTokenCoverage?, reportedTotalTokens? }`, projected once from a
+    `DecisionRun`.
+  - `totalDurationMs` means what chat's does: wall time from the run's start
+    to its last event, retries included.
+  - Tokens come from the completed attempt's reported `usage`. Absent usage
+    stays absent, so a token check is `not-evaluated`, never zero.
+  - A kind evaluated against a subject of the other kind is `not-evaluated`,
+    not a throw. Authoring and validation already prevent it, so this guards
+    old artifacts only.
+  - On a completed run, an answer missing for the check's question,
+    or of the wrong type, is `not-evaluated` with a reason. So is a
+    probability key the server omitted.
+- **B. A separate `evaluateDecisionChecks`.** Both kinds share
+  `max-duration-ms` and `max-total-tokens`, so those would be implemented
+  twice, and the aggregate would branch at every call.
+- **Recommendation: A.** This is the "separate decision check subject" D35
+  asked for, behind one entry point. Check evidence stays measurements only:
+  the observed choice, probability, or score, never instructions or state.
+
+#### D49. Generalizing the experiment controller *(accepted: A)*
+
+- **A. A per-kind cell executor behind the shared scheduler.** The
+  controller keeps planning order, connection limits, the 429 connection
+  pause, the retry policy, stop, and result writing.
+  - A `CellExecutor<State, Trace>` starts one cell and reports terminal
+    state, trace, and rate-limit retries.
+  - The chat executor is today's `runCell`. The decision executor drives
+    `driveDecisionAttempt` and retries a 429 through the same policy and wait
+    (D23).
+  - Options take either `transport` (chat) or `decisionTransport`
+    (decision), checked against the plan kind. Tool bindings do not apply to
+    decision plans.
+  - Progress becomes `ExperimentProgress<State>`, and `onTerminalTrace`
+    receives the kind's trace.
+- **B. Branch on the plan kind inside `runCell`.** It is quicker to write,
+  but chat's tool-serving and turn-ceiling code ends up beside decision code
+  it never touches.
+- **Recommendation: A.** D35 rejected a separate controller. A is how one
+  controller serves two kinds without a branch inside each method.
+
+#### D50. Scoring decision repetitions *(accepted: A)*
+
+- **A. Project each cell into common repetition evidence before scoring.**
+  The projection, `{ status, rateLimited, rateLimitRetries, metrics,
+  subject }`, comes from a `RunState` or a `DecisionRun`.
+  `evaluationParsedExperimentAggregateSteps` then classifies, counts, and
+  scores one way.
+  - The aggregate, reassessment (criteria overrides), baselines, and
+    comparison work for decision suites without kind branches.
+  - Comparing a chat execution with a decision execution is refused, the
+    way a different suite is refused today.
+- **B. A parallel decision aggregate.** It would duplicate classification
+  rules that must not drift, such as a 429 counting as missing evidence
+  rather than failure.
+- **Recommendation: A.**
+
+#### D51. Authoring and results in the app *(accepted: A)*
+
+- **A. The same Evaluations surface, with a kind-specific settings owner.**
+  - The rail lists both kinds, with a kind label.
+  - `evaluation-suite-editor` composes a per-kind "Input and execution"
+    section. Chat keeps the current one. The decision section, owned by a
+    new `useDecisionSuiteSettings`, picks the request and revision,
+    the target (System One profiles only, through the D29 decision
+    target), and repetitions.
+  - Cases, bindings, and the check editor stay shared. The check picker
+    offers only the kinds valid for the suite's kind and lists the pinned
+    revision's question ids and options.
+  - Decision Compose gains "New suite from this request", which pins the
+    active revision (D37).
+  - A repetition in results opens its decision trace in Decision Compose,
+    as Runs already does.
+  - Promoting a decision trace to a case waits for later.
+- **B. A separate Decision suites surface.** Its ownership is simpler, but
+  it duplicates the rail, case table, results, reassessment, and baselines.
+- **C. Author decision suites only from Decision Compose.** Then no surface
+  would list or compare them.
+- **Recommendation: A.** The editor is 919 lines. Before it grows, 5b moves
+  chat's input-and-execution block into its own owner. That move is
+  behavior-preserving and lands first, under the existing specs.
+
 ## Phases
 
 ### Phase 0: verify the wire format
@@ -1532,7 +1719,52 @@ Decided in D31–D37, with 5a's details in D38–D43. Delivered in order:
   while a decision run executes.
 - **5b.** Check vocabulary 5 (D34), decision suites (D33), and their
   execution through the shared experiment pipeline (D35), with suite
-  authoring in the app.
+  authoring in the app. Contracts accepted in D44–D51.
+  First step done (2026-10-24): D51's behavior-preserving move. A chat
+  suite's setup band now lives in `app/evaluations/chat-suite-setup.client.tsx`
+  (`ChatSuiteSetup`, plus `chatSuiteSetupFacts`, which returns the
+  `SuiteSetupFacts` contract the editor reads: device-local issues, collapsed
+  summary facts, and the batch shape). The editor keeps the header,
+  preflight, band, and cases. It has no new test of its own, since nothing
+  observable changed; the existing evaluation render, interaction, and
+  browser specs cover it.
+  Second step done (2026-10-24): check vocabulary 5 with the decision check
+  subject (D46, D48) in `checks.ts`, covered by `tests/decision-checks.test.ts`;
+  and the decision suite arm with project schema 14 (D44, D45, D46), with
+  decision preflight in `evaluation-suites.ts`, covered by
+  `tests/decision-suites.test.ts`. The evaluator tests were run red on wrong
+  values (decision kinds returned nothing; `called-tool` on a decision run
+  reported failed); the vocabulary and subject tests were first red only on the
+  missing exports. The suite tests were run red on the parser rejecting
+  decision suites and on the missing preflight; the one asserting that
+  malformed decision suites are refused could not fail on the old code. Plans and assessments written with vocabulary 4 still open
+  (`structured-output-checks`, also run red first). Chat-only paths narrow to
+  `ChatEvaluationSuite`; the plan builder, the app's start path, and the CLI
+  refuse a decision suite until step 3, and the editor shows no setup band
+  for one until step 4.
+  Third step done (2026-10-24): decision suites execute through the shared
+  pipeline. Plan schema 5 adds the `decision-evaluation` kind (D47), built by
+  `createDecisionEvaluationExperimentPlan`; Version 4 plans open as Version 5.
+  `repetitionEvidence` projects either run kind before scoring (D50), so the
+  aggregate and reassessments score decision executions with no kind
+  branches. `ExperimentController` hands each cell to a per-kind executor
+  (`ChatCellExecutor`, today's cell loop moved unchanged, and
+  `DecisionCellExecutor`) behind one scheduler (D49); a decision batch is
+  `new ExperimentController<DecisionRun>({ decisionTransport, … })`. Covered
+  by `tests/decision-experiment-plan.test.ts`,
+  `tests/decision-experiment-scoring.test.ts`, and
+  `tests/decision-experiment-controller.test.ts`. The controller tests were
+  run red on the old controller refusing decision plans. The scoring tests
+  were red on the old aggregate throwing on a decision run (it read chat
+  events), not on a wrong value. The plan tests were red only on the missing
+  exports. Chat behavior is unchanged under the existing unit suites and the
+  batch browser specs. One difference is forced by D22: a decision cell
+  stopped during its 429 wait ends failed with that 429, which scores as
+  rate-limited, where a chat cell ends cancelled. A decision trace cannot be
+  cancelled from a paused attempt. Still chat-only until step 4: the app's
+  start path and the CLI (5c) keep refusing decision suites, project history
+  lists a decision plan as one it cannot show, and comparison and baselines
+  refuse a decision execution, because their drift fields are chat-shaped.
 - **5c.** `inference-lens run` for decision suites (D36).
 
 ## Out of scope

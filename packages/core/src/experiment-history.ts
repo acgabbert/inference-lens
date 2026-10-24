@@ -149,6 +149,12 @@ export function loadProjectHistoryFiles(
       failures.push({ fileName: planFile.fileName, message: message(error, "The experiment plan is invalid.") });
       continue;
     }
+    if (plan.kind === "decision-evaluation") {
+      // History reads chat traces only; decision evaluations join it with
+      // their results view (D51).
+      failures.push({ fileName: planFile.fileName, message: "Decision evaluations cannot be shown by this build yet." });
+      continue;
+    }
 
     let result;
     let resultFileName: string | undefined;

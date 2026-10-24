@@ -148,8 +148,8 @@ export interface EvaluationExecutionDrift {
    * has no result, because then nothing records how it ran.
    */
   concurrency?: EvaluationDriftField<EvaluationVariantConcurrency>;
-  // No `checkSchemaVersion` field. Plans record vocabulary 3 or 4, and 4 only
-  // adds constructs, so an identical check means the same on either side; a
+  // No `checkSchemaVersion` field. Plans record vocabulary 3, 4, or 5, and each
+  // version only adds constructs, so an identical check means the same on either side; a
   // check that differs already appears in the case's check comparison.
   /** Convenience for callers that only need "is there anything to show". */
   any: boolean;

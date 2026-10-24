@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import type { ChatEvaluationSuite } from "../packages/core/src/evaluation-suites.ts";
 import test from "node:test";
 
 import { evaluationCasePromotionCompatibility, promoteTraceToEvaluationCase } from "../packages/core/src/evaluation-case-promotion.ts";
@@ -14,7 +15,7 @@ const bindingId = createEntityId("evaluation-input", "topic");
 
 function project(): ProjectFile {
   return {
-    schemaVersion: 13, projectId: createEntityId("project", "promotion"), name: "Promotion",
+    schemaVersion: 14, projectId: createEntityId("project", "promotion"), name: "Promotion",
     defaults: { conversationRevisionId: revisionId, target: { connectionRequirementId: createEntityId("connection", "local"), model: "fixture", protocol: "openai-compatible-chat-completions" }, options: {}, enabledToolIds: [] },
     connectionRequirements: [{ id: createEntityId("connection", "local"), name: "Local", provider: "openai-compatible", endpoint: "http://localhost" }],
     conversations: [{ id: createEntityId("conversation", "promotion"), name: "Promotion" }],
@@ -47,7 +48,7 @@ test("promotes exact resolved trace values into an ordinary empty-check case", (
 });
 
 test("refuses a revision mismatch and never infers from rendered messages", () => {
-  const incompatible = evaluationCasePromotionCompatibility(project().evaluationSuites[0]!, trace({ conversationRevisionId: createEntityId("revision", "other") }));
+  const incompatible = evaluationCasePromotionCompatibility((project().evaluationSuites[0] as ChatEvaluationSuite), trace({ conversationRevisionId: createEntityId("revision", "other") }));
   assert.deepEqual(incompatible, { ok: false, incompatibilities: [{ kind: "revision-mismatch", expectedRevisionId: revisionId, traceRevisionId: createEntityId("revision", "other") }] });
   assert.throws(() => promoteTraceToEvaluationCase(project(), { suiteId, trace: trace({ templateResolutions: [] }), name: "Lost" }), /not compatible/);
 });

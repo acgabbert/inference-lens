@@ -43,13 +43,13 @@ const ordered: DecisionInput = {
 
 const at = { idSuffix: "one", createdAt: "2026-10-24T12:01:00.000Z" };
 
-test("Project schema is v13, and a v12 document opens with no decision requests", () => {
-  assert.equal(PROJECT_SCHEMA_VERSION, 13);
+test("a v12 document opens as the current schema with no decision requests", () => {
+  assert.ok(PROJECT_SCHEMA_VERSION >= 13);
   const v12 = { ...project(), schemaVersion: 12 } as Record<string, unknown>;
   delete v12.decisionRequests;
   delete v12.decisionRequestRevisions;
   const opened = parseProjectFile(v12);
-  assert.equal(opened.schemaVersion, 13);
+  assert.equal(opened.schemaVersion, PROJECT_SCHEMA_VERSION);
   assert.deepEqual(opened.decisionRequests, []);
   assert.deepEqual(opened.decisionRequestRevisions, []);
   assert.equal(opened.defaults.decisionRequestRevisionId, undefined);

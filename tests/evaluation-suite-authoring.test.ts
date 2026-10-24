@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import type { ChatEvaluationSuite } from "../packages/core/src/evaluation-suites.ts";
 import test from "node:test";
 
 import {
@@ -18,7 +19,7 @@ import {
   updateEvaluationVariant,
 } from "../packages/core/src/evaluation-suite-authoring.ts";
 import { resolveEvaluationVariant } from "../packages/core/src/evaluation-suites.ts";
-import { CHECK_KINDS } from "../packages/core/src/checks.ts";
+import { CHECK_KINDS, isDecisionCheckKind } from "../packages/core/src/checks.ts";
 import {
   createProjectFile,
   createPromptTemplate,
@@ -66,7 +67,7 @@ test("authors ordered sparse configurations with inherit, clear, and replacement
     name: "Fast",
     overrides: { target: { model: "fast-model" }, options: { temperature: null, providerOptions: { tier: "fast" } } },
   });
-  const suite = project.evaluationSuites[0]!;
+  const suite = project.evaluationSuites[0] as ChatEvaluationSuite;
   const resolved = resolveEvaluationVariant(suite, suite.variants[1]!);
   assert.equal(resolved.target.connectionRequirementId, suite.execution.target.connectionRequirementId);
   assert.equal(resolved.target.model, "fast-model");
@@ -127,7 +128,7 @@ test("authors complete suite inputs, cases, and globally fresh checks", () => {
   assert.deepEqual(project.evaluationSuites[0]?.cases[0]?.values, {});
 });
 
-test("every offered check kind can actually be added to a case", () => {
+test("every kind a chat suite offers can actually be added to a case, and decision kinds are refused", () => {
   let project = fixture();
   const created = createEvaluationSuite(project, "Topics", () => "topics");
   project = created.project;
@@ -136,13 +137,19 @@ test("every offered check kind can actually be added to a case", () => {
 
   // Adding a check revalidates the whole project, so a default the parser
   // rejects makes that kind unreachable from the editor entirely.
-  for (const kind of CHECK_KINDS) {
+  const chatKinds = CHECK_KINDS.filter((kind) => !isDecisionCheckKind(kind));
+  for (const kind of chatKinds) {
     const input = kind === "regex" ? { kind, pattern: "migration" } : { kind };
     project = addEvaluationCheck(project, created.suiteId, addedCase.caseId, input, () => kind);
   }
   assert.deepEqual(
     project.evaluationSuites[0]?.cases[0]?.checks.map(({ kind }) => kind),
-    [...CHECK_KINDS],
+    chatKinds,
+  );
+  // A decision kind reads answers a chat run never has (D34, D46).
+  assert.throws(
+    () => addEvaluationCheck(project, created.suiteId, addedCase.caseId, { kind: "decision-choice" }, () => "decision"),
+    /a chat suite cannot hold them/,
   );
 });
 

@@ -244,6 +244,28 @@ matching inside an array is ambiguous (which element? which order?), so it is
 not attempted. A call whose arguments never resolved to a JSON object (`parsed`
 is absent) cannot satisfy an arguments check.
 
+### Decision checks
+
+Vocabulary 5 adds five kinds that read a decision run's normalized answers.
+Each names one `questionId`. Probability and confidence values are in [0, 1].
+
+| Kind | Parameters | Passes when |
+| --- | --- | --- |
+| `decision-choice` | `questionId`, `option`, optional `negate` | The choice question selected `option` |
+| `decision-option-probability` | `questionId`, `option`, `comparator` (`at-least` or `at-most`), `value` | The answer's probability for `option` meets the bound. For a score question, `option` is the level number as a string |
+| `decision-score-range` | `questionId`, `min` and/or `max` | The fractional score is within the inclusive bounds |
+| `decision-noul` | `questionId`, `comparator`, `value` | P(true) meets the bound |
+| `decision-confidence` | `questionId`, `atLeast` | The reported confidence is at least `atLeast` (choice and score only) |
+
+A decision run is checked through its own subject: the completed attempt's
+answers, wall time from start to end with retries included, and that attempt's
+reported usage. `max-duration-ms` and `max-total-tokens` read either kind of
+run; every other kind belongs to one. A check evaluated against the other kind
+of run is `not-evaluated`, as are a missing answer, an answer of the wrong
+type, an option the answer reports no probability for, and a confidence the
+provider did not report. A question or option the pinned revision does not
+have is caught earlier, as a suite preflight diagnostic.
+
 ## Evidence
 
 A `passed` or `failed` outcome may carry `evidence`, and a `failed` outcome
@@ -266,16 +288,16 @@ embedded in a versioned container — the project document, or an evaluation
 execution artifact — and that container's version is what a parser negotiates.
 `CHECK_SCHEMA_VERSION` records the vocabulary's version. Safe regex was version
 2; the four tool-call kinds are version 3; JSON Schema checks and JSON input
-policies are version 4. Adding, removing, or changing the meaning of a kind
+policies are version 4; the five decision kinds are version 5. Adding, removing, or changing the meaning of a kind
 requires bumping it and the version of every container that stores checks.
 
-Evaluation plans and reassessments record `checkSchemaVersion` and accept 3 or
-4; new ones always record 4. One parser serves both: `checkVocabularyIssue`
-rejects a v4 construct in a container that declares 3, so an older file never
-acquires a newer meaning. A reassessment's vocabulary is independent of its
+Evaluation plans and reassessments record `checkSchemaVersion` and accept 3, 4,
+or 5; new ones always record 5. One parser serves every version:
+`checkVocabularyIssue` rejects a construct newer than the version a container
+declares, so an older file never acquires a newer meaning. A reassessment's vocabulary is independent of its
 execution's, because it is saved separately and never changes how the
-execution was scored as run. Projects carry no vocabulary field; project v12
-means vocabulary 4, and v10–v11 mean vocabulary 3.
+execution was scored as run. Projects carry no vocabulary field; project v14
+means vocabulary 5, v12–v13 mean vocabulary 4, and v10–v11 mean vocabulary 3.
 
 Parsers reject unknown fields, unknown kinds, unsafe identifiers, `negate` on a
 threshold kind, unusable Safe regex definitions, and repeated check identities

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import type { ChatEvaluationSuite } from "../../packages/core/src/evaluation-suites.ts";
 import type { Page } from "@playwright/test";
 
 import {
@@ -260,7 +261,7 @@ test("structured checks correct saved criteria with validated drafts and preserv
   let project = wrongRegexProject();
   project = {
     ...project,
-    evaluationSuites: project.evaluationSuites.map((suite) => ({
+    evaluationSuites: (project.evaluationSuites as ChatEvaluationSuite[]).map((suite) => ({
       ...suite,
       execution: {
         ...suite.execution,

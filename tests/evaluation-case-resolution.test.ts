@@ -17,7 +17,7 @@ import {
   updatePromptTemplateUseValues,
 } from "../packages/core/src/project.ts";
 import type { ProjectFile } from "../packages/core/src/project.ts";
-import type { EvaluationSuite } from "../packages/core/src/evaluation-suites.ts";
+import type { ChatEvaluationSuite } from "../packages/core/src/evaluation-suites.ts";
 
 /**
  * Two uses of one template plus a second multi-message template, so precedence
@@ -83,7 +83,7 @@ function fixture(): ProjectFile {
 function suiteBoundTo(
   project: ProjectFile,
   targets: readonly { templateUseId: string; variableName: string }[],
-): { project: ProjectFile; suite: EvaluationSuite; inputIds: string[] } {
+): { project: ProjectFile; suite: ChatEvaluationSuite; inputIds: string[] } {
   const candidates = evaluationBindingCandidates(project, project.defaults.conversationRevisionId);
   const created = createEvaluationSuite(project, "Topics", () => "topics");
   let next = created.project;
@@ -96,7 +96,7 @@ function suiteBoundTo(
     next = added.project;
     return added.inputId;
   });
-  return { project: next, suite: next.evaluationSuites[0]!, inputIds };
+  return { project: next, suite: next.evaluationSuites[0] as ChatEvaluationSuite, inputIds };
 }
 
 test("applies default < authored use < case precedence across several variables and uses", () => {
@@ -264,7 +264,7 @@ test("the focused-case preview and the frozen plan resolve identically", () => {
     })),
   };
 
-  const authoredSuite = project.evaluationSuites[0]!;
+  const authoredSuite = project.evaluationSuites[0] as ChatEvaluationSuite;
   const preview = resolveEvaluationCase(
     project,
     project.conversationRevisions[0]!,

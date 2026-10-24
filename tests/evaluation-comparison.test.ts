@@ -302,11 +302,11 @@ test("a changed target model is drift context, not case incompatibility", () => 
   assert.equal(comparison.cases[0]?.delta, "regressed");
 });
 
-test("a vocabulary 3 execution compares with a vocabulary 4 one without drift", () => {
-  // Version 4 only adds constructs, so a check means the same in either plan.
+test("a vocabulary 3 execution compares with a current-vocabulary one without drift", () => {
+  // Each version only adds constructs, so a check means the same in either plan.
   const baseline = { ...planFixture([migrations]), checkSchemaVersion: 3 as const };
   const candidate = planFixture([migrations]);
-  assert.equal(candidate.checkSchemaVersion, 4);
+  assert.equal(candidate.checkSchemaVersion, 5);
   const comparison = compareEvaluationExecutions(
     comparisonInput(baseline, execute(baseline, { [migrations.id]: "Plan the migration." })),
     comparisonInput(candidate, execute(candidate, { [migrations.id]: "Nothing relevant." })),
