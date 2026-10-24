@@ -7,14 +7,17 @@ import type {
   RunTrace,
   TerminalRunStatus,
 } from "./run-kernel/types.ts";
+import type { DecisionWireProtocol } from "./decision.ts";
+import type { DecisionRunTrace } from "./decision-trace.ts";
 import { runMetrics } from "./run-metrics.ts";
-import { parseRunTraceJson, runStateFromTrace, traceFileName } from "./run-trace.ts";
+import { parseSavedRunTraceJson, runStateFromTrace, traceFileName } from "./run-trace.ts";
 
 /**
  * Compact, derived metadata for a persisted trace. History summaries are
  * never serialized: the immutable trace remains the only source of truth.
  */
 export interface RunHistorySummary {
+  kind: "chat";
   runId: RunId;
   startedAt: string;
   endedAt: string;
@@ -31,6 +34,22 @@ export interface RunHistorySummary {
   messageCount: number;
 }
 
+/** A decision run's row: what was asked of which model, and how it ended. */
+export interface DecisionRunHistorySummary {
+  kind: "decision";
+  runId: RunId;
+  startedAt: string;
+  endedAt: string;
+  status: TerminalRunStatus["kind"];
+  model: string;
+  protocol: DecisionWireProtocol;
+  questionCount: number;
+  attemptCount: number;
+  durationMs: number;
+}
+
+export type SavedRunHistorySummary = RunHistorySummary | DecisionRunHistorySummary;
+
 export interface RunHistorySource {
   fileName: string;
   contents: string;
@@ -46,7 +65,7 @@ export interface RunHistorySource {
  */
 export interface RunHistoryItem {
   fileName: string;
-  summary: RunHistorySummary;
+  summary: SavedRunHistorySummary;
 }
 
 export interface RunHistoryFailure {
@@ -63,6 +82,7 @@ export interface LoadedRunHistoryFiles {
    * same events a second time. It holds every event of every artifact in the
    * folder, so callers should build their projection and drop it.
    */
+  /** Chat runs only; a decision run has no event-reduced state. */
   statesByRunId: ReadonlyMap<RunId, { fileName: string; state: RunState }>;
 }
 
@@ -79,6 +99,7 @@ function summarizeReducedRunTrace(
   const metrics = runMetrics(state);
 
   return {
+    kind: "chat",
     runId: trace.runId,
     startedAt: trace.startedAt,
     endedAt: trace.endedAt,
@@ -92,6 +113,23 @@ function summarizeReducedRunTrace(
     messageCount: trace.input.messages.length,
     protocol: trace.input.target.protocol,
     ...excerptField(trace.input.messages),
+  };
+}
+
+export function summarizeDecisionRunTrace(
+  trace: DecisionRunTrace,
+): DecisionRunHistorySummary {
+  return {
+    kind: "decision",
+    runId: trace.runId,
+    startedAt: trace.startedAt,
+    endedAt: trace.endedAt,
+    status: trace.status.kind,
+    model: trace.input.target.model,
+    protocol: trace.input.target.protocol,
+    questionCount: Object.keys(trace.input.decision.questions).length,
+    attemptCount: trace.attempts.length,
+    durationMs: Date.parse(trace.endedAt) - Date.parse(trace.startedAt),
   };
 }
 
@@ -156,7 +194,15 @@ export function loadRunHistoryFilesWithStates(
 
   for (const file of files) {
     try {
-      const trace = parseRunTraceJson(file.contents);
+      const saved = parseSavedRunTraceJson(file.contents);
+      if (saved.kind === "decision") {
+        items.push({
+          fileName: file.fileName,
+          summary: summarizeDecisionRunTrace(saved.trace),
+        });
+        continue;
+      }
+      const { trace } = saved;
       const state = runStateFromTrace(trace);
       items.push({
         fileName: file.fileName,

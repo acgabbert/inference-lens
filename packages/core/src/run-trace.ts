@@ -1,31 +1,35 @@
 import { z } from "zod";
 
+import {
+  DECISION_TRACE_ORDER_SENSITIVE_KEYS,
+  parseDecisionRunTrace,
+  type DecisionRunTrace,
+} from "./decision-trace.ts";
 import type { RunId, RunState, RunTrace } from "./run-kernel/types.ts";
 import {
   createRunTrace,
   reduceRunEvents,
 } from "./run-kernel/reducer.ts";
 import { isSensitiveTemplateVariableName } from "./project.ts";
-import { stableJsonValue } from "./stable-json.ts";
+import { RunTraceValidationError } from "./run-trace-error.ts";
+import { ORDER_SENSITIVE_KEYS, stableJsonValue } from "./stable-json.ts";
 import { renderTemplateMessages } from "./template-engine.ts";
 
-export const RUN_TRACE_SCHEMA_VERSION = 7;
+export const RUN_TRACE_SCHEMA_VERSION = 8;
 export const RUN_TRACE_FILE_SUFFIX = ".json";
 /** The project-folder directory that holds saved run traces. */
 export const TRACES_DIRECTORY_NAME = "traces";
 
+export { RunTraceValidationError };
+
 /**
- * Run traces are diagnostic evidence, not authored project state. The parser
- * validates the versioned envelope and reconstructs canonical state from its
- * event stream. Incompatible or internally inconsistent artifacts are
- * rejected instead of being displayed as trustworthy evidence.
+ * Either kind of saved run (D22). Version 8 covers both: a decision trace
+ * carries `kind: "decision"`, and a chat trace carries no `kind` at all, so
+ * its contents are otherwise those of version 7.
  */
-export class RunTraceValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "RunTraceValidationError";
-  }
-}
+export type SavedRunTrace =
+  | { kind: "chat"; trace: RunTrace }
+  | { kind: "decision"; trace: DecisionRunTrace };
 
 const traceEnvelopeBaseSchema = z
   .object({
@@ -249,6 +253,14 @@ const traceV7EnvelopeSchema = traceV6EnvelopeSchema.extend({
   schemaVersion: z.literal(7),
 });
 
+/**
+ * Version 8 introduces decision traces beside chat ones. A chat trace is
+ * otherwise identical to version 7 and still has no `kind`.
+ */
+const traceV8EnvelopeSchema = traceV6EnvelopeSchema.extend({
+  schemaVersion: z.literal(8),
+});
+
 // Discriminated on the version so a rejection reports the offending field in
 // the matching envelope, rather than collapsing every branch's complaint into
 // one union error.
@@ -260,6 +272,7 @@ const traceEnvelopeSchema = z.discriminatedUnion("schemaVersion", [
   traceV5EnvelopeSchema,
   traceV6EnvelopeSchema,
   traceV7EnvelopeSchema,
+  traceV8EnvelopeSchema,
 ]);
 
 export function traceFileName(runId: RunId): string {
@@ -300,14 +313,51 @@ export function serializeRunTrace(trace: RunTrace): string {
   return `${JSON.stringify(stableJsonValue(current), null, 2)}\n`;
 }
 
-export function parseRunTraceJson(contents: string): RunTrace {
-  let value: unknown;
+function parseTraceJson(contents: string): unknown {
   try {
-    value = JSON.parse(contents);
+    return JSON.parse(contents);
   } catch {
     throw new RunTraceValidationError("Run trace is not valid JSON.");
   }
-  return parseRunTraceFile(value);
+}
+
+export function parseRunTraceJson(contents: string): RunTrace {
+  return parseRunTraceFile(parseTraceJson(contents));
+}
+
+/** The kind a saved trace claims; absent means chat. */
+function traceKind(value: unknown): "chat" | "decision" {
+  if (!value || typeof value !== "object" || !("kind" in value)) return "chat";
+  if (value.kind === "decision") return "decision";
+  throw new RunTraceValidationError(
+    `Invalid run trace at kind: ${JSON.stringify(value.kind)} is not a run kind this version reads.`,
+  );
+}
+
+/** Parses a saved run of either kind, for history, import, and export. */
+export function parseSavedRunTrace(value: unknown): SavedRunTrace {
+  if (traceKind(value) === "chat") return { kind: "chat", trace: parseRunTraceFile(value) };
+  const trace = parseDecisionRunTrace(value);
+  traceFileName(trace.runId);
+  return { kind: "decision", trace };
+}
+
+export function parseSavedRunTraceJson(contents: string): SavedRunTrace {
+  return parseSavedRunTrace(parseTraceJson(contents));
+}
+
+export function serializeDecisionRunTrace(trace: DecisionRunTrace): string {
+  const parsed = parseSavedRunTrace(trace);
+  if (parsed.kind !== "decision") {
+    throw new RunTraceValidationError("A chat trace is serialized with serializeRunTrace.");
+  }
+  const value = stableJsonValue(parsed.trace, {
+    orderSensitiveKeys: new Set([
+      ...ORDER_SENSITIVE_KEYS,
+      ...DECISION_TRACE_ORDER_SENSITIVE_KEYS,
+    ]),
+  });
+  return `${JSON.stringify(value, null, 2)}\n`;
 }
 
 function migrateTemplateResolutionShape(
@@ -335,7 +385,13 @@ function migrateTemplateResolutionShape(
   return { ...input, templateResolutions } as RunTrace["input"];
 }
 
+/** Parses a chat trace; a decision trace is refused rather than misread. */
 export function parseRunTraceFile(value: unknown): RunTrace {
+  if (traceKind(value) === "decision") {
+    throw new RunTraceValidationError(
+      "This is a decision run trace, not a chat run, so it cannot be opened here.",
+    );
+  }
   const result = traceEnvelopeSchema.safeParse(value);
   if (!result.success) {
     const first = result.error.issues[0];

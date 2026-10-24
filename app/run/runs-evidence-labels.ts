@@ -1,3 +1,4 @@
+import type { DecisionWireProtocol } from "../../packages/core/src/decision.ts";
 import type { ExperimentPlanV3 } from "../../packages/core/src/experiment.ts";
 import { protocolLabel } from "../../packages/core/src/provider-protocols.ts";
 import type {
@@ -8,7 +9,9 @@ import type {
 import type { TraceStorageStatus } from "../response-output.client";
 
 /** The protocol a run was sent over, as a row names it. */
-export function protocolName(protocol: ProviderProtocol | undefined): string | undefined {
+export function protocolName(
+  protocol: ProviderProtocol | DecisionWireProtocol | undefined,
+): string | undefined {
   if (!protocol) return undefined;
   return protocol === "mock" ? "Mock" : protocolLabel(protocol);
 }

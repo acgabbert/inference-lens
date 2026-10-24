@@ -174,6 +174,7 @@ test("derives a compact history summary from canonical trace evidence", () => {
   });
 
   assert.deepEqual(summarizeRunTrace(trace), {
+    kind: "chat",
     runId: createEntityId("run", "history-summary"),
     startedAt: "2026-07-25T12:00:00.000Z",
     endedAt: "2026-07-25T12:00:00.550Z",

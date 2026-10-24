@@ -148,7 +148,8 @@ export type DecisionExchangeTrace = Omit<ExchangeTrace, "turnId">;
 export interface DecisionAttempt {
   attempt: number;
   exchangeId: ExchangeId;
-  status: "running" | "completed" | "failed";
+  /** A cancelled attempt was stopped in flight; it holds no result or error. */
+  status: "running" | "completed" | "failed" | "cancelled";
   result?: DecisionResult;
   error?: RunError;
 }

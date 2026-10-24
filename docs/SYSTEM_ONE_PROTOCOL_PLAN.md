@@ -2,7 +2,7 @@
 
 Status: **D1–D26 and U1–U6 accepted. Phases 1 and 2 are merged; D16's fixes
 and host tests are in, with its native-app check still to run on a desktop
-build. Phases 3 and 4 ship together, with trace
+build. The D22 trace format is in; the evidence extraction (D26) is next. Phases 3 and 4 ship together, with trace
 support implemented early (D20). llama.cpp and
 OpenRouter captured on 2026-10-24, Ollama on 2026-10-23; direct TypeSafe still
 doc-derived only.** On 2026-10-24 each implementation's
@@ -803,6 +803,35 @@ ordered event log and re-derives its projections on import.
 - Run history keeps one `traces/` listing. A decision summary shows the kind,
   model, question count, and status, and selecting the entry opens Decision
   Compose's inspection state.
+
+Settled when implementing (2026-10-24):
+
+- `DecisionAttempt.status` gains `cancelled`; a saved attempt is never
+  `running`. A cancelled run's last attempt is cancelled and holds neither
+  result nor error. Earlier attempts are all failed: a retry follows only a
+  failure.
+- A saved run has at least one attempt. The session records attempt 1 before
+  calling the transport, so a stop before dispatch saves as attempt 1,
+  cancelled, with an exchange that has no request evidence.
+- Stopping during a 429 wait (D23) saves the run as failed with that attempt's
+  error, as chat's Stop does on a paused failed attempt. A failed run's error
+  must equal its last attempt's.
+- An exchange holds at most one frame, at index 0. The status timestamp equals
+  `endedAt`.
+- Decision traces keep authored key order under `decision` and `result`
+  (questions, options, answers, probabilities); the rest of the file uses the
+  usual deterministic order.
+- History lists decision entries now; opening one from history or import is
+  wired with the decision UI. Until then the chat-only parser and chat import
+  reject a decision trace with a readable message.
+
+Done: `packages/core/src/decision-trace.ts` (shape and consistency) and the
+version 8 envelope, `parseSavedRunTrace`, and `serializeDecisionRunTrace` in
+`run-trace.ts`, covered by `tests/decision-trace.test.ts`. Chat traces now
+write version 8. History summaries carry `kind`; the Runs list shows a decision
+row disabled until Decision Compose exists (`run-history-render`, and
+`runs-result-discovery` in the browser). Session persistence waits for the
+decision session it saves.
 
 ### D23. Retry after a 429 *(accepted: A)*
 
