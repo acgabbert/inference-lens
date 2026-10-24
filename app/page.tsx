@@ -18,6 +18,7 @@ import {
 } from "../packages/core/src/provider-protocols";
 import { modalOwnsKeyboardCommands } from "./keyboard-command-scope.client";
 import type {
+  RunId,
   RunTrace,
   MessageId,
   PromptTemplateId,
@@ -53,10 +54,12 @@ import type { WorkbenchView } from "./workbench-shell.client";
 import { RunTracePanel } from "./run-trace-panel.client";
 import { parseSavedRunTraceJson, traceFileName } from "../packages/core/src/run-trace";
 import type { SavedRunTrace } from "../packages/core/src/run-trace";
+import type { DecisionRunTrace } from "../packages/core/src/decision-trace";
 import { useCompose } from "./compose/use-compose.client";
 import type { ComposeKindHandle } from "./compose/use-compose.client";
 import { ComposeKindSwitch } from "./compose/compose-kind-switch.client";
 import { useDecisionCompose } from "./decisions/use-decision-compose.client";
+import type { DecisionSuiteSource } from "./decisions/use-decision-compose.client";
 import type { TraceOrigin } from "./run/use-run-session.client";
 import { runRequestExcerpt } from "../packages/core/src/run-history";
 import { useEvaluationBaselines } from "./evaluations/use-evaluation-baselines.client";
@@ -96,6 +99,7 @@ import { useEvaluationSuiteAuthoring } from "./evaluations/use-evaluation-suite-
 import { useEvaluationReassessment } from "./evaluations/use-evaluation-reassessment.client";
 import { useEvaluationExecutionSession } from "./evaluations/use-evaluation-execution-session.client";
 import { useEvaluationWorkspace } from "./evaluations/use-evaluation-workspace.client";
+import { useDecisionSuiteSettings } from "./evaluations/use-decision-suite-settings.client";
 import { useEvaluationCaseSource } from "./evaluations/use-evaluation-case-source.client";
 import { EvaluationStartDialog } from "./evaluations/evaluation-start-dialog.client";
 import { PromoteTraceToCaseDialog } from "./evaluations/promote-trace-to-case-dialog.client";
@@ -465,6 +469,12 @@ function HomeContent() {
     onTraceSaved() { setSavedRunVersion((current) => current + 1); },
     onError(message) { project.setError(message, { clearKind: true }); },
     onOpenConnections() { setConnectionDrawerOpen(true); },
+    // Crosses into suite authoring, which is built below and owns selection.
+    onNewSuite(source) {
+      if (!createDecisionSuite(source)) return;
+      setMode("evaluations");
+      evaluationWorkspace.layout.onSetupOpenChange(true);
+    },
   });
   const decisionExecuting = decision.compose.executing;
 
@@ -564,6 +574,27 @@ function HomeContent() {
         durableHome: "the suite's revision picker, which now names this prompt",
       });
     },
+  });
+  // Adapter between Decision Compose, suite authoring, and this device's
+  // connection mappings: the suite's own requirement maps to the System One
+  // profile Compose targets unless it is already mapped (D44, D51).
+  function createDecisionSuite(source: DecisionSuiteSource): boolean {
+    const created = evaluationAuthoring.createDecisionSuite({
+      project: source.project,
+      decisionRequestRevisionId: source.decisionRequestRevisionId,
+      model: source.model,
+      connection: { endpoint: source.profile.endpoint },
+    });
+    if (!created) return false;
+    if (!mappedProfileIds[created.connectionRequirementId]) {
+      project.mapProfile(created.connectionRequirementId, source.profile, created.project);
+    }
+    return true;
+  }
+  const decisionSuiteSettings = useDecisionSuiteSettings({
+    project: projectFile,
+    ...(evaluationAuthoring.suiteId ? { suiteId: evaluationAuthoring.suiteId } : {}),
+    adoptProjectMutation: project.adoptProjectMutation,
   });
   const evaluationWorkspace = useEvaluationWorkspace({
     authoring: evaluationAuthoring,
@@ -815,11 +846,14 @@ function HomeContent() {
     const workspace = projectWorkspace;
     if (!workspace) throw new Error("The project folder is no longer open.");
     const opened = await runHistory.readExperiment(item);
-    if (opened.plan.kind === "evaluation") {
+    if (opened.kind === "decision") {
+      evaluationExecution.openSaved(opened, workspace);
+      repeatedExperiment.clear();
+    } else if (opened.plan.kind === "evaluation") {
       evaluationExecution.openSaved({ ...opened, plan: opened.plan }, workspace);
       repeatedExperiment.clear();
     } else {
-      repeatedExperiment.openSaved(opened, workspace);
+      repeatedExperiment.openSaved({ ...opened, plan: opened.plan }, workspace);
       evaluationExecution.clear();
     }
     runsNavigation.selectExperiment(item);
@@ -1083,9 +1117,11 @@ function HomeContent() {
   // One run of the open batch, read in place. It is never adopted into the run
   // session, so reading it cannot displace the session's ordinary run.
   const batchMember = (() => {
-    const runId = activeBatch?.selectedRunId;
-    const trace = runId ? activeBatch.traces.get(runId) : undefined;
-    if (!activeBatch || !runId || !trace) return undefined;
+    // A decision repetition opens in Decision Compose instead (D51).
+    if (!activeBatch || activeBatch.plan.kind === "decision-evaluation") return undefined;
+    const runId = activeBatch.selectedRunId;
+    const trace = runId ? (activeBatch.traces as ReadonlyMap<RunId, RunTrace>).get(runId) : undefined;
+    if (!runId || !trace) return undefined;
     const storage: TraceStorageStatus = activeBatch.storage === "durable" && activeBatch.workspace
       ? {
           kind: "saved",
@@ -1312,6 +1348,25 @@ function HomeContent() {
     setWorkbenchView("inspect");
   }
 
+  /**
+   * A chat repetition is read in place beside its batch; a decision one opens
+   * in Decision Compose, as a decision run from Runs does (D30, D51).
+   */
+  function openEvaluationTrace(runId: RunId): void {
+    const current = evaluationExecution.execution;
+    if (current?.kind !== "decision") {
+      evaluationExecution.openTrace(runId);
+      return;
+    }
+    const trace = current.traces.get(runId);
+    if (!trace) return;
+    openSavedTrace({ kind: "decision", trace }, {
+      workspace: current.storage === "durable" ? current.workspace : null,
+      fileName: current.traceFileNames.get(runId) ?? traceFileName(runId),
+      source: "experiment",
+    });
+  }
+
   async function importRunTrace(file: File): Promise<void> {
     try {
       openSavedTrace(parseSavedRunTraceJson(await file.text()), { workspace: null, fileName: file.name });
@@ -1490,6 +1545,16 @@ function HomeContent() {
           }
           {...(evaluationCaseSource.source ? { caseSource: evaluationCaseSource.source } : {})}
           onOpenSourceTrace={evaluationCaseSource.openSource}
+          {...(decisionSuiteSettings ? { decisionSettings: decisionSuiteSettings } : {})}
+          onCreateDecision={{
+            create() {
+              const source = decision.suiteSource.take();
+              if (source) createDecisionSuite(source);
+            },
+            ...(decision.suiteSource.blockedReason
+              ? { disabledReason: `Decision Compose: ${decision.suiteSource.blockedReason}` }
+              : {}),
+          }}
         />
       ) : (
         <RunsMode
@@ -1513,7 +1578,8 @@ function HomeContent() {
               ? {
                   currentBatch: {
                     experimentId: activeBatch.plan.experimentId,
-                    kind: activeBatch.plan.kind,
+                    // A decision evaluation lists and filters as an evaluation.
+                    kind: activeBatch.plan.kind === "repeated-request" ? "repeated-request" : "evaluation",
                     title: batchTitle(activeBatch.plan),
                     status: batchRunning ? "running" : activeBatch.result?.status ?? "interrupted",
                     detail: `${activeBatch.plan.cells.length} ${activeBatch.plan.cells.length === 1 ? "run" : "runs"}${
@@ -1583,8 +1649,16 @@ function HomeContent() {
                     if (!trace || !projectWorkspace) return;
                     setComparisonReturnTarget(target);
                     setComparisonTraceOpen(true);
+                    if (side.kind === "decision") {
+                      openSavedTrace({ kind: "decision", trace: trace as DecisionRunTrace }, {
+                        workspace: projectWorkspace,
+                        fileName: side.traceFileNames.get(runId) ?? traceFileName(runId),
+                        source: "experiment",
+                      });
+                      return;
+                    }
                     compose.openKind("chat");
-                    runSession.adoptTrace(trace, {
+                    runSession.adoptTrace(trace as RunTrace, {
                       workspace: projectWorkspace,
                       fileName: side.traceFileNames.get(runId) ?? traceFileName(runId),
                       source: "experiment",
@@ -1604,7 +1678,7 @@ function HomeContent() {
                 evaluation: {
                   execution: evaluationExecution.execution,
                   onStop: evaluationExecution.cancel,
-                  onOpenTrace: evaluationExecution.openTrace,
+                  onOpenTrace: openEvaluationTrace,
                   onPromoteTrace: (trace, experimentCellId) => evaluationCaseSource.requestPromotion(trace, experimentCellId),
                   onReturnToList: evaluationExecution.returnToEvaluation,
                   onDismiss: () => dismissFinishedExperiment("evaluation"),

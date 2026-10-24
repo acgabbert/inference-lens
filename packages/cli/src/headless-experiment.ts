@@ -1,5 +1,8 @@
-import type { CredentialSelection, ProviderTurnTransport } from "../../contracts/src/index.ts";
+import type { CredentialSelection, DecisionTransport, ProviderTurnTransport } from "../../contracts/src/index.ts";
+import type { DecisionRun } from "../../core/src/decision.ts";
+import type { DecisionRunTrace } from "../../core/src/decision-trace.ts";
 import { ExperimentController } from "../../runner/src/experiment-controller.ts";
+import type { ExperimentConnectionPause } from "../../runner/src/experiment-controller.ts";
 import { toolBindingFor } from "../../core/src/tool-binding-resolution.ts";
 import {
   experimentPlanFileName,
@@ -8,12 +11,14 @@ import {
 } from "../../core/src/experiment.ts";
 import type {
   ChatExperimentPlan,
+  DecisionEvaluationExperimentPlan,
   ExperimentCell,
   ExperimentConcurrencySetting,
+  ExperimentPlan,
   ExperimentResult,
 } from "../../core/src/experiment.ts";
 import type { ConnectionRequirement, ProjectFile } from "../../core/src/project.ts";
-import { serializeRunTrace } from "../../core/src/run-trace.ts";
+import { serializeDecisionRunTrace, serializeRunTrace } from "../../core/src/run-trace.ts";
 import type { RunId, RunState, RunTrace } from "../../core/src/run-kernel/index.ts";
 import { createEntityId } from "../../core/src/run-kernel/types.ts";
 import type { ToolDefinition, ToolId } from "../../core/src/run-kernel/types.ts";
@@ -51,7 +56,8 @@ export interface HeadlessRunOptions {
   /** Requirement IDs declared as needing no credential. */
   noAuth?: ReadonlySet<string>;
   environment: Readonly<Record<string, string | undefined>>;
-  transport: ProviderTurnTransport;
+  /** Chat suites and `repeat` send turns; decision suites send decisions. */
+  transport: ProviderTurnTransport & DecisionTransport;
   /** How many repetitions may run at once. One at a time when omitted. */
   concurrency?: HeadlessConcurrency;
   /** `--allow-tool`: command and MCP tools this invocation may run. None when omitted. */
@@ -70,11 +76,14 @@ export interface HeadlessRun<Outcome> {
   cancel(): void;
 }
 
+/** A controller of either run kind; the CLI only ever cancels it. */
+export type HeadlessController = ExperimentController<RunState> | ExperimentController<DecisionRun>;
+
 /** Starts `execute`, letting a cancel that arrives before the controller exists still reach it. */
 export function startCancellable<Outcome>(
-  execute: (onController: (controller: ExperimentController) => void) => Promise<Outcome>,
+  execute: (onController: (controller: HeadlessController) => void) => Promise<Outcome>,
 ): HeadlessRun<Outcome> {
-  let controller: ExperimentController | undefined;
+  let controller: HeadlessController | undefined;
   let cancelled = false;
   const done = execute((created) => {
     controller = created;
@@ -174,33 +183,47 @@ export function headlessBindingForTool(
   };
 }
 
-export interface HeadlessExperimentRecord {
+/** `State` is the plan kind's run state. */
+export interface HeadlessExperimentRecord<State extends RunState | DecisionRun = RunState | DecisionRun> {
   planSaved: boolean;
   /** Present only when the result was written. */
   result?: ExperimentResult;
-  states: ReadonlyMap<RunId, RunState>;
+  states: ReadonlyMap<RunId, State>;
   /** Traces that were actually written, by run ID, relative to the project folder. */
   tracePaths: ReadonlyMap<string, string>;
   /** Why the run did not finish, when it did not. */
   error?: string;
 }
 
-/**
- * Drives one frozen plan to the end, writing its plan, result, and traces
- * under the app's names, and reporting each finished repetition.
- */
-export async function driveHeadlessExperiment(input: {
+/** What each run kind adds to a headless experiment: chat serves tools, decisions have none. */
+export type HeadlessExperimentWork =
+  | { plan: ChatExperimentPlan; toolBindings: readonly ToolBinding[]; tools: readonly ToolDefinition[] }
+  | { plan: DecisionEvaluationExperimentPlan };
+
+interface HeadlessExperimentInput {
   folder: NodeProjectFolder;
-  plan: ChatExperimentPlan;
-  toolBindings: readonly ToolBinding[];
-  tools: readonly ToolDefinition[];
   connections: readonly HeadlessConnection[];
   concurrency: ExperimentConcurrencySetting;
   options: HeadlessRunOptions;
   /** Names one finished repetition in the progress line, before its status. */
-  describeCell(cell: ExperimentCell, trace: RunTrace): string;
-  onController(controller: ExperimentController): void;
-}): Promise<HeadlessExperimentRecord> {
+  describeCell(cell: ExperimentCell): string;
+  onController(controller: HeadlessController): void;
+}
+
+/**
+ * Drives one frozen plan of either run kind to the end, writing its plan,
+ * result, and traces under the app's names, and reporting each finished
+ * repetition.
+ */
+export async function driveHeadlessExperiment(
+  input: Extract<HeadlessExperimentWork, { tools: unknown }> & HeadlessExperimentInput,
+): Promise<HeadlessExperimentRecord<RunState>>;
+export async function driveHeadlessExperiment(
+  input: HeadlessExperimentWork & HeadlessExperimentInput,
+): Promise<HeadlessExperimentRecord>;
+export async function driveHeadlessExperiment(
+  input: HeadlessExperimentWork & HeadlessExperimentInput,
+): Promise<HeadlessExperimentRecord> {
   const { folder, plan, options } = input;
   const credentials = new Map<string, ConnectionResolution>(
     input.connections.map(({ resolution }) => [createEntityId("profile", resolution.requirementId), resolution]),
@@ -208,40 +231,31 @@ export async function driveHeadlessExperiment(input: {
   let planSaved = false;
   let result: ExperimentResult | undefined;
   let resultSaved = false;
-  let states: ReadonlyMap<RunId, RunState> = new Map();
+  let states: ReadonlyMap<RunId, RunState | DecisionRun> = new Map();
   const tracePaths = new Map<string, string>();
   let finished = 0;
   /** When each paused connection resumes, as last announced, by profile and endpoint. */
   const announcedPauses = new Map<string, number>();
 
-  const controller = new ExperimentController({
-    plan,
-    transport: options.transport,
-    async prepareCredential(target): Promise<CredentialSelection> {
+  const shared = {
+    async prepareCredential(target: { profileId: string; endpoint: string }): Promise<CredentialSelection> {
       const resolution = credentials.get(target.profileId);
       if (!resolution || resolution.endpoint !== target.endpoint) {
         throw new HeadlessSetupError(`No credential was resolved for ${target.profileId} at ${target.endpoint}.`);
       }
       return resolution.credential;
     },
-    toolBindings: [...input.toolBindings],
-    createExecutor: options.createExecutor ?? createHeadlessToolExecutor(options.environment),
-    verifyToolBindings: (bindings) => verifyHeadlessToolBindings(
-      bindings,
-      (toolId) => input.tools.find(({ id }) => id === toolId)?.name ?? toolId,
-      options.environment,
-    ),
     concurrency: input.concurrency,
     ...(options.retryRateLimits ? { retryPolicy: rateLimitRetries() } : {}),
-    async savePlan(frozen, serialized) {
+    async savePlan(frozen: ExperimentPlan, serialized: string) {
       await folder.saveExperimentArtifact(experimentPlanFileName(frozen.experimentId), serialized);
       planSaved = true;
     },
-    async saveResult(saved, serialized) {
+    async saveResult(saved: ExperimentResult, serialized: string) {
       await folder.saveExperimentArtifact(experimentResultFileName(saved.experimentId), serialized);
       resultSaved = true;
     },
-    onProgress(progress) {
+    onProgress(progress: { states: ReadonlyMap<RunId, RunState | DecisionRun>; pausedConnections: readonly ExperimentConnectionPause[] }) {
       states = progress.states;
       for (const pause of progress.pausedConnections) {
         // Announced when a pause starts or a later 429 lengthens it, so a run
@@ -256,15 +270,42 @@ export async function driveHeadlessExperiment(input: {
         );
       }
     },
-    async onTerminalTrace(trace, cell) {
-      await folder.saveTrace(trace.runId, serializeRunTrace(trace));
-      tracePaths.set(trace.runId, folder.tracePath(trace.runId));
-      finished += 1;
-      options.onProgress?.(
-        `[${finished}/${plan.cells.length}] ${input.describeCell(cell, trace)}: ${trace.status.kind}`,
-      );
-    },
-  });
+  };
+  async function recordTrace(trace: RunTrace | DecisionRunTrace, serialized: string, cell: ExperimentCell) {
+    await folder.saveTrace(trace.runId, serialized);
+    tracePaths.set(trace.runId, folder.tracePath(trace.runId));
+    finished += 1;
+    options.onProgress?.(
+      `[${finished}/${plan.cells.length}] ${input.describeCell(cell)}: ${trace.status.kind}`,
+    );
+  }
+
+  let controller: HeadlessController;
+  if (input.plan.kind === "decision-evaluation") {
+    controller = new ExperimentController<DecisionRun>({
+      ...shared,
+      plan: input.plan,
+      decisionTransport: options.transport,
+      onTerminalTrace: (trace, cell) => recordTrace(trace, serializeDecisionRunTrace(trace), cell),
+    });
+  } else {
+    // The plan's kind decides the work's shape; TypeScript cannot narrow the
+    // union through a nested discriminant.
+    const { plan: chatPlan, toolBindings, tools } = input as Extract<HeadlessExperimentWork, { tools: unknown }>;
+    controller = new ExperimentController<RunState>({
+      ...shared,
+      plan: chatPlan,
+      transport: options.transport,
+      toolBindings: [...toolBindings],
+      createExecutor: options.createExecutor ?? createHeadlessToolExecutor(options.environment),
+      verifyToolBindings: (bindings) => verifyHeadlessToolBindings(
+        bindings,
+        (toolId) => tools.find(({ id }) => id === toolId)?.name ?? toolId,
+        options.environment,
+      ),
+      onTerminalTrace: (trace, cell) => recordTrace(trace, serializeRunTrace(trace), cell),
+    });
+  }
   input.onController(controller);
 
   let error: string | undefined;

@@ -1,6 +1,6 @@
 # System One protocol plan
 
-Status: **D1–D51 and U1–U6 accepted. Phase 5a (project-owned decision requests) is implemented, 5b and 5c are not. Phases 1 and 2 are merged; D16's fixes
+Status: **D1–D54 and U1–U6 accepted. Phase 5 is implemented: 5a (project-owned decision requests), 5b (decision suites), and 5c (`inference-lens run` for decision suites). Phases 1 and 2 are merged; D16's fixes
 and host tests are in, with its native-app check still to run on a desktop
 build. Phases 3 and 4 are implemented together (D20): the Compose owner and
 topbar (D29-A), trace opening by kind (D30), the decision draft, target, and
@@ -1461,6 +1461,100 @@ Checks are stored on cases, so the vocabulary bump forces a project bump
   chat's input-and-execution block into its own owner. That move is
   behavior-preserving and lands first, under the existing specs.
 
+#### D52. Execution drift between decision executions *(accepted: A; refines D50)*
+
+D50 has comparison and baselines work for decision suites without kind
+branches. Step 3 left them refusing a decision execution: `derive()` in
+`evaluation-comparison.ts` and the baselines loader both throw on any plan
+that is not a chat evaluation. Case alignment needs nothing, because it reads
+only values, reference answers, and checks. Baseline pins need nothing either,
+because a pin is an `experimentId` and a `variantId`, so the baselines file
+keeps its version. What does need a decision is `EvaluationExecutionDrift`,
+whose fields are chat-shaped: `inputRevision` reads `conversationRevisionId`,
+and `responseMode` and `optionsChanged` do not exist on a decision variant,
+which varies only its target (D33). A comparison is derived on open and never
+persisted, so this is an internal contract between core and the comparison
+view, not a serialization boundary.
+
+What each kind could report:
+
+| Field | Chat | Decision |
+|---|---|---|
+| Input revision | conversation revision | decision request revision |
+| Model, endpoint | yes | yes |
+| Repetitions, concurrency | yes | yes |
+| Response mode, options changed | yes | no |
+| Wire protocol | no | candidate |
+| Capability snapshot | no | candidate |
+
+- **A. A kind-discriminated drift.** `EvaluationExecutionDrift` becomes a
+  union on `kind`. Both arms carry input revision, model, endpoint,
+  repetitions, and concurrency; the chat arm adds response mode and options,
+  and the decision arm adds its own fields. `DriftList` selects its rows by
+  kind.
+  - The type cannot express a combination that never occurs.
+  - It follows the per-kind split in plans (D47) and cell executors (D49).
+  - It costs a small change to the one consumer and to the comparison tests.
+- **B. Extend the flat shape.** `inputRevision` carries whichever revision id
+  applies, decision executions never set the chat-only fields, and an optional
+  `protocol` is added. It is the smallest diff, but the type no longer says
+  which fields apply to which kind.
+- **C. Shared fields only.** Decision drift reports what both kinds share and
+  nothing kind-specific. It is the simplest, but a change of decision adapter
+  shows only as an endpoint change, which is usual but not guaranteed.
+- Under A or B, the decision fields to report: the wire protocol, yes; the
+  capability snapshot, no. `ProviderCapabilities` holds connection-wide flags
+  (tools, streaming, vision) that a decision request does not depend on, so
+  its drift would mostly be noise.
+- Whichever option is taken, the following hold and need no decision:
+  - `derive()` accepts a `SuiteExperimentPlan`.
+  - Durations come from the D50 repetition evidence `metrics` instead of
+    `runMetrics(RunState)`.
+  - Comparing a chat execution with a decision execution stays refused (D50).
+  - The baselines loader opens decision traces.
+  - Comparing different suites behaves as it does for chat.
+- **Recommendation: A, with protocol drift and without capability drift.**
+  Its cost over B is small, and it keeps the per-kind pattern D47 and D49
+  set. The user accepted it.
+
+#### D53. Step 4 app decisions *(accepted)*
+
+The user chose each recommendation.
+
+- **Execution owner:** one evaluation session for both kinds, whose
+  execution is a union on `kind` (as D49's one controller), rather than a
+  second decision session beside it.
+- **Result row:** a decision repetition shows the answer to each question
+  its checks read, not every answer and not checks only.
+- **Creation:** from Decision Compose ("New suite from this request") and
+  from the rail, both pinning Compose's active revision with the draft
+  folded in and Compose's model.
+- **Configurations:** decision configurations can be added, renamed,
+  removed, and given a model override. Connection overrides wait.
+- **Connection:** a decision suite targets its own portable requirement at
+  the System One profile's endpoint, reusing a requirement at the same
+  endpoint, and the route maps it to that profile on this device when it is
+  unmapped. The default chat requirement is left alone.
+
+#### D54. 5c CLI decisions *(accepted)*
+
+The user chose each recommendation.
+
+- **The suite is the System One declaration.** The CLI has no device
+  profile, and a connection requirement carries no System One flag (D9-B).
+  A connection a decision suite names is taken to serve decisions, as a chat
+  suite's connection is taken to have the capabilities the project declares.
+  This keeps D36's "flags unchanged": no new flag or variable. An endpoint
+  that does not serve System One fails in the provider exchange and is
+  recorded in the trace, not refused at setup. Rejected: a per-connection
+  variable (a setup error the app does not have), and moving `systemOne`
+  into the portable capability snapshot (a project schema bump).
+- **`runKind` on summary v1.** The `--json` summary keeps
+  `kind: "evaluation"` and version 1 and gains an always-present
+  `runKind: "chat" | "decision"`, an additive field under its contract.
+  Rejected: inferring the kind from `protocol: "systemone"`, and a new
+  `kind` value, which consumers matching `"evaluation"` would miss.
+
 ## Phases
 
 ### Phase 0: verify the wire format
@@ -1764,8 +1858,83 @@ Decided in D31–D37, with 5a's details in D38–D43. Delivered in order:
   cancelled from a paused attempt. Still chat-only until step 4: the app's
   start path and the CLI (5c) keep refusing decision suites, project history
   lists a decision plan as one it cannot show, and comparison and baselines
-  refuse a decision execution, because their drift fields are chat-shaped.
-- **5c.** `inference-lens run` for decision suites (D36).
+  refuse a decision execution, because their drift fields are chat-shaped
+  (D52).
+  Fourth step, core half (2026-10-24): comparison accepts decision
+  executions with the kind-split drift (D52), and project history lists
+  decision evaluations. `EvaluationExecutionDrift` is a union on `kind`;
+  decision drift reports the request revision, model, endpoint, repetitions,
+  concurrency, and wire protocol. Protocol drift cannot occur yet, because
+  `DECISION_WIRE_PROTOCOLS` has one member. Durations come from repetition
+  evidence, and comparing a chat execution with a decision execution is
+  refused. The history facet replaces `conversationRevisionId` with
+  `runKind` and `inputRevisionId`, and `loadRunHistoryFilesWithStates` also
+  returns decision runs by run id. Covered by
+  `tests/decision-evaluation-comparison.test.ts` (red on the old refusal of
+  decision plans), two additions to `tests/evaluation-comparison.test.ts`
+  (red on the missing `kind` and on the wrong refusal message), and one to
+  `tests/experiment-history.test.ts` (red on the "cannot be shown by this
+  build yet" failure).
+  Fourth step, app half (2026-10-24), under D51 and D53: decision suites
+  are authored, run, read, and compared in Evaluations, and Decision
+  Compose starts one from its request.
+  - Authoring: `useDecisionSuiteSettings` owns the decision setup band
+    (`DecisionSuiteSetup`): the pinned revision, connection, model,
+    repetitions, configurations' models, and request variables. Core gains
+    `createDecisionEvaluationSuite`, `updateDecisionSuiteInput`,
+    `updateDecisionSuiteExecution`, `updateDecisionEvaluationVariant`,
+    `addDecisionEvaluationInput`, and `decisionBindingCandidates`. The check
+    picker offers the decision and shared kinds only, and the decision check
+    fields list the pinned revision's questions and options. The rail labels
+    each suite's kind and adds "+ New decision suite".
+  - A revision a suite pins is never edited in place:
+    `updateDecisionRequestDraft` branches whenever a suite pins the active
+    revision, whatever the editor has frozen. Without this, Compose edits
+    after "New suite from this request" silently changed the suite's input.
+  - Start: the runner gains `resolveDecisionEvaluationLocalTargets`,
+    `decisionEvaluationStartBlocker` (adding `system_one_undeclared`), and
+    `createDecisionEvaluationStartPlan`. The one execution session holds an
+    `EvaluationExecution` union on `kind` and runs a decision draft through
+    `ExperimentController<DecisionRun>`, saving decision traces.
+  - Results score through `evaluationExecutionAggregateSteps` (either kind).
+    A decision repetition shows the answers its checks read
+    (`decisionAnswerSummary`) and opens its trace in Decision Compose.
+    Promotion stays chat-only. Saved executions reopen from history with
+    their decision traces, and baselines and comparison load decision sides.
+  - Covered by `tests/decision-suite-authoring.test.ts` and
+    `tests/decision-evaluation-start.test.ts` (red only on the missing
+    exports), an addition to `tests/decision-request.test.ts` (red on one
+    revision edited in place), and
+    `tests/e2e/system-one-decision-suites.spec.ts`. That spec's run test was
+    red on the start gate's "Create an evaluation suite first." before the
+    start path existed. Its other three tests were written after the code
+    and were not shown failing. The spec sets a 1440×900 viewport as the
+    chat evaluation specs do: at the default 720px height the cases' 360px
+    floor squeezes the setup band to its toggle and overlaps it, for chat
+    and decision suites alike.
+  - Not covered: a decision suite on the Tauri desktop paths, a 429 inside
+    a decision batch in the browser, and the CLI (5c).
+- **5c.** `inference-lens run` for decision suites (D36, D54).
+  Implemented (2026-10-24). `run` resolves the suite, then prepares a chat
+  or a decision plan; the decision path resolves connections and
+  credentials as chat does, checks `decisionEvaluationStartBlocker` with
+  every named connection declared System One, and freezes
+  `createDecisionEvaluationStartPlan`. `driveHeadlessExperiment` runs either
+  plan kind, writing decision traces with `serializeDecisionRunTrace`. The
+  in-process transport gains `executeDecision`, which crosses
+  `resolveDecisionRequest` like the service route. Summary v1 gains
+  `runKind`. `docs/HEADLESS_CLI_DESIGN.md` lists the pieces.
+  Covered by `tests/cli-decision-run.test.ts`, all five tests red first on
+  the old refusal, against a local endpoint answering with the committed
+  llama.cpp capture: the wire request, the artifacts and history, exit codes
+  0–3, the retry flag, and `runKind` through `run --json`. A new case in
+  `tests/e2e/headless-cli-artifacts.spec.ts` runs the CLI against the capture
+  replay and opens the result in the app, down to Decision Compose; it was
+  written after the code and not shown failing.
+  Not covered: the CLI inside the Docker image (`npm run test:docker-cli`
+  was not run), and a 429 retry that succeeds against the capture replay,
+  which answers every `429` request with 429 (the unit test's own endpoint
+  covers it).
 
 ## Out of scope
 

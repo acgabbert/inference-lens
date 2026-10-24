@@ -57,7 +57,7 @@ function sameContent(
 /**
  * Writes the editor's valid draft into the project. With no active request it
  * creates one; with an active revision it edits it in place, or appends a
- * child and moves the pointer when `branch` is set. An unchanged draft
+ * child and moves the pointer when `branch` is set or a suite pins it. An unchanged draft
  * returns the same project, so it never branches. Values for variables the
  * input no longer uses are dropped, as a newly saved template revision drops
  * obsolete defaults.
@@ -81,7 +81,11 @@ export function updateDecisionRequestDraft(
   const active = activeDecisionRequestRevision(project);
   if (active && sameContent(active, decision, keptValues)) return project;
 
-  if (active && !branch) {
+  // A suite that pins the revision ran, or will run, exactly that content
+  // (D44), so it never changes in place whatever the editor has frozen.
+  const pinned = active !== undefined && project.evaluationSuites.some((suite) =>
+    suite.input.kind === "decision-request-revision" && suite.input.decisionRequestRevisionId === active.id);
+  if (active && !branch && !pinned) {
     return parseProjectFile({
       ...project,
       decisionRequestRevisions: project.decisionRequestRevisions.map((revision) =>

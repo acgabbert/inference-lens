@@ -143,3 +143,24 @@ export function decisionDisplayStatus(run: DecisionRun | null, executing: boolea
       return "running";
   }
 }
+
+/**
+ * One line per run naming each answer a check reads (D51): "intent: billing ·
+ * severity: 1.09". Answers no check reads are left to the trace. Undefined
+ * when the run has no completed answers, or none of the named questions.
+ */
+export function decisionAnswerSummary(run: DecisionRun, questionIds: readonly string[]): string | undefined {
+  const answers = decisionRunResult(run)?.answers;
+  if (!answers) return undefined;
+  const parts = [...new Set(questionIds)].flatMap((questionId) => {
+    const answer = Object.hasOwn(answers, questionId) ? answers[questionId] : undefined;
+    if (!answer) return [];
+    const value = answer.type === "choice"
+      ? answer.choice
+      : answer.type === "score"
+        ? answer.score.toFixed(2)
+        : `P(true) ${answer.noul.toFixed(2)}`;
+    return [`${questionId}: ${value}`];
+  });
+  return parts.length > 0 ? parts.join(" · ") : undefined;
+}

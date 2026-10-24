@@ -14,8 +14,16 @@ import {
 import {
   compareEvaluationExecutions,
   type EvaluationComparison,
+  type EvaluationComparisonInput,
 } from "../../packages/core/src/evaluation-comparison.ts";
-import type { EvaluationExperimentPlanV3 } from "../../packages/core/src/experiment.ts";
+import type { DecisionRun } from "../../packages/core/src/decision.ts";
+import { decisionRunFromTrace } from "../../packages/core/src/decision-trace.ts";
+import type { DecisionRunTrace } from "../../packages/core/src/decision-trace.ts";
+import type {
+  DecisionEvaluationExperimentPlan,
+  EvaluationExperimentPlanV3,
+  ExperimentResult,
+} from "../../packages/core/src/experiment.ts";
 import type { EvaluationHistoryItem } from "../../packages/core/src/experiment-history.ts";
 import type {
   EvaluationBaselineId,
@@ -35,14 +43,26 @@ import {
 } from "../project-workspace.client.ts";
 import type { OpenedProjectExperiment } from "../use-project-run-history.client.ts";
 
-/** One side of a loaded comparison, kept so a reader can open its evidence. */
-export interface LoadedComparisonSide {
+interface LoadedComparisonSideBase {
   item: EvaluationHistoryItem;
-  plan: EvaluationExperimentPlanV3;
-  traces: ReadonlyMap<RunId, RunTrace>;
   traceFileNames: ReadonlyMap<RunId, string>;
-  states: ReadonlyMap<RunId, RunState>;
+  result?: ExperimentResult;
 }
+
+/** One side of a loaded comparison, kept so a reader can open its evidence. */
+export type LoadedComparisonSide =
+  | (LoadedComparisonSideBase & {
+      kind: "chat";
+      plan: EvaluationExperimentPlanV3;
+      traces: ReadonlyMap<RunId, RunTrace>;
+      states: ReadonlyMap<RunId, RunState>;
+    })
+  | (LoadedComparisonSideBase & {
+      kind: "decision";
+      plan: DecisionEvaluationExperimentPlan;
+      traces: ReadonlyMap<RunId, DecisionRunTrace>;
+      states: ReadonlyMap<RunId, DecisionRun>;
+    });
 
 export interface LoadedEvaluationComparison {
   baselineName: string;
@@ -99,18 +119,36 @@ function side(
   item: EvaluationHistoryItem,
   opened: OpenedProjectExperiment,
 ): LoadedComparisonSide {
+  const common = { item, traceFileNames: opened.traceFileNames, ...(opened.result ? { result: opened.result } : {}) };
+  if (opened.kind === "decision") {
+    return {
+      ...common,
+      kind: "decision",
+      plan: opened.plan,
+      traces: opened.traces,
+      states: new Map([...opened.traces].map(([runId, trace]) => [runId, decisionRunFromTrace(trace)] as const)),
+    };
+  }
   if (opened.plan.kind !== "evaluation") {
     throw new Error(`${item.planFileName} is not an evaluation.`);
   }
   return {
-    item,
+    ...common,
+    kind: "chat",
     plan: opened.plan,
     traces: opened.traces,
-    traceFileNames: opened.traceFileNames,
     states: new Map(
       [...opened.traces].map(([runId, trace]) => [runId, runStateFromTrace(trace)] as const),
     ),
   };
+}
+
+/** The comparison input for one loaded side; its plan and states share a kind. */
+function comparisonInput(loaded: LoadedComparisonSide, variantId: EvaluationVariantId): EvaluationComparisonInput {
+  const common = { experimentId: loaded.plan.experimentId, variantId, ...(loaded.result ? { result: loaded.result } : {}) };
+  return loaded.kind === "decision"
+    ? { ...common, plan: loaded.plan, states: loaded.states }
+    : { ...common, plan: loaded.plan, states: loaded.states };
 }
 
 /**
@@ -234,20 +272,8 @@ export function useEvaluationBaselines(
             baseline: baselineSide,
             candidate: candidateSide,
             comparison: compareEvaluationExecutions(
-              {
-                experimentId: baselineSide.plan.experimentId,
-                plan: baselineSide.plan,
-                variantId: baseline.variantId,
-                ...(baselineOpened.result ? { result: baselineOpened.result } : {}),
-                states: baselineSide.states,
-              },
-              {
-                experimentId: candidateSide.plan.experimentId,
-                plan: candidateSide.plan,
-                variantId: candidateVariantId,
-                ...(candidateOpened.result ? { result: candidateOpened.result } : {}),
-                states: candidateSide.states,
-              },
+              comparisonInput(baselineSide, baseline.variantId),
+              comparisonInput(candidateSide, candidateVariantId),
             ),
           },
         });

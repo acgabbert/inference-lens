@@ -27,6 +27,11 @@ export interface DecisionComposerProps {
   /** The open project keeps the last valid request until the problems are fixed. */
   unsaved: boolean;
   onOpenConnections(): void;
+  /**
+   * Starts an evaluation suite pinned to this request's revision (D51).
+   * Absent without a project, where there is nowhere to keep a suite.
+   */
+  newSuite?: { onCreate(): void; disabledReason?: string };
 }
 
 /**
@@ -216,7 +221,9 @@ function DecisionVariables({ handle, disabled }: { handle: DecisionDraftHandle; 
   );
 }
 
-export function DecisionComposer({ draft: handle, target, blockers, locked, unsaved, onOpenConnections }: DecisionComposerProps) {
+export const DECISION_NEW_SUITE_REASON_ID = "decision-new-suite-reason";
+
+export function DecisionComposer({ draft: handle, target, blockers, locked, unsaved, onOpenConnections, newSuite }: DecisionComposerProps) {
   const { draft } = handle;
   const discovery = target.discovery;
   return (
@@ -248,6 +255,18 @@ export function DecisionComposer({ draft: handle, target, blockers, locked, unsa
               ? { actions: [{ key: "connections", label: "Open Connections", primary: true as const, onSelect: onOpenConnections }] }
               : {})}
           />
+        </div>
+      )}
+      {newSuite && (
+        <div className="decision-new-suite">
+          <button
+            aria-describedby={newSuite.disabledReason ? DECISION_NEW_SUITE_REASON_ID : undefined}
+            className="text-button"
+            disabled={Boolean(newSuite.disabledReason)}
+            type="button"
+            onClick={newSuite.onCreate}
+          >New suite from this request</button>
+          {newSuite.disabledReason && <small id={DECISION_NEW_SUITE_REASON_ID}>{newSuite.disabledReason}</small>}
         </div>
       )}
       {unsaved && (

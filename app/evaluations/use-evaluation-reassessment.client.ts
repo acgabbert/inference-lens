@@ -18,7 +18,6 @@ import {
 import type { SuiteCriteriaCase } from "../../packages/core/src/evaluation-reassessment.ts";
 import { updateEvaluationCheck } from "../../packages/core/src/evaluation-suite-authoring.ts";
 import {
-  evaluationParsedExperimentAggregateSteps,
   parseExperimentPlanFile,
 } from "../../packages/core/src/experiment.ts";
 import type { EvaluationCriteriaOverride } from "../../packages/core/src/experiment.ts";
@@ -36,6 +35,7 @@ import {
   saveEvaluationAssessmentWorkspace,
 } from "../project-workspace.client.ts";
 import { useScheduledDerivation } from "./use-scheduled-derivation.client.ts";
+import { evaluationExecutionAggregateSteps } from "./evaluation-execution-aggregate.ts";
 import type { EvaluationExecution } from "./use-evaluation-execution-session.client.ts";
 
 /**
@@ -218,7 +218,7 @@ export function useEvaluationReassessment({
   const parsedPlan = useMemo(() => {
     if (!execution) return undefined;
     const plan = parseExperimentPlanFile(execution.plan);
-    return plan.kind === "evaluation" ? plan : undefined;
+    return plan.kind === "evaluation" || plan.kind === "decision-evaluation" ? plan : undefined;
   }, [execution]);
 
   const authoredSuite = useMemo(() => {
@@ -318,13 +318,13 @@ export function useEvaluationReassessment({
 
   const baseline = useScheduledDerivation(useMemo(
     () => editorOpen && parsedPlan && execution
-      ? () => evaluationParsedExperimentAggregateSteps(parsedPlan, execution.result, execution.states)
+      ? () => evaluationExecutionAggregateSteps(execution)
       : undefined,
     [editorOpen, parsedPlan, execution],
   ));
   const candidate = useScheduledDerivation(useMemo(
     () => editorOpen && parsedPlan && execution && draftCriteria
-      ? () => evaluationParsedExperimentAggregateSteps(parsedPlan, execution.result, execution.states, draftCriteria)
+      ? () => evaluationExecutionAggregateSteps(execution, draftCriteria)
       : undefined,
     [editorOpen, parsedPlan, execution, draftCriteria],
   ));

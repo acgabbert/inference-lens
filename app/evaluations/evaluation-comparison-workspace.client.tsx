@@ -10,6 +10,8 @@ import type {
   EvaluationVariantConcurrency,
 } from "../../packages/core/src/evaluation-comparison.ts";
 import { finalAssistantOutput } from "../../packages/core/src/run-output.ts";
+import type { DecisionRunTrace } from "../../packages/core/src/decision-trace.ts";
+import { decisionAnswerSummary } from "../decisions/decision-result-view.ts";
 import { diffLines } from "../../packages/core/src/text-diff.ts";
 import type { EvaluationCaseId, EvaluationVariantId, ExperimentCellId, RunId, RunTrace } from "../../packages/core/src/run-kernel/index.ts";
 import { formatTokens } from "../run-metrics-format.client.ts";
@@ -77,14 +79,22 @@ function concurrencyText({ maxInFlight, connectionLimit }: EvaluationVariantConc
 function DriftList({ drift }: { drift: EvaluationExecutionDrift }) {
   const rows: Array<[string, string, string]> = [];
   if (drift.inputRevision) {
-    rows.push(["Input revision", drift.inputRevision.baseline, drift.inputRevision.candidate]);
+    rows.push([
+      drift.kind === "decision" ? "Request revision" : "Input revision",
+      drift.inputRevision.baseline,
+      drift.inputRevision.candidate,
+    ]);
   }
   if (drift.model) rows.push(["Model", drift.model.baseline, drift.model.candidate]);
   if (drift.endpoint) rows.push(["Endpoint", drift.endpoint.baseline, drift.endpoint.candidate]);
-  if (drift.responseMode) {
-    rows.push(["Response mode", drift.responseMode.baseline, drift.responseMode.candidate]);
+  if (drift.kind === "chat") {
+    if (drift.responseMode) {
+      rows.push(["Response mode", drift.responseMode.baseline, drift.responseMode.candidate]);
+    }
+    if (drift.optionsChanged) rows.push(["Inference options", "changed", "changed"]);
+  } else if (drift.protocol) {
+    rows.push(["Wire protocol", drift.protocol.baseline, drift.protocol.candidate]);
   }
-  if (drift.optionsChanged) rows.push(["Inference options", "changed", "changed"]);
   if (drift.repetitions) {
     rows.push([
       "Repetitions",
@@ -175,7 +185,15 @@ function OutputDiff({
     const cell = side.plan.cells.find(
       (item) => item.caseId === caseId && item.variantId === variantId && item.repetition === repetition,
     );
-    const state = cell ? side.states.get(cell.runId) : undefined;
+    if (!cell) return undefined;
+    if (side.kind === "decision") {
+      // The answers its checks read, one per line, so the diff aligns by question.
+      const run = side.states.get(cell.runId);
+      const checks = side.plan.suite.cases.find((item) => item.caseId === caseId)?.checks ?? [];
+      const questionIds = checks.flatMap((check) => "questionId" in check ? [check.questionId] : []);
+      return run ? decisionAnswerSummary(run, questionIds)?.split(" · ").join("\n") : undefined;
+    }
+    const state = side.states.get(cell.runId);
     return state ? finalAssistantOutput(state) : undefined;
   };
   const left = output(baseline, baselineVariantId);
@@ -244,7 +262,7 @@ function CaseRow({
   const effectiveRepetition = restored ?? selectedRepetition;
   const selected = comparison.repetitions.find(({ repetition }) => repetition === effectiveRepetition);
   const target = effectiveRepetition === undefined ? undefined : { caseId: comparison.caseId, repetition: effectiveRepetition };
-  const readableTrace = (side: LoadedComparisonSide, runId: RunId | undefined): RunTrace | undefined =>
+  const readableTrace = (side: LoadedComparisonSide, runId: RunId | undefined): RunTrace | DecisionRunTrace | undefined =>
     runId ? side.traces.get(runId) : undefined;
   const baselineTrace = readableTrace(loaded.baseline, selected?.baseline?.runId);
   const candidateTrace = readableTrace(loaded.candidate, selected?.candidate?.runId);
@@ -307,11 +325,12 @@ function CaseRow({
               >
                 Open candidate trace
               </button>
-              {comparison.delta === "regressed" && candidateTrace && selected?.candidate && (
+              {/* Promoting a decision trace to a case waits for later (D51). */}
+              {comparison.delta === "regressed" && candidateTrace && loaded.candidate.kind === "chat" && selected?.candidate && (
                 <button
                   className="text-button"
                   type="button"
-                  onClick={() => onPromoteCandidate(candidateTrace, selected.candidate!.cellId)}
+                  onClick={() => onPromoteCandidate(candidateTrace as RunTrace, selected.candidate!.cellId)}
                 >
                   Promote candidate input to case…
                 </button>

@@ -77,7 +77,11 @@ export interface ProjectWorkspaceHandleState {
   currentProjectDocument(): ProjectFile;
   materializeProject(): ProjectFile;
   adoptProjectMutation(project: ProjectFile): void;
-  mapProfile(requirementId: string, profile: ProfileIdentity): void;
+  /**
+   * `inProject` is a document just handed to `adoptProjectMutation`, for a
+   * requirement that mutation added and this render does not hold yet.
+   */
+  mapProfile(requirementId: string, profile: ProfileIdentity, inProject?: ProjectFile): void;
   unmapProfile(profileId: string): void;
   newProjectFolder(options: ProjectCreationOptions): Promise<void>;
   openProjectWorkspace(): Promise<void>;
@@ -343,11 +347,12 @@ export function useProjectWorkspace(input: {
     );
   }
 
-  function mapProfile(requirementId: string, profile: ProfileIdentity): void {
-    if (!projectFile) return;
-    if (!projectFile.connectionRequirements.some(({ id }) => id === requirementId)) return;
+  function mapProfile(requirementId: string, profile: ProfileIdentity, inProject?: ProjectFile): void {
+    const target = inProject ?? projectFile;
+    if (!target) return;
+    if (!target.connectionRequirements.some(({ id }) => id === requirementId)) return;
     setMappedProfileIds((current) => ({ ...current, [requirementId]: profile.id }));
-    rememberMappedProfile(projectFile.projectId, requirementId, profile);
+    rememberMappedProfile(target.projectId, requirementId, profile);
     setProjectError(undefined);
   }
 

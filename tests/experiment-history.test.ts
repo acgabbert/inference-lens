@@ -5,11 +5,19 @@ import {
   LARGE_HISTORY_ARTIFACT_WARNING_THRESHOLD,
   loadProjectHistoryFiles,
 } from "../packages/core/src/experiment-history.ts";
+import { decisionRunTrace } from "../packages/core/src/decision-trace.ts";
 import {
+  EXPERIMENT_RESULT_SCHEMA_VERSION,
+  experimentPlanFileName,
+  experimentResultFileName,
   materializeExperimentCellInput,
+  materializeParsedDecisionCellInput,
+  noExperimentRetries,
+  sequentialExperimentConcurrency,
   serializeExperimentPlan,
   serializeExperimentResult,
   type EvaluationExperimentPlanV3,
+  type ExperimentResult,
   type ExperimentResultV3,
   type RepeatedExperimentPlanV3,
 } from "../packages/core/src/experiment.ts";
@@ -24,7 +32,14 @@ import {
   reduceRunEvent,
 } from "../packages/core/src/run-kernel/index.ts";
 import type { RunEvent } from "../packages/core/src/run-kernel/index.ts";
-import { serializeRunTrace } from "../packages/core/src/run-trace.ts";
+import { serializeDecisionRunTrace, serializeRunTrace, traceFileName } from "../packages/core/src/run-trace.ts";
+import {
+  RATE_LIMITED,
+  decisionAnswers,
+  decisionPlan,
+  finishedDecisionRun,
+} from "./fixtures/decision-evaluation.ts";
+import type { FinishedRunOptions } from "./fixtures/decision-evaluation.ts";
 import { OPENAI_COMPATIBLE_CAPABILITIES } from "../packages/core/src/types.ts";
 
 function plan(suffix: string, createdAt = "2026-07-31T12:00:00.000Z"): RepeatedExperimentPlanV3 {
@@ -389,7 +404,8 @@ test("an evaluation carries its suite identity and strict pass rate, not its run
   assert.equal(item?.completed, 2);
   assert.equal(item?.evaluation?.suiteId, "evaluation-suite_topics");
   assert.equal(item?.evaluation?.suiteName, "Topics");
-  assert.equal(item?.evaluation?.conversationRevisionId, value.suite.conversationRevisionId);
+  assert.equal(item?.evaluation?.runKind, "chat");
+  assert.equal(item?.evaluation?.inputRevisionId, value.suite.conversationRevisionId);
   assert.equal(item?.evaluation?.variants[0]?.passed, false);
   assert.deepEqual(item?.evaluation?.variants[0]?.caseCounts, { total: 1, passed: 0, failed: 1, incomplete: 0 });
   assert.equal(loaded.failures.length, 0);
@@ -469,4 +485,52 @@ test("a saved reassessment beside a plan and result is neither paired nor report
   assert.equal(loaded.experiments.length, 1);
   assert.equal(loaded.experiments[0]?.lifecycle, "completed");
   assert.equal(loaded.failures.length, 0);
+});
+
+test("a decision evaluation lists with its request revision, strict pass rate, and run counts", () => {
+  const decisionPlanned = decisionPlan();
+  // Big routes Refund to billing; one Default Crash repetition is rate-limited.
+  const traces = decisionPlanned.cells.map((cell) => {
+    const input = materializeParsedDecisionCellInput(decisionPlanned, cell);
+    const options: FinishedRunOptions = cell.variantId === "evaluation-variant_big" && cell.caseId === "evaluation-case_refund"
+      ? { last: { kind: "completed", answers: decisionAnswers("billing", 1.5) } }
+      : cell.variantId === "evaluation-variant_base" && cell.caseId === "evaluation-case_crash" && cell.repetition === 2
+        ? { last: { kind: "failed", error: RATE_LIMITED } }
+        : { last: { kind: "completed", answers: decisionAnswers("refund", 1.5) } };
+    const run = finishedDecisionRun(input, options);
+    return { fileName: traceFileName(run.runId), contents: serializeDecisionRunTrace(decisionRunTrace(run)) };
+  });
+  const result: ExperimentResult = {
+    schemaVersion: EXPERIMENT_RESULT_SCHEMA_VERSION,
+    experimentId: decisionPlanned.experimentId,
+    status: "completed",
+    endedAt: "2026-10-24T13:10:00.000Z",
+    concurrency: sequentialExperimentConcurrency(decisionPlanned),
+    retryPolicy: noExperimentRetries(),
+    cells: decisionPlanned.cells.map((cell, index) => ({ cellId: cell.cellId, runId: cell.runId, status: "completed", startOrder: index + 1 })),
+  };
+  const projection = loadProjectHistoryFiles(traces, [
+    { fileName: experimentPlanFileName(decisionPlanned.experimentId), contents: serializeExperimentPlan(decisionPlanned) },
+    { fileName: experimentResultFileName(decisionPlanned.experimentId), contents: serializeExperimentResult(result, decisionPlanned) },
+  ]);
+
+  assert.deepEqual(projection.failures, []);
+  assert.equal(projection.experiments.length, 1);
+  // Its traces are grouped under the experiment, not listed as loose runs.
+  assert.equal(projection.runs.length, 0);
+  const [item] = projection.experiments;
+  assert.equal(item?.kind, "evaluation");
+  if (item?.kind !== "evaluation") return;
+  assert.equal(item.evaluation.runKind, "decision");
+  assert.equal(item.evaluation.inputRevisionId, "decision-revision_one");
+  assert.equal(item.lifecycle, "completed");
+  assert.equal(item.requested, 8);
+  assert.equal(item.completed, 7);
+  assert.equal(item.rateLimited, 1);
+  assert.equal(item.failed, 0);
+  assert.ok(item.cells.every(({ traceFileName: name }) => name !== undefined));
+  assert.deepEqual(item.evaluation.variants.map(({ name, model, passed, caseCounts }) => ({ name, model, passed, caseCounts })), [
+    { name: "Default", model: "local-decision", passed: false, caseCounts: { total: 2, passed: 1, failed: 0, incomplete: 1 } },
+    { name: "Big", model: "big-decision", passed: false, caseCounts: { total: 2, passed: 1, failed: 1, incomplete: 0 } },
+  ]);
 });

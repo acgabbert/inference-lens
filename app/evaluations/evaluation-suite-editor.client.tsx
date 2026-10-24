@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { StructuredCheckEditor } from "./structured-check-editor.client";
-import { CHECK_KINDS, isDecisionCheckKind } from "../../packages/core/src/checks";
-import type { CheckDefinition, CheckKind, ToolCallCountComparator } from "../../packages/core/src/checks";
+import { CHECK_KINDS, DECISION_CHECK_KINDS, SHARED_CHECK_KINDS, isDecisionCheckKind } from "../../packages/core/src/checks";
+import type { CheckDefinition, CheckKind, DecisionBoundComparator, DecisionCheckDefinition, DecisionScoreRangeCheck, ToolCallCountComparator } from "../../packages/core/src/checks";
+import type { DecisionInput } from "../../packages/core/src/decision";
 import type { JsonObject } from "../../packages/core/src/run-kernel";
 import type { EvaluationCase, EvaluationInputBinding } from "../../packages/core/src/project";
-import { isChatEvaluationSuite } from "../../packages/core/src/evaluation-suites";
+import { decisionCheckQuestionTypes, decisionOptions, isChatEvaluationSuite, isDecisionEvaluationSuite } from "../../packages/core/src/evaluation-suites";
 import type { EvaluationCaseSource } from "../../packages/core/src/evaluation-case-sources";
 import type { InferenceOptions, ProviderProtocol } from "../../packages/core/src/run-kernel";
 import { DEFAULT_EXPERIMENT_TURN_CEILING } from "../../packages/core/src/experiment";
@@ -19,6 +20,8 @@ import type { EvaluationSuiteAuthoringHandle } from "./use-evaluation-suite-auth
 import type { EvaluationCheckAuthoringField } from "./use-evaluation-suite-authoring.client";
 import { evaluationBatchGuardrail } from "./evaluation-batch.client";
 import { availableBindingCandidates, ChatSuiteSetup, chatSuiteSetupFacts, evaluationInputLabel } from "./chat-suite-setup.client";
+import { DecisionSuiteSetup, decisionSuiteSetupFacts } from "./decision-suite-setup.client";
+import type { DecisionSuiteSettingsHandle } from "./use-decision-suite-settings.client";
 import {
   EvaluationSuiteHistory,
   type EvaluationSuiteHistoryHandle,
@@ -54,13 +57,113 @@ const checkKindLabels: Record<CheckKind, string> = {
 };
 
 const checkKinds = CHECK_KINDS.map((kind) => ({ kind, label: checkKindLabels[kind] }));
-// A chat suite is offered every kind that reads a chat run; decision kinds
-// arrive with decision suites.
-const offeredCheckKinds = checkKinds.filter(({ kind }) => !isDecisionCheckKind(kind));
+// Each suite is offered only the kinds that read its run kind (D34, D51);
+// the project refuses the others anyway.
+const offeredCheckKinds = {
+  chat: checkKinds.filter(({ kind }) => !isDecisionCheckKind(kind)),
+  decision: checkKinds.filter(({ kind }) =>
+    (DECISION_CHECK_KINDS as readonly CheckKind[]).includes(kind) || (SHARED_CHECK_KINDS as readonly CheckKind[]).includes(kind)),
+};
 
-function CheckEditor({ check, error, onCommit, onRemove }: {
+/** An empty bound is absent, not zero. */
+function withBound(check: DecisionScoreRangeCheck, field: "min" | "max", value: number | undefined): DecisionScoreRangeCheck {
+  const next = { ...check };
+  if (value === undefined) delete next[field];
+  else next[field] = value;
+  return next;
+}
+
+function numberOrUndefined(text: string): number | undefined {
+  if (text.trim() === "") return undefined;
+  const value = Number(text);
+  return Number.isFinite(value) ? value : undefined;
+}
+
+/**
+ * The question and option fields of a decision check (D51), listing only the
+ * pinned revision's questions of a type the kind reads and that question's
+ * options. A value the revision no longer has stays selected and labelled as
+ * missing, so preflight's message has something on screen to point at.
+ */
+function DecisionCheckFields({ check, questions, onCommit, error }: {
+  check: DecisionCheckDefinition;
+  questions?: DecisionInput["questions"];
+  onCommit(check: CheckDefinition, field: EvaluationCheckAuthoringField): boolean;
+  error?: { field: EvaluationCheckAuthoringField; message: string };
+}) {
+  const types = decisionCheckQuestionTypes[check.kind];
+  const eligible = Object.entries(questions ?? {}).filter(([, question]) => types.includes(question.type));
+  const question = questions && Object.hasOwn(questions, check.questionId) ? questions[check.questionId] : undefined;
+  const options = question ? decisionOptions(question) : [];
+  const optionLabel = (option: string) => question?.type === "score"
+    ? `${option} · ${String(question.criteria[Number(option)] ?? "")}`
+    : option;
+  const bound = (field: "value" | "min" | "max" | "at-least", label: string, value: number | undefined, apply: (next: number | undefined) => CheckDefinition) => (
+    <label>{label}
+      <input key={`${check.checkId}:${field}:${value}`} type="number" step="0.05" defaultValue={value ?? ""} onBlur={(event) => {
+        const next = numberOrUndefined(event.target.value);
+        if (next === value) return;
+        if (!onCommit(apply(next), field)) event.currentTarget.value = value === undefined ? "" : String(value);
+      }} />
+    </label>
+  );
+  const comparator = (current: DecisionBoundComparator, apply: (next: DecisionBoundComparator) => CheckDefinition) => (
+    <label>Comparator <select value={current} onChange={(event) => onCommit(apply(event.target.value as DecisionBoundComparator), "comparator")}>
+      <option value="at-least">At least</option><option value="at-most">At most</option>
+    </select></label>
+  );
+  return (
+    <>
+      <div className="evaluation-check-options">
+        <label>Question
+          <select aria-label="Decision question" value={check.questionId} onChange={(event) => {
+            // A new question invalidates the old option: it named the previous question's criteria.
+            const next = "option" in check ? { ...check, questionId: event.target.value, option: "" } : { ...check, questionId: event.target.value };
+            onCommit(next as CheckDefinition, "question");
+          }}>
+            {check.questionId === "" && <option value="">Choose a question</option>}
+            {check.questionId !== "" && !eligible.some(([id]) => id === check.questionId) && <option value={check.questionId}>{check.questionId} (not in this revision)</option>}
+            {eligible.map(([id, candidate]) => <option key={id} value={id}>{id} · {candidate.type}</option>)}
+          </select>
+        </label>
+        {"option" in check && (
+          <label>{question?.type === "score" ? "Level" : "Option"}
+            <select aria-label="Decision option" value={check.option} onChange={(event) => onCommit({ ...check, option: event.target.value }, "option")}>
+              {check.option === "" && <option value="">Choose {question?.type === "score" ? "a level" : "an option"}</option>}
+              {check.option !== "" && !options.includes(check.option) && <option value={check.option}>{check.option} (not offered)</option>}
+              {options.map((option) => <option key={option} value={option}>{optionLabel(option)}</option>)}
+            </select>
+          </label>
+        )}
+        {check.kind === "decision-choice" && (
+          <label><input type="checkbox" checked={check.negate ?? false} onChange={(event) => onCommit({ ...check, negate: event.target.checked }, "negate")} /> Negate</label>
+        )}
+      </div>
+      <div className="evaluation-check-options">
+        {check.kind === "decision-option-probability" && <>
+          {comparator(check.comparator, (next) => ({ ...check, comparator: next }))}
+          {bound("value", "Probability", check.value, (next) => ({ ...check, value: next ?? 0 }))}
+        </>}
+        {check.kind === "decision-noul" && <>
+          {comparator(check.comparator, (next) => ({ ...check, comparator: next }))}
+          {bound("value", "P(true)", check.value, (next) => ({ ...check, value: next ?? 0 }))}
+        </>}
+        {check.kind === "decision-score-range" && <>
+          {bound("min", "Minimum score", check.min, (next) => withBound(check, "min", next))}
+          {bound("max", "Maximum score", check.max, (next) => withBound(check, "max", next))}
+        </>}
+        {check.kind === "decision-confidence" && bound("at-least", "At least", check.atLeast, (next) => ({ ...check, atLeast: next ?? 0 }))}
+      </div>
+      {error && (["question", "option", "value", "min", "max", "at-least", "comparator", "negate"] as EvaluationCheckAuthoringField[]).includes(error.field) && <p className="evaluation-field-error" role="alert">{error.message}</p>}
+    </>
+  );
+}
+
+function CheckEditor({ check, error, questions, onCommit, onRemove }: {
   check: CheckDefinition;
   error?: { field: EvaluationCheckAuthoringField; message: string };
+  /** The pinned revision's questions, for a decision suite's checks. */
+  questions?: DecisionInput["questions"];
   onCommit(check: CheckDefinition, field: EvaluationCheckAuthoringField): boolean;
   onRemove(): void;
 }) {
@@ -161,6 +264,7 @@ function CheckEditor({ check, error, onCommit, onRemove }: {
         </label>
       )}
       {error?.field === "arguments-subset" && <p className="evaluation-field-error" role="alert">{error.message}</p>}
+      {isDecisionCheckKind(check.kind) && <DecisionCheckFields check={check as DecisionCheckDefinition} {...(questions ? { questions } : {})} onCommit={onCommit} {...(error ? { error } : {})} />}
     </article>
   );
 }
@@ -171,14 +275,19 @@ function CaseEditor({ evaluationCase, authoring, source, onOpenSourceTrace }: {
   source?: EvaluationCaseSource;
   onOpenSourceTrace?(source: EvaluationCaseSource): void;
 }) {
-  const [newKind, setNewKind] = useState<CheckKind>("contains");
+  const project = authoring.project;
+  const suite = project?.evaluationSuites.find(({ id }) => id === authoring.suiteId);
+  const decisionSuite = suite && isDecisionEvaluationSuite(suite) ? suite : undefined;
+  const kinds = offeredCheckKinds[decisionSuite ? "decision" : "chat"];
+  const questions = decisionSuite
+    ? project?.decisionRequestRevisions.find(({ id }) => id === decisionSuite.input.decisionRequestRevisionId)?.decision.questions
+    : undefined;
+  const [newKind, setNewKind] = useState<CheckKind>(kinds[0]!.kind);
   // Seeded from the case rather than driven by it: a controlled `open` would
   // snap the disclosure shut under the author whenever an unrelated edit
   // re-rendered. The editor is keyed by case id, so focusing another case
   // remounts and re-seeds this.
   const [referenceOpen, setReferenceOpen] = useState(Boolean(evaluationCase.referenceAnswer));
-  const project = authoring.project;
-  const suite = project?.evaluationSuites.find(({ id }) => id === authoring.suiteId);
   const checkError = authoring.error?.target.kind === "check" && authoring.error.target.caseId === evaluationCase.id
     ? authoring.error
     : undefined;
@@ -192,7 +301,7 @@ function CaseEditor({ evaluationCase, authoring, source, onOpenSourceTrace }: {
       {source && onOpenSourceTrace && <button className="text-button" type="button" onClick={() => onOpenSourceTrace(source)}>Open source trace</button>}
       {suite && suite.inputBindings.length > 0 && (
         <div className="evaluation-case-values">
-          <div><span className="eyebrow">Case inputs</span><p>Values inserted into this case’s prompt variables.</p></div>
+          <div><span className="eyebrow">Case inputs</span><p>{decisionSuite ? "Values inserted into this case’s request variables." : "Values inserted into this case’s prompt variables."}</p></div>
           {suite.inputBindings.map((binding) => {
             const input = binding.target.kind === "template-variable"
               ? evaluationInputLabel(project!, authoring.revisionId, binding as EvaluationInputBinding)
@@ -209,10 +318,10 @@ function CaseEditor({ evaluationCase, authoring, source, onOpenSourceTrace }: {
           space directly under the inputs. */}
       <div className="evaluation-check-list">
         {evaluationCase.checks.length === 0 && <p className="evaluation-empty-inline">No deterministic checks yet.</p>}
-        {evaluationCase.checks.map((check) => <CheckEditor key={check.checkId} check={check} error={checkError?.target.kind === "check" && checkError.target.checkId === check.checkId ? { field: checkError.target.field, message: checkError.message } : undefined} onCommit={(next, field) => authoring.updateCheck(evaluationCase.id, next, field)} onRemove={() => authoring.deleteCheck(evaluationCase.id, check.checkId)} />)}
+        {evaluationCase.checks.map((check) => <CheckEditor key={check.checkId} check={check} error={checkError?.target.kind === "check" && checkError.target.checkId === check.checkId ? { field: checkError.target.field, message: checkError.message } : undefined} {...(questions ? { questions } : {})} onCommit={(next, field) => authoring.updateCheck(evaluationCase.id, next, field)} onRemove={() => authoring.deleteCheck(evaluationCase.id, check.checkId)} />)}
       </div>
       <div className="evaluation-add-row">
-        <select aria-label="New check kind" value={newKind} onChange={(event) => setNewKind(event.target.value as CheckKind)}>{offeredCheckKinds.map(({ kind, label }) => <option key={kind} value={kind}>{label}</option>)}</select>
+        <select aria-label="New check kind" value={newKind} onChange={(event) => setNewKind(event.target.value as CheckKind)}>{kinds.map(({ kind, label }) => <option key={kind} value={kind}>{label}</option>)}</select>
         <button className="button secondary" type="button" onClick={() => {
           authoring.addCheck(evaluationCase.id, { kind: newKind });
         }}>+ Add check</button>
@@ -266,6 +375,11 @@ export interface EvaluationSuiteExecutionActions {
   toolBindings?: readonly ExperimentToolBinding[];
   /** Why command tools cannot run in this shell, when that is the case. */
   commandToolsUnavailableReason?: string;
+  /**
+   * Device-local reasons a decision suite's configurations cannot be served,
+   * such as a mapped profile that does not declare System One.
+   */
+  decisionTargetIssues?: readonly string[];
 }
 
 /**
@@ -300,9 +414,12 @@ export function EvaluationSuiteEditor({
   onOpenTemplates,
   caseSource,
   onOpenSourceTrace,
+  decisionSettings,
 }: {
   authoring: EvaluationSuiteAuthoringHandle;
   execution?: EvaluationSuiteExecutionActions;
+  /** The selected decision suite's setup owner; absent for a chat suite. */
+  decisionSettings?: DecisionSuiteSettingsHandle;
   /** Saved executions of the selected suite, listed by the route. */
   history?: EvaluationSuiteHistoryHandle;
   modelFavorites?: ModelFavoritesHandle;
@@ -322,10 +439,14 @@ export function EvaluationSuiteEditor({
   const focusedCase = suite?.cases.find(({ id }) => id === authoring.focusedCaseId);
   const selectedCount = authoring.selectedCaseIds.size;
   const selectedVariantCount = authoring.selectedVariantIds.size;
-  // Decision suites gain their own setup in a later step (D51); until then the
-  // band holds only a chat suite's.
+  // Each kind owns what goes in the band and the facts it would hide (D51).
   const chatSuite = suite && isChatEvaluationSuite(suite) ? suite : undefined;
-  const setupFacts = project && chatSuite ? chatSuiteSetupFacts(project, chatSuite, execution) : undefined;
+  const decisionSuite = suite && isDecisionEvaluationSuite(suite) ? suite : undefined;
+  const setupFacts = project && chatSuite
+    ? chatSuiteSetupFacts(project, chatSuite, execution)
+    : project && decisionSuite
+      ? decisionSuiteSetupFacts(project, decisionSuite, execution)
+      : undefined;
   const exposedToolCount = setupFacts?.batchShape.exposedToolCount ?? 0;
   const batch = evaluationBatchGuardrail(selectedCount, selectedVariantCount, authoring.repetitions, {
     exposedToolCount,
@@ -381,7 +502,7 @@ export function EvaluationSuiteEditor({
         <>
           <header className={styles.header}>
             <div className={styles.identity}>
-              <span className="eyebrow">Evaluation suite</span>
+              <span className="eyebrow">{decisionSuite ? "Decision suite" : "Evaluation suite"}</span>
               {/* Keyed by the suite: the rail switches which suite this header
                   describes without remounting, and a draft must not follow. */}
               <EditableTitle key={suite.id} heading="h2" label="Suite name" value={suite.name} onCommit={authoring.renameSuite} />
@@ -428,7 +549,7 @@ export function EvaluationSuiteEditor({
               <DisclosureChevron className={styles.setupChevron} />
               <strong>Setup</strong>
               <span className={styles.setupFacts}>{setupSummary}</span>
-              <span className={styles.setupHint}>{setupOpen ? "Hide" : "Show input, settings, and tools"}</span>
+              <span className={styles.setupHint}>{setupOpen ? "Hide" : decisionSuite ? "Show request, target, and configurations" : "Show input, settings, and tools"}</span>
             </button>
             {chatSuite && <ChatSuiteSetup
               open={setupOpen}
@@ -438,6 +559,13 @@ export function EvaluationSuiteEditor({
               authoring={authoring}
               {...(execution ? { execution } : {})}
               {...(modelFavorites ? { modelFavorites } : {})}
+            />}
+            {decisionSuite && decisionSettings && <DecisionSuiteSetup
+              open={setupOpen}
+              className={`evaluation-setup ${styles.setupBody}`}
+              project={project}
+              authoring={authoring}
+              settings={decisionSettings}
             />}
           </div>
 

@@ -11,6 +11,7 @@ import type {
 import { EvaluationSuiteRail } from "../evaluations/evaluation-suite-rail.client";
 import type { EvaluationSuiteHistoryHandle } from "../evaluations/evaluation-suite-history.client";
 import type { EvaluationSuiteAuthoringHandle } from "../evaluations/use-evaluation-suite-authoring.client";
+import type { DecisionSuiteSettingsHandle } from "../evaluations/use-decision-suite-settings.client";
 import type { EvaluationCaseSource } from "../../packages/core/src/evaluation-case-sources";
 import { PaneEmptyState } from "../pane-empty-state.client";
 import styles from "./evaluations-mode.module.css";
@@ -54,6 +55,9 @@ interface EvaluationsModeProps {
   onOpenTemplates(): void;
   caseSource?: EvaluationCaseSource;
   onOpenSourceTrace?(source: EvaluationCaseSource): void;
+  decisionSettings?: DecisionSuiteSettingsHandle;
+  /** Creates a decision suite from Decision Compose's active request. */
+  onCreateDecision?: { create(): void; disabledReason?: string };
 }
 
 /**
@@ -74,6 +78,8 @@ export function EvaluationsMode({
   onOpenTemplates,
   caseSource,
   onOpenSourceTrace,
+  decisionSettings,
+  onCreateDecision,
 }: EvaluationsModeProps) {
   const project = authoring.project;
   const constrainedPreview = useSyncExternalStore(
@@ -103,6 +109,7 @@ export function EvaluationsMode({
         {...(authoring.suiteId ? { selectedId: authoring.suiteId } : {})}
         onSelect={authoring.selectSuite}
         onCreate={authoring.createSuite}
+        {...(onCreateDecision ? { onCreateDecision } : {})}
       />
       {/* The editor labels its own region; wrapping it only supplies scroll. */}
       <div className={styles.editor}>
@@ -115,6 +122,7 @@ export function EvaluationsMode({
           onOpenTemplates={onOpenTemplates}
           {...(caseSource ? { caseSource } : {})}
           {...(onOpenSourceTrace ? { onOpenSourceTrace } : {})}
+          {...(decisionSettings ? { decisionSettings } : {})}
         />
       </div>
       {previewOpen ? (
