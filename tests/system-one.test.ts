@@ -333,6 +333,16 @@ test("captured OpenRouter error envelopes read as their message", () => {
   for (const [name, message] of [
     ["openrouter-401", "User not found."],
     ["openrouter-400-unknown-model", "Model typesafe/no-such-model does not exist"],
+    // OpenRouter's own validation: a JSON-encoded zod issue list.
+    [
+      "openrouter-400-unknown-type",
+      "questions.q.type: Invalid discriminator value. Expected 'noul' | 'choice' | 'score' | 'box'",
+    ],
+    // TypeSafe's FastAPI 422, relayed as a string after "HTTP 422: ".
+    [
+      "openrouter-422-too-many-options",
+      "body.questions.q.choice.criteria: Dictionary should have at most 255 items after validation, not 256",
+    ],
   ] as const) {
     const captured = fixture(name);
     assert.equal(systemOneAdapter.errorMessage(JSON.stringify(captured.response.body)), message, name);

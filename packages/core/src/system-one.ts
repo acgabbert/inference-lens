@@ -176,6 +176,39 @@ function normalizeSystemOneResponse(
   };
 }
 
+/** `path: message` lines from a list of issues, or undefined if none has a message. */
+function issueLines(
+  issues: unknown[],
+  messageKey: string,
+  pathKey: string,
+): string | undefined {
+  const lines = issues.flatMap((item) => {
+    if (!isObject(item) || typeof item[messageKey] !== "string") return [];
+    const path = item[pathKey];
+    const location = Array.isArray(path) ? path.map(String).join(".") : "";
+    return [location ? `${location}: ${item[messageKey]}` : item[messageKey]];
+  });
+  return lines.length > 0 ? lines.join("\n") : undefined;
+}
+
+/**
+ * OpenRouter's `error.message` can itself be encoded: its own validation
+ * sends a JSON zod issue list (`{path, message}`), and an upstream TypeSafe
+ * error is relayed as `HTTP 422: ` plus the FastAPI body.
+ */
+function openRouterMessage(message: string): string {
+  const relayed = /^HTTP \d{3}: (\{[\s\S]*\})$/.exec(message);
+  if (relayed) return systemOneErrorMessage(relayed[1]!) ?? message;
+  if (!message.startsWith("[")) return message;
+  try {
+    const issues: unknown = JSON.parse(message);
+    if (Array.isArray(issues)) return issueLines(issues, "message", "path") ?? message;
+  } catch {
+    // Not encoded after all.
+  }
+  return message;
+}
+
 /**
  * TypeSafe and Databricks answer validation failures FastAPI-style (`detail`
  * as a list of `{loc, msg}`, or a string); OpenRouter wraps every error in
@@ -191,16 +224,9 @@ function systemOneErrorMessage(raw: string): string | undefined {
   if (!isObject(body)) return undefined;
 
   if (typeof body.detail === "string" && body.detail) return body.detail;
-  if (Array.isArray(body.detail)) {
-    const lines = body.detail.flatMap((item) => {
-      if (!isObject(item) || typeof item.msg !== "string") return [];
-      const location = Array.isArray(item.loc) ? item.loc.map(String).join(".") : "";
-      return [location ? `${location}: ${item.msg}` : item.msg];
-    });
-    return lines.length > 0 ? lines.join("\n") : undefined;
-  }
+  if (Array.isArray(body.detail)) return issueLines(body.detail, "msg", "loc");
   if (isObject(body.error) && typeof body.error.message === "string" && body.error.message) {
-    return body.error.message;
+    return openRouterMessage(body.error.message);
   }
   return undefined;
 }
