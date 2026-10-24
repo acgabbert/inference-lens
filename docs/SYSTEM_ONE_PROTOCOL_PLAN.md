@@ -1720,6 +1720,14 @@ Decided in D31–D37, with 5a's details in D38–D43. Delivered in order:
 - **5b.** Check vocabulary 5 (D34), decision suites (D33), and their
   execution through the shared experiment pipeline (D35), with suite
   authoring in the app. Contracts accepted in D44–D51.
+  First step done (2026-10-24): D51's behavior-preserving move. A chat
+  suite's setup band now lives in `app/evaluations/chat-suite-setup.client.tsx`
+  (`ChatSuiteSetup`, plus `chatSuiteSetupFacts`, which returns the
+  `SuiteSetupFacts` contract the editor reads: device-local issues, collapsed
+  summary facts, and the batch shape). The editor keeps the header,
+  preflight, band, and cases. It has no new test of its own, since nothing
+  observable changed; the existing evaluation render, interaction, and
+  browser specs cover it.
 - **5c.** `inference-lens run` for decision suites (D36).
 
 ## Out of scope
