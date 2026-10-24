@@ -1,6 +1,6 @@
 # System One protocol plan
 
-Status: **D1–D26 and U1–U6 accepted. Phases 1 and 2 are merged; D16's fixes
+Status: **D1–D30 and U1–U6 accepted. Phases 1 and 2 are merged; D16's fixes
 and host tests are in, with its native-app check still to run on a desktop
 build. The D22 trace format and the D26 evidence extraction are in; the
 decision session and UI are next. Phases 3 and 4 ship together, with trace
@@ -195,7 +195,7 @@ contract design, not the adapter.
 
 ## Decisions
 
-The user accepted every recommendation below (D1–D26) and the UI decisions in
+The user accepted every recommendation below (D1–D30) and the UI decisions in
 [U1–U6](#ui-decisions-u1u6).
 Changes made after the source check are marked *(revised)*; a later decision
 that changes an earlier one is named in the marker, as in *(revised by D18)*.
@@ -945,6 +945,125 @@ in each run, light and dark): `raw-request-evidence`, `tool-execution-evidence`,
 `ui-ux-workflow-review`, plus `evaluation-baseline-comparison`, the only
 evaluation spec that opens Run details.
 
+### D27. Where decision run transitions live *(accepted: A)*
+
+Nothing in core turns `DecisionTransportEvent`s into a `DecisionRun` yet. Chat
+has `RunCoordinator` (core) and `driveProviderTurn` (runner).
+
+- **A. A pure core module, `packages/core/src/decision-run.ts`.** Functions
+  over `DecisionRun`: start, begin an attempt, apply a transport event, fail,
+  cancel, retry. Plus `driveDecisionAttempt`, which calls a `DecisionTransport`,
+  folds its events, and drops them once an `isCurrent()` check fails. It
+  depends on nothing in the runner, the same way D23 moves `rateLimitPauseMs`
+  into core.
+- **B. Transitions inside the React session hook.** Fewer files, but they can
+  be tested only through React, and the Phase 5 CLI would have to duplicate
+  them.
+- **Recommendation: A.** The session hook keeps only React state,
+  invalidation refs, persistence, and the countdown timer.
+- **Accepted: A.**
+
+### D28. A retryable failure's live status *(accepted: A)*
+
+`DecisionRunStatus` is `not_started | running | terminal`. D22 and D23 keep a
+retryable failure live until the user retries or stops, so the run needs a
+non-terminal state between the failed attempt and the user's choice.
+
+- **A. Add `{ kind: "paused"; reason: "attempt_failed"; attempt; exchangeId;
+  error }` to `DecisionRunStatus`**, mirroring chat's paused status. Traces
+  are unaffected: they store only terminal statuses (D22). Stop turns it into
+  `failed` with that error, as chat's Stop does.
+- **B. Mark the run `failed` and keep a "retry allowed" flag in the session.**
+  Retry would then reopen a terminal run, and autosave, which fires when a run
+  becomes terminal, would save a run that may still be retried.
+- **Recommendation: A.** `RunError.retryable`, set by the failure mapping
+  shared with chat, decides between paused and failed. After a 429 the
+  session holds the time Retry becomes available
+  (`retryAvailableAt`, epoch ms). It reads that time from the attempt's
+  recorded headers with `rateLimitPauseMs`. It is session state, never trace
+  content.
+- **Accepted: A.**
+
+### D29. The decision session and Compose handles *(accepted: A)*
+
+Owners, per D19:
+
+- `app/decisions/use-decision-draft.client.ts`: the D18 editor draft, and
+  `validated(): { input: DecisionInput } | { problems }`.
+- `app/decisions/use-decision-target.client.ts`: the decision kind's own
+  connection and model (U2). Its readiness lists only System One profiles
+  (D9) and its discovery keeps `unfiltered` (D19).
+- `app/decisions/use-decision-session.client.ts`:
+
+```ts
+interface DecisionSessionHandle {
+  run: DecisionRun | null;          // live or opened; paused per D28
+  executing: boolean;               // an attempt is in flight (D24)
+  retryAvailableAt?: number;        // D23 wait; Retry is disabled until then
+  traceStorage: TraceStorageStatus | null;
+  start(input: ResolvedDecisionRunInput, context: { workspace: ProjectWorkspaceHandle | null }): Promise<void>;
+  retry(): Promise<void>;           // only while paused and the wait is over
+  stop(): void;                     // idempotent; executing → cancelled, paused → failed
+  reset(): void;
+  exportTrace(): Promise<void>;
+  adoptTrace(trace: DecisionRunTrace, origin: TraceOrigin): void;
+}
+```
+
+  The options mirror the chat session's: `transport: DecisionTransport`,
+  `prepareCredential`, `onShowResponse`, `onTraceSaved`, `onError`. Decisions
+  have no diagnostics capture. The trace already holds the whole exchange.
+- `app/compose/use-compose.client.ts` owns the request kind and selects one
+  handle:
+
+```ts
+type ComposeKind = "chat" | "decision";
+type ComposePrimary =
+  | { kind: "run"; label: string; disabledReason?: string; run(): void }
+  | { kind: "stop"; stop(): void }
+  | { kind: "none" };                // paused, the action is on the failure card
+
+interface ComposeHandle {
+  kind: ComposeKind;
+  setKind(kind: ComposeKind): void; // no-op while kindLocked
+  kindLocked: boolean;              // either kind is executing (D17)
+  executing: boolean;               // feeds the route's activity guard (D24)
+  primary: ComposePrimary;          // topbar button and ⌘↵
+  panes: { request: ReactNode; response: ReactNode; inspect: ReactNode };
+  trace: { available: boolean; export(): void };
+}
+```
+
+- **A. The topbar reads `primary`.** It drops the chat-specific
+  `isRequestActive`/`awaitingToolResults`/`retryableFailure`/`runDisabled`
+  props for Compose. Chat maps its states to the same buttons, so chat
+  behaviour is unchanged. The shortcut fires `primary.run` (or chat's Retry,
+  as today).
+- **B. Keep the topbar's chat props** and have the Compose owner translate
+  decision state into them. There is less churn, but chat vocabulary leaks
+  into decisions, and the button still needs a per-kind label.
+- **Recommendation: A.** Chat's own session, response view, and inspector are
+  untouched; only the route's topbar wiring changes.
+- **Accepted: A.**
+- Persistence helpers (`saveRunTraceWorkspace`, `exportRunTraceFile`,
+  `runTraceWorkspaceLocation`) widen from `RunTrace` to `SavedRunTrace` and
+  serialize by kind.
+
+### D30. Opening a trace of either kind *(accepted: A)*
+
+History and Import run trace now get a `SavedRunTrace` of either kind.
+
+- **A. The Compose owner dispatches by `kind`.** It stops whichever kind is
+  executing, switches to the trace's kind, and calls that session's
+  `adoptTrace`. This is what chat import does today: opening a trace already
+  stops a live chat run. D17's lock covers the switch control, not an
+  explicit open.
+- **B. Disable opening traces while anything executes.** This is stricter,
+  but it changes chat's current behaviour.
+- **Recommendation: A.** The decision row in Runs becomes selectable and, as
+  D22 says, opens Decision Compose's inspection state.
+- **Accepted: A.**
+
 ## Phases
 
 ### Phase 0: verify the wire format
@@ -1086,7 +1205,9 @@ error body on the shared path (D25), is in; its native-app check is still owed. 
 
 Order: D16 → the decision trace format (D22) → the behaviour-preserving
 evidence extraction (D26) → the decision session and UI. The first three are
-in.
+in. The session and UI follow D27–D30: the core run transitions first, then
+the session, then the Compose owner and topbar, then the draft, target, and
+views.
 
 - Ownership and shell integration follow D19: the decision feature owns its
   state and workflow; the Compose owner selects the active kind's panes,
