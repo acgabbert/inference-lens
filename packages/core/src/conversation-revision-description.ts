@@ -62,11 +62,27 @@ export interface ConversationRevisionDescriptor {
   compatibility: RevisionSuiteCompatibility;
 }
 
+/**
+ * Collapses whitespace and shortens, reading only as much of the text as the
+ * summary can show. Every revision is described on every project edit, and a
+ * pasted prompt can be hundreds of kilobytes, so collapsing the whole text
+ * first made each keystroke pay for all of it.
+ */
 function shorten(text: string): string {
-  const collapsed = text.replace(/\s+/gu, " ").trim();
-  return collapsed.length > REVISION_SUMMARY_LENGTH
-    ? `${collapsed.slice(0, REVISION_SUMMARY_LENGTH - 1).trimEnd()}…`
-    : collapsed;
+  let collapsed = "";
+  // A bounded word length keeps one enormous unbroken token from being sliced
+  // out whole; the loop stops as soon as the summary is known to overflow.
+  for (const [run] of text.matchAll(/\s+|\S{1,128}/gu)) {
+    if (/^\s/u.test(run)) {
+      if (collapsed) collapsed += " ";
+    } else {
+      collapsed += run;
+      if (collapsed.length > REVISION_SUMMARY_LENGTH) {
+        return `${collapsed.slice(0, REVISION_SUMMARY_LENGTH - 1).trimEnd()}…`;
+      }
+    }
+  }
+  return collapsed.trimEnd();
 }
 
 function revisionCompatibility(

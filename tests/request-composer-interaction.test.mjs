@@ -341,6 +341,13 @@ async function mount(overrides = {}) {
         element.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
       });
     },
+    /** Opens or closes a `<details>`; jsdom fires no toggle event on its own. */
+    async disclose(element, open) {
+      await act(async () => {
+        element.open = open;
+        element.dispatchEvent(new dom.window.Event("toggle"));
+      });
+    },
     async select(element, value) {
       await act(async () => {
         element.value = value;
@@ -368,6 +375,34 @@ async function mount(overrides = {}) {
     },
   };
 }
+
+test("the request preview renders its contents only while expanded", async () => {
+  const view = await mount({
+    requestPreview: {
+      messages: [{ role: "user", content: [{ type: "text", text: "Resolved fixture" }] }],
+      body: { model: "fixture-model", messages: [{ role: "user", content: "Resolved fixture" }] },
+    },
+  });
+  try {
+    const preview = () => view.container.querySelector("details.request-preview");
+    assert.doesNotMatch(preview().textContent, /Resolved fixture/);
+
+    await view.disclose(preview(), true);
+    assert.deepEqual(
+      Array.from(preview().querySelectorAll(".request-preview-message pre"), (pre) => pre.textContent),
+      ["Resolved fixture"],
+    );
+    // The view tabs belong to this one disclosure rather than a nested one.
+    assert.equal(preview().querySelectorAll("details").length, 0);
+    await view.click(Array.from(preview().querySelectorAll('[role="tab"]')).find((tab) => tab.textContent === "Raw"));
+    assert.match(preview().textContent, /Raw OpenAI-compatible request body/);
+
+    await view.disclose(preview(), false);
+    assert.doesNotMatch(preview().textContent, /Resolved fixture/);
+  } finally {
+    await view.close();
+  }
+});
 
 test("focus mode expands the composer and restores focus when dismissed", async () => {
   const view = await mount();

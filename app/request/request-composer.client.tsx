@@ -135,7 +135,6 @@ export function RequestComposer({
   // send, which is what most visits to this pane need, and the message list
   // starts higher up for the visits that do not.
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [requestPreviewView, setRequestPreviewView] = useState<"resolved" | "raw">("resolved");
   const [focusMode, setFocusMode] = useState(false);
   const [focusModeTab, setFocusModeTab] = useState<RequestTab>("messages");
   const [promptInsertionOpen, setPromptInsertionOpen] = useState(false);
@@ -406,7 +405,10 @@ export function RequestComposer({
                 </article>;
               })}
             </div>
-            {requestPreview && <details className="request-preview"><summary>Resolved request preview</summary>{"error" in requestPreview ? <div className="template-diagnostic">{requestPreview.error}</div> : <><>{(templates.templateWorkbench.resolution?.diagnostics.length ?? 0) > 0 && <div className="template-warning" role="status">Preview contains unresolved variables. Running is blocked until they have values.</div>}</><div className="request-preview-tabs"><PaneTabs idPrefix="request-preview" label="Request preview view" value={requestPreviewView} onChange={(value) => setRequestPreviewView(value as "resolved" | "raw")} tabs={[{ id: "resolved", label: "Resolved" }, { id: "raw", label: "Raw" }]} /></div>{requestPreviewView === "resolved" ? <section aria-label="Resolved request" aria-labelledby="request-preview-resolved-tab" id="request-preview-resolved-panel" role="tabpanel"><h3>Resolved messages</h3><div className="request-preview-messages">{requestPreview.messages.map((message, index) => <article className="request-preview-message" key={`${message.role}-${index}`}><span className="eyebrow">{message.role}</span><pre>{conversationMessageText(message)}</pre></article>)}</div></section> : <section className="request-preview-raw" aria-label="Raw OpenAI-compatible request body" aria-labelledby="request-preview-raw-tab" id="request-preview-raw-panel" role="tabpanel"><h3>Raw OpenAI-compatible request body</h3><pre>{JSON.stringify(requestPreview.body, null, 2)}</pre></section>}</>}</details>}
+            {requestPreview && <RequestPreviewDisclosure
+              preview={requestPreview}
+              unresolved={(templates.templateWorkbench.resolution?.diagnostics.length ?? 0) > 0}
+            />}
           </>
         ) : (
           <ToolsPane tools={requestDraft.tools} requestTools={requestDraft.requestTools} enabledToolIds={requestDraft.enabledToolIds} activeProfileName={activeProfile.name} toolsEnabled={settings.toolsEnabled} onOpenLibrary={onOpenToolLibrary} onOpenConnectionSettings={onOpenConnectionSettings} onAddTool={addProjectTool} newToolId={newToolId} onRemoveTool={requestDraft.removeTool} onMoveTool={requestDraft.moveTool} onUpdateTool={requestDraft.updateTool} onSetToolEnabled={requestDraft.setToolEnabled} mockForTool={requestDraft.mockForTool} onUpdateToolMock={requestDraft.updateToolMock} onRemoveRequestTool={requestDraft.removeRequestTool} onSaveRequestToolToProject={requestDraft.saveRequestToolToProject} commandTools={commandTools} mcpConsents={mcpConsents} onAttachMcpToProject={requestDraft.attachMcpToolToProject} onAttachMcpToRequest={requestDraft.attachMcpToolToRequest} />
@@ -431,5 +433,28 @@ export function RequestComposer({
         />
       )}
     </section>
+  );
+}
+
+/**
+ * The preview repeats the whole resolved request, so its contents mount only
+ * while it is expanded. Kept in the document when collapsed, a large pasted
+ * prompt would be copied into the page again on every keystroke in the composer.
+ * A resolution error is one line and stays rendered either way.
+ */
+function RequestPreviewDisclosure({ preview, unresolved }: { preview: RequestPreview; unresolved: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [view, setView] = useState<"resolved" | "raw">("resolved");
+  return (
+    <details className="request-preview" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary>Resolved request preview</summary>
+      {"error" in preview ? <div className="template-diagnostic">{preview.error}</div> : open && <>
+        {unresolved && <div className="template-warning" role="status">Preview contains unresolved variables. Running is blocked until they have values.</div>}
+        <div className="request-preview-tabs"><PaneTabs idPrefix="request-preview" label="Request preview view" value={view} onChange={(value) => setView(value as "resolved" | "raw")} tabs={[{ id: "resolved", label: "Resolved" }, { id: "raw", label: "Raw" }]} /></div>
+        {view === "resolved"
+          ? <section aria-label="Resolved request" aria-labelledby="request-preview-resolved-tab" id="request-preview-resolved-panel" role="tabpanel"><h3>Resolved messages</h3><div className="request-preview-messages">{preview.messages.map((message, index) => <article className="request-preview-message" key={`${message.role}-${index}`}><span className="eyebrow">{message.role}</span><pre>{conversationMessageText(message)}</pre></article>)}</div></section>
+          : <section className="request-preview-raw" aria-label="Raw OpenAI-compatible request body" aria-labelledby="request-preview-raw-tab" id="request-preview-raw-panel" role="tabpanel"><h3>Raw OpenAI-compatible request body</h3><pre>{JSON.stringify(preview.body, null, 2)}</pre></section>}
+      </>}
+    </details>
   );
 }
