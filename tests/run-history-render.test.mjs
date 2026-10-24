@@ -326,7 +326,8 @@ test("an evaluation row reports its strict pass rate, not its run status", async
     evaluation: {
       suiteId: "evaluation-suite_topics",
       suiteName: "Topics",
-      conversationRevisionId: "revision_one",
+      runKind: "chat",
+      inputRevisionId: "revision_one",
       variants: [{
         variantId: "evaluation-variant_default",
         name: "Default",
@@ -366,7 +367,8 @@ test("an evaluation that could not be scored says so rather than reporting zero 
         evaluation: {
           suiteId: "evaluation-suite_topics",
           suiteName: "Topics",
-          conversationRevisionId: "revision_one",
+          runKind: "chat",
+          inputRevisionId: "revision_one",
           variants: [],
         },
       }],

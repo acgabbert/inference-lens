@@ -513,7 +513,8 @@ function execution(overrides = {}) {
     evaluation: {
       suiteId: "evaluation-suite_topics",
       suiteName: "Topic quality",
-      conversationRevisionId: "revision_current",
+      runKind: "chat",
+      inputRevisionId: "revision_current",
       variants: [{ variantId: "evaluation-variant_default", name: "Default", model: "past-model", passed: true, caseCounts: { total: 2, passed: 2, failed: 0, incomplete: 0 } }],
     },
     ...overrides,
@@ -569,7 +570,8 @@ test("an execution against another input revision stays listed and is marked", a
           evaluation: {
             suiteId: "evaluation-suite_topics",
             suiteName: "Topic quality",
-            conversationRevisionId: "revision_older",
+            runKind: "chat",
+            inputRevisionId: "revision_older",
             variants: [{ variantId: "evaluation-variant_default", name: "Default", model: "past-model", passed: false, caseCounts: { total: 2, passed: 1, failed: 1, incomplete: 0 } }],
           },
         }),
@@ -593,7 +595,8 @@ test("an interrupted evaluation is not coloured as a failure", async () => {
         evaluation: {
           suiteId: "evaluation-suite_topics",
           suiteName: "Topic quality",
-          conversationRevisionId: "revision_current",
+          runKind: "chat",
+          inputRevisionId: "revision_current",
           variants: [{ variantId: "evaluation-variant_default", name: "Default", model: "past-model", passed: false, caseCounts: { total: 2, passed: 0, failed: 0, incomplete: 2 } }],
         },
       })],

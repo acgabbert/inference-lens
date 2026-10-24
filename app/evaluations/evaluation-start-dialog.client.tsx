@@ -64,7 +64,11 @@ export function EvaluationStartDialog({
 
   const targets = draft.plan.suite.variants;
   const callCount = draft.plan.cells.length;
-  const turnCeiling = draft.plan.turnCeiling ?? DEFAULT_EXPERIMENT_TURN_CEILING;
+  // A decision repetition is one exchange; only a chat plan records a ceiling.
+  const turnCeiling = draft.plan.kind === "decision-evaluation" ? 1 : draft.plan.turnCeiling ?? DEFAULT_EXPERIMENT_TURN_CEILING;
+  const revisionId = draft.plan.kind === "decision-evaluation"
+    ? draft.plan.suite.decisionRequestRevisionId
+    : draft.plan.suite.conversationRevisionId;
   const exposesTools = draft.toolBindings.length > 0;
   const atOnce = settingMaxInFlight(draft.concurrency);
   // "sequential" before the noun, or "up to N at once" after the count.
@@ -84,10 +88,15 @@ export function EvaluationStartDialog({
       <section aria-labelledby="evaluation-start-title" aria-modal="true" className="confirmation-dialog evaluation-start-dialog" role="dialog">
         <span className="eyebrow">Evaluation confirmation</span>
         <h2 id="evaluation-start-title">Start “{draft.plan.suite.name}”?</h2>
-        <p>Each selected case is resolved from the frozen project revision and {atOnce > 1 ? <>runs up to {atOnce} at once. Latency measured under concurrent load is not comparable with one-at-a-time runs.</> : "runs sequentially."} Composer-only values are not included.</p>
+        <p>Each selected case is resolved from the frozen {draft.plan.kind === "decision-evaluation" ? "decision request revision" : "project revision"} and {atOnce > 1 ? <>runs up to {atOnce} at once. Latency measured under concurrent load is not comparable with one-at-a-time runs.</> : "runs sequentially."} Composer-only values are not included.</p>
         <dl className="confirmation-details evaluation-start-details">
-          <div><dt>Revision</dt><dd>{draft.revisionLabel} <code>{draft.plan.suite.conversationRevisionId}</code></dd></div>
-          <div><dt>Configurations</dt><dd>{targets.map(({ variantId, name, target, responseMode }) => `${name}: ${draft.targetNames[variantId]} · ${target.endpoint} · ${target.model} · ${responseMode}`).join("; ")}</dd></div>
+          <div><dt>Revision</dt><dd>{draft.revisionLabel} <code>{revisionId}</code></dd></div>
+          <div><dt>Configurations</dt><dd>{targets.map((variant) => [
+            `${variant.name}: ${draft.targetNames[variant.variantId]}`,
+            variant.target.endpoint,
+            variant.target.model,
+            ...("responseMode" in variant ? [variant.responseMode] : ["System One"]),
+          ].join(" · ")).join("; ")}</dd></div>
           <div><dt>Cases</dt><dd>{draft.plan.suite.cases.length} · {caseSummary(draft)}</dd></div>
           <div><dt>Repetitions</dt><dd>{draft.plan.repetitions} per case and configuration</dd></div>
           <div><dt>Provider calls</dt><dd>{exposesTools

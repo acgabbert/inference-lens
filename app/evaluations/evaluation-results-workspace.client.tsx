@@ -2,13 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import type { CheckDefinition } from "../../packages/core/src/checks.ts";
+import type { DecisionRun } from "../../packages/core/src/decision.ts";
 import {
-  evaluationParsedExperimentAggregateSteps,
   evaluationVariantAssessment,
-  parseExperimentPlanFile,
   type EvaluationRepetitionAssessment,
   type EvaluationRepetitionClassification,
   type EvaluationVariantAssessment,
+  type EvaluationVariantSnapshot,
   type ExperimentMetricRange,
 } from "../../packages/core/src/experiment.ts";
 import { finalAssistantOutput } from "../../packages/core/src/run-output.ts";
@@ -19,6 +20,7 @@ import type {
   RunState,
   RunTrace,
 } from "../../packages/core/src/run-kernel/index.ts";
+import { decisionAnswerSummary } from "../decisions/decision-result-view.ts";
 import { StatusChip } from "../notifications/status-chip.client";
 import { experimentStopDetail } from "../run/experiment-stop.client";
 import { pauseSecondsRemaining, recordedConcurrencyLabel } from "../run/experiment-concurrency.client.tsx";
@@ -30,6 +32,20 @@ import { StructuredCheckDiagnostics } from "./structured-check-diagnostics.clien
 import type { EvaluationReassessmentHandle } from "./use-evaluation-reassessment.client.ts";
 import { useScheduledDerivation } from "./use-scheduled-derivation.client.ts";
 import type { EvaluationExecution } from "./use-evaluation-execution-session.client.ts";
+import { evaluationExecutionAggregateSteps } from "./evaluation-execution-aggregate.ts";
+
+type VariantAssessment = EvaluationVariantAssessment<EvaluationVariantSnapshot>;
+
+/**
+ * What a repetition's evidence reads as in one line: a chat run's final
+ * output, or a decision run's answers to the questions its checks read (D51).
+ */
+function repetitionOutput(state: RunState | DecisionRun, checks: readonly CheckDefinition[]): string | undefined {
+  if ("kind" in state && state.kind === "decision") {
+    return decisionAnswerSummary(state, checks.flatMap((check) => "questionId" in check ? [check.questionId] : []));
+  }
+  return finalAssistantOutput(state as RunState);
+}
 
 const classificationLabels: Record<EvaluationRepetitionClassification, string> = {
   passed: "passed",
@@ -43,7 +59,7 @@ const classificationLabels: Record<EvaluationRepetitionClassification, string> =
 };
 
 export type EvidenceReachability =
-  | { kind: "readable"; state: RunState }
+  | { kind: "readable"; state: RunState | DecisionRun }
   | { kind: "unreadable"; reason: string }
   | { kind: "absent" }
   | { kind: "not-created" };
@@ -86,7 +102,7 @@ function formatLatency(range: ExperimentMetricRange): string {
   return `${formatMs(range.median)} median · ${formatMs(range.min)}–${formatMs(range.max)}`;
 }
 
-function passRate(variant: EvaluationVariantAssessment): number {
+function passRate(variant: VariantAssessment): number {
   return variant.caseCounts.total === 0
     ? 0
     : Math.round((variant.caseCounts.passed / variant.caseCounts.total) * 100);
@@ -109,7 +125,7 @@ interface ComparisonSelection {
 }
 
 interface ComparisonSide {
-  assessment: EvaluationVariantAssessment;
+  assessment: VariantAssessment;
   repetition: EvaluationRepetitionAssessment | undefined;
   reachability: EvidenceReachability | undefined;
   output: string | undefined;
@@ -128,6 +144,7 @@ export function EvaluationResultsWorkspace({
   execution: EvaluationExecution;
   onStop(): void;
   onOpenTrace(runId: RunId): void;
+  /** Chat only: promoting a decision trace to a case waits for later (D51). */
   onPromoteTrace?(trace: RunTrace, experimentCellId: string): void;
   placement?: "request" | "response";
   onReturnToEvaluation?(): void;
@@ -149,24 +166,16 @@ export function EvaluationResultsWorkspace({
   const [activeVariantId, setActiveVariantId] = useState<EvaluationVariantId>();
   const [expandedCaseIds, setExpandedCaseIds] = useState<readonly string[]>([]);
   const [comparison, setComparison] = useState<ComparisonSelection>();
-  const parsedPlan = useMemo(() => {
-    const plan = parseExperimentPlanFile(execution.plan);
-    if (plan.kind !== "evaluation") throw new Error("Expected an evaluation plan.");
-    return plan;
-  }, [execution.plan]);
+  const parsedPlan = execution.plan;
   const criteria = reassessment?.criteria;
   const live = execution.result || execution.error ? undefined : execution.live;
   // While a run streams, only its states change; the same reading keeps its
   // last complete table rather than flickering to a loading state per update.
   const liveReading = useMemo(() => ({ parsedPlan, criteria }), [parsedPlan, criteria]);
+  const { kind, result, states } = execution;
   const derivation = useScheduledDerivation(useMemo(
-    () => () => evaluationParsedExperimentAggregateSteps(
-      parsedPlan,
-      execution.result,
-      execution.states,
-      criteria,
-    ),
-    [parsedPlan, execution.result, execution.states, criteria],
+    () => () => evaluationExecutionAggregateSteps({ kind, plan: parsedPlan, result, states } as EvaluationExecution, criteria),
+    [kind, parsedPlan, result, states, criteria],
   ), { retainKey: live ? liveReading : undefined });
   const aggregate = derivation.value;
   const interpretation = reassessment?.selected;
@@ -200,13 +209,20 @@ export function EvaluationResultsWorkspace({
 
   /** The configurations a paused connection holds back, by name. */
   function pausedVariantNames(pause: { profileId: string; endpoint: string }): string {
-    const names = execution.plan.suite.variants
+    const variants: readonly EvaluationVariantSnapshot[] = execution.plan.suite.variants;
+    const names = variants
       .filter(({ target }) => target.profileId === pause.profileId && target.endpoint === pause.endpoint)
       .map(({ name }) => name);
     return names.length > 0 ? names.join(", ") : pause.endpoint;
   }
   const recordedConcurrency = recordedConcurrencyLabel(execution.result?.concurrency);
   const recordedRetries = recordedRetryLabel(execution.result?.retryPolicy);
+
+  function caseChecksFor(caseId: string): readonly CheckDefinition[] {
+    const planCase = (execution.plan.suite.cases as readonly { caseId: string; checks: CheckDefinition[] }[])
+      .find((item) => item.caseId === caseId);
+    return criteria?.get(caseId as never) ?? planCase?.checks ?? [];
+  }
 
   function comparisonSide(variantId: EvaluationVariantId): ComparisonSide {
     const assessment = evaluationVariantAssessment(aggregate!, variantId);
@@ -221,7 +237,7 @@ export function EvaluationResultsWorkspace({
       repetition,
       reachability,
       output: reachability?.kind === "readable"
-        ? finalAssistantOutput(reachability.state)
+        ? repetitionOutput(reachability.state, caseChecksFor(comparison!.caseId))
         : undefined,
     };
   }
@@ -258,7 +274,7 @@ export function EvaluationResultsWorkspace({
             ? <>{live.finished} of {live.requested} finished{runningOrdinals.length > 1
               ? ` · ${runningOrdinals.length} running`
               : activeCase && activeCell
-                ? ` · ${activeCase.name}, ${parsedPlan.suite.variants.find(({ variantId }) => variantId === activeCell.variantId)?.name ?? "Configuration"}, repetition ${activeCell.repetition}`
+                ? ` · ${activeCase.name}, ${(parsedPlan.suite.variants as readonly EvaluationVariantSnapshot[]).find(({ variantId }) => variantId === activeCell.variantId)?.name ?? "Configuration"}, repetition ${activeCell.repetition}`
                 : live.pausedConnections.length > 0 ? " · Paused after a rate limit" : " · Preparing"} · {elapsedTime(nowMs - live.startedAtMs)} elapsed</>
             : <>{interpretation?.name ?? "As run"} · {execution.plan.suite.cases.length} cases · {execution.plan.repetitions} {execution.plan.repetitions === 1 ? "repetition" : "repetitions"}{recordedConcurrency ? ` · ${recordedConcurrency}` : ""}{recordedRetries ? ` · ${recordedRetries}` : ""}</>}</p>
         </div>
@@ -427,10 +443,14 @@ export function EvaluationResultsWorkspace({
                         const definition = caseChecks.find(({ checkId }) => checkId === result.checkId);
                         return <li className={result.outcome.status} key={result.checkId}><strong>{definition?.label ?? result.kind}</strong><div><span>{checkMessage(result.outcome)}</span>{definition && <StructuredCheckDiagnostics definition={definition} outcome={result.outcome} />}</div></li>;
                       })}</ul>}
+                      {execution.kind === "decision" && !overlay && reachability.kind === "readable" && (() => {
+                        const answers = repetitionOutput(reachability.state, caseChecks);
+                        return answers ? <p className="evaluation-repetition-answers"><strong>Answers</strong> {answers}</p> : null;
+                      })()}
                       <div className={`evaluation-evidence-row ${overlay ?? reachability.kind}`}>
                         <span><strong>Evidence</strong><small>{overlay ? overlay === "running" ? "Running… · Pending while this run is active" : "Queued · Pending until this run starts" : evidenceLabel(reachability)}</small></span>
                         {!overlay && reachability.kind === "readable" && <button className="text-button" type="button" onClick={() => onOpenTrace(repetition.runId)}>Open Response &amp; Inspect</button>}
-                        {!overlay && reachability.kind === "readable" && onPromoteTrace && <button className="text-button" type="button" onClick={() => {
+                        {!overlay && reachability.kind === "readable" && onPromoteTrace && execution.kind === "chat" && <button className="text-button" type="button" onClick={() => {
                           const trace = execution.traces.get(repetition.runId);
                           if (trace) onPromoteTrace(trace, repetition.cellId);
                         }}>Promote to case…</button>}
@@ -464,10 +484,10 @@ export function EvaluationResultsWorkspace({
                 <dl>
                   <div><dt>Model</dt><dd>{side.assessment.variant.target.model}</dd></div>
                   <div><dt>Endpoint</dt><dd>{side.assessment.variant.target.endpoint}</dd></div>
-                  <div><dt>Delivery</dt><dd>{side.assessment.variant.responseMode}</dd></div>
+                  <div><dt>Delivery</dt><dd>{"responseMode" in side.assessment.variant ? side.assessment.variant.responseMode : "System One decision"}</dd></div>
                   <div><dt>Status</dt><dd>{side.repetition ? classificationLabels[side.repetition.classification] : "not available"}</dd></div>
                   <div><dt>Evidence</dt><dd>{side.reachability ? evidenceLabel(side.reachability) : "No matching repetition"}</dd></div>
-                  <div><dt>Output</dt><dd>{side.output === undefined ? "No completed assistant output" : side.output === "" ? "Empty output" : "Readable output"}</dd></div>
+                  <div><dt>Output</dt><dd>{side.output === undefined ? execution.kind === "decision" ? "No answers to the checked questions" : "No completed assistant output" : side.output === "" ? "Empty output" : execution.kind === "decision" ? side.output : "Readable output"}</dd></div>
                 </dl>
               </section>;
             })}

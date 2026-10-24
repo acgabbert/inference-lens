@@ -7,7 +7,9 @@ import type { ProjectFile } from "../../packages/core/src/project.ts";
 import type { ToolDefinition } from "../../packages/core/src/run-kernel/types.ts";
 import type { ToolBinding } from "../../packages/core/src/tool-execution.ts";
 import { resolveProviderCapabilities } from "../../packages/core/src/types.ts";
+import { isDecisionEvaluationSuite } from "../../packages/core/src/evaluation-suites.ts";
 import type { EvaluationsLayoutHandle } from "../modes/evaluations-mode.client";
+import { servesSystemOne } from "../profile-store.client.ts";
 import type { StoredInferenceProfile } from "../profile-store.client.ts";
 import type { ProjectWorkspaceHandle } from "../project-workspace.client.ts";
 import { listExperimentToolBindings } from "../../packages/core/src/tool-binding-resolution.ts";
@@ -88,6 +90,7 @@ export function useEvaluationWorkspace(options: UseEvaluationWorkspaceOptions): 
     name: profile.name,
     endpoint: profile.endpoint,
     capabilities: resolveProviderCapabilities(profile.provider, profile.capabilityOverrides),
+    systemOne: servesSystemOne(profile),
   }));
   // Every project tool is resolved, not only the exposed ones, so the editor
   // can say what a tool would be served by before it is checked.
@@ -114,7 +117,7 @@ export function useEvaluationWorkspace(options: UseEvaluationWorkspaceOptions): 
       options.onError(resolved.disabledReason);
       return;
     }
-    if (!project || !suite || !authoring.revisionId) return;
+    if (!project || !suite) return;
     try {
       options.onBegin(createEvaluationStartDraft({
         project,
@@ -141,6 +144,7 @@ export function useEvaluationWorkspace(options: UseEvaluationWorkspaceOptions): 
     ...(options.commandToolsUnavailableReason
       ? { commandToolsUnavailableReason: options.commandToolsUnavailableReason }
       : {}),
+    ...(resolved.decisionTargetIssues ? { decisionTargetIssues: resolved.decisionTargetIssues } : {}),
   };
 
   // Executions are matched by suite identity across every input revision — a
@@ -155,7 +159,10 @@ export function useEvaluationWorkspace(options: UseEvaluationWorkspaceOptions): 
             item.kind === "evaluation" && item.evaluation.suiteId === suite?.id,
         ),
         ...(runHistory.error ? { error: runHistory.error } : {}),
-        ...(authoring.revisionId ? { currentRevisionId: authoring.revisionId } : {}),
+        // The input revision executions are compared against, of either kind.
+        ...(suite && isDecisionEvaluationSuite(suite)
+          ? { currentRevisionId: suite.input.decisionRequestRevisionId }
+          : authoring.revisionId ? { currentRevisionId: authoring.revisionId } : {}),
         expanded: historyExpanded,
         onExpandedChange: setHistoryExpanded,
         onExpand: () => {

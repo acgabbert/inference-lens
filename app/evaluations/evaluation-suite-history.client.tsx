@@ -6,6 +6,7 @@ import type { EvaluationBaseline } from "../../packages/core/src/evaluation-base
 import type { EvaluationHistoryItem } from "../../packages/core/src/experiment-history.ts";
 import type {
   ConversationRevisionId,
+  DecisionRequestRevisionId,
   EvaluationBaselineId,
   EvaluationVariantId,
 } from "../../packages/core/src/run-kernel";
@@ -38,7 +39,7 @@ export interface EvaluationSuiteHistoryHandle {
    * are marked, because a pass rate that moved with the input is a different
    * finding from one that moved on its own.
    */
-  currentRevisionId?: ConversationRevisionId;
+  currentRevisionId?: ConversationRevisionId | DecisionRequestRevisionId;
   /**
    * Whether the disclosure is open. Owned by the route rather than by this
    * component because the Evaluations mode unmounts when another mode is on

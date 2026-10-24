@@ -2,6 +2,7 @@ import type { CheckKind, CheckOutcome } from "./checks.ts";
 import type {
   EvaluationBakeoffAssessment,
   EvaluationRepetitionClassification,
+  EvaluationVariantSnapshot,
 } from "./experiment.ts";
 import type {
   CheckId,
@@ -82,8 +83,8 @@ export interface EvaluationOutcomeDiff {
  * describe usefully, and a comparison feature already exists for that question.
  */
 export function diffEvaluationOutcomes(
-  baseline: EvaluationBakeoffAssessment,
-  candidate: EvaluationBakeoffAssessment,
+  baseline: EvaluationBakeoffAssessment<EvaluationVariantSnapshot>,
+  candidate: EvaluationBakeoffAssessment<EvaluationVariantSnapshot>,
 ): EvaluationOutcomeDiff {
   const checks: CheckOutcomeFlip[] = [];
   const repetitions: RepetitionClassificationFlip[] = [];
