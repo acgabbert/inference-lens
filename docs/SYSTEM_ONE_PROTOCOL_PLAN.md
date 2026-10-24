@@ -1,6 +1,8 @@
 # System One protocol plan
 
-Status: **D1–D15 and U1–U6 accepted; Phases 1 and 2 complete. llama.cpp and
+Status: **D1–D26 and U1–U6 accepted. Phases 1 and 2 are merged; the Phase 2
+correctness gate in D16 remains open. Phases 3 and 4 ship together, with trace
+support implemented early (D20). llama.cpp and
 OpenRouter captured on 2026-10-24, Ollama on 2026-10-23; direct TypeSafe still
 doc-derived only.** On 2026-10-24 each implementation's
 documentation was read directly (see [Sources](#sources)). What it showed is
@@ -191,8 +193,10 @@ contract design, not the adapter.
 
 ## Decisions
 
-The user accepted every recommendation below (D1–D15) and the UI decisions in
-[U1–U6](#ui-decisions-u1u6). Changes made after the source check are marked *(revised)*.
+The user accepted every recommendation below (D1–D26) and the UI decisions in
+[U1–U6](#ui-decisions-u1u6).
+Changes made after the source check are marked *(revised)*; a later decision
+that changes an earlier one is named in the marker, as in *(revised by D18)*.
 
 ### D1. Where the protocol lives in the type system
 
@@ -292,9 +296,9 @@ What does a user edit and save?
 - **Recommendation: B first, then A.** Ad hoc runs plus saved traces are enough
   to prove out the adapter and the result view without committing the project
   format. Template variables in `state`, and saved question sets, come with A.
-- *(revised)* Because `state`, `instructions`, and criteria are JSON values,
-  the composer needs a text/JSON toggle per field, like the existing JSON
-  input. A plain textarea is not enough.
+- *(revised by U3 and D18)* Because `state`, `instructions`, and criteria are
+  JSON values, the editor must preserve more than strings. U3 and D18 settle the controls and draft
+  model, superseding the earlier proposal for a text/JSON toggle per field.
 
 ### D5. Trace format
 
@@ -306,8 +310,10 @@ What does a user edit and save?
 
 ### D6. Capabilities and per-runtime limits
 
-- Add one capability, `systemOne`, that declares the connection serves the
-  protocol. `streaming`, `tools`, and `structuredOutput` don't apply to it.
+- *(revised by D9-B)* Declare System One with the device-local profile flag
+  in D9-B, outside
+  the portable capability snapshot. `streaming`, `tools`, and
+  `structuredOutput` don't apply to decision requests.
 - Do **not** model per-runtime limits as capabilities. *(revised)* The source
   check strengthens this: the limits differ in both directions. Ollama allows
   fewer choice options than TypeSafe (26 against 255) but more score levels
@@ -354,14 +360,16 @@ Accepted with D1–D8. They refine Phase 3.
   a new top-level mode. The task is the same write → run → inspect → revise
   loop with the same Run action and the same Runs history. The `app/decisions/`
   owner fills both Compose panes. Switching kinds never discards the other
-  kind's draft.
+  kind's draft. *(revised by D17)* D17 locks the switch during execution and
+  retains each kind's latest result afterward.
 - **U2. Target per kind.** Each kind keeps its own connection and model.
   Switching to Decision never sends to whichever chat model was selected. The
   decision model picker offers only connections that declare System One.
-- **U3. JSON-valued fields.** A string-first structured form, plus one "Edit as
-  JSON" view of the whole request. Both views edit the same `DecisionInput`.
-  Only `state` gets its own text/JSON toggle. This replaces the per-field toggle
-  sketched in D4.
+- **U3. JSON-valued fields.** *(revised by D18)* A string-first structured
+  form, plus one "Edit as JSON" view of the whole `DecisionInput` (`state` and `questions`; the target
+  remains separate). Both views belong to the same editor draft (D18), which
+  derives a validated `DecisionInput` for execution. Only `state` gets its own
+  text/JSON toggle. This replaces the per-field toggle sketched in D4.
 - **U4. Changing a question's type.** Labels keep their authored order, and
   descriptions are kept wherever the new type has a slot for them. Switching to
   noul keeps the old options so they come back on undo, instead of deleting them
@@ -403,8 +411,8 @@ project format change yet".
   It is stored only when declared. A malformed stored value drops the
   declaration, not the profile. *(revised by D9a)* While
   `INFERENCE_LENS_API_PROTOCOLS` is set, `withServerProtocols` sets it too.
-- This supersedes the "one capability, `systemOne`" wording in D6: the
-  declaration is a profile flag, not a capability.
+- This supersedes D6's original capability proposal; D6 now reflects the
+  device-local profile flag.
 - Phase 2 still has to decide how the server-provisioned profile declares it.
   `INFERENCE_LENS_API_PROTOCOLS` currently names chat protocols only.
   Settled below.
@@ -581,6 +589,288 @@ not asked fails normalization.
   loudly instead of passing on garbage.
 - **Accepted: B.**
 
+### D16. Host and adapter correctness before Phase 3 *(accepted)*
+
+The Phase 2 review reproduced four issues. Fix them before implementing the
+UI, with committed regression tests written and run red against the actual
+incorrect values before each fix:
+
+- **Complete error evidence.** The desktop decision reader currently uses
+  Rust's error message as the response body, but Rust truncates it at 4,000
+  characters. Preserve the complete body independently of any shortened
+  display summary. A validation response over 4,000 characters must retain
+  the full raw frame and yield the same readable message on web and desktop.
+  D25 settles where the body is preserved.
+- **Startup cancellation.** An already-aborted signal, or an abort while
+  registering the listener or starting the native command, must not be lost.
+  Prevent dispatch where possible; cancel any native work already started,
+  terminate as cancelled, and release the listener. Stale completion must
+  never replace cancelled state.
+- **Caller-chosen question ids.** Accumulate answers in a dictionary that
+  preserves every own key, including `__proto__`, through normalization and
+  JSON serialization. Test own-key membership and the serialized result.
+- **Probability validation.** Choice and score probability maps must be
+  non-empty. Keep the existing known-key and finite [0, 1] checks. Accept
+  the rounding in the captured responses: do not require an exact sum of 1,
+  renormalize the reported probabilities, or recompute the reported score.
+
+The scratch IPC probes from the review establish the failures; they are not
+committed regression coverage or a native-app verification. Add reproducible
+host tests and check desktop cancellation and error evidence in the native
+app, reporting any part that could not be exercised.
+
+### D17. Switching request kinds and run lifecycle *(accepted)*
+
+The alternatives were to lock switching during execution, cancel on switch,
+or allow background execution. **Lock the Chat / Decision switch during
+execution.** Compose has one foreground execution; switching kinds cannot
+implicitly cancel it or start another. Keep existing batch execution guards;
+D24 settles how decision runs join them.
+
+- Preserve each kind's draft, independent connection/model selection, and
+  latest result when switching after execution ends, including failed or
+  cancelled results and their evidence.
+- Run, Stop, Retry, and the keyboard shortcut address the foreground kind.
+  Unlock switching after cancellation or another terminal outcome. Keep
+  draft ownership above conditional pane mounts so switching views is lossless.
+- A run captures its validated input and target before dispatch. Retry uses
+  that exact snapshot and retains earlier attempt evidence; edits belong to
+  a new run. Honour `retry-after` on 429 when permitting a retry; D23
+  settles how.
+- The decision session owns cancellation and invalidation of asynchronous
+  work, so late events cannot revive a stopped or superseded run.
+
+### D18. Editor draft versus executable input *(accepted)*
+
+`DecisionInput` is the executable core contract. A separate application-local
+editor draft under `app/decisions/` owns incomplete form rows, raw JSON text,
+parse and validation errors, stable editor row identities, and options kept
+for reversible question-type changes. These editing details are not added to
+the provider input, project format, or saved execution trace.
+
+- Derive a validated `DecisionInput` from the current draft before running.
+  Invalid JSON or an incomplete form blocks Run with a useful location and
+  message; it never runs a silently retained last-valid version.
+- Switching form/JSON views preserves values. JSON-authored objects, arrays,
+  and `null` in instructions and criteria must survive a round trip without
+  stringification, replacement with an empty value, or an implicit default.
+  Values that need JSON editing remain accessible there from the form.
+- Keep invalid JSON text and its error until corrected; switching views must
+  not discard it. A form transition that needs valid parsed input is blocked
+  with the parse error rather than replacing the draft.
+- Question ids are authored keys, separate from editor row identity. Renaming
+  and reordering must not attach another question's draft state to a row.
+  U4's retained options live in this draft, not in the executable request.
+
+### D19. Compose and evidence ownership *(accepted)*
+
+- The decision feature under `app/decisions/` owns its editor, readiness,
+  target selection, execution session, result view, and decision inspection.
+  Its session exposes status and Run/Stop/Retry commands; its view supplies
+  request, response, and inspect regions to the workbench shell.
+- A small Compose owner under `app/compose/` owns request-kind selection and
+  selects a UI-facing handle for readiness, execution status, commands, and
+  pane content. The topbar and keyboard shortcut use the same handle. This
+  is an application-local adapter, not a union that generalizes the chat
+  kernel or serializes decisions as assistant text.
+- `app/page.tsx` composes these owners and genuine cross-feature adapters;
+  decision effects, refs, and mutation workflows stay with their owner.
+- Extract reusable request/response/frame evidence presentation from the
+  chat-specific inspector as its own step (D26). Feed it the shared exchange
+  evidence structures; keep chat-only tools, transcript, comparison, and
+  template resolution with chat. Decisions show duration and reported token usage, with missing usage
+  kept missing, rather than token-stream timing or throughput.
+- Extend model discovery's UI state and cache to retain `unfiltered` along
+  with model ids and accept `ConnectionProtocol`. Keep catalogues distinct
+  by profile, endpoint, and protocol, discard stale responses, and show D10's
+  unfiltered notice while continuing to accept a typed model id.
+
+### D20. UI and persistence delivery boundary *(accepted)*
+
+The alternatives were a transient Phase 3 release or delivering Phases 3 and
+4 together. **Ship Phases 3 and 4 together, implementing trace support early.**
+The first usable decision workflow must save, reopen, import, and export its
+evidence through the shared Runs entry point.
+
+Keep the phase numbers as scope labels, not a requirement to finish all UI
+before persistence. After D16, implement and test the decision trace format
+and session persistence before wiring the complete composer workflow. UI work
+may land incrementally, but enabling the feature for release requires both
+phases' acceptance checks. D4-B still holds: saved traces contain executed
+input; project-owned decision drafts and question sets wait for Phase 5.
+
+### D21. Acceptance coverage *(accepted)*
+
+Use committed tests for the contracts below and the Playwright suite for the
+running UI. The System One fixture belongs in the suite's server configuration;
+do not start it by hand for a Playwright run. Follow D15's scenario selection
+and question guard: seed captured questions for execution tests, and use
+synthetic extensions only when labelled as such.
+
+- Draft retention across Chat/Decision switches, independent targets, and
+  the switch lock during execution, including startup and cancellation.
+- Lossless form/JSON round trips for strings, objects, arrays, and `null`;
+  invalid JSON blocking Run; incomplete rows; question rename/reorder; and
+  options restored after a reversible type change.
+- Only declared System One connections offered for decisions; the server's
+  locked declaration respected; filtered discovery for the captured runtimes;
+  and the proxied Ollama unfiltered notice plus typed-id fallback.
+- Exact rendered choices, fractional scores, probability values, confidence
+  presence/absence, and reported token usage against known fixture values;
+  duration derived from recorded timing. Inspect the relevant rendered region
+  for `NaN`, `Infinity`, and `undefined`; a green transport test alone does not
+  cover the result view.
+- Cancellation before and during execution, stale events ignored, retry of
+  the frozen input with earlier attempts retained, 429 `retry-after`, and
+  readable provider/protocol failures with complete redacted evidence.
+- Save, reload, import, and export of decision traces, retaining the same
+  rendered result and raw evidence. Open schema-7 chat traces unchanged and
+  select chat and decision entries through shared history.
+
+Run the affected specs while iterating, then the full browser suite once
+before handoff. Report the commands, skipped checks, fixture limitations, and
+the native desktop paths actually exercised. Keep tests introduced for D16
+red for the relevant incorrect value before fixing it, per `AGENTS.md`.
+
+### D22. Decision trace shape *(accepted: A)*
+
+D5 settles where decision traces live, but not what they hold, and D20 builds
+the format first. Core already defines the run: `DecisionRun` carries
+`ResolvedDecisionRunInput`, status, `DecisionAttempt`s, and
+`DecisionExchangeTrace`s keyed by exchange id. A chat trace instead stores an
+ordered event log and re-derives its projections on import.
+
+- **A. Store the terminal `DecisionRun`.** The body is `schemaVersion: 8`,
+  `kind: "decision"`, `runId`, `input`, a `TerminalRunStatus`, `attempts`,
+  `exchanges`, `startedAt`, and `endedAt`. Import checks the shape and the
+  consistency between the parts, then reconstructs the run as stored.
+- **B. Store each attempt's `DecisionTransportEvent` stream** and reduce it on
+  import, as chat does. This matches chat more closely, but a decision exchange
+  has a single frame, so the events repeat what the exchange trace already
+  holds and need a reducer that exists only to read them back.
+- **C. A, plus re-normalizing every completed attempt's raw body** through the
+  current adapter and rejecting a mismatch. This guarantees the most, but it
+  ties old traces to adapter changes: a later validation rule would reject
+  traces that were valid when saved.
+- **Recommendation: A.** Import rejects, naming the path:
+  - attempt numbers that don't run 1…n;
+  - an attempt whose `exchangeId` is missing or shared;
+  - a completed attempt that isn't the last;
+  - a status that disagrees with the last attempt;
+  - a completed attempt without a result, or whose answer ids and types differ
+    from the input's questions;
+  - a failed attempt without an error.
+- What is saved follows the chat rules in `docs/RUN_TRACE_FORMAT.md`:
+  completed and cancelled runs, non-retryable failures, and retryable failures
+  that the user stops instead of retrying. A retryable failure stays live
+  session state until then. The D18 editor draft is never saved.
+- The input's `ResolvedDecisionTarget` is the stored target: it holds the
+  profile id, protocol, endpoint, model, and capability snapshot, and no
+  credential. A trace opens read-only without that profile on the device.
+- Version 8 covers both kinds. New chat traces write version 8 without `kind`,
+  so their contents are otherwise unchanged, and versions 1–7 still import as
+  chat. The parser accepts `kind` only when it is absent or `"decision"`, and
+  rejects a decision trace that claims a version below 8.
+- Ownership: `packages/core/src/run-trace.ts` keeps the file envelope,
+  deterministic serialization, filenames, and dispatch by `kind`. Decision
+  validation lives beside the decision types in core. One parser returns
+  either kind for history, import, and export. The chat-only parser rejects a
+  decision trace with a readable message instead of misreading it.
+- Run history keeps one `traces/` listing. A decision summary shows the kind,
+  model, question count, and status, and selecting the entry opens Decision
+  Compose's inspection state.
+
+### D23. Retry after a 429 *(accepted: A)*
+
+D2 and D17 say Retry honours `retry-after`, but not how. In Compose, chat
+Retry doesn't read the header today. Only batches pause:
+`rateLimitPauseMs` in `packages/runner/src/rate-limit-pause.ts` reads
+`retry-after-ms`, then `Retry-After` as seconds or an HTTP date, defaults to
+5 s, and caps the wait at 60 s.
+
+- **A. Manual Retry with a wait.** After a 429, Retry is disabled with a
+  visible countdown until the wait elapses; then the user retries. Stop stays
+  available and makes the run terminal.
+- **B. Automatic retry after the wait,** for a bounded number of attempts.
+  This spends requests the user didn't ask for, and it adds a timer that owns
+  execution, so the D17 lock would have to cover the wait as well.
+- **C. Advisory only.** Show the wait but don't block Retry.
+- **Recommendation: A.** Use the same header rules as batches. Move
+  `rateLimitPauseMs` into core so `app/decisions/` doesn't depend on the
+  runner; `rateLimitedAttempt` reads chat `RunState` and stays in the runner.
+  The wait starts when the 429 response arrives and is read from the failed
+  attempt's recorded headers. The countdown is session state, not trace
+  content.
+- While a retryable failure waits, nothing is executing, so the kind switch
+  is unlocked. The countdown survives switching away and back.
+- Fixture limitation: the synthetic `429` scenario always sends
+  `retry-after: 1` and answers every request with 429. A spec can show the
+  wait, the re-enabled Retry, and a second retained 429 attempt, but not a
+  success after waiting. Say so when reporting D21's 429 coverage.
+
+### D24. Decision runs and other activity *(accepted: A)*
+
+`app/page.tsx` already treats a single chat request, a repeated experiment,
+and an evaluation run as one foreground activity. While any of them runs, the
+others can't start, and the keyboard shortcut does nothing.
+
+- **A. A decision run joins that guard.** Decision Run is disabled with a
+  reason while a chat request or batch is active, and chat Run and batch
+  starts are blocked while a decision run executes. A 429 wait (D23) doesn't
+  count as active.
+- **B. Let a decision run go alongside a batch.** Sampling a decision during a
+  long batch is useful, but both may share a provider and its rate limit, and
+  the topbar and shortcut would then have two live runs to address.
+- **Recommendation: A.** The D19 Compose handle exposes whether its kind is
+  executing, and the route feeds that into the existing activity check. It is
+  the cross-feature adapter that the route is meant to keep. Add the guard in
+  both directions to D21's switch-lock coverage.
+
+### D25. Where the complete error body is preserved *(accepted: A)*
+
+D16 requires the complete error body, but the truncation is shared with chat.
+`stream_provider_turn` in `src-tauri/src/lib.rs` cuts the provider error
+message at 4,000 characters. The same cut is copied in
+`app/tauri-inference-transport.client.ts`,
+`packages/core/src/decision-execution.ts`,
+`packages/core/src/openai-compatible.ts`, and
+`packages/core/src/provider-adapters.ts`, so long chat error bodies are
+truncated too, on both web and desktop.
+
+- **A. Shared path, additive.** The Rust error event gains a field carrying
+  the complete response body; `message` stays the shortened summary. The
+  decision reader records the complete body as its frame and derives the
+  readable message from it, so web and desktop agree. Chat ignores the new
+  field, and its behaviour is unchanged.
+- **B. A decision-only Rust branch.** Leaves chat code untouched, but
+  duplicates the request and response handling D12 deliberately shares.
+- **C. Fix chat's evidence in the same step.** Changes chat traces and the
+  chat UI, widening Phase 3.
+- **Accepted: A.** The only chat-facing change is the event shape. Cover it
+  with the existing Rust tests plus a new one asserting that `message` is still
+  truncated and the body is complete. Keeping the full body in chat's own
+  evidence is a separate follow-up, not part of Phase 3.
+
+### D26. Extracting the shared evidence presentation *(accepted: A)*
+
+D19 extracts the request, response, and frame presentation from the
+chat-specific inspector in `app/run-trace-panel.client.tsx`. That is a
+refactor of chat UI.
+
+- **A. A separate behaviour-preserving step before the decision result
+  view.** Move the presentation into a shared component that takes only
+  exchange evidence; tools, transcript, comparison, and template resolution
+  stay with chat. Run the browser specs covering the inspector before and
+  after, and they must pass unchanged: at least `raw-request-evidence`,
+  `tool-execution-evidence`, `runs-result-discovery`, `pr2-workbench`, and
+  `experiment-history`. Confirm which evaluation specs open the inspector
+  before relying on them. Then build the decision view on the shared
+  component with D21's coverage.
+- **B. Extract it while building the decision view.** No clean
+  before-and-after for chat, so a chat regression would surface mixed into
+  decision work.
+- **Accepted: A.**
+
 ## Phases
 
 ### Phase 0: verify the wire format
@@ -673,6 +963,9 @@ docs; ⬜ items still need a live run or a credential.
 
 ### Phase 2: hosts
 
+The implementation below is merged. D16 records the outstanding correctness
+gate that must close before Phase 3 work begins.
+
 - ✅ Web service: `POST /api/decisions` (D14) executes one exchange with the
   server-held credential and streams D12's `DecisionTransportEvent`s as NDJSON.
   Core owns the pieces (`decision-execution.ts`): the redacted request, the
@@ -713,26 +1006,55 @@ docs; ⬜ items still need a live run or a credential.
 
 ### Phase 3: UI
 
-- Route ownership: a new feature owner under `app/decisions/` holds the
-  composer state, the run workflow, and the result view. The workbench shell
-  and mode strip only compose it; no decision state lives in the route.
-- Composer: state (text or JSON) plus a question list editor (type, id,
-  instructions, options or ordered levels, optional noul true/false).
-- Result view: one row per question.
-  - Choice: the selected option, a bar per option, and confidence.
-  - Score: the fractional score on the level scale, a bar per level labelled
-    from `legend`, and confidence.
-  - Noul: P(true).
+Prerequisite: close D16 with committed regression coverage, preserving the
+complete error body on the shared path (D25). Delivery: ship with Phase 4
+(D20), implementing trace support early.
 
-  The raw request and response go in the existing evidence panel.
-- Connection drawer: the System One profile toggle (D9-B).
-- E2E spec against the fixture provider; see `tests/e2e/README.md`.
+Order: D16 → the decision trace format (D22) → the behaviour-preserving
+evidence extraction (D26) → the decision session and UI.
+
+- Ownership and shell integration follow D19: the decision feature owns its
+  state and workflow; the Compose owner selects the active kind's panes,
+  readiness, and commands for both the topbar and keyboard shortcut.
+- Implement the decision session with a frozen execution snapshot, attempt
+  evidence, cancellation, invalidation, and Retry (D17), with the 429 wait in
+  D23. Lock kind switching during execution; retain each kind's draft, target,
+  and latest result. A decision run joins the shared foreground-activity guard
+  (D24).
+- Composer: the D18 draft drives a structured form and whole-input JSON
+  editor. State has a text/JSON toggle; questions expose type, id,
+  instructions, options or ordered levels, and optional noul true/false.
+  Preserve JSON values and reversible edits, and block invalid input.
+- Result view: one row per question.
+  - Choice: the selected option, a bar per option in authored order, and
+    confidence when supplied.
+  - Score: the fractional score on the level scale, a bar per level labelled
+    from `legend`, and confidence when supplied.
+  - Noul: P(true), without a confidence placeholder.
+
+  Shared evidence presentation shows the redacted request, response, raw body,
+  duration, and reported usage without chat-only inspection controls (D19).
+- Connection drawer: the System One profile toggle (D9-B), locked when the
+  server declares its API list (D9a). Model discovery retains and displays
+  `unfiltered` and supports typed ids (D10, D19).
+- Committed browser specs against the fixture provider cover D21; see
+  `tests/e2e/README.md`. Enable the feature for release only after Phase 4's
+  round-trip and history checks pass too.
 
 ### Phase 4: traces and history
 
-- Trace schema 8 with the `kind` discriminator; decision traces save, reload,
-  import, and export; chat traces at schema 7 still open.
-- History list labels decision runs.
+Implement trace support early in the combined Phase 3/4 delivery (D20).
+
+- Trace schema 8 with the `kind` discriminator (D5) and the decision trace
+  shape in D22; decision traces save, reload, import, and export with executed
+  input, attempts, normalized answers, and complete exchange evidence. Missing
+  `kind` still means chat, and chat traces at schemas 1–7 still open.
+- Wire decision session persistence to the existing workspace and export
+  entry points, preserving save status and surfacing failures.
+- History labels decision runs and opens the correct request kind and its
+  result/inspection surface. Verify chat and decision entries together.
+- Run D21's trace round trips and compare rendered values and evidence before
+  and after reload/import. Both phases must pass before the first UI release.
 
 ### Phase 5: checks, CLI, evaluations
 
