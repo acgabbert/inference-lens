@@ -132,3 +132,29 @@ test("a decision configuration overrides its model, and chat edits refuse a deci
     (error: unknown) => error instanceof ProjectValidationError && /chat suites only/.test(error.message),
   );
 });
+
+test("a decision suite targets its own connection requirement, reusing one at the same endpoint", () => {
+  const project = withRequest();
+  const created = createDecisionEvaluationSuite(project, {
+    decisionRequestRevisionId: "decision-revision_one",
+    model: "local-decision",
+    connection: { endpoint: "http://127.0.0.1:44028/llamacpp/v1" },
+  }, counter("own"));
+  const added = created.project.connectionRequirements.find(({ id }) => id === created.connectionRequirementId);
+  assert.deepEqual(added, {
+    id: created.connectionRequirementId,
+    name: "Decision connection",
+    provider: "openai-compatible",
+    endpoint: "http://127.0.0.1:44028/llamacpp/v1",
+  });
+  assert.equal(created.project.connectionRequirements.length, project.connectionRequirements.length + 1);
+  assert.equal(decisionSuite(created.project, created.suiteId).execution.target.connectionRequirementId, created.connectionRequirementId);
+
+  const again = createDecisionEvaluationSuite(created.project, {
+    decisionRequestRevisionId: "decision-revision_one",
+    model: "local-decision",
+    connection: { endpoint: "http://127.0.0.1:44028/llamacpp/v1" },
+  }, counter("again"));
+  assert.equal(again.connectionRequirementId, created.connectionRequirementId);
+  assert.equal(again.project.connectionRequirements.length, created.project.connectionRequirements.length);
+});

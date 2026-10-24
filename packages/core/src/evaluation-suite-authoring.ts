@@ -339,32 +339,47 @@ export function createEvaluationSuite(
 }
 
 /**
- * A decision suite pinned to one request revision (D44). Its connection is the
- * project's default requirement; the model comes from the caller, since the
- * model Decision Compose targets is session state (D29).
+ * A decision suite pinned to one request revision (D44). The model comes from
+ * the caller, since the model Decision Compose targets is session state (D29).
+ *
+ * With `connection`, the suite targets its own portable requirement at that
+ * endpoint: an existing one at the same endpoint, or a new "Decision
+ * connection". A System One server is usually not the chat server, and D9
+ * keeps the System One declaration on the device-local profile the
+ * requirement maps to. Without it, the suite uses the project's default
+ * requirement.
  */
 export function createDecisionEvaluationSuite(
   project: ProjectFile,
-  { decisionRequestRevisionId, name, model }: {
+  { decisionRequestRevisionId, name, model, connection }: {
     decisionRequestRevisionId: DecisionRequestRevisionId;
     name?: string;
     model: string;
+    connection?: { endpoint: string };
   },
   suffix: IdSuffix = generatedSuffix,
-): { project: ProjectFile; suiteId: EvaluationSuiteId } {
+): { project: ProjectFile; suiteId: EvaluationSuiteId; connectionRequirementId: ConnectionRequirementId } {
   const revision = requireDecisionRevision(project, decisionRequestRevisionId, ["evaluationSuites"]);
   const request = project.decisionRequests.find(({ id }) => id === revision.decisionRequestId);
   const suiteId = createEntityId("evaluation-suite", suffix());
+  const existing = connection
+    ? project.connectionRequirements.find(({ endpoint }) => endpoint === connection.endpoint)
+    : project.connectionRequirements.find(({ id }) => id === project.defaults.target.connectionRequirementId);
+  const connectionRequirementId = existing?.id ?? createEntityId("connection", suffix());
+  const connectionRequirements = existing || !connection
+    ? project.connectionRequirements
+    : [...project.connectionRequirements, {
+        id: connectionRequirementId,
+        name: uniqueName("Decision connection", project.connectionRequirements.map(({ name: taken }) => taken)),
+        provider: "openai-compatible" as const,
+        endpoint: connection.endpoint,
+      }];
   const suite: DecisionEvaluationSuite = {
     id: suiteId,
     name: uniqueName(name ?? `${request?.name ?? "Decision"} evaluation`, project.evaluationSuites.map(({ name: existing }) => existing)),
     input: { kind: "decision-request-revision", decisionRequestRevisionId },
     execution: {
-      target: {
-        connectionRequirementId: project.defaults.target.connectionRequirementId,
-        model,
-        protocol: "systemone",
-      },
+      target: { connectionRequirementId, model, protocol: "systemone" },
       repetitions: 1,
     },
     variants: [{
@@ -375,7 +390,11 @@ export function createDecisionEvaluationSuite(
     inputBindings: [],
     cases: [],
   };
-  return { suiteId, project: updatedSuites(project, [...project.evaluationSuites, suite]) };
+  return {
+    suiteId,
+    connectionRequirementId,
+    project: updatedSuites({ ...project, connectionRequirements }, [...project.evaluationSuites, suite]),
+  };
 }
 
 export function updateDecisionSuiteInput(

@@ -8,6 +8,7 @@ import {
   addEvaluationInput,
   addEvaluationVariant,
   createEvaluationSuite,
+  createDecisionEvaluationSuite,
   createRevisionFromSavedPrompt,
   evaluationBindingCandidates,
   evaluationSuitePreflight,
@@ -43,7 +44,9 @@ import type { ChatEvaluationSuite, EvaluationVariant } from "../../packages/core
 import { isChatEvaluationSuite } from "../../packages/core/src/evaluation-suites";
 import type {
   CheckId,
+  ConnectionRequirementId,
   ConversationRevisionId,
+  DecisionRequestRevisionId,
   EvaluationCaseId,
   EvaluationInputBindingId,
   EvaluationSuiteId,
@@ -136,6 +139,17 @@ export interface EvaluationSuiteAuthoringHandle {
   moveVariant(id: EvaluationVariantId, destinationIndex: number): void;
   deleteVariant(id: EvaluationVariantId): void;
   createSuite(): void;
+  /**
+   * Creates a decision suite pinned to a revision (D51) and selects it.
+   * `project` is the document to create it in when the caller has just folded
+   * a draft into it; otherwise the open project.
+   */
+  createDecisionSuite(input: {
+    project?: ProjectFile;
+    decisionRequestRevisionId: DecisionRequestRevisionId;
+    model: string;
+    connection?: { endpoint: string };
+  }): { project: ProjectFile; connectionRequirementId: ConnectionRequirementId } | undefined;
   renameSuite(name: string): boolean;
   deleteSuite(): void;
   addInput(candidate: ReturnType<typeof evaluationBindingCandidates>[number]): void;
@@ -172,7 +186,13 @@ export type EvaluationCheckAuthoringField =
   | "tool-name"
   | "count"
   | "comparator"
-  | "arguments-subset";
+  | "arguments-subset"
+  | "question"
+  | "option"
+  | "value"
+  | "min"
+  | "max"
+  | "at-least";
 
 export interface EvaluationSuiteAuthoringError {
   message: string;
@@ -305,8 +325,10 @@ export function useEvaluationSuiteAuthoring({
   const candidates = project && effectiveRevisionId
     ? evaluationBindingCandidates(project, effectiveRevisionId)
     : [];
-  const diagnostics = project && effectiveSuiteId && effectiveRevisionId
-    ? evaluationSuitePreflight(project, effectiveSuiteId, effectiveRevisionId, [...effectiveSelectedCaseIds])
+  // A decision suite reads its own pinned revision, so the conversation
+  // revision argument only matters for chat.
+  const diagnostics = project && effectiveSuiteId && (effectiveRevisionId || (suite && !chatSuite))
+    ? evaluationSuitePreflight(project, effectiveSuiteId, effectiveRevisionId ?? project.defaults.conversationRevisionId, [...effectiveSelectedCaseIds])
     : [];
 
   const revisionChoices = useMemo(
@@ -557,6 +579,26 @@ export function useEvaluationSuiteAuthoring({
       setSelection(undefined);
       setFocusedCaseId(undefined);
       setStoredError(undefined);
+    },
+    createDecisionSuite(input) {
+      if (!project) return undefined;
+      try {
+        const created = createDecisionEvaluationSuite(input.project ?? project, {
+          decisionRequestRevisionId: input.decisionRequestRevisionId,
+          model: input.model,
+          ...(input.connection ? { connection: input.connection } : {}),
+        });
+        adoptProjectMutation(created.project);
+        setSuiteId(created.suiteId);
+        setSelection(undefined);
+        setVariantSelection(undefined);
+        setFocusedCaseId(undefined);
+        setStoredError(undefined);
+        return { project: created.project, connectionRequirementId: created.connectionRequirementId };
+      } catch (cause) {
+        setStoredPromptError({ projectId: project.projectId, message: mutationErrorMessage(cause) });
+        return undefined;
+      }
     },
     renameSuite(name) {
       return effectiveSuiteId

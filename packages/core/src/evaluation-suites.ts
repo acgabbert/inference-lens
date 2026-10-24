@@ -420,7 +420,8 @@ const decisionCheckNoun: Record<DecisionCheckDefinition["kind"], string> = {
   "decision-confidence": "confidence",
 };
 
-const decisionCheckQuestionTypes: Record<DecisionCheckDefinition["kind"], readonly DecisionQuestion["type"][]> = {
+/** The question types each decision check kind can read (D34). */
+export const decisionCheckQuestionTypes: Record<DecisionCheckDefinition["kind"], readonly DecisionQuestion["type"][]> = {
   "decision-choice": ["choice"],
   "decision-option-probability": ["choice", "score"],
   "decision-score-range": ["score"],
@@ -429,7 +430,7 @@ const decisionCheckQuestionTypes: Record<DecisionCheckDefinition["kind"], readon
 };
 
 /** A choice option is its label; a score option is its level number as a string. */
-function decisionOptions(question: DecisionQuestion): string[] {
+export function decisionOptions(question: DecisionQuestion): string[] {
   if (question.type === "choice") return Object.keys(question.criteria);
   if (question.type === "score") return question.criteria.map((_level, index) => String(index));
   return [];

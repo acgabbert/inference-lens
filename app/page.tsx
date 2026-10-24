@@ -57,6 +57,7 @@ import { useCompose } from "./compose/use-compose.client";
 import type { ComposeKindHandle } from "./compose/use-compose.client";
 import { ComposeKindSwitch } from "./compose/compose-kind-switch.client";
 import { useDecisionCompose } from "./decisions/use-decision-compose.client";
+import type { DecisionSuiteSource } from "./decisions/use-decision-compose.client";
 import type { TraceOrigin } from "./run/use-run-session.client";
 import { runRequestExcerpt } from "../packages/core/src/run-history";
 import { useEvaluationBaselines } from "./evaluations/use-evaluation-baselines.client";
@@ -96,6 +97,7 @@ import { useEvaluationSuiteAuthoring } from "./evaluations/use-evaluation-suite-
 import { useEvaluationReassessment } from "./evaluations/use-evaluation-reassessment.client";
 import { useEvaluationExecutionSession } from "./evaluations/use-evaluation-execution-session.client";
 import { useEvaluationWorkspace } from "./evaluations/use-evaluation-workspace.client";
+import { useDecisionSuiteSettings } from "./evaluations/use-decision-suite-settings.client";
 import { useEvaluationCaseSource } from "./evaluations/use-evaluation-case-source.client";
 import { EvaluationStartDialog } from "./evaluations/evaluation-start-dialog.client";
 import { PromoteTraceToCaseDialog } from "./evaluations/promote-trace-to-case-dialog.client";
@@ -465,6 +467,12 @@ function HomeContent() {
     onTraceSaved() { setSavedRunVersion((current) => current + 1); },
     onError(message) { project.setError(message, { clearKind: true }); },
     onOpenConnections() { setConnectionDrawerOpen(true); },
+    // Crosses into suite authoring, which is built below and owns selection.
+    onNewSuite(source) {
+      if (!createDecisionSuite(source)) return;
+      setMode("evaluations");
+      evaluationWorkspace.layout.onSetupOpenChange(true);
+    },
   });
   const decisionExecuting = decision.compose.executing;
 
@@ -564,6 +572,27 @@ function HomeContent() {
         durableHome: "the suite's revision picker, which now names this prompt",
       });
     },
+  });
+  // Adapter between Decision Compose, suite authoring, and this device's
+  // connection mappings: the suite's own requirement maps to the System One
+  // profile Compose targets unless it is already mapped (D44, D51).
+  function createDecisionSuite(source: DecisionSuiteSource): boolean {
+    const created = evaluationAuthoring.createDecisionSuite({
+      project: source.project,
+      decisionRequestRevisionId: source.decisionRequestRevisionId,
+      model: source.model,
+      connection: { endpoint: source.profile.endpoint },
+    });
+    if (!created) return false;
+    if (!mappedProfileIds[created.connectionRequirementId]) {
+      project.mapProfile(created.connectionRequirementId, source.profile, created.project);
+    }
+    return true;
+  }
+  const decisionSuiteSettings = useDecisionSuiteSettings({
+    project: projectFile,
+    ...(evaluationAuthoring.suiteId ? { suiteId: evaluationAuthoring.suiteId } : {}),
+    adoptProjectMutation: project.adoptProjectMutation,
   });
   const evaluationWorkspace = useEvaluationWorkspace({
     authoring: evaluationAuthoring,
@@ -1490,6 +1519,16 @@ function HomeContent() {
           }
           {...(evaluationCaseSource.source ? { caseSource: evaluationCaseSource.source } : {})}
           onOpenSourceTrace={evaluationCaseSource.openSource}
+          {...(decisionSuiteSettings ? { decisionSettings: decisionSuiteSettings } : {})}
+          onCreateDecision={{
+            create() {
+              const source = decision.suiteSource.take();
+              if (source) createDecisionSuite(source);
+            },
+            ...(decision.suiteSource.blockedReason
+              ? { disabledReason: `Decision Compose: ${decision.suiteSource.blockedReason}` }
+              : {}),
+          }}
         />
       ) : (
         <RunsMode

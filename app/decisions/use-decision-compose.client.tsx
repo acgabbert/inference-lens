@@ -1,9 +1,10 @@
 "use client";
 
 import type { CredentialSelection, DecisionTransport, ProviderTurnTransport } from "../../packages/contracts/src";
-import { prepareDecisionRequestRun } from "../../packages/core/src/decision-request";
+import { activeDecisionRequestRevision, prepareDecisionRequestRun } from "../../packages/core/src/decision-request";
 import type { DecisionRunTrace } from "../../packages/core/src/decision-trace";
 import type { ProjectFile } from "../../packages/core/src/project";
+import type { DecisionRequestRevisionId } from "../../packages/core/src/run-kernel/types";
 import type { ComposeKindHandle } from "../compose/use-compose.client";
 import type { ProjectWorkspaceHandle } from "../project-workspace.client";
 import type { StoredInferenceProfile, StoredInferenceProfilePatch } from "../profile-store.client";
@@ -39,12 +40,34 @@ export interface UseDecisionComposeOptions {
   onTraceSaved(): void;
   onError(message: string): void;
   onOpenConnections(): void;
+  /** "New suite from this request" was chosen; the route hands it to suite authoring. */
+  onNewSuite?(source: DecisionSuiteSource): void;
+}
+
+/**
+ * What a new decision suite pins (D37, D51): the active revision with the
+ * editor's draft already written in, and the model Compose targets. `project`
+ * is that folded document, so the suite is created on it rather than on a
+ * project that still lags the editor.
+ */
+export interface DecisionSuiteSource {
+  project: ProjectFile;
+  decisionRequestRevisionId: DecisionRequestRevisionId;
+  model: string;
+  /** The System One connection Compose targets; the suite gets a requirement at its endpoint. */
+  profile: StoredInferenceProfile;
 }
 
 export interface DecisionComposeHandle {
   compose: ComposeKindHandle;
   /** For D30: open a saved or imported decision trace. */
   adoptTrace(trace: DecisionRunTrace, origin: TraceOrigin): void;
+  /** Where a new decision suite comes from, for the Evaluations rail too. */
+  suiteSource: {
+    /** Why there is no request or model to pin yet. */
+    blockedReason?: string;
+    take(): DecisionSuiteSource | undefined;
+  };
   /** What the project workspace folds in and hands over (D42). */
   project: Pick<DecisionProjectHandle, "fold"> & {
     /** A project was opened or replaced: load its request and clear the result. */
@@ -107,6 +130,30 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
     void session.retry();
   }
 
+  const suiteBlockedReason = !options.project
+    ? "Open or save a project first."
+    : decisionProject.unsaved
+      ? "Fix the request’s problems first."
+      // A valid touched draft becomes a request when it is folded in.
+      : !activeDecisionRequestRevision(options.project) && !draft.touched
+        ? "Write a decision request first."
+        : !target.profile
+          ? "Turn on System One for a connection first."
+          : target.model.trim() === ""
+            ? "Choose a decision model first."
+            : undefined;
+  const suiteSource: DecisionComposeHandle["suiteSource"] = {
+    ...(suiteBlockedReason ? { blockedReason: suiteBlockedReason } : {}),
+    take() {
+      if (suiteBlockedReason || !options.project) return undefined;
+      const folded = decisionProject.fold(options.project);
+      const active = activeDecisionRequestRevision(folded);
+      return active && target.profile
+        ? { project: folded, decisionRequestRevisionId: active.id, model: target.model.trim(), profile: target.profile }
+        : undefined;
+    },
+  };
+
   const finished = Boolean(run && ["completed", "cancelled", "failed"].includes(run.status.kind));
   const compose: ComposeKindHandle = {
     executing: session.executing,
@@ -131,6 +178,17 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
           locked={session.executing}
           target={target}
           onOpenConnections={options.onOpenConnections}
+          {...(options.project && options.onNewSuite
+            ? {
+                newSuite: {
+                  onCreate() {
+                    const source = suiteSource.take();
+                    if (source) options.onNewSuite!(source);
+                  },
+                  ...(suiteBlockedReason ? { disabledReason: suiteBlockedReason } : {}),
+                },
+              }
+            : {})}
         />
       ),
       response: (
@@ -156,6 +214,7 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
   return {
     compose,
     adoptTrace: session.adoptTrace,
+    suiteSource,
     project: {
       fold: decisionProject.fold,
       adopt(project) {

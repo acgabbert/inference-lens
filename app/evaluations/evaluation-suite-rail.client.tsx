@@ -1,5 +1,6 @@
 "use client";
 
+import { isDecisionEvaluationSuite } from "../../packages/core/src/evaluation-suites";
 import type { EvaluationSuite } from "../../packages/core/src/project";
 import styles from "./evaluation-surface.module.css";
 
@@ -11,13 +12,18 @@ import styles from "./evaluation-surface.module.css";
  * how many a project has — and which one is open — is readable without opening
  * a menu. Identity actions that act on the open suite (rename, delete) stay in
  * the suite header beside its name; only creation belongs here, because it acts
- * on the list.
+ * on the list. Both kinds share the list, each labelled (D51).
  */
-export function EvaluationSuiteRail({ suites, selectedId, onSelect, onCreate }: {
+export function EvaluationSuiteRail({ suites, selectedId, onSelect, onCreate, onCreateDecision }: {
   suites: readonly EvaluationSuite[];
   selectedId?: EvaluationSuite["id"];
   onSelect(id: EvaluationSuite["id"]): void;
   onCreate(): void;
+  /**
+   * Creates a decision suite from the active decision request. `disabledReason`
+   * says why there is nothing to create it from yet.
+   */
+  onCreateDecision?: { create(): void; disabledReason?: string };
 }) {
   return (
     <nav aria-label="Evaluation suites" className={styles.rail}>
@@ -38,13 +44,23 @@ export function EvaluationSuiteRail({ suites, selectedId, onSelect, onCreate }: 
                   onClick={() => onSelect(suite.id)}
                 >
                   <strong>{suite.name}</strong>
-                  <span>{suite.cases.length} {suite.cases.length === 1 ? "case" : "cases"}</span>
+                  <span>{isDecisionEvaluationSuite(suite) ? "Decision" : "Chat"} · {suite.cases.length} {suite.cases.length === 1 ? "case" : "cases"}</span>
                 </button>
               </li>
             ))}
           </ul>
         )}
-      <button className="button secondary" type="button" onClick={onCreate}>+ New suite</button>
+      <button className="button secondary" type="button" onClick={onCreate}>+ New chat suite</button>
+      {onCreateDecision && <>
+        <button
+          aria-describedby={onCreateDecision.disabledReason ? "evaluation-rail-decision-reason" : undefined}
+          className="button secondary"
+          disabled={Boolean(onCreateDecision.disabledReason)}
+          type="button"
+          onClick={onCreateDecision.create}
+        >+ New decision suite</button>
+        {onCreateDecision.disabledReason && <small id="evaluation-rail-decision-reason">{onCreateDecision.disabledReason}</small>}
+      </>}
     </nav>
   );
 }
