@@ -1822,6 +1822,22 @@ Decided in D31–D37, with 5a's details in D38–D43. Delivered in order:
   lists a decision plan as one it cannot show, and comparison and baselines
   refuse a decision execution, because their drift fields are chat-shaped
   (D52).
+  Fourth step, core half (2026-10-24): comparison accepts decision
+  executions with the kind-split drift (D52), and project history lists
+  decision evaluations. `EvaluationExecutionDrift` is a union on `kind`;
+  decision drift reports the request revision, model, endpoint, repetitions,
+  concurrency, and wire protocol. Protocol drift cannot occur yet, because
+  `DECISION_WIRE_PROTOCOLS` has one member. Durations come from repetition
+  evidence, and comparing a chat execution with a decision execution is
+  refused. The history facet replaces `conversationRevisionId` with
+  `runKind` and `inputRevisionId`, and `loadRunHistoryFilesWithStates` also
+  returns decision runs by run id. Covered by
+  `tests/decision-evaluation-comparison.test.ts` (red on the old refusal of
+  decision plans), two additions to `tests/evaluation-comparison.test.ts`
+  (red on the missing `kind` and on the wrong refusal message), and one to
+  `tests/experiment-history.test.ts` (red on the "cannot be shown by this
+  build yet" failure). The app half (authoring, start, results, Compose
+  entry) is still to come.
 - **5c.** `inference-lens run` for decision suites (D36).
 
 ## Out of scope
