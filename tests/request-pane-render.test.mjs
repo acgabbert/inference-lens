@@ -237,7 +237,7 @@ test("the extracted composer keeps pending-branch and template-error text in the
   assert.match(html, /The template variable topic is missing/);
 });
 
-test("the resolved request preview uses one disclosure without nesting details", async () => {
+test("the collapsed request preview renders only its summary", async () => {
   const html = await render(
     "/app/request/request-composer.client.tsx",
     "RequestComposer",
@@ -249,11 +249,13 @@ test("the resolved request preview uses one disclosure without nesting details",
     }),
   );
 
+  // The preview repeats the whole resolved request. Kept in the document while
+  // collapsed, a large pasted prompt is copied into the page again on every
+  // keystroke.
   assert.match(html, /Resolved request preview/);
-  assert.match(html, /role="tab"/);
-  assert.match(html, />Raw</);
-  assert.equal((html.match(/class="pane-tabs"/g) ?? []).length, 2);
-  assert.doesNotMatch(html, /Raw OpenAI-compatible request body/);
+  assert.doesNotMatch(html, /Resolved fixture/);
+  assert.doesNotMatch(html, /Request preview view/);
+  assert.equal((html.match(/class="pane-tabs"/g) ?? []).length, 1);
   assert.equal((html.match(/<details/g) ?? []).length, 1);
 });
 
