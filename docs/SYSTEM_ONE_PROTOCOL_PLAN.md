@@ -1,6 +1,6 @@
 # System One protocol plan
 
-Status: **D1–D21 and U1–U6 accepted. Phases 1 and 2 are merged; the Phase 2
+Status: **D1–D21 and U1–U6 accepted; D22–D24 proposed. Phases 1 and 2 are merged; the Phase 2
 correctness gate in D16 remains open. Phases 3 and 4 ship together, with trace
 support implemented early (D20). llama.cpp and
 OpenRouter captured on 2026-10-24, Ollama on 2026-10-23; direct TypeSafe still
@@ -194,7 +194,9 @@ contract design, not the adapter.
 ## Decisions
 
 The user accepted every recommendation below (D1–D21) and the UI decisions in
-[U1–U6](#ui-decisions-u1u6). Changes made after the source check are marked *(revised)*.
+[U1–U6](#ui-decisions-u1u6). D22–D24 are proposed and await acceptance.
+Changes made after the source check are marked *(revised)*; a later decision
+that changes an earlier one is named in the marker, as in *(revised by D18)*.
 
 ### D1. Where the protocol lives in the type system
 
@@ -294,8 +296,8 @@ What does a user edit and save?
 - **Recommendation: B first, then A.** Ad hoc runs plus saved traces are enough
   to prove out the adapter and the result view without committing the project
   format. Template variables in `state`, and saved question sets, come with A.
-- Because `state`, `instructions`, and criteria are JSON values, the editor
-  must preserve more than strings. U3 and D18 settle the controls and draft
+- *(revised by U3 and D18)* Because `state`, `instructions`, and criteria are
+  JSON values, the editor must preserve more than strings. U3 and D18 settle the controls and draft
   model, superseding the earlier proposal for a text/JSON toggle per field.
 
 ### D5. Trace format
@@ -308,7 +310,8 @@ What does a user edit and save?
 
 ### D6. Capabilities and per-runtime limits
 
-- Declare System One with the device-local profile flag in D9-B, outside
+- *(revised by D9-B)* Declare System One with the device-local profile flag
+  in D9-B, outside
   the portable capability snapshot. `streaming`, `tools`, and
   `structuredOutput` don't apply to decision requests.
 - Do **not** model per-runtime limits as capabilities. *(revised)* The source
@@ -357,13 +360,13 @@ Accepted with D1–D8. They refine Phase 3.
   a new top-level mode. The task is the same write → run → inspect → revise
   loop with the same Run action and the same Runs history. The `app/decisions/`
   owner fills both Compose panes. Switching kinds never discards the other
-  kind's draft. D17 locks the switch during execution and retains each kind's
-  latest result afterward.
+  kind's draft. *(revised by D17)* D17 locks the switch during execution and
+  retains each kind's latest result afterward.
 - **U2. Target per kind.** Each kind keeps its own connection and model.
   Switching to Decision never sends to whichever chat model was selected. The
   decision model picker offers only connections that declare System One.
-- **U3. JSON-valued fields.** A string-first structured form, plus one "Edit as
-  JSON" view of the whole `DecisionInput` (`state` and `questions`; the target
+- **U3. JSON-valued fields.** *(revised by D18)* A string-first structured
+  form, plus one "Edit as JSON" view of the whole `DecisionInput` (`state` and `questions`; the target
   remains separate). Both views belong to the same editor draft (D18), which
   derives a validated `DecisionInput` for execution. Only `state` gets its own
   text/JSON toggle. This replaces the per-field toggle sketched in D4.
@@ -620,7 +623,8 @@ app, reporting any part that could not be exercised.
 The alternatives were to lock switching during execution, cancel on switch,
 or allow background execution. **Lock the Chat / Decision switch during
 execution.** Compose has one foreground execution; switching kinds cannot
-implicitly cancel it or start another. Keep existing batch execution guards.
+implicitly cancel it or start another. Keep existing batch execution guards;
+D24 proposes how decision runs join them.
 
 - Preserve each kind's draft, independent connection/model selection, and
   latest result when switching after execution ends, including failed or
@@ -630,7 +634,8 @@ implicitly cancel it or start another. Keep existing batch execution guards.
   draft ownership above conditional pane mounts so switching views is lossless.
 - A run captures its validated input and target before dispatch. Retry uses
   that exact snapshot and retains earlier attempt evidence; edits belong to
-  a new run. Honour `retry-after` on 429 when permitting a retry.
+  a new run. Honour `retry-after` on 429 when permitting a retry; D23
+  proposes how.
 - The decision session owns cancellation and invalidation of asynchronous
   work, so late events cannot revive a stopped or superseded run.
 
@@ -725,6 +730,100 @@ Run the affected specs while iterating, then the full browser suite once
 before handoff. Report the commands, skipped checks, fixture limitations, and
 the native desktop paths actually exercised. Keep tests introduced for D16
 red for the relevant incorrect value before fixing it, per `AGENTS.md`.
+
+### D22. Decision trace shape *(proposed)*
+
+D5 settles where decision traces live, but not what they hold, and D20 builds
+the format first. Core already defines the run: `DecisionRun` carries
+`ResolvedDecisionRunInput`, status, `DecisionAttempt`s, and
+`DecisionExchangeTrace`s keyed by exchange id. A chat trace instead stores an
+ordered event log and re-derives its projections on import.
+
+- **A. Store the terminal `DecisionRun`.** The body is `schemaVersion: 8`,
+  `kind: "decision"`, `runId`, `input`, a `TerminalRunStatus`, `attempts`,
+  `exchanges`, `startedAt`, and `endedAt`. Import checks the shape and the
+  consistency between the parts, then reconstructs the run as stored.
+- **B. Store each attempt's `DecisionTransportEvent` stream** and reduce it on
+  import, as chat does. This matches chat more closely, but a decision exchange
+  has a single frame, so the events repeat what the exchange trace already
+  holds and need a reducer that exists only to read them back.
+- **C. A, plus re-normalizing every completed attempt's raw body** through the
+  current adapter and rejecting a mismatch. This guarantees the most, but it
+  ties old traces to adapter changes: a later validation rule would reject
+  traces that were valid when saved.
+- **Recommendation: A.** Import rejects, naming the path:
+  - attempt numbers that don't run 1…n;
+  - an attempt whose `exchangeId` is missing or shared;
+  - a completed attempt that isn't the last;
+  - a status that disagrees with the last attempt;
+  - a completed attempt without a result, or whose answer ids and types differ
+    from the input's questions;
+  - a failed attempt without an error.
+- What is saved follows the chat rules in `docs/RUN_TRACE_FORMAT.md`:
+  completed and cancelled runs, non-retryable failures, and retryable failures
+  that the user stops instead of retrying. A retryable failure stays live
+  session state until then. The D18 editor draft is never saved.
+- The input's `ResolvedDecisionTarget` is the stored target: it holds the
+  profile id, protocol, endpoint, model, and capability snapshot, and no
+  credential. A trace opens read-only without that profile on the device.
+- Version 8 covers both kinds. New chat traces write version 8 without `kind`,
+  so their contents are otherwise unchanged, and versions 1–7 still import as
+  chat. The parser accepts `kind` only when it is absent or `"decision"`, and
+  rejects a decision trace that claims a version below 8.
+- Ownership: `packages/core/src/run-trace.ts` keeps the file envelope,
+  deterministic serialization, filenames, and dispatch by `kind`. Decision
+  validation lives beside the decision types in core. One parser returns
+  either kind for history, import, and export. The chat-only parser rejects a
+  decision trace with a readable message instead of misreading it.
+- Run history keeps one `traces/` listing. A decision summary shows the kind,
+  model, question count, and status, and selecting the entry opens Decision
+  Compose's inspection state.
+
+### D23. Retry after a 429 *(proposed)*
+
+D2 and D17 say Retry honours `retry-after`, but not how. In Compose, chat
+Retry doesn't read the header today. Only batches pause:
+`rateLimitPauseMs` in `packages/runner/src/rate-limit-pause.ts` reads
+`retry-after-ms`, then `Retry-After` as seconds or an HTTP date, defaults to
+5 s, and caps the wait at 60 s.
+
+- **A. Manual Retry with a wait.** After a 429, Retry is disabled with a
+  visible countdown until the wait elapses; then the user retries. Stop stays
+  available and makes the run terminal.
+- **B. Automatic retry after the wait,** for a bounded number of attempts.
+  This spends requests the user didn't ask for, and it adds a timer that owns
+  execution, so the D17 lock would have to cover the wait as well.
+- **C. Advisory only.** Show the wait but don't block Retry.
+- **Recommendation: A.** Use the same header rules as batches. Move
+  `rateLimitPauseMs` into core so `app/decisions/` doesn't depend on the
+  runner; `rateLimitedAttempt` reads chat `RunState` and stays in the runner.
+  The wait starts when the 429 response arrives and is read from the failed
+  attempt's recorded headers. The countdown is session state, not trace
+  content.
+- While a retryable failure waits, nothing is executing, so the kind switch
+  is unlocked. The countdown survives switching away and back.
+- Fixture limitation: the synthetic `429` scenario always sends
+  `retry-after: 1` and answers every request with 429. A spec can show the
+  wait, the re-enabled Retry, and a second retained 429 attempt, but not a
+  success after waiting. Say so when reporting D21's 429 coverage.
+
+### D24. Decision runs and other activity *(proposed)*
+
+`app/page.tsx` already treats a single chat request, a repeated experiment,
+and an evaluation run as one foreground activity. While any of them runs, the
+others can't start, and the keyboard shortcut does nothing.
+
+- **A. A decision run joins that guard.** Decision Run is disabled with a
+  reason while a chat request or batch is active, and chat Run and batch
+  starts are blocked while a decision run executes. A 429 wait (D23) doesn't
+  count as active.
+- **B. Let a decision run go alongside a batch.** Sampling a decision during a
+  long batch is useful, but both may share a provider and its rate limit, and
+  the topbar and shortcut would then have two live runs to address.
+- **Recommendation: A.** The D19 Compose handle exposes whether its kind is
+  executing, and the route feeds that into the existing activity check. It is
+  the cross-feature adapter that the route is meant to keep. Add the guard in
+  both directions to D21's switch-lock coverage.
 
 ## Phases
 
@@ -868,8 +967,10 @@ with Phase 4 (D20), implementing trace support early.
   state and workflow; the Compose owner selects the active kind's panes,
   readiness, and commands for both the topbar and keyboard shortcut.
 - Implement the decision session with a frozen execution snapshot, attempt
-  evidence, cancellation, invalidation, and Retry (D17). Lock kind switching
-  during execution; retain each kind's draft, target, and latest result.
+  evidence, cancellation, invalidation, and Retry (D17), with the 429 wait in
+  D23. Lock kind switching during execution; retain each kind's draft, target,
+  and latest result. A decision run joins the shared foreground-activity guard
+  (D24).
 - Composer: the D18 draft drives a structured form and whole-input JSON
   editor. State has a text/JSON toggle; questions expose type, id,
   instructions, options or ordered levels, and optional noul true/false.
@@ -894,10 +995,10 @@ with Phase 4 (D20), implementing trace support early.
 
 Implement trace support early in the combined Phase 3/4 delivery (D20).
 
-- Trace schema 8 with the `kind` discriminator (D5); decision traces save,
-  reload, import, and export with executed input, attempts, normalized answers,
-  and complete exchange evidence. Missing `kind` still means chat, and chat
-  traces at schema 7 still open.
+- Trace schema 8 with the `kind` discriminator (D5) and the decision trace
+  shape in D22; decision traces save, reload, import, and export with executed
+  input, attempts, normalized answers, and complete exchange evidence. Missing
+  `kind` still means chat, and chat traces at schemas 1–7 still open.
 - Wire decision session persistence to the existing workspace and export
   entry points, preserving save status and surfacing failures.
 - History labels decision runs and opens the correct request kind and its
