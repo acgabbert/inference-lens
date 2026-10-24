@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { CHECK_SCHEMA_VERSION, checkDefinitionSchema, checkVocabularyIssue } from "./checks.ts";
+import { CHECK_SCHEMA_VERSION, checkDefinitionSchema, checkRunKindIssue, checkVocabularyIssue } from "./checks.ts";
 import type { CheckSchemaVersion } from "./checks.ts";
 import type { CheckDefinition } from "./checks.ts";
 import { EVALUATION_ASSESSMENT_FILE_SUFFIX } from "./experiment.ts";
@@ -125,7 +125,7 @@ function assertAssessmentReferences(
   assessment: EvaluationAssessmentV1,
   plan: ExperimentPlan,
 ): void {
-  if (plan.kind !== "evaluation") {
+  if (plan.kind === "repeated-request") {
     throw new EvaluationAssessmentError(
       "Only an evaluation experiment can be reassessed; a repeated-request experiment has no checks.",
     );
@@ -137,7 +137,8 @@ function assertAssessmentReferences(
   // current authored suite: the evidence is what the execution captured.
   for (const assessmentCase of assessment.cases) {
     for (const check of assessmentCase.checks) {
-      const issue = checkVocabularyIssue(check, assessment.checkSchemaVersion);
+      const issue = checkVocabularyIssue(check, assessment.checkSchemaVersion) ??
+        checkRunKindIssue(check.kind, plan.kind === "evaluation" ? "chat" : "decision");
       if (issue) {
         throw new EvaluationAssessmentError(
           `Invalid reassessment at case ${assessmentCase.caseId}, check ${check.checkId}: ${issue}`,
@@ -233,7 +234,7 @@ export function createEvaluationAssessment(
   input: NewEvaluationAssessment,
   plan: ExperimentPlan,
 ): EvaluationAssessmentV1 {
-  if (plan.kind !== "evaluation") {
+  if (plan.kind === "repeated-request") {
     throw new EvaluationAssessmentError(
       "Only an evaluation experiment can be reassessed; a repeated-request experiment has no checks.",
     );

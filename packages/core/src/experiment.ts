@@ -6,11 +6,13 @@ import {
   checkVocabularyIssue,
   checkDefinitionSchema,
   checkOutcomeSummary,
-  evaluateChecksSteps,
+  decisionCheckSubject,
+  evaluateSubjectChecksSteps,
+  runCheckSubject,
 } from "./checks.ts";
-import type { CheckDefinition, CheckResult, CheckSchemaVersion } from "./checks.ts";
+import type { CheckDefinition, CheckResult, CheckSchemaVersion, CheckSubject } from "./checks.ts";
 import { DECISION_WIRE_PROTOCOLS, isDecisionInput } from "./decision.ts";
-import type { DecisionInput, ResolvedDecisionTarget, ResolvedDecisionRunInput } from "./decision.ts";
+import type { DecisionInput, DecisionRun, ResolvedDecisionTarget, ResolvedDecisionRunInput } from "./decision.ts";
 import { isSensitiveTemplateVariableName } from "./project.ts";
 import { runMetrics } from "./run-metrics.ts";
 import { finalAssistantOutput, outputCharacterCount } from "./run-output.ts";
@@ -424,9 +426,15 @@ export interface EvaluationCaseCounts {
   incomplete: number;
 }
 
-/** One configuration's independently-scored view of an evaluation bakeoff. */
-export interface EvaluationVariantAssessment {
-  variant: EvaluationVariantSnapshotV4;
+/** A configuration snapshot of either evaluation kind. */
+export type EvaluationVariantSnapshot = EvaluationVariantSnapshotV4 | DecisionEvaluationVariantSnapshot;
+
+/**
+ * One configuration's independently-scored view of an evaluation bakeoff.
+ * `Variant` is the plan kind's configuration snapshot; chat's is the default.
+ */
+export interface EvaluationVariantAssessment<Variant extends EvaluationVariantSnapshot = EvaluationVariantSnapshotV4> {
+  variant: Variant;
   lifecycle: ExperimentLifecycle;
   passed: boolean;
   cases: EvaluationCaseAssessment[];
@@ -457,9 +465,9 @@ export interface EvaluationVariantAssessment {
 export type EvaluationCriteriaOverride = ReadonlyMap<EvaluationCaseId, readonly CheckDefinition[]>;
 
 /** Ordered results for the immutable configuration snapshots in a plan. */
-export interface EvaluationBakeoffAssessment {
+export interface EvaluationBakeoffAssessment<Variant extends EvaluationVariantSnapshot = EvaluationVariantSnapshotV4> {
   lifecycle: ExperimentLifecycle;
-  variants: EvaluationVariantAssessment[];
+  variants: EvaluationVariantAssessment<Variant>[];
 }
 
 export type ExperimentLifecycle = "interrupted" | "completed" | "cancelled" | "stopped";
@@ -1570,6 +1578,70 @@ export function rateLimitRetryCount(state: RunState): number {
       status === "failed" && error?.code === "provider_error" && error.providerStatus === 429).length, 0);
 }
 
+/** Whether a decision run failed because the provider answered its last attempt with 429. */
+function isRateLimitedDecisionRun(run: DecisionRun): boolean {
+  return run.status.kind === "failed" &&
+    run.status.error.code === "provider_error" &&
+    run.status.error.providerStatus === 429;
+}
+
+/**
+ * What scoring reads from one repetition, whichever kind of run it was (D50).
+ * Classification, counting, and scoring then happen once, so rules such as a
+ * 429 counting as missing evidence cannot drift between the kinds.
+ */
+export interface RepetitionEvidence {
+  /** `pending` for a run that never reached a terminal status. */
+  status: TerminalRunStatus["kind"] | "pending";
+  /** The run failed because the provider answered 429. */
+  rateLimited: boolean;
+  /** Attempts the provider answered with 429 and that were then retried. */
+  rateLimitRetries: number;
+  /** Absent where the run or provider never reported the quantity. */
+  metrics: { totalDurationMs?: number; totalTokens?: number; outputTokens?: number };
+  subject: CheckSubject;
+}
+
+function terminalKind(status: RunState["status"] | DecisionRun["status"]): RepetitionEvidence["status"] {
+  return status.kind === "completed" || status.kind === "failed" || status.kind === "cancelled"
+    ? status.kind
+    : "pending";
+}
+
+export function repetitionEvidence(run: RunState | DecisionRun): RepetitionEvidence {
+  if ("kind" in run && run.kind === "decision") {
+    const startedAt = run.startedAt === undefined ? Number.NaN : Date.parse(run.startedAt);
+    const endedAt = run.endedAt === undefined ? Number.NaN : Date.parse(run.endedAt);
+    // Only a completed attempt carries usage; a failed one reported none.
+    const usage = run.attempts.findLast(({ status }) => status === "completed")?.result?.usage;
+    return {
+      status: terminalKind(run.status),
+      rateLimited: isRateLimitedDecisionRun(run),
+      rateLimitRetries: run.attempts.slice(0, -1).filter(({ status, error }) =>
+        status === "failed" && error?.code === "provider_error" && error.providerStatus === 429).length,
+      metrics: {
+        ...(Number.isFinite(startedAt) && Number.isFinite(endedAt) ? { totalDurationMs: endedAt - startedAt } : {}),
+        ...(usage?.totalTokens === undefined ? {} : { totalTokens: usage.totalTokens }),
+        ...(usage?.outputTokens === undefined ? {} : { outputTokens: usage.outputTokens }),
+      },
+      subject: decisionCheckSubject(run),
+    };
+  }
+  const state = run as RunState;
+  const metrics = runMetrics(state);
+  return {
+    status: terminalKind(state.status),
+    rateLimited: isRateLimitedRun(state),
+    rateLimitRetries: rateLimitRetryCount(state),
+    metrics: {
+      ...(metrics.totalDurationMs === undefined ? {} : { totalDurationMs: metrics.totalDurationMs }),
+      ...(metrics.usage.totalTokens === undefined ? {} : { totalTokens: metrics.usage.totalTokens }),
+      ...(metrics.usage.outputTokens === undefined ? {} : { outputTokens: metrics.usage.outputTokens }),
+    },
+    subject: runCheckSubject(state),
+  };
+}
+
 /**
  * Derives summary evidence from immutable artifacts and ordinary run states.
  * Missing states are explicitly represented rather than treated as zero-valued
@@ -1692,10 +1764,22 @@ export function evaluationExperimentAggregate(
 export function evaluationParsedExperimentAggregate(
   plan: EvaluationExperimentPlan,
   result: ExperimentResultInput | undefined,
-  states: ReadonlyMap<RunId, RunState> = new Map(),
+  states?: ReadonlyMap<RunId, RunState>,
   criteria?: EvaluationCriteriaOverride,
-): EvaluationBakeoffAssessment {
-  const steps = evaluationParsedExperimentAggregateSteps(plan, result, states, criteria);
+): EvaluationBakeoffAssessment;
+export function evaluationParsedExperimentAggregate(
+  plan: DecisionEvaluationExperimentPlan,
+  result: ExperimentResultInput | undefined,
+  states?: ReadonlyMap<RunId, DecisionRun>,
+  criteria?: EvaluationCriteriaOverride,
+): EvaluationBakeoffAssessment<DecisionEvaluationVariantSnapshot>;
+export function evaluationParsedExperimentAggregate(
+  plan: SuiteExperimentPlan,
+  result: ExperimentResultInput | undefined,
+  states: ReadonlyMap<RunId, RunState | DecisionRun> = new Map(),
+  criteria?: EvaluationCriteriaOverride,
+): EvaluationBakeoffAssessment<EvaluationVariantSnapshot> {
+  const steps = scoreSuiteExperimentSteps(plan, result, states, criteria);
   let next = steps.next();
   while (!next.done) next = steps.next();
   return next.value;
@@ -1704,12 +1788,37 @@ export function evaluationParsedExperimentAggregate(
 /** Same derivation as the synchronous API, suspended after each check and cell.
  * The generator owns only local work; abandoning it cannot mutate evidence.
  * Consumers must publish only the returned complete aggregate. */
-export function* evaluationParsedExperimentAggregateSteps(
+export function evaluationParsedExperimentAggregateSteps(
   plan: EvaluationExperimentPlan,
   result: ExperimentResultInput | undefined,
-  states: ReadonlyMap<RunId, RunState> = new Map(),
+  states?: ReadonlyMap<RunId, RunState>,
   criteria?: EvaluationCriteriaOverride,
-): Generator<void, EvaluationBakeoffAssessment> {
+): Generator<void, EvaluationBakeoffAssessment>;
+export function evaluationParsedExperimentAggregateSteps(
+  plan: DecisionEvaluationExperimentPlan,
+  result: ExperimentResultInput | undefined,
+  states?: ReadonlyMap<RunId, DecisionRun>,
+  criteria?: EvaluationCriteriaOverride,
+): Generator<void, EvaluationBakeoffAssessment<DecisionEvaluationVariantSnapshot>>;
+export function evaluationParsedExperimentAggregateSteps(
+  plan: SuiteExperimentPlan,
+  result: ExperimentResultInput | undefined,
+  states: ReadonlyMap<RunId, RunState | DecisionRun> = new Map(),
+  criteria?: EvaluationCriteriaOverride,
+): Generator<void, EvaluationBakeoffAssessment<EvaluationVariantSnapshot>> {
+  return scoreSuiteExperimentSteps(plan, result, states, criteria);
+}
+
+/**
+ * Scores either evaluation kind. Each repetition is projected into
+ * `RepetitionEvidence` first (D50), so nothing below branches on the kind.
+ */
+function* scoreSuiteExperimentSteps(
+  plan: SuiteExperimentPlan,
+  result: ExperimentResultInput | undefined,
+  states: ReadonlyMap<RunId, RunState | DecisionRun>,
+  criteria?: EvaluationCriteriaOverride,
+): Generator<void, EvaluationBakeoffAssessment<EvaluationVariantSnapshot>> {
   const parsed = plan;
   const parsedResult = result ? parseExperimentResultFile(result, parsed) : undefined;
   const dispositions = new Map(parsedResult?.cells.map((cell) => [cell.cellId, cell]));
@@ -1725,8 +1834,8 @@ export function* evaluationParsedExperimentAggregateSteps(
     return [evaluationCase.caseId, replacement ?? evaluationCase.checks] as const;
   }));
   const lifecycle = experimentLifecycle(parsed, parsedResult);
-  const variants: EvaluationVariantAssessment[] = [];
-  for (const variant of parsed.suite.variants) {
+  const variants: EvaluationVariantAssessment<EvaluationVariantSnapshot>[] = [];
+  for (const variant of parsed.suite.variants as readonly EvaluationVariantSnapshot[]) {
     const assessments = new Map<EvaluationCaseId, EvaluationRepetitionAssessment[]>();
     const repetitionCounts: Record<EvaluationRepetitionClassification, number> = {
       passed: 0, "check-failed": 0, "not-evaluated": 0, "run-failed": 0, "rate-limited": 0,
@@ -1742,30 +1851,31 @@ export function* evaluationParsedExperimentAggregateSteps(
       const caseChecks = effectiveChecks.get(cell.caseId)!;
       const disposition = dispositions.get(cell.cellId);
       const state = states.get(cell.runId);
+      const evidence = state ? repetitionEvidence(state) : undefined;
       checkCounts.total += caseChecks.length;
       let classification: EvaluationRepetitionClassification;
       let checks: CheckResult[] = [];
       if (disposition?.status === "not-run") {
         classification = "not-run";
         checkCounts.notEvaluated += caseChecks.length;
-      } else if (!state) {
+      } else if (!evidence) {
         classification = parsedResult ? "trace-unavailable" : "not-evaluated";
         checkCounts.notEvaluated += caseChecks.length;
-      } else if (isRateLimitedRun(state)) {
+      } else if (evidence.rateLimited) {
         // The run ended before a final answer, so its checks have nothing to read.
         classification = "rate-limited";
         checkCounts.notEvaluated += caseChecks.length;
-      } else if (state.status.kind === "failed") {
+      } else if (evidence.status === "failed") {
         classification = "run-failed";
-        checks = yield* evaluateChecksSteps(state, caseChecks);
-      } else if (state.status.kind === "cancelled") {
+        checks = yield* evaluateSubjectChecksSteps(evidence.subject, caseChecks);
+      } else if (evidence.status === "cancelled") {
         classification = "cancelled";
-        checks = yield* evaluateChecksSteps(state, caseChecks);
-      } else if (state.status.kind !== "completed") {
+        checks = yield* evaluateSubjectChecksSteps(evidence.subject, caseChecks);
+      } else if (evidence.status !== "completed") {
         classification = "not-evaluated";
         checkCounts.notEvaluated += caseChecks.length;
       } else {
-        checks = yield* evaluateChecksSteps(state, caseChecks);
+        checks = yield* evaluateSubjectChecksSteps(evidence.subject, caseChecks);
         const summary = checkOutcomeSummary(checks);
         classification = summary.notEvaluated > 0 ? "not-evaluated" : summary.failed > 0 ? "check-failed" : "passed";
       }
@@ -1775,14 +1885,14 @@ export function* evaluationParsedExperimentAggregateSteps(
         checkCounts.failed += summary.failed;
         checkCounts.notEvaluated += summary.notEvaluated;
       }
-      if (state && ["completed", "failed", "cancelled"].includes(state.status.kind)) {
-        const metrics = runMetrics(state);
-        totalTokenValues.push(metrics.usage.totalTokens);
-        outputTokenValues.push(metrics.usage.outputTokens);
-        if (state.status.kind === "completed" && metrics.totalDurationMs !== undefined) durations.push(metrics.totalDurationMs);
+      if (evidence && evidence.status !== "pending") {
+        const { metrics } = evidence;
+        totalTokenValues.push(metrics.totalTokens);
+        outputTokenValues.push(metrics.outputTokens);
+        if (evidence.status === "completed" && metrics.totalDurationMs !== undefined) durations.push(metrics.totalDurationMs);
       }
       repetitionCounts[classification] += 1;
-      if (state && rateLimitRetryCount(state) > 0) retriedAfterRateLimit += 1;
+      if (evidence && evidence.rateLimitRetries > 0) retriedAfterRateLimit += 1;
       assessments.set(cell.caseId, [...(assessments.get(cell.caseId) ?? []), {
         cellId: cell.cellId, runId: cell.runId, repetition: cell.repetition, classification, checks,
       }]);
@@ -1818,10 +1928,10 @@ export function* evaluationParsedExperimentAggregateSteps(
   return { lifecycle, variants };
 }
 
-export function evaluationVariantAssessment(
-  aggregate: EvaluationBakeoffAssessment,
+export function evaluationVariantAssessment<Variant extends EvaluationVariantSnapshot>(
+  aggregate: EvaluationBakeoffAssessment<Variant>,
   variantId: EvaluationVariantId,
-): EvaluationVariantAssessment {
+): EvaluationVariantAssessment<Variant> {
   const assessment = aggregate.variants.find((item) => item.variant.variantId === variantId);
   if (!assessment) throw new ExperimentValidationError(`Unknown evaluation configuration ${variantId}.`);
   return assessment;

@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { CheckDefinition } from "../packages/core/src/checks.ts";
-import type { DecisionInput, ResolvedDecisionTarget } from "../packages/core/src/decision.ts";
-import { updateDecisionRequestDraft } from "../packages/core/src/decision-request.ts";
 import {
   EXPERIMENT_SCHEMA_VERSION,
   experimentExposedTools,
@@ -14,109 +11,19 @@ import {
   serializeExperimentPlan,
 } from "../packages/core/src/experiment.ts";
 import type { DecisionEvaluationExperimentPlan } from "../packages/core/src/experiment.ts";
-import {
-  EvaluationSetupError,
-  createDecisionEvaluationExperimentPlan,
-  createEvaluationExperimentPlan,
-} from "../packages/core/src/evaluation-execution.ts";
-import type { DecisionEvaluationSuite } from "../packages/core/src/evaluation-suites.ts";
-import { createProjectFile } from "../packages/core/src/project.ts";
-import type { ProjectFile } from "../packages/core/src/project.ts";
-import { createEntityId } from "../packages/core/src/run-kernel/index.ts";
+import { EvaluationSetupError, createEvaluationExperimentPlan } from "../packages/core/src/evaluation-execution.ts";
 import type { EvaluationVariantId } from "../packages/core/src/run-kernel/index.ts";
-import { OPENAI_COMPATIBLE_CAPABILITIES, resolveProviderCapabilities } from "../packages/core/src/types.ts";
+import {
+  check,
+  decision,
+  decisionPlan,
+  decisionProject,
+  decisionRuntimeTarget,
+} from "./fixtures/decision-evaluation.ts";
 
-const request = {
-  provider: "openai-compatible" as const,
-  endpoint: "http://127.0.0.1:44028/v1",
-  model: "chat-model",
-  messages: [{ role: "user" as const, content: "Hello" }],
-  capabilities: resolveProviderCapabilities("openai-compatible"),
-};
-
-// Question and option order are deliberately not alphabetical, so a writer
-// that sorted them would be caught.
-const decision: DecisionInput = {
-  state: "Ticket: {{ticket}} ({{plan}})",
-  questions: {
-    severity: { type: "score", instructions: "How urgent?", criteria: ["minor", "major", "critical"] },
-    intent: { type: "choice", instructions: "Route {{plan}}", criteria: { refund: "Money back", bug: "Broken", billing: "Money" } },
-    is_spam: { type: "noul", instructions: "Spam?" },
-  },
-};
-
-function check(definition: Record<string, unknown>, id = "c1"): CheckDefinition {
-  return { checkId: `check_${id}`, ...definition } as CheckDefinition;
-}
-
-function project(): ProjectFile {
-  const base = createProjectFile({ name: "Decisions", request, idSuffix: "d", createdAt: "2026-10-24T12:00:00.000Z" });
-  const withRequest = updateDecisionRequestDraft(base, {
-    decision,
-    values: { ticket: "Charged twice", plan: "pro" },
-    branch: false,
-    idSuffix: "one",
-    createdAt: "2026-10-24T12:01:00.000Z",
-  });
-  const suite: DecisionEvaluationSuite = {
-    id: "evaluation-suite_routing",
-    name: "Routing",
-    input: { kind: "decision-request-revision", decisionRequestRevisionId: "decision-revision_one" },
-    execution: {
-      target: {
-        connectionRequirementId: withRequest.defaults.target.connectionRequirementId,
-        model: "local-decision",
-        protocol: "systemone",
-      },
-      repetitions: 2,
-    },
-    variants: [
-      { id: "evaluation-variant_base", name: "Default", overrides: {} },
-      { id: "evaluation-variant_big", name: "Big", overrides: { target: { model: "big-decision" } } },
-    ],
-    inputBindings: [{ id: "evaluation-input_ticket", name: "ticket", target: { kind: "decision-variable", variableName: "ticket" } }],
-    cases: [
-      {
-        id: "evaluation-case_refund",
-        name: "Refund",
-        values: { "evaluation-input_ticket": "Please refund October" },
-        checks: [check({ kind: "decision-choice", questionId: "intent", option: "refund" })],
-      },
-      {
-        id: "evaluation-case_crash",
-        name: "Crash",
-        values: { "evaluation-input_ticket": "The app crashes" },
-        checks: [check({ kind: "decision-score-range", questionId: "severity", min: 1 }), check({ kind: "max-duration-ms", limit: 5000 }, "c2")],
-      },
-    ],
-  };
-  return { ...withRequest, evaluationSuites: [suite] };
-}
-
-function runtimeTarget(suffix: string): Omit<ResolvedDecisionTarget, "model"> {
-  return {
-    profileId: createEntityId("profile", suffix),
-    protocol: "systemone",
-    endpoint: `http://127.0.0.1:4403${suffix.length}/v1`,
-    capabilities: OPENAI_COMPATIBLE_CAPABILITIES,
-  };
-}
-
-function plan(overrides: Partial<Parameters<typeof createDecisionEvaluationExperimentPlan>[0]> = {}): DecisionEvaluationExperimentPlan {
-  let counter = 0;
-  return createDecisionEvaluationExperimentPlan({
-    project: project(),
-    suiteId: "evaluation-suite_routing",
-    selectedCaseIds: ["evaluation-case_refund", "evaluation-case_crash"],
-    runtimeTargets: {
-      ["evaluation-variant_base" as EvaluationVariantId]: runtimeTarget("local"),
-      ["evaluation-variant_big" as EvaluationVariantId]: runtimeTarget("remote"),
-    },
-    createdAt: "2026-10-24T13:00:00.000Z",
-    createSuffix: () => `s${++counter}`,
-    ...overrides,
-  });
-}
+const project = decisionProject;
+const runtimeTarget = decisionRuntimeTarget;
+const plan = decisionPlan;
 
 test("plan schema is Version 5", () => {
   assert.equal(EXPERIMENT_SCHEMA_VERSION, 5);

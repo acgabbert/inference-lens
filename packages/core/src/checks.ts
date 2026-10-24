@@ -1255,7 +1255,14 @@ export function* evaluateChecksSteps(
   state: RunState,
   definitions: readonly CheckDefinition[],
 ): Generator<void, CheckResult[]> {
-  const subject = runCheckSubject(state);
+  return yield* evaluateSubjectChecksSteps(runCheckSubject(state), definitions);
+}
+
+/** As `evaluateChecksSteps`, for evidence already projected from either run kind. */
+export function* evaluateSubjectChecksSteps(
+  subject: CheckSubject,
+  definitions: readonly CheckDefinition[],
+): Generator<void, CheckResult[]> {
   const results: CheckResult[] = [];
   for (const definition of definitions) {
     results.push({
