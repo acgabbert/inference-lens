@@ -1,6 +1,10 @@
 # System One wire fixtures
 
-Every file here is **doc-derived**: assembled from the field names and examples
+The `llamacpp-*` files are **captured** from a live `llama-server`; their
+`provenance` block records the build, model, and date. Each one is the
+request body sent and the response body exactly as received. The Bearer key
+went only in a request header, which isn't stored. The rest are
+**doc-derived**: assembled from the field names and examples
 in the primary docs listed in
 [the System One plan](../../../docs/SYSTEM_ONE_PROTOCOL_PLAN.md#sources), not
 captured from a live server. Each file says so in its `provenance` block.
@@ -16,7 +20,7 @@ Shape:
 
 ```jsonc
 {
-  "provenance": { "kind": "doc-derived" | "captured", "implementation": "…", "sources": ["…"] },
+  "provenance": { "kind": "doc-derived" | "captured", "implementation": "…", "sources": ["…"] /* or server, model, captured, note */ },
   "request": { … },          // the body Inference Lens sends, when relevant
   "response": {
     "status": 200,

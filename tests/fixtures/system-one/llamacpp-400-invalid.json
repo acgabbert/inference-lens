@@ -1,0 +1,30 @@
+{
+  "provenance": {
+    "kind": "captured",
+    "implementation": "llama.cpp llama-server /v1/systemone",
+    "server": "llama-server b11669-620d2225c behind Caddy, --api-key set",
+    "model": "Laya BF16 GGUF, served as \"local-decision\"",
+    "captured": "2026-10-24",
+    "note": "Validation failures are 400 in an OpenAI-style error envelope, not 422."
+  },
+  "request": {
+    "model": "local-decision",
+    "state": "x",
+    "questions": {
+      "q": {
+        "type": "box",
+        "instructions": "?"
+      }
+    }
+  },
+  "response": {
+    "status": 400,
+    "body": {
+      "error": {
+        "code": 400,
+        "message": "questions.q: \"type\" must be one of: choice, score, noul",
+        "type": "invalid_request_error"
+      }
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "provenance": {
+    "kind": "captured",
+    "implementation": "llama.cpp llama-server /v1/systemone",
+    "server": "llama-server b11669-620d2225c behind Caddy, --api-key set",
+    "model": "Laya BF16 GGUF, served as \"local-decision\"",
+    "captured": "2026-10-24",
+    "note": "Request sent with no Authorization header."
+  },
+  "response": {
+    "status": 401,
+    "body": {
+      "error": {
+        "message": "Invalid API Key",
+        "type": "authentication_error",
+        "code": 401
+      }
+    }
+  }
+}
