@@ -1,0 +1,98 @@
+{
+  "provenance": {
+    "kind": "captured",
+    "implementation": "OpenRouter GET /api/v1/models?output_modalities=decisions",
+    "server": "https://openrouter.ai",
+    "captured": "2026-10-24",
+    "note": "Two of 30 entries. Without the output_modalities filter the default listing omits every decision model."
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "data": [
+        {
+          "id": "inception/mercury-decide:free",
+          "canonical_slug": "inception/mercury-decide-20260930",
+          "hugging_face_id": null,
+          "name": "Inception: Mercury Decide (free)",
+          "created": 1790789334,
+          "description": "Mercury Decide is Inception's structured decision model, served as a System One endpoint. Send a state along with typed questions, and it returns a choice, a score, or a yes/no...",
+          "context_length": 65536,
+          "architecture": {
+            "modality": "text+image->decisions",
+            "input_modalities": [
+              "text",
+              "image"
+            ],
+            "output_modalities": [
+              "decisions"
+            ],
+            "tokenizer": "Other",
+            "instruct_type": null
+          },
+          "pricing": {
+            "prompt": "0",
+            "completion": "0"
+          },
+          "top_provider": {
+            "context_length": 65536,
+            "max_completion_tokens": 58982,
+            "is_moderated": false
+          },
+          "per_request_limits": null,
+          "supported_parameters": [],
+          "default_parameters": {},
+          "supported_voices": null,
+          "knowledge_cutoff": null,
+          "expiration_date": null,
+          "links": {
+            "details": "/api/v1/models/inception/mercury-decide-20260930/endpoints"
+          }
+        },
+        {
+          "id": "~typesafe/jev-latest",
+          "canonical_slug": "~typesafe/jev-latest",
+          "alias_target": {
+            "name": "TypeSafe: Jev 1.14",
+            "slug": "typesafe/jev-1.14"
+          },
+          "hugging_face_id": null,
+          "name": "TypeSafe: Jev Latest",
+          "created": 1789689685,
+          "description": "This model always redirects to the latest model in the Jev family.",
+          "context_length": 262144,
+          "architecture": {
+            "modality": "text+image->decisions",
+            "input_modalities": [
+              "text",
+              "image"
+            ],
+            "output_modalities": [
+              "decisions"
+            ],
+            "tokenizer": "Router",
+            "instruct_type": null
+          },
+          "pricing": {
+            "prompt": "0.000000042",
+            "completion": "0"
+          },
+          "top_provider": {
+            "context_length": 262144,
+            "max_completion_tokens": 235929,
+            "is_moderated": false
+          },
+          "per_request_limits": null,
+          "supported_parameters": [],
+          "default_parameters": {},
+          "supported_voices": null,
+          "knowledge_cutoff": null,
+          "expiration_date": null,
+          "links": {
+            "details": "/api/v1/models/~typesafe/jev-latest/endpoints"
+          }
+        }
+      ]
+    }
+  }
+}

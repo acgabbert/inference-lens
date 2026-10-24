@@ -1,0 +1,56 @@
+{
+  "provenance": {
+    "kind": "captured",
+    "implementation": "OpenRouter /api/v1/systemone",
+    "server": "https://openrouter.ai",
+    "captured": "2026-10-24",
+    "note": "The all-types request with state replaced by \"x\" repeated 600000 times (not stored). 150437 input tokens were accepted and billed, past the 64k TypeSafe documents."
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "model": "typesafe/jev-1.14-20261014",
+      "answers": {
+        "intent": {
+          "type": "choice",
+          "choice": "other",
+          "probabilities": {
+            "billing": 0.01,
+            "bug": 0.02,
+            "other": 0.97
+          },
+          "confidence": 0.95
+        },
+        "severity": {
+          "type": "score",
+          "score": 0.21,
+          "legend": {
+            "0": "minor",
+            "1": "major",
+            "2": {
+              "label": "critical",
+              "note": "data loss or money lost"
+            }
+          },
+          "probabilities": {
+            "0": 0.86,
+            "1": 0.08,
+            "2": 0.06
+          },
+          "confidence": 0.7
+        },
+        "is_spam": {
+          "type": "noul",
+          "noul": 0.72
+        }
+      },
+      "usage": {
+        "input_tokens": 150437,
+        "output_tokens": 70,
+        "cost": 0.006318354
+      },
+      "id": "gen-dec-1792812355-BDsKJ9BA0ka8KWlhCAK8",
+      "provider": "TypeSafe"
+    }
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "provenance": {
+    "kind": "captured",
+    "implementation": "OpenRouter /api/v1/systemone",
+    "server": "https://openrouter.ai",
+    "captured": "2026-10-24",
+    "note": "An unknown model id is a 400 here, unlike llama.cpp."
+  },
+  "request": {
+    "model": "typesafe/no-such-model",
+    "state": {
+      "ticket": "I was charged twice for October and the app crashes when I open invoices.",
+      "plan": "pro"
+    },
+    "questions": {
+      "intent": {
+        "type": "choice",
+        "instructions": "What is the customer mainly asking about?",
+        "criteria": {
+          "billing": "Charges, refunds, invoices, or plan changes.",
+          "bug": "Something in the product is broken.",
+          "other": null
+        }
+      },
+      "severity": {
+        "type": "score",
+        "instructions": [
+          "How urgent is this ticket?",
+          {
+            "consider": "customer impact"
+          }
+        ],
+        "criteria": [
+          "minor",
+          "major",
+          {
+            "label": "critical",
+            "note": "data loss or money lost"
+          }
+        ]
+      },
+      "is_spam": {
+        "type": "noul",
+        "instructions": "Is this ticket spam?",
+        "criteria": {
+          "true": "Unsolicited advertising.",
+          "false": "A real customer request."
+        }
+      }
+    }
+  },
+  "response": {
+    "status": 400,
+    "body": {
+      "error": {
+        "message": "Model typesafe/no-such-model does not exist",
+        "code": 400
+      }
+    }
+  }
+}

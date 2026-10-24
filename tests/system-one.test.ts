@@ -283,6 +283,72 @@ test("captured llama.cpp error envelopes read as their message", () => {
   }
 });
 
+const openRouterEndpoint = "https://openrouter.ai/api/v1";
+
+for (const name of ["openrouter-all-types", "openrouter-alpha-all-types"]) {
+  test(`a captured OpenRouter answer to every question type normalizes (${name})`, () => {
+    const captured = fixture(name);
+    const input = providerInput(captured.request!, openRouterEndpoint);
+    assert.equal(JSON.stringify(systemOneAdapter.buildRequest(input).body), JSON.stringify(captured.request));
+    const result = systemOneAdapter.normalizeResponse(input, JSON.stringify(captured.response.body));
+    // The response names the dated snapshot the router alias resolved to.
+    assert.equal(result.model, "typesafe/jev-1.14-20261014");
+    assert.deepEqual(Object.keys(result.answers), ["intent", "severity", "is_spam"]);
+    assert.equal(result.answers.intent!.type === "choice" && result.answers.intent!.choice, "billing");
+    assert.equal("confidence" in result.answers.is_spam!, false);
+    // Unlike llama.cpp, TypeSafe through OpenRouter reports output tokens.
+    assert.deepEqual(result.usage, { inputTokens: 466, outputTokens: 70, totalTokens: 536 });
+  });
+}
+
+test("captured OpenRouter answers for other states, labels, and providers normalize", () => {
+  for (const name of [
+    "openrouter-non-ascii",
+    "openrouter-message-state",
+    "openrouter-other-provider",
+  ]) {
+    const captured = fixture(name);
+    const result = systemOneAdapter.normalizeResponse(
+      providerInput(captured.request!, openRouterEndpoint),
+      JSON.stringify(captured.response.body),
+    );
+    assert.deepEqual(Object.keys(result.answers), Object.keys(captured.request!.questions), name);
+  }
+});
+
+test("a box answer OpenRouter really returns is a protocol error, not a missing answer", () => {
+  const captured = fixture("openrouter-box");
+  assert.equal(captured.response.status, 200);
+  assert.throws(
+    () =>
+      systemOneAdapter.normalizeResponse(
+        providerInput(captured.request!, openRouterEndpoint),
+        JSON.stringify(captured.response.body),
+      ),
+    (error: unknown) => error instanceof ProviderProtocolError && /q.*box/.test(error.message),
+  );
+});
+
+test("captured OpenRouter error envelopes read as their message", () => {
+  for (const [name, message] of [
+    ["openrouter-401", "User not found."],
+    ["openrouter-400-unknown-model", "Model typesafe/no-such-model does not exist"],
+    // OpenRouter's own validation: a JSON-encoded zod issue list.
+    [
+      "openrouter-400-unknown-type",
+      "questions.q.type: Invalid discriminator value. Expected 'noul' | 'choice' | 'score' | 'box'",
+    ],
+    // TypeSafe's FastAPI 422, relayed as a string after "HTTP 422: ".
+    [
+      "openrouter-422-too-many-options",
+      "body.questions.q.choice.criteria: Dictionary should have at most 255 items after validation, not 256",
+    ],
+  ] as const) {
+    const captured = fixture(name);
+    assert.equal(systemOneAdapter.errorMessage(JSON.stringify(captured.response.body)), message, name);
+  }
+});
+
 test("every fixture here is labelled with where it came from", () => {
   for (const name of [
     "typesafe-all-types",
@@ -295,6 +361,18 @@ test("every fixture here is labelled with where it came from", () => {
     "llamacpp-400-invalid",
     "llamacpp-401",
     "llamacpp-500-oversized",
+    "openrouter-all-types",
+    "openrouter-alpha-all-types",
+    "openrouter-non-ascii",
+    "openrouter-message-state",
+    "openrouter-box",
+    "openrouter-other-provider",
+    "openrouter-oversized",
+    "openrouter-models",
+    "openrouter-400-unknown-type",
+    "openrouter-400-unknown-model",
+    "openrouter-401",
+    "openrouter-422-too-many-options",
   ]) {
     assert.match(fixture(name).provenance.kind, /^(doc-derived|captured)$/);
   }

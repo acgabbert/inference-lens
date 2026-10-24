@@ -1,7 +1,8 @@
 # System One protocol plan
 
-Status: **D1–D9 and U1–U6 accepted; Phase 1 complete. llama.cpp captured
-on 2026-10-24; TypeSafe/OpenRouter and Ollama still doc-derived only.** On 2026-10-24 each implementation's
+Status: **D1–D9 and U1–U6 accepted; Phase 1 complete. llama.cpp and
+OpenRouter captured on 2026-10-24; direct TypeSafe and Ollama still
+doc-derived only.** On 2026-10-24 each implementation's
 documentation was read directly (see [Sources](#sources)). What it showed is
 recorded in [Phase 0](#phase-0-verify-the-wire-format), along with what is still
 open. The items still open need credentials or a local runtime: real captures,
@@ -15,7 +16,11 @@ fixtures (`llamacpp-*.json`) are captured from a home `llama-server`
 (b11669-620d2225c, a Laya BF16 GGUF served as `local-decision`, `--api-key` set,
 behind Caddy). The development machine's own runtimes still can't serve the
 endpoint: Ollama is 0.6.2 (needs ≥ 0.35) and its `llama-server` (build 10090)
-predates the route.
+predates the route. The OpenRouter fixtures (`openrouter-*.json`, apart from the
+doc-derived `openrouter-extras` and `openrouter-error`) are captured from
+`https://openrouter.ai` against `~typesafe/jev-latest`, which resolved to
+`typesafe/jev-1.14-20261014`, plus one request to
+`inception/mercury-decide:free`.
 
 ## Goal
 
@@ -134,10 +139,10 @@ capture.
 
 | | TypeSafe | Databricks | Ollama | llama.cpp |
 | --- | --- | --- | --- | --- |
-| Choice options | 1–255 | 1–255 | 2–26 | 1–255 (captured; a 1-option question answers with probability 1) |
-| Score levels | 1–10 (docs advise ≥ 2) | 1–10 | 2–26 | 2–10 (captured) |
+| Choice options | 1–255 (256 is a 422 through OpenRouter, captured) | 1–255 | 2–26 | 1–255 (captured; a 1-option question answers with probability 1) |
+| Score levels | 1–10 (docs advise ≥ 2; 1 level answers with probability 1 and 11 is a 422, captured) | 1–10 | 2–26 | 2–10 (captured) |
 | Questions per request | ≥ 1 | ≥ 1 | 1–64 | ≥ 1; 200 accepted (captured) |
-| Size | 64k tokens per request; 32k for state + any one question | not stated | 64 KiB body; each prompt must fit the loaded context, never truncated | the physical batch (`-ub`), not `n_ctx`: with `-ub 512` and `n_ctx` 8192, 429 tokens passed and 629 failed. Options count toward it, so a legal 255-option question failed at 774 tokens (captured) |
+| Size | 64k tokens per request; 32k for state + any one question. Through OpenRouter a 150,437-token state was accepted and billed (captured) | not stated | 64 KiB body; each prompt must fit the loaded context, never truncated | the physical batch (`-ub`), not `n_ctx`: with `-ub 512` and `n_ctx` 8192, 429 tokens passed and 629 failed. Options count toward it, so a legal 255-option question failed at 774 tokens (captured) |
 
 DigitalOcean repeats TypeSafe's 64k/32k token limits.
 
@@ -156,6 +161,7 @@ design input.
 | TypeSafe, Databricks | `422` with `{ "detail": [{ "loc", "msg", "type", "input"?, "ctx"? }] }` (FastAPI style). Other statuses are not documented, apart from TypeSafe's `429`. |
 | OpenRouter | `{ "error": { "code", "message", "metadata"? }, "openrouter_metadata"?, "user_id"? }`; statuses 400, 401, 402, 403, 404, 413, 429, 500, 502, 503, 524, 529. |
 | llama.cpp (captured) | OpenAI-style `{ "error": { "code", "message", "type" } }`. Validation is **400** `invalid_request_error`, not 422 (unknown type, missing `state`, empty `questions`, array choice `criteria`, too many options or levels, malformed JSON). Bad key is 401 `authentication_error`. Oversized input is **500** `server_error`. An unknown `model` is not an error: the single loaded model answers and the response names it. |
+| OpenRouter (captured) | OpenRouter validates the request itself first (zod), as **400**, and `error.message` is the issue list JSON-encoded as a string: unknown type, missing `state`, empty `questions`, missing `model`, malformed JSON. An unknown model is 400 `"Model … does not exist"`. A bad key is 401 `"User not found."`. Limits it does not check (too many options or levels) pass through to TypeSafe, and the 422 arrives as `code: 422` with `message` set to `"HTTP 422: "` plus the FastAPI `detail` body as a string. Validation errors carry `user_id`; redacted in fixtures. The adapter unpacks both encodings into `path: message` lines. |
 | DigitalOcean | Only the tier error `"this model is not available for your subscription tier"` is documented. |
 
 ## Why this is not "add a fourth protocol"
@@ -260,8 +266,9 @@ type DecisionAnswer =
   answers. Unknown extra fields, such as `id`, `provider`, and `usage.cost`,
   stay in the raw evidence only.
 - A missing answer, an ill-typed answer, or an answer whose `type` differs from
-  its question is a `ProviderProtocolError`. A `box` answer is unreachable
-  without the image header (D8), so it is treated the same way.
+  its question is a `ProviderProtocolError`. A `box` answer is treated the
+  same way. TypeSafe gates box behind the image header (D8), but OpenRouter
+  answers it without one (captured), so the adapter rejects it explicitly.
 - `usage.cost` is not normalized now. If cost is wanted later, it belongs in
   the shared `RunTokenUsage` work, not in this protocol.
 
@@ -411,11 +418,23 @@ docs; ⬜ items still need a live run or a credential.
 - ✅ `usage` is reported by llama.cpp and Ollama, not only TypeSafe.
 - ✅ OpenRouter `/api/alpha/decisions` is the same shape plus routing fields.
   **Do not add it as a separate protocol.** `/api/v1/systemone` covers
-  OpenRouter.
+  OpenRouter. Captured: both paths answer the same request with the same body
+  shape.
+- ✅ OpenRouter (captured): the response is TypeSafe's shape plus `id`,
+  `provider`, and `usage.cost`. `model` names the dated snapshot, not the
+  requested alias. TypeSafe through OpenRouter reports nonzero `output_tokens`
+  and rounds probabilities to two places; Inception's model does neither.
+  Chat-message `state` and non-ASCII labels work. **`box` questions are
+  answered without any danger-zone header or image**, so D3's "unreachable"
+  premise is false here; the adapter now rejects any answer whose type is
+  outside the contract instead of returning nothing for it. Decision models
+  are listed only by `GET /api/v1/models?output_modalities=decisions`; the
+  default listing omits them all, so Phase 2 discovery must pass the filter.
 - 🟡 Error shapes: 422 `detail` (TypeSafe, Databricks) and the OpenRouter
-  envelope are documented. ✅ llama.cpp error bodies captured (see
-  [Errors](#errors)). ⬜ Still needed: TypeSafe 401/429/5xx bodies and the
-  Ollama error bodies.
+  envelope are documented. ✅ llama.cpp and OpenRouter error bodies captured
+  (see [Errors](#errors)), including a TypeSafe 422 relayed by OpenRouter.
+  ⬜ Still needed: direct TypeSafe 401/429/5xx bodies, OpenRouter 402/429, and
+  the Ollama error bodies.
 - ✅ llama.cpp (captured): the response matches TypeSafe's shape field for
   field, including `legend` and `usage`. Chat-message `state` works. Non-ASCII
   and emoji labels round-trip as keys and as the choice. Limits are in
@@ -427,7 +446,9 @@ docs; ⬜ items still need a live run or a credential.
 - 🟡 Capture one real request/response pair per implementation as fixture
   material (redacted), following `docs/PROVIDER_FIXTURES.md`. ✅ llama.cpp:
   all types, non-ASCII labels, message state, 400, 401, and an oversized 500.
-  ⬜ TypeSafe (or OpenRouter) with a 422, and Ollama.
+  ✅ OpenRouter: the same set on both paths, a box answer, a second provider,
+  400/401/relayed 422, an accepted oversized request, and the filtered model
+  listing. ⬜ Ollama.
 
 ### Phase 1: core contracts and adapter (no UI)
 

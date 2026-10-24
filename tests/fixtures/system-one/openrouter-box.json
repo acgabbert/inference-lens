@@ -1,0 +1,44 @@
+{
+  "provenance": {
+    "kind": "captured",
+    "implementation": "OpenRouter /api/v1/systemone",
+    "server": "https://openrouter.ai",
+    "captured": "2026-10-24",
+    "note": "The llama.cpp 400 request (type box, instructions only, no image). OpenRouter accepts it, with no Danger-Zone header, and answers a box."
+  },
+  "request": {
+    "model": "~typesafe/jev-latest",
+    "state": "x",
+    "questions": {
+      "q": {
+        "type": "box",
+        "instructions": "?"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "model": "typesafe/jev-1.14-20261014",
+      "answers": {
+        "q": {
+          "type": "box",
+          "box": {
+            "top": 0.05,
+            "bottom": 0.95,
+            "left": 0.05,
+            "right": 0.95
+          },
+          "confidence": 0
+        }
+      },
+      "usage": {
+        "input_tokens": 268,
+        "output_tokens": 20,
+        "cost": 1.1256e-05
+      },
+      "id": "gen-dec-1792812354-U7n59HQ9ByvwMnExoHDO",
+      "provider": "TypeSafe"
+    }
+  }
+}
