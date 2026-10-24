@@ -1,6 +1,6 @@
 # System One protocol plan
 
-Status: **D1–D51 and U1–U6 accepted. Phase 5a (project-owned decision requests) is implemented, 5b and 5c are not. Phases 1 and 2 are merged; D16's fixes
+Status: **D1–D51 and U1–U6 accepted; D52 (decision execution drift) proposed. Phase 5a (project-owned decision requests) is implemented, 5b and 5c are not. Phases 1 and 2 are merged; D16's fixes
 and host tests are in, with its native-app check still to run on a desktop
 build. Phases 3 and 4 are implemented together (D20): the Compose owner and
 topbar (D29-A), trace opening by kind (D30), the decision draft, target, and
@@ -1461,6 +1461,62 @@ Checks are stored on cases, so the vocabulary bump forces a project bump
   chat's input-and-execution block into its own owner. That move is
   behavior-preserving and lands first, under the existing specs.
 
+#### D52. Execution drift between decision executions *(proposed; refines D50)*
+
+D50 has comparison and baselines work for decision suites without kind
+branches. Step 3 left them refusing a decision execution: `derive()` in
+`evaluation-comparison.ts` and the baselines loader both throw on any plan
+that is not a chat evaluation. Case alignment needs nothing, because it reads
+only values, reference answers, and checks. Baseline pins need nothing either,
+because a pin is an `experimentId` and a `variantId`, so the baselines file
+keeps its version. What does need a decision is `EvaluationExecutionDrift`,
+whose fields are chat-shaped: `inputRevision` reads `conversationRevisionId`,
+and `responseMode` and `optionsChanged` do not exist on a decision variant,
+which varies only its target (D33). A comparison is derived on open and never
+persisted, so this is an internal contract between core and the comparison
+view, not a serialization boundary.
+
+What each kind could report:
+
+| Field | Chat | Decision |
+|---|---|---|
+| Input revision | conversation revision | decision request revision |
+| Model, endpoint | yes | yes |
+| Repetitions, concurrency | yes | yes |
+| Response mode, options changed | yes | no |
+| Wire protocol | no | candidate |
+| Capability snapshot | no | candidate |
+
+- **A. A kind-discriminated drift.** `EvaluationExecutionDrift` becomes a
+  union on `kind`. Both arms carry input revision, model, endpoint,
+  repetitions, and concurrency; the chat arm adds response mode and options,
+  and the decision arm adds its own fields. `DriftList` selects its rows by
+  kind.
+  - The type cannot express a combination that never occurs.
+  - It follows the per-kind split in plans (D47) and cell executors (D49).
+  - It costs a small change to the one consumer and to the comparison tests.
+- **B. Extend the flat shape.** `inputRevision` carries whichever revision id
+  applies, decision executions never set the chat-only fields, and an optional
+  `protocol` is added. It is the smallest diff, but the type no longer says
+  which fields apply to which kind.
+- **C. Shared fields only.** Decision drift reports what both kinds share and
+  nothing kind-specific. It is the simplest, but a change of decision adapter
+  shows only as an endpoint change, which is usual but not guaranteed.
+- Under A or B, the decision fields to report: the wire protocol, yes; the
+  capability snapshot, no. `ProviderCapabilities` holds connection-wide flags
+  (tools, streaming, vision) that a decision request does not depend on, so
+  its drift would mostly be noise.
+- Whichever option is taken, the following hold and need no decision:
+  - `derive()` accepts a `SuiteExperimentPlan`.
+  - Durations come from the D50 repetition evidence `metrics` instead of
+    `runMetrics(RunState)`.
+  - Comparing a chat execution with a decision execution stays refused (D50).
+  - The baselines loader opens decision traces.
+  - Comparing different suites behaves as it does for chat.
+- **Recommendation: A, with protocol drift and without capability drift.**
+  Its cost over B is small, and it keeps the per-kind pattern D47 and D49
+  set.
+
 ## Phases
 
 ### Phase 0: verify the wire format
@@ -1764,7 +1820,8 @@ Decided in D31–D37, with 5a's details in D38–D43. Delivered in order:
   cancelled from a paused attempt. Still chat-only until step 4: the app's
   start path and the CLI (5c) keep refusing decision suites, project history
   lists a decision plan as one it cannot show, and comparison and baselines
-  refuse a decision execution, because their drift fields are chat-shaped.
+  refuse a decision execution, because their drift fields are chat-shaped
+  (proposed D52).
 - **5c.** `inference-lens run` for decision suites (D36).
 
 ## Out of scope
