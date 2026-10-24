@@ -157,6 +157,17 @@ export interface DecisionAttempt {
 export type DecisionRunStatus =
   | { kind: "not_started" }
   | { kind: "running"; attempt: number; exchangeId: ExchangeId }
+  /**
+   * A retryable failure the user has neither retried nor stopped (D28). It is
+   * live session state only: a trace stores a terminal status.
+   */
+  | {
+      kind: "paused";
+      reason: "attempt_failed";
+      attempt: number;
+      exchangeId: ExchangeId;
+      error: RunError;
+    }
   | TerminalRunStatus;
 
 /**
