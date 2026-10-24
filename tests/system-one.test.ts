@@ -228,8 +228,74 @@ test("an error body in no documented shape has no message of its own", () => {
   }
 });
 
+const llamaEndpoint = "https://decide.example.test/v1";
+
+test("a captured llama.cpp answer to every question type normalizes", () => {
+  const captured = fixture("llamacpp-all-types");
+  const input = providerInput(captured.request!, llamaEndpoint);
+  assert.equal(JSON.stringify(systemOneAdapter.buildRequest(input).body), JSON.stringify(captured.request));
+  const result = systemOneAdapter.normalizeResponse(input, JSON.stringify(captured.response.body));
+  assert.equal(result.model, "local-decision");
+  assert.deepEqual(Object.keys(result.answers), ["intent", "severity", "is_spam"]);
+  assert.equal(result.answers.intent!.type === "choice" && result.answers.intent!.choice, "billing");
+  const severity = result.answers.severity!;
+  assert.equal(severity.type, "score");
+  // A fractional score between levels, as the docs describe.
+  assert.ok(severity.type === "score" && severity.score > 1 && severity.score < 2);
+  assert.equal("confidence" in result.answers.is_spam!, false);
+  assert.deepEqual(result.usage, { inputTokens: 203, outputTokens: 0, totalTokens: 203 });
+});
+
+test("non-ASCII option labels round-trip through a captured llama.cpp answer", () => {
+  const captured = fixture("llamacpp-non-ascii");
+  const result = systemOneAdapter.normalizeResponse(
+    providerInput(captured.request!, llamaEndpoint),
+    JSON.stringify(captured.response.body),
+  );
+  const sentiment = result.answers.sentiment!;
+  assert.equal(sentiment.type === "choice" && sentiment.choice, "positiv 😀");
+  assert.deepEqual(Object.keys(sentiment.type === "choice" ? sentiment.probabilities : {}), [
+    "positiv 😀",
+    "négatif",
+    "中性",
+  ]);
+});
+
+test("a chat-message state is sent as authored and its captured answer normalizes", () => {
+  const captured = fixture("llamacpp-message-state");
+  const input = providerInput(captured.request!, llamaEndpoint);
+  assert.equal(JSON.stringify(systemOneAdapter.buildRequest(input).body), JSON.stringify(captured.request));
+  const result = systemOneAdapter.normalizeResponse(input, JSON.stringify(captured.response.body));
+  assert.equal(result.answers.resolved!.type, "noul");
+});
+
+test("captured llama.cpp error envelopes read as their message", () => {
+  for (const [name, message] of [
+    ["llamacpp-400-invalid", 'questions.q: "type" must be one of: choice, score, noul'],
+    ["llamacpp-401", "Invalid API Key"],
+    [
+      "llamacpp-500-oversized",
+      "input (629 tokens) is too large to process. increase the physical batch size (current batch size: 512)",
+    ],
+  ] as const) {
+    const captured = fixture(name);
+    assert.equal(systemOneAdapter.errorMessage(JSON.stringify(captured.response.body)), message, name);
+  }
+});
+
 test("every fixture here is labelled with where it came from", () => {
-  for (const name of ["typesafe-all-types", "openrouter-extras", "typesafe-422", "openrouter-error"]) {
+  for (const name of [
+    "typesafe-all-types",
+    "openrouter-extras",
+    "typesafe-422",
+    "openrouter-error",
+    "llamacpp-all-types",
+    "llamacpp-non-ascii",
+    "llamacpp-message-state",
+    "llamacpp-400-invalid",
+    "llamacpp-401",
+    "llamacpp-500-oversized",
+  ]) {
     assert.match(fixture(name).provenance.kind, /^(doc-derived|captured)$/);
   }
 });

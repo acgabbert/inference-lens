@@ -1,7 +1,7 @@
 # System One protocol plan
 
-Status: **D1–D9 and U1–U6 accepted; Phase 1 complete against doc-derived
-fixtures. No live captures yet.** On 2026-10-24 each implementation's
+Status: **D1–D9 and U1–U6 accepted; Phase 1 complete. llama.cpp captured
+on 2026-10-24; TypeSafe/OpenRouter and Ollama still doc-derived only.** On 2026-10-24 each implementation's
 documentation was read directly (see [Sources](#sources)). What it showed is
 recorded in [Phase 0](#phase-0-verify-the-wire-format), along with what is still
 open. The items still open need credentials or a local runtime: real captures,
@@ -10,10 +10,12 @@ error bodies other than 422, and model discovery on Ollama.
 The user chose to start Phase 1 before captures exist. The core adapter is
 tested against fixtures assembled from the docs, each labelled `doc-derived`
 (`tests/fixtures/system-one/`). Those fixtures are replaced with redacted
-captures before host or UI work (Phase 2 onward) depends on them. Neither local
-runtime on the development machine could produce one: Ollama was 0.6.2 (the
-endpoint needs ≥ 0.35) and the installed `llama-server` (build 10090) has no
-`/v1/systemone` route.
+captures before host or UI work (Phase 2 onward) depends on them. The llama.cpp
+fixtures (`llamacpp-*.json`) are captured from a home `llama-server`
+(b11669-620d2225c, a Laya BF16 GGUF served as `local-decision`, `--api-key` set,
+behind Caddy). The development machine's own runtimes still can't serve the
+endpoint: Ollama is 0.6.2 (needs ≥ 0.35) and its `llama-server` (build 10090)
+predates the route.
 
 ## Goal
 
@@ -132,10 +134,10 @@ capture.
 
 | | TypeSafe | Databricks | Ollama | llama.cpp |
 | --- | --- | --- | --- | --- |
-| Choice options | 1–255 | 1–255 | 2–26 | not stated |
-| Score levels | 1–10 (docs advise ≥ 2) | 1–10 | 2–26 | 2–10 (blog) |
-| Questions per request | ≥ 1 | ≥ 1 | 1–64 | not stated |
-| Size | 64k tokens per request; 32k for state + any one question | not stated | 64 KiB body; each prompt must fit the loaded context, never truncated | batch-size bound (a user hit "input too large" at 512) |
+| Choice options | 1–255 | 1–255 | 2–26 | 1–255 (captured; a 1-option question answers with probability 1) |
+| Score levels | 1–10 (docs advise ≥ 2) | 1–10 | 2–26 | 2–10 (captured) |
+| Questions per request | ≥ 1 | ≥ 1 | 1–64 | ≥ 1; 200 accepted (captured) |
+| Size | 64k tokens per request; 32k for state + any one question | not stated | 64 KiB body; each prompt must fit the loaded context, never truncated | the physical batch (`-ub`), not `n_ctx`: with `-ub 512` and `n_ctx` 8192, 429 tokens passed and 629 failed. Options count toward it, so a legal 255-option question failed at 774 tokens (captured) |
 
 DigitalOcean repeats TypeSafe's 64k/32k token limits.
 
@@ -153,6 +155,7 @@ design input.
 | --- | --- |
 | TypeSafe, Databricks | `422` with `{ "detail": [{ "loc", "msg", "type", "input"?, "ctx"? }] }` (FastAPI style). Other statuses are not documented, apart from TypeSafe's `429`. |
 | OpenRouter | `{ "error": { "code", "message", "metadata"? }, "openrouter_metadata"?, "user_id"? }`; statuses 400, 401, 402, 403, 404, 413, 429, 500, 502, 503, 524, 529. |
+| llama.cpp (captured) | OpenAI-style `{ "error": { "code", "message", "type" } }`. Validation is **400** `invalid_request_error`, not 422 (unknown type, missing `state`, empty `questions`, array choice `criteria`, too many options or levels, malformed JSON). Bad key is 401 `authentication_error`. Oversized input is **500** `server_error`. An unknown `model` is not an error: the single loaded model answers and the response names it. |
 | DigitalOcean | Only the tier error `"this model is not available for your subscription tier"` is documented. |
 
 ## Why this is not "add a fourth protocol"
@@ -397,8 +400,9 @@ docs; ⬜ items still need a live run or a credential.
 - ✅ Response body per type: choice probabilities are keyed by label, score
   probabilities by level-number string, plus a `legend`. `confidence` is present
   for choice and score and absent for noul.
-- ✅ Auth is Bearer for TypeSafe, OpenRouter, and DigitalOcean; local servers
-  are keyless.
+- ✅ Auth is Bearer for TypeSafe, OpenRouter, and DigitalOcean. Local servers
+  are keyless by default, but `llama-server --api-key` takes a Bearer key
+  (captured), so the profile must allow an optional key for local runtimes.
 - ⬜ Databricks: confirm a Bearer PAT works, since the documented example uses
   basic auth. If it does not, it needs its own credential presentation, or it
   stays out of scope.
@@ -409,18 +413,21 @@ docs; ⬜ items still need a live run or a credential.
   **Do not add it as a separate protocol.** `/api/v1/systemone` covers
   OpenRouter.
 - 🟡 Error shapes: 422 `detail` (TypeSafe, Databricks) and the OpenRouter
-  envelope are documented. ⬜ Still needed: TypeSafe 401/429/5xx bodies, and
-  the llama.cpp and Ollama error bodies for oversized input, too many options,
-  an unknown model, and an unknown question type.
-- 🟡 llama.cpp: format compatibility is claimed, with `images` and chat-message
-  `state` as extensions. ⬜ Option limit, and whether non-ASCII choice labels
-  round-trip.
+  envelope are documented. ✅ llama.cpp error bodies captured (see
+  [Errors](#errors)). ⬜ Still needed: TypeSafe 401/429/5xx bodies and the
+  Ollama error bodies.
+- ✅ llama.cpp (captured): the response matches TypeSafe's shape field for
+  field, including `legend` and `usage`. Chat-message `state` works. Non-ASCII
+  and emoji labels round-trip as keys and as the choice. Limits are in
+  [Limits](#limits). `/v1/models` lists the model with
+  `architecture.output_modalities: ["decisions"]`, which Phase 2 discovery can
+  use to tell decision models apart.
 - 🟡 Ollama: 0.35 endpoint and limits confirmed (2–26 options, 2–26 levels, 1–64
   questions, 64 KiB). ⬜ Whether `/v1/models` lists decision models.
-- ⬜ Capture one real request/response pair per implementation as fixture
-  material (redacted), following `docs/PROVIDER_FIXTURES.md`. At minimum:
-  TypeSafe (or OpenRouter), Ollama, and llama.cpp. Include one 422 and one
-  oversized-request error.
+- 🟡 Capture one real request/response pair per implementation as fixture
+  material (redacted), following `docs/PROVIDER_FIXTURES.md`. ✅ llama.cpp:
+  all types, non-ASCII labels, message state, 400, 401, and an oversized 500.
+  ⬜ TypeSafe (or OpenRouter) with a 422, and Ollama.
 
 ### Phase 1: core contracts and adapter (no UI)
 
