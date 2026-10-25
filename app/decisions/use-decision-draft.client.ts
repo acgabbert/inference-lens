@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { DecisionInput, DecisionQuestionType } from "../../packages/core/src/decision";
 import { discoverDecisionVariables } from "../../packages/core/src/decision-variables";
+import { DECISION_EXAMPLE } from "./decision-example";
 import {
   addDecisionOption,
   addDecisionQuestion,
@@ -40,6 +41,8 @@ export interface DecisionDraftHandle {
   adopt(input: DecisionInput, values: Readonly<Record<string, string>>): void;
   /** Back to the untouched starting draft. */
   reset(): void;
+  /** Replaces the draft with the worked example; an edit, so it is saved like one. */
+  loadExample(): void;
   setValue(name: string, value: string): void;
   /** Why the last view switch was refused; cleared by the next edit or switch. */
   viewProblems: DecisionDraftProblem[];
@@ -101,6 +104,10 @@ export function useDecisionDraft(options: { onEdited?(): void } = {}): DecisionD
       setDraft(createDecisionDraft());
       setValues({});
       setTouched(false);
+    },
+    loadExample() {
+      setValues({});
+      edit(() => decisionDraftFromInput(DECISION_EXAMPLE));
     },
     setValue(name, value) {
       setValues((current) => ({ ...current, [name]: value }));
