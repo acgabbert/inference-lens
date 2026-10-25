@@ -12,10 +12,7 @@ import {
   updateConnectionRequirementEndpoint,
 } from "../packages/core/src/project";
 import { createEntityId } from "../packages/core/src/run-kernel";
-import {
-  effectiveProtocol,
-  protocolConfigurationNames,
-} from "../packages/core/src/provider-protocols";
+import { effectiveProtocol } from "../packages/core/src/provider-protocols";
 import { modalOwnsKeyboardCommands } from "./keyboard-command-scope.client";
 import type {
   RunId,
@@ -40,7 +37,9 @@ import { ProjectCreationDialog } from "./project-creation-dialog.client";
 import type { ProjectCreationMode } from "./project-creation-dialog.client";
 import { ProjectReplacementDialog } from "./project-replacement-dialog.client";
 import { useModelDiscovery } from "./use-model-discovery.client";
-import { serverManagesProtocols, useConnectionProfiles } from "./use-connection-profiles.client";
+import { useConnectionProfiles } from "./use-connection-profiles.client";
+import { serverProtocolsManagedBy } from "./server-connection-profiles";
+import { serverConnectionBanners } from "./server-connection-banners";
 import { toggleFavoriteModel } from "./profile-store.client";
 import { useRequestDraft } from "./request/use-request-draft.client";
 import { chooseDefaultUserPrompt, createInitialMessages } from "./request/default-messages";
@@ -151,6 +150,7 @@ function HomeContent() {
   const folderAccessAvailable = useProjectFolderAccess();
   // Declared before model discovery below, which reads `credential.prepare`
   // during render.
+  const connectionProfiles = useConnectionProfiles({ isDesktopRuntime });
   const {
     profiles,
     profilesLoaded,
@@ -164,15 +164,10 @@ function HomeContent() {
     activeProfileDeletionRefusal,
     removeActiveProfile,
     setCapabilityOverride,
-    serverDefault,
-    serverDefaultProfileNotice,
-    adoptServerDefaultProfile,
-    dismissServerDefaultProfileNotice,
-    serverProtocolsNotice,
-    dismissServerProtocolsNotice,
+    server,
     credential,
-  } = useConnectionProfiles({ isDesktopRuntime });
-  const originNotice = useInsecureOriginNotice(serverDefault.containerized);
+  } = connectionProfiles;
+  const originNotice = useInsecureOriginNotice(server.containerized);
   // The transient tier. Publication is threaded into the feature hooks below as
   // an ordinary callback, the same way `onError` and `onTraceSaved` already
   // are, so every toast in the app has a reviewable path from cause to message.
@@ -917,9 +912,9 @@ function HomeContent() {
     protocol: {
       id: requestSettings.protocol,
       supported: requestSettings.protocolSupported,
-      managedByServer: serverManagesProtocols(
+      managedByServer: serverProtocolsManagedBy(
         requestSettings.profile,
-        serverDefault,
+        server,
         isDesktopRuntime,
       ),
     },
@@ -1050,59 +1045,10 @@ function HomeContent() {
     };
   }
 
-  function serverProtocolsBanner(): AppBannerCandidate | undefined {
-    if (!serverProtocolsNotice) return undefined;
-    const names = serverProtocolsNotice.unrecognized.map((name) => `"${name}"`).join(", ");
-    return {
-      id: "server-protocols-invalid",
-      tone: "advisory",
-      title: "INFERENCE_LENS_API_PROTOCOLS was ignored",
-      detail: `It names ${names}, which ${
-        serverProtocolsNotice.unrecognized.length === 1 ? "is" : "are"
-      } not a recognized API, so the server default profile falls back to the APIs enabled in Connections. Use ${protocolConfigurationNames().join(", ")} and restart the server.`,
-      actions: [
-        {
-          key: "review",
-          label: "Review Connections",
-          primary: true,
-          onSelect: () => {
-            dismissServerProtocolsNotice();
-            setConnectionDrawerOpen(true);
-          },
-        },
-        { key: "dismiss", label: "Dismiss", onSelect: dismissServerProtocolsNotice },
-      ],
-    };
-  }
-
-  function serverDefaultBanner(): AppBannerCandidate | undefined {
-    if (!serverDefaultProfileNotice) return undefined;
-    return {
-      id: "server-default-profile",
-      tone: "advisory",
-      title: "Server default connection available",
-      detail:
-        "A profile using this server's configured endpoint was added to Connections.",
-      actions: [
-        { key: "use", label: "Use it", primary: true, onSelect: adoptServerDefaultProfile },
-        {
-          key: "review",
-          label: "Review",
-          onSelect: () => {
-            dismissServerDefaultProfileNotice();
-            setConnectionDrawerOpen(true);
-          },
-        },
-        { key: "dismiss", label: "Dismiss", onSelect: dismissServerDefaultProfileNotice },
-      ],
-    };
-  }
-
   const appBanner = chooseAppBanner([
     projectErrorBanner(),
     insecureOriginBanner(),
-    serverProtocolsBanner(),
-    serverDefaultBanner(),
+    ...serverConnectionBanners(connectionProfiles, () => setConnectionDrawerOpen(true)),
   ]);
 
   function saveOrChooseProjectLocation(): void {
@@ -1460,7 +1406,7 @@ function HomeContent() {
         activeProfile={activeProfile}
         capabilities={activeCapabilities}
         credential={credential}
-        serverDefault={serverDefault}
+        server={server}
         isDesktopRuntime={isDesktopRuntime}
         onSelectProfile={selectProfile}
         onAddProfile={() => {

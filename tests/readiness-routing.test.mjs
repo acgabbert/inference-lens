@@ -78,7 +78,7 @@ function drawerProps(onDestinationHandled) {
       draft: "", status: { canPersist: false, isApprovedForEndpoint: false },
       webMode: "none", setDraft() {}, setWebMode() {}, commit() {},
     },
-    serverDefault: { loaded: true, containerized: false, configured: false },
+    server: { loaded: true, containerized: false, connections: [] },
     isDesktopRuntime: false, onSelectProfile() {}, onAddProfile() {},
     onDeleteProfile() {}, onUpdateProfile() {}, onCapabilityChange() {},
     connectionRequirements: [], mappedProfileIds: {},

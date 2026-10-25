@@ -319,10 +319,14 @@ async function serveManagedProfile(page: Page, status: Record<string, unknown>):
     route.fulfill({
       json: {
         containerized: false,
-        serverDefaultCredentialConfigured: true,
-        endpoint: BUFFERED_FIXTURE_ENDPOINT,
-        model: "buffered-test-model",
-        ...status,
+        connections: [{
+          id: "default",
+          name: "Server default",
+          endpoint: BUFFERED_FIXTURE_ENDPOINT,
+          model: "buffered-test-model",
+          credentialConfigured: true,
+          ...status,
+        }],
       },
     }),
   );

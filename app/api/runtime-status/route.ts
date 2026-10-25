@@ -39,11 +39,7 @@ export function GET(incoming: Request): Response {
     );
   }
 
-  const store = runtimeCredentialStore();
-  // Independent facts: an endpoint may be configured for a provider that needs
-  // no key at all, which is the normal shape of a local llama.cpp server.
-  const connection = store.defaultConnection.connectionConfiguration();
-  const report = store.report();
+  const report = runtimeCredentialStore().report();
   for (const { id, unrecognizedProtocols } of report.connections) {
     if (!unrecognizedProtocols) continue;
     const source =
@@ -62,11 +58,9 @@ export function GET(incoming: Request): Response {
   return Response.json(
     {
       containerized: isContainerizedRuntime(),
-      // The flat fields describe `default` alone and are what the page reads
-      // until it learns the list (slice 2 of SERVER_CONNECTIONS_DESIGN.md),
-      // which then replaces them.
-      serverDefaultCredentialConfigured: store.defaultConnection.isConfigured(),
-      ...(connection ?? {}),
+      // Each entry states its endpoint and whether it holds a key as
+      // independent facts: an endpoint may be configured for a provider that
+      // needs no key at all, the normal shape of a local llama.cpp server.
       connections: report.connections,
       ...(report.catalogProblem ? { catalogProblem: report.catalogProblem } : {}),
     },

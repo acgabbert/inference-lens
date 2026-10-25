@@ -1,8 +1,8 @@
 # Several server-held connections
 
 **Status:** decisions 1–9 agreed as recommended (October 24, 2026); for
-decision 9 that is option A, so the CLI is left alone. Slice 1 (server) is in
-progress.
+decision 9 that is option A, so the CLI is left alone. Slice 1 (server) is
+done; slice 2 (browser) is in progress.
 **Baseline:** `main` at `dab81e4`, reviewed October 24, 2026.
 
 ## Goal
@@ -208,6 +208,11 @@ Slice 1 adds `connections` and `catalogProblem` beside the flat fields rather
 than replacing them, so the page keeps working until slice 2 teaches it the
 list; slice 2 then removes the flat fields.
 
+Slice 2 removed them. The two browser specs that stubbed the flat shape
+(`server-default-profile-recovery.spec.ts` and the managed-protocol tests in
+`provider-protocols.spec.ts`) had their stubs rewritten to the list, with
+their assertions unchanged, so they still show decision 2 holds.
+
 ### 6. Browser profile identity
 
 **Recommendation:**
@@ -229,7 +234,11 @@ list; slice 2 then removes the flat fields.
   connection is no longer reported is released: its endpoint unlocks, its
   stored server mode drops to **No authentication**, and the profile is kept.
   This is today's rule, applied per connection. A failed status probe still
-  changes nothing.
+  changes nothing. Nor does a refused catalog (`catalogProblem`): its connections are
+  absent without having been removed, so their profiles and stored modes are
+  left as they were. Releasing them would unlock every catalog profile on a
+  typo and, once it was fixed, provision duplicates beside them. `default` is
+  never the catalog's, so it is reconciled normally either way.
 - **First run:** a device with no stored profiles replaces the starting
   profile with every server profile and activates the first one (`default`
   when present, otherwise the first in catalog order).
@@ -252,6 +261,13 @@ not listed, because their keys could never be released there. The stored mode
 becomes `environment-default` for `default` (unchanged) or
 `environment-default:<id>`. A stored mode naming a connection that is gone is
 downgraded to **No authentication**, as today.
+
+As built, the **Server default (.env)** option keeps today's behavior: it is
+always listed, disabled with "not configured" when `default` holds no key, and
+warned about rather than hidden at another origin (decision 2). The origin
+filter applies to catalog connections, and a selected catalog key stays listed
+after it stops qualifying, so the control shows what is chosen while the
+warning explains why it fails.
 
 `WebCredentialMode` widens from a string union to
 `"session" | "none" | { server: string }` inside the app, with the
