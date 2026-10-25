@@ -174,13 +174,15 @@ uncaptured ambiguous shapes must fail clearly rather than be guessed.
 ### Proposed contract shape
 
 Names below are illustrative. Final names, discriminants, schema dialect,
-resource limits, and versioning are part of the design gate.
+resource limits, and versioning are settled in the type-design pass. The schema
+is an object schema: the agreed bounded policy rejects root arrays, scalars, and
+boolean schemas. Generic `missingCall` defaults to `fail`.
 
 ```ts
 interface FinalOutputContract {
   contractVersion: 1;
   strategy: "tool";
-  schema: JsonObject | boolean;
+  schema: JsonObject; // object schema within the bounded allowlist
   profile:
     | { kind: "generic"; missingCall: "fail" | "parse-final-text" }
     | { kind: "n8n"; compatibilityProfileId: string };
@@ -227,13 +229,13 @@ The intended flow is:
 1. Resolve the authored contract, prepare its schema and compatibility profile,
    validate tool-name collisions and tools capability, and snapshot all inputs.
    Fail before starting/saving an executable plan or contacting the provider
-   when the contract is unsupported.
-2. Compile the formatter tool and effective instruction once. Detect conflicting
-   raw `providerOptions` overrides of owned tools/messages or structured-output
-   settings; agree precedence instead of allowing silent bypass.
-3. Send the ordinary provider request and collect original events. Keep
-   streaming argument fragments provisional until a complete successful
-   attempt supplies the complete call.
+   when the contract is unsupported or streaming delivery is configured.
+2. Compile the formatter tool and effective instruction once. Reject raw
+   `providerOptions` overrides of contract-owned tools/messages or
+   structured-output settings with a clear diagnostic; never merge silently.
+3. Send the buffered provider request and collect original events. Accept a
+   formatter call only from a complete successful attempt; incomplete or
+   truncated arguments never finalize.
 4. Classify the completed turn before dispatching any tools. Ordinary calls
    continue through existing binding, grant, execution, and continuation paths.
    A designated formatter candidate is handled internally according to the
@@ -254,16 +256,22 @@ calls, or resurrect a failed attempt's result.
 ## Result projection and artifact compatibility
 
 Keep raw assistant text, raw tool calls, and the effective final answer
-distinguishable. A structured result must not be represented as text the model
-never emitted. The shared answer projection should select finalized output
-when present and preserve today's assistant-text behavior when absent.
+distinguishable. Within a trace, a structured result must not be represented as
+text the model never emitted. The shared answer projection selects finalized
+output when present and preserves today's assistant-text behavior when absent.
 
-Before changing `finalAssistantOutput`, inventory every consumer and agree
-whether to retain it as the raw-text API and introduce a new effective-answer
-API, or rename/migrate it. Change all answer-consuming surfaces together;
-reasoning, tool-call counts, and usage remain separate evidence. Decide and
-document whether formatter calls count in existing tool-call checks; preserve
-raw call visibility regardless of the answer projection.
+The one deliberate exception is adoption/branching: the agreed policy
+materializes a clearly attributed assistant-text message from the effective
+answer in the new conversation. That message is generated input, not model
+output; the type-design pass must give it a distinct attribution and state
+which text it carries (see open items under the gate).
+
+Per the agreed decisions, `finalAssistantOutput` remains the raw-text API and a
+new shared effective-answer API is added. Inventory every consumer and migrate
+all answer-consuming surfaces together; reasoning, tool-call counts, and usage
+remain separate evidence. Formatter calls count in existing tool-call
+evidence/checks but not in host-execution counts; raw call visibility is
+preserved regardless of the answer projection.
 
 Required format audit, using the baseline versions only as a starting point:
 
@@ -287,8 +295,8 @@ Required format audit, using the baseline versions only as a starting point:
   migrations and unknown-version policy; do not weaken strict parsing just to
   accept the added fields.
 
-Use a deterministic, documented JSON text representation for text consumers,
-including root arrays/scalars if supported. Compare original schema, wire
+Effective text is compact JSON with recursively sorted object keys and
+preserved array order (root arrays/scalars are rejected in this slice). Compare original schema, wire
 schema, raw arguments, normalized value, and rendered result separately.
 Pretty-printing in one UI must not change evaluator input or output counts.
 
@@ -300,7 +308,7 @@ no memory, and auto-fix disabled. Agent `2.2`/`3` remain deferred. No additional
 home-instance runs are required for the selected phase.
 
 Support buffered delivery in this slice; streaming and Open Chat are explicitly
-excluded. The generic mechanism is proposed to work through Chat Completions,
+excluded. The generic mechanism works through Chat Completions,
 OpenAI Responses, and Anthropic Messages using local protocol fixtures; claim
 n8n wire compatibility only for the captured Chat Completions path. Configure
 streaming with a final-output contract only after a later supported extension;
@@ -315,7 +323,7 @@ can express them.
 
 ## Delivery sequence
 
-### PR 1 — Capture the reference behavior (complete locally)
+### PR 1 — Capture the reference behavior (complete, merged)
 
 Committed as `5645689` and merged into main through PR189 (`3de8969`). Fourteen redacted
 captures and the findings document close the selected capture phase. The list
@@ -359,6 +367,29 @@ runtime implementation, complete a documentation/type-design pass that:
   check-answer semantic compatibility rules. Preserve historical assessments.
 - Maps each accepted policy to regression, protocol, artifact, and browser
   coverage, distinguishing captured behavior from explicitly chosen extensions.
+  Several decision-table rows bundle more than one policy (for example,
+  provider scope also covers streaming rejection and owned-field overrides);
+  split them back into individual policies for this mapping.
+
+Open items the agreed policies do not yet settle; resolve them in this pass:
+
+- **Root-level stripping is an extension, not a measurement.** Every capture's
+  authored root explicitly set `additionalProperties: false`; only a nested
+  object omitted it. Most imported schemas will omit it at the root, so state
+  that root-level stripping rests on the approved extension, or add one capture
+  (root with `additionalProperties` omitted plus an extra root key) before
+  claiming parity for it.
+- **Counting suppressed ordinary calls.** Define how an ordinary call the model
+  emitted in an n8n formatter turn, but which was never dispatched, appears in
+  trace evidence, tool-call checks, and host-execution counts.
+- **Adopted-message text.** Specify the attribution of the materialized
+  adoption/branching message and whether it carries the sorted-key compact
+  text (which later turns would see) or another representation.
+- **Acceptance comparison.** n8n preserves the model's key order while
+  effective text sorts keys. Specify that n8n-versus-Inference Lens acceptance
+  compares normalized results structurally, not as text.
+- **Generic final-text wrapper rule.** Generic `parse-final-text` never strips;
+  specify whether it accepts only the authored payload shape or any wrapper.
 
 Record the resulting contracts here before runtime work. Bring back only new
 material decisions that the approved policies do not resolve. Then begin PR 2
@@ -464,8 +495,8 @@ results. No blanket n8n compatibility claim follows from a green unit suite.
 
 ## Plan-update verification
 
-This update changes the plan and its capture-phase handoff text only; the branch
-also contains the preceding capture commit. Validate
+This branch changes the plan and the capture findings handoff text only; the
+capture commit is already on main. Validate
 Markdown links and whitespace with `git diff --check` and inspect the staged
 diff. No browser or runtime suite is required for a documentation-only change;
 the implementation commands above are future requirements, not checks already
