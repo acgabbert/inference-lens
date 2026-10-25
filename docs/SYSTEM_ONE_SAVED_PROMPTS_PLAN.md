@@ -166,7 +166,7 @@ input. Filter chat-only saved-prompt pickers by template kind.
 
 ## Persistence and compatibility
 
-Use the next project schema version (15 if 14 is still current at implementation).
+Use project schema version 15.
 Migrate legacy templates to `kind: "chat"` and existing decision request
 revisions to the inline arm. Preserve IDs, revision relationships, defaults,
 archive state, external import receipts, and evaluation references.
@@ -174,8 +174,8 @@ archive state, external import receipts, and evaluation references.
 Refactor the migration chain deliberately: the current v13 migration assigns
 the current schema version, so simply incrementing the version constant would
 skip an explicit v14-to-v15 transformation. Test every supported starting version
-through the full chain. Which plan takes v15 relative to Shared Assets Level 2 is
-proposed under [Relationship to Shared Assets Level 2](#relationship-to-shared-assets-level-2).
+through the full chain. This plan owns v15; Shared Assets Level 2 takes the
+following version (see [Relationship to Shared Assets Level 2](#relationship-to-shared-assets-level-2)).
 Older applications should reject the new schema with
 their existing newer-version diagnostic.
 
@@ -192,40 +192,45 @@ n8n imports continue creating chat templates and retain their provenance.
 
 ## Relationship to Shared Assets Level 2
 
-Status: proposed on 2026-10-25 and not yet accepted. Item 1 is a material
-contract decision and needs the user's confirmation before step 2 begins.
-Items 2 and 3 make explicit what the contracts above already say.
+Status: the user accepted the ordering in item 1 on 2026-10-25. Items 2 and 3
+make explicit what the contracts above already say; the field name in item 3 is
+settled in step 1.
 
 [Shared Assets Level 2](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md) was approved
 on the same day as this plan. It moves template drafts, trial values and local
 overrides out of the shared project into a checkout-local `.workbench/` store,
 through its own versioned schema transition. This plan adds decision template
-drafts and request value overrides to the project, and it targets the next
-schema version. Both plans change the same fields, so they need an agreed order.
+drafts and request value overrides to the project. Both plans change the same
+fields, so their order is fixed here.
 
-### 1. Ordering and schema ownership (proposed)
+### 1. Ordering and schema ownership (accepted)
 
-| Option | Tradeoffs |
-| --- | --- |
-| This plan first, on v15 | Level 2 has not started; its next deliverable is the slice 2a field inventory. Decision templates ship sooner, and Level 2 inventories and migrates them alongside chat templates. Risk: decision drafts follow today's project-resident model and then migrate again in 2c. |
-| Level 2 first | Decision drafts start out in the workbench store and are never migrated twice. Blocks this feature behind slices 2a–2c, which are moderate in size and still need their own contract reviews. |
-| Interleave: land schema and resolution, then wait for 2c before the Compose and library work | Steps 2–3 are mostly ownership-neutral. Leaves the feature half-delivered for an open-ended period and still needs a schema version for step 2. |
+This plan lands first and takes project schema v15. Level 2 takes the next
+version after it.
 
-Recommendation: this plan first, on v15, under these constraints so the second
-migration is mechanical:
+Level 2 had not started when this was decided; its next deliverable is the slice
+2a field inventory. Going first lets decision templates ship without waiting for
+slices 2a–2c. The cost is that decision drafts start out project-resident, like
+chat drafts today, and move again when Level 2 lands. These constraints keep
+that second move mechanical:
 
 - A decision template draft uses the same draft envelope as a chat draft
   (`sourceRevisionId`, `revisionName`, kind-specific content, `variableDefaults`).
   Whatever Level 2 decides about chat drafts then applies to both kinds in one
   migration step.
-- Add decision template arms, decision drafts and template-use overrides to the
-  slice 2a field inventory, so Level 2 classifies them rather than finding them
-  later.
-- Level 2 takes the schema version after this one. If Level 2 implementation
-  starts first, the order reverses: this plan rebases onto Level 2's draft
-  location, and the first row's risk goes away.
+- Level 2's slice 2a field inventory includes decision template arms, decision
+  drafts and template-use overrides, so Level 2 classifies them rather than
+  finding them later.
+- If Level 2 implementation starts before this plan's step 2, stop and revisit
+  this order with the user rather than racing for the version number.
 
-Shared/personal classification under Level 2's ownership table: template
+Alternatives considered: Level 2 first would avoid migrating decision drafts
+twice but would block this feature behind three slices that still need their
+own contract reviews. Landing schema and resolution and then pausing for 2c
+would leave the feature half-delivered for an open-ended period.
+
+Expected classification under Level 2's ownership table, for slice 2a to
+confirm: template
 revisions, names, archive state and `variableDefaults` are shared assets. Values
 on a saved decision request revision are shared, because saving the request is
 the deliberate act. Values typed into Compose for a trial run and not yet saved,
@@ -257,8 +262,8 @@ them.
 1. **Finalize contracts from the accepted decisions.** The three recommendations
    above are accepted. Specify final type shapes and owner interfaces consistent
    with them; involve the user only if a new material contract decision arises.
-   Confirm the ordering in [Relationship to Shared Assets Level 2](#relationship-to-shared-assets-level-2)
-   before step 2.
+   Settle the template-use override field name
+   ([item 3](#3-values-means-different-things-on-the-two-arms)).
 2. **Schema and resolution.** Add discriminated templates and request inputs,
    explicit migrations, validation, and the shared decision revision resolver.
    Update all direct decision revision consumers and narrow chat consumers.
