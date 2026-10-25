@@ -283,7 +283,7 @@ test("legacy stored profiles without favorites default to none, and persist favo
   }
 });
 
-test("a server-provisioned profile is deletable only once unconfigured", () => {
+test("a server-provisioned profile is deletable only once its endpoint is unconfigured", () => {
   const provisioned: StoredInferenceProfile = {
     ...named("server-default"),
     credentialRef: "environment-default",
@@ -292,15 +292,14 @@ test("a server-provisioned profile is deletable only once unconfigured", () => {
 
   assert.match(
     profileDeletionRefusal(profiles, provisioned, { id: "default", credentialConfigured: true }) ?? "",
-    /INFERENCE_LENS_API_KEY/,
+    /INFERENCE_LENS_API_ENDPOINT/,
   );
-  // Released by the reconcile once the server stops declaring a credential,
-  // and from then on it is an ordinary profile.
-  assert.equal(
-    profileDeletionRefusal(profiles, provisioned, { id: "default", credentialConfigured: false }),
-    undefined,
+  // The endpoint still provisions a profile even when it needs no key.
+  assert.match(
+    profileDeletionRefusal(profiles, provisioned, { id: "default", credentialConfigured: false }) ?? "",
+    /INFERENCE_LENS_API_ENDPOINT/,
   );
-  assert.equal(profileDeletionRefusal(profiles, provisioned, undefined), undefined);
+  assert.equal(profileDeletionRefusal(profiles, { ...provisioned, credentialRef: undefined }, undefined), undefined);
 });
 
 test("a catalog profile's deletion refusal names the catalog, not the legacy variables", () => {
@@ -673,4 +672,23 @@ test("a server profile authenticates with its own connection's key by default", 
   assert.deepEqual(defaultWebCredentialMode(managed("server-default", "default"), status), { server: "default" });
   assert.equal(defaultWebCredentialMode(managed("server-chat", "chat"), status), "none");
   assert.equal(defaultWebCredentialMode(named("mine"), status), "none");
+});
+
+test("a refused catalog preserves an automatic credential reference without treating it as removed", () => {
+  const profile = managed("server-decide", "decide");
+  const refused = { connections: [], catalogProblem: "Its JSON is invalid." };
+  assert.deepEqual(defaultWebCredentialMode(profile, refused), { server: "decide" });
+  assert.equal(defaultWebCredentialMode(profile, { connections: [] }), "none");
+  // Neither unrelated profiles nor the independent legacy connection belong
+  // to the refused catalog.
+  assert.equal(defaultWebCredentialMode(named("mine"), refused), "none");
+  assert.equal(defaultWebCredentialMode(managed("server-default", "default"), refused), "none");
+});
+
+test("an unanswered server connection does not release its profile for deletion", () => {
+  const profile = managed("server-decide", "decide");
+  assert.match(
+    profileDeletionRefusal([profile, named("other")], profile, undefined) ?? "",
+    /Remove "decide" from the INFERENCE_LENS_CONNECTIONS catalog/,
+  );
 });

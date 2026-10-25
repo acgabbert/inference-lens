@@ -255,6 +255,18 @@ export function ConnectionDrawer({
   const selectedConnection = server.connections.find(
     ({ id }) => id === selectedServerKey,
   );
+  const selectedCatalogUnavailable =
+    selectedServerKey !== undefined &&
+    selectedServerKey !== DEFAULT_SERVER_CONNECTION_ID &&
+    !selectedConnection;
+  const selectedCatalogName = managingConnectionId(activeProfile) === selectedServerKey
+    ? activeProfile.name
+    : selectedServerKey;
+  const unavailableCatalogDetail = server.catalogProblem
+    ? "The server's connection catalog was refused. This credential selection is kept; fix the catalog and reload this page."
+    : !server.loaded
+      ? "The server has not reported this connection. This credential selection is kept until it answers."
+      : "This server no longer holds that connection's credential. Choose another authentication mode.";
   const defaultConnection = server.connections.find(
     ({ id }) => id === DEFAULT_SERVER_CONNECTION_ID,
   );
@@ -276,6 +288,7 @@ export function ConnectionDrawer({
     !isDesktopRuntime &&
     server.loaded &&
     server.containerized &&
+    !server.catalogProblem &&
     !server.connections.some(({ credentialConfigured }) => credentialConfigured);
   const serverOriginMismatch =
     usingServerKey &&
@@ -428,6 +441,14 @@ export function ConnectionDrawer({
                   Server: {connection.name}
                 </option>
               ))}
+              {selectedCatalogUnavailable && (
+                <option
+                  value={webCredentialModeToStorage(credential.webMode)}
+                  disabled
+                >
+                  Server: {selectedCatalogName} — unavailable
+                </option>
+              )}
               <option value="session">Session key</option>
             </select>
             {usingServerKey && !serverOriginMismatch && (
@@ -437,11 +458,13 @@ export function ConnectionDrawer({
             )}
             {serverOriginMismatch && (
               <span className="credential-status credential-status-error">
-                {serverOrigin
-                  ? `The server's credential${selectedIsDefault ? "" : ` for "${selectedConnection!.name}"`} is bound to ${serverOrigin} and will not be sent to this endpoint. Choose another authentication mode, or point this profile at the configured provider.`
-                  : selectedIsDefault
-                    ? "This server holds no default credential to send. Choose another authentication mode."
-                    : "This server no longer holds that connection's credential. Choose another authentication mode."}
+                {selectedCatalogUnavailable
+                  ? unavailableCatalogDetail
+                  : serverOrigin
+                    ? `The server's credential${selectedIsDefault ? "" : ` for "${selectedConnection!.name}"`} is bound to ${serverOrigin} and will not be sent to this endpoint. Choose another authentication mode, or point this profile at the configured provider.`
+                    : selectedIsDefault
+                      ? "This server holds no default credential to send. Choose another authentication mode."
+                      : "This server no longer holds that connection's credential. Choose another authentication mode."}
               </span>
             )}
             {activeServerConnection?.problem && (

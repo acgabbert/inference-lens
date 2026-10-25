@@ -161,8 +161,13 @@ test("a decision run locks the kind switch until it is stopped", async ({ page }
   let sent = 0;
   await page.route(`**${DECISIONS_API_PATH}`, async (route) => {
     sent += 1;
-    await new Promise<void>((resolve) => { release = resolve; });
-    await route.continue().catch(() => {});
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    // Buffer the real provider response before delivering it to the browser.
+    // Continuing an already-aborted request instead makes Vinext construct a
+    // Request from its disturbed body and broadcasts an overlay to other tests.
+    const response = await route.fetch();
+    await held;
+    await route.fulfill({ response }).catch(() => {});
   });
   await openDecision(page);
   await chooseModel(page, "all-types");
@@ -196,8 +201,13 @@ test("a running chat request locks the switch to Decision", async ({ page }) => 
   await seedDecisionProfiles(page);
   let release: (() => void) | undefined;
   await page.route(`**${INFERENCE_API_PATH}`, async (route) => {
-    await new Promise<void>((resolve) => { release = resolve; });
-    await route.continue().catch(() => {});
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    // Buffer the real provider response before delivering it to the browser.
+    // Continuing an already-aborted request instead makes Vinext construct a
+    // Request from its disturbed body and broadcasts an overlay to other tests.
+    const response = await route.fetch();
+    await held;
+    await route.fulfill({ response }).catch(() => {});
   });
   await page.goto("/");
   await waitForHydration(page);

@@ -187,6 +187,13 @@ export function defaultWebCredentialMode(
   profile: { credentialRef?: string },
   report: ServerConnectionsReport,
 ): WebCredentialMode {
+  const connectionId = managingConnectionId(profile);
+  // A refused catalog has not answered whether this connection holds a key.
+  // Keep its selection so the service reports the catalog problem instead of
+  // sending a previously authenticated request to the provider without a key.
+  if (connectionId && unanswered(connectionId, report)) {
+    return { server: connectionId };
+  }
   const connection = serverConnectionFor(profile, report);
   return connection?.credentialConfigured ? { server: connection.id } : "none";
 }

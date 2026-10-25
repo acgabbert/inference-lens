@@ -17,6 +17,7 @@ import {
 import { PROVIDER_WIRE_PROTOCOLS } from "../packages/core/src/run-kernel/types.ts";
 import { DEFAULT_SERVER_CONNECTION_ID } from "../packages/core/src/server-connection-catalog.ts";
 import type { ProviderWireProtocol } from "../packages/core/src/run-kernel/types.ts";
+import { serverConnectionIdOfCredentialRef } from "./web-credential-mode.ts";
 
 const STORAGE_KEY = "inference-lens:inference-profiles:v1";
 
@@ -198,10 +199,15 @@ export function profileDeletionRefusal(
   if (profiles.length <= 1) {
     return "At least one connection profile is required.";
   }
-  if (serverConnection?.credentialConfigured) {
-    return serverConnection.id === DEFAULT_SERVER_CONNECTION_ID
-      ? "This profile comes from the server configuration and would be added back. Unset INFERENCE_LENS_API_KEY to remove it."
-      : `This profile comes from the server configuration and would be added back. Remove "${serverConnection.id}" from the INFERENCE_LENS_CONNECTIONS catalog to remove it.`;
+  // A declaration provisions its profile whether it needs a key, has one,
+  // or cannot currently read one. A failed probe or refused catalog also keeps
+  // that ownership: reconciliation clears the reference on confirmed removal.
+  const connectionId = serverConnection?.id ??
+    serverConnectionIdOfCredentialRef(profile.credentialRef);
+  if (connectionId) {
+    return connectionId === DEFAULT_SERVER_CONNECTION_ID
+      ? "This profile comes from the server configuration and would be added back. Unset INFERENCE_LENS_API_ENDPOINT to remove it."
+      : `This profile comes from the server configuration and would be added back. Remove "${connectionId}" from the INFERENCE_LENS_CONNECTIONS catalog to remove it.`;
   }
   return undefined;
 }

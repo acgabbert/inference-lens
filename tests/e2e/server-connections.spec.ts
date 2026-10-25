@@ -43,6 +43,8 @@ interface StoredProfile {
   id: string;
   name: string;
   endpoint: string;
+  instanceId: string;
+  model: string;
   credentialRef?: string;
 }
 
@@ -202,3 +204,98 @@ test("a user-made profile is offered a catalog key only at that key's origin", a
     await page.evaluate((key) => JSON.parse(localStorage.getItem(key) ?? "{}"), WEB_CREDENTIAL_MODES_STORAGE_KEY),
   ).toEqual({ buffered: "environment-default:chat" });
 });
+
+for (const explicitPreference of [false, true]) {
+  test(`a refused catalog preserves ${explicitPreference ? "explicit" : "automatic"} server authentication`, async ({ page }) => {
+    let refused = false;
+    await serveStatus(page, () => refused
+      ? { connections: [], catalogProblem: "The connection catalog is not valid JSON." }
+      : { connections: [chat, decide] });
+    await page.goto("/");
+    await waitForHydration(page, "Chat gateway");
+    const original = await storedProfiles(page);
+    let drawer = await openConnections(page);
+    await expect(drawer.getByLabel("Authentication")).toHaveValue("environment-default:chat");
+    if (explicitPreference) {
+      await drawer.getByLabel("Authentication").selectOption("none");
+      await drawer.getByLabel("Authentication").selectOption("environment-default:chat");
+    }
+
+    refused = true;
+    await page.reload();
+    await waitForHydration(page, "Chat gateway");
+    await expect(page.locator('[data-app-banner="server-catalog-invalid"]')).toBeVisible();
+    // Capture at the browser/API boundary: a refused catalog must not make a
+    // previously authenticated run leave for the provider without its key.
+    await page.route("**/api/inference", (route) => route.fulfill({
+      status: 400,
+      json: { error: "The connection catalog is not valid JSON." },
+    }));
+    const outgoing = page.waitForRequest((request) => new URL(request.url()).pathname === "/api/inference");
+    await page.getByRole("button", { name: /run current conversation/i }).first().click();
+    const request = await outgoing;
+    await request.response();
+    expect((request.postDataJSON() as { credential: unknown }).credential)
+      .toEqual({ kind: "environment-default", connectionId: "chat" });
+
+    drawer = await openConnections(page);
+    await expect(drawer.getByLabel("Authentication")).toHaveValue("environment-default:chat");
+    await expect(drawer.getByLabel("Authentication").locator("option:checked"))
+      .toHaveText("Server: Chat gateway — unavailable");
+    await expect(drawer).toContainText("The server's connection catalog was refused");
+    await expect(drawer.getByRole("textbox", { name: /^Endpoint/ })).toBeDisabled();
+    await expect(drawer).not.toContainText("no longer holds that connection's credential");
+    await expect(drawer.getByRole("button", { name: "Delete", exact: true })).toBeDisabled();
+
+    refused = false;
+    await page.reload();
+    await waitForHydration(page, "Chat gateway");
+    drawer = await openConnections(page);
+    await expect(drawer.getByLabel("Authentication")).toHaveValue("environment-default:chat");
+    await expect(drawer.getByLabel("Authentication").locator("option:checked"))
+      .toHaveText("Server: Chat gateway");
+    expect(await storedProfiles(page)).toEqual(original);
+  });
+}
+
+for (const connection of [
+  { ...chat, id: "local", name: "Local gateway", credentialConfigured: false },
+  { ...chat, id: "broken", name: "Broken gateway", credentialConfigured: false, problem: "Its key file could not be read." },
+  { ...chat, id: "default", name: "Server default", credentialConfigured: false },
+]) {
+  test(`a listed ${connection.id} connection cannot be deleted while it holds no key`, async ({ page }) => {
+    let listed = true;
+    await serveStatus(page, () => ({ connections: listed ? [chat, connection] : [chat] }));
+    await page.goto("/");
+    await waitForHydration(page, "Chat gateway");
+    let drawer = await openConnections(page);
+    const profileId = `server-${connection.id}`;
+    await drawer.getByRole("combobox", { name: "Profile", exact: true }).selectOption(profileId);
+    const original = (await storedProfiles(page)).find(({ id }) => id === profileId)!;
+    await expect(drawer.getByRole("textbox", { name: /^Endpoint/ })).toBeDisabled();
+    await expect(drawer.getByRole("button", { name: "Delete", exact: true })).toBeDisabled();
+    await expect(drawer.getByRole("button", { name: "Delete", exact: true })).toHaveAttribute(
+      "title", connection.id === "default" ? /INFERENCE_LENS_API_ENDPOINT/ : /INFERENCE_LENS_CONNECTIONS/,
+    );
+    await page.reload();
+    await waitForHydration(page, connection.name);
+    drawer = await openConnections(page);
+    expect((await storedProfiles(page)).find(({ id }) => id === profileId)).toEqual(original);
+    await expect(drawer.getByRole("button", { name: "Delete", exact: true })).toBeDisabled();
+
+    // Removing the declaration releases this same profile, making deletion real.
+    listed = false;
+    await page.reload();
+    await waitForHydration(page, connection.name);
+    await expect.poll(async () => (await storedProfiles(page)).find(({ id }) => id === profileId)?.credentialRef)
+      .toBeUndefined();
+    drawer = await openConnections(page);
+    await expect(drawer.getByRole("button", { name: "Delete", exact: true })).toBeEnabled();
+    await drawer.getByRole("button", { name: "Delete", exact: true }).click();
+    await page.getByRole("button", { name: "Delete profile", exact: true }).click();
+    await expect.poll(async () => (await storedProfiles(page)).some(({ id }) => id === profileId)).toBe(false);
+    await page.reload();
+    await waitForHydration(page, "Chat gateway");
+    expect((await storedProfiles(page)).some(({ id }) => id === profileId)).toBe(false);
+  });
+}
