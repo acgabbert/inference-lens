@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 
-import { BUFFERED_FIXTURE_ENDPOINT, seedProfile, waitForHydration } from "./support";
+import {
+  BUFFERED_FIXTURE_ENDPOINT,
+  openInferenceSettings,
+  seedProfile,
+  waitForHydration,
+} from "./support";
 
 /**
  * A base URL pasted without its `/v1` reaches a real server that answers 404,
@@ -34,4 +39,28 @@ test("a 404 from an unversioned base URL suggests adding /v1", async ({ page }) 
   // The fixture's own refusal is still shown, so the hint adds rather than replaces.
   await expect(failure).toContainText("Not found.");
   expect(await failure.innerText()).not.toMatch(/NaN|Infinity|undefined|\[object Object\]/);
+});
+
+/**
+ * Listing models is usually the first request a new connection makes, so the
+ * same missing `/v1` should be named there, before any run is sent. The
+ * fixture lists models only at `/v1/models`.
+ */
+test("a model listing refused at an unversioned base URL suggests adding /v1", async ({ page }) => {
+  const unversioned = BUFFERED_FIXTURE_ENDPOINT.replace(/\/v1$/, "");
+  await seedProfile(page, { endpoint: unversioned, model: "" });
+  await page.goto("/");
+  await waitForHydration(page);
+
+  const listing = page.waitForResponse((response) =>
+    new URL(response.url()).pathname === "/api/models",
+  );
+  const settings = await openInferenceSettings(page);
+  await settings.locator('[data-readiness-control="model"]').click();
+  expect((await listing).status(), "the fixture really refused the listing").toBe(404);
+
+  const failure = page.locator(".model-options-error");
+  await expect(failure).toContainText(`${unversioned} has no version segment`);
+  await expect(failure).toContainText(`try ${BUFFERED_FIXTURE_ENDPOINT}.`);
+  await expect(failure).toContainText("Not found.");
 });

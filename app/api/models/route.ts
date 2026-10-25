@@ -1,5 +1,6 @@
 import { discoverDecisionModelsOverHttp } from "../../../packages/core/src/decision-discovery";
 import { discoverOpenAICompatibleModels } from "../../../packages/core/src/openai-compatible";
+import { explainProviderStatusError } from "../../../packages/core/src/provider-protocols";
 import {
   explainProviderTransportError,
   resolveModelDiscoveryRequest,
@@ -44,22 +45,18 @@ export async function POST(incoming: Request): Promise<Response> {
     const message =
       error instanceof Error ? error.message : "Could not list models.";
     // Discovery is usually the first request a new user makes, so a container
-    // that cannot reach the address they typed should say so here too. Only a
-    // failure with no provider status means nothing answered.
-    const reachable =
-      error instanceof WorkbenchRequestError || providerStatus !== undefined;
-    return Response.json(
-      {
-        error:
-          reachable || !request
-            ? message
-            : explainProviderTransportError(
-                message,
-                request.endpoint,
-                isContainerizedRuntime(),
-              ),
-      },
-      { status },
-    );
+    // that cannot reach the address they typed, or a base URL missing its
+    // version segment, should say so here too. Only a failure with no provider
+    // status means nothing answered.
+    const explained = !request || error instanceof WorkbenchRequestError
+      ? message
+      : providerStatus !== undefined
+        ? explainProviderStatusError(message, providerStatus, request.endpoint)
+        : explainProviderTransportError(
+            message,
+            request.endpoint,
+            isContainerizedRuntime(),
+          );
+    return Response.json({ error: explained }, { status });
   }
 }
