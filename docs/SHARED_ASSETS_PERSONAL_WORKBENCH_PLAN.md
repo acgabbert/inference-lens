@@ -1,9 +1,10 @@
 # Shared assets in a personal workbench
 
-**Status:** Proposed implementation plan, October 25, 2026. The product direction
+**Status:** Level 1 implemented October 25, 2026; verification recorded below.
+Levels 2–3 remain proposed. The product direction
 is agreed: Inference Lens is a personal workbench for potentially shared assets.
 The detailed contracts below are recommendations, not approved schema or storage
-decisions. No implementation is included in this document.
+decisions except for the Level 1 agreement recorded below.
 
 ## Intended experience
 
@@ -100,6 +101,21 @@ remain part of an asset unless deliberately removed through valid operations.
 
 **Size:** Small. No project schema change.
 
+### Confirmed contracts (October 25, 2026)
+
+- All three presets below are approved; private remains the default.
+- Core owns a creation-only `ProjectGitPolicy` (`private`, `definitions`, or
+  `unmanaged`) and resolves it to ignore-file contents or `null`. The policy is
+  not serialized into `project.json` and changes no provider contract.
+- `ProjectCreationDialog` owns the selection; `ProjectCreationOptions` carries
+  it through the existing workspace owner. Browser creation writes the resolved
+  contents; the native bridge passes the same contents to Rust, which owns I/O
+  and rollback. There is no duplicate Rust policy generator.
+- Policy generation happens only on bundle creation. Existing projects and
+  ordinary saves keep their policies, including customized rules.
+- The dialog explains that the definitions preset includes persisted drafts
+  and saved values inside the unchanged manifest.
+
 ### Proposed behavior
 
 Offer three project-creation presets:
@@ -142,6 +158,43 @@ remove files from the Git index or rewrite history as part of this feature.
 - Opening a clone without local evidence succeeds; running creates local evidence
   without dirtying shared definitions merely to register trace paths.
 - Copy explicitly states the remaining single-manifest sharing boundary.
+
+### Level 1 delivery evidence (October 25, 2026)
+
+- Before implementation, the new workspace tests failed on `null` instead of
+  the exact definitions allowlist, and on missing native policy contents.
+  `npm run test:e2e -- tests/e2e/project-git-policy.spec.ts` failed on the
+  creation dialog's actual text, which lacked the sharing preset.
+- `node --experimental-strip-types --test tests/project-workspace.test.ts`
+  passed 14 tests: creation ordering, exact policy, preservation of customized
+  rules, bridge arguments, and rollback/retry for failed policy or manifest
+  writes. Its disposable real Git repository stages only the manifest and
+  ignore file after representative evidence, annotation, recovery, and future
+  nested paths are added; it also proves force-added evidence stays tracked.
+  Those path fixtures test Git policy, not evaluation execution.
+- `npm run test:e2e -- tests/e2e/project-git-policy.spec.ts
+  tests/e2e/project-storage-clarity.spec.ts tests/e2e/new-project-isolation.spec.ts
+  tests/e2e/project-replacement-guard.spec.ts` passed 12 tests. The new spec
+  covers all three presets, the sharing warning, and opening a definitions-only
+  clone without evidence. An actual buffered fixture request then saves one
+  trace while the manifest stays byte-identical. The folder picker is stubbed;
+  the browser workspace adapter and provider transport are real.
+- The final full `npm run test:e2e` passed 340 tests with seven opt-in Python
+  MCP/N1 tests skipped. This includes existing evaluation, baseline, and
+  case-source workflows; the new Git staging assertions use the representative
+  paths described above rather than a native or CLI-created Git checkout.
+- `npm run lint`, `npm run typecheck`, `npm run typecheck:core`, and `npm test`
+  passed. Lint has four pre-existing unused-variable warnings. `npm test`
+  includes the production build and 1,756 core, contract, version, rendered,
+  interaction, and CLI tests.
+- `npm run test:rust` passed 28 tests, including real native filesystem writes
+  for all presets and preservation of customized rules. `npm run check:rust`
+  passed formatting and Clippy. Native picker interaction and injected native
+  filesystem failures were not exercised; write-failure injection is covered
+  through the browser adapter. Hosted providers were not used.
+- Human review should check whether the three preset descriptions make the
+  remaining manifest-wide sharing boundary clear. Personal-state separation
+  remains Level 2 work.
 
 ## Level 2: separate personal state from asset definitions
 
@@ -424,8 +477,8 @@ and diff check, not a browser run.
 
 ## Remaining decisions for the design review
 
-1. Confirm the three creation presets and whether the existing private default
-   remains the initial default (recommended).
+1. **Resolved for Level 1:** all three creation presets are confirmed and the
+   existing private default remains the initial default.
 2. Choose checkout-local versus device application storage for personal state,
    its isolation scope, and no-folder recovery behavior.
 3. Approve the exact classification of shared launch defaults, scratch requests,

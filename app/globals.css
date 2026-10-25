@@ -3394,11 +3394,18 @@ output {
   color: var(--text-muted);
 }
 
+.project-creation-git-policy {
+  border: 0;
+  margin: var(--space-lg) 0 0;
+  padding: 0;
+  min-width: 0;
+}
+
 .project-creation-protection {
   align-items: flex-start;
   display: flex;
   gap: var(--space-md);
-  margin-top: var(--space-xl);
+  margin-top: var(--space-md);
 }
 
 .project-creation-protection input {

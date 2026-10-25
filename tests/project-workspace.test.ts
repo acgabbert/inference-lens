@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import test from "node:test";
 
 import {
@@ -8,6 +12,7 @@ import {
   openProjectFolder,
   readExperimentArtifactWorkspace,
   saveExperimentPlanWorkspace,
+  saveProjectWorkspace,
 } from "../app/project-workspace.client.ts";
 import type {
   FileSystemDirectoryHandleLike,
@@ -180,7 +185,7 @@ test("browser creation writes Git protection before authored project data", asyn
   const opened = await withDirectoryPicker(parent, () =>
     createProjectFolder(project(), {
       name: "Prompt Lab",
-      protectFromGit: true,
+      gitPolicy: "private",
     }),
   );
 
@@ -203,7 +208,7 @@ test("browser creation can deliberately leave a project visible to Git", async (
   await withDirectoryPicker(parent, () =>
     createProjectFolder(project(), {
       name: "Shared Project",
-      protectFromGit: false,
+      gitPolicy: "unmanaged",
     }),
   );
 
@@ -214,6 +219,97 @@ test("browser creation can deliberately leave a project visible to Git", async (
     (bundle as MemoryDirectory).entries.has(".gitignore"),
     false,
   );
+});
+
+test("sharing definitions writes the exact allowlist before the manifest and preserves custom rules on save", async () => {
+  const writes: string[] = [];
+  const parent = new MemoryDirectory("code-repository", writes);
+  const opened = await withDirectoryPicker(parent, () =>
+    createProjectFolder(project(), { name: "Prompt Lab", gitPolicy: "definitions" }),
+  );
+  assert.ok(opened);
+  const bundle = parent.entries.get("Prompt Lab.inference-lens") as MemoryDirectory;
+  const ignore = bundle.entries.get(".gitignore") as MemoryFile | undefined;
+  assert.equal(ignore?.contents ?? null, "*\n!/.gitignore\n!/project.json\n");
+  assert.deepEqual(writes, [".gitignore", "project.json"]);
+  ignore!.contents = "# My custom policy\ntraces/\n";
+  await saveProjectWorkspace(opened.handle, { ...project(), name: "Renamed" });
+  assert.equal(ignore!.contents, "# My custom policy\ntraces/\n");
+  assert.deepEqual(writes, [".gitignore", "project.json", "project.json"]);
+});
+
+test("definitions policy stages only definitions, excludes future nested files, and leaves tracked evidence alone", async () => {
+  const parent = new MemoryDirectory("repository", []);
+  await withDirectoryPicker(parent, () =>
+    createProjectFolder(project(), { name: "Prompt Lab", gitPolicy: "definitions" }),
+  );
+  const bundle = parent.entries.get("Prompt Lab.inference-lens") as MemoryDirectory;
+  const ignore = bundle.entries.get(".gitignore") as MemoryFile | undefined;
+  assert.equal(ignore?.contents ?? null, "*\n!/.gitignore\n!/project.json\n");
+  const repository = mkdtempSync(join(tmpdir(), "inference-lens-git-"));
+  const git = (...args: string[]) => execFileSync("git", ["-C", repository, ...args], { encoding: "utf8" });
+  try {
+    git("init", "--quiet");
+    const directory = join(repository, bundle.name);
+    mkdirSync(directory);
+    for (const [name, entry] of bundle.entries) {
+      if (entry.kind === "file") writeFileSync(join(directory, name), entry.contents);
+    }
+    const evidencePaths = [
+      "traces/run_one.json",
+      "experiments/experiment_one.plan.json",
+      "experiments/experiment_one.result.json",
+      "experiments/experiment_one.assessment_one.assessment.json",
+      "evaluation-baselines.json",
+      "evaluation-case-sources.json",
+      "future/artifacts/nested/evidence.json",
+      "future/project.json",
+      "future/.gitignore",
+      "workbench/recovery.json",
+    ];
+    for (const path of evidencePaths) {
+      mkdirSync(dirname(join(directory, path)), { recursive: true });
+      writeFileSync(join(directory, path), "{}\n");
+    }
+    git("add", ".");
+    assert.deepEqual(git("diff", "--cached", "--name-only").trim().split("\n"), [
+      "Prompt Lab.inference-lens/.gitignore",
+      "Prompt Lab.inference-lens/project.json",
+    ]);
+    // Ignore rules do not untrack existing evidence or prevent force-adding it.
+    git("add", "--force", "Prompt Lab.inference-lens/traces/run_one.json");
+    git("add", ".");
+    assert.match(git("ls-files"), /traces\/run_one\.json/);
+    assert.equal(readFileSync(join(directory, "traces/run_one.json"), "utf8"), "{}\n");
+  } finally {
+    rmSync(repository, { recursive: true, force: true });
+  }
+});
+
+test("native creation receives the core-generated policy for all three presets", async () => {
+  const originalWindow = globalThis.window;
+  const calls: Array<{ command: string; args: Record<string, unknown> }> = [];
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: { __TAURI_INTERNALS__: {
+      invoke: async (command: string, args: Record<string, unknown>) => {
+        calls.push({ command, args });
+        return null; // A cancelled native picker performs no filesystem writes.
+      },
+    } },
+  });
+  try {
+    for (const gitPolicy of ["private", "definitions", "unmanaged"] as const) {
+      await createProjectFolder(project(), { name: "Prompt Lab", gitPolicy });
+    }
+    assert.deepEqual(calls.map(({ args }) => args.gitignoreContents), [
+      "*\n", "*\n!/.gitignore\n!/project.json\n", null,
+    ]);
+    assert.ok(calls.every(({ command }) => command === "create_project_workspace"));
+  } finally {
+    if (originalWindow === undefined) Reflect.deleteProperty(globalThis, "window");
+    else Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
+  }
 });
 
 test("opening a Project v6 workspace refuses the unsupported artifact without rewriting it", async () => {
@@ -247,7 +343,7 @@ test("browser creation refuses to reuse an existing bundle", async () => {
       withDirectoryPicker(parent, () =>
         createProjectFolder(project(), {
           name: "Prompt Lab",
-          protectFromGit: true,
+          gitPolicy: "private",
         }),
       ),
     /already exists/,
@@ -255,40 +351,44 @@ test("browser creation refuses to reuse an existing bundle", async () => {
   assert.deepEqual(writes, []);
 });
 
-test("browser creation removes a partial bundle so creation can be retried", async () => {
-  const writes: string[] = [];
-  const parent = new MemoryDirectory(
-    "code-repository",
-    writes,
-    new Set(["project.json"]),
-  );
+for (const gitPolicy of ["private", "definitions", "unmanaged"] as const) {
+  for (const failingFile of gitPolicy === "unmanaged" ? ["project.json"] : [".gitignore", "project.json"]) {
+    test(`browser ${gitPolicy} creation rolls back a failed ${failingFile} write so it can be retried`, async () => {
+      const writes: string[] = [];
+      const parent = new MemoryDirectory(
+        "code-repository",
+        writes,
+        new Set([failingFile]),
+      );
 
-  await assert.rejects(
-    () =>
-      withDirectoryPicker(parent, () =>
+      await assert.rejects(
+        () =>
+          withDirectoryPicker(parent, () =>
+            createProjectFolder(project(), {
+              name: "Prompt Lab",
+              gitPolicy,
+            }),
+          ),
+        (error: unknown) => error instanceof Error && error.message === `Could not write ${failingFile}`,
+      );
+      assert.equal(parent.entries.has("Prompt Lab.inference-lens"), false);
+
+      const opened = await withDirectoryPicker(parent, () =>
         createProjectFolder(project(), {
           name: "Prompt Lab",
-          protectFromGit: true,
+          gitPolicy,
         }),
-      ),
-    /Could not write project\.json/,
-  );
-  assert.equal(parent.entries.has("Prompt Lab.inference-lens"), false);
-
-  const opened = await withDirectoryPicker(parent, () =>
-    createProjectFolder(project(), {
-      name: "Prompt Lab",
-      protectFromGit: true,
-    }),
-  );
-  assert.ok(opened);
-});
+      );
+      assert.ok(opened);
+    });
+  }
+}
 
 test("browser workspaces save experiment artifacts once and list them separately from traces", async () => {
   const writes: string[] = [];
   const parent = new MemoryDirectory("code-repository", writes);
   const opened = await withDirectoryPicker(parent, () =>
-    createProjectFolder(project(), { name: "Prompt Lab", protectFromGit: false }),
+    createProjectFolder(project(), { name: "Prompt Lab", gitPolicy: "unmanaged" }),
   );
   assert.ok(opened);
   const plan = experimentPlan();

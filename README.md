@@ -54,9 +54,14 @@ fixtures and for driving them through the UI in a browser.
 
 Inference Lens projects are visible, self-contained
 `<name>.inference-lens/` bundles with a strict, credential-free `project.json`
-manifest. New projects are protected from Git by default through an internal
-`.gitignore`; the creation dialog can disable that protection when a project is
-intended for version control. In browsers that support directory access,
+manifest. New projects are protected from ordinary Git staging by default through
+an internal `.gitignore`. The creation dialog also offers **Share definitions;
+keep run history local**, which allows only `project.json` and `.gitignore`,
+or **Manage Git rules myself**, which creates no ignore file. Sharing definitions
+includes every persisted draft and saved value in the manifest; Gitignore does
+not untrack existing files or erase history. See
+[Git sharing policy](docs/PROJECT_FORMAT.md#git-sharing-policy) for existing
+projects and the exact rules. In browsers that support directory access,
 **New project** selects the bundle's parent folder and **Open project** selects
 an existing bundle. Other browsers can use **Import** and **Export** with the
 same Project v10 JSON format.
