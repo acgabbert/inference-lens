@@ -1,5 +1,6 @@
 "use client";
 
+import { useId, useState } from "react";
 import type { DecisionQuestionType } from "../../packages/core/src/decision";
 import { BlockerChip } from "../blocker-chip.client";
 import { ModelCombobox } from "../model-combobox.client";
@@ -16,6 +17,13 @@ const QUESTION_TYPES: { id: DecisionQuestionType; label: string }[] = [
   { id: "score", label: "Score" },
   { id: "noul", label: "Noul (true/false)" },
 ];
+
+/** What each type returns, shown under the Type control. */
+const TYPE_HINTS: Record<DecisionQuestionType, string> = {
+  choice: "Picks one option and returns a probability for each.",
+  score: "Rates the state on your levels, low to high. The score is a weighted position, so it can fall between levels.",
+  noul: "Answers yes or no, as the probability that the answer is true.",
+};
 
 export interface DecisionComposerProps {
   draft: DecisionDraftHandle;
@@ -42,15 +50,19 @@ function DraftField({
   label,
   value,
   multiline = false,
+  hint,
   disabled,
   onChange,
 }: {
   label: string;
   value: DraftValue;
   multiline?: boolean;
+  /** One line on what the field is for, read with it by assistive technology. */
+  hint?: string;
   disabled: boolean;
   onChange(value: DraftValue): void;
 }) {
+  const hintId = useId();
   if (value.kind === "json") {
     return (
       <div className="decision-json-value">
@@ -65,6 +77,7 @@ function DraftField({
       <span className="decision-field-label">{label}</span>
       {multiline ? (
         <textarea
+          aria-describedby={hint ? hintId : undefined}
           disabled={disabled}
           rows={2}
           value={value.text}
@@ -72,12 +85,14 @@ function DraftField({
         />
       ) : (
         <input
+          aria-describedby={hint ? hintId : undefined}
           disabled={disabled}
           type="text"
           value={value.text}
           onChange={(event) => onChange({ kind: "text", text: event.target.value })}
         />
       )}
+      {hint && <small className="decision-hint" id={hintId}>{hint}</small>}
     </label>
   );
 }
@@ -124,8 +139,10 @@ function QuestionCard({
           <button aria-label={`Remove ${name}`} className="text-button" disabled={disabled} type="button" onClick={() => draft.removeQuestion(row.rowId)}>Remove</button>
         </div>
       </div>
+      <small className="decision-hint">{TYPE_HINTS[row.type]}</small>
       <DraftField
         disabled={disabled}
+        hint="The question to ask about the state, in plain words."
         label="Instructions"
         multiline
         value={row.instructions}
@@ -157,6 +174,11 @@ function QuestionCard({
       ) : (
         <div className="decision-options">
           <span className="decision-field-label">{row.type === "choice" ? "Options" : "Levels, low to high"}</span>
+          <small className="decision-hint">
+            {row.type === "choice"
+              ? "The only answers allowed. A description helps the model tell options apart."
+              : "The only answers allowed, in order. The first level is 0."}
+          </small>
           <ol className="decision-option-list">
             {row.options.map((option, optionIndex) => (
               <li className="decision-option" key={option.rowId}>
@@ -221,11 +243,79 @@ function DecisionVariables({ handle, disabled }: { handle: DecisionDraftHandle; 
   );
 }
 
+/**
+ * An overview for people new to decision models, open at first while the
+ * draft is untouched. Its open state is local: an edit never collapses it.
+ */
+function DecisionGuide({ initiallyOpen }: { initiallyOpen: boolean }) {
+  const [open, setOpen] = useState(initiallyOpen);
+  return (
+    <details className="decision-guide" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary>How decision requests work</summary>
+      <p>
+        A decision model answers questions about some input with probabilities instead of writing a reply.
+        Think of it as a classifier you set up in words.
+      </p>
+      <dl>
+        <dt>State</dt>
+        <dd>What the model judges, such as a ticket, a message, or a document. Like the user message in chat. Use JSON for structured input.</dd>
+        <dt>Questions</dt>
+        <dd>What you ask about the state. One request can ask several; each is answered on its own.</dd>
+        <dt>Instructions</dt>
+        <dd>The question itself, in plain words. Each question has its own; there is no shared system prompt.</dd>
+        <dt>Options and levels</dt>
+        <dd>The only answers allowed. The model does not write text: it returns a probability for each option.</dd>
+        <dt>Question id</dt>
+        <dd>The key the answer comes back under. The model never sees it.</dd>
+        <dt>Types</dt>
+        <dd>
+          <strong>Choice</strong> picks one option. <strong>Score</strong> rates on ordered levels and can land between them.{" "}
+          <strong>Noul</strong> gives the probability that the answer is true.
+        </dd>
+      </dl>
+    </details>
+  );
+}
+
+/**
+ * Loads the worked example. An untouched draft is replaced at once; anything
+ * else is the user's work, so replacing it is confirmed first.
+ */
+function DecisionExampleControl({ handle, disabled }: { handle: DecisionDraftHandle; disabled: boolean }) {
+  const [confirming, setConfirming] = useState(false);
+  if (confirming) {
+    return (
+      <div className="decision-example decision-example-confirm" role="group" aria-label="Replace with example">
+        <span>Replace the current request with the example?</span>
+        <button
+          className="button secondary"
+          disabled={disabled}
+          type="button"
+          onClick={() => { setConfirming(false); handle.loadExample(); }}
+        >Replace with example</button>
+        <button className="text-button" type="button" onClick={() => setConfirming(false)}>Cancel</button>
+      </div>
+    );
+  }
+  return (
+    <div className="decision-example">
+      <button
+        className="text-button"
+        disabled={disabled}
+        type="button"
+        onClick={() => (handle.touched ? setConfirming(true) : handle.loadExample())}
+      >Load example</button>
+      <small>A support ticket asked one question of each type.</small>
+    </div>
+  );
+}
+
 export const DECISION_NEW_SUITE_REASON_ID = "decision-new-suite-reason";
 
 export function DecisionComposer({ draft: handle, target, blockers, locked, unsaved, onOpenConnections, newSuite }: DecisionComposerProps) {
   const { draft } = handle;
   const discovery = target.discovery;
+  const stateHintId = useId();
   return (
     <section className="composer decision-composer" aria-label="Decision request">
       <div className="panel-header request-header">
@@ -285,6 +375,10 @@ export function DecisionComposer({ draft: handle, target, blockers, locked, unsa
         </div>
       )}
       <div className="pane-scroll request-content decision-content">
+        <div className="decision-help">
+          <DecisionGuide initiallyOpen={!handle.touched} />
+          <DecisionExampleControl disabled={locked} handle={handle} />
+        </div>
         <fieldset className="decision-target" disabled={locked}>
           <legend>Target</legend>
           {target.profiles.length === 0 ? (
@@ -346,7 +440,11 @@ export function DecisionComposer({ draft: handle, target, blockers, locked, unsa
                   tabs={[{ id: "text", label: "Text" }, { id: "json", label: "JSON" }]}
                 />
               </div>
+              <small className="decision-hint" id={stateHintId}>
+                What the model judges, such as a ticket, a message, or a document.
+              </small>
               <textarea
+                aria-describedby={stateHintId}
                 aria-label={draft.state.mode === "json" ? "State JSON" : "State text"}
                 disabled={locked}
                 rows={draft.state.mode === "json" ? 8 : 4}
