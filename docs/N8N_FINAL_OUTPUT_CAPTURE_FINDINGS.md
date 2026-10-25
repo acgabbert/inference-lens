@@ -3,7 +3,8 @@
 Date: 2026-10-25. Capture-only slice of
 [PR185](https://github.com/acgabbert/inference-lens/pull/185). The selected
 capture session is complete; no runtime, import, portable-type, or saved-artifact
-contract has been implemented or approved. The LAN provider is stopped.
+implementation was included. Subsequent contract-policy approval is recorded
+below and in the design plan. The LAN provider is stopped.
 
 ## Evidence boundary
 
@@ -88,21 +89,24 @@ measured. Streaming/Open Chat are outside this requested scope.
 
 ## Commit boundary and next phase
 
-Commit the capture harness, staging recipes, reviewed redacted fixtures, evidence
-assertions, and documentation as one capture-only change. Keep .env and all raw
+The capture harness, staging recipes, reviewed redacted fixtures, evidence
+assertions, and documentation were committed as `5645689` on
+`codex/n8n-final-output-captures`, based on `origin/main` at `51acdc1`. The commit
+was subsequently merged into main through PR189 (`3de8969`). Keep .env and all raw
 staging files out of Git. Raw files are retained locally for provenance and
 possible re-projection; do not delete them merely to make the commit look clean.
 The original inactive-child failure remains raw diagnostic evidence rather than
 a successful ordinary-tool fixture.
 
-No more home-instance executions are required for the selected phase. Next,
-review the plan's material decisions with the user: provider-neutral execution
-ownership and revision-owned configuration; designated tool identity; supported
-validator/normalization subset; mixed/duplicate-call policy; fallback rules;
-effective-answer projection; and project/trace/plan/assessment migrations.
-Update the design plan to state the narrowed version/delivery scope and the
-normalization finding before runtime implementation. This is a design gate,
-not permission to implement unresolved contracts.
+No more home-instance executions are required for the selected phase. The user
+approved all twelve recommendations in the [design plan](N8N_FINAL_OUTPUT_TOOL_PLAN.md)
+on 2026-10-25, including the bounded n8n normalizer, first-formatter selection
+with ordinary-call suppression, and normalized payload as the effective answer.
+The plan records the narrowed version/delivery scope and distinguishes measured
+behavior from agreed extensions. Next, specify exact types, schema/fallback
+rules, and artifact migrations within those policies, then write and run the
+behavioral regression red before runtime implementation. Any new material
+tradeoff still requires discussion; agreed policies need no repeat approval.
 
 Browser E2E is not required for this capture-only change: no Inference Lens UI,
 production provider adapter, or app execution path changed. Local capture-server
