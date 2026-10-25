@@ -213,6 +213,13 @@ remove files from the Git index or rewrite history as part of this feature.
    and works naturally through existing folder access in browser and native hosts.
    Recommend an ignored checkout-local workbench store for folder projects,
    subject to agreement on recovery and portability. Exact paths remain open.
+   Level 1 does not make such a store ignored. Only the private and definitions
+   presets exclude a new directory; unmanaged bundles and older bundles created
+   without protection have no rule covering it, so an ordinary `git add -A`
+   would stage personal drafts. The bundle's policy is written once at creation
+   and never regenerated, so it cannot be relied on. Decide how the store
+   protects itself, for example by writing its own `*` ignore file before any
+   personal content, and how that is verified.
 3. **Workbench identity.** Recommend one personal workbench per checkout initially.
    Separate clones/worktrees must not share drafts merely because their
    `projectId` matches. Define behavior for copied/moved folders, changed project
@@ -397,6 +404,14 @@ or remotely synchronized libraries require a separate dependency/version design.
 - Update the definitions-only ignore preset to allow the approved shared asset
   files and their dependencies while continuing to exclude personal state,
   migration backups, and evidence by default.
+- Updating the preset changes only new bundles. Level 1 never rewrites an
+  existing `.gitignore`, so bundles created with the three-line definitions
+  policy keep excluding every new asset file after migration. A teammate's
+  clone would then lack assets the author sees locally, or appear complete only
+  because ignored files exist in the author's checkout. Define how migration
+  handles the existing policy: one option is to recognize the exact Level 1
+  bytes and offer to replace them, while leaving customized rules untouched and
+  reporting which new asset paths they would exclude.
 
 ### Acceptance criteria
 
@@ -480,13 +495,16 @@ and diff check, not a browser run.
 1. **Resolved for Level 1:** all three creation presets are confirmed and the
    existing private default remains the initial default.
 2. Choose checkout-local versus device application storage for personal state,
-   its isolation scope, and no-folder recovery behavior.
+   its isolation scope, and no-folder recovery behavior. A checkout-local store
+   must protect itself from Git rather than rely on the bundle's policy.
 3. Approve the exact classification of shared launch defaults, scratch requests,
    draft branches, saved values, and temporary fixtures, with migration examples.
 4. Choose asset file granularity and discovery rules, reference/provenance closure,
    and how team sharing policy and personal asset exclusions interact.
 5. Approve versioned format transitions, export/backup semantics, old-reader/writer
-   behavior, and recovery for interrupted multi-file operations.
+   behavior, and recovery for interrupted multi-file operations. Include how
+   bundles created with the Level 1 definitions policy come to share new asset
+   files.
 
 The target is fewer incidental conflicts, explicit intentional contributions,
 and selective sharing with understandable dependencies. Same-asset edits still
