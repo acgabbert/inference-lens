@@ -48,6 +48,7 @@ export type ProjectErrorKind =
  */
 export type ProjectStorageState =
   | { kind: "session" }
+  | { kind: "unsaved"; displayPath: string; reason: string }
   | { kind: "saving"; displayPath: string }
   | { kind: "saved"; displayPath: string }
   | { kind: "error"; displayPath: string };
@@ -134,6 +135,8 @@ export function useProjectWorkspace(input: {
    * decision feature owns its draft, as the chat request owns `currentDraft`.
    */
   withDecisionDraft(project: ProjectFile): ProjectFile;
+  /** Read from commands and saves, after the feature owners have rendered. */
+  getUnsavedDraftReason(): string | undefined;
   /** Hands a newly applied document's active decision request to its owner. */
   onApplyDecisionRequest(project: ProjectFile): void;
   /**
@@ -155,6 +158,7 @@ export function useProjectWorkspace(input: {
     currentDraft,
     onApplyDraft,
     withDecisionDraft,
+    getUnsavedDraftReason,
     onApplyDecisionRequest,
     onSaved,
   } = input;
@@ -162,6 +166,11 @@ export function useProjectWorkspace(input: {
   const [projectWorkspace, setProjectWorkspace] =
     useState<ProjectWorkspaceHandle | null>(null);
   const [projectDirty, setProjectDirty] = useState(false);
+  // A write of the last valid document does not persist an incomplete editor
+  // draft. Track that independently so autosave settles without looping and
+  // replacement/unload protection stays active.
+  const [unsavedDraftReason, setUnsavedDraftReason] = useState<string>();
+  const hasUnsavedChanges = projectDirty || Boolean(unsavedDraftReason);
   const [projectError, setProjectError] = useState<string>();
   const [projectErrorKind, setProjectErrorKind] = useState<ProjectErrorKind>();
   const projectErrorKindRef = useRef<ProjectErrorKind | undefined>(undefined);
@@ -188,14 +197,14 @@ export function useProjectWorkspace(input: {
   }, [profiles]);
 
   useEffect(() => {
-    if (!projectDirty) return;
+    if (!hasUnsavedChanges) return;
     function warnBeforeUnload(event: BeforeUnloadEvent): void {
       event.preventDefault();
       event.returnValue = "";
     }
     window.addEventListener("beforeunload", warnBeforeUnload);
     return () => window.removeEventListener("beforeunload", warnBeforeUnload);
-  }, [projectDirty]);
+  }, [hasUnsavedChanges]);
 
   function advanceProjectChangeVersion(): number {
     autoSaveWindowStartedAtRef.current ??= Date.now();
@@ -376,6 +385,11 @@ export function useProjectWorkspace(input: {
     return withDecisionDraft(updateProjectDraft(projectFile ?? createProject(), currentDraft()));
   }
 
+  function requireSavableDraft(): void {
+    const reason = getUnsavedDraftReason();
+    if (reason) throw new Error(reason);
+  }
+
   /**
    * `profileId` is the mapping this adoption establishes — creating or saving a
    * project maps it to the connection it was created with. Every other way a
@@ -410,6 +424,7 @@ export function useProjectWorkspace(input: {
     }
     setMappedProfileIds(resolvedMappings);
     setProjectDirty(false);
+    setUnsavedDraftReason(undefined);
     dismissError();
   }
 
@@ -478,6 +493,7 @@ export function useProjectWorkspace(input: {
       // edits arriving after the first deadline would each queue another save.
       autoSaveWindowStartedAtRef.current = Date.now();
       const project = currentProjectDocument();
+      const unsavedReason = getUnsavedDraftReason();
 
       void writeProjectWorkspace(workspace, project)
         .then(() => {
@@ -493,6 +509,7 @@ export function useProjectWorkspace(input: {
           }
           setProjectFile(project);
           setProjectDirty(false);
+          setUnsavedDraftReason(unsavedReason);
           if (projectErrorKindRef.current === "auto-save") {
             setProjectError(undefined);
             updateProjectErrorKind(undefined);
@@ -541,7 +558,7 @@ export function useProjectWorkspace(input: {
     nextProjectName: string,
     replacement: QueuedProjectReplacement,
   ): void {
-    if (!projectFile || !projectDirty) {
+    if (!projectFile || (!projectDirty && !getUnsavedDraftReason())) {
       void performProjectReplacement(replacement);
       return;
     }
@@ -549,7 +566,7 @@ export function useProjectWorkspace(input: {
     setPendingProjectReplacement({
       currentProjectName: projectFile.name,
       nextProjectName,
-      saveNeedsLocation: folderAccessAvailable && !projectWorkspace,
+      saveNeedsLocation: folderAccessAvailable && !projectWorkspace && !getUnsavedDraftReason(),
       saving: false,
     });
   }
@@ -576,12 +593,13 @@ export function useProjectWorkspace(input: {
   ): Promise<void> {
     const replacement = queuedProjectReplacementRef.current;
     if (!replacement || !projectFile) return;
-    if (folderAccessAvailable && !projectWorkspace && !options) return;
+    if (folderAccessAvailable && !projectWorkspace && !options && !getUnsavedDraftReason()) return;
 
     setPendingProjectReplacement((current) =>
       current ? { ...current, saving: true, error: undefined } : current,
     );
     try {
+      requireSavableDraft();
       const project = currentProjectDocument();
       if (projectWorkspace) {
         const workspace = projectWorkspace;
@@ -600,6 +618,7 @@ export function useProjectWorkspace(input: {
         autoSaveRetryNotBeforeRef.current = 0;
         setProjectFile(project);
         setProjectDirty(false);
+        setUnsavedDraftReason(undefined);
         setProjectError(undefined);
         updateProjectErrorKind(undefined);
         onSaved?.({ name: project.name, destination: "folder" });
@@ -623,6 +642,7 @@ export function useProjectWorkspace(input: {
         downloadProjectFile(project);
         setProjectFile(project);
         setProjectDirty(false);
+        setUnsavedDraftReason(undefined);
         setProjectError(undefined);
         updateProjectErrorKind(undefined);
         onSaved?.({ name: project.name, destination: "download" });
@@ -649,6 +669,10 @@ export function useProjectWorkspace(input: {
   }
 
   async function newProjectFolder(options: ProjectCreationOptions): Promise<void> {
+    if (!projectFile) {
+      try { requireSavableDraft(); }
+      catch (error) { projectFailure(error, "Could not create the project folder."); return; }
+    }
     const project = namedProject(
       projectFile ? createFreshProject() : currentProjectDocument(),
       options,
@@ -689,6 +713,7 @@ export function useProjectWorkspace(input: {
 
   async function saveProject(options?: ProjectCreationOptions): Promise<void> {
     try {
+      requireSavableDraft();
       const project = currentProjectDocument();
       if (projectWorkspace) {
         const workspace = projectWorkspace;
@@ -703,6 +728,7 @@ export function useProjectWorkspace(input: {
           autoSaveRetryNotBeforeRef.current = 0;
           setProjectFile(project);
           setProjectDirty(false);
+          setUnsavedDraftReason(undefined);
           setProjectError(undefined);
           updateProjectErrorKind(undefined);
           onSaved?.({ name: project.name, destination: "folder" });
@@ -728,6 +754,7 @@ export function useProjectWorkspace(input: {
       downloadProjectFile(project);
       setProjectFile(project);
       setProjectDirty(false);
+      setUnsavedDraftReason(undefined);
       setProjectError(undefined);
       onSaved?.({ name: project.name, destination: "download" });
     } catch (error) {
@@ -737,6 +764,7 @@ export function useProjectWorkspace(input: {
 
   function exportProject(): void {
     try {
+      requireSavableDraft();
       downloadProjectFile(currentProjectDocument());
       setProjectError(undefined);
     } catch (error) {
@@ -765,7 +793,7 @@ export function useProjectWorkspace(input: {
   return {
     projectFile,
     projectWorkspace,
-    projectDirty,
+    projectDirty: hasUnsavedChanges,
     projectStorageState: projectFile
       ? !projectWorkspace
         ? { kind: "session" }
@@ -773,7 +801,9 @@ export function useProjectWorkspace(input: {
           ? { kind: "error", displayPath: projectWorkspace.displayPath }
           : projectDirty
             ? { kind: "saving", displayPath: projectWorkspace.displayPath }
-            : { kind: "saved", displayPath: projectWorkspace.displayPath }
+            : unsavedDraftReason
+              ? { kind: "unsaved", displayPath: projectWorkspace.displayPath, reason: unsavedDraftReason }
+              : { kind: "saved", displayPath: projectWorkspace.displayPath }
       : undefined,
     projectError,
     projectErrorKind,

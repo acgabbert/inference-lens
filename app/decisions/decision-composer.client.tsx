@@ -244,18 +244,14 @@ function DecisionVariables({ handle, disabled }: { handle: DecisionDraftHandle; 
 }
 
 /**
- * An overview for people new to decision models, open at first while the
- * draft is untouched. Its open state is local: an edit never collapses it.
+ * Detailed guidance is available without pushing the state editor out of
+ * the initial view. An edit never changes the disclosure's open state.
  */
-function DecisionGuide({ initiallyOpen }: { initiallyOpen: boolean }) {
-  const [open, setOpen] = useState(initiallyOpen);
+function DecisionGuide() {
+  const [open, setOpen] = useState(false);
   return (
     <details className="decision-guide" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary>How decision requests work</summary>
-      <p>
-        A decision model answers questions about some input with probabilities instead of writing a reply.
-        Think of it as a classifier you set up in words.
-      </p>
       <dl>
         <dt>State</dt>
         <dd>What the model judges, such as a ticket, a message, or a document. Like the user message in chat. Use JSON for structured input.</dd>
@@ -376,8 +372,11 @@ export function DecisionComposer({ draft: handle, target, blockers, locked, unsa
       )}
       <div className="pane-scroll request-content decision-content">
         <div className="decision-help">
-          <DecisionGuide initiallyOpen={!handle.touched} />
+          <p className="decision-introduction">
+            A decision model answers questions about your input with probabilities. Think of it as a classifier you set up in words.
+          </p>
           <DecisionExampleControl disabled={locked} handle={handle} />
+          <DecisionGuide />
         </div>
         <fieldset className="decision-target" disabled={locked}>
           <legend>Target</legend>
@@ -475,4 +474,3 @@ export function DecisionComposer({ draft: handle, target, blockers, locked, unsa
     </section>
   );
 }
-
