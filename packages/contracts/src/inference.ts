@@ -22,7 +22,15 @@ export const DECISIONS_API_PATH = "/api/decisions";
  * input for the local workbench and must never be persisted.
  */
 export type CredentialSelection =
-  | { kind: "environment-default" }
+  | {
+      kind: "environment-default";
+      /**
+       * Which server-held connection's key. Absent means `default`, the one
+       * the `INFERENCE_LENS_API_*` variables describe, so every request made
+       * before there could be several stays valid.
+       */
+      connectionId?: string;
+    }
   /** No credential is sent. Intended for local, explicitly unauthenticated endpoints. */
   | { kind: "none" }
   | { kind: "provided"; apiKey: string }
