@@ -2,6 +2,8 @@ import { fileURLToPath } from "node:url";
 
 import { defineConfig, devices } from "@playwright/test";
 
+import { CHROMIUM_OVERRIDE_ENV } from "./scripts/e2e-chromium.mjs";
+
 const appPort = 4300;
 const bufferedFixturePort = 44014;
 const flakyFixturePort = 44015;
@@ -47,6 +49,14 @@ const themeSensitiveSpecs = [
   "pr2-workbench.spec.ts",
 ];
 
+/**
+ * A Chromium other than Playwright's pinned build, when one was named or
+ * `scripts/run-e2e.mjs` fell back to one (see `scripts/e2e-chromium.mjs`).
+ * Every project, including the opt-in configs built on this one, launches it.
+ */
+const chromiumOverride = process.env[CHROMIUM_OVERRIDE_ENV];
+const launchOptions = chromiumOverride ? { executablePath: chromiumOverride } : {};
+
 export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: true,
@@ -64,12 +74,12 @@ export default defineConfig({
   projects: [
     {
       name: "chromium-light",
-      use: { ...devices["Desktop Chrome"], colorScheme: "light" },
+      use: { ...devices["Desktop Chrome"], colorScheme: "light", launchOptions },
     },
     {
       name: "chromium-dark",
       testMatch: themeSensitiveSpecs,
-      use: { ...devices["Desktop Chrome"], colorScheme: "dark" },
+      use: { ...devices["Desktop Chrome"], colorScheme: "dark", launchOptions },
     },
   ],
   webServer: [
