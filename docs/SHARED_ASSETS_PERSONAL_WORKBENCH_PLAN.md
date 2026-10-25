@@ -220,14 +220,19 @@ versioned schema transition; this agreement does not change Project v14 in place
    personal content, including migration backups containing legacy personal
    content. Do not rely on or regenerate the bundle's creation-only Git policy:
    unmanaged and older bundles may have no rule excluding the directory.
-   Verify protection using a real Git repository. The store is inspectable and
-   works with existing folder access; copying the folder also copies its personal
+   Verify protection using a real Git repository, including a bundle with no
+   bundle-level `.gitignore`. The store works with existing folder access and can
+   be inspected directly, although as a dot-directory it is hidden by default in
+   Finder and many file pickers. Copying the folder also copies its personal
    state. Gitignore is not access control and cannot prevent force-adding files.
 3. **Workbench identity.** Use one personal workbench per checkout initially.
    The folder defines the workbench; `projectId` validates its association rather
    than acting as a device-wide lookup key. Independent clones/worktrees do not
    share drafts. Moves retain the store, and full folder copies carry its personal
-   state with them. Define mismatch handling when the project identity changes.
+   state with them. A copy is indistinguishable from a move by design: it has
+   the same `projectId` and `.workbench/` contents, and browser folder access
+   exposes no stable path or inode to compare. Do not attempt copy detection.
+   Define mismatch handling when the project identity changes.
    One checkout used by several people is not user isolation; independent users
    should have independent checkouts. Multiple named workbenches can be a later
    extension if required.
@@ -245,13 +250,18 @@ versioned schema transition; this agreement does not change Project v14 in place
    draft; it does not continuously modify the shared definition. A draft records
    its asset, base revision, and edited content.
 7. **Concurrent writers.** Detect concurrent workbench writes and refuse silent
-   overwrites, including across browser/native hosts and app windows. Full live
-   coordination is deferred; the detection and recovery protocol remains to be
-   designed.
+   overwrites, including across browser/native hosts and app windows. Extend the
+   existing external-manifest-change detection used by browser and native saves to
+   workbench records rather than introducing a separate mechanism. Full live
+   coordination is deferred; the recovery path after a detected conflict remains
+   to be designed.
 8. **Migration and exports.** Preserve existing saved content as shared assets;
    move only explicit drafts into personal storage and copy old selections into
-   personal state. Shared definitions are the default export; personal backup is
-   a separate explicit operation. Preserve untouched migration sources and keep
+   personal state. Because selections are copied rather than moved, the legacy
+   values left in the shared document become authored launch defaults; the
+   migration examples must show this, and the preview should state whether it
+   offers to demote them. Shared definitions are the default export; personal
+   backup is a separate explicit operation. Preserve untouched migration sources and keep
    failed or interrupted writes recoverable.
 
 ### Next design deliverable: slice 2a
@@ -262,11 +272,25 @@ Include saved values, defaults, branches, temporary fixtures, import receipts,
 revision pins, and evidence references. Apply the approved choices above without
 guessing whether legacy saved content was intended to be personal.
 
-Review the inventory and examples before implementing persistence. Settle exact
-types and owner interfaces, schema versions and codecs, workbench record layout,
-project-identity mismatch handling, concurrent-write detection, migration write
-ordering and restart recovery, and old-reader/writer and JSON compatibility.
-The approved direction does not yet specify those contracts.
+Review the inventory and examples before implementing persistence. The approved
+direction does not yet specify these contracts; settle each during the review:
+
+- [ ] Exact types and owner interfaces for shared definitions and workbench state
+- [ ] Schema versions and codecs for the shared document and workbench store
+- [ ] Workbench record layout under `.workbench/`
+- [ ] Project-identity mismatch handling
+- [ ] Concurrent-write detection on workbench records and the conflict recovery path
+- [ ] Draft publication ordering: write the shared revision first, clear the draft
+  only after that write is confirmed, and recognize a published-but-not-cleared
+  draft on restart. This applies to every revision save, not only migration.
+- [ ] Migration write ordering and restart recovery
+- [ ] Personal backup representation and restore behavior
+- [ ] Old-reader/writer, existing JSON, and CLI compatibility
+
+When implementation starts, move the Level 1 Git staging fixture in
+[the workspace tests](../tests/project-workspace.test.ts) from
+`workbench/recovery.json` to `.workbench/`, and add a bundle without a
+bundle-level `.gitignore` to prove the self-ignore alone protects it.
 
 ### Proposed workflows
 
@@ -331,8 +355,8 @@ status; automatic local persistence must not imply an access-control guarantee.
 - The workbench's own ignore file protects personal content under private,
   definitions, unmanaged, and older unprotected bundle policies before the first
   recovery write. Concurrent writers cannot silently replace each other's state.
-- Folder moves retain recovery; independent clones stay separate; copied personal
-  state and project-identity mismatches have explicit behavior. No-folder sessions
+- Folder moves and full copies retain recovery; independent clones stay separate;
+  project-identity mismatches have explicit behavior. No-folder sessions
   clearly report session-only recovery until a folder is chosen.
 - Persisted asset pins and historical evidence retain their meaning through
   migration. A fresh clone and the CLI need no other person's local state.
@@ -534,10 +558,7 @@ review covers slice 2a; Level 3 decisions remain deferred.
 1. Approve the field-by-field classification and migration examples for prompts,
    chat requests, decision requests, and evaluation suites, preserving legacy
    saved content while separating explicit drafts and personal selections.
-2. Specify Level 2 types, owner interfaces, versioned formats, workbench records,
-   project-identity mismatch handling, concurrent-write detection, restartable
-   migration and recovery, exact export/backup representations and restore
-   behavior, and old-reader/writer and CLI compatibility.
+2. Settle the Level 2 contracts in the slice 2a checklist above.
 3. Choose Level 3 asset file granularity and discovery rules, reference/provenance closure,
    and how team sharing policy and personal asset exclusions interact.
 4. Approve Level 3 format transitions and recovery for interrupted multi-file
