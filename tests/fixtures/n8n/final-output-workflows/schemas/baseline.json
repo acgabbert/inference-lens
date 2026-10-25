@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "properties": {
+    "answer": {
+      "type": "string"
+    },
+    "count": {
+      "type": "integer"
+    },
+    "note": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "answer",
+    "count"
+  ],
+  "additionalProperties": false
+}
