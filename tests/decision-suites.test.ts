@@ -1,3 +1,4 @@
+import { inlineRevision, legacyContent } from "./project-kind-helpers.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -83,11 +84,11 @@ function preflight(project: ProjectFile) {
   return evaluationSuitePreflight(project, suite.id, project.defaults.conversationRevisionId);
 }
 
-test("project schema is v14, and a v13 document opens unchanged", () => {
-  assert.equal(PROJECT_SCHEMA_VERSION, 14);
-  const v13 = { ...withRequest(), schemaVersion: 13 };
+test("project schema is v15, and a v13 document opens unchanged", () => {
+  assert.equal(PROJECT_SCHEMA_VERSION, 15);
+  const v13 = { ...legacyContent(withRequest()), schemaVersion: 13 };
   const opened = parseProjectFile(v13);
-  assert.equal(opened.schemaVersion, 14);
+  assert.equal(opened.schemaVersion, 15);
   assert.deepEqual(opened.decisionRequestRevisions, withRequest().decisionRequestRevisions);
 });
 
@@ -213,7 +214,7 @@ test("a case value overrides the revision's value, and a variable left without o
   assert.deepEqual(preflight(withSuite()), []);
 
   const project = withRequest();
-  const revision = project.decisionRequestRevisions[0]!;
+  const revision = inlineRevision(project.decisionRequestRevisions[0]!);
   const withoutPlan: ProjectFile = {
     ...project,
     decisionRequestRevisions: [{ ...revision, values: { ticket: "Charged twice" } }],
@@ -225,7 +226,7 @@ test("a case value overrides the revision's value, and a variable left without o
 
 test("preflight names a malformed token in the pinned revision with the same guidance Compose gives", () => {
   const project = withRequest();
-  const revision = project.decisionRequestRevisions[0]!;
+  const revision = inlineRevision(project.decisionRequestRevisions[0]!);
   const malformed: ProjectFile = {
     ...project,
     decisionRequestRevisions: [{ ...revision, decision: { ...decision, state: "Ticket: {{ticket}} {{ not valid }}" }, values: { ticket: "Charged twice" } }],
@@ -235,13 +236,13 @@ test("preflight names a malformed token in the pinned revision with the same gui
   assert.match(diagnostics[0]!.message, /^The pinned decision request cannot be rendered: .+ Write \\\{\{ for literal braces\.$/);
 });
 
-test("preflight reports a binding the pinned revision does not use, an empty case value, and a case without checks", () => {
+test("preflight reports a binding the pinned revision does not use, a missing case value, and a case without checks", () => {
   const diagnostics = preflight(withSuite({
     inputBindings: [
       { id: "evaluation-input_ticket", name: "ticket", target: { kind: "decision-variable", variableName: "ticket" } },
       { id: "evaluation-input_region", name: "region", target: { kind: "decision-variable", variableName: "region" } },
     ],
-    cases: [{ id: "evaluation-case_refund", name: "Refund", values: { "evaluation-input_ticket": " ", "evaluation-input_region": "eu" }, checks: [] }],
+    cases: [{ id: "evaluation-case_refund", name: "Refund", values: { "evaluation-input_region": "eu" }, checks: [] }],
   }));
   assert.deepEqual(diagnostics.map(({ code }) => code), ["no-checks", "empty-case-value", "missing-decision-variable"]);
 });

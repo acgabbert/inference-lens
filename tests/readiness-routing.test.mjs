@@ -223,7 +223,7 @@ test("the request owner focuses the named unresolved template variable", async (
   props.project = {
     projectId: "project_1",
     promptTemplates: [{
-      id: "template_1", name: "Topic prompt", currentRevisionId: "template-revision_1",
+      kind: "chat", id: "template_1", name: "Topic prompt", currentRevisionId: "template-revision_1",
       revisions: [{
         id: "template-revision_1", messages: [{ role: "user", content: "Tell me about {{topic}}." }],
         variableDefaults: {},

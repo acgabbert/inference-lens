@@ -28,7 +28,7 @@ Object.defineProperty(globalThis, "navigator", {
 after(() => dom.window.close());
 
 const template = {
-  id: "template_question",
+  kind: "chat", id: "template_question",
   name: "Question",
   currentRevisionId: "template-revision_question-1",
   revisions: [
@@ -42,7 +42,7 @@ const template = {
 };
 
 const templateTwo = {
-  id: "template_summary",
+  kind: "chat", id: "template_summary",
   name: "Summary",
   currentRevisionId: "template-revision_summary-1",
   revisions: [

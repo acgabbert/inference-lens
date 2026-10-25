@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   archivePromptTemplate,
+  isChatPromptTemplate,
   appendPromptTemplateRevision,
   createPromptTemplate,
   detachPromptTemplateUse,
@@ -21,7 +22,7 @@ import {
 import type {
   ProjectConversationItem,
   ProjectFile,
-  PromptTemplate,
+  ChatPromptTemplate,
   PromptTemplateMessages,
   PromptTemplateRecommendedTarget,
   TemplateRunOverrides,
@@ -99,7 +100,7 @@ export interface UseProjectTemplatesInput {
 }
 
 export interface ProjectTemplatesHandle {
-  libraryTemplates: PromptTemplate[];
+  libraryTemplates: ChatPromptTemplate[];
   sessionTemplateIds: ReadonlySet<PromptTemplateId>;
   templateWorkbench: ReturnType<typeof projectTemplateWorkbenchView>;
   activeProjectRevision?: ProjectFile["conversationRevisions"][number];
@@ -137,7 +138,7 @@ export interface ProjectTemplatesHandle {
 
 export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTemplatesHandle {
   const [templateRunOverrides, setTemplateRunOverrides] = useState<TemplateRunOverrides>({});
-  const [sessionTemplates, setSessionTemplates] = useState<PromptTemplate[]>([]);
+  const [sessionTemplates, setSessionTemplates] = useState<ChatPromptTemplate[]>([]);
   const executedRevisionIdsRef = useRef(new Set<ConversationRevisionId>());
   useEffect(() => {
     if (input.projectFile && !input.projectDirty) {
@@ -163,7 +164,7 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
   });
   const sessionTemplateIds = new Set(sessionTemplates.map(({ id }) => id));
   const libraryTemplates = [
-    ...(input.projectFile?.promptTemplates ?? []),
+    ...(input.projectFile?.promptTemplates.filter(isChatPromptTemplate) ?? []),
     ...sessionTemplates.filter(
       ({ id }) => !input.projectFile?.promptTemplates.some((template) => template.id === id),
     ),
@@ -191,6 +192,7 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
         ...current,
         {
           id,
+          kind: "chat",
           name,
           currentRevisionId: revisionId,
           revisions: [{
@@ -287,7 +289,7 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
       project = {
         ...project,
         promptTemplates: project.promptTemplates.map((template) =>
-          template.id === templateId
+          template.id === templateId && template.kind === "chat"
             ? {
                 ...template,
                 revisions: template.revisions.map((revision) =>
@@ -474,6 +476,7 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     const item = currentRevision.items.find((candidate) => candidate.kind === "template-use" && candidate.use.id === templateUseId);
     if (!item || item.kind !== "template-use") return;
     const template = currentProject.promptTemplates.find(({ id }) => id === item.use.templateId)!;
+    if (template.kind !== "chat") return;
     const pinned = template.revisions.find(({ id }) => id === item.use.templateRevisionId)!; const latest = template.revisions.find(({ id }) => id === template.currentRevisionId)!;
     const vars = (messages: PromptTemplateMessages) => discoverTemplateVariables(messages).variables.map(({ name }) => name).join(", ") || "none";
     const describe = (messages: PromptTemplateMessages) => messages.map(({ role, content: text }) => `${role}: ${text}`).join("\n");

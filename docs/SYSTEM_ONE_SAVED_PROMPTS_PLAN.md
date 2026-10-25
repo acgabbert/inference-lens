@@ -1,8 +1,8 @@
 # System One requests in Saved Prompts
 
-Status: recommendations accepted by the user on 2026-10-25; PR slice 1
-(contracts and compatibility preparation) implemented and verified. Slices 2–4
-remain. Schema v15 and user-facing saved decision templates have not shipped.
+Status: recommendations accepted by the user on 2026-10-25; PR slices 1–2
+(contracts, compatibility preparation, schema v15 and core lifecycle) implemented.
+Slices 3–4 remain; user-facing decision template authoring has not shipped.
 
 ## Outcome
 
@@ -175,7 +175,7 @@ archive state, external import receipts, and evaluation references.
 
 Refactor the migration chain deliberately: slice 1 changes the v13 migration
 from assigning the current schema version to literal v14 and guards its
-dispatch. Slice 2 must still add an explicit v14-to-v15 transformation;
+dispatch. Slice 2 adds an explicit v14-to-v15 transformation;
 incrementing the version constant alone is insufficient. Test every supported
 starting version through the full chain. This plan owns v15; Shared Assets
 Level 2 takes the following version (see
@@ -375,3 +375,49 @@ already gives. No hosted-provider or native-desktop checks were run; the saved
 decision template UI and its acceptance spec belong to subsequent slices, and
 new library and pinned-use presentation will need the user's visual review
 when slice 3 exists.
+
+
+## Slice 2 implementation and verification
+
+The project parser now reads/writes v15, with explicit migration from v14.
+`PromptTemplate` and `ProjectDecisionRequestRevision` are discriminated unions;
+strict parsing and reference checks reject mixed or cross-kind content. The
+shared resolver supplies cloned authored input and defaults plus overrides to
+Compose adoption, suite preflight, check editors and experiment snapshots.
+
+`decision-template.ts` owns pure create/draft/append commands. `decision-request.ts`
+owns use-revision, override edits, explicit retargeting and detach. Shared
+metadata/archive actions remain in `project.ts`, and usage discovery includes
+decision request revisions and their suites. Ordered decision revision diffs
+live in `decision-template-revision-diff.ts`. Chat-only surfaces narrow before
+reading content, and the n8n importer explicitly creates chat entries.
+
+Decision suite preflight now distinguishes an absent case value from a supplied
+empty string, matching the accepted assignment contract. Chat case preflight
+and legacy chat default validation retain their existing behavior.
+
+Preimplementation red runs demonstrated v15 rejection, v14 migration returning
+14 instead of 15, usage discovery returning zero instead of two, and a supplied
+empty case value incorrectly producing `empty-case-value`. The new lifecycle
+entry points had no existing callable API, so their tests were not demonstrated
+red before implementation. The browser fixture needed an explicit connection
+mapping and the existing `Start 1 calls` label; those setup/selector failures
+are not behavioral regression evidence.
+
+Verified on October 25, 2026 with `npm run typecheck`,
+`npm run typecheck:core`, `npm run build`, and `npm run lint` (zero errors,
+four existing warnings). `npm run test:core` passed all 1,471 tests, including
+the template-backed CLI/provider test. The six affected template, evaluation
+suite and n8n component specs passed all 53 tests. Scoped Playwright covered
+`system-one-decision-requests.spec.ts`, `system-one-decision-suites.spec.ts`,
+`prompt-authoring-workspace.spec.ts`, and `prompt-insertion-handoff.spec.ts`;
+`npm run test:e2e` finished with 341 passed and 7 opt-in Python MCP/N1 skips.
+The pull request records the exact component command and scoped-run corrections.
+
+Browser
+coverage exercises an imported template-backed suite, pinned question/check
+options, empty case precedence through saved provider request evidence, and
+mixed-library safety. It does not cover the future library editor, capture,
+update/detach controls, or navigation/draft retention workflows; those belong
+to slice 3. Hosted-provider and native-desktop behavior remain unchecked, and
+visual review of the new authoring controls is still due when they exist.

@@ -1,9 +1,10 @@
+import { inlineRevision } from "./project-kind-helpers.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { DecisionInput } from "../packages/core/src/decision.ts";
 import {
-  activeDecisionRequestRevision,
+  activeDecisionRequestRevision as activeRevision,
   prepareDecisionRequestRun,
   resolveDecisionRequest,
   resolveProjectDecisionRequestRevision,
@@ -20,6 +21,11 @@ import {
 } from "../packages/core/src/project.ts";
 import type { ProjectFile } from "../packages/core/src/project.ts";
 import { resolveProviderCapabilities } from "../packages/core/src/types.ts";
+
+function activeDecisionRequestRevision(project: ProjectFile) {
+  const revision = activeRevision(project);
+  return revision ? inlineRevision(revision) : undefined;
+}
 
 const request = {
   provider: "openai-compatible" as const,
@@ -96,7 +102,7 @@ test("an unfrozen revision is edited in place; a frozen one branches", () => {
   const child = activeDecisionRequestRevision(branched)!;
   assert.equal(child.parentRevisionId, "decision-revision_one");
   assert.equal(child.decisionRequestId, "decision-request_one");
-  assert.equal(branched.decisionRequestRevisions[0]!.decision.state, "Ticket: {{ticket}}");
+  assert.equal(inlineRevision(branched.decisionRequestRevisions[0]!).decision.state, "Ticket: {{ticket}}");
 });
 
 test("a revision a suite pins is never edited in place, so the suite keeps what it pinned", () => {
@@ -109,7 +115,7 @@ test("a revision a suite pins is never edited in place, so the suite keeps what 
   // The editor has not frozen the revision; the suite's pin is what forbids the in-place edit.
   const edited = updateDecisionRequestDraft(pinned, { decision: changed, values: {}, branch: false, idSuffix: "two", createdAt: at.createdAt });
   assert.equal(edited.decisionRequestRevisions.length, 2);
-  assert.equal(edited.decisionRequestRevisions[0]!.decision.state, "Ticket: {{ticket}}");
+  assert.equal(inlineRevision(edited.decisionRequestRevisions[0]!).decision.state, "Ticket: {{ticket}}");
   assert.equal(activeDecisionRequestRevision(edited)?.id, "decision-revision_two");
   assert.equal(activeDecisionRequestRevision(edited)?.decision.state, "Ticket {{ticket}} again");
 });
@@ -208,7 +214,7 @@ test("project resolution never falls back to the active revision for a missing p
 
 test("the parser refuses dangling references, stray values, and secret-like values", () => {
   const valid = updateDecisionRequestDraft(project(), { decision: ordered, values: { ticket: "#4" }, branch: false, ...at });
-  const revision = valid.decisionRequestRevisions[0]!;
+  const revision = inlineRevision(valid.decisionRequestRevisions[0]!);
   const cases: Array<[string, unknown]> = [
     ["missing request", { ...valid, decisionRequests: [] }],
     ["missing default", { ...valid, defaults: { ...valid.defaults, decisionRequestRevisionId: "decision-revision_nope" } }],

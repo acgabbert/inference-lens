@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import type { PromptTemplate } from "../../packages/core/src/project";
+import { isChatPromptTemplate, type PromptTemplate } from "../../packages/core/src/project";
 import type {
   PromptTemplateId,
   PromptTemplateRevisionId,
@@ -11,7 +11,7 @@ import { discoverTemplateVariables } from "../../packages/core/src/template-engi
 import { promptRevisionLabel } from "./prompt-revision-label";
 
 export function PromptInsertionDialog({
-  templates,
+  templates: allTemplates,
   itemCount,
   replaceEmptyDraft,
   onCancel,
@@ -30,6 +30,7 @@ export function PromptInsertionDialog({
   replaceEmptyDraft: boolean;
   onOpenPrompts(): void;
 }) {
+  const templates = useMemo(() => allTemplates.filter(isChatPromptTemplate), [allTemplates]);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<PromptTemplateId | undefined>(
     templates[0]?.id,

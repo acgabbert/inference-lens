@@ -6,6 +6,7 @@ import type {
   ConnectionRequirement,
   ExternalImportReceipt,
   ProjectTemplateDiagnostic,
+  ChatPromptTemplate,
   PromptTemplate,
   PromptTemplateMessages,
   PromptTemplateRecommendedTarget,
@@ -111,12 +112,12 @@ function newPrompt(): PromptTemplateMessages {
   return [{ role: "user", content: "Write about {{topic}}." }];
 }
 
-function currentRevision(template: PromptTemplate) {
+function currentRevision(template: ChatPromptTemplate) {
   return template.revisions.find(({ id }) => id === template.currentRevisionId)!;
 }
 
 export function ProjectTemplatesPane({
-  templates,
+  templates: allTemplates,
   connectionRequirements = [],
   defaultConnectionRequirementId,
   usageCounts,
@@ -146,6 +147,7 @@ export function ProjectTemplatesPane({
   returnLabel,
   onReturn,
 }: ProjectTemplatesPaneProps) {
+  const templates = allTemplates.filter((template): template is ChatPromptTemplate => template.kind === "chat");
   const activeTemplates = templates.filter(({ archivedAt }) => !archivedAt);
   const archivedTemplates = templates.filter(({ archivedAt }) => archivedAt);
   const targetedTemplate = navigationTarget
@@ -378,7 +380,7 @@ export function ProjectTemplatesPane({
     initialFocusSelector: ".template-content-editor textarea:not([disabled])",
   });
 
-  function selectTemplate(template: PromptTemplate): void {
+  function selectTemplate(template: ChatPromptTemplate): void {
     const revision = currentRevision(template);
     setSelectedId(template.id);
     const draft = template.draft;
@@ -1222,7 +1224,7 @@ function TemplateMessagesEditor({
 
 interface TemplateUseCardProps {
   use: PromptTemplateUse;
-  template: PromptTemplate;
+  template: ChatPromptTemplate;
   diagnostics: ProjectTemplateDiagnostic[];
   runOverrides: Readonly<Record<string, string>>;
   importedFrom?: ExternalImportReceipt;

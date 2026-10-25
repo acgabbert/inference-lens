@@ -111,9 +111,9 @@ export function projectGitignoreContents(policy: ProjectGitPolicy): string | nul
   }
 }
 
-export const PROJECT_SCHEMA_VERSION = 14;
-/** Older versions this build still opens; see `migrateV10Project`, `migrateV11Project`, and `migrateV12Project`. */
-const OPENABLE_PROJECT_SCHEMA_VERSIONS: readonly number[] = [10, 11, 12, 13];
+export const PROJECT_SCHEMA_VERSION = 15;
+/** Older versions this build opens through the explicit one-version migration chain. */
+const OPENABLE_PROJECT_SCHEMA_VERSIONS: readonly number[] = [10, 11, 12, 13, 14];
 
 /**
  * Turns the portable project display name into one safe, visible directory
@@ -206,28 +206,25 @@ export interface PromptTemplateRecommendedTarget {
   model: string;
 }
 
-export interface PromptTemplateRevision {
+interface PromptTemplateRevisionMetadata {
   id: PromptTemplateRevisionId;
   createdAt: string;
   /** An optional author-supplied checkpoint label. */
   name?: string;
-  messages: PromptTemplateMessages;
   variableDefaults: Record<string, string>;
-  externalImportId?: ExternalImportId;
 }
 
 /**
  * Mutable prompt authoring state. Revisions remain immutable pins; this draft
  * is the portable working copy that project auto-save may update continuously.
  */
-export interface PromptTemplateDraft {
+interface PromptTemplateDraftMetadata {
   sourceRevisionId: PromptTemplateRevisionId;
   revisionName?: string;
-  messages: PromptTemplateMessages;
   variableDefaults: Record<string, string>;
 }
 
-export interface PromptTemplate {
+interface PromptTemplateMetadata {
   id: PromptTemplateId;
   name: string;
   currentRevisionId: PromptTemplateRevisionId;
@@ -238,8 +235,37 @@ export interface PromptTemplate {
    */
   archivedAt?: string;
   recommendedTarget?: PromptTemplateRecommendedTarget;
-  draft?: PromptTemplateDraft;
-  revisions: PromptTemplateRevision[];
+}
+
+export interface ChatPromptTemplateRevision extends PromptTemplateRevisionMetadata {
+  messages: PromptTemplateMessages;
+  externalImportId?: ExternalImportId;
+}
+export interface DecisionPromptTemplateRevision extends PromptTemplateRevisionMetadata {
+  decision: DecisionInput;
+}
+export interface ChatPromptTemplateDraft extends PromptTemplateDraftMetadata {
+  messages: PromptTemplateMessages;
+}
+export interface DecisionPromptTemplateDraft extends PromptTemplateDraftMetadata {
+  decision: DecisionInput;
+}
+export interface ChatPromptTemplate extends PromptTemplateMetadata {
+  kind: "chat";
+  revisions: ChatPromptTemplateRevision[];
+  draft?: ChatPromptTemplateDraft;
+}
+export interface DecisionPromptTemplate extends PromptTemplateMetadata {
+  kind: "decision";
+  revisions: DecisionPromptTemplateRevision[];
+  draft?: DecisionPromptTemplateDraft;
+}
+export type PromptTemplate = ChatPromptTemplate | DecisionPromptTemplate;
+export type PromptTemplateRevision = ChatPromptTemplateRevision | DecisionPromptTemplateRevision;
+export type PromptTemplateDraft = ChatPromptTemplateDraft | DecisionPromptTemplateDraft;
+
+export function isChatPromptTemplate(template: PromptTemplate): template is ChatPromptTemplate {
+  return template.kind === "chat";
 }
 
 export interface PromptTemplateUse {
@@ -303,14 +329,17 @@ export interface ProjectDecisionRequest {
  * supplied assignments for variables the input uses (D40); absent assignments
  * remain unresolved, while explicit empty strings are values.
  */
-export interface ProjectDecisionRequestRevision {
+interface DecisionRequestRevisionMetadata {
   id: DecisionRequestRevisionId;
   decisionRequestId: DecisionRequestId;
   parentRevisionId?: DecisionRequestRevisionId;
-  decision: DecisionInput;
-  values: Record<string, string>;
   createdAt: string;
 }
+
+export type ProjectDecisionRequestRevision = DecisionRequestRevisionMetadata & (
+  | { kind: "inline"; decision: DecisionInput; values: Record<string, string> }
+  | { kind: "template-use"; templateId: PromptTemplateId; templateRevisionId: PromptTemplateRevisionId; overrides: Record<string, string> }
+);
 
 /**
  * Minimal durable provenance for imported literal messages. The selected
@@ -369,8 +398,8 @@ interface ProjectReferenceValidationShape {
   defaults: ProjectDefaults;
 }
 
-export interface ProjectFileV14 {
-  schemaVersion: 14;
+export interface ProjectFileV15 {
+  schemaVersion: 15;
   projectId: ProjectId;
   name: string;
   connectionRequirements: ConnectionRequirement[];
@@ -386,7 +415,7 @@ export interface ProjectFileV14 {
   defaults: ProjectDefaults;
 }
 
-export type ProjectFile = ProjectFileV14;
+export type ProjectFile = ProjectFileV15;
 
 const entityId = <Kind extends Parameters<typeof createEntityId>[0]>(
   kind: Kind,
@@ -584,7 +613,7 @@ const promptTemplateRecommendedTargetSchema: z.ZodType<PromptTemplateRecommended
     })
     .strict();
 
-const promptTemplateRevisionSchema: z.ZodType<PromptTemplateRevision> = z
+const promptTemplateRevisionSchema: z.ZodType<ChatPromptTemplateRevision> = z
   .object({
     id: entityId("template-revision"),
     createdAt: z.iso.datetime({ offset: true }),
@@ -607,7 +636,7 @@ const promptTemplateRevisionSchema: z.ZodType<PromptTemplateRevision> = z
   })
   .strict();
 
-const promptTemplateDraftSchema: z.ZodType<PromptTemplateDraft> = z
+const promptTemplateDraftSchema: z.ZodType<ChatPromptTemplateDraft> = z
   .object({
     sourceRevisionId: entityId("template-revision"),
     revisionName: z.string().optional(),
@@ -628,17 +657,29 @@ const promptTemplateDraftSchema: z.ZodType<PromptTemplateDraft> = z
   })
   .strict();
 
-const promptTemplateSchema: z.ZodType<PromptTemplate> = z
-  .object({
-    id: entityId("template"),
-    name: z.string().trim().min(1),
-    currentRevisionId: entityId("template-revision"),
-    archivedAt: z.iso.datetime({ offset: true }).optional(),
-    recommendedTarget: promptTemplateRecommendedTargetSchema.optional(),
-    draft: promptTemplateDraftSchema.optional(),
-    revisions: z.array(promptTemplateRevisionSchema).min(1),
-  })
-  .strict();
+// Custom validation retains authored question and criteria ordering.
+const decisionInputSchema = z.custom<DecisionInput>(isDecisionInput,
+  "Expected a decision request: a state and at least one question.");
+const decisionPromptTemplateRevisionSchema = z.object({
+  id: entityId("template-revision"), createdAt: z.iso.datetime({ offset: true }),
+  name: z.string().trim().min(1).optional(), decision: decisionInputSchema,
+  variableDefaults: z.record(z.string().regex(variableName), z.string()),
+}).strict();
+const decisionPromptTemplateDraftSchema = z.object({
+  sourceRevisionId: entityId("template-revision"), revisionName: z.string().optional(),
+  decision: decisionInputSchema, variableDefaults: z.record(z.string().regex(variableName), z.string()),
+}).strict();
+const promptTemplateMetadataSchema = {
+  id: entityId("template"), name: z.string().trim().min(1),
+  currentRevisionId: entityId("template-revision"), archivedAt: z.iso.datetime({ offset: true }).optional(),
+  recommendedTarget: promptTemplateRecommendedTargetSchema.optional(),
+};
+const promptTemplateSchema: z.ZodType<PromptTemplate> = z.discriminatedUnion("kind", [
+  z.object({ ...promptTemplateMetadataSchema, kind: z.literal("chat"),
+    draft: promptTemplateDraftSchema.optional(), revisions: z.array(promptTemplateRevisionSchema).min(1) }).strict(),
+  z.object({ ...promptTemplateMetadataSchema, kind: z.literal("decision"),
+    draft: decisionPromptTemplateDraftSchema.optional(), revisions: z.array(decisionPromptTemplateRevisionSchema).min(1) }).strict(),
+]);
 
 const promptTemplateUseSchema: z.ZodType<PromptTemplateUse> = z
   .object({
@@ -783,21 +824,17 @@ const decisionRequestSchema = z
   })
   .strict();
 
-const decisionRequestRevisionSchema = z
-  .object({
-    id: entityId("decision-revision"),
-    decisionRequestId: entityId("decision-request"),
-    parentRevisionId: entityId("decision-revision").optional(),
-    // The shape check leaves the value as written: question and option order
-    // are authored meaning, and a rebuilt object could reorder them.
-    decision: z.custom<DecisionInput>(
-      isDecisionInput,
-      "Expected a decision request: a state and at least one question.",
-    ),
-    values: z.record(z.string(), z.string()),
-    createdAt: z.string().datetime(),
-  })
-  .strict();
+const decisionRequestRevisionMetadataSchema = {
+  id: entityId("decision-revision"), decisionRequestId: entityId("decision-request"),
+  parentRevisionId: entityId("decision-revision").optional(), createdAt: z.string().datetime(),
+};
+const decisionRequestRevisionSchema = z.discriminatedUnion("kind", [
+  z.object({ ...decisionRequestRevisionMetadataSchema, kind: z.literal("inline"),
+    decision: decisionInputSchema, values: z.record(z.string(), z.string()) }).strict(),
+  z.object({ ...decisionRequestRevisionMetadataSchema, kind: z.literal("template-use"),
+    templateId: entityId("template"), templateRevisionId: entityId("template-revision"),
+    overrides: z.record(z.string().regex(variableName), z.string()) }).strict(),
+]);
 
 const evaluationInputBindingSchema: z.ZodType<EvaluationInputBinding> = z
   .object({
@@ -937,7 +974,7 @@ const evaluationSuiteSchema = z.unknown().transform((value, context): Evaluation
   return z.NEVER;
 });
 
-const projectFileV14Schema: z.ZodType<ProjectFileV14> = z
+const projectFileV15Schema: z.ZodType<ProjectFileV15> = z
   .object({
     schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
     projectId: entityId("project"),
@@ -1153,6 +1190,17 @@ function validateSharedProjectReferences(
         }
       });
     }
+    if (template.kind === "decision") {
+      const validateDefaults = (content: DecisionPromptTemplateRevision | DecisionPromptTemplateDraft, path: (string | number)[]) => {
+        const variables = new Set(discoverDecisionVariables(content.decision).variables);
+        for (const name of Object.keys(content.variableDefaults)) {
+          requireReference(variables.has(name), [...path, "variableDefaults", name],
+            `Decision default "${name}" names a variable the request does not use.`, context);
+        }
+      };
+      template.revisions.forEach((revision, index) => validateDefaults(revision, ["promptTemplates", templateIndex, "revisions", index]));
+      if (template.draft) validateDefaults(template.draft, ["promptTemplates", templateIndex, "draft"]);
+    }
     template.revisions.forEach((revision, revisionIndex) => {
       Object.keys(revision.variableDefaults).forEach((name) => {
         if (sensitiveFieldNames.has(normalizedFieldName(name))) {
@@ -1189,7 +1237,7 @@ function validateSharedProjectReferences(
 }
 
 function validateProjectReferences(
-  project: ProjectFileV14,
+  project: ProjectFileV15,
   context: z.RefinementCtx,
 ): void {
   validateSharedProjectReferences(
@@ -1240,6 +1288,7 @@ function validateProjectReferences(
         context,
       );
     }
+    if (template.kind !== "chat") return;
     template.revisions.forEach((revision, revisionIndex) => {
       if (!revision.externalImportId) return;
       referencedExternalImportIds.add(revision.externalImportId);
@@ -1318,9 +1367,10 @@ function validateProjectReferences(
         `Template use references unknown template "${item.use.templateId}".`,
         context,
       );
-      const templateRevision = template?.revisions.find(
+      requireReference(template?.kind === "chat", [...path, "templateId"], "Conversation uses require a chat template.", context);
+      const templateRevision = template?.kind === "chat" ? template.revisions.find(
         ({ id }) => id === item.use.templateRevisionId,
-      );
+      ) : undefined;
       requireReference(
         Boolean(templateRevision),
         [...path, "templateRevisionId"],
@@ -1378,9 +1428,9 @@ function validateProjectReferences(
     if (receipt.projection.kind !== "prompt-template") return;
     const projection = receipt.projection;
     const template = templates.get(projection.templateId);
-    const revision = template?.revisions.find(
+    const revision = template?.kind === "chat" ? template.revisions.find(
       ({ id }) => id === projection.templateRevisionId,
-    );
+    ) : undefined;
     requireReference(
       Boolean(revision),
       ["externalImports", receiptIndex, "projection"],
@@ -1465,7 +1515,7 @@ function validateProjectReferences(
  * one, because values are portable project data (D40).
  */
 function validateDecisionRequests(
-  project: ProjectFileV14,
+  project: ProjectFileV15,
   context: z.RefinementCtx,
 ): void {
   addDuplicateIssues(project.decisionRequests.map(({ id }) => id), ["decisionRequests"], context);
@@ -1488,19 +1538,29 @@ function validateDecisionRequests(
         context,
       );
     }
-    if (!isDecisionInput(revision.decision)) return;
-    const used = new Set(discoverDecisionVariables(revision.decision).variables);
-    Object.keys(revision.values).forEach((name) => {
+    const template = revision.kind === "template-use" ? project.promptTemplates.find(({ id }) => id === revision.templateId) : undefined;
+    const pin = template?.kind === "decision" && revision.kind === "template-use"
+      ? template.revisions.find(({ id }) => id === revision.templateRevisionId) : undefined;
+    if (revision.kind === "template-use") {
+      requireReference(template?.kind === "decision", [...path, "templateId"], "Decision request uses require a decision template.", context);
+      requireReference(Boolean(pin), [...path, "templateRevisionId"], "Pinned decision template revision does not belong to this template.", context);
+    }
+    const decision = revision.kind === "inline" ? revision.decision : pin?.decision;
+    if (!decision || !isDecisionInput(decision)) return;
+    const field = revision.kind === "inline" ? "values" : "overrides";
+    const assignments = revision.kind === "inline" ? revision.values : revision.overrides;
+    const used = new Set(discoverDecisionVariables(decision).variables);
+    Object.keys(assignments).forEach((name) => {
       if (!used.has(name)) {
         context.addIssue({
           code: "custom",
-          path: [...path, "values", name],
+          path: [...path, field, name],
           message: `Decision request value "${name}" names a variable the request does not use.`,
         });
       } else if (isSensitiveTemplateVariableName(name)) {
         context.addIssue({
           code: "custom",
-          path: [...path, "values", name],
+          path: [...path, field, name],
           message: "Secret-like template variables cannot hold project values.",
         });
       }
@@ -1533,7 +1593,7 @@ function checkSuiteKindIssue(
 }
 
 function validateEvaluationSuites(
-  project: ProjectFileV14,
+  project: ProjectFileV15,
   templates: ReadonlyMap<PromptTemplateId, PromptTemplate>,
   context: z.RefinementCtx,
 ): void {
@@ -1881,6 +1941,23 @@ function migrateV13Project(value: object): unknown {
   return { ...project, schemaVersion: 14 };
 }
 
+/** v15 gives every saved content owner an explicit kind; legacy data stays intact. */
+function migrateV14Project(value: object): unknown {
+  const project = value as Record<string, unknown>;
+  const migrateEntries = (field: string, kind: string) => Array.isArray(project[field])
+    ? project[field].map((entry: unknown, index: number) => {
+        if (!isRecord(entry)) return entry;
+        if ("kind" in entry) throw new ProjectValidationError([{
+          code: "custom", path: [field, index, "kind"],
+          message: "Typed saved prompts require project schema v15; this document declares v14.",
+        }]);
+        return { ...entry, kind };
+      }) : project[field];
+  return { ...project, schemaVersion: 15,
+    promptTemplates: migrateEntries("promptTemplates", "chat"),
+    decisionRequestRevisions: migrateEntries("decisionRequestRevisions", "inline") };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -1899,7 +1976,8 @@ export function parseProjectFile(value: unknown): ProjectFile {
     if ((value as { schemaVersion: unknown }).schemaVersion === 12) value = migrateV12Project(value as object);
     if ((value as { schemaVersion: unknown }).schemaVersion === 13) value = migrateV13Project(value as object);
   }
-  const parsed = projectFileV14Schema.safeParse(value);
+  if (isRecord(value) && value.schemaVersion === 14) value = migrateV14Project(value);
+  const parsed = projectFileV15Schema.safeParse(value);
   if (!parsed.success) throw new ProjectValidationError(parsed.error.issues);
   return parsed.data;
 }
@@ -2174,9 +2252,9 @@ export function resolveProjectRevision(
       return;
     }
     const template = templates.get(item.use.templateId);
-    const templateRevision = template?.revisions.find(
+    const templateRevision = template?.kind === "chat" ? template.revisions.find(
       ({ id }) => id === item.use.templateRevisionId,
-    );
+    ) : undefined;
     if (!template || !templateRevision) {
       throw new ProjectValidationError([
         {
@@ -2361,7 +2439,7 @@ export function updateProjectDraft(
             : [],
         ),
       ),
-      ...project.promptTemplates.flatMap((template) =>
+      ...project.promptTemplates.filter(isChatPromptTemplate).flatMap((template) =>
         template.revisions.flatMap(({ externalImportId }) =>
           externalImportId ? [externalImportId] : [],
         ),
@@ -2601,19 +2679,35 @@ export function authoredItemsForMessages(
   return authoredBranchItems(project, revision, messages, runOverrides);
 }
 
-export interface PromptTemplateUsage {
+export interface ConversationPromptTemplateUsage {
+  kind: "conversation";
   conversationId: ConversationId;
   conversationRevisionId: ConversationRevisionId;
   itemIndex: number;
   use: PromptTemplateUse;
 }
 
+export type PromptTemplateUsage = ConversationPromptTemplateUsage | {
+  kind: "decision-request";
+  decisionRequestId: DecisionRequestId;
+  decisionRequestRevisionId: DecisionRequestRevisionId;
+  templateId: PromptTemplateId;
+  templateRevisionId: PromptTemplateRevisionId;
+} | {
+  kind: "evaluation-suite";
+  suiteId: EvaluationSuite["id"];
+  decisionRequestId: DecisionRequestId;
+  decisionRequestRevisionId: DecisionRequestRevisionId;
+  templateId: PromptTemplateId;
+  templateRevisionId: PromptTemplateRevisionId;
+};
+
 export function findPromptTemplateUsages(
   project: ProjectFile,
   templateId: PromptTemplateId,
   templateRevisionId?: PromptTemplateRevisionId,
 ): PromptTemplateUsage[] {
-  return project.conversationRevisions.flatMap((revision) =>
+  const usages: PromptTemplateUsage[] = project.conversationRevisions.flatMap((revision) =>
     revision.items.flatMap((item, itemIndex) =>
       item.kind === "template-use" &&
       item.use.templateId === templateId &&
@@ -2621,6 +2715,7 @@ export function findPromptTemplateUsages(
         item.use.templateRevisionId === templateRevisionId)
         ? [
             {
+              kind: "conversation" as const,
               conversationId: revision.conversationId,
               conversationRevisionId: revision.id,
               itemIndex,
@@ -2630,6 +2725,18 @@ export function findPromptTemplateUsages(
         : [],
     ),
   );
+  for (const revision of project.decisionRequestRevisions) {
+    if (revision.kind !== "template-use" || revision.templateId !== templateId ||
+      (templateRevisionId !== undefined && revision.templateRevisionId !== templateRevisionId)) continue;
+    const source = { decisionRequestId: revision.decisionRequestId, decisionRequestRevisionId: revision.id,
+      templateId: revision.templateId, templateRevisionId: revision.templateRevisionId };
+    usages.push({ kind: "decision-request", ...source });
+    for (const suite of project.evaluationSuites) {
+      if (suite.input.kind === "decision-request-revision" && suite.input.decisionRequestRevisionId === revision.id)
+        usages.push({ kind: "evaluation-suite", suiteId: suite.id, ...source });
+    }
+  }
+  return usages;
 }
 
 function updateConversationRevisionItems(
@@ -2723,9 +2830,9 @@ export function insertPromptTemplateUse(
 ): ProjectFile {
   const template = project.promptTemplates.find(({ id }) => id === templateId);
   const pinnedRevisionId = templateRevisionId ?? template?.currentRevisionId;
-  const revision = template?.revisions.find(
+  const revision = template?.kind === "chat" ? template.revisions.find(
     ({ id }) => id === pinnedRevisionId,
-  );
+  ) : undefined;
   if (!template || !revision) {
     throw new ProjectValidationError([
       {
@@ -2878,7 +2985,7 @@ export function retargetPromptTemplateUseRevision(
   }
   const { itemIndex, item } = findTemplateUseItem(parent, templateUseId);
   const template = project.promptTemplates.find(({ id }) => id === item.use.templateId);
-  const target = template?.revisions.find(({ id }) => id === templateRevisionId);
+  const target = template?.kind === "chat" ? template.revisions.find(({ id }) => id === templateRevisionId) : undefined;
   if (!template || !target) {
     throw new ProjectValidationError([{ code: "custom", path: ["promptTemplates", item.use.templateId, "revisions", templateRevisionId], message: "The prompt revision to retarget does not exist." }]);
   }
@@ -2940,6 +3047,7 @@ export function updatePromptTemplateUseToLatest(
   const template = project.promptTemplates.find(
     ({ id }) => id === item.use.templateId,
   )!;
+  if (template.kind !== "chat") throw new Error("Conversation uses require a chat template.");
   const latest = template.revisions.find(
     ({ id }) => id === template.currentRevisionId,
   )!;
@@ -3114,6 +3222,7 @@ export function createPromptTemplate(
       ...project.promptTemplates,
       {
         id: createEntityId("template", idSuffix),
+        kind: "chat",
         name,
         currentRevisionId: revisionId,
         ...(recommendedTarget
@@ -3165,6 +3274,7 @@ export function appendPromptTemplateRevision(
     ]);
   }
   const template = project.promptTemplates[templateIndex]!;
+  if (template.kind !== "chat") throw new ProjectValidationError([{ code: "custom", path: ["promptTemplates", templateId], message: "This operation requires a chat template." }]);
   const current = template.revisions.find(
     ({ id }) => id === template.currentRevisionId,
   )!;
@@ -3176,7 +3286,7 @@ export function appendPromptTemplateRevision(
   ) {
     return project;
   }
-  const revision: PromptTemplateRevision = {
+  const revision: ChatPromptTemplateRevision = {
     id: createEntityId("template-revision", idSuffix),
     createdAt,
     ...(name?.trim() ? { name: name.trim() } : {}),
@@ -3221,6 +3331,7 @@ export function updatePromptTemplateDraft(
     }]);
   }
   const template = project.promptTemplates[templateIndex]!;
+  if (template.kind !== "chat") throw new ProjectValidationError([{ code: "custom", path: ["promptTemplates", templateId], message: "This operation requires a chat template." }]);
   const source = template.revisions.find(({ id }) => id === sourceRevisionId);
   if (!source) {
     throw new ProjectValidationError([{
@@ -3449,15 +3560,12 @@ export function removePromptTemplateRevision(
     ]);
   }
   const promptTemplates = [...project.promptTemplates];
-  promptTemplates[templateIndex] = {
-    ...template,
-    revisions: template.revisions.filter(
-      ({ id }) => id !== templateRevisionId,
-    ),
-  };
-  const removedRevision = template.revisions.find(
+  promptTemplates[templateIndex] = template.kind === "chat"
+    ? { ...template, revisions: template.revisions.filter(({ id }) => id !== templateRevisionId) }
+    : { ...template, revisions: template.revisions.filter(({ id }) => id !== templateRevisionId) };
+  const removedRevision = template.kind === "chat" ? template.revisions.find(
     ({ id }) => id === templateRevisionId,
-  );
+  ) : undefined;
   const externalImports = removedRevision?.externalImportId
     ? project.externalImports.filter(
         ({ id }) => id !== removedRevision.externalImportId,

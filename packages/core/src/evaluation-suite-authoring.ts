@@ -116,7 +116,7 @@ export function savedPromptCandidates(
     project.connectionRequirements.map((requirement) => [requirement.id, requirement]),
   );
   return project.promptTemplates.flatMap((template): SavedPromptCandidate[] => {
-    if (template.archivedAt) return [];
+    if (template.kind !== "chat" || template.archivedAt) return [];
     const revision = template.revisions.find(({ id }) => id === template.currentRevisionId);
     if (!revision) return [];
     const recommendation = template.recommendedTarget;

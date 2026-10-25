@@ -374,7 +374,7 @@ export function RequestComposer({
               {templates.templateWorkbench.composerItems.map((item, index) => {
                 if (item.kind === "template-use") {
                   const template = project?.promptTemplates.find(({ id }) => id === item.use.templateId);
-                  if (!template) return null;
+                  if (!template || template.kind !== "chat") return null;
                   return <TemplateUseCard key={item.use.id} use={item.use} template={template}
                     diagnostics={templates.templateWorkbench.resolution?.diagnostics.filter(({ templateUseId }) => templateUseId === item.use.id) ?? []}
                     runOverrides={templates.templateRunOverrides[item.use.id] ?? {}}

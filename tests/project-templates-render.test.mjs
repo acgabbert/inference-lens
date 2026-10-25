@@ -25,7 +25,7 @@ async function renderConfirmation(props) {
 }
 
 const template = {
-  id: "template_question",
+  kind: "chat", id: "template_question",
   name: "Question",
   currentRevisionId: "template-revision_question-1",
   revisions: [

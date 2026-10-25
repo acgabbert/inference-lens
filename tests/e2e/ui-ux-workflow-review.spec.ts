@@ -1,3 +1,4 @@
+import { chatTemplate } from "../project-kind-helpers";
 import { expect, test, type Page } from "@playwright/test";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createProjectFile, createPromptTemplate, parseProjectJson, serializeProjectFile } from "../../packages/core/src/project";
@@ -95,7 +96,7 @@ test("review: project Save explains its destination and export preserves a draft
   await (await download).saveAs(`${OUT}/exported-project.json`);
   await expect(page.locator(".brand")).toContainText("Unsaved");
   const exported = parseProjectJson(await readFile(`${OUT}/exported-project.json`, "utf8"));
-  expect(exported.promptTemplates[0]!.draft!.messages[0]!.content).toBe("PORTABLE DRAFT: keep this text.");
+  expect(chatTemplate(exported.promptTemplates[0]).draft!.messages[0]!.content).toBe("PORTABLE DRAFT: keep this text.");
   // Export leaves its menu open. Close it before the shared import driver.
   await page.getByLabel("Project menu").click();
   await importProject(page, exported, exported.name, { replaceDirty: "discard" });

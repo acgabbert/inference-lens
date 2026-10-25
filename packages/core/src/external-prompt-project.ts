@@ -489,6 +489,7 @@ export async function importExternalPromptTemplateCandidate(
       ...project.promptTemplates,
       {
         id: templateId,
+        kind: "chat",
         name: projection.name,
         currentRevisionId: templateRevisionId,
         ...(recommendModel && candidate.resolved?.model

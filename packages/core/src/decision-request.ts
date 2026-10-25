@@ -4,6 +4,7 @@ import type { DecisionVariableField } from "./decision-variables.ts";
 import {
   isSensitiveTemplateVariableName,
   parseProjectFile,
+  ProjectValidationError,
 } from "./project.ts";
 import type {
   ProjectDecisionRequestRevision,
@@ -11,7 +12,7 @@ import type {
 } from "./project.ts";
 import { randomUUID } from "./random-id.ts";
 import { createEntityId } from "./run-kernel/types.ts";
-import type { DecisionRequestId, DecisionRequestRevisionId } from "./run-kernel/types.ts";
+import type { DecisionRequestId, DecisionRequestRevisionId, PromptTemplateId, PromptTemplateRevisionId } from "./run-kernel/types.ts";
 import { stableJsonValue } from "./stable-json.ts";
 
 /**
@@ -36,10 +37,9 @@ export interface ResolvedProjectDecisionRequestRevision {
   /** Supplied assignments only. An absent key must never become an empty value. */
   values: Record<string, string>;
   source: {
-    kind: "inline";
     decisionRequestId: DecisionRequestId;
     decisionRequestRevisionId: DecisionRequestRevisionId;
-  };
+  } & ({ kind: "inline" } | { kind: "template-use"; templateId: PromptTemplateId; templateRevisionId: PromptTemplateRevisionId });
   variables: string[];
   /** Authoring diagnostics; resolving a saved source does not make it runnable. */
   diagnostics: DecisionRequestDiagnostic[];
@@ -62,14 +62,16 @@ export function resolveProjectDecisionRequestRevision(
 ): ResolvedProjectDecisionRequestRevision | undefined {
   const revision = project.decisionRequestRevisions.find(({ id }) => id === revisionId);
   if (!revision) return undefined;
-  const decision = structuredClone(revision.decision);
-  const values = { ...revision.values };
+  const pin = revision.kind === "template-use"
+    ? decisionTemplatePin(project, revision.templateId, revision.templateRevisionId).revision : undefined;
+  const decision = structuredClone(revision.kind === "inline" ? revision.decision : pin!.decision);
+  const values = revision.kind === "inline" ? { ...revision.values } : { ...pin!.variableDefaults, ...revision.overrides };
   const { variables, diagnostics } = resolveDecisionRequest(decision, values);
   return {
     decision,
     values,
     source: {
-      kind: "inline",
+      ...(revision.kind === "inline" ? { kind: "inline" as const } : { kind: "template-use" as const, templateId: revision.templateId, templateRevisionId: revision.templateRevisionId }),
       decisionRequestId: revision.decisionRequestId,
       decisionRequestRevisionId: revision.id,
     },
@@ -97,7 +99,7 @@ function sameContent(
 ): boolean {
   // `decision` keeps authored order, so reordering questions is a change;
   // `values` is a map, so its order is not.
-  return (
+  return revision.kind === "inline" && (
     JSON.stringify(stableJsonValue({ decision: revision.decision, values: revision.values })) ===
     JSON.stringify(stableJsonValue({ decision, values }))
   );
@@ -128,6 +130,9 @@ export function updateDecisionRequestDraft(
     ),
   );
   const active = activeDecisionRequestRevision(project);
+  if (active?.kind === "template-use") {
+    throw new ProjectValidationError([{ code: "custom", path: ["decisionRequestRevisions", active.id], message: "Detach the pinned decision template before editing its content." }]);
+  }
   if (active && sameContent(active, decision, keptValues)) return project;
 
   // A suite that pins the revision ran, or will run, exactly that content
@@ -156,6 +161,7 @@ export function updateDecisionRequestDraft(
       ...project.decisionRequestRevisions,
       {
         id: revisionId,
+        kind: "inline",
         decisionRequestId,
         ...(active ? { parentRevisionId: active.id } : {}),
         decision: structuredClone(decision),
@@ -234,4 +240,112 @@ export function prepareDecisionRequestRun(
   return resolved.diagnostics.length > 0
     ? { ok: false, diagnostics: resolved.diagnostics }
     : { ok: true, decision: resolved.decision };
+}
+
+/** Resolve historical pins, including archived templates, without selecting a target. */
+function decisionTemplatePin(
+  project: Pick<ProjectFile, "promptTemplates">,
+  templateId: PromptTemplateId,
+  templateRevisionId?: PromptTemplateRevisionId,
+) {
+  const template = project.promptTemplates.find(({ id }) => id === templateId);
+  const revision = template?.kind === "decision"
+    ? template.revisions.find(({ id }) => id === (templateRevisionId ?? template.currentRevisionId)) : undefined;
+  if (!template || template.kind !== "decision" || !revision) throw new ProjectValidationError([{
+    code: "custom", path: ["promptTemplates", templateId], message: "Decision template or pinned revision does not exist.",
+  }]);
+  return { template, revision };
+}
+
+interface DecisionRevisionMutationOptions {
+  idSuffix?: string;
+  createdAt?: string;
+  /** Evaluation inputs can be created without replacing Compose's active request. */
+  activate?: boolean;
+}
+
+export interface UseDecisionPromptTemplateRevisionOptions extends DecisionRevisionMutationOptions {
+  templateId: PromptTemplateId;
+  templateRevisionId?: PromptTemplateRevisionId;
+  overrides?: Record<string, string>;
+  name?: string;
+}
+
+/** Starts a new request. Folding or discarding the editor draft belongs to Compose. */
+export function useDecisionPromptTemplateRevision(project: ProjectFile, {
+  templateId, templateRevisionId, overrides = {}, name,
+  idSuffix = randomUUID(), createdAt = new Date().toISOString(), activate = true,
+}: UseDecisionPromptTemplateRevisionOptions): ProjectFile {
+  const { template, revision } = decisionTemplatePin(project, templateId, templateRevisionId);
+  if (template.archivedAt) throw new ProjectValidationError([{
+    code: "custom", path: ["promptTemplates", templateId, "archivedAt"], message: "Archived templates cannot be used for new decision requests.",
+  }]);
+  const id = createEntityId("decision-revision", idSuffix);
+  const decisionRequestId = createEntityId("decision-request", idSuffix);
+  return parseProjectFile({ ...project,
+    decisionRequests: [...project.decisionRequests, { id: decisionRequestId, name: name ?? template.name }],
+    decisionRequestRevisions: [...project.decisionRequestRevisions, {
+      kind: "template-use", id, decisionRequestId, createdAt,
+      templateId, templateRevisionId: revision.id, overrides: { ...overrides },
+    }],
+    defaults: activate ? { ...project.defaults, decisionRequestRevisionId: id } : project.defaults,
+  });
+}
+
+function templateUseRevision(project: ProjectFile, id: DecisionRequestRevisionId) {
+  const revision = project.decisionRequestRevisions.find((revision) => revision.id === id);
+  if (!revision || revision.kind !== "template-use") throw new ProjectValidationError([{
+    code: "custom", path: ["decisionRequestRevisions", id], message: "Expected a template-backed decision request revision.",
+  }]);
+  return revision;
+}
+
+function appendDecisionRequestChild(project: ProjectFile, parent: ProjectDecisionRequestRevision,
+  content: ({ kind: "inline"; decision: DecisionInput; values: Record<string, string> }
+    | { kind: "template-use"; templateId: PromptTemplateId; templateRevisionId: PromptTemplateRevisionId; overrides: Record<string, string> }),
+  { idSuffix = randomUUID(), createdAt = new Date().toISOString(), activate = true }: DecisionRevisionMutationOptions,
+): ProjectFile {
+  const id = createEntityId("decision-revision", idSuffix);
+  return parseProjectFile({ ...project,
+    decisionRequestRevisions: [...project.decisionRequestRevisions, { ...structuredClone(content), id,
+      decisionRequestId: parent.decisionRequestId, parentRevisionId: parent.id, createdAt }],
+    defaults: activate ? { ...project.defaults, decisionRequestRevisionId: id } : project.defaults,
+  });
+}
+
+/** Override edits obey the same loaded/executed/suite-pinned freeze rules as inline drafts. */
+export function updateDecisionRequestOverrides(project: ProjectFile, {
+  decisionRequestRevisionId, overrides, branch, ...options
+}: DecisionRevisionMutationOptions & { decisionRequestRevisionId: DecisionRequestRevisionId; overrides: Record<string, string>; branch: boolean }): ProjectFile {
+  const parent = templateUseRevision(project, decisionRequestRevisionId);
+  if (JSON.stringify(stableJsonValue(parent.overrides)) === JSON.stringify(stableJsonValue(overrides))) return project;
+  const content = { kind: "template-use" as const, templateId: parent.templateId, templateRevisionId: parent.templateRevisionId, overrides };
+  const pinned = project.evaluationSuites.some((suite) => suite.input.kind === "decision-request-revision" && suite.input.decisionRequestRevisionId === parent.id);
+  if (branch || pinned) return appendDecisionRequestChild(project, parent, content, options);
+  return parseProjectFile({ ...project, decisionRequestRevisions: project.decisionRequestRevisions.map((revision) =>
+    revision.id === parent.id ? { ...parent, overrides: { ...overrides } } : revision) });
+}
+
+/** Explicit retargeting always creates a child; source saves never move a pin. */
+export function updateDecisionRequestTemplateRevision(project: ProjectFile, {
+  decisionRequestRevisionId, templateRevisionId, ...options
+}: DecisionRevisionMutationOptions & { decisionRequestRevisionId: DecisionRequestRevisionId; templateRevisionId?: PromptTemplateRevisionId }): ProjectFile {
+  const parent = templateUseRevision(project, decisionRequestRevisionId);
+  const { template, revision } = decisionTemplatePin(project, parent.templateId, templateRevisionId);
+  if (template.archivedAt) throw new ProjectValidationError([{
+    code: "custom", path: ["promptTemplates", template.id, "archivedAt"], message: "Restore the archived template before choosing another revision.",
+  }]);
+  if (revision.id === parent.templateRevisionId) return project;
+  const variables = new Set(renderDecisionInput(revision.decision, {}).variables);
+  return appendDecisionRequestChild(project, parent, { kind: "template-use", templateId: template.id,
+    templateRevisionId: revision.id, overrides: Object.fromEntries(Object.entries(parent.overrides).filter(([name]) => variables.has(name))) }, options);
+}
+
+/** Detach preserves tokens and absent assignments; it never renders permanent content. */
+export function detachDecisionRequestTemplate(project: ProjectFile, {
+  decisionRequestRevisionId, ...options
+}: DecisionRevisionMutationOptions & { decisionRequestRevisionId: DecisionRequestRevisionId }): ProjectFile {
+  const parent = templateUseRevision(project, decisionRequestRevisionId);
+  const resolved = resolveProjectDecisionRequestRevision(project, parent.id)!;
+  return appendDecisionRequestChild(project, parent, { kind: "inline", decision: resolved.decision, values: resolved.values }, options);
 }
