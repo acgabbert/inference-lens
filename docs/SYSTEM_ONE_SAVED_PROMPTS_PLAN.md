@@ -76,8 +76,9 @@ Authoring and saving must work without a configured decision provider.
 Extend decision request revisions with explicit inline and template-use arms:
 
 - Inline: existing authored `decision` and request `values`.
-- Template use: a `templateId` and `templateRevisionId`, with request `values`
-  acting as overrides of that revision's defaults.
+- Template use: a `templateId`, a `templateRevisionId`, and request
+  `overrides` of that revision's defaults (see
+  [item 3](#3-values-and-overrides-on-the-two-arms) below).
 
 Keep request identity, parent revision, timestamp, and the active project
 pointer in their current roles. A template-backed revision has one source of
@@ -192,9 +193,9 @@ n8n imports continue creating chat templates and retain their provenance.
 
 ## Relationship to Shared Assets Level 2
 
-Status: the user accepted the ordering in item 1 on 2026-10-25. Items 2 and 3
-make explicit what the contracts above already say; the field name in item 3 is
-settled in step 1.
+Status: the user accepted the ordering in item 1 and the `overrides` field in
+item 3 on 2026-10-25. Item 2 makes explicit what the contracts above already
+say.
 
 [Shared Assets Level 2](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md) was approved
 on the same day as this plan. It moves template drafts, trial values and local
@@ -246,24 +247,23 @@ the inline revision's `values`, as stated under Lifecycle. Inline decision
 revisions already carry values (D40), so keeping the tokens loses nothing and
 keeps the request reusable. Do not "align" this with chat detach later.
 
-### 3. `values` means different things on the two arms
+### 3. `values` and `overrides` on the two arms (accepted)
 
-On an inline revision, `values` is complete per D40: one entry per variable the
-input uses, and key presence is significant. On a template-use revision, the
-same data is a set of overrides: a missing key falls back to the pinned
-revision's default, and a present key, including an empty string, wins. Step 1
-should name the template-use field `overrides` (recommended) rather than reusing
-`values`, so that code reading a revision can't confuse a sparse override map
-with a complete value set. The shared resolver is the only place that merges
-them.
+An inline revision keeps `values`, complete per D40: one entry per variable the
+input uses, and key presence is significant. A template-use revision has
+`overrides` instead, and no `values` field: a missing key falls back to the
+pinned revision's default, and a present key, including an empty string, wins.
+The distinct names keep code that reads a revision from confusing a sparse
+override map with a complete value set. The shared resolver is the only place
+that merges defaults and overrides into effective values. Update keeps
+overrides for surviving variables and drops obsolete ones; detach writes the
+effective values into the new inline revision's `values`.
 
 ## Implementation sequence
 
 1. **Finalize contracts from the accepted decisions.** The three recommendations
    above are accepted. Specify final type shapes and owner interfaces consistent
    with them; involve the user only if a new material contract decision arises.
-   Settle the template-use override field name
-   ([item 3](#3-values-means-different-things-on-the-two-arms)).
 2. **Schema and resolution.** Add discriminated templates and request inputs,
    explicit migrations, validation, and the shared decision revision resolver.
    Update all direct decision revision consumers and narrow chat consumers.
