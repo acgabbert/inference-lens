@@ -326,6 +326,14 @@ status; automatic local persistence must not imply an access-control guarantee.
 - Use explicit versioned formats for the shared definition and workbench store.
   Do not silently change what existing schema versions mean or loosen strict
   parsers. Choose exact version numbers during slice 2a's contract review.
+- [System One saved prompts](SYSTEM_ONE_SAVED_PROMPTS_PLAN.md#relationship-to-shared-assets-level-2)
+  lands first and owns project schema v15 (accepted October 25, 2026); Level 2's
+  shared-definition change takes a later version. Slice 2a's inventory must
+  include its decision template arms, decision template drafts (same draft
+  envelope as chat drafts), and template-use `overrides` on decision request
+  revisions, so one migration step moves chat and decision drafts together. If
+  Level 2 implementation starts before that plan's schema step, revisit the
+  order with the user rather than racing for the version.
 - Preview migration and preserve an untouched source. Existing conversations,
   revisions, values, and configurations may be intentional shared assets; retain
   them as definitions unless the user deliberately chooses otherwise. Copy
