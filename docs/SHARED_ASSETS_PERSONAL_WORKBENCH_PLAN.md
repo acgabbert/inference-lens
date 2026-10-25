@@ -1,10 +1,12 @@
 # Shared assets in a personal workbench
 
 **Status:** Level 1 implemented October 25, 2026; verification recorded below.
-Levels 2–3 remain proposed. The product direction
-is agreed: Inference Lens is a personal workbench for potentially shared assets.
-The detailed contracts below are recommendations, not approved schema or storage
-decisions except for the Level 1 agreement recorded below.
+Level 2 design choices were approved October 25, 2026, as recorded below;
+implementation has not started. The next deliverable is slice 2a's field inventory
+and migration examples. Level 3 remains proposed. The product direction is agreed:
+Inference Lens is a personal workbench for potentially shared assets. Approved
+choices are distinguished from the remaining schema and recovery mechanics that
+still need design review.
 
 ## Intended experience
 
@@ -200,44 +202,95 @@ remove files from the Git index or rewrite history as part of this feature.
 
 **Size:** Moderate. Ownership, persistence, UX, and compatibility changes.
 
-### Contracts to settle before implementation
+### Confirmed design choices (October 25, 2026)
+
+Keep the shared project format mostly intact for Level 2, retaining the monolithic
+asset document while separating personal state. Defer independent asset files to
+Level 3. Removing drafts and separating defaults still requires an explicit
+versioned schema transition; this agreement does not change Project v14 in place.
 
 1. **Asset versus workbench types.** Introduce separate typed models for shared
    definitions and recoverable personal state. Do not make a second complete copy
    of the project document as the local model. A draft should identify its asset,
    source revision, and edited fields; selections and overrides should have their
    own contracts. Working definitions needed only for scratch requests stay local.
-2. **Personal persistence location.** Options are device application storage or
-   an ignored directory inside each checkout. Application storage gives stronger
-   separation from files people copy; a checkout-local store is easier to inspect
-   and works naturally through existing folder access in browser and native hosts.
-   Recommend an ignored checkout-local workbench store for folder projects,
-   subject to agreement on recovery and portability. Exact paths remain open.
-   Level 1 does not make such a store ignored. Only the private and definitions
-   presets exclude a new directory; unmanaged bundles and older bundles created
-   without protection have no rule covering it, so an ordinary `git add -A`
-   would stage personal drafts. The bundle's policy is written once at creation
-   and never regenerated, so it cannot be relied on. Decide how the store
-   protects itself, for example by writing its own `*` ignore file before any
-   personal content, and how that is verified.
-3. **Workbench identity.** Recommend one personal workbench per checkout initially.
-   Separate clones/worktrees must not share drafts merely because their
-   `projectId` matches. Define behavior for copied/moved folders, changed project
-   identity, browser/native use of the same folder, and concurrent app windows.
+2. **Personal persistence location.** Use a checkout-local `.workbench/` directory
+   for folder projects. Browser and native hosts use the same store through their
+   workspace adapters. Write `.workbench/.gitignore` containing `*` before any
+   personal content, including migration backups containing legacy personal
+   content. Do not rely on or regenerate the bundle's creation-only Git policy:
+   unmanaged and older bundles may have no rule excluding the directory.
+   Verify protection using a real Git repository, including a bundle with no
+   bundle-level `.gitignore`. The store works with existing folder access and can
+   be inspected directly, although as a dot-directory it is hidden by default in
+   Finder and many file pickers. Copying the folder also copies its personal
+   state. Gitignore is not access control and cannot prevent force-adding files.
+3. **Workbench identity.** Use one personal workbench per checkout initially.
+   The folder defines the workbench; `projectId` validates its association rather
+   than acting as a device-wide lookup key. Independent clones/worktrees do not
+   share drafts. Moves retain the store, and full folder copies carry its personal
+   state with them. A copy is indistinguishable from a move by design: it has
+   the same `projectId` and `.workbench/` contents, and browser folder access
+   exposes no stable path or inode to compare. Do not attempt copy detection.
+   Define mismatch handling when the project identity changes.
    One checkout used by several people is not user isolation; independent users
    should have independent checkouts. Multiple named workbenches can be a later
    extension if required.
-4. **No-folder mode.** Define recovery for imported JSON and scratch-only sessions
-   separately. Do not introduce silent browser persistence of prompt/input content
-   as an incidental fallback. Recommend explicit recovery opt-in or a clearly
-   session-only state until a durable location is chosen.
-5. **Defaults.** Split deliberately authored launch defaults/recommendations from
-   last-used selections. Preserve reproducible evaluation execution definitions.
-   Decide whether named reusable execution configurations are needed now or later;
-   do not require that extra feature merely to separate current overrides.
-6. **Scratch versus saved requests.** Recommend private scratch requests by
-   default, with an explicit save-as-asset action. Editing a saved request creates
-   a personal draft; it does not continuously modify the shared definition.
+4. **No-folder mode.** Imported JSON and scratch-only sessions remain session-only
+   until a folder is chosen, with clear recovery-status wording. Do not silently
+   persist prompt or input content in browser storage. Explicit recovery opt-in
+   outside folder projects is deferred.
+5. **Defaults.** Keep deliberately authored launch defaults/recommendations and
+   reproducible suite settings shared. Last-used selections, trial values, and
+   temporary execution/tool overrides are personal. Classify each existing field
+   before changing writers; named reusable execution configurations are not a
+   prerequisite for this separation.
+6. **Scratch versus saved requests.** Scratch requests start personal by default,
+   with an explicit save-as-asset action. Editing a saved asset creates a personal
+   draft; it does not continuously modify the shared definition. A draft records
+   its asset, base revision, and edited content.
+7. **Concurrent writers.** Detect concurrent workbench writes and refuse silent
+   overwrites, including across browser/native hosts and app windows. Extend the
+   existing external-manifest-change detection used by browser and native saves to
+   workbench records rather than introducing a separate mechanism. Full live
+   coordination is deferred; the recovery path after a detected conflict remains
+   to be designed.
+8. **Migration and exports.** Preserve existing saved content as shared assets;
+   move only explicit drafts into personal storage and copy old selections into
+   personal state. Because selections are copied rather than moved, the legacy
+   values left in the shared document become authored launch defaults; the
+   migration examples must show this, and the preview should state whether it
+   offers to demote them. Shared definitions are the default export; personal
+   backup is a separate explicit operation. Preserve untouched migration sources and keep
+   failed or interrupted writes recoverable.
+
+### Next design deliverable: slice 2a
+
+Produce a field-by-field ownership inventory and concrete before/after migration
+examples for a prompt, chat request, decision request, and evaluation suite.
+Include saved values, defaults, branches, temporary fixtures, import receipts,
+revision pins, and evidence references. Apply the approved choices above without
+guessing whether legacy saved content was intended to be personal.
+
+Review the inventory and examples before implementing persistence. The approved
+direction does not yet specify these contracts; settle each during the review:
+
+- [ ] Exact types and owner interfaces for shared definitions and workbench state
+- [ ] Schema versions and codecs for the shared document and workbench store
+- [ ] Workbench record layout under `.workbench/`
+- [ ] Project-identity mismatch handling
+- [ ] Concurrent-write detection on workbench records and the conflict recovery path
+- [ ] Draft publication ordering: write the shared revision first, clear the draft
+  only after that write is confirmed, and recognize a published-but-not-cleared
+  draft on restart. This applies to every revision save, not only migration.
+- [ ] Migration write ordering and restart recovery
+- [ ] Personal backup representation and restore behavior
+- [ ] Old-reader/writer, existing JSON, and CLI compatibility
+
+When implementation starts, move the Level 1 Git staging fixture in
+[the workspace tests](../tests/project-workspace.test.ts) from
+`workbench/recovery.json` to `.workbench/`, and add a bundle without a
+bundle-level `.gitignore` to prove the self-ignore alone protects it.
 
 ### Proposed workflows
 
@@ -272,19 +325,20 @@ status; automatic local persistence must not imply an access-control guarantee.
   request branches, and evaluation references. Classify it before changing writers.
 - Use explicit versioned formats for the shared definition and workbench store.
   Do not silently change what existing schema versions mean or loosen strict
-  parsers. Choose exact version numbers when the contracts are approved.
+  parsers. Choose exact version numbers during slice 2a's contract review.
 - Preview migration and preserve an untouched source. Existing conversations,
   revisions, values, and configurations may be intentional shared assets; retain
   them as definitions unless the user deliberately chooses otherwise. Copy
   recoverable template drafts into personal storage before removing them from the
-  new shared representation. Old default selections can seed personal state;
+  new shared representation. Copy old default selections into personal state;
   deliberate reusable execution defaults must not be discarded.
 - Migration must be restartable, detect partial writes, and avoid leaving the
   only copy of a draft in an ignored file that was never successfully written.
   Any backup containing legacy personal content is local and excluded by default.
-- Define export modes. Recommend a shared-assets export that omits personal state,
-  plus a separately explicit personal backup if needed. Until a new portable
-  format is approved, retain a documented compatibility path for existing JSON.
+- Export shared assets without personal state by default. Provide personal backup
+  as a separate explicit operation; define its exact representation and restore
+  behavior during contract review. Until a new portable format is approved,
+  retain a documented compatibility path for existing JSON.
 - CLI evaluation must work from shared assets alone, without a personal workbench.
   Update or version any command that formerly relied on mutable workbench defaults.
   Preserve app/CLI coexistence for immutable evidence writes.
@@ -298,6 +352,12 @@ status; automatic local persistence must not imply an access-control guarantee.
   the intended definitions and required dependencies.
 - A shared save failure, local recovery failure, external edit, or missing/deleted
   base revision cannot silently lose the draft or claim it was saved.
+- The workbench's own ignore file protects personal content under private,
+  definitions, unmanaged, and older unprotected bundle policies before the first
+  recovery write. Concurrent writers cannot silently replace each other's state.
+- Folder moves and full copies retain recovery; independent clones stay separate;
+  project-identity mismatches have explicit behavior. No-folder sessions
+  clearly report session-only recovery until a folder is chosen.
 - Persisted asset pins and historical evidence retain their meaning through
   migration. A fresh clone and the CLI need no other person's local state.
 
@@ -324,7 +384,7 @@ example.inference-lens/
     mocks/<stable-id>.json
     suites/<stable-id>.json
     connections/<stable-id>.json
-  <ignored personal workbench storage>/
+  .workbench/                 # personal; contains its own .gitignore
   traces/
   experiments/
   evaluation-baselines.json
@@ -492,17 +552,17 @@ and diff check, not a browser run.
 
 ## Remaining decisions for the design review
 
-1. **Resolved for Level 1:** all three creation presets are confirmed and the
-   existing private default remains the initial default.
-2. Choose checkout-local versus device application storage for personal state,
-   its isolation scope, and no-folder recovery behavior. A checkout-local store
-   must protect itself from Git rather than rely on the bundle's policy.
-3. Approve the exact classification of shared launch defaults, scratch requests,
-   draft branches, saved values, and temporary fixtures, with migration examples.
-4. Choose asset file granularity and discovery rules, reference/provenance closure,
+Level 1's presets and Level 2's choices recorded above are resolved. The next
+review covers slice 2a; Level 3 decisions remain deferred.
+
+1. Approve the field-by-field classification and migration examples for prompts,
+   chat requests, decision requests, and evaluation suites, preserving legacy
+   saved content while separating explicit drafts and personal selections.
+2. Settle the Level 2 contracts in the slice 2a checklist above.
+3. Choose Level 3 asset file granularity and discovery rules, reference/provenance closure,
    and how team sharing policy and personal asset exclusions interact.
-5. Approve versioned format transitions, export/backup semantics, old-reader/writer
-   behavior, and recovery for interrupted multi-file operations. Include how
+4. Approve Level 3 format transitions and recovery for interrupted multi-file
+   operations, plus old-reader/writer and export compatibility. Include how
    bundles created with the Level 1 definitions policy come to share new asset
    files.
 
