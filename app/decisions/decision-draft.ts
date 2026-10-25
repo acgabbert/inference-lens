@@ -80,6 +80,11 @@ function isJsonObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** Authored keys such as __proto__ are data, including on ordinary objects. */
+function setOwn<T>(record: Record<string, T>, key: string, value: T): void {
+  Object.defineProperty(record, key, { value, enumerable: true, writable: true, configurable: true });
+}
+
 function questionRow(
   id: string,
   question: DecisionQuestion,
@@ -192,7 +197,7 @@ function questionFromRow(
         if (label.trim() === "") problems.push({ location: where, message: "The option label is empty." });
         else if (seen.has(label)) problems.push({ location: where, message: `Another option is already labelled “${label}”.` });
         seen.add(label);
-        criteria[label] = option.description === null ? null : jsonValue(option.description);
+        setOwn(criteria, label, option.description === null ? null : jsonValue(option.description));
       });
       return problems.length === before ? { type: "choice", instructions, criteria } : undefined;
     }
@@ -250,7 +255,7 @@ function validateForm(draft: DecisionDraft): { input: DecisionInput } | { proble
     else if (seen.has(row.id)) problems.push({ location, message: `Another question id is already “${row.id}”.` });
     seen.add(row.id);
     const question = questionFromRow(row, location, problems);
-    if (question) questions[row.id] = question;
+    if (question) setOwn(questions, row.id, question);
   });
   return problems.length > 0 || state === undefined
     ? { problems }
@@ -349,7 +354,7 @@ export function showDecisionJsonView(
   const questions: JsonObject = {};
   draft.questions.forEach((row, index) => {
     const location = questionLocation(row, index);
-    if (row.id in questions) {
+    if (Object.hasOwn(questions, row.id)) {
       problems.push({ location, message: `Another question id is already “${row.id}”.` });
       return;
     }
@@ -363,18 +368,18 @@ export function showDecisionJsonView(
           continue;
         }
         const label = option.label.text;
-        if (label in criteria) {
+        if (Object.hasOwn(criteria, label)) {
           problems.push({ location: where, message: `Another option is already labelled “${label}”.` });
         }
-        criteria[label] = option.description === null ? null : jsonValue(option.description);
+        setOwn(criteria, label, option.description === null ? null : jsonValue(option.description));
       }
-      questions[row.id] = { type: "choice", instructions, criteria };
+      setOwn(questions, row.id, { type: "choice", instructions, criteria });
     } else if (row.type === "score") {
-      questions[row.id] = { type: "score", instructions, criteria: row.options.map(({ label }) => jsonValue(label)) };
+      setOwn(questions, row.id, { type: "score", instructions, criteria: row.options.map(({ label }) => jsonValue(label)) });
     } else {
-      questions[row.id] = row.noul.enabled
+      setOwn(questions, row.id, row.noul.enabled
         ? { type: "noul", instructions, criteria: { true: jsonValue(row.noul.true), false: jsonValue(row.noul.false) } }
-        : { type: "noul", instructions };
+        : { type: "noul", instructions });
     }
   });
   if (problems.length > 0) return { problems };

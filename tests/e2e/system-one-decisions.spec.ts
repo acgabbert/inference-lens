@@ -135,6 +135,64 @@ test("each kind keeps its draft across switches, and form ↔ JSON is lossless",
   expect(JSON.stringify(JSON.parse(text))).toBe(JSON.stringify(ALL_TYPES));
 });
 
+test("prototype-named questions and options survive editor switches and reach the wire", async ({ page }) => {
+  await seedDecisionProfiles(page);
+  await openDecision(page);
+  await chooseModel(page, "all-types");
+  const keys = ["__proto__", "constructor", "toString"];
+  const input = { state: "Classify this input.", questions: Object.fromEntries(keys.map((key) => [key, {
+    type: "choice", instructions: "Which option?", criteria: Object.fromEntries(keys.map((label) => [label, null])),
+  }])) };
+  await enterJson(page, input);
+  await decisionPane(page).getByRole("tab", { name: "Form", exact: true }).click();
+  await decisionPane(page).getByRole("tab", { name: "JSON", exact: true }).first().click();
+  expect(await decisionPane(page).locator(".decision-view-problems").allTextContents()).toEqual([]);
+  expect(JSON.parse(await page.getByLabel("Decision input (state and questions)").inputValue())).toEqual(input);
+
+  const sent = page.waitForRequest((request) => request.url().endsWith(DECISIONS_API_PATH) && request.method() === "POST");
+  await runDecision(page).click();
+  // This asserts on the serialized request, not the replay's answer: these
+  // custom questions deliberately differ from the captured provider scenario.
+  expect((await sent).postDataJSON().execution.input.decision).toEqual(input);
+  // Let the real HTTP exchange settle and show the replay's expected
+  // rejection before this page is closed.
+  await expect(page.locator(".decision-response")).toContainText("The fixture expects the questions captured");
+});
+
+test("the header selects the decision connection independently of chat", async ({ page }, testInfo) => {
+  await seedProfiles(page, [
+    { id: "buffered", instanceId: "buffered-instance", name: "Buffered fixture", endpoint: BUFFERED_FIXTURE_ENDPOINT },
+    { id: "decision-a", instanceId: "decision-a-instance", name: "Decision A", endpoint: `${SYSTEM_ONE_FIXTURE_ORIGIN}/llamacpp/v1`, systemOne: true },
+    { id: "decision-b", instanceId: "decision-b-instance", name: "Decision B", endpoint: `${SYSTEM_ONE_FIXTURE_ORIGIN}/ollama/v1`, systemOne: true },
+  ], "buffered");
+  await openDecision(page);
+  const header = page.locator(".topbar .target-control");
+  expect(await header.innerText()).toContain("Decision A");
+  await expect(header).toHaveAttribute("aria-label", "Decision connection: Decision A");
+  await header.click();
+  const menu = page.locator(".target-popover");
+  await expect(menu.getByRole("button", { name: /Buffered fixture/ })).toHaveCount(0);
+  await menu.getByRole("button", { name: /Decision B/ }).click();
+  await expect(decisionPane(page).getByLabel("Decision connection")).toHaveValue("decision-b");
+  await expect(header).toContainText("Decision B");
+  await page.getByRole("radio", { name: "Chat", exact: true }).click();
+  await expect(header).toContainText("Buffered fixture");
+  await page.getByRole("radio", { name: "Decision", exact: true }).click();
+  await expect(header).toContainText("Decision B");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(header).toHaveAttribute("aria-label", "Decision connection: Decision B");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await page.screenshot({ path: testInfo.outputPath("decision-header-mobile.png") });
+});
+
+test("the decision header names a missing connection instead of showing chat's", async ({ page }) => {
+  await seedProfiles(page, [
+    { id: "buffered", instanceId: "buffered-instance", name: "Buffered fixture", endpoint: BUFFERED_FIXTURE_ENDPOINT },
+  ], "buffered");
+  await openDecision(page);
+  expect(await page.locator(".topbar .target-control").innerText()).toContain("No decision connection");
+});
+
 test("invalid JSON blocks Run and the switch to the form, keeping the text", async ({ page }) => {
   await seedDecisionProfiles(page);
   await openDecision(page);
@@ -182,6 +240,9 @@ test("a decision run locks the kind switch until it is stopped", async ({ page }
   const editorTabs = decisionPane(page).getByRole("tablist", { name: "Decision editor" }).getByRole("tab");
   const stateTabs = decisionPane(page).getByRole("tablist", { name: "State format" }).getByRole("tab");
   for (const tab of [...await editorTabs.all(), ...await stateTabs.all()]) await expect(tab).toBeDisabled();
+  await page.locator(".topbar .target-control").click();
+  for (const choice of await page.locator(".target-popover .profile-menu-list button").all()) await expect(choice).toBeDisabled();
+  await page.keyboard.press("Escape");
   // The shortcut does not start a second run while one executes.
   expect(sent).toBe(1);
   await page.keyboard.press("Control+Enter");

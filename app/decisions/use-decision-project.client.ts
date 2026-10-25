@@ -26,6 +26,8 @@ export interface DecisionProjectHandle {
   freezeForRun(): void;
   /** The project's request lags the editor because the draft does not validate. */
   unsaved: boolean;
+  /** An incomplete draft cannot be represented in a portable project. */
+  saveBlockedReason?: string;
 }
 
 /**
@@ -81,5 +83,8 @@ export function useDecisionProject(options: {
       if (active) frozenRef.current.add(active.id);
     },
     unsaved: Boolean(options.project) && draft.touched && !("input" in draft.validated()),
+    ...(draft.touched && !("input" in draft.validated())
+      ? { saveBlockedReason: "Fix the decision request before saving. Its incomplete edits have not been saved to the project." }
+      : {}),
   };
 }

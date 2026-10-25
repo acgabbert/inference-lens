@@ -40,12 +40,21 @@ async function exampleJson(page: Page): Promise<{ state: unknown; questions: Rec
   return JSON.parse(await page.getByLabel("Decision input (state and questions)").inputValue());
 }
 
-test("an untouched draft opens the guide, and each field says what it is for", async ({ page }) => {
+test("the short introduction leaves the state editor in view, with detailed help expandable", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
   await openDecision(page);
   const pane = decisionPane(page);
   const guide = pane.locator("details.decision-guide");
-  await expect(guide).toHaveAttribute("open", "");
+  // Read actual geometry: being mounted or Playwright-visible does not mean
+  // the first editable field is above the scroll pane's fold.
+  const state = await pane.getByLabel("State text").boundingBox();
+  const scroll = await pane.locator(".decision-content").boundingBox();
+  expect(state!.y + state!.height).toBeLessThanOrEqual(scroll!.y + scroll!.height);
+  await expect(guide).not.toHaveAttribute("open", "");
+  await page.screenshot({ path: testInfo.outputPath("decision-introduction.png") });
   await expect(guide.getByText("How decision requests work")).toBeVisible();
+  await expect(pane).toContainText("Think of it as a classifier you set up in words.");
+  await guide.locator("summary").click();
   await expect(guide).toContainText("returns a probability for each option");
 
   await expect(pane.getByRole("region", { name: "State" })).toContainText("What the model judges");

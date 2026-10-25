@@ -417,6 +417,12 @@ the default. Only a draft that validates is written: while the editor shows
 problems, the project keeps the last valid revision. An untouched starting
 draft never creates a request.
 
+Writing that last valid revision does not mark an incomplete editor draft as
+saved. The project retains its unsaved marker and unload/replacement protection.
+Manual save, export, and "Save and switch" refuse the incomplete draft; fixing
+it allows saving, while "Discard and switch" explicitly abandons it. Incomplete
+editor state is never added to the portable project format.
+
 ## Tool definition source
 
 A `ToolDefinition` attached from an MCP server carries an optional

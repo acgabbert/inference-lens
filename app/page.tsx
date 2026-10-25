@@ -270,6 +270,7 @@ function HomeContent() {
     // The decision owner is declared below; like `pendingBranch` above, it is
     // reached only from project commands and saves, never during render.
     withDecisionDraft(document) { return decision.project.fold(document); },
+    getUnsavedDraftReason() { return decision.project.saveBlockedReason; },
     onApplyDecisionRequest(document) { decision.project.adopt(document); },
     onSaved({ name, destination }) {
       toasts.publish({
@@ -1351,6 +1352,9 @@ function HomeContent() {
       <Topbar
         profiles={profiles}
         activeProfile={requestSettings.profile}
+        {...(mode === "compose" && compose.kind === "decision"
+          ? { decisionConnection: { ...decision.connection, disabled: decisionExecuting } }
+          : {})}
         {...(requestSettings.connectionRequirement
           ? { projectConnectionName: requestSettings.connectionRequirement.name }
           : {})}

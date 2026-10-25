@@ -10,6 +10,13 @@ import type { ComposePrimary } from "./compose/use-compose.client";
 interface TopbarProps {
   profiles: StoredInferenceProfile[];
   activeProfile: StoredInferenceProfile;
+  /** Decision Compose owns its connection independently of chat mappings. */
+  decisionConnection?: {
+    profiles: StoredInferenceProfile[];
+    profile?: StoredInferenceProfile;
+    selectProfile(profileId: string): void;
+    disabled: boolean;
+  };
   /** Portable requirement this chooser remaps while a project is open. */
   projectConnectionName?: string;
   hasCredential: boolean;
@@ -65,7 +72,7 @@ function closeContainingMenu(element: HTMLElement): void {
 
 /** Application menus and the current run controls. */
 export function Topbar({
-  profiles, activeProfile, projectConnectionName, hasCredential, projectName, projectDirty,
+  profiles, activeProfile, decisionConnection, projectConnectionName, hasCredential, projectName, projectDirty,
   projectStorageState,
   folderAccessAvailable, hasDiagnosticCapture, composeExecuting, isExperimentActive, composePrimary,
   mode, onModeChange, modeIndicators,
@@ -81,12 +88,15 @@ export function Topbar({
   onOpenRunHistory,
 }: TopbarProps) {
   const topbarRef = useRef<HTMLElement>(null);
-  const profileName = activeProfile.name || "Untitled profile";
+  const targetProfile = decisionConnection ? decisionConnection.profile : activeProfile;
+  const targetProfiles = decisionConnection ? decisionConnection.profiles : profiles;
+  const targetRequirement = decisionConnection ? undefined : projectConnectionName;
+  const profileName = targetProfile ? targetProfile.name || "Untitled profile" : "No decision connection";
   // The dot's meaning is credential state, which no one can read off a colour.
   // It travels in the accessible name so the control is not visual-only.
   const credentialState = hasCredential ? "credential set" : "no credential";
-  const targetCaption = projectConnectionName ? "Project connection" : "Connection";
-  const targetAccessibleName = projectConnectionName
+  const targetCaption = decisionConnection ? "Decision connection" : targetRequirement ? "Project connection" : "Connection";
+  const targetAccessibleName = decisionConnection || targetRequirement
     ? `${targetCaption}: ${profileName}`
     : `Run target: ${profileName}, ${credentialState}`;
   const projectStorageLabel = !projectStorageState
@@ -97,9 +107,11 @@ export function Topbar({
         : "Session only — export a JSON copy to keep changes"
       : projectStorageState.kind === "saving"
         ? `Saving to ${projectStorageState.displayPath}…`
-        : projectStorageState.kind === "error"
-          ? "Save failed — retry from Project"
-          : `Saved to ${projectStorageState.displayPath}`;
+        : projectStorageState.kind === "unsaved"
+          ? "Unfinished edits have not been saved"
+          : projectStorageState.kind === "error"
+            ? "Save failed — retry from Project"
+            : `Saved to ${projectStorageState.displayPath}`;
 
   useEffect(() => {
     const topbar = topbarRef.current;
@@ -147,19 +159,40 @@ export function Topbar({
       <div className="brand"><span className="brand-mark" aria-hidden="true">IL</span><div><h1>Inference Lens</h1><p>Inspect every model run · {projectName ? <><strong>{projectName}</strong>{projectDirty ? " · Unsaved" : ""}{projectStorageLabel ? ` · ${projectStorageLabel}` : ""}</> : "No project open"}</p></div></div>
       <ModeStrip value={mode} onChange={onModeChange} {...(modeIndicators ? { indicators: modeIndicators } : {})} />
       <div className="header-actions">
-        {/*
-          The connection profile is the only run setting global enough for the
-          topbar: compose sends through it, and a project's connection
-          requirements are mapped onto it. Model is deliberately absent. It is
-          per-request in Compose and per-configuration in Evaluations, so a
-          topbar copy would have contradicted the run the primary action starts.
-          Each surface states its own model on its settings summary instead.
-
-          The static `Connection` caption is what makes the profile name read as
-          a chosen value rather than a heading.
-        */}
-        <details className="header-menu target-menu"><summary aria-label={targetAccessibleName} className="target-control" title={profileName}><span className={projectConnectionName || hasCredential ? "connection-indicator ready" : "connection-indicator"} aria-hidden="true" /><span className="target-copy"><small className="target-caption" aria-hidden="true">{targetCaption}</small><strong>{profileName}</strong></span><span className="menu-chevron" aria-hidden="true">⌄</span></summary>
-          <div className="menu-popover target-popover"><div className="menu-heading"><span>{targetCaption}</span><small>{projectConnectionName ?? profileName}</small></div>{projectConnectionName && <p className="menu-context">Choose the local profile used by {projectConnectionName} in this project, including evaluations that share it.</p>}<div className="profile-menu-list">{profiles.map((profile) => <button aria-label={projectConnectionName ? `Use ${profile.name || "Untitled profile"} for ${projectConnectionName}` : undefined} className={profile.id === activeProfile.id ? "menu-option selected" : "menu-option"} key={profile.id} type="button" onClick={(event) => { onChooseProfile(profile.id); closeContainingMenu(event.currentTarget); }}><span><strong>{profile.name || "Untitled profile"}</strong><small>{profile.endpoint}</small></span>{profile.id === activeProfile.id && <span aria-hidden="true">✓</span>}</button>)}</div><button className="menu-action" type="button" onClick={(event) => { onOpenConnections(); closeContainingMenu(event.currentTarget); }}>Manage connections<span aria-hidden="true">→</span></button></div>
+        {/* The active Compose kind supplies its own connection chooser. A
+            decision choice never remaps the project's chat requirement. */}
+        <details className="header-menu target-menu">
+          <summary aria-label={targetAccessibleName} className="target-control" title={profileName}>
+            {!decisionConnection && <span className={targetRequirement || hasCredential ? "connection-indicator ready" : "connection-indicator"} aria-hidden="true" />}
+            {decisionConnection && <span className="decision-connection-glyph" aria-hidden="true">◇</span>}
+            <span className="target-copy"><small className="target-caption" aria-hidden="true">{targetCaption}</small><strong>{profileName}</strong></span>
+            <span className="menu-chevron" aria-hidden="true">⌄</span>
+          </summary>
+          <div className="menu-popover target-popover">
+            <div className="menu-heading"><span>{targetCaption}</span><small>{targetRequirement ?? profileName}</small></div>
+            {targetRequirement && <p className="menu-context">Choose the local profile used by {targetRequirement} in this project, including evaluations that share it.</p>}
+            {decisionConnection && <p className="menu-context">This connection sends the decision request. Only connections that declare System One are offered.</p>}
+            <div className="profile-menu-list">
+              {targetProfiles.map((profile) => (
+                <button
+                  aria-label={targetRequirement ? `Use ${profile.name || "Untitled profile"} for ${targetRequirement}` : undefined}
+                  className={profile.id === targetProfile?.id ? "menu-option selected" : "menu-option"}
+                  disabled={decisionConnection?.disabled}
+                  key={profile.id}
+                  type="button"
+                  onClick={(event) => {
+                    if (decisionConnection) decisionConnection.selectProfile(profile.id);
+                    else onChooseProfile(profile.id);
+                    closeContainingMenu(event.currentTarget);
+                  }}
+                >
+                  <span><strong>{profile.name || "Untitled profile"}</strong><small>{profile.endpoint}</small></span>
+                  {profile.id === targetProfile?.id && <span aria-hidden="true">✓</span>}
+                </button>
+              ))}
+            </div>
+            <button className="menu-action" type="button" onClick={(event) => { onOpenConnections(); closeContainingMenu(event.currentTarget); }}>Manage connections<span aria-hidden="true">→</span></button>
+          </div>
         </details>
         <details className="header-menu project-menu"><summary aria-label="Project menu" className="button secondary"><span className="project-menu-label">Project</span> <span className="menu-chevron">⌄</span></summary><div className="menu-popover project-popover">
           <div className="menu-group-heading">Project</div>

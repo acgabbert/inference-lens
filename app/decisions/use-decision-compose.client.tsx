@@ -19,6 +19,7 @@ import { useDecisionProject } from "./use-decision-project.client";
 import type { DecisionProjectHandle } from "./use-decision-project.client";
 import { useDecisionSession } from "./use-decision-session.client";
 import { useDecisionTarget } from "./use-decision-target.client";
+import type { DecisionTargetHandle } from "./use-decision-target.client";
 
 export interface UseDecisionComposeOptions {
   profiles: StoredInferenceProfile[];
@@ -60,6 +61,8 @@ export interface DecisionSuiteSource {
 
 export interface DecisionComposeHandle {
   compose: ComposeKindHandle;
+  /** The same chooser used by the request pane and the contextual header. */
+  connection: Pick<DecisionTargetHandle, "profiles" | "profile" | "selectProfile">;
   /** For D30: open a saved or imported decision trace. */
   adoptTrace(trace: DecisionRunTrace, origin: TraceOrigin): void;
   /** Where a new decision suite comes from, for the Evaluations rail too. */
@@ -69,7 +72,7 @@ export interface DecisionComposeHandle {
     take(): DecisionSuiteSource | undefined;
   };
   /** What the project workspace folds in and hands over (D42). */
-  project: Pick<DecisionProjectHandle, "fold"> & {
+  project: Pick<DecisionProjectHandle, "fold" | "saveBlockedReason"> & {
     /** A project was opened or replaced: load its request and clear the result. */
     adopt(project: ProjectFile): void;
   };
@@ -213,10 +216,12 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
   };
   return {
     compose,
+    connection: { profiles: target.profiles, profile: target.profile, selectProfile: target.selectProfile },
     adoptTrace: session.adoptTrace,
     suiteSource,
     project: {
       fold: decisionProject.fold,
+      ...(decisionProject.saveBlockedReason ? { saveBlockedReason: decisionProject.saveBlockedReason } : {}),
       adopt(project) {
         session.reset();
         decisionProject.adopt(project);

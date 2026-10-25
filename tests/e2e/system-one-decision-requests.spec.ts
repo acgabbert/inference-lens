@@ -160,6 +160,84 @@ test("an invalid draft is not written to the project, and says so", async ({ pag
   expect(saved.decisionRequestRevisions[0]!.decision).toEqual(templated);
 });
 
+test("an invalid decision draft stays unsaved after autosave and protects project replacement", async ({ page }) => {
+  await openFolder(page, emptyProject());
+  const pane = decisionPane(page);
+  await pane.getByRole("tab", { name: "JSON" }).first().click();
+  const editor = page.getByLabel("Decision input (state and questions)");
+  await editor.fill(JSON.stringify(templated));
+  const saved = await waitForSavedRevisions(page, 1);
+  await expect(page.locator(".brand")).not.toContainText("Unsaved");
+
+  const unfinished = '{"state": "An important unfinished edit",';
+  await editor.fill(unfinished);
+  await expect(pane).toContainText("Not saved to the project");
+  // Wait beyond the workspace's debounce: writing the last valid request
+  // must not make the unfinished draft look saved or remove its guard.
+  await page.waitForTimeout(1600);
+  expect(await page.locator(".brand").innerText()).toContain("Unsaved");
+  expect((await savedProject(page)).decisionRequestRevisions).toEqual(saved.decisionRequestRevisions);
+  expect(await page.evaluate(() => {
+    const event = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  })).toBe(true);
+
+  const replacement = { ...JSON.parse(emptyProject()), name: "Replacement project" };
+  async function requestReplacement() {
+    await page.getByLabel("Project menu").click();
+    await page.setInputFiles('.project-popover:not(.run-data-popover) input[type="file"]', {
+      name: "replacement.project.json", mimeType: "application/json",
+      buffer: Buffer.from(JSON.stringify(replacement)),
+    });
+  }
+  await requestReplacement();
+  const dialog = page.getByRole("dialog", { name: "Save changes before switching projects?" });
+  await dialog.getByRole("button", { name: "Save and switch", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toContainText("decision request");
+  await expect(page.locator(".brand")).toContainText("Decision requests");
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(editor).toHaveValue(unfinished);
+  await page.locator('[data-app-banner="project-error"]').getByRole("button", { name: "Dismiss", exact: true }).click();
+
+  // A manual save cannot clear the guard either.
+  await page.getByLabel("Project menu").click();
+  await page.getByRole("button", { name: "Save now" }).click();
+  await expect(page.locator('[data-app-banner="project-error"]')).toContainText("Fix the decision request before saving.");
+  await expect(editor).toHaveValue(unfinished);
+  await expect(page.locator(".brand")).toContainText("Unsaved");
+
+  await requestReplacement();
+  await dialog.getByRole("button", { name: "Discard and switch", exact: true }).click();
+  await expect(page.locator(".brand")).toContainText("Replacement project");
+});
+
+test("fixing an incomplete decision request saves it and clears replacement protection", async ({ page }) => {
+  await openFolder(page, emptyProject());
+  const pane = decisionPane(page);
+  await pane.getByRole("tab", { name: "JSON" }).first().click();
+  const editor = page.getByLabel("Decision input (state and questions)");
+  await editor.fill('{"state":');
+  await page.waitForTimeout(1600);
+  await editor.fill(JSON.stringify(templated));
+  await waitForSavedRevisions(page, 1);
+  await expect(page.locator(".brand")).not.toContainText("Unsaved");
+  await expect(page.locator(".brand")).toContainText("Saved to");
+  await expect(pane).not.toContainText("Not saved to the project");
+
+  // A manual save after repairing the draft must clear the retained unsaved
+  // marker, even if it wins the race with the next autosave timer.
+  await editor.fill('{"state":');
+  await page.waitForTimeout(1600);
+  const repaired = { ...templated, state: "Repaired before a manual save" };
+  await editor.fill(JSON.stringify(repaired));
+  await page.getByLabel("Project menu").click();
+  await page.getByRole("button", { name: "Save now" }).click();
+  await expect.poll(async () => (await savedProject(page)).decisionRequestRevisions[0]!.decision.state).toBe(repaired.state);
+  await expect(page.locator(".brand")).not.toContainText("Unsaved");
+  await expect(page.locator(".brand")).toContainText("Saved to");
+});
+
 test("an untouched starting draft never creates a request", async ({ page }) => {
   await openFolder(page, emptyProject());
   await page.getByRole("radio", { name: "Chat" }).click();

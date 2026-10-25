@@ -5979,6 +5979,10 @@ main {
   background: var(--accent-solid);
 }
 
+.decision-connection-glyph {
+  color: var(--accent-solid);
+}
+
 .target-copy {
   min-width: 0;
   display: block;
@@ -8845,6 +8849,11 @@ label.experiment-retry-field {
 .decision-help {
   display: grid;
   gap: var(--space-xs);
+}
+
+.decision-introduction {
+  margin: 0;
+  color: var(--text-secondary);
 }
 
 .decision-guide {

@@ -136,6 +136,26 @@ test("duplicate question ids and option labels are refused", () => {
   assert.ok("problems" in showDecisionJsonView(draft));
 });
 
+test("prototype-named question ids and option labels survive validation and both editor views", () => {
+  const keys = ["__proto__", "constructor", "toString", "hasOwnProperty"];
+  const input: DecisionInput = {
+    state: "Classify this input.",
+    questions: Object.fromEntries(keys.map((key) => [key, {
+      type: "choice" as const,
+      instructions: "Which option?",
+      criteria: Object.fromEntries(keys.map((label, index) => [label, index === 0 ? { meaning: "special" } : null])),
+    }])),
+  };
+  const draft = decisionDraftFromInput(input, rowIds());
+  assert.equal(JSON.stringify(valid(draft)), JSON.stringify(input));
+  const json = showDecisionJsonView(draft);
+  assert.ok("draft" in json, JSON.stringify(json));
+  assert.equal(JSON.stringify(valid(json.draft)), JSON.stringify(input));
+  const form = showDecisionFormView(json.draft, rowIds());
+  assert.ok(!("problems" in form), JSON.stringify(form));
+  assert.equal(JSON.stringify(valid(form.draft)), JSON.stringify(input));
+});
+
 test("renaming and reordering keep each row's own state", () => {
   const ids = rowIds();
   let draft = decisionDraftFromInput(captured(), ids);
