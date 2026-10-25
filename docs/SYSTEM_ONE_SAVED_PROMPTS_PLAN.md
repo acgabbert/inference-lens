@@ -366,26 +366,12 @@ for this documentation-only task.
 
 ## Slice 1 verification
 
-The implementation extends the plan's first step with behavior-preserving
-preparation for step 2. Before the refactor, the scoped core suite passed with
-additional coverage for all supported starting versions (v10–v14) and for
-saving/reopening absent versus explicitly empty decision values. No behavioral
-red is claimed: existing inline behavior is retained, and an import failure for
-the newly introduced resolver would not establish a regression. Resolver
-contract tests cover authored tokens, source identity, caller ownership,
-ordering, diagnostics, and unknown pins.
-
-Verification completed October 25, 2026:
-
-- `npm run typecheck`, `npm run typecheck:core`, and `npm run build` passed.
-- `npm run lint` passed with four existing unused-variable warnings.
-- `node --experimental-strip-types --test tests/project.test.ts tests/decision-request.test.ts tests/decision-suite-authoring.test.ts tests/decision-suites.test.ts tests/decision-experiment-plan.test.ts` passed all 90 tests (86 before the refactor and new resolver tests). After removing unused destructuring variables in the new migration fixture, `node --experimental-strip-types --test tests/project.test.ts` passed all 44 tests again.
-- `npm run test:core` passed all 1,458 tests with host access for fixture listeners, including CLI decision runs and CLI bundle checks. Its first sandboxed run failed 50 fixture/CLI tests because loopback listeners were blocked; that run is not regression evidence.
-- `npm run test:e2e -- tests/e2e/system-one-decision-requests.spec.ts tests/e2e/system-one-decision-suites.spec.ts` passed all 9 tests against Playwright's pinned Chromium and the committed System One replay. These cover project reopen, variable resolution on the wire, suite execution, and preservation of suite-pinned revisions.
-- `npm run test:e2e` passed 340 tests with 7 configuration-gated skips: the 2 Python MCP tests and 5 N1 Python capture tests. The run used pinned Chromium; no fallback was needed.
-
-No hosted-provider or native-desktop checks were run. This slice preserves the
-existing inline request behavior; the saved decision template UI and its new
-acceptance spec belong to subsequent slices. The core suite exercises current
-CLI decision requests, not yet template-backed requests. New library and pinned
-use presentation will need the user's visual review when slice 3 exists.
+Verified on October 25, 2026 with typecheck, lint, build, the core suite, the
+System One decision request and suite browser specs, and the full browser
+suite. Exact commands and results are recorded on the slice 1 pull request.
+The slice is behavior-preserving apart from one message: suite preflight now
+gives the same literal-brace guidance for a malformed token that Compose
+already gives. No hosted-provider or native-desktop checks were run; the saved
+decision template UI and its acceptance spec belong to subsequent slices, and
+new library and pinned-use presentation will need the user's visual review
+when slice 3 exists.

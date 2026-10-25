@@ -68,13 +68,13 @@ export function useDecisionProject(options: {
     fold,
     adopt(project) {
       pendingSuffixRef.current = undefined;
-      const active = activeDecisionRequestRevision(project);
-      const resolved = active && resolveProjectDecisionRequestRevision(project, active.id);
-      if (!active || !resolved) {
+      const activeId = project.defaults.decisionRequestRevisionId;
+      const resolved = activeId && resolveProjectDecisionRequestRevision(project, activeId);
+      if (!resolved) {
         draft.reset();
         return;
       }
-      frozenRef.current.add(active.id);
+      frozenRef.current.add(resolved.source.decisionRequestRevisionId);
       draft.adopt(resolved.decision, resolved.values);
     },
     freezeForRun() {

@@ -122,7 +122,9 @@ Experiment snapshots continue receiving resolved content in the existing
 format. Target recommendations and credentials never enter value resolution.
 
 Content readers use this boundary: Compose project adoption, suite binding
-candidates and input creation, suite preflight, and experiment construction.
+candidates and input creation, suite preflight (variables and token
+diagnostics included), experiment construction, and the decision suite setup
+band and check editor that show the pinned questions.
 Identity-only readers may still inspect revision metadata directly. Schema
 validation and core draft mutations retain direct access to the stored arms;
 they must distinguish inline content from template-backed content in slice 2.

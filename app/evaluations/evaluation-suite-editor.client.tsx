@@ -5,6 +5,7 @@ import { StructuredCheckEditor } from "./structured-check-editor.client";
 import { CHECK_KINDS, DECISION_CHECK_KINDS, SHARED_CHECK_KINDS, isDecisionCheckKind } from "../../packages/core/src/checks";
 import type { CheckDefinition, CheckKind, DecisionBoundComparator, DecisionCheckDefinition, DecisionScoreRangeCheck, ToolCallCountComparator } from "../../packages/core/src/checks";
 import type { DecisionInput } from "../../packages/core/src/decision";
+import { resolveProjectDecisionRequestRevision } from "../../packages/core/src/decision-request";
 import type { JsonObject } from "../../packages/core/src/run-kernel";
 import type { EvaluationCase, EvaluationInputBinding } from "../../packages/core/src/project";
 import { decisionCheckQuestionTypes, decisionOptions, isChatEvaluationSuite, isDecisionEvaluationSuite } from "../../packages/core/src/evaluation-suites";
@@ -279,8 +280,8 @@ function CaseEditor({ evaluationCase, authoring, source, onOpenSourceTrace }: {
   const suite = project?.evaluationSuites.find(({ id }) => id === authoring.suiteId);
   const decisionSuite = suite && isDecisionEvaluationSuite(suite) ? suite : undefined;
   const kinds = offeredCheckKinds[decisionSuite ? "decision" : "chat"];
-  const questions = decisionSuite
-    ? project?.decisionRequestRevisions.find(({ id }) => id === decisionSuite.input.decisionRequestRevisionId)?.decision.questions
+  const questions = decisionSuite && project
+    ? resolveProjectDecisionRequestRevision(project, decisionSuite.input.decisionRequestRevisionId)?.decision.questions
     : undefined;
   const [newKind, setNewKind] = useState<CheckKind>(kinds[0]!.kind);
   // Seeded from the case rather than driven by it: a controlled `open` would
