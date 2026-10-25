@@ -20,6 +20,14 @@ config owns all of it, with `reuseExistingServer: false` — a server you starte
 yourself is not the server the suite talks to, and leaving one running is how a
 later run picks up a stale build.
 
+The runner launches Playwright's pinned Chromium, installing it if it is
+missing. Outside CI, when that install fails (a sandbox that blocks
+`cdn.playwright.dev`, say), it falls back to the newest other `chromium-<revision>`
+build installed beside the pinned one and prints both builds. Report a run made
+that way as such: Playwright only guarantees its pinned build, so a failure
+there may be version skew. Set `INFERENCE_LENS_E2E_CHROMIUM` to a Chromium
+executable to skip the pinned build deliberately. CI never falls back.
+
 The runner starts loopback listeners. In an execution environment that blocks
 socket binding, run it with host-network / out-of-sandbox permission on the
 **first** attempt rather than discovering the failure and retrying.

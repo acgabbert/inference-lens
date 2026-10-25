@@ -162,12 +162,17 @@ export async function seedProfile(
  * localStorage, so it cannot be in the server-rendered HTML. Waiting on an
  * element that is server-rendered — the streaming checkbox, say — proves
  * nothing, since it is visible before hydration.
+ *
+ * The timeout is a readiness bound, not an assertion about the app. The first
+ * pages a cold dev server serves compile client code, which takes 2–4 s on an
+ * idle four-core machine and passed the 5 s default under load, failing the
+ * first specs of a run before hydration rather than on anything they test.
  */
 export async function waitForHydration(
   page: Page,
   profileName = "Buffered fixture",
 ): Promise<void> {
-  await expect(page.locator(".topbar")).toContainText(profileName);
+  await expect(page.locator(".topbar")).toContainText(profileName, { timeout: 30_000 });
 }
 
 /**
