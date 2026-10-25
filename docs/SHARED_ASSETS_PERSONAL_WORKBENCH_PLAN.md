@@ -1,0 +1,442 @@
+# Shared assets in a personal workbench
+
+**Status:** Proposed implementation plan, October 25, 2026. The product direction
+is agreed: Inference Lens is a personal workbench for potentially shared assets.
+The detailed contracts below are recommendations, not approved schema or storage
+decisions. No implementation is included in this document.
+
+## Intended experience
+
+Opening a project opens assets in your own workbench. You can use a team's
+prompts, try different inputs and models, inspect results, and resume your drafts
+without changing the team's definitions merely by doing your work.
+
+Saving an asset revision is an intentional contribution to the local project
+files. Git commit and push remain separate actions that determine when teammates
+receive it. Local recovery saves should preserve unfinished work without making
+it part of the shared asset definition.
+
+Projects need not be collaborative or live in Git. A person working alone gets
+the same separation between reusable assets and experimentation, and can later
+choose which assets to share. A Git checkout contains definitions; it does not
+need to recreate the last operator's entire workspace.
+
+The three delivery levels are:
+
+1. **Share definitions, keep evidence local.** Add selective Git protection to
+   today's bundle without changing `project.json`.
+2. **Separate assets from personal working state.** Stop ordinary experimentation
+   and draft recovery from rewriting shared definitions.
+3. **Make assets independently shareable.** Introduce an asset file layout and
+   dependency contract that supports selective version control and reduces
+   unrelated merge conflicts.
+
+Level 1 is useful independently, but it does not deliver the complete intended
+experience. Level 2 establishes ownership; level 3 changes physical organization.
+
+## Current behavior and constraints
+
+The current strict Project v14 document owns conversations and their revisions,
+prompt templates and their revisions and drafts, tools and mock fixtures,
+external-import receipts, evaluation suites, decision requests and revisions,
+connection requirements, and defaults. See [the core contract](../packages/core/src/project.ts)
+and [project format](PROJECT_FORMAT.md).
+
+Several ordinary activities therefore create shared-file churn:
+
+- Prompt authoring persists one working draft on each project template.
+- Request editing changes authored conversation state. Branching can move the
+  project's default conversation revision.
+- Saved request settings include the default model, protocol, inference options,
+  and enabled tools.
+- Saving a template revision changes its shared `currentRevisionId`; concurrent
+  changes need a meaningful choice even if both revisions can be retained.
+- Separate entities occupy arrays in one file, so logically independent additions
+  may still produce textual Git conflicts.
+
+Some useful boundaries already exist:
+
+- Traces are immutable files under `traces/`, outside the project manifest.
+- Experiment plans, results, and reassessments are under `experiments/`.
+- Baseline pins and case-source annotations have separate files.
+- Credentials, local connection mappings, and execution grants are outside the
+  portable project. Per-run template overrides are already session state.
+- Serialization is deterministic, identities are stable, and uses pin revisions.
+- Browser and native saves detect external manifest changes and refuse to
+  overwrite them. The CLI reads the manifest and writes new immutable evidence.
+
+These boundaries should be reused. This plan does not require a redesign of
+provider requests, the run kernel, or historical trace formats.
+
+## Ownership model
+
+The distinction is intentional reusable content versus the operator's current
+work. A field is not personal just because it is editable, and a field is not
+shared just because recovery needs to persist it.
+
+| Concern | Shared asset responsibility | Personal workbench responsibility |
+| --- | --- | --- |
+| Prompts/templates | Saved revisions, names, archive state, explicit current revision, recommendations | Unpublished edits and draft recovery, selected editor revision |
+| Conversations and decision requests | Requests explicitly saved for reuse, with stable identities and revisions | Scratch requests, current conversation, experimental branches and input values |
+| Template values | Deliberately saved reusable defaults and fixture values | Values supplied for a trial run and local overrides |
+| Execution settings | Reproducible suite settings, recommended targets, deliberately saved configurations | Current model/configuration selection, temporary option and tool overrides |
+| Evaluations | Suites, cases, checks, references, configurations and pinned input definitions | Selected suite/cases, execution controls, evidence comparisons and baseline pins |
+| Tools | Definitions and deliberately authored shared mock fixtures | Local executor bindings, permissions, temporary fixtures and tool selections |
+| Connections | Portable requirements and declared expectations | Local profiles, credentials, mappings, and actual runtime resolution |
+| Imports | Provenance required to explain or reproduce a saved imported definition | Import staging and edits not yet saved as assets |
+| Evidence | Only separately and explicitly selected evidence, if supported | Traces, experiment plans/results, reassessments and source annotations by default |
+
+Shared recommendations and personal selections must remain distinct. Trying a
+different model must not edit a template's recommendation. A saved suite must
+still declare enough execution intent to be reproducible; personal overrides
+must be explicit and captured in the resulting run evidence.
+
+Promoting evidence into a saved conversation, template, mock fixture, or evaluation
+case is an intentional copy into authored content. Excluding trace files cannot
+make that copied content private. Existing historical and archived revisions also
+remain part of an asset unless deliberately removed through valid operations.
+
+## Level 1: selective Git protection
+
+**Size:** Small. No project schema change.
+
+### Proposed behavior
+
+Offer three project-creation presets:
+
+| Preset | Effect |
+| --- | --- |
+| Keep the project out of Git | Preserve the existing `*` protection |
+| Share definitions; keep run history local | Track the manifest and ignore policy; exclude everything else by default |
+| Manage Git rules myself | Omit the generated ignore file |
+
+Keep the current private default unless a separate product decision changes it.
+Do not silently rewrite existing projects' policies. Explain that the definitions
+preset shares all content in `project.json`, including persisted drafts and saved
+values until level 2 is delivered.
+
+The generated bundle-local policy for the definitions preset is:
+
+```gitignore
+*
+!/.gitignore
+!/project.json
+```
+
+Use an allowlist so new evidence/artifact types are excluded automatically.
+The browser and Tauri adapters must generate the same policy before writing
+project content, preserving creation rollback behavior. Ordinary project saves
+must not regenerate or overwrite a user's customized ignore file.
+
+For existing projects, document the exact replacement policy and how to inspect
+already tracked files. Gitignore is staging policy, not access control: it does
+not untrack existing commits or prevent force-adding a file. The app must not
+remove files from the Git index or rewrite history as part of this feature.
+
+### Acceptance criteria
+
+- A fresh Git repository stages only `project.json` and `.gitignore` for the
+  definitions preset, including after runs, evaluations, and baseline/source
+  annotations have been saved.
+- The existing private and unmanaged choices retain their behavior.
+- Opening a clone without local evidence succeeds; running creates local evidence
+  without dirtying shared definitions merely to register trace paths.
+- Copy explicitly states the remaining single-manifest sharing boundary.
+
+## Level 2: separate personal state from asset definitions
+
+**Size:** Moderate. Ownership, persistence, UX, and compatibility changes.
+
+### Contracts to settle before implementation
+
+1. **Asset versus workbench types.** Introduce separate typed models for shared
+   definitions and recoverable personal state. Do not make a second complete copy
+   of the project document as the local model. A draft should identify its asset,
+   source revision, and edited fields; selections and overrides should have their
+   own contracts. Working definitions needed only for scratch requests stay local.
+2. **Personal persistence location.** Options are device application storage or
+   an ignored directory inside each checkout. Application storage gives stronger
+   separation from files people copy; a checkout-local store is easier to inspect
+   and works naturally through existing folder access in browser and native hosts.
+   Recommend an ignored checkout-local workbench store for folder projects,
+   subject to agreement on recovery and portability. Exact paths remain open.
+3. **Workbench identity.** Recommend one personal workbench per checkout initially.
+   Separate clones/worktrees must not share drafts merely because their
+   `projectId` matches. Define behavior for copied/moved folders, changed project
+   identity, browser/native use of the same folder, and concurrent app windows.
+   One checkout used by several people is not user isolation; independent users
+   should have independent checkouts. Multiple named workbenches can be a later
+   extension if required.
+4. **No-folder mode.** Define recovery for imported JSON and scratch-only sessions
+   separately. Do not introduce silent browser persistence of prompt/input content
+   as an incidental fallback. Recommend explicit recovery opt-in or a clearly
+   session-only state until a durable location is chosen.
+5. **Defaults.** Split deliberately authored launch defaults/recommendations from
+   last-used selections. Preserve reproducible evaluation execution definitions.
+   Decide whether named reusable execution configurations are needed now or later;
+   do not require that extra feature merely to separate current overrides.
+6. **Scratch versus saved requests.** Recommend private scratch requests by
+   default, with an explicit save-as-asset action. Editing a saved request creates
+   a personal draft; it does not continuously modify the shared definition.
+
+### Proposed workflows
+
+- Opening a project loads shared assets and restores this checkout's personal
+  state. With no personal state, explicit project recommendations may seed the
+  initial view; selecting something else remains personal.
+- Editing an asset updates a locally recoverable draft. Saving a revision writes
+  the intended shared definition and resolves or clears that draft only after the
+  shared write succeeds. Failed writes preserve recoverable edits.
+- Saving an asset locally does not commit, push, or claim teammates have received
+  it. UI wording distinguishes local draft recovery, asset save, and run evidence.
+- Running a scratch request or using an existing prompt with temporary values,
+  target, options, or tools does not mutate shared definitions. Required temporary
+  definitions are resolved from the workbench without first materializing assets.
+- Saving a scratch request or promoting evidence previews the authored content
+  that will be copied. It must not silently include unrelated drafts or history.
+- If the asset changes externally while a draft is open, retain the source
+  revision and local edits, report divergence, and offer an explicit comparison
+  and reconciliation path. Do not silently replace either version or rebase a
+  draft onto different content. Deletion or branch switching must not discard it.
+- Missing evidence remains a supported state; baseline/source references to
+  unavailable evidence do not prevent shared assets from opening or running.
+
+Keep current evidence directories initially if practical; changing their paths
+is not necessary to separate ownership. Their default sharing policy stays
+local. Recovery files must exclude credentials and retain explicit storage/error
+status; automatic local persistence must not imply an access-control guarantee.
+
+### Migration and compatibility
+
+- Inventory every persisted field, including import receipts, draft values,
+  request branches, and evaluation references. Classify it before changing writers.
+- Use explicit versioned formats for the shared definition and workbench store.
+  Do not silently change what existing schema versions mean or loosen strict
+  parsers. Choose exact version numbers when the contracts are approved.
+- Preview migration and preserve an untouched source. Existing conversations,
+  revisions, values, and configurations may be intentional shared assets; retain
+  them as definitions unless the user deliberately chooses otherwise. Copy
+  recoverable template drafts into personal storage before removing them from the
+  new shared representation. Old default selections can seed personal state;
+  deliberate reusable execution defaults must not be discarded.
+- Migration must be restartable, detect partial writes, and avoid leaving the
+  only copy of a draft in an ignored file that was never successfully written.
+  Any backup containing legacy personal content is local and excluded by default.
+- Define export modes. Recommend a shared-assets export that omits personal state,
+  plus a separately explicit personal backup if needed. Until a new portable
+  format is approved, retain a documented compatibility path for existing JSON.
+- CLI evaluation must work from shared assets alone, without a personal workbench.
+  Update or version any command that formerly relied on mutable workbench defaults.
+  Preserve app/CLI coexistence for immutable evidence writes.
+
+### Acceptance criteria
+
+- Two independent checkouts of the same project keep different drafts, selected
+  requests, model choices, and input values across reopen without sharing them.
+- After opening an existing asset, trial edits, scratch runs, and personal settings
+  changes leave shared files byte-identical. An explicit asset save changes only
+  the intended definitions and required dependencies.
+- A shared save failure, local recovery failure, external edit, or missing/deleted
+  base revision cannot silently lose the draft or claim it was saved.
+- Persisted asset pins and historical evidence retain their meaning through
+  migration. A fresh clone and the CLI need no other person's local state.
+
+## Level 3: independently shareable asset files
+
+**Size:** Larger. Bundle format, reference resolution, multi-file writes, migration,
+and cross-host loader changes. Build on level 2 rather than mixing personal state
+into each asset file.
+
+### Proposed layout and representation
+
+Keep `project.json` as a small project identity/format document and move cohesive
+asset definitions into separate files. The following is illustrative, not a final
+directory or extension contract:
+
+```text
+example.inference-lens/
+  .gitignore
+  project.json
+  assets/
+    prompts/<stable-id>.json
+    requests/<stable-id>.json
+    tools/<stable-id>.json
+    mocks/<stable-id>.json
+    suites/<stable-id>.json
+    connections/<stable-id>.json
+  <ignored personal workbench storage>/
+  traces/
+  experiments/
+  evaluation-baselines.json
+  evaluation-case-sources.json
+```
+
+Recommend one file per asset with its revisions kept together initially. This
+reduces conflicts between different assets and preserves cohesive review; it
+still leaves conflicts over the same asset and its current revision. One file
+per immutable revision reduces concurrent append conflicts further but adds
+many files and more complex loading/lifecycle rules. Choose that only if the
+expected collaboration pattern warrants it.
+
+Use stable IDs for references and filenames; display-name changes should not
+rename every dependent file. Define chat and decision request discriminators,
+asset schema versions, duplicate-ID handling, validation limits, path safety,
+and deterministic serialization before writing the format. Prefer discovering
+assets in designated directories over rewriting a central inventory on every
+addition, while strictly reporting invalid recognized asset files.
+
+### Selective sharing and dependencies
+
+File boundaries enable Git selection, but selections must form a usable set:
+
+- A template may depend on a connection requirement and imported provenance.
+- A saved request may pin template revisions and use tools or mocks.
+- A suite may depend on saved inputs, tools, connection requirements, and fixtures.
+- Provenance needed by an asset must travel with it or be an explicit dependency;
+  private staging receipts must not become a hidden shared dependency.
+
+Define a core dependency graph and a closure operation. Recommend a selection
+preview/export that includes required definitions, preserves pinned revisions,
+and explains why each dependency is included. Do not automatically include
+referencing consumers: sharing a template should not pull in every conversation
+or suite that uses it. Do not flatten pins or silently substitute a newer revision.
+
+Define sharing-policy ownership too: a committed ignore policy establishes the
+team's intended shareable files; personal exclusions stay local. A person must
+be able to keep an experimental asset outside that set without changing the
+team's policy. An ignored candidate asset must not accidentally satisfy a missing
+dependency that makes an otherwise incomplete clone appear valid. Validate the
+selected share/export set independently of all files present in the operator's
+checkout, and make candidates that depend on private assets visibly incomplete.
+
+Git rules can select files, not fields or historical revisions within one file.
+Sharing only a current revision or sanitizing fixture values requires an explicit
+export/copy operation with its own identity and provenance rules. This plan does
+not promise arbitrary field-level sharing.
+
+Initial scope is assets inside a self-contained project and deliberate copies
+between projects. Live references into other repositories, package registries,
+or remotely synchronized libraries require a separate dependency/version design.
+
+### Writes, external changes, and compatibility
+
+- Separate the loaded in-memory asset graph from its on-disk layout. Execution
+  resolves provider-neutral input from a validated snapshot; runtime credentials
+  and provider adapters do not become asset-file concerns.
+- Check the expected contents of each file being replaced. Changes to a different
+  asset should not block an independent save; changes to the same asset require
+  explicit reconciliation. Preserve unaffected local drafts during reload.
+- Saving a suite, request, or imported asset may write several dependent files.
+  Specify write ordering, recoverability, and detection of incomplete writes for
+  browser, native, and Node hosts; do not assume transactional directory renames
+  are available everywhere. A partial save must never be reported as complete.
+- Keep unsupported versions, unresolved references, duplicate IDs, and Git conflict
+  markers explicit. Valid independent assets should remain inspectable where
+  possible; incomplete assets must not run with guessed dependencies.
+- Provide a lossless migration from supported monolithic projects with source
+  preservation and a documented export/import route. Decide old-writer behavior;
+  older apps must not mistake a thin manifest for a complete editable old project.
+- Preserve IDs and revision pins so existing traces and experiment plans remain
+  inspectable. Keep historical evidence self-contained, without requiring a
+  mutable asset to reproduce its original input.
+- Update browser, Tauri, and CLI loaders together. The CLI reads the asset graph
+  and still never edits definitions as a side effect of a run.
+- Update the definitions-only ignore preset to allow the approved shared asset
+  files and their dependencies while continuing to exclude personal state,
+  migration backups, and evidence by default.
+
+### Acceptance criteria
+
+- Independent edits to two assets change different files. Renaming an asset
+  preserves references and does not create unrelated file changes.
+- A fresh clone of a selected template and its dependency closure opens and runs;
+  excluded conversations, drafts, fixtures, and evidence are absent.
+- A missing required dependency produces an actionable error. Locally present
+  ignored files cannot hide an incomplete selected share/export set.
+- Concurrent edits to the same asset retain both sides' work for reconciliation.
+  The application never guesses which revision should become current.
+- Browser, native, and CLI read the same asset graph; interrupted multi-file saves
+  and migrations are detectable and recoverable.
+
+## Implementation ownership and sequence
+
+Before each behavior-changing slice, approve its material contracts from the
+sections above. Planning recommendations are not authorization to select an
+unresolved persistence, compatibility, or dependency policy during coding.
+
+| Slice | Deliverable | Main owners and boundary |
+| --- | --- | --- |
+| 1 | Creation presets, exact ignore policy, documentation | Core bundle policy; creation dialog; browser/native creation adapters |
+| 2a | Complete field inventory, approved ownership and migration examples | Core shared-definition and personal-state contracts |
+| 2b | Versioned recovery store and migration support | Workspace adapters and a dedicated personal-workbench owner |
+| 2c | Personal drafts, scratch requests, local selections; explicit asset saves | Prompt, request, decision, evaluation and execution-setting feature owners |
+| 2d | Export/import and CLI compatibility; migration and conflict recovery | Core codecs, workspace persistence, CLI project loader |
+| 3a | Approved asset format, references, dependency graph and sharing policy | Core asset model and validated graph loader |
+| 3b | Cross-host file adapters, lossless migration and recoverable writes | Browser/native/Node storage owners |
+| 3c | Selection preview/export, dependency explanations and conflict UX | Asset selection/export owner composed into the UI |
+
+Design the whole level before splitting implementation into mergeable slices.
+Use compatibility adapters or feature gating where needed so intermediate slices
+do not create a half-migrated user experience or dual authoritative stores.
+
+`app/page.tsx` remains a composition root. The personal-workbench owner owns
+recovery lifecycle and local selections; feature owners own their drafts and
+save workflows; workspace adapters own I/O. Core owns portable asset/reference
+validation and codecs. Name the actual owner interfaces before expanding route
+composition. Keep provider-specific serialization in the existing adapters.
+
+## Verification and delivery evidence
+
+Follow [AGENTS.md](../AGENTS.md), [the browser-suite mechanics](../tests/e2e/README.md),
+and [the provider fixture guide](PROVIDER_FIXTURES.md).
+
+- Write observable regression tests before each fix/behavior change and run them
+  red for the actual incorrect value. For wholly new behavior, record which
+  assertion demonstrates its absence; do not count a selector or fixture failure.
+- Test Git policy using a disposable real repository, including existing tracked
+  files and nested asset paths. Check exact stageable paths after creating
+  representative evidence and recovery files.
+- Cover core codecs, migration preservation, IDs/pins, dependency closure, and
+  missing/cyclic/duplicate references with focused tests as applicable. Exercise
+  write failures and recovery at the persistence boundary.
+- Drive the committed Playwright suite through creation, clone/open, draft/edit,
+  run, save revision, reload, and external-change scenarios. For workbench
+  isolation, use distinct directory fixtures with the same project identity;
+  inspect persisted shared bytes as well as rendered status and recovered values.
+- Run an actual fixture-backed request with temporary values and model settings;
+  assert the provider received them and shared definitions remained unchanged.
+  Exercise both chat and decision ownership, evaluation execution, and trace-to-
+  case promotion where the slice changes them.
+- Exercise browser/native adapter behavior and the headless CLI. Playwright's
+  browser directory fixture does not establish native filesystem or Git behavior;
+  report that coverage separately and include native manual checks where needed.
+- Iterate on affected specs, then run the full Playwright suite once before
+  handing back each user-visible implementation change. Run the relevant core,
+  build/type, CLI, and Rust checks for the code actually changed.
+
+Record exact commands, affected specs, observed failures, unsupported migration
+cases, and anything not exercised. Ask the user to inspect draft/save wording,
+the migration preview, and selective-share dependency explanations as a complement
+to executed checks.
+
+This planning document itself changes no runtime behavior; it requires a document
+and diff check, not a browser run.
+
+## Remaining decisions for the design review
+
+1. Confirm the three creation presets and whether the existing private default
+   remains the initial default (recommended).
+2. Choose checkout-local versus device application storage for personal state,
+   its isolation scope, and no-folder recovery behavior.
+3. Approve the exact classification of shared launch defaults, scratch requests,
+   draft branches, saved values, and temporary fixtures, with migration examples.
+4. Choose asset file granularity and discovery rules, reference/provenance closure,
+   and how team sharing policy and personal asset exclusions interact.
+5. Approve versioned format transitions, export/backup semantics, old-reader/writer
+   behavior, and recovery for interrupted multi-file operations.
+
+The target is fewer incidental conflicts, explicit intentional contributions,
+and selective sharing with understandable dependencies. Same-asset edits still
+need reconciliation. Ignore rules still need correct Git usage. The application
+should make those boundaries visible without requiring Git to understand or
+merge personal workbench state.
