@@ -1,0 +1,573 @@
+{
+  "id": "execution_fixture_001",
+  "workflowId": "workflow_fixture",
+  "mode": "manual",
+  "status": "error",
+  "finished": false,
+  "data": {
+    "startData": {},
+    "resultData": {
+      "error": {
+        "level": "warning",
+        "shouldReport": true,
+        "description": "To continue the execution when this happens, change the 'On Error' parameter in the root node's settings",
+        "tags": {},
+        "timestamp": 1792949103532,
+        "context": {
+          "outputParserFailReason": "Invalid JSON in model output"
+        },
+        "functionality": "regular",
+        "name": "NodeOperationError",
+        "node": {
+          "parameters": {
+            "notice": "",
+            "schemaType": "manual",
+            "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"answer\": {\n      \"type\": \"string\"\n    },\n    \"count\": {\n      \"type\": \"integer\"\n    },\n    \"note\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"answer\",\n    \"count\"\n  ],\n  \"additionalProperties\": false\n}",
+            "autoFix": false
+          },
+          "id": "node_fixture_005",
+          "name": "Structured Output Parser",
+          "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+          "typeVersion": 1.3,
+          "position": [
+            720,
+            240
+          ]
+        },
+        "messages": [],
+        "message": "Model output doesn't fit required format",
+        "stack": "NodeOperationError: Model output doesn't fit required format\n    at N8nStructuredOutputParser.parse (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/@n8n+n8n-nodes-langchain@file++++home+runner+_work+n8n+n8n+packages+@n8n+nodes-langchain/node_modules/@n8n/n8n-nodes-langchain/utils/output_parsers/N8nStructuredOutputParser.ts:95:22)\n    at RunnableLambda.func (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/@n8n+n8n-nodes-langchain@file++++home+runner+_work+n8n+n8n+packages+@n8n+nodes-langchain/node_modules/@n8n/n8n-nodes-langchain/nodes/agents/Agent/agents/ToolsAgent/common.ts:468:45)\n    at /usr/local/lib/node_modules/n8n/node_modules/.pnpm/@langchain+core@1.2.8_@opentelemetry+api@1.9.1_@opentelemetry+exporter-trace-otlp-proto_eb5ce6e28c0b3d1a72c44e8da46a550b/node_modules/@langchain/core/dist/runnables/base.cjs:1236:30\n    at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:66:14)\n    at AsyncLocalStorageProvider.runWithConfig (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/@langchain+core@1.2.8_@opentelemetry+api@1.9.1_@opentelemetry+exporter-trace-otlp-proto_eb5ce6e28c0b3d1a72c44e8da46a550b/node_modules/@langchain/core/dist/singletons/async_local_storage/index.cjs:41:18)\n    at /usr/local/lib/node_modules/n8n/node_modules/.pnpm/@langchain+core@1.2.8_@opentelemetry+api@1.9.1_@opentelemetry+exporter-trace-otlp-proto_eb5ce6e28c0b3d1a72c44e8da46a550b/node_modules/@langchain/core/dist/runnables/base.cjs:1234:53\n    at new Promise (<anonymous>)\n    at RunnableLambda._invoke (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/@langchain+core@1.2.8_@opentelemetry+api@1.9.1_@opentelemetry+exporter-trace-otlp-proto_eb5ce6e28c0b3d1a72c44e8da46a550b/node_modules/@langchain/core/dist/runnables/base.cjs:1229:10)\n    at RunnableLambda._callWithConfig (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/@langchain+core@1.2.8_@opentelemetry+api@1.9.1_@opentelemetry+exporter-trace-otlp-proto_eb5ce6e28c0b3d1a72c44e8da46a550b/node_modules/@langchain/core/dist/runnables/base.cjs:162:54)\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)"
+      },
+      "runData": {
+        "Manual Trigger": [
+          {
+            "executionIndex": 0,
+            "source": [],
+            "hints": [],
+            "executionTime": 1,
+            "executionStatus": "success",
+            "data": {
+              "main": [
+                [
+                  {
+                    "json": {},
+                    "pairedItem": {
+                      "item": 0
+                    }
+                  }
+                ]
+              ]
+            }
+          }
+        ],
+        "Fixture OpenAI Chat Model": [
+          {
+            "executionTime": 32,
+            "executionIndex": 2,
+            "executionStatus": "success",
+            "source": [
+              {
+                "previousNode": "Final output agent",
+                "previousNodeRun": 0
+              }
+            ],
+            "data": {
+              "ai_languageModel": [
+                [
+                  {
+                    "json": {
+                      "response": {
+                        "generations": [
+                          [
+                            {
+                              "text": "IL_F0_NOT_JSON",
+                              "generationInfo": {
+                                "finish_reason": "stop"
+                              }
+                            }
+                          ]
+                        ]
+                      },
+                      "tokenUsage": {
+                        "completionTokens": 1,
+                        "promptTokens": 2,
+                        "totalTokens": 3
+                      }
+                    }
+                  }
+                ]
+              ]
+            },
+            "inputOverride": {
+              "ai_languageModel": [
+                [
+                  {
+                    "json": {
+                      "messages": [
+                        "System: You are executing a synthetic Inference Lens provider-wire fixture.\n\nIMPORTANT: For your response to user, you MUST use the `format_final_json_response` tool with your complete answer formatted according to the required schema. Do not attempt to format the JSON manually - always use this tool. Your response will be rejected if it is not properly formatted through this tool. Only use this tool once you are ready to provide your final answer.\nHuman: IL_F0_CAPTURE\nReturn answer IL_F0_ANSWER and count 7 using the connected output parser."
+                      ],
+                      "estimatedTokens": 111,
+                      "options": {
+                        "model": "template-echo-model",
+                        "temperature": 0,
+                        "max_retries": 2,
+                        "configuration": {},
+                        "model_kwargs": {},
+                        "supports_strict_tool_calling": false
+                      }
+                    }
+                  }
+                ]
+              ]
+            },
+            "metadata": {
+              "subRun": [
+                {
+                  "node": "Fixture OpenAI Chat Model",
+                  "runIndex": 0
+                }
+              ]
+            }
+          }
+        ],
+        "Structured Output Parser": [
+          {
+            "executionTime": 1,
+            "executionIndex": 3,
+            "executionStatus": "error",
+            "source": [
+              {
+                "previousNode": "Final output agent",
+                "previousNodeRun": 0
+              }
+            ],
+            "data": {
+              "ai_outputParser": [
+                [
+                  {
+                    "json": {
+                      "action": "parse",
+                      "text": "IL_F0_NOT_JSON"
+                    }
+                  }
+                ]
+              ]
+            },
+            "inputOverride": {
+              "ai_outputParser": [
+                [
+                  {
+                    "json": {
+                      "action": "parse",
+                      "text": "IL_F0_NOT_JSON"
+                    }
+                  }
+                ]
+              ]
+            },
+            "metadata": {
+              "subRun": [
+                {
+                  "node": "Structured Output Parser",
+                  "runIndex": 0
+                }
+              ]
+            },
+            "error": {
+              "message": "Model output doesn't fit required format",
+              "timestamp": 1792949103532,
+              "name": "NodeOperationError",
+              "description": "To continue the execution when this happens, change the 'On Error' parameter in the root node's settings",
+              "context": {
+                "outputParserFailReason": "Invalid JSON in model output"
+              },
+              "cause": {
+                "name": "Error",
+                "message": "Model output doesn't fit required format"
+              }
+            }
+          }
+        ],
+        "Final output agent": [
+          {
+            "executionIndex": 1,
+            "source": [
+              {
+                "previousNode": "Manual Trigger",
+                "previousNodeOutput": 0,
+                "previousNodeRun": 0
+              }
+            ],
+            "hints": [],
+            "executionTime": 51,
+            "metadata": {
+              "tracing": {
+                "llm.tokens.in": 2,
+                "llm.tokens.out": 1,
+                "llm.tokens.total": 3,
+                "llm.tokens.estimated": false,
+                "ai.agent.version": "v3",
+                "ai.agent.streaming.enabled": false,
+                "ai.agent.items.total": 1,
+                "ai.agent.items.failed": 0,
+                "ai.agent.tool_calls.requested": 0,
+                "ai.agent.tool_calls.completed": 0,
+                "ai.agent.iteration.count": 0,
+                "ai.agent.memory.loads": 0,
+                "ai.agent.memory.saves": 0,
+                "ai.agent.execution.succeeded": false,
+                "ai.agent.failure.type": "OperationalError"
+              }
+            },
+            "executionStatus": "error",
+            "error": {
+              "level": "warning",
+              "shouldReport": true,
+              "description": "To continue the execution when this happens, change the 'On Error' parameter in the root node's settings",
+              "tags": {},
+              "timestamp": 1792949103532,
+              "context": {
+                "outputParserFailReason": "Invalid JSON in model output"
+              },
+              "functionality": "regular",
+              "name": "NodeOperationError",
+              "node": {
+                "parameters": {
+                  "notice": "",
+                  "schemaType": "manual",
+                  "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"answer\": {\n      \"type\": \"string\"\n    },\n    \"count\": {\n      \"type\": \"integer\"\n    },\n    \"note\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"answer\",\n    \"count\"\n  ],\n  \"additionalProperties\": false\n}",
+                  "autoFix": false
+                },
+                "id": "node_fixture_005",
+                "name": "Structured Output Parser",
+                "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+                "typeVersion": 1.3,
+                "position": [
+                  720,
+                  240
+                ]
+              },
+              "messages": [],
+              "message": "Model output doesn't fit required format",
+              "stack": "NodeOperationError: Model output doesn't fit required format\n    at N8nStructuredOutputParser.parse (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/@n8n+n8n-nodes-langchain@file++++home+runner+_work+n8n+n8n+packages+@n8n+nodes-langchain/node_modules/@n8n/n8n-nodes-langchain/utils/output_parsers/N8nStructuredOutputParser.ts:95:22)\n    at RunnableLambda.func (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/@n8n+n8n-nodes-langchain@file++++home+runner+_work+n8n+n8n+packages+@n8n+nodes-langchain/node_modules/@n8n/n8n-nodes-langchain/nodes/agents/Agent/agents/ToolsAgent/common.ts:468:45)\n    at /usr/local/lib/node_modules/n8n/node_modules/.pnpm/@langchain+core@1.2.8_@opentelemetry+api@1.9.1_@opentelemetry+exporter-trace-otlp-proto_eb5ce6e28c0b3d1a72c44e8da46a550b/node_modules/@langchain/core/dist/runnables/base.cjs:1236:30\n    at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:66:14)\n    at AsyncLocalStorageProvider.runWithConfig (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/@langchain+core@1.2.8_@opentelemetry+api@1.9.1_@opentelemetry+exporter-trace-otlp-proto_eb5ce6e28c0b3d1a72c44e8da46a550b/node_modules/@langchain/core/dist/singletons/async_local_storage/index.cjs:41:18)\n    at /usr/local/lib/node_modules/n8n/node_modules/.pnpm/@langchain+core@1.2.8_@opentelemetry+api@1.9.1_@opentelemetry+exporter-trace-otlp-proto_eb5ce6e28c0b3d1a72c44e8da46a550b/node_modules/@langchain/core/dist/runnables/base.cjs:1234:53\n    at new Promise (<anonymous>)\n    at RunnableLambda._invoke (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/@langchain+core@1.2.8_@opentelemetry+api@1.9.1_@opentelemetry+exporter-trace-otlp-proto_eb5ce6e28c0b3d1a72c44e8da46a550b/node_modules/@langchain/core/dist/runnables/base.cjs:1229:10)\n    at RunnableLambda._callWithConfig (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/@langchain+core@1.2.8_@opentelemetry+api@1.9.1_@opentelemetry+exporter-trace-otlp-proto_eb5ce6e28c0b3d1a72c44e8da46a550b/node_modules/@langchain/core/dist/runnables/base.cjs:162:54)\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)"
+            }
+          }
+        ]
+      },
+      "pinData": {},
+      "lastNodeExecuted": "Final output agent"
+    },
+    "executionData": {
+      "contextData": {},
+      "nodeExecutionStack": [
+        {
+          "node": {
+            "parameters": {
+              "aiAgentStarterCallout": "",
+              "promptType": "define",
+              "text": "=IL_F0_CAPTURE\nReturn answer IL_F0_ANSWER and count 7 using the connected output parser.",
+              "hasOutputParser": true,
+              "notice": "",
+              "needsFallback": false,
+              "options": {
+                "systemMessage": "You are executing a synthetic Inference Lens provider-wire fixture.",
+                "maxIterations": 3,
+                "enableStreaming": false
+              }
+            },
+            "id": "node_fixture_002",
+            "name": "Final output agent",
+            "type": "@n8n/n8n-nodes-langchain.agent",
+            "typeVersion": 3.1,
+            "position": [
+              320,
+              0
+            ]
+          },
+          "data": {
+            "main": [
+              [
+                {
+                  "json": {},
+                  "pairedItem": {
+                    "item": 0
+                  }
+                }
+              ]
+            ],
+            "ai_languageModel": [
+              [
+                {
+                  "json": {
+                    "messages": [
+                      "System: You are executing a synthetic Inference Lens provider-wire fixture.\n\nIMPORTANT: For your response to user, you MUST use the `format_final_json_response` tool with your complete answer formatted according to the required schema. Do not attempt to format the JSON manually - always use this tool. Your response will be rejected if it is not properly formatted through this tool. Only use this tool once you are ready to provide your final answer.\nHuman: IL_F0_CAPTURE\nReturn answer IL_F0_ANSWER and count 7 using the connected output parser."
+                    ],
+                    "estimatedTokens": 111,
+                    "options": {
+                      "model": "template-echo-model",
+                      "temperature": 0,
+                      "max_retries": 2,
+                      "configuration": {},
+                      "model_kwargs": {},
+                      "supports_strict_tool_calling": false
+                    }
+                  }
+                }
+              ]
+            ],
+            "ai_outputParser": [
+              [
+                {
+                  "json": {
+                    "action": "parse",
+                    "text": "IL_F0_NOT_JSON"
+                  }
+                }
+              ]
+            ]
+          },
+          "source": {
+            "main": [
+              {
+                "previousNode": "Manual Trigger",
+                "previousNodeOutput": 0,
+                "previousNodeRun": 0
+              }
+            ]
+          },
+          "metadata": {
+            "tracing": {
+              "llm.tokens.in": 2,
+              "llm.tokens.out": 1,
+              "llm.tokens.total": 3,
+              "llm.tokens.estimated": false,
+              "ai.agent.version": "v3",
+              "ai.agent.streaming.enabled": false,
+              "ai.agent.items.total": 1,
+              "ai.agent.items.failed": 0,
+              "ai.agent.tool_calls.requested": 0,
+              "ai.agent.tool_calls.completed": 0,
+              "ai.agent.iteration.count": 0,
+              "ai.agent.memory.loads": 0,
+              "ai.agent.memory.saves": 0,
+              "ai.agent.execution.succeeded": false,
+              "ai.agent.failure.type": "OperationalError"
+            }
+          }
+        }
+      ],
+      "metadata": {
+        "Fixture OpenAI Chat Model": [
+          {
+            "subRun": [
+              {
+                "node": "Fixture OpenAI Chat Model",
+                "runIndex": 0
+              }
+            ]
+          }
+        ],
+        "Structured Output Parser": [
+          {
+            "subRun": [
+              {
+                "node": "Structured Output Parser",
+                "runIndex": 0
+              }
+            ]
+          }
+        ]
+      },
+      "waitingExecution": {},
+      "waitingExecutionSource": {},
+      "runtimeData": {
+        "version": 1,
+        "establishedAt": 1792949103480,
+        "source": "manual",
+        "triggerNode": {
+          "name": "Manual Trigger",
+          "type": "n8n-nodes-base.manualTrigger"
+        },
+        "redaction": {
+          "version": 2,
+          "production": false,
+          "manual": false
+        }
+      }
+    },
+    "workflowData": {
+      "id": "workflow_fixture",
+      "name": "[Inference Lens F0] Final output — Agent 3.1 — buffered",
+      "nodes": [
+        {
+          "id": "node_fixture_001",
+          "name": "Manual Trigger",
+          "type": "n8n-nodes-base.manualTrigger",
+          "typeVersion": 1,
+          "position": [
+            0,
+            0
+          ],
+          "parameters": {
+            "notice": ""
+          }
+        },
+        {
+          "id": "node_fixture_002",
+          "name": "Final output agent",
+          "type": "@n8n/n8n-nodes-langchain.agent",
+          "typeVersion": 3.1,
+          "position": [
+            320,
+            0
+          ],
+          "parameters": {
+            "aiAgentStarterCallout": "",
+            "promptType": "define",
+            "text": "=IL_F0_CAPTURE\nReturn answer IL_F0_ANSWER and count 7 using the connected output parser.",
+            "hasOutputParser": true,
+            "notice": "",
+            "needsFallback": false,
+            "options": {
+              "systemMessage": "You are executing a synthetic Inference Lens provider-wire fixture.",
+              "maxIterations": 3,
+              "enableStreaming": false
+            }
+          }
+        },
+        {
+          "id": "node_fixture_003",
+          "name": "Fixture OpenAI Chat Model",
+          "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+          "typeVersion": 1.2,
+          "position": [
+            288,
+            240
+          ],
+          "parameters": {
+            "notice": "",
+            "model": {
+              "__rl": true,
+              "value": "template-echo-model",
+              "mode": "id"
+            },
+            "options": {
+              "temperature": 0
+            }
+          }
+        },
+        {
+          "id": "node_fixture_004",
+          "name": "il_echo_string",
+          "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+          "typeVersion": 2.2,
+          "position": [
+            528,
+            240
+          ],
+          "parameters": {
+            "notice": "",
+            "noticeTemplateExample": "",
+            "description": "Echo one string through a deterministic n8n sub-workflow for the Inference Lens provider-wire contract fixture.",
+            "executeNotice": "",
+            "source": "database",
+            "workflowId": {
+              "__rl": true,
+              "value": "subworkflow_fixture",
+              "mode": "list",
+              "cachedResultName": "[Inference Lens F0] Echo child"
+            },
+            "workflowInputs": {
+              "mappingMode": "defineBelow",
+              "value": {
+                "text": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('text', `The exact string to echo`, 'string') }}"
+              },
+              "matchingColumns": [
+                "text"
+              ],
+              "schema": [
+                {
+                  "id": "text",
+                  "displayName": "text",
+                  "required": false,
+                  "defaultMatch": false,
+                  "display": true,
+                  "canBeUsedToMatch": true,
+                  "type": "string",
+                  "removed": false
+                }
+              ],
+              "attemptToConvertTypes": false,
+              "convertFieldsToString": false
+            }
+          }
+        },
+        {
+          "id": "node_fixture_005",
+          "name": "Structured Output Parser",
+          "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+          "typeVersion": 1.3,
+          "position": [
+            720,
+            240
+          ],
+          "parameters": {
+            "notice": "",
+            "schemaType": "manual",
+            "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"answer\": {\n      \"type\": \"string\"\n    },\n    \"count\": {\n      \"type\": \"integer\"\n    },\n    \"note\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"answer\",\n    \"count\"\n  ],\n  \"additionalProperties\": false\n}",
+            "autoFix": false
+          }
+        }
+      ],
+      "connections": {
+        "Manual Trigger": {
+          "main": [
+            [
+              {
+                "node": "Final output agent",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "Fixture OpenAI Chat Model": {
+          "ai_languageModel": [
+            [
+              {
+                "node": "Final output agent",
+                "type": "ai_languageModel",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "il_echo_string": {
+          "ai_tool": [
+            [
+              {
+                "node": "Final output agent",
+                "type": "ai_tool",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "Structured Output Parser": {
+          "ai_outputParser": [
+            [
+              {
+                "node": "Final output agent",
+                "type": "ai_outputParser",
+                "index": 0
+              }
+            ]
+          ]
+        }
+      },
+      "settings": {
+        "executionOrder": "v1"
+      }
+    }
+  }
+}

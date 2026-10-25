@@ -1,0 +1,31 @@
+{
+  "id": "chatcmpl-inference-lens-n8n-tool-call",
+  "object": "chat.completion",
+  "created": 0,
+  "model": "template-echo-model",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_il_formatter_001",
+            "type": "function",
+            "function": {
+              "name": "format_final_json_response",
+              "arguments": "{\"output\":{\"answer\":\"IL_F0_ANSWER\",\"count\":\"IL_F0_WRONG_TYPE\"}}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 2,
+    "completion_tokens": 1,
+    "total_tokens": 3
+  }
+}

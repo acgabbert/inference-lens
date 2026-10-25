@@ -24,6 +24,16 @@ The success scenarios validate exact child results. Error and rejected-argument
 scenarios accept any linked string tool result because whether n8n creates one
 is the observation; a run with no continuation is deliberately incomplete.
 
+## Final-output parser capture
+
+The [F0 staging runbook](../tests/fixtures/n8n/final-output-workflows/README.md)
+adds formatter-only, fallback, invalid, mixed/duplicate, and ordinary-then-format
+recipes. Terminal scenarios write **two files for one request**. Probe them with
+`--provider-capture-kind terminal`; ordinary scenarios still require four files.
+The selected Agent 3.1 buffered captures are complete on n8n 2.39.10; see
+[the findings and design gate](N8N_FINAL_OUTPUT_CAPTURE_FINDINGS.md). These
+reference fixtures do not implement a runtime compatibility profile.
+
 ## Run it
 
 Start the provider from the repository root:

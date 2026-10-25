@@ -39,7 +39,7 @@ async function waitForStatus(baseUrl, child, stderr) {
   throw new Error("capture provider did not listen within 10 seconds");
 }
 
-async function startProvider(t) {
+async function startProvider(t, scenario = "string-input") {
   const port = await unusedPort();
   const outputDirectory = await mkdtemp(
     path.join(os.tmpdir(), "inference-lens-n8n-tool-capture-"),
@@ -50,7 +50,7 @@ async function startProvider(t) {
       ...process.env,
       INFERENCE_LENS_N8N_TOOL_CAPTURE_HOST: "127.0.0.1",
       INFERENCE_LENS_N8N_TOOL_CAPTURE_PORT: String(port),
-      INFERENCE_LENS_N8N_TOOL_CAPTURE_SCENARIO: "string-input",
+      INFERENCE_LENS_N8N_TOOL_CAPTURE_SCENARIO: scenario,
       INFERENCE_LENS_N8N_TOOL_CAPTURE_OUTPUT: outputDirectory,
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -339,4 +339,133 @@ test("rejects a sub-workflow error result instead of reporting capture success",
     (await continuation.json()).error.message,
     /does not contain the expected string-input sub-workflow result/,
   );
+});
+
+function formatterRequest(stream = false) {
+  return {
+    model: "template-echo-model", stream,
+    messages: [
+      { role: "system", content: "Use format_final_json_response for the final response." },
+      { role: "user", content: "IL_F0_CAPTURE" },
+    ],
+    tools: [{ type: "function", function: {
+      name: "format_final_json_response",
+      parameters: { type: "object", properties: { output: {
+        type: "object", properties: { answer: { type: "string" }, count: { type: "integer" } },
+        required: ["answer", "count"],
+      } }, required: ["output"] },
+    } }],
+  };
+}
+
+for (const stream of [false, true]) {
+  test(`formatter success captures one request (stream=${stream})`, async (t) => {
+    const provider = await startProvider(t, "formatter-success");
+    const body = formatterRequest(stream);
+    const raw = JSON.stringify(body, null, 2);
+    const response = await fetch(`${provider.baseUrl}/v1/chat/completions`, {
+      method: "POST", body: raw,
+    });
+    assert.equal(response.status, 200);
+    const wire = await response.text();
+    assert.match(wire, /format_final_json_response/);
+    if (stream) assert.match(wire, /data: \[DONE\]/);
+    const status = await (await fetch(`${provider.baseUrl}/status`)).json();
+    assert.equal(status.requestCount, 1);
+    assert.equal(status.complete, true);
+    assert.deepEqual(status.files, ["provider-request-initial.json", "provider-response-final.json"]);
+    assert.equal(await readFile(path.join(provider.outputDirectory, status.files[0]), "utf8"), raw);
+    const completion = await readJson(provider.outputDirectory, status.files[1]);
+    assert.deepEqual(JSON.parse(completion.choices[0].message.tool_calls[0].function.arguments), {
+      output: { answer: "IL_F0_ANSWER", count: 7 },
+    });
+    const unexpected = await postCompletion(provider.baseUrl, body);
+    assert.equal(unexpected.status, 409);
+    assert.deepEqual(await readJson(provider.outputDirectory, "provider-request-rejected.json"), body);
+  });
+}
+
+test("formatter fixture refuses missing schema or injected instruction", async (t) => {
+  const provider = await startProvider(t, "formatter-success");
+  const body = formatterRequest();
+  delete body.tools[0].function.parameters.properties.output;
+  assert.equal((await postCompletion(provider.baseUrl, body)).status, 422);
+  const noInstruction = formatterRequest();
+  noInstruction.messages[0].content = "Fixture system";
+  assert.equal((await postCompletion(provider.baseUrl, noInstruction)).status, 422);
+  const status = await (await fetch(`${provider.baseUrl}/status`)).json();
+  assert.equal(status.requestCount, 0);
+  assert.equal(status.complete, false);
+});
+
+for (const scenario of ["formatter-extra-properties", "formatter-required-missing", "formatter-nested-output", "formatter-invalid", "formatter-text-valid", "formatter-text-invalid", "formatter-duplicate", "formatter-mixed", "formatter-mixed-ordinary-first", "formatter-text-unwrapped", "formatter-nested-output-extra"]) {
+  test(`captures scripted observation ${scenario}`, async (t) => {
+    const provider = await startProvider(t, scenario);
+    const body = formatterRequest();
+    body.tools.push(initialRequest().tools[0]);
+    if (scenario.startsWith("formatter-nested-output")) {
+      const schema = body.tools[0].function.parameters.properties.output;
+      schema.properties.output = { type: "object", properties: { label: { type: "string" } }, required: ["label"] };
+      schema.required.push("output");
+    }
+    const response = await postCompletion(provider.baseUrl, body);
+    assert.equal(response.status, 200);
+    const message = (await response.json()).choices[0].message;
+    if (scenario.includes("text-")) {
+      assert.equal(typeof message.content, "string");
+      if (scenario.endsWith("invalid")) assert.equal(message.content, "IL_F0_NOT_JSON");
+      else if (scenario === "formatter-text-unwrapped") assert.deepEqual(JSON.parse(message.content), { answer: "IL_F0_ANSWER", count: 7 });
+      else assert.deepEqual(JSON.parse(message.content), { output: { answer: "IL_F0_ANSWER", count: 7 } });
+    } else {
+      const calls = message.tool_calls;
+      assert.equal(calls.length, scenario === "formatter-duplicate" || scenario.startsWith("formatter-mixed") ? 2 : 1);
+      if (scenario === "formatter-duplicate") {
+        assert.notDeepEqual(JSON.parse(calls[0].function.arguments), JSON.parse(calls[1].function.arguments),
+          "Duplicate formatter payloads must differ to identify which n8n selects");
+      }
+      const output = JSON.parse(calls.find((call) => call.function.name === "format_final_json_response").function.arguments).output;
+      if (scenario === "formatter-extra-properties") assert.equal(output.extra, "IL_F0_EXTRA");
+      if (scenario === "formatter-required-missing") assert.equal(Object.hasOwn(output, "count"), false);
+      if (scenario === "formatter-nested-output") assert.deepEqual(output.output, { label: "IL_F0_NESTED" });
+      if (scenario === "formatter-nested-output-extra") assert.deepEqual(output.output, { label: "IL_F0_NESTED", extra: "IL_F0_NESTED_EXTRA" });
+      if (scenario === "formatter-invalid") assert.equal(output.count, "IL_F0_WRONG_TYPE");
+    }
+    assert.equal((await (await fetch(`${provider.baseUrl}/status`)).json()).requestCount, 1);
+  });
+}
+
+test("ordinary tool continuation ends with a formatter call, without formatter tool result", async (t) => {
+  const provider = await startProvider(t, "formatter-after-tool");
+  const body = formatterRequest();
+  body.tools.push(initialRequest().tools[0]);
+  const response = await postCompletion(provider.baseUrl, body);
+  assert.equal(response.status, 200);
+  const firstMessage = (await response.json()).choices[0].message;
+  assert.equal(firstMessage.tool_calls[0].function.name, "il_echo_string");
+  const continuation = {
+    ...body,
+    messages: [...body.messages, firstMessage, {
+      role: "tool", tool_call_id: firstMessage.tool_calls[0].id,
+      content: continuationRequest().messages.at(-1).content,
+    }],
+  };
+  const final = await postCompletion(provider.baseUrl, continuation);
+  assert.equal(final.status, 200);
+  assert.equal((await final.json()).choices[0].message.tool_calls[0].function.name, "format_final_json_response");
+  const status = await (await fetch(`${provider.baseUrl}/status`)).json();
+  assert.equal(status.requestCount, 2);
+  assert.equal(status.complete, true);
+});
+
+test("nested-output recipe refuses the baseline schema before sending nested arguments", async (t) => {
+  const provider = await startProvider(t, "formatter-nested-output");
+  assert.equal((await postCompletion(provider.baseUrl, formatterRequest())).status, 422);
+  const body = formatterRequest();
+  const schema = body.tools[0].function.parameters.properties.output;
+  schema.properties.output = { type: "object", properties: { label: { type: "string" } }, required: ["label"] };
+  schema.required.push("output");
+  const response = await postCompletion(provider.baseUrl, body);
+  assert.equal(response.status, 200);
+  const call = (await response.json()).choices[0].message.tool_calls[0];
+  assert.deepEqual(JSON.parse(call.function.arguments).output.output, { label: "IL_F0_NESTED" });
 });

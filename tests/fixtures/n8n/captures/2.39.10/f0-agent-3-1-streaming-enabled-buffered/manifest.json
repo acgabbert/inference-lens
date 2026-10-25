@@ -1,0 +1,128 @@
+{
+  "fixtureSchemaVersion": 1,
+  "n8nVersion": "2.39.10",
+  "capturedAt": "2026-10-25T17:41:48.862Z",
+  "projectedAt": "2026-10-25T17:42:06.665Z",
+  "workflowId": "workflow_fixture",
+  "subworkflowId": "subworkflow_fixture",
+  "nodeTypes": [
+    {
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1
+    },
+    {
+      "name": "Final output agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1
+    },
+    {
+      "name": "Fixture OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2
+    },
+    {
+      "name": "il_echo_string",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2
+    },
+    {
+      "name": "Structured Output Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3
+    }
+  ],
+  "subworkflowNodeTypes": [
+    {
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1
+    },
+    {
+      "name": "Return string evidence",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    }
+  ],
+  "workflowSettings": {
+    "executionOrder": "v1"
+  },
+  "executions": [
+    {
+      "id": "execution_fixture_001",
+      "workflowId": "workflow_fixture",
+      "mode": "manual",
+      "status": "success",
+      "runItemCounts": {
+        "Manual Trigger": [
+          1
+        ],
+        "Fixture OpenAI Chat Model": [
+          null
+        ],
+        "Structured Output Parser": [
+          null
+        ],
+        "Final output agent": [
+          1
+        ]
+      }
+    }
+  ],
+  "endpointShapes": [
+    "GET /api/v1/workflows/{workflowId}",
+    "GET /api/v1/workflows/{subworkflowId}",
+    "GET /api/v1/executions/{executionId}?includeData=true"
+  ],
+  "providerFiles": [
+    "provider-request-initial.json",
+    "provider-response-final.json"
+  ],
+  "removedFields": [
+    "baseURL",
+    "cachedResultUrl",
+    "credentials",
+    "defaultHeaders",
+    "fetchOptions",
+    "openai_api_key",
+    "startTime"
+  ],
+  "warnings": [
+    "Projection requires manual review before commit.",
+    "Evidence paths and save settings have not been classified automatically."
+  ],
+  "sourceFiles": {
+    "workflow.raw.json": {
+      "sha256": "449f1935f2fe300f1ac59f7ad199e0142a777248a5c576939bdd61e500ddf56f"
+    },
+    "subworkflow.raw.json": {
+      "sha256": "47574406124dd1fc9e5b27942fbd829eedf3a5cb674e3b82cf94e02354bef894"
+    },
+    "execution-01.raw.json": {
+      "sha256": "d96c27c002edd1ded9e48e35754e2fe359b3825fc1be87214945c8ca91162a28"
+    },
+    "provider-request-initial.json": {
+      "sha256": "5637565d56f62aa3388b77e0ba13296cc3d2b73471407d508dba78b437e14880"
+    },
+    "provider-response-final.json": {
+      "sha256": "6e61d40b77973a8db510249bb31e4254970cdd3e6587f714faabc4e55be3a3bf"
+    }
+  },
+  "files": {
+    "workflow.json": {
+      "sha256": "9d72d81011b11ffd0bba0bbfbce409fbd7225628320067362b92061043dc1b14"
+    },
+    "subworkflow.json": {
+      "sha256": "55fc4eb3bcd095dcd6321f12940c37e476a2bce1afaec85dba844a220e634628"
+    },
+    "execution-success.json": {
+      "sha256": "8c17eb193f31e4b36799e4bb4d7c67ddaf24fa67f3ddb83d37558caac651adf1"
+    },
+    "provider-request-initial.json": {
+      "sha256": "dd763624a5e297c2fec789d787c5acf0d74433729177c6b9d290992509871309"
+    },
+    "provider-response-final.json": {
+      "sha256": "6e61d40b77973a8db510249bb31e4254970cdd3e6587f714faabc4e55be3a3bf"
+    }
+  }
+}
