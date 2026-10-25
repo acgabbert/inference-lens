@@ -389,6 +389,44 @@ test("a v10 project moves its connection's protocol onto every execution target"
   assert.equal("protocol" in opened.connectionRequirements[0]!, false);
 });
 
+test("every supported starting version follows the full migration chain without changing chat data", () => {
+  let current = projectWithEvaluationSuite();
+  current = updatePromptTemplateDraft(current, {
+    templateId: "template_evaluation-question",
+    sourceRevisionId: "template-revision_evaluation-question-1",
+    messages: [{ role: "user", content: "Draft {{topic}}" }],
+    variableDefaults: { topic: "" },
+  });
+  current = archivePromptTemplate(current, "template_evaluation-question", "2026-10-25T12:00:00.000Z");
+  const serialized = serializeProjectFile(current);
+  for (const schemaVersion of [10, 11, 12, 13, 14]) {
+    const legacy: Record<string, unknown> = { ...structuredClone(current), schemaVersion };
+    if (schemaVersion < 13) {
+      delete legacy.decisionRequests;
+      delete legacy.decisionRequestRevisions;
+    }
+    if (schemaVersion === 10) {
+      const target: Record<string, unknown> = { ...current.defaults.target };
+      delete target.protocol;
+      legacy.connectionRequirements = current.connectionRequirements.map((requirement) => ({
+        ...requirement, protocol: "openai-compatible-chat-completions",
+      }));
+      legacy.defaults = { ...current.defaults, target };
+      legacy.evaluationSuites = current.evaluationSuites.map((suite) => {
+        const suiteTarget: Record<string, unknown> = { ...suite.execution.target };
+        delete suiteTarget.protocol;
+        return { ...suite, execution: { ...suite.execution, target: suiteTarget } };
+      });
+    }
+    const before = structuredClone(legacy);
+    const opened = parseProjectFile(legacy);
+    assert.deepEqual(legacy, before, `v${schemaVersion} migration must not mutate its input`);
+    assert.deepEqual(opened, current, `v${schemaVersion} must preserve the project`);
+    assert.equal(serializeProjectFile(opened), serialized, `v${schemaVersion} must write the same bytes`);
+    assert.deepEqual(parseProjectJson(serializeProjectFile(opened)), current);
+  }
+});
+
 test("the execution target, not the connection, records the protocol a run uses", () => {
   const project = createProjectFile({
     name: "Protocols",

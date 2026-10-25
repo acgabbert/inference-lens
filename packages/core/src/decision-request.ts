@@ -11,6 +11,7 @@ import type {
 } from "./project.ts";
 import { randomUUID } from "./random-id.ts";
 import { createEntityId } from "./run-kernel/types.ts";
+import type { DecisionRequestId, DecisionRequestRevisionId } from "./run-kernel/types.ts";
 import { stableJsonValue } from "./stable-json.ts";
 
 /**
@@ -27,6 +28,54 @@ export function activeDecisionRequestRevision(
 ): ProjectDecisionRequestRevision | undefined {
   const id = project.defaults.decisionRequestRevisionId;
   return id ? project.decisionRequestRevisions.find((revision) => revision.id === id) : undefined;
+}
+
+export interface ResolvedProjectDecisionRequestRevision {
+  /** Authored content: variable tokens and question/criteria order are retained. */
+  decision: DecisionInput;
+  /** Supplied assignments only. An absent key must never become an empty value. */
+  values: Record<string, string>;
+  source: {
+    kind: "inline";
+    decisionRequestId: DecisionRequestId;
+    decisionRequestRevisionId: DecisionRequestRevisionId;
+  };
+  variables: string[];
+  /** Authoring diagnostics; resolving a saved source does not make it runnable. */
+  diagnostics: DecisionRequestDiagnostic[];
+}
+
+/**
+ * The project-content boundary shared by Compose, suite authoring, preflight,
+ * and experiment snapshots. Source resolution keeps authored tokens; callers
+ * apply case values before rendering at the existing execution boundary.
+ *
+ * Returns undefined for an unknown revision. Other references are guaranteed by
+ * project validation. The library is part of the input contract now so v15 can
+ * resolve template pins here without changing each caller's project boundary.
+ * Returned content and assignments are owned by the caller, never aliases of
+ * the saved revision.
+ */
+export function resolveProjectDecisionRequestRevision(
+  project: Pick<ProjectFile, "decisionRequestRevisions" | "promptTemplates">,
+  revisionId: DecisionRequestRevisionId,
+): ResolvedProjectDecisionRequestRevision | undefined {
+  const revision = project.decisionRequestRevisions.find(({ id }) => id === revisionId);
+  if (!revision) return undefined;
+  const decision = structuredClone(revision.decision);
+  const values = { ...revision.values };
+  const { variables, diagnostics } = resolveDecisionRequest(decision, values);
+  return {
+    decision,
+    values,
+    source: {
+      kind: "inline",
+      decisionRequestId: revision.decisionRequestId,
+      decisionRequestRevisionId: revision.id,
+    },
+    variables,
+    diagnostics,
+  };
 }
 
 export interface UpdateDecisionRequestDraft {

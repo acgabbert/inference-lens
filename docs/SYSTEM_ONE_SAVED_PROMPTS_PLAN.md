@@ -1,7 +1,8 @@
 # System One requests in Saved Prompts
 
-Status: recommendations accepted by the user on 2026-10-25; implementation has
-not started.
+Status: recommendations accepted by the user on 2026-10-25; PR slice 1
+(contracts and compatibility preparation) implemented and verified. Slices 2–4
+remain. Schema v15 and user-facing saved decision templates have not shipped.
 
 ## Outcome
 
@@ -172,11 +173,13 @@ Migrate legacy templates to `kind: "chat"` and existing decision request
 revisions to the inline arm. Preserve IDs, revision relationships, defaults,
 archive state, external import receipts, and evaluation references.
 
-Refactor the migration chain deliberately: the current v13 migration assigns
-the current schema version, so simply incrementing the version constant would
-skip an explicit v14-to-v15 transformation. Test every supported starting version
-through the full chain. This plan owns v15; Shared Assets Level 2 takes the
-following version (see [Relationship to Shared Assets Level 2](#relationship-to-shared-assets-level-2)).
+Refactor the migration chain deliberately: slice 1 changes the v13 migration
+from assigning the current schema version to literal v14 and guards its
+dispatch. Slice 2 must still add an explicit v14-to-v15 transformation;
+incrementing the version constant alone is insufficient. Test every supported
+starting version through the full chain. This plan owns v15; Shared Assets
+Level 2 takes the following version (see
+[Relationship to Shared Assets Level 2](#relationship-to-shared-assets-level-2)).
 Older applications should reject the new schema with
 their existing newer-version diagnostic.
 
@@ -268,6 +271,25 @@ on 2026-10-25.
 
 ## Implementation sequence
 
+### PR boundaries
+
+The numbered steps below describe dependencies, not separate PRs. Deliver them
+as these four sequential PRs; verification belongs in every slice.
+
+| Slice | Scope | Completion boundary |
+| --- | --- | --- |
+| 1. Contracts and compatibility preparation | Step 1, the existing inline revision resolver boundary, and explicit migration version advancement. | [Final type shapes and owner contracts](SYSTEM_ONE_SAVED_PROMPTS_CONTRACTS.md); Compose adoption, suite authoring, preflight, and experiment construction read authored content through one resolver. Schema stays v14 and existing behavior is preserved. |
+| 2. Schema v15 and core lifecycle | Steps 2–3, plus consumer narrowing throughout browser, CLI, imports, and workspace code. | Both kinds parse and round-trip; pins resolve; create/save/use/update/detach/archive, usage discovery, and ordered diffs are pure tested operations. Chat-only surfaces safely filter decision entries until slice 3 supplies their editor. |
+| 3. Library and Compose | Step 4. | Mixed library, separate editors, capture/use, explicit update/detach, draft retention, project reopen, and source/return navigation work through the existing feature owners. |
+| 4. Evaluation workflows and compatibility closeout | Step 5 and remaining step 6 documentation. | Evaluate a decision template revision, discover compatible suites, deliberately retarget with diagnostics, and exercise a template-backed suite through the CLI. Existing snapshots, chat prompts, and imports retain their behavior. |
+
+Run scoped browser coverage for behavior changes and the full committed suite
+before handing back each behavior-changing slice. The final feature acceptance
+matrix still applies across the completed series. Slice 1 is preparation: it
+does not make the new schema or saved decision prompts available in the UI.
+
+### Dependency order
+
 1. **Finalize contracts from the accepted decisions.** The three recommendations
    above are accepted. Specify final type shapes and owner interfaces consistent
    with them; involve the user only if a new material contract decision arises.
@@ -336,8 +358,34 @@ against a template-backed project using the existing fixture infrastructure.
 Report exact commands, gaps, and fixture limits. Hosted-provider and native
 desktop checks are separate from what browser replay proves.
 
-## Planning verification
+## Original planning verification
 
 This proposal was checked against the current source and repository testing
 guidelines. No application code changed and no tests or browser suites were run
 for this documentation-only task.
+
+## Slice 1 verification
+
+The implementation extends the plan's first step with behavior-preserving
+preparation for step 2. Before the refactor, the scoped core suite passed with
+additional coverage for all supported starting versions (v10–v14) and for
+saving/reopening absent versus explicitly empty decision values. No behavioral
+red is claimed: existing inline behavior is retained, and an import failure for
+the newly introduced resolver would not establish a regression. Resolver
+contract tests cover authored tokens, source identity, caller ownership,
+ordering, diagnostics, and unknown pins.
+
+Verification completed October 25, 2026:
+
+- `npm run typecheck`, `npm run typecheck:core`, and `npm run build` passed.
+- `npm run lint` passed with four existing unused-variable warnings.
+- `node --experimental-strip-types --test tests/project.test.ts tests/decision-request.test.ts tests/decision-suite-authoring.test.ts tests/decision-suites.test.ts tests/decision-experiment-plan.test.ts` passed all 90 tests (86 before the refactor and new resolver tests). After removing unused destructuring variables in the new migration fixture, `node --experimental-strip-types --test tests/project.test.ts` passed all 44 tests again.
+- `npm run test:core` passed all 1,458 tests with host access for fixture listeners, including CLI decision runs and CLI bundle checks. Its first sandboxed run failed 50 fixture/CLI tests because loopback listeners were blocked; that run is not regression evidence.
+- `npm run test:e2e -- tests/e2e/system-one-decision-requests.spec.ts tests/e2e/system-one-decision-suites.spec.ts` passed all 9 tests against Playwright's pinned Chromium and the committed System One replay. These cover project reopen, variable resolution on the wire, suite execution, and preservation of suite-pinned revisions.
+- `npm run test:e2e` passed 340 tests with 7 configuration-gated skips: the 2 Python MCP tests and 5 N1 Python capture tests. The run used pinned Chromium; no fallback was needed.
+
+No hosted-provider or native-desktop checks were run. This slice preserves the
+existing inline request behavior; the saved decision template UI and its new
+acceptance spec belong to subsequent slices. The core suite exercises current
+CLI decision requests, not yet template-backed requests. New library and pinned
+use presentation will need the user's visual review when slice 3 exists.

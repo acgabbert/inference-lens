@@ -6,6 +6,7 @@ import {
   activeDecisionRequestRevision,
   prepareDecisionRequestRun,
   resolveDecisionRequest,
+  resolveProjectDecisionRequestRevision,
   updateDecisionRequestDraft,
 } from "../packages/core/src/decision-request.ts";
 import { discoverDecisionVariables } from "../packages/core/src/decision-variables.ts";
@@ -130,6 +131,79 @@ test("values for variables the input no longer uses are dropped", () => {
     ...at,
   });
   assert.deepEqual(activeDecisionRequestRevision(next)?.values, { ticket: "#4" });
+});
+
+test("save and reopen preserve absent assignments and explicit empty strings", () => {
+  const saved = updateDecisionRequestDraft(project(), {
+    decision: ordered, values: { ticket: "" }, branch: false, ...at,
+  });
+  const reopened = activeDecisionRequestRevision(parseProjectJson(serializeProjectFile(saved)))!;
+  assert.deepEqual(reopened.values, { ticket: "" });
+  assert.equal(Object.hasOwn(reopened.values, "team"), false);
+  const blocked = prepareDecisionRequestRun(reopened.decision, reopened.values);
+  assert.equal(blocked.ok, false);
+  assert.deepEqual(!blocked.ok && blocked.diagnostics.map(({ name }) => name), ["team"]);
+  assert.equal(prepareDecisionRequestRun(reopened.decision, { ...reopened.values, team: "" }).ok, true);
+});
+
+test("project resolution returns authored content and source identity, leaving rendering at execution", () => {
+  const saved = updateDecisionRequestDraft(project(), {
+    decision: ordered, values: { ticket: "#4", team: "ops" }, branch: false, ...at,
+  });
+  const resolved = resolveProjectDecisionRequestRevision(saved, "decision-revision_one")!;
+  assert.deepEqual(resolved.source, {
+    kind: "inline",
+    decisionRequestId: "decision-request_one",
+    decisionRequestRevisionId: "decision-revision_one",
+  });
+  assert.deepEqual(resolved.decision, ordered);
+  assert.deepEqual(resolved.values, { ticket: "#4", team: "ops" });
+  assert.deepEqual(resolved.variables, ["ticket", "team"]);
+  assert.deepEqual(resolved.diagnostics, []);
+  const prepared = prepareDecisionRequestRun(resolved.decision, { ...resolved.values, ticket: "case" });
+  assert.equal(prepared.ok && prepared.decision.state, "Ticket: case");
+  assert.equal(resolved.decision.state, "Ticket: {{ticket}}");
+  assert.deepEqual(Object.keys(resolved.decision.questions), ["zeta", "alpha"]);
+  assert.deepEqual(Object.keys(resolved.decision.questions.zeta!.criteria!), ["urgent", "later"]);
+});
+
+test("project resolution keeps missing values unresolved and does not mutate a saved revision", () => {
+  const saved = updateDecisionRequestDraft(project(), {
+    decision: ordered, values: { ticket: "" }, branch: false, ...at,
+  });
+  const before = serializeProjectFile(saved);
+  const resolved = resolveProjectDecisionRequestRevision(saved, "decision-revision_one")!;
+  assert.deepEqual(resolved.values, { ticket: "" });
+  assert.deepEqual(resolved.diagnostics.map(({ code, name }) => ({ code, name })), [
+    { code: "missing-template-variable", name: "team" },
+  ]);
+  Object.assign(resolved.values, { team: "ops" });
+  resolved.decision.questions.zeta!.instructions = "Changed in caller";
+  assert.equal(serializeProjectFile(saved), before);
+  assert.equal(prepareDecisionRequestRun(resolved.decision, resolved.values).ok, true);
+  const again = resolveProjectDecisionRequestRevision(saved, "decision-revision_one")!;
+  assert.equal(Object.hasOwn(again.values, "team"), false);
+  assert.equal(again.decision.questions.zeta!.instructions, "Route {{team}}");
+});
+
+test("project resolution reports malformed and forbidden tokens while preserving escaped literals", () => {
+  const decision: DecisionInput = {
+    state: { malformed: "{{ not valid }}", forbidden: "{{api_key}}", escaped: "\\{{literal}}" },
+    questions: { q: { type: "noul", instructions: "Decide" } },
+  };
+  const saved = updateDecisionRequestDraft(project(), { decision, values: {}, branch: false, ...at });
+  const resolved = resolveProjectDecisionRequestRevision(saved, "decision-revision_one")!;
+  assert.deepEqual(resolved.decision, decision);
+  assert.deepEqual(resolved.variables, ["api_key"]);
+  assert.equal(resolved.diagnostics.length, 2);
+  assert.equal(resolved.diagnostics[0]!.code, "invalid-template-token");
+  assert.match(resolved.diagnostics[1]!.message, /secret-like/);
+  assert.equal(prepareDecisionRequestRun(resolved.decision, resolved.values).ok, false);
+});
+
+test("project resolution never falls back to the active revision for a missing pin", () => {
+  const saved = updateDecisionRequestDraft(project(), { decision: ordered, values: {}, branch: false, ...at });
+  assert.equal(resolveProjectDecisionRequestRevision(saved, "decision-revision_missing"), undefined);
 });
 
 test("the parser refuses dangling references, stray values, and secret-like values", () => {

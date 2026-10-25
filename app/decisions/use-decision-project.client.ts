@@ -3,6 +3,7 @@
 import { useRef } from "react";
 import {
   activeDecisionRequestRevision,
+  resolveProjectDecisionRequestRevision,
   updateDecisionRequestDraft,
 } from "../../packages/core/src/decision-request";
 import type { ProjectFile } from "../../packages/core/src/project";
@@ -68,12 +69,13 @@ export function useDecisionProject(options: {
     adopt(project) {
       pendingSuffixRef.current = undefined;
       const active = activeDecisionRequestRevision(project);
-      if (!active) {
+      const resolved = active && resolveProjectDecisionRequestRevision(project, active.id);
+      if (!active || !resolved) {
         draft.reset();
         return;
       }
       frozenRef.current.add(active.id);
-      draft.adopt(active.decision, active.values);
+      draft.adopt(resolved.decision, resolved.values);
     },
     freezeForRun() {
       if (!options.project) return;

@@ -1,6 +1,6 @@
 import { CHECK_SCHEMA_VERSION } from "./checks.ts";
 import type { ResolvedDecisionTarget } from "./decision.ts";
-import { prepareDecisionRequestRun } from "./decision-request.ts";
+import { prepareDecisionRequestRun, resolveProjectDecisionRequestRevision } from "./decision-request.ts";
 import { EXPERIMENT_SCHEMA_VERSION, parseExperimentPlanFile } from "./experiment.ts";
 import type { DecisionEvaluationExperimentPlan, EvaluationExperimentPlan } from "./experiment.ts";
 import { resolveEvaluationCase } from "./evaluation-case-resolution.ts";
@@ -247,7 +247,7 @@ export function createDecisionEvaluationExperimentPlan(
     }]);
   }
   const revision = suite
-    ? project.decisionRequestRevisions.find(({ id }) => id === suite.input.decisionRequestRevisionId)
+    ? resolveProjectDecisionRequestRevision(project, suite.input.decisionRequestRevisionId)
     : undefined;
   if (!suite || !revision) {
     throw new EvaluationSetupError([{
@@ -307,8 +307,8 @@ export function createDecisionEvaluationExperimentPlan(
         ? {}
         : { referenceAnswer: evaluationCase.referenceAnswer }),
       input: {
-        decisionRequestId: revision.decisionRequestId,
-        decisionRequestRevisionId: revision.id,
+        decisionRequestId: revision.source.decisionRequestId,
+        decisionRequestRevisionId: revision.source.decisionRequestRevisionId,
         decision: prepared.decision,
         resolvedAt: now,
       },
@@ -352,7 +352,7 @@ export function createDecisionEvaluationExperimentPlan(
     suite: {
       suiteId: suite.id,
       name: suite.name,
-      decisionRequestRevisionId: revision.id,
+      decisionRequestRevisionId: revision.source.decisionRequestRevisionId,
       inputBindings: structuredClone(suite.inputBindings),
       cases,
       variants: variantSnapshots,

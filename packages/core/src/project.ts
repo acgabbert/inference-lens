@@ -300,8 +300,8 @@ export interface ProjectDecisionRequest {
 /**
  * One revision of a decision request. `decision` is authored content whose key
  * order is meaning, so every serialization keeps it as written. `values` holds
- * one string per variable the input uses (D40); key presence is significant,
- * as on template uses.
+ * supplied assignments for variables the input uses (D40); absent assignments
+ * remain unresolved, while explicit empty strings are values.
  */
 export interface ProjectDecisionRequestRevision {
   id: DecisionRequestRevisionId;
@@ -1876,7 +1876,9 @@ function migrateV13Project(value: object): unknown {
       });
     });
   });
-  return { ...project, schemaVersion: PROJECT_SCHEMA_VERSION };
+  // A migration advances one version. Using PROJECT_SCHEMA_VERSION here would
+  // skip v14's own migration when the current schema advances to v15.
+  return { ...project, schemaVersion: 14 };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1895,7 +1897,7 @@ export function parseProjectFile(value: unknown): ProjectFile {
     if (value.schemaVersion === 10) value = migrateV10Project(value);
     if ((value as { schemaVersion: unknown }).schemaVersion === 11) value = migrateV11Project(value as object);
     if ((value as { schemaVersion: unknown }).schemaVersion === 12) value = migrateV12Project(value as object);
-    value = migrateV13Project(value as object);
+    if ((value as { schemaVersion: unknown }).schemaVersion === 13) value = migrateV13Project(value as object);
   }
   const parsed = projectFileV14Schema.safeParse(value);
   if (!parsed.success) throw new ProjectValidationError(parsed.error.issues);
