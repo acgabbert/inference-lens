@@ -1,8 +1,8 @@
 # Several server-held connections
 
 **Status:** decisions 1–9 agreed as recommended (October 24, 2026); for
-decision 9 that is option A, so the CLI is left alone. Slice 1 (server) is
-done; slice 2 (browser) is in progress.
+decision 9 that is option A, so the CLI is left alone. Slices 1 (server),
+2 (browser), and 3 (docs and templates) are done.
 **Baseline:** `main` at `dab81e4`, reviewed October 24, 2026.
 
 ## Goal
