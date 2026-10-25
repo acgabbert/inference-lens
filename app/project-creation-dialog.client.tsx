@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { projectDirectoryName } from "../packages/core/src/project.ts";
+import type { ProjectGitPolicy } from "../packages/core/src/project.ts";
 import type { ProjectCreationOptions } from "./project-workspace.client.ts";
 
 /**
@@ -49,7 +50,7 @@ export function ProjectCreationDialog({
 }) {
   const copy = copyByMode[mode];
   const [name, setName] = useState(initialName);
-  const [protectFromGit, setProtectFromGit] = useState(true);
+  const [gitPolicy, setGitPolicy] = useState<ProjectGitPolicy>("private");
   const valid = Boolean(name.trim());
 
   useEffect(() => {
@@ -76,7 +77,7 @@ export function ProjectCreationDialog({
           event.preventDefault();
           if (!valid) return;
           onClose();
-          onCreate({ name: name.trim(), protectFromGit });
+          onCreate({ name: name.trim(), gitPolicy });
         }}
       >
         <span className="eyebrow">{copy.eyebrow}</span>
@@ -93,19 +94,30 @@ export function ProjectCreationDialog({
           />
           <small>{projectDirectoryName(name)}</small>
         </label>
-        <label className="project-creation-protection">
-          <input
-            type="checkbox"
-            checked={protectFromGit}
-            onChange={(event) => setProtectFromGit(event.target.checked)}
-          />
-          <span>
-            <strong>Keep this project out of Git</strong>
-            <small>
-              Adds .gitignore rules for prompts, traces, and future project data.
-            </small>
-          </span>
-        </label>
+        <fieldset className="project-creation-git-policy">
+          <legend>Git sharing</legend>
+          {([
+            ["private", "Keep this project out of Git", "Excludes the entire project from ordinary Git staging."],
+            ["definitions", "Share definitions; keep run history local", "Shares all content in project.json, including persisted drafts and saved values. Run history and other files stay excluded by default."],
+            ["unmanaged", "Manage Git rules myself", "Creates no .gitignore. Your Git rules decide which files are staged."],
+          ] as const).map(([value, title, description]) => (
+            <label className="project-creation-protection" key={value}>
+              <input
+                type="radio"
+                name="git-policy"
+                value={value}
+                aria-label={title}
+                aria-describedby={`git-policy-${value}-description`}
+                checked={gitPolicy === value}
+                onChange={() => setGitPolicy(value)}
+              />
+              <span>
+                <strong>{title}</strong>
+                <small id={`git-policy-${value}-description`}>{description}</small>
+              </span>
+            </label>
+          ))}
+        </fieldset>
         <div className="confirmation-actions">
           <button className="button secondary" type="button" onClick={onClose}>
             Cancel

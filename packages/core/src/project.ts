@@ -95,6 +95,22 @@ export const PROJECT_DIRECTORY_SUFFIX = ".inference-lens";
 export const PROJECT_FILE_NAME = "project.json";
 export const PROJECT_EXPORT_FILE_SUFFIX = ".project.json";
 export const PROJECT_GITIGNORE_CONTENTS = "*\n";
+
+/** Creation-only bundle metadata; never persisted in the project manifest. */
+export type ProjectGitPolicy = "private" | "definitions" | "unmanaged";
+
+/** Both filesystem hosts write these exact bytes before any project content. */
+export function projectGitignoreContents(policy: ProjectGitPolicy): string | null {
+  switch (policy) {
+    case "private":
+      return PROJECT_GITIGNORE_CONTENTS;
+    case "definitions":
+      return "*\n!/.gitignore\n!/project.json\n";
+    case "unmanaged":
+      return null;
+  }
+}
+
 export const PROJECT_SCHEMA_VERSION = 14;
 /** Older versions this build still opens; see `migrateV10Project`, `migrateV11Project`, and `migrateV12Project`. */
 const OPENABLE_PROJECT_SCHEMA_VERSIONS: readonly number[] = [10, 11, 12, 13];

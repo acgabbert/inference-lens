@@ -27,7 +27,10 @@ test("creates visible project bundles with Git protection on by default", async 
   const html = await renderProjectCreationDialog();
   assert.match(html, /Prompt Lab\.inference-lens/);
   assert.match(html, /Keep this project out of Git/);
-  assert.match(html, /type="checkbox" checked=""/);
+  assert.match(html, /<input(?=[^>]*type="radio")(?=[^>]*value="private")(?=[^>]*checked="")[^>]*>/);
+  assert.match(html, /Share definitions; keep run history local/);
+  assert.match(html, /including persisted drafts and saved values/);
+  assert.match(html, /Manage Git rules myself/);
   assert.match(html, /Choose location/);
   assert.doesNotMatch(html, /undefined|NaN|Infinity/);
 });

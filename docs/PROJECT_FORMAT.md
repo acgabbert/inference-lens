@@ -21,12 +21,63 @@ with a version error rather than upgraded on load.
 Every schema is strict, so a reader rejects a document it does not understand
 rather than guessing.
 
-New bundles contain an internal `.gitignore` with `*` by default. This makes the
-entire working project—including authored prompts, fixtures, and run
-traces—private from ordinary Git staging even when it lives inside a code
-repository. The creation dialog can omit the ignore file for projects intended
-for version control. The ignore file is workspace metadata and is not part of
-the portable project document.
+## Git sharing policy
+
+When creating a bundle (including the first folder save of an imported project),
+choose one of three presets:
+
+| Preset | Bundle-local `.gitignore` |
+| --- | --- |
+| Keep this project out of Git (default) | `*` excludes the entire bundle from ordinary staging |
+| Share definitions; keep run history local | Allows only `.gitignore` and `project.json` |
+| Manage Git rules myself | No generated ignore file |
+
+The definitions preset writes exactly:
+
+```gitignore
+*
+!/.gitignore
+!/project.json
+```
+
+This allowlist excludes traces, experiment plans/results/reassessments,
+baseline pins, case-source annotations, and future artifact directories by
+default. Opening a clone with just the manifest and policy needs no run history;
+running creates local evidence without registering trace paths in the manifest.
+
+**Everything in `project.json` is shared**, including persisted prompt drafts,
+saved input/default values, tools, mock fixtures, imports, and historical or
+archived revisions. Evidence copied into a saved asset also becomes authored
+content in the manifest. This preset does not yet separate personal drafts and
+experimental settings from reusable definitions. See the
+[shared-assets plan](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md) for that later work.
+
+The browser and native adapters write the selected policy before project
+content. The policy is creation-only workspace metadata, outside Project v14;
+opening and saving never regenerate it or overwrite customized rules. The app
+does not initialize a Git repository, stage files, commit, or push.
+
+### Existing projects and already tracked files
+
+Existing policies remain untouched. To opt an existing bundle into definitions
+sharing, intentionally replace its bundle-local `.gitignore` with the exact
+three-line policy above. Inside that bundle, inspect what Git already tracks
+and what the new policy excludes:
+
+```sh
+git ls-files -- .
+git ls-files -- traces/ experiments/ evaluation-baselines.json evaluation-case-sources.json
+git status --short --ignored -- .
+```
+
+Gitignore controls ordinary staging; it is not access control. It does not
+untrack existing files, remove content from earlier commits, or prevent
+`git add --force`. Review tracked evidence before sharing. If you choose to
+stop tracking a file while keeping its local copy, use
+`git rm --cached -- <reviewed-file>` and review the staged change. Previously
+committed content remains in history. Inference Lens never removes files from
+the Git index or rewrites history for you. Parent-repository rules can also
+exclude the bundle, so inspect `git status` before committing.
 
 ## Authored conversations
 

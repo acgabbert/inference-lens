@@ -2,13 +2,13 @@
 
 import {
   PROJECT_FILE_NAME,
-  PROJECT_GITIGNORE_CONTENTS,
+  projectGitignoreContents,
   parseProjectJson,
   projectDirectoryName,
   projectExportFileName,
   serializeProjectFile,
 } from "../packages/core/src/project.ts";
-import type { ProjectFile } from "../packages/core/src/project.ts";
+import type { ProjectFile, ProjectGitPolicy } from "../packages/core/src/project.ts";
 import {
   assertTraceEntryName,
   serializeDecisionRunTrace,
@@ -140,7 +140,7 @@ export type WorkspaceResumeOutcome =
 
 export interface ProjectCreationOptions {
   name: string;
-  protectFromGit: boolean;
+  gitPolicy: ProjectGitPolicy;
 }
 
 interface NativeWorkspace {
@@ -389,12 +389,13 @@ async function createBrowserProjectFolder(
     }
     const directory = await parent.getDirectoryHandle(bundleName, { create: true });
     try {
-      if (options.protectFromGit) {
+      const gitignoreContents = projectGitignoreContents(options.gitPolicy);
+      if (gitignoreContents !== null) {
         const ignoreFile = await directory.getFileHandle(".gitignore", {
           create: true,
         });
         const ignoreWritable = await ignoreFile.createWritable();
-        await ignoreWritable.write(PROJECT_GITIGNORE_CONTENTS);
+        await ignoreWritable.write(gitignoreContents);
         await ignoreWritable.close();
       }
       const contents = serializeProjectFile(project);
@@ -617,7 +618,7 @@ async function createNativeProjectFolder(
     {
       contents: serializeProjectFile(project),
       bundleName: projectDirectoryName(options.name),
-      protectFromGit: options.protectFromGit,
+      gitignoreContents: projectGitignoreContents(options.gitPolicy),
     },
   );
   if (!workspace) return null;

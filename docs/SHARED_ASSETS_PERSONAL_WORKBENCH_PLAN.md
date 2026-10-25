@@ -1,9 +1,10 @@
 # Shared assets in a personal workbench
 
-**Status:** Proposed implementation plan, October 25, 2026. The product direction
+**Status:** Level 1 implemented October 25, 2026; verification recorded below.
+Levels 2–3 remain proposed. The product direction
 is agreed: Inference Lens is a personal workbench for potentially shared assets.
 The detailed contracts below are recommendations, not approved schema or storage
-decisions. No implementation is included in this document.
+decisions except for the Level 1 agreement recorded below.
 
 ## Intended experience
 
@@ -100,6 +101,21 @@ remain part of an asset unless deliberately removed through valid operations.
 
 **Size:** Small. No project schema change.
 
+### Confirmed contracts (October 25, 2026)
+
+- All three presets below are approved; private remains the default.
+- Core owns a creation-only `ProjectGitPolicy` (`private`, `definitions`, or
+  `unmanaged`) and resolves it to ignore-file contents or `null`. The policy is
+  not serialized into `project.json` and changes no provider contract.
+- `ProjectCreationDialog` owns the selection; `ProjectCreationOptions` carries
+  it through the existing workspace owner. Browser creation writes the resolved
+  contents; the native bridge passes the same contents to Rust, which owns I/O
+  and rollback. There is no duplicate Rust policy generator.
+- Policy generation happens only on bundle creation. Existing projects and
+  ordinary saves keep their policies, including customized rules.
+- The dialog explains that the definitions preset includes persisted drafts
+  and saved values inside the unchanged manifest.
+
 ### Proposed behavior
 
 Offer three project-creation presets:
@@ -143,6 +159,43 @@ remove files from the Git index or rewrite history as part of this feature.
   without dirtying shared definitions merely to register trace paths.
 - Copy explicitly states the remaining single-manifest sharing boundary.
 
+### Level 1 delivery evidence (October 25, 2026)
+
+- Before implementation, the new workspace tests failed on `null` instead of
+  the exact definitions allowlist, and on missing native policy contents.
+  `npm run test:e2e -- tests/e2e/project-git-policy.spec.ts` failed on the
+  creation dialog's actual text, which lacked the sharing preset.
+- `node --experimental-strip-types --test tests/project-workspace.test.ts`
+  passed 14 tests: creation ordering, exact policy, preservation of customized
+  rules, bridge arguments, and rollback/retry for failed policy or manifest
+  writes. Its disposable real Git repository stages only the manifest and
+  ignore file after representative evidence, annotation, recovery, and future
+  nested paths are added; it also proves force-added evidence stays tracked.
+  Those path fixtures test Git policy, not evaluation execution.
+- `npm run test:e2e -- tests/e2e/project-git-policy.spec.ts
+  tests/e2e/project-storage-clarity.spec.ts tests/e2e/new-project-isolation.spec.ts
+  tests/e2e/project-replacement-guard.spec.ts` passed 12 tests. The new spec
+  covers all three presets, the sharing warning, and opening a definitions-only
+  clone without evidence. An actual buffered fixture request then saves one
+  trace while the manifest stays byte-identical. The folder picker is stubbed;
+  the browser workspace adapter and provider transport are real.
+- The final full `npm run test:e2e` passed 340 tests with seven opt-in Python
+  MCP/N1 tests skipped. This includes existing evaluation, baseline, and
+  case-source workflows; the new Git staging assertions use the representative
+  paths described above rather than a native or CLI-created Git checkout.
+- `npm run lint`, `npm run typecheck`, `npm run typecheck:core`, and `npm test`
+  passed. Lint has four pre-existing unused-variable warnings. `npm test`
+  includes the production build and 1,756 core, contract, version, rendered,
+  interaction, and CLI tests.
+- `npm run test:rust` passed 28 tests, including real native filesystem writes
+  for all presets and preservation of customized rules. `npm run check:rust`
+  passed formatting and Clippy. Native picker interaction and injected native
+  filesystem failures were not exercised; write-failure injection is covered
+  through the browser adapter. Hosted providers were not used.
+- Human review should check whether the three preset descriptions make the
+  remaining manifest-wide sharing boundary clear. Personal-state separation
+  remains Level 2 work.
+
 ## Level 2: separate personal state from asset definitions
 
 **Size:** Moderate. Ownership, persistence, UX, and compatibility changes.
@@ -160,6 +213,13 @@ remove files from the Git index or rewrite history as part of this feature.
    and works naturally through existing folder access in browser and native hosts.
    Recommend an ignored checkout-local workbench store for folder projects,
    subject to agreement on recovery and portability. Exact paths remain open.
+   Level 1 does not make such a store ignored. Only the private and definitions
+   presets exclude a new directory; unmanaged bundles and older bundles created
+   without protection have no rule covering it, so an ordinary `git add -A`
+   would stage personal drafts. The bundle's policy is written once at creation
+   and never regenerated, so it cannot be relied on. Decide how the store
+   protects itself, for example by writing its own `*` ignore file before any
+   personal content, and how that is verified.
 3. **Workbench identity.** Recommend one personal workbench per checkout initially.
    Separate clones/worktrees must not share drafts merely because their
    `projectId` matches. Define behavior for copied/moved folders, changed project
@@ -344,6 +404,14 @@ or remotely synchronized libraries require a separate dependency/version design.
 - Update the definitions-only ignore preset to allow the approved shared asset
   files and their dependencies while continuing to exclude personal state,
   migration backups, and evidence by default.
+- Updating the preset changes only new bundles. Level 1 never rewrites an
+  existing `.gitignore`, so bundles created with the three-line definitions
+  policy keep excluding every new asset file after migration. A teammate's
+  clone would then lack assets the author sees locally, or appear complete only
+  because ignored files exist in the author's checkout. Define how migration
+  handles the existing policy: one option is to recognize the exact Level 1
+  bytes and offer to replace them, while leaving customized rules untouched and
+  reporting which new asset paths they would exclude.
 
 ### Acceptance criteria
 
@@ -424,16 +492,19 @@ and diff check, not a browser run.
 
 ## Remaining decisions for the design review
 
-1. Confirm the three creation presets and whether the existing private default
-   remains the initial default (recommended).
+1. **Resolved for Level 1:** all three creation presets are confirmed and the
+   existing private default remains the initial default.
 2. Choose checkout-local versus device application storage for personal state,
-   its isolation scope, and no-folder recovery behavior.
+   its isolation scope, and no-folder recovery behavior. A checkout-local store
+   must protect itself from Git rather than rely on the bundle's policy.
 3. Approve the exact classification of shared launch defaults, scratch requests,
    draft branches, saved values, and temporary fixtures, with migration examples.
 4. Choose asset file granularity and discovery rules, reference/provenance closure,
    and how team sharing policy and personal asset exclusions interact.
 5. Approve versioned format transitions, export/backup semantics, old-reader/writer
-   behavior, and recovery for interrupted multi-file operations.
+   behavior, and recovery for interrupted multi-file operations. Include how
+   bundles created with the Level 1 definitions policy come to share new asset
+   files.
 
 The target is fewer incidental conflicts, explicit intentional contributions,
 and selective sharing with understandable dependencies. Same-asset edits still
