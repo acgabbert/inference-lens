@@ -223,6 +223,18 @@ test("a case value overrides the revision's value, and a variable left without o
   assert.match(diagnostics[0]!.message, /Case "Refund" cannot resolve template variable "plan"/);
 });
 
+test("preflight names a malformed token in the pinned revision with the same guidance Compose gives", () => {
+  const project = withRequest();
+  const revision = project.decisionRequestRevisions[0]!;
+  const malformed: ProjectFile = {
+    ...project,
+    decisionRequestRevisions: [{ ...revision, decision: { ...decision, state: "Ticket: {{ticket}} {{ not valid }}" }, values: { ticket: "Charged twice" } }],
+  };
+  const diagnostics = preflight({ ...malformed, evaluationSuites: [decisionSuite(malformed)] });
+  assert.deepEqual(diagnostics.map(({ code }) => code), ["invalid-decision-template"]);
+  assert.match(diagnostics[0]!.message, /^The pinned decision request cannot be rendered: .+ Write \\\{\{ for literal braces\.$/);
+});
+
 test("preflight reports a binding the pinned revision does not use, an empty case value, and a case without checks", () => {
   const diagnostics = preflight(withSuite({
     inputBindings: [

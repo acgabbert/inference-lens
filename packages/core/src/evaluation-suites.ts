@@ -15,7 +15,8 @@ import type {
 import type { CheckDefinition, DecisionCheckDefinition } from "./checks.ts";
 import { isDecisionCheckKind } from "./checks.ts";
 import type { DecisionInput, DecisionQuestion } from "./decision.ts";
-import { discoverDecisionVariables, renderDecisionInput } from "./decision-variables.ts";
+import { renderDecisionInput } from "./decision-variables.ts";
+import { resolveProjectDecisionRequestRevision } from "./decision-request.ts";
 import { resolveEvaluationCase } from "./evaluation-case-resolution.ts";
 import { SCHEMA_CHECK_LIMITS } from "./json-schema/limits.ts";
 import { preflightJsonSchema } from "./json-schema/preflight.ts";
@@ -482,11 +483,11 @@ function decisionCheckDiagnostics(
  * still unfilled blocks the run, as an unresolved chat variable does.
  */
 function decisionSuitePreflight(
-  project: Pick<ProjectFile, "decisionRequestRevisions">,
+  project: Pick<ProjectFile, "decisionRequestRevisions" | "promptTemplates">,
   suite: DecisionEvaluationSuite,
   selectedCaseIds?: readonly EvaluationCaseId[],
 ): EvaluationSuitePreflightDiagnostic[] {
-  const revision = project.decisionRequestRevisions.find(({ id }) => id === suite.input.decisionRequestRevisionId);
+  const revision = resolveProjectDecisionRequestRevision(project, suite.input.decisionRequestRevisionId);
   if (!revision) return [];
 
   const diagnostics: EvaluationSuitePreflightDiagnostic[] = [];
@@ -498,9 +499,8 @@ function decisionSuitePreflight(
   const selectedCases = selectedCaseIds
     ? suite.cases.filter(({ id }) => selectedCaseIds.includes(id))
     : suite.cases;
-  const discovered = discoverDecisionVariables(revision.decision);
-  const used = new Set(discovered.variables);
-  const invalidToken = discovered.diagnostics.find(({ diagnostic }) => diagnostic.code === "invalid-template-token");
+  const used = new Set(revision.variables);
+  const invalidToken = revision.diagnostics.find(({ code }) => code === "invalid-template-token");
 
   selectedCases.forEach((evaluationCase) => {
     if (evaluationCase.checks.length === 0) {
@@ -544,7 +544,7 @@ function decisionSuitePreflight(
   if (invalidToken) {
     diagnostics.push({
       code: "invalid-decision-template",
-      message: `The pinned decision request cannot be rendered: ${invalidToken.diagnostic.message}`,
+      message: `The pinned decision request cannot be rendered: ${invalidToken.message}`,
     });
   }
   suite.inputBindings.forEach((binding) => {

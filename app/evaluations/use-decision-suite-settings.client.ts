@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import { resolveProjectDecisionRequestRevision } from "../../packages/core/src/decision-request";
+import type { ResolvedProjectDecisionRequestRevision } from "../../packages/core/src/decision-request";
 import {
   addDecisionEvaluationInput,
   decisionBindingCandidates,
@@ -12,7 +14,7 @@ import {
 import { isDecisionEvaluationSuite } from "../../packages/core/src/evaluation-suites";
 import type { DecisionEvaluationSuite, DecisionExecutionTarget } from "../../packages/core/src/evaluation-suites";
 import { ProjectValidationError } from "../../packages/core/src/project";
-import type { ProjectDecisionRequestRevision, ProjectFile } from "../../packages/core/src/project";
+import type { ProjectFile } from "../../packages/core/src/project";
 import type {
   ConnectionRequirementId,
   DecisionRequestRevisionId,
@@ -30,7 +32,7 @@ export interface DecisionRequestChoice {
 export interface DecisionSuiteSettingsHandle {
   suite: DecisionEvaluationSuite;
   /** Absent when the pinned revision was removed from the project. */
-  pinnedRevision?: ProjectDecisionRequestRevision;
+  pinnedRevision?: ResolvedProjectDecisionRequestRevision;
   requests: DecisionRequestChoice[];
   /** Variables of the pinned revision that no case input fills yet. */
   candidates: string[];
@@ -90,7 +92,7 @@ export function useDecisionSuiteSettings(options: {
   const setTarget = (target: Partial<DecisionExecutionTarget>) => commit((current) =>
     updateDecisionSuiteExecution(current, suite.id, { ...suite.execution, target: { ...suite.execution.target, ...target } }));
 
-  const pinnedRevision = project.decisionRequestRevisions.find(({ id }) => id === suite.input.decisionRequestRevisionId);
+  const pinnedRevision = resolveProjectDecisionRequestRevision(project, suite.input.decisionRequestRevisionId);
   const error = storedError?.suiteId === suite.id ? storedError.message : undefined;
   return {
     suite,

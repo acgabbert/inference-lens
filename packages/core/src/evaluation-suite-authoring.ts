@@ -20,7 +20,7 @@ import {
 import type { ProjectFile, PromptTemplateMessage } from "./project.ts";
 import { randomUUID } from "./random-id.ts";
 import { createEntityId } from "./run-kernel/types.ts";
-import { discoverDecisionVariables } from "./decision-variables.ts";
+import { resolveProjectDecisionRequestRevision } from "./decision-request.ts";
 import { discoverTemplateVariables } from "./template-engine.ts";
 import type {
   CheckId,
@@ -284,7 +284,7 @@ function mapDecisionSuite(
 }
 
 function requireDecisionRevision(project: ProjectFile, revisionId: DecisionRequestRevisionId, path: Array<string | number>) {
-  const revision = project.decisionRequestRevisions.find(({ id }) => id === revisionId);
+  const revision = resolveProjectDecisionRequestRevision(project, revisionId);
   if (!revision) {
     throw new ProjectValidationError([{ code: "custom", path, message: `Decision request revision "${revisionId}" does not exist.` }]);
   }
@@ -360,7 +360,7 @@ export function createDecisionEvaluationSuite(
   suffix: IdSuffix = generatedSuffix,
 ): { project: ProjectFile; suiteId: EvaluationSuiteId; connectionRequirementId: ConnectionRequirementId } {
   const revision = requireDecisionRevision(project, decisionRequestRevisionId, ["evaluationSuites"]);
-  const request = project.decisionRequests.find(({ id }) => id === revision.decisionRequestId);
+  const request = project.decisionRequests.find(({ id }) => id === revision.source.decisionRequestId);
   const suiteId = createEntityId("evaluation-suite", suffix());
   const existing = connection
     ? project.connectionRequirements.find(({ endpoint }) => endpoint === connection.endpoint)
@@ -431,13 +431,13 @@ export function updateDecisionEvaluationVariant(
 
 /** Variables the pinned revision uses that no input of the suite fills yet, in authored order. */
 export function decisionBindingCandidates(
-  project: Pick<ProjectFile, "decisionRequestRevisions">,
+  project: Pick<ProjectFile, "decisionRequestRevisions" | "promptTemplates">,
   suite: DecisionEvaluationSuite,
 ): string[] {
-  const revision = project.decisionRequestRevisions.find(({ id }) => id === suite.input.decisionRequestRevisionId);
+  const revision = resolveProjectDecisionRequestRevision(project, suite.input.decisionRequestRevisionId);
   if (!revision) return [];
   const bound = new Set(suite.inputBindings.map(({ target }) => target.variableName));
-  return discoverDecisionVariables(revision.decision).variables.filter((name) => !bound.has(name));
+  return revision.variables.filter((name) => !bound.has(name));
 }
 
 /**
@@ -454,7 +454,7 @@ export function addDecisionEvaluationInput(
   const inputId = createEntityId("evaluation-input", suffix());
   const next = mapDecisionSuite(project, suiteId, (suite) => {
     const revision = requireDecisionRevision(project, suite.input.decisionRequestRevisionId, ["evaluationSuites", suiteId, "input"]);
-    if (!discoverDecisionVariables(revision.decision).variables.includes(variableName)) {
+    if (!revision.variables.includes(variableName)) {
       throw new ProjectValidationError([{
         code: "custom",
         path: ["evaluationSuites", suiteId, "inputBindings"],

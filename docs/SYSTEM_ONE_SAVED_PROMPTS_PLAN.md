@@ -1,7 +1,8 @@
 # System One requests in Saved Prompts
 
-Status: recommendations accepted by the user on 2026-10-25; implementation has
-not started.
+Status: recommendations accepted by the user on 2026-10-25; PR slice 1
+(contracts and compatibility preparation) implemented and verified. Slices 2–4
+remain. Schema v15 and user-facing saved decision templates have not shipped.
 
 ## Outcome
 
@@ -172,11 +173,13 @@ Migrate legacy templates to `kind: "chat"` and existing decision request
 revisions to the inline arm. Preserve IDs, revision relationships, defaults,
 archive state, external import receipts, and evaluation references.
 
-Refactor the migration chain deliberately: the current v13 migration assigns
-the current schema version, so simply incrementing the version constant would
-skip an explicit v14-to-v15 transformation. Test every supported starting version
-through the full chain. This plan owns v15; Shared Assets Level 2 takes the
-following version (see [Relationship to Shared Assets Level 2](#relationship-to-shared-assets-level-2)).
+Refactor the migration chain deliberately: slice 1 changes the v13 migration
+from assigning the current schema version to literal v14 and guards its
+dispatch. Slice 2 must still add an explicit v14-to-v15 transformation;
+incrementing the version constant alone is insufficient. Test every supported
+starting version through the full chain. This plan owns v15; Shared Assets
+Level 2 takes the following version (see
+[Relationship to Shared Assets Level 2](#relationship-to-shared-assets-level-2)).
 Older applications should reject the new schema with
 their existing newer-version diagnostic.
 
@@ -268,6 +271,25 @@ on 2026-10-25.
 
 ## Implementation sequence
 
+### PR boundaries
+
+The numbered steps below describe dependencies, not separate PRs. Deliver them
+as these four sequential PRs; verification belongs in every slice.
+
+| Slice | Scope | Completion boundary |
+| --- | --- | --- |
+| 1. Contracts and compatibility preparation | Step 1, the existing inline revision resolver boundary, and explicit migration version advancement. | [Final type shapes and owner contracts](SYSTEM_ONE_SAVED_PROMPTS_CONTRACTS.md); Compose adoption, suite authoring, preflight, and experiment construction read authored content through one resolver. Schema stays v14 and existing behavior is preserved. |
+| 2. Schema v15 and core lifecycle | Steps 2–3, plus consumer narrowing throughout browser, CLI, imports, and workspace code. | Both kinds parse and round-trip; pins resolve; create/save/use/update/detach/archive, usage discovery, and ordered diffs are pure tested operations. Chat-only surfaces safely filter decision entries until slice 3 supplies their editor. |
+| 3. Library and Compose | Step 4. | Mixed library, separate editors, capture/use, explicit update/detach, draft retention, project reopen, and source/return navigation work through the existing feature owners. |
+| 4. Evaluation workflows and compatibility closeout | Step 5 and remaining step 6 documentation. | Evaluate a decision template revision, discover compatible suites, deliberately retarget with diagnostics, and exercise a template-backed suite through the CLI. Existing snapshots, chat prompts, and imports retain their behavior. |
+
+Run scoped browser coverage for behavior changes and the full committed suite
+before handing back each behavior-changing slice. The final feature acceptance
+matrix still applies across the completed series. Slice 1 is preparation: it
+does not make the new schema or saved decision prompts available in the UI.
+
+### Dependency order
+
 1. **Finalize contracts from the accepted decisions.** The three recommendations
    above are accepted. Specify final type shapes and owner interfaces consistent
    with them; involve the user only if a new material contract decision arises.
@@ -336,8 +358,20 @@ against a template-backed project using the existing fixture infrastructure.
 Report exact commands, gaps, and fixture limits. Hosted-provider and native
 desktop checks are separate from what browser replay proves.
 
-## Planning verification
+## Original planning verification
 
 This proposal was checked against the current source and repository testing
 guidelines. No application code changed and no tests or browser suites were run
 for this documentation-only task.
+
+## Slice 1 verification
+
+Verified on October 25, 2026 with typecheck, lint, build, the core suite, the
+System One decision request and suite browser specs, and the full browser
+suite. Exact commands and results are recorded on the slice 1 pull request.
+The slice is behavior-preserving apart from one message: suite preflight now
+gives the same literal-brace guidance for a malformed token that Compose
+already gives. No hosted-provider or native-desktop checks were run; the saved
+decision template UI and its acceptance spec belong to subsequent slices, and
+new library and pinned-use presentation will need the user's visual review
+when slice 3 exists.
