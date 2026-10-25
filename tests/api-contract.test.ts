@@ -472,6 +472,35 @@ test("keeps authentication failures non-retryable", async () => {
   }
 });
 
+test("names a missing version segment when a provider answers 404", async () => {
+  const originalFetch = globalThis.fetch;
+  let requested = "";
+  globalThis.fetch = async (url) => {
+    requested = String(url);
+    return new Response("404 page not found", { status: 404 });
+  };
+
+  try {
+    const unversioned = execution();
+    unversioned.input.target.endpoint = "http://10.0.0.5:8000";
+    const events = [];
+    for await (const event of executeProviderTurn(unversioned, "test-key")) {
+      events.push(event);
+    }
+    assert.equal(requested, "http://10.0.0.5:8000/chat/completions");
+    const failure = events.at(-1);
+    assert.equal(failure?.type, "failed");
+    if (failure?.type === "failed") {
+      assert.equal(failure.error.code, "provider_error");
+      assert.equal(failure.error.providerStatus, 404);
+      assert.match(failure.error.message, /http:\/\/10\.0\.0\.5:8000\/v1\b/);
+      assert.match(failure.error.message, /404 page not found/);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("accepts every wire protocol at the provider-turn boundary and nothing else", () => {
   for (const protocol of [
     "openai-compatible-chat-completions",

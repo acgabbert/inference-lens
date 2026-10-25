@@ -5,6 +5,7 @@ import type {
 import { streamDecision } from "../../../packages/core/src/decision-execution.ts";
 import { streamProviderTurn } from "../../../packages/core/src/provider-adapters.ts";
 import {
+  explainProviderStatusError,
   ProviderProtocolError,
   ProviderReportedError,
 } from "../../../packages/core/src/provider-protocols.ts";
@@ -104,7 +105,8 @@ function failureEvent(
   const failure = {
     code,
     // Only a transport failure means nothing answered. A provider that
-    // returned a status was reachable, so its own message stands.
+    // returned a status was reachable, so its own message stands, with at
+    // most a hint about the path it was sent to.
     message:
       code === "transport_error"
         ? explainProviderTransportError(
@@ -112,7 +114,9 @@ function failureEvent(
             endpoint,
             environment.containerized ?? false,
           )
-        : message,
+        : code === "provider_error" && status !== undefined
+          ? explainProviderStatusError(message, status, endpoint)
+          : message,
     providerStatus: status,
   };
   return {

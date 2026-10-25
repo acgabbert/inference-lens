@@ -190,6 +190,51 @@ export function providerRequestUrl(
 }
 
 /**
+ * Statuses a wrong path can produce: no route there at all, or a route that
+ * takes no POST.
+ */
+const PATH_MISMATCH_STATUSES: ReadonlySet<number> = new Set([404, 405]);
+
+/** `v1`, `v2`, and preview spellings such as Gemini's `v1beta`. */
+const VERSION_SEGMENT = /^v\d+(?:[a-z]+\d*)?$/i;
+
+/**
+ * Adds the likely cause to a provider's 404 or 405 when the base URL has no
+ * version segment. Every protocol appends its path straight onto the base, so
+ * `http://host:8000` dials `http://host:8000/chat/completions` where the
+ * server is listening on `/v1/chat/completions`, and the provider's own
+ * `404 page not found` points nowhere near the fix.
+ *
+ * Only a hint, never a rewrite: some gateways are correctly versionless, and
+ * some servers answer 404 for an unknown model. The provider's message is
+ * kept.
+ */
+export function explainProviderStatusError(
+  message: string,
+  status: number,
+  endpoint: string,
+): string {
+  if (!PATH_MISMATCH_STATUSES.has(status)) return message;
+
+  let base: string;
+  try {
+    base = providerBaseEndpoint(endpoint);
+  } catch {
+    return message;
+  }
+  const suggested = new URL(base);
+  const segments = suggested.pathname.split("/").filter(Boolean);
+  if (segments.some((segment) => VERSION_SEGMENT.test(segment))) return message;
+  suggested.pathname = `/${[...segments, "v1"].join("/")}`;
+
+  return (
+    `${base} has no version segment, and most providers expect one in the ` +
+    `base URL. If this server lives under a versioned path, try ` +
+    `${suggested.toString()}. (${message})`
+  );
+}
+
+/**
  * Where a connection lists its models; the same path for every protocol. The
  * query is dropped, as discovery always has: a listing is not a model call.
  */
