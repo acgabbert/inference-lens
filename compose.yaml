@@ -4,6 +4,11 @@ services:
       context: .
     env_file:
       - .env
+    # For INFERENCE_LENS_CONNECTIONS, mount the catalog and its key files
+    # read-only and set the variable in .env to the in-container path, for
+    # example INFERENCE_LENS_CONNECTIONS=/config/connections.json.
+    # volumes:
+    #   - ~/.config/inference-lens:/config:ro
     ports:
       - "127.0.0.1:${INFERENCE_LENS_PORT:-3000}:3000"
     # Docker Desktop resolves host.docker.internal on its own; plain Linux

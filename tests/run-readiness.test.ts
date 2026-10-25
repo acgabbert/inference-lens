@@ -385,7 +385,7 @@ test("a protocol the profile has not enabled blocks the run and points at the pr
 test("a protocol the server manages is never routed to its locked switch", () => {
   const readiness = runReadiness({
     ...ready,
-    protocol: { id: "openai-responses", supported: false, managedByServer: true },
+    protocol: { id: "openai-responses", supported: false, managedByServer: "INFERENCE_LENS_API_PROTOCOLS" },
   });
   assert.equal(readiness?.blocked, true);
   assert.equal(

@@ -89,6 +89,7 @@ export default defineConfig({
         INFERENCE_LENS_API_ENDPOINT: "",
         INFERENCE_LENS_API_KEY: "",
         INFERENCE_LENS_MODEL: "",
+        INFERENCE_LENS_CONNECTIONS: "",
         INFERENCE_LENS_N8N_BASE_URL: "",
         INFERENCE_LENS_N8N_API_KEY: "",
         INFERENCE_LENS_COMMAND_TOOLS: commandToolCatalog,

@@ -15,15 +15,11 @@ import {
   protocolCapabilityKey,
 } from "../packages/core/src/provider-protocols.ts";
 import { PROVIDER_WIRE_PROTOCOLS } from "../packages/core/src/run-kernel/types.ts";
+import { DEFAULT_SERVER_CONNECTION_ID } from "../packages/core/src/server-connection-catalog.ts";
 import type { ProviderWireProtocol } from "../packages/core/src/run-kernel/types.ts";
+import { serverConnectionIdOfCredentialRef } from "./web-credential-mode.ts";
 
 const STORAGE_KEY = "inference-lens:inference-profiles:v1";
-
-/**
- * Marks a profile as provisioned from the hosting service's configuration. The
- * credential itself lives on the server; the profile only names the intent.
- */
-export const SERVER_DEFAULT_CREDENTIAL_REF = "environment-default";
 
 /**
  * Connection metadata is persisted locally, but credentials never are. The
@@ -129,7 +125,7 @@ export function nextCapabilityOverrides(
 /**
  * The profile with its protocol capabilities set to exactly `protocols`, and
  * its System One declaration to `systemOne`. The server owns which APIs its
- * default connection speaks, the way it owns the endpoint, so this replaces
+ * connections speak, the way it owns the endpoint, so this replaces
  * those answers and leaves every other override to the user.
  */
 export function withServerProtocols<Profile extends StoredInferenceProfile>(
@@ -197,16 +193,21 @@ export function toggleFavoriteModel(
 export function profileDeletionRefusal(
   profiles: StoredInferenceProfile[],
   profile: StoredInferenceProfile,
-  serverDefaultConfigured: boolean,
+  /** The server connection this profile is managed by, when it reports one. */
+  serverConnection: { id: string; credentialConfigured: boolean } | undefined,
 ): string | undefined {
   if (profiles.length <= 1) {
     return "At least one connection profile is required.";
   }
-  if (
-    profile.credentialRef === SERVER_DEFAULT_CREDENTIAL_REF &&
-    serverDefaultConfigured
-  ) {
-    return "This profile comes from the server configuration and would be added back. Unset INFERENCE_LENS_API_KEY to remove it.";
+  // A declaration provisions its profile whether it needs a key, has one,
+  // or cannot currently read one. A failed probe or refused catalog also keeps
+  // that ownership: reconciliation clears the reference on confirmed removal.
+  const connectionId = serverConnection?.id ??
+    serverConnectionIdOfCredentialRef(profile.credentialRef);
+  if (connectionId) {
+    return connectionId === DEFAULT_SERVER_CONNECTION_ID
+      ? "This profile comes from the server configuration and would be added back. Unset INFERENCE_LENS_API_ENDPOINT to remove it."
+      : `This profile comes from the server configuration and would be added back. Remove "${connectionId}" from the INFERENCE_LENS_CONNECTIONS catalog to remove it.`;
   }
   return undefined;
 }

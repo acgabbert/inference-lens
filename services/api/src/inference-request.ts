@@ -24,6 +24,7 @@ import {
   isProviderWireProtocol,
 } from "../../../packages/core/src/provider-protocols.ts";
 import type { ConnectionProtocol } from "../../../packages/core/src/provider-protocols.ts";
+import { isServerConnectionId } from "../../../packages/core/src/server-connection-catalog.ts";
 import type { CredentialStore } from "./credential-store.ts";
 
 function parseCredential(value: unknown): CredentialSelection {
@@ -32,7 +33,11 @@ function parseCredential(value: unknown): CredentialSelection {
   }
   const credential = value as Partial<CredentialSelection>;
   if (credential.kind === "environment-default") {
-    return { kind: "environment-default" };
+    if (credential.connectionId === undefined) return { kind: "environment-default" };
+    if (!isServerConnectionId(credential.connectionId)) {
+      throw new Error("Credential selection is invalid.");
+    }
+    return { kind: "environment-default", connectionId: credential.connectionId };
   }
   if (credential.kind === "none") {
     return { kind: "none" };

@@ -4,15 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import type { CredentialSelection } from "../packages/contracts/src/index.ts";
 import type { ProviderCapabilities } from "../packages/core/src/types.ts";
 import { resolveProviderCapabilities } from "../packages/core/src/types.ts";
-import { randomUUID } from "../packages/core/src/random-id.ts";
-import { isProviderWireProtocol } from "../packages/core/src/provider-protocols.ts";
-import type { ProviderWireProtocol } from "../packages/core/src/run-kernel/types.ts";
 import {
-  SERVER_DEFAULT_CREDENTIAL_REF,
   createDefaultProfile,
   createProfile,
   nextCapabilityOverrides,
-  withServerProtocols,
   withSystemOne,
   profileDeletionRefusal,
   readProfiles,
@@ -26,8 +21,19 @@ import type {
 import { desktopCredentialStore } from "./tauri-inference-transport.client.ts";
 import type { CredentialStatus } from "./tauri-inference-transport.client.ts";
 import {
+  defaultWebCredentialMode,
+  parseRuntimeStatus,
+  reconcileServerProfiles,
+  reconcileWebCredentialModes,
+  serverConnectionFor,
+  unknownServerStatus,
+} from "./server-connection-profiles.ts";
+import type { ServerStatus } from "./server-connection-profiles.ts";
+import {
   resolveWebCredentialSelection,
   webCredentialIsAvailable,
+  webCredentialModeFromStorage,
+  webCredentialModeToStorage,
 } from "./web-credential-mode.ts";
 import type { WebCredentialMode } from "./web-credential-mode.ts";
 
@@ -39,98 +45,6 @@ const unknownCredentialStatus: CredentialStatus = {
 
 const WEB_CREDENTIAL_MODES_STORAGE_KEY =
   "inference-lens:web-credential-modes:v1";
-const SERVER_DEFAULT_PROFILE_ID = "server-default";
-const SERVER_DEFAULT_PROFILE_NAME = "Server default";
-
-/** Non-secret shape of `GET /api/runtime-status`. */
-interface RuntimeStatus {
-  containerized: boolean;
-  configured: boolean;
-  endpoint?: string;
-  model?: string;
-  /** Present whenever the server's protocol list is set; may be empty. */
-  protocols?: ProviderWireProtocol[];
-  /** Set with `protocols`: whether the list names `systemone` (D9a). */
-  systemOne?: boolean;
-  unrecognizedProtocols?: string[];
-}
-
-/**
- * What the service running this UI reports about itself. Drives the
- * server-default profile, which authentication modes are offered, and the
- * wording of container-specific advice.
- */
-export interface ServerDefaultStatus {
-  /** False until the probe answers; suppresses advice that would be a guess. */
-  loaded: boolean;
-  /** The API service is running in a container. */
-  containerized: boolean;
-  /** A server-held key is available and bound to `endpoint`. */
-  configured: boolean;
-  /** Present whenever the server declares a provider, key or no key. */
-  endpoint?: string;
-  /** Present when the server states which protocols that provider speaks. */
-  protocols?: ProviderWireProtocol[];
-  /** Set with `protocols`: the System One declaration the server locks. */
-  systemOne?: boolean;
-  /**
-   * Present when the server's protocol list names something it does not
-   * recognize. The list is then ignored whole, exactly as if it were unset,
-   * so this is the only trace of the operator's mistake.
-   */
-  unrecognizedProtocols?: string[];
-}
-
-/**
- * Whether a profile's protocol switches are the server's rather than the
- * user's. They are reapplied from `INFERENCE_LENS_API_PROTOCOLS` on every load,
- * so a surface that offered to change one would be offering an edit that is
- * silently undone. Shared by Connections, which locks them, and readiness,
- * which must not send the user to a locked switch.
- */
-export function serverManagesProtocols(
-  profile: { credentialRef?: string },
-  serverDefault: ServerDefaultStatus,
-  isDesktopRuntime: boolean,
-): boolean {
-  return (
-    !isDesktopRuntime &&
-    profile.credentialRef === SERVER_DEFAULT_CREDENTIAL_REF &&
-    Boolean(serverDefault.protocols)
-  );
-}
-
-const unknownServerDefault: ServerDefaultStatus = {
-  loaded: false,
-  containerized: false,
-  configured: false,
-};
-
-function parseRuntimeStatus(body: unknown): RuntimeStatus {
-  const value = (body ?? {}) as Record<string, unknown>;
-  const text = (key: string): string | undefined =>
-    typeof value[key] === "string" && value[key].trim()
-      ? (value[key] as string).trim()
-      : undefined;
-  return {
-    containerized: value.containerized === true,
-    configured: value.serverDefaultCredentialConfigured === true,
-    endpoint: text("endpoint"),
-    model: text("model"),
-    // An empty list is a decision-only server (D9a): it is still set, so the
-    // chat switches are still the server's.
-    ...(Array.isArray(value.protocols) &&
-    value.protocols.every(isProviderWireProtocol)
-      ? { protocols: value.protocols, systemOne: value.systemOne === true }
-      : {}),
-    ...(Array.isArray(value.unrecognizedProtocols) &&
-    value.unrecognizedProtocols.length > 0 &&
-    value.unrecognizedProtocols.every((name) => typeof name === "string")
-      ? { unrecognizedProtocols: value.unrecognizedProtocols as string[] }
-      : {}),
-  };
-}
-
 export interface ProfileCredentialHandle {
   /** Session-only input for the active profile; never persisted by the UI. */
   draft: string;
@@ -175,19 +89,28 @@ export interface ConnectionProfilesHandle {
     key: keyof ProviderCapabilities,
     enabled: boolean,
   ): void;
-  /** What the hosting service reports about itself; see ServerDefaultStatus. */
-  serverDefault: ServerDefaultStatus;
-  /** Set once, when a server-configured profile is added beside existing ones. */
-  serverDefaultProfileNotice?: { profileId: string };
-  adoptServerDefaultProfile(): void;
-  dismissServerDefaultProfileNotice(): void;
+  /** What the hosting service reports about itself; see ServerStatus. */
+  server: ServerStatus;
   /**
-   * The server's protocol list names something unrecognized and was ignored.
-   * Held until dismissed for this page load; the next load reports it again,
-   * because nothing here can fix it.
+   * Set once, when server-configured profiles are added beside existing ones.
+   * Lists every profile added by this load, in the server's order.
    */
-  serverProtocolsNotice?: { unrecognized: string[] };
+  serverProfilesNotice?: { profiles: { id: string; name: string }[] };
+  /** Switches to the first profile the notice lists. */
+  adoptServerProfile(): void;
+  dismissServerProfilesNotice(): void;
+  /**
+   * A connection's protocol list names something unrecognized and was
+   * ignored. Held until dismissed for this page load; the next load reports
+   * it again, because nothing here can fix it.
+   */
+  serverProtocolsNotice?: {
+    connections: { id: string; name: string; unrecognized: string[] }[];
+  };
   dismissServerProtocolsNotice(): void;
+  /** The server refused its connection catalog whole; held like the above. */
+  serverCatalogNotice?: { problem: string };
+  dismissServerCatalogNotice(): void;
   credential: ProfileCredentialHandle;
 }
 
@@ -219,18 +142,19 @@ export function useConnectionProfiles(input: {
   const [credentialError, setCredentialError] = useState<string>();
   const sessionCredentialsRef = useRef(new Map<string, string>());
   const webCredentialModesRef = useRef(new Map<string, WebCredentialMode>());
-  const serverDefaultProvisionedRef = useRef(false);
+  const serverProvisionedRef = useRef(false);
   // Whether this device had stored profiles at all. Adopting the server's
   // configuration outright is right when there is nothing to displace, and a
   // surprise the moment the user has profiles of their own.
   const firstRunRef = useRef(false);
   const [webCredentialModeOverride, setWebCredentialModeOverride] =
     useState<WebCredentialMode>();
-  const [serverDefault, setServerDefault] =
-    useState<ServerDefaultStatus>(unknownServerDefault);
-  const [serverDefaultProfileNotice, setServerDefaultProfileNotice] =
-    useState<{ profileId: string }>();
+  const [server, setServer] = useState<ServerStatus>(unknownServerStatus);
+  const [serverProfilesNotice, setServerProfilesNotice] =
+    useState<{ profiles: { id: string; name: string }[] }>();
   const [serverProtocolsNoticeDismissed, setServerProtocolsNoticeDismissed] =
+    useState(false);
+  const [serverCatalogNoticeDismissed, setServerCatalogNoticeDismissed] =
     useState(false);
 
   // Lets the one-shot provisioning effect read the restored profiles without
@@ -252,7 +176,7 @@ export function useConnectionProfiles(input: {
   const activeProfileDeletionRefusal = profileDeletionRefusal(
     profiles,
     activeProfile,
-    serverDefault.configured,
+    serverConnectionFor(activeProfile, server),
   );
 
   useEffect(() => {
@@ -268,14 +192,9 @@ export function useConnectionProfiles(input: {
         // be inherited by the next profile to take the same id, and the two
         // fixed ids make that reachable rather than theoretical.
         let pruned = false;
-        for (const [profileId, mode] of Object.entries(stored)) {
-          if (
-            mode !== "environment-default" &&
-            mode !== "session" &&
-            mode !== "none"
-          ) {
-            continue;
-          }
+        for (const [profileId, value] of Object.entries(stored)) {
+          const mode = webCredentialModeFromStorage(value);
+          if (!mode) continue;
           if (snapshot.profiles.some(({ id }) => id === profileId)) {
             webCredentialModesRef.current.set(profileId, mode);
           } else {
@@ -299,18 +218,18 @@ export function useConnectionProfiles(input: {
 
   // Held in a ref so the one-shot effect below can reach the current closure
   // without listing it as a dependency, which would re-arm it on every render.
-  const reconcileRef = useRef(reconcileServerDefaultProfile);
-  reconcileRef.current = reconcileServerDefaultProfile;
+  const reconcileRef = useRef(reconcileWithServer);
+  reconcileRef.current = reconcileWithServer;
 
   // Runs once per mount, after profiles are restored, and is deliberately not
   // cancelled: the result is idempotent, and aborting it on a Strict Mode
   // remount would leave the ref latched with nothing ever adopted.
   useEffect(() => {
     if (isDesktopRuntime || !profilesLoaded) return;
-    if (serverDefaultProvisionedRef.current) return;
-    serverDefaultProvisionedRef.current = true;
+    if (serverProvisionedRef.current) return;
+    serverProvisionedRef.current = true;
     void (async () => {
-      let status: RuntimeStatus | undefined;
+      let status: Omit<ServerStatus, "loaded"> | undefined;
       try {
         const response = await fetch("/api/runtime-status");
         if (response.ok) status = parseRuntimeStatus(await response.json());
@@ -320,18 +239,7 @@ export function useConnectionProfiles(input: {
         // removed. Keep the last stored managed profile intact.
       }
       if (!status) return;
-      setServerDefault({
-        loaded: true,
-        containerized: status.containerized,
-        configured: status.configured,
-        ...(status.endpoint ? { endpoint: status.endpoint } : {}),
-        ...(status.protocols
-          ? { protocols: status.protocols, systemOne: status.systemOne === true }
-          : {}),
-        ...(status.unrecognizedProtocols
-          ? { unrecognizedProtocols: status.unrecognizedProtocols }
-          : {}),
-      });
+      setServer({ loaded: true, ...status });
       reconcileRef.current(status);
     })();
   }, [isDesktopRuntime, profilesLoaded]);
@@ -367,121 +275,50 @@ export function useConnectionProfiles(input: {
   }, [credentialProfileEndpoint, credentialProfileId, isDesktopRuntime]);
 
   const webCredentialMode =
-    webCredentialModeOverride ??
-    (serverDefault.configured &&
-    activeProfile.credentialRef === SERVER_DEFAULT_CREDENTIAL_REF
-      ? "environment-default"
-      : "none");
+    webCredentialModeOverride ?? defaultWebCredentialMode(activeProfile, server);
 
   function persistWebCredentialModes(): void {
     window.localStorage.setItem(
       WEB_CREDENTIAL_MODES_STORAGE_KEY,
-      JSON.stringify(Object.fromEntries(webCredentialModesRef.current)),
+      JSON.stringify(
+        Object.fromEntries(
+          [...webCredentialModesRef.current].map(([profileId, mode]) => [
+            profileId,
+            webCredentialModeToStorage(mode),
+          ]),
+        ),
+      ),
     );
   }
 
   /**
-   * Brings the local profile list in line with what the server now reports.
-   *
-   * Both directions matter. A newly configured server should produce a profile
-   * that is ready to run, and a server whose variables were removed must not
-   * leave behind a profile that is permanently endpoint-locked and fails every
-   * request against a credential that no longer exists.
+   * Applies what the server now reports to stored preferences and profiles;
+   * see `reconcileServerProfiles` for the rules.
    */
-  function reconcileServerDefaultProfile(status: RuntimeStatus): void {
-    const current = profilesRef.current;
-    const existing = current.find(
-      ({ credentialRef }) => credentialRef === SERVER_DEFAULT_CREDENTIAL_REF,
-    );
-
+  function reconcileWithServer(status: Omit<ServerStatus, "loaded">): void {
     // Any stored preference for a credential the server no longer holds would
     // fail on every run, so it is downgraded rather than left to break.
-    if (!status?.configured) {
-      let changed = false;
-      for (const [profileId, mode] of webCredentialModesRef.current) {
-        if (mode !== "environment-default") continue;
-        webCredentialModesRef.current.set(profileId, "none");
-        if (profileId === activeProfileId) setWebCredentialModeOverride("none");
-        changed = true;
-      }
-      if (changed) persistWebCredentialModes();
+    const downgraded = reconcileWebCredentialModes(webCredentialModesRef.current, status);
+    if (downgraded.length > 0) {
+      if (downgraded.includes(activeProfileId)) setWebCredentialModeOverride("none");
+      persistWebCredentialModes();
     }
 
-    if (!status?.endpoint) {
-      // Release a profile provisioned by a configuration that is now gone,
-      // unlocking its endpoint. The profile itself is kept: the user may have
-      // chosen a model on it.
-      if (!existing) return;
-      setProfiles(
-        current.map((profile) =>
-          profile.credentialRef === SERVER_DEFAULT_CREDENTIAL_REF
-            ? { ...profile, credentialRef: undefined }
-            : profile,
-        ),
-      );
-      return;
-    }
-
-    // Like the endpoint, the protocols a server declares are its own to state;
-    // a server that declares none leaves the profile's choices with the user.
-    const withProtocols = (profile: StoredInferenceProfile) =>
-      status.protocols
-        ? withServerProtocols(profile, status.protocols, status.systemOne)
-        : profile;
-
-    if (existing) {
-      const next: StoredInferenceProfile = withProtocols({
-        ...existing,
-        // The endpoint is the server's to own: the credential is released only
-        // to the origin it names, so a profile pointing anywhere else is dead
-        // weight. The model is not — the user may have picked one from
-        // discovery, and INFERENCE_LENS_MODEL is a starting point rather than
-        // a lock. It is filled in only while the profile has no model at all.
-        endpoint: status.endpoint,
-        ...(status.model && !existing.model ? { model: status.model } : {}),
-      });
-      if (
-        existing.endpoint === next.endpoint &&
-        existing.model === next.model &&
-        JSON.stringify(existing.capabilityOverrides) ===
-          JSON.stringify(next.capabilityOverrides) &&
-        existing.systemOne === next.systemOne
-      ) {
-        return;
-      }
-      setProfiles(
-        current.map((profile) => (profile.id === existing.id ? next : profile)),
-      );
-      return;
-    }
-
-    const added: StoredInferenceProfile = withProtocols({
-      ...createDefaultProfile(),
-      id: current.some(({ id }) => id === SERVER_DEFAULT_PROFILE_ID)
-        ? `${SERVER_DEFAULT_PROFILE_ID}-${randomUUID()}`
-        : SERVER_DEFAULT_PROFILE_ID,
-      name: SERVER_DEFAULT_PROFILE_NAME,
-      endpoint: status.endpoint,
-      // The server named a provider but not always a model. An empty model
-      // blocks the run with a notice that points at the model picker, which
-      // is true, instead of failing at the provider with a name the user
-      // never chose.
-      model: status.model ?? "",
-      credentialRef: SERVER_DEFAULT_CREDENTIAL_REF,
+    const result = reconcileServerProfiles({
+      profiles: profilesRef.current,
+      connections: status.connections,
+      ...(status.catalogProblem ? { catalogProblem: status.catalogProblem } : {}),
+      firstRun: firstRunRef.current,
     });
-    // Configuring the server is explicit intent, so a device that has never
-    // stored a profile adopts it outright. `current` here is just the unused
-    // starting profile — replacing it rather than keeping both means a first
-    // run never leaves an unconfigured profile sitting in the list beside the
-    // one the server actually provisioned. Once the user has profiles of
-    // their own, the starting profile may be one of them, so it is kept and
-    // the server profile is offered instead of assumed.
-    if (firstRunRef.current) {
-      setProfiles([added]);
-      setActiveProfileId(added.id);
-    } else {
-      setProfiles([...current, added]);
-      setServerDefaultProfileNotice({ profileId: added.id });
+    if (!result) return;
+    setProfiles(result.profiles);
+    if (result.activeProfileId) setActiveProfileId(result.activeProfileId);
+    if (result.added.length > 0) {
+      setServerProfilesNotice({
+        profiles: result.profiles
+          .filter(({ id }) => result.added.includes(id))
+          .map(({ id, name }) => ({ id, name })),
+      });
     }
   }
 
@@ -546,8 +383,9 @@ export function useConnectionProfiles(input: {
     // The credential effect swaps in the newly active profile's draft, mode and
     // keychain status on its own; only the notice pointing at a profile that no
     // longer exists has to be cleared here.
-    if (serverDefaultProfileNotice?.profileId === removed.id) {
-      setServerDefaultProfileNotice(undefined);
+    if (serverProfilesNotice?.profiles.some(({ id }) => id === removed.id)) {
+      const remaining = serverProfilesNotice.profiles.filter(({ id }) => id !== removed.id);
+      setServerProfilesNotice(remaining.length > 0 ? { profiles: remaining } : undefined);
     }
   }
 
@@ -591,9 +429,7 @@ export function useConnectionProfiles(input: {
     const draft = sessionCredentialsRef.current.get(profileId) ?? "";
     if (!isDesktopRuntime) {
       const mode = webCredentialModesRef.current.get(profileId) ??
-        (serverDefault.configured && profile.credentialRef === SERVER_DEFAULT_CREDENTIAL_REF
-          ? "environment-default"
-          : "none");
+        defaultWebCredentialMode(profile, server);
       return resolveWebCredentialSelection(mode, draft);
     }
     const status = await desktopCredentialStore.status(
@@ -649,6 +485,11 @@ export function useConnectionProfiles(input: {
     });
   }
 
+  const unrecognizedProtocolConnections = server.connections.flatMap(
+    ({ id, name, unrecognizedProtocols }) =>
+      unrecognizedProtocols ? [{ id, name, unrecognized: unrecognizedProtocols }] : [],
+  );
+
   return {
     profiles,
     profilesLoaded,
@@ -662,20 +503,22 @@ export function useConnectionProfiles(input: {
     ...(activeProfileDeletionRefusal ? { activeProfileDeletionRefusal } : {}),
     removeActiveProfile,
     setCapabilityOverride,
-    serverDefault,
-    serverDefaultProfileNotice,
-    adoptServerDefaultProfile: () => {
-      if (serverDefaultProfileNotice) {
-        setActiveProfileId(serverDefaultProfileNotice.profileId);
-      }
-      setServerDefaultProfileNotice(undefined);
+    server,
+    serverProfilesNotice,
+    adoptServerProfile: () => {
+      const first = serverProfilesNotice?.profiles[0];
+      if (first) setActiveProfileId(first.id);
+      setServerProfilesNotice(undefined);
     },
-    dismissServerDefaultProfileNotice: () =>
-      setServerDefaultProfileNotice(undefined),
-    ...(serverDefault.unrecognizedProtocols && !serverProtocolsNoticeDismissed
-      ? { serverProtocolsNotice: { unrecognized: serverDefault.unrecognizedProtocols } }
+    dismissServerProfilesNotice: () => setServerProfilesNotice(undefined),
+    ...(unrecognizedProtocolConnections.length > 0 && !serverProtocolsNoticeDismissed
+      ? { serverProtocolsNotice: { connections: unrecognizedProtocolConnections } }
       : {}),
     dismissServerProtocolsNotice: () => setServerProtocolsNoticeDismissed(true),
+    ...(server.catalogProblem && !serverCatalogNoticeDismissed
+      ? { serverCatalogNotice: { problem: server.catalogProblem } }
+      : {}),
+    dismissServerCatalogNotice: () => setServerCatalogNoticeDismissed(true),
     credential: {
       draft: credentialDraft,
       status: credentialStatus,

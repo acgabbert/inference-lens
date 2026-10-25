@@ -10,6 +10,15 @@ import {
 const WEB_CREDENTIAL_MODES_STORAGE_KEY =
   "inference-lens:web-credential-modes:v1";
 
+/** The legacy `INFERENCE_LENS_API_*` connection, as `/api/runtime-status` lists it. */
+const serverDefaultConnection = {
+  id: "default",
+  name: "Server default",
+  endpoint: BUFFERED_FIXTURE_ENDPOINT,
+  model: "buffered-test-model",
+  credentialConfigured: true,
+};
+
 interface StoredProfileSnapshot {
   id: string;
   instanceId: string;
@@ -33,9 +42,7 @@ test("a failed runtime-status probe preserves the managed server profile", async
       ? route.fulfill({
           json: {
             containerized: true,
-            serverDefaultCredentialConfigured: true,
-            endpoint: BUFFERED_FIXTURE_ENDPOINT,
-            model: "buffered-test-model",
+            connections: [serverDefaultConnection],
           },
         })
       : route.fulfill({ status: 503, body: "Temporary status outage" }),
@@ -123,13 +130,11 @@ test("a confirmed unconfigured status releases the managed credential", async ({
       json: configured
         ? {
             containerized: true,
-            serverDefaultCredentialConfigured: true,
-            endpoint: BUFFERED_FIXTURE_ENDPOINT,
-            model: "buffered-test-model",
+            connections: [serverDefaultConnection],
           }
         : {
             containerized: true,
-            serverDefaultCredentialConfigured: false,
+            connections: [],
           },
     }),
   );

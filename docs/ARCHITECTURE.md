@@ -54,7 +54,12 @@ The API service resolves credentials through `CredentialStore`. The initial
 `EnvironmentCredentialStore` reads `INFERENCE_LENS_API_KEY` inside the API process.
 It releases that credential only to the origin configured by
 `INFERENCE_LENS_API_ENDPOINT`, making it suitable for an individual developer's
-local container while keeping the secret out of client JavaScript. The HTTP
+local container while keeping the secret out of client JavaScript.
+`ServerConnectionStore` wraps it as the `default` connection and adds the
+catalog `INFERENCE_LENS_CONNECTIONS` names, read per request; an
+`environment-default` selection picks a connection by `connectionId`, and each
+key is released only to its own connection's origin
+([design](SERVER_CONNECTIONS_DESIGN.md)). The HTTP
 routes also require same-origin JSON requests. A `provided` credential is
 session-only input for the local workbench; it is never included in profile
 metadata, projects, diagnostics, or browser persistence.

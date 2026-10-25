@@ -153,10 +153,10 @@ export interface RunReadinessInput {
   activeConnectionRequirementId?: string;
   /**
    * The protocol the run would use and whether its profile has it enabled.
-   * `managedByServer` means the profile's protocol switches are locked to
-   * `INFERENCE_LENS_API_PROTOCOLS`, so enabling one here is not an option.
+   * `managedByServer` names where the server sets the profile's locked
+   * protocol switches, so enabling one here is not an option.
    */
-  protocol?: { id: ProviderWireProtocol; supported: boolean; managedByServer?: boolean };
+  protocol?: { id: ProviderWireProtocol; supported: boolean; managedByServer?: string };
   templateResolutionError?: string;
   templateIssues: RunReadinessTemplateIssue[];
   templateTargets?: RunReadinessTemplateTarget[];
@@ -308,7 +308,7 @@ export function runReadiness(
     if (protocol.managedByServer) {
       return {
         ...shared,
-        detail: `Choose another API in Run settings, or another connection. This server sets "${profile}"'s APIs with INFERENCE_LENS_API_PROTOCOLS, so enabling ${label} means changing that on the server.`,
+        detail: `Choose another API in Run settings, or another connection. This server sets "${profile}"'s APIs with ${protocol.managedByServer}, so enabling ${label} means changing that on the server.`,
         summary: `Choose an API "${profile}" supports before running.`,
         actions: [
           { ...chooseAnother, primary: true },

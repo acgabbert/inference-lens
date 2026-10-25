@@ -36,7 +36,15 @@ export type ServerProtocolConfiguration =
 export function parseServerProtocols(
   value: string | undefined,
 ): ServerProtocolConfiguration {
-  const names = value?.split(",").map((name) => name.trim()).filter(Boolean) ?? [];
+  return parseServerProtocolNames(
+    value?.split(",").map((name) => name.trim()).filter(Boolean) ?? [],
+  );
+}
+
+/** The same rules for a list that is already split, as a catalog writes it. */
+export function parseServerProtocolNames(
+  names: readonly string[],
+): ServerProtocolConfiguration {
   if (names.length === 0) return { kind: "unset" };
   const unrecognized = names.filter(
     (name) => !Object.hasOwn(protocolNames, name) && name !== SYSTEM_ONE_CONFIGURATION_NAME,
@@ -175,7 +183,7 @@ function safeEndpointForClient(value: string): string | undefined {
   }
 }
 
-function providerOrigin(value: string, label: string): string {
+export function providerOrigin(value: string, label: string): string {
   let parsed: URL;
   try {
     parsed = new URL(value);
