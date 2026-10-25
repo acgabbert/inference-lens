@@ -249,15 +249,22 @@ keeps the request reusable. Do not "align" this with chat detach later.
 
 ### 3. `values` and `overrides` on the two arms (accepted)
 
-An inline revision keeps `values`, complete per D40: one entry per variable the
-input uses, and key presence is significant. A template-use revision has
-`overrides` instead, and no `values` field: a missing key falls back to the
-pinned revision's default, and a present key, including an empty string, wins.
-The distinct names keep code that reads a revision from confusing a sparse
-override map with a complete value set. The shared resolver is the only place
-that merges defaults and overrides into effective values. Update keeps
-overrides for surviving variables and drops obsolete ones; detach writes the
-effective values into the new inline revision's `values`.
+An inline revision keeps `values` for supplied assignments to variables the
+input uses; absent variables remain unresolved. Saving does not require an entry
+for every variable. A template-use revision has `overrides` instead, and no
+`values` field: a missing key falls back to the pinned revision's default, and a
+present key, including an empty string, wins. If neither supplies a value, the
+variable remains unresolved.
+
+The distinct names distinguish supplied inline assignments from assignments
+that override template defaults; either map may omit variables. The shared
+resolver is the only place that merges defaults and overrides into effective
+values. Update keeps overrides for surviving variables and drops obsolete ones;
+detach copies available effective assignments into the new inline revision's
+`values` and preserves unresolved variables. Never fill absent assignments with
+empty strings: an explicitly supplied empty string is a value, while an absent
+value must continue to block execution. The user accepted this clarification
+on 2026-10-25.
 
 ## Implementation sequence
 
@@ -294,6 +301,8 @@ Core coverage:
   decision order, or broken references; new-schema invalid references fail.
 - Defaults/overrides/case values resolve with the specified precedence, including
   empty, missing, escaped, and forbidden variable names.
+- Saving, reopening, and detaching requests with unfilled variables preserve
+  absent assignments; runs remain blocked until those values are supplied.
 - Saving a new source revision cannot alter an existing use, suite input, or
   experiment snapshot. Update/detach create the expected child revisions.
 - Archive preserves historical resolution, kind checks reject invalid uses, and
