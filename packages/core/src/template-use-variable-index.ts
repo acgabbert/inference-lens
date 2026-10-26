@@ -1,3 +1,4 @@
+import { isChatPromptTemplate } from "./project.ts";
 import type { ProjectConversationRevision, PromptTemplate } from "./project.ts";
 import type { ConversationRevisionId, PromptTemplateUseId } from "./run-kernel/types.ts";
 import { discoverTemplateVariables } from "./template-engine.ts";
@@ -12,7 +13,7 @@ export function templateUseVariableIndex(
   revisions: readonly ProjectConversationRevision[],
   templates: readonly PromptTemplate[],
 ): ReadonlyMap<PromptTemplateUseId, readonly TemplateUseVariableOccurrence[]> {
-  const templatesById = new Map(templates.map((template) => [template.id, template]));
+  const templatesById = new Map(templates.filter(isChatPromptTemplate).map((template) => [template.id, template]));
   const uses = new Map<PromptTemplateUseId, TemplateUseVariableOccurrence[]>();
   revisions.forEach((revision) => {
     revision.items.forEach((item) => {

@@ -1,3 +1,4 @@
+import { isChatPromptTemplate } from "./project.ts";
 import type { ChatEvaluationSuite, EvaluationCase } from "./evaluation-suites.ts";
 import { ProjectValidationError, resolveProjectRevision } from "./project.ts";
 import type {
@@ -97,7 +98,7 @@ export function resolveEvaluationCase(
   suite: Pick<ChatEvaluationSuite, "inputBindings">,
   evaluationCase: Pick<EvaluationCase, "values">,
 ): EvaluationCaseResolution {
-  const templatesById = new Map(project.promptTemplates.map((template) => [template.id, template]));
+  const templatesById = new Map(project.promptTemplates.filter(isChatPromptTemplate).map((template) => [template.id, template]));
   const usesById = new Map(
     revision.items.flatMap((item) => (item.kind === "template-use" ? [[item.use.id, item.use] as const] : [])),
   );

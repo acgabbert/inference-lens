@@ -1,3 +1,4 @@
+import { chatTemplate } from "./project-kind-helpers.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -29,7 +30,7 @@ function projectWithTemplate() {
     messages: [{ role: "user", content: "Reply kindly to {{ticket}}." }],
     idSuffix: "support-reply-2",
   });
-  return { project: withSecondRevision, template: withSecondRevision.promptTemplates[0]! };
+  return { project: withSecondRevision, template: chatTemplate(withSecondRevision.promptTemplates[0]) };
 }
 
 test("promptRevisionLabel names the current revision Current and earlier ones by position", () => {

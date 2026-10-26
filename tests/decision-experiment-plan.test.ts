@@ -1,3 +1,4 @@
+import { inlineRevision } from "./project-kind-helpers.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -161,7 +162,7 @@ test("building a decision plan needs a resolved local connection for every confi
 
 test("building a decision plan reports preflight diagnostics", () => {
   const source = project();
-  const revision = source.decisionRequestRevisions[0]!;
+  const revision = inlineRevision(source.decisionRequestRevisions[0]!);
   assert.throws(
     () => plan({ project: { ...source, decisionRequestRevisions: [{ ...revision, values: { ticket: "x" } }] } }),
     (error: unknown) => error instanceof EvaluationSetupError &&

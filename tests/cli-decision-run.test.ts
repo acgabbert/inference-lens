@@ -178,3 +178,32 @@ test("`run --json` reports a decision suite, and a chat suite reports runKind ch
   assert.equal(chatOutcome.exitCode, 0);
   assert.equal(chatOutcome.summary?.runKind, "chat");
 });
+
+test("the CLI resolves a saved decision template pin before case values and preserves the shared project", async (t) => {
+  const { createDecisionPromptTemplate } = await import("../packages/core/src/decision-template.ts");
+  const { useDecisionPromptTemplateRevision } = await import("../packages/core/src/decision-request.ts");
+  const { parseProjectFile } = await import("../packages/core/src/project.ts");
+  const { inlineRevision } = await import("./project-kind-helpers.ts");
+  const provider = await recordingDecisionProvider();
+  t.after(provider.close);
+  let project = headlessDecisionProject({ endpoint: provider.endpoint, questions: CAPTURED_QUESTIONS });
+  const source = inlineRevision(project.decisionRequestRevisions[0]);
+  project = createDecisionPromptTemplate(project, { name: "Reusable routing", decision: source.decision,
+    variableDefaults: { ...source.values, ticket: "Template fallback" }, idSuffix: "routing", revisionIdSuffix: "routing" });
+  project = useDecisionPromptTemplateRevision(project, { templateId: "template_routing", overrides: { ticket: "Request override" }, idSuffix: "template-pin", activate: false });
+  project = parseProjectFile({ ...project, evaluationSuites: project.evaluationSuites.map((suite) => ({ ...suite,
+    input: { kind: "decision-request-revision", decisionRequestRevisionId: "decision-revision_template-pin" } })) });
+  const directory = await writeHeadlessProjectFolder(project);
+  const before = await readFile(path.join(directory, "project.json"), "utf8");
+  const outcome = await run(directory, { [KEY_VARIABLE]: KEY }).done;
+  assert.equal(outcome.error, undefined);
+  assert.equal(outcome.exitCode, 0);
+  assert.equal(provider.requests.length, 1);
+  assert.deepEqual(provider.requests[0]!.body.state, { ticket: "I was charged twice.", plan: "pro" });
+  assert.deepEqual(provider.requests[0]!.body.questions, CAPTURED_QUESTIONS);
+  const files = await list(directory, "experiments");
+  const plan = parseExperimentPlanJson(files.find(({ fileName }) => fileName.endsWith(".plan.json"))!.contents);
+  assert.ok(plan.kind === "decision-evaluation");
+  assert.equal(plan.suite.decisionRequestRevisionId, "decision-revision_template-pin");
+  assert.equal(await readFile(path.join(directory, "project.json"), "utf8"), before);
+});

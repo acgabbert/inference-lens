@@ -1,9 +1,9 @@
 # System One Saved Prompts implementation contracts
 
 These shapes implement the [accepted plan](SYSTEM_ONE_SAVED_PROMPTS_PLAN.md).
-Slice 1 adds the inline resolver boundary and migration preparation. The v15
-types and commands below are the target for subsequent slices, not a claim that
-the new schema is already supported. Shared Assets Level 2 remains unstarted;
+Slices 1–2 implement the resolver boundary, explicit migration to v15, typed
+content and pure lifecycle below. UI owners in slice 3 and the evaluation
+shortcuts in slice 4 remain to be implemented. Shared Assets Level 2 remains unstarted;
 this feature retains ownership of v15.
 
 ## Persisted types (slice 2)
@@ -96,7 +96,8 @@ and its receipt references. No provider wire payload belongs in these types.
 Inline `values`, request `overrides`, and template defaults can omit variables.
 Map key presence carries meaning: `""` is a supplied value. Existing variable
 discovery defines allowed locations, escaping and names. Validation rejects
-assignments to unused or secret-like names; an unassigned variable may persist
+decision assignments to unused or secret-like names; legacy chat default
+validation remains compatible. An unassigned variable may persist
 but blocks execution. Discovery and comparisons preserve authored order.
 
 ## Resolution boundary (slice 1, extended in slice 2)
@@ -116,7 +117,8 @@ IDs. Source metadata is derived, not another persisted content copy.
 The resolver merges pinned defaults and request overrides only. It preserves
 tokens in authored content. Missing/malformed variables appear in diagnostics;
 getting a resolved source does not mean it can run. Evaluation cases apply
-their values after source resolution, then `prepareDecisionRequestRun` renders
+their values after source resolution (a decision case may leave a binding
+unfilled, which blocks the case in preflight), then `prepareDecisionRequestRun` renders
 and enforces execution readiness. Compose uses the same rendering boundary.
 Experiment snapshots continue receiving resolved content in the existing
 format. Target recommendations and credentials never enter value resolution.
@@ -131,7 +133,8 @@ they must distinguish inline content from template-backed content in slice 2.
 
 ## Pure lifecycle contracts (slice 2)
 
-Decision template create, append-revision and update-draft commands accept
+`decision-template.ts` owns decision template create, append-revision and
+update-draft commands. They accept
 `DecisionInput` and `variableDefaults`; they do not reuse chat APIs by casting
 decision content to messages. Shared rename, archive/restore, current-revision
 selection and revision-removal guards continue working for both kinds.

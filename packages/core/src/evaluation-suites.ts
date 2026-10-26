@@ -511,7 +511,7 @@ function decisionSuitePreflight(
       });
     }
     suite.inputBindings.forEach((binding) => {
-      if ((evaluationCase.values[binding.id] ?? "").trim() !== "") return;
+      if (Object.hasOwn(evaluationCase.values, binding.id)) return;
       diagnostics.push({
         code: "empty-case-value",
         caseId: evaluationCase.id,

@@ -1,3 +1,4 @@
+import { inlineRevision } from "../project-kind-helpers";
 import { readFileSync } from "node:fs";
 
 import { expect, test, type Page } from "@playwright/test";
@@ -121,7 +122,7 @@ test("a decision request saves into the project, resolves its variables on the w
   // The project keeps the authored request, in authored order, and its values.
   const saved = await waitForSavedRevisions(page, 1);
   expect(saved.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
-  const revision = saved.decisionRequestRevisions[0]!;
+  const revision = inlineRevision(saved.decisionRequestRevisions[0]!);
   expect(saved.defaults.decisionRequestRevisionId).toBe(revision.id);
   expect(saved.decisionRequests).toEqual([{ id: revision.decisionRequestId, name: "Decision request" }]);
   expect(revision.decision).toEqual(templated);
@@ -136,11 +137,11 @@ test("a decision request saves into the project, resolves its variables on the w
   await expect(reopenedVariables.getByLabel("{{plan}}")).toHaveValue(captured.state.plan);
   await reopenedVariables.getByLabel("{{plan}}").fill("enterprise");
   const branched = await waitForSavedRevisions(reopened, 2);
-  const child = branched.decisionRequestRevisions[1]!;
+  const child = inlineRevision(branched.decisionRequestRevisions[1]!);
   expect(child.parentRevisionId).toBe(revision.id);
   expect(branched.defaults.decisionRequestRevisionId).toBe(child.id);
   expect(child.values.plan).toBe("enterprise");
-  expect(branched.decisionRequestRevisions[0]!.values.plan).toBe(captured.state.plan);
+  expect(inlineRevision(branched.decisionRequestRevisions[0]!).values.plan).toBe(captured.state.plan);
   await reopened.close();
 });
 
@@ -157,7 +158,7 @@ test("an invalid draft is not written to the project, and says so", async ({ pag
   await page.waitForTimeout(1500);
   const saved = await savedProject(page);
   expect(saved.decisionRequestRevisions).toHaveLength(1);
-  expect(saved.decisionRequestRevisions[0]!.decision).toEqual(templated);
+  expect(inlineRevision(saved.decisionRequestRevisions[0]!).decision).toEqual(templated);
 });
 
 test("an invalid decision draft stays unsaved after autosave and protects project replacement", async ({ page }) => {
@@ -233,7 +234,7 @@ test("fixing an incomplete decision request saves it and clears replacement prot
   await editor.fill(JSON.stringify(repaired));
   await page.getByLabel("Project menu").click();
   await page.getByRole("button", { name: "Save now" }).click();
-  await expect.poll(async () => (await savedProject(page)).decisionRequestRevisions[0]!.decision.state).toBe(repaired.state);
+  await expect.poll(async () => inlineRevision((await savedProject(page)).decisionRequestRevisions[0]).decision.state).toBe(repaired.state);
   await expect(page.locator(".brand")).not.toContainText("Unsaved");
   await expect(page.locator(".brand")).toContainText("Saved to");
 });

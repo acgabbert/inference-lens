@@ -12,7 +12,7 @@ import {
   updateDecisionSuiteInput,
   updateEvaluationSuiteExecution,
 } from "../packages/core/src/evaluation-suite-authoring.ts";
-import { isDecisionEvaluationSuite } from "../packages/core/src/evaluation-suites.ts";
+import { evaluationSuitePreflight, isDecisionEvaluationSuite } from "../packages/core/src/evaluation-suites.ts";
 import type { DecisionEvaluationSuite } from "../packages/core/src/evaluation-suites.ts";
 import { parseProjectFile, ProjectValidationError } from "../packages/core/src/project.ts";
 import type { ProjectFile } from "../packages/core/src/project.ts";
@@ -83,9 +83,21 @@ test("binding candidates are the pinned revision's variables that no input fills
     name: "ticket",
     target: { kind: "decision-variable", variableName: "ticket" },
   }]);
-  // Every existing case gains an empty value for the new input.
-  assert.deepEqual(suite.cases[0]?.values, { [bound.inputId]: "" });
+  // A decision case treats `""` as a supplied value, so a new input leaves
+  // existing cases without one rather than silently supplying an empty string.
+  assert.deepEqual(suite.cases[0]?.values, {});
   assert.deepEqual(decisionBindingCandidates(bound.project, suite), ["plan"]);
+});
+
+test("a new decision case or input stays unfilled until the author supplies a value", () => {
+  const created = createDecisionEvaluationSuite(withRequest(), { decisionRequestRevisionId: "decision-revision_one", model: "local-decision" }, counter("a"));
+  const bound = addDecisionEvaluationInput(created.project, created.suiteId, "plan", counter("input"));
+  const withCase = addEvaluationCase(bound.project, created.suiteId, counter("case"));
+  assert.deepEqual(decisionSuite(withCase.project, created.suiteId).cases[0]?.values, {});
+  const project = parseProjectFile({ ...withCase.project, evaluationSuites: withCase.project.evaluationSuites.map((suite) => ({ ...suite,
+    cases: suite.cases.map((evaluationCase) => ({ ...evaluationCase, checks: [{ checkId: "check_c1", kind: "decision-choice", questionId: "intent", option: "billing" }] })) })) });
+  const diagnostics = evaluationSuitePreflight(project, created.suiteId, project.defaults.conversationRevisionId);
+  assert.deepEqual(diagnostics.map(({ code }) => code), ["empty-case-value"]);
 });
 
 test("a decision input for a variable the revision does not use is refused", () => {

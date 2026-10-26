@@ -44,7 +44,7 @@ const missing = ["ticket_summary", "agent_notes", "resolution_target"];
 const variableNames = [...satisfied, ...missing];
 
 const template = {
-  id: "template_support",
+  kind: "chat", id: "template_support",
   name: "Support triage",
   currentRevisionId: "template-revision_support-1",
   revisions: [

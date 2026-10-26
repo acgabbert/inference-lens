@@ -1,3 +1,5 @@
+import type { DecisionInput } from "../../packages/core/src/decision";
+import { inlineRevision } from "../project-kind-helpers";
 import { readFileSync } from "node:fs";
 
 import { expect, test, type Page } from "@playwright/test";
@@ -39,7 +41,7 @@ import {
 
 const captured = JSON.parse(
   readFileSync(new URL("../fixtures/system-one/llamacpp-all-types.json", import.meta.url), "utf8"),
-).request as { state: { ticket: string; plan: string }; questions: Record<string, unknown> };
+).request as { state: { ticket: string; plan: string }; questions: DecisionInput["questions"] };
 
 const DECISION_ENDPOINT = `${SYSTEM_ONE_FIXTURE_ORIGIN}/llamacpp/v1`;
 
@@ -68,7 +70,7 @@ function projectWithRequest(): string {
   }));
 }
 
-async function openFolder(page: Page): Promise<void> {
+async function openFolder(page: Page, manifest = projectWithRequest()): Promise<void> {
   await seedProfiles(page, [
     { id: "buffered", instanceId: "buffered-instance", name: "Buffered fixture", endpoint: BUFFERED_FIXTURE_ENDPOINT },
     {
@@ -83,7 +85,7 @@ async function openFolder(page: Page): Promise<void> {
   // As the chat evaluation specs do: at the default 720px the cases' 360px
   // floor squeezes the setup band to its toggle.
   await page.setViewportSize({ width: 1440, height: 900 });
-  await stubProjectDirectory(page, { name: "decision-suites.inference-lens", files: { "project.json": projectWithRequest() } });
+  await stubProjectDirectory(page, { name: "decision-suites.inference-lens", files: { "project.json": manifest } });
   await page.goto("/");
   await waitForHydration(page);
   await page.getByLabel("Project menu").click();
@@ -188,7 +190,7 @@ test("editing the request after a suite pins it makes a new revision and leaves 
   await variables.getByLabel("{{ticket}}").fill("A different ticket");
   await expect.poll(async () => (await savedProject(page)).decisionRequestRevisions.length).toBe(2);
   const saved = await savedProject(page);
-  const pinned = saved.decisionRequestRevisions.find(({ id }) => id === "decision-revision_routing")!;
+  const pinned = inlineRevision(saved.decisionRequestRevisions.find(({ id }) => id === "decision-revision_routing"));
   expect(pinned.values.ticket).toBe(captured.state.ticket);
   const suite = saved.evaluationSuites[0]!;
   expect(suite.input).toEqual({ kind: "decision-request-revision", decisionRequestRevisionId: "decision-revision_routing" });
@@ -306,4 +308,75 @@ test("a pinned decision baseline compares by case and names the model as decisio
   await rows.filter({ hasText: "Refund" }).getByRole("button", { name: "Refund" }).click();
   await comparison.locator(".evaluation-comparison-detail").getByRole("button", { name: "Open candidate trace" }).click();
   await expect(page.getByRole("article", { name: "Answer intent" })).toContainText("Choice billing");
+});
+
+test("a v15 template-backed suite resolves its pin on screen and sends an explicit empty case value", async ({ page }) => {
+  const { createDecisionPromptTemplate } = await import("../../packages/core/src/decision-template");
+  const { useDecisionPromptTemplateRevision } = await import("../../packages/core/src/decision-request");
+  const { createPromptTemplate } = await import("../../packages/core/src/project");
+  const { headlessDecisionProject } = await import("../fixtures/headless/project");
+  const { parseSavedRunTraceJson } = await import("../../packages/core/src/run-trace");
+  let project = headlessDecisionProject({ endpoint: DECISION_ENDPOINT, questions: captured.questions, model: "all-types" });
+  project = createDecisionPromptTemplate(project, { name: "Saved decision source", idSuffix: "source", revisionIdSuffix: "source",
+    decision: { state: { ticket: "{{ticket}}", plan: "{{plan}}" }, questions: {
+      ...captured.questions,
+      intent: { ...captured.questions.intent!, instructions: "{{instruction}}" },
+    } }, variableDefaults: { ticket: "Template fallback", plan: "pro", instruction: captured.questions.intent!.instructions as string } });
+  project = createPromptTemplate(project, { name: "Chat sentinel", messages: [{ role: "user", content: "Chat text" }] });
+  project = useDecisionPromptTemplateRevision(project, { templateId: "template_source", overrides: { ticket: "Request fallback" }, idSuffix: "pin", activate: false });
+  project = parseProjectFile({ ...project, name: "Decision suites", evaluationSuites: project.evaluationSuites.map((suite) => ({ ...suite,
+    input: { kind: "decision-request-revision", decisionRequestRevisionId: "decision-revision_pin" },
+    cases: suite.cases.map((evaluationCase) => ({ ...evaluationCase, values: { "evaluation-input_ticket": "" } })),
+  })) });
+  await openFolder(page, serializeProjectFile(project));
+  await page.locator(".target-menu summary").click();
+  await page.getByRole("button", { name: /manage connections/i }).click();
+  await page.getByRole("combobox", { name: "Profile for Default connection" }).selectOption("decisions");
+  await page.keyboard.press("Escape");
+  await openMode(page, "Prompts");
+  await expect(page.getByText("Chat sentinel", { exact: true })).toBeVisible();
+  await expect(page.getByText("Saved decision source", { exact: true })).toHaveCount(0);
+  await openMode(page, "Evaluations");
+  await page.getByRole("navigation", { name: "Evaluation suites" }).getByRole("button", { name: /Triage/ }).click();
+  const editor = page.locator(".evaluation-editor");
+  await expect(editor).toContainText("Decision suite");
+  // The check editor obtains options from the pinned source through the shared resolver.
+  await expect(editor.getByLabel("Decision question").first()).toHaveValue("intent");
+  await expect(editor.getByLabel("Decision option")).toHaveValue("billing");
+  await expect(page.locator("#evaluation-preflight-summary")).toHaveText("Ready to run");
+  await primaryAction(page, "evaluations").click();
+  const confirmation = page.getByRole("dialog", { name: /Start “Triage”/ });
+  await confirmation.getByRole("button", { name: "Start 1 calls", exact: true }).click();
+  const results = page.getByRole("region", { name: "Evaluation results" });
+  await expect(results).toContainText("1 / 1 passed");
+  await expect(results).toContainText("intent: billing");
+  await expect.poll(async () => (await savedNames(page, "traces")).length).toBe(1);
+  const traceName = (await savedNames(page, "traces"))[0]!;
+  const saved = parseSavedRunTraceJson((await savedFile(page, `traces/${traceName}`))!);
+  expect(saved.kind).toBe("decision");
+  if (saved.kind !== "decision") throw new Error("Expected a decision trace");
+  expect(saved.trace.input.decision.state).toEqual({ ticket: "", plan: "pro" });
+  // The captured replay refuses questions that differ, so the successful answer
+  // also proves the default instruction was rendered before provider execution.
+  expect(saved.trace.input.decision.questions).toEqual(captured.questions);
+  const exchange = Object.values(saved.trace.exchanges)[0]!;
+  expect(JSON.parse(exchange.request!.body!)).toMatchObject({ state: { ticket: "", plan: "pro" }, questions: captured.questions });
+  const reopened = await savedProject(page);
+  expect(reopened.promptTemplates.find(({ id }) => id === "template_source")?.kind).toBe("decision");
+  expect(reopened.defaults.decisionRequestRevisionId).toBe(project.defaults.decisionRequestRevisionId);
+});
+
+test("clearing a decision case value leaves it unfilled and blocks the run instead of sending an empty value", async ({ page }) => {
+  await openFolder(page);
+  await page.getByRole("button", { name: "New suite from this request" }).click();
+  const editor = page.locator(".evaluation-editor");
+  await editor.getByLabel("Request variable to vary").selectOption("ticket");
+  await editor.getByRole("button", { name: "+ Add case input" }).click();
+  await addCase(page, "Billing", "I was charged twice for October.", "billing");
+  await expect(page.locator("#evaluation-preflight-summary")).toHaveText("Ready to run");
+
+  await editor.getByLabel("Billing ticket").fill("");
+  await expect(page.locator("#evaluation-preflight-summary")).not.toHaveText("Ready to run");
+  await expect(page.getByRole("region", { name: "Evaluation preflight" })).toContainText('Case "Billing" has no value for input "ticket".');
+  await expect.poll(async () => (await savedProject(page)).evaluationSuites[0]?.cases[0]?.values).toEqual({});
 });
