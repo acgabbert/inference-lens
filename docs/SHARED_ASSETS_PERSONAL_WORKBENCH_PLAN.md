@@ -2,8 +2,10 @@
 
 **Status:** Level 1 implemented October 25, 2026; verification recorded below.
 Level 2 design choices were approved October 25, 2026, as recorded below;
-implementation has not started. The next deliverable is slice 2a's field inventory
-and migration examples. Level 3 remains proposed. The product direction is agreed:
+implementation has not started. Slice 2a's [field inventory, migration examples,
+and contract proposals](SHARED_ASSETS_LEVEL_TWO_DESIGN.md) are ready for review
+as of October 26, 2026; the proposed contracts are not yet approved. Level 3
+remains proposed. The product direction is agreed:
 Inference Lens is a personal workbench for potentially shared assets. Approved
 choices are distinguished from the remaining schema and recovery mechanics that
 still need design review.
@@ -39,7 +41,7 @@ experience. Level 2 establishes ownership; level 3 changes physical organization
 
 ## Current behavior and constraints
 
-The current strict Project v14 document owns conversations and their revisions,
+The current strict Project v15 document owns conversations and their revisions,
 prompt templates and their revisions and drafts, tools and mock fixtures,
 external-import receipts, evaluation suites, decision requests and revisions,
 connection requirements, and defaults. See [the core contract](../packages/core/src/project.ts)
@@ -255,6 +257,14 @@ versioned schema transition; this agreement does not change Project v14 in place
    workbench records rather than introducing a separate mechanism. Full live
    coordination is deferred; the recovery path after a detected conflict remains
    to be designed.
+   **Revised October 26, 2026:** browsers offer no exclusive create or atomic
+   compare-and-swap on folder files, so the cross-host part of this guarantee
+   cannot be met. Workbench records use best-effort detection instead:
+   same-host coordination where available, an expected-content check before each
+   write, and a read-back after it. A conflict between two hosts writing the
+   same record inside one check-then-write window is detected by the overwritten
+   writer at its next check, while its edits are still in memory. See
+   [write safety](SHARED_ASSETS_LEVEL_TWO_DESIGN.md#layout-identity-and-concurrent-writes).
 8. **Migration and exports.** Preserve existing saved content as shared assets;
    move only explicit drafts into personal storage and copy old selections into
    personal state. Because selections are copied rather than moved, the legacy
@@ -265,6 +275,14 @@ versioned schema transition; this agreement does not change Project v14 in place
    failed or interrupted writes recoverable.
 
 ### Next design deliverable: slice 2a
+
+The [slice 2a review](SHARED_ASSETS_LEVEL_TWO_DESIGN.md) inventories the v15
+fields after System One saved prompts/evaluations, supplies concrete before/after
+JSON, and proposes contracts for review. Review revised it on October 26, 2026:
+best-effort write safety (choice 7 above), publication intent kept in the draft
+record, an explicit launch-default writer, the reason for the v16 bump, and a
+delivery order that limits slice 2b to the arms migration and trial runs need.
+No checklist item below is approved merely by that proposal.
 
 Produce a field-by-field ownership inventory and concrete before/after migration
 examples for a prompt, chat request, decision request, and evaluation suite.
@@ -279,7 +297,8 @@ direction does not yet specify these contracts; settle each during the review:
 - [ ] Schema versions and codecs for the shared document and workbench store
 - [ ] Workbench record layout under `.workbench/`
 - [ ] Project-identity mismatch handling
-- [ ] Concurrent-write detection on workbench records and the conflict recovery path
+- [ ] Best-effort concurrent-write detection on workbench records and the conflict
+  recovery path
 - [ ] Draft publication ordering: write the shared revision first, clear the draft
   only after that write is confirmed, and recognize a published-but-not-cleared
   draft on restart. This applies to every revision save, not only migration.
@@ -327,7 +346,8 @@ status; automatic local persistence must not imply an access-control guarantee.
   Do not silently change what existing schema versions mean or loosen strict
   parsers. Choose exact version numbers during slice 2a's contract review.
 - [System One saved prompts](SYSTEM_ONE_SAVED_PROMPTS_PLAN.md#relationship-to-shared-assets-level-2)
-  lands first and owns project schema v15 (accepted October 25, 2026); Level 2's
+  owns project schema v15 (accepted October 25, 2026), now present on the base
+  branch assumed to land unchanged for slice 2a; Level 2's
   shared-definition change takes a later version. Slice 2a's inventory must
   include its decision template arms, decision template drafts (same draft
   envelope as chat drafts), and template-use `overrides` on decision request
@@ -362,7 +382,9 @@ status; automatic local persistence must not imply an access-control guarantee.
   base revision cannot silently lose the draft or claim it was saved.
 - The workbench's own ignore file protects personal content under private,
   definitions, unmanaged, and older unprotected bundle policies before the first
-  recovery write. Concurrent writers cannot silently replace each other's state.
+  recovery write. Concurrent writers on one host cannot replace each other's
+  state; a cross-host race is detected while the overwritten edits remain in
+  memory, and status wording claims no more than that.
 - Folder moves and full copies retain recovery; independent clones stay separate;
   project-identity mismatches have explicit behavior. No-folder sessions
   clearly report session-only recovery until a folder is chosen.
