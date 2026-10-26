@@ -1,9 +1,9 @@
 # System One requests in Saved Prompts
 
-Status: recommendations accepted by the user on 2026-10-25; PR slices 1–3
+Status: recommendations accepted by the user on 2026-10-25; slices 1–4
 (contracts, compatibility preparation, schema v15, core lifecycle, and Library
-and Compose) implemented. Slice 4's evaluation shortcuts and compatibility
-closeout remain. See the [authoring guide](SYSTEM_ONE_SAVED_PROMPTS.md).
+and Compose, and evaluation workflows) implemented. Slice 4 verification is
+recorded below. See the [authoring guide](SYSTEM_ONE_SAVED_PROMPTS.md).
 
 ## Outcome
 
@@ -510,3 +510,93 @@ Browser execution uses the committed llama.cpp capture replay, which only
 accepts the captured question definitions. The new editor and update-review
 presentation are worth the user's own visual review. Slice 4 still owns direct
 library evaluation, compatible-suite discovery and deliberate retargeting.
+
+## Slice 4 implementation and verification
+
+`decision-template-evaluation.ts` owns pure library evaluation creation,
+same-template suite discovery, all-case retarget preview and commit. Creation
+composes the existing inactive template-use and decision-suite commands.
+Retargeting appends a child request revision and moves only that suite's pin.
+The defaults that select Compose's active requests stay unchanged. Existing
+request revisions, cases, bindings, checks, configurations and targets remain
+intact; surviving request overrides keep their values, including empty strings.
+Removed overrides leave the new child and remain available on its parent.
+Schema v15 and experiment, trace and CLI formats are unchanged.
+
+The evaluation authoring owner dispatches library evaluation by template kind.
+The mixed library supplies compatible suites and preview through `PromptsMode`;
+the new decision dialog owns choice and review, focus containment, Escape and
+cancel. Review uses the existing resolver and preflight, so removed variables,
+missing assignments, removed questions, changed types and invalid options agree
+with execution. Ordered content/default diffs are available in the review.
+Retargeting retains invalid checks and case data for explicit repair, and
+preflight blocks running until repaired. Saved current and historical revisions
+can be evaluated; unsaved content must be checkpointed first. Existing chat
+evaluation and import paths retain their owners. `app/page.tsx` is unchanged.
+
+New suites start with the project's default connection and model plus System
+One protocol, with no automatic recommendation or device mapping. The ordinary
+suite Setup controls own choosing and mapping the decision target. The setup
+band now names its pinned saved prompt and revision and confirms library
+arrival. The [authoring guide](SYSTEM_ONE_SAVED_PROMPTS.md#evaluate-a-saved-revision)
+documents creation, target setup, compatible-suite discovery and retarget repair.
+
+Before implementation, the existing `evaluatePromptRevision` command returned
+`false` for a valid decision prompt, reporting the chat-only pin rejection. The
+new interaction regression failed on that actual value. The browser regression
+failed on the existing footer's actual text, which offered only `Use Current`
+and lacked evaluation. The first interaction setup attempt instead hit a
+duplicate check ID in a shared fixture; that was corrected before the behavioral
+red run. New core entry points had no existing callable API and were not shown
+failing before implementation. Later retarget, stale-suite, CLI and draft
+retention assertions were not demonstrated red. A missing local connection
+mapping and an incorrectly declared CLI fixture default were setup failures,
+not behavioral regression evidence.
+
+Validation:
+
+- `npm run typecheck`, `npm run typecheck:core`, `npm run build` and
+  `npm run lint` passed. Lint retains four existing unused-variable warnings;
+  build retains the existing bundle-size warning. The initial lint run mistook
+  the pure `useDecisionPromptTemplateRevision` command for a React hook; its
+  import now uses the existing Compose naming convention, `createDecisionTemplateUse`.
+- `npm run test:core`: **1,486 passed**, including both existing template-backed
+  CLI coverage and a new `runCli`/headless-provider test of library-created and
+  retargeted suites. It asserts actual old/new provider states, case precedence,
+  preserved project bytes and immutable historical plan bytes.
+- `node --test --test-timeout=120000 tests/decision-template-evaluation-interaction.test.mjs tests/evaluation-suite-render.test.mjs tests/evaluation-suite-interaction.test.mjs tests/project-templates-render.test.mjs tests/project-templates-interaction.test.mjs tests/n8n-import-render.test.mjs`:
+  **49 passed** after the keyboard and repeated-creation follow-ups. The interaction spec also
+  covers refusing a stale suite ID without creating another suite.
+- `npm run test:e2e -- tests/e2e/system-one-prompt-evaluations.spec.ts tests/e2e/system-one-saved-prompts.spec.ts tests/e2e/evaluation-prompt-retarget.spec.ts tests/e2e/system-one-decision-suites.spec.ts --workers=1`:
+  **21 passed**. The new workflow checks provider answers and saved trace input,
+  suite discovery, same-pin opening, reviewed incompatible retargeting, cancel,
+  retained case/check data, blocked execution, historical retargeting back to
+  compatibility, and unchanged saved plan/result bytes. Compose's active pin
+  and incomplete JSON draft survive. The review at 390px was captured and
+  visually inspected; its text and actions fit.
+- `npm run test:e2e -- --workers=1`: **354 passed, 7 opt-in skips**, with no
+  failures in the final closeout (6.5 minutes). An earlier full run also passed;
+  a later rerun was interrupted before its summary, and its leftover fixture
+  servers were stopped before the final clean run. The final full run includes
+  both review follow-ups below. No Chromium override or fallback was used.
+
+Review follow-up found that focus containment initially skipped the native
+`Revision changes` disclosure. The first component assertion returned a button
+instead of the disclosure, but JSDOM's native focus and selector-order limits
+made it unreliable as behavioral red evidence. The corrected component test
+observes the requested focus target; the browser checks actual focus, keyboard
+expansion and the rendered question-type diff. Those final assertions were not
+demonstrated red. A separate pre-fix regression demonstrated duplicate
+React keys when two evaluations used the same prompt. Request choices now carry
+their stable request IDs instead of using names as keys. The final focused run,
+`npm run test:e2e -- tests/e2e/system-one-prompt-evaluations.spec.ts tests/e2e/system-one-decision-suites.spec.ts --workers=1`,
+passed all seven tests, including creation and discovery of two suites from the
+same historical prompt revision. Build, lint and all 49 component tests passed
+again after these follow-ups.
+
+No hosted providers, native desktop app or packaged Docker CLI were exercised.
+The browser uses the committed llama.cpp capture replay, which accepts only
+the captured question definitions; the incompatible target is reviewed and
+blocked, then retargeted back to a captured revision. The new library choice
+and retarget review are worth the user's own visual review, especially for
+prompts with many cases or long question instructions.

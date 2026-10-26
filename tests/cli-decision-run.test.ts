@@ -12,6 +12,10 @@ import { parseSavedRunTraceJson } from "../packages/core/src/run-trace.ts";
 import { CAPTURED_QUESTIONS, recordingDecisionProvider } from "./fixtures/headless/decision-provider.ts";
 import { headlessDecisionProject, headlessProject, writeHeadlessProjectFolder } from "./fixtures/headless/project.ts";
 import { recordingProvider } from "./fixtures/headless/recording-provider.ts";
+import { createDecisionTemplateEvaluation, retargetDecisionTemplateEvaluation } from "../packages/core/src/decision-template-evaluation.ts";
+import { createDecisionPromptTemplate, appendDecisionPromptTemplateRevision } from "../packages/core/src/decision-template.ts";
+import { parseProjectFile } from "../packages/core/src/project.ts";
+import { inlineRevision } from "./project-kind-helpers.ts";
 
 /**
  * 5c: `inference-lens run` dispatches on the suite's kind (D36). A decision
@@ -206,4 +210,39 @@ test("the CLI resolves a saved decision template pin before case values and pres
   assert.ok(plan.kind === "decision-evaluation");
   assert.equal(plan.suite.decisionRequestRevisionId, "decision-revision_template-pin");
   assert.equal(await readFile(path.join(directory, "project.json"), "utf8"), before);
+});
+
+test("library-created and deliberately retargeted decision suites run through the CLI with immutable historical inputs", async (t) => {
+  const provider = await recordingDecisionProvider();
+  t.after(provider.close);
+  const original = headlessDecisionProject({ endpoint: provider.endpoint, questions: CAPTURED_QUESTIONS });
+  const source = inlineRevision(original.decisionRequestRevisions[0]);
+  const authored = { ...source.decision, state: { ticket: "{{ticket}}", plan: "{{plan}}" } };
+  const template = createDecisionPromptTemplate({ ...original, evaluationSuites: [] }, { name: "Library triage", decision: authored,
+    variableDefaults: { ...source.values, plan: "pro" }, idSuffix: "library", revisionIdSuffix: "library-one" });
+  const created = createDecisionTemplateEvaluation(template, { templateId: "template_library", templateRevisionId: "template-revision_library-one" });
+  const suite = created.project.evaluationSuites[0]!;
+  // The usual suite editor owns cases, checks and target. Reuse the captured fixture's authored settings.
+  let project = parseProjectFile({ ...created.project, evaluationSuites: [{ ...original.evaluationSuites[0]!, id: suite.id, name: suite.name, input: suite.input }] });
+  project = appendDecisionPromptTemplateRevision(project, { templateId: "template_library", idSuffix: "library-two", decision: authored,
+    variableDefaults: { ...source.values, plan: "enterprise" } });
+  const firstDirectory = await writeHeadlessProjectFolder(project);
+  let stdout = "";
+  const code = await runCli(["run", firstDirectory, "--suite", suite.name, "--json"], { environment: { [KEY_VARIABLE]: KEY }, stdout: (line) => { stdout += line; }, stderr() {} });
+  assert.equal(code, 0);
+  assert.equal(JSON.parse(stdout).runKind, "decision");
+  assert.deepEqual(provider.requests[0]!.body.state, { ticket: "I was charged twice.", plan: "pro" });
+  const firstFiles = await list(firstDirectory, "experiments");
+  const firstPlan = firstFiles.find(({ fileName }) => fileName.endsWith(".plan.json"))!.contents;
+  const historical = parseExperimentPlanJson(firstPlan);
+  const updated = retargetDecisionTemplateEvaluation(project, { suiteId: suite.id, templateId: "template_library", templateRevisionId: "template-revision_library-two" });
+  const secondDirectory = await writeHeadlessProjectFolder(updated);
+  const before = await readFile(path.join(secondDirectory, "project.json"), "utf8");
+  const outcome = await run(secondDirectory, { [KEY_VARIABLE]: KEY }).done;
+  assert.equal(outcome.exitCode, 0);
+  assert.deepEqual(provider.requests[1]!.body.state, { ticket: "I was charged twice.", plan: "enterprise" });
+  assert.deepEqual(updated.defaults, original.defaults);
+  assert.equal(await readFile(path.join(secondDirectory, "project.json"), "utf8"), before);
+  assert.deepEqual(parseExperimentPlanJson(firstPlan), historical);
+  assert.equal((await list(firstDirectory, "experiments")).find(({ fileName }) => fileName.endsWith(".plan.json"))!.contents, firstPlan);
 });

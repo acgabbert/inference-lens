@@ -9,6 +9,7 @@ import type { CompatibleEvaluationSuite } from "../project-templates-pane.client
 import type { PromptNavigation } from "../templates/use-prompt-navigation.client";
 import type { ProjectTemplatesHandle } from "../templates/use-project-templates.client";
 import { isChatEvaluationSuite } from "../../packages/core/src/evaluation-suites";
+import { decisionTemplateEvaluationSuites, previewDecisionTemplateEvaluationRetarget } from "../../packages/core/src/decision-template-evaluation";
 
 interface PromptsModeProps {
   project?: ProjectFile;
@@ -51,6 +52,9 @@ function compatibleEvaluationSuitesByTemplate(
         { suite, pinnedRevisionId: item.use.templateRevisionId },
       ]);
     });
+  });
+  project?.promptTemplates.forEach((template) => {
+    if (template.kind === "decision") suitesByTemplate.set(template.id, decisionTemplateEvaluationSuites(project, template.id));
   });
   return suitesByTemplate;
 }
@@ -124,6 +128,10 @@ export function PromptsMode({
           onInserted();
         }}
         compatibleEvaluationSuitesByTemplate={compatibleEvaluationSuitesByTemplate(project)}
+        onPreviewDecisionEvaluation={(templateId, templateRevisionId, suiteId) => {
+          if (!project) throw new Error("Open a project before evaluating a saved revision.");
+          return previewDecisionTemplateEvaluationRetarget(project, { templateId, templateRevisionId, suiteId });
+        }}
         onEvaluateRevision={(templateId, revisionId, suiteId) => {
           if (!evaluations.evaluatePromptRevision(templateId, revisionId, suiteId)) return false;
           onRevisionEvaluationStarted();

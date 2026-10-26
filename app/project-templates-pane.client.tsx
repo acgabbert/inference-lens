@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { DecisionInput } from "../packages/core/src/decision";
+import type { DecisionTemplateEvaluationRetargetPreview } from "../packages/core/src/decision-template-evaluation";
 import { discoverDecisionVariables } from "../packages/core/src/decision-variables";
 import type { PromptTemplate, PromptTemplateMessages } from "../packages/core/src/project";
-import type { PromptTemplateId, PromptTemplateRevisionId } from "../packages/core/src/run-kernel";
+import type { EvaluationSuiteId, PromptTemplateId, PromptTemplateRevisionId } from "../packages/core/src/run-kernel";
 import {
   ChatPromptTemplateEditor,
   type ChatPromptTemplateEditorProps,
@@ -53,6 +54,7 @@ export interface ProjectTemplatesPaneProps
   onSaveDecision?: SaveDecisionTemplate;
   onSaveAndUseDecision?: SaveDecisionTemplate;
   onUseDecision?(templateId: PromptTemplateId, revisionId: PromptTemplateRevisionId): void;
+  onPreviewDecisionEvaluation?(templateId: PromptTemplateId, revisionId: PromptTemplateRevisionId, suiteId: EvaluationSuiteId): DecisionTemplateEvaluationRetargetPreview;
 }
 
 const KIND_FILTERS: { value: PromptLibraryKind; label: string }[] = [
@@ -263,6 +265,12 @@ export function ProjectTemplatesPane(props: ProjectTemplatesPaneProps) {
           onSave={props.onSaveDecision}
           onSaveAndUse={props.onSaveAndUseDecision}
           onUse={props.onUseDecision}
+          evaluationSuites={props.compatibleEvaluationSuitesByTemplate?.get(selected.id)}
+          onPreviewEvaluation={props.onPreviewDecisionEvaluation}
+          onEvaluateRevision={props.onEvaluateRevision}
+          onOpenEvaluationSuite={props.onOpenEvaluationSuite}
+          evaluateRevisionError={props.evaluateRevisionError}
+          onDismissEvaluateRevisionError={props.onDismissEvaluateRevisionError}
           onSelectionChange={onSelectionChange}
           onArchive={archive}
           onRestore={restore}

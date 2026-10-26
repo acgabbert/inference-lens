@@ -59,3 +59,37 @@ It does not replace tokens permanently with rendered values.
 
 Archiving removes a prompt from new-use choices while preserving existing
 references. Archived entries can be restored from the library's Archived view.
+
+## Evaluate a saved revision
+
+Choose **Evaluate in a suite…** on a saved current or historical revision.
+Create a revision first when the editor has unsaved content changes. Session
+drafts and archived prompts cannot start new evaluations.
+
+**Create new suite** makes a separate template-backed decision request and a
+suite pinned to it. Compose keeps its active request, values, incomplete draft,
+and displayed result. No provider call happens during creation. The new suite
+starts with the project's default connection and model and System One protocol;
+choose the decision connection and model in Setup, map that connection to a local
+System One profile if needed, then add case inputs, cases and checks. A prompt's
+recommended target does not change the suite target automatically.
+
+The dialog also lists suites whose request pins the same decision prompt.
+**Open** navigates to a suite already pinned to the selected revision. For a
+different revision, **Review …** shows removed and added variables and questions,
+changed question types, incompatible checks, and missing assignments across all
+cases. Expand **Revision changes** to inspect state, instructions, criteria
+ordering and defaults. Cancel leaves the suite unchanged.
+
+**Retarget suite** creates a child request revision and moves only that suite's
+pin. It keeps configurations, target, bindings, cases, values and checks for
+explicit repair. Surviving request overrides remain, including empty strings;
+overrides for variables removed from the prompt leave the new request revision.
+Preflight blocks execution until incompatible inputs or checks are repaired.
+Historical revisions can be selected deliberately in the same workflow. Existing
+requests, other suites, experiment plans, results and traces keep their original
+inputs.
+
+The folder-backed CLI runs these suites with the same resolver and value
+precedence: pinned defaults, request overrides, then case values. No new CLI
+flags or artifact formats are required. See the [CLI guide](DOCKER.md#run-an-evaluation-suite-from-the-command-line).

@@ -17,6 +17,7 @@ import { ProjectValidationError } from "../../packages/core/src/project";
 import type { ProjectFile } from "../../packages/core/src/project";
 import type {
   ConnectionRequirementId,
+  DecisionRequestId,
   DecisionRequestRevisionId,
   EvaluationSuiteId,
   EvaluationVariantId,
@@ -25,6 +26,7 @@ import { revisionTime } from "./revision-choice.client";
 
 /** One saved decision request and its revisions, newest first. */
 export interface DecisionRequestChoice {
+  id: DecisionRequestId;
   name: string;
   revisions: { revisionId: DecisionRequestRevisionId; label: string }[];
 }
@@ -53,6 +55,7 @@ function message(cause: unknown): string {
 
 function requestChoices(project: ProjectFile): DecisionRequestChoice[] {
   return project.decisionRequests.map((request) => ({
+    id: request.id,
     name: request.name,
     revisions: project.decisionRequestRevisions
       .filter(({ decisionRequestId }) => decisionRequestId === request.id)

@@ -1,9 +1,9 @@
 # System One Saved Prompts implementation contracts
 
 These shapes implement the [accepted plan](SYSTEM_ONE_SAVED_PROMPTS_PLAN.md).
-Slices 1–3 implement the resolver boundary, explicit migration to v15, typed
-content, pure lifecycle, and UI owners below. The evaluation shortcuts in
-slice 4 remain to be implemented. Shared Assets Level 2 remains unstarted;
+Slices 1–4 implement the resolver boundary, explicit migration to v15, typed
+content, pure lifecycle, UI owners and evaluation shortcuts below.
+Shared Assets Level 2 remains unstarted;
 this feature retains ownership of v15.
 
 ## Persisted types (slice 2)
@@ -206,6 +206,26 @@ checks. The UI reviews diagnostics before committing a new request revision
 and suite pin. It preserves case data and checks for explicit repair rather
 than silently dropping them. Existing plans and results remain snapshots.
 CLI and workspace execution use the same core source resolver as the browser.
+
+`decision-template-evaluation.ts` owns creation, source-based suite discovery,
+retarget preview and commit. Creation composes the existing template-use and
+decision-suite commands with `activate: false`. Retargeting appends a child
+request revision with `activate: false` and updates only the requested suite.
+Same-pin opening is a no-op. Preview projects the target pin through the existing
+resolver and all-case preflight without allocating IDs or writing a project.
+
+`useEvaluationSuiteAuthoring.evaluatePromptRevision` dispatches by template kind,
+adopts the returned project and selects the suite. It retains the chat path and
+rejects missing or cross-kind suites. A new decision suite initially uses the
+project's default target with System One protocol; its existing Setup owner
+keeps connection/model selection. Recommendations remain advisory.
+
+`PromptsMode` connects discovery and preview to the mixed library.
+`DecisionPromptEvaluationDialog` owns the choice/review presentation, Escape,
+focus containment and cancellation; the decision editor owns opening it and
+restoring trigger focus. Unsaved edits must be checkpointed before evaluation.
+The route gains no state or mutations. Schema v15 and experiment/trace/CLI
+formats remain unchanged.
 
 ## Migration boundary
 
