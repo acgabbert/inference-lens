@@ -10,6 +10,9 @@ That [bounded slice](#first-core-slice-october-26-2026) is implemented. A subseq
 approved [recovery-store foundation](SHARED_ASSETS_RECOVERY_STORE_SLICE.md)
 adds opt-in browser/native filesystem adapters for those existing records.
 Other recommendations below remain proposals; application recovery is not enabled.
+The subsequent approved [migration-journal foundation](SHARED_ASSETS_MIGRATION_JOURNAL_DESIGN.md)
+adds protected staging and read-only restart classification; it does not replace
+the manifest or activate personal candidates.
 Revised the same day after review: write safety, publication intent, launch
 defaults, the v16 rationale and delivery order. The remaining integration
 contracts still need review before application migration/publication starts.
@@ -633,12 +636,17 @@ options are unchecked in v15 and remain so in v16; that is a separate decision.
 
 ### Remaining integration work
 
+The later [migration-journal foundation](SHARED_ASSETS_MIGRATION_JOURNAL_DESIGN.md)
+now implements journal v1, raw-byte backups, compact persistence IDs, protected
+staging and read-only restart classification. It leaves manifest replacement,
+active-candidate reconciliation and application wiring deferred.
+
 The later [recovery-store slice](SHARED_ASSETS_RECOVERY_STORE_SLICE.md) implements
 opt-in protected persistence for the existing prompt drafts and selections,
 including conflict outcomes. Project opening and application save paths still
-do not use it. Journal fields/digests/limits, migration write and
-restart recovery, publication intent, dependency snapshots, source-backup
-retention, conflict UX, request draft/scratch arms, feature owners, and the
+do not use it. Manifest replacement and recovery reconciliation, publication
+intent, dependency snapshots, cleanup UX, conflict UX, request draft/scratch arms,
+feature owners, and the
 launch-default action remain to be settled or implemented. Other selection
 arms, decision execution overrides, and request provenance still need their
 contracts. Suite/tool/mock draft arms, invalid buffers and personal backup remain

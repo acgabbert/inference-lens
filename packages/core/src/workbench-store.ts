@@ -60,6 +60,8 @@ export async function openWorkbenchStore(storage: WorkbenchStorage, projectId: P
   const blocked = new Set<string>();
   let writeBlocked = hasForeignWorkbenchIdentity(files, projectId);
   for (const file of files) {
+    // Journals/candidates are identity inventory, not active recovery records.
+    if (file.path.startsWith("migrations/")) continue;
     try {
       if ("error" in file) throw new Error(file.error);
       assertWorkbenchRecordPath(file.path);

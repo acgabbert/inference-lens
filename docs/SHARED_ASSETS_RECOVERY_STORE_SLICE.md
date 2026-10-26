@@ -68,9 +68,10 @@ grows with total recovery size while the native workspace mutex is held.
 
 Migrated draft IDs encode the template ID in hex, so a generated template ID
 already yields a filename of about 200 characters, and longer imported IDs exceed
-common 255-byte limits. The migration-journal slice must settle a shorter
-filename mapping before migration writes these records; Windows browser paths
-were not tested.
+common 255-byte limits. The later
+[migration-journal slice](SHARED_ASSETS_MIGRATION_JOURNAL_DESIGN.md) assigns
+bounded digest IDs during persistence preparation, preserving the logical planner
+API and already persisted IDs. Windows browser paths were not tested.
 
 No global recovery-size policy or cleanup is introduced. Valid orphaned bases
 remain valid recovery records; publication checks belong to the later workflow.
@@ -133,7 +134,9 @@ journey. Report browser/native adapter tests separately from a native app launch
   is fixed, and the symlinked-`.gitignore` case asserts that refusal; these Rust
   changes were not shown red first (the old enum has no reason field).
   `npm run test:rust` passes 35 tests and `npm run check:rust` passes.
-- Next review: migration journal/restart contracts, publication intent,
+- The later approved [migration-journal foundation](SHARED_ASSETS_MIGRATION_JOURNAL_DESIGN.md)
+  implements protected staging and restart classification. Next review: manifest
+  replacement and active-candidate reconciliation, publication intent,
   request/scratch arms and execution provenance, followed by feature-owner
   integration and launch-default actions. Human review should focus on this
   store API and its conflict/failure outcomes; there is no changed UI to inspect.

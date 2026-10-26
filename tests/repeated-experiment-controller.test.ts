@@ -642,6 +642,10 @@ test("workspace persistence binds plans, terminal traces, and results to PR2 hel
     displayName: "Experiment test",
     displayPath: "Experiment test",
     storage: {
+      migration: {
+        async read() { throw new Error("not used"); },
+        async stage() { throw new Error("not used"); },
+      },
       workbench: {
         async list() { return []; },
         async mutate() { throw new Error("not used"); },
