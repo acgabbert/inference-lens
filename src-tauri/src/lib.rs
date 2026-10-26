@@ -16,6 +16,8 @@ use tauri_plugin_dialog::DialogExt;
 use tokio_util::sync::CancellationToken;
 use url::Url;
 
+mod workbench;
+
 #[cfg(not(debug_assertions))]
 const KEYCHAIN_SERVICE: &str = "app.inferencelens.desktop";
 
@@ -674,6 +676,48 @@ fn save_project_workspace(
     write_project_manifest(&workspace.directory, &contents)?;
     workspace.last_contents = contents;
     Ok(())
+}
+
+#[tauri::command]
+fn list_workbench_records(
+    workspaces: State<'_, ProjectWorkspaces>,
+    workspace_id: String,
+) -> Result<Vec<workbench::File>, String> {
+    let workspaces = workspaces
+        .0
+        .lock()
+        .map_err(|_| command_error("Project workspace state is unavailable."))?;
+    let workspace = workspaces
+        .get(&workspace_id)
+        .ok_or_else(|| command_error("This project folder is no longer open."))?;
+    workbench::list(&workspace.directory)
+}
+
+#[tauri::command]
+fn mutate_workbench_record(
+    workspaces: State<'_, ProjectWorkspaces>,
+    workspace_id: String,
+    path: String,
+    expected_contents: Option<String>,
+    contents: Option<String>,
+    project_id: String,
+) -> Result<workbench::Mutation, String> {
+    // Hold the process-wide mutex through identity/protection checks, expected
+    // contents, mutation and read-back, including independently opened handles.
+    let workspaces = workspaces
+        .0
+        .lock()
+        .map_err(|_| command_error("Project workspace state is unavailable."))?;
+    let workspace = workspaces
+        .get(&workspace_id)
+        .ok_or_else(|| command_error("This project folder is no longer open."))?;
+    workbench::mutate(
+        &workspace.directory,
+        &path,
+        expected_contents.as_deref(),
+        contents.as_deref(),
+        &project_id,
+    )
 }
 
 #[tauri::command]
@@ -1454,6 +1498,8 @@ pub fn run() {
             open_project_workspace,
             create_project_workspace,
             save_project_workspace,
+            list_workbench_records,
+            mutate_workbench_record,
             save_run_trace,
             list_run_traces,
             read_run_trace,

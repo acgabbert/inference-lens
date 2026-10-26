@@ -21,9 +21,11 @@ import type {
 import {
   createProjectFile,
   parseProjectJson,
+  serializeProjectFile,
 } from "../packages/core/src/project.ts";
 import { createResolvedRunInput } from "../packages/core/src/run-kernel/run-execution.ts";
 import { WORKBENCH_GITIGNORE_CONTENTS } from "../packages/core/src/personal-workbench.ts";
+import { openWorkbenchStore } from "../packages/core/src/workbench-store.ts";
 import type { RepeatedExperimentPlanV3 } from "../packages/core/src/experiment.ts";
 
 class MemoryFile implements FileSystemFileHandleLike {
@@ -333,6 +335,64 @@ test("native creation receives the core-generated policy for all three presets",
       "*\n", "*\n!/.gitignore\n!/project.json\n", null,
     ]);
     assert.ok(calls.every(({ command }) => command === "create_project_workspace"));
+  } finally {
+    if (originalWindow === undefined) Reflect.deleteProperty(globalThis, "window");
+    else Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
+  }
+});
+
+test("browser workspace handles expose opt-in recovery and reopening retains the stored selection", async () => {
+  const writes: string[] = [];
+  const parent = new MemoryDirectory("repository", writes);
+  const created = await withDirectoryPicker(parent, () => createProjectFolder(project(), { name: "Prompt Lab", gitPolicy: "unmanaged" }));
+  assert.ok(created);
+  const bundle = await parent.getDirectoryHandle("Prompt Lab.inference-lens");
+  assert.equal(bundle.entries.has(".workbench"), false);
+  const originalManifest = (await (await bundle.getFileHandle("project.json")).getFile()).text();
+  const store = await openWorkbenchStore(created.handle.storage.workbench, created.project.projectId);
+  assert.equal(bundle.entries.has(".workbench"), false);
+  const selection = { schemaVersion: 1, kind: "selections", projectId: created.project.projectId } as const;
+  assert.equal((await store.save(selection)).kind, "saved");
+  const reopened = await withDirectoryPicker(bundle, () => openProjectFolder());
+  assert.ok(reopened);
+  const recovered = await openWorkbenchStore(reopened.handle.storage.workbench, reopened.project.projectId);
+  assert.deepEqual(recovered.records.map(item => item.record), [selection]);
+  assert.equal(await (await (await bundle.getFileHandle("project.json")).getFile()).text(), await originalManifest);
+});
+
+test("native recovery bridge passes workspace identity, expected contents and structured conflicts", async () => {
+  const originalWindow = globalThis.window;
+  const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
+  const actualContents = "an external edit";
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: { __TAURI_INTERNALS__: {
+      invoke: async (command: string, args?: Record<string, unknown>) => {
+        calls.push({ command, args });
+        if (command === "open_project_workspace") return { workspaceId: "workspace_native-recovery", displayName: "Native", displayPath: "/Native", contents: serializeProjectFile(project()) };
+        if (command === "list_workbench_records") return [];
+        if (command === "mutate_workbench_record") return { kind: "conflict", phase: "before-write", actualContents };
+        throw new Error(`Unexpected command ${command}`);
+      },
+    } },
+  });
+  try {
+    const opened = await openProjectFolder();
+    assert.ok(opened);
+    assert.deepEqual(calls.map(call => call.command), ["open_project_workspace"]);
+    const store = await openWorkbenchStore(opened.handle.storage.workbench, opened.project.projectId);
+    const record = { schemaVersion: 1, kind: "selections", projectId: opened.project.projectId } as const;
+    const result = await store.save(record);
+    assert.equal(result.kind, "conflict");
+    if (result.kind === "conflict") assert.equal(result.actualContents, actualContents);
+    assert.deepEqual(calls[1], { command: "list_workbench_records", args: { workspaceId: "workspace_native-recovery" } });
+    assert.equal(calls[2].args?.workspaceId, "workspace_native-recovery");
+    assert.equal(calls[2].args?.projectId, opened.project.projectId);
+    assert.equal(calls[2].args?.path, "selections.json");
+    assert.equal(calls[2].args?.expectedContents, null);
+    assert.equal(typeof calls[2].args?.contents, "string");
+    assert.equal((await store.save(record)).kind, "blocked");
+    assert.equal(calls.length, 3);
   } finally {
     if (originalWindow === undefined) Reflect.deleteProperty(globalThis, "window");
     else Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
