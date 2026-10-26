@@ -233,18 +233,31 @@ function DecisionVariables({ handle, disabled }: { handle: DecisionDraftHandle; 
     <section className="decision-variables" aria-label="Variables">
       <span className="decision-field-label">Variables</span>
       {handle.variables.map((name) => (
-        <label className="decision-field" key={name}>
-          <span className="decision-variable-name"><code>{`{{${name}}}`}</code></span>
-          <input
-            disabled={disabled}
-            placeholder="No value"
-            type="text"
-            value={handle.values[name] ?? ""}
-            onChange={(event) => handle.setValue(name, event.target.value)}
-          />
-        </label>
+        <DecisionVariableField key={name} name={name} handle={handle} disabled={disabled} />
       ))}
     </section>
+  );
+}
+
+/**
+ * Multi-line, like a chat run value: templated values often span lines. The
+ * name comes from the tag alone, since a wrapping label would also read the
+ * textarea's own text.
+ */
+function DecisionVariableField({ name, handle, disabled }: { name: string; handle: DecisionDraftHandle; disabled: boolean }) {
+  const nameId = useId();
+  return (
+    <label className="decision-field">
+      <span className="decision-variable-name" id={nameId}><code>{`{{${name}}}`}</code></span>
+      <textarea
+        aria-labelledby={nameId}
+        disabled={disabled}
+        placeholder="No value"
+        rows={3}
+        value={handle.values[name] ?? ""}
+        onChange={(event) => handle.setValue(name, event.target.value)}
+      />
+    </label>
   );
 }
 

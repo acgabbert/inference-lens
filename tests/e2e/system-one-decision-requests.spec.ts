@@ -145,6 +145,22 @@ test("a decision request saves into the project, resolves its variables on the w
   await reopened.close();
 });
 
+test("a variable value keeps its line breaks, as a chat run value does", async ({ page }) => {
+  await openFolder(page, emptyProject());
+  const pane = decisionPane(page);
+  await pane.getByRole("tab", { name: "JSON" }).first().click();
+  await page.getByLabel("Decision input (state and questions)").fill(JSON.stringify(templated, null, 2));
+
+  const ticket = pane.getByRole("region", { name: "Variables" }).getByLabel("{{ticket}}");
+  const multiline = "Subject: Double charge\n\nI was charged twice for October.\nPlease refund one.";
+  await ticket.fill(multiline);
+  await expect(ticket).toHaveValue(multiline);
+  await expect.poll(async () => {
+    const revisions = (await savedProject(page)).decisionRequestRevisions;
+    return revisions.length ? inlineRevision(revisions.at(-1)!).values.ticket : undefined;
+  }).toBe(multiline);
+});
+
 test("an invalid draft is not written to the project, and says so", async ({ page }) => {
   await openFolder(page, emptyProject());
   const pane = decisionPane(page);
