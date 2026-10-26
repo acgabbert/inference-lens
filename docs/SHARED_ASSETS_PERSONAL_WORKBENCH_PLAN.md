@@ -257,6 +257,14 @@ versioned schema transition; this agreement does not change Project v14 in place
    workbench records rather than introducing a separate mechanism. Full live
    coordination is deferred; the recovery path after a detected conflict remains
    to be designed.
+   **Revised October 26, 2026:** browsers offer no exclusive create or atomic
+   compare-and-swap on folder files, so the cross-host part of this guarantee
+   cannot be met. Workbench records use best-effort detection instead:
+   same-host coordination where available, an expected-content check before each
+   write, and a read-back after it. A conflict between two hosts writing the
+   same record inside one check-then-write window is detected by the overwritten
+   writer at its next check, while its edits are still in memory. See
+   [write safety](SHARED_ASSETS_LEVEL_TWO_DESIGN.md#layout-identity-and-concurrent-writes).
 8. **Migration and exports.** Preserve existing saved content as shared assets;
    move only explicit drafts into personal storage and copy old selections into
    personal state. Because selections are copied rather than moved, the legacy
@@ -270,10 +278,11 @@ versioned schema transition; this agreement does not change Project v14 in place
 
 The [slice 2a review](SHARED_ASSETS_LEVEL_TWO_DESIGN.md) inventories the v15
 fields after System One saved prompts/evaluations, supplies concrete before/after
-JSON, and proposes contracts for review. It also identifies a gap between
-today's compare-then-write guard and the approved cross-host no-silent-overwrite
-guarantee. Resolve that storage strategy before treating the proposed record
-layout as final. No checklist item below is approved merely by that proposal.
+JSON, and proposes contracts for review. Review revised it on October 26, 2026:
+best-effort write safety (choice 7 above), publication intent kept in the draft
+record, an explicit launch-default writer, the reason for the v16 bump, and a
+delivery order that limits slice 2b to the arms migration and trial runs need.
+No checklist item below is approved merely by that proposal.
 
 Produce a field-by-field ownership inventory and concrete before/after migration
 examples for a prompt, chat request, decision request, and evaluation suite.
@@ -288,7 +297,8 @@ direction does not yet specify these contracts; settle each during the review:
 - [ ] Schema versions and codecs for the shared document and workbench store
 - [ ] Workbench record layout under `.workbench/`
 - [ ] Project-identity mismatch handling
-- [ ] Concurrent-write detection on workbench records and the conflict recovery path
+- [ ] Best-effort concurrent-write detection on workbench records and the conflict
+  recovery path
 - [ ] Draft publication ordering: write the shared revision first, clear the draft
   only after that write is confirmed, and recognize a published-but-not-cleared
   draft on restart. This applies to every revision save, not only migration.
@@ -372,7 +382,9 @@ status; automatic local persistence must not imply an access-control guarantee.
   base revision cannot silently lose the draft or claim it was saved.
 - The workbench's own ignore file protects personal content under private,
   definitions, unmanaged, and older unprotected bundle policies before the first
-  recovery write. Concurrent writers cannot silently replace each other's state.
+  recovery write. Concurrent writers on one host cannot replace each other's
+  state; a cross-host race is detected while the overwritten edits remain in
+  memory, and status wording claims no more than that.
 - Folder moves and full copies retain recovery; independent clones stay separate;
   project-identity mismatches have explicit behavior. No-folder sessions
   clearly report session-only recovery until a folder is chosen.

@@ -4,24 +4,31 @@
 [approved Level 2 direction](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md#confirmed-design-choices-october-25-2026)
 to Project v15 at `214bf7e`. It does not approve new contracts or implement
 persistence. Assume the System One prompts/evaluations branch lands unchanged.
-The next step is review of the decisions below, followed by final codecs and
-recovery contracts before slice 2b starts.
+Revised the same day after review: write safety, publication intent, launch
+defaults, the v16 rationale and delivery order. The next step is review of the
+decisions below, followed by final codecs and recovery contracts before slice 2b
+starts.
 
 ## Review recommendations
 
 | Decision | Recommendation | Alternative and tradeoff |
 | --- | --- | --- |
-| Shared format | Propose v16: remove both template kinds' `draft`; retain the other v15 fields and treat `defaults` as authored launch defaults. | Rename/restructure defaults now: clearer naming, but more migration and CLI churn without changing ownership. |
+| Shared format | Propose v16: remove both template kinds' `draft`; retain the other v15 fields and treat `defaults` as authored launch defaults. The bump exists to fence out old writers (see [why v16](#why-a-version-bump)). | Keep v15 and stop writing drafts: no migration journal, but old builds keep folding drafts and last-used selections back into the shared file. Rename/restructure defaults now: clearer naming, but more churn without changing ownership. |
 | Legacy defaults | Copy existing selections/settings into personal state; retain all legacy defaults in shared definitions. Migration preview does **not** offer demotion in this slice. | Offer selective demotion: needs optional-default semantics and a policy for a clone with no launch request/target. Design separately. |
+| Changing launch defaults | Only an explicit "Use as project launch default" action writes `defaults`, with a preview; branching, selecting and running never do. See [launch defaults](#changing-authored-launch-defaults). | No writer: defaults freeze at migration. Implicit writer: reintroduces the churn Level 2 removes. |
 | Local data | Typed asset drafts, scratch requests, selections and execution overrides; never a second complete project. Propose workbench schema v1. | A whole-project shadow is simpler initially but creates competing definitions and ambiguous publication. |
+| Delivery order | Slice 2b: template drafts (both kinds), selections/execution overrides, scratch and draft requests (both kinds), migration. Later slices: suite/tool/mock drafts, import staging, invalid-buffer recovery, personal backup. See [delivery order](#delivery-order). | All arms at once: one schema review, but the largest slice in the plan and most of it unrelated to what migration moves. |
 | Recovery granularity | One record per draft/scratch request plus a selections record; protect the directory before writing any content. | One state file gives simpler writes but unrelated drafts conflict and one invalid file blocks all recovery. |
-| Incomplete editors | Recover typed editor buffers, including invalid decision JSON, independently of executable content. | Recover only valid content: cheaper, but loses precisely the unfinished work recovery is intended to protect. |
+| Workbench write safety | Best-effort detection: expected-content check before each write, read-back after it, and same-host coordination where the host offers it. No cross-host atomicity claim. See [concurrent writes](#layout-identity-and-concurrent-writes). | Write-once generations with parent pointers: closes the race, but adds head resolution, cleanup and a record format no other store uses; browsers offer no exclusive create to do better. |
+| Publication recovery | Record publication intent (intended revision ID and frozen content) in the draft record itself; no separate operation journal for ordinary saves. Migration keeps its journal. | A journal per publication: more general, but a second record to keep consistent with the draft it describes. |
+| Incomplete editors | Slice 2b recovers valid editor content, as v15 drafts do today. A later slice recovers typed editor buffers, including invalid decision JSON. | Buffers in 2b: protects more unfinished work, but needs per-editor buffer arms before the core separation ships. |
 | Conflict recovery | Retain both sides, stop automatic writes to the affected record, and require explicit reconciliation; keep source snapshots for comparisons. | Automatic merge/rebase introduces new semantics, especially for ordered decision input. |
-| Personal backup | Separate versioned backup of personal records and required local dependencies; preview restore, never overwrite automatically. Evidence remains a separate export. | Full-folder archive carries evidence too, but obscures what is portable and greatly increases scope. |
+| Personal backup | Later slice: separate versioned backup of personal records and required local dependencies; preview restore, never overwrite automatically. Evidence remains a separate export. | Full-folder archive carries evidence too, but obscures what is portable and greatly increases scope. |
 
-These are proposals for review, including the version numbers. The concurrent
-write guarantee also has an implementation feasibility question described below;
-it cannot be resolved merely by approving a filename layout.
+These are proposals for review, including the version numbers. The write-safety
+row revises the approved concurrent-writer choice; the
+[parent plan](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md#confirmed-design-choices-october-25-2026)
+records that revision.
 
 ## Inventory rules and sources
 
@@ -59,6 +66,34 @@ target remains its own authored execution target. Do not manufacture a shared
 decision launch target from the chat target or a template recommendation.
 Migration has no serialized legacy decision-target selection to recover.
 
+#### Changing authored launch defaults
+
+Today `defaults` follows the operator: branching, choosing a request and editing
+request settings rewrite it (for example `updateProjectDraft` copies the
+composer's model, protocol, temperature and enabled tools into `defaults`). After v16 those
+actions change personal selections only, so `defaults` needs a deliberate
+writer or it freezes at its migrated value.
+
+- **Writer.** An explicit "Use as project launch default" action in request
+  settings copies the current personal selection into `defaults`: the selected
+  chat request revision, target, options and enabled tools, and separately the
+  selected decision request revision. The decision action never writes a chat
+  target (see above). Each previews the shared fields it changes and is a shared
+  save like any other, subject to the same external-change detection.
+- **Selected request must be saved.** A scratch request or a local draft of a
+  saved request is not a valid launch pin. Offer save-as-asset first; never
+  write a reference to a local record into `defaults`.
+- **Other writers.** Project creation keeps seeding `defaults`, because
+  `conversationRevisionId` and `target` are required. Operations that delete,
+  archive or detach a referenced entity keep their current validity rules for
+  `defaults`. Nothing else writes it.
+- **Status.** Show when the personal selection differs from the launch default,
+  so "what a teammate or the CLI gets" stays visible without a Git diff.
+
+The CLI is the main consumer: `repeated-run` repeats the run `defaults`
+describes, and `evaluation-run` passes `defaults.conversationRevisionId` to suite
+preflight. Both keep reading shared `defaults` and never personal selections.
+
 ### Prompts: both kinds, every saved revision
 
 | v15 path under `promptTemplates[]` | Migration | Future writer/meaning |
@@ -76,7 +111,7 @@ Migration has no serialized legacy decision-target selection to recover.
 
 Within every decision input, preserve `state` (text/object/array), ordered
 question IDs, each question's `type` and `instructions`, and `criteria`: ordered
-choice label/value entries, ordered score levels, or optional noul `true`/`false`
+choice label/value entries, ordered score levels, or optional `noul` `true`/`false`
 values. No variables are rendered during migration. Editor-selected template,
 revision and return target are local; search text, focus and open dialogs are
 transient UI state and need no recovery promise.
@@ -238,13 +273,15 @@ shared dependency graph with a conflicting ID.
 
 Use separate arms for chat prompt, decision prompt, chat request, inline decision
 request, template-use decision request, suite, tool, mock and import staging.
+Slice 2b defines only the first five plus selections (see
+[delivery order](#delivery-order)).
 Scratch records have a local identity and optional parent reference, not a
 claimed persisted asset ID. Drafts carry edited fields or complete editable
 content arrays; arbitrary JSON Patch paths would couple recovery to shared
 serialization and make order-sensitive edits harder to validate.
 
-Editor-buffer DTOs must capture invalid/incomplete text without claiming to be
-`DecisionInput`. Propose a versioned representation of the existing form/JSON
+Editor buffers are slice 2d. Their DTOs must capture invalid/incomplete text
+without claiming to be `DecisionInput`. Propose a versioned representation of the existing form/JSON
 model, preserving row IDs and inactive values but recomputing errors. A strict
 recovery codec validates the buffer's shape; executable-content validation
 still blocks a run or publication. The same principle applies to unfinished
@@ -286,11 +323,15 @@ Proposed layout (filenames and record codec remain subject to approval):
 .workbench/
   .gitignore                 # exact bytes "*\n", confirmed before content
   selections.json            # v1, projectId, typed selection/override fields
-  drafts/<draft-id>.json      # v1, projectId, typed base and edited fields
-  scratch/<local-id>.json     # v1, projectId, local request/dependencies
-  operations/<operation-id>.json
+  drafts/<draft-id>.json      # v1, projectId, typed base, edited fields, publication intent
+  scratch/<local-id>.json     # v1, projectId, local request/dependencies, publication intent
+  migrations/<operation-id>/journal.json
   migrations/<operation-id>/source.project.json
 ```
+
+Ordinary publication keeps its intent in the draft or scratch record it
+publishes (see [publication](#publication-and-migration-recovery)); only
+migration has a separate journal.
 
 Each record validates `projectId`. A mismatch disables restore and writes to the
 existing store, leaves files intact, and offers inspection/backup or explicit
@@ -300,47 +341,68 @@ comparison and save-as-new action, not automatic rebase. An unknown or corrupt
 record must not prevent shared assets from opening, nor be overwritten by an
 empty record. Surface unavailable recovery per record.
 
-Use the existing expected-contents mechanism at the adapter boundary and update
-its expected value only after successful write confirmation. On a detected
-conflict, preserve in-memory edits and the disk record, stop retrying that record,
-and offer comparison plus explicit adoption/save-as-new. Unaffected records can
-continue recovering. Reloading must never discard unpersisted work implicitly.
+**Write safety is best-effort detection, not atomicity.** Today's browser
+`browserStorage.save` and native `save_project` compare, then write. The native
+mutex serializes writers inside one app process only. That detects stale loaded
+state but is not a compare-and-swap: two writers can read the same bytes before
+either writes. Browsers offer no exclusive create or atomic compare-and-swap on
+folder files, so no layout built on them can close that window across hosts.
+The approved choice was revised on October 26, 2026 to accept this for
+workbench records (see the parent plan).
 
-**Feasibility issue to resolve before persistence implementation:** today's
-browser `browserStorage.save` and native `save_project` compare then write. That
-detects stale loaded state but is not an atomic compare-and-swap across hosts.
-Two writers can both read the same bytes before either writes. Per-record files
-reduce conflict frequency; they do not prove the approved “no silent overwrite”
-guarantee. A post-write reread alone cannot close that race either.
+Each workbench record write therefore:
 
-Retain expected-content checks, but first establish a cross-host strategy that
-preserves both candidate writes (for example immutable candidate generations
-with parent tokens and explicit detection of competing heads) or a demonstrated
-cross-host exclusion primitive. Candidate generations add journal/cleanup and
-publication semantics; browser-only locks cannot coordinate native writers.
-Recommend a focused feasibility investigation before approving the final record
-layout. Weakening the guarantee to best-effort detection requires an explicit
-product decision, not an undocumented implementation shortcut. The illustrative
-mutable record paths above may become logical record names over generations.
+1. Coordinates writers on the same host where the host allows it: the native
+   process mutex, and the Web Locks API (one lock name per record) across tabs
+   and windows of the browser host.
+2. Checks the record's expected contents, as `project.json` saves do today.
+   A mismatch is a detected conflict.
+3. Writes, then reads the record back. Only a matching read-back advances the
+   expected value and the recovery status. A mismatch is a detected conflict.
+
+On a detected conflict, preserve in-memory edits and the disk record, stop
+retrying that record, and offer comparison plus explicit adoption/save-as-new.
+Unaffected records continue recovering. Reloading never discards unpersisted
+work implicitly.
+
+The residual case is two processes on different hosts (browser and native app,
+or two native app instances) writing the same record inside one
+check-then-write window. The overwritten writer still holds its edits in memory
+and detects the conflict at its next check or read-back. Edits are lost only if
+that writer also closes before writing again. Status wording must not claim more
+than this. The consequence is bounded to one personal record of one checkout, as
+the parent plan intends one operator per checkout.
+
+`project.json` keeps its existing expected-content check unchanged. Level 2 does
+not strengthen it; it reduces how often personal activity writes it at all.
 
 ### Publication and migration recovery
 
-Ordinary publication needs its own durable operation, not only migration:
+Ordinary publication records its intent in the draft or scratch record being
+published, not in a separate journal. The record is already the durable copy of
+the work, so one file holds both the work and what was done with it:
 
-1. Confirm local protection/recovery, freeze the specific draft version and
-   dependencies, allocate intended revision IDs once, and record publication
-   intent with the expected shared source and intended output.
-2. Validate and write shared definitions with external-change detection. Preserve
-   the draft if the write fails or conflicts. Do not advance the in-memory saved
-   indicator until the shared write is confirmed.
-3. Confirm the resulting shared content, then mark that draft version published
-   and clear/archive only that version. Edits made while saving remain a newer
-   local draft, never something the older completion callback can clear.
-4. On restart, compare the operation's intended IDs and content with the shared
-   document. An exact match recognizes published-but-not-cleared work without
-   appending another revision. Conflicting/missing content requires review;
-   matching only an ID is insufficient. No-op content saves need the same
-   confirmation before clearing a draft.
+1. Allocate the intended revision ID once. Write a `publishing` field into the
+   record holding that ID, the base revision, and a frozen copy of the content
+   being published. Confirm the record write (read-back) before step 2.
+2. Validate and write shared definitions with external-change detection. On
+   failure or conflict, remove `publishing` and keep the draft. Do not advance
+   the in-memory saved indicator until the shared write is confirmed.
+3. After confirming the shared write: if the record's current edits still equal
+   the frozen content, delete the record. Otherwise edits were made while saving;
+   keep them as a draft whose base becomes the newly published revision (whose
+   content is the frozen copy, so this is not a rebase) and remove `publishing`.
+4. On restart, a record with `publishing` is resolved against the shared
+   document. A revision with the intended ID, the recorded parent and content
+   equal to the frozen copy means it was published: finish step 3 without
+   appending another revision. No such ID means the shared write never landed:
+   remove `publishing` and keep the draft. The ID with different content is a
+   conflict for review; matching only an ID is insufficient.
+
+Comparing frozen content directly avoids choosing hashing rules for ordinary
+publication. A no-op save (content equal to the base) clears the draft only
+after the same confirmation. Revisionless assets in later slices (suites, tools)
+use the same field with a base snapshot instead of a base revision.
 
 Migration must preserve the original **raw bytes**, before the existing v10→v15
 parse chain normalizes them. Proposed sequence:
@@ -361,10 +423,31 @@ parse chain normalizes them. Proposed sequence:
    drafts nor overwrite an independently edited manifest. Truncated/unrecognized
    outputs require explicit recovery from preserved candidates.
 
-Exact journal fields, generation/write atomicity, hashing rules (including
-ordered decision subtrees), retention, size limits and failure outcomes are
-still design work. An implementation cannot claim this sequence safe until it
+Exact migration journal fields, hashing rules (including ordered decision
+subtrees), retention, size limits and failure outcomes are still design work.
+Each journal write uses the same check and read-back as other workbench records. An implementation cannot claim this sequence safe until it
 has concrete restart cases for every write boundary on both hosts.
+
+### Why a version bump
+
+The shared change is small: v16 differs from v15 only by losing the two optional
+template `draft` fields. A v15 document without drafts is already valid v15, so
+the bump is not needed to describe the new shape. It is needed to keep old
+builds from writing the old meaning back:
+
+- A v15 build opening a draft-free file would recreate `draft` on the first
+  prompt edit, putting personal work back into the shared file.
+- It would also keep rewriting `defaults` on every branch, selection and
+  settings change (`updateProjectDraft`), so `defaults` would stop meaning
+  "authored launch default" as soon as anyone on the team used an old build.
+- Because the separated drafts live in `.workbench/`, an old build would show
+  none of them and could not warn that it was ignoring them.
+
+A version an old reader rejects is the only fence the strict codec offers. The
+cost is the migration machinery below: preview, preserved source bytes, journal
+and restart recovery. Most of that cost comes from making the bump safe, not
+from the field change itself. Keeping v15 remains a reviewable alternative if
+mixed-build teams are not a concern, accepting the drift above.
 
 ### JSON, CLI and backup compatibility
 
@@ -380,7 +463,8 @@ recovery until a folder is chosen. Default export is v16 shared definitions;
 personal backup is explicitly selected. Do not silently down-export v15 by
 reintroducing personal drafts. An old build must reject v16, not open it as an
 editable empty project. No-folder export wording must state that unsaved drafts
-are excluded and offer personal backup before replacement/closing.
+are excluded, and offer personal backup before replacement/closing once
+slice 2e delivers it.
 
 The CLI may read legacy definitions in memory without writing a migration or
 using explicit template drafts. v16 execution uses only saved request/suite pins
@@ -388,7 +472,7 @@ and authored launch defaults. Audit commands using `project.defaults` and retain
 documented shared-default behavior or require explicit input; never consult the
 operator's selections. App/CLI immutable evidence coexistence remains unchanged.
 
-Propose a personal-backup v1 envelope with project identity, logical local
+For slice 2e, propose a personal-backup v1 envelope with project identity, logical local
 records, necessary source/dependency snapshots and publication/migration status.
 It excludes credentials, profiles, handles, grants and raw evidence. Restore
 previews matching project identity, collisions, missing bases and stale pins;
@@ -397,19 +481,43 @@ publishing. Cross-project restore requires an explicit copy/remapping design,
 so initially reject it with a useful explanation. Backups must remain usable
 without absolute paths. Exact backup codec is pending review.
 
+## Delivery order
+
+Migration moves only template drafts and seeds selections, and the acceptance
+criterion users feel first is that trial work leaves shared files byte-identical.
+Slice 2b covers exactly that; later Level 2 slices add the rest of the arms.
+
+| Slice | Delivers | Record arms |
+| --- | --- | --- |
+| 2b | v16 codec and migration; personal selections and execution overrides; "Use as project launch default"; chat and decision template drafts; scratch requests and drafts of saved requests (both kinds), so running and branching stop writing shared definitions; publication intent | chat prompt, decision prompt, chat request, inline decision request, template-use decision request, selections |
+| 2c | Suite drafts and explicit suite save; tool and mock drafts, local mock activation; import staging | suite, tool, mock, import staging |
+| 2d | Typed editor buffers for invalid or incomplete input (decision JSON, checks, tool schemas) | buffer arms per editor |
+| 2e | Personal backup v1 and restore preview | backup envelope |
+
+Until 2c, suite, tool and mock editors keep their current save behavior, and
+the migration preview must not claim they are separated. Until 2d, recovery
+covers valid editor content only, as v15 drafts do today. Until 2e, no-folder
+and close/replace wording offers shared export only and says drafts are
+excluded. Each later slice adds arms to the workbench v1 codec only if it can do
+so without changing an existing arm; otherwise it versions the codec.
+
 ## Review and verification handoff
 
 Approve or revise the field classification and four migration examples first.
-Then settle the proposed versions/default policy, incomplete-editor coverage,
-record layout/concurrency strategy, publication/migration journal, backup codec
-and compatibility APIs. The parent plan's contract checklist stays unchecked
-until those decisions are accepted; this proposal does not start slice 2b.
+Then settle the proposed versions/default policy, the launch-default action,
+the 2b record arms, record layout, publication intent, migration journal and
+compatibility APIs. 2c–2e contracts are reviewed with their slices. The parent
+plan's contract checklist stays unchecked until those decisions are accepted;
+this proposal does not start slice 2b.
 
 For implementation, start with failing assertions on actual shared bytes and
 recovered values, plus a real Git fixture with no bundle-level ignore rule.
 Cover both template kinds, legacy branches, sparse/empty decision assignments,
-suite-only retargeting, invalid buffers, orphaned bases, two concurrent writers,
-each interrupted write boundary, no-folder imports and shared-only CLI runs.
+suite-only retargeting, orphaned bases, launch-default writes, two tabs writing
+one record (Web Locks), an injected stale expected value and a mismatched
+read-back, a restart at each publication-intent and migration write boundary,
+no-folder imports and shared-only CLI runs. Later slices add their own cases,
+such as invalid buffers in 2d.
 Keep the existing provider fixtures; assert the trial values reached the provider
 while the shared bytes did not change. Run the affected browser specs then the
 full suite as required by [AGENTS.md](../AGENTS.md).
@@ -437,4 +545,5 @@ their future parser or filesystem recovery behavior. No browser run is needed.
   The JSON preservation assertions are example checks, not a migration test or
   a red regression run. No migration, workbench codec or recovery writer exists
   yet. Review should focus on ownership, the migration preview's sharing boundary,
-  incomplete-editor recovery and the concurrent-write design gap.
+  the 2b scope, the launch-default writer and the best-effort write-safety
+  decision.
