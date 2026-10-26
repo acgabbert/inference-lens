@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { isSensitiveTemplateVariableName, projectContentSchemas } from "./project.ts";
+import { isSensitiveTemplateVariableName, projectContentSchemas, projectFieldOrder, sensitiveFieldPaths } from "./project.ts";
 import { discoverDecisionVariables } from "./decision-variables.ts";
 import type { ProjectId } from "./run-kernel/types.ts";
 import { stableJsonValue } from "./stable-json.ts";
@@ -15,6 +15,7 @@ const envelope = {
 };
 const draftEnvelope = {
   ...envelope,
+  kind: z.literal("draft"),
   draftId: z.string().regex(/^draft_[A-Za-z0-9_-]+$/),
 };
 const promptDraftSchema = z.union([
@@ -59,6 +60,7 @@ const optionOverridesSchema = z.object({
 
 const selectionsSchema = z.object({
   ...envelope,
+  kind: z.literal("selections"),
   chat: z.object({
     selectedInput: z.object({ kind: z.literal("saved-conversation-revision"), revisionId: entityId("revision") }).strict().optional(),
     execution: z.object({
@@ -71,19 +73,20 @@ const selectionsSchema = z.object({
     selectedInput: z.object({ kind: z.literal("saved-decision-request-revision"), revisionId: entityId("decision-revision") }).strict(),
   }).strict().optional(),
 }).strict().superRefine((record, context) => {
-  const visit = (value: unknown, path: (string | number)[]): void => {
-    if (Array.isArray(value)) {
-      value.forEach((item, index) => visit(item, [...path, index]));
-    } else if (value && typeof value === "object") {
-      for (const [key, item] of Object.entries(value)) {
-        if (isSensitiveTemplateVariableName(key)) {
-          context.addIssue({ code: "custom", path: [...path, key], message: "Secret-bearing fields are not recoverable execution settings." });
-        } else visit(item, [...path, key]);
-      }
-    }
-  };
-  visit(record.chat?.execution?.options?.providerOptions, ["chat", "execution", "options", "providerOptions"]);
+  for (const path of sensitiveFieldPaths(record.chat?.execution?.options?.providerOptions, ["chat", "execution", "options", "providerOptions"])) {
+    context.addIssue({ code: "custom", path, message: "Secret-bearing fields are not recoverable execution settings." });
+  }
 });
+
+const recordSchemas = { draft: promptDraftSchema, selections: selectionsSchema };
+
+// Envelope fields lead, matching the authored examples; nested saved content
+// keeps the project file's order.
+const envelopeFieldOrder = ["schemaVersion", "kind", "projectId", "draftId", "asset", "base", "edited", "chat", "decision"];
+const workbenchFieldOrder = new Map([
+  ...envelopeFieldOrder,
+  ...[...projectFieldOrder.keys()].filter(field => !envelopeFieldOrder.includes(field)),
+].map((field, index) => [field, index]));
 
 /** Only migration-produced arms are supported in this first core slice. */
 export type WorkbenchPromptDraftV1 = z.infer<typeof promptDraftSchema>;
@@ -102,8 +105,12 @@ export class WorkbenchValidationError extends Error {
 
 /** Structural validation permits orphaned bases; association is checked separately. */
 export function parseWorkbenchRecord(value: unknown, expectedProjectId?: ProjectId): WorkbenchRecordV1 {
-  const isDraft = value !== null && typeof value === "object" && ("draftId" in value || "asset" in value);
-  const parsed = (isDraft ? promptDraftSchema : selectionsSchema).safeParse(value);
+  const kind = value !== null && typeof value === "object" && "kind" in value ? value.kind : undefined;
+  const schema = typeof kind === "string" && Object.hasOwn(recordSchemas, kind) ? recordSchemas[kind as keyof typeof recordSchemas] : undefined;
+  if (!schema) {
+    throw new WorkbenchValidationError([{ code: "custom", path: ["kind"], message: "Unsupported workbench record kind." }]);
+  }
+  const parsed = schema.safeParse(value);
   if (!parsed.success) throw new WorkbenchValidationError(parsed.error.issues);
   if (expectedProjectId !== undefined && parsed.data.projectId !== expectedProjectId) {
     throw new WorkbenchValidationError([{ code: "custom", path: ["projectId"], message: "Workbench record belongs to a different project." }]);
@@ -121,5 +128,5 @@ export function parseWorkbenchRecordJson(text: string, expectedProjectId?: Proje
 }
 
 export function serializeWorkbenchRecord(record: WorkbenchRecordV1): string {
-  return `${JSON.stringify(stableJsonValue(parseWorkbenchRecord(record)), null, 2)}\n`;
+  return `${JSON.stringify(stableJsonValue(parseWorkbenchRecord(record), { preferredKeyOrder: workbenchFieldOrder }), null, 2)}\n`;
 }

@@ -266,8 +266,10 @@ without those files still opens both suites.
 
 Core should own `SharedProjectFileV16` and discriminated recovery DTOs in a
 separate module, rather than putting mutable workbench fields back on
-`ProjectFile`. The proposed draft envelope has `schemaVersion`, `projectId`,
-`draftId`, `asset` (kind and ID), `base` (revision ID where applicable and a
+`ProjectFile`. Every record carries a top-level `kind` discriminator
+(`"draft"` or `"selections"` in v1; scratch records add their own arm). The
+draft envelope has `schemaVersion`, `kind`, `projectId`, `draftId`, `asset`
+(kind and ID), `base` (revision ID where applicable and a
 source-content snapshot), and `edited` (typed editable fields). Revisionless
 assets such as suites/tools use an exact base snapshot/digest, not an invented
 revision. Source snapshots are bounded to the edited asset; they are not a
@@ -568,13 +570,19 @@ from existing save paths.
   `parseSharedProjectFile`, `parseSharedProjectJson`, `serializeSharedProjectFile`.
   These APIs accept only v16. They reuse the existing saved-content/reference
   validators behind an explicit v16 gate and reject any prompt `draft` field.
+  v16 also rejects known secret field names anywhere in default and tool
+  provider options, including inside arrays, which the v15 check skips. The
+  v15 parser keeps its existing behavior so current folders still open.
   They do not silently extract personal data during parsing. Serialization keeps
   the existing deterministic field order, decision order and tool-schema order.
 - [personal-workbench.ts](../packages/core/src/personal-workbench.ts) owns
   `WorkbenchPromptDraftV1`, `WorkbenchSelectionsV1`, `WorkbenchRecordV1`,
   `parseWorkbenchRecord`, `parseWorkbenchRecordJson`, and
   `serializeWorkbenchRecord`. These implement the two prompt arms and selection
-  seed shapes shown in the examples. Drafts keep an asset ID/kind, source revision
+  seed shapes shown in the examples. Each record has a top-level `kind`
+  (`"draft"` or `"selections"`) and parsing selects its schema from that field
+  only; `asset.kind` distinguishes draft arms. Serialization puts the envelope
+  first and orders nested saved content as `project.json` does. Drafts keep an asset ID/kind, source revision
   ID, source revision snapshot, and edited fields. The base ID must equal the
   snapshot ID. An optional expected project ID checks association. Structural
   parsing needs no live project and therefore permits orphaned bases for later
@@ -612,7 +620,11 @@ draft sources; it does not rescue an invalid manifest heuristically. Unsupported
 v9 and earlier inputs and v16+ inputs are not migration sources. Invalid UTF-8
 is rejected without lossy decoding. A legacy provider-options payload accepted
 by the older validator but containing known secret keys inside arrays is rejected
-by the new workbench codec, not silently copied or sanitized.
+by the v16 shared codec, so planning fails with a `ProjectValidationError` naming
+the source field (for example `defaults.options.providerOptions.extra.0.api_key`)
+rather than a workbench record. Nothing is silently copied or sanitized; the user
+removes the secret from the project before migrating. Suite and variant provider
+options are unchecked in v15 and remain so in v16; that is a separate decision.
 
 ### Remaining integration work
 
@@ -656,6 +668,16 @@ pretending to preserve them. The byte buffer in the plan is not a durable backup
   warning. Lint reports three pre-existing unused-variable warnings and no new
   warnings. `git diff --check`, new-file whitespace checks, and all 25 relative
   link targets in the two planning documents passed.
+- Review follow-up, October 26: tests were written first and run red for the
+  intended reasons: v16 accepted array-nested secrets, `kind` was an
+  unrecognized key, and the zero-draft preview still listed drafts. The
+  key-order assertion was confirmed red by temporarily removing the serializer's
+  preferred order. Its first draft compared against an assumed order; it was
+  corrected to compare against the project serializer's actual revision order.
+  That fixture mistake is not claimed as implementation evidence. Afterwards
+  the two affected files passed 38 tests, `npm run test:core` passed 1,511,
+  and core typecheck, lint (same three existing warnings), build and
+  `git diff --check` passed.
 - No browser or native filesystem recovery run is required for this isolated
   core slice: it changes no user-visible behavior or provider execution. Those
   checks remain mandatory when persistence and feature owners are integrated.

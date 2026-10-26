@@ -45,13 +45,14 @@ export function planSharedProjectMigration(sourceBytes: Uint8Array): SharedProje
       const suffix = template.id.split("").map(char => char.charCodeAt(0).toString(16).padStart(4, "0")).join("");
       const record = parseWorkbenchRecord({
         schemaVersion: 1,
+        kind: "draft",
         projectId: project.projectId,
         draftId: `draft_migrated-${suffix}`,
         asset: { kind: template.kind === "chat" ? "chat-prompt" : "decision-prompt", id: template.id },
         base: { revisionId: sourceRevisionId, snapshot },
         edited,
       }, project.projectId);
-      if (!("draftId" in record)) throw new Error("Expected a migration draft record.");
+      if (record.kind !== "draft") throw new Error("Expected a migration draft record.");
       drafts.push(record);
     }
     const sharedTemplate = { ...template };
@@ -62,6 +63,7 @@ export function planSharedProjectMigration(sourceBytes: Uint8Array): SharedProje
   const { defaults } = project;
   const selections = parseWorkbenchRecord({
     schemaVersion: 1,
+    kind: "selections",
     projectId: project.projectId,
     chat: {
       selectedInput: { kind: "saved-conversation-revision", revisionId: defaults.conversationRevisionId },
@@ -71,7 +73,7 @@ export function planSharedProjectMigration(sourceBytes: Uint8Array): SharedProje
       decision: { selectedInput: { kind: "saved-decision-request-revision", revisionId: defaults.decisionRequestRevisionId } },
     }),
   }, project.projectId);
-  if ("draftId" in selections) throw new Error("Expected migration selections.");
+  if (selections.kind !== "selections") throw new Error("Expected migration selections.");
   return {
     sourceVersion,
     sourceBytes: preservedBytes,
@@ -81,7 +83,9 @@ export function planSharedProjectMigration(sourceBytes: Uint8Array): SharedProje
     preview: {
       promptDraftCount: drafts.length,
       messages: [
-        `Move ${drafts.length} prompt drafts into this folder's personal workbench.`,
+        ...(drafts.length === 0 ? [] : [
+          `Move ${drafts.length} prompt ${drafts.length === 1 ? "draft" : "drafts"} into this folder's personal workbench.`,
+        ]),
         "Keep all saved requests, branches, values, fixtures, imports and suites shared.",
         "Keep existing launch defaults shared and copy them into your personal selections. This migration does not make previously saved content private.",
         "This is an in-memory plan. Before changing project.json, preserve the original bytes and verify all personal records under the protected .workbench directory. Existing personal records require reconciliation, not replacement.",

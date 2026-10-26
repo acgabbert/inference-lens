@@ -476,6 +476,26 @@ export function isSensitiveTemplateVariableName(value: string): boolean {
   return sensitiveFieldNames.has(normalizedFieldName(value));
 }
 
+/**
+ * @internal Paths of known secret-bearing keys anywhere under `value`,
+ * including inside arrays. v15 validation stops at arrays and keeps doing so
+ * so existing folders still open; the Level 2 codecs use this stricter walk.
+ */
+export function sensitiveFieldPaths(
+  value: unknown,
+  path: Array<string | number> = [],
+): Array<Array<string | number>> {
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) => sensitiveFieldPaths(item, [...path, index]));
+  }
+  if (!value || typeof value !== "object") return [];
+  return Object.entries(value).flatMap(([key, item]) =>
+    isSensitiveTemplateVariableName(key)
+      ? [[...path, key]]
+      : sensitiveFieldPaths(item, [...path, key]),
+  );
+}
+
 function endpointHasCredentials(value: string): boolean {
   try {
     const endpoint = new URL(value);
@@ -544,7 +564,7 @@ const inferenceOptionsSchema = z
     stop: z.array(z.string()).optional(),
     providerOptions: jsonObjectSchema.optional(),
   })
-  .strict();
+  .strict() satisfies z.ZodType<InferenceOptions>;
 
 const connectionRequirementSchema: z.ZodType<ConnectionRequirement> = z
   .object({
@@ -634,7 +654,7 @@ const promptTemplateRevisionSchema = z
     ),
     externalImportId: entityId("external-import").optional(),
   })
-  .strict();
+  .strict() satisfies z.ZodType<ChatPromptTemplateRevision>;
 
 const promptTemplateDraftSchema = z
   .object({
@@ -655,7 +675,7 @@ const promptTemplateDraftSchema = z
       z.string(),
     ),
   })
-  .strict();
+  .strict() satisfies z.ZodType<ChatPromptTemplateDraft>;
 
 // Custom validation retains authored question and criteria ordering.
 const decisionInputSchema = z.custom<DecisionInput>(isDecisionInput,
@@ -2081,6 +2101,9 @@ const preferredFieldOrder = new Map(
     "decisionRequestRevisionId",
   ].map((field, index) => [field, index]),
 );
+
+/** @internal Shared with the Level 2 codecs so nested content serializes alike. */
+export const projectFieldOrder: ReadonlyMap<string, number> = preferredFieldOrder;
 
 export function serializeProjectFile(project: ProjectFile): string {
   const validated = parseProjectFile(project);

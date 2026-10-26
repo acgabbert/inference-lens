@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { parseProjectJson, PROJECT_SCHEMA_VERSION, createProjectFile, createPromptTemplate, updatePromptTemplateDraft } from "../packages/core/src/project.ts";
+import { parseProjectJson, PROJECT_SCHEMA_VERSION, ProjectValidationError, createProjectFile, createPromptTemplate, updatePromptTemplateDraft } from "../packages/core/src/project.ts";
 import { planSharedProjectMigration } from "../packages/core/src/shared-project-migration.ts";
 import { parseSharedProjectFile, parseSharedProjectJson, serializeSharedProjectFile } from "../packages/core/src/shared-project.ts";
 import { parseWorkbenchRecord, parseWorkbenchRecordJson, serializeWorkbenchRecord, WorkbenchValidationError } from "../packages/core/src/personal-workbench.ts";
@@ -80,6 +80,32 @@ test("v16 preserves strict nested validation, references and uniqueness rules", 
   assert.throws(() => parseSharedProjectFile(decisionPin), /decisionRequestRevisionId/);
 });
 
+test("v16 rejects known secret fields nested in provider-option arrays that v15 still accepts", () => {
+  const nestedSecret = { extra: [{ api_key: "sk-example" }] };
+  const legacy = JSON.parse(example("project-v15.json").toString());
+  legacy.defaults.options.providerOptions = nestedSecret;
+  legacy.tools[0].providerOptions = nestedSecret;
+  // Opening an existing v15 folder keeps working; only the new format tightens.
+  assert.doesNotThrow(() => parseProjectJson(JSON.stringify(legacy)));
+  const shared = JSON.parse(example("project-v16.proposed.json").toString());
+  shared.defaults.options.providerOptions = nestedSecret;
+  shared.tools[0].providerOptions = nestedSecret;
+  assert.throws(() => parseSharedProjectFile(shared), (error: unknown) => {
+    assert.ok(error instanceof ProjectValidationError);
+    assert.deepEqual(error.issues.map(issue => issue.path.join(".")).sort(), [
+      "defaults.options.providerOptions.extra.0.api_key",
+      "tools.0.providerOptions.extra.0.api_key",
+    ]);
+    return true;
+  });
+  // Migration reports the source project's own field, not a workbench record.
+  assert.throws(() => planSharedProjectMigration(Buffer.from(JSON.stringify(legacy))), (error: unknown) => {
+    assert.ok(error instanceof ProjectValidationError, `expected ProjectValidationError, got ${(error as Error).name}: ${(error as Error).message}`);
+    assert.ok(error.issues.some(issue => issue.path.join(".") === "defaults.options.providerOptions.extra.0.api_key"));
+    return true;
+  });
+});
+
 test("workbench codecs round-trip the proposed individual records", () => {
   const records: Record<string, unknown> = JSON.parse(example("workbench-records.proposed.json").toString()).records;
   for (const value of Object.values(records)) {
@@ -88,7 +114,14 @@ test("workbench codecs round-trip the proposed individual records", () => {
     const serialized = serializeWorkbenchRecord(parsed);
     assert.deepEqual(parseWorkbenchRecordJson(serialized), parsed);
     assert.equal(serializeWorkbenchRecord(parseWorkbenchRecordJson(serialized)), serialized);
+    // Envelope first, in the same order as the authored examples.
+    assert.deepEqual(Object.keys(JSON.parse(serialized)), Object.keys(value as object));
   }
+  // Nested saved content serializes in the same key order as project.json.
+  const draft = JSON.parse(serializeWorkbenchRecord(records["drafts/draft_template_chat.json"] as WorkbenchRecordV1));
+  const shared = JSON.parse(serializeSharedProjectFile(parseSharedProjectJson(example("project-v16.proposed.json").toString())));
+  const savedRevision = shared.promptTemplates.find((template: { id: string }) => template.id === "template_chat").revisions[0];
+  assert.deepEqual(Object.keys(draft.base.snapshot), Object.keys(savedRevision));
   assert.throws(() => parseWorkbenchRecord({ records }), WorkbenchValidationError);
   assert.throws(() => parseWorkbenchRecordJson("{"), /not valid JSON/);
 });
@@ -104,6 +137,11 @@ test("workbench records reject unsupported versions, fields, kinds and mismatche
     { ...draft, base: { ...draft.base, revisionId: "template-revision_wrong" } },
     { ...draft, edited: { ...draft.edited, unexpected: true } },
     { ...draft, draftId: "draft_../../private" },
+    { ...draft, kind: "selections" },
+    { ...draft, kind: "suite-draft" },
+    Object.fromEntries(Object.entries(draft).filter(([key]) => key !== "kind")),
+    { schemaVersion: 1, kind: "draft", projectId: draft.projectId },
+    { schemaVersion: 1, projectId: draft.projectId },
   ]) assert.throws(() => parseWorkbenchRecord(value), WorkbenchValidationError);
   assert.throws(() => parseWorkbenchRecord(draft, "project_other"), /different project/);
   // No dependency on a live project: a missing asset remains recoverable.
@@ -120,7 +158,7 @@ test("workbench validates prompt content without resolving variables or leaking 
   assert.throws(() => parseWorkbenchRecord({ ...chat, edited: { ...chat.edited, variableDefaults: { api_key: "secret" } } }), /Secret values/);
   for (const providerOptions of [{ authorization: "secret" }, { nested: [{ api_key: "secret" }] }]) {
     assert.throws(() => parseWorkbenchRecord({
-      schemaVersion: 1, projectId: plan.shared.projectId,
+      schemaVersion: 1, kind: "selections", projectId: plan.shared.projectId,
       chat: { execution: { options: { providerOptions } } },
     }), /Secret-bearing fields/);
   }
@@ -128,11 +166,11 @@ test("workbench validates prompt content without resolving variables or leaking 
 
 test("selections preserve absence, null removal, empty arrays and provider option replacement shapes", () => {
   const value = {
-    schemaVersion: 1, projectId: "project_example",
+    schemaVersion: 1, kind: "selections", projectId: "project_example",
     chat: { execution: { options: { temperature: null, stop: [], providerOptions: { custom: "" } }, enabledToolIds: [] } },
   };
   assert.deepEqual(parseWorkbenchRecord(value), value);
-  const empty = { schemaVersion: 1, projectId: "project_example" };
+  const empty = { schemaVersion: 1, kind: "selections", projectId: "project_example" };
   assert.deepEqual(parseWorkbenchRecord(empty), empty);
   assert.throws(() => parseWorkbenchRecord({ ...empty, chat: { execution: { target: null } } }), WorkbenchValidationError);
   assert.throws(() => parseWorkbenchRecord({ ...empty, chat: { execution: { enabledToolIds: ["tool_a", "tool_a"] } } }), /Duplicate tool selection/);
@@ -240,6 +278,7 @@ test("migration is deterministic and does not alias shared content, drafts, sele
   assert.deepEqual(first.shared, second.shared);
   assert.deepEqual(planSharedProjectMigration(source), second);
   assert.equal(first.preview.promptDraftCount, 2);
+  assert.equal(first.preview.messages[0], "Move 2 prompt drafts into this folder's personal workbench.");
   assert.match(first.preview.messages.join(" "), /does not make previously saved content private/);
   assert.match(first.preview.messages.join(" "), /Existing personal records require reconciliation/);
 });
@@ -250,6 +289,10 @@ test("migration without explicit drafts retains every saved revision and produce
   const plan = planSharedProjectMigration(Buffer.from(JSON.stringify(source)));
   assert.deepEqual(plan.drafts, []);
   assert.equal(plan.preview.promptDraftCount, 0);
+  assert.equal(plan.preview.messages.some(message => /prompt draft/.test(message)), false);
+  const single = JSON.parse(example("project-v15.json").toString());
+  single.promptTemplates.slice(1).forEach((template: { draft?: unknown }) => delete template.draft);
+  assert.equal(planSharedProjectMigration(Buffer.from(JSON.stringify(single))).preview.messages[0], "Move 1 prompt draft into this folder's personal workbench.");
   assert.deepEqual(plan.shared, { ...source, schemaVersion: 16 });
 });
 

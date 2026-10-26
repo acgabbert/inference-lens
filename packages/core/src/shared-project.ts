@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   parseProjectFile,
   ProjectValidationError,
+  sensitiveFieldPaths,
   serializeProjectFile,
 } from "./project.ts";
 import type {
@@ -24,6 +25,9 @@ export interface SharedProjectFileV16 extends Omit<ProjectFileV15, "schemaVersio
 
 const versionGate = z.object({ schemaVersion: z.literal(SHARED_PROJECT_SCHEMA_VERSION) }).passthrough();
 
+const record = (value: unknown): Record<string, unknown> | undefined =>
+  typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+
 /**
  * Strict v16 only. Reuse v15's unchanged saved-content and reference validation
  * after fencing out drafts. This is not a public v16-to-v15 export operation.
@@ -32,19 +36,31 @@ const versionGate = z.object({ schemaVersion: z.literal(SHARED_PROJECT_SCHEMA_VE
 export function parseSharedProjectFile(value: unknown): SharedProjectFileV16 {
   const gated = versionGate.safeParse(value);
   if (!gated.success) throw new ProjectValidationError(gated.error.issues);
+  const issues: z.core.$ZodIssue[] = [];
   const templates = gated.data.promptTemplates;
   if (Array.isArray(templates)) {
-    const issues: z.core.$ZodIssue[] = [];
     templates.forEach((template: unknown, index) => {
-      if (typeof template === "object" && template !== null && "draft" in template) {
+      if (record(template) && "draft" in record(template)!) {
         issues.push({
           code: "custom", path: ["promptTemplates", index, "draft"],
           message: "Personal prompt drafts are not shared Project v16 fields.",
         });
       }
     });
-    if (issues.length) throw new ProjectValidationError(issues);
   }
+  // v15 checks these provider options but stops at arrays; v16 does not.
+  const providerOptions: Array<[unknown, Array<string | number>]> = [
+    [record(record(record(gated.data.defaults)?.options))?.providerOptions, ["defaults", "options", "providerOptions"]],
+  ];
+  if (Array.isArray(gated.data.tools)) {
+    gated.data.tools.forEach((tool: unknown, index) => providerOptions.push([record(tool)?.providerOptions, ["tools", index, "providerOptions"]]));
+  }
+  for (const [options, path] of providerOptions) {
+    for (const secretPath of sensitiveFieldPaths(options, path)) {
+      issues.push({ code: "custom", path: secretPath, message: "Secret-bearing fields are not portable project data." });
+    }
+  }
+  if (issues.length) throw new ProjectValidationError(issues);
   const parsed = parseProjectFile({ ...gated.data, schemaVersion: 15 });
   return structuredClone({ ...parsed, schemaVersion: SHARED_PROJECT_SCHEMA_VERSION });
 }
