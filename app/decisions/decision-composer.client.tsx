@@ -403,102 +403,107 @@ export function DecisionComposer({ draft: handle, target, blockers, locked, unsa
           tabs={[{ id: "form", label: "Form" }, { id: "json", label: "JSON" }]}
         />
       </div>
-      {blockers.length > 0 && (
-        <div className="run-readiness-slot">
-          <BlockerChip
-            label="Run readiness"
-            tone="blocked"
-            assertive
-            summary={`${blockers[0]!.location}: ${blockers[0]!.message}`}
-            summaryId={DECISION_READINESS_SUMMARY_ID}
-            issues={blockers.map(({ location, message }) => `${location}: ${message}`)}
-            noun={{ one: "problem", many: "problems" }}
-            {...(blockers.some(({ location }) => location === "Connection")
-              ? { actions: [{ key: "connections", label: "Open Connections", primary: true as const, onSelect: onOpenConnections }] }
-              : {})}
-          />
-        </div>
-      )}
-      {capture && (
-        <div className="decision-new-suite">
-          <button className="text-button" disabled={capture.disabled} type="button" onClick={capture.onCapture}>
-            Save as decision prompt
-          </button>
-        </div>
-      )}
-      {pinned}
-      {newSuite && (
-        <div className="decision-new-suite">
-          <button
-            aria-describedby={newSuite.disabledReason ? DECISION_NEW_SUITE_REASON_ID : undefined}
-            className="text-button"
-            disabled={Boolean(newSuite.disabledReason)}
-            type="button"
-            onClick={newSuite.onCreate}
-          >New suite from this request</button>
-          {newSuite.disabledReason && <small id={DECISION_NEW_SUITE_REASON_ID}>{newSuite.disabledReason}</small>}
-        </div>
-      )}
-      {unsaved && (
-        <p className="decision-unsaved" role="status">
-          Not saved to the project until the request is valid. The project keeps its last valid version.
-        </p>
-      )}
-      {handle.viewProblems.length > 0 && (
-        <div className="decision-view-problems" role="alert">
-          <strong>{draft.view === "json" ? "Fix the JSON before switching to the form" : "The form cannot become one JSON object yet"}</strong>
-          <ul>
-            {handle.viewProblems.map((problem, index) => (
-              <li key={index}><span>{problem.location}:</span> {problem.message}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-      <div className="pane-scroll request-content decision-content">
-        <div className="decision-help">
-          <p className="decision-introduction">
-            A decision model answers questions about your input with probabilities. Think of it as a classifier you set up in words.
+      {/* Everything under the header scrolls as one: the notices, the pin and
+          its actions stack tall enough to starve a nested scroller on a short
+          window, leaving the questions below the fold out of reach. */}
+      <div className="pane-scroll decision-scroll">
+        {blockers.length > 0 && (
+          <div className="run-readiness-slot">
+            <BlockerChip
+              label="Run readiness"
+              tone="blocked"
+              assertive
+              summary={`${blockers[0]!.location}: ${blockers[0]!.message}`}
+              summaryId={DECISION_READINESS_SUMMARY_ID}
+              issues={blockers.map(({ location, message }) => `${location}: ${message}`)}
+              noun={{ one: "problem", many: "problems" }}
+              {...(blockers.some(({ location }) => location === "Connection")
+                ? { actions: [{ key: "connections", label: "Open Connections", primary: true as const, onSelect: onOpenConnections }] }
+                : {})}
+            />
+          </div>
+        )}
+        {capture && (
+          <div className="decision-new-suite">
+            <button className="text-button" disabled={capture.disabled} type="button" onClick={capture.onCapture}>
+              Save as decision prompt
+            </button>
+          </div>
+        )}
+        {pinned}
+        {newSuite && (
+          <div className="decision-new-suite">
+            <button
+              aria-describedby={newSuite.disabledReason ? DECISION_NEW_SUITE_REASON_ID : undefined}
+              className="text-button"
+              disabled={Boolean(newSuite.disabledReason)}
+              type="button"
+              onClick={newSuite.onCreate}
+            >New suite from this request</button>
+            {newSuite.disabledReason && <small id={DECISION_NEW_SUITE_REASON_ID}>{newSuite.disabledReason}</small>}
+          </div>
+        )}
+        {unsaved && (
+          <p className="decision-unsaved" role="status">
+            Not saved to the project until the request is valid. The project keeps its last valid version.
           </p>
-          <DecisionExampleControl disabled={locked || Boolean(pinned)} handle={handle} />
-          <DecisionGuide />
-        </div>
-        <fieldset className="decision-target" disabled={locked}>
-          <legend>Target</legend>
-          {target.profiles.length === 0 ? (
-            <p className="decision-target-empty">
-              No connection declares System One.{" "}
-              <button className="text-button" type="button" onClick={onOpenConnections}>Open Connections</button>
+        )}
+        {handle.viewProblems.length > 0 && (
+          <div className="decision-view-problems" role="alert">
+            <strong>{draft.view === "json" ? "Fix the JSON before switching to the form" : "The form cannot become one JSON object yet"}</strong>
+            <ul>
+              {handle.viewProblems.map((problem, index) => (
+                <li key={index}><span>{problem.location}:</span> {problem.message}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <div className="request-content decision-content">
+          <div className="decision-help">
+            <p className="decision-introduction">
+              A decision model answers questions about your input with probabilities. Think of it as a classifier you set up in words.
             </p>
-          ) : (
-            <>
-              <label className="decision-field">
-                <span className="decision-field-label">Decision connection</span>
-                <select value={target.profile?.id ?? ""} onChange={(event) => target.selectProfile(event.target.value)}>
-                  {target.profiles.map((profile) => (
-                    <option key={profile.id} value={profile.id}>{profile.name || "Untitled profile"} · {profile.endpoint}</option>
-                  ))}
-                </select>
-              </label>
-              <ModelCombobox
-                discovery={discovery}
-                favoriteModels={target.profile?.favoriteModels ?? []}
-                idPrefix="decision-model"
-                readinessTarget={false}
-                value={target.model}
-                onChange={target.setModel}
-                onLoadModels={(force) => void target.loadModels(force)}
-                onToggleFavoriteModel={target.toggleFavoriteModel}
-              />
-              {discovery?.status === "loaded" && discovery.unfiltered && (
-                <p className="decision-unfiltered" role="status">
-                  This server&apos;s listing does not mark decision models, so every model is listed. Type a decision model id if it is not here.
-                </p>
-              )}
-            </>
-          )}
-        </fieldset>
-        <DecisionInputEditor handle={handle} disabled={locked || Boolean(pinned)} />
-        <DecisionVariables disabled={locked} handle={handle} />
+            <DecisionExampleControl disabled={locked || Boolean(pinned)} handle={handle} />
+            <DecisionGuide />
+          </div>
+          <fieldset className="decision-target" disabled={locked}>
+            <legend>Target</legend>
+            {target.profiles.length === 0 ? (
+              <p className="decision-target-empty">
+                No connection declares System One.{" "}
+                <button className="text-button" type="button" onClick={onOpenConnections}>Open Connections</button>
+              </p>
+            ) : (
+              <>
+                <label className="decision-field">
+                  <span className="decision-field-label">Decision connection</span>
+                  <select value={target.profile?.id ?? ""} onChange={(event) => target.selectProfile(event.target.value)}>
+                    {target.profiles.map((profile) => (
+                      <option key={profile.id} value={profile.id}>{profile.name || "Untitled profile"} · {profile.endpoint}</option>
+                    ))}
+                  </select>
+                </label>
+                <ModelCombobox
+                  discovery={discovery}
+                  favoriteModels={target.profile?.favoriteModels ?? []}
+                  idPrefix="decision-model"
+                  readinessTarget={false}
+                  value={target.model}
+                  onChange={target.setModel}
+                  onLoadModels={(force) => void target.loadModels(force)}
+                  onToggleFavoriteModel={target.toggleFavoriteModel}
+                />
+                {discovery?.status === "loaded" && discovery.unfiltered && (
+                  <p className="decision-unfiltered" role="status">
+                    This server&apos;s listing does not mark decision models, so every model is listed. Type a decision model id if it is not here.
+                  </p>
+                )}
+              </>
+            )}
+          </fieldset>
+          <DecisionInputEditor handle={handle} disabled={locked || Boolean(pinned)} />
+          <DecisionVariables disabled={locked} handle={handle} />
+        </div>
       </div>
     </section>
   );
