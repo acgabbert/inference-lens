@@ -35,6 +35,49 @@ test("the mixed library shows both kinds and searches and filters decision promp
   await expect(page.getByLabel("Default for ticket")).toHaveValue("Default ticket");
 });
 
+test("prompt names warn about duplicates across the mixed library", async ({ page }) => {
+  await seedProfile(page);
+  await page.goto("/");
+  await waitForHydration(page);
+  await importProject(page, fixture(), "Saved decisions");
+  await openMode(page, "Prompts");
+  const warning = page.getByRole("status").filter({ hasText: "Another prompt has this name" });
+  await page.locator(".template-list").getByRole("button", { name: /Chat helper/ }).click();
+  await page.getByLabel("Prompt name").fill("Ticket decision");
+  await expect(warning).toHaveCount(1);
+  await page.getByLabel("Prompt name").fill("Chat helper");
+  await page.locator(".template-list").getByRole("button", { name: /Ticket decision/ }).click();
+  await page.getByLabel("Prompt name").fill("chat helper");
+  await expect(warning).toHaveCount(1);
+});
+
+test("kind, search and status filters keep the editor on a visible prompt", async ({ page }) => {
+  await seedProfile(page);
+  await page.goto("/");
+  await waitForHydration(page);
+  await importProject(page, fixture(), "Saved decisions");
+  await openMode(page, "Prompts");
+  const emptyHeading = page.locator(".template-empty-state h3");
+  await page.locator(".template-list").getByRole("button", { name: /Ticket decision/ }).click();
+  await page.getByRole("button", { name: "Chat", exact: true }).click();
+  await expect(emptyHeading).toHaveCount(0);
+  await expect(page.getByLabel("Prompt name")).toHaveValue("Chat helper");
+  await expect(page.locator(".template-list [aria-current=true] strong")).toHaveText("Chat helper");
+  await page.getByRole("button", { name: "All", exact: true }).click();
+  await page.locator(".template-list").getByRole("button", { name: /Ticket decision/ }).click();
+  await page.getByLabel("Search prompts").fill("chat");
+  await expect(page.getByLabel("Prompt name")).toHaveValue("Chat helper");
+  await page.getByLabel("Search prompts").fill("nothing matches");
+  await expect(emptyHeading).toHaveText("No matching prompts");
+  await expect(page.locator(".template-list .template-empty")).toHaveText("No prompts match these filters.");
+  await page.getByLabel("Search prompts").fill("");
+  await page.getByRole("button", { name: "Decision", exact: true }).click();
+  await page.getByRole("button", { name: /^Archived/ }).click();
+  await expect(emptyHeading).toHaveText("No archived prompts");
+  await page.getByRole("button", { name: /^Active/ }).click();
+  await expect(page.getByLabel("Prompt name")).toHaveValue("Ticket decision");
+});
+
 test("incomplete library edits survive kind, revision and mode navigation without claiming to be saved", async ({ page }) => {
   await seedProfile(page);
   await page.goto("/");
@@ -104,8 +147,14 @@ test("pinned revisions run through capture replay, review updates, detach and re
   await expect(page.getByRole("article", { name: "Answer intent" })).toHaveCount(1);
   await expect(pane.getByLabel("State text")).toHaveValue("{{ticket}}");
   await expect(pane.getByRole("region", { name: "Saved decision prompt" })).toContainText("Revision 1");
-  await pane.getByRole("button", { name: "Update to latest revision…" }).click();
+  const updateAction = pane.getByRole("button", { name: "Update to latest revision…" });
+  await updateAction.click();
   const review = page.getByRole("dialog", { name: "Update decision prompt" });
+  await expect(review.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(review).toHaveCount(0);
+  await expect(updateAction).toBeFocused();
+  await updateAction.click();
   await expect(review).toContainText("New default");
   await expect(review).toContainText("Changed {{ticket}} / {{plan}}");
   await review.getByRole("button", { name: "Update revision", exact: true }).click();
@@ -225,7 +274,11 @@ test("ordered criteria appear in revision diffs, and decision prompts archive an
   const severity = page.getByRole("article", { name: "Question 2", exact: true });
   await severity.getByRole("button", { name: "Move level 1 down", exact: true }).click();
   await page.getByLabel("Revision name", { exact: true }).fill("Reorder severity");
+  await page.locator(".template-list").getByRole("button", { name: /Chat helper/ }).click();
+  await page.locator(".template-list").getByRole("button", { name: /Ticket decision/ }).click();
+  await expect(page.getByLabel("Revision name", { exact: true })).toHaveValue("Reorder severity");
   await page.getByRole("button", { name: "Create revision", exact: true }).click();
+  await expect(page.getByLabel("Revision", { exact: true }).locator("option:checked")).toHaveText("Current — Reorder severity");
   await page.locator(".template-revision-diff summary").click();
   await expect(page.locator(".template-revision-diff")).toContainText("Criteria and ordering");
   await expect(page.locator(".template-revision-diff")).toContainText("critical");

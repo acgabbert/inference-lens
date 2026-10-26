@@ -25,7 +25,11 @@ import type { PromptNavigationTarget, PromptReturnTarget } from "./prompt-naviga
 export interface PromptNavigation {
   target?: PromptNavigationTarget;
   reset(): void;
-  editDecisionSource(requestRevisionId: DecisionRequestRevisionId, templateId: PromptTemplateId, revisionId: PromptTemplateRevisionId): void;
+  editDecisionSource(
+    requestRevisionId: DecisionRequestRevisionId,
+    templateId: PromptTemplateId,
+    revisionId: PromptTemplateRevisionId,
+  ): void;
   editSource(
     useId: PromptTemplateUseId,
     templateId: PromptTemplateId,
@@ -48,7 +52,12 @@ export function usePromptNavigation(): PromptNavigation {
     ...(target ? { target } : {}),
     reset() { setTarget(undefined); },
     editDecisionSource(requestRevisionId, templateId, revisionId) {
-      setTarget((current) => ({ key: (current?.key ?? 0) + 1, templateId, revisionId, returnTarget: { kind: "decision-request", revisionId: requestRevisionId } }));
+      setTarget((current) => ({
+        key: (current?.key ?? 0) + 1,
+        templateId,
+        revisionId,
+        returnTarget: { kind: "decision-request", revisionId: requestRevisionId },
+      }));
     },
     editSource(useId, templateId, revisionId) {
       setTarget((current) => openPromptSource(current, useId, templateId, revisionId));

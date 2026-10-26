@@ -491,6 +491,20 @@ the same dev-server overlay. The final full run uses
 failures (6.5 minutes). No system Chromium override or browser-download fallback
 was used.
 
+Review follow-up: the library shell now derives its list and editor from one
+filter/selection helper, so kind, search and status filters never leave the
+editor contradicting the list. Duplicate-name warnings compare across the whole
+mixed library (the extracted chat editor had been comparing a prompt only with
+itself). The update review dialog takes focus, closes on Escape and returns
+focus to its trigger. Saving and using a draft is one command that returns the
+saved project, replacing a latest-project ref. Decision editor memory lives in
+a store owned beside `useProjectTemplates`, and the editor reports draft
+changes through a stable callback rather than relying on an unmemoized one.
+Override derivation and session-prompt publication are pure functions with
+unit tests. Browser regressions for the filter mismatch, the duplicate-name
+warning and the dialog's focus/Escape behavior failed before the fix; the
+revision-name retention assertion and the new unit tests were not shown failing.
+
 Hosted providers, the native desktop app, and the Docker CLI were not exercised.
 Browser execution uses the committed llama.cpp capture replay, which only
 accepts the captured question definitions. The new editor and update-review

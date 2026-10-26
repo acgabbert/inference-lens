@@ -99,7 +99,15 @@ export function PromptsMode({
         onCreateDecision={templates.createDecisionTemplate}
         onDecisionDraftChange={templates.updateDecisionTemplateDraft}
         onSaveDecision={templates.saveDecisionTemplate}
-        onUseDecision={(id, revisionId) => decision.useTemplate(templates.projectForDecisionUse(), id, revisionId)}
+        onSaveAndUseDecision={(id, name, content, defaults, revisionName) => {
+          const saved = templates.saveDecisionTemplateForUse(id, name, content, defaults, revisionName);
+          if (saved) decision.useTemplate(saved.project, id, saved.revisionId);
+          return saved?.revisionId;
+        }}
+        onUseDecision={(id, revisionId) => {
+          // Only saved revisions are used directly, so a project exists.
+          if (project) decision.useTemplate(project, id, revisionId);
+        }}
         onDraftChange={templates.updateProjectTemplateDraft}
         onRecommendedTargetChange={templates.updateProjectTemplateRecommendedTarget}
         onSave={templates.saveProjectTemplate}

@@ -6,11 +6,15 @@ import { discoverDecisionVariables } from "../../packages/core/src/decision-vari
 import type { ConfirmationDialogRequest } from "../confirmation-dialog.client";
 import { DecisionTemplateUse } from "./decision-template-use.client";
 import type { PromptTemplateId, PromptTemplateRevisionId } from "../../packages/core/src/run-kernel";
-import { useDecisionPromptTemplateRevision as createDecisionTemplateUse, updateDecisionRequestTemplateRevision, detachDecisionRequestTemplate } from "../../packages/core/src/decision-request";
+import {
+  detachDecisionRequestTemplate,
+  updateDecisionRequestTemplateRevision,
+  useDecisionPromptTemplateRevision as createDecisionTemplateUse,
+} from "../../packages/core/src/decision-request";
 import type { CredentialSelection, DecisionTransport, ProviderTurnTransport } from "../../packages/contracts/src";
 import { activeDecisionRequestRevision, prepareDecisionRequestRun } from "../../packages/core/src/decision-request";
 import type { DecisionRunTrace } from "../../packages/core/src/decision-trace";
-import type { ProjectFile } from "../../packages/core/src/project";
+import type { DecisionPromptTemplate, ProjectFile } from "../../packages/core/src/project";
 import type { DecisionRequestRevisionId } from "../../packages/core/src/run-kernel/types";
 import type { ComposeKindHandle } from "../compose/use-compose.client";
 import type { ProjectWorkspaceHandle } from "../project-workspace.client";
@@ -173,38 +177,85 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
   };
 
   const active = options.project && activeDecisionRequestRevision(options.project);
-  const pinned = active?.kind === "template-use" ? options.project?.promptTemplates.find((entry) => entry.id === active.templateId && entry.kind === "decision") : undefined;
+  const pinned =
+    active?.kind === "template-use"
+      ? options.project?.promptTemplates.find(
+          (entry): entry is DecisionPromptTemplate => entry.id === active.templateId && entry.kind === "decision",
+        )
+      : undefined;
 
+  // Advice only: describes how the selected target relates to the pinned
+  // prompt's recommendation without ever selecting a connection or model.
   const recommendedTarget = pinned?.recommendedTarget;
-  const recommendedRequirement = recommendedTarget && options.project?.connectionRequirements.find(({ id }) => id === recommendedTarget.connectionRequirementId);
-  const compatibleRecommendedProfiles = recommendedRequirement ? target.profiles.filter((profile) =>
-    profile.provider === recommendedRequirement.provider && sameProviderTarget(profile.endpoint, recommendedRequirement.endpoint)) : [];
-  const recommendation = recommendedTarget && recommendedRequirement ? {
-    model: recommendedTarget.model,
-    connectionName: recommendedRequirement.name,
-    compatibleConnectionNames: compatibleRecommendedProfiles.map(({ name }) => name),
-    matchesSelectedTarget: compatibleRecommendedProfiles.some(({ id }) => id === target.profile?.id) && target.model.trim() === recommendedTarget.model.trim(),
-  } : undefined;
+  const recommendedRequirement =
+    recommendedTarget &&
+    options.project?.connectionRequirements.find(({ id }) => id === recommendedTarget.connectionRequirementId);
+  const compatibleRecommendedProfiles = recommendedRequirement
+    ? target.profiles.filter(
+        (profile) =>
+          profile.provider === recommendedRequirement.provider &&
+          sameProviderTarget(profile.endpoint, recommendedRequirement.endpoint),
+      )
+    : [];
+  const recommendation =
+    recommendedTarget && recommendedRequirement
+      ? {
+          model: recommendedTarget.model,
+          connectionName: recommendedRequirement.name,
+          compatibleConnectionNames: compatibleRecommendedProfiles.map(({ name }) => name),
+          matchesSelectedTarget:
+            compatibleRecommendedProfiles.some(({ id }) => id === target.profile?.id) &&
+            target.model.trim() === recommendedTarget.model.trim(),
+        }
+      : undefined;
 
   function adoptMutation(project: ProjectFile): void {
     options.adoptProjectMutation(project);
     decisionProject.adopt(project);
     session.reset();
   }
+
   function mutatePin(kind: "update" | "detach"): void {
     if (!options.project || session.executing) return;
     const folded = decisionProject.fold(options.project);
     const revision = activeDecisionRequestRevision(folded);
     if (revision?.kind !== "template-use") return;
-    adoptMutation(kind === "update"
-      ? updateDecisionRequestTemplateRevision(folded, { decisionRequestRevisionId: revision.id })
-      : detachDecisionRequestTemplate(folded, { decisionRequestRevisionId: revision.id }));
+    adoptMutation(
+      kind === "update"
+        ? updateDecisionRequestTemplateRevision(folded, { decisionRequestRevisionId: revision.id })
+        : detachDecisionRequestTemplate(folded, { decisionRequestRevisionId: revision.id }),
+    );
   }
+
+  function editPinnedSource(): void {
+    if (!options.project) return;
+    // Keep value edits before leaving, so Back to request finds them.
+    const folded = decisionProject.fold(options.project);
+    const revision = activeDecisionRequestRevision(folded);
+    if (folded !== options.project) options.adoptProjectMutation(folded);
+    if (revision?.kind === "template-use") {
+      options.onEditSource?.(revision.id, revision.templateId, revision.templateRevisionId);
+    }
+  }
+
+  // Capture keeps authored tokens and the values of discovered variables.
+  const captureDiscovery = "input" in validated ? discoverDecisionVariables(validated.input) : undefined;
+  const captureBlocked = !captureDiscovery || captureDiscovery.diagnostics.length > 0;
   function capture(): ReturnType<DecisionComposeHandle["capture"]> {
     if (!("input" in validated)) return { problems: validated.problems };
-    const discovery = discoverDecisionVariables(validated.input);
-    if (discovery.diagnostics.length) return { problems: discovery.diagnostics.map(({ field, diagnostic }) => ({ location: field.kind, message: diagnostic.message })) };
-    return { decision: structuredClone(validated.input), values: Object.fromEntries(Object.entries(draft.values).filter(([key]) => discovery.variables.includes(key))) };
+    const discovery = captureDiscovery!;
+    if (discovery.diagnostics.length) {
+      return {
+        problems: discovery.diagnostics.map(({ field, diagnostic }) => ({
+          location: field.kind,
+          message: diagnostic.message,
+        })),
+      };
+    }
+    return {
+      decision: structuredClone(validated.input),
+      values: Object.fromEntries(Object.entries(draft.values).filter(([key]) => discovery.variables.includes(key))),
+    };
   }
   const finished = Boolean(run && ["completed", "cancelled", "failed"].includes(run.status.kind));
   const compose: ComposeKindHandle = {
@@ -230,15 +281,28 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
           locked={session.executing}
           target={target}
           onOpenConnections={options.onOpenConnections}
-          capture={{ disabled: session.executing || "problems" in capture(), onCapture() { const content = capture(); if ("decision" in content) options.onCapture?.(content); } }}
-          {...(pinned?.kind === "decision" && active?.kind === "template-use" ? { pinned: <DecisionTemplateUse template={pinned} revisionId={active.templateRevisionId} locked={session.executing} recommendation={recommendation}
-            onDetach={() => mutatePin("detach")} onUpdate={() => mutatePin("update")} onEdit={() => {
-              if (!options.project) return;
-              const folded = decisionProject.fold(options.project);
-              const revision = activeDecisionRequestRevision(folded);
-              if (folded !== options.project) options.adoptProjectMutation(folded);
-              if (revision?.kind === "template-use") options.onEditSource?.(revision.id, revision.templateId, revision.templateRevisionId);
-            }} /> } : {})}
+          capture={{
+            disabled: session.executing || captureBlocked,
+            onCapture() {
+              const content = capture();
+              if ("decision" in content) options.onCapture?.(content);
+            },
+          }}
+          {...(pinned && active?.kind === "template-use"
+            ? {
+                pinned: (
+                  <DecisionTemplateUse
+                    template={pinned}
+                    revisionId={active.templateRevisionId}
+                    locked={session.executing}
+                    recommendation={recommendation}
+                    onDetach={() => mutatePin("detach")}
+                    onUpdate={() => mutatePin("update")}
+                    onEdit={editPinnedSource}
+                  />
+                ),
+              }
+            : {})}
           {...(options.project && options.onNewSuite
             ? {
                 newSuite: {
@@ -283,13 +347,22 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
         options.onTemplateUsed?.();
       };
       if (draft.touched && !("input" in validated)) {
-        options.requestConfirmation({ title: "Discard incomplete decision request?", description: "The current request has invalid edits that cannot be saved. Discard them to use this saved revision.", confirmLabel: "Discard and use revision", destructive: true, onConfirm: () => apply(true) });
-      } else apply(false);
+        options.requestConfirmation({
+          title: "Discard incomplete decision request?",
+          description: "The current request has invalid edits that cannot be saved. Discard them to use this saved revision.",
+          confirmLabel: "Discard and use revision",
+          destructive: true,
+          onConfirm: () => apply(true),
+        });
+      } else {
+        apply(false);
+      }
     },
     returnToRevision(id) {
-      if (!options.project || !options.project.decisionRequestRevisions.some((entry) => entry.id === id)) return false;
-      if (options.project.defaults.decisionRequestRevisionId === id) return true;
-      adoptMutation({ ...options.project, defaults: { ...options.project.defaults, decisionRequestRevisionId: id } });
+      const project = options.project;
+      if (!project || !project.decisionRequestRevisions.some((entry) => entry.id === id)) return false;
+      if (project.defaults.decisionRequestRevisionId === id) return true;
+      adoptMutation({ ...project, defaults: { ...project.defaults, decisionRequestRevisionId: id } });
       return true;
     },
     connection: { profiles: target.profiles, profile: target.profile, selectProfile: target.selectProfile },

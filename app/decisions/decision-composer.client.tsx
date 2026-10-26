@@ -2,7 +2,6 @@
 
 import { useId, useState } from "react";
 import type { ReactNode } from "react";
-
 import type { DecisionQuestionType } from "../../packages/core/src/decision";
 import { BlockerChip } from "../blocker-chip.client";
 import { ModelCombobox } from "../model-combobox.client";
@@ -42,7 +41,9 @@ export interface DecisionComposerProps {
    * Absent without a project, where there is nowhere to keep a suite.
    */
   newSuite?: { onCreate(): void; disabledReason?: string };
+  /** The saved prompt a template-backed request is pinned to; its content is then read-only. */
   pinned?: ReactNode;
+  /** Stages the authored request as a saved decision prompt for review in Prompts. */
   capture?: { onCapture(): void; disabled: boolean };
 }
 
@@ -310,69 +311,76 @@ function DecisionExampleControl({ handle, disabled }: { handle: DecisionDraftHan
   );
 }
 
-export function DecisionInputEditor({ handle, disabled = false }: { handle: DecisionDraftHandle; disabled?: boolean }) {
+/** State and questions, in the Form or JSON view; shared by Compose and the library. */
+export function DecisionInputEditor({
+  handle,
+  disabled: locked = false,
+}: {
+  handle: DecisionDraftHandle;
+  disabled?: boolean;
+}) {
   const { draft } = handle;
   const stateHintId = useId();
-  const locked = disabled;
-  return <div className="decision-input-editor">
-        {draft.view === "json" ? (
-          <label className="decision-field decision-json-editor">
-            <span className="decision-field-label">Decision input (state and questions)</span>
-            <textarea
-              aria-invalid={draft.json.error ? "true" : undefined}
-              disabled={locked}
-              rows={24}
-              spellCheck={false}
-              value={draft.json.text}
-              onChange={(event) => handle.setJsonText(event.target.value)}
-            />
-            {draft.json.error && <span className="decision-json-error" role="alert">{draft.json.error}</span>}
-          </label>
-        ) : (
-          <>
-            <section className="decision-state" aria-label="State">
-              <div className="decision-section-heading">
-                <span className="decision-field-label">State</span>
-                <PaneTabs
-                  disabled={locked}
-                  label="State format"
-                  value={draft.state.mode}
-                  onChange={(value) => handle.setStateMode(value as "text" | "json")}
-                  tabs={[{ id: "text", label: "Text" }, { id: "json", label: "JSON" }]}
-                />
-              </div>
-              <small className="decision-hint" id={stateHintId}>
-                What the model judges, such as a ticket, a message, or a document.
-              </small>
-              <textarea
-                aria-describedby={stateHintId}
-                aria-label={draft.state.mode === "json" ? "State JSON" : "State text"}
+  return (
+    <div className="decision-input-editor">
+      {draft.view === "json" ? (
+        <label className="decision-field decision-json-editor">
+          <span className="decision-field-label">Decision input (state and questions)</span>
+          <textarea
+            aria-invalid={draft.json.error ? "true" : undefined}
+            disabled={locked}
+            rows={24}
+            spellCheck={false}
+            value={draft.json.text}
+            onChange={(event) => handle.setJsonText(event.target.value)}
+          />
+          {draft.json.error && <span className="decision-json-error" role="alert">{draft.json.error}</span>}
+        </label>
+      ) : (
+        <>
+          <section className="decision-state" aria-label="State">
+            <div className="decision-section-heading">
+              <span className="decision-field-label">State</span>
+              <PaneTabs
                 disabled={locked}
-                rows={draft.state.mode === "json" ? 8 : 4}
-                spellCheck={draft.state.mode === "text"}
-                value={draft.state.text}
-                onChange={(event) => handle.setStateText(event.target.value)}
+                label="State format"
+                value={draft.state.mode}
+                onChange={(value) => handle.setStateMode(value as "text" | "json")}
+                tabs={[{ id: "text", label: "Text" }, { id: "json", label: "JSON" }]}
               />
-            </section>
-            <section className="decision-questions" aria-label="Questions">
-              {draft.questions.map((row, index) => (
-                <QuestionCard
-                  count={draft.questions.length}
-                  disabled={locked}
-                  draft={handle}
-                  index={index}
-                  key={row.rowId}
-                  row={row}
-                />
-              ))}
-              <button className="button secondary" disabled={locked} type="button" onClick={handle.addQuestion}>
-                + Add question
-              </button>
-            </section>
-          </>
-        )}
-
-  </div>;
+            </div>
+            <small className="decision-hint" id={stateHintId}>
+              What the model judges, such as a ticket, a message, or a document.
+            </small>
+            <textarea
+              aria-describedby={stateHintId}
+              aria-label={draft.state.mode === "json" ? "State JSON" : "State text"}
+              disabled={locked}
+              rows={draft.state.mode === "json" ? 8 : 4}
+              spellCheck={draft.state.mode === "text"}
+              value={draft.state.text}
+              onChange={(event) => handle.setStateText(event.target.value)}
+            />
+          </section>
+          <section className="decision-questions" aria-label="Questions">
+            {draft.questions.map((row, index) => (
+              <QuestionCard
+                count={draft.questions.length}
+                disabled={locked}
+                draft={handle}
+                index={index}
+                key={row.rowId}
+                row={row}
+              />
+            ))}
+            <button className="button secondary" disabled={locked} type="button" onClick={handle.addQuestion}>
+              + Add question
+            </button>
+          </section>
+        </>
+      )}
+    </div>
+  );
 }
 
 export const DECISION_NEW_SUITE_REASON_ID = "decision-new-suite-reason";
@@ -411,7 +419,13 @@ export function DecisionComposer({ draft: handle, target, blockers, locked, unsa
           />
         </div>
       )}
-      {capture && <div className="decision-new-suite"><button className="text-button" disabled={capture.disabled} type="button" onClick={capture.onCapture}>Save as decision prompt</button></div>}
+      {capture && (
+        <div className="decision-new-suite">
+          <button className="text-button" disabled={capture.disabled} type="button" onClick={capture.onCapture}>
+            Save as decision prompt
+          </button>
+        </div>
+      )}
       {pinned}
       {newSuite && (
         <div className="decision-new-suite">

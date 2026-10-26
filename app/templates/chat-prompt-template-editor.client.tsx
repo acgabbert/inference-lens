@@ -23,6 +23,7 @@ import {
   resolveTemplateValues,
 } from "../../packages/core/src/template-engine";
 import { diffPromptTemplateRevisions } from "../../packages/core/src/prompt-template-revision-diff";
+import { hasDuplicatePromptName } from "./prompt-library";
 import { describeCompatibleSuiteRevision, promptRevisionLabel, summarizeRevisionDiff } from "./prompt-revision-label";
 import { DisclosureChevron } from "../disclosure-chevron.client";
 import { FocusModeToggle, useFocusMode } from "../focus-mode.client";
@@ -39,16 +40,14 @@ export interface CompatibleEvaluationSuite {
 }
 
 export interface ChatPromptTemplateEditorProps {
-  templates: PromptTemplate[];
+  template: ChatPromptTemplate;
+  /** The whole library, for duplicate-name warnings. */
+  templates: readonly PromptTemplate[];
   connectionRequirements: ConnectionRequirement[];
   defaultConnectionRequirementId?: ConnectionRequirement["id"];
-  usageCounts: ReadonlyMap<PromptTemplateId, number>;
   sessionTemplateIds?: ReadonlySet<PromptTemplateId>;
   itemCount: number;
   persistenceStatus?: "saving" | "saved" | "session" | "error";
-  n8nImportDisabledReason?: string;
-  onOpenN8nImport(): void;
-  onCreate(name: string, messages: PromptTemplateMessages): PromptTemplateId;
   onSave(
     templateId: PromptTemplateId,
     name: string,
@@ -104,8 +103,6 @@ export interface ChatPromptTemplateEditorProps {
   ): void;
   focusRequested?: boolean;
   onFocusHandled?(): void;
-  returnLabel?: string;
-  onReturn?(): void;
 }
 
 function newPrompt(): PromptTemplateMessages {
@@ -117,7 +114,8 @@ function currentRevision(template: ChatPromptTemplate) {
 }
 
 export function ChatPromptTemplateEditor({
-  templates: allTemplates,
+  template,
+  templates,
   connectionRequirements = [],
   defaultConnectionRequirementId,
   sessionTemplateIds = new Set(),
@@ -141,20 +139,14 @@ export function ChatPromptTemplateEditor({
   focusRequested = false,
   onFocusHandled,
 }: ChatPromptTemplateEditorProps) {
-  const templates = allTemplates.filter((template): template is ChatPromptTemplate => template.kind === "chat");
-  const targetedTemplate = navigationTarget
-    ? templates.find(({ id }) => id === navigationTarget.templateId)
+  // The shell mounts an editor per prompt; the guards below predate that.
+  const selected: ChatPromptTemplate | undefined = template;
+  const libraryView = template.archivedAt ? "archived" : "active";
+  const targetedRevision = navigationTarget?.templateId === template.id && navigationTarget.revisionId
+    ? template.revisions.find(({ id }) => id === navigationTarget.revisionId)
     : undefined;
-  const libraryView = targetedTemplate?.archivedAt ? "archived" : "active";
-  const initialTemplate = targetedTemplate ?? templates[0];
-  const targetedRevision = navigationTarget?.revisionId
-    ? targetedTemplate?.revisions.find(({ id }) => id === navigationTarget.revisionId)
-    : undefined;
-  const initialViewedRevision = targetedRevision ?? (
-    initialTemplate ? currentRevision(initialTemplate) : undefined
-  );
-  const selected = initialTemplate;
-  const initialRevision = selected ? currentRevision(selected) : undefined;
+  const initialRevision = currentRevision(template);
+  const initialViewedRevision = targetedRevision ?? initialRevision;
   const [viewedRevisionId, setViewedRevisionId] =
     useState<PromptTemplateRevisionId | undefined>(initialViewedRevision?.id);
   const [candidateSourceRevisionId, setCandidateSourceRevisionId] =
@@ -213,9 +205,7 @@ export function ChatPromptTemplateEditor({
   // save forces it open once, so the diff can confirm what just changed.
   const [diffOpen, setDiffOpen] = useState(
     Boolean(
-      targetedRevision &&
-        targetedTemplate &&
-        targetedRevision.id !== targetedTemplate.currentRevisionId,
+      targetedRevision && targetedRevision.id !== template.currentRevisionId,
     ),
   );
   const workspaceRef = useRef<HTMLDivElement>(null);
@@ -248,11 +238,7 @@ export function ChatPromptTemplateEditor({
     () => discoverTemplateVariables(messages),
     [messages],
   );
-  const duplicateName = templates.some(
-    (template) =>
-      template.id !== selected?.id &&
-      template.name.trim().toLocaleLowerCase() === name.trim().toLocaleLowerCase(),
-  );
+  const duplicateName = hasDuplicatePromptName(templates, selected?.id, name);
   // A secret-like name can never receive a value at any level, so a template
   // that references one is unrunnable however it is saved. Flag it on discovery
   // rather than only when a default is assigned, or the author only finds out
