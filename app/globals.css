@@ -8731,8 +8731,11 @@ label.experiment-retry-field {
 }
 
 /* Compose's request-kind switch (U1), above whichever kind's request pane. */
-/* Not on a pane the narrow layout hides: that rule must keep winning. */
-.request-pane:not(.mobile-pane-hidden):has(> .compose-kind-bar) {
+/* `:where` keeps this below `.workbench-pane.mobile-pane-hidden`, so the narrow
+   layout can still hide the pane. Matching on that class instead would drop the
+   column on a wide window too, where a run marks the pane hidden without hiding
+   it, and the composer would grow past the pane with nothing left to scroll. */
+.request-pane:where(:has(> .compose-kind-bar)) {
   display: flex;
   flex-direction: column;
 }

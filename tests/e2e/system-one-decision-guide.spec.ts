@@ -48,7 +48,7 @@ test("the short introduction leaves the state editor in view, with detailed help
   // Read actual geometry: being mounted or Playwright-visible does not mean
   // the first editable field is above the scroll pane's fold.
   const state = await pane.getByLabel("State text").boundingBox();
-  const scroll = await pane.locator(".decision-content").boundingBox();
+  const scroll = await pane.locator(".decision-scroll").boundingBox();
   expect(state!.y + state!.height).toBeLessThanOrEqual(scroll!.y + scroll!.height);
   await expect(guide).not.toHaveAttribute("open", "");
   await page.screenshot({ path: testInfo.outputPath("decision-introduction.png") });
