@@ -1,11 +1,15 @@
 import { discoverDecisionVariables } from "./decision-variables.ts";
-import { updateDecisionRequestTemplateRevision, useDecisionPromptTemplateRevision as createDecisionTemplateUse } from "./decision-request.ts";
+import {
+  decisionRequestRevisionIdFor,
+  retainedDecisionOverrides,
+  updateDecisionRequestTemplateRevision,
+  useDecisionPromptTemplateRevision as createDecisionTemplateUse,
+} from "./decision-request.ts";
 import { createDecisionEvaluationSuite, updateDecisionSuiteInput } from "./evaluation-suite-authoring.ts";
-import { evaluationSuitePreflight, isDecisionEvaluationSuite } from "./evaluation-suites.ts";
+import { decisionSuitePreflight, isDecisionEvaluationSuite } from "./evaluation-suites.ts";
 import type { DecisionEvaluationSuite, EvaluationSuitePreflightDiagnostic } from "./evaluation-suites.ts";
 import type { ProjectFile } from "./project.ts";
 import { randomUUID } from "./random-id.ts";
-import { createEntityId } from "./run-kernel/types.ts";
 import type { EvaluationSuiteId, PromptTemplateId, PromptTemplateRevisionId } from "./run-kernel/types.ts";
 
 export interface DecisionTemplateEvaluationSuite {
@@ -33,7 +37,7 @@ export function createDecisionTemplateEvaluation(project: ProjectFile, options: 
   const idSuffix = suffix();
   const withRequest = createDecisionTemplateUse(project, { ...options, idSuffix, activate: false });
   return createDecisionEvaluationSuite(withRequest, {
-    decisionRequestRevisionId: createEntityId("decision-revision", idSuffix),
+    decisionRequestRevisionId: decisionRequestRevisionIdFor(idSuffix),
     model: project.defaults.target.model,
   }, suffix);
 }
@@ -53,19 +57,27 @@ function retargetSource(project: ProjectFile, options: RetargetDecisionTemplateE
   if (!suite || !isDecisionEvaluationSuite(suite)) throw new Error("Choose a decision suite that uses this saved prompt.");
   const parent = project.decisionRequestRevisions.find(({ id }) => id === suite.input.decisionRequestRevisionId);
   if (parent?.kind !== "template-use" || parent.templateId !== template.id) throw new Error("That suite does not use this saved decision prompt.");
-  const pinned = template.revisions.find(({ id }) => id === parent.templateRevisionId)!;
+  const pinned = template.revisions.find(({ id }) => id === parent.templateRevisionId);
+  if (!pinned) throw new Error("The suite's pinned decision template revision no longer exists.");
   return { template, target, suite, parent, pinned };
 }
 
 export interface DecisionTemplateEvaluationRetargetPreview {
   changes: string[];
-  /** Checks and inputs that will need repair, over all cases, including unselected ones. */
+  /** Checks and inputs the retarget leaves needing repair, over all cases, including unselected ones. */
   diagnostics: EvaluationSuitePreflightDiagnostic[];
+  /** Repairs the suite already needed on its current pin; the retarget neither causes nor fixes them. */
+  existingDiagnostics: EvaluationSuitePreflightDiagnostic[];
+}
+
+/** Authoring gaps (no cases, no checks) are Setup's to report, not the retarget's. */
+function retargetDiagnostics(project: ProjectFile, suite: DecisionEvaluationSuite) {
+  return decisionSuitePreflight(project, suite).filter(({ code }) => code !== "empty-suite" && code !== "no-checks");
 }
 
 /** A read-only projection through the same resolver and preflight used when the suite runs. */
 export function previewDecisionTemplateEvaluationRetarget(project: ProjectFile, options: RetargetDecisionTemplateEvaluationOptions): DecisionTemplateEvaluationRetargetPreview {
-  const { parent, pinned, target } = retargetSource(project, options);
+  const { suite, parent, pinned, target } = retargetSource(project, options);
   const before = discoverDecisionVariables(pinned.decision).variables;
   const after = discoverDecisionVariables(target.decision).variables;
   const changes = [
@@ -81,11 +93,15 @@ export function previewDecisionTemplateEvaluationRetarget(project: ProjectFile, 
   // Project only the new pin, without allocating IDs or mutating the original.
   // Resolution still merges defaults/overrides and preflight still validates checks.
   const projected: ProjectFile = { ...project, decisionRequestRevisions: project.decisionRequestRevisions.map((revision) => revision.id === parent.id
-    ? { ...parent, templateRevisionId: target.id, overrides: Object.fromEntries(Object.entries(parent.overrides).filter(([name]) => after.includes(name))) }
+    ? { ...parent, templateRevisionId: target.id, overrides: retainedDecisionOverrides(parent.overrides, target.decision) }
     : revision) };
-  const diagnostics = evaluationSuitePreflight(projected, options.suiteId, project.defaults.conversationRevisionId)
-    .filter(({ code }) => code !== "empty-suite" && code !== "no-checks");
-  return { changes, diagnostics };
+  const existing = new Set(retargetDiagnostics(project, suite).map((diagnostic) => JSON.stringify(diagnostic)));
+  const projectedDiagnostics = retargetDiagnostics(projected, suite);
+  return {
+    changes,
+    diagnostics: projectedDiagnostics.filter((diagnostic) => !existing.has(JSON.stringify(diagnostic))),
+    existingDiagnostics: projectedDiagnostics.filter((diagnostic) => existing.has(JSON.stringify(diagnostic))),
+  };
 }
 
 /** Deliberate retargeting preserves case/check data for repair and never moves Compose. */
@@ -97,5 +113,5 @@ export function retargetDecisionTemplateEvaluation(project: ProjectFile, options
     decisionRequestRevisionId: parent.id, templateRevisionId: target.id, idSuffix,
     ...(options.createdAt ? { createdAt: options.createdAt } : {}), activate: false,
   });
-  return updateDecisionSuiteInput(updated, options.suiteId, createEntityId("decision-revision", idSuffix));
+  return updateDecisionSuiteInput(updated, options.suiteId, decisionRequestRevisionIdFor(idSuffix));
 }

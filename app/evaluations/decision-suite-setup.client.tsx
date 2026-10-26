@@ -65,7 +65,9 @@ export function DecisionSuiteSetup({
   const { suite } = settings;
   const { target } = suite.execution;
   const source = settings.pinnedRevision?.source;
-  const template = source?.kind === "template-use" ? project.promptTemplates.find(({ id }) => id === source.templateId) : undefined;
+  const pin = source?.kind === "template-use" ? source : undefined;
+  const template = pin && project.promptTemplates.find(({ id }) => id === pin.templateId);
+  const savedPrompt = pin && template ? `${template.name} · ${promptRevisionLabel(template, pin.templateRevisionId)}` : undefined;
 
   return (
     <div className={className}>
@@ -89,7 +91,7 @@ export function DecisionSuiteSetup({
         {settings.pinnedRevision && <small>
           {Object.keys(settings.pinnedRevision.decision.questions).length} questions · pinned, so later edits in Decision Compose make a new revision
         </small>}
-        {template && source?.kind === "template-use" && <small>Saved prompt: {template.name} · {promptRevisionLabel(template, source.templateRevisionId)}</small>}
+        {savedPrompt && <small>Saved prompt: {savedPrompt}</small>}
         {authoring.promptPinNotice?.suiteId === suite.id && <p className="evaluation-resolution-action" role="status">
           Input pinned to {authoring.promptPinNotice.promptName} · {authoring.promptPinNotice.revisionLabel}
           <button className="text-button" type="button" onClick={authoring.dismissPromptPinNotice}>Dismiss</button>

@@ -58,7 +58,7 @@ test("the retarget dialog includes the revision diff disclosure in its keyboard 
   try {
     await act(async () => root.render(createElement(DecisionPromptEvaluationDialog, { template, revisionId: "template-revision_two", onClose() {},
       evaluationSuites: [{ suite: { id: "evaluation-suite_focus", name: "Focus suite" }, pinnedRevisionId: "template-revision_one" }],
-      onPreviewEvaluation: () => ({ changes: [], diagnostics: [] }),
+      onPreviewEvaluation: () => ({ changes: [], diagnostics: [], existingDiagnostics: [] }),
     })));
     await act(async () => button("Review Focus suite…").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true })));
     // JSDOM does not implement summary's native focusability. Observe the
@@ -93,4 +93,32 @@ test("multiple evaluations of the same prompt retain distinct request choices", 
     assert.equal(container.querySelectorAll('optgroup[label="Repeated prompt"]').length, 2);
     assert.equal(errors.filter((message) => message.includes("same key")).length, 0, errors.join("\n"));
   } finally { console.error = originalError; await act(async () => root.unmount()); container.remove(); }
+});
+
+test("the retarget dialog keeps focus where the user put it when its owner re-renders", async () => {
+  const [{ createElement, act }, { createRoot }, { DecisionPromptEvaluationDialog }] = await Promise.all([
+    import("react"), import("react-dom/client"), ssrLoadModule("/app/templates/decision-prompt-evaluation-dialog.client.tsx"),
+  ]);
+  const decision = { state: "Before", questions: { ok: { type: "noul", instructions: "OK?" } } };
+  const template = { id: "template_refocus", name: "Refocus", kind: "decision", currentRevisionId: "template-revision_two", revisions: [
+    { id: "template-revision_one", createdAt: "2026-10-25T12:00:00Z", decision, variableDefaults: {} },
+    { id: "template-revision_two", createdAt: "2026-10-25T13:00:00Z", decision: { ...decision, state: "After" }, variableDefaults: {} },
+  ] };
+  const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
+  const button = (text) => [...container.querySelectorAll("button")].find((node) => node.textContent === text);
+  // Owners pass a fresh onClose each render, as DecisionTemplateContent does.
+  const render = (evaluateRevisionError) => root.render(createElement(DecisionPromptEvaluationDialog, { template, revisionId: "template-revision_two", onClose: () => {},
+    evaluationSuites: [{ suite: { id: "evaluation-suite_refocus", name: "Refocus suite" }, pinnedRevisionId: "template-revision_one" }],
+    onPreviewEvaluation: () => ({ changes: [], diagnostics: [], existingDiagnostics: [] }),
+    onEvaluateRevision: () => false, evaluateRevisionError,
+  }));
+  try {
+    await act(async () => render(undefined));
+    await act(async () => button("Review Refocus suite…").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true })));
+    assert.equal(document.activeElement?.textContent, "Cancel", "opening the review focuses Cancel");
+    button("Retarget suite").focus();
+    await act(async () => render("The suite could not be retargeted."));
+    assert.ok(container.querySelector('[role="alert"]'), "the failure is shown");
+    assert.equal(document.activeElement?.textContent, "Retarget suite");
+  } finally { await act(async () => root.unmount()); container.remove(); }
 });

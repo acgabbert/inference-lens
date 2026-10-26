@@ -110,3 +110,16 @@ test("retarget retains surviving overrides including empty strings and reports c
   assert.deepEqual(resolveProjectDecisionRequestRevision(updated, revision.id)!.values, { plan: "" });
   assert.deepEqual(project.decisionRequestRevisions.at(-1), parent.kind === "template-use" ? { ...parent, overrides: { ticket: "request ticket", plan: "" } } : undefined);
 });
+
+test("retarget review separates diagnostics the retarget introduces from ones the suite already had", () => {
+  const { project: withCase, suiteId } = withCases();
+  // A second case with no input value is already unrunnable before any retarget.
+  const base = addEvaluationCase(withCase, suiteId, suffix).project;
+  const options = { suiteId, templateId: "template_routing" as const, templateRevisionId: "template-revision_two" as const };
+  const project = appendDecisionPromptTemplateRevision(base, { templateId: "template_routing", idSuffix: "two", decision: {
+    ...decision, questions: { ...decision.questions, intent: { type: "noul", instructions: "Now boolean" } },
+  }, variableDefaults: { ticket: "default ticket", plan: "pro" } });
+  const preview = previewDecisionTemplateEvaluationRetarget(project, options);
+  assert.deepEqual(preview.diagnostics.map(({ code }) => code), ["wrong-question-type"]);
+  assert.deepEqual(preview.existingDiagnostics.map(({ code }) => code), ["empty-case-value"]);
+});

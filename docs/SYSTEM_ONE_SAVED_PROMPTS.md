@@ -77,9 +77,11 @@ recommended target does not change the suite target automatically.
 The dialog also lists suites whose request pins the same decision prompt.
 **Open** navigates to a suite already pinned to the selected revision. For a
 different revision, **Review …** shows removed and added variables and questions,
-changed question types, incompatible checks, and missing assignments across all
-cases. Expand **Revision changes** to inspect state, instructions, criteria
-ordering and defaults. Cancel leaves the suite unchanged.
+changed question types, and the incompatible checks and missing assignments the
+retarget introduces across all cases. Problems the suite already had on its
+current revision are listed separately under **Already needs repair**. Expand
+**Revision changes** to inspect state, instructions, criteria ordering and
+defaults. Cancel leaves the suite unchanged.
 
 **Retarget suite** creates a child request revision and moves only that suite's
 pin. It keeps configurations, target, bindings, cases, values and checks for

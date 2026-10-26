@@ -143,13 +143,29 @@ test("library evaluation preserves Compose and historical results through review
   expect(await file(page, `experiments/${planName}`)).toBe(planBefore);
   expect(await file(page, `experiments/${resultName}`)).toBe(resultBefore);
 
-  // A historical revision can deliberately restore compatibility; the same-pin action simply opens.
+  // Repairs the suite already owes on its current pin are not attributed to the next retarget.
   await page.setViewportSize({ width: 1440, height: 900 });
+  await openMode(page, "Prompts");
+  await page.getByRole("tablist", { name: "Decision editor", exact: true }).getByRole("tab", { name: "JSON", exact: true }).click();
+  await page.getByLabel("Decision input (state and questions)").fill(JSON.stringify({ state: "Reworded {{replacement}}", questions: { intent: { type: "noul", instructions: "Relevant?" } } }));
+  await page.getByRole("button", { name: "Create revision", exact: true }).click();
+  await page.getByRole("button", { name: "Evaluate in a suite…", exact: true }).click();
+  await dialog.getByRole("button", { name: "Review Ticket decision evaluation…", exact: true }).click();
+  await expect(dialog).toContainText("This retarget introduces no incompatible inputs or checks.");
+  const existing = dialog.locator("details", { hasText: "Already needs repair" });
+  await expect(existing.locator("summary")).toHaveText("Already needs repair (3), unchanged by this retarget");
+  await existing.locator("summary").click();
+  await expect(existing).toContainText("needs a choice question");
+  await expect(existing).toContainText('fills variable "ticket", which the pinned decision request does not use');
+  await expect(existing).toContainText('cannot resolve template variable "replacement"');
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+
+  // A historical revision can deliberately restore compatibility; the same-pin action simply opens.
   await openMode(page, "Prompts");
   await page.getByLabel("Revision", { exact: true }).selectOption("template-revision_one");
   await page.getByRole("button", { name: "Evaluate in a suite…", exact: true }).click();
   await dialog.getByRole("button", { name: "Review Ticket decision evaluation…", exact: true }).click();
-  await expect(dialog).toContainText("No incompatible inputs or checks found.");
+  await expect(dialog).toContainText("This retarget introduces no incompatible inputs or checks.");
   await dialog.getByRole("button", { name: "Retarget suite", exact: true }).click();
   await expect(page.locator("#evaluation-preflight-summary")).toHaveText("Ready to run");
   await openMode(page, "Prompts");

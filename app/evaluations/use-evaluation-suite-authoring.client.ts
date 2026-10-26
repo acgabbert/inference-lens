@@ -40,7 +40,7 @@ import {
   ProjectValidationError,
   retargetPromptTemplateUseRevision,
 } from "../../packages/core/src/project";
-import type { EvaluationSuite, ProjectFile } from "../../packages/core/src/project";
+import type { ProjectFile } from "../../packages/core/src/project";
 import type { ChatEvaluationSuite, EvaluationVariant } from "../../packages/core/src/evaluation-suites";
 import { isChatEvaluationSuite } from "../../packages/core/src/evaluation-suites";
 import type {

@@ -212,7 +212,13 @@ retarget preview and commit. Creation composes the existing template-use and
 decision-suite commands with `activate: false`. Retargeting appends a child
 request revision with `activate: false` and updates only the requested suite.
 Same-pin opening is a no-op. Preview projects the target pin through the existing
-resolver and all-case preflight without allocating IDs or writing a project.
+resolver and all-case decision preflight without allocating IDs or writing a
+project. It splits the projected diagnostics into `diagnostics` (introduced by the
+retarget) and `existingDiagnostics` (already reported on the current pin);
+diagnostics the retarget resolves are omitted. Preview and commit share
+`retainedDecisionOverrides` for which overrides survive, and the new request
+revision ID comes from `decisionRequestRevisionIdFor`, which owns the suffix
+convention for every decision request mutation.
 
 `useEvaluationSuiteAuthoring.evaluatePromptRevision` dispatches by template kind,
 adopts the returned project and selects the suite. It retains the chat path and
