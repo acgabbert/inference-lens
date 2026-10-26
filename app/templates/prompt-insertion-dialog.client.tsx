@@ -143,7 +143,6 @@ export function PromptInsertionDialog({
                           {[...visibleSelection.revisions].reverse().map((candidate) => (
                             <option key={candidate.id} value={candidate.id}>
                               {promptRevisionLabel(visibleSelection, candidate.id)}
-                              {candidate.name ? ` — ${candidate.name}` : ""}
                             </option>
                           ))}
                         </select>

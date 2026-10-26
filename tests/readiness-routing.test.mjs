@@ -108,7 +108,7 @@ function composerProps(pendingDestination, onDestinationHandled) {
       templateRunOverrides: {}, templateUsageCounts: new Map(), addComposerMessage: noop,
       updateComposerMessage: noop, removeComposerMessage: noop, updateTemplateUseValues: noop,
       saveTemplateUseRunValue: noop, updateTemplateUseOverride: noop,
-      updateTemplateUseToLatestRevision: noop, detachTemplateUse: noop, removeTemplateUse: noop,
+      setTemplateUseRevision: noop, detachTemplateUse: noop, removeTemplateUse: noop,
       createProjectTemplate: noop, saveProjectTemplate: noop, insertProjectTemplate: noop,
       clearImportNotice: noop,
     },

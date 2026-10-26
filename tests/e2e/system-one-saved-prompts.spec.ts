@@ -128,7 +128,7 @@ test("pinned revisions run through capture replay, review updates, detach and re
   await expect(page.locator(".brand")).toContainText("Saved decisions");
   await openMode(page, "Prompts");
   await page.locator(".template-list").getByRole("button", { name: /Ticket decision/ }).click();
-  await page.getByRole("button", { name: "Use Current", exact: true }).click();
+  await page.getByRole("button", { name: "Use Revision 1 (current)", exact: true }).click();
   const pane = page.getByRole("region", { name: "Decision request", exact: true });
   await expect(pane.getByLabel("State text")).toHaveValue("{{ticket}}");
   await expect(pane.getByLabel("State text")).toBeDisabled();
@@ -146,18 +146,30 @@ test("pinned revisions run through capture replay, review updates, detach and re
   await page.getByRole("button", { name: "Back to request" }).click();
   await expect(page.getByRole("article", { name: "Answer intent" })).toHaveCount(1);
   await expect(pane.getByLabel("State text")).toHaveValue("{{ticket}}");
-  await expect(pane.getByRole("region", { name: "Saved decision prompt" })).toContainText("Revision 1");
-  const updateAction = pane.getByRole("button", { name: "Update to latest revision…" });
-  await updateAction.click();
-  const review = page.getByRole("dialog", { name: "Update decision prompt" });
+  const pinnedRevision = pane.getByRole("region", { name: "Saved decision prompt" }).getByLabel("Pinned revision");
+  await expect(pinnedRevision.locator("option:checked")).toHaveText("Revision 1");
+  await expect(pinnedRevision.locator("option")).toHaveText(["Revision 2 (current)", "Revision 1"]);
+  await pinnedRevision.selectOption({ label: "Revision 2 (current)" });
+  const review = page.getByRole("dialog", { name: 'Switch "Ticket decision"' });
   await expect(review.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(review).toHaveCount(0);
-  await expect(updateAction).toBeFocused();
-  await updateAction.click();
+  await expect(pinnedRevision).toBeFocused();
+  await expect(pinnedRevision.locator("option:checked")).toHaveText("Revision 1");
+  await pinnedRevision.selectOption({ label: "Revision 2 (current)" });
+  // Variable consequences lead; the content diff waits behind its summary.
+  await expect(review).toContainText("Revision 1 → Revision 2 (current)");
+  const variableChanges = review.getByRole("region", { name: "Variable changes" });
+  await expect(variableChanges).toContainText("Needs a value{{plan}}");
+  await expect(variableChanges).not.toContainText("Values cleared");
+  const contentChanges = review.locator("details.revision-switch-diff");
+  await expect(contentChanges.locator("> summary")).toHaveText("Content changes · state changed, 1 default change");
+  await expect(review.getByText("Changed {{ticket}} / {{plan}}")).toBeHidden();
+  await contentChanges.locator("> summary").click();
   await expect(review).toContainText("New default");
-  await expect(review).toContainText("Changed {{ticket}} / {{plan}}");
-  await review.getByRole("button", { name: "Update revision", exact: true }).click();
+  await expect(review.getByText("Changed {{ticket}} / {{plan}}")).toBeVisible();
+  await review.getByRole("button", { name: "Switch revision", exact: true }).click();
+  await expect(pinnedRevision.locator("option:checked")).toHaveText("Revision 2 (current)");
   await expect(pane.getByLabel("State text")).toHaveValue("Changed {{ticket}} / {{plan}}");
   await expect(pane.getByRole("region", { name: "Variables" }).getByLabel("{{ticket}}")).toHaveValue("Override ticket");
   await expect(pane.getByRole("region", { name: "Variables" }).getByLabel("{{plan}}")).toHaveValue("");
@@ -199,13 +211,13 @@ test("Compose capture retains tokens and values, and invalid request replacement
   await openMode(page, "Compose");
   await page.getByLabel("Decision input (state and questions)").fill("{ unfinished");
   await openMode(page, "Prompts");
-  await page.getByRole("button", { name: "Use Current", exact: true }).click();
+  await page.getByRole("button", { name: "Use Revision 1 (current)", exact: true }).click();
   const discard = page.getByRole("dialog", { name: "Discard incomplete decision request?" });
   await discard.getByRole("button", { name: "Cancel", exact: true }).click();
   await openMode(page, "Compose");
   await expect(page.getByLabel("Decision input (state and questions)")).toHaveValue("{ unfinished");
   await openMode(page, "Prompts");
-  await page.getByRole("button", { name: "Use Current", exact: true }).click();
+  await page.getByRole("button", { name: "Use Revision 1 (current)", exact: true }).click();
   await discard.getByRole("button", { name: "Discard and use revision" }).click();
   await expect(page.getByLabel("State text")).toHaveValue("{{ticket}}");
   await expect(page.getByLabel("{{ticket}}", { exact: true })).toHaveValue("Capture this value");
@@ -278,7 +290,7 @@ test("ordered criteria appear in revision diffs, and decision prompts archive an
   await page.locator(".template-list").getByRole("button", { name: /Ticket decision/ }).click();
   await expect(page.getByLabel("Revision name", { exact: true })).toHaveValue("Reorder severity");
   await page.getByRole("button", { name: "Create revision", exact: true }).click();
-  await expect(page.getByLabel("Revision", { exact: true }).locator("option:checked")).toHaveText("Current — Reorder severity");
+  await expect(page.getByLabel("Revision", { exact: true }).locator("option:checked")).toHaveText("Reorder severity (current)");
   await page.locator(".template-revision-diff summary").click();
   await expect(page.locator(".template-revision-diff")).toContainText("Criteria and ordering");
   await expect(page.locator(".template-revision-diff")).toContainText("critical");
@@ -287,10 +299,10 @@ test("ordered criteria appear in revision diffs, and decision prompts archive an
   await expect(page.locator(".template-list strong")).toHaveText(["Chat helper"]);
   await page.getByRole("button", { name: /^Archived/ }).click();
   await expect(page.locator(".template-list strong")).toHaveText(["Ticket decision"]);
-  await expect(page.getByRole("button", { name: "Use Current", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Use Reorder severity (current)", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Restore", exact: true }).click();
   await expect(page.getByLabel("Prompt name")).toHaveValue("Ticket decision");
-  await expect(page.getByRole("button", { name: "Use Current", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Use Reorder severity (current)", exact: true })).toBeEnabled();
 });
 
 test("secret-like variables refuse reusable defaults without breaking the editor", async ({ page }) => {

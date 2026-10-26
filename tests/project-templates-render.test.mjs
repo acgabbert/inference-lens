@@ -138,7 +138,7 @@ test("renders a multiline run value with save and reset actions", async () => {
     onSaveValues: () => {},
     onSaveRunValue: () => {},
     onRunOverridesChange: () => {},
-    onUpdateLatest: () => {},
+    onSelectRevision: () => {},
     onDetach: () => {},
     onRemove: () => {},
   });
@@ -188,7 +188,7 @@ test("summarizes unresolved template values without repeating diagnostic rows", 
     onSaveValues: () => {},
     onSaveRunValue: () => {},
     onRunOverridesChange: () => {},
-    onUpdateLatest: () => {},
+    onSelectRevision: () => {},
     onDetach: () => {},
     onRemove: () => {},
   });

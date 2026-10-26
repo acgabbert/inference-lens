@@ -2983,6 +2983,12 @@ export interface UpdatePromptTemplateUseToLatestOptions {
   newOutputMessageIdSuffixes?: string[];
 }
 
+export interface UpdatePromptTemplateUseRevisionOptions
+  extends UpdatePromptTemplateUseToLatestOptions {
+  /** Omitted means the template's current revision. */
+  templateRevisionId?: PromptTemplateRevisionId;
+}
+
 /**
  * Appends a child conversation revision which pins one existing template use
  * to a different immutable prompt revision.
@@ -3061,11 +3067,24 @@ export function retargetPromptTemplateUseRevision(
 
 export function updatePromptTemplateUseToLatest(
   project: ProjectFile,
+  options: UpdatePromptTemplateUseToLatestOptions,
+): ProjectFile {
+  return updatePromptTemplateUseRevision(project, options);
+}
+
+/**
+ * Re-pins a draft conversation's template use to any revision of its
+ * template, in place. Values for variables the target no longer declares are
+ * dropped; output message IDs are kept positionally and extended as needed.
+ */
+export function updatePromptTemplateUseRevision(
+  project: ProjectFile,
   {
     conversationRevisionId,
     templateUseId,
+    templateRevisionId,
     newOutputMessageIdSuffixes = [],
-  }: UpdatePromptTemplateUseToLatestOptions,
+  }: UpdatePromptTemplateUseRevisionOptions,
 ): ProjectFile {
   const revision = project.conversationRevisions.find(
     ({ id }) => id === conversationRevisionId,
@@ -3084,11 +3103,19 @@ export function updatePromptTemplateUseToLatest(
     ({ id }) => id === item.use.templateId,
   )!;
   if (template.kind !== "chat") throw new Error("Conversation uses require a chat template.");
-  const latest = template.revisions.find(
-    ({ id }) => id === template.currentRevisionId,
-  )!;
-  if (item.use.templateRevisionId === latest.id) return project;
-  const outputCount = latest.messages.length;
+  const targetId = templateRevisionId ?? template.currentRevisionId;
+  const target = template.revisions.find(({ id }) => id === targetId);
+  if (!target) {
+    throw new ProjectValidationError([
+      {
+        code: "custom",
+        path: ["promptTemplates", template.id, "revisions", targetId],
+        message: "Prompt template revision does not exist.",
+      },
+    ]);
+  }
+  if (item.use.templateRevisionId === target.id) return project;
+  const outputCount = target.messages.length;
   const additionalCount = Math.max(
     0,
     outputCount - item.use.outputMessageIds.length,
@@ -3103,7 +3130,7 @@ export function updatePromptTemplateUseToLatest(
     ]);
   }
   const variableNames = new Set(
-    discoverTemplateVariables(latest.messages).variables.map(({ name }) => name),
+    discoverTemplateVariables(target.messages).variables.map(({ name }) => name),
   );
   const values = Object.fromEntries(
     Object.entries(item.use.values).filter(([name]) => variableNames.has(name)),
@@ -3128,7 +3155,7 @@ export function updatePromptTemplateUseToLatest(
         const use: PromptTemplateUse = {
           id: candidate.use.id,
           templateId: candidate.use.templateId,
-          templateRevisionId: latest.id,
+          templateRevisionId: target.id,
           values,
           outputMessageIds,
         };

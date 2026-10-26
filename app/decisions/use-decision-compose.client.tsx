@@ -5,6 +5,7 @@ import type { DecisionInput } from "../../packages/core/src/decision";
 import { discoverDecisionVariables } from "../../packages/core/src/decision-variables";
 import type { ConfirmationDialogRequest } from "../confirmation-dialog.client";
 import { DecisionTemplateUse } from "./decision-template-use.client";
+import { decisionTemplateUseOverrides } from "./decision-template-use-overrides";
 import type { PromptTemplateId, PromptTemplateRevisionId } from "../../packages/core/src/run-kernel";
 import {
   detachDecisionRequestTemplate,
@@ -12,7 +13,11 @@ import {
   useDecisionPromptTemplateRevision as createDecisionTemplateUse,
 } from "../../packages/core/src/decision-request";
 import type { CredentialSelection, DecisionTransport, ProviderTurnTransport } from "../../packages/contracts/src";
-import { activeDecisionRequestRevision, prepareDecisionRequestRun } from "../../packages/core/src/decision-request";
+import {
+  activeDecisionRequestRevision,
+  prepareDecisionRequestRun,
+  resolveProjectDecisionRequestRevision,
+} from "../../packages/core/src/decision-request";
 import type { DecisionRunTrace } from "../../packages/core/src/decision-trace";
 import type { DecisionPromptTemplate, ProjectFile } from "../../packages/core/src/project";
 import type { DecisionRequestRevisionId } from "../../packages/core/src/run-kernel/types";
@@ -184,6 +189,22 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
         )
       : undefined;
 
+  // The overrides a fold would record now, so a revision switch can say which
+  // in-progress values it would clear.
+  const pinnedResolved =
+    pinned && active?.kind === "template-use" ? resolveProjectDecisionRequestRevision(options.project!, active.id) : undefined;
+  const pinnedOverrideNames =
+    active?.kind === "template-use" && pinnedResolved
+      ? Object.keys(
+          decisionTemplateUseOverrides({
+            variables: pinnedResolved.variables,
+            effectiveValues: pinnedResolved.values,
+            existingOverrides: active.overrides,
+            values: draft.values,
+          }),
+        )
+      : [];
+
   // Advice only: describes how the selected target relates to the pinned
   // prompt's recommendation without ever selecting a connection or model.
   const recommendedTarget = pinned?.recommendedTarget;
@@ -215,14 +236,17 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
     session.reset();
   }
 
-  function mutatePin(kind: "update" | "detach"): void {
+  function mutatePin(change: { kind: "retarget"; templateRevisionId: PromptTemplateRevisionId } | { kind: "detach" }): void {
     if (!options.project || session.executing) return;
     const folded = decisionProject.fold(options.project);
     const revision = activeDecisionRequestRevision(folded);
     if (revision?.kind !== "template-use") return;
     adoptMutation(
-      kind === "update"
-        ? updateDecisionRequestTemplateRevision(folded, { decisionRequestRevisionId: revision.id })
+      change.kind === "retarget"
+        ? updateDecisionRequestTemplateRevision(folded, {
+            decisionRequestRevisionId: revision.id,
+            templateRevisionId: change.templateRevisionId,
+          })
         : detachDecisionRequestTemplate(folded, { decisionRequestRevisionId: revision.id }),
     );
   }
@@ -294,10 +318,11 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
                   <DecisionTemplateUse
                     template={pinned}
                     revisionId={active.templateRevisionId}
+                    overrideNames={pinnedOverrideNames}
                     locked={session.executing}
                     recommendation={recommendation}
-                    onDetach={() => mutatePin("detach")}
-                    onUpdate={() => mutatePin("update")}
+                    onDetach={() => mutatePin({ kind: "detach" })}
+                    onSelectRevision={(templateRevisionId) => mutatePin({ kind: "retarget", templateRevisionId })}
                     onEdit={editPinnedSource}
                   />
                 ),

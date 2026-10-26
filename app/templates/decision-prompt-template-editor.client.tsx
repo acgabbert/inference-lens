@@ -140,7 +140,6 @@ export function DecisionPromptTemplateEditor(props: Props) {
             {[...template.revisions].reverse().map((entry) => (
               <option value={entry.id} key={entry.id}>
                 {promptRevisionLabel(template, entry.id)}
-                {entry.name ? ` — ${entry.name}` : ""}
               </option>
             ))}
           </select>

@@ -15,7 +15,7 @@ import {
   setPromptTemplateRecommendedTarget,
   updateProjectDraft,
   updatePromptTemplateDraft,
-  updatePromptTemplateUseToLatest,
+  updatePromptTemplateUseRevision,
   updatePromptTemplateUseValues,
 } from "../../packages/core/src/project";
 import type {
@@ -52,7 +52,6 @@ import {
   type DecisionTemplateEditorMemoryStore,
 } from "./decision-template-editor-memory.client";
 import { randomUUID } from "../../packages/core/src/random-id";
-import { discoverTemplateVariables } from "../../packages/core/src/template-engine";
 import type { ConfirmationDialogRequest } from "../confirmation-dialog.client";
 import {
   pendingBranchMessagesAfterItemUpdate,
@@ -161,7 +160,8 @@ export interface ProjectTemplatesHandle {
   updateTemplateUseValues(templateUseId: PromptTemplateUseId, values: Record<string, string>): void;
   saveTemplateUseRunValue(templateUseId: PromptTemplateUseId, values: Record<string, string>, useOverrides: Record<string, string>): void;
   updateTemplateUseOverride(templateUseId: PromptTemplateUseId, values: Record<string, string>): void;
-  updateTemplateUseToLatestRevision(templateUseId: PromptTemplateUseId): void;
+  /** Re-pins a use to any revision of its template; callers review the switch first. */
+  setTemplateUseRevision(templateUseId: PromptTemplateUseId, templateRevisionId: PromptTemplateRevisionId): void;
   detachTemplateUse(templateUseId: PromptTemplateUseId): void;
   removeTemplateUse(templateUseId: PromptTemplateUseId): void;
   addComposerMessage(): void;
@@ -610,16 +610,19 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     const remainingIds = new Set(removeDraftMessage(input.messages, id).map((message) => message.id));
     mutateAuthoredItems((items) => items.filter((item) => item.kind === "template-use" || remainingIds.has(item.message.id)));
   }
-  function updateTemplateUseToLatestRevision(templateUseId: PromptTemplateUseId): void {
-    const currentProject = input.ensureProjectDocument(); const currentRevision = currentProject.conversationRevisions.find(({ id }) => id === currentProject.defaults.conversationRevisionId)!;
-    const item = currentRevision.items.find((candidate) => candidate.kind === "template-use" && candidate.use.id === templateUseId);
+  function setTemplateUseRevision(templateUseId: PromptTemplateUseId, templateRevisionId: PromptTemplateRevisionId): void {
+    const { project, revisionId } = projectForUseMutation();
+    const item = project.conversationRevisions.find(({ id }) => id === revisionId)!.items.find((candidate) => candidate.kind === "template-use" && candidate.use.id === templateUseId);
     if (!item || item.kind !== "template-use") return;
-    const template = currentProject.promptTemplates.find(({ id }) => id === item.use.templateId)!;
+    const template = project.promptTemplates.find(({ id }) => id === item.use.templateId)!;
     if (template.kind !== "chat") return;
-    const pinned = template.revisions.find(({ id }) => id === item.use.templateRevisionId)!; const latest = template.revisions.find(({ id }) => id === template.currentRevisionId)!;
-    const vars = (messages: PromptTemplateMessages) => discoverTemplateVariables(messages).variables.map(({ name }) => name).join(", ") || "none";
-    const describe = (messages: PromptTemplateMessages) => messages.map(({ role, content: text }) => `${role}: ${text}`).join("\n");
-    input.requestConfirmation({ title: `Update "${template.name}"?`, description: "The use will pin the latest immutable revision. Values for variables that still exist will be kept; assignments and session overrides for removed variables will be cleared.", confirmLabel: "Update to latest", details: [{ label: "From", value: pinned.id }, { label: "To", value: latest.id }, { label: "Variables", value: `${vars(pinned.messages)} → ${vars(latest.messages)}` }, { label: "Current content", value: describe(pinned.messages) }, { label: "Latest content", value: describe(latest.messages) }], onConfirm() { const { project, revisionId } = projectForUseMutation(); const count = latest.messages.length; const next = updatePromptTemplateUseToLatest(project, { conversationRevisionId: revisionId, templateUseId, newOutputMessageIdSuffixes: Array.from({ length: Math.max(0, count - item.use.outputMessageIds.length) }, () => randomUUID()) }); const overrides = templateRunOverridesAfterRevisionUpdate(templateRunOverrides, templateUseId, latest.messages); setTemplateRunOverrides(overrides); adoptAuthoredProject(next, overrides); } });
+    const target = template.revisions.find(({ id }) => id === templateRevisionId);
+    if (!target) return;
+    const count = target.messages.length;
+    const next = updatePromptTemplateUseRevision(project, { conversationRevisionId: revisionId, templateUseId, templateRevisionId, newOutputMessageIdSuffixes: Array.from({ length: Math.max(0, count - item.use.outputMessageIds.length) }, () => randomUUID()) });
+    const overrides = templateRunOverridesAfterRevisionUpdate(templateRunOverrides, templateUseId, target.messages);
+    setTemplateRunOverrides(overrides);
+    adoptAuthoredProject(next, overrides);
   }
   function detachTemplateUse(templateUseId: PromptTemplateUseId): void {
     input.requestConfirmation({
@@ -681,7 +684,7 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     updateTemplateUseValues,
     saveTemplateUseRunValue,
     updateTemplateUseOverride,
-    updateTemplateUseToLatestRevision,
+    setTemplateUseRevision,
     detachTemplateUse,
     removeTemplateUse,
     addComposerMessage,

@@ -96,7 +96,7 @@ function requestComposer(overrides = {}) {
       updateTemplateUseValues: noop,
       saveTemplateUseRunValue: noop,
       updateTemplateUseOverride: noop,
-      updateTemplateUseToLatestRevision: noop,
+      setTemplateUseRevision: noop,
       detachTemplateUse: noop,
       removeTemplateUse: noop,
       createProjectTemplate: noop,

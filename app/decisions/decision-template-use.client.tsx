@@ -1,12 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { diffDecisionPromptTemplateRevisions } from "../../packages/core/src/decision-template-revision-diff";
 import { discoverDecisionVariables } from "../../packages/core/src/decision-variables";
-import type { DecisionPromptTemplate, DecisionPromptTemplateRevision } from "../../packages/core/src/project";
+import type { DecisionPromptTemplate } from "../../packages/core/src/project";
 import type { PromptTemplateRevisionId } from "../../packages/core/src/run-kernel";
 import { DecisionRevisionDiff } from "../templates/decision-revision-diff.client";
-import { promptRevisionLabel } from "../templates/prompt-revision-label";
+import {
+  promptRevisionLabel,
+  summarizeDecisionRevisionDiff,
+  summarizeRevisionVariableChanges,
+} from "../templates/prompt-revision-label";
+import { PinnedRevisionSelect, RevisionSwitchReview } from "../templates/revision-switch-review.client";
 
 export interface DecisionTemplateRecommendation {
   model: string;
@@ -27,38 +32,47 @@ function recommendationText(recommendation: DecisionTemplateRecommendation): str
 export function DecisionTemplateUse({
   template,
   revisionId,
+  overrideNames,
   locked,
   recommendation,
   onEdit,
-  onUpdate,
+  onSelectRevision,
   onDetach,
 }: {
   template: DecisionPromptTemplate;
   revisionId: PromptTemplateRevisionId;
+  /** Variables Compose currently overrides; a switch clears those the target lacks. */
+  overrideNames: readonly string[];
   locked: boolean;
   recommendation?: DecisionTemplateRecommendation;
   onEdit(): void;
-  onUpdate(): void;
+  /** Re-pins the request; the card has already shown the switch review. */
+  onSelectRevision(revisionId: PromptTemplateRevisionId): void;
   onDetach(): void;
 }) {
-  const [review, setReview] = useState(false);
-  const updateAction = useRef<HTMLButtonElement>(null);
+  const [switchTargetId, setSwitchTargetId] = useState<PromptTemplateRevisionId>();
+  const revisionSelect = useRef<HTMLSelectElement>(null);
   const pinned = template.revisions.find(({ id }) => id === revisionId)!;
-  const latest = template.revisions.find(({ id }) => id === template.currentRevisionId)!;
+  const switchTarget = template.revisions.find(({ id }) => id === switchTargetId);
 
   function closeReview(): void {
-    setReview(false);
-    updateAction.current?.focus();
+    setSwitchTargetId(undefined);
+    revisionSelect.current?.focus();
   }
 
   return (
     <section className="decision-template-use" aria-label="Saved decision prompt">
-      <strong>{template.name}</strong>
-      <span>
-        {" · "}
-        {promptRevisionLabel(template, revisionId)}
-        {template.archivedAt ? " · Archived" : ""}
-      </span>
+      <div className="decision-template-use-heading">
+        <strong>{template.name}</strong>
+        <PinnedRevisionSelect
+          template={template}
+          revisionId={revisionId}
+          disabled={locked || Boolean(template.archivedAt)}
+          selectRef={revisionSelect}
+          onSelect={setSwitchTargetId}
+        />
+        {template.archivedAt && <span>Archived</span>}
+      </div>
       {recommendation && (
         <p>
           Recommended target: {recommendation.connectionName} · {recommendation.model}.{" "}
@@ -70,111 +84,31 @@ export function DecisionTemplateUse({
         <button className="text-button" disabled={locked} type="button" onClick={onEdit}>
           Edit source
         </button>
-        {latest.id !== pinned.id && (
-          <button
-            className="text-button"
-            disabled={locked || Boolean(template.archivedAt)}
-            ref={updateAction}
-            type="button"
-            onClick={() => setReview(true)}
-          >
-            Update to latest revision…
-          </button>
-        )}
         <button className="text-button" disabled={locked} type="button" onClick={onDetach}>
           Detach
         </button>
       </div>
-      {review && (
-        <DecisionUpdateReview
-          template={template}
-          pinned={pinned}
-          latest={latest}
+      {switchTarget && (
+        <RevisionSwitchReview
+          title={`Switch "${template.name}"`}
+          fromLabel={promptRevisionLabel(template, pinned.id)}
+          toLabel={promptRevisionLabel(template, switchTarget.id)}
+          changes={summarizeRevisionVariableChanges({
+            before: { variables: discoverDecisionVariables(pinned.decision).variables, defaults: pinned.variableDefaults },
+            after: { variables: discoverDecisionVariables(switchTarget.decision).variables, defaults: switchTarget.variableDefaults },
+            kept: overrideNames,
+          })}
+          diffSummary={summarizeDecisionRevisionDiff(diffDecisionPromptTemplateRevisions(pinned, switchTarget))}
           locked={locked}
           onCancel={closeReview}
           onConfirm={() => {
-            setReview(false);
-            onUpdate();
+            setSwitchTargetId(undefined);
+            onSelectRevision(switchTarget.id);
           }}
-        />
+        >
+          <DecisionRevisionDiff diff={diffDecisionPromptTemplateRevisions(pinned, switchTarget)} />
+        </RevisionSwitchReview>
       )}
     </section>
-  );
-}
-
-function DecisionUpdateReview({
-  template,
-  pinned,
-  latest,
-  locked,
-  onCancel,
-  onConfirm,
-}: {
-  template: DecisionPromptTemplate;
-  pinned: DecisionPromptTemplateRevision;
-  latest: DecisionPromptTemplateRevision;
-  locked: boolean;
-  onCancel(): void;
-  onConfirm(): void;
-}) {
-  const dialog = useRef<HTMLElement>(null);
-  const cancel = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    cancel.current?.focus();
-  }, []);
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.stopPropagation();
-        onCancel();
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const focusable = dialog.current?.querySelectorAll<HTMLElement>(
-        "button:not([disabled]), select:not([disabled]), input:not([disabled]), summary",
-      );
-      if (!focusable?.length) return;
-      const first = focusable[0]!;
-      const last = focusable[focusable.length - 1]!;
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [onCancel]);
-
-  const variables = discoverDecisionVariables(latest.decision).variables;
-  return (
-    <div className="confirmation-backdrop" role="presentation">
-      <section
-        aria-label="Update decision prompt"
-        aria-modal="true"
-        className="confirmation-dialog decision-update-dialog"
-        ref={dialog}
-        role="dialog"
-      >
-        <h2>Update decision prompt</h2>
-        <p>
-          {promptRevisionLabel(template, pinned.id)} → {promptRevisionLabel(template, latest.id)}. Overrides for
-          surviving variables are retained; obsolete overrides are removed. Newly required values must be filled
-          before running.
-        </p>
-        <DecisionRevisionDiff diff={diffDecisionPromptTemplateRevisions(pinned, latest)} />
-        <p>Variables in the new revision: {variables.join(", ") || "None"}</p>
-        <div className="confirmation-actions">
-          <button className="button secondary" ref={cancel} type="button" onClick={onCancel}>
-            Cancel
-          </button>
-          <button className="button primary" disabled={locked} type="button" onClick={onConfirm}>
-            Update revision
-          </button>
-        </div>
-      </section>
-    </div>
   );
 }

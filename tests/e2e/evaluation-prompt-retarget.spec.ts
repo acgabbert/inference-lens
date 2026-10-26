@@ -91,12 +91,12 @@ test("evaluate-in-a-suite dialog states the pinned revision, and arrival confirm
 
   const dialog = page.getByRole("dialog", { name: "Evaluate in a suite" });
   await expect(dialog.getByText("Nothing runs until you start the evaluation.")).toBeVisible();
-  await expect(dialog.getByText("Support QA — currently Revision 1 → will pin Current")).toBeVisible();
+  await expect(dialog.getByText("Support QA — currently Revision 1 → will pin Revision 2 (current)")).toBeVisible();
   await dialog.getByRole("button", { name: "Use Support QA" }).click();
 
   const evaluationsButton = page.getByRole("navigation", { name: "Application mode" }).getByRole("button", { name: "Evaluations" });
   await expect(evaluationsButton).toHaveAttribute("aria-current", "page");
-  await expect(page.locator(".evaluation-resolution-action", { hasText: "Input pinned to Support reply · Current" })).toBeVisible();
+  await expect(page.locator(".evaluation-resolution-action", { hasText: "Input pinned to Support reply · Revision 2 (current)" })).toBeVisible();
   await expect(page.locator("h2", { hasText: "Support QA" })).toBeVisible();
 
   // The suite now pins the current revision: reopening the dialog on the same
