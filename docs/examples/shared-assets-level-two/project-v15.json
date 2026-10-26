@@ -1,0 +1,421 @@
+{
+  "schemaVersion": 15,
+  "projectId": "project_shared-assets-example",
+  "name": "Shared assets migration example",
+  "connectionRequirements": [
+    {
+      "id": "connection_example",
+      "name": "Example provider",
+      "provider": "openai-compatible",
+      "endpoint": "https://example.invalid/v1"
+    }
+  ],
+  "conversations": [
+    {
+      "id": "conversation_example",
+      "name": "Explain"
+    }
+  ],
+  "conversationRevisions": [
+    {
+      "id": "revision_chat-1",
+      "conversationId": "conversation_example",
+      "items": [
+        {
+          "kind": "template-use",
+          "use": {
+            "id": "template-use_explain",
+            "templateId": "template_chat",
+            "templateRevisionId": "template-revision_chat-1",
+            "values": {
+              "topic": "shared assets"
+            },
+            "outputMessageIds": [
+              "message_explain"
+            ]
+          }
+        }
+      ],
+      "createdAt": "2026-10-25T12:00:00.000Z"
+    },
+    {
+      "id": "revision_chat-2",
+      "conversationId": "conversation_example",
+      "parentRevisionId": "revision_chat-1",
+      "items": [
+        {
+          "kind": "template-use",
+          "use": {
+            "id": "template-use_explain",
+            "templateId": "template_chat",
+            "templateRevisionId": "template-revision_chat-1",
+            "values": {
+              "topic": "migration safety"
+            },
+            "outputMessageIds": [
+              "message_explain"
+            ]
+          }
+        }
+      ],
+      "createdAt": "2026-10-25T12:00:00.000Z"
+    }
+  ],
+  "tools": [
+    {
+      "id": "tool_lookup",
+      "name": "lookup",
+      "description": "Look up an example.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  ],
+  "toolMocks": [
+    {
+      "id": "tool-mock_lookup",
+      "toolId": "tool_lookup",
+      "name": "Saved fixture",
+      "enabled": true,
+      "match": {
+        "kind": "always"
+      },
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "Reusable fixture value"
+          }
+        ],
+        "isError": false
+      }
+    }
+  ],
+  "promptTemplates": [
+    {
+      "id": "template_chat",
+      "kind": "chat",
+      "name": "Explain a topic",
+      "currentRevisionId": "template-revision_chat-1",
+      "recommendedTarget": {
+        "connectionRequirementId": "connection_example",
+        "model": "chat-example"
+      },
+      "revisions": [
+        {
+          "id": "template-revision_chat-1",
+          "createdAt": "2026-10-25T12:00:00.000Z",
+          "name": "Imported",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Explain {{topic}}."
+            }
+          ],
+          "variableDefaults": {
+            "topic": "shared assets"
+          },
+          "externalImportId": "external-import_example"
+        }
+      ],
+      "draft": {
+        "sourceRevisionId": "template-revision_chat-1",
+        "revisionName": "More detail",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Explain {{topic}} with examples."
+          }
+        ],
+        "variableDefaults": {
+          "topic": "draft-only topic"
+        }
+      }
+    },
+    {
+      "id": "template_decision",
+      "kind": "decision",
+      "name": "Route ticket",
+      "currentRevisionId": "template-revision_decision-1",
+      "revisions": [
+        {
+          "id": "template-revision_decision-1",
+          "createdAt": "2026-10-25T12:00:00.000Z",
+          "decision": {
+            "state": "Ticket: {{ticket}}; region: {{region}}",
+            "questions": {
+              "route": {
+                "type": "choice",
+                "instructions": "Choose a queue.",
+                "criteria": {
+                  "support": "Needs assistance",
+                  "sales": "Wants to buy"
+                }
+              }
+            }
+          },
+          "variableDefaults": {
+            "region": "global"
+          }
+        }
+      ],
+      "draft": {
+        "sourceRevisionId": "template-revision_decision-1",
+        "revisionName": "Clarify routing",
+        "decision": {
+          "state": "Ticket: {{ticket}}; region: {{region}}",
+          "questions": {
+            "route": {
+              "type": "choice",
+              "instructions": "Choose the best queue for this ticket.",
+              "criteria": {
+                "support": "Needs assistance",
+                "sales": "Wants to buy"
+              }
+            }
+          }
+        },
+        "variableDefaults": {
+          "region": "draft-only region"
+        }
+      }
+    }
+  ],
+  "externalImports": [
+    {
+      "id": "external-import_example",
+      "source": {
+        "adapter": "n8n",
+        "resource": {
+          "kind": "workflow",
+          "id": "workflow-example",
+          "name": "Example workflow"
+        }
+      },
+      "invocation": {
+        "id": "node-example",
+        "name": "Prompt",
+        "type": "example"
+      },
+      "authored": [
+        {
+          "path": "parameters.prompt",
+          "role": "user",
+          "syntax": "external-expression",
+          "text": "Explain {{$json.topic}}."
+        }
+      ],
+      "bindings": [
+        {
+          "authoredPath": "parameters.prompt",
+          "expression": "{{$json.topic}}",
+          "source": {
+            "kind": "expression-span",
+            "startOffset": 8,
+            "endOffset": 23
+          },
+          "resolvedValue": "shared assets",
+          "status": "resolved",
+          "valueEvidence": {
+            "kind": "user-supplied"
+          }
+        }
+      ],
+      "importedAt": "2026-10-25T12:00:00.000Z",
+      "importerVersion": 1,
+      "sourceDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fidelity": "authored-only",
+      "warnings": [],
+      "projection": {
+        "kind": "prompt-template",
+        "templateId": "template_chat",
+        "templateRevisionId": "template-revision_chat-1",
+        "variables": [
+          {
+            "bindingIndex": 0,
+            "authoredPath": "parameters.prompt",
+            "expression": "{{$json.topic}}",
+            "variableName": "topic"
+          }
+        ]
+      }
+    }
+  ],
+  "evaluationSuites": [
+    {
+      "id": "evaluation-suite_chat",
+      "name": "Chat cases",
+      "input": {
+        "kind": "conversation-revision",
+        "conversationRevisionId": "revision_chat-1"
+      },
+      "execution": {
+        "target": {
+          "connectionRequirementId": "connection_example",
+          "model": "chat-example",
+          "protocol": "openai-compatible-chat-completions"
+        },
+        "responseMode": "buffered",
+        "options": {
+          "temperature": 0.2
+        },
+        "repetitions": 1,
+        "toolIds": [],
+        "turnCeiling": 3
+      },
+      "variants": [
+        {
+          "id": "evaluation-variant_chat",
+          "name": "Base",
+          "overrides": {}
+        },
+        {
+          "id": "evaluation-variant_no-temperature",
+          "name": "Provider default temperature",
+          "overrides": {
+            "options": {
+              "temperature": null
+            }
+          }
+        }
+      ],
+      "inputBindings": [
+        {
+          "id": "evaluation-input_topic",
+          "name": "Topic",
+          "target": {
+            "kind": "template-variable",
+            "templateUseId": "template-use_explain",
+            "variableName": "topic"
+          }
+        }
+      ],
+      "cases": [
+        {
+          "id": "evaluation-case_chat",
+          "name": "Ownership",
+          "values": {
+            "evaluation-input_topic": "ownership"
+          },
+          "checks": [
+            {
+              "checkId": "check_contains",
+              "kind": "contains",
+              "value": "ownership"
+            }
+          ],
+          "referenceAnswer": "Shared definitions and personal edits have different owners."
+        }
+      ]
+    },
+    {
+      "id": "evaluation-suite_decision",
+      "name": "Routing cases",
+      "input": {
+        "kind": "decision-request-revision",
+        "decisionRequestRevisionId": "decision-revision_use"
+      },
+      "execution": {
+        "target": {
+          "connectionRequirementId": "connection_example",
+          "model": "decision-example",
+          "protocol": "systemone"
+        },
+        "repetitions": 1
+      },
+      "variants": [
+        {
+          "id": "evaluation-variant_decision",
+          "name": "Base",
+          "overrides": {}
+        }
+      ],
+      "inputBindings": [
+        {
+          "id": "evaluation-input_ticket",
+          "name": "Ticket",
+          "target": {
+            "kind": "decision-variable",
+            "variableName": "ticket"
+          }
+        }
+      ],
+      "cases": [
+        {
+          "id": "evaluation-case_decision",
+          "name": "Needs help",
+          "values": {
+            "evaluation-input_ticket": "Please help me sign in."
+          },
+          "checks": [
+            {
+              "checkId": "check_route",
+              "kind": "decision-choice",
+              "questionId": "route",
+              "option": "support"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "decisionRequests": [
+    {
+      "id": "decision-request_example",
+      "name": "Ticket routing"
+    }
+  ],
+  "decisionRequestRevisions": [
+    {
+      "id": "decision-revision_inline",
+      "decisionRequestId": "decision-request_example",
+      "kind": "inline",
+      "decision": {
+        "state": "Ticket: {{ticket}}; region: {{region}}",
+        "questions": {
+          "route": {
+            "type": "choice",
+            "instructions": "Choose a queue.",
+            "criteria": {
+              "support": "Needs assistance",
+              "sales": "Wants to buy"
+            }
+          }
+        }
+      },
+      "values": {
+        "ticket": "Legacy saved ticket",
+        "region": "global"
+      },
+      "createdAt": "2026-10-25T12:00:00.000Z"
+    },
+    {
+      "id": "decision-revision_use",
+      "decisionRequestId": "decision-request_example",
+      "parentRevisionId": "decision-revision_inline",
+      "kind": "template-use",
+      "templateId": "template_decision",
+      "templateRevisionId": "template-revision_decision-1",
+      "overrides": {
+        "ticket": ""
+      },
+      "createdAt": "2026-10-25T12:00:00.000Z"
+    }
+  ],
+  "defaults": {
+    "conversationRevisionId": "revision_chat-2",
+    "decisionRequestRevisionId": "decision-revision_use",
+    "target": {
+      "connectionRequirementId": "connection_example",
+      "model": "chat-example",
+      "protocol": "openai-compatible-chat-completions"
+    },
+    "options": {
+      "temperature": 0.4
+    },
+    "enabledToolIds": [
+      "tool_lookup"
+    ]
+  }
+}

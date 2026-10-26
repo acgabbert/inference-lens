@@ -1,0 +1,123 @@
+{
+  "records": {
+    "drafts/draft_template_chat.json": {
+      "schemaVersion": 1,
+      "projectId": "project_shared-assets-example",
+      "draftId": "draft_template_chat",
+      "asset": {
+        "kind": "chat-prompt",
+        "id": "template_chat"
+      },
+      "base": {
+        "revisionId": "template-revision_chat-1",
+        "snapshot": {
+          "id": "template-revision_chat-1",
+          "createdAt": "2026-10-25T12:00:00.000Z",
+          "name": "Imported",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Explain {{topic}}."
+            }
+          ],
+          "variableDefaults": {
+            "topic": "shared assets"
+          },
+          "externalImportId": "external-import_example"
+        }
+      },
+      "edited": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Explain {{topic}} with examples."
+          }
+        ],
+        "variableDefaults": {
+          "topic": "draft-only topic"
+        },
+        "revisionName": "More detail"
+      }
+    },
+    "drafts/draft_template_decision.json": {
+      "schemaVersion": 1,
+      "projectId": "project_shared-assets-example",
+      "draftId": "draft_template_decision",
+      "asset": {
+        "kind": "decision-prompt",
+        "id": "template_decision"
+      },
+      "base": {
+        "revisionId": "template-revision_decision-1",
+        "snapshot": {
+          "id": "template-revision_decision-1",
+          "createdAt": "2026-10-25T12:00:00.000Z",
+          "decision": {
+            "state": "Ticket: {{ticket}}; region: {{region}}",
+            "questions": {
+              "route": {
+                "type": "choice",
+                "instructions": "Choose a queue.",
+                "criteria": {
+                  "support": "Needs assistance",
+                  "sales": "Wants to buy"
+                }
+              }
+            }
+          },
+          "variableDefaults": {
+            "region": "global"
+          }
+        }
+      },
+      "edited": {
+        "decision": {
+          "state": "Ticket: {{ticket}}; region: {{region}}",
+          "questions": {
+            "route": {
+              "type": "choice",
+              "instructions": "Choose the best queue for this ticket.",
+              "criteria": {
+                "support": "Needs assistance",
+                "sales": "Wants to buy"
+              }
+            }
+          }
+        },
+        "variableDefaults": {
+          "region": "draft-only region"
+        },
+        "revisionName": "Clarify routing"
+      }
+    },
+    "selections.json": {
+      "schemaVersion": 1,
+      "projectId": "project_shared-assets-example",
+      "chat": {
+        "selectedInput": {
+          "kind": "saved-conversation-revision",
+          "revisionId": "revision_chat-2"
+        },
+        "execution": {
+          "target": {
+            "connectionRequirementId": "connection_example",
+            "model": "chat-example",
+            "protocol": "openai-compatible-chat-completions"
+          },
+          "options": {
+            "temperature": 0.4
+          },
+          "enabledToolIds": [
+            "tool_lookup"
+          ]
+        }
+      },
+      "decision": {
+        "selectedInput": {
+          "kind": "saved-decision-request-revision",
+          "revisionId": "decision-revision_use"
+        }
+      }
+    }
+  }
+}

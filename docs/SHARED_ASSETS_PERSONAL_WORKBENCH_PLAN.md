@@ -2,8 +2,10 @@
 
 **Status:** Level 1 implemented October 25, 2026; verification recorded below.
 Level 2 design choices were approved October 25, 2026, as recorded below;
-implementation has not started. The next deliverable is slice 2a's field inventory
-and migration examples. Level 3 remains proposed. The product direction is agreed:
+implementation has not started. Slice 2a's [field inventory, migration examples,
+and contract proposals](SHARED_ASSETS_LEVEL_TWO_DESIGN.md) are ready for review
+as of October 26, 2026; the proposed contracts are not yet approved. Level 3
+remains proposed. The product direction is agreed:
 Inference Lens is a personal workbench for potentially shared assets. Approved
 choices are distinguished from the remaining schema and recovery mechanics that
 still need design review.
@@ -39,7 +41,7 @@ experience. Level 2 establishes ownership; level 3 changes physical organization
 
 ## Current behavior and constraints
 
-The current strict Project v14 document owns conversations and their revisions,
+The current strict Project v15 document owns conversations and their revisions,
 prompt templates and their revisions and drafts, tools and mock fixtures,
 external-import receipts, evaluation suites, decision requests and revisions,
 connection requirements, and defaults. See [the core contract](../packages/core/src/project.ts)
@@ -266,6 +268,13 @@ versioned schema transition; this agreement does not change Project v14 in place
 
 ### Next design deliverable: slice 2a
 
+The [slice 2a review](SHARED_ASSETS_LEVEL_TWO_DESIGN.md) inventories the v15
+fields after System One saved prompts/evaluations, supplies concrete before/after
+JSON, and proposes contracts for review. It also identifies a gap between
+today's compare-then-write guard and the approved cross-host no-silent-overwrite
+guarantee. Resolve that storage strategy before treating the proposed record
+layout as final. No checklist item below is approved merely by that proposal.
+
 Produce a field-by-field ownership inventory and concrete before/after migration
 examples for a prompt, chat request, decision request, and evaluation suite.
 Include saved values, defaults, branches, temporary fixtures, import receipts,
@@ -327,7 +336,8 @@ status; automatic local persistence must not imply an access-control guarantee.
   Do not silently change what existing schema versions mean or loosen strict
   parsers. Choose exact version numbers during slice 2a's contract review.
 - [System One saved prompts](SYSTEM_ONE_SAVED_PROMPTS_PLAN.md#relationship-to-shared-assets-level-2)
-  lands first and owns project schema v15 (accepted October 25, 2026); Level 2's
+  owns project schema v15 (accepted October 25, 2026), now present on the base
+  branch assumed to land unchanged for slice 2a; Level 2's
   shared-definition change takes a later version. Slice 2a's inventory must
   include its decision template arms, decision template drafts (same draft
   envelope as chat drafts), and template-use `overrides` on decision request
