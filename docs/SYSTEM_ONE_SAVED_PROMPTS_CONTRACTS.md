@@ -117,7 +117,8 @@ IDs. Source metadata is derived, not another persisted content copy.
 The resolver merges pinned defaults and request overrides only. It preserves
 tokens in authored content. Missing/malformed variables appear in diagnostics;
 getting a resolved source does not mean it can run. Evaluation cases apply
-their values after source resolution, then `prepareDecisionRequestRun` renders
+their values after source resolution (a decision case may leave a binding
+unfilled, which blocks the case in preflight), then `prepareDecisionRequestRun` renders
 and enforces execution readiness. Compose uses the same rendering boundary.
 Experiment snapshots continue receiving resolved content in the existing
 format. Target recommendations and credentials never enter value resolution.

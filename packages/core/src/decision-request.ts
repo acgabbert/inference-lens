@@ -242,7 +242,11 @@ export function prepareDecisionRequestRun(
     : { ok: true, decision: resolved.decision };
 }
 
-/** Resolve historical pins, including archived templates, without selecting a target. */
+/**
+ * Resolve historical pins, including archived templates, without selecting a
+ * target. A missing pin throws rather than returning `undefined`: validated
+ * projects cannot hold one, so reaching it means the caller skipped validation.
+ */
 function decisionTemplatePin(
   project: Pick<ProjectFile, "promptTemplates">,
   templateId: PromptTemplateId,

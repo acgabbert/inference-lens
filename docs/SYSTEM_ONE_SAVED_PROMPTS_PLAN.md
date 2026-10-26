@@ -393,8 +393,11 @@ live in `decision-template-revision-diff.ts`. Chat-only surfaces narrow before
 reading content, and the n8n importer explicitly creates chat entries.
 
 Decision suite preflight now distinguishes an absent case value from a supplied
-empty string, matching the accepted assignment contract. Chat case preflight
-and legacy chat default validation retain their existing behavior.
+empty string, matching the accepted assignment contract. So that absence is
+representable, v15 lets a decision case omit a binding's value; new decision
+cases and inputs start unfilled, and the case editor removes a cleared value
+rather than saving `""`. Chat case validation, chat case preflight and legacy
+chat default validation retain their existing behavior.
 
 Preimplementation red runs demonstrated v15 rejection, v14 migration returning
 14 instead of 15, usage discovery returning zero instead of two, and a supplied

@@ -1555,7 +1555,7 @@ function validateDecisionRequests(
         context.addIssue({
           code: "custom",
           path: [...path, field, name],
-          message: `Decision request value "${name}" names a variable the request does not use.`,
+          message: `Decision request ${revision.kind === "inline" ? "value" : "override"} "${name}" names a variable the request does not use.`,
         });
       } else if (isSensitiveTemplateVariableName(name)) {
         context.addIssue({
@@ -1747,7 +1747,9 @@ function validateEvaluationSuites(
       caseIds.add(evaluationCase.id);
 
       const valueIds = new Set(Object.keys(evaluationCase.values));
-      localInputIds.forEach((inputId) => {
+      // From v15 a decision case may leave an input unfilled: `""` is a
+      // supplied value there, so absence is what preflight blocks on.
+      if (suite.input.kind !== "decision-request-revision") localInputIds.forEach((inputId) => {
         if (!valueIds.has(inputId)) {
           context.addIssue({
             code: "custom",
@@ -3560,6 +3562,8 @@ export function removePromptTemplateRevision(
     ]);
   }
   const promptTemplates = [...project.promptTemplates];
+  // The arms are identical at runtime; narrowing first keeps each filtered
+  // revision array its own kind without a cast.
   promptTemplates[templateIndex] = template.kind === "chat"
     ? { ...template, revisions: template.revisions.filter(({ id }) => id !== templateRevisionId) }
     : { ...template, revisions: template.revisions.filter(({ id }) => id !== templateRevisionId) };

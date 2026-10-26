@@ -5,6 +5,7 @@ import type { PromptTemplateVariableDefaultDiff, RevisionDiffStatus } from "./pr
 
 export interface DecisionTemplateQuestionDiff {
   id: string;
+  /** Content only; a move is reported once, by `questionOrderChanged` and the indices. */
   status: RevisionDiffStatus;
   beforeIndex?: number;
   afterIndex?: number;
@@ -47,7 +48,7 @@ export function diffDecisionPromptTemplateRevisions(
     return { id, beforeIndex, afterIndex, before: left && structuredClone(left), after: right && structuredClone(right),
       typeChanged, instructions, criteria,
       status: !left ? "added" : !right ? "removed"
-        : typeChanged || beforeIndex !== afterIndex || !instructions.identical || !criteria.identical ? "changed" : "identical" };
+        : typeChanged || !instructions.identical || !criteria.identical ? "changed" : "identical" };
   });
   const variableDefaults = [...new Set([...Object.keys(before.variableDefaults), ...Object.keys(after.variableDefaults)])]
     .sort().map((name): PromptTemplateVariableDefaultDiff => {

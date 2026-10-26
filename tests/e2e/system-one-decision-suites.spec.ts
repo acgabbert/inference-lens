@@ -365,3 +365,18 @@ test("a v15 template-backed suite resolves its pin on screen and sends an explic
   expect(reopened.promptTemplates.find(({ id }) => id === "template_source")?.kind).toBe("decision");
   expect(reopened.defaults.decisionRequestRevisionId).toBe(project.defaults.decisionRequestRevisionId);
 });
+
+test("clearing a decision case value leaves it unfilled and blocks the run instead of sending an empty value", async ({ page }) => {
+  await openFolder(page);
+  await page.getByRole("button", { name: "New suite from this request" }).click();
+  const editor = page.locator(".evaluation-editor");
+  await editor.getByLabel("Request variable to vary").selectOption("ticket");
+  await editor.getByRole("button", { name: "+ Add case input" }).click();
+  await addCase(page, "Billing", "I was charged twice for October.", "billing");
+  await expect(page.locator("#evaluation-preflight-summary")).toHaveText("Ready to run");
+
+  await editor.getByLabel("Billing ticket").fill("");
+  await expect(page.locator("#evaluation-preflight-summary")).not.toHaveText("Ready to run");
+  await expect(page.getByRole("region", { name: "Evaluation preflight" })).toContainText('Case "Billing" has no value for input "ticket".');
+  await expect.poll(async () => (await savedProject(page)).evaluationSuites[0]?.cases[0]?.values).toEqual({});
+});

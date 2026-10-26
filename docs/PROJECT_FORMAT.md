@@ -272,8 +272,9 @@ human review; reference answers do not receive an automatic score.
 An input binding has a human-readable name and targets one stable template-use
 ID plus one template variable name. Cases store their values by input-binding
 ID rather than display name, so renaming an input does not rewrite the dataset.
-Every case supplies exactly one string value for every binding; an empty string
-is an intentional value. A suite may have no cases while it is being authored,
+Every chat case supplies exactly one string value for every binding; an empty
+string is an intentional value. A decision case may leave a binding unfilled
+(see [decision suites](#decision-suites)). A suite may have no cases while it is being authored,
 but execution preflight will not treat that as a runnable dataset.
 
 ### Suite-owned input and execution
@@ -381,7 +382,10 @@ A case value overrides the pinned revision's effective value for that variable;
 a variable with no binding keeps the revision's value. For a template-backed
 request, precedence is template defaults, request overrides, then case values.
 An explicitly supplied empty string is a value; an absent assignment remains
-unresolved. The parser rejects a
+unresolved. From v15 a decision case may omit a binding's value: that case is
+unfilled, and preflight blocks it with `empty-case-value` rather than falling
+back to the revision's value. New cases and inputs start unfilled, and clearing
+a case field in the editor removes its value. The parser rejects a
 secret-like variable name. Whether the pinned revision uses each bound
 variable, whether every variable resolves for each case, and whether each
 decision check names a question of the right type and a real option are

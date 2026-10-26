@@ -308,7 +308,13 @@ function CaseEditor({ evaluationCase, authoring, source, onOpenSourceTrace }: {
               ? evaluationInputLabel(project!, authoring.revisionId, binding as EvaluationInputBinding)
               : { variableName: binding.target.variableName, label: binding.target.variableName };
             return <label key={binding.id}>{input.label}
-              <textarea aria-label={`${evaluationCase.name} ${input.variableName}`} rows={3} value={evaluationCase.values[binding.id] ?? ""} onChange={(event) => authoring.updateCase(evaluationCase.id, { values: { ...evaluationCase.values, [binding.id]: event.target.value } })} />
+              <textarea aria-label={`${evaluationCase.name} ${input.variableName}`} rows={3} value={evaluationCase.values[binding.id] ?? ""} onChange={(event) => {
+                const values: Record<string, string> = { ...evaluationCase.values, [binding.id]: event.target.value };
+                // A cleared decision field is unfilled, not a supplied `""`, so
+                // preflight blocks the case instead of sending an empty value.
+                if (decisionSuite && event.target.value === "") delete values[binding.id];
+                authoring.updateCase(evaluationCase.id, { values });
+              }} />
             </label>;
           })}
         </div>

@@ -166,7 +166,7 @@ test("overrides freeze when loaded/executed or suite-pinned; inline mutation can
   }
   const active = { ...project, defaults: { ...project.defaults, decisionRequestRevisionId: "decision-revision_use" as const } };
   assert.throws(() => updateDecisionRequestDraft(active, { decision, values: {}, branch: false }), /Detach the pinned decision template/);
-  assert.throws(() => updateDecisionRequestOverrides(project, { decisionRequestRevisionId: "decision-revision_use", overrides: { unused: "x" }, branch: false }), /does not use/);
+  assert.throws(() => updateDecisionRequestOverrides(project, { decisionRequestRevisionId: "decision-revision_use", overrides: { unused: "x" }, branch: false }), /Decision request override "unused" names a variable/);
 });
 
 test("archive keeps historical resolution and detach; usage protects noncurrent revisions", async () => {
@@ -195,7 +195,14 @@ test("decision diffs detect state, type, instructions, question and criterion or
   assert.equal(diff(before, { ...before, variableDefaults: { ticket: "b", team: "a" } }).identical, true);
   const reorder = diff(before, { ...before, decision: { ...decision, questions: { alpha: decision.questions.alpha!, zeta: decision.questions.zeta! } } });
   assert.equal(reorder.questionOrderChanged, true);
-  assert.equal(reorder.questions[0]!.status, "changed");
+  assert.equal(reorder.identical, false);
+  // Order is reported once; a moved question with unchanged content is not itself a change.
+  assert.deepEqual(reorder.questions.map(({ id, status, beforeIndex, afterIndex }) => ({ id, status, beforeIndex, afterIndex })), [
+    { id: "zeta", status: "identical", beforeIndex: 0, afterIndex: 1 },
+    { id: "alpha", status: "identical", beforeIndex: 1, afterIndex: 0 },
+  ]);
+  const inserted = diff(before, { ...before, decision: { ...decision, questions: { first: { type: "noul", instructions: "New" }, ...decision.questions } } });
+  assert.deepEqual(inserted.questions.map(({ status }) => status), ["identical", "identical", "added"]);
   const criteria = diff(before, { ...before, decision: { ...decision, questions: { ...decision.questions, zeta: { type: "score", instructions: "{{team}}", criteria: ["low", "high"] } } } });
   assert.equal(criteria.identical, false);
   assert.equal(criteria.questions[0]!.criteria.identical, false);
@@ -215,4 +222,16 @@ test("malformed decision template content reports project validation errors", ()
     assert.throws(() => parseProjectFile({ ...valid, promptTemplates: [{ ...template, revisions: [{ ...template.revisions[0], decision }] }] }), /Invalid Inference Lens project/);
     assert.throws(() => parseProjectFile({ ...valid, promptTemplates: [{ ...template, draft: { sourceRevisionId: "template-revision_old", decision, variableDefaults: {} } }] }), /Invalid Inference Lens project/);
   }
+});
+
+test("a v15 decision case may leave an input unfilled, and preflight blocks it", async () => {
+  // A chat case missing a value is still rejected; see project.test.ts.
+  const { decisionProject } = await import("./fixtures/decision-evaluation.ts");
+  const { evaluationSuitePreflight } = await import("../packages/core/src/evaluation-suites.ts");
+  const project = decisionProject();
+  const parsed = parseProjectFile({ ...project, evaluationSuites: project.evaluationSuites.map((suite) => ({ ...suite,
+    cases: suite.cases.slice(0, 1).map((evaluationCase) => ({ ...evaluationCase, values: {} })) })) });
+  assert.deepEqual(parsed.evaluationSuites[0]!.cases[0]!.values, {});
+  const diagnostics = evaluationSuitePreflight(parsed, parsed.evaluationSuites[0]!.id, parsed.defaults.conversationRevisionId);
+  assert.deepEqual(diagnostics.flatMap((diagnostic) => diagnostic.code === "empty-case-value" ? [diagnostic.inputBindingId] : []), ["evaluation-input_ticket"]);
 });

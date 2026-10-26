@@ -466,14 +466,9 @@ export function addDecisionEvaluationInput(
       name: uniqueName(variableName, suite.inputBindings.map(({ name }) => name)),
       target: { kind: "decision-variable", variableName },
     };
-    return {
-      ...suite,
-      inputBindings: [...suite.inputBindings, binding],
-      cases: suite.cases.map((evaluationCase) => ({
-        ...evaluationCase,
-        values: { ...evaluationCase.values, [inputId]: "" },
-      })),
-    };
+    // A decision case value of `""` is supplied, not missing, so existing
+    // cases stay unfilled and preflight asks for a value.
+    return { ...suite, inputBindings: [...suite.inputBindings, binding] };
   });
   return { project: next, inputId };
 }
@@ -639,7 +634,11 @@ export function addEvaluationCase(
     const evaluationCase: EvaluationCase = {
       id: caseId,
       name: uniqueName("Untitled case", suite.cases.map(({ name }) => name)),
-      values: Object.fromEntries(suite.inputBindings.map(({ id }) => [id, ""])) as EvaluationCase["values"],
+      // Chat cases start each input empty; a decision case leaves them absent,
+      // because there `""` is a supplied value that overrides the request's.
+      values: suite.input.kind === "decision-request-revision"
+        ? {}
+        : Object.fromEntries(suite.inputBindings.map(({ id }) => [id, ""])) as EvaluationCase["values"],
       checks: [],
     };
     return { ...suite, cases: [...suite.cases, evaluationCase] };
