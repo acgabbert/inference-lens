@@ -27,7 +27,10 @@ pub enum Mutation {
         phase: &'static str,
         actual_contents: Option<String>,
     },
+    // Refusals before the record is touched: "foreign-project" blocks the whole
+    // store, "protection" only this attempt.
     Blocked {
+        reason: &'static str,
         message: String,
     },
 }
@@ -120,6 +123,29 @@ fn foreign(files: &[File], project_id: &str) -> bool {
     })
 }
 
+fn protect(workbench: &Path) -> Result<(), String> {
+    let ignore = workbench.join(".gitignore");
+    if read(&ignore)?.is_none() {
+        // Exclusive creation prevents replacing a policy that appeared meanwhile.
+        use std::io::Write;
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&ignore)
+        {
+            Ok(mut file) => file
+                .write_all(IGNORE.as_bytes())
+                .map_err(|error| format!("Could not protect recovery directory: {error}"))?,
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(format!("Could not protect recovery directory: {error}")),
+        }
+    }
+    if read(&ignore)?.as_deref() != Some(IGNORE) {
+        return Err("Workbench .gitignore must contain exactly '*\\n' before personal content can be written.".into());
+    }
+    Ok(())
+}
+
 pub fn mutate(
     directory: &Path,
     path: &str,
@@ -143,6 +169,7 @@ fn mutate_with(
     let workbench = directory.join(".workbench");
     if foreign(&list(directory)?, project_id) {
         return Ok(Mutation::Blocked {
+            reason: "foreign-project",
             message: "Workbench belongs to a different project. Preserve it before reconciling."
                 .into(),
         });
@@ -150,24 +177,12 @@ fn mutate_with(
     reject_link(&workbench)?;
     fs::create_dir_all(&workbench)
         .map_err(|error| format!("Could not create recovery directory: {error}"))?;
-    let ignore = workbench.join(".gitignore");
-    if read(&ignore)?.is_none() {
-        // Exclusive creation prevents replacing a policy that appeared meanwhile.
-        use std::io::Write;
-        match fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&ignore)
-        {
-            Ok(mut file) => file
-                .write_all(IGNORE.as_bytes())
-                .map_err(|error| format!("Could not protect recovery directory: {error}"))?,
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
-            Err(error) => return Err(format!("Could not protect recovery directory: {error}")),
-        }
-    }
-    if read(&ignore)?.as_deref() != Some(IGNORE) {
-        return Err("Workbench .gitignore must contain exactly '*\\n' before personal content can be written.".into());
+    // Nothing personal has been touched yet, so any failure here is a refusal.
+    if let Err(message) = protect(&workbench) {
+        return Ok(Mutation::Blocked {
+            reason: "protection",
+            message,
+        });
     }
     reject_link(&workbench.join("drafts"))?;
     let actual = read(&target)?;
@@ -277,15 +292,27 @@ mod tests {
     #[test]
     fn custom_or_unwritable_protection_prevents_personal_content() {
         let directory = Directory::new();
+        let save = || {
+            mutate(
+                &directory.0,
+                "selections.json",
+                None,
+                Some("personal"),
+                "project_one",
+            )
+            .unwrap()
+        };
+        let refused = |result: Mutation| {
+            matches!(
+                result,
+                Mutation::Blocked {
+                    reason: "protection",
+                    ..
+                }
+            )
+        };
         directory.seed(".gitignore", "# custom\n");
-        assert!(mutate(
-            &directory.0,
-            "selections.json",
-            None,
-            Some("personal"),
-            "project_one"
-        )
-        .is_err());
+        assert!(refused(save()));
         assert!(!directory.0.join(".workbench/selections.json").exists());
         assert_eq!(
             read(&directory.0.join(".workbench/.gitignore"))
@@ -295,15 +322,12 @@ mod tests {
         );
         fs::remove_file(directory.0.join(".workbench/.gitignore")).unwrap();
         fs::create_dir(directory.0.join(".workbench/.gitignore")).unwrap();
-        assert!(mutate(
-            &directory.0,
-            "selections.json",
-            None,
-            Some("personal"),
-            "project_one"
-        )
-        .is_err());
+        assert!(refused(save()));
         assert!(!directory.0.join(".workbench/selections.json").exists());
+        // A refusal touches nothing personal, so a fixed policy lets saves resume.
+        fs::remove_dir(directory.0.join(".workbench/.gitignore")).unwrap();
+        directory.seed(".gitignore", "*\n");
+        assert_eq!(save(), Mutation::Written);
     }
 
     #[test]
@@ -430,15 +454,26 @@ mod tests {
             let target = directory.0.join(path);
             fs::create_dir_all(target.parent().unwrap()).unwrap();
             symlink(&outside.0, &target).unwrap();
+            let result = mutate(
+                &directory.0,
+                "selections.json",
+                None,
+                Some("personal"),
+                "project_one",
+            );
+            // A linked ignore file is a protection refusal; other links are errors.
             assert!(
-                mutate(
-                    &directory.0,
-                    "selections.json",
-                    None,
-                    Some("personal"),
-                    "project_one"
-                )
-                .is_err(),
+                if path == ".workbench/.gitignore" {
+                    matches!(
+                        result,
+                        Ok(Mutation::Blocked {
+                            reason: "protection",
+                            ..
+                        })
+                    )
+                } else {
+                    result.is_err()
+                },
                 "accepted {path}"
             );
             assert!(fs::read_dir(&outside.0).unwrap().next().is_none());

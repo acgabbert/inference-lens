@@ -40,7 +40,11 @@ Before every content mutation, including deletion:
 3. Create `.workbench/` if needed. Create its `.gitignore` only when absent,
    using the core constant `*\n`; read it back and require exact equality.
    Preserve an existing different policy and refuse content writes. Do not
-   rewrite the bundle-level policy.
+   rewrite the bundle-level policy. A refused or unwritable policy is a
+   `blocked` outcome with reason `protection`, not an uncertain I/O failure:
+   nothing personal was touched, so it neither stops the record nor the store,
+   and saves resume once the policy is fixed. A foreign project is `blocked`
+   with reason `foreign-project` and stops the store.
 4. Compare the destination's bytes with the loaded expected value (`null`
    means absent). A mismatch returns a conflict without replacing the file.
 5. Write/delete, then read back. Advance expected contents only on exact
@@ -56,6 +60,17 @@ Results retain attempted content and available disk content for a future
 comparison UI. Reopening a store is an explicit new read, not automatic conflict
 adoption. The caller retains unsaved edits throughout; this layer never publishes
 an asset or clears an editor.
+
+Every mutation reinspects the whole inventory, reading each record, to find
+foreign identities. That is acceptable for explicit saves; before feature owners
+add autosave, decide whether to bound or cache the identity scan, since its cost
+grows with total recovery size while the native workspace mutex is held.
+
+Migrated draft IDs encode the template ID in hex, so a generated template ID
+already yields a filename of about 200 characters, and longer imported IDs exceed
+common 255-byte limits. The migration-journal slice must settle a shorter
+filename mapping before migration writes these records; Windows browser paths
+were not tested.
 
 No global recovery-size policy or cleanup is introduced. Valid orphaned bases
 remain valid recovery records; publication checks belong to the later workflow.
@@ -109,6 +124,15 @@ journey. Report browser/native adapter tests separately from a native app launch
   multi-tab/browser-native race behavior. Native tests use real temporary
   directories, including Unix symlinks, plus deterministic read-back
   interference; they do not launch the Tauri UI or establish Windows behavior.
+- Review follow-up, October 26: two tests were written first and run red for the
+  intended reasons: a customized ignore policy produced outcome `failed`
+  (expected `blocked`), and `delete("../project.json")` threw synchronously
+  instead of rejecting. After the fix, the three affected TypeScript files pass
+  62 tests and `npm run typecheck:core` passes. The native protection test now
+  asserts `Blocked { reason: "protection" }` and a resumed write once the policy
+  is fixed, and the symlinked-`.gitignore` case asserts that refusal; these Rust
+  changes were not shown red first (the old enum has no reason field).
+  `npm run test:rust` passes 35 tests and `npm run check:rust` passes.
 - Next review: migration journal/restart contracts, publication intent,
   request/scratch arms and execution provenance, followed by feature-owner
   integration and launch-default actions. Human review should focus on this

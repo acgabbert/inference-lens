@@ -1,7 +1,7 @@
 "use client";
 
 import { WORKBENCH_GITIGNORE_CONTENTS } from "../packages/core/src/personal-workbench.ts";
-import { assertWorkbenchRecordPath, hasForeignWorkbenchIdentity } from "../packages/core/src/workbench-store.ts";
+import { assertWorkbenchRecordPath, FOREIGN_PROJECT_MESSAGE, hasForeignWorkbenchIdentity } from "../packages/core/src/workbench-store.ts";
 import type { WorkbenchFile, WorkbenchMutationResult, WorkbenchStorage } from "../packages/core/src/workbench-store.ts";
 import type { ProjectId } from "../packages/core/src/run-kernel/types.ts";
 import type { FileSystemDirectoryHandleLike } from "./project-directory.client.ts";
@@ -14,16 +14,22 @@ export function browserWorkbenchStorage(directory: FileSystemDirectoryHandleLike
       assertWorkbenchRecordPath(path);
       return coordinate(projectId, async () => {
         if (hasForeignWorkbenchIdentity(await list(directory), projectId)) {
-          return { kind: "blocked", message: "Workbench belongs to a different project. Preserve it before reconciling." };
+          return { kind: "blocked", reason: "foreign-project", message: FOREIGN_PROJECT_MESSAGE };
         }
         const workbench = await directory.getDirectoryHandle(".workbench", { create: true });
-        let ignore = await readFile(workbench, ".gitignore");
-        if (ignore === null) {
-          await writeFile(workbench, ".gitignore", WORKBENCH_GITIGNORE_CONTENTS);
+        // Nothing personal has been touched yet, so any failure here is a refusal.
+        let ignore: string | null;
+        try {
           ignore = await readFile(workbench, ".gitignore");
+          if (ignore === null) {
+            await writeFile(workbench, ".gitignore", WORKBENCH_GITIGNORE_CONTENTS);
+            ignore = await readFile(workbench, ".gitignore");
+          }
+        } catch (error) {
+          return { kind: "blocked", reason: "protection", message: `Could not protect recovery directory: ${error instanceof Error ? error.message : String(error)}` };
         }
         if (ignore !== WORKBENCH_GITIGNORE_CONTENTS) {
-          throw new Error("Workbench .gitignore must contain exactly '*\\n' before personal content can be written.");
+          return { kind: "blocked", reason: "protection", message: PROTECTION_MESSAGE };
         }
         const [parent, name] = await recordLocation(workbench, path, false);
         const actualContents = parent ? await readFile(parent, name) : null;
@@ -41,6 +47,8 @@ export function browserWorkbenchStorage(directory: FileSystemDirectoryHandleLike
     },
   };
 }
+
+const PROTECTION_MESSAGE = "Workbench .gitignore must contain exactly '*\\n' before personal content can be written.";
 
 function isMissing(error: unknown): boolean {
   return error instanceof DOMException && error.name === "NotFoundError";

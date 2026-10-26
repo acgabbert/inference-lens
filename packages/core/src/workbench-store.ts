@@ -6,7 +6,15 @@ export type WorkbenchFile = { path: string; contents: string } | { path: string;
 export type WorkbenchMutationResult =
   | { kind: "written" }
   | { kind: "conflict"; phase: "before-write" | "read-back"; actualContents: string | null }
-  | { kind: "blocked"; message: string };
+  | { kind: "blocked"; reason: WorkbenchHostBlockReason; message: string };
+
+/**
+ * Host refusals made before the record is touched. A foreign project blocks the
+ * whole store; a refused ignore policy blocks only this attempt, so saves resume
+ * once the policy is fixed.
+ */
+export type WorkbenchHostBlockReason = "foreign-project" | "protection";
+export type WorkbenchBlockReason = WorkbenchHostBlockReason | "reconciliation" | "not-loaded";
 
 /** Mutations include protection, identity checks, expected bytes and read-back under a host lock. */
 export interface WorkbenchStorage {
@@ -40,7 +48,8 @@ export function hasForeignWorkbenchIdentity(files: WorkbenchFile[], projectId: P
 export type WorkbenchStoreOutcome =
   | { kind: "saved" | "deleted"; path: string }
   | { kind: "conflict"; path: string; phase: "before-write" | "read-back"; expectedContents: string | null; actualContents: string | null; attemptedContents: string | null }
-  | { kind: "blocked" | "failed"; path: string; message: string; attemptedContents: string | null };
+  | { kind: "blocked"; reason: WorkbenchBlockReason; path: string; message: string; attemptedContents: string | null }
+  | { kind: "failed"; path: string; message: string; attemptedContents: string | null };
 
 /** An explicit open captures expectations once. Conflicts never silently adopt disk contents. */
 export async function openWorkbenchStore(storage: WorkbenchStorage, projectId: ProjectId) {
@@ -67,19 +76,22 @@ export async function openWorkbenchStore(storage: WorkbenchStorage, projectId: P
   // confirmed expectation, rather than capturing it before their predecessor.
   let queue: Promise<unknown> = Promise.resolve();
   function mutate(path: string, contents: string | null): Promise<WorkbenchStoreOutcome> {
-    assertWorkbenchRecordPath(path);
     const operation = queue.then(async (): Promise<WorkbenchStoreOutcome> => {
-      if (writeBlocked || blocked.has(path)) {
-        return { kind: "blocked", path, attemptedContents: contents, message: writeBlocked ? "Workbench belongs to a different project. Preserve it before reconciling." : "This record needs explicit reconciliation before further writes." };
+      assertWorkbenchRecordPath(path);
+      if (writeBlocked) {
+        return { kind: "blocked", reason: "foreign-project", path, attemptedContents: contents, message: FOREIGN_PROJECT_MESSAGE };
+      }
+      if (blocked.has(path)) {
+        return { kind: "blocked", reason: "reconciliation", path, attemptedContents: contents, message: "This record needs explicit reconciliation before further writes." };
       }
       const expectedContents = expected.get(path) ?? null;
       if (contents === null && !expected.has(path)) {
-        return { kind: "blocked", path, attemptedContents: null, message: "Only a loaded or saved valid record can be deleted." };
+        return { kind: "blocked", reason: "not-loaded", path, attemptedContents: null, message: "Only a loaded or saved valid record can be deleted." };
       }
       try {
         const result = await storage.mutate(path, expectedContents, contents, projectId);
         if (result.kind === "blocked") {
-          writeBlocked = true;
+          if (result.reason === "foreign-project") writeBlocked = true;
           return { ...result, path, attemptedContents: contents };
         }
         if (result.kind === "conflict") {
@@ -110,6 +122,8 @@ export async function openWorkbenchStore(storage: WorkbenchStorage, projectId: P
     delete(path: string): Promise<WorkbenchStoreOutcome> { return mutate(path, null); },
   };
 }
+
+export const FOREIGN_PROJECT_MESSAGE = "Workbench belongs to a different project. Preserve it before reconciling.";
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);

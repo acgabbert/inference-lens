@@ -177,6 +177,27 @@ test("failed or customized ignore policy prevents personal writes and preserves 
   }
 });
 
+test("a refused ignore policy blocks the save without locking the record, and saves resume once it is fixed", async () => {
+  const directory = new Directory();
+  directory.seed(".workbench/.gitignore", "# custom\n");
+  const store = await openWorkbenchStore(browserWorkbenchStorage(directory), projectId);
+  const record = records()[0];
+  const outcome = await store.save(record);
+  assert.equal(outcome.kind, "blocked");
+  if (outcome.kind === "blocked") assert.equal(outcome.reason, "protection");
+  assert.equal(store.writeBlocked, false);
+  assert.equal(directory.files.has(`.workbench/${pathFor(record)}`), false);
+  directory.files.set(".workbench/.gitignore", "*\n");
+  assert.equal((await store.save(record)).kind, "saved");
+});
+
+test("deleting an unsafe path rejects the returned promise rather than throwing", async () => {
+  const store = await openWorkbenchStore(browserWorkbenchStorage(new Directory()), projectId);
+  let pending: Promise<unknown> | undefined;
+  assert.doesNotThrow(() => { pending = store.delete("../project.json"); });
+  await assert.rejects(pending!, /Invalid workbench record path/);
+});
+
 test("self-ignore read-back is checked before any personal content is created", async () => {
   const directory = new Directory();
   directory.afterWrite = path => { if (path === ".workbench/.gitignore") directory.files.set(path, ""); };
