@@ -72,7 +72,7 @@ test("after a decision run the wide request pane still fits its composer", async
   await expect(page.locator(".brand")).toContainText("Run decisions");
   await openMode(page, "Prompts");
   await page.locator(".template-list").getByRole("button", { name: /Ticket decision/ }).click();
-  await page.getByRole("button", { name: "Use Current", exact: true }).click();
+  await page.getByRole("button", { name: "Use Revision 1 (current)", exact: true }).click();
   const composer = page.getByRole("region", { name: "Decision request", exact: true });
   const model = composer.getByRole("combobox", { name: "Model", exact: true });
   await model.fill("all-types");

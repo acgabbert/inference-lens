@@ -1,15 +1,20 @@
 import type { PromptTemplate } from "../../packages/core/src/project";
 import type { PromptTemplateRevisionId } from "../../packages/core/src/run-kernel";
 import type { PromptTemplateRevisionDiff } from "../../packages/core/src/prompt-template-revision-diff";
+import type { DecisionTemplateRevisionDiff } from "../../packages/core/src/decision-template-revision-diff";
 
-/** "Current" for the template's live revision, otherwise its 1-based position. */
+/**
+ * The revision's author-supplied name, else its 1-based position, with
+ * " (current)" appended for the template's live revision.
+ */
 export function promptRevisionLabel(
   template: PromptTemplate,
   revisionId: PromptTemplateRevisionId,
 ): string {
-  if (revisionId === template.currentRevisionId) return "Current";
   const index = template.revisions.findIndex(({ id }) => id === revisionId);
-  return index >= 0 ? `Revision ${index + 1}` : "an earlier revision";
+  if (index < 0) return "an earlier revision";
+  const label = template.revisions[index]!.name?.trim() || `Revision ${index + 1}`;
+  return revisionId === template.currentRevisionId ? `${label} (current)` : label;
 }
 
 export type CompatibleSuiteRevisionState =
@@ -52,4 +57,64 @@ export function summarizeRevisionDiff(diff: PromptTemplateRevisionDiff): string 
   }
   if (diff.importProvenance.status !== "identical") parts.push("import link changed");
   return parts.join(", ");
+}
+
+/** "identical" or a comma-joined count of what changed between two decision revisions. */
+export function summarizeDecisionRevisionDiff(diff: DecisionTemplateRevisionDiff): string {
+  if (diff.identical) return "identical";
+  const questionChanges = diff.questions.filter(({ status }) => status !== "identical").length;
+  const defaultChanges = diff.variableDefaults.filter(({ status }) => status !== "identical").length;
+  const parts: string[] = [];
+  if (!diff.state.identical) parts.push("state changed");
+  if (questionChanges > 0) {
+    parts.push(`${questionChanges} question change${questionChanges === 1 ? "" : "s"}`);
+  }
+  if (diff.questionOrderChanged) parts.push("question order changed");
+  if (defaultChanges > 0) {
+    parts.push(`${defaultChanges} default change${defaultChanges === 1 ? "" : "s"}`);
+  }
+  return parts.join(", ");
+}
+
+export interface RevisionVariables {
+  variables: readonly string[];
+  defaults: Readonly<Record<string, string>>;
+}
+
+export interface RevisionVariableChanges {
+  added: string[];
+  removed: string[];
+  /** Saved values or overrides the switch discards because the target lacks the variable. */
+  cleared: string[];
+  /** Variables that will block a run after the switch but did not before. */
+  needsValue: string[];
+}
+
+/**
+ * What switching a pinned use between revisions does to its variables, so a
+ * review can lead with that instead of a full content diff.
+ */
+export function summarizeRevisionVariableChanges({
+  before,
+  after,
+  kept,
+}: {
+  before: RevisionVariables;
+  after: RevisionVariables;
+  /** Variables the use currently holds a saved value or override for. */
+  kept: readonly string[];
+}): RevisionVariableChanges {
+  const had = new Set(before.variables);
+  const has = new Set(after.variables);
+  const valued = new Set(kept);
+  const neededBefore = (name: string) =>
+    had.has(name) && !valued.has(name) && !Object.hasOwn(before.defaults, name);
+  return {
+    added: after.variables.filter((name) => !had.has(name)),
+    removed: before.variables.filter((name) => !has.has(name)),
+    cleared: kept.filter((name) => !has.has(name)),
+    needsValue: after.variables.filter(
+      (name) => !valued.has(name) && !Object.hasOwn(after.defaults, name) && !neededBefore(name),
+    ),
+  };
 }

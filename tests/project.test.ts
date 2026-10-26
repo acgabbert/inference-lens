@@ -38,6 +38,7 @@ import {
   updatePromptTemplateDraft,
   updateConnectionRequirementEndpoint,
   updateProjectDraft,
+  updatePromptTemplateUseRevision,
   updatePromptTemplateUseToLatest,
   updatePromptTemplateUseValues,
 } from "../packages/core/src/project.ts";
@@ -1356,6 +1357,17 @@ test("inserts, updates, detaches, and removes template uses through core helpers
     templateUseId: "template-use_reusable",
     newOutputMessageIdSuffixes: ["reusable-2"],
   });
+  // Compose's revision selector can move a use back to any earlier revision,
+  // keeping its output message IDs and only values the target still declares.
+  const reverted = updatePromptTemplateUseRevision(latest, {
+    conversationRevisionId,
+    templateUseId: "template-use_reusable",
+    templateRevisionId: "template-revision_reusable-1",
+  });
+  const revertedUse = findPromptTemplateUsages(reverted, "template_reusable")
+    .filter((usage) => usage.kind === "conversation")[0]!.use;
+  assert.equal(revertedUse.templateRevisionId, "template-revision_reusable-1");
+  assert.deepEqual(revertedUse.outputMessageIds, ["message_reusable-1"]);
   const latestWithValues = updatePromptTemplateUseValues(latest, {
     conversationRevisionId,
     templateUseId: "template-use_reusable",

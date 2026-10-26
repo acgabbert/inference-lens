@@ -94,7 +94,7 @@ function cardProps(overrides = {}) {
     onSaveValues: noop,
     onSaveRunValue: noop,
     onRunOverridesChange: noop,
-    onUpdateLatest: noop,
+    onSelectRevision: noop,
     onDetach: noop,
     onRemove: noop,
     ...overrides,

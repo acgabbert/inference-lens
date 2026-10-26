@@ -383,7 +383,7 @@ export function RequestComposer({
                     onSaveRunValue={(values, runOverrides) => templates.saveTemplateUseRunValue(item.use.id, values, runOverrides)}
                     onRunOverridesChange={(values) => templates.updateTemplateUseOverride(item.use.id, values)}
                     onEditSource={() => onEditPromptSource(item.use.id, item.use.templateId, item.use.templateRevisionId)}
-                    onUpdateLatest={() => templates.updateTemplateUseToLatestRevision(item.use.id)}
+                    onSelectRevision={(revisionId) => templates.setTemplateUseRevision(item.use.id, revisionId)}
                     onDetach={() => templates.detachTemplateUse(item.use.id)}
                     onRemove={() => templates.removeTemplateUse(item.use.id)} />;
                 }

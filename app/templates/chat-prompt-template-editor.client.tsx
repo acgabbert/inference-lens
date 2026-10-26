@@ -23,8 +23,15 @@ import {
   resolveTemplateValues,
 } from "../../packages/core/src/template-engine";
 import { diffPromptTemplateRevisions } from "../../packages/core/src/prompt-template-revision-diff";
+import { ChatRevisionDiff } from "./chat-revision-diff.client";
 import { hasDuplicatePromptName } from "./prompt-library";
-import { describeCompatibleSuiteRevision, promptRevisionLabel, summarizeRevisionDiff } from "./prompt-revision-label";
+import {
+  describeCompatibleSuiteRevision,
+  promptRevisionLabel,
+  summarizeRevisionDiff,
+  summarizeRevisionVariableChanges,
+} from "./prompt-revision-label";
+import { PinnedRevisionSelect, RevisionSwitchReview } from "./revision-switch-review.client";
 import { DisclosureChevron } from "../disclosure-chevron.client";
 import { FocusModeToggle, useFocusMode } from "../focus-mode.client";
 import { N8nTemplatePasteDialog } from "./n8n-template-paste-dialog.client";
@@ -460,7 +467,6 @@ export function ChatPromptTemplateEditor({
                   {!sessionOwned && [...selected.revisions].reverse().map((revision) => (
                     <option key={revision.id} value={revision.id}>
                       {promptRevisionLabel(selected, revision.id)}
-                      {revision.name ? ` — ${revision.name}` : ""}
                       {" · "}
                       {new Date(revision.createdAt).toLocaleString()}
                     </option>
@@ -750,7 +756,7 @@ export function ChatPromptTemplateEditor({
                 ) : revisionDiff.identical ? (
                   <p className="template-empty">These revisions have identical messages, defaults, and import provenance.</p>
                 ) : (
-                  <RevisionDiffView diff={revisionDiff} />
+                  <ChatRevisionDiff diff={revisionDiff} />
                 )}
               </>}
             </section>}
@@ -876,26 +882,6 @@ export function ChatPromptTemplateEditor({
       </div>}
     </div>
   );
-}
-
-function RevisionDiffView({ diff }: { diff: ReturnType<typeof diffPromptTemplateRevisions> }) {
-  const changedMessages = diff.messages.filter(({ status }) => status !== "identical");
-  const changedDefaults = diff.variableDefaults.filter(({ status }) => status !== "identical");
-  return <div className="template-revision-diff-body">
-    {changedMessages.length > 0 && <section>
-      <h4>Messages</h4>
-      {changedMessages.map((message) => <details className="template-diff-message" key={message.index} open>
-        <summary>Message {message.index + 1} · {message.status}{message.roleChanged ? ` · ${message.before!.role} → ${message.after!.role}` : ""}</summary>
-        {message.content.truncated && <p className="diff-warning">This message exceeded the 4,000-line limit. Showing a whole-block replacement.</p>}
-        <pre className="diff-code">{message.content.lines.map((line, index) => <span className={`diff-line ${line.kind}`} key={`${line.kind}-${index}`}><span className="diff-gutter" aria-hidden="true">{line.kind === "added" ? "+" : line.kind === "removed" ? "−" : " "}</span><span>{line.text || " "}</span></span>)}</pre>
-      </details>)}
-    </section>}
-    {changedDefaults.length > 0 && <section>
-      <h4>Variable defaults</h4>
-      <ul className="template-diff-defaults">{changedDefaults.map((value) => <li key={value.name}><code>{`{{${value.name}}}`}</code> · {value.status}<span>{value.before ?? "No default"} → {value.after ?? "No default"}</span></li>)}</ul>
-    </section>}
-    {diff.importProvenance.status !== "identical" && <p className="template-diff-provenance">Import provenance {diff.importProvenance.status}: {diff.importProvenance.beforePresent ? "imported" : "not imported"} → {diff.importProvenance.afterPresent ? "imported" : "not imported"}.</p>}
-  </div>;
 }
 
 function TemplateMessagesEditor({
@@ -1075,7 +1061,8 @@ interface TemplateUseCardProps {
   ): void;
   onRunOverridesChange(values: Record<string, string>): void;
   onEditSource(): void;
-  onUpdateLatest(): void;
+  /** Re-pins this use; the card has already shown the switch review. */
+  onSelectRevision(revisionId: PromptTemplateRevisionId): void;
   onDetach(): void;
   onRemove(): void;
 }
@@ -1174,10 +1161,12 @@ function TemplateUseCardRevision({
   onSaveRunValue,
   onRunOverridesChange,
   onEditSource,
-  onUpdateLatest,
+  onSelectRevision,
   onDetach,
   onRemove,
 }: TemplateUseCardProps) {
+  const [switchTargetId, setSwitchTargetId] = useState<PromptTemplateRevisionId>();
+  const revisionSelect = useRef<HTMLSelectElement>(null);
   const [previewView, setPreviewView] = useState<"template" | "resolved">("template");
   const [previewExpanded, setPreviewExpanded] = useState(false);
   const [variableFilter, setVariableFilter] = useState("");
@@ -1189,7 +1178,7 @@ function TemplateUseCardRevision({
     use.values,
     runOverrides,
   );
-  const newerRevision = template.currentRevisionId !== revision.id;
+  const switchTarget = template.revisions.find(({ id }) => id === switchTargetId);
   // Resolution can report the same missing variable once per message. The
   // value is authored once, so the card should summarize it once as well.
   const uniqueDiagnostics = [
@@ -1294,9 +1283,13 @@ function TemplateUseCardRevision({
         <div>
           <div className="template-use-kicker">
             <span className="eyebrow">Pinned prompt</span>
-            <span className="provider-pill">
-              {promptRevisionLabel(template, revision.id)}
-            </span>
+            <PinnedRevisionSelect
+              template={template}
+              revisionId={revision.id}
+              disabled={false}
+              selectRef={revisionSelect}
+              onSelect={setSwitchTargetId}
+            />
             {uniqueDiagnostics.length > 0 && (
               <span className="template-issue-count" role="status">
                 {missingDiagnosticCount === uniqueDiagnostics.length
@@ -1316,11 +1309,6 @@ function TemplateUseCardRevision({
           <button className="button secondary" type="button" onClick={onEditSource}>
             Edit source
           </button>
-          {newerRevision && (
-            <button className="button secondary" type="button" onClick={onUpdateLatest}>
-              Review latest
-            </button>
-          )}
           <button className="button secondary" type="button" onClick={onDetach}>
             Detach
           </button>
@@ -1329,6 +1317,34 @@ function TemplateUseCardRevision({
           </button>
         </div>
       </header>
+
+      {switchTarget && (
+        <RevisionSwitchReview
+          title={`Switch "${template.name}"`}
+          fromLabel={promptRevisionLabel(template, revision.id)}
+          toLabel={promptRevisionLabel(template, switchTarget.id)}
+          changes={summarizeRevisionVariableChanges({
+            before: { variables: discovery.variables.map(({ name }) => name), defaults: revision.variableDefaults },
+            after: {
+              variables: discoverTemplateVariables(switchTarget.messages).variables.map(({ name }) => name),
+              defaults: switchTarget.variableDefaults,
+            },
+            kept: [...new Set([...Object.keys(use.values), ...Object.keys(runOverrides)])],
+          })}
+          diffSummary={summarizeRevisionDiff(diffPromptTemplateRevisions(revision, switchTarget))}
+          locked={false}
+          onCancel={() => {
+            setSwitchTargetId(undefined);
+            revisionSelect.current?.focus();
+          }}
+          onConfirm={() => {
+            setSwitchTargetId(undefined);
+            onSelectRevision(switchTarget.id);
+          }}
+        >
+          <ChatRevisionDiff diff={diffPromptTemplateRevisions(revision, switchTarget)} />
+        </RevisionSwitchReview>
+      )}
 
       <section className="template-use-preview">
         <div className="template-preview-heading">

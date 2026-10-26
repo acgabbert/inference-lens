@@ -9228,9 +9228,67 @@ label.experiment-retry-field {
   background: var(--surface-panel);
 }
 
-.decision-update-dialog {
-  max-height: 85dvh;
-  overflow: auto;
+.decision-template-use-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+/* Revision names are author text, so this does not borrow the pill's caps. */
+.pinned-revision-select {
+  max-width: 100%;
+  min-width: 0;
+  padding: var(--space-3xs) var(--space-xs);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-xs);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font: inherit;
+  font-weight: 650;
+}
+
+.revision-switch-variables dl {
+  margin: var(--space-md) 0 0;
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.revision-switch-variables dl > div {
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+.revision-switch-variables dl > div.warning {
+  background: var(--warning-surface);
+  color: var(--warning-strong);
+}
+
+.revision-switch-variables dt {
+  font-weight: 750;
+}
+
+.revision-switch-variables dd {
+  margin: var(--space-3xs) 0 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-geist-mono), monospace;
+}
+
+.revision-switch-variables > p,
+.revision-switch-dialog > p {
+  margin: var(--space-sm) 0 0;
+  color: var(--text-muted);
+}
+
+.revision-switch-diff {
+  margin-top: var(--space-md);
+}
+
+.revision-switch-diff > summary {
+  cursor: pointer;
+  font-weight: 650;
 }
 
 .template-kind-filter-button {
