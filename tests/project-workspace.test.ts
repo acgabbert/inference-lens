@@ -23,6 +23,7 @@ import {
   parseProjectJson,
 } from "../packages/core/src/project.ts";
 import { createResolvedRunInput } from "../packages/core/src/run-kernel/run-execution.ts";
+import { WORKBENCH_GITIGNORE_CONTENTS } from "../packages/core/src/personal-workbench.ts";
 import type { RepeatedExperimentPlanV3 } from "../packages/core/src/experiment.ts";
 
 class MemoryFile implements FileSystemFileHandleLike {
@@ -265,7 +266,7 @@ test("definitions policy stages only definitions, excludes future nested files, 
       "future/artifacts/nested/evidence.json",
       "future/project.json",
       "future/.gitignore",
-      "workbench/recovery.json",
+      ".workbench/recovery.json",
     ];
     for (const path of evidencePaths) {
       mkdirSync(dirname(join(directory, path)), { recursive: true });
@@ -281,6 +282,32 @@ test("definitions policy stages only definitions, excludes future nested files, 
     git("add", ".");
     assert.match(git("ls-files"), /traces\/run_one\.json/);
     assert.equal(readFileSync(join(directory, "traces/run_one.json"), "utf8"), "{}\n");
+  } finally {
+    rmSync(repository, { recursive: true, force: true });
+  }
+});
+
+test("the workbench self-ignore protects records and legacy backups without a bundle ignore policy", () => {
+  const repository = mkdtempSync(join(tmpdir(), "inference-lens-workbench-git-"));
+  const git = (...args: string[]) => execFileSync("git", ["-C", repository, ...args], { encoding: "utf8" });
+  try {
+    git("init", "--quiet");
+    const directory = join(repository, "Prompt Lab.inference-lens");
+    const workbench = join(directory, ".workbench");
+    mkdirSync(workbench, { recursive: true });
+    assert.equal(WORKBENCH_GITIGNORE_CONTENTS, "*\n");
+    writeFileSync(join(workbench, ".gitignore"), WORKBENCH_GITIGNORE_CONTENTS);
+    writeFileSync(join(directory, "project.json"), "{}\n");
+    const paths = ["selections.json", "drafts/draft_one.json", "scratch/request_one.json", "migrations/one/journal.json", "migrations/one/source.project.json"];
+    for (const path of paths) {
+      mkdirSync(dirname(join(workbench, path)), { recursive: true });
+      writeFileSync(join(workbench, path), "{}\n");
+    }
+    git("add", ".");
+    assert.equal(git("ls-files").trim(), "Prompt Lab.inference-lens/project.json");
+    for (const path of [".gitignore", ...paths]) {
+      assert.equal(git("check-ignore", `Prompt Lab.inference-lens/.workbench/${path}`).trim(), `Prompt Lab.inference-lens/.workbench/${path}`);
+    }
   } finally {
     rmSync(repository, { recursive: true, force: true });
   }

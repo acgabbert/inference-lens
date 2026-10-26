@@ -2,6 +2,7 @@
   "records": {
     "drafts/draft_template_chat.json": {
       "schemaVersion": 1,
+      "kind": "draft",
       "projectId": "project_shared-assets-example",
       "draftId": "draft_template_chat",
       "asset": {
@@ -41,6 +42,7 @@
     },
     "drafts/draft_template_decision.json": {
       "schemaVersion": 1,
+      "kind": "draft",
       "projectId": "project_shared-assets-example",
       "draftId": "draft_template_decision",
       "asset": {
@@ -92,6 +94,7 @@
     },
     "selections.json": {
       "schemaVersion": 1,
+      "kind": "selections",
       "projectId": "project_shared-assets-example",
       "chat": {
         "selectedInput": {

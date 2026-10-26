@@ -476,6 +476,26 @@ export function isSensitiveTemplateVariableName(value: string): boolean {
   return sensitiveFieldNames.has(normalizedFieldName(value));
 }
 
+/**
+ * @internal Paths of known secret-bearing keys anywhere under `value`,
+ * including inside arrays. v15 validation stops at arrays and keeps doing so
+ * so existing folders still open; the Level 2 codecs use this stricter walk.
+ */
+export function sensitiveFieldPaths(
+  value: unknown,
+  path: Array<string | number> = [],
+): Array<Array<string | number>> {
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) => sensitiveFieldPaths(item, [...path, index]));
+  }
+  if (!value || typeof value !== "object") return [];
+  return Object.entries(value).flatMap(([key, item]) =>
+    isSensitiveTemplateVariableName(key)
+      ? [[...path, key]]
+      : sensitiveFieldPaths(item, [...path, key]),
+  );
+}
+
 function endpointHasCredentials(value: string): boolean {
   try {
     const endpoint = new URL(value);
@@ -536,7 +556,7 @@ const conversationMessageSchema: z.ZodType<ConversationMessage> =
       .strict(),
   ]);
 
-const inferenceOptionsSchema: z.ZodType<InferenceOptions> = z
+const inferenceOptionsSchema = z
   .object({
     temperature: z.number().finite().optional(),
     maxOutputTokens: z.number().int().positive().optional(),
@@ -544,7 +564,7 @@ const inferenceOptionsSchema: z.ZodType<InferenceOptions> = z
     stop: z.array(z.string()).optional(),
     providerOptions: jsonObjectSchema.optional(),
   })
-  .strict();
+  .strict() satisfies z.ZodType<InferenceOptions>;
 
 const connectionRequirementSchema: z.ZodType<ConnectionRequirement> = z
   .object({
@@ -613,7 +633,7 @@ const promptTemplateRecommendedTargetSchema: z.ZodType<PromptTemplateRecommended
     })
     .strict();
 
-const promptTemplateRevisionSchema: z.ZodType<ChatPromptTemplateRevision> = z
+const promptTemplateRevisionSchema = z
   .object({
     id: entityId("template-revision"),
     createdAt: z.iso.datetime({ offset: true }),
@@ -634,9 +654,9 @@ const promptTemplateRevisionSchema: z.ZodType<ChatPromptTemplateRevision> = z
     ),
     externalImportId: entityId("external-import").optional(),
   })
-  .strict();
+  .strict() satisfies z.ZodType<ChatPromptTemplateRevision>;
 
-const promptTemplateDraftSchema: z.ZodType<ChatPromptTemplateDraft> = z
+const promptTemplateDraftSchema = z
   .object({
     sourceRevisionId: entityId("template-revision"),
     revisionName: z.string().optional(),
@@ -655,7 +675,7 @@ const promptTemplateDraftSchema: z.ZodType<ChatPromptTemplateDraft> = z
       z.string(),
     ),
   })
-  .strict();
+  .strict() satisfies z.ZodType<ChatPromptTemplateDraft>;
 
 // Custom validation retains authored question and criteria ordering.
 const decisionInputSchema = z.custom<DecisionInput>(isDecisionInput,
@@ -816,6 +836,17 @@ const projectDefaultsSchema = z
     decisionRequestRevisionId: entityId("decision-revision").optional(),
   })
   .strict();
+
+/** @internal Shared content validators for the isolated Level 2 codecs. */
+export const projectContentSchemas = {
+  entityId,
+  chatPromptRevision: promptTemplateRevisionSchema,
+  chatPromptDraft: promptTemplateDraftSchema,
+  decisionPromptRevision: decisionPromptTemplateRevisionSchema,
+  decisionPromptDraft: decisionPromptTemplateDraftSchema,
+  inferenceOptions: inferenceOptionsSchema,
+  executionTarget: executionTargetSchema,
+};
 
 const decisionRequestSchema = z
   .object({
@@ -2070,6 +2101,9 @@ const preferredFieldOrder = new Map(
     "decisionRequestRevisionId",
   ].map((field, index) => [field, index]),
 );
+
+/** @internal Shared with the Level 2 codecs so nested content serializes alike. */
+export const projectFieldOrder: ReadonlyMap<string, number> = preferredFieldOrder;
 
 export function serializeProjectFile(project: ProjectFile): string {
   const validated = parseProjectFile(project);
