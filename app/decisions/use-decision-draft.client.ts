@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { DecisionInput, DecisionQuestionType } from "../../packages/core/src/decision";
 import { discoverDecisionVariables } from "../../packages/core/src/decision-variables";
 import { DECISION_EXAMPLE } from "./decision-example";
@@ -44,6 +44,8 @@ export interface DecisionDraftHandle {
   /** Replaces the draft with the worked example; an edit, so it is saved like one. */
   loadExample(): void;
   setValue(name: string, value: string): void;
+  clearValue(name: string): void;
+  touch(): void;
   /** Why the last view switch was refused; cleared by the next edit or switch. */
   viewProblems: DecisionDraftProblem[];
   /** Derived from the draft as it is now; never a retained last-valid input (D18). */
@@ -68,11 +70,16 @@ export interface DecisionDraftHandle {
  * The decision kind's editor draft (D18, D29). Held above any conditional pane
  * mount, so switching kinds or views never loses it (D17).
  */
-export function useDecisionDraft(options: { onEdited?(): void } = {}): DecisionDraftHandle {
-  const [draft, setDraft] = useState<DecisionDraft>(() => createDecisionDraft());
-  const [values, setValues] = useState<Record<string, string>>({});
-  const [touched, setTouched] = useState(false);
+export interface DecisionDraftSnapshot { draft: DecisionDraft; values: Record<string, string>; touched: boolean }
+
+export function useDecisionDraft(options: { onEdited?(): void; initial?: DecisionDraftSnapshot; onSnapshot?(snapshot: DecisionDraftSnapshot): void } = {}): DecisionDraftHandle {
+  const [draft, setDraft] = useState<DecisionDraft>(() => options.initial?.draft ?? createDecisionDraft());
+  const [values, setValues] = useState<Record<string, string>>(options.initial?.values ?? {});
+  const [touched, setTouched] = useState(options.initial?.touched ?? false);
   const [viewProblems, setViewProblems] = useState<DecisionDraftProblem[]>([]);
+
+  const { onSnapshot } = options;
+  useEffect(() => { onSnapshot?.({ draft, values, touched }); }, [draft, values, touched, onSnapshot]);
 
   function edit(update: (current: DecisionDraft) => DecisionDraft): void {
     setViewProblems([]);
@@ -108,6 +115,11 @@ export function useDecisionDraft(options: { onEdited?(): void } = {}): DecisionD
     loadExample() {
       setValues({});
       edit(() => decisionDraftFromInput(DECISION_EXAMPLE));
+    },
+    touch() { setTouched(true); options.onEdited?.(); },
+    clearValue(name) {
+      setValues((current) => { const next = { ...current }; delete next[name]; return next; });
+      setTouched(true); options.onEdited?.();
     },
     setValue(name, value) {
       setValues((current) => ({ ...current, [name]: value }));

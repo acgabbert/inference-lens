@@ -1,5 +1,6 @@
 "use client";
 
+import type { DecisionComposeHandle } from "../decisions/use-decision-compose.client";
 import type { ProjectFile } from "../../packages/core/src/project";
 import type { PromptTemplateId } from "../../packages/core/src/run-kernel";
 import type { EvaluationSuiteAuthoringHandle } from "../evaluations/use-evaluation-suite-authoring.client";
@@ -12,6 +13,7 @@ import { isChatEvaluationSuite } from "../../packages/core/src/evaluation-suites
 interface PromptsModeProps {
   project?: ProjectFile;
   templates: ProjectTemplatesHandle;
+  decision: Pick<DecisionComposeHandle, "useTemplate">;
   /** Conversation length when there is no project revision to count. */
   draftMessageCount: number;
   persistence: { autoSaveFailed: boolean; folderBacked: boolean; dirty: boolean };
@@ -56,6 +58,7 @@ function compatibleEvaluationSuitesByTemplate(
 export function PromptsMode({
   project,
   templates,
+  decision,
   draftMessageCount,
   persistence,
   navigation,
@@ -92,6 +95,11 @@ export function PromptsMode({
         {...(n8nImportDisabledReason ? { n8nImportDisabledReason } : {})}
         onOpenN8nImport={onOpenN8nImport}
         onCreate={templates.createProjectTemplate}
+        decisionEditorMemory={templates.decisionEditorMemory}
+        onCreateDecision={templates.createDecisionTemplate}
+        onDecisionDraftChange={templates.updateDecisionTemplateDraft}
+        onSaveDecision={templates.saveDecisionTemplate}
+        onUseDecision={(id, revisionId) => decision.useTemplate(templates.projectForDecisionUse(), id, revisionId)}
         onDraftChange={templates.updateProjectTemplateDraft}
         onRecommendedTargetChange={templates.updateProjectTemplateRecommendedTarget}
         onSave={templates.saveProjectTemplate}

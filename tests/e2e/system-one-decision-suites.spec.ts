@@ -335,6 +335,8 @@ test("a v15 template-backed suite resolves its pin on screen and sends an explic
   await page.keyboard.press("Escape");
   await openMode(page, "Prompts");
   await expect(page.getByText("Chat sentinel", { exact: true })).toBeVisible();
+  await expect(page.getByText("Saved decision source", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Chat", exact: true }).click();
   await expect(page.getByText("Saved decision source", { exact: true })).toHaveCount(0);
   await openMode(page, "Evaluations");
   await page.getByRole("navigation", { name: "Evaluation suites" }).getByRole("button", { name: /Triage/ }).click();

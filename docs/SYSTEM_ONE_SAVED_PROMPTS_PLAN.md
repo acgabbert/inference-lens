@@ -1,8 +1,9 @@
 # System One requests in Saved Prompts
 
-Status: recommendations accepted by the user on 2026-10-25; PR slices 1–2
-(contracts, compatibility preparation, schema v15 and core lifecycle) implemented.
-Slices 3–4 remain; user-facing decision template authoring has not shipped.
+Status: recommendations accepted by the user on 2026-10-25; PR slices 1–3
+(contracts, compatibility preparation, schema v15, core lifecycle, and Library
+and Compose) implemented. Slice 4's evaluation shortcuts and compatibility
+closeout remain. See the [authoring guide](SYSTEM_ONE_SAVED_PROMPTS.md).
 
 ## Outcome
 
@@ -424,3 +425,74 @@ mixed-library safety. It does not cover the future library editor, capture,
 update/detach controls, or navigation/draft retention workflows; those belong
 to slice 3. Hosted-provider and native-desktop behavior remain unchecked, and
 visual review of the new authoring controls is still due when they exist.
+
+## Slice 3 implementation and verification
+
+The Prompts workspace now composes a mixed-kind library shell with separate chat
+and decision editors. `useProjectTemplates` owns both kinds' persistence and
+session templates, plus transient decision editor snapshots. The reusable
+`DecisionInputEditor` accepts draft commands without target or session state.
+`useDecisionCompose` owns capture, draft preservation before use, pinned request
+adoption, source/return commands, update/detach, and result invalidation.
+The route only connects these owners and navigation.
+
+Capture stages a session-only prompt even in an open project, allowing the
+author to review captured values before publishing its first revision. Valid
+library drafts persist; incomplete edits remain in memory with an explicit
+session-only status. Explicit empty defaults and missing defaults stay distinct.
+Pinned content is read-only while values remain editable. Update reviews show
+ordered content/default changes and create a child revision; detach preserves
+tokens and effective assignments. Source-only navigation retains the displayed
+result. Recommendations resolve through portable connection requirements and
+local System One declarations, without selecting a connection or model.
+
+Pre-fix browser regressions demonstrated the omitted decision-library row,
+capture incorrectly persisting defaults before review, secret-name controls
+being enabled, 130px mobile value fields, source return dropping a displayed
+answer, and missing local recommendation diagnostics. The existing
+`new-project-isolation` spec also caught a collapsed empty-library panel. The
+remaining new workflow tests were added after implementation and were not
+shown failing before it. Ambiguous JSON-tab selectors, the existing `Current`
+revision label, and the old slice-2 expectation that decisions stay hidden caused
+setup/expectation failures; these are not behavioral red evidence.
+
+Validation commands:
+
+- `npm run typecheck`, `npm run typecheck:core`, `npm run lint`, and
+  `npm run build`. Lint has zero errors and four existing unused-variable
+  warnings; the build retains the existing bundle-size warning.
+- `npm run test:core`: 1,473 tests passed, including the template-backed
+  CLI/provider path. No new schema or CLI format is introduced in this slice.
+- `node --test --test-timeout=120000 tests/project-templates-render.test.mjs tests/project-templates-interaction.test.mjs tests/template-use-card-interaction.test.mjs tests/decision-response-render.test.mjs tests/decision-session-interaction.test.mjs`:
+  all 34 tests passed.
+- Iteration covered `system-one-saved-prompts`, `prompt-authoring-workspace`,
+  `prompt-draft-retention`, `prompt-insertion-handoff`,
+  `saved-prompt-revision-diff`, `first-use-prompt-authoring`,
+  `system-one-decision-requests`, `system-one-decision-suites`, and
+  `new-project-isolation`. The final closeout commands included
+  `npm run test:e2e -- tests/e2e/system-one-saved-prompts.spec.ts tests/e2e/new-project-isolation.spec.ts`
+  (10 passed) and the preceding decision request/suite closeout (20 passed).
+
+The saved-prompt spec checks mixed search/filter, capture review, explicit empty
+and missing defaults, incomplete edit retention through prompt/revision/mode
+navigation, discard/cancel, provider answers and request evidence, pinned source
+immutability, update/new required values, detach/reopen, historical use,
+recommendations, ordered criteria diffs, archive/restore, keyboard activation,
+and 390px authoring without a project or System One connection. Its mobile
+screenshot was visually inspected after correcting the narrow layout.
+
+The first full browser run reported 347 passed, 7 opt-in skips and 3 failures:
+the empty-library layout regression and two cases blocked by a Vite dev-server
+`Response body object should not be disturbed or locked` overlay. The affected
+specs passed on the scoped rerun after the layout fix. A second parallel full
+run reported 350 passed, 7 opt-in skips and one chat streaming test blocked by
+the same dev-server overlay. The final full run uses
+`npm run test:e2e -- --workers=1`: **351 passed, 7 opt-in skips**, with no
+failures (6.5 minutes). No system Chromium override or browser-download fallback
+was used.
+
+Hosted providers, the native desktop app, and the Docker CLI were not exercised.
+Browser execution uses the committed llama.cpp capture replay, which only
+accepts the captured question definitions. The new editor and update-review
+presentation are worth the user's own visual review. Slice 4 still owns direct
+library evaluation, compatible-suite discovery and deliberate retargeting.

@@ -66,6 +66,10 @@ projects and the exact rules. In browsers that support directory access,
 an existing bundle. Other browsers can use **Import** and **Export** with the
 same Project v15 JSON format.
 
+The Prompts library authors both chat prompts and whole System One decision
+requests. See [Saved decision prompts](docs/SYSTEM_ONE_SAVED_PROMPTS.md) for
+capture, variable defaults, pinned revisions, update, and detach.
+
 The Docker container does not need a project volume: the browser reads and
 writes only the host folder the user explicitly selects. Tauri uses a native
 folder picker and performs project I/O in Rust. Once either adapter has an open

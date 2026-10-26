@@ -5,6 +5,7 @@ import {
   activeDecisionRequestRevision,
   resolveProjectDecisionRequestRevision,
   updateDecisionRequestDraft,
+  updateDecisionRequestOverrides,
 } from "../../packages/core/src/decision-request";
 import type { ProjectFile } from "../../packages/core/src/project";
 import type { DecisionRequestRevisionId } from "../../packages/core/src/run-kernel/types";
@@ -56,6 +57,14 @@ export function useDecisionProject(options: {
       pendingSuffixRef.current = undefined;
     }
     pendingSuffixRef.current ??= globalThis.crypto.randomUUID();
+    if (active?.kind === "template-use") {
+      const resolved = resolveProjectDecisionRequestRevision(project, active.id)!;
+      const overrides = Object.fromEntries(resolved.variables.flatMap((name) =>
+        Object.hasOwn(draft.values, name) && (Object.hasOwn(active.overrides, name) || draft.values[name] !== resolved.values[name])
+          ? [[name, draft.values[name]!]] : []));
+      return updateDecisionRequestOverrides(project, { decisionRequestRevisionId: active.id, overrides,
+        branch: frozenRef.current.has(active.id), idSuffix: pendingSuffixRef.current });
+    }
     return updateDecisionRequestDraft(project, {
       decision: validated.input,
       values: draft.values,

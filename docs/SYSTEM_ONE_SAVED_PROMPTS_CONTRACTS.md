@@ -1,9 +1,9 @@
 # System One Saved Prompts implementation contracts
 
 These shapes implement the [accepted plan](SYSTEM_ONE_SAVED_PROMPTS_PLAN.md).
-Slices 1–2 implement the resolver boundary, explicit migration to v15, typed
-content and pure lifecycle below. UI owners in slice 3 and the evaluation
-shortcuts in slice 4 remain to be implemented. Shared Assets Level 2 remains unstarted;
+Slices 1–3 implement the resolver boundary, explicit migration to v15, typed
+content, pure lifecycle, and UI owners below. The evaluation shortcuts in
+slice 4 remain to be implemented. Shared Assets Level 2 remains unstarted;
 this feature retains ownership of v15.
 
 ## Persisted types (slice 2)
@@ -176,8 +176,10 @@ execution or session ownership.
 
 `useDecisionCompose` exposes a capture command returning either cloned valid
 authored content/current assignments or validation problems. Capture does not
-save a template, render tokens, or change the current request. The defaults
-editor lets the user choose which captured values to publish as defaults.
+save a template, render tokens, or change the current request. The library
+stages a capture as a session-only template, including in an open project. The
+defaults editor lets the user choose which captured values to publish before
+Save to project materializes its first persisted revision.
 
 Compose also exposes a use command. It folds a valid draft before switching,
 requests explicit discard for an invalid draft, adopts the newly pinned
