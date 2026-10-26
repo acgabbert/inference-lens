@@ -5,7 +5,10 @@ Level 2 design choices were approved October 25, 2026, as recorded below.
 On October 26, the user approved a bounded first implementation slice: isolated
 v16/workbench v1 core codecs and an in-memory migration planner. That
 [core foundation](SHARED_ASSETS_LEVEL_TWO_DESIGN.md#first-core-slice-october-26-2026)
-is implemented; app and CLI persistence remain v15. Slice 2a's remaining
+is implemented. The subsequent approved
+[recovery-store foundation](SHARED_ASSETS_RECOVERY_STORE_SLICE.md) implements
+opt-in browser/native storage for those existing records; app and CLI
+persistence remain v15. Slice 2a's remaining
 persistence, recovery and compatibility proposals still need review before
 integration. Level 3 remains proposed. The product direction is agreed:
 Inference Lens is a personal workbench for potentially shared assets. Approved
@@ -291,6 +294,12 @@ draft and copied-selection v1 records, and pure migration planning while the
 application stays on v15. It does not approve the full 2b persistence contracts
 below. See the [implemented API boundary](SHARED_ASSETS_LEVEL_TWO_DESIGN.md#first-core-slice-october-26-2026).
 
+The later [recovery-store approval](SHARED_ASSETS_RECOVERY_STORE_SLICE.md) covers
+layout for those existing arms, exact self-ignore protection, foreign-project
+write blocking, expected-content checks and read-back, same-host coordination,
+and per-record conflicts/failures. These are implemented as opt-in storage;
+the application does not yet migrate, recover editors or publish through it.
+
 Produce a field-by-field ownership inventory and concrete before/after migration
 examples for a prompt, chat request, decision request, and evaluation suite.
 Include saved values, defaults, branches, temporary fixtures, import receipts,
@@ -534,6 +543,7 @@ unresolved persistence, compatibility, or dependency policy during coding.
 | 1 | Creation presets, exact ignore policy, documentation | Core bundle policy; creation dialog; browser/native creation adapters |
 | 2a | Complete field inventory, approved ownership and migration examples | Core shared-definition and personal-state contracts |
 | 2b, core foundation | Isolated v16/workbench v1 codecs and pure migration plan; app remains v15 (implemented October 26) | Core codecs; no workspace integration |
+| 2b, recovery-store foundation | Protected storage for existing prompt-draft and selections records (implemented October 26); app remains v15 | Core typed store; opt-in browser/native workspace adapters |
 | 2b, integration | Recovery store, migration, prompt/request drafts and scratch inputs, selections, explicit publication and launch defaults | Workspace adapters; personal-workbench, prompt, request, decision and execution-setting owners; compatible app/CLI loaders |
 | 2c | Suite/tool/mock drafts and import staging; explicit saves | Evaluation, tool and import feature owners |
 | 2d | Invalid or incomplete typed editor-buffer recovery | Editor owners and workbench codecs |

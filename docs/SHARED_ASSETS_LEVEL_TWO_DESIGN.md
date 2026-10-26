@@ -6,11 +6,13 @@ October 26, 2026. This document applies the
 to Project v15; the System One prompts/evaluations work has landed on main.
 The user subsequently approved isolated core codecs and an in-memory migration
 planner, with the application remaining on v15 until recovery storage is ready.
-That [bounded slice](#first-core-slice-october-26-2026) is implemented. Other
-recommendations below remain proposals; no filesystem persistence is implemented.
+That [bounded slice](#first-core-slice-october-26-2026) is implemented. A subsequent
+approved [recovery-store foundation](SHARED_ASSETS_RECOVERY_STORE_SLICE.md)
+adds opt-in browser/native filesystem adapters for those existing records.
+Other recommendations below remain proposals; application recovery is not enabled.
 Revised the same day after review: write safety, publication intent, launch
-defaults, the v16 rationale and delivery order. The next step is review of the
-remaining recovery contracts before the persistence portion of slice 2b starts.
+defaults, the v16 rationale and delivery order. The remaining integration
+contracts still need review before application migration/publication starts.
 
 ## Review recommendations
 
@@ -29,7 +31,10 @@ remaining recovery contracts before the persistence portion of slice 2b starts.
 | Personal backup | Later slice: separate versioned backup of personal records and required local dependencies; preview restore, never overwrite automatically. Evidence remains a separate export. | Full-folder archive carries evidence too, but obscures what is portable and greatly increases scope. |
 
 The first core-slice approval accepts v16 and v1 for the bounded contracts
-described below; the other recommendations remain proposals for review. The write-safety
+described below. The later recovery-store approval accepts the existing-record
+layout, protection, identity blocking and write outcomes documented in its
+[slice contract](SHARED_ASSETS_RECOVERY_STORE_SLICE.md). The other recommendations
+remain proposals for review. The write-safety
 row revises the approved concurrent-writer choice; the
 [parent plan](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md#confirmed-design-choices-october-25-2026)
 records that revision.
@@ -628,7 +633,10 @@ options are unchecked in v15 and remain so in v16; that is a separate decision.
 
 ### Remaining integration work
 
-No `.workbench` store is created yet. Journal fields/digests/limits, write and
+The later [recovery-store slice](SHARED_ASSETS_RECOVERY_STORE_SLICE.md) implements
+opt-in protected persistence for the existing prompt drafts and selections,
+including conflict outcomes. Project opening and application save paths still
+do not use it. Journal fields/digests/limits, migration write and
 restart recovery, publication intent, dependency snapshots, source-backup
 retention, conflict UX, request draft/scratch arms, feature owners, and the
 launch-default action remain to be settled or implemented. Other selection

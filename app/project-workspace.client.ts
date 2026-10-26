@@ -9,6 +9,8 @@ import {
   serializeProjectFile,
 } from "../packages/core/src/project.ts";
 import type { ProjectFile, ProjectGitPolicy } from "../packages/core/src/project.ts";
+import type { WorkbenchFile, WorkbenchMutationResult, WorkbenchStorage } from "../packages/core/src/workbench-store.ts";
+import { browserWorkbenchStorage } from "./workbench-directory.client.ts";
 import {
   assertTraceEntryName,
   serializeDecisionRunTrace,
@@ -104,6 +106,8 @@ interface DirectoryPickerWindow extends Window {
  * memory as compact summaries rather than as every trace the folder holds.
  */
 interface WorkspaceStorage {
+  /** Opt-in recovery adapter. Creating a handle never creates recovery files. */
+  workbench: WorkbenchStorage;
   save(contents: string): Promise<void>;
   saveTrace(runId: string, fileName: string, contents: string): Promise<void>;
   listTraces(): Promise<StoredRunTraceFile[]>;
@@ -181,6 +185,7 @@ function browserStorage(
 ): WorkspaceStorage {
   let lastContents = initialContents;
   return {
+    workbench: browserWorkbenchStorage(directory),
     async save(contents: string): Promise<void> {
       const fileHandle = await directory.getFileHandle(PROJECT_FILE_NAME);
       const currentContents = await (await fileHandle.getFile()).text();
@@ -526,6 +531,12 @@ function nativeWorkspaceHandle(
     displayName: workspace.displayName,
     displayPath: workspace.displayPath,
     storage: {
+      workbench: {
+        list: () => invokeNative<WorkbenchFile[]>("list_workbench_records", { workspaceId: workspace.workspaceId }),
+        mutate: (path, expectedContents, contents, projectId) => invokeNative<WorkbenchMutationResult>("mutate_workbench_record", {
+          workspaceId: workspace.workspaceId, path, expectedContents, contents, projectId,
+        }),
+      },
       async save(contents: string): Promise<void> {
         await invokeNative("save_project_workspace", {
           workspaceId: workspace.workspaceId,
