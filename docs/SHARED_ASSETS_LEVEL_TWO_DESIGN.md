@@ -1,13 +1,16 @@
 # Shared assets Level 2: ownership and migration review
 
-**Status:** Slice 2a proposal, October 26, 2026. This document applies the
+**Status:** Slice 2a review with an approved first core implementation slice,
+October 26, 2026. This document applies the
 [approved Level 2 direction](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md#confirmed-design-choices-october-25-2026)
-to Project v15 at `214bf7e`. It does not approve new contracts or implement
-persistence. Assume the System One prompts/evaluations branch lands unchanged.
+to Project v15; the System One prompts/evaluations work has landed on main.
+The user subsequently approved isolated core codecs and an in-memory migration
+planner, with the application remaining on v15 until recovery storage is ready.
+That [bounded slice](#first-core-slice-october-26-2026) is implemented. Other
+recommendations below remain proposals; no filesystem persistence is implemented.
 Revised the same day after review: write safety, publication intent, launch
 defaults, the v16 rationale and delivery order. The next step is review of the
-decisions below, followed by final codecs and recovery contracts before slice 2b
-starts.
+remaining recovery contracts before the persistence portion of slice 2b starts.
 
 ## Review recommendations
 
@@ -25,7 +28,8 @@ starts.
 | Conflict recovery | Retain both sides, stop automatic writes to the affected record, and require explicit reconciliation; keep source snapshots for comparisons. | Automatic merge/rebase introduces new semantics, especially for ordered decision input. |
 | Personal backup | Later slice: separate versioned backup of personal records and required local dependencies; preview restore, never overwrite automatically. Evidence remains a separate export. | Full-folder archive carries evidence too, but obscures what is portable and greatly increases scope. |
 
-These are proposals for review, including the version numbers. The write-safety
+The first core-slice approval accepts v16 and v1 for the bounded contracts
+described below; the other recommendations remain proposals for review. The write-safety
 row revises the approved concurrent-writer choice; the
 [parent plan](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md#confirmed-design-choices-october-25-2026)
 records that revision.
@@ -503,12 +507,12 @@ so without changing an existing arm; otherwise it versions the codec.
 
 ## Review and verification handoff
 
-Approve or revise the field classification and four migration examples first.
-Then settle the proposed versions/default policy, the launch-default action,
+The first core slice implements the approved preservation/default policy and
+versioned migration outputs. Before persistence, settle the launch-default action,
 the 2b record arms, record layout, publication intent, migration journal and
 compatibility APIs. 2c–2e contracts are reviewed with their slices. The parent
 plan's contract checklist stays unchecked until those decisions are accepted;
-this proposal does not start slice 2b.
+the bounded core approval does not approve the remaining integration contracts.
 
 For implementation, start with failing assertions on actual shared bytes and
 recovered values, plus a real Git fixture with no bundle-level ignore rule.
@@ -522,11 +526,11 @@ Keep the existing provider fixtures; assert the trial values reached the provide
 while the shared bytes did not change. Run the affected browser specs then the
 full suite as required by [AGENTS.md](../AGENTS.md).
 
-This slice changes documentation/examples only. Verification should parse the
-v15 example with the current codec, check exact migration preservation and local
-draft extraction, validate links/JSON, and run `git diff --check`. Proposed v16
-and recovery examples have no production codec yet; those checks cannot prove
-their future parser or filesystem recovery behavior. No browser run is needed.
+The original slice 2a changed documentation/examples only. Its verification parsed the
+v15 example with the current codec, checked exact migration preservation and local
+draft extraction, validated links/JSON, and ran `git diff --check`. At that point
+v16 and recovery examples had no production codec; those checks did not prove
+parser or filesystem recovery behavior. Core implementation evidence follows.
 
 ### Checks performed October 26, 2026
 
@@ -547,3 +551,113 @@ their future parser or filesystem recovery behavior. No browser run is needed.
   yet. Review should focus on ownership, the migration preview's sharing boundary,
   the 2b scope, the launch-default writer and the best-effort write-safety
   decision.
+
+## First core slice, October 26, 2026
+
+**Approved scope:** isolated core codecs and an in-memory migration planner.
+Project v16 excludes both prompt kinds' explicit drafts. Workbench v1 receives
+those drafts and copied selections; all other saved content and launch defaults
+stay shared. The app stays on v15 until recovery storage is ready. This is the
+first part of 2b, not completion of Level 2 or authorization to start writing v16
+from existing save paths.
+
+### Implemented contracts
+
+- [shared-project.ts](../packages/core/src/shared-project.ts) owns
+  `SharedProjectFileV16`, its draft-free `SharedPromptTemplate` union, and
+  `parseSharedProjectFile`, `parseSharedProjectJson`, `serializeSharedProjectFile`.
+  These APIs accept only v16. They reuse the existing saved-content/reference
+  validators behind an explicit v16 gate and reject any prompt `draft` field.
+  They do not silently extract personal data during parsing. Serialization keeps
+  the existing deterministic field order, decision order and tool-schema order.
+- [personal-workbench.ts](../packages/core/src/personal-workbench.ts) owns
+  `WorkbenchPromptDraftV1`, `WorkbenchSelectionsV1`, `WorkbenchRecordV1`,
+  `parseWorkbenchRecord`, `parseWorkbenchRecordJson`, and
+  `serializeWorkbenchRecord`. These implement the two prompt arms and selection
+  seed shapes shown in the examples. Drafts keep an asset ID/kind, source revision
+  ID, source revision snapshot, and edited fields. The base ID must equal the
+  snapshot ID. An optional expected project ID checks association. Structural
+  parsing needs no live project and therefore permits orphaned bases for later
+  recovery; it does not authorize publishing them.
+- Chat execution selections permit sparse target/option overrides. Absent
+  fields inherit, null clears an optional inference option, and present arrays
+  and provider-option objects are replacement values. The codec preserves this
+  distinction; this slice adds no execution resolver. Migration supplies the
+  existing target/options/tools. Decision selection seeds contain only the saved
+  request pin; no decision target is invented. Unknown fields/versions and
+  unsupported record arms are rejected. Known secret field names in template
+  defaults and execution provider options are rejected, including nested arrays
+  in the latter; this is structural checking, not content sanitization.
+- [shared-project-migration.ts](../packages/core/src/shared-project-migration.ts)
+  owns `planSharedProjectMigration(Uint8Array): SharedProjectMigrationPlan`.
+  It copies the original bytes before strict UTF-8 decoding, invokes the existing
+  v10→v15 chain, then returns `sourceVersion`, `sourceBytes`, `shared`, `drafts`,
+  `selections`, and `preview`. No files are read or written, no migration is
+  committed, and no existing personal state is accepted or overwritten. The
+  returned selections are reconciliation candidates, not replacement commands.
+- Planning is deterministic and preserves all normalized saved data apart from
+  version and explicit prompt drafts. Source bytes preserve pre-normalization
+  formatting, BOM and line endings. Candidate objects do not share mutable
+  content with each other or the source buffer. Draft IDs encode the source
+  template ID's UTF-16 code units as hex after `draft_migrated-`, giving stable,
+  distinct IDs without using untrusted legacy IDs as paths. These are logical
+  record identities, not a finalized filename or migration-journal contract.
+- `PROJECT_SCHEMA_VERSION`, `ProjectFile`, the current parser/serializer, app
+  folder adapters, JSON import/export, and CLI paths remain v15. Existing callers
+  still retain embedded drafts and reject v16. The new codecs have no runtime
+  caller in those flows; switching the version constant alone is not supported.
+
+The planner rejects invalid legacy documents before extraction, including missing
+draft sources; it does not rescue an invalid manifest heuristically. Unsupported
+v9 and earlier inputs and v16+ inputs are not migration sources. Invalid UTF-8
+is rejected without lossy decoding. A legacy provider-options payload accepted
+by the older validator but containing known secret keys inside arrays is rejected
+by the new workbench codec, not silently copied or sanitized.
+
+### Remaining integration work
+
+No `.workbench` store is created yet. Journal fields/digests/limits, write and
+restart recovery, publication intent, dependency snapshots, source-backup
+retention, conflict UX, request draft/scratch arms, feature owners, and the
+launch-default action remain to be settled or implemented. Other selection
+arms, decision execution overrides, and request provenance still need their
+contracts. Suite/tool/mock draft arms, invalid buffers and personal backup remain
+later work. The first core codec rejects these unsupported fields instead of
+pretending to preserve them. The byte buffer in the plan is not a durable backup.
+
+### Core-slice verification
+
+- Wrote the first migration assertions before ownership separation. A minimal
+  planner scaffold delegated to the existing v15 parser, allowing a meaningful
+  red run rather than a missing-module failure: actual shared version `15`
+  differed from expected `16`, and extracted draft count `0` differed from `2`.
+  The active-v15 compatibility assertion passed. These establish the absence of
+  the new migration behavior, not a regression in an existing application path.
+- `node --experimental-strip-types --test tests/shared-project-migration.test.ts
+  tests/project-workspace.test.ts` passed 37 tests. Coverage includes the complete
+  examples, strict validation, both draft kinds, every supported starting version,
+  saved pins/defaults/content, absent/empty/null values, original bytes,
+  deterministic IDs, independent candidates, and authored ordering. A fixture
+  initially used an editor helper that removes an empty revision name; it was
+  corrected to supply a saved empty string directly. That fixture failure is
+  not claimed as implementation evidence.
+- The Level 1 Git fixture now uses `.workbench/recovery.json`. A new disposable
+  real repository without a bundle `.gitignore` confirms `*\n` inside
+  `.workbench/.gitignore` excludes itself, selections, drafts, scratch records and
+  legacy migration backups. The test writes representative files directly; it
+  does not establish adapter write ordering or crash recovery.
+- Full `npm run test:core` passed all 1,510 tests, including existing CLI and
+  provider-fixture coverage. The initial sandboxed attempt had 52 failures
+  because local fixture listeners were denied (`listen EPERM`); the rerun with
+  local-server access passed. This is v15 CLI compatibility coverage, not v16
+  CLI integration.
+- `npm run typecheck:core`, `npm run lint`, and `npm run build` passed. The build
+  includes the application type check and reports the existing large-chunk
+  warning. Lint reports three pre-existing unused-variable warnings and no new
+  warnings. `git diff --check`, new-file whitespace checks, and all 25 relative
+  link targets in the two planning documents passed.
+- No browser or native filesystem recovery run is required for this isolated
+  core slice: it changes no user-visible behavior or provider execution. Those
+  checks remain mandatory when persistence and feature owners are integrated.
+  Human review should focus on API scope and candidate/backup wording; there is
+  no new UI to inspect yet.

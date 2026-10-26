@@ -1,11 +1,13 @@
 # Shared assets in a personal workbench
 
 **Status:** Level 1 implemented October 25, 2026; verification recorded below.
-Level 2 design choices were approved October 25, 2026, as recorded below;
-implementation has not started. Slice 2a's [field inventory, migration examples,
-and contract proposals](SHARED_ASSETS_LEVEL_TWO_DESIGN.md) are ready for review
-as of October 26, 2026; the proposed contracts are not yet approved. Level 3
-remains proposed. The product direction is agreed:
+Level 2 design choices were approved October 25, 2026, as recorded below.
+On October 26, the user approved a bounded first implementation slice: isolated
+v16/workbench v1 core codecs and an in-memory migration planner. That
+[core foundation](SHARED_ASSETS_LEVEL_TWO_DESIGN.md#first-core-slice-october-26-2026)
+is implemented; app and CLI persistence remain v15. Slice 2a's remaining
+persistence, recovery and compatibility proposals still need review before
+integration. Level 3 remains proposed. The product direction is agreed:
 Inference Lens is a personal workbench for potentially shared assets. Approved
 choices are distinguished from the remaining schema and recovery mechanics that
 still need design review.
@@ -284,6 +286,11 @@ record, an explicit launch-default writer, the reason for the v16 bump, and a
 delivery order that limits slice 2b to the arms migration and trial runs need.
 No checklist item below is approved merely by that proposal.
 
+The subsequent core-slice approval covers the shared v16 shape, extracted prompt
+draft and copied-selection v1 records, and pure migration planning while the
+application stays on v15. It does not approve the full 2b persistence contracts
+below. See the [implemented API boundary](SHARED_ASSETS_LEVEL_TWO_DESIGN.md#first-core-slice-october-26-2026).
+
 Produce a field-by-field ownership inventory and concrete before/after migration
 examples for a prompt, chat request, decision request, and evaluation suite.
 Include saved values, defaults, branches, temporary fixtures, import receipts,
@@ -526,9 +533,11 @@ unresolved persistence, compatibility, or dependency policy during coding.
 | --- | --- | --- |
 | 1 | Creation presets, exact ignore policy, documentation | Core bundle policy; creation dialog; browser/native creation adapters |
 | 2a | Complete field inventory, approved ownership and migration examples | Core shared-definition and personal-state contracts |
-| 2b | Versioned recovery store and migration support | Workspace adapters and a dedicated personal-workbench owner |
-| 2c | Personal drafts, scratch requests, local selections; explicit asset saves | Prompt, request, decision, evaluation and execution-setting feature owners |
-| 2d | Export/import and CLI compatibility; migration and conflict recovery | Core codecs, workspace persistence, CLI project loader |
+| 2b, core foundation | Isolated v16/workbench v1 codecs and pure migration plan; app remains v15 (implemented October 26) | Core codecs; no workspace integration |
+| 2b, integration | Recovery store, migration, prompt/request drafts and scratch inputs, selections, explicit publication and launch defaults | Workspace adapters; personal-workbench, prompt, request, decision and execution-setting owners; compatible app/CLI loaders |
+| 2c | Suite/tool/mock drafts and import staging; explicit saves | Evaluation, tool and import feature owners |
+| 2d | Invalid or incomplete typed editor-buffer recovery | Editor owners and workbench codecs |
+| 2e | Personal backup and restore preview | Core backup codec and workspace persistence |
 | 3a | Approved asset format, references, dependency graph and sharing policy | Core asset model and validated graph loader |
 | 3b | Cross-host file adapters, lossless migration and recoverable writes | Browser/native/Node storage owners |
 | 3c | Selection preview/export, dependency explanations and conflict UX | Asset selection/export owner composed into the UI |

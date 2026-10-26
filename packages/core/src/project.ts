@@ -536,7 +536,7 @@ const conversationMessageSchema: z.ZodType<ConversationMessage> =
       .strict(),
   ]);
 
-const inferenceOptionsSchema: z.ZodType<InferenceOptions> = z
+const inferenceOptionsSchema = z
   .object({
     temperature: z.number().finite().optional(),
     maxOutputTokens: z.number().int().positive().optional(),
@@ -613,7 +613,7 @@ const promptTemplateRecommendedTargetSchema: z.ZodType<PromptTemplateRecommended
     })
     .strict();
 
-const promptTemplateRevisionSchema: z.ZodType<ChatPromptTemplateRevision> = z
+const promptTemplateRevisionSchema = z
   .object({
     id: entityId("template-revision"),
     createdAt: z.iso.datetime({ offset: true }),
@@ -636,7 +636,7 @@ const promptTemplateRevisionSchema: z.ZodType<ChatPromptTemplateRevision> = z
   })
   .strict();
 
-const promptTemplateDraftSchema: z.ZodType<ChatPromptTemplateDraft> = z
+const promptTemplateDraftSchema = z
   .object({
     sourceRevisionId: entityId("template-revision"),
     revisionName: z.string().optional(),
@@ -816,6 +816,17 @@ const projectDefaultsSchema = z
     decisionRequestRevisionId: entityId("decision-revision").optional(),
   })
   .strict();
+
+/** @internal Shared content validators for the isolated Level 2 codecs. */
+export const projectContentSchemas = {
+  entityId,
+  chatPromptRevision: promptTemplateRevisionSchema,
+  chatPromptDraft: promptTemplateDraftSchema,
+  decisionPromptRevision: decisionPromptTemplateRevisionSchema,
+  decisionPromptDraft: decisionPromptTemplateDraftSchema,
+  inferenceOptions: inferenceOptionsSchema,
+  executionTarget: executionTargetSchema,
+};
 
 const decisionRequestSchema = z
   .object({
