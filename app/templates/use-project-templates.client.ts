@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
   archivePromptTemplate,
-  isChatPromptTemplate,
   appendPromptTemplateRevision,
   createPromptTemplate,
   detachPromptTemplateUse,
@@ -23,6 +22,7 @@ import type {
   ProjectConversationItem,
   ProjectFile,
   ChatPromptTemplate,
+  PromptTemplate,
   PromptTemplateMessages,
   PromptTemplateRecommendedTarget,
   TemplateRunOverrides,
@@ -44,6 +44,13 @@ import type {
   ToolDefinition,
   ToolId,
 } from "../../packages/core/src/run-kernel";
+import type { DecisionInput } from "../../packages/core/src/decision";
+import { createDecisionPromptTemplate, appendDecisionPromptTemplateRevision, updateDecisionPromptTemplateDraft } from "../../packages/core/src/decision-template";
+import { materializeSessionDecisionTemplate } from "./decision-session-template";
+import {
+  useDecisionTemplateEditorMemory,
+  type DecisionTemplateEditorMemoryStore,
+} from "./decision-template-editor-memory.client";
 import { randomUUID } from "../../packages/core/src/random-id";
 import { discoverTemplateVariables } from "../../packages/core/src/template-engine";
 import type { ConfirmationDialogRequest } from "../confirmation-dialog.client";
@@ -100,7 +107,36 @@ export interface UseProjectTemplatesInput {
 }
 
 export interface ProjectTemplatesHandle {
-  libraryTemplates: ChatPromptTemplate[];
+  libraryTemplates: PromptTemplate[];
+  decisionEditorMemory: DecisionTemplateEditorMemoryStore;
+  createDecisionTemplate(name: string, decision: DecisionInput, defaults?: Record<string, string>): PromptTemplateId;
+  /** Stages Compose content as a session-only prompt, even in an open project. */
+  captureDecisionTemplate(name: string, decision: DecisionInput, defaults: Record<string, string>): PromptTemplateId;
+  updateDecisionTemplateDraft(
+    templateId: PromptTemplateId,
+    sourceRevisionId: PromptTemplateRevisionId,
+    decision: DecisionInput,
+    defaults: Record<string, string>,
+    revisionName?: string,
+  ): void;
+  saveDecisionTemplate(
+    templateId: PromptTemplateId,
+    name: string,
+    decision: DecisionInput,
+    defaults: Record<string, string>,
+    revisionName?: string,
+  ): PromptTemplateRevisionId | undefined;
+  /**
+   * Saves like `saveDecisionTemplate` and also returns the saved project, so a
+   * use can pin the new revision before the route renders it.
+   */
+  saveDecisionTemplateForUse(
+    templateId: PromptTemplateId,
+    name: string,
+    decision: DecisionInput,
+    defaults: Record<string, string>,
+    revisionName?: string,
+  ): { project: ProjectFile; revisionId: PromptTemplateRevisionId } | undefined;
   sessionTemplateIds: ReadonlySet<PromptTemplateId>;
   templateWorkbench: ReturnType<typeof projectTemplateWorkbenchView>;
   activeProjectRevision?: ProjectFile["conversationRevisions"][number];
@@ -138,7 +174,8 @@ export interface ProjectTemplatesHandle {
 
 export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTemplatesHandle {
   const [templateRunOverrides, setTemplateRunOverrides] = useState<TemplateRunOverrides>({});
-  const [sessionTemplates, setSessionTemplates] = useState<ChatPromptTemplate[]>([]);
+  const [sessionTemplates, setSessionTemplates] = useState<PromptTemplate[]>([]);
+  const decisionEditorMemory = useDecisionTemplateEditorMemory();
   const executedRevisionIdsRef = useRef(new Set<ConversationRevisionId>());
   useEffect(() => {
     if (input.projectFile && !input.projectDirty) {
@@ -164,7 +201,7 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
   });
   const sessionTemplateIds = new Set(sessionTemplates.map(({ id }) => id));
   const libraryTemplates = [
-    ...(input.projectFile?.promptTemplates.filter(isChatPromptTemplate) ?? []),
+    ...(input.projectFile?.promptTemplates ?? []),
     ...sessionTemplates.filter(
       ({ id }) => !input.projectFile?.promptTemplates.some((template) => template.id === id),
     ),
@@ -183,6 +220,108 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     });
   }
 
+  function createDecisionTemplate(
+    name: string,
+    decision: DecisionInput,
+    defaults: Record<string, string> = {},
+    sessionOnly = false,
+  ): PromptTemplateId {
+    const suffix = randomUUID();
+    const id = createEntityId("template", suffix);
+    if (input.projectFile && !sessionOnly) {
+      adoptAuthoredProject(createDecisionPromptTemplate(input.ensureProjectDocument(), {
+        name,
+        decision,
+        variableDefaults: defaults,
+        idSuffix: suffix,
+        revisionIdSuffix: `${suffix}-1`,
+      }));
+      return id;
+    }
+    const revisionId = createEntityId("template-revision", `${suffix}-1`);
+    setSessionTemplates((current) => [
+      ...current,
+      {
+        kind: "decision",
+        id,
+        name,
+        currentRevisionId: revisionId,
+        revisions: [{
+          id: revisionId,
+          createdAt: new Date().toISOString(),
+          decision: structuredClone(decision),
+          variableDefaults: { ...defaults },
+        }],
+      },
+    ]);
+    return id;
+  }
+  function updateDecisionTemplateDraft(
+    templateId: PromptTemplateId,
+    sourceRevisionId: PromptTemplateRevisionId,
+    decision: DecisionInput,
+    defaults: Record<string, string>,
+    revisionName?: string,
+  ): void {
+    if (sessionTemplateIds.has(templateId)) {
+      setSessionTemplates((current) => current.map((entry) =>
+        entry.id !== templateId || entry.kind !== "decision"
+          ? entry
+          : {
+              ...entry,
+              draft: {
+                sourceRevisionId,
+                decision: structuredClone(decision),
+                variableDefaults: { ...defaults },
+                revisionName,
+              },
+            },
+      ));
+      return;
+    }
+    adoptAuthoredProject(updateDecisionPromptTemplateDraft(input.ensureProjectDocument(), {
+      templateId,
+      sourceRevisionId,
+      decision,
+      variableDefaults: defaults,
+      revisionName,
+    }));
+  }
+  function saveDecisionTemplateForUse(
+    templateId: PromptTemplateId,
+    name: string,
+    decision: DecisionInput,
+    defaults: Record<string, string>,
+    revisionName?: string,
+  ): { project: ProjectFile; revisionId: PromptTemplateRevisionId } | undefined {
+    let project: ProjectFile;
+    try {
+      project = input.ensureProjectDocument();
+    } catch {
+      return reportSessionProjectRequirement();
+    }
+    const sessionTemplate = sessionTemplates.find((entry) => entry.id === templateId);
+    if (sessionTemplate?.kind === "decision") {
+      project = materializeSessionDecisionTemplate(project, sessionTemplate, {
+        name,
+        decision,
+        variableDefaults: defaults,
+        revisionName,
+      });
+      finishSessionTemplate(templateId);
+    } else {
+      project = renamePromptTemplate(project, templateId, name.trim());
+      project = appendDecisionPromptTemplateRevision(project, {
+        templateId,
+        decision,
+        variableDefaults: defaults,
+        name: revisionName,
+      });
+    }
+    adoptAuthoredProject(project);
+    decisionEditorMemory.delete(templateId);
+    return { project, revisionId: project.promptTemplates.find(({ id }) => id === templateId)!.currentRevisionId };
+  }
   function createProjectTemplate(name: string, messages: PromptTemplateMessages): PromptTemplateId {
     const suffix = randomUUID();
     if (!input.projectFile) {
@@ -211,7 +350,7 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
   function updateProjectTemplateDraft(templateId: PromptTemplateId, sourceRevisionId: PromptTemplateRevisionId, messages: PromptTemplateMessages, defaults: Record<string, string>, revisionName?: string): void {
     if (sessionTemplateIds.has(templateId)) {
       setSessionTemplates((current) => current.map((template) =>
-        template.id !== templateId
+        template.id !== templateId || template.kind !== "chat"
           ? template
           : {
               ...template,
@@ -267,7 +406,7 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     recommendedTarget?: PromptTemplateRecommendedTarget,
     revisionName?: string,
   ): { project: ProjectFile; revisionId: PromptTemplateRevisionId } | undefined {
-    const sessionTemplate = sessionTemplates.find(({ id }) => id === templateId);
+    const sessionTemplate = sessionTemplates.find((entry): entry is ChatPromptTemplate => entry.id === templateId && entry.kind === "chat");
     if (!sessionTemplate) return undefined;
     let project: ProjectFile;
     try {
@@ -396,7 +535,7 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     const usageCount = findPromptTemplateUsages(project, templateId).length;
     input.requestConfirmation({
       title: `Archive "${template.name}"?`,
-      description: "It will move to Archived and cannot be added to new conversations. Existing pinned uses and saved traces will keep working.",
+      description: "It will move to Archived and cannot be added to new requests. Existing pinned uses and saved traces will keep working.",
       confirmLabel: "Archive template",
       details: [
         { label: "Revisions retained", value: String(template.revisions.length) },
@@ -516,5 +655,41 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     const receipt = imported.project.externalImports.find(({ id }) => id === imported.externalImportId);
     input.onImported({ name: candidate.invocation.name, variableCount: receipt?.projection.kind === "prompt-template" ? receipt.projection.variables.length : 0, template: mode === "reusable-template" });
   }
-  return { libraryTemplates, sessionTemplateIds, templateWorkbench, activeProjectRevision, activeConnectionRequirement, templateUsageCounts, templateRunOverrides, createProjectTemplate, updateProjectTemplateDraft, updateProjectTemplateRecommendedTarget, saveProjectTemplate, saveAndInsertProjectTemplate, renameProjectTemplate, archiveProjectTemplate, restoreProjectTemplate, insertProjectTemplate, updateTemplateUseValues, saveTemplateUseRunValue, updateTemplateUseOverride, updateTemplateUseToLatestRevision, detachTemplateUse, removeTemplateUse, addComposerMessage, updateComposerMessage, removeComposerMessage, importN8nPrompt, clearTransientOverrides: () => setTemplateRunOverrides({}), markExecutedRevision: (id) => executedRevisionIdsRef.current.add(id) };
+  return {
+    decisionEditorMemory,
+    captureDecisionTemplate: (name, decision, defaults) => createDecisionTemplate(name, decision, defaults, true),
+    createDecisionTemplate,
+    updateDecisionTemplateDraft,
+    saveDecisionTemplate: (...args) => saveDecisionTemplateForUse(...args)?.revisionId,
+    saveDecisionTemplateForUse,
+    libraryTemplates,
+    sessionTemplateIds,
+    templateWorkbench,
+    activeProjectRevision,
+    activeConnectionRequirement,
+    templateUsageCounts,
+    templateRunOverrides,
+    createProjectTemplate,
+    updateProjectTemplateDraft,
+    updateProjectTemplateRecommendedTarget,
+    saveProjectTemplate,
+    saveAndInsertProjectTemplate,
+    renameProjectTemplate,
+    archiveProjectTemplate,
+    restoreProjectTemplate,
+    insertProjectTemplate,
+    updateTemplateUseValues,
+    saveTemplateUseRunValue,
+    updateTemplateUseOverride,
+    updateTemplateUseToLatestRevision,
+    detachTemplateUse,
+    removeTemplateUse,
+    addComposerMessage,
+    updateComposerMessage,
+    removeComposerMessage,
+    importN8nPrompt,
+    clearTransientOverrides: () => { setTemplateRunOverrides({}); decisionEditorMemory.clear(); },
+    markExecutedRevision: (id) => executedRevisionIdsRef.current.add(id),
+  };
+
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { DecisionInput, DecisionQuestionType } from "../../packages/core/src/decision";
 import { discoverDecisionVariables } from "../../packages/core/src/decision-variables";
 import { DECISION_EXAMPLE } from "./decision-example";
@@ -44,6 +44,8 @@ export interface DecisionDraftHandle {
   /** Replaces the draft with the worked example; an edit, so it is saved like one. */
   loadExample(): void;
   setValue(name: string, value: string): void;
+  /** Removes the value, leaving the variable unfilled rather than empty. */
+  clearValue(name: string): void;
   /** Why the last view switch was refused; cleared by the next edit or switch. */
   viewProblems: DecisionDraftProblem[];
   /** Derived from the draft as it is now; never a retained last-valid input (D18). */
@@ -64,15 +66,41 @@ export interface DecisionDraftHandle {
   moveOption(rowId: string, optionRowId: string, toIndex: number): void;
 }
 
+/** The draft state an editor can set aside and later resume from. */
+export interface DecisionDraftSnapshot {
+  draft: DecisionDraft;
+  values: Record<string, string>;
+  touched: boolean;
+}
+
 /**
  * The decision kind's editor draft (D18, D29). Held above any conditional pane
  * mount, so switching kinds or views never loses it (D17).
+ *
+ * A library editor instead resumes from `initial` and hears every committed
+ * change through `onSnapshot`, which may be a new function on each render.
  */
-export function useDecisionDraft(options: { onEdited?(): void } = {}): DecisionDraftHandle {
-  const [draft, setDraft] = useState<DecisionDraft>(() => createDecisionDraft());
-  const [values, setValues] = useState<Record<string, string>>({});
-  const [touched, setTouched] = useState(false);
+export function useDecisionDraft(
+  options: {
+    onEdited?(): void;
+    initial?: DecisionDraftSnapshot;
+    onSnapshot?(snapshot: DecisionDraftSnapshot): void;
+  } = {},
+): DecisionDraftHandle {
+  const [draft, setDraft] = useState<DecisionDraft>(() => options.initial?.draft ?? createDecisionDraft());
+  const [values, setValues] = useState<Record<string, string>>(options.initial?.values ?? {});
+  const [touched, setTouched] = useState(options.initial?.touched ?? false);
   const [viewProblems, setViewProblems] = useState<DecisionDraftProblem[]>([]);
+
+  // Report changes to the draft itself, through whichever callback is
+  // current, rather than on every render of the owner.
+  const onSnapshotRef = useRef(options.onSnapshot);
+  useEffect(() => {
+    onSnapshotRef.current = options.onSnapshot;
+  });
+  useEffect(() => {
+    onSnapshotRef.current?.({ draft, values, touched });
+  }, [draft, values, touched]);
 
   function edit(update: (current: DecisionDraft) => DecisionDraft): void {
     setViewProblems([]);
@@ -108,6 +136,15 @@ export function useDecisionDraft(options: { onEdited?(): void } = {}): DecisionD
     loadExample() {
       setValues({});
       edit(() => decisionDraftFromInput(DECISION_EXAMPLE));
+    },
+    clearValue(name) {
+      setValues((current) => {
+        const next = { ...current };
+        delete next[name];
+        return next;
+      });
+      setTouched(true);
+      options.onEdited?.();
     },
     setValue(name, value) {
       setValues((current) => ({ ...current, [name]: value }));

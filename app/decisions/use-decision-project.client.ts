@@ -5,8 +5,10 @@ import {
   activeDecisionRequestRevision,
   resolveProjectDecisionRequestRevision,
   updateDecisionRequestDraft,
+  updateDecisionRequestOverrides,
 } from "../../packages/core/src/decision-request";
 import type { ProjectFile } from "../../packages/core/src/project";
+import { decisionTemplateUseOverrides } from "./decision-template-use-overrides";
 import type { DecisionRequestRevisionId } from "../../packages/core/src/run-kernel/types";
 import type { DecisionDraftHandle } from "./use-decision-draft.client";
 
@@ -56,6 +58,21 @@ export function useDecisionProject(options: {
       pendingSuffixRef.current = undefined;
     }
     pendingSuffixRef.current ??= globalThis.crypto.randomUUID();
+    if (active?.kind === "template-use") {
+      // Pinned content is read-only; only the values can have changed.
+      const resolved = resolveProjectDecisionRequestRevision(project, active.id)!;
+      return updateDecisionRequestOverrides(project, {
+        decisionRequestRevisionId: active.id,
+        overrides: decisionTemplateUseOverrides({
+          variables: resolved.variables,
+          effectiveValues: resolved.values,
+          existingOverrides: active.overrides,
+          values: draft.values,
+        }),
+        branch: frozenRef.current.has(active.id),
+        idSuffix: pendingSuffixRef.current,
+      });
+    }
     return updateDecisionRequestDraft(project, {
       decision: validated.input,
       values: draft.values,

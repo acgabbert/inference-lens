@@ -416,7 +416,7 @@ export function RequestComposer({
       </div>
       {promptInsertionOpen && (
         <PromptInsertionDialog
-          templates={libraryTemplates.filter(({ archivedAt, id }) =>
+          templates={libraryTemplates.filter((template) => template.kind === "chat").filter(({ archivedAt, id }) =>
             !archivedAt && !sessionTemplateIds.has(id))}
           itemCount={templates.activeProjectRevision?.items.length ?? requestDraft.messages.length}
           replaceEmptyDraft={isEmptyEditableConversationDraft(templates.templateWorkbench.composerItems)}

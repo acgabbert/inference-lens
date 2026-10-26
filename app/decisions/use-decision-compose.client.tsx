@@ -1,9 +1,20 @@
 "use client";
 
+import { sameProviderTarget } from "../../packages/core/src/provider-protocols";
+import type { DecisionInput } from "../../packages/core/src/decision";
+import { discoverDecisionVariables } from "../../packages/core/src/decision-variables";
+import type { ConfirmationDialogRequest } from "../confirmation-dialog.client";
+import { DecisionTemplateUse } from "./decision-template-use.client";
+import type { PromptTemplateId, PromptTemplateRevisionId } from "../../packages/core/src/run-kernel";
+import {
+  detachDecisionRequestTemplate,
+  updateDecisionRequestTemplateRevision,
+  useDecisionPromptTemplateRevision as createDecisionTemplateUse,
+} from "../../packages/core/src/decision-request";
 import type { CredentialSelection, DecisionTransport, ProviderTurnTransport } from "../../packages/contracts/src";
 import { activeDecisionRequestRevision, prepareDecisionRequestRun } from "../../packages/core/src/decision-request";
 import type { DecisionRunTrace } from "../../packages/core/src/decision-trace";
-import type { ProjectFile } from "../../packages/core/src/project";
+import type { DecisionPromptTemplate, ProjectFile } from "../../packages/core/src/project";
 import type { DecisionRequestRevisionId } from "../../packages/core/src/run-kernel/types";
 import type { ComposeKindHandle } from "../compose/use-compose.client";
 import type { ProjectWorkspaceHandle } from "../project-workspace.client";
@@ -41,6 +52,11 @@ export interface UseDecisionComposeOptions {
   onTraceSaved(): void;
   onError(message: string): void;
   onOpenConnections(): void;
+  /** Invalid request replacement is an explicit user choice. */
+  requestConfirmation(request: ConfirmationDialogRequest): void;
+  onCapture?(content: { decision: DecisionInput; values: Record<string, string> }): void;
+  onEditSource?(requestRevisionId: DecisionRequestRevisionId, templateId: PromptTemplateId, templateRevisionId: PromptTemplateRevisionId): void;
+  onTemplateUsed?(): void;
   /** "New suite from this request" was chosen; the route hands it to suite authoring. */
   onNewSuite?(source: DecisionSuiteSource): void;
 }
@@ -61,6 +77,9 @@ export interface DecisionSuiteSource {
 
 export interface DecisionComposeHandle {
   compose: ComposeKindHandle;
+  capture(): { decision: DecisionInput; values: Record<string, string> } | { problems: DecisionDraftProblem[] };
+  useTemplate(project: ProjectFile, templateId: PromptTemplateId, revisionId: PromptTemplateRevisionId): void;
+  returnToRevision(id: DecisionRequestRevisionId): boolean;
   /** The same chooser used by the request pane and the contextual header. */
   connection: Pick<DecisionTargetHandle, "profiles" | "profile" | "selectProfile">;
   /** For D30: open a saved or imported decision trace. */
@@ -157,6 +176,87 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
     },
   };
 
+  const active = options.project && activeDecisionRequestRevision(options.project);
+  const pinned =
+    active?.kind === "template-use"
+      ? options.project?.promptTemplates.find(
+          (entry): entry is DecisionPromptTemplate => entry.id === active.templateId && entry.kind === "decision",
+        )
+      : undefined;
+
+  // Advice only: describes how the selected target relates to the pinned
+  // prompt's recommendation without ever selecting a connection or model.
+  const recommendedTarget = pinned?.recommendedTarget;
+  const recommendedRequirement =
+    recommendedTarget &&
+    options.project?.connectionRequirements.find(({ id }) => id === recommendedTarget.connectionRequirementId);
+  const compatibleRecommendedProfiles = recommendedRequirement
+    ? target.profiles.filter(
+        (profile) =>
+          profile.provider === recommendedRequirement.provider &&
+          sameProviderTarget(profile.endpoint, recommendedRequirement.endpoint),
+      )
+    : [];
+  const recommendation =
+    recommendedTarget && recommendedRequirement
+      ? {
+          model: recommendedTarget.model,
+          connectionName: recommendedRequirement.name,
+          compatibleConnectionNames: compatibleRecommendedProfiles.map(({ name }) => name),
+          matchesSelectedTarget:
+            compatibleRecommendedProfiles.some(({ id }) => id === target.profile?.id) &&
+            target.model.trim() === recommendedTarget.model.trim(),
+        }
+      : undefined;
+
+  function adoptMutation(project: ProjectFile): void {
+    options.adoptProjectMutation(project);
+    decisionProject.adopt(project);
+    session.reset();
+  }
+
+  function mutatePin(kind: "update" | "detach"): void {
+    if (!options.project || session.executing) return;
+    const folded = decisionProject.fold(options.project);
+    const revision = activeDecisionRequestRevision(folded);
+    if (revision?.kind !== "template-use") return;
+    adoptMutation(
+      kind === "update"
+        ? updateDecisionRequestTemplateRevision(folded, { decisionRequestRevisionId: revision.id })
+        : detachDecisionRequestTemplate(folded, { decisionRequestRevisionId: revision.id }),
+    );
+  }
+
+  function editPinnedSource(): void {
+    if (!options.project) return;
+    // Keep value edits before leaving, so Back to request finds them.
+    const folded = decisionProject.fold(options.project);
+    const revision = activeDecisionRequestRevision(folded);
+    if (folded !== options.project) options.adoptProjectMutation(folded);
+    if (revision?.kind === "template-use") {
+      options.onEditSource?.(revision.id, revision.templateId, revision.templateRevisionId);
+    }
+  }
+
+  // Capture keeps authored tokens and the values of discovered variables.
+  const captureDiscovery = "input" in validated ? discoverDecisionVariables(validated.input) : undefined;
+  const captureBlocked = !captureDiscovery || captureDiscovery.diagnostics.length > 0;
+  function capture(): ReturnType<DecisionComposeHandle["capture"]> {
+    if (!("input" in validated)) return { problems: validated.problems };
+    const discovery = captureDiscovery!;
+    if (discovery.diagnostics.length) {
+      return {
+        problems: discovery.diagnostics.map(({ field, diagnostic }) => ({
+          location: field.kind,
+          message: diagnostic.message,
+        })),
+      };
+    }
+    return {
+      decision: structuredClone(validated.input),
+      values: Object.fromEntries(Object.entries(draft.values).filter(([key]) => discovery.variables.includes(key))),
+    };
+  }
   const finished = Boolean(run && ["completed", "cancelled", "failed"].includes(run.status.kind));
   const compose: ComposeKindHandle = {
     executing: session.executing,
@@ -181,6 +281,28 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
           locked={session.executing}
           target={target}
           onOpenConnections={options.onOpenConnections}
+          capture={{
+            disabled: session.executing || captureBlocked,
+            onCapture() {
+              const content = capture();
+              if ("decision" in content) options.onCapture?.(content);
+            },
+          }}
+          {...(pinned && active?.kind === "template-use"
+            ? {
+                pinned: (
+                  <DecisionTemplateUse
+                    template={pinned}
+                    revisionId={active.templateRevisionId}
+                    locked={session.executing}
+                    recommendation={recommendation}
+                    onDetach={() => mutatePin("detach")}
+                    onUpdate={() => mutatePin("update")}
+                    onEdit={editPinnedSource}
+                  />
+                ),
+              }
+            : {})}
           {...(options.project && options.onNewSuite
             ? {
                 newSuite: {
@@ -216,6 +338,33 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
   };
   return {
     compose,
+    capture,
+    useTemplate(project, templateId, revisionId) {
+      if (session.executing) return;
+      const apply = (discard: boolean) => {
+        const folded = discard ? project : decisionProject.fold(project);
+        adoptMutation(createDecisionTemplateUse(folded, { templateId, templateRevisionId: revisionId }));
+        options.onTemplateUsed?.();
+      };
+      if (draft.touched && !("input" in validated)) {
+        options.requestConfirmation({
+          title: "Discard incomplete decision request?",
+          description: "The current request has invalid edits that cannot be saved. Discard them to use this saved revision.",
+          confirmLabel: "Discard and use revision",
+          destructive: true,
+          onConfirm: () => apply(true),
+        });
+      } else {
+        apply(false);
+      }
+    },
+    returnToRevision(id) {
+      const project = options.project;
+      if (!project || !project.decisionRequestRevisions.some((entry) => entry.id === id)) return false;
+      if (project.defaults.decisionRequestRevisionId === id) return true;
+      adoptMutation({ ...project, defaults: { ...project.defaults, decisionRequestRevisionId: id } });
+      return true;
+    },
     connection: { profiles: target.profiles, profile: target.profile, selectProfile: target.selectProfile },
     adoptTrace: session.adoptTrace,
     suiteSource,

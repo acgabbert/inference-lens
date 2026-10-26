@@ -9206,3 +9206,68 @@ label.experiment-retry-field {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* The shared library places either content owner in the same grid cell. */
+.template-chat-editor {
+  display: contents;
+}
+
+.decision-template-editor .decision-content,
+.decision-input-editor {
+  min-width: 0;
+}
+
+.decision-template-use {
+  margin: var(--space-md) var(--space-lg);
+  padding: var(--space-md);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+}
+
+.decision-update-dialog {
+  max-height: 85dvh;
+  overflow: auto;
+}
+
+.template-kind-filter-button {
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.template-kind-filter-button.selected {
+  border-color: var(--border-strong);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+@media (max-width: 640px) {
+  .prompt-mode-workspace .templates-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .prompt-mode-workspace .template-sidebar {
+    max-height: 32dvh;
+    border-right: 0;
+    border-bottom: 1px solid var(--border-default);
+  }
+
+  .prompt-mode-workspace .template-create-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .prompt-mode-workspace .template-import-action {
+    grid-column: 1 / -1;
+  }
+
+  .prompt-mode-workspace .template-editor-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

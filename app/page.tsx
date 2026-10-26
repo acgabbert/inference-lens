@@ -271,7 +271,7 @@ function HomeContent() {
     // reached only from project commands and saves, never during render.
     withDecisionDraft(document) { return decision.project.fold(document); },
     getUnsavedDraftReason() { return decision.project.saveBlockedReason; },
-    onApplyDecisionRequest(document) { decision.project.adopt(document); },
+    onApplyDecisionRequest(document) { promptNavigation.reset(); decision.project.adopt(document); },
     onSaved({ name, destination }) {
       toasts.publish({
         key: "project-saved",
@@ -465,6 +465,23 @@ function HomeContent() {
     onTraceSaved() { setSavedRunVersion((current) => current + 1); },
     onError(message) { project.setError(message, { clearKind: true }); },
     onOpenConnections() { setConnectionDrawerOpen(true); },
+    requestConfirmation: setConfirmation,
+    onCapture({ decision: content, values }) {
+      const id = projectTemplates.captureDecisionTemplate("Untitled decision prompt", content, values);
+      promptNavigation.clearReturn();
+      promptNavigation.selectionChanged(id);
+      setMode("prompts");
+    },
+    onEditSource(requestRevisionId, templateId, revisionId) {
+      promptNavigation.editDecisionSource(requestRevisionId, templateId, revisionId);
+      setMode("prompts");
+    },
+    onTemplateUsed() {
+      compose.openKind("decision");
+      promptNavigation.clearReturn();
+      setMode("compose");
+      setWorkbenchView("request");
+    },
     // Crosses into suite authoring, which is built below and owns selection.
     onNewSuite(source) {
       if (!createDecisionSuite(source)) return;
@@ -966,6 +983,11 @@ function HomeContent() {
     setMode("compose");
     setWorkbenchView("request");
     if (!target) return;
+    if (target.kind === "decision-request") {
+      decision.returnToRevision(target.revisionId);
+      compose.openKind("decision");
+      return;
+    }
     const useStillExists = projectTemplates.templateWorkbench.composerItems.some(
       (item) => item.kind === "template-use" && item.use.id === target.useId,
     );
@@ -1453,6 +1475,7 @@ function HomeContent() {
         <PromptsMode
           {...(projectFile ? { project: projectFile } : {})}
           templates={projectTemplates}
+          decision={decision}
           draftMessageCount={messages.length}
           persistence={{
             autoSaveFailed: projectErrorKind === "auto-save",
