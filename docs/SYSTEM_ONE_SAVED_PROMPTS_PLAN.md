@@ -508,8 +508,9 @@ revision-name retention assertion and the new unit tests were not shown failing.
 Hosted providers, the native desktop app, and the Docker CLI were not exercised.
 Browser execution uses the committed llama.cpp capture replay, which only
 accepts the captured question definitions. The new editor and update-review
-presentation are worth the user's own visual review. Slice 4 still owns direct
-library evaluation, compatible-suite discovery and deliberate retargeting.
+presentation are worth the user's own visual review. Direct library
+evaluation, compatible-suite discovery and deliberate retargeting followed in
+slice 4.
 
 ## Slice 4 implementation and verification
 
