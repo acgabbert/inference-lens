@@ -68,7 +68,8 @@ same Project v15 JSON format.
 
 The Prompts library authors both chat prompts and whole System One decision
 requests. See [Saved decision prompts](docs/SYSTEM_ONE_SAVED_PROMPTS.md) for
-capture, variable defaults, pinned revisions, update, and detach.
+capture, variable defaults, pinned revisions, update, detach, and evaluating or
+deliberately retargeting a saved revision in a suite.
 
 The Docker container does not need a project volume: the browser reads and
 writes only the host folder the user explicitly selects. Tauri uses a native

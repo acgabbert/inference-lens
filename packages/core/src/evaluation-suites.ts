@@ -482,7 +482,7 @@ function decisionCheckDiagnostics(
  * case value overrides the revision's value for its bound variable; anything
  * still unfilled blocks the run, as an unresolved chat variable does.
  */
-function decisionSuitePreflight(
+export function decisionSuitePreflight(
   project: Pick<ProjectFile, "decisionRequestRevisions" | "promptTemplates">,
   suite: DecisionEvaluationSuite,
   selectedCaseIds?: readonly EvaluationCaseId[],

@@ -150,7 +150,7 @@ export function updateDecisionRequestDraft(
     });
   }
 
-  const revisionId = createEntityId("decision-revision", idSuffix);
+  const revisionId = decisionRequestRevisionIdFor(idSuffix);
   const decisionRequestId = active?.decisionRequestId ?? createEntityId("decision-request", idSuffix);
   return parseProjectFile({
     ...project,
@@ -261,6 +261,20 @@ function decisionTemplatePin(
   return { template, revision };
 }
 
+/**
+ * The request revision ID a mutation creates from its `idSuffix`. Callers that
+ * pass a suffix can name the new revision without searching for it.
+ */
+export function decisionRequestRevisionIdFor(idSuffix: string): DecisionRequestRevisionId {
+  return createEntityId("decision-revision", idSuffix);
+}
+
+/** Overrides that survive moving a request to `decision`: only names it still uses. */
+export function retainedDecisionOverrides(overrides: Record<string, string>, decision: DecisionInput): Record<string, string> {
+  const variables = new Set(renderDecisionInput(decision, {}).variables);
+  return Object.fromEntries(Object.entries(overrides).filter(([name]) => variables.has(name)));
+}
+
 interface DecisionRevisionMutationOptions {
   idSuffix?: string;
   createdAt?: string;
@@ -284,7 +298,7 @@ export function useDecisionPromptTemplateRevision(project: ProjectFile, {
   if (template.archivedAt) throw new ProjectValidationError([{
     code: "custom", path: ["promptTemplates", templateId, "archivedAt"], message: "Archived templates cannot be used for new decision requests.",
   }]);
-  const id = createEntityId("decision-revision", idSuffix);
+  const id = decisionRequestRevisionIdFor(idSuffix);
   const decisionRequestId = createEntityId("decision-request", idSuffix);
   return parseProjectFile({ ...project,
     decisionRequests: [...project.decisionRequests, { id: decisionRequestId, name: name ?? template.name }],
@@ -309,7 +323,7 @@ function appendDecisionRequestChild(project: ProjectFile, parent: ProjectDecisio
     | { kind: "template-use"; templateId: PromptTemplateId; templateRevisionId: PromptTemplateRevisionId; overrides: Record<string, string> }),
   { idSuffix = randomUUID(), createdAt = new Date().toISOString(), activate = true }: DecisionRevisionMutationOptions,
 ): ProjectFile {
-  const id = createEntityId("decision-revision", idSuffix);
+  const id = decisionRequestRevisionIdFor(idSuffix);
   return parseProjectFile({ ...project,
     decisionRequestRevisions: [...project.decisionRequestRevisions, { ...structuredClone(content), id,
       decisionRequestId: parent.decisionRequestId, parentRevisionId: parent.id, createdAt }],
@@ -340,9 +354,8 @@ export function updateDecisionRequestTemplateRevision(project: ProjectFile, {
     code: "custom", path: ["promptTemplates", template.id, "archivedAt"], message: "Restore the archived template before choosing another revision.",
   }]);
   if (revision.id === parent.templateRevisionId) return project;
-  const variables = new Set(renderDecisionInput(revision.decision, {}).variables);
   return appendDecisionRequestChild(project, parent, { kind: "template-use", templateId: template.id,
-    templateRevisionId: revision.id, overrides: Object.fromEntries(Object.entries(parent.overrides).filter(([name]) => variables.has(name))) }, options);
+    templateRevisionId: revision.id, overrides: retainedDecisionOverrides(parent.overrides, revision.decision) }, options);
 }
 
 /** Detach preserves tokens and absent assignments; it never renders permanent content. */

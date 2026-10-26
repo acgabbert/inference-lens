@@ -10,6 +10,7 @@ import type { SuiteSetupFacts } from "./chat-suite-setup.client";
 import type { EvaluationSuiteExecutionActions } from "./evaluation-suite-editor.client";
 import type { DecisionSuiteSettingsHandle } from "./use-decision-suite-settings.client";
 import type { EvaluationSuiteAuthoringHandle } from "./use-evaluation-suite-authoring.client";
+import { promptRevisionLabel } from "../templates/prompt-revision-label";
 
 function connectionName(project: ProjectFile, suite: DecisionEvaluationSuite): string {
   return project.connectionRequirements.find(({ id }) => id === suite.execution.target.connectionRequirementId)?.name
@@ -63,6 +64,10 @@ export function DecisionSuiteSetup({
   if (!open) return null;
   const { suite } = settings;
   const { target } = suite.execution;
+  const source = settings.pinnedRevision?.source;
+  const pin = source?.kind === "template-use" ? source : undefined;
+  const template = pin && project.promptTemplates.find(({ id }) => id === pin.templateId);
+  const savedPrompt = pin && template ? `${template.name} · ${promptRevisionLabel(template, pin.templateRevisionId)}` : undefined;
 
   return (
     <div className={className}>
@@ -77,7 +82,7 @@ export function DecisionSuiteSetup({
           >
             {!settings.pinnedRevision && <option value={suite.input.decisionRequestRevisionId}>Missing revision</option>}
             {settings.requests.map((request) => (
-              <optgroup key={request.name} label={request.name}>
+              <optgroup key={request.id} label={request.name}>
                 {request.revisions.map(({ revisionId, label }) => <option key={revisionId} value={revisionId}>{label}</option>)}
               </optgroup>
             ))}
@@ -86,6 +91,11 @@ export function DecisionSuiteSetup({
         {settings.pinnedRevision && <small>
           {Object.keys(settings.pinnedRevision.decision.questions).length} questions · pinned, so later edits in Decision Compose make a new revision
         </small>}
+        {savedPrompt && <small>Saved prompt: {savedPrompt}</small>}
+        {authoring.promptPinNotice?.suiteId === suite.id && <p className="evaluation-resolution-action" role="status">
+          Input pinned to {authoring.promptPinNotice.promptName} · {authoring.promptPinNotice.revisionLabel}
+          <button className="text-button" type="button" onClick={authoring.dismissPromptPinNotice}>Dismiss</button>
+        </p>}
       </div>
       {settings.error && <p className="evaluation-field-error" role="alert">{settings.error}</p>}
 

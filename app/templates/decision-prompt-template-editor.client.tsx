@@ -22,6 +22,7 @@ import type { DecisionTemplateEditorMemoryStore } from "./decision-template-edit
 import { DecisionRevisionDiff } from "./decision-revision-diff.client";
 import { hasDuplicatePromptName } from "./prompt-library";
 import { promptRevisionLabel } from "./prompt-revision-label";
+import { DecisionPromptEvaluationDialog, type DecisionPromptEvaluationActions } from "./decision-prompt-evaluation-dialog.client";
 
 type SaveDecisionTemplate = (
   id: PromptTemplateId,
@@ -31,7 +32,7 @@ type SaveDecisionTemplate = (
   revisionName?: string,
 ) => PromptTemplateRevisionId | undefined;
 
-interface Props {
+interface Props extends DecisionPromptEvaluationActions {
   template: DecisionPromptTemplate;
   /** The whole library, for duplicate-name warnings. */
   templates: readonly PromptTemplate[];
@@ -192,6 +193,13 @@ function DecisionTemplateContent(
     template.recommendedTarget?.connectionRequirementId ?? props.connectionRequirements[0]?.id ?? "",
   );
   const lastRecorded = useRef("");
+  const [evaluationOpen, setEvaluationOpen] = useState(false);
+  const evaluateAction = useRef<HTMLButtonElement>(null);
+  function closeEvaluation() {
+    setEvaluationOpen(false);
+    props.onDismissEvaluateRevisionError?.();
+    evaluateAction.current?.focus();
+  }
 
   /**
    * Remembers every edit for this session and persists it as the template's
@@ -467,6 +475,14 @@ function DecisionTemplateContent(
       {!template.archivedAt && (
         <footer className="template-insert-bar">
           <span>Pin a saved revision into Decision Compose</span>
+          {!props.sessionOwned && props.onEvaluateRevision && <button
+            className="button secondary"
+            type="button"
+            ref={evaluateAction}
+            disabled={invalid || needsSave}
+            title={needsSave ? "Create a revision before evaluating these edits." : undefined}
+            onClick={() => { props.onDismissEvaluateRevisionError?.(); setEvaluationOpen(true); }}
+          >Evaluate in a suite…</button>}
           <button
             className="button primary"
             type="button"
@@ -477,6 +493,7 @@ function DecisionTemplateContent(
           </button>
         </footer>
       )}
+      {evaluationOpen && <DecisionPromptEvaluationDialog {...props} revisionId={revision.id} onClose={closeEvaluation} />}
     </section>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { CheckDefinition } from "../../packages/core/src/checks";
+import { createDecisionTemplateEvaluation, retargetDecisionTemplateEvaluation } from "../../packages/core/src/decision-template-evaluation";
 import {
   addEvaluationCase,
   addEvaluationCheck,
@@ -39,7 +40,7 @@ import {
   ProjectValidationError,
   retargetPromptTemplateUseRevision,
 } from "../../packages/core/src/project";
-import type { EvaluationSuite, ProjectFile } from "../../packages/core/src/project";
+import type { ProjectFile } from "../../packages/core/src/project";
 import type { ChatEvaluationSuite, EvaluationVariant } from "../../packages/core/src/evaluation-suites";
 import { isChatEvaluationSuite } from "../../packages/core/src/evaluation-suites";
 import type {
@@ -423,8 +424,18 @@ export function useEvaluationSuiteAuthoring({
     const revisionLabel = template ? promptRevisionLabel(template, templateRevisionId) : "this revision";
     try {
       const requestedSuite = requestedSuiteId && project.evaluationSuites.find(({ id }) => id === requestedSuiteId);
+      if (requestedSuiteId && !requestedSuite) throw new Error("The selected evaluation suite no longer exists.");
       let landedSuiteId: EvaluationSuiteId;
-      if (requestedSuite) {
+      if (template?.kind === "decision") {
+        if (requestedSuite) {
+          adoptProjectMutation(retargetDecisionTemplateEvaluation(project, { templateId, templateRevisionId, suiteId: requestedSuite.id }));
+          landedSuiteId = requestedSuite.id;
+        } else {
+          const created = createDecisionTemplateEvaluation(project, { templateId, templateRevisionId });
+          adoptProjectMutation(created.project);
+          landedSuiteId = created.suiteId;
+        }
+      } else if (requestedSuite) {
         if (!isChatEvaluationSuite(requestedSuite)) throw new Error("A saved prompt can only start a chat suite's input.");
         const parentRevisionId = requestedSuite.input.conversationRevisionId;
         const parent = project.conversationRevisions.find(({ id }) => id === parentRevisionId);
