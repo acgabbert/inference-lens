@@ -57,3 +57,28 @@ test("a function name with a space is called out in the editor", async ({ page }
   await expect(warning).toBeHidden();
   await expect(name).not.toHaveAttribute("aria-invalid", "true");
 });
+
+for (const width of [1440, 1000]) {
+  test(`parameter fields share one baseline at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await openToolEditor(page);
+    await page.getByRole("button", { name: "+ Add parameter" }).click();
+
+    // Name, Type, and Required sit in the first line at every width; a select
+    // or checkbox box shorter than the inputs drops its label below theirs.
+    const row = page.locator(".schema-property-row").first();
+    const labels = row.locator(":scope > label");
+    await expect(labels.first()).toContainText("Name");
+    const tops = await Promise.all(
+      [0, 1, 2].map(async (index) =>
+        Math.round((await labels.nth(index).boundingBox())!.y),
+      ),
+    );
+    expect(new Set(tops).size, `label tops ${tops.join(", ")}`).toBe(1);
+
+    // The MCP panel follows the tool list, so it takes the same gutter.
+    const toolLeft = (await page.locator(".tool-list > .tool-editor").first().boundingBox())!.x;
+    const mcpLeft = (await page.getByRole("region", { name: "MCP servers" }).boundingBox())!.x;
+    expect(mcpLeft).toBe(toolLeft);
+  });
+}

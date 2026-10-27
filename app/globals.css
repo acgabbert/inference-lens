@@ -2087,6 +2087,42 @@ output {
   margin: 0;
 }
 
+.tool-definition-disclosure > summary {
+  padding: var(--space-sm) var(--space-md);
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  color: var(--text-secondary);
+  cursor: pointer;
+  list-style: none;
+  font-weight: 700;
+}
+
+.tool-definition-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.tool-definition-disclosure > summary::before {
+  content: "▸";
+  color: var(--text-muted);
+}
+
+.tool-definition-disclosure[open] > summary {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.tool-definition-disclosure[open] > summary::before {
+  content: "▾";
+}
+
+/* Typed values, not labels: the label they sit in is bold, and form controls
+   inherit its weight. The message editor's body is regular, and so are these. */
+.definition-editor input:not([type="checkbox"]),
+.definition-editor textarea,
+.tool-mock-result textarea {
+  font-weight: 400;
+}
+
 .tool-fields {
   padding: var(--space-md);
   display: grid;
@@ -2096,6 +2132,12 @@ output {
 .tool-fields label,
 .tool-call-card label {
   gap: var(--space-xs);
+}
+
+/* A sibling of the tool list rather than an item in it, so it takes the list's
+   gutter itself instead of running edge to edge beneath the cards above. */
+.mcp-discovery-panel {
+  margin: 0 var(--space-xl) var(--space-xl);
 }
 
 .mcp-discovery-body {
@@ -2353,13 +2395,6 @@ output {
   padding: var(--space-xs) var(--space-sm);
 }
 
-.schema-node-controls select,
-.schema-property-row select {
-  height: 28px;
-  padding: 0 var(--space-xl) 0 var(--space-sm);
-  background-position: calc(100% - 13px) center, calc(100% - 9px) center;
-}
-
 .schema-subheading {
   min-height: 34px;
   justify-content: space-between;
@@ -2411,7 +2446,7 @@ output {
     22px
     minmax(90px, 0.8fr)
     minmax(78px, 0.55fr)
-    54px
+    64px
     minmax(130px, 1.2fr)
     minmax(90px, 0.7fr)
     auto;
@@ -2438,13 +2473,14 @@ output {
   cursor: default;
 }
 
+/* The checkbox sits in a box the height of the inputs beside it, so its label
+   lines up with theirs in a row aligned to the controls' bottom edge. */
 .schema-required {
-  text-align: center;
-}
-
-.schema-required span {
-  display: block;
-  margin-bottom: var(--space-sm);
+  display: grid !important;
+  grid-template-rows: auto 32px;
+  row-gap: var(--space-2xs);
+  justify-items: center;
+  align-items: center;
 }
 
 .schema-required input[type="checkbox"] {
@@ -2504,21 +2540,8 @@ output {
 .tool-mock-result textarea {
   min-height: 112px;
   padding: var(--space-sm) var(--space-md);
-  border-color: var(--border-strong);
-  background: var(--surface-inset);
-  box-shadow: var(--shadow-field-inset);
   font-family: var(--font-geist-mono), monospace;
   line-height: var(--leading-normal);
-}
-
-.tool-mock-result textarea:hover {
-  border-color: var(--border-strong);
-  background: var(--surface-subtle);
-}
-
-.tool-mock-result textarea:focus {
-  border-color: var(--accent);
-  background: var(--surface-raised);
 }
 
 .tool-command-fields {
@@ -5134,12 +5157,18 @@ pre {
     border-top: 1px solid var(--border-default);
   }
 
+  /* Seven items: reorder, Name, Type, Required, then Description on a line of
+     its own and Default beside Remove, all under the fields above. */
   .schema-property-row {
-    grid-template-columns: minmax(100px, 1fr) 90px 54px minmax(130px, 1.2fr);
+    grid-template-columns: 22px minmax(100px, 1fr) 90px 64px;
+  }
+
+  .schema-property-row label:nth-of-type(4) {
+    grid-column: 2 / -1;
   }
 
   .schema-property-row label:nth-of-type(5) {
-    grid-column: 1 / 3;
+    grid-column: 2 / 4;
   }
 }
 
@@ -5210,16 +5239,22 @@ pre {
     grid-template-columns: 1fr;
   }
 
+  .schema-property-row label:nth-of-type(4),
   .schema-property-row label:nth-of-type(5) {
     grid-column: auto;
   }
 
-  .schema-required {
-    text-align: left;
+  .schema-property-reorder,
+  .schema-property-remove {
+    justify-self: start;
   }
 
-  .schema-required span {
-    margin-bottom: var(--space-2xs);
+  .schema-property-reorder {
+    flex-direction: row;
+  }
+
+  .schema-required {
+    justify-items: start;
   }
 }
 
@@ -6908,6 +6943,10 @@ main {
   .message-list,
   .tool-list {
     padding: var(--space-md);
+  }
+
+  .mcp-discovery-panel {
+    margin: 0 var(--space-md) var(--space-md);
   }
 
   .templates-workspace {
