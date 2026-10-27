@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import type {
   ConnectionRequirement,
@@ -216,6 +216,7 @@ export function ChatPromptTemplateEditor({
     ),
   );
   const workspaceRef = useRef<HTMLDivElement>(null);
+  const evaluateHintId = useId();
 
   useEffect(() => {
     if (!focusRequested) return;
@@ -547,16 +548,22 @@ export function ChatPromptTemplateEditor({
                         </small>
                       </div>
                     )}
-                    {!sessionOwned && !archived && viewedRevision && onEvaluateRevision && <button
-                      className="button secondary"
-                      type="button"
-                      onClick={() => {
-                        onDismissEvaluateRevisionError?.();
-                        setEvaluateRequest({ templateId: selected.id, revisionId: viewedRevision.id });
-                      }}
-                    >
-                      Evaluate in a suite…
-                    </button>}
+                    {!sessionOwned && !archived && viewedRevision && onEvaluateRevision && <div className="template-revision-edit-action">
+                      {/* Evaluation pins a saved revision, so unsaved edits would silently go untested. */}
+                      <button
+                        className="button secondary"
+                        type="button"
+                        disabled={draftChanged}
+                        aria-describedby={draftChanged ? evaluateHintId : undefined}
+                        onClick={() => {
+                          onDismissEvaluateRevisionError?.();
+                          setEvaluateRequest({ templateId: selected.id, revisionId: viewedRevision.id });
+                        }}
+                      >
+                        Evaluate in a suite…
+                      </button>
+                      {draftChanged && <small id={evaluateHintId}>Create a revision to evaluate these edits.</small>}
+                    </div>}
                     {!sessionOwned && <button
                       className="button secondary"
                       type="button"
@@ -846,6 +853,7 @@ export function ChatPromptTemplateEditor({
       {evaluateRequest && <div className="confirmation-backdrop" role="presentation">
         <section aria-label="Evaluate in a suite" aria-modal="true" className="confirmation-dialog" role="dialog">
           <h2>Evaluate in a suite</h2>
+          <p><strong>{selected.name} · {promptRevisionLabel(selected, evaluateRequest.revisionId)}</strong></p>
           <p>Choose a compatible suite to keep its cases, checks, and configurations, or start a new suite. Messages will not change. Nothing runs until you start the evaluation.</p>
           {evaluateRevisionError && <div className="template-diagnostic" role="alert">{evaluateRevisionError}</div>}
           {compatibleEvaluationSuiteEntries.length > 0 && <div className="confirmation-dialog-actions confirmation-dialog-suite-rows">
