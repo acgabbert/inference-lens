@@ -154,7 +154,12 @@ contract rather than modifying this immutable intent in place.
    path. Keep all files. No failure rolls back by deleting recovery content.
 
 An unreadable migration inventory blocks mutations because identity inspection
-cannot be completed. An unreadable/corrupt operation is retained for inspection;
+cannot be completed. Unreadable means a read failed or an entry is unexpected,
+including a nested symlink; both hosts list it as an unavailable entry rather
+than failing the whole inventory. Readable bytes that are not valid UTF-8 or
+JSON, such as an interrupted write, carry no identifiable `projectId`: they do
+not block mutations, and inspection reports the operation `needs-review`.
+An unreadable/corrupt operation is retained for inspection;
 read-only shared opening remains possible. A foreign `projectId` identifiable in
 any recognized journal or candidate blocks all workbench mutations, as with
 active records. Do not infer identity from a path or silently reassign it.
@@ -257,9 +262,17 @@ picker behavior, Windows path support or power-loss durability.
   `needs-review`. Another assertion showed a staging attempt after a confirmed
   shared write returned `manifest-diverged`; it now reports `shared-written`
   without rewriting anything.
+  A later review found the hosts disagreed on two inventory cases. Native
+  blocked ordinary writes for a migration file with invalid UTF-8 (the browser
+  decodes it and saves), and a nested symlink failed the entire native listing
+  instead of becoming an unavailable entry. Both new Rust tests failed first on
+  those actual values: `Err("Migration inventory is unavailable; workbench
+  writes are blocked.")` instead of `Ok(Written)`, and a listing `Err` naming the
+  symlink. A browser test pins the same partial-write rule; it passed without a
+  change because the browser already behaved that way.
 - `node --experimental-strip-types --test tests/migration-*.test.ts
   tests/shared-project-migration.test.ts tests/project-workspace.test.ts
-  tests/workbench-store.test.ts`: 95 passing tests, including 33 new tests.
+  tests/workbench-store.test.ts`: 96 passing tests, including 34 new tests.
   Cases cover all supported legacy versions, both draft kinds and no drafts,
   compact UTF-16 identities, original BOM/CRLF bytes, strict journals, exact
   reconstruction, every staged write/read-back interruption boundary, stale
@@ -269,7 +282,8 @@ picker behavior, Windows path support or power-loss durability.
   Directory I/O and Web Locks are doubles; concurrent stage/stage and
   stage/ordinary-save calls use the shared queue. This does not establish actual
   multi-tab or browser/native race behavior.
-- `npm run test:rust`: 44 passing tests. Native tests use real temporary
+- `npm run test:rust`: 44 passing tests before the inventory parity fix, which
+  adds two. Native tests use real temporary
   directories and reject symlinks at the workbench, migrations, operation,
   candidates and file boundaries. Deterministic callbacks inject interruptions
   and read-back interference at each native payload boundary. These are

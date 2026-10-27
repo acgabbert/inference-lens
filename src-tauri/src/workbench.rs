@@ -104,13 +104,11 @@ pub fn list(directory: &Path) -> Result<Vec<File>, String> {
         }
     }
     for file in migration_files(directory)? {
+        // Readable but malformed bytes are unparseable identity, as in the browser host.
         files.push(match file {
-            ByteFile::Read { path, bytes } => match String::from_utf8(bytes) {
-                Ok(contents) => File::Read { path, contents },
-                Err(error) => File::Unavailable {
-                    path,
-                    error: error.to_string(),
-                },
+            ByteFile::Read { path, bytes } => File::Read {
+                path,
+                contents: String::from_utf8_lossy(&bytes).into_owned(),
             },
             ByteFile::Unavailable { path, error } => File::Unavailable { path, error },
         });
@@ -567,7 +565,7 @@ fn migration_files(directory: &Path) -> Result<Vec<ByteFile>, String> {
             let entry = entry.map_err(|error| error.to_string())?;
             let name = entry.file_name().to_string_lossy().into_owned();
             let path = format!("{prefix}/{name}");
-            reject_link(&entry.path())?;
+            // Symlinks are neither directories nor files here: retained as unexpected entries.
             let file_type = entry.file_type().map_err(|error| error.to_string())?;
             if file_type.is_dir() && depth < 2 && (depth == 0 || name == "candidates") {
                 collect(&entry.path(), &path, depth + 1, files)?;
@@ -1054,5 +1052,56 @@ mod migration_tests {
             );
             assert_eq!(fs::read_dir(&outside.0).unwrap().count(), 1);
         }
+    }
+    #[test]
+    fn a_partially_written_migration_file_does_not_block_ordinary_records() {
+        let directory = Directory::new();
+        let files = payloads();
+        let partial = directory.0.join(".workbench").join(&files[1].path);
+        fs::create_dir_all(partial.parent().unwrap()).unwrap();
+        // A write interrupted inside a multi-byte character.
+        fs::write(&partial, b"{\"note\":\"\xe2\x82").unwrap();
+        assert_eq!(
+            mutate(
+                &directory.0,
+                "selections.json",
+                None,
+                Some("personal"),
+                "project_one"
+            ),
+            Ok(Mutation::Written)
+        );
+        let snapshot = read_migration(&directory.0).unwrap();
+        assert!(snapshot.files.iter().any(|file| matches!(
+            file,
+            ByteFile::Read { path, bytes } if *path == files[1].path && bytes == b"{\"note\":\"\xe2\x82"
+        )));
+    }
+    #[cfg(unix)]
+    #[test]
+    fn a_nested_migration_symlink_is_inventory_for_review_not_a_listing_failure() {
+        use std::os::unix::fs::symlink;
+        let directory = Directory::new();
+        let outside = Directory::new();
+        let files = payloads();
+        let link = directory.0.join(".workbench").join(&files[1].path);
+        fs::create_dir_all(link.parent().unwrap()).unwrap();
+        symlink(outside.0.join("project.json"), &link).unwrap();
+        assert!(list(&directory.0)
+            .unwrap()
+            .iter()
+            .any(|file| matches!(file, File::Unavailable { path, .. } if *path == files[1].path)));
+        assert!(read_migration(&directory.0).unwrap().files.iter().any(
+            |file| matches!(file, ByteFile::Unavailable { path, .. } if *path == files[1].path)
+        ));
+        assert!(mutate(
+            &directory.0,
+            "selections.json",
+            None,
+            Some("personal"),
+            "project_one"
+        )
+        .is_err());
+        assert!(!directory.0.join(".workbench/selections.json").exists());
     }
 }

@@ -6,7 +6,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { browserMigrationStorage, browserWorkbenchStorage } from "../app/workbench-directory.client.ts";
-import { prepareSharedProjectMigration, stageSharedProjectMigration } from "../packages/core/src/migration-journal.ts";
+import { inspectSharedProjectMigration, prepareSharedProjectMigration, stageSharedProjectMigration } from "../packages/core/src/migration-journal.ts";
 import { openWorkbenchStore } from "../packages/core/src/workbench-store.ts";
 import { planSharedProjectMigration } from "../packages/core/src/shared-project-migration.ts";
 import { ByteDirectory } from "./migration-directory-helpers.ts";
@@ -184,4 +184,15 @@ test("simultaneous same-host staging attempts share one immutable operation", as
   const results = await Promise.all(Array.from({ length: 2 }, () => stageSharedProjectMigration(browserMigrationStorage(directory), prepared)));
   assert.deepEqual(results.map(result => result.kind), ["staged", "staged"]);
   for (const file of prepared.files) assert.equal(directory.writes.filter(path => path === `.workbench/${file.path}`).length, 1);
+});
+test("a partially written migration file is unparseable identity, not unavailable inventory", async () => {
+  const directory = new ByteDirectory();
+  directory.seed("project.json", source);
+  const prepared = await prepareSharedProjectMigration(source);
+  directory.seed(`.workbench/${prepared.files[0].path}`, source);
+  // A write interrupted inside a multi-byte character; native hosts apply the same rule.
+  directory.seed(`.workbench/${prepared.files[1].path}`, new Uint8Array([0x7b, 0x22, 0xe2, 0x82]));
+  const store = await openWorkbenchStore(browserWorkbenchStorage(directory), prepared.projectId);
+  assert.equal((await store.save(planSharedProjectMigration(source).selections)).kind, "saved");
+  assert.equal((await inspectSharedProjectMigration(await browserMigrationStorage(directory).read(), prepared.projectId, prepared.operationId)).kind, "needs-review");
 });
