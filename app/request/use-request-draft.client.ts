@@ -114,9 +114,11 @@ export function useRequestDraft(input: {
     });
   }
 
+  // Read on every render, so it must not throw while a name is mid-edit;
+  // prepareWorkbenchRun rejects a blank name when a run is actually started.
   function resolvedTools(): ToolDefinition[] {
     const enabled = new Set(enabledToolIds);
-    return serializedTools().filter((tool) => enabled.has(tool.id));
+    return tools.filter((tool) => enabled.has(tool.id));
   }
 
   function addMessage(): void {
