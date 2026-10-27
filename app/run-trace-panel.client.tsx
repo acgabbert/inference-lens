@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import {
   createRunTrace,
@@ -151,6 +151,36 @@ function EventStream({ events }: { events: RunEvent[] }) {
   );
 }
 
+/**
+ * Counts wall time from run start while a request is in flight. Recorded
+ * elapsed values only move when an event arrives, which leaves the summary
+ * frozen through a long wait for the first byte. The clock never reads below
+ * the recorded value, and once the run stops ticking the recorded value is
+ * shown as is. It is its own component so the tick re-renders one value
+ * rather than the whole panel.
+ */
+function LiveElapsed({
+  recordedMs,
+  clockStartedAt,
+}: {
+  recordedMs: number;
+  clockStartedAt?: string;
+}) {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (clockStartedAt === undefined) return;
+    const intervalId = window.setInterval(() => setNowMs(Date.now()), 100);
+    return () => window.clearInterval(intervalId);
+  }, [clockStartedAt]);
+
+  const startedAtMs =
+    clockStartedAt === undefined ? Number.NaN : Date.parse(clockStartedAt);
+  const liveMs = Number.isFinite(startedAtMs)
+    ? Math.max(recordedMs, nowMs - startedAtMs)
+    : recordedMs;
+  return <>{formatDuration(liveMs)}</>;
+}
+
 const STATUS_LABELS: Record<RunInspectionStatus, string> = {
   starting: "Starting",
   running: "Running",
@@ -167,12 +197,20 @@ export function RunInspectionSummary({
 }: {
   summary: RunInspectionSummaryValue;
 }) {
-  const metrics = [
+  type Metric = { label: string; value: ReactNode };
+  const candidates: (Metric | undefined)[] = [
     summary.totalDurationMs === undefined
       ? undefined
       : {
           label: summary.phase === "active" ? "Elapsed" : "Duration",
-          value: formatDuration(summary.totalDurationMs),
+          value: (
+            <LiveElapsed
+              recordedMs={summary.totalDurationMs}
+              {...(summary.clockStartedAt === undefined
+                ? {}
+                : { clockStartedAt: summary.clockStartedAt })}
+            />
+          ),
         },
     summary.ttfoMs === undefined
       ? undefined
@@ -192,7 +230,8 @@ export function RunInspectionSummary({
           label: "Rate",
           value: formatRate(summary.outputTokensPerSecond),
         },
-  ].filter((metric): metric is { label: string; value: string } =>
+  ];
+  const metrics = candidates.filter((metric): metric is Metric =>
     Boolean(metric),
   );
 
