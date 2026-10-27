@@ -12,6 +12,8 @@ import { promptRevisionLabel } from "./prompt-revision-label";
 
 export function PromptInsertionDialog({
   templates: allTemplates,
+  initialQuery = "",
+  initialTemplateId,
   itemCount,
   replaceEmptyDraft,
   onCancel,
@@ -19,6 +21,9 @@ export function PromptInsertionDialog({
   onOpenPrompts,
 }: {
   templates: readonly PromptTemplate[];
+  /** The search and selection the quick picker hands over on "More options…". */
+  initialQuery?: string;
+  initialTemplateId?: PromptTemplateId;
   itemCount: number;
   onCancel(): void;
   onInsert(
@@ -31,9 +36,9 @@ export function PromptInsertionDialog({
   onOpenPrompts(): void;
 }) {
   const templates = useMemo(() => allTemplates.filter(isChatPromptTemplate), [allTemplates]);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [selectedId, setSelectedId] = useState<PromptTemplateId | undefined>(
-    templates[0]?.id,
+    templates.some(({ id }) => id === initialTemplateId) ? initialTemplateId : templates[0]?.id,
   );
   const selectedTemplate = templates.find(({ id }) => id === selectedId);
   const [revisionId, setRevisionId] = useState<PromptTemplateRevisionId | undefined>(
