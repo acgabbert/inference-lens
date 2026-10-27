@@ -1,6 +1,6 @@
 # MCP discovery and attachment
 
-MCP discovery works in the service-hosted web app. It lists declared servers, connects only after a user selects one, and copies selected tool definitions into a project or keeps them attached in the current tab across runs. An attached definition can be answered manually, by a mock, or through the M3 local execution permission described in [M3 execution](MCP_M3_EXECUTION_DESIGN.md).
+MCP discovery works in the service-hosted web app. It lists declared servers, connects only after a user selects one, and copies selected tool definitions into a project or keeps them attached in the current tab across runs. An attached definition can be answered manually, by a mock, or through the M3 local execution permission described in [M3 execution](archive/MCP_M3_EXECUTION_DESIGN.md).
 
 For a copyable, no-account tryout with a Python loopback server and a deterministic provider, see [Try MCP locally](MCP_LOCAL_TRYOUT.md).
 
@@ -46,7 +46,7 @@ The browser offers searchable tool rows with expandable details, multi-selection
 
 For executable local servers, attachment defaults to “Ask before running.” The same action creates the definition and explicitly requests a temporary permission for the discovered server. “Run automatically” and “Manual results” are available before attachment and on attached rows. If permission creation fails, the definition remains attached and the UI reports the failure; it never reports successful permission creation. Discovery-only servers offer manual attachment. The server's execution-availability flag is only a display hint; the grant and execution endpoints remain authoritative.
 
-Discovery alone includes no execution permission. For local interactive debugging, a user can separately allow a specific attached tool to use a declared unauthenticated loopback server. The default asks at each call; an explicit per-tool choice runs automatically. Permissions are kept in browser storage until revoked, and the service checks the declared server and live tool fingerprint before every call. Repeated runs and evaluations use the same permission, as described in [the M4 design](MCP_M4_BATCH_DESIGN.md). The n8n provider-wire findings are in [the comparison](N8N_PROVIDER_WIRE_COMPARISON_2026-09-24.md).
+Discovery alone includes no execution permission. For local interactive debugging, a user can separately allow a specific attached tool to use a declared unauthenticated loopback server. The default asks at each call; an explicit per-tool choice runs automatically. Permissions are kept in browser storage until revoked, and the service checks the declared server and live tool fingerprint before every call. Repeated runs and evaluations use the same permission, as described in [the M4 design](archive/MCP_M4_BATCH_DESIGN.md). The n8n provider-wire findings are in [the comparison](N8N_PROVIDER_WIRE_COMPARISON_2026-09-24.md).
 
 ## Local fixture
 

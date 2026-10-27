@@ -1,5 +1,9 @@
 # Shared assets: protected recovery-store foundation
 
+**Archive note (October 27, 2026):** Completed implementation or investigation
+record. The dated decisions and verification below are historical; see the
+[archive index](README.md) for scope, superseding contracts and follow-up work.
+
 Implemented following approval October 26, 2026 as the next bounded slice after PR #198. This is
 part of 2b; it does not enable the v16 application or migrate any folders.
 
@@ -136,7 +140,7 @@ journey. Report browser/native adapter tests separately from a native app launch
   `npm run test:rust` passes 35 tests and `npm run check:rust` passes.
 - The later approved [migration-journal foundation](SHARED_ASSETS_MIGRATION_JOURNAL_DESIGN.md)
   implements protected staging and restart classification. Next review: manifest
-  [replacement and active-candidate recovery](SHARED_ASSETS_MIGRATION_COMPLETION_DESIGN.md), publication intent,
+  [replacement and active-candidate recovery](../SHARED_ASSETS_MIGRATION_COMPLETION_DESIGN.md), publication intent,
   request/scratch arms and execution provenance, followed by feature-owner
   integration and launch-default actions. Human review should focus on this
   store API and its conflict/failure outcomes; there is no changed UI to inspect.

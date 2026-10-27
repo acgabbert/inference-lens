@@ -1923,7 +1923,7 @@ Decided in D31–D37, with 5a's details in D38–D43. Delivered in order:
   plan kind, writing decision traces with `serializeDecisionRunTrace`. The
   in-process transport gains `executeDecision`, which crosses
   `resolveDecisionRequest` like the service route. Summary v1 gains
-  `runKind`. `docs/HEADLESS_CLI_DESIGN.md` lists the pieces.
+  `runKind`. `docs/archive/HEADLESS_CLI_DESIGN.md` lists the pieces.
   Covered by `tests/cli-decision-run.test.ts`, all five tests red first on
   the old refusal, against a local endpoint answering with the committed
   llama.cpp capture: the wire request, the artifacts and history, exit codes

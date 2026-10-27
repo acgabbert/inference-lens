@@ -615,5 +615,5 @@ diffs. Experiment and trace formats continue storing resolved input.
 
 The browser library and chat pickers currently show chat templates only. Decision
 template authoring and pinned-use Compose controls follow in the next slice of
-[the Saved Prompts plan](SYSTEM_ONE_SAVED_PROMPTS_PLAN.md); existing decision
+[the Saved Prompts plan](archive/SYSTEM_ONE_SAVED_PROMPTS_PLAN.md); existing decision
 suites and the CLI can already execute valid template-backed project inputs.

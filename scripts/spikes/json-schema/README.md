@@ -14,6 +14,6 @@ The browser probe uses the root Vite and Playwright development tools and needs
 loopback access. Candidate imports resolve from this package's `node_modules`.
 The separate metered evaluator and its tests require neither candidate.
 
-Findings are recorded in `docs/JSON_SCHEMA_ENGINE_SPIKE.md` and
-`docs/METERED_JSON_SCHEMA_SPIKE.md` at the repository root. License notices are
+Findings are recorded in `docs/archive/JSON_SCHEMA_ENGINE_SPIKE.md` and
+`docs/archive/METERED_JSON_SCHEMA_SPIKE.md` at the repository root. License notices are
 preserved under `notices/`.

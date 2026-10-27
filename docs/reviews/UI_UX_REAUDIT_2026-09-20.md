@@ -1,5 +1,10 @@
 # UI/UX re-audit of the current application
 
+**Historical review:** findings and verification below describe the recorded
+baseline. Later implementations may have resolved them; see the
+[current plan inventory](../README.md#plans-with-open-work) before treating
+these observations as open work.
+
 **Reviewed:** September 20, 2026 · **Repository baseline:** `77a5f22` plus the current prompt-draft-retention working-tree changes
 **Compared with:** [UI/UX usability review and proposed implementation plan](UI_UX_REVIEW_2026-09-20.md), whose declared source baseline is `50f48b7`
 **Scope:** Reassess which earlier findings still describe the product, identify the current priorities, and preserve the original review as a historical record. Assessment only; no product behavior was changed for this re-audit.
@@ -113,7 +118,7 @@ Source: [project-templates-pane.client.tsx](../../app/project-templates-pane.cli
 
 **Acceptance:** before Run, the user can answer which definitions will be sent, what will answer each call, and when a person will be asked; copying has no unstated attachment or save side effect; disabling tool capability points to one coherent resolution path.
 
-Source: [tool-registry-modal.client.tsx](../../app/tool-registry-modal.client.tsx), [tools-pane.client.tsx](../../app/tools-pane.client.tsx), and the retained copy/attach and mock-continuation scenarios.
+Source: [tool-registry-modal.client.tsx](../../app/tools/tool-registry-modal.client.tsx), [tools-pane.client.tsx](../../app/tools-pane.client.tsx), and the retained copy/attach and mock-continuation scenarios.
 
 ### R06 · P2 · Results navigation still excludes the most common meaning of “run”
 
@@ -143,7 +148,7 @@ Source: [request-composer.client.tsx](../../app/request/request-composer.client.
 
 **Acceptance:** keyboard users never land behind a modal, never encounter overlapping header menus, and can dismiss and return to the invoking control predictably. Background run/save commands remain suppressed while a modal owns attention.
 
-Source: [topbar.client.tsx](../../app/topbar.client.tsx), [tool-registry-modal.client.tsx](../../app/tool-registry-modal.client.tsx), [keyboard-command-scope.client.ts](../../app/keyboard-command-scope.client.ts), and the retained menu/dialog scenario.
+Source: [topbar.client.tsx](../../app/topbar.client.tsx), [tool-registry-modal.client.tsx](../../app/tools/tool-registry-modal.client.tsx), [keyboard-command-scope.client.ts](../../app/keyboard-command-scope.client.ts), and the retained menu/dialog scenario.
 
 ### R09 · P2 · Durability and settings scope are improved locally but not summarized globally
 

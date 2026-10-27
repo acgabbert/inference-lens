@@ -1,5 +1,9 @@
 # `app/page.tsx` composition-root execution plan
 
+**Archive note (October 27, 2026):** Completed implementation or investigation
+record. The dated decisions and verification below are historical; see the
+[archive index](README.md) for scope, superseding contracts and follow-up work.
+
 **Status:** Complete. PR 5 closed the plan on 2026-10-08; the final ownership
 map is in `docs/ARCHITECTURE.md`.
 

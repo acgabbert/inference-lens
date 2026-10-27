@@ -87,7 +87,7 @@ Plans use `schemaVersion: 5`. Results use `schemaVersion: 6`.
   `stop: { reason: "tool_unavailable", cellId, toolId }`, naming the failed
   repetition that found the tool unavailable.
 - Version 6 records how the batch was scheduled, so that cells can run
-  concurrently (see the [parallel experiment design](PARALLEL_EXPERIMENT_DESIGN.md)):
+  concurrently (see the [parallel experiment design](archive/PARALLEL_EXPERIMENT_DESIGN.md)):
   - `concurrency` is `{ maxInFlight, connections }`. `maxInFlight` is the
     most cells that could be in flight across the whole experiment; 1 means
     one at a time. `connections` lists one `{ profileId, endpoint, limit }`

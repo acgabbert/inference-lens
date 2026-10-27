@@ -1,6 +1,6 @@
 # Shared assets: migration completion review
 
-**Status:** Proposed after the approved [migration-staging foundation](SHARED_ASSETS_MIGRATION_JOURNAL_DESIGN.md),
+**Status:** Proposed after the approved [migration-staging foundation](archive/SHARED_ASSETS_MIGRATION_JOURNAL_DESIGN.md),
 October 26, 2026; revised October 27 after review (browser save coordination,
 completion capability ownership, `stale-plan` result, corrupt selections and the
 two partial-recovery/stale-handle decisions). No completion API, manifest writer or candidate activation is

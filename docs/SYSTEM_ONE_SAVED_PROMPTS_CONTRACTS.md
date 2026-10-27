@@ -1,10 +1,11 @@
 # System One Saved Prompts implementation contracts
 
-These shapes implement the [accepted plan](SYSTEM_ONE_SAVED_PROMPTS_PLAN.md).
+These shapes implement the [accepted plan](archive/SYSTEM_ONE_SAVED_PROMPTS_PLAN.md).
 Slices 1–4 implement the resolver boundary, explicit migration to v15, typed
 content, pure lifecycle, UI owners and evaluation shortcuts below.
-Shared Assets Level 2 remains unstarted;
-this feature retains ownership of v15.
+Shared Assets Level 2 now has isolated core codecs, recovery storage and
+migration staging; its [application integration](SHARED_ASSETS_LEVEL_TWO_DESIGN.md)
+remains pending. This feature retains ownership of the app/CLI's v15 format.
 
 ## Persisted types (slice 2)
 

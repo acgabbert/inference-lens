@@ -1,5 +1,9 @@
 # JSON Schema engine feasibility record
 
+**Archive note (October 27, 2026):** Completed implementation or investigation
+record. The dated decisions and verification below are historical; see the
+[archive index](README.md) for scope, superseding contracts and follow-up work.
+
 Date: 2026-10-16. Status: engine comparison complete; runtime integration gated
 on the worker boundary and a native Tauri webview probe. No check vocabulary,
 artifact version, authoring UI, or evaluation behavior changes in this slice.
@@ -39,7 +43,7 @@ interpreter Node probe was 31,242 bytes / 7,746 gzip; Ajv's was unchanged. The
 Tauri-target frontend bundles matched the web sizes. Ordinary application builds
 do not import either candidate, so their success alone cannot prove engine
 compatibility. Exact notice texts and provenance are retained under
-[`scripts/spikes/json-schema/notices`](../scripts/spikes/json-schema/notices/README.md).
+[`scripts/spikes/json-schema/notices`](../../scripts/spikes/json-schema/notices/README.md).
 
 ## Semantics and diagnostics
 

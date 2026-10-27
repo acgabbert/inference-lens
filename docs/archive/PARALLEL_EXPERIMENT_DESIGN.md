@@ -1,5 +1,9 @@
 # Parallel experiment cells
 
+**Archive note (October 27, 2026):** Completed implementation or investigation
+record. The dated decisions and verification below are historical; see the
+[archive index](README.md) for scope, superseding contracts and follow-up work.
+
 **Status:** decisions 1–5 agreed October 9, 2026; decisions 6–8 (rate
 limits and retry) agreed the same day as recommended. A review the same day
 amended decisions 4, 5, and 8 and added decision 9; see
@@ -365,7 +369,7 @@ workspace mislabel running cells.
   recorded concurrency is visible where timings are compared. The fixture
   provider must hold its responses long enough for cells to overlap, or the
   spec passes without exercising any concurrency; see the
-  [provider fixture guide](PROVIDER_FIXTURES.md).
+  [provider fixture guide](../PROVIDER_FIXTURES.md).
 - A Playwright spec runs a suite against a fixture provider that answers
   some requests with 429 and a short `Retry-After`. It checks that the
   results label those repetitions "rate limited" rather than "run failed",
@@ -380,7 +384,7 @@ workspace mislabel running cells.
 `ExperimentResultV6` in `packages/core/src/experiment.ts`, with its parser,
 validator, and the upgrade from Versions 4 and 5. The scheduler writes Version
 6 at a concurrency of 1 with retries off, and otherwise behaves as before. The format is
-documented in [experiment artifacts](EXPERIMENT_ARTIFACTS.md).
+documented in [experiment artifacts](../EXPERIMENT_ARTIFACTS.md).
 
 Choices made in implementation, within the agreed decisions:
 

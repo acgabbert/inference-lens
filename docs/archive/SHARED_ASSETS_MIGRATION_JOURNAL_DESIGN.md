@@ -1,19 +1,23 @@
 # Shared assets: migration journal and restart review
 
+**Archive note (October 27, 2026):** Completed implementation or investigation
+record. The dated decisions and verification below are historical; see the
+[archive index](README.md) for scope, superseding contracts and follow-up work.
+
 **Status:** Recommended staging slice approved and implemented October 26, 2026,
 after the [protected recovery store](SHARED_ASSETS_RECOVERY_STORE_SLICE.md).
 Approval covers opt-in journal preparation, staging on both hosts and read-only
 restart classification, including the recommendations below. App and CLI remain
 on v15; application migration and manifest replacement remain deferred.
 
-The next [completion proposal](SHARED_ASSETS_MIGRATION_COMPLETION_DESIGN.md)
+The next [completion proposal](../SHARED_ASSETS_MIGRATION_COMPLETION_DESIGN.md)
 defines opt-in manifest commit and active-candidate recovery for review. It is
 not part of this approval or the implemented staging API.
 
 This contract defines the implemented persistence slice. It does not approve
 application migration, ordinary draft publication, request/scratch record arms,
 or launch-default actions. Those remain separate integration decisions in the
-[Level 2 design](SHARED_ASSETS_LEVEL_TWO_DESIGN.md).
+[Level 2 design](../SHARED_ASSETS_LEVEL_TWO_DESIGN.md).
 
 ## Approved staging decisions
 
@@ -32,7 +36,7 @@ creation or power-loss durability.
 
 ## Ownership and API boundary
 
-Core owns [migration-journal.ts](../packages/core/src/migration-journal.ts). The existing
+Core owns [migration-journal.ts](../../packages/core/src/migration-journal.ts). The existing
 `planSharedProjectMigration(Uint8Array)` stays synchronous and unchanged; its
 results remain logical candidates, not file-write instructions. The
 `prepareSharedProjectMigration(sourceBytes)` async API invokes it, allocates
@@ -243,10 +247,10 @@ picker behavior, Windows path support or power-loss durability.
   planner unchanged; stage captures caller-owned buffers before yielding and
   reconstructs every output from source before invoking a host. Inspection is
   read-only; only an explicit stage call can continue an incomplete operation.
-- [Browser storage](../app/workbench-directory.client.ts) exposes
-  `browserMigrationStorage`; [native IPC](../app/migration-native.client.ts)
+- [Browser storage](../../app/workbench-directory.client.ts) exposes
+  `browserMigrationStorage`; [native IPC](../../app/migration-native.client.ts)
   transfers checked byte arrays to dedicated
-  [Rust commands](../src-tauri/src/lib.rs). The workspace handle exposes
+  [Rust commands](../../src-tauri/src/lib.rs). The workspace handle exposes
   `storage.migration` without opening it automatically. Rust uses exclusive
   creation for immutable staging files; a partial write remains for review.
   Shared manifests and active recovery records are never stage destinations.

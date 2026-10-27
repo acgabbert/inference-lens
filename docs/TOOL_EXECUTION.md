@@ -8,7 +8,7 @@ There are two executors: the project mock, and
 it has no transport, no timeout, and no asynchronous failure — so the command
 tool is what actually tested it. The contract held: the command executor added a
 binding kind, an identity case, and a host module, and changed nothing in the
-run model. The MCP client (see [MCP tool execution](MCP_M3_EXECUTION_DESIGN.md)) was added against the same seam.
+run model. The MCP client (see [MCP tool execution](archive/MCP_M3_EXECUTION_DESIGN.md)) was added against the same seam.
 
 ## Why MCP is the primary executor
 
@@ -21,7 +21,7 @@ way to serve real tools because it puts that boundary in a standard place:
   shape already wants. The interoperability spike found that copying those
   three fields into a `ToolDefinition` preserved them exactly and produced an
   ordinary request through the existing serializer
-  ([SDK decision](MCP_SDK_INTEROPERABILITY_DECISION.md)). Adding a tool needs
+  ([SDK decision](archive/MCP_SDK_INTEROPERABILITY_DECISION.md)). Adding a tool needs
   no adapter code in this repository.
 - **Responsibility stays outside.** What a tool does, what it can reach, and
   what it costs to get wrong belong to the server and its operator. Inference

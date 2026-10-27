@@ -1,5 +1,9 @@
 # M4: MCP tools in repeated runs and evaluations
 
+**Archive note (October 27, 2026):** Completed implementation or investigation
+record. The dated decisions and verification below are historical; see the
+[archive index](README.md) for scope, superseding contracts and follow-up work.
+
 **Status:** agreed and implemented September 26. See
 [Implementation notes](#implementation-notes) for one deviation.
 

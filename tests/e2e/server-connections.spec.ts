@@ -10,7 +10,7 @@ import {
 
 /**
  * The browser's half of several server-held connections
- * (docs/SERVER_CONNECTIONS_DESIGN.md, slice 2). The status route is stubbed:
+ * (docs/archive/SERVER_CONNECTIONS_DESIGN.md, slice 2). The status route is stubbed:
  * the suite's dev server runs with no catalog, and what is under test here is
  * how the page provisions, locks and selects from whatever the server lists.
  * Releasing each key only to its own origin is the server's, and is covered by

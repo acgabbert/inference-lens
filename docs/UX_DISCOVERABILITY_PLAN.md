@@ -15,8 +15,10 @@ This is a follow-on to the [layout and flow plan](UI_LAYOUT_AND_FLOW_PLAN.md),
 not a restart of that work. Preserve the existing Compose / Prompts /
 Evaluations / Runs destinations, collapsed run settings, composer focus mode,
 readiness routing, and read-only historical inspection. Coordinate with the
-saved-prompt insertion combobox/popover being implemented separately; that
-picker is a dependency and interaction reference, not work to duplicate here.
+saved-prompt insertion combobox/popover, now merged in PR #216
+(`fce5077`); that picker is an implemented dependency and interaction reference.
+Recheck the remaining recommendations against it before starting a slice; see
+[`saved-prompt-picker.spec.ts`](../tests/e2e/saved-prompt-picker.spec.ts).
 
 The preceding review inspected source and manually opened the local app's
 initial composer, Tools view, and Evaluations empty state. It observed duplicate

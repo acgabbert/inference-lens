@@ -1,8 +1,11 @@
 # Evaluation suite authoring
 
-Evaluation suites are portable Project v10 content. The **Evaluations** tab in
-the Request pane owns suite, input, case, and deterministic-check editing. Its
-focus-mode control expands the same live editor to the full application surface.
+Evaluation suites are portable Project v15 content. The **Evaluations** workspace
+owns suite, input, case, and deterministic-check editing. Chat suites pin a
+conversation revision; System One decision suites pin a decision request
+revision. See [Saved decision prompts](SYSTEM_ONE_SAVED_PROMPTS.md) for decision
+suite creation, variables and retargeting. The chat-specific input and tool
+details below describe conversation suites.
 
 A suite owns its input: the selected conversation revision is persisted as the
 suite's `input`, so Messages and the evaluation can point at different revisions
@@ -89,25 +92,16 @@ documented in [the project format](PROJECT_FORMAT.md#starting-an-evaluation-from
 
 ## Exact focused-case preflight
 
-The focused case shows the exact provider input an execution would snapshot. It
-renders in the **response pane**, titled "Provider input", whenever the
-Evaluations tab is the active request context and no execution is on screen —
-the same pane the results workspace claims the moment a run starts. The editor
-on the left keeps the controls; the pane on the right shows what they resolve
-to, and follows the focused case as it changes. A live or reopened execution
-always wins the pane. On a narrow viewport the panes are tabs, and the response
-tab names itself "Preview" while an evaluation is being authored.
+The focused case shows the exact provider input an execution would snapshot.
+The **Evaluations** workspace keeps the editor beside an optional **Provider
+input** preview that follows the focused case. **Hide provider input** releases
+space to the editor; **Show provider input** restores it without discarding
+edits. Preview starts hidden at widths up to 1100px unless the user has chosen
+otherwise. Layout state belongs to the evaluation workspace and survives mode
+changes; it is not portable project content.
 
-A **finished** execution gives the pane back in either of two ways: its "Back to
-editing" action, or pointing the editor at a different suite, revision, or case,
-which makes the results describe something other than what is being authored.
-Editing a field of the suite that was run is not a re-target and keeps the
-results on screen. Both routes are the same release: a durable evaluation is
-already written to the project folder and reopens from grouped run history, so
-dismissing it is navigation; an unsaved session evaluation is the last copy of
-its runs, so clearing one is confirmed first. A running batch keeps the pane
-either way. Repeated experiments release the pane on the same rule, through
-"Close results".
+Live and reopened results are inspected in **Runs**. Browsing that evidence
+does not replace the Compose draft or change the suite's authored input.
 
 All four regions are open by default; only the stable IDs inside revision
 provenance stay behind a disclosure:
@@ -185,9 +179,9 @@ deliberate: a pass rate that moved because the prompt changed is a different
 finding from one that moved on its own, and hiding the older run would hide the
 comparison.
 
-**Run history**, under the topbar's **Run data** menu, is the whole-project
-view: ordinary runs, repeated experiments, and evaluations across every suite,
-newest first, filterable by kind.
+**Runs** is the whole-project view: ordinary runs, repeated experiments, and
+evaluations across every suite, newest first, filterable by kind. **Run data →
+Run history** opens the same workspace rather than a separate history drawer.
 
 Both surfaces summarize an evaluation by its strict pass rate — `1/2 cases
 passed` — rather than by run status. The distinction matters: a repetition that

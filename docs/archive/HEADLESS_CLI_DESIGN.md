@@ -1,5 +1,9 @@
 # Headless command-line experiments
 
+**Archive note (October 27, 2026):** Completed implementation or investigation
+record. The dated decisions and verification below are historical; see the
+[archive index](README.md) for scope, superseding contracts and follow-up work.
+
 **Status:** decisions 1–4 agreed as recommended (October 9, 2026). Slices 1
 to 4 are implemented, in `packages/runner/`, `packages/cli/`, and the
 container image; see [Implementation status](#implementation-status). Decision 3 was refined on
@@ -168,7 +172,7 @@ Recommendation:
 - `--json` prints one machine-readable summary to stdout: the experiment ID,
   artifact paths, overall verdict, and per-configuration and per-case
   outcomes. It references traces and never copies model output, following the
-  rule in [deterministic checks](DETERMINISTIC_CHECKS.md).
+  rule in [deterministic checks](../DETERMINISTIC_CHECKS.md).
 - Exit codes:
 
 | Code | Meaning |
@@ -354,7 +358,7 @@ docker run --rm \
 - `--user` makes written artifacts belong to the host user rather than the
   image's `node` user (uid 1000). The Docker guide must explain this.
 - Provider networking (`host.docker.internal`, Compose networks) works exactly
-  as it does for the server; see the [Docker guide](DOCKER.md).
+  as it does for the server; see the [Docker guide](../DOCKER.md).
 - The documentation should offer a shell alias or a small wrapper script for
   the long command line. The CLI itself never starts containers, which would
   require access to the Docker socket.
@@ -374,7 +378,7 @@ Document it as possible, not as the main path.
 
 Publishing to npm (`npx inference-lens run …`) gives the best developer
 experience without Docker. It is a separate release decision; see
-[releasing](RELEASING.md).
+[releasing](../RELEASING.md).
 
 ## Delivery slices
 
@@ -609,7 +613,7 @@ reported) and once without (two requests, the policy reported as off).
 
 The published image runs the CLI in place of the server:
 `docker run … ghcr.io/acgabbert/inference-lens:<version> inference-lens run
-/project`. The [Docker guide](DOCKER.md#run-an-evaluation-suite-from-the-command-line)
+/project`. The [Docker guide](../DOCKER.md#run-an-evaluation-suite-from-the-command-line)
 documents the one-off-container command, `--user`, credentials, a shell
 function for the long command line, real tools in a container, and
 `docker compose exec` as possible but not preferred.
@@ -728,7 +732,7 @@ it could only fail before `repeat` existed at the import.
 ### Decision suites (System One 5c): what exists
 
 `run` dispatches on the suite's kind, as
-[System One D36](SYSTEM_ONE_PROTOCOL_PLAN.md#d36-cli-surface-accepted) set out:
+[System One D36](../SYSTEM_ONE_PROTOCOL_PLAN.md#d36-cli-surface-accepted) set out:
 flags, credentials, `--no-auth`, `--retry-rate-limits`, and exit codes are
 unchanged, and `repeat` stays chat-only. D54 there records the two choices
 made for it.

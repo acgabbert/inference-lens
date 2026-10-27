@@ -1,5 +1,9 @@
 # M3: local MCP execution contract
 
+**Archive note (October 27, 2026):** Completed implementation or investigation
+record. The dated decisions and verification below are historical; see the
+[archive index](README.md) for scope, superseding contracts and follow-up work.
+
 **Status:** accepted for session-only, local interactive execution. The
 service-side session consent described below was replaced in M4 by a
 browser-side grant record and per-call service checks; see
@@ -85,7 +89,7 @@ negotiating `2026-07-28`, satisfying the modern-protocol live check. The user
 also confirmed cancellation during the delayed call and abrupt server loss
 behaved as expected. On server loss, Inference Lens showed a red failure banner
 offering a manually supplied result to continue. These are user-verified manual
-passes using the [local tryout](MCP_LOCAL_TRYOUT.md#5-check-cancellation-and-connection-loss),
+passes using the [local tryout](../MCP_LOCAL_TRYOUT.md#5-check-cancellation-and-connection-loss),
 not automated coverage of Python-server cancellation or disconnection. Actual
 continuation after entering a manual result was not separately reported in this
 live check; the committed browser fixture covers manual continuation after

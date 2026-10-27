@@ -1,5 +1,9 @@
 # Deterministic JSON Schema evaluator feasibility
 
+**Archive note (October 27, 2026):** Completed implementation or investigation
+record. The dated decisions and verification below are historical; see the
+[archive index](README.md) for scope, superseding contracts and follow-up work.
+
 Date: 2026-10-16. Status: the synchronous metered approach is feasible over the
 exercised draft-07 profile. This supersedes the worker-first recommendation in
 [the engine comparison](JSON_SCHEMA_ENGINE_SPIKE.md). Production integration is
@@ -65,7 +69,7 @@ this parsed-value experiment; production must enforce its budget on the actual
 original text. The budget values are evidence-gathering defaults, not settled
 product thresholds.
 
-The follow-up [latency measurements](JSON_SCHEMA_LATENCY.md) exercise candidate
+The follow-up [latency measurements](../JSON_SCHEMA_LATENCY.md) exercise candidate
 budgets in Node, Chromium, Playwright WebKit, and the actual native Tauri host.
 They do not support the four-million default as a synchronous UI budget;
 500,000 units is a provisional starting point to remeasure with the production
@@ -133,7 +137,7 @@ validation accept frozen inputs without mutation.
 The prototype passes all 42 original authored cases, plus all **807 selected
 upstream tests** from JSON-Schema-Test-Suite revision
 `55719286c33ae0d1823bfb65fea10338a19bc37c`. The unchanged fixtures, MIT notice,
-and explicit exclusion manifest are [vendored with the spike](../scripts/spikes/metered-json-schema/official/README.md).
+and explicit exclusion manifest are [vendored with the spike](../../scripts/spikes/metered-json-schema/official/README.md).
 
 These measurements used the original 807-test selection. The shared manifest
 now selects 804 tests: core preflight rejects assertions beside `$ref`, so the
