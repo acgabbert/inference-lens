@@ -6,6 +6,10 @@ Approval covers opt-in journal preparation, staging on both hosts and read-only
 restart classification, including the recommendations below. App and CLI remain
 on v15; application migration and manifest replacement remain deferred.
 
+The next [completion proposal](SHARED_ASSETS_MIGRATION_COMPLETION_DESIGN.md)
+defines opt-in manifest commit and active-candidate recovery for review. It is
+not part of this approval or the implemented staging API.
+
 This contract defines the implemented persistence slice. It does not approve
 application migration, ordinary draft publication, request/scratch record arms,
 or launch-default actions. Those remain separate integration decisions in the
