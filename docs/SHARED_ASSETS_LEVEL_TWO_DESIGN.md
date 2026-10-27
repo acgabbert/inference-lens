@@ -13,6 +13,9 @@ Other recommendations below remain proposals; application recovery is not enable
 The subsequent approved [migration-journal foundation](SHARED_ASSETS_MIGRATION_JOURNAL_DESIGN.md)
 adds protected staging and read-only restart classification; it does not replace
 the manifest or activate personal candidates.
+The next [migration-completion proposal](SHARED_ASSETS_MIGRATION_COMPLETION_DESIGN.md)
+defines opt-in manifest replacement and active-candidate recovery for review.
+It does not approve application integration or the other proposals below.
 Revised the same day after review: write safety, publication intent, launch
 defaults, the v16 rationale and delivery order. The remaining integration
 contracts still need review before application migration/publication starts.
@@ -437,10 +440,14 @@ parse chain normalizes them. Proposed sequence:
    drafts nor overwrite an independently edited manifest. Truncated/unrecognized
    outputs require explicit recovery from preserved candidates.
 
-Exact migration journal fields, hashing rules (including ordered decision
-subtrees), retention, size limits and failure outcomes are still design work.
-Each journal write uses the same check and read-back as other workbench records. An implementation cannot claim this sequence safe until it
-has concrete restart cases for every write boundary on both hosts.
+The approved [staging contract](SHARED_ASSETS_MIGRATION_JOURNAL_DESIGN.md)
+now settles journal fields, exact-byte hashing, retained snapshots and staging
+failure outcomes. Its immutable journal has no completion marker. The next
+[completion proposal](SHARED_ASSETS_MIGRATION_COMPLETION_DESIGN.md) would replace
+steps 3–5 above with shared confirmation followed by absent-only activation,
+derived progress and explicit pending-candidate outcomes. That ordering and
+manifest replacement remain proposed until review; neither is implemented by
+the staging foundation.
 
 ### Why a version bump
 

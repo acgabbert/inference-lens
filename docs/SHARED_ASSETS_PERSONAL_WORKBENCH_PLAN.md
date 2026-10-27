@@ -11,7 +11,10 @@ opt-in browser/native storage for those existing records; app and CLI
 persistence remain v15. The subsequent approved
 [migration-journal foundation](SHARED_ASSETS_MIGRATION_JOURNAL_DESIGN.md) adds
 opt-in protected staging and read-only restart classification without replacing
-the manifest or activating personal candidates. Slice 2a's remaining
+the manifest or activating personal candidates. The next
+[completion proposal](SHARED_ASSETS_MIGRATION_COMPLETION_DESIGN.md) defines an
+opt-in shared commit, candidate activation and stale-handle invalidation for
+review; it is not approved or implemented. Slice 2a's remaining
 persistence, recovery and compatibility proposals still need review before
 integration. Level 3 remains proposed. The product direction is agreed:
 Inference Lens is a personal workbench for potentially shared assets. Approved

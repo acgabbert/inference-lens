@@ -136,7 +136,7 @@ journey. Report browser/native adapter tests separately from a native app launch
   `npm run test:rust` passes 35 tests and `npm run check:rust` passes.
 - The later approved [migration-journal foundation](SHARED_ASSETS_MIGRATION_JOURNAL_DESIGN.md)
   implements protected staging and restart classification. Next review: manifest
-  replacement and active-candidate reconciliation, publication intent,
+  [replacement and active-candidate recovery](SHARED_ASSETS_MIGRATION_COMPLETION_DESIGN.md), publication intent,
   request/scratch arms and execution provenance, followed by feature-owner
   integration and launch-default actions. Human review should focus on this
   store API and its conflict/failure outcomes; there is no changed UI to inspect.
