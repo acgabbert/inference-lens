@@ -58,6 +58,23 @@ test("a function name with a space is called out in the editor", async ({ page }
   await expect(name).not.toHaveAttribute("aria-invalid", "true");
 });
 
+test("clearing a function name keeps the editor open", async ({ page }) => {
+  await openToolEditor(page);
+
+  const name = page.getByLabel("Function name").first();
+  await name.fill("get_weather");
+  // Cmd+Delete on macOS empties the field in one input event; so does any
+  // other way of erasing the last character.
+  await name.fill("");
+
+  await expect(name).toHaveValue("");
+  await expect(name).toHaveAttribute("aria-invalid", "true");
+  await expect(page.locator(".tool-manifest-list")).toContainText("Unnamed tool");
+  await expect(
+    page.getByRole("heading", { name: "Inference Lens needs to reload" }),
+  ).toHaveCount(0);
+});
+
 for (const width of [1440, 1000]) {
   test(`parameter fields share one baseline at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 });
