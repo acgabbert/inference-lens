@@ -1,7 +1,9 @@
 # Shared assets: migration completion review
 
 **Status:** Proposed after the approved [migration-staging foundation](SHARED_ASSETS_MIGRATION_JOURNAL_DESIGN.md),
-October 26, 2026. No completion API, manifest writer or candidate activation is
+October 26, 2026; revised October 27 after review (browser save coordination,
+completion capability ownership, `stale-plan` result, corrupt selections and the
+two partial-recovery/stale-handle decisions). No completion API, manifest writer or candidate activation is
 implemented or approved by this document. App/CLI remain on v15.
 
 ## Decision for review
@@ -56,7 +58,12 @@ it never becomes an arbitrary path writer. IPC uses checked byte arrays.
 
 For the browser, core verification can run inside the existing Web Lock/realm
 queue through a host-supplied scoped capability. Do not reacquire that lock
-through public workbench mutation methods. For native completion, core prepares
+through public workbench mutation methods. Ordinary browser manifest saves do
+not take that lock today, so a v15 save from another tab or handle could land
+between completion's source check and its write. This slice moves the browser
+workspace `save` onto the same per-project coordination scope, so completion
+excludes same-origin saves as native completion excludes native saves.
+Cross-host and unsupported-browser races remain best-effort detection only. For native completion, core prepares
 the checked plan before IPC; the dedicated Rust command holds the workspace
 mutex through snapshot comparison, writes and read-back. Rust checks safe paths,
 payload bindings and exact expected inventory; it does not regenerate core
@@ -77,6 +84,7 @@ Selections never inherit a draft's conflict policy.
 | --- | --- |
 | Active destination contains exact candidate bytes | `present`; no write. |
 | Selections destination exists with different valid selections | `existing-selections`; preserve it, never seed over it. This seed needs no further activation. |
+| Selections destination exists but is corrupt, unknown or unreadable | `unavailable` (row below); never treated as `existing-selections` or overwritten. |
 | Selections destination is absent | `activate`; create from verified candidate after shared confirmation. |
 | Draft destination is absent and no active draft names that asset | `activate`; create at the existing compact draft path after shared confirmation. |
 | Draft destination differs, or another draft names the same asset | `pending-draft`; preserve both active and staged work. Never allocate a duplicate ID, merge or replace. |
@@ -134,7 +142,10 @@ not permission to recreate it.
 
 ## Outcomes, restart and workspace expectations
 
-The result has two independent dimensions:
+A changed snapshot detected before any content write returns a top-level
+`stale-plan` result, not a shared or personal outcome: nothing was attempted,
+no handle is invalidated, and the caller must request a new explicit preview.
+Otherwise the result has two independent dimensions:
 
 - Shared: `unchanged-source`, `confirmed-shared`, `diverged`, or `uncertain`.
   A write error stays `uncertain` even if a later inspection can establish exact
@@ -160,13 +171,26 @@ manifest bytes cannot turn damaged staging into successful recovery.
 Completion invalidates the originating workspace's ordinary shared-save handle
 as soon as a manifest write is attempted, or when existing shared output is
 recognized. Browser saves reject through a shared handle validity flag; native
-saves reject through workspace registration state. They must not adopt v16 into
+saves reject through workspace registration state. The browser flag shares the
+`save` closure, so the browser completion capability is constructed inside the
+workspace storage factory alongside `workbench` and `migration`, not as a
+standalone factory over the directory handle. They must not adopt v16 into
 the old handle's `lastContents`/`last_contents` expectation. This prevents a
 stale v15 caller from saving through the handle after an uncertain attempt that
 left source bytes unchanged. Evidence reads/writes remain independent. A future
 v16 application owner explicitly reopens/adopts a validated v16 session; this
 slice adds no such caller. Other stale handles still fail their expected-manifest
 check when shared bytes changed. Cross-host races retain the approved limits.
+
+Invalidation after an `uncertain` attempt that left source bytes unchanged is
+deliberate: the v15 session cannot save until the project is reopened. That is
+the safer choice and has no user impact while no caller exists, but it is a UX
+constraint the later application owner must design for.
+
+Likewise, pending or unavailable candidates not blocking the shared write means
+a project can reach v16 with drafts reported as pending and no reconciliation
+UI. That is acceptable only while this capability stays opt-in with no caller;
+application integration must provide reconciliation before enabling completion.
 
 ## Required implementation evidence
 
@@ -179,7 +203,8 @@ where exact v16 bytes are expected; a missing import is not red evidence.
   malformed/foreign inventory, stale plans and mutated caller buffers.
 - Browser adapter: interruptions/errors before and after manifest write/read-back
   and each candidate activation/read-back; exact source/shared/active bytes;
-  no rollback, no overwrite, lock scope and interleaving with ordinary mutations.
+  no rollback, no overwrite, lock scope and interleaving with ordinary workbench
+  mutations and ordinary manifest saves from another handle (now coordinated).
 - Native: the same write boundaries in real temporary directories, byte IPC
   round-trip, safe destination bindings and symlink refusal at every path level.
   Test shared-save handle invalidation on confirmed and uncertain attempts.
