@@ -10,7 +10,9 @@ import {
 } from "../packages/core/src/project.ts";
 import type { ProjectFile, ProjectGitPolicy } from "../packages/core/src/project.ts";
 import type { WorkbenchFile, WorkbenchMutationResult, WorkbenchStorage } from "../packages/core/src/workbench-store.ts";
-import { browserWorkbenchStorage } from "./workbench-directory.client.ts";
+import { nativeMigrationStorage } from "./migration-native.client.ts";
+import type { MigrationStorage } from "../packages/core/src/migration-journal.ts";
+import { browserMigrationStorage, browserWorkbenchStorage } from "./workbench-directory.client.ts";
 import {
   assertTraceEntryName,
   serializeDecisionRunTrace,
@@ -108,6 +110,8 @@ interface DirectoryPickerWindow extends Window {
 interface WorkspaceStorage {
   /** Opt-in recovery adapter. Creating a handle never creates recovery files. */
   workbench: WorkbenchStorage;
+  /** Opt-in byte-preserving migration staging; never replaces the manifest. */
+  migration: MigrationStorage;
   save(contents: string): Promise<void>;
   saveTrace(runId: string, fileName: string, contents: string): Promise<void>;
   listTraces(): Promise<StoredRunTraceFile[]>;
@@ -186,6 +190,7 @@ function browserStorage(
   let lastContents = initialContents;
   return {
     workbench: browserWorkbenchStorage(directory),
+    migration: browserMigrationStorage(directory),
     async save(contents: string): Promise<void> {
       const fileHandle = await directory.getFileHandle(PROJECT_FILE_NAME);
       const currentContents = await (await fileHandle.getFile()).text();
@@ -531,6 +536,7 @@ function nativeWorkspaceHandle(
     displayName: workspace.displayName,
     displayPath: workspace.displayPath,
     storage: {
+      migration: nativeMigrationStorage(workspace.workspaceId, invokeNative),
       workbench: {
         list: () => invokeNative<WorkbenchFile[]>("list_workbench_records", { workspaceId: workspace.workspaceId }),
         mutate: (path, expectedContents, contents, projectId) => invokeNative<WorkbenchMutationResult>("mutate_workbench_record", {

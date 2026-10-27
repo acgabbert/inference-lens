@@ -13,7 +13,7 @@ export interface FileSystemFileHandleLike {
   readonly name: string;
   getFile(): Promise<File>;
   createWritable(): Promise<{
-    write(data: string): Promise<void>;
+    write(data: string | Uint8Array): Promise<void>;
     close(): Promise<void>;
   }>;
 }

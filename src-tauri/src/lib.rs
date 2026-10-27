@@ -721,6 +721,39 @@ fn mutate_workbench_record(
 }
 
 #[tauri::command]
+fn read_workbench_migration(
+    workspaces: State<'_, ProjectWorkspaces>,
+    workspace_id: String,
+) -> Result<workbench::MigrationSnapshot, String> {
+    let workspaces = workspaces
+        .0
+        .lock()
+        .map_err(|_| command_error("Project workspace state is unavailable."))?;
+    let workspace = workspaces
+        .get(&workspace_id)
+        .ok_or_else(|| command_error("This project folder is no longer open."))?;
+    workbench::read_migration(&workspace.directory)
+}
+
+#[tauri::command]
+fn stage_workbench_migration(
+    workspaces: State<'_, ProjectWorkspaces>,
+    workspace_id: String,
+    project_id: String,
+    files: Vec<workbench::MigrationPayload>,
+) -> Result<workbench::MigrationStage, String> {
+    // One acquisition covers the complete batch and shares ordinary record coordination.
+    let workspaces = workspaces
+        .0
+        .lock()
+        .map_err(|_| command_error("Project workspace state is unavailable."))?;
+    let workspace = workspaces
+        .get(&workspace_id)
+        .ok_or_else(|| command_error("This project folder is no longer open."))?;
+    workbench::stage_migration(&workspace.directory, &project_id, &files)
+}
+
+#[tauri::command]
 fn save_run_trace(
     workspaces: State<'_, ProjectWorkspaces>,
     workspace_id: String,
@@ -1500,6 +1533,8 @@ pub fn run() {
             save_project_workspace,
             list_workbench_records,
             mutate_workbench_record,
+            read_workbench_migration,
+            stage_workbench_migration,
             save_run_trace,
             list_run_traces,
             read_run_trace,

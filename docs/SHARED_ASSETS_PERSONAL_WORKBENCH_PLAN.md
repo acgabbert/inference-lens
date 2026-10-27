@@ -8,7 +8,10 @@ v16/workbench v1 core codecs and an in-memory migration planner. That
 is implemented. The subsequent approved
 [recovery-store foundation](SHARED_ASSETS_RECOVERY_STORE_SLICE.md) implements
 opt-in browser/native storage for those existing records; app and CLI
-persistence remain v15. Slice 2a's remaining
+persistence remain v15. The subsequent approved
+[migration-journal foundation](SHARED_ASSETS_MIGRATION_JOURNAL_DESIGN.md) adds
+opt-in protected staging and read-only restart classification without replacing
+the manifest or activating personal candidates. Slice 2a's remaining
 persistence, recovery and compatibility proposals still need review before
 integration. Level 3 remains proposed. The product direction is agreed:
 Inference Lens is a personal workbench for potentially shared assets. Approved
@@ -299,6 +302,11 @@ layout for those existing arms, exact self-ignore protection, foreign-project
 write blocking, expected-content checks and read-back, same-host coordination,
 and per-record conflicts/failures. These are implemented as opt-in storage;
 the application does not yet migrate, recover editors or publish through it.
+
+The approved [migration-journal foundation](SHARED_ASSETS_MIGRATION_JOURNAL_DESIGN.md)
+implements compact migration draft identities, exact-byte backups and descriptors,
+protected staging and read-only restart classification. Manifest replacement,
+active-candidate reconciliation and application integration remain deferred.
 
 Produce a field-by-field ownership inventory and concrete before/after migration
 examples for a prompt, chat request, decision request, and evaluation suite.
