@@ -1,5 +1,9 @@
 # Several server-held connections
 
+**Archive note (October 27, 2026):** Completed implementation or investigation
+record. The dated decisions and verification below are historical; see the
+[archive index](README.md) for scope, superseding contracts and follow-up work.
+
 **Status:** decisions 1–9 agreed as recommended (October 24, 2026); for
 decision 9 that is option A, so the CLI is left alone. Slices 1 (server),
 2 (browser), and 3 (docs and templates) are done.
@@ -347,5 +351,5 @@ variable names, so the two cannot be confused.
 
   The existing `server-default-profile-recovery.spec.ts` must stay green
   unchanged, as evidence that decision 2 holds. See
-  [the provider fixture guide](PROVIDER_FIXTURES.md) for checking that the
+  [the provider fixture guide](../PROVIDER_FIXTURES.md) for checking that the
   fixture actually saw each key.

@@ -1,5 +1,10 @@
 # Review — project templates (`claude/project-templates-review-d2fmlz`)
 
+**Historical review:** findings and verification below describe the recorded
+baseline. Later implementations may have resolved them; see the
+[current plan inventory](../README.md#plans-with-open-work) before treating
+these observations as open work.
+
 Reviewed at `04c58c1`, five commits over `origin/main` (`aa68c1b`), 28 files,
 +4,754 / −113.
 

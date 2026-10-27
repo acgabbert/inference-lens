@@ -1,5 +1,10 @@
 # UI/UX usability review and proposed implementation plan
 
+**Historical review:** findings and verification below describe the recorded
+baseline. Later implementations may have resolved them; see the
+[current plan inventory](../README.md#plans-with-open-work) before treating
+these observations as open work.
+
 **Reviewed:** September 20, 2026 · **Source baseline:** `50f48b7`
 **Scope:** Whole-app usability review, with extra weight on reusing prompts and configuring tools, as requested. Assessment only; no product changes made.
 
@@ -99,7 +104,7 @@ The global shortcut checks some execution/confirmation states, but not whether t
 
 **Acceptance:** Cmd/Ctrl+Enter inside every authoring/import dialog produces zero background provider requests. Opening/closing an overlay moves and restores focus consistently. The Compose shortcut still works when Compose owns the interaction.
 
-Source: `onContextualRunShortcut` in [page](../../app/page.tsx), [tool library modal](../../app/tool-registry-modal.client.tsx).
+Source: `onContextualRunShortcut` in [page](../../app/page.tsx), [tool library modal](../../app/tools/tool-registry-modal.client.tsx).
 
 ### F05 · P1 · First-use prompt creation fails instead of presenting an authoring path
 
@@ -147,7 +152,7 @@ Retain explicit command grants and their exact execution details. A UI simplific
 
 **Acceptance:** before Run, a user can identify the exact definitions being sent, what answers each call, and whether a person will be asked; copying alone has the stated attachment effect; library and project copies have understandable independence.
 
-Evidence: [copying a tool makes the request blocked](ui-ux-2026-09-20-evidence/06-tool-copy-blocks-run.png). The audit also ran `get_weather` with a mock: it paused with `72 degrees and clear` prefilled, then **Supply results and continue** produced `Chicago report: 72 degrees and clear`. Source: [ToolsPane](../../app/tools-pane.client.tsx), [library attach/save](../../app/tool-registry-modal.client.tsx), [request draft attachment](../../app/use-request-draft.client.ts), [command permission editor](../../app/tools/command-tool-binding-editor.client.tsx).
+Evidence: [copying a tool makes the request blocked](ui-ux-2026-09-20-evidence/06-tool-copy-blocks-run.png). The audit also ran `get_weather` with a mock: it paused with `72 degrees and clear` prefilled, then **Supply results and continue** produced `Chicago report: 72 degrees and clear`. Source: [ToolsPane](../../app/tools-pane.client.tsx), [library attach/save](../../app/tools/tool-registry-modal.client.tsx), [request draft attachment](../../app/request/use-request-draft.client.ts), [command permission editor](../../app/tools/command-tool-binding-editor.client.tsx).
 
 ### F08 · P2 · Selecting a connection can leave the project simultaneously “mapped” and “not connected”
 
@@ -217,7 +222,7 @@ Source review also finds no focus trap/restoration in the tool-library modal or 
 
 **Acceptance:** all essential workflows can be completed by keyboard without landing behind a modal or retaining overlapping menus. Every disabled important action exposes a readable reason, not only a hover title.
 
-Evidence: [overlapping menus](ui-ux-2026-09-20-evidence/10-overlapping-menus.png). Source: [Topbar](../../app/topbar.client.tsx), [shared drawer/workbench](../../app/workbench-shell.client.tsx), [tool library](../../app/tool-registry-modal.client.tsx).
+Evidence: [overlapping menus](ui-ux-2026-09-20-evidence/10-overlapping-menus.png). Source: [Topbar](../../app/topbar.client.tsx), [shared drawer/workbench](../../app/workbench-shell.client.tsx), [tool library](../../app/tools/tool-registry-modal.client.tsx).
 
 ### F14 · P2 · Several labels describe implementation concepts or the wrong destination
 

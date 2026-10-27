@@ -16,7 +16,7 @@ import {
 } from "./credential-store.ts";
 import type { CredentialStore } from "./credential-store.ts";
 
-/** Names the catalog file (docs/SERVER_CONNECTIONS_DESIGN.md). */
+/** Names the catalog file (docs/archive/SERVER_CONNECTIONS_DESIGN.md). */
 export const SERVER_CONNECTIONS_VARIABLE = "INFERENCE_LENS_CONNECTIONS";
 
 const DEFAULT_SERVER_CONNECTION_NAME = "Server default";

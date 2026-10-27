@@ -6,10 +6,10 @@ On October 26, the user approved a bounded first implementation slice: isolated
 v16/workbench v1 core codecs and an in-memory migration planner. That
 [core foundation](SHARED_ASSETS_LEVEL_TWO_DESIGN.md#first-core-slice-october-26-2026)
 is implemented. The subsequent approved
-[recovery-store foundation](SHARED_ASSETS_RECOVERY_STORE_SLICE.md) implements
+[recovery-store foundation](archive/SHARED_ASSETS_RECOVERY_STORE_SLICE.md) implements
 opt-in browser/native storage for those existing records; app and CLI
 persistence remain v15. The subsequent approved
-[migration-journal foundation](SHARED_ASSETS_MIGRATION_JOURNAL_DESIGN.md) adds
+[migration-journal foundation](archive/SHARED_ASSETS_MIGRATION_JOURNAL_DESIGN.md) adds
 opt-in protected staging and read-only restart classification without replacing
 the manifest or activating personal candidates. The next
 [completion proposal](SHARED_ASSETS_MIGRATION_COMPLETION_DESIGN.md) defines an
@@ -300,13 +300,13 @@ draft and copied-selection v1 records, and pure migration planning while the
 application stays on v15. It does not approve the full 2b persistence contracts
 below. See the [implemented API boundary](SHARED_ASSETS_LEVEL_TWO_DESIGN.md#first-core-slice-october-26-2026).
 
-The later [recovery-store approval](SHARED_ASSETS_RECOVERY_STORE_SLICE.md) covers
+The later [recovery-store approval](archive/SHARED_ASSETS_RECOVERY_STORE_SLICE.md) covers
 layout for those existing arms, exact self-ignore protection, foreign-project
 write blocking, expected-content checks and read-back, same-host coordination,
 and per-record conflicts/failures. These are implemented as opt-in storage;
 the application does not yet migrate, recover editors or publish through it.
 
-The approved [migration-journal foundation](SHARED_ASSETS_MIGRATION_JOURNAL_DESIGN.md)
+The approved [migration-journal foundation](archive/SHARED_ASSETS_MIGRATION_JOURNAL_DESIGN.md)
 implements compact migration draft identities, exact-byte backups and descriptors,
 protected staging and read-only restart classification. Manifest replacement,
 active-candidate reconciliation and application integration remain deferred.
@@ -372,7 +372,7 @@ status; automatic local persistence must not imply an access-control guarantee.
 - Use explicit versioned formats for the shared definition and workbench store.
   Do not silently change what existing schema versions mean or loosen strict
   parsers. Choose exact version numbers during slice 2a's contract review.
-- [System One saved prompts](SYSTEM_ONE_SAVED_PROMPTS_PLAN.md#relationship-to-shared-assets-level-2)
+- [System One saved prompts](archive/SYSTEM_ONE_SAVED_PROMPTS_PLAN.md#relationship-to-shared-assets-level-2)
   owns project schema v15 (accepted October 25, 2026), now present on the base
   branch assumed to land unchanged for slice 2a; Level 2's
   shared-definition change takes a later version. Slice 2a's inventory must

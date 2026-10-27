@@ -7,10 +7,10 @@ to Project v15; the System One prompts/evaluations work has landed on main.
 The user subsequently approved isolated core codecs and an in-memory migration
 planner, with the application remaining on v15 until recovery storage is ready.
 That [bounded slice](#first-core-slice-october-26-2026) is implemented. A subsequent
-approved [recovery-store foundation](SHARED_ASSETS_RECOVERY_STORE_SLICE.md)
+approved [recovery-store foundation](archive/SHARED_ASSETS_RECOVERY_STORE_SLICE.md)
 adds opt-in browser/native filesystem adapters for those existing records.
 Other recommendations below remain proposals; application recovery is not enabled.
-The subsequent approved [migration-journal foundation](SHARED_ASSETS_MIGRATION_JOURNAL_DESIGN.md)
+The subsequent approved [migration-journal foundation](archive/SHARED_ASSETS_MIGRATION_JOURNAL_DESIGN.md)
 adds protected staging and read-only restart classification; it does not replace
 the manifest or activate personal candidates.
 The next [migration-completion proposal](SHARED_ASSETS_MIGRATION_COMPLETION_DESIGN.md)
@@ -39,7 +39,7 @@ contracts still need review before application migration/publication starts.
 The first core-slice approval accepts v16 and v1 for the bounded contracts
 described below. The later recovery-store approval accepts the existing-record
 layout, protection, identity blocking and write outcomes documented in its
-[slice contract](SHARED_ASSETS_RECOVERY_STORE_SLICE.md). The other recommendations
+[slice contract](archive/SHARED_ASSETS_RECOVERY_STORE_SLICE.md). The other recommendations
 remain proposals for review. The write-safety
 row revises the approved concurrent-writer choice; the
 [parent plan](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md#confirmed-design-choices-october-25-2026)
@@ -440,7 +440,7 @@ parse chain normalizes them. Proposed sequence:
    drafts nor overwrite an independently edited manifest. Truncated/unrecognized
    outputs require explicit recovery from preserved candidates.
 
-The approved [staging contract](SHARED_ASSETS_MIGRATION_JOURNAL_DESIGN.md)
+The approved [staging contract](archive/SHARED_ASSETS_MIGRATION_JOURNAL_DESIGN.md)
 now settles journal fields, exact-byte hashing, retained snapshots and staging
 failure outcomes. Its immutable journal has no completion marker. The next
 [completion proposal](SHARED_ASSETS_MIGRATION_COMPLETION_DESIGN.md) would replace
@@ -643,12 +643,12 @@ options are unchecked in v15 and remain so in v16; that is a separate decision.
 
 ### Remaining integration work
 
-The later [migration-journal foundation](SHARED_ASSETS_MIGRATION_JOURNAL_DESIGN.md)
+The later [migration-journal foundation](archive/SHARED_ASSETS_MIGRATION_JOURNAL_DESIGN.md)
 now implements journal v1, raw-byte backups, compact persistence IDs, protected
 staging and read-only restart classification. It leaves manifest replacement,
 active-candidate reconciliation and application wiring deferred.
 
-The later [recovery-store slice](SHARED_ASSETS_RECOVERY_STORE_SLICE.md) implements
+The later [recovery-store slice](archive/SHARED_ASSETS_RECOVERY_STORE_SLICE.md) implements
 opt-in protected persistence for the existing prompt drafts and selections,
 including conflict outcomes. Project opening and application save paths still
 do not use it. Manifest replacement and recovery reconciliation, publication

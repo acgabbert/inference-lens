@@ -1,5 +1,9 @@
 # MCP SDK interoperability spike decision
 
+**Archive note (October 27, 2026):** Completed implementation or investigation
+record. The dated decisions and verification below are historical; see the
+[archive index](README.md) for scope, superseding contracts and follow-up work.
+
 - **Status:** accepted for M2 implementation; the n8n comparison remains an N0/M3 integration gate
 - **Date:** 2026-09-23
 - **Repository baseline:** `d969875` (`feat/n8n-tool-workflow-stubs`)
@@ -261,5 +265,5 @@ here. Until then, this record makes no n8n compatibility claim.
 - [Official Python SDK releases](https://github.com/modelcontextprotocol/python-sdk/releases)
 - [Official Python protocol-version documentation](https://github.com/modelcontextprotocol/python-sdk/blob/main/docs/protocol-versions.md)
 - [MCP Streamable HTTP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/docs/specification/2026-07-28/basic/transports/streamable-http.mdx)
-- [Existing executor contract](TOOL_EXECUTION.md)
-- [Existing command-host limits and security model](COMMAND_TOOLS.md)
+- [Existing executor contract](../TOOL_EXECUTION.md)
+- [Existing command-host limits and security model](../COMMAND_TOOLS.md)

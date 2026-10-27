@@ -1,9 +1,13 @@
 # System One requests in Saved Prompts
 
+**Archive note (October 27, 2026):** Completed implementation or investigation
+record. The dated decisions and verification below are historical; see the
+[archive index](README.md) for scope, superseding contracts and follow-up work.
+
 Status: recommendations accepted by the user on 2026-10-25; slices 1–4
 (contracts, compatibility preparation, schema v15, core lifecycle, and Library
 and Compose, and evaluation workflows) implemented. Slice 4 verification is
-recorded below. See the [authoring guide](SYSTEM_ONE_SAVED_PROMPTS.md).
+recorded below. See the [authoring guide](../SYSTEM_ONE_SAVED_PROMPTS.md).
 
 ## Outcome
 
@@ -80,7 +84,7 @@ Extend decision request revisions with explicit inline and template-use arms:
 - Inline: existing authored `decision` and request `values`.
 - Template use: a `templateId`, a `templateRevisionId`, and request
   `overrides` of that revision's defaults (see
-  [item 3](#3-values-and-overrides-on-the-two-arms) below).
+  [item 3](#3-values-and-overrides-on-the-two-arms-accepted) below).
 
 Keep request identity, parent revision, timestamp, and the active project
 pointer in their current roles. A template-backed revision has one source of
@@ -201,7 +205,7 @@ Status: the user accepted the ordering in item 1 and the `overrides` field in
 item 3 on 2026-10-25. Item 2 makes explicit what the contracts above already
 say.
 
-[Shared Assets Level 2](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md) was approved
+[Shared Assets Level 2](../SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md) was approved
 on the same day as this plan. It moves template drafts, trial values and local
 overrides out of the shared project into a checkout-local `.workbench/` store,
 through its own versioned schema transition. This plan adds decision template
@@ -279,7 +283,7 @@ as these four sequential PRs; verification belongs in every slice.
 
 | Slice | Scope | Completion boundary |
 | --- | --- | --- |
-| 1. Contracts and compatibility preparation | Step 1, the existing inline revision resolver boundary, and explicit migration version advancement. | [Final type shapes and owner contracts](SYSTEM_ONE_SAVED_PROMPTS_CONTRACTS.md); Compose adoption, suite authoring, preflight, and experiment construction read authored content through one resolver. Schema stays v14 and existing behavior is preserved. |
+| 1. Contracts and compatibility preparation | Step 1, the existing inline revision resolver boundary, and explicit migration version advancement. | [Final type shapes and owner contracts](../SYSTEM_ONE_SAVED_PROMPTS_CONTRACTS.md); Compose adoption, suite authoring, preflight, and experiment construction read authored content through one resolver. Schema stays v14 and existing behavior is preserved. |
 | 2. Schema v15 and core lifecycle | Steps 2–3, plus consumer narrowing throughout browser, CLI, imports, and workspace code. | Both kinds parse and round-trip; pins resolve; create/save/use/update/detach/archive, usage discovery, and ordered diffs are pure tested operations. Chat-only surfaces safely filter decision entries until slice 3 supplies their editor. |
 | 3. Library and Compose | Step 4. | Mixed library, separate editors, capture/use, explicit update/detach, draft retention, project reopen, and source/return navigation work through the existing feature owners. |
 | 4. Evaluation workflows and compatibility closeout | Step 5 and remaining step 6 documentation. | Evaluate a decision template revision, discover compatible suites, deliberately retarget with diagnostics, and exercise a template-backed suite through the CLI. Existing snapshots, chat prompts, and imports retain their behavior. |
@@ -539,7 +543,7 @@ New suites start with the project's default connection and model plus System
 One protocol, with no automatic recommendation or device mapping. The ordinary
 suite Setup controls own choosing and mapping the decision target. The setup
 band now names its pinned saved prompt and revision and confirms library
-arrival. The [authoring guide](SYSTEM_ONE_SAVED_PROMPTS.md#evaluate-a-saved-revision)
+arrival. The [authoring guide](../SYSTEM_ONE_SAVED_PROMPTS.md#evaluate-a-saved-revision)
 documents creation, target setup, compatible-suite discovery and retarget repair.
 
 Before implementation, the existing `evaluatePromptRevision` command returned

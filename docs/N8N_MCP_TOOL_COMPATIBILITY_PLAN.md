@@ -16,9 +16,9 @@ provider fixture.
 ## Progress through September 24, 2026
 
 - **N0 — captured:** Eleven complete, redacted two-turn n8n `2.39.10` provider-wire fixtures are committed. [The first structural comparison](N8N_PROVIDER_WIRE_COMPARISON_2026-09-24.md) found that Inference Lens serializes equivalent supplied descriptors into matching initial requests. Continuations differ in empty assistant content, Agent 3.x call-ID augmentation inside argument text, and the extra Inference Lens tool-result `name`. n8n result arrays and errors remain the target for a later MCP-backed comparison.
-- **M1 — accepted:** [The official SDK interoperability spike](MCP_SDK_INTEROPERABILITY_DECISION.md) selected `@modelcontextprotocol/client` `2.1.0`, Streamable HTTP, host-owned authorization, bounded responses, and normalized execution failure classes.
+- **M1 — accepted:** [The official SDK interoperability spike](archive/MCP_SDK_INTEROPERABILITY_DECISION.md) selected `@modelcontextprotocol/client` `2.1.0`, Streamable HTTP, host-owned authorization, bounded responses, and normalized execution failure classes.
 - **M2 — implemented:** The service-hosted app reads an operator-owned `INFERENCE_LENS_MCP_SERVERS` catalog, connects only on explicit discovery, lists paginated tools, shows schema and refresh changes, and attaches detached project or next-request snapshots. A portable source receipt contains the remote name and fingerprint, without a server profile ID, endpoint, or credentials. The implementation and setup are in [MCP discovery and attachment](MCP_DISCOVERY.md). The local browser fixture negotiated `2025-11-25`; live authorization and a modern-protocol app run were not exercised in this slice.
-- **M3 — local interactive execution implemented:** A user can allow one attached tool to call a declared unauthenticated loopback MCP server. Each call asks by default; automatic execution requires a separate per-tool opt-in and is scoped to the browser/service session. The host keeps consent, rechecks the operator declaration and remote fingerprint before calling, and returns normalized outcomes through the existing executor seam. [The M3 contract](MCP_M3_EXECUTION_DESIGN.md) records the boundaries and remaining live checks. Authenticated or remote execution, Tauri, and unattended batches remain outside this slice.
+- **M3 — local interactive execution implemented:** A user can allow one attached tool to call a declared unauthenticated loopback MCP server. Each call asks by default; automatic execution requires a separate per-tool opt-in and is scoped to the browser/service session. The host keeps consent, rechecks the operator declaration and remote fingerprint before calling, and returns normalized outcomes through the existing executor seam. [The M3 contract](archive/MCP_M3_EXECUTION_DESIGN.md) records the boundaries and remaining live checks. Authenticated or remote execution, Tauri, and unattended batches remain outside this slice.
 - **Verification:** the M3 build, 639 core tests, 173 additional repository tests, and the full 211-test Playwright suite passed. The committed fixture verifies approval, rejection, automatic execution, project and next-request attachments, provider continuation, tool-reported error, structured output, timeout, manual fallback, and secret-free trace evidence. Cancellation while a call is in flight, imported-trace rendering without its server, and a modern-protocol app run remain to be checked.
 
 **September 26 N1 update:** [The string-input comparison](N1_STRING_INPUT_COMPARISON.md)
@@ -42,9 +42,9 @@ were implemented afterward.
 These live checks are now automated browser regressions, including a Python lane
 in CI; see the acceptance record below.
 See the
-[M3 acceptance record](MCP_M3_EXECUTION_DESIGN.md#regression-and-acceptance).
+[M3 acceptance record](archive/MCP_M3_EXECUTION_DESIGN.md#regression-and-acceptance).
 
-**September 26 M4 implementation:** [the M4 batch design](MCP_M4_BATCH_DESIGN.md)
+**September 26 M4 implementation:** [the M4 batch design](archive/MCP_M4_BATCH_DESIGN.md)
 revises decision 8 and Phase 5. Command and MCP tools share one browser-side
 grant record, and the service validates each call without holding permission
 state. This replaces M3's service-side session consent. A batch that stops
@@ -759,7 +759,7 @@ versions. Compatibility is evidence-backed and versioned, not a blanket claim.
 ## Phase 5 — evaluations and repeated runs
 
 Implemented by M4. The shared sequential controller resolves both command and
-MCP bindings. The [M4 contract](MCP_M4_BATCH_DESIGN.md) supersedes the original
+MCP bindings. The [M4 contract](archive/MCP_M4_BATCH_DESIGN.md) supersedes the original
 assumption that no artifact change was needed: v5 adds a truthful `stopped`
 status and reason for a batch stopped by tool unavailability.
 

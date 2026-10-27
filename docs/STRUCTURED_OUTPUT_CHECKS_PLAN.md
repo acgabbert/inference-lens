@@ -3,6 +3,15 @@
 Status: portable vocabulary v4, example generation, suite authoring, reassessment editor reuse, expandable result diagnostics, and results/reassessment scheduling implemented. Provider-policy CLI/browser history agreement and final profile/artifact documentation are implemented; native interaction and broader runtime integration gaps remain.
 Date: 2026-10-16.
 
+**Sweep note, October 27, 2026:** keep this plan open for its documented native
+interaction and runtime-verification gaps. The progress sections are a dated,
+cumulative delivery log: later follow-ups close earlier statements such as
+"production integration remains" or "remaining step 5 work." Use the status
+above and the final integration follow-up to identify the current boundary.
+The completed engine-comparison and metered-prototype records are now in the
+[archive](archive/README.md); production behavior is documented in
+[Deterministic checks](DETERMINISTIC_CHECKS.md).
+
 ## Implementation progress
 
 - Core JSON input owner implemented with strict, surrounding-fence, and
@@ -131,7 +140,7 @@ Date: 2026-10-16.
   three dark-theme execution-settings tests blocked by the same Vite overlay.
   Both new structured-output cases and the expanded authoring spec passed again.
   This request-body overlay failure is also recorded in
-  [the earlier composition-root verification](PAGE_COMPOSITION_ROOT_EXECUTION_PLAN.md).
+  [the earlier composition-root verification](archive/PAGE_COMPOSITION_ROOT_EXECUTION_PLAN.md).
   `npm run test:e2e -- tests/e2e/evaluation-suite-execution-settings.spec.ts`
   then passed all 16 tests in isolation, including the three blocked cases.
   After a small editor cleanup (shared unchecked-format listing with leading `/`
@@ -485,13 +494,13 @@ Record which path actually parsed successfully, not just the selected policy.
 ### JSON Schema engine and supported surface
 
 Validate with an IF-owned, synchronous, metered interpreter over one explicit
-draft, initially draft-07. [The engine comparison](JSON_SCHEMA_ENGINE_SPIKE.md)
+draft, initially draft-07. [The engine comparison](archive/JSON_SCHEMA_ENGINE_SPIKE.md)
 showed that neither Ajv nor `@cfworker/json-schema` can be bounded by size and
 depth limits alone: quadratic `uniqueItems`, non-consuming reference cycles, and
 exponential reference/composition branching all ran away within the proposed
 limits. Worker isolation would bound wall-clock time, but a timer would then
 choose verdicts that differ by machine and load, and every outcome consumer
-would become asynchronous. [The metered spike](METERED_JSON_SCHEMA_SPIKE.md)
+would become asynchronous. [The metered spike](archive/METERED_JSON_SCHEMA_SPIKE.md)
 showed that a dependency-free interpreter with deterministic work and storage
 budgets decides all three cases without a clock, passes the 807 selected
 JSON-Schema-Test-Suite draft-07 tests, and returns identical results in Node,
@@ -751,8 +760,8 @@ incompatibility state when a pairing is unsupported.
 ## Delivery sequence and acceptance
 
 1. **Resolve design and engine feasibility.** Done for the engine choice:
-   [the engine comparison](JSON_SCHEMA_ENGINE_SPIKE.md) and
-   [the metered spike](METERED_JSON_SCHEMA_SPIKE.md) select an IF-owned metered
+   [the engine comparison](archive/JSON_SCHEMA_ENGINE_SPIKE.md) and
+   [the metered spike](archive/METERED_JSON_SCHEMA_SPIKE.md) select an IF-owned metered
    interpreter. [The calibration record](JSON_SCHEMA_CALIBRATION.md) rebalances
    charges and sets the output limit and budgets, measured again on the
    production evaluator in all four runtimes. They freeze when vocabulary v4

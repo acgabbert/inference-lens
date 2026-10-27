@@ -2,7 +2,7 @@ import { z } from "zod";
 
 /**
  * The operator's declaration of the provider connections this service holds
- * keys for (docs/SERVER_CONNECTIONS_DESIGN.md).
+ * keys for (docs/archive/SERVER_CONNECTIONS_DESIGN.md).
  *
  * The catalog names where each key lives — a file or an environment variable —
  * and never holds one itself: it is a file operators copy, mount, and share,
