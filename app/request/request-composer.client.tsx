@@ -22,6 +22,7 @@ import type { McpConsentsHandle } from "../tools/use-mcp-consents.client";
 import type { McpDiscoveredTool } from "../../packages/contracts/src/mcp-discovery.ts";
 import { StatusChip } from "../notifications/status-chip.client";
 import { PromptInsertionDialog } from "../templates/prompt-insertion-dialog.client";
+import { SavedPromptPicker } from "../templates/saved-prompt-picker.client";
 import { RequestSettings } from "./request-settings.client";
 import type { RequestSettingsProps } from "./request-settings.client";
 
@@ -137,12 +138,28 @@ export function RequestComposer({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
   const [focusModeTab, setFocusModeTab] = useState<RequestTab>("messages");
-  const [promptInsertionOpen, setPromptInsertionOpen] = useState(false);
+  // The dialog opens from the quick picker's "More options…", carrying its search.
+  const [promptInsertion, setPromptInsertion] = useState<{ query: string; templateId?: PromptTemplateId }>();
   const [pendingInsertedIndex, setPendingInsertedIndex] = useState<number>();
   // Runtime fixture handles and older embedders may not yet expose the
   // session-aware library snapshot. Project prompts remain a safe fallback.
   const libraryTemplates = templates.libraryTemplates ?? project?.promptTemplates ?? [];
   const sessionTemplateIds = templates.sessionTemplateIds ?? new Set<PromptTemplateId>();
+  const insertableTemplates = libraryTemplates.filter((template) => template.kind === "chat").filter(({ archivedAt, id }) =>
+    !archivedAt && !sessionTemplateIds.has(id));
+  const insertionItemCount = templates.activeProjectRevision?.items.length ?? requestDraft.messages.length;
+  const replaceEmptyDraft = isEmptyEditableConversationDraft(templates.templateWorkbench.composerItems);
+
+  function insertPrompt(
+    templateId: PromptTemplateId,
+    revisionId: PromptTemplateRevisionId,
+    itemIndex: number,
+    replacing: boolean,
+  ): void {
+    templates.insertProjectTemplate(templateId, revisionId, itemIndex, replacing);
+    setPromptInsertion(undefined);
+    setPendingInsertedIndex(itemIndex);
+  }
   const composerRef = useRef<HTMLElement>(null);
   const focusToggleRef = useRef<HTMLButtonElement>(null);
   const modelRef = useRef<HTMLInputElement>(null);
@@ -347,9 +364,13 @@ export function RequestComposer({
                 <button className="button secondary" type="button" onClick={templates.addComposerMessage}>
                   + Add message
                 </button>
-                <button className="button secondary" type="button" onClick={() => setPromptInsertionOpen(true)}>
-                  Insert saved prompt…
-                </button>
+                <SavedPromptPicker
+                  templates={insertableTemplates}
+                  onInsert={(templateId, revisionId) =>
+                    insertPrompt(templateId, revisionId, replaceEmptyDraft ? 0 : insertionItemCount, replaceEmptyDraft)}
+                  onMoreOptions={(query, templateId) => setPromptInsertion({ query, ...(templateId ? { templateId } : {}) })}
+                  onOpenPrompts={onOpenPrompts}
+                />
               </div>
               <div className="request-composer-run-actions">
                 <button
@@ -414,22 +435,19 @@ export function RequestComposer({
           <ToolsPane tools={requestDraft.tools} requestTools={requestDraft.requestTools} enabledToolIds={requestDraft.enabledToolIds} activeProfileName={activeProfile.name} toolsEnabled={settings.toolsEnabled} onOpenLibrary={onOpenToolLibrary} onOpenConnectionSettings={onOpenConnectionSettings} onAddTool={addProjectTool} newToolId={newToolId} onRemoveTool={requestDraft.removeTool} onMoveTool={requestDraft.moveTool} onUpdateTool={requestDraft.updateTool} onSetToolEnabled={requestDraft.setToolEnabled} mockForTool={requestDraft.mockForTool} onUpdateToolMock={requestDraft.updateToolMock} onRemoveRequestTool={requestDraft.removeRequestTool} onSaveRequestToolToProject={requestDraft.saveRequestToolToProject} commandTools={commandTools} mcpConsents={mcpConsents} onAttachMcpToProject={requestDraft.attachMcpToolToProject} onAttachMcpToRequest={requestDraft.attachMcpToolToRequest} />
         )}
       </div>
-      {promptInsertionOpen && (
+      {promptInsertion && (
         <PromptInsertionDialog
-          templates={libraryTemplates.filter((template) => template.kind === "chat").filter(({ archivedAt, id }) =>
-            !archivedAt && !sessionTemplateIds.has(id))}
-          itemCount={templates.activeProjectRevision?.items.length ?? requestDraft.messages.length}
-          replaceEmptyDraft={isEmptyEditableConversationDraft(templates.templateWorkbench.composerItems)}
-          onCancel={() => setPromptInsertionOpen(false)}
+          templates={insertableTemplates}
+          initialQuery={promptInsertion.query}
+          {...(promptInsertion.templateId ? { initialTemplateId: promptInsertion.templateId } : {})}
+          itemCount={insertionItemCount}
+          replaceEmptyDraft={replaceEmptyDraft}
+          onCancel={() => setPromptInsertion(undefined)}
           onOpenPrompts={() => {
-            setPromptInsertionOpen(false);
+            setPromptInsertion(undefined);
             onOpenPrompts();
           }}
-          onInsert={(templateId, revisionId, itemIndex, replaceEmptyDraft) => {
-            templates.insertProjectTemplate(templateId, revisionId, itemIndex, replaceEmptyDraft);
-            setPromptInsertionOpen(false);
-            setPendingInsertedIndex(itemIndex);
-          }}
+          onInsert={insertPrompt}
         />
       )}
     </section>

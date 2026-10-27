@@ -57,6 +57,7 @@ test("review: leaving prompt authoring to run sends the current conversation", a
 test("review: direct prompt reuse reaches a real request and remains discoverable in Runs", async ({ page }) => {
   await setup(page);
   await page.getByRole("button", { name: "Insert saved prompt…" }).click();
+  await page.getByRole("button", { name: "More options…" }).click();
   const picker = page.getByRole("dialog", { name: "Insert saved prompt" });
   await expect(picker.getByText("Incident triage", { exact: true })).toBeVisible();
   await capture(page, "04-insertion-below-metadata");
