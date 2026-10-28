@@ -389,7 +389,7 @@ and Runs (`pending-branch.spec.ts`); copying never toggles a row
 ## 10. Readable pending-branch notice
 
 **Recommendation:** name the branch point the way the transcript does: the
-parent run's title (its first user message, as Runs lists it) and “Message 2 ·
+parent run's title (its request excerpt, the last user message, as Runs lists it) and “Message 2 ·
 user”. Keep the raw run and message IDs in a details disclosure or `title` for
 debugging.
 
@@ -491,7 +491,7 @@ creation and import through the single control.
 | G | Command search. | Stabilize visible action homes and agree descriptor/keyboard contracts. |
 | H | Complete: headings removed (Chat and Decision), panes kept as named regions, the kind switch moved onto the tab row through `panes.request(kindSwitch)`, and the empty tool line hidden. | Decision Compose adopts the same layout; region names `Request composer`, `Response output`, `Decision response`. |
 | I | Transcript message actions and disclosure button (section 9). | Agree visibility rule for collapsed rows and history views. |
-| J | Readable pending-branch notice (section 10). | None beyond the label source. |
+| J | Complete: pending-branch notice names the parent run by its request excerpt and the message by its position; a branched run reads “Branched from an earlier run.”, since traces record only the parent's IDs. IDs remain in a `title`. | `PendingBranch.label` is captured at branch time; no trace change. |
 | K | Session run history and compact unsaved notice (section 11). | Agree cap, eviction, and whether project replacement clears it. |
 | L | One **New prompt** control and a single n8n import home (section 12). | Agree where n8n import lives. |
 

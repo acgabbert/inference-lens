@@ -21,6 +21,7 @@ import {
  * drops a branch whose parent no longer applies.
  */
 
+const USER_PROMPT = "Explain the answer in one line.";
 const ANSWER = "Buffered fixture response: 2 + 2 = 4.";
 
 function pendingBranchChip(page: Page): Locator {
@@ -32,6 +33,8 @@ async function runOriginal(page: Page): Promise<void> {
   await page.goto("/");
   await waitForHydration(page);
   await page.getByLabel("Message 1 content").fill("What is 2 + 2?");
+  // The default user prompt varies; the notice names the run by this one.
+  await page.getByLabel("Message 2 content").fill(USER_PROMPT);
   await primaryAction(page, "compose").click();
   await expect(page.getByLabel("Run transcript")).toContainText(ANSWER);
 }
@@ -44,9 +47,10 @@ async function editFromFirstMessage(page: Page): Promise<string> {
     .click();
   const chip = pendingBranchChip(page);
   await expect(chip).toBeVisible();
-  const parentRunId = await chip.locator("code").first().innerText();
-  expect(parentRunId).toMatch(/^run_/);
-  return parentRunId;
+  // The IDs are debugging detail: in the notice's title, off the visible text.
+  const ids = (await chip.locator("[title]").getAttribute("title"))?.split(" · ") ?? [];
+  expect(ids).toEqual([expect.stringMatching(/^run_/), expect.stringMatching(/^message_/)]);
+  return ids[0]!;
 }
 
 for (const width of [1440, 390]) {
@@ -80,8 +84,12 @@ test("editing from a transcript message branches the next run from it", async ({
 
   const parentRunId = await editFromFirstMessage(page);
   const chip = pendingBranchChip(page);
-  await expect(chip).toContainText(`Branching from run ${parentRunId} at message`);
+  // Named the way the transcript and Runs name it, never by raw IDs.
+  // The title is the run's request excerpt, as Runs lists it. Message 1 of
+  // the default draft is the system message.
+  await expect(chip).toContainText(`Branching from \u201c${USER_PROMPT}\u201d at Message 1 \u00b7 system.`);
   await expect(chip).toContainText("The original trace is unchanged.");
+  expect(await chip.innerText()).not.toMatch(/\b(run|message)_[A-Za-z0-9]/);
   // No project folder was open, so the parent trace exists only in memory.
   await expect(chip.getByRole("button", { name: "Save trace…" })).toBeVisible();
   expect(await chip.innerText()).not.toMatch(/NaN|Infinity|undefined/);
@@ -91,9 +99,10 @@ test("editing from a transcript message branches the next run from it", async ({
   await page.getByLabel("Message 1 content").fill("What is 3 + 3?");
   await primaryAction(page, "compose").click();
   await expect(page.getByLabel("Run transcript")).toContainText(ANSWER);
-  await expect(page.locator(".branch-provenance")).toHaveText(
-    `Branched from run ${parentRunId}.`,
-  );
+  // The trace records only the parent's IDs, so the line names no run.
+  const provenance = page.locator(".branch-provenance");
+  await expect(provenance).toHaveText("Branched from an earlier run.");
+  await expect(provenance.locator("[title]")).toHaveAttribute("title", parentRunId);
   // The run consumed the branch.
   await expect(chip).toHaveCount(0);
 });

@@ -1,5 +1,6 @@
 "use client";
 
+import type { BranchPointLabel } from "../run/pending-branch.ts";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { ConversationMessage, PromptTemplateId, PromptTemplateRevisionId, PromptTemplateUseId, ToolDefinition, ToolId } from "../../packages/core/src/run-kernel";
@@ -90,6 +91,7 @@ export interface RequestComposerProps {
     parentRunId: string;
     branchMessageId: string;
     parentTraceNeedsSaving: boolean;
+    label: BranchPointLabel;
   };
   requestPreview?: RequestPreview;
   onOpenConnectionSettings(): void;
@@ -313,10 +315,12 @@ export function RequestComposer({
         <StatusChip
           tone="advisory"
           label="Pending branch"
-          detail={<>
-            Branching from run <code>{pendingBranch.parentRunId}</code> at message{" "}
-            <code>{pendingBranch.branchMessageId}</code>. The original trace is unchanged.
-          </>}
+          detail={<span title={`${pendingBranch.parentRunId} · ${pendingBranch.branchMessageId}`}>
+            Branching from {pendingBranch.label.runTitle
+              ? `\u201c${pendingBranch.label.runTitle}\u201d`
+              : "the previous run"} at Message {pendingBranch.label.messageOrdinal} · {pendingBranch.label.role}.
+            {" "}The original trace is unchanged.
+          </span>}
           actions={[
             ...(pendingBranch.parentTraceNeedsSaving
               ? [{ key: "save-trace", label: "Save trace…", onSelect: onSaveParentTrace }]
