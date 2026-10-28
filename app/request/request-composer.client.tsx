@@ -228,14 +228,11 @@ export function RequestComposer({
       });
       return () => { cancelled = true; };
     }
-    // The model and protocol fields live inside the settings disclosure.
-    // Readiness routing opens its owner first, then this effect runs again
-    // against the mounted control and focuses it.
-    if (
-      (pendingDestination.control === "model" ||
-        pendingDestination.control === "protocol") &&
-      !settingsOpen
-    ) {
+    // The protocol field lives inside the settings disclosure; the model field
+    // sits above it and is always mounted. Readiness routing opens the
+    // disclosure first, then this effect runs again against the mounted
+    // control and focuses it.
+    if (pendingDestination.control === "protocol" && !settingsOpen) {
       let cancelled = false;
       queueMicrotask(() => {
         if (!cancelled) setSettingsOpen(true);

@@ -49,7 +49,7 @@ test("a fresh user can author a session prompt before configuring inference", as
   await connections.getByLabel("Endpoint", { exact: true }).fill(BUFFERED_FIXTURE_ENDPOINT);
   await connections.getByRole("button", { name: "Close Connections" }).click();
   await openMode(page, "Compose");
-  await page.getByRole("button", { name: /Run settings/ }).click();
+  // The model field is always on screen; no disclosure to open first.
   await page.getByRole("combobox", { name: "Model" }).fill("buffered-test-model");
   await page.getByRole("combobox", { name: "Model" }).press("Escape");
   await openMode(page, "Prompts");

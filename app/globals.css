@@ -5984,6 +5984,58 @@ main {
   right: 0;
 }
 
+/* The composer lifts the model field above the disclosure toggle so changing
+   it needs no expansion; the toggle row below it keeps its own padding. */
+.inference-settings-model-row {
+  flex: 1 1 230px;
+  min-width: 0;
+  padding: var(--space-3xs) 0 var(--space-3xs) var(--space-md);
+}
+
+/* Model field and toggle share one row so the field costs the first message no
+   height; either wraps under the other when the pane is narrow. */
+.inference-settings.model-above {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.inference-settings.model-above > .inference-settings-header {
+  flex: 3 1 340px;
+  align-self: stretch;
+}
+
+/* The chevron and the "Settings" heading already say what the toggle does;
+   the extra words would push the protocol out of a one-row header. */
+.inference-settings.model-above .inference-settings-hint {
+  display: none;
+}
+
+.inference-settings.model-above .inference-settings-toggle {
+  padding-block: var(--space-2xs);
+}
+
+/* The word "Model" sits beside its input rather than above it, which is what
+   keeps the shared row no taller than the toggle alone. */
+.inference-settings-model-row .model-combobox {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.inference-settings-model-row .model-combobox-label {
+  flex: 0 0 auto;
+}
+
+.inference-settings-model-row .combobox-control {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.inference-settings.model-above > .inference-settings-body {
+  flex: 1 0 100%;
+}
+
 .inference-settings-record {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));

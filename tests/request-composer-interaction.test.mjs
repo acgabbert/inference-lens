@@ -232,14 +232,16 @@ test("the settings panel hides its controls behind a summary of what will be sen
     const toggle = view.settingsToggle();
     assert.ok(toggle);
     assert.equal(toggle.getAttribute("aria-expanded"), "false");
-    // Collapsing hides every control, delivery included, while their values
-    // remain named as facts.
+    // The model field stays outside the disclosure, so changing it needs no
+    // expansion. Every other control is hidden, and the facts name the
+    // protocol and what departs from the baseline — here an explicit
+    // temperature, with no parent scope; delivery is not an override.
     const model = view.container.querySelector('[data-readiness-control="model"]');
-    assert.equal(model, null);
+    assert.equal(model?.value, "fixture-model");
     const facts = Array.from(
       view.container.querySelectorAll(".inference-settings-fact"),
     ).map((fact) => fact.textContent);
-    assert.deepEqual(facts, ["Chat Completions", "fixture-model", "Temp 0.7", "Buffered"]);
+    assert.deepEqual(facts, ["Chat Completions", "Temp 0.7"]);
     assert.equal(
       view.container.querySelector('.streaming-control input[type="checkbox"]'),
       null,
@@ -258,9 +260,10 @@ test("the settings panel hides its controls behind a summary of what will be sen
     assert.ok(
       view.container.querySelector('.temperature-control input[type="range"]'),
     );
+    // Expanding adds no second model field: it is the same one.
     assert.equal(
-      view.container.querySelector('[data-readiness-control="model"]')?.value,
-      "fixture-model",
+      view.container.querySelectorAll('[data-readiness-control="model"]').length,
+      1,
     );
 
     await view.click(toggle);
@@ -270,17 +273,17 @@ test("the settings panel hides its controls behind a summary of what will be sen
   }
 });
 
-test("a readiness destination naming the model opens its panel and focuses it", async () => {
+test("a readiness destination naming the model focuses its field without opening the panel", async () => {
   let handled = 0;
   const view = await mount({
     pendingDestination: { surface: "request", tab: "messages", control: "model" },
     onDestinationHandled: () => { handled += 1; },
   });
   try {
-    // The destination opens the field's disclosure before focusing it.
+    // The field is always mounted, so there is no disclosure to open first.
     const input = view.container.querySelector('[data-readiness-control="model"]');
     assert.ok(input);
-    assert.equal(view.settingsToggle().getAttribute("aria-expanded"), "true");
+    assert.equal(view.settingsToggle().getAttribute("aria-expanded"), "false");
     assert.equal(document.activeElement, input);
     assert.equal(handled, 1);
   } finally {
