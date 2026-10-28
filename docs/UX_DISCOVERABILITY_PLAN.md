@@ -1,6 +1,6 @@
 # UX simplification and discoverability plan
 
-**Status:** partially implemented (slice A); remaining proposals require their recorded design gates.\
+**Status:** partially implemented (slices A, H, I, J and #208; B in review as #245); remaining proposals require their recorded design gates.\
 **Baseline:** `main` at `309f180`, October 26, 2026; refreshed against `52e789e` (0.6.0), October 28, 2026.\
 **Scope:** composer efficiency, contextual actions, discoverability, clearer persistence language, and less day-to-day clutter.
 
@@ -42,6 +42,12 @@ or the [saved-prompt and experiment review](reviews/saved-prompts-experiments-20
 | #226, #227, #230 | Retry runs the edited request; **Edit from here** opens Compose and works from the keyboard. |
 | #229 | **Copy Markdown** on live output and assistant messages. |
 | #220, #222, #231 | Live elapsed time, tool editor styling, and pane/table containment. |
+| #238 | Slice A: the Evaluations empty state offers the project prerequisite. |
+| #240 | Slice H: composer and response headings removed, kind switch on the tab row, empty tool line hidden. |
+| #239 | Slice J: the pending-branch notice names the parent run and message instead of raw IDs. |
+| #241 | Slice I: the transcript disclosure is a real button; message actions sit beside it. |
+| #242, #244 | #208: every modal dialog uses the shared `ModalDialog` owner (section 13). |
+| #243 | Outside this plan (saved-prompt review): readable revision diff and renamable revisions. |
 
 A browser tour of the 0.6.0 build (fixture provider, 1280×800 and 880×720,
 light theme, no project folder, no saved prompts or tools) added the
@@ -74,7 +80,11 @@ narrow layout).
   blockers readable while their editing controls are collapsed.
 - Give every feature a labeled, stable home. Search and keyboard shortcuts are
   additional routes; hover-only controls and unnamed overflow icons are not
-  sufficient discovery paths.
+  sufficient discovery paths. One accepted exception: collapsed transcript
+  rows (slice I) reveal their actions on hover or focus, because the same
+  labeled actions are always visible on the expanded message, stay in tab
+  order, and are always shown on screens without hover. Do not treat it as a
+  precedent for actions that have no other visible home.
 - Prefer contextual actions over duplicate global controls. Keep Stop visible
   whenever work is running, including after changing workspace modes.
 - Preserve actual scope and lifetime. Hiding a control must not change what is
@@ -386,6 +396,12 @@ technology. Check 880, 1280 and 1440px, both themes, and 200% zoom.
 
 ## 9. Message actions that do not crowd the transcript
 
+**Status, October 28:** implemented in #241 as recommended. The disclosure is
+its own button with `aria-expanded`; **Edit from here** and **Copy Markdown**
+are sibling text buttons, overlaid on collapsed rows so the preview keeps its
+width. `ResponseOutput` owns the rule, so read-only history in Runs behaves the
+same way. The design rules record the hover exception.
+
 **Recommendation:** stop giving every transcript row a bordered **Edit from
 here** button. Show the transcript's per-message actions (**Edit from here**,
 **Copy Markdown**) as text buttons beside the role on the expanded or focused
@@ -521,7 +537,7 @@ creation and import through the single control.
 | F | Runs/header action consolidation and Repeat placement. | Complete action inventory, selected-evidence contract, and discoverability review. |
 | G | Command search. | Stabilize visible action homes and agree descriptor/keyboard contracts. |
 | H | Complete: headings removed (Chat and Decision), panes kept as named regions, the kind switch moved onto the tab row through `panes.request(kindSwitch)`, and the empty tool line hidden. | Decision Compose adopts the same layout; region names `Request composer`, `Response output`, `Decision response`. |
-| I | Transcript message actions and disclosure button (section 9). | Agree visibility rule for collapsed rows and history views. |
+| I | Complete (#241): disclosure button, actions beside it, collapsed-row actions revealed on hover or focus and always in tab order. | Same rule in Compose and Runs history; see the hover exception in the design rules. |
 | J | Complete: pending-branch notice names the parent run by its request excerpt and the message by its position; a branched run reads “Branched from an earlier run.”, since traces record only the parent's IDs. IDs remain in a `title`. | `PendingBranch.label` is captured at branch time; no trace change. |
 | K | Session run history and compact unsaved notice (section 11). | Agree cap, eviction, and whether project replacement clears it. |
 | L | One **New prompt** control and a single n8n import home (section 12). | Agree where n8n import lives. |
@@ -533,26 +549,33 @@ them.
 
 ### Recommended order
 
-Ranked by daily friction removed per unit of risk, as of October 28:
+Ranked by daily friction removed per unit of risk, as of October 28 (second
+refresh). A, H, I, J and #208 are complete; B is in review as #245.
 
-1. **H and J** (A is complete). These remove the most visible clutter from
-   Compose. Confirm H's Decision scope and region naming before implementation.
-2. **I.** Transcript actions; also fixes the nested-button ARIA issue.
-3. **#208** (complete). Later slices that add or move a dialog entry point
-   use the shared modal owner.
-4. **B.** The most frequent configuration change becomes one step.
-5. **K.** Keeps recent attempts available for comparison.
-6. **F.** Starting with the redundant **Run history** menu item, then trace
-   import/export, diagnostics, and Repeat.
-7. **D and L.** Quieter prompt cards and Prompts sidebar.
-8. **Duplicate case** (section 13), then a separate evaluation-authoring design.
-9. **C** if still warranted, and **G** last. Apply **E**'s vocabulary as each
-   slice touches labels rather than as a separate pass.
+1. **Finish B.** Review of #245 found that the closed summary can never show a
+   buffered delivery preference, and that with an open project whose model
+   differs from the profile, the model's override line breaks slice H's
+   budget and truncates the protocol at 1280px. Fix both before merge.
+2. **Populated-project check.** Run the populated-project review described
+   under *Verification and review* now rather than after D: B is the first
+   slice whose layout depends on project state, and every slice so far has
+   listed a populated project as unchecked.
+3. **E, as a label inventory only.** B deferred its badge question here, and
+   K and L both add scope labels. Settle the vocabulary before K rather than
+   correcting three slices afterwards.
+4. **K.** Keeps recent attempts available for comparison.
+5. **F.** Remove the redundant **Run history** menu item first (no new
+   contract), then trace import/export, diagnostics, and Repeat.
+6. **D and L.** Quieter prompt cards and Prompts sidebar.
+7. **Duplicate case** (section 13), then a separate evaluation-authoring design.
+8. **C**: decide with a populated tool set whether to close it, since #224 may
+   have made it unnecessary. **G** last.
 
 ### Decisions needed
 
-Slice A is complete. Slice J and the **Run history** removal in F need no new
-contract and can ship ahead of the others.
+Decisions for A, H, I and J are settled and recorded in their table rows. The
+**Run history** removal in F needs no new contract and can ship ahead of the
+others.
 
 | Slice | Decision | Recommendation |
 | --- | --- | --- |
@@ -568,8 +591,6 @@ contract and can ship ahead of the others.
 | G | Shortcut, including the browser's Ctrl+K | Command/Ctrl+K if the override is acceptable |
 | G | Whether unavailable actions appear in results | Show them with their disabled reasons |
 | G | Ordering of results and recent actions | No persisted recent actions initially |
-| H | Whether Decision Compose drops the same headings | Yes, for consistency, if its pane names stay available |
-| I | Action visibility on collapsed rows | Visible on the expanded message; on hover and focus otherwise, always in tab order |
 | K | Cap and eviction | 20 ordinary runs with a byte ceiling; announce eviction |
 | K | Whether opening or replacing a project clears session runs | Clear, and mention unsaved runs in the replacement guard |
 | L | Where n8n import lives | Prompts sidebar only |
@@ -618,7 +639,14 @@ the older plan's deferred mobile redesign. Check affected responsive boundaries
 when moving controls. Use fixture assertions for exact transmitted values and
 focus assertions for routing; screenshots supplement those checks.
 
-After B–D, review a familiar populated project with the user: can they change
+Every slice so far was checked against an empty profile and listed a populated
+project as unchecked, and that is where the first B review found its layout
+problems. Slice H's first-message budget in `composer-header.spec.ts` is the
+plan's only layout guard and measures the emptiest composer; add a case with an
+open project whose settings override the profile, so later composer slices are
+held to the same budget.
+
+After B, review a familiar populated project with the user: can they change
 model, insert a prompt, resolve a missing variable, attach a tool, run, and
 inspect output without searching through management UI? Before F–G, ask them to
 find history, export the selected run, repeat a request, and locate diagnostics.
