@@ -119,9 +119,8 @@ export function DecisionResponse({
   const paused = run?.status.kind === "paused" ? run.status : undefined;
   const waiting = secondsLeft !== undefined && secondsLeft > 0;
   return (
-    <section className="result decision-response">
+    <section aria-label="Decision response" className="result decision-response">
       <div className="panel-header result-header">
-        <div><span className="eyebrow">Response</span><h2>Decision</h2></div>
         <div className="result-header-controls">
           <span className={`status ${status}`}><span aria-hidden="true" />{status}</span>
         </div>

@@ -240,7 +240,6 @@ export function ResponseOutput({
   return (
     <>
       <div className="panel-header result-header">
-        <div><span className="eyebrow">Response</span><h2>Live output</h2></div>
         <div className="result-header-controls">
           <PaneTabs label="Output rendering" value={markdownPreview ? "markdown" : "raw"}
             onChange={(value) => onMarkdownPreviewChange(value === "markdown")}

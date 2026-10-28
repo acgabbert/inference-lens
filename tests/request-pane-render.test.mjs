@@ -158,9 +158,9 @@ test("the extracted composer renders request snapshots without a project", async
   assert.doesNotMatch(html, /Stream response/);
   assert.match(html, /class="request-settings-card"/);
   assert.doesNotMatch(html, /Override temperature/);
-  // The tool line stays outside the panel, so a blocked tool selection cannot
-  // be hidden by collapsing it.
-  assert.match(html, /No tools attached to this request/);
+  // With nothing attached there is no tool line; the Tools tab count says 0.
+  assert.doesNotMatch(html, /No tools attached to this request/);
+  assert.doesNotMatch(html, /request-tool-line/);
 });
 
 test("the topbar hides ordinary run actions outside the Compose mode", async () => {

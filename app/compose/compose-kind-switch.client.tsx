@@ -9,8 +9,9 @@ const KINDS: { id: ComposeKind; label: string }[] = [
 ];
 
 /**
- * The Chat / Decision request-kind switch inside Compose (U1). Locked while
- * either kind executes (D17), with the reason in visible text.
+ * The Chat / Decision request-kind switch inside Compose (U1), rendered in the
+ * request pane's header beside its tabs. Locked while either kind executes
+ * (D17), with the reason in visible text.
  */
 export function ComposeKindSwitch({
   kind,
@@ -34,11 +35,10 @@ export function ComposeKindSwitch({
   }
 
   return (
-    <div className="compose-kind-bar">
-      <span className="compose-kind-caption" id="compose-kind-label">Request kind</span>
+    <div className="compose-kind">
       <div
         aria-describedby={locked ? "compose-kind-locked" : undefined}
-        aria-labelledby="compose-kind-label"
+        aria-label="Request kind"
         className="pane-tabs compose-kind-switch"
         role="radiogroup"
       >

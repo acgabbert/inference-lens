@@ -27,6 +27,8 @@ const TYPE_HINTS: Record<DecisionQuestionType, string> = {
 };
 
 export interface DecisionComposerProps {
+  /** Compose's Chat / Decision switch, placed at the start of the header. */
+  kindSwitch?: ReactNode;
   draft: DecisionDraftHandle;
   target: DecisionTargetHandle;
   /** Problems that block Run now, from the draft and the target together. */
@@ -398,16 +400,13 @@ export function DecisionInputEditor({
 
 export const DECISION_NEW_SUITE_REASON_ID = "decision-new-suite-reason";
 
-export function DecisionComposer({ draft: handle, target, blockers, locked, unsaved, onOpenConnections, newSuite, pinned, capture }: DecisionComposerProps) {
+export function DecisionComposer({ kindSwitch, draft: handle, target, blockers, locked, unsaved, onOpenConnections, newSuite, pinned, capture }: DecisionComposerProps) {
   const { draft } = handle;
   const discovery = target.discovery;
   return (
     <section className="composer decision-composer" aria-label="Decision request">
       <div className="panel-header request-header">
-        <div>
-          <span className="eyebrow">Request</span>
-          <h2>Decision</h2>
-        </div>
+        {kindSwitch}
         <PaneTabs
           disabled={locked}
           label="Decision editor"

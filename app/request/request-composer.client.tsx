@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import type { ConversationMessage, PromptTemplateId, PromptTemplateRevisionId, PromptTemplateUseId, ToolDefinition, ToolId } from "../../packages/core/src/run-kernel";
 import type { ProjectFile, ToolMock } from "../../packages/core/src/project";
 import type { TemplateRequestPreview } from "../templates/template-run-view.ts";
@@ -36,6 +37,8 @@ type RequestPreview = TemplateRequestPreview;
  * profile, project, and run-readiness features that supply these snapshots.
  */
 export interface RequestComposerProps {
+  /** Compose's Chat / Decision switch, placed at the start of the header. */
+  kindSwitch?: ReactNode;
   requestDraft: {
     messages: ConversationMessage[];
     tools: ToolDefinition[];
@@ -102,6 +105,7 @@ export interface RequestComposerProps {
 }
 
 export function RequestComposer({
+  kindSwitch,
   requestDraft,
   commandTools,
   mcpConsents,
@@ -271,17 +275,15 @@ export function RequestComposer({
 
   return (
     <section
-      aria-label={requestFocusMode ? "Request composer focus mode" : undefined}
+      aria-label={requestFocusMode ? "Request composer focus mode" : "Request composer"}
       aria-modal={requestFocusMode ? "true" : undefined}
       className={requestFocusMode ? "composer focus-mode-surface composer-focus-mode" : "composer"}
       ref={composerRef}
       role={requestFocusMode ? "dialog" : undefined}
     >
       <div className="panel-header request-header">
-        <div>
-          <span className="eyebrow">Request</span>
-          <h2>Composer</h2>
-        </div>
+        {/* Not inside focus mode: switching kind would unmount the dialog. */}
+        {!requestFocusMode && kindSwitch}
         <PaneTabs
           label="Request editor"
           value={activeTab}
@@ -337,21 +339,22 @@ export function RequestComposer({
               />
               {/* Outside the panel deliberately: how many tools accompany the
                   request is not one of the inference options, and its blocked
-                  variant must stay readable while the panel is collapsed. */}
-              <p className={selectedToolCount > 0 && !settings.toolsEnabled ? "request-tool-line blocked" : "request-tool-line"} role="status">
-                <span>
-                  {selectedToolCount === 0
-                    ? "No tools attached to this request."
-                    : !settings.toolsEnabled
+                  variant must stay readable while the panel is collapsed.
+                  Absent when nothing is attached: the Tools tab count says 0. */}
+              {selectedToolCount > 0 && (
+                <p className={!settings.toolsEnabled ? "request-tool-line blocked" : "request-tool-line"} role="status">
+                  <span>
+                    {!settings.toolsEnabled
                       ? `${selectedToolCount} attached ${selectedToolCount === 1 ? "tool is" : "tools are"} unavailable because this profile does not allow tool calling.`
                       : requestDraft.requestTools.length > 0
                         ? `${selectedToolCount} ${selectedToolCount === 1 ? "tool" : "tools"} attached; ${requestDraft.requestTools.length} ${requestDraft.requestTools.length === 1 ? "is" : "are"} kept in this tab.`
                         : `${selectedToolCount} ${selectedToolCount === 1 ? "tool" : "tools"} attached to this request.`}
-                </span>
-                <button className="text-button" type="button" onClick={() => setTab("tools")}>
-                  {selectedToolCount === 0 ? "Add tools" : "Review"}
-                </button>
-              </p>
+                  </span>
+                  <button className="text-button" type="button" onClick={() => setTab("tools")}>
+                    Review
+                  </button>
+                </p>
+              )}
             </div>
             <div className="request-composer-toolbar">
               <div className="request-composer-edit-actions">

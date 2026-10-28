@@ -26,7 +26,11 @@ export interface ComposeKindHandle {
   primary: ComposePrimary;
   /** What ⌘↵ does when nothing else owns the keyboard; usually `primary`'s run, or Retry. */
   shortcut(): void;
-  panes: { request: ReactNode; response: ReactNode; inspect: ReactNode };
+  /**
+   * The request pane receives the Chat / Decision switch to place in its own
+   * header, beside its tabs: Compose owns the choice, the pane owns the layout.
+   */
+  panes: { request: (kindSwitch: ReactNode) => ReactNode; response: ReactNode; inspect: ReactNode };
   inspectAvailable: boolean;
   /** Shown as the mobile Response tab's dot. */
   responseStatus?: string;
