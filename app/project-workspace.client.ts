@@ -326,6 +326,14 @@ const browserProjectIds = new WeakMap<ProjectWorkspaceHandle, ProjectFile["proje
 const browserManifestContents = new WeakMap<ProjectWorkspaceHandle, string>();
 let rememberTail: Promise<void> = Promise.resolve();
 
+/** Reopen retains its directory identity; a separately opened copy does not. */
+export function isSameProjectWorkspace(previous: ProjectWorkspaceHandle | null | undefined, next: ProjectWorkspaceHandle | null | undefined): boolean {
+  if (previous === next) return true;
+  if (!previous || !next) return false;
+  const directory = browserDirectories.get(previous);
+  return Boolean(directory && directory === browserDirectories.get(next) && browserProjectIds.get(previous) === browserProjectIds.get(next));
+}
+
 function browserWorkspace(
   directory: FileSystemDirectoryHandleLike,
   contents: string,
@@ -376,6 +384,13 @@ async function rememberBrowserWorkspace(
   directory: FileSystemDirectoryHandleLike,
   project: ProjectFile,
 ): Promise<void> {
+  const previous = await readStoredWorkspace();
+  // Preserve compare-and-delete tokens across restore and folder refreshes.
+  if (previous) {
+    try {
+      if (directory === previous.handle || await directory.isSameEntry?.(previous.handle)) return;
+    } catch { /* A stale handle must not prevent remembering the accepted folder. */ }
+  }
   await writeStoredWorkspace({
     version: 1,
     recordId: crypto.randomUUID(),
@@ -1006,8 +1021,7 @@ export function downloadProjectFile(project: ProjectFile): void {
 export async function savedRunReferenceForWorkspace(handle: ProjectWorkspaceHandle, runId: import("../packages/core/src/run-kernel/types.ts").RunId): Promise<import("../packages/core/src/run-reference.ts").RunReferenceV1> {
   const directory = browserDirectories.get(handle);
   if (!directory) throw new Error("Copying run links is currently available in the browser. Open this project folder in Chrome or Edge.");
-  const project = parseProjectJson(await readBrowserManifest(directory));
-  if (project.projectId !== browserProjectIds.get(handle)) throw new Error("This folder now contains a different project. Reopen it before copying a link.");
+  const { project } = await reopenProjectWorkspace(handle, browserProjectIds.get(handle)!);
   const reference = { version: 1 as const, projectId: project.projectId, runId };
   const { resolveRunReference } = await import("../packages/core/src/run-reference-resolution.ts");
   await resolveRunReference(reference, handle.storage);

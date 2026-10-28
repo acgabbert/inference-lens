@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { hasRunLinkFragment, RUN_LINK_CLEARED_EVENT } from "./run/run-link-url.client.ts";
 import type { ChangeEvent } from "react";
 import {
   parseProjectJson,
@@ -726,7 +727,7 @@ export function useProjectWorkspace(input: {
     if (resolvedProfile) onActivateProfile(resolvedProfile.id);
     hasProjectRef.current = true;
     adoptedProjectIdRef.current = project.projectId;
-    if (workspace) void rememberAcceptedProjectWorkspace({ project, handle: workspace });
+    if (workspace && !options?.keepTabRole) void rememberAcceptedProjectWorkspace({ project, handle: workspace });
     advanceProjectChangeVersion();
     setProjectAdoption((current) => current + 1);
     setProjectFile(project);
@@ -766,26 +767,38 @@ export function useProjectWorkspace(input: {
   useEffect(() => {
     if (!profilesLoaded || restoredRef.current) return;
     let cancelled = false;
-    const timer = window.setTimeout(() => {
-      if (restoredRef.current) return;
+    function restoreWhenUnlinked() {
+      if (cancelled || restoredRef.current || hasRunLinkFragment()) return;
       restoredRef.current = true;
-      if (typeof window !== "undefined" && window.location.hash.startsWith("#/run/")) return;
+      if (hasProjectRef.current) return;
       void restoreProjectWorkspace()
         .then((outcome) => {
-          if (!cancelled && !window.location.hash.startsWith("#/run/")) applyResumeOutcome(outcome);
+          if (cancelled) return;
+          // A link arriving during the read takes precedence, but dismissal
+          // must still be able to resume the last project later.
+          if (hasRunLinkFragment()) restoredRef.current = false;
+          else applyResumeOutcome(outcome);
         })
         .catch((error: unknown) => {
-          if (!cancelled && !hasProjectRef.current) {
+          if (cancelled) return;
+          if (hasRunLinkFragment()) restoredRef.current = false;
+          else if (!hasProjectRef.current) {
             projectFailure(error, "Could not restore the remembered project.");
           }
         });
-    }, 0);
+    }
+    const timer = window.setTimeout(restoreWhenUnlinked, 0);
+    window.addEventListener("hashchange", restoreWhenUnlinked);
+    window.addEventListener("popstate", restoreWhenUnlinked);
+    window.addEventListener(RUN_LINK_CLEARED_EVENT, restoreWhenUnlinked);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      window.removeEventListener("hashchange", restoreWhenUnlinked);
+      window.removeEventListener("popstate", restoreWhenUnlinked);
+      window.removeEventListener(RUN_LINK_CLEARED_EVENT, restoreWhenUnlinked);
     };
-    // Restoration runs once after hydration. Its state adoption uses the same
-    // mutation funnel as an explicit open.
+    // Restore once after hydration, deferring while link ingress owns startup.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profilesLoaded]);
 

@@ -78,7 +78,7 @@ import type {
 import { prepareWorkbenchRun } from "./run/prepare-workbench-run.client";
 import type { PrepareWorkbenchRunResult } from "./run/prepare-workbench-run.client";
 import { useRunSession } from "./run/use-run-session.client";
-import { composerDiffersFromRun, composerTurnInput, isRetryableRunState } from "./run/run-session-state.client";
+import { composerDiffersFromRun, composerTurnInput, isRetryableRunState, isTerminalRunState } from "./run/run-session-state.client";
 import { RunEvidenceDetail } from "./run/run-evidence-detail.client";
 import {
   batchMemberLabel,
@@ -511,7 +511,7 @@ function HomeContent() {
     project,
     ready: profilesLoaded,
     blockedReason() {
-      if (runState && !["completed", "failed", "cancelled"].includes(runState.status.kind)) return "Finish or stop the current chat run before switching projects.";
+      if (runState && !isTerminalRunState(runState)) return "Finish or stop the current chat run before switching projects.";
       if (decision.replacementBlockedReason) return decision.replacementBlockedReason;
       if (repeatedExperiment.isRunning || evaluationExecution.isRunning) return "Wait for the batch to finish or stop it before switching projects.";
       if (pendingBranch.pending) return "Finish or discard the pending branch before switching projects.";

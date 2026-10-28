@@ -20,8 +20,11 @@ export function browserRunLink(ref: RunReferenceV1, appUrl: string): string {
 export function hasRunLinkFragment(): boolean {
   return typeof window !== "undefined" && window.location.hash.startsWith("#/run/");
 }
+/** replaceState does not emit a browser navigation event. */
+export const RUN_LINK_CLEARED_EVENT = "inference-lens:run-link-cleared";
 export function clearRunLinkFragment(): void {
   if (!hasRunLinkFragment()) return;
   const url = new URL(window.location.href); url.hash = "";
-  window.history.pushState(null, "", url);
+  window.history.replaceState(null, "", url);
+  window.dispatchEvent(new Event(RUN_LINK_CLEARED_EVENT));
 }

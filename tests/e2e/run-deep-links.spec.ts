@@ -145,6 +145,114 @@ async function start(page: Page) { await seedProfile(page, { endpoint: "" }); aw
 async function navigateLink(page: Page, path: string) { await page.evaluate(hash => { window.location.hash = hash; }, path.slice(path.indexOf("#"))); }
 const selected = (page: Page) => page.getByRole("region", { name: "Selected run evidence" });
 
+test("editor promotion preserves linked evidence in the same project folder", async ({ page, context }) => {
+  const fixture = savedProject("promoted-inspection");
+  await stubPersistentProjectDirectories(context, [fixture.directory]);
+  await start(page); await openFolder(page, fixture.project.name);
+  const second = await context.newPage();
+  await second.goto("/"); await waitForHydration(second);
+  await expect(second.locator(".brand")).toContainText("another tab is editing");
+  await navigateLink(second, link(fixture));
+  await expect(selected(second)).toContainText("Evidence for promoted-inspection");
+  await page.close();
+  await expect(second.locator(".brand")).toContainText(`Saved to ${fixture.directory.name}`);
+  await expect(selected(second)).toContainText("Evidence for promoted-inspection");
+  await expect(second).toHaveURL(new RegExp(fixture.trace.runId));
+});
+
+test("opening a different folder copy with the same project ID clears linked inspection", async ({ page, context }) => {
+  const fixture = savedProject("copy-inspection");
+  const copy = { ...fixture.directory, name: "separate-copy.inference-lens" };
+  await stubPersistentProjectDirectories(context, [fixture.directory, copy]);
+  await start(page); await openFolder(page, fixture.project.name);
+  await navigateLink(page, link(fixture));
+  await expect(selected(page)).toContainText("Evidence for copy-inspection");
+  await openFolder(page, fixture.project.name);
+  await expect(page.locator(".brand")).toContainText("Saved to separate-copy.inference-lens");
+  await expect(selected(page)).toHaveCount(0);
+  await expect(page).not.toHaveURL(/#\/run\//);
+});
+
+test("dismissing a link replaces its history entry", async ({ page }) => {
+  await start(page);
+  await navigateLink(page, "/#/run/v99?project=project_unknown&run=run_unknown");
+  const recovery = page.getByRole("region", { name: "Saved run link" });
+  await expect(recovery).toBeVisible();
+  const length = await page.evaluate(() => history.length);
+  await recovery.getByRole("button", { name: "Dismiss link" }).click();
+  expect(await page.evaluate(() => history.length)).toBe(length);
+  await expect(page).not.toHaveURL(/#\/run\//);
+});
+
+for (const fragment of ["#/run/v99?project=project_unknown&run=run_unknown", "#/run/v1?project=project_unknown&run=run_unknown"]) {
+  test(`dismissing a cold link resumes the last project: ${fragment}`, async ({ page, context }) => {
+    const fixture = savedProject("deferred-restore");
+    await stubPersistentProjectDirectories(context, [fixture.directory]);
+    await start(page); await openFolder(page, fixture.project.name);
+    await page.goto(`/?deferred-restore=1${fragment}`); await waitForHydration(page);
+    const recovery = page.getByRole("region", { name: "Saved run link" });
+    await expect(recovery).toBeVisible();
+    await recovery.getByRole("button", { name: "Dismiss link" }).click();
+    await expect(page.locator(".brand")).toContainText(fixture.project.name);
+    await expect(page.getByLabel("Message 1 content")).toHaveValue("Question deferred-restore");
+  });
+}
+
+async function storedRecordId(page: Page) {
+  return page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>(resolve => { const r = indexedDB.open("inference-lens"); r.onsuccess = () => resolve(r.result); });
+    const record = await new Promise<{ recordId: string }>(resolve => { const r = db.transaction("workspace-handles").objectStore("workspace-handles").get("last-project"); r.onsuccess = () => resolve(r.result); });
+    db.close(); return record?.recordId;
+  });
+}
+
+test("startup restore preserves the accepted folder's last-project record ID", async ({ page, context }) => {
+  const fixture = savedProject("stable-record");
+  await stubPersistentProjectDirectories(context, [fixture.directory]);
+  await start(page); await openFolder(page, fixture.project.name);
+  await expect.poll(() => storedRecordId(page)).toBeTruthy();
+  const before = await storedRecordId(page);
+  await page.reload(); await waitForHydration(page);
+  await expect(page.locator(".brand")).toContainText(fixture.project.name);
+  // Discovery persistence follows adoption; flush it before comparing records.
+  await page.evaluate(() => navigator.locks.request("inference-lens:project-locations", () => undefined));
+  expect(await storedRecordId(page)).toBe(before);
+});
+
+test("legacy folders without permission are labelled as unverified guesses", async ({ page, context }) => {
+  const last = savedProject("legacy-last"), target = savedProject("unknown-target");
+  await stubPersistentProjectDirectories(context, [last.directory]);
+  await start(page); await openFolder(page, last.project.name);
+  await expect.poll(() => storedRecordId(page)).toBeTruthy();
+  await page.evaluate(async () => {
+    await navigator.locks.request("inference-lens:project-locations", async () => {
+      const db = await new Promise<IDBDatabase>(resolve => { const r = indexedDB.open("inference-lens"); r.onsuccess = () => resolve(r.result); });
+      await new Promise<void>(resolve => { const tx = db.transaction("project-locations", "readwrite"); tx.objectStore("project-locations").clear(); tx.oncomplete = () => resolve(); }); db.close();
+    });
+  });
+  await page.addInitScript(() => Object.defineProperty(FileSystemHandle.prototype, "queryPermission", { configurable: true, value: async () => "prompt" }));
+  await page.goto(`/?unverified=1${link(target).slice(1)}`); await waitForHydration(page);
+  const reconnect = page.getByRole("region", { name: "Saved run link" }).getByRole("button", { name: /^Reconnect/ });
+  await expect(reconnect).toContainText(/unverified/i);
+  await expect(reconnect).toContainText(last.project.name);
+});
+
+test("run history reports the real file read error", async ({ page, context }) => {
+  const fixture = savedProject("unreadable-history");
+  await stubPersistentProjectDirectories(context, [fixture.directory]);
+  await start(page); await openFolder(page, fixture.project.name);
+  await page.evaluate(runId => {
+    const getFile = FileSystemFileHandle.prototype.getFile;
+    FileSystemFileHandle.prototype.getFile = function() {
+      if (this.name === `${runId}.json`) return Promise.reject(new Error("Fixture permission denied"));
+      return getFile.call(this);
+    };
+  }, fixture.trace.runId);
+  await openMode(page, "Runs");
+  await page.locator(".run-history-failures summary").click();
+  await expect(page.locator(".run-history-failures")).toContainText("Fixture permission denied");
+});
+
 test("unknown folder and wrong-folder recovery retain the requested IDs", async ({ page, context }) => {
   const wanted = savedProject("locate-target"), wrong = savedProject("wrong-choice");
   await stubPersistentProjectDirectories(context, [wrong.directory, wanted.directory]);

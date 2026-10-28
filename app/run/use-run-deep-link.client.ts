@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ProjectId } from "../../packages/core/src/run-kernel/types.ts";
 import { type RunReferenceResult, type RunReferenceV1 } from "../../packages/core/src/run-reference.ts";
 import { resolveRunReference, type ResolvedRunEvidence } from "../../packages/core/src/run-reference-resolution.ts";
-import { browserFolderAccessAvailable, inspectBrowserProjectDirectory, locateLinkedProject, reopenProjectWorkspace, type OpenedProjectWorkspace, type ProjectWorkspaceHandle } from "../project-workspace.client.ts";
+import { browserFolderAccessAvailable, inspectBrowserProjectDirectory, isSameProjectWorkspace, locateLinkedProject, reopenProjectWorkspace, type OpenedProjectWorkspace, type ProjectWorkspaceHandle } from "../project-workspace.client.ts";
 import { forgetProjectLocation, listProjectLocations, type BrowserProjectLocation } from "../project-location-registry.client.ts";
 import type { ProjectWorkspaceHandleState } from "../use-project-workspace.client.ts";
 import { clearStoredWorkspace, readStoredWorkspace } from "../workspace-handle-store.client.ts";
@@ -80,7 +80,8 @@ export function useRunDeepLink(options: Options) {
     if (permission === "granted") {
       try { await inspectBrowserProjectDirectory(legacy.handle, projectId); } catch { return []; }
     }
-    return [{ version: 1, locationId: `legacy:${legacy.recordId}`, projectId, displayName: legacy.projectName ?? legacy.displayName, lastAccessAt: legacy.savedAt, handle: legacy.handle }];
+    const name = legacy.projectName ?? legacy.displayName;
+    return [{ version: 1, locationId: `legacy:${legacy.recordId}`, projectId, displayName: permission === "granted" ? name : `${name} (unverified last-project folder)`, lastAccessAt: legacy.savedAt, handle: legacy.handle }];
   }
   async function run(ref: RunReferenceV1, local = false) {
     invalidate(); const token = generation.current; intent.current = ref;
@@ -96,7 +97,8 @@ export function useRunDeepLink(options: Options) {
         await reopenProjectWorkspace(current.projectWorkspace, ref.projectId);
         if (!isCurrent()) return;
         const evidence = await resolveRunReference(ref, current.projectWorkspace.storage, isCurrent);
-        if (isCurrent() && latest.current.project.projectWorkspace === current.projectWorkspace) commit(ref, evidence, current.projectWorkspace);
+        const workspace = latest.current.project.projectWorkspace;
+        if (isCurrent() && workspace && isSameProjectWorkspace(workspace, current.projectWorkspace)) commit(ref, evidence, workspace);
         return;
       }
       if (!local && await handoffRunLink(ref)) {
@@ -164,10 +166,10 @@ export function useRunDeepLink(options: Options) {
   }
   useEffect(() => {
     const workspace = options.project.projectWorkspace;
-    if (intent.current && workspace !== startingWorkspace.current && workspace !== adoptingWorkspace.current && workspace !== linkedWorkspace.current) {
+    if (intent.current && !isSameProjectWorkspace(workspace, startingWorkspace.current) && !isSameProjectWorkspace(workspace, adoptingWorkspace.current) && !isSameProjectWorkspace(workspace, linkedWorkspace.current)) {
       invalidate(); intent.current = undefined; setState(undefined); clearRunLinkFragment();
     }
-    // Workspace replacement invalidates reads even for copies with the same ID.
+    // A refresh retains folder identity; a different copy still invalidates reads.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options.project.projectWorkspace]);
   return { state, pasteOpen, showPaste: () => setPasteOpen(true), closePaste: () => setPasteOpen(false), locate, choose, cancel, selectSaved,

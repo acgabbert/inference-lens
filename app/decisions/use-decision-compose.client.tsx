@@ -1,6 +1,7 @@
 "use client";
 
 import { sameProviderTarget } from "../../packages/core/src/provider-protocols";
+import { isTerminalRunState } from "../run/run-session-state.client";
 import type { DecisionInput } from "../../packages/core/src/decision";
 import { discoverDecisionVariables } from "../../packages/core/src/decision-variables";
 import type { ConfirmationDialogRequest } from "../confirmation-dialog.client";
@@ -370,7 +371,7 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
     stop: session.stop,
   };
   return {
-    replacementBlockedReason: run && !["completed", "failed", "cancelled"].includes(run.status.kind) ? "Finish or stop the current decision run before switching projects." : undefined,
+    replacementBlockedReason: run && !isTerminalRunState(run) ? "Finish or stop the current decision run before switching projects." : undefined,
     compose,
     capture,
     useTemplate(project, templateId, revisionId) {

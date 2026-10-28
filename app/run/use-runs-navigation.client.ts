@@ -11,6 +11,7 @@ import type { RunsHistoryFilter, RunsSelection } from "./runs-evidence-list.clie
 
 import type { SavedRunTrace } from "../../packages/core/src/run-trace";
 import type { ProjectWorkspaceHandle } from "../project-workspace.client";
+import { isSameProjectWorkspace } from "../project-workspace.client";
 
 interface RunsInspection {
   selection: Extract<RunsSelection, { kind: "saved-run" }>;
@@ -38,15 +39,19 @@ export function useRunsNavigation({
   const [filter, setFilter] = useState<RunsHistoryFilter>("all");
   const [scrollTop, setScrollTop] = useState(0);
   const [inspection, setInspection] = useState<RunsInspection>();
+  const [navigationProjectId, setNavigationProjectId] = useState(projectId);
   const [navigationWorkspace, setNavigationWorkspace] = useState(workspace);
   const generation = useRef(0);
 
-  if (navigationWorkspace !== workspace) {
-    generation.current++;
+  if (navigationWorkspace !== workspace || navigationProjectId !== projectId) {
+    setNavigationProjectId(projectId);
     setNavigationWorkspace(workspace);
-    setSelection(undefined);
-    setInspection(undefined);
-    setScrollTop(0);
+    if (navigationProjectId !== projectId || !isSameProjectWorkspace(navigationWorkspace, workspace)) {
+      generation.current++;
+      setSelection(undefined);
+      setInspection(undefined);
+      setScrollTop(0);
+    }
   }
 
   function selectCurrent(runId: RunId): void {
@@ -123,6 +128,7 @@ export function useRunsNavigation({
 
   function selectResolved(projectId: string, fileName: string, saved: SavedRunTrace, owner: ProjectWorkspaceHandle): void {
     generation.current++;
+    setNavigationProjectId(projectId);
     setNavigationWorkspace(owner);
     const selection = { kind: "saved-run" as const, projectId, runId: saved.trace.runId, fileName };
     setSelection(selection);

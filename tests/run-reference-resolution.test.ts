@@ -28,11 +28,17 @@ test("valid canonical evidence wins without a full listing", async () => {
 test("canonical corruption and mismatched IDs never fall through to renamed evidence", async () => {
   for (const contents of ["{broken", serializeRunTrace(other)]) await assert.rejects(resolveRunReference(reference, storage({ [canonical]: contents, "renamed.json": serializeRunTrace(wanted) })), /Invalid canonical trace/);
 });
-test("renamed lookup ignores unrelated invalid files, and re-reads the selected artifact", async () => {
+test("renamed lookup uses the validated scan snapshot without another file read", async () => {
   const s = storage({ "renamed.json": serializeRunTrace(wanted) }, [{ fileName: "renamed.json", contents: serializeRunTrace(wanted) }, { fileName: "broken.json", contents: "", readError: "permission" }]);
   assert.equal((await resolveRunReference(reference, s)).fileName, "renamed.json");
-  s.readTrace = async () => serializeRunTrace(other);
-  await assert.rejects(resolveRunReference(reference, { ...s, readTrace: async name => name === canonical ? Promise.reject(new DOMException("Missing", "NotFoundError")) : serializeRunTrace(other) }), /different run ID/);
+  const reads: string[] = [];
+  const resolved = await resolveRunReference(reference, { ...s, readTrace: async name => {
+    reads.push(name);
+    if (name === canonical) throw new DOMException("Missing", "NotFoundError");
+    throw new Error("The renamed file became unreadable after the scan");
+  } });
+  assert.equal(resolved.saved.trace.runId, wanted.runId);
+  assert.deepEqual(reads, [canonical]);
 });
 test("duplicates are ambiguous and missing evidence discloses unreadable artifacts", async () => {
   await assert.rejects(resolveRunReference(reference, storage({ "first.json": serializeRunTrace(wanted), "second.json": serializeRunTrace(wanted) })), /Multiple renamed traces/);

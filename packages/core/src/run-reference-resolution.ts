@@ -26,18 +26,18 @@ export async function resolveRunReference(ref: RunReferenceV1, storage: RunRefer
     if (!missing(error)) throw new RunReferenceResolutionError("invalid", `Cannot read ${canonical}: ${error instanceof Error ? error.message : String(error)}`);
     const files = await storage.listTraces();
     if (!isCurrent()) throw new Error("Run lookup cancelled.");
-    const matches: string[] = []; let unreadable = 0;
+    const matches: ResolvedRunEvidence[] = []; let unreadable = 0;
     for (const file of files) {
       if (!isTraceEntryName(file.fileName)) continue;
       try {
         if (file.readError) throw new Error(file.readError);
         const saved = parseSavedRunTraceJson(file.contents);
-        if (saved.trace.runId === ref.runId) matches.push(file.fileName);
+        if (saved.trace.runId === ref.runId) matches.push({ fileName: file.fileName, saved });
       } catch { unreadable++; }
     }
     if (matches.length > 1) throw new RunReferenceResolutionError("ambiguous", "Multiple renamed traces contain this run ID. Remove duplicate evidence from the folder and retry.");
     if (!matches.length) throw new RunReferenceResolutionError("missing", `The saved run was not found in this project.${unreadable ? ` ${unreadable} trace files could not be validated.` : ""} Git may exclude run history. Restore the trace into this project folder and retry.`);
-    return parse(matches[0]!, await storage.readTrace(matches[0]!));
+    return matches[0]!;
   }
   try { return parse(canonical, contents); }
   catch (error) { throw new RunReferenceResolutionError("invalid", `Invalid canonical trace ${canonical}: ${error instanceof Error ? error.message : String(error)}`); }
