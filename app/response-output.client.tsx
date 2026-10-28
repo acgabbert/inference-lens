@@ -256,7 +256,8 @@ export function ResponseOutput({
       )}
       {terminal && branchedFrom && (
         <p className="branch-provenance" role="status">
-          Branched from run <code>{branchedFrom.runId}</code>.
+          {/* The trace records only the parent's IDs; they stay debugging detail. */}
+          <span title={branchedFrom.runId}>Branched from an earlier run.</span>
         </p>
       )}
       <div className="output-scroll" ref={outputScrollRef} onScroll={onOutputScroll}>

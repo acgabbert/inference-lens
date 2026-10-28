@@ -491,7 +491,7 @@ creation and import through the single control.
 | G | Command search. | Stabilize visible action homes and agree descriptor/keyboard contracts. |
 | H | Shorter composer header (section 8). | Agree Decision Compose scope and the region naming. |
 | I | Transcript message actions and disclosure button (section 9). | Agree visibility rule for collapsed rows and history views. |
-| J | Complete: pending-branch notice names the parent run by its request excerpt and the message by its position; IDs remain in a `title`. | `PendingBranch.label` is captured at branch time; no trace change. |
+| J | Complete: pending-branch notice names the parent run by its request excerpt and the message by its position; a branched run reads “Branched from an earlier run.”, since traces record only the parent's IDs. IDs remain in a `title`. | `PendingBranch.label` is captured at branch time; no trace change. |
 | K | Session run history and compact unsaved notice (section 11). | Agree cap, eviction, and whether project replacement clears it. |
 | L | One **New prompt** control and a single n8n import home (section 12). | Agree where n8n import lives. |
 
