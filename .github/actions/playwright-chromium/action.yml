@@ -1,0 +1,29 @@
+name: Playwright Chromium
+description: >-
+  Install the Chromium build pinned by the installed @playwright/test, restoring
+  the browser from the Actions cache when that version was downloaded before.
+  Run after `npm ci`.
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve the Playwright version
+      id: version
+      shell: bash
+      run: echo "playwright=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+    # Only the browser download is cached. The system libraries it needs are
+    # apt packages outside this path, so they are installed on every run.
+    - uses: actions/cache@v6
+      id: cache
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-chromium-${{ runner.os }}-${{ runner.arch }}-${{ steps.version.outputs.playwright }}
+
+    - if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: npx playwright install --with-deps chromium
+
+    - if: steps.cache.outputs.cache-hit == 'true'
+      shell: bash
+      run: npx playwright install-deps chromium

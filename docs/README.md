@@ -33,7 +33,7 @@ historical verification commands quoted in those records.
 | [n8n / MCP compatibility](N8N_MCP_TOOL_COMPATIBILITY_PLAN.md) | N0, M1–M4 and one reviewed N1 string-input comparison. | Expanded N1 comparison and a bounded compatibility decision; Phase 6 hardening, authenticated/remote MCP and Tauri execution remain deferred. |
 | [Final-output tools](N8N_FINAL_OUTPUT_TOOL_PLAN.md) | Capture phase complete; twelve policy recommendations accepted. | Exact types, schemas and migration details still need specification before runtime implementation. |
 | [Layout and flow](UI_LAYOUT_AND_FLOW_PLAN.md) | Dedicated Prompts, Runs browsing/inspection and optional evaluation preview. | Remaining keyboard/overlay, collection-scale and usability validation; mobile redesign is deferred. |
-| [UX simplification and discoverability](UX_DISCOVERABILITY_PLAN.md) | Proposal only; its saved-prompt-picker dependency has now landed. | Recheck recommendations against the merged picker before implementation; the proposed slices are not authorized by the document. |
+| [UX simplification and discoverability](UX_DISCOVERABILITY_PLAN.md) | Proposal refreshed October 28. Duplicate tool controls consolidated (#224); saved-prompt picker landed. | Ranked slices A–L: composer header, transcript actions, branch notice, session run history, model picker, Run data/Repeat, prompt cards, Prompts sidebar, command search. No slice is authorized by the document. |
 
 [The N1 matrix runbook](N1_MATRIX_RUNBOOK.md) supports the open compatibility
 work. A capture or passing harness is not a reviewed comparison or a general
