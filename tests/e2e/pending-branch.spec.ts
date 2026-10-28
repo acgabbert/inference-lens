@@ -133,3 +133,18 @@ test("applying a project's draft drops the pending branch", async ({ page }) => 
   await expect(page.getByLabel("Message 1 content")).toHaveValue("From the project.");
   await expect(pendingBranchChip(page)).toHaveCount(0);
 });
+
+for (const key of ["Enter", " "]) {
+  test(`"Edit from here" starts a branch from the keyboard (${key === " " ? "Space" : key})`, async ({ page }) => {
+    await runOriginal(page);
+    const transcript = page.getByLabel("Run transcript");
+    await transcript.getByRole("button", { name: "Edit from here" }).first().focus();
+    await page.keyboard.press(key);
+
+    await expect(pendingBranchChip(page)).toBeVisible();
+    // The key belongs to the button, not to the message row around it.
+    await expect(
+      transcript.getByRole("button", { name: "Expand system message" }),
+    ).toBeVisible();
+  });
+}
