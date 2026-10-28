@@ -14,7 +14,7 @@ export function browserWorkbenchStorage(directory: FileSystemDirectoryHandleLike
     list: () => list(directory),
     async mutate(path, expectedContents, contents, projectId) {
       assertWorkbenchRecordPath(path);
-      return coordinate(projectId, async () => {
+      return coordinateProjectWrites(projectId, async () => {
         const inventory = await list(directory);
         if (inventory.some(file => "error" in file && file.path.startsWith("migrations"))) throw new Error("Migration inventory is unavailable; workbench writes are blocked.");
         if (hasForeignWorkbenchIdentity(inventory, projectId)) {
@@ -91,7 +91,12 @@ async function list(directory: FileSystemDirectoryHandleLike): Promise<Workbench
 // Web Locks coordinate tabs/windows. The fallback covers callers in this realm;
 // cross-host and unsupported-browser races remain best-effort detection only.
 const queues = new Map<string, Promise<unknown>>();
-function coordinate<T>(projectId: ProjectId, operation: () => Promise<T>): Promise<T> {
+/**
+ * The per-project same-host write scope. Workbench records, migration staging
+ * and browser manifest saves all run inside it, so none can land between
+ * another's check and its write.
+ */
+export function coordinateProjectWrites<T>(projectId: ProjectId, operation: () => Promise<T>): Promise<T> {
   const key = `inference-lens:workbench:${projectId}`;
   const pending = queues.get(key) ?? Promise.resolve();
   const next = pending.then(async () => {
@@ -119,7 +124,7 @@ export function browserMigrationStorage(directory: FileSystemDirectoryHandleLike
       const payloads = structuredClone(files);
       validateMigrationBatch(payloads);
       if (hasForeignMigrationIdentity(payloads, projectId)) return { kind: "blocked", reason: "foreign-project", message: FOREIGN_PROJECT_MESSAGE };
-      return coordinate(projectId, async (): Promise<MigrationStageOutcome> => {
+      return coordinateProjectWrites(projectId, async (): Promise<MigrationStageOutcome> => {
         let path = payloads[0].path;
         try {
           for (const file of payloads) {

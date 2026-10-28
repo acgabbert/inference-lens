@@ -23,7 +23,7 @@ historical verification commands quoted in those records.
 
 | Plan | Delivered | Still open or deferred |
 | --- | --- | --- |
-| [Tab coordination](PROJECT_TAB_COORDINATION_PLAN.md) | Proposal only; no runtime changes. | One manifest editor per project across browser tabs; prerequisite for run links. Review role, takeover and shared write-scope contracts. |
+| [Tab coordination](PROJECT_TAB_COORDINATION_PLAN.md) | Implemented in the browser; desktop unaffected. | One manifest editor per project across browser tabs; prerequisite for run links. Records the approved role, takeover and shared write-scope contracts. |
 | [Durable run links](RUN_DEEP_LINKS_PLAN.md) | Proposal only; browser first (decided October 28). | Review browser URL, local project discovery, tab handoff, safe replacement and read-only inspection contracts before implementation. Desktop adapter deferred. |
 | [Shared assets / personal workbench](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md) | Level 1 Git policy; isolated Level 2 codecs/planner, recovery store and migration staging. | App/CLI still use v15. Publication, application recovery, scratch/request arms, launch-default actions and later asset kinds remain. |
 | [Level 2 ownership and migration](SHARED_ASSETS_LEVEL_TWO_DESIGN.md) | Bounded core and filesystem foundations. | Remaining integration contracts still need review. This is not approval to enable v16 in the app. |

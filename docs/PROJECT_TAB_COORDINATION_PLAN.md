@@ -1,8 +1,8 @@
 # One editor per project across browser tabs
 
-Status: proposal for review; no feature implementation is included. Inspected
-`main` at `406cb03` on October 28, 2026, together with the shared-assets
-documents listed below. It is a prerequisite for the browser-first
+Status: decisions approved as recommended and implemented on October 28, 2026
+(see [Implementation notes](#implementation-notes)). Originally inspected
+`main` at `406cb03`, together with the shared-assets documents listed below. It is a prerequisite for the browser-first
 [durable run links](RUN_DEEP_LINKS_PLAN.md) and should land separately, before
 them. Reconcile with the [migration-completion proposal](SHARED_ASSETS_MIGRATION_COMPLETION_DESIGN.md)
 if either is approved first; both change how browser manifest saves are
@@ -84,9 +84,9 @@ owner, as described below.
 | Decision | Options and tradeoff | Recommendation |
 | --- | --- | --- |
 | What a second tab may do | Read-only (simplest, breaks parallel-prompt workflows); full editing with conflict prompts on every save (noisy and lossy); full editing with manifest writes restricted to one editor tab. | Every tab fully usable; only the editor tab writes `project.json`. |
-| Becoming editor | Carry the secondary tab's in-memory edits over the editor's saved changes; reload from disk; attempt a merge. | Reload from disk. The editor autosaves continuously, so a secondary tab's base is almost always stale, and carrying its edits forward would discard the editor's work. Merging per item is Level 2 territory. Offer it immediately when the secondary tab has no unsaved edits; otherwise confirm that its edits will be discarded, with Copy/Export available first. |
+| Becoming editor | Carry the secondary tab's in-memory edits over the editor's saved changes; reload from disk; attempt a merge. | Reload from disk. The editor autosaves continuously, so a secondary tab's base is almost always stale, and carrying its edits forward would discard the editor's work. Merging per item is Level 2 territory. Offer it immediately when the secondary tab has no unsaved edits; otherwise confirm that its edits will be discarded, with Copy/Export available first. Consent covers the current edit version only: edits during handover or reload require a fresh confirmation. |
 | Handing over | Web Locks `steal` alone; ask the editor to release first; ask, then steal on timeout. | Ask over `BroadcastChannel`. The editor flushes its pending autosave, releases its lock and becomes secondary. Steal only if no reply arrives within a short timeout, because a background tab can be frozen. |
-| When the editor tab closes | Secondary tabs stay secondary until asked; the next one silently becomes editor and reloads; it becomes editor without reloading. | Web Locks grant a queued request when the holder closes or crashes. An unedited secondary tab reloads and becomes editor. An edited one shows "the editing tab closed" and the same reload/discard choice. Never adopt a stale in-memory manifest as the base for writing. |
+| When the editor tab closes | Secondary tabs stay secondary until asked; the next one silently becomes editor and reloads; it becomes editor without reloading. | Web Locks grant a queued request when the holder closes or crashes. An unedited secondary tab refreshes the persisted document and becomes editor, preserving its independent run sessions and results. An edited one shows "the editing tab closed" and the same reload/discard choice. Never adopt a stale in-memory manifest as the base for writing. |
 | Lock key | Project ID; directory identity. | Project ID, like the existing workbench lock. Directory handles cannot become lock names. Two folder copies sharing an ID cannot both be edited on one origin at once; that over-blocks a rare case safely. |
 | Unsupported Web Locks | Refuse to open; behave as today. | Behave as today. Every Chromium build with folder access also has Web Locks, so this is a defensive fallback. |
 
@@ -141,8 +141,62 @@ Run `project-replacement-guard.spec.ts`, `project-storage-clarity.spec.ts` and
 the suite once before handoff. Stubs cannot prove real tab freezing or
 cross-origin behavior; report those as unverified.
 
-## Plan-only validation
+## Implementation notes
 
-Documentation only; no tests were run under the repository's docs-only
-exception. The claims above were checked against the cited source and the
-shared-assets documents on October 28, 2026.
+This change owns the shared write scope: `coordinateProjectWrites` in
+[`workbench-directory.client.ts`](../app/workbench-directory.client.ts) keeps
+the `inference-lens:workbench:<projectId>` lock name, and browser manifest saves
+now run inside it. Migration completion should reuse it rather than add another.
+
+Implementation added three things the plan did not spell out:
+
+- **A write fence.** A tab thawed after its lock was stolen can run its pending
+  autosave before it processes the steal. Every coordinated manifest write
+  therefore asks the lock manager, inside the write scope, whether this tab
+  still holds the editor lock (`navigator.locks.query` client IDs), and refuses
+  the write if not.
+- **A handover that always steals.** After the editor replies, the requester
+  takes the lock with `steal` rather than waiting for a release, so a tab
+  queued behind the editor cannot slip in between.
+- **An adoption key.** Reloading the same project from disk did not remount the
+  Prompts surface, whose key was the project ID, so a discarded draft stayed on
+  screen. `projectAdoption` advances on every adoption, and the surface keys on
+  it.
+
+Review found that ordinary project replacement was too broad a contract for
+role promotion: it stopped a secondary tab's active run. A same-project
+`refresh` now replaces persisted drafts without resetting chat or decision
+sessions, results, pending branches or transient overrides. Actual project
+replacement retains its existing reset behavior.
+
+The workspace owner also records the edit version authorized by takeover and
+the current lock acquisition generation. It checks the edit version both on
+acquisition and after the folder read; newer edits retain their draft and ask
+again before discarding. Role loss, project replacement and unmount invalidate
+pending acquisitions. Before adoption, the owner checks the generation,
+workspace and live lock ownership; obsolete reads cannot restore a lost role
+or publish stale errors or switching state.
+
+Declining that fresh confirmation ("Not now") would otherwise leave the lock
+with a tab that will not write, while the tab that handed over waits behind it:
+no tab saves, and both say another tab is editing. A declining tab that holds
+the lock without having adopted it now releases it when another tab is queued
+for it, so that tab regains the role through the ordinary vacancy path. A lone
+tab keeps its hold, since releasing would only grant the lock straight back and
+ask again; a tab that opens later still takes over through Edit here.
+
+Five browser regressions were run red before these fixes: active chat run
+cancellation, edits during handover, edits during requested and automatic
+reloads, and a third tab taking over during reload. They now pass, alongside
+additional coverage of an active decision run surviving promotion.
+
+Wording: a secondary tab's status reads "Not saved — another tab is editing this
+project", and its banner offers **Edit here**. With unsaved edits, Edit here
+asks before discarding them and offers Export JSON copy first.
+
+Verification: `tests/e2e/project-tab-coordination.spec.ts` (two- and three-tab
+cases over `stubSharedProjectDirectory`) and
+`tests/project-tab-coordination.test.ts` (message validation, role transitions,
+steal and fence against a fake lock manager). Not verified: real background
+freezing (Chromium declines a CDP freeze of a visible page, so the spec mutes
+the editor's channel instead), cross-origin tabs, and the desktop app.

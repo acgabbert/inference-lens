@@ -17,7 +17,7 @@ interface PromptsModeProps {
   decision: Pick<DecisionComposeHandle, "useTemplate">;
   /** Conversation length when there is no project revision to count. */
   draftMessageCount: number;
-  persistence: { autoSaveFailed: boolean; folderBacked: boolean; dirty: boolean };
+  persistence: { autoSaveFailed: boolean; folderBacked: boolean; dirty: boolean; secondary: boolean };
   navigation: PromptNavigation;
   evaluations: Pick<
     EvaluationSuiteAuthoringHandle,
@@ -92,7 +92,9 @@ export function PromptsMode({
             ? "error"
             : !persistence.folderBacked
               ? "session"
-              : persistence.dirty
+              : persistence.secondary
+                ? "secondary"
+                : persistence.dirty
                 ? "saving"
                 : "saved"
         }

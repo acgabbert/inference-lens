@@ -92,6 +92,8 @@ re-deriving them:
 - `waitForHydration` — the app is interactive, not merely painted
 - `importProject` — load a project fixture
 - `stubProjectDirectory` — satisfy the directory picker without a real one
+- `stubSharedProjectDirectory` — one directory every tab of a context sees,
+  with a log of which page wrote each file, for specs about coordinating tabs
 
 Read [the provider fixture guide](../../docs/PROVIDER_FIXTURES.md) before
 writing against a provider. It lists the traps that produce a *passing* test

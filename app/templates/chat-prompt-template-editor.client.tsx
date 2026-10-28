@@ -54,7 +54,7 @@ export interface ChatPromptTemplateEditorProps {
   defaultConnectionRequirementId?: ConnectionRequirement["id"];
   sessionTemplateIds?: ReadonlySet<PromptTemplateId>;
   itemCount: number;
-  persistenceStatus?: "saving" | "saved" | "session" | "error";
+  persistenceStatus?: "saving" | "saved" | "session" | "error" | "secondary";
   onSave(
     templateId: PromptTemplateId,
     name: string,
@@ -544,7 +544,9 @@ export function ChatPromptTemplateEditor({
                               ? "Draft save failed — your changes remain in this session."
                               : persistenceStatus === "session"
                                 ? "Draft kept in this session. Save the project to keep it after closing."
-                                : "Draft autosaved."}
+                                : persistenceStatus === "secondary"
+                                  ? "Draft kept in this tab only — another tab is editing this project."
+                                  : "Draft autosaved."}
                         </small>
                       </div>
                     )}

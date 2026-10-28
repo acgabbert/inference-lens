@@ -41,7 +41,7 @@ interface Props extends DecisionPromptEvaluationActions {
   sessionOwned: boolean;
   connectionRequirements: ConnectionRequirement[];
   onRecommendedTargetChange(id: PromptTemplateId, target?: PromptTemplateRecommendedTarget): void;
-  persistenceStatus: "saving" | "saved" | "session" | "error";
+  persistenceStatus: "saving" | "saved" | "session" | "error" | "secondary";
   onRename(id: PromptTemplateId, name: string): boolean;
   onDraftChange?(
     id: PromptTemplateId,
@@ -163,6 +163,8 @@ function draftStatus(input: {
       return "Draft save failed — your changes remain in this session.";
     case "session":
       return "Draft kept in this session. Save the project to keep it after closing.";
+    case "secondary":
+      return "Draft kept in this tab only — another tab is editing this project.";
     case "saving":
       return "Saving valid draft…";
     case "saved":

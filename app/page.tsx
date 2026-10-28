@@ -115,6 +115,7 @@ import { templateReadinessInputs, templateRequestPreview } from "./templates/tem
 import { useToasts } from "./notifications/use-toasts.client";
 import { ToastRegion } from "./notifications/toast-region.client";
 import { AppBanner } from "./notifications/app-banner.client";
+import { projectTabBanner } from "./project-tab-banner";
 import { chooseAppBanner } from "./notifications/banner-priority.client";
 import type { AppBanner as AppBannerCandidate } from "./notifications/banner-priority.client";
 
@@ -260,21 +261,26 @@ function HomeContent() {
         enabledToolIds,
       };
     },
-    onApplyDraft(draft, projectId) {
+    onApplyDraft(draft, projectId, adoption) {
       if (projectFile?.projectId !== projectId) clearRequestTools();
       replaceProjectDraft(draft);
-      projectTemplates.clearTransientOverrides();
-      // Declared after this hook because it reads the run session. Safe: a
-      // draft is applied only from project commands, never during render.
-      pendingBranch.clear();
       requestSettings.applyDraft(draft);
-      runSession.reset();
+      // A tab-role refresh changes persisted drafts, not the independent run
+      // session or the transient work the user is doing with its evidence.
+      if (adoption === "replace") {
+        projectTemplates.clearTransientOverrides();
+        pendingBranch.clear();
+        runSession.reset();
+      }
     },
     // The decision owner is declared below; like `pendingBranch` above, it is
     // reached only from project commands and saves, never during render.
     withDecisionDraft(document) { return decision.project.fold(document); },
     getUnsavedDraftReason() { return decision.project.saveBlockedReason; },
-    onApplyDecisionRequest(document) { promptNavigation.reset(); decision.project.adopt(document); },
+    onApplyDecisionRequest(document, adoption) {
+      if (adoption === "refresh") decision.project.refresh(document);
+      else { promptNavigation.reset(); decision.project.adopt(document); }
+    },
     onSaved({ name, destination }) {
       toasts.publish({
         key: "project-saved",
@@ -1095,6 +1101,12 @@ function HomeContent() {
 
   const appBanner = chooseAppBanner([
     projectErrorBanner(),
+    projectTabBanner(project.projectTab, {
+      becomeEditor: project.becomeProjectEditor,
+      confirmTakeover: project.confirmProjectEditorTakeover,
+      cancelTakeover: project.cancelProjectEditorTakeover,
+      exportCopy: project.exportProject,
+    }),
     insecureOriginBanner(),
     ...serverConnectionBanners(connectionProfiles, () => setConnectionDrawerOpen(true)),
   ]);
@@ -1501,6 +1513,7 @@ function HomeContent() {
       />
       ) : mode === "prompts" ? (
         <PromptsMode
+          key={project.projectAdoption}
           {...(projectFile ? { project: projectFile } : {})}
           templates={projectTemplates}
           decision={decision}
@@ -1508,6 +1521,7 @@ function HomeContent() {
           persistence={{
             autoSaveFailed: projectErrorKind === "auto-save",
             folderBacked: Boolean(projectWorkspace),
+            secondary: projectStorageState?.kind === "secondary",
             dirty: projectDirty,
           }}
           navigation={promptNavigation}
