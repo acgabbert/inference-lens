@@ -61,7 +61,7 @@ class FakeLocks {
       }) as unknown as LockManager["request"],
       query: async () => ({
         held: this.holder ? [{ name: projectEditorLockName(PROJECT), mode: "exclusive", clientId: this.holder.client }] : [],
-        pending: [],
+        pending: this.queue.map(({ client }) => ({ name: projectEditorLockName(PROJECT), mode: "exclusive" as const, clientId: client })),
       }),
     };
   }
@@ -266,6 +266,50 @@ test("saves are announced to other tabs of the same project only", async () => {
   await settle();
   assert.deepEqual(second.log, ["secondary:occupied", "peer-saved"]);
   assert.deepEqual(editor.log, ["acquired:initial"]);
+});
+
+test("declining an unadopted hold hands the lock to the tab waiting for it", async () => {
+  const { open, locks } = world();
+  const editor = open("a");
+  await settle();
+  const requester = open("b");
+  await settle();
+  void requester.coordinator.requestEditor();
+  await settle();
+  assert.deepEqual(editor.log, ["acquired:initial", "secondary:handed-over"]);
+
+  await requester.coordinator.declineEditor();
+  await settle();
+  // The yielded tab regains the role; the decliner queues behind it, unreported.
+  assert.deepEqual(editor.log, ["acquired:initial", "secondary:handed-over", "acquired:vacated"]);
+  assert.deepEqual(requester.log, ["secondary:occupied", "acquired:requested"]);
+  assert.equal(locks.holder?.client, "a");
+  assert.deepEqual(locks.queue.map(({ client }) => client), ["b"]);
+});
+
+test("declining keeps the hold when no other tab is waiting for it", async () => {
+  const { open, locks } = world();
+  const editor = open("a");
+  await settle();
+  const second = open("b");
+  await settle();
+  editor.coordinator.close();
+  await settle();
+  assert.deepEqual(second.log, ["secondary:occupied", "acquired:vacated"]);
+
+  // Releasing would only grant the lock straight back and ask again.
+  await second.coordinator.declineEditor();
+  await settle();
+  assert.deepEqual(second.log, ["secondary:occupied", "acquired:vacated"]);
+  assert.equal(locks.holder?.client, "b");
+
+  // A tab that opens later still gets the role by asking for it.
+  const third = open("c");
+  await settle();
+  void third.coordinator.requestEditor();
+  await settle();
+  assert.deepEqual(third.log, ["secondary:occupied", "acquired:requested"]);
+  assert.deepEqual(second.log, ["secondary:occupied", "acquired:vacated", "secondary:handed-over"]);
 });
 
 test("closing releases the lock and stops reporting", async () => {

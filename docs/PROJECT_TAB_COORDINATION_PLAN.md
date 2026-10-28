@@ -177,6 +177,14 @@ pending acquisitions. Before adoption, the owner checks the generation,
 workspace and live lock ownership; obsolete reads cannot restore a lost role
 or publish stale errors or switching state.
 
+Declining that fresh confirmation ("Not now") would otherwise leave the lock
+with a tab that will not write, while the tab that handed over waits behind it:
+no tab saves, and both say another tab is editing. A declining tab that holds
+the lock without having adopted it now releases it when another tab is queued
+for it, so that tab regains the role through the ordinary vacancy path. A lone
+tab keeps its hold, since releasing would only grant the lock straight back and
+ask again; a tab that opens later still takes over through Edit here.
+
 Five browser regressions were run red before these fixes: active chat run
 cancellation, edits during handover, edits during requested and automatic
 reloads, and a third tab taking over during reload. They now pass, alongside

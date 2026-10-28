@@ -541,6 +541,8 @@ export function useProjectWorkspace(input: {
 
   function cancelProjectEditorTakeover(): void {
     setConfirmTakeover(undefined);
+    // A hold this tab declines to adopt would otherwise leave no tab saving.
+    if (tabRoleRef.current !== "editor") void tabCoordinatorRef.current?.declineEditor();
   }
 
   function markDirty(): void {

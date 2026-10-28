@@ -87,6 +87,12 @@ export interface ProjectTabCoordinator {
    * before it learns the lock is gone; this is the fence that stops it.
    */
   holdsEditorLock(): Promise<boolean>;
+  /**
+   * This tab holds the lock but will not adopt the role. Releases it when
+   * another tab is waiting, so that tab can save; a lone tab keeps it, because
+   * releasing would only grant it straight back.
+   */
+  declineEditor(): Promise<void>;
   announceSaved(): void;
   /** Releases the lock and stops listening. Idempotent. */
   close(): void;
@@ -271,6 +277,15 @@ export function coordinateProjectTab(
       // Without client IDs to compare, fall back to what this tab believes.
       if (!mine || !current) return releaseHeld !== undefined;
       return mine === current;
+    },
+    async declineEditor() {
+      if (closed || !releaseHeld || yielding) return;
+      const snapshot = await host.locks.query().catch(() => undefined);
+      if (closed || !releaseHeld || yielding) return;
+      if (!snapshot?.pending?.some(({ name }) => name === lockName)) return;
+      // Not a loss: the role was never adopted, so this tab queues quietly.
+      handedOver = true;
+      releaseHeld();
     },
     announceSaved() {
       if (releaseHeld) post({ type: "saved", projectId, tab });

@@ -491,6 +491,34 @@ for (const during of ["handover", "reload", "vacancy reload"] as const) {
   });
 }
 
+test("declining a re-asked takeover hands the role back to the tab that yielded it", async ({ context }) => {
+  const directory = await sharedProject(context);
+  const [editor, second] = await loadTabs(context, 2);
+  await openFolder(editor!);
+  await openFolder(second!);
+  await expect(second!.locator(".brand")).toContainText(SECONDARY_LABEL);
+  await openMode(second!, "Prompts");
+  const readGate = await holdNextManifestRead(second!);
+  try {
+    await tabBanner(second!).getByRole("button", { name: "Edit here", exact: true }).click();
+    await readGate.wait();
+    await expect(editor!.locator(".brand")).toContainText(SECONDARY_LABEL);
+    await promptContent(second!).fill("Typed during the switch");
+    await readGate.release();
+    await expect(tabBanner(second!)).toContainText("discard this tab's unsaved changes?");
+    await tabBanner(second!).getByRole("button", { name: "Not now", exact: true }).click();
+
+    // The tab that handed over saves again rather than waiting on a tab that declined.
+    await expect(editor!.locator(".brand")).toContainText(`Saved to ${FOLDER}`);
+    await expect(tabBanner(second!)).toContainText(SECONDARY_TITLE);
+    await expect(promptContent(second!)).toHaveValue("Typed during the switch");
+    await editPrompt(editor!, "Saved after the decline");
+    await expect.poll(() => manifestWriters(directory)).toEqual([editor]);
+  } finally {
+    await readGate.release();
+  }
+});
+
 test("a reload cannot restore an editor role that moved to a third tab", async ({ context }) => {
   await sharedProject(context);
   const [editor, second, third] = await loadTabs(context, 3);
