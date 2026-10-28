@@ -286,6 +286,8 @@ export function ResponseOutput({
                     aria-label={`${isOpen ? "Collapse" : "Expand"} ${message.role} message`}
                     onClick={toggle}
                     onKeyDown={(event) => {
+                      // A key on a button inside the row belongs to that button.
+                      if (event.target !== event.currentTarget) return;
                       if (event.key !== "Enter" && event.key !== " ") return;
                       event.preventDefault();
                       toggle();
