@@ -48,12 +48,18 @@ Omit the spec path for the full suite plus these four captures. Each invocation
 creates fresh evidence; run this and the string-input lane sequentially because
 they share the app port. Empty-output awaits a real n8n reference capture.
 
+CI splits the ordinary suite across four isolated runners with
+`--shard=1/4` through `--shard=4/4`, keeping two workers on each runner. The safe
+regex browser probe and Python MCP lane run once, on shard 1. The `End-to-end`
+check requires all four shards to succeed; failure artifacts include the shard
+number. Local `npm run test:e2e` still runs the whole suite in one invocation.
+
 ### Python MCP lane
 
 `tests/e2e/mcp-python.spec.ts` runs the host against the official Python MCP
 SDK: a run on the `2026-07-28` protocol, which the Node fixture's SDK cannot
 negotiate, and a server process killed with `SIGKILL` mid-call. CI runs it
-after the main suite. Locally:
+after shard 1 of the main suite. Locally:
 
 ```bash
 python3.12 -m venv .venv-mcp

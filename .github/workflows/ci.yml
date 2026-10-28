@@ -35,8 +35,12 @@ jobs:
       # `npm test` runs `npm run build` first, so the web build is covered here.
       - run: npm test
 
-  e2e:
-    name: End-to-end
+  e2e-shards:
+    name: End-to-end shard ${{ matrix.shard }}/4
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     runs-on: ubuntu-latest
     # Above playwright.config.ts's globalTimeout, so the suite's own bound
     # fires first and leaves a report rather than the job being cut off.
@@ -57,30 +61,48 @@ jobs:
       # running app. Without this job that rule is unenforced, and a browser
       # check can go stale without anything failing.
       - run: npm run test:safe-regex:browser
+        if: matrix.shard == 1
 
-      - run: npm run test:e2e
+      # Keep two browser workers per machine; scale across isolated runners.
+      - run: npm run test:e2e -- --shard=${{ matrix.shard }}/4 --workers=2
 
       # The Node MCP fixture negotiates at most 2025-11-25 and cannot be killed
       # mid-call as a separate process; this lane runs the same host against the
       # official Python SDK, pinned in scripts/requirements-mcp.txt.
       - uses: actions/setup-python@v7
+        if: matrix.shard == 1
         with:
           python-version: "3.12"
 
-      - run: |
+      - if: matrix.shard == 1
+        run: |
           python -m venv .venv-mcp
           .venv-mcp/bin/python -m pip install -r scripts/requirements-mcp.txt
 
       - run: npm run test:e2e -- --config playwright.python-mcp.config.ts
+        if: matrix.shard == 1
 
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.shard }}
           path: |
             playwright-report
             test-results
           retention-days: 7
+
+  # Preserve the existing check name and require every shard to succeed.
+  e2e:
+    name: End-to-end
+    needs: e2e-shards
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require all browser shards
+        env:
+          SHARDS_RESULT: ${{ needs.e2e-shards.result }}
+        run: test "$SHARDS_RESULT" = success
 
   desktop:
     name: Desktop host
