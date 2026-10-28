@@ -4092,6 +4092,7 @@ textarea {
    box — the default here is the collapsed case, where this row is the
    entire card. */
 .transcript-message-header {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-sm);
@@ -4170,6 +4171,12 @@ textarea {
    They stay in the DOM and tab order, and touch screens, which have no hover,
    show them always. */
 .transcript-message-header:not(.transcript-message-header-open) .transcript-message-actions {
+  position: absolute;
+  top: 50%;
+  right: var(--space-md);
+  transform: translateY(-50%);
+  padding-left: var(--space-sm);
+  background: var(--surface-hover);
   opacity: 0;
 }
 
