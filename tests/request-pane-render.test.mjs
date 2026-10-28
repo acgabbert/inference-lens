@@ -150,11 +150,11 @@ test("the extracted composer renders request snapshots without a project", async
   assert.match(html, /Profile default/);
   assert.match(html, /Composer fixture message/);
   assert.match(html, /Open request composer in focus mode/);
-  // The settings panel starts collapsed: every value it will send is named,
-  // delivery included, and none of the controls are rendered.
+  // The model field is always rendered; the settings panel starts collapsed
+  // with the protocol and any departure from the baseline named, and none of
+  // its other controls rendered.
   assert.match(html, /fixture-model/);
   assert.match(html, /Temp 0\.7/);
-  assert.match(html, /Buffered/);
   assert.doesNotMatch(html, /Stream response/);
   assert.match(html, /class="request-settings-card"/);
   assert.doesNotMatch(html, /Override temperature/);

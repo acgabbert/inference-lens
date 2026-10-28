@@ -90,7 +90,33 @@ recognize available actions without memorizing commands. See
 
 ## 1. Direct model selection with compact run settings
 
-**Recommendation:** keep the model combobox directly visible in the composer,
+**Status, October 28:** implemented for Chat, with these decisions recorded.
+
+- The closed summary always shows protocol, and shows temperature and response
+  mode only when they differ from the parent scope. With no parent (no open
+  project) an explicit temperature still appears; delivery has no baseline
+  there and appears only as an override. The model is not repeated in the
+  summary because its field is always on screen.
+- Decision Compose is unchanged. Its model combobox already sits directly in
+  the **Target** fieldset and it has no settings disclosure, so there is
+  nothing to collapse; `system-one-decisions.spec.ts` already changes its model
+  without one.
+- The model combobox shares one row with the **Settings** toggle (the label
+  sits beside the input to keep the row no taller than the toggle alone), so the
+  first message editor stays inside slice H's 100px budget. Both wrap onto two
+  rows below roughly 880px. `InferenceSettingsPanel` takes opt-in `modelAbove`
+  and `summaryMode="differences"`; evaluations and experiments keep the old
+  layout.
+- Readiness routing focuses the model field without opening Settings; protocol
+  still opens it first.
+- Open question: the **Project settings** / **Profile defaults** badge now stays
+  on the toggle header when open, because the model field is too short to
+  carry it. Delivery is only a session preference, so the badge can read as
+  covering it. Section 6's vocabulary pass should settle this.
+
+Covered by `request-model-picker.spec.ts`.
+
+**Original recommendation:** keep the model combobox directly visible in the composer,
 beside a labeled **Settings** control. Keep temperature, response mode, and
 protocol controls in the disclosure. Its closed summary retains meaningful
 configuration differences and problems without competing with the model name.
@@ -488,7 +514,7 @@ creation and import through the single control.
 | Slice | Deliverable | Gate |
 | --- | --- | --- |
 | A | Complete: tool creation consolidated in #224; project-prerequisite CTA added to Evaluations. | Existing folder/JSON save routing; no new data model. |
-| B | Direct model picker and compact settings. | Agree summary content, shared-panel adaptation, and Chat/Decision scope. |
+| B | Complete for Chat: direct model picker beside a compact **Settings** toggle. Decision already had one. | Summary rule agreed (protocol always; temperature and response mode when overridden); badge placement left to slice E. |
 | C | Tool search and selected-first ordering in the **Attach tool** menu. | Re-scope against #224 first; it may be small or unnecessary. |
 | D | Quieter prompt-use cards and clearer conversion wording. | Agree action placement and focus contract. |
 | E | Scope/lifetime vocabulary pass. | Reconcile with the active shared-assets implementation; apply the vocabulary during the other slices as well. |
