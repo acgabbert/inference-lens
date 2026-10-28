@@ -229,6 +229,49 @@ export async function openMode(
  * Specs ask for it by mode rather than by label so that a spec reads as "the
  * primary action is refused" rather than restating which button that is.
  */
+/**
+ * Every tool reaches a request through the attached list's one "Attach tool"
+ * menu. With a destination, picks it before returning the open menu; without
+ * one, leaves the default ("This tab only") untouched. Expects the Tools tab
+ * to be open already.
+ */
+export async function openAttachToolMenu(
+  page: Page,
+  destination?: "This tab only" | "Project",
+): Promise<Locator> {
+  await page.getByRole("button", { name: "Attach tool", exact: true }).click();
+  const menu = page.getByRole("group", { name: "Attach a tool" });
+  if (destination) await menu.getByRole("radio", { name: destination }).check();
+  return menu;
+}
+
+/** Adds a blank project tool (attached) and returns its project card. */
+export async function addProjectTool(page: Page): Promise<Locator> {
+  const menu = await openAttachToolMenu(page, "Project");
+  await menu.getByRole("button", { name: "New definition" }).click();
+  return page.locator(".tool-list > .tool-editor").last();
+}
+
+/** The MCP discovery panel is closed until the menu opens it. */
+export async function openMcpServers(
+  page: Page,
+  destination?: "This tab only" | "Project",
+): Promise<Locator> {
+  const menu = await openAttachToolMenu(page, destination);
+  await menu.getByRole("button", { name: "From MCP server…" }).click();
+  return page.getByRole("region", { name: "MCP servers" });
+}
+
+/** Opens the local library, attaching to the menu's destination. */
+export async function openToolLibrary(
+  page: Page,
+  destination?: "This tab only" | "Project",
+): Promise<Locator> {
+  const menu = await openAttachToolMenu(page, destination);
+  await menu.getByRole("button", { name: "From local library…" }).click();
+  return page.getByRole("dialog", { name: "Local tool library" });
+}
+
 export function primaryAction(page: Page, mode: "compose" | "evaluations"): Locator {
   return page.getByRole("button", {
     name: mode === "compose" ? /^Run current conversation/ : /^Start evaluation…/,

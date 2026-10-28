@@ -317,7 +317,7 @@ select,
 .template-preview-heading,
 .request-preview summary,
 .request-preview h3,
-.tool-enabled,
+.attach-destination legend,
 .tool-mock-toggle,
 .tool-manifest > header strong,
 .schema-node-controls input,
@@ -2058,13 +2058,12 @@ output {
   background: var(--surface-subtle);
 }
 
-/* Sits between the send toggle and Remove: the order these buttons change is
-   the order the selected tools reach the provider in. */
+/* Lives on the attached list, not the project cards: the order these buttons
+   change is the order the attached tools reach the provider in. */
 .tool-reorder {
+  flex: 0 0 auto;
   display: flex;
   gap: var(--space-2xs);
-  margin-left: auto;
-  margin-right: var(--space-sm);
 }
 
 .tool-reorder button:disabled {
@@ -2072,7 +2071,6 @@ output {
   cursor: default;
 }
 
-.tool-enabled,
 .tool-mock-toggle {
   display: flex !important;
   align-items: center;
@@ -2081,7 +2079,6 @@ output {
   font-weight: 700;
 }
 
-.tool-enabled input,
 .tool-mock-toggle input {
   width: auto;
   margin: 0;
@@ -2240,10 +2237,110 @@ output {
   color: var(--danger-strong);
 }
 
-.tool-manifest > header .button {
+.tool-manifest-actions {
   flex: 0 0 auto;
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.tool-manifest > header .allow-tool-calling {
   border-color: var(--danger-border);
   color: var(--danger-strong);
+}
+
+/* Every route into the request starts here, and each asks the same
+   destination question first. */
+.attach-tool-menu {
+  margin: 0 var(--space-md) var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.attach-tool-menu p[role="alert"] {
+  margin: 0;
+  color: var(--danger-strong);
+}
+
+.attach-tool-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+.attach-tool-detached ul {
+  margin: var(--space-2xs) 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-3xs);
+}
+
+.attach-tool-detached li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.attach-tool-detached code {
+  font-family: var(--font-geist-mono), monospace;
+}
+
+.attach-destination {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2xs) var(--space-md);
+}
+
+.attach-destination legend {
+  float: left;
+  margin-right: var(--space-xs);
+  padding: 0;
+  font-weight: 700;
+}
+
+.attach-destination label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  margin: 0;
+}
+
+.attach-destination input {
+  width: auto;
+  margin: 0;
+}
+
+.attach-destination small {
+  flex-basis: 100%;
+  color: var(--text-muted);
+}
+
+.registry-editor > .attach-destination {
+  padding: var(--space-xs) var(--space-md);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* A tab tool has no project card, so its definition opens inside its row. */
+.tool-manifest-editor {
+  flex-basis: 100%;
+}
+
+.tool-attach-status {
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.tool-attach-status.attached {
+  color: var(--accent);
 }
 
 .tool-manifest-list {
@@ -5437,11 +5534,6 @@ main {
   color: var(--accent);
 }
 
-.header-text-action {
-  justify-self: end;
-  white-space: nowrap;
-}
-
 .request-header-actions {
   display: flex;
   align-items: center;
@@ -6700,10 +6792,6 @@ main {
 
   .request-header {
     grid-template-columns: auto 1fr;
-  }
-
-  .request-header .header-text-action {
-    display: none;
   }
 
   .inference-settings-grid > * {

@@ -19,7 +19,7 @@ import type { ProjectTemplatesHandle } from "../templates/use-project-templates.
 import { isEmptyEditableConversationDraft } from "../../packages/core/src/project";
 import type { CommandToolsHandle } from "../tools/use-command-tools.client";
 import type { McpConsentsHandle } from "../tools/use-mcp-consents.client";
-import type { McpDiscoveredTool } from "../../packages/contracts/src/mcp-discovery.ts";
+import type { ToolAttachmentDestination, ToolAttachmentSource } from "./use-request-draft.client";
 import { StatusChip } from "../notifications/status-chip.client";
 import { PromptInsertionDialog } from "../templates/prompt-insertion-dialog.client";
 import { SavedPromptPicker } from "../templates/saved-prompt-picker.client";
@@ -41,7 +41,7 @@ export interface RequestComposerProps {
     tools: ToolDefinition[];
     requestTools: ToolDefinition[];
     enabledToolIds: ToolId[];
-    addTool(): ToolId;
+    attachTool(source: ToolAttachmentSource, destination: ToolAttachmentDestination): ToolDefinition | string;
     removeTool(id: ToolId): void;
     moveTool(id: ToolId, offset: number): void;
     updateTool(id: ToolId, patch: Partial<ToolDefinition>): void;
@@ -49,9 +49,9 @@ export interface RequestComposerProps {
     mockForTool(id: ToolId): ToolMock | undefined;
     updateToolMock(id: ToolId, text: string, enabled: boolean): void;
     saveRequestToolToProject(id: ToolId): void;
+    updateRequestTool(id: ToolId, patch: Partial<ToolDefinition>): void;
+    moveRequestTool(id: ToolId, offset: number): void;
     removeRequestTool(id: ToolId): void;
-    attachMcpToolToProject(tool: McpDiscoveredTool, name: string): ToolDefinition | string;
-    attachMcpToolToRequest(tool: McpDiscoveredTool, name: string): ToolDefinition | string;
   };
   /** The command-tool feature owner, for the tools tab's binding surface. */
   commandTools: CommandToolsHandle;
@@ -96,7 +96,7 @@ export interface RequestComposerProps {
     templateId: PromptTemplateId,
     revisionId: PromptTemplateRevisionId,
   ): void;
-  onOpenToolLibrary(): void;
+  onOpenToolLibrary(destination: ToolAttachmentDestination): void;
   onSaveParentTrace(): void;
   onDiscardPendingBranch(): void;
 }
@@ -124,12 +124,6 @@ export function RequestComposer({
   onSaveParentTrace,
   onDiscardPendingBranch,
 }: RequestComposerProps) {
-  const [newToolId, setNewToolId] = useState<ToolId>();
-  function addProjectTool() {
-    const id = requestDraft.addTool();
-    setNewToolId(id);
-    return id;
-  }
   const [tab, setTab] = useState<RequestTab>("messages");
   const [shownImport, setShownImport] = useState(importedRevision);
   // Collapsed by default: the settings summary says what the next run will
@@ -293,11 +287,6 @@ export function RequestComposer({
           ]}
         />
         {activeTab !== "messages" ? <div className="request-header-actions">
-          {activeTab === "tools" ? (
-            <button className="text-button header-text-action" type="button" onClick={addProjectTool}>
-              + Add tool
-            </button>
-          ) : null}
           {/* On every tab, not only Messages: a repeat sends whatever the
               composer currently holds, and which tab is open does not change
               that. */}
@@ -432,7 +421,7 @@ export function RequestComposer({
             />}
           </>
         ) : (
-          <ToolsPane tools={requestDraft.tools} requestTools={requestDraft.requestTools} enabledToolIds={requestDraft.enabledToolIds} activeProfileName={activeProfile.name} toolsEnabled={settings.toolsEnabled} onOpenLibrary={onOpenToolLibrary} onOpenConnectionSettings={onOpenConnectionSettings} onAddTool={addProjectTool} newToolId={newToolId} onRemoveTool={requestDraft.removeTool} onMoveTool={requestDraft.moveTool} onUpdateTool={requestDraft.updateTool} onSetToolEnabled={requestDraft.setToolEnabled} mockForTool={requestDraft.mockForTool} onUpdateToolMock={requestDraft.updateToolMock} onRemoveRequestTool={requestDraft.removeRequestTool} onSaveRequestToolToProject={requestDraft.saveRequestToolToProject} commandTools={commandTools} mcpConsents={mcpConsents} onAttachMcpToProject={requestDraft.attachMcpToolToProject} onAttachMcpToRequest={requestDraft.attachMcpToolToRequest} />
+          <ToolsPane tools={requestDraft.tools} requestTools={requestDraft.requestTools} enabledToolIds={requestDraft.enabledToolIds} activeProfileName={activeProfile.name} toolsEnabled={settings.toolsEnabled} onOpenLibrary={onOpenToolLibrary} onOpenConnectionSettings={onOpenConnectionSettings} onAttach={requestDraft.attachTool} onRemoveTool={requestDraft.removeTool} onMoveTool={requestDraft.moveTool} onUpdateTool={requestDraft.updateTool} onSetToolEnabled={requestDraft.setToolEnabled} mockForTool={requestDraft.mockForTool} onUpdateToolMock={requestDraft.updateToolMock} onRemoveRequestTool={requestDraft.removeRequestTool} onUpdateRequestTool={requestDraft.updateRequestTool} onMoveRequestTool={requestDraft.moveRequestTool} onSaveRequestToolToProject={requestDraft.saveRequestToolToProject} commandTools={commandTools} mcpConsents={mcpConsents} />
         )}
       </div>
       {promptInsertion && (

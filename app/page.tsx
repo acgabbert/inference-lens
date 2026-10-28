@@ -42,6 +42,7 @@ import { serverProtocolsManagedBy } from "./server-connection-profiles";
 import { serverConnectionBanners } from "./server-connection-banners";
 import { toggleFavoriteModel } from "./profile-store.client";
 import { useRequestDraft } from "./request/use-request-draft.client";
+import type { ToolAttachmentDestination } from "./request/use-request-draft.client";
 import { chooseDefaultUserPrompt, createInitialMessages } from "./request/default-messages";
 import { useRequestSettings } from "./request/use-request-settings.client";
 import { useProjectWorkspace } from "./use-project-workspace.client";
@@ -173,7 +174,8 @@ function HomeContent() {
   // are, so every toast in the app has a reviewable path from cause to message.
   const toasts = useToasts();
   const toolRegistry = useToolRegistry();
-  const [toolRegistryOpen, setToolRegistryOpen] = useState(false);
+  // Open while set; the menu that opened the library chose where it attaches.
+  const [toolLibraryDestination, setToolLibraryDestination] = useState<ToolAttachmentDestination>();
   const [n8nImportOpen, setN8nImportOpen] = useState(false);
   const [confirmation, setConfirmation] =
     useState<ConfirmationDialogRequest>();
@@ -322,17 +324,15 @@ function HomeContent() {
     addMessage,
     removeMessage,
     updateMessage,
-    addTool,
+    attachTool,
     updateTool,
     removeTool,
     moveTool,
     setToolEnabled,
     mockForTool,
     updateToolMock,
-    attachRegistryToolToProject,
-    attachRegistryToolToRequest,
-    attachMcpToolToProject,
-    attachMcpToolToRequest,
+    updateRequestTool,
+    moveRequestTool,
     removeRequestTool,
     saveRequestToolToProject,
     clearRequestTools,
@@ -1170,9 +1170,9 @@ function HomeContent() {
   const chatRequestPane = (
     <RequestComposer
       requestDraft={{
-        messages, tools, requestTools, enabledToolIds, addTool, removeTool, moveTool, updateTool,
+        messages, tools, requestTools, enabledToolIds, attachTool, removeTool, moveTool, updateTool,
         setToolEnabled, mockForTool, updateToolMock, removeRequestTool, saveRequestToolToProject,
-        attachMcpToolToProject, attachMcpToolToRequest,
+        updateRequestTool, moveRequestTool,
       }}
       commandTools={commandTools}
       mcpConsents={mcpConsents}
@@ -1239,7 +1239,7 @@ function HomeContent() {
         setMode("prompts");
       }}
       onEditPromptSource={editPromptSource}
-      onOpenToolLibrary={() => setToolRegistryOpen(true)}
+      onOpenToolLibrary={setToolLibraryDestination}
       onSaveParentTrace={() => void runSession.exportTrace()}
       onDiscardPendingBranch={pendingBranch.clear}
     />
@@ -1692,15 +1692,16 @@ function HomeContent() {
           onStartSomething={() => setMode("evaluations")}
         />
       )}
-      {toolRegistryOpen && (
+      {toolLibraryDestination && (
         <ToolRegistryModal
           open
           registry={toolRegistry.registry}
           onChange={toolRegistry.setRegistry}
-          onAttachToProject={attachRegistryToolToProject}
-          onAttachToRequest={attachRegistryToolToRequest}
+          destination={toolLibraryDestination}
+          onDestinationChange={setToolLibraryDestination}
+          onAttach={(tool, destination) => attachTool({ kind: "registry", tool }, destination)}
           requestConfirmation={setConfirmation}
-          onClose={() => setToolRegistryOpen(false)}
+          onClose={() => setToolLibraryDestination(undefined)}
         />
       )}
       {n8nImportOpen && (

@@ -5,6 +5,7 @@ import {
   BUFFERED_FIXTURE_ENDPOINT,
   importProject,
   openMode,
+  openToolLibrary,
   PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY,
   seedProfile,
   waitForHydration,
@@ -46,9 +47,7 @@ test("the global run shortcut is suppressed while an authoring modal is open", a
   await importProject(page, project, "Modal command scope fixture");
   await openMode(page, "Compose");
   await page.getByRole("tab", { name: /Tools/ }).click();
-  await page.getByRole("button", { name: "Browse local library" }).click();
-
-  const dialog = page.getByRole("dialog", { name: "Local tool library" });
+  const dialog = await openToolLibrary(page);
   await dialog.getByRole("button", { name: "+ New library tool" }).click();
   const functionName = dialog.getByLabel("Function name", { exact: true });
   await functionName.fill("editing_a_library_definition");

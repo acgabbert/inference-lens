@@ -5,7 +5,7 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 import { createProjectFile } from "../../packages/core/src/project";
 import scenarios from "../fixtures/mcp-servers/n1-matrix.json" with { type: "json" };
-import { importProject, seedProfile, waitForHydration, PROJECT_PROFILE_MAP_STORAGE_KEY } from "./support";
+import { importProject, seedProfile, waitForHydration, PROJECT_PROFILE_MAP_STORAGE_KEY, openMcpServers } from "./support";
 
 test.describe.configure({ mode: "serial" });
 
@@ -31,7 +31,7 @@ for (const scenario of scenarios) {
     await waitForHydration(page);
     await importProject(page, project, name);
     await page.getByRole("tab", { name: "Tools" }).click();
-    const panel = page.getByRole("region", { name: "MCP servers" });
+    const panel = await openMcpServers(page);
     await panel.getByRole("combobox", { name: "Declared MCP server" }).selectOption("n1-matrix");
     const discovering = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/mcp/discovery");
     await panel.getByRole("button", { name: "Connect and browse tools" }).click();

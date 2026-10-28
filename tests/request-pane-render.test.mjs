@@ -22,12 +22,15 @@ function toolsPane(overrides) {
     toolsEnabled: true,
     onOpenLibrary: () => {},
     onOpenConnectionSettings: () => {},
-    onAddTool: () => {},
+    onAttach: () => "not attached in this render",
     onRemoveTool: () => {},
+    onMoveTool: () => {},
     onUpdateTool: () => {},
     onSetToolEnabled: () => {},
     mockForTool: () => undefined,
     onUpdateToolMock: () => {},
+    onUpdateRequestTool: () => {},
+    onMoveRequestTool: () => {},
     onRemoveRequestTool: () => {},
     commandTools: {
       availability: { kind: "unconfigured", variable: "INFERENCE_LENS_COMMAND_TOOLS" },
@@ -283,8 +286,11 @@ test("an unselected project tool is counted out of the manifest", async () => {
 
   assert.match(html, /No tools attached/);
   assert.doesNotMatch(html, /tool-origin project/);
-  // The definition itself is still editable below the manifest.
-  assert.match(html, /Attach to requests/);
+  // The definition itself is still editable below the manifest, and its
+  // card says it is not attached rather than offering a second control.
+  assert.match(html, /lookup_order · Edit definition/);
+  assert.match(html, /tool-attach-status">Not attached/);
+  assert.doesNotMatch(html, /Attach to requests/);
 });
 
 test("a profile that cannot call tools says so where the tools are listed", async () => {
