@@ -21,6 +21,7 @@ import type { ResolvedRunInput } from "../../packages/core/src/run-kernel/types"
 import { serializeRunTrace } from "../../packages/core/src/run-trace";
 import { OPENAI_COMPATIBLE_CAPABILITIES } from "../../packages/core/src/types";
 import { stubProjectDirectory, openMode } from "./support";
+import { expectDocumentFitsViewport, expectTableContentHeight } from "./support/layout";
 
 /**
  * Three executions of one two-case suite, chosen so every number on the
@@ -281,6 +282,7 @@ test("a repetition-two regression opens paired evidence, returns to it, and prom
   await dialog.getByLabel("Case name").fill("Candidate repetition two");
   await dialog.getByRole("button", { name: "Promote case" }).click();
   await expect(page.getByRole("region", { name: "Evaluation suites" }).getByRole("heading", { name: "Candidate repetition two" })).toBeVisible();
+  await expectDocumentFitsViewport(page);
 });
 
 test("a case whose trace is missing is reported, not dropped from the comparison", async ({ page }) => {
@@ -303,4 +305,44 @@ test("a case whose trace is missing is reported, not dropped from the comparison
   await expect(missing).toContainText("2 trace missing");
   await expect(comparison).toContainText("1/2 → 1/2");
   await expect(comparison).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
+});
+
+test("results and comparison tables keep their content height at desktop and phone sizes", async ({ page }) => {
+  await openFixtureProject(page);
+  await pinBaseline(page);
+  await entry(page, "baseline-model").locator(".evaluation-suite-history-item").click();
+  const results = page.getByRole("region", { name: "Evaluation results" });
+  await expect(results).toContainText("1 / 2 passed");
+  for (const size of [
+    { width: 1440, height: 900 },
+    { width: 1280, height: 720 },
+    { width: 1280, height: 560 },
+    { width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize(size);
+    await expectTableContentHeight(results.getByRole("region", { name: "As run summary" }));
+  }
+
+  await results.getByRole("button", { name: "Back to editing" }).click();
+  const partial = entry(page, "partial-model");
+  await partial.getByLabel("Compare against baseline").selectOption({ label: "Before the model swap · Default" });
+  await partial.getByRole("button", { name: "Compare" }).click();
+  const comparison = page.getByRole("region", { name: "Evaluation comparison" });
+  await expect(comparison).toContainText("2 trace missing");
+  for (const size of [{ width: 1280, height: 720 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(size);
+    await expectTableContentHeight(comparison.locator(".run-metrics-table-scroll"));
+  }
+});
+
+test("suite history compare labels stay inside the pane's scroll area", async ({ page }) => {
+  await openFixtureProject(page);
+  await pinBaseline(page);
+  await expect(page.getByLabel("Compare against baseline")).toHaveCount(2);
+  for (const size of [{ width: 1280, height: 720 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(size);
+    await expectDocumentFitsViewport(page);
+    await entry(page, "partial-model").getByRole("button", { name: "Compare", exact: true }).scrollIntoViewIfNeeded();
+    await expectDocumentFitsViewport(page);
+  }
 });

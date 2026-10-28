@@ -98,6 +98,8 @@
  * scrolls inside itself, which is what it is capped and scrollable for.
  */
 .workspace {
+  /* Hidden labels must scroll with this pane, including the phone layout. */
+  position: relative;
   display: grid;
   min-height: 0;
   /* 360px is the region, not the editor: the cases heading, the portable-data
@@ -243,6 +245,8 @@
  * is what lets this body shrink with it instead of forcing the track open.
  */
 .setupBody {
+  /* Suite-history labels belong to this scroller, not the document. */
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
