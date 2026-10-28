@@ -301,7 +301,6 @@ textarea,
 .evaluation-empty-inline,
 .evaluation-regex-dialect,
 .tool-name-warning,
-.compose-kind-caption,
 .decision-target legend,
 .decision-field-label {
   font-size: var(--type-compact);
@@ -5561,17 +5560,20 @@ main {
 }
 
 .request-header {
-  display: grid;
-  grid-template-columns: minmax(210px, 1fr);
-  gap: var(--space-xl);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-sm) var(--space-xl);
 }
 
-.request-header:has(.request-header-actions) {
-  grid-template-columns: minmax(210px, 1fr) auto;
+.request-header > .pane-tabs,
+.request-header .compose-kind-switch {
+  justify-self: auto;
 }
 
-.request-header > .pane-tabs {
-  justify-self: start;
+.request-header-actions {
+  margin-left: auto;
 }
 
 .result-header:not(:has(h2)) {
@@ -6876,10 +6878,6 @@ main {
     display: none;
   }
 
-  .request-header,
-  .request-header:has(.request-header-actions) {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
 
   .inference-settings-grid > * {
     flex-basis: 100%;
@@ -7101,10 +7099,8 @@ main {
     display: none;
   }
 
-  .request-header,
-  .request-header:has(.request-header-actions) {
+  .request-header {
     min-height: 56px;
-    grid-template-columns: minmax(0, 1fr) auto;
     padding-inline: var(--space-lg);
   }
 
@@ -8968,10 +8964,6 @@ label.experiment-retry-field {
     display: none;
   }
 
-  .request-header {
-    grid-template-columns: 1fr;
-  }
-
   .pane-tabs {
     width: 100%;
   }
@@ -9107,36 +9099,12 @@ label.experiment-retry-field {
   color: var(--text-secondary);
 }
 
-/* Compose's request-kind switch (U1), above whichever kind's request pane. */
-/* `:where` keeps this below `.workbench-pane.mobile-pane-hidden`, so the narrow
-   layout can still hide the pane. Matching on that class instead would drop the
-   column on a wide window too, where a run marks the pane hidden without hiding
-   it, and the composer would grow past the pane with nothing left to scroll. */
-.request-pane:where(:has(> .compose-kind-bar)) {
+/* Compose's request-kind switch (U1), in the header of whichever kind's request pane. */
+.compose-kind {
+  min-width: 0;
   display: flex;
   flex-direction: column;
-}
-
-.request-pane > .compose-kind-bar + * {
-  flex: 1 1 auto;
-  height: auto;
-  min-height: 0;
-}
-
-.compose-kind-bar {
-  flex: 0 0 auto;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-xs) var(--space-sm);
-  padding: var(--space-sm) var(--space-xl);
-  border-bottom: 1px solid var(--border-default);
-  background: var(--surface-sunken);
-}
-
-.compose-kind-caption {
-  color: var(--text-muted);
-  font-weight: 700;
+  gap: var(--space-2xs);
 }
 
 .compose-kind-switch {

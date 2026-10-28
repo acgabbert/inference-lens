@@ -299,8 +299,9 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
           },
     shortcut: () => (paused ? retry() : start()),
     panes: {
-      request: (
+      request: (kindSwitch) => (
         <DecisionComposer
+          kindSwitch={kindSwitch}
           blockers={blockers}
           unsaved={decisionProject.unsaved}
           draft={draft}

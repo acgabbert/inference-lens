@@ -81,3 +81,28 @@ test("a blocked attachment stays visible while settings are collapsed", async ({
   await expect(line).toBeVisible();
   await expect(line).toContainText("unavailable because this profile does not allow tool calling");
 });
+
+test("the Chat / Decision switch shares the header row with the request tabs", async ({ page }) => {
+  await page.setViewportSize({ width: 880, height: 720 });
+  await seedProfile(page);
+  await page.goto("/");
+  await waitForHydration(page);
+
+  const kind = page.getByRole("radiogroup", { name: "Request kind" });
+  const tabs = page.getByRole("tablist", { name: "Request editor" });
+  await expect(kind).toBeVisible();
+  const [kindBox, tabsBox] = [await kind.boundingBox(), await tabs.boundingBox()];
+  // One row at the narrowest desktop width: no label wraps over the tabs.
+  expect(Math.abs(kindBox!.y - tabsBox!.y)).toBeLessThan(kindBox!.height);
+  expect(kindBox!.x + kindBox!.width).toBeLessThanOrEqual(tabsBox!.x);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+
+  // The same switch heads the Decision composer, beside its Form / JSON tabs.
+  await kind.getByRole("radio", { name: "Decision" }).click();
+  await expect(page.getByRole("radiogroup", { name: "Request kind" })).toBeVisible();
+  await expect(page.getByRole("tablist", { name: "Decision editor" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Decision request" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Decision", exact: true })).toHaveCount(0);
+  await page.getByRole("radiogroup", { name: "Request kind" }).getByRole("radio", { name: "Chat" }).click();
+  await expect(page.getByLabel("Message 1 content")).toBeVisible();
+});

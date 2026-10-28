@@ -489,7 +489,7 @@ creation and import through the single control.
 | E | Scope/lifetime vocabulary pass. | Reconcile with the active shared-assets implementation; apply the vocabulary during the other slices as well. |
 | F | Runs/header action consolidation and Repeat placement. | Complete action inventory, selected-evidence contract, and discoverability review. |
 | G | Command search. | Stabilize visible action homes and agree descriptor/keyboard contracts. |
-| H | Shorter composer header (section 8). | Agree Decision Compose scope and the region naming. |
+| H | Complete: headings removed (Chat and Decision), panes kept as named regions, the kind switch moved onto the tab row through `panes.request(kindSwitch)`, and the empty tool line hidden. | Decision Compose adopts the same layout; region names `Request composer`, `Response output`, `Decision response`. |
 | I | Transcript message actions and disclosure button (section 9). | Agree visibility rule for collapsed rows and history views. |
 | J | Readable pending-branch notice (section 10). | None beyond the label source. |
 | K | Session run history and compact unsaved notice (section 11). | Agree cap, eviction, and whether project replacement clears it. |

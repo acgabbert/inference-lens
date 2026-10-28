@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import type { ConversationMessage, PromptTemplateId, PromptTemplateRevisionId, PromptTemplateUseId, ToolDefinition, ToolId } from "../../packages/core/src/run-kernel";
 import type { ProjectFile, ToolMock } from "../../packages/core/src/project";
 import type { TemplateRequestPreview } from "../templates/template-run-view.ts";
@@ -36,6 +37,8 @@ type RequestPreview = TemplateRequestPreview;
  * profile, project, and run-readiness features that supply these snapshots.
  */
 export interface RequestComposerProps {
+  /** Compose's Chat / Decision switch, placed at the start of the header. */
+  kindSwitch?: ReactNode;
   requestDraft: {
     messages: ConversationMessage[];
     tools: ToolDefinition[];
@@ -102,6 +105,7 @@ export interface RequestComposerProps {
 }
 
 export function RequestComposer({
+  kindSwitch,
   requestDraft,
   commandTools,
   mcpConsents,
@@ -278,6 +282,7 @@ export function RequestComposer({
       role={requestFocusMode ? "dialog" : undefined}
     >
       <div className="panel-header request-header">
+        {kindSwitch}
         <PaneTabs
           label="Request editor"
           value={activeTab}

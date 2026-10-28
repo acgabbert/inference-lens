@@ -6,6 +6,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import type { ReactNode } from "react";
 import type { ProviderCapabilities } from "../packages/core/src/types";
 import {
   createProjectFile,
@@ -1207,8 +1208,9 @@ function HomeContent() {
     />
   );
   // Chat's request pane, unchanged; Compose selects it by kind.
-  const chatRequestPane = (
+  const chatRequestPane = (kindSwitch: ReactNode) => (
     <RequestComposer
+      kindSwitch={kindSwitch}
       requestDraft={{
         messages, tools, requestTools, enabledToolIds, attachTool, removeTool, moveTool, updateTool,
         setToolEnabled, mockForTool, updateToolMock, removeRequestTool, saveRequestToolToProject,
@@ -1506,8 +1508,9 @@ function HomeContent() {
         onViewChange={setWorkbenchView}
         inspectAvailable={compose.inspectAvailable}
         {...(compose.responseStatus ? { responseStatus: compose.responseStatus } : {})}
-        toolbar={<ComposeKindSwitch kind={compose.kind} locked={compose.kindLocked} onChange={compose.setKind} />}
-        request={compose.panes.request}
+        request={compose.panes.request(
+          <ComposeKindSwitch kind={compose.kind} locked={compose.kindLocked} onChange={compose.setKind} />,
+        )}
         response={compose.panes.response}
         inspect={compose.panes.inspect}
       />
