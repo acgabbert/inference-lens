@@ -52,6 +52,7 @@ export interface DecisionSessionHandle {
   /** Epoch ms when Retry may run after a 429 (D23); absent once it may. */
   retryAvailableAt?: number;
   traceStorage: TraceStorageStatus | null;
+  traceWorkspace: ProjectWorkspaceHandle | null;
   /** Freezes the input; aborts and supersedes any prior run. */
   start(input: ResolvedDecisionRunInput, context: DecisionSessionStartContext): Promise<void>;
   /** Acts only on a live paused run whose wait is over; otherwise a no-op. */
@@ -84,6 +85,7 @@ export function useDecisionSession(options: UseDecisionSessionOptions): Decision
   const retryAvailableAtRef = useRef<number | undefined>(undefined);
   const abortRef = useRef<AbortController | null>(null);
   const generationRef = useRef(0);
+  const [traceWorkspace, setTraceWorkspace] = useState<ProjectWorkspaceHandle | null>(null);
   const workspaceRef = useRef<ProjectWorkspaceHandle | null>(null);
   const persistedRunIdsRef = useRef(new Set<string>());
 
@@ -161,7 +163,7 @@ export function useDecisionSession(options: UseDecisionSessionOptions): Decision
   }
 
   async function start(input: ResolvedDecisionRunInput, context: DecisionSessionStartContext): Promise<void> {
-    workspaceRef.current = context.workspace;
+    workspaceRef.current = context.workspace; setTraceWorkspace(context.workspace);
     setTraceStorage(null);
     const begun = beginDecisionAttempt(createDecisionRun(input), new Date().toISOString());
     await drive(begun.run, begun.execution);
@@ -210,7 +212,7 @@ export function useDecisionSession(options: UseDecisionSessionOptions): Decision
 
   function adoptTrace(trace: DecisionRunTrace, origin: TraceOrigin): void {
     stop();
-    workspaceRef.current = origin.workspace;
+    workspaceRef.current = origin.workspace; setTraceWorkspace(origin.workspace);
     if (origin.workspace) persistedRunIdsRef.current.add(trace.runId);
     replaceRun(decisionRunFromTrace(trace));
     setTraceStorage(origin.workspace
@@ -218,5 +220,5 @@ export function useDecisionSession(options: UseDecisionSessionOptions): Decision
       : { kind: "loaded", fileName: origin.fileName });
   }
 
-  return { run, executing, retryAvailableAt, traceStorage, start, retry, stop, reset, exportTrace, adoptTrace };
+  return { traceWorkspace, run, executing, retryAvailableAt, traceStorage, start, retry, stop, reset, exportTrace, adoptTrace };
 }

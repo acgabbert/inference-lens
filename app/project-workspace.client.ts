@@ -69,6 +69,7 @@ import type {
   FileSystemFileHandleLike,
   StoredRunTraceFile,
 } from "./project-directory.client.ts";
+import { rememberProjectLocation } from "./project-location-registry.client.ts";
 import { isTauriRuntime } from "./runtime.client.ts";
 import {
   clearStoredWorkspace,
@@ -321,6 +322,9 @@ function browserStorage(
 
 /** Kept off the public handle: only a reopen needs the directory again. */
 const browserDirectories = new WeakMap<ProjectWorkspaceHandle, FileSystemDirectoryHandleLike>();
+const browserProjectIds = new WeakMap<ProjectWorkspaceHandle, ProjectFile["projectId"]>();
+const browserManifestContents = new WeakMap<ProjectWorkspaceHandle, string>();
+let rememberTail: Promise<void> = Promise.resolve();
 
 function browserWorkspace(
   directory: FileSystemDirectoryHandleLike,
@@ -334,6 +338,8 @@ function browserWorkspace(
     storage: browserStorage(directory, contents, projectId),
   };
   browserDirectories.set(handle, directory);
+  browserProjectIds.set(handle, projectId);
+  browserManifestContents.set(handle, contents);
   return handle;
 }
 
@@ -357,6 +363,15 @@ export async function reopenProjectWorkspace(
   return { project, handle: browserWorkspace(directory, contents, projectId) };
 }
 
+/** Revalidate a preflighted target after any replacement dialog or queued save.
+ * A changed target must be inspected afresh rather than adopted from a stale read. */
+export async function revalidateLinkedProjectWorkspace(opened: OpenedProjectWorkspace): Promise<void> {
+  const refreshed = await reopenProjectWorkspace(opened.handle, opened.project.projectId);
+  if (browserManifestContents.get(refreshed.handle) !== browserManifestContents.get(opened.handle)) {
+    throw new Error("The linked project changed while waiting to open. Retry to read its latest contents.");
+  }
+}
+
 async function rememberBrowserWorkspace(
   directory: FileSystemDirectoryHandleLike,
   project: ProjectFile,
@@ -370,6 +385,32 @@ async function rememberBrowserWorkspace(
     handle: directory,
     savedAt: Date.now(),
   });
+}
+
+/** Persist discovery only after the project owner accepts a workspace. */
+export async function rememberAcceptedProjectWorkspace(opened: OpenedProjectWorkspace): Promise<void> {
+  const directory = browserDirectories.get(opened.handle);
+  if (!directory) return;
+  const remember = rememberTail.catch(() => undefined).then(async () => {
+    await rememberBrowserWorkspace(directory, opened.project);
+    await rememberProjectLocation(opened.project.projectId, opened.project.name, directory);
+  });
+  rememberTail = remember;
+  await remember;
+}
+
+/** Inspect a registry candidate without adoption, writes or last-project effects. */
+export async function inspectBrowserProjectDirectory(directory: FileSystemDirectoryHandleLike, projectId: ProjectFile["projectId"]): Promise<OpenedProjectWorkspace> {
+  const contents = await readBrowserManifest(directory);
+  const project = parseProjectJson(contents);
+  if (project.projectId !== projectId) throw new Error(`Wrong project: ${directory.name} contains ${project.projectId}, but this link requests ${projectId}. Locate the matching project folder.`);
+  return { project, handle: browserWorkspace(directory, contents, project.projectId) };
+}
+
+export async function locateLinkedProject(projectId: ProjectFile["projectId"]): Promise<OpenedProjectWorkspace | null> {
+  const opened = await openBrowserProjectFolder();
+  if (opened && opened.project.projectId !== projectId) throw new Error(`Wrong project: ${opened.project.name} contains ${opened.project.projectId}, but this link requests ${projectId}. Locate the matching project folder.`);
+  return opened;
 }
 
 async function openBrowserProjectFolder(): Promise<OpenedProjectWorkspace | null> {
@@ -399,7 +440,6 @@ async function openBrowserProjectFolder(): Promise<OpenedProjectWorkspace | null
       throw error;
     }
     const project = parseProjectJson(contents);
-    await rememberBrowserWorkspace(directory, project);
     return {
       project,
       handle: browserWorkspace(directory, contents, project.projectId),
@@ -458,7 +498,6 @@ async function createBrowserProjectFolder(
       const writable = await fileHandle.createWritable();
       await writable.write(contents);
       await writable.close();
-      await rememberBrowserWorkspace(directory, project);
       return {
         project,
         handle: browserWorkspace(directory, contents, project.projectId),
@@ -961,4 +1000,16 @@ export function downloadProjectFile(project: ProjectFile): void {
   link.click();
   const revokeObjectURL = URL.revokeObjectURL.bind(URL);
   globalThis.setTimeout(() => revokeObjectURL(url), 0);
+}
+
+/** Revalidates the folder identity and exact evidence before copying a browser link. */
+export async function savedRunReferenceForWorkspace(handle: ProjectWorkspaceHandle, runId: import("../packages/core/src/run-kernel/types.ts").RunId): Promise<import("../packages/core/src/run-reference.ts").RunReferenceV1> {
+  const directory = browserDirectories.get(handle);
+  if (!directory) throw new Error("Copying run links is currently available in the browser. Open this project folder in Chrome or Edge.");
+  const project = parseProjectJson(await readBrowserManifest(directory));
+  if (project.projectId !== browserProjectIds.get(handle)) throw new Error("This folder now contains a different project. Reopen it before copying a link.");
+  const reference = { version: 1 as const, projectId: project.projectId, runId };
+  const { resolveRunReference } = await import("../packages/core/src/run-reference-resolution.ts");
+  await resolveRunReference(reference, handle.storage);
+  return reference;
 }

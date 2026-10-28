@@ -1,18 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
-import type { RunId, RunTrace } from "../../packages/core/src/run-kernel";
+import type { RunId } from "../../packages/core/src/run-kernel";
 import type {
   ProjectExperimentHistoryItem,
   ProjectRunHistoryItem,
 } from "../use-project-run-history.client";
 import type { RunsHistoryFilter, RunsSelection } from "./runs-evidence-list.client";
 
+import type { SavedRunTrace } from "../../packages/core/src/run-trace";
+import type { ProjectWorkspaceHandle } from "../project-workspace.client";
+
 interface RunsInspection {
   selection: Extract<RunsSelection, { kind: "saved-run" }>;
   status: "loading" | "ready" | "error";
-  trace?: RunTrace;
+  saved?: SavedRunTrace;
+  diagnosticsOpen?: boolean;
   error?: string;
 }
 
@@ -23,25 +27,30 @@ interface RunsInspection {
  */
 export function useRunsNavigation({
   projectId,
-  readTrace,
+  readSavedTrace,
+  workspace,
 }: {
   projectId?: string;
-  readTrace(fileName: string): Promise<RunTrace>;
+  readSavedTrace(fileName: string): Promise<SavedRunTrace>;
+  workspace: ProjectWorkspaceHandle | null;
 }) {
   const [selection, setSelection] = useState<RunsSelection>();
   const [filter, setFilter] = useState<RunsHistoryFilter>("all");
   const [scrollTop, setScrollTop] = useState(0);
   const [inspection, setInspection] = useState<RunsInspection>();
-  const [navigationProjectId, setNavigationProjectId] = useState(projectId);
+  const [navigationWorkspace, setNavigationWorkspace] = useState(workspace);
+  const generation = useRef(0);
 
-  if (navigationProjectId !== projectId) {
-    setNavigationProjectId(projectId);
+  if (navigationWorkspace !== workspace) {
+    generation.current++;
+    setNavigationWorkspace(workspace);
     setSelection(undefined);
     setInspection(undefined);
     setScrollTop(0);
   }
 
   function selectCurrent(runId: RunId): void {
+    generation.current++;
     setInspection(undefined);
     setSelection({ kind: "current-run", runId });
   }
@@ -52,18 +61,21 @@ export function useRunsNavigation({
    * cannot replace evidence the user is reading.
    */
   function selectCurrentBatch(): void {
+    generation.current++;
     setInspection(undefined);
     setSelection({ kind: "current-batch" });
   }
 
   /** Gives the main area back to whatever results are open, such as a comparison. */
   function clearSelection(): void {
+    generation.current++;
     setInspection(undefined);
     setSelection(undefined);
   }
 
   async function selectSavedRun(item: ProjectRunHistoryItem): Promise<void> {
     if (!projectId) return;
+    const token = ++generation.current;
     const next = {
       kind: "saved-run" as const,
       projectId,
@@ -73,20 +85,20 @@ export function useRunsNavigation({
     setSelection(next);
     setInspection({ selection: next, status: "loading" });
     try {
-      const trace = await readTrace(item.fileName);
-      if (trace.runId !== item.summary.runId) {
+      const saved = await readSavedTrace(item.fileName);
+      if (saved.trace.runId !== item.summary.runId) {
         throw new Error("The saved trace now contains a different run.");
       }
       setInspection((current) =>
-        current?.selection.projectId === next.projectId &&
+        generation.current === token && current?.selection.projectId === next.projectId &&
         current.selection.runId === next.runId &&
         current.selection.fileName === next.fileName
-          ? { selection: next, status: "ready", trace }
+          ? { selection: next, status: "ready", saved }
           : current,
       );
     } catch (error) {
       setInspection((current) =>
-        current?.selection.projectId === next.projectId &&
+        generation.current === token && current?.selection.projectId === next.projectId &&
         current.selection.runId === next.runId &&
         current.selection.fileName === next.fileName
           ? {
@@ -104,8 +116,18 @@ export function useRunsNavigation({
 
   function selectExperiment(item: ProjectExperimentHistoryItem): void {
     if (!projectId) return;
+    generation.current++;
     setInspection(undefined);
     setSelection({ kind: "experiment", projectId, experimentId: item.experimentId });
+  }
+
+  function selectResolved(projectId: string, fileName: string, saved: SavedRunTrace, owner: ProjectWorkspaceHandle): void {
+    generation.current++;
+    setNavigationWorkspace(owner);
+    const selection = { kind: "saved-run" as const, projectId, runId: saved.trace.runId, fileName };
+    setSelection(selection);
+    setFilter("all");
+    setInspection({ selection, status: "ready", saved, diagnosticsOpen: true });
   }
 
   return {
@@ -119,6 +141,7 @@ export function useRunsNavigation({
     selectCurrentBatch,
     clearSelection,
     selectSavedRun,
+    selectResolved,
     selectExperiment,
   };
 }

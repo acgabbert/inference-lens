@@ -1,13 +1,12 @@
 # Durable links to saved runs
 
-Status: proposal for review; no feature implementation is included. Inspected
+Status: browser implementation; contracts approved October 28, 2026. Originally inspected
 `main` at `406cb03` on October 27, 2026. Revised October 28, 2026: the browser
 ships first, and the [one-editor-per-project tab coordination](PROJECT_TAB_COORDINATION_PLAN.md)
 lands separately beforehand. Both decisions came from the user in review; the
-remaining recommendations are not yet accepted implementation contracts.
-Reconcile integration points with concurrent work before implementing,
-especially project replacement, pending branches and the shared-assets Level 2
-integration.
+remaining proposed defaults were accepted by the user on October 28, 2026.
+Integration uses the current project-replacement and pending-branch owners.
+Future shared-assets Level 2 changes should preserve these adapter boundaries.
 
 ## Outcome and recommended scope
 
@@ -41,7 +40,7 @@ search, links to live/paused runs or loose trace exports, whole-experiment or
 comparison links, and anchors into a particular turn/exchange. Those can extend
 the contract later without changing the meaning of a v1 run reference.
 
-## What exists today
+## Pre-implementation boundaries
 
 | Existing boundary | Implication |
 | --- | --- |
@@ -61,7 +60,7 @@ the contract later without changing the meaning of a v1 run reference.
 See also the current [project format](PROJECT_FORMAT.md),
 [trace format](RUN_TRACE_FORMAT.md), and [architecture](ARCHITECTURE.md).
 
-## Decisions to review before implementation
+## Approved decisions
 
 | Decision | Options and tradeoff | Recommendation |
 | --- | --- | --- |
@@ -76,13 +75,11 @@ See also the current [project format](PROJECT_FORMAT.md),
 | Link eligibility | Allow session links that may break on restart, automatically save when copying, or require durable evidence. | Enable Copy link only for a verified trace in a project folder; saving remains explicit. |
 | Run-file duplicates | Trust directory order, require content hashes in every URL, or use canonical-name precedence and surface ambiguous renamed copies. | Prefer a valid canonical file; otherwise require one matching file. No new content-addressed identity in v1. |
 
-Approval of these choices, particularly the browser URL, replacement policy, handoff and
-read-only decision inspector, is the gate before feature implementation. This
-plan can be reviewed and revised without changing application contracts.
+The user approved the proposed defaults on October 28, 2026, including the browser URL, local registry, replacement protection, tab handoff and read-only decision inspector. These are the browser implementation contracts.
 
 ## Reference and URL contract
 
-Proposed core value, owned by a new `packages/core/src/run-reference.ts`:
+Core value, owned by `packages/core/src/run-reference.ts`:
 
 ```ts
 interface RunReferenceV1 {
@@ -92,7 +89,7 @@ interface RunReferenceV1 {
 }
 ```
 
-Proposed public spellings (IDs below are illustrative):
+Public spellings (IDs below are illustrative):
 
 ```text
 inference-lens://run/v1?project=project_example&run=run_example
@@ -439,25 +436,85 @@ npm run test:e2e -- tests/e2e/run-deep-links.spec.ts
 ```
 
 Run relevant core/owner tests and typecheck, required Rust checks for native
-changes, then `npm run test:e2e` once before handoff. Coordinate that full run
-with other agents because the runner owns fixed ports. Browser stubs cannot
+changes, then the relevant existing browser regression specs before handoff.
+The full sharded browser suite runs in CI; report that it has not run locally. Browser stubs cannot
 prove real permission prompts, persisted browser handles, OS scheme dispatch,
 or notes-app URL handling; report native/manual checks separately with exact
 build/platform and unverified cases.
 
-## Plan-only validation and remaining review
+## Implementation and verification
 
-This PR changes documentation only. No feature behavior, registry migration,
-URI registration, or trace schema has been implemented. Tests, builds, and the
-browser suite are intentionally not run for this plan under the repository's
-docs-only exception. The plan was checked against source boundaries and the
-Tauri documentation; installed-app behavior remains untested.
+The browser implementation follows the approved defaults. The pure reference
+codec lives in `packages/core/src/run-reference.ts`, exact evidence lookup in
+`run-reference-resolution.ts`, local browser discovery in
+`app/project-location-registry.client.ts`, and pending intents in
+`app/run/use-run-deep-link.client.ts`. Project adoption remains in the project
+owner. Saved decision history now inspects evidence in Runs; explicit import
+and experiment adoption remain separate actions. Browser storage upgrades from
+version 1 to 2 additively; the legacy last-project record remains readable.
+Project v15 and trace v8 are unchanged. The encoded link limit is 16,384 UTF-16
+code units. Native scheme ingress and registry storage remain deferred.
 
-Review the decision table before implementation. Browser-first delivery and
-the Chrome/Edge requirement were decided on October 28. Still open: whether
-preserving Compose while viewing saved decision evidence is the desired UX,
-and the handoff behavior. Revised October 28 after reviewing the shared-assets
-plans; this remains documentation only. The later implementation handoff
-should invite a visual check of the wrong-project/Locate folder flow and the
-read-only evidence layout, in addition to reporting actual automated and
-packaged-app verification.
+The first pre-fix link regression showed same-tab navigation retaining the wrong
+project and missing the requested output. Its initial hash-only `page.goto`
+was later recognized as same-document navigation, so the final cold-entry test
+forces a document navigation with a changed query. The cold-document variant
+was added after implementation and was not separately demonstrated red. The
+decision regression ran red with Chat's `aria-checked` incorrectly `false` after
+browsing a saved decision. Visual review then found diagnostics hiding the
+answer: a viewport assertion ran red with ratio 0 before the saved-evidence
+scroll layout was fixed. A target-folder-change regression was also written
+before its final-adoption fix.
+
+See [Using saved run links](RUN_LINKS.md) for the browser/Docker workflow.
+Automated verification uses the committed Playwright runner and distinct,
+parser-valid artifacts. Persistent-directory fixtures use real origin-private
+handles and IndexedDB cloning; permission denial/retry is overridden at the
+handle boundary. Those fixtures do not prove real host-folder permission
+prompts or permission sharing across tabs. Clipboard success/failure is
+simulated. Notes-app click handling, a Docker container smoke run and installed
+desktop entry were not exercised. No native code changed, so Rust/package
+checks are not required for this browser slice. The full sharded browser suite
+has not run locally or in CI for these uncommitted changes.
+
+Before release, manually check the intended notes app, real folder Reconnect,
+the wrong-project/Locate folder flow, and the read-only decision layout. Record
+exact platform/build for those checks; automated coverage complements them.
+
+Verified October 28, 2026:
+
+- `npm run build` (includes typecheck) and `npm run lint -- --quiet` passed.
+- 76 Node tests passed across `run-reference.test.ts`,
+  `run-reference-resolution.test.ts`, `project-directory.test.ts`,
+  `project-tab-coordination.test.ts`, `workspace-resume.test.ts`,
+  `run-trace.test.ts` and `decision-trace.test.ts`.
+- `npm run test:e2e -- tests/e2e/run-deep-links.spec.ts` passed all 20 cases
+  using the runner's pinned Chromium. The spec includes actual document cold
+  entry, saved decision inspection, wrong-folder and missing-evidence recovery,
+  handoff, history/refresh/paste, clipboard fallback, unsupported folder access,
+  superseded links and replacement cancellation, pending branches, permission
+  retry, duplicate copies, delayed reads, an active chat request, UI-generated
+  save/copy/reopen, legacy IndexedDB upgrade, picker cancellation, target
+  revalidation, failed-save recovery and an experiment member opened without
+  its experiment artifacts. Inspection checks count both real application
+  execution endpoints and check the linked manifest remains byte-identical.
+- A scoped 72-case browser run passed the then-current 19 link cases and 53
+  related cases in `runs-result-discovery.spec.ts`,
+  `project-replacement-guard.spec.ts`, `pending-branch.spec.ts`,
+  `project-storage-clarity.spec.ts`, `project-tab-coordination.spec.ts`,
+  `system-one-decision-suites.spec.ts`, `experiment-history.spec.ts`,
+  `evaluation-suite-history.spec.ts` and `decision-compose-scroll.spec.ts`.
+  The final member-link case and URL-bound edge guard were added afterward;
+  the full link spec and relevant core tests were rerun.
+- Screenshot review of the generated saved-run link confirmed the answer is
+  visible with diagnostics open. The suite also asserts viewport visibility.
+  Some existing browser drivers emitted React hydration warnings about an
+  opened Project menu; all scoped assertions passed. The standalone build
+  retains the existing large-chunk warning.
+
+The broader required-coverage table remains a target, not a claim that every
+permutation was exercised. In particular, the new link spec does not directly
+exercise a paused decision replacement, a frozen editor's handoff timeout,
+an invalid decision draft, every registry persistence failure, or real
+Firefox/Safari engines. Existing replacement and tab specs cover parts of those
+owners; they do not substitute for those exact link scenarios.

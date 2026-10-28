@@ -21,8 +21,11 @@ import {
   reopenProjectWorkspace,
   restoreProjectWorkspace,
   saveProjectWorkspace,
+  rememberAcceptedProjectWorkspace,
+  revalidateLinkedProjectWorkspace,
 } from "./project-workspace.client.ts";
 import type {
+  OpenedProjectWorkspace,
   ProjectCreationOptions,
   ProjectWorkspaceHandle,
   WorkspaceResumeOutcome,
@@ -119,6 +122,9 @@ export interface ProjectWorkspaceHandleState {
   becomeProjectEditor(): void;
   confirmProjectEditorTakeover(): void;
   cancelProjectEditorTakeover(): void;
+  holdsProjectEditorLock(): Promise<boolean>;
+  cancelLinkedProjectReplacement(intent: () => boolean): void;
+  adoptLinkedWorkspace(opened: OpenedProjectWorkspace, isCurrent: () => boolean, blockedReason: () => string | undefined, revalidateEvidence: () => Promise<void>): Promise<"adopted" | "cancelled" | "blocked">;
   markDirty(): void;
   setError(message: string | undefined, options?: { clearKind?: boolean }): void;
   clearErrorKind(): void;
@@ -159,6 +165,8 @@ export interface PendingProjectReplacement {
 interface QueuedProjectReplacement {
   perform(): Promise<void>;
   fallbackError: string;
+  cancelled?(): void;
+  linkedIntent?: () => boolean;
 }
 
 /** A same-project refresh replaces persisted drafts, but preserves run sessions. */
@@ -240,6 +248,7 @@ export function useProjectWorkspace(input: {
   const autoSaveFailureCountRef = useRef(0);
   const autoSaveRetryNotBeforeRef = useRef(0);
   const hasProjectRef = useRef(false);
+  const adoptedProjectIdRef = useRef<string | undefined>(undefined);
   const restoredRef = useRef(false);
   // Read inside asynchronous adoption paths, which must see the profiles the
   // device has now rather than the ones it had when the operation started.
@@ -716,6 +725,8 @@ export function useProjectWorkspace(input: {
     // React batches the two state owners into the same committed render.
     if (resolvedProfile) onActivateProfile(resolvedProfile.id);
     hasProjectRef.current = true;
+    adoptedProjectIdRef.current = project.projectId;
+    if (workspace) void rememberAcceptedProjectWorkspace({ project, handle: workspace });
     advanceProjectChangeVersion();
     setProjectAdoption((current) => current + 1);
     setProjectFile(project);
@@ -758,9 +769,10 @@ export function useProjectWorkspace(input: {
     const timer = window.setTimeout(() => {
       if (restoredRef.current) return;
       restoredRef.current = true;
+      if (typeof window !== "undefined" && window.location.hash.startsWith("#/run/")) return;
       void restoreProjectWorkspace()
         .then((outcome) => {
-          if (!cancelled) applyResumeOutcome(outcome);
+          if (!cancelled && !window.location.hash.startsWith("#/run/")) applyResumeOutcome(outcome);
         })
         .catch((error: unknown) => {
           if (!cancelled && !hasProjectRef.current) {
@@ -856,7 +868,7 @@ export function useProjectWorkspace(input: {
     try {
       await replacement.perform();
     } catch (error) {
-      projectFailure(error, replacement.fallbackError);
+      if (!replacement.linkedIntent || replacement.linkedIntent()) projectFailure(error, replacement.fallbackError);
     }
   }
 
@@ -864,10 +876,12 @@ export function useProjectWorkspace(input: {
     nextProjectName: string,
     replacement: QueuedProjectReplacement,
   ): void {
-    if (!projectFile || (!projectDirty && !getUnsavedDraftReason())) {
+    const hasRisk = replacement.linkedIntent ? latestRef.current.hasUnsavedChanges() : projectDirty || Boolean(getUnsavedDraftReason());
+    if (!projectFile || !hasRisk) {
       void performProjectReplacement(replacement);
       return;
     }
+    queuedProjectReplacementRef.current?.cancelled?.();
     queuedProjectReplacementRef.current = replacement;
     setPendingProjectReplacement({
       currentProjectName: projectFile.name,
@@ -878,6 +892,7 @@ export function useProjectWorkspace(input: {
   }
 
   function cancelProjectReplacement(): void {
+    queuedProjectReplacementRef.current?.cancelled?.();
     queuedProjectReplacementRef.current = null;
     setPendingProjectReplacement(undefined);
   }
@@ -972,6 +987,48 @@ export function useProjectWorkspace(input: {
       ...project,
       name: options.name.trim() || "Untitled Inference Lens project",
     };
+  }
+
+  /** The sole adoption funnel for preflighted run links, with live blockers and
+   * cancellation checked again after Save/Discard and any in-flight autosave. */
+  function adoptLinkedWorkspace(
+    opened: OpenedProjectWorkspace,
+    isCurrent: () => boolean,
+    blockedReason: () => string | undefined,
+    revalidateEvidence: () => Promise<void>,
+  ): Promise<"adopted" | "cancelled" | "blocked"> {
+    if (!isCurrent()) return Promise.resolve("cancelled");
+    if (blockedReason()) return Promise.resolve("blocked");
+    const originalProjectId = adoptedProjectIdRef.current;
+    return new Promise((resolve, reject) => {
+      const replacement: QueuedProjectReplacement = {
+        fallbackError: "Could not open the linked project.",
+        linkedIntent: isCurrent,
+        cancelled: () => resolve("cancelled"),
+        async perform() {
+          try {
+            const editVersion = projectChangeVersionRef.current;
+            await workspaceSaveTailRef.current.catch(() => undefined);
+            await revalidateLinkedProjectWorkspace(opened);
+            await revalidateEvidence();
+            if (!isCurrent() || adoptedProjectIdRef.current !== originalProjectId) { resolve("cancelled"); return; }
+            if (blockedReason()) { resolve("blocked"); return; }
+            // Edits made while an older save drains need their own decision.
+            if (editVersion !== projectChangeVersionRef.current) {
+              requestProjectReplacement(opened.project.name, replacement);
+              return;
+            }
+            applyProjectDocument(opened.project, opened.handle);
+            resolve("adopted");
+          } catch (error) { reject(error); throw error; }
+        },
+      };
+      requestProjectReplacement(opened.project.name, replacement);
+    });
+  }
+
+  function cancelLinkedProjectReplacement(intent: () => boolean): void {
+    if (queuedProjectReplacementRef.current?.linkedIntent === intent) cancelProjectReplacement();
   }
 
   async function newProjectFolder(options: ProjectCreationOptions): Promise<void> {
@@ -1129,6 +1186,9 @@ export function useProjectWorkspace(input: {
           },
         }
       : {}),
+    cancelLinkedProjectReplacement,
+    holdsProjectEditorLock: () => tabCoordinatorRef.current?.holdsEditorLock() ?? Promise.resolve(false),
+    adoptLinkedWorkspace,
     becomeProjectEditor,
     confirmProjectEditorTakeover,
     cancelProjectEditorTakeover,

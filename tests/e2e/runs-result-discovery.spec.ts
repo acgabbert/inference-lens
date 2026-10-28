@@ -231,7 +231,7 @@ test("Runs inspects saved evidence without replacing the Compose draft", async (
   expect(await chip.innerText()).not.toMatch(/\b(run|message)_[A-Za-z0-9]/);
 });
 
-test("a saved decision run is listed beside chat runs and opens in Decision Compose", async ({ page }) => {
+test("a saved decision run is listed beside chat runs and inspected without changing Compose", async ({ page }) => {
   const decision = savedDecisionTrace();
   await openFolderWithSavedRun(page, {
     [`traces/${decision.runId}.json`]: serializeDecisionRunTrace(decision),
@@ -258,18 +258,17 @@ test("a saved decision run is listed beside chat runs and opens in Decision Comp
   await expect(page.getByRole("region", { name: "Selected run evidence" }))
     .toContainText("Saved evidence response");
 
-  // The decision row opens Decision Compose's inspection state (D22, D30).
+  // Both kinds now open immutable evidence in Runs.
   await row.click();
-  await expect(
-    page.getByRole("navigation", { name: "Application mode" })
-      .getByRole("button", { name: "Compose" }),
-  ).toHaveAttribute("aria-current", "page");
-  await expect(page.getByRole("radio", { name: "Decision" })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("region", { name: "Selected run evidence" })).toContainText(decision.runId);
   await expect(page.locator(".decision-response")).toContainText("Run trace saved");
   await expect(page.getByRole("article", { name: "Answer intent" })).toContainText("Choice billing");
   const evidence = page.getByRole("region", { name: "Decision evidence" });
   await expect(evidence.getByRole("article")).toHaveCount(2);
   await expect(evidence.getByLabel("Attempt 1 raw response body")).toHaveText("slow down");
+  await openMode(page, "Compose");
+  await expect(page.getByRole("radio", { name: "Chat", exact: true })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByLabel("Message 1 content")).toHaveValue("Make this result easy to find.");
 });
 
 test("an unsaved current run says the next run replaces it", async ({ page }) => {
