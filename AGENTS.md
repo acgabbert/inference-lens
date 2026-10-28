@@ -41,8 +41,11 @@ how to invoke it, the shared drivers, the fixture rules — and
 produce a *passing* test which exercised nothing. Neither is repeated here.
 
 Scope the run to the change. Iterate against the affected spec
-(`npm run test:e2e -- tests/e2e/<name>.spec.ts`), then run the full suite once
-before handing the work back. A change with no user-visible surface — a pure
+(`npm run test:e2e -- tests/e2e/<name>.spec.ts`). The full suite runs in CI's
+shards against the pinned Chromium; check that run on the pushed commit and
+report its result rather than running the whole suite locally. When a change
+touches shared e2e support, provider fixtures, or app-wide composition, also
+run the specs most likely to share that ground before pushing. A change with no user-visible surface — a pure
 type refactor, a docs edit, build configuration — needs no browser run at all;
 say that rather than spending one to prove it.
 
