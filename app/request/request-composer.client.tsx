@@ -282,7 +282,8 @@ export function RequestComposer({
       role={requestFocusMode ? "dialog" : undefined}
     >
       <div className="panel-header request-header">
-        {kindSwitch}
+        {/* Not inside focus mode: switching kind would unmount the dialog. */}
+        {!requestFocusMode && kindSwitch}
         <PaneTabs
           label="Request editor"
           value={activeTab}

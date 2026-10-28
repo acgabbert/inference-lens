@@ -106,3 +106,19 @@ test("the Chat / Decision switch shares the header row with the request tabs", a
   await page.getByRole("radiogroup", { name: "Request kind" }).getByRole("radio", { name: "Chat" }).click();
   await expect(page.getByLabel("Message 1 content")).toBeVisible();
 });
+
+test("focus mode leaves the Chat / Decision switch behind its scrim", async ({ page }) => {
+  await seedProfile(page);
+  await page.goto("/");
+  await waitForHydration(page);
+
+  await page.getByRole("button", { name: "Open request composer in focus mode" }).click();
+  const dialog = page.getByRole("dialog", { name: "Request composer focus mode" });
+  await expect(dialog.getByLabel("Message 1 content")).toBeFocused();
+  // Switching kind would unmount the dialog under the keyboard; the switch is
+  // part of the docked layout, as it was before it joined the header.
+  expect(await dialog.getByRole("radiogroup", { name: "Request kind" }).count()).toBe(0);
+
+  await dialog.getByRole("button", { name: "Exit request composer focus mode" }).click();
+  await expect(page.getByRole("radiogroup", { name: "Request kind" })).toBeVisible();
+});

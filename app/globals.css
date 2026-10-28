@@ -5567,11 +5567,6 @@ main {
   gap: var(--space-sm) var(--space-xl);
 }
 
-.request-header > .pane-tabs,
-.request-header .compose-kind-switch {
-  justify-self: auto;
-}
-
 .request-header-actions {
   margin-left: auto;
 }
