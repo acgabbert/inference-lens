@@ -14,7 +14,6 @@ const ready = {
   activeProfileEndpoint: "http://127.0.0.1:8080/v1",
   activeProfileModel: "qwen3-8b",
   requiredEndpoint: "http://127.0.0.1:8080/v1",
-  activeConnectionRequirementId: "connection_local",
   selectedToolCount: 0,
   toolsEnabled: true,
   templateIssues: [],

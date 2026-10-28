@@ -158,7 +158,6 @@ export interface RunReadinessInput {
   toolsEnabled: boolean;
   /** Endpoint the open project declares, when it declares one. */
   requiredEndpoint?: string;
-  activeConnectionRequirementId?: string;
   /**
    * The protocol the run would use and whether its profile has it enabled.
    * `managedByServer` names where the server sets the profile's locked

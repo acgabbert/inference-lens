@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
 import { createProjectFile, createPromptTemplate, parseProjectJson, setPromptTemplateRecommendedTarget } from "../../packages/core/src/project";
-import { BUFFERED_FIXTURE_ENDPOINT, importProject, openMode, seedProfile, waitForHydration } from "./support";
+import { BUFFERED_FIXTURE_ENDPOINT, importProject, openMode, PROJECT_PROFILE_MAP_STORAGE_KEY, seedProfile, waitForHydration } from "./support";
 
 const PROJECT_NAME = "Prompt model recommendations";
 function fixture() {
@@ -23,7 +23,13 @@ async function insert(page: Page) {
 const modelField = (page: Page) => page.locator('[data-readiness-control="model"]');
 
 test.beforeEach(async ({ page }) => {
-  await seedProfile(page);
+  // Mapped, so run readiness gets past its connection blocker and reaches the
+  // template rules; otherwise an absent recommendation notice proves nothing.
+  const instanceId = "profile-instance-model-recommendations";
+  await seedProfile(page, { instanceId });
+  await page.addInitScript(({ mapKey, projectId, instanceId }) => {
+    localStorage.setItem(mapKey, JSON.stringify({ [projectId]: { profileId: "buffered", profileInstanceId: instanceId } }));
+  }, { mapKey: PROJECT_PROFILE_MAP_STORAGE_KEY, projectId: fixture().projectId, instanceId });
   await page.goto("/");
   await waitForHydration(page);
   await importProject(page, fixture(), PROJECT_NAME);
@@ -49,7 +55,7 @@ test("each inserted prompt warns independently, dismisses across navigation, and
   const firstCard = page.locator(`[data-template-use-id="${firstId}"]`);
   await expect(firstCard).toContainText("This prompt recommends triage-model. You’re using buffered-test-model.");
   await expect(modelField(page)).toHaveValue("buffered-test-model");
-  await expect(page.locator(".run-readiness-slot")).not.toContainText("recommends another model");
+  await expect(page.locator(".run-readiness-slot")).toHaveCount(0);
   await firstCard.getByRole("button", { name: "Dismiss", exact: true }).click();
   await expect(firstCard.getByRole("status")).toHaveCount(0);
   const second = await insert(page);
@@ -112,7 +118,7 @@ test("connection-only differences are described separately from model mismatches
   await expect(card).toContainText("Recommended connection: Other connection");
   await expect(card).not.toContainText("This prompt recommends");
   await expect(card.getByRole("button", { name: "Dismiss", exact: true })).toHaveCount(0);
-  await expect(page.locator(".run-readiness-slot")).not.toContainText("recommends another model");
+  await expect(page.locator(".run-readiness-slot")).toHaveCount(0);
 });
 
 test("a narrow composer keeps the model warning and its actions within the viewport", async ({ page }, testInfo) => {
