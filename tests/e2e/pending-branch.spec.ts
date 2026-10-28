@@ -5,6 +5,7 @@ import { createProjectFile } from "../../packages/core/src/project";
 import {
   BUFFERED_FIXTURE_ENDPOINT,
   importProject,
+  openMode,
   primaryAction,
   seedProfile,
   waitForHydration,
@@ -46,6 +47,32 @@ async function editFromFirstMessage(page: Page): Promise<string> {
   const parentRunId = await chip.locator("code").first().innerText();
   expect(parentRunId).toMatch(/^run_/);
   return parentRunId;
+}
+
+for (const width of [1440, 390]) {
+  test(`editing from Runs opens the pending branch in Compose at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await runOriginal(page);
+    await openMode(page, "Runs");
+    const modes = page.getByRole("navigation", { name: "Application mode" });
+    await expect(modes.getByRole("button", { name: "Runs", exact: true }))
+      .toHaveAttribute("aria-current", "page");
+    await page.getByLabel("Run transcript")
+      .getByRole("button", { name: "Edit from here" }).first().click();
+
+    await expect(modes.getByRole("button", { name: "Compose", exact: true }))
+      .toHaveAttribute("aria-current", "page");
+    await expect(pendingBranchChip(page)).toBeVisible();
+    await expect(page.getByLabel("Message 1 content")).toBeVisible();
+    await expect(page.getByLabel("Message 1 content")).toHaveValue("What is 2 + 2?");
+    await expect(page.getByLabel("Message 2 content")).toHaveCount(0);
+
+    // Returning to Runs still shows the complete original transcript.
+    await openMode(page, "Runs");
+    await expect(page.getByLabel("Run transcript")).toContainText(ANSWER);
+    await openMode(page, "Compose");
+    await expect(pendingBranchChip(page)).toBeVisible();
+  });
 }
 
 test("editing from a transcript message branches the next run from it", async ({ page }) => {

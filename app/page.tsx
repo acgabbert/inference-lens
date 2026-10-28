@@ -656,7 +656,9 @@ function HomeContent() {
     },
   });
   function editFromHere(messageId: MessageId): void {
-    if (pendingBranch.editFromHere(messageId)) setWorkbenchView("request");
+    if (!pendingBranch.editFromHere(messageId)) return;
+    setMode("compose");
+    setWorkbenchView("request");
   }
 
   function chooseProfile(profileId: string): void {
