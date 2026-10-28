@@ -1,10 +1,18 @@
 # Shared assets: migration completion review
 
-**Status:** Proposed after the approved [migration-staging foundation](archive/SHARED_ASSETS_MIGRATION_JOURNAL_DESIGN.md),
-October 26, 2026; revised October 27 after review (browser save coordination,
-completion capability ownership, `stale-plan` result, corrupt selections and the
-two partial-recovery/stale-handle decisions). No completion API, manifest writer or candidate activation is
-implemented or approved by this document. App/CLI remain on v15.
+**Status:** Approved October 28, 2026 after review of the three open decisions:
+the candidate-disposition table (exact bytes establish `present`; existing
+selections win; nothing is merged or overwritten), pending drafts not blocking the
+shared write, and ordinary-save-handle invalidation on any manifest-write attempt.
+Revised October 27 (browser save coordination, completion capability ownership,
+`stale-plan` result, corrupt selections). Implementation proceeds in the order
+under "Required implementation evidence": core, browser adapter, then native. No
+application caller is approved; App/CLI remain on v15.
+
+**Approval condition.** Pending drafts may coexist with a v16 manifest only while
+completion has no application caller. Add a test or guard asserting that no
+app/CLI code path imports or calls the completion capability, and require
+reconciliation to ship before the integration slice enables it.
 
 ## Decision for review
 
