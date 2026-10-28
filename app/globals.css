@@ -4301,6 +4301,10 @@ textarea {
   color: var(--danger);
 }
 
+.run-failure-state p.run-failure-edited {
+  color: var(--text-muted);
+}
+
 /* Retry and Discard used to be topbar neighbours, one reflex click apart and
    nowhere near the error that decides between them. Here the message is above
    them and only Retry looks like a button. */

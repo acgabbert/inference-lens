@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createRunState } from "../packages/core/src/run-kernel/index.ts";
+import { createResolvedRunInput, createRunState } from "../packages/core/src/run-kernel/index.ts";
 import type { RunState } from "../packages/core/src/run-kernel/index.ts";
 import {
+  composerDiffersFromRun,
+  composerTurnInput,
   executableBinding,
   isRetryableRunState,
   isTerminalRunState,
@@ -158,4 +160,45 @@ test("an MCP draft takes its approval mode from the permission, and asks when no
   assert.deepEqual(approval("automatic"), { mode: "automatic", approved: true, serverLabel: "Local MCP", remoteToolName: "weather" });
   assert.deepEqual(approval("ask"), { mode: "ask", approved: false, serverLabel: "Local MCP", remoteToolName: "weather" });
   assert.deepEqual(approval(undefined), { mode: "ask", approved: false, serverLabel: "Local MCP", remoteToolName: "weather" });
+});
+
+test("the composer differs from a run only when it would send something else", () => {
+  const message = (id: string, text: string) => ({
+    id: id as never,
+    role: "user" as const,
+    content: [{ type: "text" as const, text }],
+  });
+  const request = {
+    provider: "openai-compatible" as const,
+    endpoint: "http://127.0.0.1:8080/v1",
+    model: "qwen3-8b",
+    messages: [message("message_a", "")],
+  };
+  const runInput = createResolvedRunInput(
+    request,
+    { conversationId: "conversation_a" as never, conversationRevisionId: "revision_a" as never },
+    [],
+    [],
+    "drift",
+  );
+  const run = { ...runInput, target: { ...runInput.target, profileId: "profile_local" as never } };
+  const composer = (overrides: Partial<typeof request>) =>
+    composerTurnInput({ ...request, ...overrides }, [], "local");
+
+  assert.equal(composerDiffersFromRun(run, composer({})), false);
+  assert.equal(
+    composerDiffersFromRun(run, composer({ messages: [message("message_regenerated", "")] })),
+    false,
+    "a regenerated message id is not an edit",
+  );
+  assert.equal(
+    composerDiffersFromRun(run, composer({ messages: [message("message_a", "Say hello.")] })),
+    true,
+  );
+  assert.equal(composerDiffersFromRun(run, composer({ model: "qwen3-32b" })), true);
+  assert.equal(
+    composerDiffersFromRun(run, composerTurnInput(request, [], "other")),
+    true,
+    "switching profile changes where the request goes",
+  );
 });
