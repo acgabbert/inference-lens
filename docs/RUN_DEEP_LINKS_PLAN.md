@@ -1,9 +1,13 @@
 # Durable links to saved runs
 
 Status: proposal for review; no feature implementation is included. Inspected
-`main` at `406cb03` on October 27, 2026. The recommendations below are not yet
-accepted implementation contracts. Reconcile integration points with concurrent
-work before implementing, especially project replacement and pending branches.
+`main` at `406cb03` on October 27, 2026. Revised October 28, 2026: the browser
+ships first, and the [one-editor-per-project tab coordination](PROJECT_TAB_COORDINATION_PLAN.md)
+lands separately beforehand. Both decisions came from the user in review; the
+remaining recommendations are not yet accepted implementation contracts.
+Reconcile integration points with concurrent work before implementing,
+especially project replacement, pending branches and the shared-assets Level 2
+integration.
 
 ## Outcome and recommended scope
 
@@ -13,11 +17,17 @@ not already be open. If the app cannot find or access it, the link remains
 pending while the person locates the folder; they do not need to search for the
 run again.
 
-Recommend desktop first, with a shared reference format and a browser adapter.
-Desktop links should launch the installed app without depending on a local web
-server's port. Browser links should open the current deployment and resolve the
-same reference. This ordering is an assumption for review, not a requirement
-inferred from the existing code.
+Ship the browser first, because that is where the app is used today. Browser
+links open the current deployment and resolve the reference there. A later
+desktop adapter can launch the installed app without depending on a local web
+server's port. Everything except host ingress and registry storage is shared,
+so the desktop slice adds an adapter rather than a second implementation (see
+[deferred desktop work](#deferred-desktop-work)).
+
+Browser links require folder access, which only Chromium-based browsers
+(Chrome, Edge) provide. In Firefox and Safari a link explains that opening it
+needs Chrome or Edge; it does not offer a JSON import, which cannot resolve a
+run.
 
 The first complete release covers saved chat and decision runs, including an
 individual saved run produced by an evaluation or repeated experiment. It opens
@@ -43,7 +53,10 @@ the contract later without changing the meaning of a v1 run reference.
 | [`src-tauri/src/lib.rs`](../src-tauri/src/lib.rs) registers native workspace IDs in a process-local map. Browser restoration explicitly skips Tauri. | Native workspace IDs cannot be saved in links; desktop needs persistent local discovery. |
 | [`use-project-workspace.client.ts`](../app/use-project-workspace.client.ts) owns startup restore, autosave, and Save/Discard/Cancel replacement. | Link resolution must join this lifecycle, including invalid drafts, rather than bypass it. |
 | [`use-runs-navigation.client.ts`](../app/run/use-runs-navigation.client.ts) owns saved chat inspection separately from execution. [`page.tsx`](../app/page.tsx) currently opens saved decision traces in Compose. | Generalize saved inspection to `SavedRunTrace`; do not reuse the decision adoption path, which can stop active work. |
-| [`tauri.conf.json`](../src-tauri/tauri.conf.json) and [`Cargo.toml`](../src-tauri/Cargo.toml) have no deep-link integration; bundle targets are `app` and `dmg`. | External desktop entry needs explicit native work and packaged macOS verification. |
+| [`tauri.conf.json`](../src-tauri/tauri.conf.json) and [`Cargo.toml`](../src-tauri/Cargo.toml) have no deep-link integration; bundle targets are `app` and `dmg`. | External desktop entry needs explicit native work and packaged macOS verification; deferred. |
+| [`project-workspace.client.ts`](../app/project-workspace.client.ts) gates folder access on `showDirectoryPicker`. | Browser links resolve only in Chromium-based browsers. |
+| Clicking a link from notes opens a new browser tab. Projects have no cross-tab coordination today; the manifest's expected-content check makes a second tab's autosaves fail. | Depends on the [tab coordination plan](PROJECT_TAB_COORDINATION_PLAN.md), which lands first. |
+| The [shared-assets Level 2 design](SHARED_ASSETS_LEVEL_TWO_DESIGN.md) moves drafts and selections out of `project.json` into `.workbench/`; app and CLI remain on v15. | Links must not depend on manifest drafts or revisions; see [below](#relationship-to-the-shared-assets-plans). |
 
 See also the current [project format](PROJECT_FORMAT.md),
 [trace format](RUN_TRACE_FORMAT.md), and [architecture](ARCHITECTURE.md).
@@ -52,7 +65,10 @@ See also the current [project format](PROJECT_FORMAT.md),
 
 | Decision | Options and tradeoff | Recommendation |
 | --- | --- | --- |
-| External entry | HTTP links depend on a reachable app origin; a custom scheme needs an installed application; a hosted redirect adds infrastructure and privacy considerations. | Desktop `inference-lens://` links first; HTTP fragment links for browser users; no hosted redirect. Confirm the scheme before publishing it. |
+| External entry | HTTP links depend on a reachable app origin; a custom scheme needs an installed application; a hosted redirect adds infrastructure and privacy considerations. | **Decided October 28: browser first.** HTTP fragment links now. A desktop `inference-lens://` scheme comes later; confirm it before publishing it. No hosted redirect. |
+| Browser support | Support folder-less browsers through import, or require folder access. | **Decided:** require Chrome or Edge and say so in the link dialog. |
+| Link opened while another tab owns the project | Open independently, refuse, or hand off to the owning tab. | Hand off to the editor tab when one answers; otherwise inspect in the new tab as a secondary tab. See [browser tabs](#browser-tabs-and-link-handoff). |
+| Link spelling across hosts | Each host accepts only its own outer URL, or accepts either one's payload. | Separate the inner payload from the outer URL so links copied from the browser remain usable when desktop arrives. |
 | Project discovery | Put an absolute path in the link (simple but exposes local structure and breaks on moves), always ask for a folder (smallest change), or remember project locations locally (more lifecycle work). | IDs in the link plus a local registry and Locate folder fallback. |
 | Inspection destination | Reuse Compose adoption (less UI work, but replaces session state), add a separate viewer, or extend the existing Runs inspector. | Extend Runs to inspect both trace kinds; preserve Compose and live execution. |
 | Switching projects | Automatically replace any project, always ask, or switch only when safe. | Auto-open a unique accessible match when no work is at risk; use existing unsaved-work protection, and defer while active/paused execution or a pending branch blocks replacement. |
@@ -60,7 +76,7 @@ See also the current [project format](PROJECT_FORMAT.md),
 | Link eligibility | Allow session links that may break on restart, automatically save when copying, or require durable evidence. | Enable Copy link only for a verified trace in a project folder; saving remains explicit. |
 | Run-file duplicates | Trust directory order, require content hashes in every URL, or use canonical-name precedence and surface ambiguous renamed copies. | Prefer a valid canonical file; otherwise require one matching file. No new content-addressed identity in v1. |
 
-Approval of these choices, particularly the URI, replacement policy, and
+Approval of these choices, particularly the browser URL, replacement policy, handoff and
 read-only decision inspector, is the gate before feature implementation. This
 plan can be reviewed and revised without changing application contracts.
 
@@ -90,9 +106,15 @@ route/static-host rewrite. It still appears in notes, browser history, and the
 page's JavaScript. The desktop formatter never copies a Tauri webview origin.
 
 The core module owns the reference validator, versioned payload codec, and
-parse results (`valid`, `invalid`, `unsupported-version`). Host adapters own
-outer URL validation and formatting: exact native scheme/authority/path, or
-HTTP(S) app location and the recognized fragment. No provider fields belong in
+parse results (`valid`, `invalid`, `unsupported-version`). The payload is the
+part shared by both spellings, `run/v1?project=…&run=…`. Core parses it
+independently of any outer URL. Host adapters own outer URL validation and
+formatting: exact native scheme/authority/path, or HTTP(S) app location and
+the recognized fragment. Each host should also accept the other host's
+spelling through an explicit "Open link…" paste action. That keeps links saved
+in notes during the browser-only period usable once desktop exists, and vice
+versa. The OS will not route an HTTP link to the desktop app, so this is the
+cross-host path. No provider fields belong in
 this contract. Trace kind comes from validated evidence, not from the link.
 
 Use `URL`/`URLSearchParams` for construction and one decoding pass. Reject
@@ -151,7 +173,21 @@ now has another ID, report the mismatch and do not adopt it. If a folder moved,
 Locate folder validates the same project ID and registers its new location;
 old links remain unchanged. Offer removal of stale entries. Clearing browser
 site data, changing origin/port, or moving to another machine loses local
-discovery, not the reference itself.
+discovery, not the reference itself. The browser registry belongs to one
+origin, so `localhost:3000`, `127.0.0.1:3000` and another port each start
+empty and fall back to Locate folder. The link also embeds its origin, so
+document opening the app on one consistent address.
+
+The registry must stay host-local and must not live in the project's
+`.workbench/` directory. Its job is to find that folder in the first place.
+Level 2 workbench records are scoped to one checkout, and clones stay
+separate, so they cannot serve as a cross-folder index.
+
+Chromium persists handles but usually asks again for readwrite permission
+after a browser restart, and the request needs a user action. Clicking a link
+from notes therefore normally means one Reconnect click before resolution,
+unless the user chose "allow on every visit." Wording should present
+Reconnect as the normal path, not as an error.
 
 ## Resolution and UI flow
 
@@ -247,6 +283,62 @@ retry it. Dismissing it or leaving saved-run inspection clears only the app's
 run fragment; Back/Forward re-enters the same resolver and protection flow.
 Do not attempt to encode every UI state or scroll position in v1.
 
+## Browser tabs and link handoff
+
+A link clicked in a notes app opens a new tab, often while another tab already
+has the target project open. This plan relies on the
+[tab coordination plan](PROJECT_TAB_COORDINATION_PLAN.md). There, every tab
+can work, and exactly one editor tab per project writes `project.json`. That
+plan lands first, as its own change.
+
+On resolving a valid reference, the new tab first checks for an editor of the
+target project. It uses `navigator.locks.query` for the editor lock name, then
+posts an `open-run` message with the reference on the coordination channel.
+
+- **The editor acknowledges.** It runs the reference through its own
+  `useRunDeepLink` flow, including its replacement protection. The new tab says
+  "Opened in your other tab" and offers to open it here instead. Browsers do
+  not let one tab focus another, so the wording must tell the person where to
+  look.
+- **No editor answers within a short timeout** (no editor, a frozen tab, or an
+  older build). The new tab resolves the link itself. If an editor exists, the
+  new tab is secondary, which is enough because linked inspection is read-only.
+- **The link never transfers the editor role.** Only the person moves it.
+
+Treat `open-run` payloads as untrusted input and validate them with the core
+codec, as for URLs. Whether a folder permission granted in one tab applies
+immediately in another tab of the same origin must be verified in Chromium,
+not assumed.
+
+## Relationship to the shared-assets plans
+
+The [personal-workbench plan](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md),
+[Level 2 design](SHARED_ASSETS_LEVEL_TWO_DESIGN.md) and
+[migration-completion proposal](SHARED_ASSETS_MIGRATION_COMPLETION_DESIGN.md)
+were reviewed on October 28 for effects on this plan.
+
+- **The reference survives v15 to v16.** Level 2 keeps traces outside both
+  `project.json` and `.workbench/`, and links identify only project ID and run
+  ID. Never add a revision, draft, selection or workbench record ID to
+  `RunReferenceV1`. Those become personal or change location under Level 2.
+- **Read-only inspection matches Level 2's goal.** "Scratch runs leave shared
+  files byte-identical." Opening a linked run must write nothing to the
+  manifest or to workbench records.
+- **Replacement protection changes later.** Under v15, the Save/Discard/Cancel
+  flow guards drafts that live in the manifest. Under Level 2, those drafts
+  become recoverable personal records, so switching projects for a link puts
+  less at risk. Implement against v15 now, and leave the guard behind the
+  project owner's adoption contract so Level 2 can relax it there.
+- **Stale handles.** Migration completion invalidates a workspace's save
+  handle after an attempted manifest write. A link that targets the current
+  workspace after a migration must reopen through the project owner, not reuse
+  that handle.
+- **Locks.** The tab plan reuses the per-project write scope that workbench
+  writes and the migration-completion proposal already rely on. Run links add
+  only a message on its channel, not another lock.
+- **Missing traces.** The Level 1 Git policy excludes traces, as noted under
+  missing-trace recovery.
+
 ## Ownership and host integration
 
 | Owner | Proposed responsibility/contract |
@@ -257,12 +349,21 @@ Do not attempt to encode every UI state or scroll position in v1.
 | `app/run/use-run-deep-link.client.ts` (new) | Pending intent, resolver state, async cancellation and recovery commands; consumes host ingress and workspace/inspection contracts. |
 | `use-runs-navigation.client.ts` | Generalize inspection from `RunTrace` to the discriminated `SavedRunTrace`; accept a resolved reference, actual filename, opaque workspace and generation. Invalidate on workspace changes even when project IDs match. |
 | Saved evidence components | Reuse `RunEvidenceDetail` for chat; add a read-only decision evidence composition using existing result/diagnostic renderers, without `adoptTrace`. Copy actions consume verified location context. |
-| Host link adapters | Browser location/history and native URL ingress/clipboard. Both feed the same reference resolver. |
+| Host link adapters | Browser location/history, clipboard and tab handoff now. Native URL ingress and clipboard later. All feed the same reference resolver. |
 | `app/page.tsx` | Compose owners and supply genuine cross-feature adapters, such as replacement blockers and mode selection. Do not add the parser, registry, resolver effects or filesystem mutation workflow here. |
 
 The existing decision Compose/import workflow can remain a separate explicit
 action. Read-only decision inspection is a prerequisite for advertising support
 for decision deep links, not a reason to silently substitute Compose adoption.
+
+### Deferred desktop work
+
+Reused unchanged from the browser release: the core codec and payload parser,
+exact run lookup, the read-only inspector for both trace kinds,
+`useRunDeepLink` and its recovery UI, guarded adoption in the project owner,
+the registry interface and shared metadata, Copy link eligibility, and most of
+the e2e spec. Desktop adds a Rust-backed registry storage, native ingress and
+focus, scheme registration, and packaged-app verification, as described below.
 
 For desktop, add the Tauri deep-link plugin and static scheme registration,
 with the required capability configuration. Handle both startup URLs and URLs
@@ -297,14 +398,20 @@ app has registered its URI scheme successfully.
    additive migration, candidate inspection, wrong-folder recovery, startup
    arbitration and guarded adoption. Verify each replacement/cancellation path
    before wiring native external entry.
-4. **Complete the desktop notes workflow.** Add native URI ingress, packaged
-   scheme registration, focus behavior and Copy link. Test a copied link from
-   a notes app with Inference Lens closed and already running. This completes
-   the desktop-first release; a parser or same-project demo alone does not.
-5. **Browser adapter and documentation.** Add HTTP fragment ingress/history,
-   browser copy behavior and origin/permission guidance. Document desktop
-   installation, browser-server availability, and local-evidence requirements
-   in user guides. Preserve v1 link examples as compatibility fixtures.
+4. **Complete the browser notes workflow.** Add HTTP fragment ingress and
+   history, Copy link, the Chrome/Edge requirement, and tab handoff. Test a
+   copied link pasted into a notes app, both with no tab open and with an
+   editor tab open. Document browser-server availability, the single-origin
+   advice, Reconnect, and local-evidence requirements. This completes the
+   browser-first release; a parser or same-project demo alone does not.
+5. **Desktop adapter (deferred).** Add native URI ingress, packaged scheme
+   registration, focus behavior, the Rust registry storage, native Copy link,
+   and "Open link…" for browser-era links. Test with Inference Lens closed and
+   already running. Preserve v1 link examples in both spellings as
+   compatibility fixtures.
+
+Prerequisite, delivered separately: the
+[tab coordination plan](PROJECT_TAB_COORDINATION_PLAN.md).
 
 Required coverage for the implementation:
 
@@ -312,9 +419,9 @@ Required coverage for the implementation:
 | --- | --- |
 | Pure/core tests | Both URL spellings round-trip; non-UUID IDs; escaping; duplicate/missing fields; malformed encoding; unsupported versions; traversal attempts; canonical/renamed/mismatched/corrupt/ambiguous files; legacy trace versions and both kinds. |
 | Registry/owner tests | Legacy browser record migration with permission already granted or still needed; failed persistence; stale/moved folders; duplicate project IDs; same-ID workspace replacement; save failure; superseded requests; Strict Mode duplicate effects; cancelled pickers; restore-versus-link race. |
-| New committed `tests/e2e/run-deep-links.spec.ts` | Saved chat and decision evidence on cold load; refresh and same-tab navigation; wrong current project; locate correct/incorrect folder; permission retry; missing trace; filtered/grouped member; clipboard content and failure; no usable profile/credential; Back/Forward; unsaved/invalid draft and pending-branch cancellation; active execution preserved; rapid links cannot show stale evidence. |
+| New committed `tests/e2e/run-deep-links.spec.ts` | Handoff to an editor tab and fallback when none answers (two pages in one context); paste of the other host's spelling; Firefox/Safari message where a runner allows. Saved chat and decision evidence on cold load; refresh and same-tab navigation; wrong current project; locate correct/incorrect folder; permission retry; missing trace; filtered/grouped member; clipboard content and failure; no usable profile/credential; Back/Forward; unsaved/invalid draft and pending-branch cancellation; active execution preserved; rapid links cannot show stale evidence. |
 | Existing browser regression specs | `runs-result-discovery.spec.ts`, `project-replacement-guard.spec.ts`, `pending-branch.spec.ts`, `project-storage-clarity.spec.ts`, and relevant decision/experiment-history specs. Check exact trace IDs/output and preserved drafts; instrument execution requests to prove inspection sends none. |
-| Native tests and packaged smoke checks | Rust registry/URL boundary tests, then installed macOS cold/warm entry, focus, two different links, moved project, cancellation, and no-server operation. Test actual copy/paste/click in the intended notes app. Windows/Linux behavior remains unclaimed until packaging and delivery are exercised there. |
+| Native tests and packaged smoke checks (desktop slice only) | Rust registry/URL boundary tests, then installed macOS cold/warm entry, focus, two different links, moved project, cancellation, and no-server operation. Test actual copy/paste/click in the intended notes app. Windows/Linux behavior remains unclaimed until packaging and delivery are exercised there. |
 
 Use the committed [browser runner and shared drivers](../tests/e2e/README.md),
 including `stubProjectDirectory` and `waitForHydration`; extend their directory
@@ -346,9 +453,11 @@ browser suite are intentionally not run for this plan under the repository's
 docs-only exception. The plan was checked against source boundaries and the
 Tauri documentation; installed-app behavior remains untested.
 
-Review the decision table before implementation. In particular, confirm the
-preferred notes-to-app destination and whether preserving Compose while viewing
-saved decision evidence is the desired UX. The later implementation handoff
+Review the decision table before implementation. Browser-first delivery and
+the Chrome/Edge requirement were decided on October 28. Still open: whether
+preserving Compose while viewing saved decision evidence is the desired UX,
+and the handoff behavior. Revised October 28 after reviewing the shared-assets
+plans; this remains documentation only. The later implementation handoff
 should invite a visual check of the wrong-project/Locate folder flow and the
 read-only evidence layout, in addition to reporting actual automated and
 packaged-app verification.
