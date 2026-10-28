@@ -16,7 +16,9 @@ import {
   createProjectFolder,
   downloadProjectFile,
   openProjectFolder,
+  ProjectManifestConflictError,
   reconnectProjectWorkspace as reconnectStoredProjectWorkspace,
+  reopenProjectWorkspace,
   restoreProjectWorkspace,
   saveProjectWorkspace,
 } from "./project-workspace.client.ts";
@@ -35,6 +37,14 @@ import {
   writeProjectProfileMap,
 } from "./project-profile-map.client.ts";
 import type { ProfileIdentity } from "./project-profile-map.client.ts";
+import {
+  browserProjectTabHost,
+  coordinateProjectTab,
+} from "./project-tab-coordination.client.ts";
+import type {
+  LockAcquisition,
+  ProjectTabCoordinator,
+} from "./project-tab-coordination.client.ts";
 
 export type ProjectErrorKind =
   | "auto-save"
@@ -51,7 +61,36 @@ export type ProjectStorageState =
   | { kind: "unsaved"; displayPath: string; reason: string }
   | { kind: "saving"; displayPath: string }
   | { kind: "saved"; displayPath: string }
-  | { kind: "error"; displayPath: string };
+  | { kind: "error"; displayPath: string }
+  /** Another tab of this app is the project's editor; this one does not save. */
+  | { kind: "secondary"; displayPath: string };
+
+/**
+ * Which tab may write `project.json`. Only the `editor` tab autosaves. Every
+ * tab composes, runs and records traces. `uncoordinated` covers the desktop
+ * app, browsers without Web Locks and projects without a folder, which behave
+ * as they did before tabs were coordinated.
+ */
+export type ProjectTabRole = "editor" | "secondary" | "uncoordinated";
+
+export interface ProjectTabState {
+  role: ProjectTabRole;
+  /** The editor tab saved after this tab loaded the project. */
+  behind: boolean;
+  /** Another tab took over editing before this tab's changes were saved. */
+  lostEdits: boolean;
+  /**
+   * Becoming editor reloads from disk, so a tab with edits is asked first:
+   * because the user asked, or because the editing tab closed.
+   */
+  confirmTakeover?: "requested" | "editor-closed";
+  switching: boolean;
+}
+
+const SECONDARY_SAVE_MESSAGE =
+  "Another tab is editing this project, so this tab does not save it. Choose Edit here to save from this tab.";
+const PEER_CONFLICT_MESSAGE =
+  "Another Inference Lens tab saved this project after this tab loaded it. Reopen the project before saving here.";
 
 const PROJECT_AUTO_SAVE_DELAY_MS = 800;
 const PROJECT_AUTO_SAVE_MAX_WAIT_MS = 5_000;
@@ -68,6 +107,18 @@ export interface ProjectWorkspaceHandleState {
   /** Device-local profile ids keyed by portable connection requirement id. */
   mappedProfileIds: Readonly<Record<string, string>>;
   pendingProjectReplacement?: PendingProjectReplacement;
+  /**
+   * Advances each time a document is adopted from outside the editors, even
+   * the same project reloaded from disk. Owners that keep local editing state
+   * key on it so a reload cannot leave a discarded draft on screen.
+   */
+  projectAdoption: number;
+  /** Absent without a project folder, and while the role is being settled. */
+  projectTab?: ProjectTabState;
+  /** Edit here: reloads from disk at once, or asks first when this tab has edits. */
+  becomeProjectEditor(): void;
+  confirmProjectEditorTakeover(): void;
+  cancelProjectEditorTakeover(): void;
   markDirty(): void;
   setError(message: string | undefined, options?: { clearKind?: boolean }): void;
   clearErrorKind(): void;
@@ -176,6 +227,7 @@ export function useProjectWorkspace(input: {
   const projectErrorKindRef = useRef<ProjectErrorKind | undefined>(undefined);
   const [mappedProfileIds, setMappedProfileIds] = useState<Record<string, string>>({});
   const [projectChangeVersion, setProjectChangeVersion] = useState(0);
+  const [projectAdoption, setProjectAdoption] = useState(0);
   const [pendingProjectReplacement, setPendingProjectReplacement] =
     useState<PendingProjectReplacement>();
   const projectChangeVersionRef = useRef(0);
@@ -191,6 +243,30 @@ export function useProjectWorkspace(input: {
   const profilesRef = useRef(profiles);
   const queuedProjectReplacementRef =
     useRef<QueuedProjectReplacement | null>(null);
+  const [tabRole, setTabRole] = useState<ProjectTabRole | "acquiring">("uncoordinated");
+  const tabRoleRef = useRef<ProjectTabRole | "acquiring">("uncoordinated");
+  const [tabBehind, setTabBehind] = useState(false);
+  const peerSavedRef = useRef(false);
+  const [tabLostEdits, setTabLostEdits] = useState(false);
+  const [confirmTakeover, setConfirmTakeover] =
+    useState<ProjectTabState["confirmTakeover"]>();
+  const [tabSwitching, setTabSwitching] = useState(false);
+  const tabCoordinatorRef = useRef<ProjectTabCoordinator | null>(null);
+  // A reload to become editor replaces the handle but keeps the coordinator.
+  const workspaceCoordinatorsRef =
+    useRef(new WeakMap<ProjectWorkspaceHandle, ProjectTabCoordinator>());
+  const flushFailedRef = useRef(false);
+  // Coordinator events arrive outside React; they act through the latest
+  // render's functions and state rather than the ones they were created with.
+  const latestRef = useRef<{
+    hasUnsavedChanges(): boolean;
+    onTabAcquired(cause: LockAcquisition): void;
+    flushBeforeRelease(): Promise<void>;
+  }>({
+    hasUnsavedChanges: () => false,
+    onTabAcquired: () => undefined,
+    flushBeforeRelease: () => Promise.resolve(),
+  });
 
   useEffect(() => {
     profilesRef.current = profiles;
@@ -218,7 +294,71 @@ export function useProjectWorkspace(input: {
     setProjectErrorKind(kind);
   }
 
-  function setCurrentWorkspace(workspace: ProjectWorkspaceHandle | null): void {
+  function updateTabRole(role: ProjectTabRole | "acquiring"): void {
+    tabRoleRef.current = role;
+    setTabRole(role);
+  }
+
+  /**
+   * Releases the previous project's role and starts settling this one's. A
+   * reload to become editor keeps the role: the tab already holds the lock.
+   */
+  function coordinateTabs(
+    workspace: ProjectWorkspaceHandle | null,
+    projectId: ProjectFile["projectId"] | undefined,
+  ): void {
+    tabCoordinatorRef.current?.close();
+    tabCoordinatorRef.current = null;
+    peerSavedRef.current = false;
+    flushFailedRef.current = false;
+    setTabBehind(false);
+    setTabLostEdits(false);
+    setConfirmTakeover(undefined);
+    setTabSwitching(false);
+    const host = browserProjectTabHost();
+    // A JSON import has no folder and does no folder saves, so it takes no lock.
+    if (!workspace || !projectId || workspace.kind !== "browser-directory" || !host) {
+      updateTabRole("uncoordinated");
+      return;
+    }
+    updateTabRole("acquiring");
+    const coordinator = coordinateProjectTab(projectId, {
+      acquired: (cause) => {
+        if (tabCoordinatorRef.current === coordinator) latestRef.current.onTabAcquired(cause);
+      },
+      secondary: (cause) => {
+        if (tabCoordinatorRef.current !== coordinator) return;
+        updateTabRole("secondary");
+        // The lock this tab held after the editor closed has moved on.
+        setConfirmTakeover((current) => current === "editor-closed" ? undefined : current);
+        if (
+          (cause === "stolen" && latestRef.current.hasUnsavedChanges()) ||
+          (cause === "handed-over" && flushFailedRef.current)
+        ) {
+          setTabLostEdits(true);
+        }
+      },
+      peerSaved: () => {
+        if (tabCoordinatorRef.current !== coordinator) return;
+        peerSavedRef.current = true;
+        setTabBehind(true);
+      },
+      flushBeforeRelease: () => latestRef.current.flushBeforeRelease(),
+    }, host);
+    tabCoordinatorRef.current = coordinator;
+  }
+
+  useEffect(() => () => tabCoordinatorRef.current?.close(), []);
+
+  function setCurrentWorkspace(
+    workspace: ProjectWorkspaceHandle | null,
+    projectId?: ProjectFile["projectId"],
+    options?: { keepTabRole: true },
+  ): void {
+    if (!options?.keepTabRole) coordinateTabs(workspace, projectId);
+    if (workspace && tabCoordinatorRef.current) {
+      workspaceCoordinatorsRef.current.set(workspace, tabCoordinatorRef.current);
+    }
     if (projectWorkspaceRef.current !== workspace) {
       autoSaveWindowStartedAtRef.current = null;
       autoSaveFailureCountRef.current = 0;
@@ -239,9 +379,125 @@ export function useProjectWorkspace(input: {
   ): Promise<void> {
     const write = workspaceSaveTailRef.current
       .catch(() => undefined)
-      .then(() => saveProjectWorkspace(workspace, project));
+      .then(async () => {
+        // Checked when the write runs, not when it was queued: the role can
+        // pass to another tab while a save waits its turn.
+        const coordinator = workspaceCoordinatorsRef.current.get(workspace);
+        if (
+          coordinator &&
+          projectWorkspaceRef.current === workspace &&
+          tabRoleRef.current !== "editor"
+        ) {
+          throw new Error(SECONDARY_SAVE_MESSAGE);
+        }
+        const fence = coordinator
+          ? async () => {
+              if (!(await coordinator.holdsEditorLock())) throw new Error(SECONDARY_SAVE_MESSAGE);
+            }
+          : undefined;
+        try {
+          await saveProjectWorkspace(workspace, project, fence);
+        } catch (error) {
+          throw error instanceof ProjectManifestConflictError && peerSavedRef.current
+            ? new Error(PEER_CONFLICT_MESSAGE)
+            : error;
+        }
+        if (projectWorkspaceRef.current === workspace) tabCoordinatorRef.current?.announceSaved();
+      });
     workspaceSaveTailRef.current = write;
     return write;
+  }
+
+  /**
+   * Becoming editor never adopts this tab's in-memory document as the base for
+   * writing: the editor saved continuously, so it reloads from disk through the
+   * ordinary adoption path.
+   */
+  async function adoptEditorRoleFromDisk(): Promise<void> {
+    const workspace = projectWorkspaceRef.current;
+    const projectId = projectFile?.projectId;
+    if (!workspace || !projectId) return;
+    setConfirmTakeover(undefined);
+    setTabSwitching(true);
+    try {
+      const opened = await reopenProjectWorkspace(workspace, projectId);
+      if (projectWorkspaceRef.current !== workspace) return;
+      applyProjectDocument(opened.project, opened.handle, undefined, { keepTabRole: true });
+      updateTabRole("editor");
+      peerSavedRef.current = false;
+      setTabBehind(false);
+      setTabLostEdits(false);
+    } catch (error) {
+      projectFailure(error, "Could not reload the project to edit it in this tab.");
+    } finally {
+      setTabSwitching(false);
+    }
+  }
+
+  function onTabAcquired(cause: LockAcquisition): void {
+    if (cause === "initial") {
+      updateTabRole("editor");
+    } else if (cause === "vacated" && hasUnsavedChanges) {
+      setConfirmTakeover("editor-closed");
+    } else {
+      void adoptEditorRoleFromDisk();
+    }
+  }
+
+  /** Writes the pending change now rather than after the debounce, for a handover. */
+  async function flushBeforeRelease(): Promise<void> {
+    flushFailedRef.current = false;
+    // A tab holding the lock without having adopted it has nothing to flush.
+    if (tabRoleRef.current !== "editor") return;
+    const workspace = projectWorkspaceRef.current;
+    if (!workspace || !projectDirty) return;
+    const version = projectChangeVersionRef.current;
+    const project = currentProjectDocument();
+    const unsavedReason = getUnsavedDraftReason();
+    try {
+      await writeProjectWorkspace(workspace, project);
+    } catch (error) {
+      flushFailedRef.current = true;
+      throw error;
+    }
+    if (
+      projectWorkspaceRef.current === workspace &&
+      projectChangeVersionRef.current === version
+    ) {
+      setProjectFile(project);
+      setProjectDirty(false);
+      setUnsavedDraftReason(unsavedReason);
+    }
+  }
+
+  useEffect(() => {
+    latestRef.current = {
+      hasUnsavedChanges: () => hasUnsavedChanges,
+      onTabAcquired,
+      flushBeforeRelease,
+    };
+  });
+
+  function becomeProjectEditor(): void {
+    if (tabRoleRef.current !== "secondary" || tabSwitching) return;
+    if (hasUnsavedChanges) {
+      setConfirmTakeover("requested");
+      return;
+    }
+    confirmProjectEditorTakeover();
+  }
+
+  function confirmProjectEditorTakeover(): void {
+    const coordinator = tabCoordinatorRef.current;
+    if (!coordinator) return;
+    setConfirmTakeover(undefined);
+    setTabSwitching(true);
+    // The role arrives as an `acquired` event, which reloads from disk.
+    void coordinator.requestEditor();
+  }
+
+  function cancelProjectEditorTakeover(): void {
+    setConfirmTakeover(undefined);
   }
 
   function markDirty(): void {
@@ -293,7 +549,7 @@ export function useProjectWorkspace(input: {
     const project = currentProjectDocument();
     advanceProjectChangeVersion();
     setProjectFile(project);
-    setCurrentWorkspace(null);
+    setCurrentWorkspace(null, project.projectId);
     const requirementId = project.defaults.target.connectionRequirementId;
     setMappedProfileIds({ [requirementId]: activeProfile.id });
     rememberMappedProfile(project.projectId, requirementId, activeProfile);
@@ -401,6 +657,7 @@ export function useProjectWorkspace(input: {
     project: ProjectFile,
     workspace: ProjectWorkspaceHandle | null,
     profileId?: string,
+    options?: { keepTabRole: true },
   ): void {
     const draft = projectDraft(project);
     const baseRequirementId = project.defaults.target.connectionRequirementId;
@@ -415,8 +672,9 @@ export function useProjectWorkspace(input: {
     if (resolvedProfile) onActivateProfile(resolvedProfile.id);
     hasProjectRef.current = true;
     advanceProjectChangeVersion();
+    setProjectAdoption((current) => current + 1);
     setProjectFile(project);
-    setCurrentWorkspace(workspace);
+    setCurrentWorkspace(workspace, project.projectId, options);
     onApplyDraft(draft, project.projectId);
     onApplyDecisionRequest(project);
     if (profileId && resolvedProfile) {
@@ -475,6 +733,8 @@ export function useProjectWorkspace(input: {
 
   useEffect(() => {
     if (!projectWorkspace || !projectFile || !projectDirty) return;
+    // Only the editor tab schedules writes; a secondary tab's would all fail.
+    if (tabRole !== "editor" && tabRole !== "uncoordinated") return;
 
     const workspace = projectWorkspace;
     const version = projectChangeVersion;
@@ -537,7 +797,7 @@ export function useProjectWorkspace(input: {
     // Each dirtying mutation advances the version. Depending on the render-local
     // function would restart the debounce for unrelated parent renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectChangeVersion, projectDirty, projectFile, projectWorkspace]);
+  }, [projectChangeVersion, projectDirty, projectFile, projectWorkspace, tabRole]);
 
   function projectFailure(error: unknown, fallback: string): void {
     updateProjectErrorKind(undefined);
@@ -797,18 +1057,35 @@ export function useProjectWorkspace(input: {
     projectStorageState: projectFile
       ? !projectWorkspace
         ? { kind: "session" }
-        : projectErrorKind === "auto-save"
-          ? { kind: "error", displayPath: projectWorkspace.displayPath }
-          : projectDirty
-            ? { kind: "saving", displayPath: projectWorkspace.displayPath }
-            : unsavedDraftReason
-              ? { kind: "unsaved", displayPath: projectWorkspace.displayPath, reason: unsavedDraftReason }
-              : { kind: "saved", displayPath: projectWorkspace.displayPath }
+        : tabRole === "secondary"
+          ? { kind: "secondary", displayPath: projectWorkspace.displayPath }
+          : projectErrorKind === "auto-save"
+            ? { kind: "error", displayPath: projectWorkspace.displayPath }
+            : projectDirty
+              ? { kind: "saving", displayPath: projectWorkspace.displayPath }
+              : unsavedDraftReason
+                ? { kind: "unsaved", displayPath: projectWorkspace.displayPath, reason: unsavedDraftReason }
+                : { kind: "saved", displayPath: projectWorkspace.displayPath }
       : undefined,
     projectError,
     projectErrorKind,
     mappedProfileIds,
     pendingProjectReplacement,
+    projectAdoption,
+    ...(projectWorkspace && tabRole !== "acquiring"
+      ? {
+          projectTab: {
+            role: tabRole,
+            behind: tabBehind,
+            lostEdits: tabLostEdits,
+            ...(confirmTakeover ? { confirmTakeover } : {}),
+            switching: tabSwitching,
+          },
+        }
+      : {}),
+    becomeProjectEditor,
+    confirmProjectEditorTakeover,
+    cancelProjectEditorTakeover,
     markDirty,
     setError,
     clearErrorKind,

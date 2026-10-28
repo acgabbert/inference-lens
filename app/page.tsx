@@ -115,6 +115,7 @@ import { templateReadinessInputs, templateRequestPreview } from "./templates/tem
 import { useToasts } from "./notifications/use-toasts.client";
 import { ToastRegion } from "./notifications/toast-region.client";
 import { AppBanner } from "./notifications/app-banner.client";
+import { projectTabBanner } from "./project-tab-banner";
 import { chooseAppBanner } from "./notifications/banner-priority.client";
 import type { AppBanner as AppBannerCandidate } from "./notifications/banner-priority.client";
 
@@ -1095,6 +1096,12 @@ function HomeContent() {
 
   const appBanner = chooseAppBanner([
     projectErrorBanner(),
+    projectTabBanner(project.projectTab, {
+      becomeEditor: project.becomeProjectEditor,
+      confirmTakeover: project.confirmProjectEditorTakeover,
+      cancelTakeover: project.cancelProjectEditorTakeover,
+      exportCopy: project.exportProject,
+    }),
     insecureOriginBanner(),
     ...serverConnectionBanners(connectionProfiles, () => setConnectionDrawerOpen(true)),
   ]);
@@ -1501,6 +1508,7 @@ function HomeContent() {
       />
       ) : mode === "prompts" ? (
         <PromptsMode
+          key={project.projectAdoption}
           {...(projectFile ? { project: projectFile } : {})}
           templates={projectTemplates}
           decision={decision}
@@ -1508,6 +1516,7 @@ function HomeContent() {
           persistence={{
             autoSaveFailed: projectErrorKind === "auto-save",
             folderBacked: Boolean(projectWorkspace),
+            secondary: projectStorageState?.kind === "secondary",
             dirty: projectDirty,
           }}
           navigation={promptNavigation}

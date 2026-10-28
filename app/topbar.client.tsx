@@ -111,7 +111,9 @@ export function Topbar({
           ? "Unfinished edits have not been saved"
           : projectStorageState.kind === "error"
             ? "Save failed — retry from Project"
-            : `Saved to ${projectStorageState.displayPath}`;
+            : projectStorageState.kind === "secondary"
+              ? "Not saved — another tab is editing this project"
+              : `Saved to ${projectStorageState.displayPath}`;
 
   useEffect(() => {
     const topbar = topbarRef.current;

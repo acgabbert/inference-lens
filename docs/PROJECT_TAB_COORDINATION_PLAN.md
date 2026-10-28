@@ -1,8 +1,8 @@
 # One editor per project across browser tabs
 
-Status: proposal for review; no feature implementation is included. Inspected
-`main` at `406cb03` on October 28, 2026, together with the shared-assets
-documents listed below. It is a prerequisite for the browser-first
+Status: decisions approved as recommended and implemented on October 28, 2026
+(see [Implementation notes](#implementation-notes)). Originally inspected
+`main` at `406cb03`, together with the shared-assets documents listed below. It is a prerequisite for the browser-first
 [durable run links](RUN_DEEP_LINKS_PLAN.md) and should land separately, before
 them. Reconcile with the [migration-completion proposal](SHARED_ASSETS_MIGRATION_COMPLETION_DESIGN.md)
 if either is approved first; both change how browser manifest saves are
@@ -141,8 +141,35 @@ Run `project-replacement-guard.spec.ts`, `project-storage-clarity.spec.ts` and
 the suite once before handoff. Stubs cannot prove real tab freezing or
 cross-origin behavior; report those as unverified.
 
-## Plan-only validation
+## Implementation notes
 
-Documentation only; no tests were run under the repository's docs-only
-exception. The claims above were checked against the cited source and the
-shared-assets documents on October 28, 2026.
+This change owns the shared write scope: `coordinateProjectWrites` in
+[`workbench-directory.client.ts`](../app/workbench-directory.client.ts) keeps
+the `inference-lens:workbench:<projectId>` lock name, and browser manifest saves
+now run inside it. Migration completion should reuse it rather than add another.
+
+Implementation added three things the plan did not spell out:
+
+- **A write fence.** A tab thawed after its lock was stolen can run its pending
+  autosave before it processes the steal. Every coordinated manifest write
+  therefore asks the lock manager, inside the write scope, whether this tab
+  still holds the editor lock (`navigator.locks.query` client IDs), and refuses
+  the write if not.
+- **A handover that always steals.** After the editor replies, the requester
+  takes the lock with `steal` rather than waiting for a release, so a tab
+  queued behind the editor cannot slip in between.
+- **An adoption key.** Reloading the same project from disk did not remount the
+  Prompts surface, whose key was the project ID, so a discarded draft stayed on
+  screen. `projectAdoption` advances on every adoption, and the surface keys on
+  it.
+
+Wording: a secondary tab's status reads "Not saved — another tab is editing this
+project", and its banner offers **Edit here**. With unsaved edits, Edit here
+asks before discarding them and offers Export JSON copy first.
+
+Verification: `tests/e2e/project-tab-coordination.spec.ts` (two- and three-tab
+cases over `stubSharedProjectDirectory`) and
+`tests/project-tab-coordination.test.ts` (message validation, role transitions,
+steal and fence against a fake lock manager). Not verified: real background
+freezing (Chromium declines a CDP freeze of a visible page, so the spec mutes
+the editor's channel instead), cross-origin tabs, and the desktop app.

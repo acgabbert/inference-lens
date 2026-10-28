@@ -12,7 +12,7 @@ import type { ProjectFile, ProjectGitPolicy } from "../packages/core/src/project
 import type { WorkbenchFile, WorkbenchMutationResult, WorkbenchStorage } from "../packages/core/src/workbench-store.ts";
 import { nativeMigrationStorage } from "./migration-native.client.ts";
 import type { MigrationStorage } from "../packages/core/src/migration-journal.ts";
-import { browserMigrationStorage, browserWorkbenchStorage } from "./workbench-directory.client.ts";
+import { browserMigrationStorage, browserWorkbenchStorage, coordinateProjectWrites } from "./workbench-directory.client.ts";
 import {
   assertTraceEntryName,
   serializeDecisionRunTrace,
@@ -112,7 +112,12 @@ interface WorkspaceStorage {
   workbench: WorkbenchStorage;
   /** Opt-in byte-preserving migration staging; never replaces the manifest. */
   migration: MigrationStorage;
-  save(contents: string): Promise<void>;
+  /**
+   * `precondition` runs inside the project's write scope before the manifest
+   * is read, so nothing can change the answer before the write lands. It throws
+   * to refuse the write.
+   */
+  save(contents: string, precondition?: () => Promise<void>): Promise<void>;
   saveTrace(runId: string, fileName: string, contents: string): Promise<void>;
   listTraces(): Promise<StoredRunTraceFile[]>;
   readTrace(fileName: string): Promise<string>;
@@ -183,26 +188,38 @@ async function readBrowserManifest(
   return (await fileHandle.getFile()).text();
 }
 
+/**
+ * The manifest on disk no longer matches what this handle last read or wrote.
+ * The storage cannot tell who changed it; the project owner can, because it
+ * hears other tabs of this app announce their saves.
+ */
+export class ProjectManifestConflictError extends Error {
+  constructor() {
+    super(`${PROJECT_FILE_NAME} changed outside Inference Lens. Reopen the project before saving.`);
+    this.name = "ProjectManifestConflictError";
+  }
+}
+
 function browserStorage(
   directory: FileSystemDirectoryHandleLike,
   initialContents: string,
+  projectId: ProjectFile["projectId"],
 ): WorkspaceStorage {
   let lastContents = initialContents;
   return {
     workbench: browserWorkbenchStorage(directory),
     migration: browserMigrationStorage(directory),
-    async save(contents: string): Promise<void> {
-      const fileHandle = await directory.getFileHandle(PROJECT_FILE_NAME);
-      const currentContents = await (await fileHandle.getFile()).text();
-      if (currentContents !== lastContents) {
-        throw new Error(
-          `${PROJECT_FILE_NAME} changed outside Inference Lens. Reopen the project before saving.`,
-        );
-      }
-      const writable = await fileHandle.createWritable();
-      await writable.write(contents);
-      await writable.close();
-      lastContents = contents;
+    save(contents: string, precondition?: () => Promise<void>): Promise<void> {
+      return coordinateProjectWrites(projectId, async () => {
+        await precondition?.();
+        const fileHandle = await directory.getFileHandle(PROJECT_FILE_NAME);
+        const currentContents = await (await fileHandle.getFile()).text();
+        if (currentContents !== lastContents) throw new ProjectManifestConflictError();
+        const writable = await fileHandle.createWritable();
+        await writable.write(contents);
+        await writable.close();
+        lastContents = contents;
+      });
     },
     async saveTrace(
       _runId: string,
@@ -302,16 +319,42 @@ function browserStorage(
   };
 }
 
+/** Kept off the public handle: only a reopen needs the directory again. */
+const browserDirectories = new WeakMap<ProjectWorkspaceHandle, FileSystemDirectoryHandleLike>();
+
 function browserWorkspace(
   directory: FileSystemDirectoryHandleLike,
   contents: string,
+  projectId: ProjectFile["projectId"],
 ): ProjectWorkspaceHandle {
-  return {
+  const handle: ProjectWorkspaceHandle = {
     kind: "browser-directory",
     displayName: directory.name,
     displayPath: directory.name,
-    storage: browserStorage(directory, contents),
+    storage: browserStorage(directory, contents, projectId),
   };
+  browserDirectories.set(handle, directory);
+  return handle;
+}
+
+/**
+ * Reads the manifest again into a fresh handle, for a tab that becomes the
+ * project's editor. The read runs in the project's write scope so it cannot
+ * observe a save half-way, and the old handle is never revived: its expected
+ * contents belong to the document it was opened with.
+ */
+export async function reopenProjectWorkspace(
+  handle: ProjectWorkspaceHandle,
+  projectId: ProjectFile["projectId"],
+): Promise<OpenedProjectWorkspace> {
+  const directory = browserDirectories.get(handle);
+  if (!directory) throw new Error("Only a browser project folder can be reopened.");
+  const contents = await coordinateProjectWrites(projectId, () => readBrowserManifest(directory));
+  const project = parseProjectJson(contents);
+  if (project.projectId !== projectId) {
+    throw new Error(`${directory.name} now holds a different project. Open it again from the Project menu.`);
+  }
+  return { project, handle: browserWorkspace(directory, contents, projectId) };
 }
 
 async function rememberBrowserWorkspace(
@@ -359,7 +402,7 @@ async function openBrowserProjectFolder(): Promise<OpenedProjectWorkspace | null
     await rememberBrowserWorkspace(directory, project);
     return {
       project,
-      handle: browserWorkspace(directory, contents),
+      handle: browserWorkspace(directory, contents, project.projectId),
     };
   } catch (error) {
     const failure = classifyPickerError(error);
@@ -418,7 +461,7 @@ async function createBrowserProjectFolder(
       await rememberBrowserWorkspace(directory, project);
       return {
         project,
-        handle: browserWorkspace(directory, contents),
+        handle: browserWorkspace(directory, contents, project.projectId),
       };
     } catch (error) {
       try {
@@ -505,10 +548,11 @@ async function resumeStoredWorkspace(
   if (load.kind === "forget") {
     return forgetStoredWorkspace(record, load.message);
   }
+  const project = parseProjectJson(load.contents);
   return {
     kind: "resumed",
-    project: parseProjectJson(load.contents),
-    handle: browserWorkspace(record.handle, load.contents),
+    project,
+    handle: browserWorkspace(record.handle, load.contents, project.projectId),
   };
 }
 
@@ -663,8 +707,9 @@ export async function createProjectFolder(
 export async function saveProjectWorkspace(
   handle: ProjectWorkspaceHandle,
   project: ProjectFile,
+  precondition?: () => Promise<void>,
 ): Promise<void> {
-  await handle.storage.save(serializeProjectFile(project));
+  await handle.storage.save(serializeProjectFile(project), precondition);
 }
 
 /** Serializes a saved run by its kind (D22, D29). */

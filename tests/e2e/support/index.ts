@@ -7,7 +7,7 @@
  * every one of them has silently produced a passing test that proved nothing.
  */
 import { expect } from "@playwright/test";
-import type { Locator, Page } from "@playwright/test";
+import type { BrowserContext, Locator, Page } from "@playwright/test";
 
 import { serializeProjectFile } from "../../../packages/core/src/project";
 import type { ProjectFile } from "../../../packages/core/src/project";
@@ -497,6 +497,139 @@ export async function stubProjectDirectory(
       value: async () => root,
     });
   }, fixture);
+}
+
+export interface SharedProjectDirectory {
+  /** Completed writes in commit order, with the page that made each one. */
+  readonly writes: ReadonlyArray<{ page: Page; path: string; contents: string }>;
+  read(path: string): string | undefined;
+}
+
+/**
+ * One directory that every page of a browser context sees, for proving how
+ * tabs coordinate. `stubProjectDirectory` gives each page its own copy, which
+ * cannot show one tab's write reaching another.
+ *
+ * The files live in the test process behind a binding, so `writes` records
+ * which page committed each file. A writable commits on `close`, as the real
+ * API does; an abandoned writable leaves the file unchanged.
+ */
+export async function stubSharedProjectDirectory(
+  context: BrowserContext,
+  fixture: Omit<ProjectDirectoryFixture, "writeError">,
+): Promise<SharedProjectDirectory> {
+  const files = new Map(Object.entries(fixture.files).map(([path, contents]) => [path.split("/").filter(Boolean).join("/"), contents]));
+  const directories = new Set<string>([""]);
+  const parentsOf = (path: string) => {
+    const segments = path.split("/");
+    for (let index = 0; index < segments.length; index += 1) directories.add(segments.slice(0, index).join("/"));
+  };
+  for (const path of files.keys()) parentsOf(path);
+  for (const path of fixture.directories ?? []) parentsOf(`${path.split("/").filter(Boolean).join("/")}/`);
+  const writes: Array<{ page: Page; path: string; contents: string }> = [];
+
+  await context.exposeBinding(
+    "__inferenceLensSharedDirectory",
+    ({ page }, operation: string, path: string, contents?: string) => {
+      switch (operation) {
+        case "kind":
+          return files.has(path) ? "file" : directories.has(path) ? "directory" : null;
+        case "read":
+          return files.get(path) ?? null;
+        case "write":
+          parentsOf(path);
+          files.set(path, contents ?? "");
+          if (contents !== undefined) writes.push({ page, path, contents });
+          return null;
+        case "mkdir":
+          parentsOf(`${path}/`);
+          return null;
+        case "list": {
+          const prefix = path ? `${path}/` : "";
+          const children = new Map<string, "file" | "directory">();
+          for (const candidate of [...files.keys(), ...directories]) {
+            if (!candidate.startsWith(prefix) || candidate === path) continue;
+            const [name, ...rest] = candidate.slice(prefix.length).split("/");
+            if (name) children.set(name, rest.length > 0 || directories.has(prefix + name) ? "directory" : "file");
+          }
+          return [...children].map(([name, kind]) => ({ name, kind }));
+        }
+        case "remove":
+          files.delete(path);
+          for (const candidate of [...files.keys()]) if (candidate.startsWith(`${path}/`)) files.delete(candidate);
+          for (const candidate of [...directories]) if (candidate === path || candidate.startsWith(`${path}/`)) directories.delete(candidate);
+          return null;
+        default:
+          throw new Error(`Unknown shared directory operation ${operation}`);
+      }
+    },
+  );
+
+  await context.addInitScript((name) => {
+    type Call = (operation: string, path: string, contents?: string) => Promise<unknown>;
+    const call = (globalThis as unknown as { __inferenceLensSharedDirectory: Call }).__inferenceLensSharedDirectory;
+    const join = (parent: string, child: string) => (parent ? `${parent}/${child}` : child);
+    const missing = () => new DOMException("Not found", "NotFoundError");
+
+    class SharedFileHandle {
+      readonly kind = "file";
+      constructor(readonly name: string, readonly path: string) {}
+      async getFile() {
+        const contents = await call("read", this.path);
+        if (contents === null) throw missing();
+        return new File([contents as string], this.name, { type: "application/json" });
+      }
+      async createWritable() {
+        let pending = "";
+        return {
+          write: async (value: string) => { pending += value; },
+          close: async () => { await call("write", this.path, pending); },
+        };
+      }
+    }
+    class SharedDirectoryHandle {
+      readonly kind = "directory";
+      constructor(readonly name: string, readonly path: string) {}
+      async queryPermission() { return "granted" as const; }
+      async requestPermission() { return "granted" as const; }
+      async *values() {
+        const children = await call("list", this.path) as Array<{ name: string; kind: string }>;
+        for (const child of children) {
+          const path = join(this.path, child.name);
+          yield child.kind === "file" ? new SharedFileHandle(child.name, path) : new SharedDirectoryHandle(child.name, path);
+        }
+      }
+      async getFileHandle(childName: string, options?: { create?: boolean }) {
+        const path = join(this.path, childName);
+        const kind = await call("kind", path);
+        if (kind === "file") return new SharedFileHandle(childName, path);
+        if (kind === null && options?.create) {
+          await call("write", path);
+          return new SharedFileHandle(childName, path);
+        }
+        throw missing();
+      }
+      async getDirectoryHandle(childName: string, options?: { create?: boolean }) {
+        const path = join(this.path, childName);
+        const kind = await call("kind", path);
+        if (kind === "directory") return new SharedDirectoryHandle(childName, path);
+        if (kind === null && options?.create) {
+          await call("mkdir", path);
+          return new SharedDirectoryHandle(childName, path);
+        }
+        throw missing();
+      }
+      async removeEntry(childName: string) { await call("remove", join(this.path, childName)); }
+    }
+
+    const root = new SharedDirectoryHandle(name, "");
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: async () => root,
+    });
+  }, fixture.name);
+
+  return { writes, read: (path) => files.get(path) };
 }
 
 // Hold the real browser task boundary so loading/cancellation assertions do not
