@@ -26,11 +26,14 @@ import { diffPromptTemplateRevisions } from "../../packages/core/src/prompt-temp
 import { ChatRevisionDiff } from "./chat-revision-diff.client";
 import { hasDuplicatePromptName } from "./prompt-library";
 import {
+  defaultComparedRevisionId,
   describeCompatibleSuiteRevision,
   promptRevisionLabel,
+  promptRevisionPositionLabel,
   summarizeRevisionDiff,
   summarizeRevisionVariableChanges,
 } from "./prompt-revision-label";
+import { RevisionField } from "./revision-rename.client";
 import { PinnedRevisionSelect, RevisionSwitchReview } from "./revision-switch-review.client";
 import { DisclosureChevron } from "../disclosure-chevron.client";
 import { FocusModeToggle, useFocusMode } from "../focus-mode.client";
@@ -84,6 +87,8 @@ export interface ChatPromptTemplateEditorProps {
     recommendedTarget?: PromptTemplateRecommendedTarget,
   ): void;
   onRename(templateId: PromptTemplateId, name: string): boolean;
+  /** Relabels a saved revision; a blank name clears the label. */
+  onRenameRevision?(templateId: PromptTemplateId, revisionId: PromptTemplateRevisionId, name: string): void;
   onArchive(templateId: PromptTemplateId, onArchived?: () => void): void;
   onRestore(templateId: PromptTemplateId): void;
   onInsert(
@@ -133,6 +138,7 @@ export function ChatPromptTemplateEditor({
   onDraftChange,
   onRecommendedTargetChange,
   onRename,
+  onRenameRevision,
   onArchive,
   onRestore,
   onInsert,
@@ -163,9 +169,7 @@ export function ChatPromptTemplateEditor({
   const [comparedRevisionId, setComparedRevisionId] =
     useState<PromptTemplateRevisionId | undefined>(
       selected && initialViewedRevision
-        ? selected.revisions[
-            selected.revisions.indexOf(initialViewedRevision) - 1
-          ]?.id
+        ? defaultComparedRevisionId(selected, initialViewedRevision.id)
         : undefined,
     );
   const [name, setName] = useState(selected?.name ?? "");
@@ -365,9 +369,7 @@ export function ChatPromptTemplateEditor({
     if (!revision) return;
     setViewedRevisionId(revision.id);
     setCandidateSourceRevisionId(undefined);
-    setComparedRevisionId(
-      selected.revisions[selected.revisions.indexOf(revision) - 1]?.id,
-    );
+    setComparedRevisionId(defaultComparedRevisionId(selected, revision.id));
     setDiffOpen(revision.id !== selected.currentRevisionId);
     setMessages(structuredClone(revision.messages));
     setDefaults({ ...revision.variableDefaults });
@@ -451,9 +453,19 @@ export function ChatPromptTemplateEditor({
                   }}
                 />
               </label>
-              <label className="template-revision-field">
-                Revision
+              <RevisionField
+                {...(onRenameRevision && !sessionOwned && !archived && !candidateSourceRevisionId
+                  ? {
+                      rename: {
+                        name: viewedRevision.name ?? "",
+                        fallbackLabel: promptRevisionPositionLabel(selected, viewedRevision.id),
+                        onRename: (next: string) => onRenameRevision(selected.id, viewedRevision.id, next),
+                      },
+                    }
+                  : {})}
+              >
                 <select
+                  aria-label="Revision"
                   disabled={sessionOwned}
                   value={candidateSourceRevisionId ? "draft" : viewedRevision.id}
                   onChange={(event) => event.target.value === "draft"
@@ -473,7 +485,7 @@ export function ChatPromptTemplateEditor({
                     </option>
                   ))}
                 </select>
-              </label>
+              </RevisionField>
               <div className="template-editor-actions">
                 {archived ? (
                   <>
@@ -606,6 +618,9 @@ export function ChatPromptTemplateEditor({
               </div>
             )}
 
+            {/* One scroll region for the editor and its diff, so an open diff
+                in focus mode scrolls with the content instead of squeezing it. */}
+            <div className="template-editor-scroll">
             <div className="template-editor-body">
               <TemplateMessagesEditor
                 messages={messages}
@@ -741,6 +756,11 @@ export function ChatPromptTemplateEditor({
                       ? "Save another revision to compare"
                       : `vs ${promptRevisionLabel(selected, comparedRevision.id)}${revisionDiff ? ` — ${summarizeRevisionDiff(revisionDiff)}` : ""}`}
                   </span>
+                  {comparedRevision && (
+                    <span className="template-revision-diff-action">
+                      {diffOpen ? "Hide diff" : "Show diff"}
+                    </span>
+                  )}
                 </button>
               </div>
               {diffOpen && <>
@@ -765,10 +785,21 @@ export function ChatPromptTemplateEditor({
                 ) : revisionDiff.identical ? (
                   <p className="template-empty">These revisions have identical messages, defaults, and import provenance.</p>
                 ) : (
-                  <ChatRevisionDiff diff={revisionDiff} />
+                  <ChatRevisionDiff
+                    key={`${comparedRevision!.id}:${viewedRevision.id}`}
+                    diff={revisionDiff}
+                  />
                 )}
+                <button
+                  className="text-button template-revision-diff-hide"
+                  type="button"
+                  onClick={() => setDiffOpen(false)}
+                >
+                  Hide diff
+                </button>
               </>}
             </section>}
+            </div>
 
             {!archived && <footer className="template-insert-bar">
               <span className="template-insert-label">Pin into the conversation</span>

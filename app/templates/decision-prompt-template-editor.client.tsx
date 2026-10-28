@@ -21,7 +21,8 @@ import { PaneTabs } from "../workbench-shell.client";
 import type { DecisionTemplateEditorMemoryStore } from "./decision-template-editor-memory.client";
 import { DecisionRevisionDiff } from "./decision-revision-diff.client";
 import { hasDuplicatePromptName } from "./prompt-library";
-import { promptRevisionLabel } from "./prompt-revision-label";
+import { defaultComparedRevisionId, promptRevisionLabel, promptRevisionPositionLabel } from "./prompt-revision-label";
+import { RevisionField } from "./revision-rename.client";
 import { DecisionPromptEvaluationDialog, type DecisionPromptEvaluationActions } from "./decision-prompt-evaluation-dialog.client";
 
 type SaveDecisionTemplate = (
@@ -43,6 +44,8 @@ interface Props extends DecisionPromptEvaluationActions {
   onRecommendedTargetChange(id: PromptTemplateId, target?: PromptTemplateRecommendedTarget): void;
   persistenceStatus: "saving" | "saved" | "session" | "error" | "secondary";
   onRename(id: PromptTemplateId, name: string): boolean;
+  /** Relabels a saved revision; a blank name clears the label. */
+  onRenameRevision?(id: PromptTemplateId, revisionId: PromptTemplateRevisionId, name: string): void;
   onDraftChange?(
     id: PromptTemplateId,
     source: PromptTemplateRevisionId,
@@ -124,8 +127,17 @@ export function DecisionPromptTemplateEditor(props: Props) {
       }}
       onEditHistorical={editHistorical}
       controls={
-        <label className="template-revision-field">
-          Revision
+        <RevisionField
+          {...(props.onRenameRevision && !props.sessionOwned && !template.archivedAt && view !== "draft"
+            ? {
+                rename: {
+                  name: revision.name ?? "",
+                  fallbackLabel: promptRevisionPositionLabel(template, revision.id),
+                  onRename: (next: string) => props.onRenameRevision!(template.id, revision.id, next),
+                },
+              }
+            : {})}
+        >
           <select
             aria-label="Revision"
             disabled={props.sessionOwned}
@@ -143,7 +155,7 @@ export function DecisionPromptTemplateEditor(props: Props) {
               </option>
             ))}
           </select>
-        </label>
+        </RevisionField>
       }
     />
   );
@@ -267,10 +279,7 @@ function DecisionTemplateContent(
     else props.onUse?.(template.id, revision.id);
   }
 
-  const [compareId, setCompareId] = useState(
-    template.revisions[template.revisions.indexOf(revision) - 1]?.id ??
-      template.revisions.find(({ id }) => id !== revision.id)?.id,
-  );
+  const [compareId, setCompareId] = useState(() => defaultComparedRevisionId(template, revision.id));
   const compare = template.revisions.find(({ id }) => id === compareId);
 
   return (

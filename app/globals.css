@@ -310,6 +310,7 @@ textarea,
 button,
 label:not(.file-button),
 label.file-button,
+.template-revision-field-heading,
 select,
 .section-heading,
 .template-insert-label,
@@ -1316,6 +1317,37 @@ output {
   margin-bottom: var(--space-sm);
 }
 
+/* Reads as the header's other labels, with the rename action on the same line
+   so the select below keeps its full width. */
+.template-revision-field {
+  min-width: 0;
+}
+
+.template-revision-field-heading {
+  min-height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  color: var(--text-secondary);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.template-revision-field-heading .text-button {
+  padding-block: 0;
+}
+
+.template-revision-rename-actions {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+/* Matches the select it replaces, so the header does not shift. */
+input.template-revision-rename {
+  height: 32px;
+}
+
 .template-editor-actions {
   display: flex;
   align-items: center;
@@ -1429,9 +1461,23 @@ output {
   padding-block: 0;
 }
 
-.template-editor-focus-mode .template-editor-body {
+/* The editor body and revision diff share one scroll region. In focus mode it
+   is the viewport, so an open diff extends the scroll instead of taking the
+   body's height. */
+.template-editor-scroll {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.template-editor-focus-mode .template-editor-scroll {
   min-height: 0;
   overflow-y: auto;
+}
+
+.template-editor-focus-mode .template-editor-body {
+  flex: 1 0 auto;
   align-items: stretch;
 }
 
@@ -1597,7 +1643,7 @@ output {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  /* In focus mode the body owns the scroll viewport. Give the stacked content
+  /* In focus mode the scroll region is the viewport. Give the stacked content
      row an explicit floor so the variable rail flows below it instead of the
      grid shrinking the editor underneath its overflowing textarea. */
   .template-editor-focus-mode .template-content-editor {
@@ -5084,6 +5130,17 @@ textarea {
   width: 100%;
 }
 
+.template-revision-diff-action {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.template-revision-diff-hide {
+  display: block;
+  margin-top: var(--space-md);
+}
+
 .template-revision-diff-body h4 {
   margin: var(--space-3xs) 0 0;
 }
@@ -5295,6 +5352,26 @@ textarea {
   width: 18px;
   display: inline-block;
   user-select: none;
+}
+
+/* Stands in for a run of unchanged lines; reads as part of the code block. */
+.diff-fold {
+  width: 100%;
+  min-height: 1.6em;
+  padding: 0 var(--space-md) 0 calc(var(--space-md) + 18px);
+  display: block;
+  border: 0;
+  border-block: 1px dashed var(--border-subtle);
+  background: var(--surface-subtle);
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.diff-fold:hover,
+.diff-fold:focus-visible {
+  color: var(--accent);
 }
 
 .diff-absent,

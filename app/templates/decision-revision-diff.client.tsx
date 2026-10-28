@@ -1,23 +1,13 @@
 "use client";
 
 import type { DecisionTemplateRevisionDiff } from "../../packages/core/src/decision-template-revision-diff";
+import { FoldedDiffCode } from "./diff-code.client";
 
 type TextDiff = DecisionTemplateRevisionDiff["state"];
 type QuestionDiff = DecisionTemplateRevisionDiff["questions"][number];
 
 function DiffText({ diff }: { diff: TextDiff }) {
-  return (
-    <pre className="diff-code">
-      {diff.lines.map((line, index) => (
-        <span className={`diff-line ${line.kind}`} key={index}>
-          <span className="diff-gutter" aria-hidden="true">
-            {line.kind === "added" ? "+" : line.kind === "removed" ? "−" : " "}
-          </span>
-          {line.text || " "}
-        </span>
-      ))}
-    </pre>
-  );
+  return <FoldedDiffCode lines={diff.lines} />;
 }
 
 function positionChange(entry: QuestionDiff): string {

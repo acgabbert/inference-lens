@@ -1,6 +1,7 @@
 "use client";
 
 import type { PromptTemplateRevisionDiff } from "../../packages/core/src/prompt-template-revision-diff";
+import { FoldedDiffCode } from "./diff-code.client";
 
 /** Positional message, default, and import-provenance changes between two chat revisions. */
 export function ChatRevisionDiff({ diff }: { diff: PromptTemplateRevisionDiff }) {
@@ -12,7 +13,7 @@ export function ChatRevisionDiff({ diff }: { diff: PromptTemplateRevisionDiff })
       {changedMessages.map((message) => <details className="template-diff-message" key={message.index} open>
         <summary>Message {message.index + 1} · {message.status}{message.roleChanged ? ` · ${message.before!.role} → ${message.after!.role}` : ""}</summary>
         {message.content.truncated && <p className="diff-warning">This message exceeded the 4,000-line limit. Showing a whole-block replacement.</p>}
-        <pre className="diff-code">{message.content.lines.map((line, index) => <span className={`diff-line ${line.kind}`} key={`${line.kind}-${index}`}><span className="diff-gutter" aria-hidden="true">{line.kind === "added" ? "+" : line.kind === "removed" ? "−" : " "}</span><span>{line.text || " "}</span></span>)}</pre>
+        <FoldedDiffCode lines={message.content.lines} />
       </details>)}
     </section>}
     {changedDefaults.length > 0 && <section>

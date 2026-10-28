@@ -276,3 +276,130 @@ test("the prompt header keeps its metadata controls usable beside revision actio
     headerBox!.x + headerBox!.width,
   );
 });
+
+// A long system prompt edited in two places, so the diff has long unchanged
+// stretches between and around the changes.
+function longPromptProject(idSuffix: string) {
+  const rules = Array.from({ length: 30 }, (_, index) => `Rule ${index + 1}: check item ${index + 1}.`);
+  let project = createProjectFile({
+    name: "Long prompt revision fixture",
+    request: {
+      provider: "openai-compatible",
+      endpoint: BUFFERED_FIXTURE_ENDPOINT,
+      model: "buffered-test-model",
+      messages: [{ role: "user", content: "Hello" }],
+    },
+    idSuffix,
+    createdAt: "2026-08-06T12:00:00.000Z",
+  });
+  project = createPromptTemplate(project, {
+    name: "Incident triage",
+    messages: [
+      { role: "system", content: rules.join("\n") },
+      { role: "user", content: "Triage {{incident}}." },
+    ],
+    variableDefaults: { incident: "timeout" },
+    idSuffix: `${idSuffix}-triage`,
+    createdAt: "2026-08-06T12:00:01.000Z",
+  });
+  const firstRevisionId = project.promptTemplates[0]!.currentRevisionId;
+  const edited = [...rules];
+  edited[4] = "Rule 5: CHECK ITEM FIVE.";
+  edited[19] = "Rule 20: check item twenty.";
+  project = appendPromptTemplateRevision(project, {
+    templateId: project.promptTemplates[0]!.id,
+    messages: [
+      { role: "system", content: edited.join("\n") },
+      { role: "user", content: "Triage {{incident}} carefully." },
+    ],
+    variableDefaults: { incident: "latency" },
+    createdAt: "2026-08-06T12:00:02.000Z",
+    idSuffix: `${idSuffix}-triage-2`,
+  });
+  return { project, firstRevisionId, secondRevisionId: project.promptTemplates[0]!.currentRevisionId };
+}
+
+async function openLongPrompt(page: import("@playwright/test").Page, idSuffix: string) {
+  const fixture = longPromptProject(idSuffix);
+  await seedProfile(page, { instanceId: "profile-instance-buffered" });
+  await page.goto("/");
+  await waitForHydration(page);
+  await importProject(page, fixture.project, "Long prompt revision fixture");
+  await openMode(page, "Prompts");
+  return fixture;
+}
+
+test("the first revision compares with the next one instead of reporting nothing to compare", async ({ page }) => {
+  const { firstRevisionId } = await openLongPrompt(page, "first-revision-compare");
+  const editor = page.locator(".template-editor");
+  const diff = editor.getByRole("region", { name: "Revision diff" });
+
+  await editor.locator(".template-revision-field select").selectOption(firstRevisionId);
+  await expect(diff.getByRole("button", { name: /Revision diff/ })).toContainText("vs Revision 2 (current)");
+  await expect(diff.getByLabel("Compare this revision with")).toHaveValue(/template-revision_/);
+  await expect(diff).toContainText("Triage {{incident}} carefully.");
+});
+
+test("long unchanged stretches fold around the changes and expand on demand", async ({ page }) => {
+  await openLongPrompt(page, "diff-folding");
+  const diff = page.locator(".template-editor").getByRole("region", { name: "Revision diff" });
+  await diff.getByRole("button", { name: /Revision diff/ }).click();
+
+  const message = diff.locator(".template-diff-message").first();
+  // Three lines of context either side of each change stay visible.
+  await expect(message).toContainText("Rule 8: check item 8.");
+  await expect(message).toContainText("Rule 17: check item 17.");
+  await expect(message).not.toContainText("Rule 12: check item 12.");
+
+  const fold = message.getByRole("button", { name: "Show 8 unchanged lines" });
+  await fold.click();
+  await expect(message).toContainText("Rule 12: check item 12.");
+  await expect(fold).toHaveCount(0);
+});
+
+test("an open diff in focus mode leaves the editor visible and can be hidden by name", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openLongPrompt(page, "focus-mode-diff");
+  const editor = page.locator(".template-editor");
+  await editor.getByRole("button", { name: "Open prompt editor in focus mode" }).click();
+  const dialog = page.getByRole("dialog", { name: "Prompt editor focus mode" });
+  const diff = dialog.getByRole("region", { name: "Revision diff" });
+  await diff.getByRole("button", { name: /Revision diff/ }).click();
+
+  // The whole message editor stays on screen above the diff; before, the
+  // diff took the dialog's height and squeezed the editor into a sliver.
+  await expect(dialog.getByRole("button", { name: "+ Add message" })).toBeInViewport();
+
+  const hide = diff.getByRole("button", { name: "Hide diff" }).last();
+  await hide.scrollIntoViewIfNeeded();
+  await hide.click();
+  await expect(diff.getByRole("button", { name: /Revision diff/ })).toHaveAttribute("aria-expanded", "false");
+  await expect(diff.getByRole("button", { name: /Show diff/ })).toBeVisible();
+});
+
+test("a saved revision can be renamed and cleared back to its position label", async ({ page }) => {
+  const { firstRevisionId, secondRevisionId } = await openLongPrompt(page, "revision-rename");
+  const editor = page.locator(".template-editor");
+  const revision = editor.locator(".template-revision-field select");
+
+  await editor.getByRole("button", { name: "Rename revision" }).click();
+  await editor.getByLabel("New revision name").fill("Careful wording");
+  await editor.getByLabel("New revision name").press("Enter");
+  await expect(revision.locator("option:checked")).toContainText("Careful wording (current)");
+
+  // Escape abandons an edit without touching the saved name.
+  await editor.getByRole("button", { name: "Rename revision" }).click();
+  await editor.getByLabel("New revision name").fill("Discarded");
+  await editor.getByLabel("New revision name").press("Escape");
+  await expect(revision.locator("option:checked")).toContainText("Careful wording (current)");
+
+  // Other surfaces read the new name, here the diff against an older revision.
+  await revision.selectOption(firstRevisionId);
+  await expect(editor.getByRole("region", { name: "Revision diff" })).toContainText("vs Careful wording (current)");
+
+  await revision.selectOption(secondRevisionId);
+  await editor.getByRole("button", { name: "Rename revision" }).click();
+  await editor.getByLabel("New revision name").fill("");
+  await editor.getByRole("button", { name: "Save name" }).click();
+  await expect(revision.locator("option:checked")).toContainText("Revision 2 (current)");
+});

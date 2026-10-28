@@ -189,6 +189,13 @@ test("archive keeps historical resolution and detach; usage protects noncurrent 
   assert.deepEqual(evaluated.defaults, removed.defaults, "evaluation request creation leaves Compose alone");
 });
 
+test("decision template revisions can be renamed without touching content", async () => {
+  const { renamePromptTemplateRevision } = await import("../packages/core/src/project.ts");
+  const project = parseProjectFile(document());
+  const renamed = renamePromptTemplateRevision(project, "template_decision", "template-revision_old", "Launch");
+  assert.deepEqual(renamed.promptTemplates[0]!.revisions[0], { ...project.promptTemplates[0]!.revisions[0]!, name: "Launch" });
+});
+
 test("decision diffs detect state, type, instructions, question and criterion ordering, and defaults", async () => {
   const { diffDecisionPromptTemplateRevisions: diff } = await import("../packages/core/src/decision-template-revision-diff.ts");
   const before = { id: "template-revision_before" as const, createdAt, decision, variableDefaults: { team: "a", ticket: "b" } };
