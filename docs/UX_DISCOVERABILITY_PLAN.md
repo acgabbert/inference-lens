@@ -1,6 +1,6 @@
 # UX simplification and discoverability plan
 
-**Status:** proposed; this document authorizes no product implementation.\
+**Status:** partially implemented (slice A); remaining proposals require their recorded design gates.\
 **Baseline:** `main` at `309f180`, October 26, 2026; refreshed against `52e789e` (0.6.0), October 28, 2026.\
 **Scope:** composer efficiency, contextual actions, discoverability, clearer persistence language, and less day-to-day clutter.
 
@@ -236,8 +236,20 @@ an assumption that those earlier decisions were implementation mistakes.
 
 ## 5. Actionable empty states and small introductions
 
-**Status, October 28:** unchanged. The Evaluations empty state still reads
-“Open or save a project first” with no button.
+**Status, October 28:** slice A implemented. The Evaluations empty state now
+explains evaluations and offers **Save project to folder…**, or **Download
+project JSON…** when folder access is unavailable. Both reuse the Project
+menu's save routing and preserve the current draft. Success leaves the user
+in Evaluations with no suite created automatically. Cancellation or failure
+keeps the draft and empty state.
+
+`EvaluationsMode` owns the copy and action presentation; the route supplies the
+capability-specific label and existing save callback. The project owner keeps
+all persistence behavior. No replacement, serialization, or provider contract
+changes are needed. `evaluation-project-prerequisite.spec.ts` covers folder
+and JSON success, dialog/picker cancellation, write failure, preserved messages,
+no inference calls, and short desktop layouts in both themes. Its initial red
+run reported the actual missing action list (`[]`).
 
 **Recommendation:** pair a project-required empty state with the appropriate
 existing create/save action. After that prerequisite succeeds, return to the
@@ -470,7 +482,7 @@ creation and import through the single control.
 
 | Slice | Deliverable | Gate |
 | --- | --- | --- |
-| A | ~~Consolidate duplicate tool creation~~ (delivered in #224); add the project-prerequisite CTA. | Confirm labels and existing create/save routing; no new data model. |
+| A | Complete: tool creation consolidated in #224; project-prerequisite CTA added to Evaluations. | Existing folder/JSON save routing; no new data model. |
 | B | Direct model picker and compact settings. | Agree summary content, shared-panel adaptation, and Chat/Decision scope. |
 | C | Tool search and selected-first ordering in the **Attach tool** menu. | Re-scope against #224 first; it may be small or unnecessary. |
 | D | Quieter prompt-use cards and clearer conversion wording. | Agree action placement and focus contract. |
@@ -492,8 +504,8 @@ them.
 
 Ranked by daily friction removed per unit of risk, as of October 28:
 
-1. **A (remaining CTA), H and J.** Presentation only, no new contract; one or
-   two PRs. These remove the most visible clutter from Compose.
+1. **H and J** (A is complete). These remove the most visible clutter from
+   Compose. Confirm H's Decision scope and region naming before implementation.
 2. **I.** Transcript actions; also fixes the nested-button ARIA issue.
 3. **#208, starting with Promote to case.** Every later slice adds or moves
    dialog entry points, so a consistent modal contract first avoids rework.
@@ -508,8 +520,8 @@ Ranked by daily friction removed per unit of risk, as of October 28:
 
 ### Decisions needed
 
-Slices A, J and the **Run history** removal in F need no new contract and can
-ship ahead of the others.
+Slice A is complete. Slice J and the **Run history** removal in F need no new
+contract and can ship ahead of the others.
 
 | Slice | Decision | Recommendation |
 | --- | --- | --- |
@@ -555,7 +567,7 @@ Existing specs to extend or run as relevant starting points:
 | Tools | `tool-attachment.spec.ts`, `tool-definition-authoring.spec.ts`, `tool-registry-ownership.spec.ts`, `mcp-discovery.spec.ts`, `tool-parameter-order.spec.ts` |
 | Prompt cards | `prompt-insertion-handoff.spec.ts`, `template-revision-switch.spec.ts`, `template-detach-preflight.spec.ts`, `saved-prompt-revision-diff.spec.ts` |
 | Run navigation/actions | `runs-result-discovery.spec.ts`, `header-menu-interaction.spec.ts`, `mode-primary-action.spec.ts`, `batch-live-progress.spec.ts` |
-| Empty states/scope | `project-storage-clarity.spec.ts`, `project-replacement-guard.spec.ts`, `system-one-decision-guide.spec.ts` |
+| Empty states/scope | `evaluation-project-prerequisite.spec.ts`, `project-storage-clarity.spec.ts`, `project-replacement-guard.spec.ts`, `system-one-decision-guide.spec.ts` |
 | Search/keyboard | `modal-command-scope.spec.ts`, `mode-navigation.spec.ts`; add dedicated command-search coverage |
 | Composer header (H) | `workbench-composition.spec.ts`, `request-settings.spec.ts`; add a first-message position check using `support/layout.ts` |
 | Transcript and branch (I, J) | `pending-branch.spec.ts`, `response-copy.spec.ts`, `response-view.spec.ts` |
@@ -582,8 +594,8 @@ find history, export the selected run, repeat a request, and locate diagnostics.
 Use observed hesitation to revise placement rather than assuming fewer visible
 buttons automatically means a better interface.
 
-**This planning PR:** documentation only. Review links, diff, and whitespace;
-no new tests or browser run are required. The earlier manual inspection is
+**Original planning review:** documentation only; it required link, diff, and
+whitespace checks rather than new tests or a browser run. The earlier manual inspection is
 limited evidence, not a committed Playwright verification pass. Product
 implementation must supply its own regression and full-suite results. Native
 pickers, screen readers, real provider behavior, and representative populated
