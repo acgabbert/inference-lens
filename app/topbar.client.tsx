@@ -66,8 +66,14 @@ interface TopbarProps {
   onStartEvaluation(): void;
 }
 
+/**
+ * Closes the menu and returns focus to its summary, which then becomes the
+ * opener a dialog launched from the item hands focus back to.
+ */
 function closeContainingMenu(element: HTMLElement): void {
-  element.closest("details")?.removeAttribute("open");
+  const menu = element.closest("details");
+  menu?.removeAttribute("open");
+  menu?.querySelector("summary")?.focus();
 }
 
 /** Application menus and the current run controls. */

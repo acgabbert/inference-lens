@@ -5,6 +5,7 @@ import {
   PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY,
   seedProfile, stubProjectDirectory, waitForHydration,
 } from "./support";
+import { expectModalContract } from "./support/modal";
 
 async function directoryFiles(page: import("@playwright/test").Page, path: string[] = []) {
   return page.evaluate(async (segments) => {
@@ -110,4 +111,18 @@ test("a definitions-only clone opens without evidence and running leaves its man
   expect(files["project.json"]).toBe(manifest);
   expect(files[".gitignore"]).toBe("*\n!/.gitignore\n!/project.json\n");
   await expect(page.locator(".response-pane")).not.toContainText(/NaN|Infinity|undefined/);
+});
+
+test("project creation follows the modal contract", async ({ page }) => {
+  await seedProfile(page);
+  await stubProjectDirectory(page, { name: "Projects", files: {} });
+  await page.goto("/");
+  await waitForHydration(page);
+  const menu = page.getByLabel("Project menu");
+  await menu.click();
+  await expectModalContract(page, {
+    open: page.getByRole("button", { name: "New project folder…", exact: true }),
+    dialog: page.getByRole("dialog", { name: "Create an Inference Lens project" }),
+    restoreTo: menu,
+  });
 });

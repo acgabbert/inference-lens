@@ -64,8 +64,9 @@ project, dark theme, zoom, or native Tauri.
 - The Evaluations empty state still has no next-action button.
 
 Open issues touch the same surfaces: #208 (dialogs differ in Escape, focus
-and scroll lock; **Promote to case** cannot be dismissed with Escape) and #204
-(Decision Inspect cannot scroll on the narrow layout).
+and scroll lock; **Promote to case** cannot be dismissed with Escape; since
+delivered, see section 13) and #204 (Decision Inspect cannot scroll on the
+narrow layout).
 
 ## Design rules
 
@@ -466,10 +467,14 @@ creation and import through the single control.
 
 ## 13. Related work tracked elsewhere
 
-- **Dialog consistency (#208).** Escape, focus trap, initial focus and scroll
-  lock differ across 13 dialogs; **Promote to case** cannot be dismissed with
-  Escape. The issue proposes native `<dialog>`. It ranks high here because
-  every flow in this plan opens one of these dialogs.
+- **Dialog consistency (#208).** Delivered with the shared owner in
+  `app/modal-dialog.client.tsx` (`ModalDialog`, or `useModalDialog` when the
+  dialog element is not a `<section>`), rather than native `<dialog>`. Every
+  modal dialog now gets capture-phase Escape for the topmost modal only, a Tab
+  trap, initial focus, focus restore and a shared scroll lock. Menus that open
+  a dialog return focus to their trigger first, so it becomes the opener.
+  New dialogs use the owner and add an `expectModalContract` test
+  (`tests/e2e/support/modal.ts`) in the spec that opens them.
 - **Decision Inspect scrolling on narrow layouts (#204).**
 - **Evaluation authoring** (review findings 2–5): explicit **Add prompt** /
   **Change pinned revision** / **Replace evaluation input** actions, a
@@ -507,8 +512,8 @@ Ranked by daily friction removed per unit of risk, as of October 28:
 1. **H and J** (A is complete). These remove the most visible clutter from
    Compose. Confirm H's Decision scope and region naming before implementation.
 2. **I.** Transcript actions; also fixes the nested-button ARIA issue.
-3. **#208, starting with Promote to case.** Every later slice adds or moves
-   dialog entry points, so a consistent modal contract first avoids rework.
+3. **#208** (complete). Later slices that add or move a dialog entry point
+   use the shared modal owner.
 4. **B.** The most frequent configuration change becomes one step.
 5. **K.** Keeps recent attempts available for comparison.
 6. **F.** Starting with the redundant **Run history** menu item, then trace

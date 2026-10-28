@@ -27,6 +27,7 @@ import {
   stubProjectDirectory,
   waitForHydration,
 } from "./support";
+import { expectModalContract } from "./support/modal";
 
 /**
  * Cells running at once, as a person watching the batch sees them.
@@ -242,4 +243,24 @@ test("an evaluation runs cells at once, and a comparison names the concurrency i
   await expect(row).toContainText("one at a time");
   await expect(row).toContainText("up to 2 at once");
   await expect(comparison).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
+});
+
+test("the evaluation start dialog follows the modal contract", async ({ page }) => {
+  await openDurableProject(page, runnableProject());
+  await expect(page.locator(".evaluation-editor")).toContainText("Ready to run");
+  await expectModalContract(page, {
+    open: primaryAction(page, "evaluations"),
+    dialog: page.getByRole("dialog", { name: /Start “Topics”/ }),
+  });
+});
+
+test("the repeat dialog follows the modal contract", async ({ page }) => {
+  await seedProfile(page, { favoriteModels: ["buffered-test-model"] });
+  await page.goto("/");
+  await waitForHydration(page);
+  await page.getByLabel("Message 1 content").fill("Repeat this request");
+  await expectModalContract(page, {
+    open: page.getByRole("button", { name: "Repeat…" }),
+    dialog: page.getByRole("dialog", { name: "Run this frozen request repeatedly" }),
+  });
 });

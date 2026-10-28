@@ -11,6 +11,7 @@ import {
   seedProfile,
   waitForHydration,
 } from "./support";
+import { expectModalContract } from "./support/modal";
 
 const PROJECT_NAME = "Saved prompt picker fixture";
 
@@ -232,4 +233,14 @@ test("an empty library offers the way to Prompts instead of a search", async ({ 
     "aria-current",
     "page",
   );
+});
+
+test("the full insertion dialog follows the modal contract and returns focus to the trigger", async ({ page }) => {
+  await trigger(page).click();
+  await expectModalContract(page, {
+    open: page.getByRole("button", { name: "More options…" }),
+    dialog: page.getByRole("dialog", { name: "Insert saved prompt" }),
+    restoreTo: trigger(page),
+  });
+  await expect(items(page)).toHaveCount(1);
 });

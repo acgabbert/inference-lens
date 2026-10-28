@@ -12,6 +12,7 @@ import {
   seedProfile,
   waitForHydration,
 } from "./support";
+import { expectModalContract } from "./support/modal";
 
 const PROJECT_NAME = "Template revision switch fixture";
 
@@ -93,4 +94,22 @@ test("Compose switches a pinned prompt between named revisions after a summarize
   await expect(pinnedRevision.locator("option:checked")).toHaveText("Revision 1");
   await expect(variable("topic")).toHaveValue("database rollback");
   await expect(variable("audience")).toHaveValue("");
+});
+
+test("the revision switch review follows the modal contract and returns focus to the revision picker", async ({ page }) => {
+  await seedProfile(page);
+  await page.goto("/");
+  await waitForHydration(page);
+  await importProject(page, templateWithNewerRevision(), PROJECT_NAME);
+
+  const pinnedRevision = page.locator(".template-use-card").getByLabel("Pinned revision");
+  await expectModalContract(page, {
+    open: async () => {
+      await pinnedRevision.focus();
+      await pinnedRevision.selectOption({ label: "Careful pass (current)" });
+    },
+    dialog: page.getByRole("dialog", { name: 'Switch "Incident prompt"' }),
+    restoreTo: pinnedRevision,
+  });
+  await expect(pinnedRevision.locator("option:checked")).toHaveText("Revision 1");
 });

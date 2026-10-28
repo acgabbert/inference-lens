@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
 import { openAttachToolMenu, seedProfile, waitForHydration } from "./support";
+import { expectModalContract } from "./support/modal";
 
 /**
  * Every route a tool takes into a request starts from one "Attach tool" menu
@@ -141,4 +142,26 @@ test("an MCP tool whose name a detached project tool holds reads as in use, not 
   const tool = panel.getByRole("article").filter({ hasText: "Look up a record" });
   await expect(tool).toContainText("Name in use");
   await expect(tool).not.toContainText("Already attached");
+});
+
+test("the local library and the delete confirmation over it follow the modal contract", async ({ page }) => {
+  await openTools(page);
+  await openAttachToolMenu(page);
+  const library = page.getByRole("dialog", { name: "Local tool library" });
+  await expectModalContract(page, {
+    open: page.getByRole("group", { name: "Attach a tool" }).getByRole("button", { name: "From local library…" }),
+    dialog: library,
+    restoreTo: page.getByRole("button", { name: "Attach tool", exact: true }),
+  });
+
+  await openAttachToolMenu(page);
+  await page.getByRole("button", { name: "From local library…" }).click();
+  await library.getByRole("button", { name: "+ New library tool" }).click();
+  await library.getByLabel("Function name", { exact: true }).fill("lookup_account");
+  await library.getByRole("button", { name: "Save", exact: true }).click();
+  await expectModalContract(page, {
+    open: library.getByRole("button", { name: "Delete", exact: true }),
+    dialog: page.getByRole("dialog", { name: 'Delete "lookup_account"?' }),
+    remainsOpen: library,
+  });
 });

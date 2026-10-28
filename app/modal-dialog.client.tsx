@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 /**
  * The shared modal contract: capture-phase Escape that only the topmost modal
@@ -12,6 +12,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 const FOCUSABLE = [
   "a[href]",
   "button:not([disabled])",
+  "details > summary",
   "input:not([disabled]):not([type='hidden'])",
   "select:not([disabled])",
   "textarea:not([disabled])",
@@ -36,7 +37,7 @@ function lockScroll(): () => void {
 
 function focusableWithin(root: HTMLElement): HTMLElement[] {
   return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
-    (element) => element.getClientRects().length > 0,
+    (element) => element.tabIndex >= 0 && element.getClientRects().length > 0,
   );
 }
 
@@ -45,6 +46,12 @@ export function useModalDialog<Element extends HTMLElement>(
   initialFocus?: string,
 ) {
   const dialogRef = useRef<Element>(null);
+  // Read during the first render: by the time effects run, an `autoFocus`
+  // child has already taken focus and the opener is no longer active.
+  const [opener] = useState(() =>
+    typeof document !== "undefined" && document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : undefined);
   const onCloseRef = useRef(onClose);
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -54,7 +61,6 @@ export function useModalDialog<Element extends HTMLElement>(
     const dialog = dialogRef.current;
     if (!dialog) return undefined;
     const token = Symbol("modal");
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
     openModals.push(token);
     const unlockScroll = lockScroll();
 
@@ -104,20 +110,20 @@ export function useModalDialog<Element extends HTMLElement>(
       unlockScroll();
       if (opener?.isConnected) opener.focus({ preventScroll: true });
     };
-  }, [initialFocus]);
+  }, [initialFocus, opener]);
 
   return dialogRef;
 }
 
 export function ModalDialog({
   labelledBy,
+  label,
   className,
   backdropClassName = "confirmation-backdrop",
   initialFocus,
   onClose,
   children,
-}: {
-  labelledBy: string;
+}: ({ labelledBy: string; label?: never } | { label: string; labelledBy?: never }) & {
   className: string;
   backdropClassName?: string;
   /** CSS selector inside the dialog to focus first; defaults to its first focusable element. */
@@ -129,6 +135,7 @@ export function ModalDialog({
   return (
     <div className={backdropClassName} role="presentation">
       <section
+        aria-label={label}
         aria-labelledby={labelledBy}
         aria-modal="true"
         className={className}

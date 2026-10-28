@@ -4,6 +4,7 @@ import { createDecisionPromptTemplate } from "../../packages/core/src/decision-t
 import { updateDecisionRequestDraft } from "../../packages/core/src/decision-request";
 import { createProjectFile, serializeProjectFile, type ProjectFile } from "../../packages/core/src/project";
 import { SYSTEM_ONE_FIXTURE_ORIGIN, openMode, primaryAction, seedProfiles, stubProjectDirectory, waitForHydration } from "./support";
+import { expectModalContract } from "./support/modal";
 
 const capture = JSON.parse(readFileSync(new URL("../fixtures/system-one/llamacpp-all-types.json", import.meta.url), "utf8")).request;
 const endpoint = `${SYSTEM_ONE_FIXTURE_ORIGIN}/llamacpp/v1`;
@@ -179,4 +180,13 @@ test("library evaluation preserves Compose and historical results through review
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await openMode(page, "Compose");
   await expect(compose.getByLabel("Decision input (state and questions)")).toHaveValue('{"state":"Unfinished Compose",');
+});
+
+test("the decision evaluate dialog follows the modal contract", async ({ page }) => {
+  await open(page);
+  await openMode(page, "Prompts");
+  await expectModalContract(page, {
+    open: page.getByRole("button", { name: "Evaluate in a suite…", exact: true }),
+    dialog: page.getByRole("dialog", { name: "Evaluate decision revision" }),
+  });
 });

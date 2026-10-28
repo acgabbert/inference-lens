@@ -70,6 +70,7 @@ export function ToolsPane({
   const [attachError, setAttachError] = useState<string>();
   const [newToolId, setNewToolId] = useState<ToolId>();
   const mcpRef = useRef<HTMLDivElement>(null);
+  const attachTriggerRef = useRef<HTMLButtonElement>(null);
 
   // The panel opens below the project cards, which can be off screen.
   useEffect(() => {
@@ -158,6 +159,7 @@ export function ToolsPane({
             <button
               aria-expanded={menuOpen}
               className="button secondary"
+              ref={attachTriggerRef}
               type="button"
               onClick={() => (menuOpen ? closeMenu() : openMenu())}
             >
@@ -175,7 +177,12 @@ export function ToolsPane({
             <AttachDestinationControl value={destination} onChange={setDestination} />
             <div className="attach-tool-sources">
               <button className="button secondary" type="button" onClick={attachNew}>New definition</button>
-              <button className="button secondary" type="button" onClick={() => { closeMenu(); onOpenLibrary(destination); }}>From local library…</button>
+              <button className="button secondary" type="button" onClick={() => {
+                // The trigger becomes the library's opener, so closing it returns there.
+                attachTriggerRef.current?.focus();
+                closeMenu();
+                onOpenLibrary(destination);
+              }}>From local library…</button>
               <button className="button secondary" type="button" onClick={() => { closeMenu(); setMcpDestination(destination); setMcpOpen(true); }}>From MCP server…</button>
             </div>
             {attachError && <p role="alert">{attachError}</p>}

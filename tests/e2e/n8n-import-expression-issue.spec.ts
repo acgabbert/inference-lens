@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { extractN8nPromptCandidates } from "../../services/api/src/n8n-prompt-extractors.ts";
 import { openMode, seedProfile, waitForHydration } from "./support";
+import { expectModalContract } from "./support/modal";
 
 test("keeps a specific n8n expression issue visible beside the import action", async ({ page }) => {
   const fixtureRoot = path.resolve(
@@ -96,4 +97,19 @@ test("keeps a specific n8n expression issue visible beside the import action", a
   await expect(issue).toBeInViewport();
   await expect(dialog.getByRole("button", { name: "Import resolved snapshot" }))
     .toBeVisible();
+});
+
+test("the n8n import dialog follows the modal contract", async ({ page }) => {
+  await page.route("**/api/integrations/n8n/**", async (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    await route.fulfill({ json: pathname.endsWith("/status") ? { state: "configured" } : { workflows: [] } });
+  });
+  await seedProfile(page);
+  await page.goto("/");
+  await waitForHydration(page);
+  await openMode(page, "Prompts");
+  await expectModalContract(page, {
+    open: page.getByRole("button", { name: "Import prompt from n8n…" }),
+    dialog: page.getByRole("dialog", { name: "Import from n8n" }),
+  });
 });
