@@ -229,13 +229,16 @@ test("the extracted composer keeps pending-branch and template-error text in the
         parentRunId: "run_parent",
         branchMessageId: "message_1",
         parentTraceNeedsSaving: true,
+        label: { runTitle: "Fixture question", messageOrdinal: 2, role: "user" },
       },
       requestPreview: { error: "The template variable topic is missing." },
     }),
   );
 
   assert.match(html, /Template needs a value/);
-  assert.match(html, /Branching from run/);
+  assert.match(html, /Branching from \u201cFixture question\u201d at Message 2 · user\./);
+  // The IDs are debugging detail, kept off the visible text.
+  assert.doesNotMatch(html.replace(/title="[^"]*"/g, ""), /run_parent|message_1/);
   assert.match(html, /Save trace/);
   assert.match(html, /The template variable topic is missing/);
 });

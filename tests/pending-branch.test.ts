@@ -106,6 +106,8 @@ test("editing from a live message drafts the transcript through it", () => {
     parentConversationRevisionId: state.input?.conversationRevisionId,
     branchMessageId: messageId,
     parentTraceNeedsSaving: false,
+    // Three messages through the assistant's reply, titled by the request.
+    label: { runTitle: "First question", messageOrdinal: 3, role: "assistant" },
   });
   // A clone: editing the draft cannot reach the run's transcript.
   start.messages[0]!.content[0]!.text = "edited";
@@ -165,5 +167,6 @@ test("a saved trace branches after its last message and never needs saving", () 
     parentConversationRevisionId: trace.input.conversationRevisionId,
     branchMessageId: transcript.at(-1)!.message.id,
     parentTraceNeedsSaving: false,
+    label: { runTitle: "First question", messageOrdinal: transcript.length, role: "assistant" },
   });
 });
