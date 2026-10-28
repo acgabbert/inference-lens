@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type {
   ConnectionRequirement,
@@ -42,6 +42,8 @@ import { ModalDialog } from "../modal-dialog.client";
 import { shouldSuggestN8nTemplatePaste } from "./n8n-template-paste";
 import { n8nPasteSuggestionsEnabled, setN8nPasteSuggestionsEnabled } from "./n8n-template-paste-preference.client";
 
+import { RecommendedModelEditor, type PromptModelCatalog } from "./recommended-model-editor.client";
+
 type TemplateRole = "system" | "user" | "assistant";
 
 export interface CompatibleEvaluationSuite {
@@ -55,6 +57,7 @@ export interface ChatPromptTemplateEditorProps {
   /** The whole library, for duplicate-name warnings. */
   templates: readonly PromptTemplate[];
   connectionRequirements: ConnectionRequirement[];
+  modelCatalog?: PromptModelCatalog;
   defaultConnectionRequirementId?: ConnectionRequirement["id"];
   sessionTemplateIds?: ReadonlySet<PromptTemplateId>;
   itemCount: number;
@@ -131,6 +134,7 @@ export function ChatPromptTemplateEditor({
   templates,
   connectionRequirements = [],
   defaultConnectionRequirementId,
+  modelCatalog,
   sessionTemplateIds = new Set(),
   itemCount,
   persistenceStatus = "saved",
@@ -650,56 +654,24 @@ export function ChatPromptTemplateEditor({
               />
 
               <aside className="template-variable-rail">
-                <div className="template-rail-heading">
-                  <span className="eyebrow">Model</span>
-                  <h3>Recommended target</h3>
-                </div>
-                <p className="template-empty">
-                  Optional. It does not create a revision or change a run. Shown
-                  when it differs from the selected run target.
-                </p>
-                <label>
-                  Connection
-                  <select
-                    disabled={readOnly || connectionRequirements.length === 0}
-                    value={recommendedConnectionRequirementId ?? ""}
-                    onChange={(event) => {
-                      const next = event.target.value as ConnectionRequirement["id"];
-                      setRecommendedConnectionRequirementId(next);
-                      onRecommendedTargetChange(
-                        selected.id,
-                        recommendedModel.trim()
-                          ? { connectionRequirementId: next, model: recommendedModel.trim() }
-                          : undefined,
-                      );
-                    }}
-                  >
-                    {connectionRequirements.map((requirement) => (
-                      <option key={requirement.id} value={requirement.id}>
-                        {requirement.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Model ID
-                  <input
-                    aria-label="Recommended model ID"
-                    disabled={readOnly}
-                    placeholder="No recommendation"
-                    value={recommendedModel}
-                    onChange={(event) => {
-                      const next = event.target.value;
-                      setRecommendedModel(next);
-                      onRecommendedTargetChange(
-                        selected.id,
-                        next.trim() && recommendedConnectionRequirementId
-                          ? { connectionRequirementId: recommendedConnectionRequirementId, model: next.trim() }
-                          : undefined,
-                      );
-                    }}
-                  />
-                </label>
+                <RecommendedModelEditor
+                  kind="chat"
+                  connections={connectionRequirements}
+                  connectionId={recommendedConnectionRequirementId}
+                  model={recommendedModel}
+                  disabled={readOnly}
+                  catalog={modelCatalog}
+                  onConnectionChange={(next) => {
+                    setRecommendedConnectionRequirementId(next);
+                    onRecommendedTargetChange(selected.id, recommendedModel.trim()
+                      ? { connectionRequirementId: next, model: recommendedModel.trim() } : undefined);
+                  }}
+                  onModelChange={(next) => {
+                    setRecommendedModel(next);
+                    onRecommendedTargetChange(selected.id, next.trim() && recommendedConnectionRequirementId
+                      ? { connectionRequirementId: recommendedConnectionRequirementId, model: next.trim() } : undefined);
+                  }}
+                />
                 <div className="template-rail-heading">
                   <span className="eyebrow">Variables</span>
                   <h3>Revision defaults</h3>
@@ -1099,6 +1071,7 @@ function TemplateMessagesEditor({
 }
 
 interface TemplateUseCardProps {
+  modelRecommendation?: ReactNode;
   use: PromptTemplateUse;
   template: ChatPromptTemplate;
   diagnostics: ProjectTemplateDiagnostic[];
@@ -1202,6 +1175,7 @@ export function TemplateUseCard(props: TemplateUseCardProps) {
 }
 
 function TemplateUseCardRevision({
+  modelRecommendation,
   use,
   template,
   diagnostics,
@@ -1368,6 +1342,7 @@ function TemplateUseCardRevision({
         </div>
       </header>
 
+      {modelRecommendation}
       {switchTarget && (
         <RevisionSwitchReview
           title={`Switch "${template.name}"`}

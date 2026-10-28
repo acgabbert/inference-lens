@@ -24,6 +24,7 @@ import type { McpConsentsHandle } from "../tools/use-mcp-consents.client";
 import type { ToolAttachmentDestination, ToolAttachmentSource } from "./use-request-draft.client";
 import { StatusChip } from "../notifications/status-chip.client";
 import { PromptInsertionDialog } from "../templates/prompt-insertion-dialog.client";
+import { PromptModelRecommendation } from "../templates/prompt-model-recommendation.client";
 import { SavedPromptPicker } from "../templates/saved-prompt-picker.client";
 import { RequestSettings } from "./request-settings.client";
 import type { RequestSettingsProps } from "./request-settings.client";
@@ -61,7 +62,7 @@ export interface RequestComposerProps {
   commandTools: CommandToolsHandle;
   mcpConsents?: McpConsentsHandle;
   templates: ProjectTemplatesHandle;
-  project:Pick<ProjectFile, "promptTemplates" | "externalImports"> | null;
+  project:Pick<ProjectFile, "promptTemplates" | "externalImports" | "connectionRequirements"> | null;
   settings: RequestSettingsProps & {
     toolsEnabled: boolean;
   };
@@ -394,7 +395,17 @@ export function RequestComposer({
                 if (item.kind === "template-use") {
                   const template = project?.promptTemplates.find(({ id }) => id === item.use.templateId);
                   if (!template || template.kind !== "chat") return null;
+                  const recommendation = template.recommendedTarget;
+                  const connection = project?.connectionRequirements.find(({ id }) => id === recommendation?.connectionRequirementId);
                   return <TemplateUseCard key={item.use.id} use={item.use} template={template}
+                    modelRecommendation={recommendation && <PromptModelRecommendation
+                      recommendedModel={recommendation.model}
+                      selectedModel={settings.model}
+                      connectionName={connection?.name}
+                      dismissed={templates.modelWarnings.isDismissed(item.use.id)}
+                      onDismiss={() => templates.modelWarnings.dismiss(item.use.id)}
+                      onChooseModel={() => { modelRef.current?.scrollIntoView({ block: "center" }); modelRef.current?.focus(); }}
+                    />}
                     diagnostics={templates.templateWorkbench.resolution?.diagnostics.filter(({ templateUseId }) => templateUseId === item.use.id) ?? []}
                     runOverrides={templates.templateRunOverrides[item.use.id] ?? {}}
                     importedFrom={project?.externalImports.find((receipt) => receipt.projection.kind === "prompt-template" && receipt.projection.templateRevisionId === item.use.templateRevisionId)}

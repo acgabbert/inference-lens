@@ -1,5 +1,8 @@
 "use client";
 
+import { useRef } from "react";
+
+import { usePromptModelWarnings } from "../templates/use-prompt-model-warnings.client";
 import { sameProviderTarget } from "../../packages/core/src/provider-protocols";
 import { isTerminalRunState } from "../run/run-session-state.client";
 import type { DecisionInput } from "../../packages/core/src/decision";
@@ -113,6 +116,7 @@ export interface DecisionComposeHandle {
  * workflows stay here rather than in the route.
  */
 export function useDecisionCompose(options: UseDecisionComposeOptions): DecisionComposeHandle {
+  const modelInputRef = useRef<HTMLInputElement>(null);
   const draft = useDecisionDraft({ onEdited: options.onProjectEdited });
   const decisionProject = useDecisionProject({
     draft,
@@ -229,11 +233,15 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
           model: recommendedTarget.model,
           connectionName: recommendedRequirement.name,
           compatibleConnectionNames: compatibleRecommendedProfiles.map(({ name }) => name),
-          matchesSelectedTarget:
-            compatibleRecommendedProfiles.some(({ id }) => id === target.profile?.id) &&
-            target.model.trim() === recommendedTarget.model.trim(),
+          matchesSelectedConnection: compatibleRecommendedProfiles.some(({ id }) => id === target.profile?.id),
         }
       : undefined;
+
+  const modelWarnings = usePromptModelWarnings(options.project?.projectId ?? "session", pinned && active?.kind === "template-use" ? [{
+    id: active.decisionRequestId,
+    recommendation: pinned.recommendedTarget,
+    selectedModel: target.model,
+  }] : []);
 
   function adoptMutation(project: ProjectFile): void {
     options.adoptProjectMutation(project);
@@ -310,6 +318,7 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
           draft={draft}
           locked={session.executing}
           target={target}
+          modelInputRef={modelInputRef}
           onOpenConnections={options.onOpenConnections}
           capture={{
             disabled: session.executing || captureBlocked,
@@ -327,6 +336,14 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
                     overrideNames={pinnedOverrideNames}
                     locked={session.executing}
                     recommendation={recommendation}
+                    selectedModel={target.model}
+                    modelWarningDismissed={modelWarnings.isDismissed(active.decisionRequestId)}
+                    onDismissModelWarning={() => modelWarnings.dismiss(active.decisionRequestId)}
+                    onChooseModel={() => {
+                      if (!modelInputRef.current) { options.onOpenConnections(); return; }
+                      modelInputRef.current.scrollIntoView({ block: "center" });
+                      modelInputRef.current.focus();
+                    }}
                     onDetach={() => mutatePin({ kind: "detach" })}
                     onSelectRevision={(templateRevisionId) => mutatePin({ kind: "retarget", templateRevisionId })}
                     onEdit={editPinnedSource}

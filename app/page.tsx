@@ -1538,6 +1538,13 @@ function HomeContent() {
       />
       ) : mode === "prompts" ? (
         <PromptsMode
+          modelCatalog={{
+            profiles,
+            mappedProfileIds,
+            transport: inferenceTransport,
+            prepareCredentialForProfile: credential.prepareForProfile,
+            updateProfile,
+          }}
           key={project.projectAdoption}
           {...(projectFile ? { project: projectFile } : {})}
           templates={projectTemplates}

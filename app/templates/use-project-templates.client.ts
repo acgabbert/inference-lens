@@ -64,6 +64,7 @@ import {
   templateRunOverridesAfterSave,
   templateRunOverridesAfterUpdate,
 } from "./project-template-policy";
+import { usePromptModelWarnings, type PromptModelWarnings } from "./use-prompt-model-warnings.client";
 import { removeDraftMessage } from "../request/use-request-draft.client";
 
 /** What an external prompt import landed, reported once when it lands. */
@@ -107,6 +108,7 @@ export interface UseProjectTemplatesInput {
 }
 
 export interface ProjectTemplatesHandle {
+  modelWarnings: PromptModelWarnings;
   libraryTemplates: PromptTemplate[];
   decisionEditorMemory: DecisionTemplateEditorMemoryStore;
   createDecisionTemplate(name: string, decision: DecisionInput, defaults?: Record<string, string>): PromptTemplateId;
@@ -195,6 +197,13 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     runOverrides: templateRunOverrides,
     branchParentRevisionId: input.branchParentRevisionId,
   });
+  const modelWarnings = usePromptModelWarnings(input.projectFile?.projectId ?? "session", templateWorkbench.composerItems.flatMap((item) =>
+    item.kind === "template-use" ? [{
+      id: item.use.id,
+      recommendation: input.projectFile?.promptTemplates.find(({ id }) => id === item.use.templateId)?.recommendedTarget,
+      selectedModel: input.model,
+    }] : [],
+  ));
   const activeConnectionRequirement = input.projectFile?.connectionRequirements.find(
     ({ id }) => id === input.projectFile!.defaults.target.connectionRequirementId,
   );
@@ -673,6 +682,7 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     input.onImported({ name: candidate.invocation.name, variableCount: receipt?.projection.kind === "prompt-template" ? receipt.projection.variables.length : 0, template: mode === "reusable-template" });
   }
   return {
+    modelWarnings,
     decisionEditorMemory,
     captureDecisionTemplate: (name, decision, defaults) => createDecisionTemplate(name, decision, defaults, true),
     createDecisionTemplate,

@@ -155,6 +155,7 @@ export function PromptInsertionDialog({
                       </select>
                     </label>}
                 </div>
+                {visibleSelection.recommendedTarget && <p className="prompt-model-summary">Recommended model: {visibleSelection.recommendedTarget.model}</p>}
                 <PromptMessagesPreview messages={revision.messages} />
               </>}
             </section>

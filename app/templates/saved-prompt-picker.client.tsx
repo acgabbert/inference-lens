@@ -192,6 +192,7 @@ export function SavedPromptPicker({
                   >
                     <strong>{template.name}</strong>
                     <span>{describeRow(template)}</span>
+                    {template.recommendedTarget && <span>Recommended model: {template.recommendedTarget.model}</span>}
                   </div>
                 ))}
               </div>

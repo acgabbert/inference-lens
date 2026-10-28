@@ -867,7 +867,7 @@ export function N8nImportModal({
                         />
                         <span>
                           Record the source model as this prompt&rsquo;s
-                          recommended target
+                          recommended model
                         </span>
                       </label>
                       {recommendSourceModel && (

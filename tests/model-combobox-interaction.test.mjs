@@ -323,3 +323,14 @@ test("leaving the field empty restores the model still in effect", async () => {
     await view.close();
   }
 });
+
+test("the model input keeps its accessible name when discovery options open", async () => {
+  const view = await mount({ label: "Recommended model" });
+  try {
+    await view.focus();
+    assert.equal(view.options().length, 3);
+    assert.equal(view.input().getAttribute("aria-label"), "Recommended model");
+  } finally {
+    await view.close();
+  }
+});
