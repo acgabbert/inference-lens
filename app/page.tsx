@@ -1531,6 +1531,10 @@ function HomeContent() {
       ) : mode === "evaluations" ? (
         <EvaluationsMode
           authoring={evaluationAuthoring}
+          projectPrerequisiteAction={{
+            label: folderAccessAvailable ? "Save project to folder…" : "Download project JSON…",
+            onClick: saveOrChooseProjectLocation,
+          }}
           execution={evaluationWorkspace.execution}
           {...(evaluationWorkspace.history ? { history: evaluationWorkspace.history } : {})}
           layout={evaluationWorkspace.layout}
