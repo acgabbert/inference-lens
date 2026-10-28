@@ -148,3 +148,14 @@ for (const key of ["Enter", " "]) {
     ).toBeVisible();
   });
 }
+
+test("a transcript message row still toggles from the keyboard", async ({ page }) => {
+  await runOriginal(page);
+  const transcript = page.getByLabel("Run transcript");
+  await transcript.getByRole("button", { name: "Expand system message" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(transcript.getByRole("button", { name: "Collapse system message" })).toBeFocused();
+  await page.keyboard.press(" ");
+  await expect(transcript.getByRole("button", { name: "Expand system message" })).toBeFocused();
+  await expect(pendingBranchChip(page)).toHaveCount(0);
+});
