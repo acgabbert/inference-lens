@@ -53,6 +53,7 @@ export type SavedRunHistorySummary = RunHistorySummary | DecisionRunHistorySumma
 export interface RunHistorySource {
   fileName: string;
   contents: string;
+  readError?: string;
 }
 
 /**
@@ -197,6 +198,7 @@ export function loadRunHistoryFilesWithStates(
 
   for (const file of files) {
     try {
+      if (file.readError !== undefined) throw new Error(file.readError);
       const saved = parseSavedRunTraceJson(file.contents);
       if (saved.kind === "decision") {
         items.push({

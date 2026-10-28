@@ -58,6 +58,16 @@ Open the app on `0.0.0.0` anyway and it says so, with a link to the equivalent
 `localhost` URL — nothing breaks there, but browsers withhold some web APIs
 from origins they do not trust.
 
+## Open saved run links
+
+The browser resolves [saved run links](RUN_LINKS.md) against local project
+folders selected in Chrome or Edge. No project volume or additional container
+route is needed. Keep the container running and open it on a consistent address
+and port, such as `http://localhost:3000`: links include that address, and each
+origin has its own remembered folder permissions and local registry. After a
+browser restart, Reconnect may be necessary. A link never uploads evidence or
+makes a local trace available on another machine.
+
 ## Connect to a provider
 
 From inside a container, `127.0.0.1` and `localhost` refer to that container,

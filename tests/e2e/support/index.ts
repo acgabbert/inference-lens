@@ -659,3 +659,47 @@ export async function releaseDerivations(page: Page) {
     gate.waiting.splice(0).forEach((resume) => resume());
   });
 }
+
+/** Real origin-private directory handles, so IndexedDB and reloads use browser
+ * structured cloning. This does not simulate permission prompts for host folders.
+ * The picker sequence is consumed across reloads and tabs through a binding.
+ */
+export async function stubPersistentProjectDirectories(
+  context: BrowserContext,
+  fixtures: ProjectDirectoryFixture[],
+  picks = fixtures.map((_, index) => index),
+): Promise<void> {
+  let next = 0;
+  await context.exposeBinding("__inferenceLensDirectoryPick", () => picks[Math.min(next++, picks.length - 1)]);
+  await context.addInitScript((trees) => {
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: async () => {
+        const index = await (globalThis as unknown as { __inferenceLensDirectoryPick(): Promise<number> }).__inferenceLensDirectoryPick();
+        const root = await navigator.storage.getDirectory();
+        const selected = trees[index]!;
+        const directory = await root.getDirectoryHandle(selected.name, { create: true });
+        // Seed once; later opens must see actual writes and persisted evidence.
+        try { await directory.getFileHandle(".fixture-seeded"); }
+        catch {
+          for (const [path, contents] of Object.entries(selected.files)) {
+            const segments = path.split("/");
+            const name = segments.pop()!;
+            let parent = directory;
+            for (const segment of segments) parent = await parent.getDirectoryHandle(segment, { create: true });
+            const file = await parent.getFileHandle(name, { create: true });
+            const writable = await file.createWritable();
+            await writable.write(contents);
+            await writable.close();
+          }
+          for (const path of selected.directories ?? []) {
+            let parent = directory;
+            for (const segment of path.split("/")) parent = await parent.getDirectoryHandle(segment, { create: true });
+          }
+          await directory.getFileHandle(".fixture-seeded", { create: true });
+        }
+        return directory;
+      },
+    });
+  }, fixtures);
+}

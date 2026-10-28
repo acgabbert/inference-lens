@@ -1,5 +1,6 @@
 import type { ToolBinding } from "../../packages/core/src/tool-execution.ts";
 import type { RichInferenceRequest } from "../../packages/core/src/types.ts";
+import type { DecisionRun } from "../../packages/core/src/decision.ts";
 import { stableJsonValue } from "../../packages/core/src/stable-json.ts";
 import {
   createEntityId,
@@ -44,7 +45,7 @@ export type ToolResultDraft = {
   rejectedMcp?: boolean;
 };
 
-export function isTerminalRunState(state: RunState | null): boolean {
+export function isTerminalRunState(state: RunState | DecisionRun | null): boolean {
   return Boolean(
     state && ["completed", "cancelled", "failed"].includes(state.status.kind),
   );

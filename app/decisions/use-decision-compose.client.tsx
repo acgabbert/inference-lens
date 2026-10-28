@@ -1,6 +1,7 @@
 "use client";
 
 import { sameProviderTarget } from "../../packages/core/src/provider-protocols";
+import { isTerminalRunState } from "../run/run-session-state.client";
 import type { DecisionInput } from "../../packages/core/src/decision";
 import { discoverDecisionVariables } from "../../packages/core/src/decision-variables";
 import type { ConfirmationDialogRequest } from "../confirmation-dialog.client";
@@ -29,6 +30,7 @@ import { DECISION_READINESS_SUMMARY_ID, DecisionComposer } from "./decision-comp
 import type { DecisionDraftProblem } from "./decision-draft";
 import { DecisionInspect } from "./decision-inspect.client";
 import { decisionDisplayStatus } from "./decision-result-view";
+import { CopyRunLink } from "../run/copy-run-link.client";
 import { DecisionResponse } from "./decision-response.client";
 import { useDecisionDraft } from "./use-decision-draft.client";
 import { useDecisionProject } from "./use-decision-project.client";
@@ -88,6 +90,7 @@ export interface DecisionComposeHandle {
   /** The same chooser used by the request pane and the contextual header. */
   connection: Pick<DecisionTargetHandle, "profiles" | "profile" | "selectProfile">;
   /** For D30: open a saved or imported decision trace. */
+  replacementBlockedReason?: string;
   adoptTrace(trace: DecisionRunTrace, origin: TraceOrigin): void;
   /** Where a new decision suite comes from, for the Evaluations rail too. */
   suiteSource: {
@@ -345,6 +348,8 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
         />
       ),
       response: (
+        <>
+        {run && <CopyRunLink workspace={session.traceWorkspace} runId={run.runId} saved={session.traceStorage?.kind === "saved"} />}
         <DecisionResponse
           emptyDetail={blockers[0] ? `${blockers[0].location}: ${blockers[0].message}` : "Run the decision to see each answer."}
           executing={session.executing}
@@ -356,6 +361,7 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
           onRetry={retry}
           onSaveTrace={() => void session.exportTrace()}
         />
+        </>
       ),
       inspect: <DecisionInspect run={run} />,
     },
@@ -365,6 +371,7 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
     stop: session.stop,
   };
   return {
+    replacementBlockedReason: run && !isTerminalRunState(run) ? "Finish or stop the current decision run before switching projects." : undefined,
     compose,
     capture,
     useTemplate(project, templateId, revisionId) {

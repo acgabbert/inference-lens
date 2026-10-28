@@ -78,7 +78,7 @@ import type {
 import { prepareWorkbenchRun } from "./run/prepare-workbench-run.client";
 import type { PrepareWorkbenchRunResult } from "./run/prepare-workbench-run.client";
 import { useRunSession } from "./run/use-run-session.client";
-import { composerDiffersFromRun, composerTurnInput, isRetryableRunState } from "./run/run-session-state.client";
+import { composerDiffersFromRun, composerTurnInput, isRetryableRunState, isTerminalRunState } from "./run/run-session-state.client";
 import { RunEvidenceDetail } from "./run/run-evidence-detail.client";
 import {
   batchMemberLabel,
@@ -88,6 +88,10 @@ import {
 import { useResponseView } from "./run/use-response-view.client";
 import { useBatchCompletion } from "./run/use-batch-completion.client";
 import { usePendingBranch } from "./run/use-pending-branch.client";
+import { useRunDeepLink } from "./run/use-run-deep-link.client";
+import { RunLinkControls } from "./run/run-link-recovery.client";
+import { SavedRunEvidence } from "./run/saved-run-evidence.client";
+import { CopyRunLink } from "./run/copy-run-link.client";
 import { useRunsNavigation } from "./run/use-runs-navigation.client";
 import { toolBindingFor } from "../packages/core/src/tool-binding-resolution";
 import { useCommandTools } from "./tools/use-command-tools.client";
@@ -202,8 +206,8 @@ function HomeContent() {
   const [importedRevision, setImportedRevision] = useState(0);
   const [workbenchView, setWorkbenchView] =
     useState<WorkbenchView>("request");
-  // Navigation state, deliberately transient: a reload lands on Compose rather
-  // than reopening onto a project that may no longer hold what was selected.
+  // Ordinary no-link startup lands on Compose. Explicit saved-run links pass
+  // through their resolver before selecting evidence in Runs.
   // Each mode's sub-state lives in the feature hooks above this line, so
   // switching modes and back is lossless for as long as the app is open.
   const [mode, setMode] = useState<AppMode>("compose");
@@ -375,6 +379,7 @@ function HomeContent() {
     mcpApprovalModeFor: mcpConsents.approvalModeFor,
     readTrace: runHistory.readTrace,
     onShowResponse() {
+      runLinks.cancel();
       setWorkbenchView("response");
       // Declared after this hook because it reads `runState`. Safe: the run
       // session calls this only from its run, continue, and retry commands,
@@ -397,7 +402,8 @@ function HomeContent() {
   const responseView = useResponseView(runState);
   const runsNavigation = useRunsNavigation({
     ...(projectFile ? { projectId: projectFile.projectId } : {}),
-    readTrace: runHistory.readTrace,
+    workspace: projectWorkspace,
+    readSavedTrace: runHistory.readSavedTrace,
   });
   const repeatedExperiment = useRepeatedExperimentSession({
     transport: inferenceTransport,
@@ -469,7 +475,7 @@ function HomeContent() {
       : batchActive
         ? { otherActivity: "A batch is running. Wait for it or stop it before running a decision." }
         : {}),
-    onShowResponse() { setWorkbenchView("response"); },
+    onShowResponse() { runLinks.cancel(); setWorkbenchView("response"); },
     onTraceSaved() { setSavedRunVersion((current) => current + 1); },
     onError(message) { project.setError(message, { clearKind: true }); },
     onOpenConnections() { setConnectionDrawerOpen(true); },
@@ -498,6 +504,25 @@ function HomeContent() {
     },
   });
   const decisionExecuting = decision.compose.executing;
+
+  // Run links own ingress, discovery and pending intent. This adapter supplies
+  // only the cross-feature replacement blockers and Runs destination.
+  const runLinks = useRunDeepLink({
+    project,
+    ready: profilesLoaded,
+    blockedReason() {
+      if (runState && !isTerminalRunState(runState)) return "Finish or stop the current chat run before switching projects.";
+      if (decision.replacementBlockedReason) return decision.replacementBlockedReason;
+      if (repeatedExperiment.isRunning || evaluationExecution.isRunning) return "Wait for the batch to finish or stop it before switching projects.";
+      if (pendingBranch.pending) return "Finish or discard the pending branch before switching projects.";
+      return undefined;
+    },
+    showEvidence(evidence, reference, workspace) {
+      runsNavigation.selectResolved(reference.projectId, evidence.fileName, evidence.saved, workspace);
+      setMode("runs");
+    },
+    clearInspection: runsNavigation.clearSelection,
+  });
 
   const selectedProjectToolCount = tools.filter(({ id }) =>
     enabledToolIds.includes(id),
@@ -862,10 +887,12 @@ function HomeContent() {
 
   function branchFromHistoryTrace(trace: RunTrace): void {
     if (!pendingBranch.branchFromTrace(trace)) return;
+    runLinks.cancel();
     setMode("compose");
     setWorkbenchView("request");
   }
   async function openHistoryExperiment(item: ProjectExperimentHistoryItem): Promise<void> {
+    runLinks.cancel();
     const workspace = projectWorkspace;
     if (!workspace) throw new Error("The project folder is no longer open.");
     const opened = await runHistory.readExperiment(item);
@@ -998,6 +1025,7 @@ function HomeContent() {
     if (nextMode === "runs" && !runsNavigation.selection && runState && !activeBatch) {
       runsNavigation.selectCurrent(runState.runId);
     }
+    if (nextMode !== "runs") runLinks.cancel();
     setMode(nextMode);
   }
 
@@ -1152,6 +1180,7 @@ function HomeContent() {
   // renderer via `RunEvidenceDetail`.
   const responseSurface = (
     <section aria-label="Response output" className="result">
+      {runState && <CopyRunLink runId={runState.runId} workspace={runSession.traceWorkspace} saved={traceStorage?.kind === "saved"} />}
       <ResponseOutput
         output={responseView.output}
         reasoning={responseView.reasoning}
@@ -1386,15 +1415,6 @@ function HomeContent() {
     }
   }
 
-  async function openHistoryDecision(fileName: string): Promise<void> {
-    const workspace = projectWorkspace;
-    if (!workspace) return;
-    try {
-      openSavedTrace(await runHistory.readSavedTrace(fileName), { workspace, fileName });
-    } catch (error) {
-      project.setError(error instanceof Error ? error.message : "Could not open the saved decision run.", { clearKind: true });
-    }
-  }
 
   const n8nImportDisabledReason = pendingBranch.pending
     ? "Finish or discard the pending branch before importing a prompt."
@@ -1442,9 +1462,9 @@ function HomeContent() {
         onChooseProfile={chooseProfile}
         onOpenConnections={() => setConnectionDrawerOpen(true)}
         onNewProject={() => setProjectCreationMode("new")}
-        onOpenProject={() => void project.openProjectWorkspace()}
+        onOpenProject={() => { runLinks.cancel(); void project.openProjectWorkspace(); }}
         onSaveProject={saveOrChooseProjectLocation}
-        onImportProject={(event) => void project.importProject(event)}
+        onImportProject={(event) => { runLinks.cancel(); void project.importProject(event); }}
         onExportProject={project.exportProject}
         {...(n8nImportDisabledReason ? { n8nImportDisabledReason } : {})}
         onOpenN8nImport={() => setN8nImportOpen(true)}
@@ -1458,9 +1478,11 @@ function HomeContent() {
           event.target.value = "";
         }}
         onOpenRunHistory={() => changeMode("runs")}
+        {...(!isDesktopRuntime ? { onOpenRunLink: runLinks.showPaste } : {})}
         onStopExperiment={evaluationExecution.isRunning ? evaluationExecution.cancel : repeatedExperiment.cancel}
         onStartEvaluation={evaluationWorkspace.start}
       />
+      <RunLinkControls links={runLinks} />
 
       <AppBanner {...(appBanner ? { selection: appBanner } : {})} />
 
@@ -1622,14 +1644,15 @@ function HomeContent() {
               : {}),
             ...(runsNavigation.selection?.kind === "current-run" && runState?.runId === runsNavigation.selection.runId
               ? { selectedEvidence: responseSurface }
-              : runsNavigation.inspection?.status === "ready" && runsNavigation.inspection.trace
+              : runsNavigation.inspection?.status === "ready" && runsNavigation.inspection.saved
                 ? {
                     selectedEvidence: (
-                      <RunEvidenceDetail
-                        key={runsNavigation.inspection.trace.runId}
-                        trace={runsNavigation.inspection.trace}
-                        eyebrow="Saved evidence"
-                        storage={{ kind: "saved", location: runsNavigation.inspection.selection.fileName }}
+                      <SavedRunEvidence
+                        key={`${project.projectAdoption}:${runsNavigation.inspection.saved.trace.runId}`}
+                        saved={runsNavigation.inspection.saved}
+                        fileName={runsNavigation.inspection.selection.fileName}
+                        workspace={projectWorkspace}
+                        diagnosticsOpen={runsNavigation.inspection.diagnosticsOpen}
                         onBranch={branchFromHistoryTrace}
                         readTrace={runHistory.readTrace}
                         {...(projectFile ? { onPromoteTrace: (trace: RunTrace) => evaluationCaseSource.requestPromotion(trace) } : {})}
@@ -1643,12 +1666,12 @@ function HomeContent() {
               : {}),
             onFilterChange: runsNavigation.setFilter,
             onScrollTopChange: runsNavigation.setScrollTop,
-            onSelectCurrent: runsNavigation.selectCurrent,
-            onSelectCurrentBatch: runsNavigation.selectCurrentBatch,
-            onSelectRun: (item) =>
-              item.summary.kind === "decision"
-                ? void openHistoryDecision(item.fileName)
-                : void runsNavigation.selectSavedRun(item),
+            onSelectCurrent: (runId) => { runLinks.cancel(); runsNavigation.selectCurrent(runId); },
+            onSelectCurrentBatch: () => { runLinks.cancel(); runsNavigation.selectCurrentBatch(); },
+            onSelectRun: (item) => {
+              if (projectFile) runLinks.selectSaved({ version: 1, projectId: projectFile.projectId, runId: item.summary.runId });
+              void runsNavigation.selectSavedRun(item);
+            },
             onSelectExperiment: (item) => {
               openHistoryExperiment(item).catch((error: unknown) => {
                 project.setError(error instanceof Error ? error.message : "Could not open the saved batch.", { clearKind: true });
@@ -1723,6 +1746,8 @@ function HomeContent() {
             ? {
                 detail: {
                   content: (
+                    <>
+                    <CopyRunLink runId={batchMember.trace.runId} workspace={activeBatch?.workspace ?? null} saved={batchMember.storage.kind === "saved"} />
                     <RunEvidenceDetail
                       key={batchMember.trace.runId}
                       trace={batchMember.trace}
@@ -1732,6 +1757,7 @@ function HomeContent() {
                       {...(projectWorkspace ? { readTrace: runHistory.readTrace } : {})}
                       {...(projectFile ? { onPromoteTrace: (trace: RunTrace) => evaluationCaseSource.requestPromotion(trace) } : {})}
                     />
+                    </>
                   ),
                   batchLabel: batchMember.batchLabel,
                   memberLabel: batchMember.memberLabel,

@@ -100,8 +100,7 @@ function decisionMeta(summary: DecisionRunHistorySummary): string {
   ].join(" · ");
 }
 
-/** A saved decision run opens in Decision Compose's inspection state (D22, D30). */
-const DECISION_OPENS_IN_COMPOSE = "Opens in Compose, as a decision";
+const DECISION_EVIDENCE = "Inspect saved decision evidence";
 
 function runTarget(
   model: string,
@@ -302,9 +301,10 @@ export function RunsEvidenceList({
             const summary = item.summary;
             if (summary.kind === "decision") return (
               <button
-                className={itemClass(false)}
+                aria-current={selectedRunId === summary.runId ? "true" : undefined}
+                className={itemClass(selectedRunId === summary.runId)}
                 key={item.fileName}
-                title={`${item.fileName} · ${DECISION_OPENS_IN_COMPOSE}`}
+                title={`${item.fileName} · ${DECISION_EVIDENCE}`}
                 type="button"
                 onClick={() => onSelectRun(item)}
               >
