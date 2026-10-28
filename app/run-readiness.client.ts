@@ -5,7 +5,10 @@
 
 import { sameChatCompletionsTarget } from "../packages/core/src/openai-compatible.ts";
 import { protocolLabel } from "../packages/core/src/provider-protocols.ts";
-import type { ProviderWireProtocol } from "../packages/core/src/run-kernel/types.ts";
+import type {
+  ConversationMessage,
+  ProviderWireProtocol,
+} from "../packages/core/src/run-kernel/types.ts";
 
 export type RunReadinessActionKind =
   | "map-profile"
@@ -13,6 +16,7 @@ export type RunReadinessActionKind =
   | "choose-protocol"
   | "update-project-endpoint"
   | "edit-template"
+  | "edit-message"
   | "review-templates"
   | "review-tools";
 
@@ -36,6 +40,7 @@ export type ReadinessDestination =
       control:
         | "model"
         | "protocol"
+        | "message"
         | "template-use"
         | "template-variable"
         | "tool-manifest";
@@ -118,7 +123,10 @@ export function runEmptyStatePresentation(
             : action?.destination.surface === "connections" &&
                 action.destination.control === "tools-capability"
               ? "Allow tool calling or review attached tools"
-              : readiness.headline;
+              : action?.destination.surface === "request" &&
+                  action.destination.control === "message"
+                ? "Write the user message"
+                : readiness.headline;
   return { headline, detail: readiness.detail, ...(action ? { action } : {}) };
 }
 
@@ -160,6 +168,24 @@ export interface RunReadinessInput {
   templateResolutionError?: string;
   templateIssues: RunReadinessTemplateIssue[];
   templateTargets?: RunReadinessTemplateTarget[];
+  /** The last user message, when it carries no text; see `emptyFinalUserMessageId`. */
+  emptyUserMessageId?: string;
+}
+
+/**
+ * The last user message, when it has nothing but whitespace in it.
+ *
+ * Only the last one: it is the turn the model is being asked to answer, so an
+ * empty one is almost always a prompt not yet written. Providers disagree about
+ * empty content elsewhere in a conversation, and some reject it with a 5xx that
+ * looks retryable, so that stays the provider's call.
+ */
+export function emptyFinalUserMessageId(
+  messages: readonly ConversationMessage[],
+): string | undefined {
+  const last = messages.findLast(({ role }) => role === "user");
+  if (!last) return undefined;
+  return last.content.some(({ text }) => text.trim()) ? undefined : last.id;
 }
 
 function profileLabel(name: string): string {
@@ -212,6 +238,7 @@ export function runReadiness(
     templateResolutionError,
     templateIssues,
     templateTargets = [],
+    emptyUserMessageId,
   } = input;
   const profile = profileLabel(activeProfileName);
 
@@ -428,6 +455,29 @@ export function runReadiness(
           kind: "review-tools",
           label: "Review tools",
           destination: { surface: "request", tab: "tools", control: "tool-manifest" },
+        },
+      ],
+    };
+  }
+
+  if (emptyUserMessageId) {
+    return {
+      blocked: true,
+      headline: "The last user message is empty",
+      detail: "Write the prompt the model should answer, or remove the empty message.",
+      summary: "Write the last user message before running.",
+      facts: [],
+      actions: [
+        {
+          kind: "edit-message",
+          label: "Write the message",
+          destination: {
+            surface: "request",
+            tab: "messages",
+            control: "message",
+            entityId: emptyUserMessageId,
+          },
+          primary: true,
         },
       ],
     };

@@ -8,6 +8,7 @@ import type {
   ToolCall,
   TranscriptEntry,
 } from "../packages/core/src/run-kernel";
+import { CopySourceButton } from "./copy-source-button.client";
 import { MarkdownView } from "./markdown-view.client";
 import { PaneTabs } from "./workbench-shell.client";
 import { ToolCallList, type ToolResultDraft } from "./tool-call-list.client";
@@ -22,6 +23,11 @@ function startsExpanded(role: ConversationMessage["role"]): boolean {
 
 function previewText(message: ConversationMessage): string {
   return message.content.map((part) => part.text).join(" ");
+}
+
+/** The message's text as the model produced it, one blank line between parts. */
+function sourceText(message: ConversationMessage): string {
+  return message.content.map((part) => part.text).join("\n\n");
 }
 
 export type TraceStorageStatus =
@@ -58,6 +64,12 @@ type ResponseOutputProps = {
   onApproveMcp?(callId: string): void;
   onRejectMcp?(callId: string): void;
   onRetry(): void;
+  /**
+   * Set when the composer would now send something other than the failed
+   * attempt. Retry still re-sends the original, so the card leads with the
+   * edited request instead; absent on read-only evidence.
+   */
+  editedRequest?: { disabled: boolean; onRun(): void };
   /**
    * Abandons a failed attempt and returns the composer to idle. Destructive,
    * so it renders on the failure card next to the error that justifies it
@@ -152,13 +164,19 @@ export function TraceStorageNotice({
  * reaches for by reflex, and neither of them next to the error message that
  * explains which one to pick. Retry leads; discarding is offered as a text
  * button, because it throws the attempt away.
+ *
+ * Retry re-sends the failed attempt exactly, which is the wrong reflex once the
+ * request has been edited to fix what failed. Then the edited request leads,
+ * and Retry stays, named for what it sends.
  */
 function RunFailureCard({
   message,
+  editedRequest,
   onRetry,
   onDiscard,
 }: {
   message: string;
+  editedRequest?: { disabled: boolean; onRun(): void };
   onRetry(): void;
   onDiscard(): void;
 }) {
@@ -168,10 +186,26 @@ function RunFailureCard({
       <div>
         <h3>Attempt failed</h3>
         <p>{message}</p>
+        {editedRequest && (
+          <p className="run-failure-edited">
+            The request has changed since this attempt. Retry re-sends the original.
+          </p>
+        )}
         <div className="run-failure-actions">
-          <button className="button primary" type="button" onClick={onRetry}>
-            Retry attempt <span className="shortcut">⌘↵</span>
-          </button>
+          {editedRequest ? (
+            <>
+              <button className="button primary" type="button" disabled={editedRequest.disabled} onClick={editedRequest.onRun}>
+                Run edited request <span className="shortcut">⌘↵</span>
+              </button>
+              <button className="button" type="button" onClick={onRetry}>
+                Retry original request
+              </button>
+            </>
+          ) : (
+            <button className="button primary" type="button" onClick={onRetry}>
+              Retry attempt <span className="shortcut">⌘↵</span>
+            </button>
+          )}
           <button className="text-button" type="button" onClick={onDiscard}>
             Discard failed run
           </button>
@@ -190,7 +224,7 @@ export function ResponseOutput({
   readOnly = false,
   emptyState,
   onMarkdownPreviewChange, onOutputScroll, onJumpToLatest,
-  onToolResultDraftChange, onContinue, onApproveMcp, onRejectMcp, onRetry, onDiscardFailedRun,
+  onToolResultDraftChange, onContinue, onApproveMcp, onRejectMcp, onRetry, editedRequest, onDiscardFailedRun,
   onSaveTrace, onEditFromHere, onEmptyStateAction,
 }: ResponseOutputProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -268,6 +302,9 @@ export function ResponseOutput({
                     {!isOpen && (
                       <span className="transcript-preview">{previewText(message)}</span>
                     )}
+                    {message.role === "assistant" && sourceText(message) && (
+                      <CopySourceButton className="transcript-copy" text={sourceText(message)} />
+                    )}
                     {!readOnly && (
                       <button
                         className="button secondary transcript-edit"
@@ -339,15 +376,15 @@ export function ResponseOutput({
             {runState?.status.kind === "failed" && <div className="waiting-for-answer run-failure-state" role="alert"><span className="failure-glyph" aria-hidden="true">!</span><div><h3>Request failed</h3><p>{runState.status.error.message}</p></div></div>}
           </div>
         ) : <div className="output">
-          {output ? (markdownPreview ? <MarkdownView text={output} /> : <p>{output}</p>)
+          {output ? <>{markdownPreview ? <MarkdownView text={output} /> : <p>{output}</p>}<div className="output-copy"><CopySourceButton text={output} /></div></>
             : reasoning ? <div className="waiting-for-answer" aria-live="polite"><span className="reasoning-dot" aria-hidden="true" /><div><h3>Thinking…</h3><p>Reasoning received. The final answer will appear here.</p></div></div>
             : isRequestActive ? <div className="waiting-for-answer" role="status"><span className="reasoning-dot" aria-hidden="true" /><div><h3>Waiting for response…</h3><p>Request sent. The response will appear here.</p></div></div>
             : awaitingResults ? <div className="waiting-for-answer"><span className="reasoning-dot complete" aria-hidden="true" /><div><h3>Tool result needed</h3><p>Review the call below, supply its result, then continue.</p></div></div>
-            : retryableFailure ? <RunFailureCard message={retryableFailure.error.message} onRetry={onRetry} onDiscard={onDiscardFailedRun} />
+            : retryableFailure ? <RunFailureCard message={retryableFailure.error.message} editedRequest={editedRequest} onRetry={onRetry} onDiscard={onDiscardFailedRun} />
             : runState?.status.kind === "cancelled" ? <div className="waiting-for-answer"><span className="failure-glyph muted" aria-hidden="true">×</span><div><h3>Request stopped</h3><p>{runState.status.reason}</p></div></div>
             : <div className="empty-state"><span className="empty-glyph" aria-hidden="true">↗</span><h3>{emptyState.headline}</h3><p>{emptyState.detail}</p>{emptyState.action && <button className="button secondary" type="button" onClick={onEmptyStateAction}>{emptyState.action.label}</button>}</div>}
           {reasoning && <details className="reasoning-stream"><summary><span className={status === "running" ? "reasoning-dot" : "reasoning-dot complete"} aria-hidden="true" /><span>{status === "running" ? "Thinking…" : "Reasoning"}</span><span className="reasoning-stream-hint">Show</span></summary><p>{reasoning}</p></details>}
-          {(output || reasoning) && retryableFailure && <RunFailureCard message={retryableFailure.error.message} onRetry={onRetry} onDiscard={onDiscardFailedRun} />}
+          {(output || reasoning) && retryableFailure && <RunFailureCard message={retryableFailure.error.message} editedRequest={editedRequest} onRetry={onRetry} onDiscard={onDiscardFailedRun} />}
         </div>}
         {!terminal && <ToolCallList calls={completedToolCalls} toolResultDrafts={toolResultDrafts}
           suppliedResults={runState?.toolResults ?? []} toolExecutions={runState?.toolExecutions ?? []} awaitingResults={awaitingResults}

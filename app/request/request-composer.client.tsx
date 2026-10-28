@@ -157,6 +157,9 @@ export function RequestComposer({
   const composerRef = useRef<HTMLElement>(null);
   const focusToggleRef = useRef<HTMLButtonElement>(null);
   const modelRef = useRef<HTMLInputElement>(null);
+  // By message id. Not a DOM attribute: ids are minted per render environment,
+  // so one in the markup would differ between server and client.
+  const messageFieldsRef = useRef(new Map<string, HTMLTextAreaElement>());
   const selectedProjectToolCount = requestDraft.tools.filter(({ id }) =>
     requestDraft.enabledToolIds.includes(id),
   ).length;
@@ -244,6 +247,8 @@ export function RequestComposer({
           ? composerRef.current?.querySelector<HTMLElement>(
               '[data-readiness-target="tool-manifest"]',
             ) ?? null
+          : pendingDestination.control === "message" && pendingDestination.entityId
+            ? messageFieldsRef.current.get(pendingDestination.entityId) ?? null
           : pendingDestination.entityId
               ? pendingDestination.control === "template-variable" && pendingDestination.fieldName
                 ? composerRef.current?.querySelector<HTMLTextAreaElement>(
@@ -409,7 +414,10 @@ export function RequestComposer({
                     {importReceipt && <span className="message-import-provenance" title={`Imported from ${importReceipt.source.adapter} execution ${importReceipt.source.execution?.id ?? "unavailable"} with ${importReceipt.fidelity.replaceAll("-", " ")} fidelity.`}>Imported from {importReceipt.source.adapter}{" · "}{importReceipt.fidelity.replaceAll("-", " ")}</span>}
                     <button aria-label={`Remove message ${index + 1}`} className="remove-button" onClick={() => templates.removeComposerMessage(message.id)}>Remove</button>
                   </div>
-                  <textarea aria-label={`Message ${index + 1} content`} value={text} onChange={(event) => templates.updateComposerMessage(message.id, { content: [{ type: "text", text: event.target.value }] })} rows={message.role === "system" ? 4 : 7} />
+                  <textarea aria-label={`Message ${index + 1} content`} ref={(field) => {
+                    if (field) messageFieldsRef.current.set(message.id, field);
+                    else messageFieldsRef.current.delete(message.id);
+                  }} value={text} onChange={(event) => templates.updateComposerMessage(message.id, { content: [{ type: "text", text: event.target.value }] })} rows={message.role === "system" ? 4 : 7} />
                   {message.role === "tool" && <small className="message-metadata">Tool result for {message.name ?? "unnamed tool"} ({message.toolCallId})</small>}
                   {message.role === "assistant" && message.toolCalls?.map((call) => <div className="tool-call-card message-tool-call" key={call.id}><div className="tool-call-heading"><div><span className="eyebrow">Tool call</span><h3>{call.name}</h3></div><span className="provider-pill">Read-only</span></div><label>Arguments<pre>{call.arguments.text || "{}"}</pre></label></div>)}
                 </article>;

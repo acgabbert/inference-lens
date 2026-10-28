@@ -88,6 +88,8 @@ export interface SavedPromptCandidate {
   revisionCreatedAt: string;
   messageCount: number;
   roles: PromptTemplateMessage["role"][];
+  /** The current revision's messages, for previewing before choosing. */
+  messages: readonly PromptTemplateMessage[];
   variables: SavedPromptVariable[];
   /**
    * Advisory only. A recommendation records the target a template was authored
@@ -127,6 +129,7 @@ export function savedPromptCandidates(
       revisionCreatedAt: revision.createdAt,
       messageCount: revision.messages.length,
       roles: revision.messages.map(({ role }) => role),
+      messages: revision.messages,
       variables: discoverTemplateVariables(revision.messages).variables.map(({ name }) => {
         const hasDefault = Object.prototype.hasOwnProperty.call(revision.variableDefaults, name);
         return {

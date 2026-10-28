@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import type { SavedPromptCandidate } from "../../packages/core/src/evaluation-suite-authoring";
+import { PromptMessagesPreview } from "../templates/prompt-messages-preview.client";
 import { revisionTime } from "./revision-choice.client";
 
 function roleSequence(roles: SavedPromptCandidate["roles"]): string {
@@ -86,13 +87,13 @@ export function SavedPromptDialog({
       <section
         aria-labelledby="saved-prompt-title"
         aria-modal="true"
-        className="confirmation-dialog saved-prompt-dialog"
+        className={`confirmation-dialog saved-prompt-dialog${candidates.length > 0 ? " wide-dialog" : ""}`}
         role="dialog"
       >
-        <span className="eyebrow">Evaluation input</span>
-        <h2 id="saved-prompt-title">Start from prompt</h2>
         {candidates.length === 0 ? (
           <>
+            <span className="eyebrow">Evaluation input</span>
+            <h2 id="saved-prompt-title">Start from prompt</h2>
             <p>
               This project has no active prompts. Create one in Compose → Prompts, then
               start an evaluation from it.
@@ -120,46 +121,59 @@ export function SavedPromptDialog({
           </>
         ) : (
           <>
-            <p>
-              This evaluation will use the prompt’s current immutable revision as its input.
-              Surrounding messages are not copied, and the Messages editor is not changed.
-            </p>
-            <fieldset className="saved-prompt-list">
-              <legend>Active prompts</legend>
-              {candidates.map((candidate) => (
-                <label
-                  className={
-                    candidate.templateId === selectedId
-                      ? "saved-prompt-option selected"
-                      : "saved-prompt-option"
-                  }
-                  key={candidate.templateId}
-                >
-                  <input
-                    checked={candidate.templateId === selectedId}
-                    name="saved-prompt"
-                    onChange={() => setSelectedId(candidate.templateId)}
-                    type="radio"
-                    value={candidate.templateId}
-                  />
-                  <strong>{candidate.name}</strong>
-                </label>
-              ))}
-            </fieldset>
-            {selected && <PromptDetails candidate={selected} />}
-            {hasExistingBindings && (
-              <p className="evaluation-batch-warning" role="status">
-                <strong>This suite already has case inputs.</strong> The new template use gets a new
-                stable ID, so existing bindings may not match the new revision. They are not
-                rewritten — rebind them after creating it.
+            <header className="wide-dialog-header">
+              <span className="eyebrow">Evaluation input</span>
+              <h2 id="saved-prompt-title">Start from prompt</h2>
+              <p>
+                This evaluation will use the prompt’s current immutable revision as its input.
+                Surrounding messages are not copied, and the Messages editor is not changed.
               </p>
-            )}
-            {error && (
-              <p className="evaluation-field-error" role="alert">
-                {error}
-              </p>
-            )}
-            <div className="confirmation-actions">
+            </header>
+            <div className="wide-dialog-columns">
+              <div className="wide-dialog-pane">
+                <fieldset className="saved-prompt-list">
+                  <legend>Active prompts</legend>
+                  {candidates.map((candidate) => (
+                    <label
+                      className={
+                        candidate.templateId === selectedId
+                          ? "saved-prompt-option selected"
+                          : "saved-prompt-option"
+                      }
+                      key={candidate.templateId}
+                    >
+                      <input
+                        checked={candidate.templateId === selectedId}
+                        name="saved-prompt"
+                        onChange={() => setSelectedId(candidate.templateId)}
+                        type="radio"
+                        value={candidate.templateId}
+                      />
+                      <strong>{candidate.name}</strong>
+                    </label>
+                  ))}
+                </fieldset>
+              </div>
+              <section className="wide-dialog-pane" aria-label="Prompt preview">
+                {selected && <PromptMessagesPreview messages={selected.messages} />}
+              </section>
+              <section className="wide-dialog-pane" aria-label="Prompt details">
+                {selected && <PromptDetails candidate={selected} />}
+                {hasExistingBindings && (
+                  <p className="evaluation-batch-warning" role="status">
+                    <strong>This suite already has case inputs.</strong> The new template use gets a new
+                    stable ID, so existing bindings may not match the new revision. They are not
+                    rewritten — rebind them after creating it.
+                  </p>
+                )}
+                {error && (
+                  <p className="evaluation-field-error" role="alert">
+                    {error}
+                  </p>
+                )}
+              </section>
+            </div>
+            <div className="confirmation-actions wide-dialog-footer">
               <button className="button secondary" type="button" onClick={onCancel}>
                 Cancel
               </button>

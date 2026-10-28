@@ -99,6 +99,7 @@ export function evaluationFixture() {
       revisionCreatedAt: "2026-08-01T12:00:00.000Z",
       messageCount: 1,
       roles: ["user"],
+      messages: [{ role: "user", content: "Explain {{topic}}." }],
       variables: [{ name: "topic", hasDefault: true, defaultValue: "a topic" }],
     }],
     savedPromptPickerOpen: false,

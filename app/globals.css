@@ -432,7 +432,7 @@ pre,
 .evaluation-case-check-count,
 .evaluation-regex-dialect > summary > span,
 .saved-prompt-list legend,
-.prompt-insertion-preview strong,
+.prompt-messages-preview strong,
 .evaluation-preview-case,
 .evaluation-preflight-region h5,
 .tool-call-provenance,
@@ -3215,25 +3215,52 @@ output {
 }
 
 .n8n-template-paste-dialog h2 { margin: 5px 0 0; }
-.n8n-template-paste-dialog > p { color: var(--text-muted); line-height: 1.5; }
+.n8n-template-paste-dialog .wide-dialog-header > p { color: var(--text-muted); line-height: 1.5; }
 .n8n-template-paste-dialog textarea { width: 100%; margin-top: 6px; }
+.n8n-template-paste-source { display: grid; gap: var(--space-xs); }
+.n8n-template-paste-source label { margin-bottom: 0; }
+.n8n-template-paste-source-toggle { justify-self: start; }
+.n8n-template-paste-source-toggle::before { content: "▸ "; }
+.n8n-template-paste-source-toggle[aria-expanded="true"]::before { content: "▾ "; }
 .n8n-template-paste-preview, .n8n-template-paste-mapping {
   margin-top: var(--space-md);
   padding: var(--space-sm);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
 }
-.n8n-template-paste-preview { white-space: pre-wrap; background: var(--surface-subtle); }
+.n8n-template-paste-preview { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface-subtle); }
+.n8n-template-paste-token {
+  display: inline;
+  margin: 0;
+  padding: 0 var(--space-3xs);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font: inherit;
+  white-space: inherit;
+  cursor: pointer;
+}
+.n8n-template-paste-token.active { outline: 2px solid var(--accent); }
 .n8n-template-paste-mapping { display: grid; gap: 7px; }
+.n8n-template-paste-mapping.active { border-color: var(--accent); }
 .n8n-template-paste-mapping code { overflow-wrap: anywhere; }
 .n8n-template-paste-mapping input { width: 100%; }
 .n8n-template-paste-review { font-weight: 650; }
 .n8n-template-paste-error { margin-top: 12px; color: var(--danger); }
+.n8n-template-paste-variables-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  color: var(--text-muted);
+}
+.n8n-template-paste-empty { margin: var(--space-md) 0 0; color: var(--text-muted); }
 .n8n-template-paste-dialog .n8n-template-paste-preference {
   display: flex;
   align-items: center;
   gap: var(--space-xs);
-  margin: var(--space-lg) 0 0;
+  margin: 0;
   cursor: pointer;
 }
 .n8n-template-paste-preference input[type="checkbox"] {
@@ -3243,7 +3270,15 @@ output {
   padding: 0;
   flex: 0 0 auto;
 }
-.n8n-template-paste-dialog footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.n8n-template-paste-dialog footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  margin-top: var(--space-lg);
+}
+.wide-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-left: auto; }
 
 .confirmation-dialog {
   width: min(560px, 100%);
@@ -4102,6 +4137,8 @@ textarea {
 }
 
 .transcript-edit { margin-left: auto; }
+.transcript-copy { margin-left: auto; }
+.transcript-copy + .transcript-edit { margin-left: 0; }
 .transcript-tool-call { overflow: auto; }
 .transcript-tool-result { color: var(--text-muted); }
 
@@ -4122,6 +4159,23 @@ textarea {
   margin: 0;
   white-space: pre-wrap;
   line-height: var(--leading-prose);
+}
+
+.copy-source {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+}
+
+.copy-source-status {
+  color: var(--text-faint);
+  line-height: var(--leading-tight);
+}
+
+.output-copy {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-sm);
 }
 
 .result-header-controls {
@@ -4342,6 +4396,10 @@ textarea {
 
 .run-failure-state p {
   color: var(--danger);
+}
+
+.run-failure-state p.run-failure-edited {
+  color: var(--text-muted);
 }
 
 /* Retry and Discard used to be topbar neighbours, one reflex click apart and
@@ -7629,42 +7687,19 @@ main {
   max-height: min(88vh, 820px);
 }
 
-.prompt-insertion-dialog.has-templates {
-  height: min(88vh, 820px);
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
-  overflow: hidden;
-}
-
-.prompt-insertion-body {
-  min-height: 0;
-  overflow-y: auto;
+.prompt-insertion-dialog.wide-dialog,
+.saved-prompt-dialog.wide-dialog {
+  --wide-dialog-columns: minmax(200px, 280px) minmax(0, 1fr) minmax(200px, 300px);
 }
 
 .prompt-insertion-search {
   display: grid;
   gap: var(--space-2xs);
-  margin-top: var(--space-lg);
+  margin-bottom: 0;
 }
 
-.prompt-insertion-workspace {
-  display: grid;
-  grid-template-columns: minmax(180px, 0.72fr) minmax(0, 1.28fr);
-  gap: var(--space-md);
-  margin-top: var(--space-md);
-}
-
-.prompt-insertion-workspace .saved-prompt-list {
+.prompt-insertion-list .saved-prompt-list {
   align-content: start;
-  max-height: 380px;
-  overflow-y: auto;
-}
-
-.prompt-insertion-selection {
-  display: grid;
-  align-content: start;
-  gap: var(--space-sm);
-  min-width: 0;
 }
 
 .prompt-insertion-controls {
@@ -7682,8 +7717,9 @@ main {
   width: 100%;
 }
 
-.prompt-insertion-preview {
+.prompt-messages-preview {
   display: grid;
+  align-content: start;
   gap: var(--space-xs);
   padding: var(--space-md);
   border: 1px solid var(--border-default);
@@ -7691,25 +7727,32 @@ main {
   background: var(--surface-sunken);
 }
 
-.prompt-insertion-preview article {
+.prompt-messages-preview article {
   min-width: 0;
 }
 
-.prompt-insertion-preview article + article {
+.prompt-messages-preview article + article {
   padding-top: var(--space-xs);
   border-top: 1px solid var(--border-subtle);
 }
 
-.prompt-insertion-preview strong {
+.prompt-messages-preview strong {
   color: var(--text-muted);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
-.prompt-insertion-preview pre {
+.prompt-messages-preview pre {
   margin: var(--space-3xs) 0 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* The column already scrolls, so a message shows in full rather than in a
+   box of its own. */
+.wide-dialog .prompt-messages-preview pre {
+  max-height: none;
+  overflow: visible;
 }
 
 .prompt-insertion-variable-summary {
@@ -7717,14 +7760,118 @@ main {
   color: var(--text-muted);
 }
 
-@media (max-width: 640px) {
-  .prompt-insertion-workspace,
-  .prompt-insertion-controls {
-    grid-template-columns: 1fr;
+.prompt-variable-list {
+  display: grid;
+  gap: var(--space-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.prompt-variable-list li {
+  display: grid;
+  gap: var(--space-3xs);
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+
+.prompt-variable-list code {
+  overflow-wrap: anywhere;
+}
+
+.prompt-variable-list small {
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* A dialog for content that runs long. It grows with the window, keeps its
+   heading and actions in place, and lets each column scroll on its own; in a
+   narrow window the columns stack and scroll together. Columns default to a
+   wide main pane and a side pane; a dialog may set --wide-dialog-columns. */
+.wide-dialog {
+  width: min(1400px, 100%);
+  height: min(920px, calc(100vh - 48px));
+  max-height: none;
+  padding: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+}
+
+.wide-dialog .wide-dialog-header {
+  padding: var(--space-xl) var(--space-xl) var(--space-md);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.wide-dialog .wide-dialog-header > p {
+  margin: var(--space-xs) 0 0;
+  color: var(--text-muted);
+  line-height: var(--leading-normal);
+}
+
+.wide-dialog .wide-dialog-columns {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: var(--wide-dialog-columns, minmax(0, 1fr) minmax(280px, 380px));
+}
+
+.wide-dialog .wide-dialog-pane {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-lg) var(--space-xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.wide-dialog .wide-dialog-pane > * {
+  margin-top: 0;
+  flex: 0 0 auto;
+}
+
+.wide-dialog .wide-dialog-pane + .wide-dialog-pane {
+  border-left: 1px solid var(--border-default);
+}
+
+.wide-dialog .wide-dialog-pane > .wide-dialog-fill {
+  flex: 1 0 auto;
+}
+
+.wide-dialog .wide-dialog-footer {
+  margin: 0;
+  padding: var(--space-md) var(--space-xl);
+  border-top: 1px solid var(--border-default);
+}
+
+@media (max-width: 999px) {
+  .wide-dialog .wide-dialog-columns {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
   }
 
-  .prompt-insertion-workspace .saved-prompt-list {
+  .wide-dialog .wide-dialog-pane {
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .wide-dialog .wide-dialog-pane + .wide-dialog-pane {
+    border-left: 0;
+    border-top: 1px solid var(--border-default);
+  }
+}
+
+@media (max-width: 999px) {
+  .wide-dialog .saved-prompt-list {
     max-height: 180px;
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .prompt-insertion-controls {
+    grid-template-columns: 1fr;
   }
 }
 

@@ -121,6 +121,31 @@ export function materializeN8nTemplatePaste(analysis: N8nPasteAnalysis, mappings
   return { ok: true, content, mappings, removedWholeFieldMarker };
 }
 
+export interface N8nPastePreviewSegment {
+  text: string;
+  mappingId?: string;
+}
+
+/**
+ * The converted text split at each n8n placeholder, so the preview can tie a
+ * placeholder to its variable. Names are the drafts as typed, valid or not;
+ * when the draft materializes, the segments join to exactly its content.
+ */
+export function n8nPastePreviewSegments(analysis: N8nPasteAnalysis, mappings: N8nPasteMappingDraft[]): N8nPastePreviewSegment[] {
+  const byId = new Map(mappings.map((mapping) => [mapping.id, mapping]));
+  const n8nRegions = analysis.regions.filter((region) => region.kind === "n8n").sort((a, b) => a.startOffset - b.startOffset);
+  const segments: N8nPastePreviewSegment[] = [];
+  let cursor = analysis.wholeFieldMarkerOffset === 0 && n8nRegions.length > 0 ? 1 : 0;
+  for (const region of n8nRegions) {
+    if (region.startOffset > cursor) segments.push({ text: analysis.source.slice(cursor, region.startOffset) });
+    const mapping = byId.get(region.mappingId!);
+    segments.push(mapping ? { text: `{{${mapping.variableName}}}`, mappingId: mapping.id } : { text: region.expression });
+    cursor = region.endOffset;
+  }
+  if (cursor < analysis.source.length) segments.push({ text: analysis.source.slice(cursor) });
+  return segments;
+}
+
 export function shouldSuggestN8nTemplatePaste(source: string): boolean {
   const analysis = analyzeN8nTemplatePaste(source);
   if ("message" in analysis) return false;
