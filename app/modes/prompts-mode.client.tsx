@@ -11,7 +11,10 @@ import type { ProjectTemplatesHandle } from "../templates/use-project-templates.
 import { isChatEvaluationSuite } from "../../packages/core/src/evaluation-suites";
 import { decisionTemplateEvaluationSuites, previewDecisionTemplateEvaluationRetarget } from "../../packages/core/src/decision-template-evaluation";
 
+import type { PromptModelCatalog } from "../templates/recommended-model-editor.client";
+
 interface PromptsModeProps {
+  modelCatalog?: PromptModelCatalog;
   project?: ProjectFile;
   templates: ProjectTemplatesHandle;
   decision: Pick<DecisionComposeHandle, "useTemplate">;
@@ -61,6 +64,7 @@ function compatibleEvaluationSuitesByTemplate(
 
 export function PromptsMode({
   project,
+  modelCatalog,
   templates,
   decision,
   draftMessageCount,
@@ -81,6 +85,7 @@ export function PromptsMode({
     <section aria-label="Prompt authoring" className="prompt-mode-workspace">
       <ProjectTemplatesPane
         key={`${project?.projectId ?? "unsaved-project"}:${target?.key ?? 0}`}
+        modelCatalog={modelCatalog}
         templates={templates.libraryTemplates ?? project?.promptTemplates ?? []}
         sessionTemplateIds={templates.sessionTemplateIds ?? new Set<PromptTemplateId>()}
         connectionRequirements={project?.connectionRequirements ?? []}

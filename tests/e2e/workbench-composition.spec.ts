@@ -106,7 +106,7 @@ test("pinned prompts resolve into the request preview, and differing targets are
   await importProject(page, project, PROJECT_NAME);
 
   const readiness = page.locator(".run-readiness-slot");
-  await expect(readiness).toContainText("Prompts recommend different run targets");
+  await expect(readiness).toContainText("Prompts recommend different models");
   await readiness.getByRole("button", { name: "Details" }).click();
   await expect(readiness).toContainText("Triage prompt");
   await expect(readiness).toContainText("triage-model");

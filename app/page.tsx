@@ -974,10 +974,7 @@ function HomeContent() {
       ),
     },
     ...(projectTemplates.activeConnectionRequirement
-      ? {
-          requiredEndpoint: projectTemplates.activeConnectionRequirement.endpoint,
-          activeConnectionRequirementId: projectTemplates.activeConnectionRequirement.id,
-        }
+      ? { requiredEndpoint: projectTemplates.activeConnectionRequirement.endpoint }
       : {}),
     ...templateReadinessInputs(projectFile, projectTemplates.templateWorkbench),
     emptyUserMessageId: emptyFinalUserMessageId(requestSettings.currentRequest().messages),
@@ -1538,6 +1535,13 @@ function HomeContent() {
       />
       ) : mode === "prompts" ? (
         <PromptsMode
+          modelCatalog={{
+            profiles,
+            mappedProfileIds,
+            transport: inferenceTransport,
+            prepareCredentialForProfile: credential.prepareForProfile,
+            updateProfile,
+          }}
           key={project.projectAdoption}
           {...(projectFile ? { project: projectFile } : {})}
           templates={projectTemplates}

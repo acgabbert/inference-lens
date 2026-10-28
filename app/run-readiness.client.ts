@@ -158,7 +158,6 @@ export interface RunReadinessInput {
   toolsEnabled: boolean;
   /** Endpoint the open project declares, when it declares one. */
   requiredEndpoint?: string;
-  activeConnectionRequirementId?: string;
   /**
    * The protocol the run would use and whether its profile has it enabled.
    * `managedByServer` names where the server sets the profile's locked
@@ -233,7 +232,6 @@ export function runReadiness(
     selectedToolCount,
     toolsEnabled,
     requiredEndpoint,
-    activeConnectionRequirementId,
     protocol,
     templateResolutionError,
     templateIssues,
@@ -483,16 +481,17 @@ export function runReadiness(
     };
   }
 
+  // Individual mismatches live beside their inserted prompt, with local dismissal.
   const distinctTemplateTargets = new Map(
     templateTargets.map((target) => [
-      `${target.connectionRequirementId}\u0000${target.model}`,
+      target.model.trim(),
       target,
     ]),
   );
   if (distinctTemplateTargets.size > 1) {
     return {
       blocked: false,
-      headline: "Prompts recommend different run targets",
+      headline: "Prompts recommend different models",
       detail:
         "This request uses the project’s current model. Review the recommendations before relying on them.",
       explanation:
@@ -513,42 +512,6 @@ export function runReadiness(
           kind: "open-connections",
           label: "Choose run model",
           destination: { surface: "request", tab: "messages", control: "model" },
-        },
-      ],
-    };
-  }
-
-  const [templateTarget] = distinctTemplateTargets.values();
-  if (
-    templateTarget &&
-    (templateTarget.connectionRequirementId !== activeConnectionRequirementId ||
-      templateTarget.model !== activeProfileModel)
-  ) {
-    return {
-      blocked: false,
-      headline: `"${templateTarget.templateName}" recommends another model`,
-      detail: `This run will use ${activeProfileModel}; the prompt recommends ${templateTarget.model}.`,
-      explanation:
-        "A recommendation records a prompt’s source target; it never changes the run target.",
-      summary: "A prompt recommends a different model.",
-      facts: [
-        {
-          label: "Prompt recommends",
-          value: `${templateTarget.connectionRequirementName} · ${templateTarget.model}`,
-        },
-        { label: "Run uses", value: activeProfileModel },
-      ],
-      actions: [
-        {
-          kind: "open-connections",
-          label: "Choose run model",
-          destination: { surface: "request", tab: "messages", control: "model" },
-          primary: true,
-        },
-        {
-          kind: "edit-template",
-          label: "Review prompt",
-          destination: { surface: "prompts", control: "prompt-library" },
         },
       ],
     };

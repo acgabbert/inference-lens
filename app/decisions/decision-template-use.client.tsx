@@ -11,17 +11,18 @@ import {
   summarizeDecisionRevisionDiff,
   summarizeRevisionVariableChanges,
 } from "../templates/prompt-revision-label";
+import { PromptModelRecommendation } from "../templates/prompt-model-recommendation.client";
 import { PinnedRevisionSelect, RevisionSwitchReview } from "../templates/revision-switch-review.client";
 
 export interface DecisionTemplateRecommendation {
   model: string;
   connectionName: string;
   compatibleConnectionNames: string[];
-  matchesSelectedTarget: boolean;
+  matchesSelectedConnection: boolean;
 }
 
 function recommendationText(recommendation: DecisionTemplateRecommendation): string {
-  if (recommendation.matchesSelectedTarget) return "The selected target matches.";
+  if (recommendation.matchesSelectedConnection) return "";
   if (recommendation.compatibleConnectionNames.length === 0) {
     return `No System One connection on this device matches ${recommendation.connectionName}.`;
   }
@@ -35,6 +36,10 @@ export function DecisionTemplateUse({
   overrideNames,
   locked,
   recommendation,
+  selectedModel,
+  modelWarningDismissed,
+  onDismissModelWarning,
+  onChooseModel,
   onEdit,
   onSelectRevision,
   onDetach,
@@ -45,6 +50,10 @@ export function DecisionTemplateUse({
   overrideNames: readonly string[];
   locked: boolean;
   recommendation?: DecisionTemplateRecommendation;
+  selectedModel: string;
+  modelWarningDismissed: boolean;
+  onDismissModelWarning(): void;
+  onChooseModel(): void;
   onEdit(): void;
   /** Re-pins the request; the card has already shown the switch review. */
   onSelectRevision(revisionId: PromptTemplateRevisionId): void;
@@ -73,12 +82,16 @@ export function DecisionTemplateUse({
         />
         {template.archivedAt && <span>Archived</span>}
       </div>
-      {recommendation && (
-        <p>
-          Recommended target: {recommendation.connectionName} · {recommendation.model}.{" "}
-          {recommendationText(recommendation)}
-        </p>
-      )}
+      {recommendation && <PromptModelRecommendation
+        recommendedModel={recommendation.model}
+        selectedModel={selectedModel}
+        connectionName={recommendation.connectionName}
+        connectionAdvice={recommendationText(recommendation)}
+        dismissed={modelWarningDismissed}
+        disabled={locked}
+        onDismiss={onDismissModelWarning}
+        onChooseModel={onChooseModel}
+      />}
       <p>Content is pinned. Values below remain editable.</p>
       <div className="decision-row-actions">
         <button className="text-button" disabled={locked} type="button" onClick={onEdit}>

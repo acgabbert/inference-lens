@@ -36,7 +36,7 @@ function PromptDetails({ candidate }: { candidate: SavedPromptCandidate }) {
       </div>
       {candidate.recommendedTarget && (
         <div>
-          <dt>Recommended target</dt>
+          <dt>Recommended model</dt>
           <dd>
             {candidate.recommendedTarget.connectionName} · {candidate.recommendedTarget.model}{" "}
             <span className="saved-prompt-advisory">Advisory — the evaluation target is unchanged.</span>
