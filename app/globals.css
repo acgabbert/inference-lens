@@ -3691,6 +3691,8 @@ output {
 .registry-modal {
   width: min(1180px, 100%);
   height: min(820px, calc(100vh - 48px));
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-xl);
@@ -3699,6 +3701,7 @@ output {
 }
 
 .registry-header {
+  flex: 0 0 auto;
   min-height: 82px;
   padding: var(--space-lg) var(--space-xl);
   border-bottom: 1px solid var(--border-default);
@@ -3717,7 +3720,8 @@ output {
 }
 
 .registry-workspace {
-  height: calc(100% - 82px);
+  flex: 1 1 auto;
+  min-height: 0;
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);
 }
@@ -4340,7 +4344,20 @@ textarea {
 
 .markdown-table-scroll {
   margin: 0 0 var(--space-md);
+}
+
+/* Horizontal table viewports keep their content height when an outer grid or
+   flex pane scrolls vertically. Their automatic minimum would otherwise be 0. */
+.markdown-table-scroll,
+.run-metrics-table-scroll,
+.evaluation-value-scroll,
+.evaluation-configuration-table-scroll {
+  position: relative;
+  min-width: 0;
+  min-height: min-content;
+  flex-shrink: 0;
   overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .markdown-body table {
@@ -4947,10 +4964,6 @@ textarea {
   font-family: var(--font-geist-mono), monospace;
 }
 
-.run-metrics-table-scroll {
-  overflow-x: auto;
-}
-
 .run-metrics-table {
   width: 100%;
   border-collapse: collapse;
@@ -5374,7 +5387,6 @@ pre {
   }
 
   .registry-workspace {
-    height: calc(100% - 72px);
     grid-template-columns: 150px minmax(0, 1fr);
   }
 
@@ -5525,6 +5537,8 @@ main {
 
 .pane-scroll,
 .output-scroll {
+  /* Keep absolutely positioned accessibility text inside its scroll owner. */
+  position: relative;
   min-height: 0;
   flex: 1 1 auto;
   overflow: auto;
@@ -7595,7 +7609,6 @@ main {
 /* The table can exceed a phone's width; it scrolls itself so the page cannot. */
 .evaluation-value-scroll {
   min-width: 0;
-  overflow-x: auto;
 }
 
 .evaluation-value-table {
@@ -8093,7 +8106,6 @@ label.experiment-retry-field {
 }
 
 .evaluation-configuration-table-scroll {
-  overflow-x: auto;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
   background: var(--surface-translucent);

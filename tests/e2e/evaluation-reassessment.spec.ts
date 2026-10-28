@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { ChatEvaluationSuite } from "../../packages/core/src/evaluation-suites.ts";
 import type { Page } from "@playwright/test";
+import { expectTableContentHeight } from "./support/layout";
 
 import {
   addEvaluationCase,
@@ -221,6 +222,8 @@ test("a wrong regex is corrected over saved outputs without another provider cal
   await expect(results).toContainText("1 / 1 passed");
   await expect(results).toContainText("Saved reinterpretation");
   await expect(results).toContainText("not the criteria this evaluation ran with");
+  await page.setViewportSize({ width: 1280, height: 560 });
+  await expectTableContentHeight(results.getByRole("region", { name: "Corrected regex summary" }));
 
   // The original verdict is intact, not overwritten: re-selecting As run
   // reproduces exactly what the batch reported when it finished.
