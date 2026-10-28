@@ -182,7 +182,7 @@ test("leaving the Evaluations mode returns to the run output, and coming back ke
   await expect(previewPane.locator(".evaluation-preview-case")).toContainText("replication");
 
   await openMode(page, "Compose");
-  await expect(page.locator(".result")).toContainText("Live output");
+  await expect(page.getByRole("region", { name: "Response output" })).toBeVisible();
   await expect(page.locator(".evaluation-preview-scroll")).toHaveCount(0);
 
   await openMode(page, "Evaluations");

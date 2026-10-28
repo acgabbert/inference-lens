@@ -1150,7 +1150,7 @@ function HomeContent() {
   // response implementation; immutable evidence reads through the same
   // renderer via `RunEvidenceDetail`.
   const responseSurface = (
-    <section className="result">
+    <section aria-label="Response output" className="result">
       <ResponseOutput
         output={responseView.output}
         reasoning={responseView.reasoning}

@@ -166,11 +166,9 @@ test("the tool line stays readable while the panel is collapsed", async ({ page 
   await page.goto("/");
   await waitForHydration(page);
 
-  // The tool line is a consequence of the settings rather than one of them, so
-  // collapsing the panel must not take it with them.
-  await expect(page.locator(".request-tool-line")).toContainText(
-    "No tools attached to this request.",
-  );
+  // Nothing is attached, so there is no line to keep; the Tools tab count
+  // says 0. A blocked attachment keeps its line in tool-attachment.spec.ts.
+  await expect(page.locator(".request-tool-line")).toHaveCount(0);
   await expect(
     page.locator('[aria-label="Run settings"] .inference-settings-toggle'),
   ).toHaveAttribute("aria-expanded", "false");

@@ -404,10 +404,6 @@ export function DecisionComposer({ draft: handle, target, blockers, locked, unsa
   return (
     <section className="composer decision-composer" aria-label="Decision request">
       <div className="panel-header request-header">
-        <div>
-          <span className="eyebrow">Request</span>
-          <h2>Decision</h2>
-        </div>
         <PaneTabs
           disabled={locked}
           label="Decision editor"

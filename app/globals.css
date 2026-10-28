@@ -5553,15 +5553,29 @@ main {
   flex: 0 0 auto;
 }
 
+/* The pane's name is its region label, so the header holds only its tabs. */
+.request-header,
+.result-header:not(:has(h2)) {
+  min-height: 56px;
+  padding-block: var(--space-md);
+}
+
 .request-header {
-  min-height: 78px;
   display: grid;
-  grid-template-columns: auto minmax(210px, 1fr);
+  grid-template-columns: minmax(210px, 1fr);
   gap: var(--space-xl);
 }
 
 .request-header:has(.request-header-actions) {
-  grid-template-columns: auto minmax(210px, 1fr) auto;
+  grid-template-columns: minmax(210px, 1fr) auto;
+}
+
+.request-header > .pane-tabs {
+  justify-self: start;
+}
+
+.result-header:not(:has(h2)) {
+  justify-content: flex-end;
 }
 
 .pane-tabs {
@@ -6862,8 +6876,9 @@ main {
     display: none;
   }
 
-  .request-header {
-    grid-template-columns: auto 1fr;
+  .request-header,
+  .request-header:has(.request-header-actions) {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .inference-settings-grid > * {
@@ -7086,9 +7101,10 @@ main {
     display: none;
   }
 
-  .request-header {
-    min-height: 72px;
-    grid-template-columns: auto 1fr;
+  .request-header,
+  .request-header:has(.request-header-actions) {
+    min-height: 56px;
+    grid-template-columns: minmax(0, 1fr) auto;
     padding-inline: var(--space-lg);
   }
 
@@ -8949,10 +8965,6 @@ label.experiment-retry-field {
 
 @media (max-width: 480px) {
   .brand h1 {
-    display: none;
-  }
-
-  .request-header > div:first-child {
     display: none;
   }
 
