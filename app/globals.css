@@ -4092,6 +4092,7 @@ textarea {
    box — the default here is the collapsed case, where this row is the
    entire card. */
 .transcript-message-header {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-sm);
@@ -4114,7 +4115,7 @@ textarea {
   background: var(--surface-hover);
 }
 
-.transcript-message-header:focus-visible {
+.transcript-message-header:has(.transcript-toggle:focus-visible) {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
@@ -4139,9 +4140,54 @@ textarea {
   margin: 0 0 var(--space-sm);
 }
 
-.transcript-edit { margin-left: auto; }
-.transcript-copy { margin-left: auto; }
-.transcript-copy + .transcript-edit { margin-left: 0; }
+/* The row's toggle is a button that fills the row; its text styling is the
+   header's, not the button default's. */
+.transcript-toggle {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.transcript-toggle:focus-visible { outline: none; }
+
+.transcript-message-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-md);
+  white-space: nowrap;
+}
+
+/* A collapsed row is one muted line, so its actions appear on hover or focus.
+   They stay in the DOM and tab order, and touch screens, which have no hover,
+   show them always. */
+.transcript-message-header:not(.transcript-message-header-open) .transcript-message-actions {
+  position: absolute;
+  top: 50%;
+  right: var(--space-md);
+  transform: translateY(-50%);
+  padding-left: var(--space-sm);
+  background: var(--surface-hover);
+  opacity: 0;
+}
+
+.transcript-message-header:hover .transcript-message-actions,
+.transcript-message-header:focus-within .transcript-message-actions {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .transcript-message-header .transcript-message-actions { opacity: 1; }
+}
 .transcript-tool-call { overflow: auto; }
 .transcript-tool-result { color: var(--text-muted); }
 

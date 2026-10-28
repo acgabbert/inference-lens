@@ -269,62 +269,58 @@ export function ResponseOutput({
                 setExpanded((current) => ({ ...current, [message.id]: !isOpen }));
               return (
                 <article className="transcript-message" key={message.id}>
-                  {/* The whole row toggles, not just the chevron — a collapsed
-                      message is nothing but this row, and an expanded one keeps
-                      the toggle within reach without hunting for a small icon.
-                      "Edit from here" stops its own click from bubbling here. */}
+                  {/* The disclosure is its own button, with the message actions
+                      beside it rather than inside it, so no control nests in
+                      another. It fills the row, so the whole row still toggles. */}
                   <div
                     className={
                       isOpen
                         ? "transcript-message-header transcript-message-header-open"
                         : "transcript-message-header"
                     }
-                    role="button"
-                    tabIndex={0}
-                    aria-expanded={isOpen}
-                    aria-controls={isOpen ? bodyId : undefined}
-                    aria-label={`${isOpen ? "Collapse" : "Expand"} ${message.role} message`}
-                    onClick={toggle}
-                    onKeyDown={(event) => {
-                      // A key on a button inside the row belongs to that button.
-                      if (event.target !== event.currentTarget) return;
-                      if (event.key !== "Enter" && event.key !== " ") return;
-                      event.preventDefault();
-                      toggle();
-                    }}
                   >
-                    <span className="transcript-disclosure" aria-hidden="true">
-                      {isOpen ? "▾" : "▸"}
+                    <button
+                      className="transcript-toggle"
+                      type="button"
+                      aria-expanded={isOpen}
+                      aria-controls={isOpen ? bodyId : undefined}
+                      aria-label={`${isOpen ? "Collapse" : "Expand"} ${message.role} message`}
+                      onClick={toggle}
+                    >
+                      <span className="transcript-disclosure" aria-hidden="true">
+                        {isOpen ? "▾" : "▸"}
+                      </span>
+                      <span className="eyebrow">{message.role}</span>
+                      <span>Message {index + 1}</span>
+                      {/* Collapsed rows fold their preview into the header itself, so a
+                          collapsed message reads as one compact line, distinct at a
+                          glance from an expanded card's full-size body below. */}
+                      {!isOpen && (
+                        <span className="transcript-preview">{previewText(message)}</span>
+                      )}
+                    </button>
+                    {/* Always in tab order; collapsed rows only reveal them on
+                        hover or focus (see .transcript-message-actions). */}
+                    <span className="transcript-message-actions">
+                      {message.role === "assistant" && sourceText(message) && (
+                        <CopySourceButton text={sourceText(message)} />
+                      )}
+                      {!readOnly && (
+                        <button
+                          className="text-button"
+                          type="button"
+                          disabled={nonBranchableMessageIds.has(message.id)}
+                          title={
+                            nonBranchableMessageIds.has(message.id)
+                              ? "A message-set template is atomic. Branch after its final message or detach it first."
+                              : undefined
+                          }
+                          onClick={() => onEditFromHere(message.id)}
+                        >
+                          Edit from here
+                        </button>
+                      )}
                     </span>
-                    <span className="eyebrow">{message.role}</span>
-                    <span>Message {index + 1}</span>
-                    {/* Collapsed rows fold their preview into the header itself, so a
-                        collapsed message reads as one compact line, distinct at a
-                        glance from an expanded card's full-size body below. */}
-                    {!isOpen && (
-                      <span className="transcript-preview">{previewText(message)}</span>
-                    )}
-                    {message.role === "assistant" && sourceText(message) && (
-                      <CopySourceButton className="transcript-copy" text={sourceText(message)} />
-                    )}
-                    {!readOnly && (
-                      <button
-                        className="button secondary transcript-edit"
-                        type="button"
-                        disabled={nonBranchableMessageIds.has(message.id)}
-                        title={
-                          nonBranchableMessageIds.has(message.id)
-                            ? "A message-set template is atomic. Branch after its final message or detach it first."
-                            : undefined
-                        }
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onEditFromHere(message.id);
-                        }}
-                      >
-                        Edit from here
-                      </button>
-                    )}
                   </div>
                   {isOpen && (
                     <div className="transcript-body" id={bodyId}>
