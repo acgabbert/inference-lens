@@ -55,10 +55,12 @@ test("a project can use the provider default despite a mapped profile override",
 
   // Collapsed, the panel reports the protocol and what differs from the
   // profile: the project cleared its 0.7 temperature. The model has its own
-  // field, and delivery matches the profile so it is not repeated.
+  // field. The seeded session preference is buffered on a connection that can
+  // stream, which is a choice worth showing.
   await expect(page.locator(".inference-settings-fact")).toHaveText([
     "Chat Completions",
     "Provider default temp",
+    "Buffered",
     "1 override",
   ]);
   await expect(

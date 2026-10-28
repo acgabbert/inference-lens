@@ -130,10 +130,12 @@ export interface InferenceSettingsPanelProps {
   modelAbove?: boolean;
   /**
    * `"differences"` summarises only what departs from the baseline — values
-   * that differ from `inherited`, or an explicit temperature and a deliberate
-   * choice of buffering when there is no parent — so a collapsed panel reads as
-   * "what is unusual about this run". The model is left out of it when
-   * `modelAbove`, since its own field already shows it.
+   * that differ from `inherited`, an explicit temperature, and a deliberate
+   * choice of buffering on a connection that could stream — so a collapsed
+   * panel reads as "what is unusual about this run". Delivery is checked
+   * against the connection rather than `inherited`, because a caller keeps it
+   * as a session preference that has no parent scope to differ from. The model
+   * is left out of it when `modelAbove`, since its own field already shows it.
    */
   summaryMode?: "values" | "differences";
 }
@@ -159,7 +161,9 @@ function deliverySummary(responseMode: "streaming" | "buffered"): string {
  * mounts sit inside `overflow: auto` panes and the third inside a modal, where
  * an anchored popover is either clipped or in the top layer above a dialog. The
  * collapsed state still renders every value as a summary, so collapsing hides
- * the controls without hiding what the next run will send.
+ * the controls without hiding what the next run will send. In `"differences"`
+ * mode the summary lists only what departs from the baseline, and a value it
+ * leaves out is one the caller shows elsewhere or the run sends by default.
  */
 export function InferenceSettingsPanel({
   idPrefix,
@@ -237,7 +241,8 @@ export function InferenceSettingsPanel({
   const showTemperatureFact = !differencesOnly ||
     (inherited ? temperatureOverridden : value.temperature !== undefined);
   const showDeliveryFact = showDelivery && (!differencesOnly ||
-    Boolean(deliveryOverridden));
+    Boolean(deliveryOverridden) ||
+    (streamingAvailable && value.responseMode === "buffered"));
   const facts = [
     connection?.summary,
     protocol?.summary,
@@ -252,7 +257,7 @@ export function InferenceSettingsPanel({
   const modelField = (
     <div
       className={
-        scopeOnModelField
+        scopeOnModelField && !modelShownAbove
           ? "inference-settings-field inference-settings-field-scoped"
           : "inference-settings-field"
       }
@@ -276,7 +281,19 @@ export function InferenceSettingsPanel({
         favoriteModels={favoriteModels}
         onToggleFavoriteModel={(model) => onToggleFavoriteModel?.(model)}
       />
-      {modelOverridden ? (
+      {modelOverridden && modelShownAbove ? (
+        // The row's height is budgeted, so the marker is an icon in the field's
+        // own line; the words ride on its name and tooltip.
+        <button
+          aria-label={`Revert model to ${inherited.label}`}
+          className="inference-settings-override-compact text-button"
+          onClick={() => revertSharedField("model")}
+          title={`Overrides ${inherited.label}. Revert`}
+          type="button"
+        >
+          ↺
+        </button>
+      ) : modelOverridden ? (
         <OverrideMarker
           field="model"
           override={{

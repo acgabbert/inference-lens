@@ -235,13 +235,14 @@ test("the settings panel hides its controls behind a summary of what will be sen
     // The model field stays outside the disclosure, so changing it needs no
     // expansion. Every other control is hidden, and the facts name the
     // protocol and what departs from the baseline — here an explicit
-    // temperature, with no parent scope; delivery is not an override.
+    // temperature, with no parent scope, and buffered delivery on a
+    // connection that could stream.
     const model = view.container.querySelector('[data-readiness-control="model"]');
     assert.equal(model?.value, "fixture-model");
     const facts = Array.from(
       view.container.querySelectorAll(".inference-settings-fact"),
     ).map((fact) => fact.textContent);
-    assert.deepEqual(facts, ["Chat Completions", "Temp 0.7"]);
+    assert.deepEqual(facts, ["Chat Completions", "Temp 0.7", "Buffered"]);
     assert.equal(
       view.container.querySelector('.streaming-control input[type="checkbox"]'),
       null,

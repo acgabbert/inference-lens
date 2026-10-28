@@ -87,10 +87,32 @@ test("the closed summary keeps protocol and shows only values that differ from t
 
   // The model field carries the model, so the summary does not repeat it. The
   // project clears the profile's 0.7 temperature, the one difference from its
-  // parent; delivery matches the profile and stays out.
+  // parent. The seeded session preference is buffered on a connection that can
+  // stream, so delivery shows as well.
   await expect(page.locator(".inference-settings-fact")).toHaveText([
     "Chat Completions",
     "Provider default temp",
+    "Buffered",
     "1 override",
+  ]);
+});
+
+test("a stored preference for buffered delivery shows in the closed summary", async ({
+  page,
+}) => {
+  // The fixture connection can stream, so "Buffered" is a choice made earlier
+  // and kept in localStorage, not a limit of the connection.
+  await seedProfile(page, { streaming: "buffered" });
+  await page.goto("/");
+  await waitForHydration(page);
+
+  const composer = page.getByRole("region", { name: "Request composer" });
+  await expect(composer.locator(".inference-settings-toggle")).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+  await expect(composer.locator(".inference-settings-fact")).toHaveText([
+    "Chat Completions",
+    "Buffered",
   ]);
 });

@@ -106,12 +106,14 @@ test("the collapsed panel reports what the run will send, and expanding reveals 
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
   // The summary names the protocol and whatever departs from the baseline: an
   // explicit temperature here, with no parent scope to compare against. The
-  // model is its own always-visible field, and delivery is not an override.
+  // model is its own always-visible field. Delivery appears because the seeded
+  // preference is buffered on a connection that could stream.
   // These are exact so a formatting regression cannot hide behind a
   // substring match.
   await expect(panel.locator(".inference-settings-fact")).toHaveText([
     "Chat Completions",
     "Temp 0.3",
+    "Buffered",
   ]);
   await expect(panel.getByLabel("Model", { exact: true })).toHaveValue(
     "buffered-test-model",
@@ -150,6 +152,7 @@ test("the collapsed panel reports what the run will send, and expanding reveals 
   await expect(panel.locator(".inference-settings-fact")).toHaveText([
     "Chat Completions",
     "Temp 0.9",
+    "Buffered",
   ]);
 
   // And the collapsed panel is not a stale snapshot: the run honours it.

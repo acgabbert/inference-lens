@@ -1,7 +1,14 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
-import { openAttachToolMenu, seedProfile, waitForHydration } from "./support";
+import { createProjectFile } from "../../packages/core/src/project";
+import {
+  importProject,
+  openAttachToolMenu,
+  PROJECT_PROFILE_MAP_STORAGE_KEY,
+  seedProfile,
+  waitForHydration,
+} from "./support";
 
 /**
  * The chrome above the first message editor (UX plan section 8). The pane
@@ -25,6 +32,48 @@ test("the first message editor starts at least 100px higher than in 0.6.0", asyn
   const box = await page.getByLabel("Message 1 content").boundingBox();
   expect(box).not.toBeNull();
   expect(box!.y).toBeLessThanOrEqual(BASELINE_FIRST_MESSAGE_TOP - MINIMUM_GAIN);
+});
+
+test("a project model that differs from the profile keeps the budget and the protocol", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const instanceId = "profile-instance-header-budget";
+  const project = createProjectFile({
+    name: "Header budget project",
+    request: {
+      provider: "openai-compatible",
+      endpoint: "http://127.0.0.1:44014/v1",
+      model: "a-long-dated-model-identifier-2026-10-28-preview",
+      messages: [{ role: "user", content: "Check the header." }],
+    },
+    idSuffix: "header-budget",
+    createdAt: "2026-10-28T12:00:00.000Z",
+  });
+  await seedProfile(page, { name: "Header budget fixture", instanceId });
+  await page.addInitScript(
+    ({ mapKey, projectId, instanceId }) => {
+      localStorage.setItem(
+        mapKey,
+        JSON.stringify({ [projectId]: { profileId: "buffered", profileInstanceId: instanceId } }),
+      );
+    },
+    { mapKey: PROJECT_PROFILE_MAP_STORAGE_KEY, projectId: project.projectId, instanceId },
+  );
+  await page.goto("/");
+  await waitForHydration(page, "Header budget fixture");
+  await importProject(page, project, "Header budget project");
+
+  const composer = page.getByRole("region", { name: "Request composer" });
+  // The override is marked on the model field itself, not on a line of its own.
+  await expect(composer.getByRole("button", { name: /^Revert model to/ })).toBeVisible();
+  const box = await page.getByLabel("Message 1 content").boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.y).toBeLessThanOrEqual(BASELINE_FIRST_MESSAGE_TOP - MINIMUM_GAIN);
+
+  const protocol = composer.locator(".inference-settings-fact").first();
+  await expect(protocol).toHaveText("Chat Completions");
+  expect(
+    await protocol.evaluate((node) => node.scrollWidth <= node.clientWidth),
+  ).toBe(true);
 });
 
 test("the request and response panes keep their names without headings", async ({ page }) => {

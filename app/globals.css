@@ -6027,6 +6027,30 @@ main {
   flex: 0 0 auto;
 }
 
+.inference-settings-model-row .inference-settings-field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.inference-settings-model-row .model-combobox {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.inference-settings-override-compact {
+  flex: 0 0 auto;
+  padding: 0 var(--space-2xs);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* With the model id above, the first fact is the protocol, which has to stay
+   identifiable; the tail of the row gives way instead. */
+.inference-settings.model-above .inference-settings-fact:first-child {
+  flex: 0 0 auto;
+}
+
 .inference-settings-model-row .combobox-control {
   flex: 1 1 auto;
   min-width: 0;
