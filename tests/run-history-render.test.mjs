@@ -123,7 +123,7 @@ test("names each saved run by its request, then its target, outcome, and measure
   assertNoBrokenNumbers(html);
 });
 
-test("lists a saved decision run by its questions and target, without offering to open it yet", async () => {
+test("lists a saved decision run by its questions and target, as inspectable evidence", async () => {
   const html = await renderList({
     history: historyState({
       items: [
@@ -152,8 +152,8 @@ test("lists a saved decision run by its questions and target, without offering t
   assert.match(html, /1\.25 s · 2 attempts/);
   // Chat-only numbers a decision summary does not have.
   assert.doesNotMatch(html, /tokens|turns?\b/);
-  // A decision run opens in Decision Compose (D30), so its row is a live button.
-  assert.match(html, /<button[^>]*title="[^"]*· Opens in Compose, as a decision"/);
+  // A saved decision opens as read-only evidence in Runs, so its row is a live button.
+  assert.match(html, /<button[^>]*title="run_decision\.json · Inspect saved decision evidence"/);
   assert.doesNotMatch(html, /<button[^>]*disabled=""[^>]*Decision · 3 questions/);
   assertNoBrokenNumbers(html);
 });
