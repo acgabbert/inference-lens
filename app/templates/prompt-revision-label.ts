@@ -13,8 +13,29 @@ export function promptRevisionLabel(
 ): string {
   const index = template.revisions.findIndex(({ id }) => id === revisionId);
   if (index < 0) return "an earlier revision";
-  const label = template.revisions[index]!.name?.trim() || `Revision ${index + 1}`;
+  const label = template.revisions[index]!.name?.trim() || promptRevisionPositionLabel(template, revisionId);
   return revisionId === template.currentRevisionId ? `${label} (current)` : label;
+}
+
+/** The label an unnamed revision falls back to: its 1-based position. */
+export function promptRevisionPositionLabel(
+  template: PromptTemplate,
+  revisionId: PromptTemplateRevisionId,
+): string {
+  return `Revision ${template.revisions.findIndex(({ id }) => id === revisionId) + 1}`;
+}
+
+/**
+ * The revision a diff compares with by default: the one before, so the diff
+ * reads as what this revision changed, else the one after for the first.
+ */
+export function defaultComparedRevisionId(
+  template: PromptTemplate,
+  revisionId: PromptTemplateRevisionId,
+): PromptTemplateRevisionId | undefined {
+  const index = template.revisions.findIndex(({ id }) => id === revisionId);
+  if (index < 0) return undefined;
+  return (template.revisions[index - 1] ?? template.revisions[index + 1])?.id;
 }
 
 export type CompatibleSuiteRevisionState =

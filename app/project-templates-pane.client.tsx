@@ -261,6 +261,7 @@ export function ProjectTemplatesPane(props: ProjectTemplatesPaneProps) {
           sessionOwned={sessionTemplateIds.has(selected.id)}
           persistenceStatus={props.persistenceStatus ?? "saved"}
           onRename={props.onRename}
+          onRenameRevision={props.onRenameRevision}
           onDraftChange={props.onDecisionDraftChange}
           onSave={props.onSaveDecision}
           onSaveAndUse={props.onSaveAndUseDecision}

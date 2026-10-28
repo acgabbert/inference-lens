@@ -27,6 +27,7 @@ import {
   projectExportFileName,
   projectDraft,
   renamePromptTemplate,
+  renamePromptTemplateRevision,
   removePromptTemplateRevision,
   removePromptTemplateUse,
   resolveProjectRevision,
@@ -2331,5 +2332,43 @@ test("re-pointing an unknown connection is refused rather than ignored", () => {
         "http://127.0.0.1:8080/v1",
       ),
     ProjectValidationError,
+  );
+});
+
+test("renaming a template revision changes only its label", () => {
+  const project = createProjectFile({
+    name: "Revision rename",
+    request,
+    idSuffix: "revision-rename",
+    createdAt: "2026-07-24T12:00:00.000Z",
+  });
+  const created = createPromptTemplate(project, {
+    name: "Question",
+    messages: [{ role: "user", content: "Explain {{topic}}." }],
+    variableDefaults: { topic: "branching" },
+    idSuffix: "question",
+    revisionIdSuffix: "question-1",
+    createdAt: "2026-07-24T12:01:00.000Z",
+  });
+  const revisionId = chatTemplate(created.promptTemplates[0]).currentRevisionId;
+
+  const named = renamePromptTemplateRevision(created, "template_question", revisionId, "  Baseline  ");
+  const [before] = chatTemplate(created.promptTemplates[0]).revisions;
+  const [after] = chatTemplate(named.promptTemplates[0]).revisions;
+  assert.deepEqual(after, { ...before, name: "Baseline" });
+
+  assert.equal(renamePromptTemplateRevision(named, "template_question", revisionId, "Baseline"), named);
+
+  // Clearing drops the key, so the revision serializes as if it was never named.
+  const cleared = renamePromptTemplateRevision(named, "template_question", revisionId, " ");
+  assert.equal(Object.hasOwn(chatTemplate(cleared.promptTemplates[0]).revisions[0]!, "name"), false);
+
+  assert.throws(
+    () => renamePromptTemplateRevision(created, "template_question", "template-revision_missing", "X"),
+    /Template revision does not exist/,
+  );
+  assert.throws(
+    () => renamePromptTemplateRevision(created, "template_missing", revisionId, "X"),
+    /Template does not exist/,
   );
 });

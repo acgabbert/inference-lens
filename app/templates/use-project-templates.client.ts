@@ -11,6 +11,7 @@ import {
   projectDraft,
   removePromptTemplateUse,
   renamePromptTemplate,
+  renamePromptTemplateRevision,
   restorePromptTemplate,
   setPromptTemplateRecommendedTarget,
   updateProjectDraft,
@@ -149,6 +150,8 @@ export interface ProjectTemplatesHandle {
   saveAndInsertProjectTemplate(templateId: PromptTemplateId, name: string, messages: PromptTemplateMessages, defaults: Record<string, string>, recommendedTarget: PromptTemplateRecommendedTarget | undefined, revisionName: string | undefined, itemIndex: number): PromptTemplateRevisionId | undefined;
   /** Commits only the label, without touching revision content. Returns false (and leaves the project untouched) for a blank name. */
   renameProjectTemplate(templateId: PromptTemplateId, name: string): boolean;
+  /** Relabels a saved revision without touching its content; a blank name clears the label. */
+  renameProjectTemplateRevision(templateId: PromptTemplateId, revisionId: PromptTemplateRevisionId, name: string): void;
   archiveProjectTemplate(templateId: PromptTemplateId, onArchived?: () => void): void;
   restoreProjectTemplate(templateId: PromptTemplateId): void;
   insertProjectTemplate(
@@ -528,6 +531,17 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     adoptAuthoredProject(renamePromptTemplate(project, templateId, trimmed));
     return true;
   }
+  function renameProjectTemplateRevision(
+    templateId: PromptTemplateId,
+    revisionId: PromptTemplateRevisionId,
+    name: string,
+  ): void {
+    // Session prompts expose no saved revisions to relabel.
+    if (sessionTemplateIds.has(templateId)) return;
+    const project = input.ensureProjectDocument();
+    const next = renamePromptTemplateRevision(project, templateId, revisionId, name);
+    if (next !== project) adoptAuthoredProject(next);
+  }
   function archiveProjectTemplate(templateId: PromptTemplateId, onArchived?: () => void): void {
     const project = input.ensureProjectDocument();
     const template = project.promptTemplates.find(({ id }) => id === templateId);
@@ -678,6 +692,7 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     saveProjectTemplate,
     saveAndInsertProjectTemplate,
     renameProjectTemplate,
+    renameProjectTemplateRevision,
     archiveProjectTemplate,
     restoreProjectTemplate,
     insertProjectTemplate,

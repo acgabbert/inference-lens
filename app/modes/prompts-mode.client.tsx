@@ -123,6 +123,7 @@ export function PromptsMode({
           return revisionId;
         }}
         onRename={templates.renameProjectTemplate}
+        onRenameRevision={templates.renameProjectTemplateRevision}
         onArchive={templates.archiveProjectTemplate}
         onRestore={templates.restoreProjectTemplate}
         onInsert={(...args) => {

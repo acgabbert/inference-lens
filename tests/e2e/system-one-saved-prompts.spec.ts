@@ -340,3 +340,18 @@ test("historical decision use keeps the target and explains an unavailable Syste
   await expect(pin).toContainText("recommended-model");
   await expect(page.getByRole("button", { name: /^Run decision/ })).toBeDisabled();
 });
+
+test("a saved decision revision can be renamed", async ({ page }) => {
+  await seedProfile(page);
+  await page.goto("/");
+  await waitForHydration(page);
+  await importProject(page, fixture(), "Saved decisions");
+  await openMode(page, "Prompts");
+  await page.locator(".template-list").getByRole("button", { name: /Ticket decision/ }).click();
+  const revision = page.getByRole("combobox", { name: "Revision", exact: true });
+  await expect(revision.locator("option:checked")).toHaveText("Revision 1 (current)");
+  await page.getByRole("button", { name: "Rename revision" }).click();
+  await page.getByLabel("New revision name").fill("Launch");
+  await page.getByLabel("New revision name").press("Enter");
+  await expect(revision.locator("option:checked")).toHaveText("Launch (current)");
+});
