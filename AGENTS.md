@@ -46,10 +46,9 @@ suite locally: CI runs the full suite in shards against the pinned Chromium
 once the work goes up as a pull request, so when handing work back, say that
 it has not run yet. When a change touches shared e2e support, provider
 fixtures, or app-wide composition, also run the specs most likely to share that
-ground. A change with
-no user-visible surface — a pure type refactor, a docs edit, build
-configuration — needs no browser run at all; say that rather than spending one
-to prove it.
+ground. A change with no user-visible surface — a pure type refactor, a docs
+edit, build configuration — needs no browser run at all; say that rather than
+spending one to prove it.
 
 Report what was actually run. If a check was skipped, or a fixture could not
 reproduce the situation, or a spec covers only part of what changed, say so
