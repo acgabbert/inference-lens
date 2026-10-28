@@ -9,6 +9,7 @@ import {
   type N8nPasteAnalysis,
   type N8nPasteMappingDraft,
 } from "./n8n-template-paste.ts";
+import { ModalDialog } from "../modal-dialog.client";
 
 const explanation: Record<N8nPasteMappingDraft["nameSource"], string> = {
   "direct-reference": "Named from a direct n8n data reference.",
@@ -40,61 +41,48 @@ export function N8nTemplatePasteDialog({
   const [startCollapsed] = useState(() => initialSource.trim().length > 0 && !("message" in analyzeN8nTemplatePaste(initialSource)));
   const [sourceOpen, setSourceOpen] = useState(!startCollapsed);
   const [variableFocusPending, setVariableFocusPending] = useState(startCollapsed);
-  const dialogRef = useRef<HTMLElement>(null);
   const [suggestions, setSuggestions] = useState(suggestionsEnabled);
   const analyzed = useMemo(() => analyzeN8nTemplatePaste(source), [source]);
   const analysis = "message" in analyzed ? undefined : analyzed;
   const error = "message" in analyzed ? `${analyzed.message} (at character ${analyzed.offset + 1}).` : undefined;
   const hasContent = source.trim().length > 0;
   const showSource = sourceOpen || Boolean(error) || !hasContent;
-  useEffect(() => {
-    if (!startCollapsed) dialogRef.current?.querySelector("textarea")?.focus();
-  }, [startCollapsed]);
-  useEffect(() => {
-    const close = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { event.stopPropagation(); onClose(); return; }
-      if (event.key !== "Tab") return;
-      const focusable = dialogRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]):not([tabindex="-1"]), input:not([disabled]), textarea:not([disabled])');
-      if (!focusable?.length) return;
-      const first = focusable[0]!;
-      const last = focusable[focusable.length - 1]!;
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-    };
-    window.addEventListener("keydown", close, true);
-    return () => window.removeEventListener("keydown", close, true);
-  }, [onClose]);
   const sourceField = <div className="n8n-template-paste-source">
     {hasContent && <button aria-controls="n8n-template-paste-source" aria-expanded={showSource} className="text-button n8n-template-paste-source-toggle" disabled={Boolean(error)} type="button" onClick={() => setSourceOpen(!showSource)}>Source</button>}
     {showSource && <label id="n8n-template-paste-source">Copied n8n content<textarea rows={hasContent ? 10 : 5} value={source} onChange={(event) => setSource(event.target.value)} /></label>}
     {error && <div className="n8n-template-paste-error" role="alert">{error}</div>}
   </div>;
   return (
-    <div className="n8n-template-paste-backdrop" role="presentation">
-      <section aria-labelledby="n8n-template-paste-title" aria-modal="true" className={`n8n-template-paste-dialog${hasContent ? " wide-dialog" : ""}`} ref={dialogRef} role="dialog">
-        <header className="wide-dialog-header">
-          <span className="eyebrow">Template authoring</span>
-          <h2 id="n8n-template-paste-title">{automatic ? "Convert pasted n8n expressions?" : "Paste from n8n"}</h2>
-          <p>Names are suggestions. Expressions are not run, and conversion does not preserve their computation.</p>
-        </header>
-        <N8nTemplatePasteConversion
-          // Every edit to the source is a new analysis, so its drafts start over.
-          key={analysis?.source ?? "invalid"}
-          analysis={analysis}
-          automatic={automatic}
-          focusFirstVariable={variableFocusPending}
-          hasContent={hasContent}
-          onFirstVariableFocused={() => setVariableFocusPending(false)}
-          onClose={onClose}
-          onInsert={onInsert}
-          onPasteUnchanged={onPasteUnchanged}
-          onSuggestionsEnabledChange={onSuggestionsEnabledChange}
-          sourceField={sourceField}
-          suggestions={suggestions}
-          onSuggestionsChange={setSuggestions}
-        />
-      </section>
-    </div>
+    <ModalDialog
+      backdropClassName="n8n-template-paste-backdrop"
+      className={`n8n-template-paste-dialog${hasContent ? " wide-dialog" : ""}`}
+      // A collapsed source opens on its first variable instead; the conversion focuses it.
+      initialFocus={startCollapsed ? undefined : "textarea"}
+      labelledBy="n8n-template-paste-title"
+      onClose={onClose}
+    >
+      <header className="wide-dialog-header">
+        <span className="eyebrow">Template authoring</span>
+        <h2 id="n8n-template-paste-title">{automatic ? "Convert pasted n8n expressions?" : "Paste from n8n"}</h2>
+        <p>Names are suggestions. Expressions are not run, and conversion does not preserve their computation.</p>
+      </header>
+      <N8nTemplatePasteConversion
+        // Every edit to the source is a new analysis, so its drafts start over.
+        key={analysis?.source ?? "invalid"}
+        analysis={analysis}
+        automatic={automatic}
+        focusFirstVariable={variableFocusPending}
+        hasContent={hasContent}
+        onFirstVariableFocused={() => setVariableFocusPending(false)}
+        onClose={onClose}
+        onInsert={onInsert}
+        onPasteUnchanged={onPasteUnchanged}
+        onSuggestionsEnabledChange={onSuggestionsEnabledChange}
+        sourceField={sourceField}
+        suggestions={suggestions}
+        onSuggestionsChange={setSuggestions}
+      />
+    </ModalDialog>
   );
 }
 

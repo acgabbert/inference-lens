@@ -14,6 +14,7 @@ import {
   updateEvaluationSuiteInput,
 } from "../../packages/core/src/evaluation-suite-authoring";
 import { BUFFERED_FIXTURE_ENDPOINT, importProject, openMode, seedProfile, waitForHydration } from "./support";
+import { expectModalContract } from "./support/modal";
 
 const PROJECT_NAME = "Evaluate in a suite fixture";
 
@@ -208,4 +209,23 @@ test("an edited draft must become a revision before it can be evaluated", async 
   await expect(dialog.getByText("Network explainer · Revision 2 (current)")).toBeVisible();
   await dialog.getByRole("button", { name: "Create new suite" }).click();
   await expect(page.locator(".evaluation-resolution-action", { hasText: "Input pinned to Network explainer · Revision 2 (current)" })).toBeVisible();
+});
+
+test("the chat evaluate dialog follows the modal contract", async ({ page }) => {
+  const built = withOutdatedSuite(baseProject(), {
+    templateName: "Support reply",
+    suiteName: "Support QA",
+    templateSuffix: "support-reply",
+    suiteSuffix: "support-qa",
+  });
+  await seedProfile(page, { instanceId: "profile-instance-buffered" });
+  await page.goto("/");
+  await waitForHydration(page);
+  await importProject(page, built.project, PROJECT_NAME);
+  await openPromptsWorkspace(page);
+  await page.locator(".template-list").getByRole("button", { name: /Support reply/ }).click();
+  await expectModalContract(page, {
+    open: page.locator(".template-editor").getByRole("button", { name: "Evaluate in a suite…" }),
+    dialog: page.getByRole("dialog", { name: "Evaluate in a suite" }),
+  });
 });

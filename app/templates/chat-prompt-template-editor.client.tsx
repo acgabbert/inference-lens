@@ -35,6 +35,7 @@ import { PinnedRevisionSelect, RevisionSwitchReview } from "./revision-switch-re
 import { DisclosureChevron } from "../disclosure-chevron.client";
 import { FocusModeToggle, useFocusMode } from "../focus-mode.client";
 import { N8nTemplatePasteDialog } from "./n8n-template-paste-dialog.client";
+import { ModalDialog } from "../modal-dialog.client";
 import { shouldSuggestN8nTemplatePaste } from "./n8n-template-paste";
 import { n8nPasteSuggestionsEnabled, setN8nPasteSuggestionsEnabled } from "./n8n-template-paste-preference.client";
 
@@ -852,44 +853,42 @@ export function ChatPromptTemplateEditor({
         onInsert={insertAtN8nPasteTarget}
         onPasteUnchanged={() => insertAtN8nPasteTarget(n8nPasteTarget.pastedSource ?? n8nPasteTarget.source.slice(n8nPasteTarget.start, n8nPasteTarget.end))}
       />}
-      {evaluateRequest && <div className="confirmation-backdrop" role="presentation">
-        <section aria-label="Evaluate in a suite" aria-modal="true" className="confirmation-dialog" role="dialog">
-          <h2>Evaluate in a suite</h2>
-          <p><strong>{selected.name} · {promptRevisionLabel(selected, evaluateRequest.revisionId)}</strong></p>
-          <p>Choose a compatible suite to keep its cases, checks, and configurations, or start a new suite. Messages will not change. Nothing runs until you start the evaluation.</p>
-          {evaluateRevisionError && <div className="template-diagnostic" role="alert">{evaluateRevisionError}</div>}
-          {compatibleEvaluationSuiteEntries.length > 0 && <div className="confirmation-dialog-actions confirmation-dialog-suite-rows">
-            {compatibleEvaluationSuiteEntries.map(({ suite, pinnedRevisionId }) => {
-              const state = describeCompatibleSuiteRevision(selected, pinnedRevisionId, evaluateRequest.revisionId);
-              const description = state.kind === "current"
-                ? "already pinned to this revision"
-                : state.kind === "outdated"
-                  ? `currently ${state.pinnedLabel} → will pin ${state.targetLabel}`
-                  : "pinned revision unavailable";
-              return <div className="confirmation-dialog-suite-row" key={suite.id}>
-                <span><strong>{suite.name}</strong> — {description}</span>
-                <button
-                  className="button secondary"
-                  type="button"
-                  onClick={() => {
-                    if (state.kind === "current") {
-                      onOpenEvaluationSuite?.(suite.id);
-                      setEvaluateRequest(undefined);
-                      return;
-                    }
-                    if (onEvaluateRevision?.(evaluateRequest.templateId, evaluateRequest.revisionId, suite.id) ?? true) {
-                      setEvaluateRequest(undefined);
-                    }
-                  }}
-                >
-                  {state.kind === "current" ? "Open" : `Use ${suite.name}`}
-                </button>
-              </div>;
-            })}
-          </div>}
-          <div className="confirmation-dialog-actions"><button className="button primary" type="button" onClick={() => { if (onEvaluateRevision?.(evaluateRequest.templateId, evaluateRequest.revisionId) ?? true) setEvaluateRequest(undefined); }}>Create new suite</button><button className="button secondary" type="button" onClick={() => { onDismissEvaluateRevisionError?.(); setEvaluateRequest(undefined); }}>Cancel</button></div>
-        </section>
-      </div>}
+      {evaluateRequest && <ModalDialog className="confirmation-dialog" label="Evaluate in a suite" onClose={() => { onDismissEvaluateRevisionError?.(); setEvaluateRequest(undefined); }}>
+        <h2>Evaluate in a suite</h2>
+        <p><strong>{selected.name} · {promptRevisionLabel(selected, evaluateRequest.revisionId)}</strong></p>
+        <p>Choose a compatible suite to keep its cases, checks, and configurations, or start a new suite. Messages will not change. Nothing runs until you start the evaluation.</p>
+        {evaluateRevisionError && <div className="template-diagnostic" role="alert">{evaluateRevisionError}</div>}
+        {compatibleEvaluationSuiteEntries.length > 0 && <div className="confirmation-dialog-actions confirmation-dialog-suite-rows">
+          {compatibleEvaluationSuiteEntries.map(({ suite, pinnedRevisionId }) => {
+            const state = describeCompatibleSuiteRevision(selected, pinnedRevisionId, evaluateRequest.revisionId);
+            const description = state.kind === "current"
+              ? "already pinned to this revision"
+              : state.kind === "outdated"
+                ? `currently ${state.pinnedLabel} → will pin ${state.targetLabel}`
+                : "pinned revision unavailable";
+            return <div className="confirmation-dialog-suite-row" key={suite.id}>
+              <span><strong>{suite.name}</strong> — {description}</span>
+              <button
+                className="button secondary"
+                type="button"
+                onClick={() => {
+                  if (state.kind === "current") {
+                    onOpenEvaluationSuite?.(suite.id);
+                    setEvaluateRequest(undefined);
+                    return;
+                  }
+                  if (onEvaluateRevision?.(evaluateRequest.templateId, evaluateRequest.revisionId, suite.id) ?? true) {
+                    setEvaluateRequest(undefined);
+                  }
+                }}
+              >
+                {state.kind === "current" ? "Open" : `Use ${suite.name}`}
+              </button>
+            </div>;
+          })}
+        </div>}
+        <div className="confirmation-dialog-actions"><button className="button primary" type="button" onClick={() => { if (onEvaluateRevision?.(evaluateRequest.templateId, evaluateRequest.revisionId) ?? true) setEvaluateRequest(undefined); }}>Create new suite</button><button className="button secondary" type="button" onClick={() => { onDismissEvaluateRevisionError?.(); setEvaluateRequest(undefined); }}>Cancel</button></div>
+      </ModalDialog>}
     </div>
   );
 }

@@ -93,7 +93,7 @@ test("audit: review tool configuration and manual continuation with a mock", asy
   await capture(page, "07-runs-after-completed-run");
 });
 
-test("audit: menus dismiss predictably while library modal focus remains characterized", async ({page}) => {
+test("audit: menus dismiss predictably and the library modal takes focus", async ({page}) => {
   await openProject(page);
   await page.getByLabel("Project menu").click(); await page.keyboard.press("Escape");
   await expect(page.locator("details.project-menu")).not.toHaveAttribute("open", "");
@@ -102,7 +102,7 @@ test("audit: menus dismiss predictably while library modal focus remains charact
   await expect(page.locator("details.run-data-menu")).not.toHaveAttribute("open", "");
   await page.getByRole("tab", {name: /Tools/}).click(); await openToolLibrary(page);
   const focus = await page.evaluate(() => ({tag:document.activeElement?.tagName, text:document.activeElement?.textContent, insideDialog: Boolean(document.activeElement?.closest('[role="dialog"]'))}));
-  expect(focus.insideDialog).toBe(false);
+  expect(focus.insideDialog).toBe(true);
   await writeFile(`${OUT}/08-modal-focus.json`, JSON.stringify(focus, null, 2));
 });
 

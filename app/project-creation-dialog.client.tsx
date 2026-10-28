@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { projectDirectoryName } from "../packages/core/src/project.ts";
 import type { ProjectGitPolicy } from "../packages/core/src/project.ts";
 import type { ProjectCreationOptions } from "./project-workspace.client.ts";
+import { useModalDialog } from "./modal-dialog.client";
 
 /**
  * Why a folder is being chosen: a new project, a first save of the open one,
@@ -53,18 +54,8 @@ export function ProjectCreationDialog({
   const [gitPolicy, setGitPolicy] = useState<ProjectGitPolicy>("private");
   const valid = Boolean(name.trim());
 
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [onClose]);
+  // The hook rather than <ModalDialog>: the dialog element is the form itself.
+  const dialogRef = useModalDialog<HTMLFormElement>(onClose);
 
   return (
     <div className="confirmation-backdrop" role="presentation">
@@ -72,7 +63,9 @@ export function ProjectCreationDialog({
         aria-labelledby="project-creation-title"
         aria-modal="true"
         className="confirmation-dialog project-creation-dialog"
+        ref={dialogRef}
         role="dialog"
+        tabIndex={-1}
         onSubmit={(event) => {
           event.preventDefault();
           if (!valid) return;

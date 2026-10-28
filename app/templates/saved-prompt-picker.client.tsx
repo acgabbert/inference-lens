@@ -93,7 +93,8 @@ export function SavedPromptPicker({
   }
 
   function moreOptions(): void {
-    setOpen(false);
+    // The trigger becomes the dialog's opener, so closing the dialog returns there.
+    close({ restoreFocus: true });
     onMoreOptions(query.trim(), highlighted?.id);
   }
 
