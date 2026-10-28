@@ -1,5 +1,12 @@
 import type { ToolBinding } from "../../packages/core/src/tool-execution.ts";
+import type { RichInferenceRequest } from "../../packages/core/src/types.ts";
+import { stableJsonValue } from "../../packages/core/src/stable-json.ts";
+import {
+  createEntityId,
+  createSingleTurnRunExecution,
+} from "../../packages/core/src/run-kernel/index.ts";
 import type {
+  ProviderTurnInput,
   RunState,
   ToolDefinition,
   ToolResult,
@@ -47,6 +54,53 @@ export function isRetryableRunState(state: RunState | null): boolean {
   return Boolean(
     state?.status.kind === "paused" && state.status.reason === "attempt_failed",
   );
+}
+
+/**
+ * The provider turn the composer would send if it ran now, aimed at `profileId`
+ * the way a run aims its prepared input. Identity fields are placeholders: this
+ * exists to be compared, never executed.
+ */
+export function composerTurnInput(
+  request: RichInferenceRequest,
+  tools: ToolDefinition[],
+  profileId: string,
+): ProviderTurnInput {
+  const { turnInput } = createSingleTurnRunExecution(
+    request,
+    {
+      conversationId: createEntityId("conversation", "composer"),
+      conversationRevisionId: createEntityId("revision", "composer"),
+    },
+    "composer",
+    "1970-01-01T00:00:00.000Z",
+    tools,
+  );
+  return { ...turnInput, target: { ...turnInput.target, profileId: createEntityId("profile", profileId) } };
+}
+
+/**
+ * Whether the composer would now send something other than what this run was
+ * started with.
+ *
+ * Compared against the run's own input, not its failed attempt: a later turn
+ * carries the run's tool exchanges, which the composer never has. Message ids
+ * are ignored, because template resolution mints them afresh; what matters is
+ * what the provider would receive.
+ */
+export function composerDiffersFromRun(
+  run: ProviderTurnInput,
+  composer: ProviderTurnInput,
+): boolean {
+  const sent = ({ target, messages, responseMode, options, tools }: ProviderTurnInput) =>
+    JSON.stringify(stableJsonValue({
+      target,
+      messages: messages.map((message) => ({ ...message, id: undefined })),
+      responseMode,
+      options,
+      tools,
+    }));
+  return sent(run) !== sent(composer);
 }
 
 /**

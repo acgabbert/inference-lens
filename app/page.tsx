@@ -67,7 +67,7 @@ import { useProjectRunHistory } from "./use-project-run-history.client";
 import {
   ConfirmationDialog,
 } from "./confirmation-dialog.client";
-import { runEmptyStatePresentation, runReadiness } from "./run-readiness.client";
+import { emptyFinalUserMessageId, runEmptyStatePresentation, runReadiness } from "./run-readiness.client";
 import type { ReadinessDestination } from "./run-readiness.client";
 import { RUN_READINESS_SUMMARY_ID } from "./run-readiness-notice.client";
 import type {
@@ -76,6 +76,7 @@ import type {
 import { prepareWorkbenchRun } from "./run/prepare-workbench-run.client";
 import type { PrepareWorkbenchRunResult } from "./run/prepare-workbench-run.client";
 import { useRunSession } from "./run/use-run-session.client";
+import { composerDiffersFromRun, composerTurnInput, isRetryableRunState } from "./run/run-session-state.client";
 import { RunEvidenceDetail } from "./run/run-evidence-detail.client";
 import {
   batchMemberLabel,
@@ -943,7 +944,29 @@ function HomeContent() {
         }
       : {}),
     ...templateReadinessInputs(projectFile, projectTemplates.templateWorkbench),
+    emptyUserMessageId: emptyFinalUserMessageId(requestSettings.currentRequest().messages),
   });
+  // Retry re-sends the failed attempt's frozen input. Once the composer would
+  // send something else, the edited request is what a reflex should run.
+  const chatRetryableFailure = isRetryableRunState(runState);
+  const chatRequestEdited = Boolean(
+    chatRetryableFailure &&
+      runState?.input &&
+      composerDiffersFromRun(
+        runState.input,
+        composerTurnInput(
+          requestSettings.currentRequest(),
+          [...resolvedTools(), ...requestTools],
+          requestSettings.profile.id,
+        ),
+      ),
+  );
+
+  /** Settles the failed attempt as failed, so its trace is kept, then runs the composer. */
+  function runEditedRequest(): void {
+    runSession.stop();
+    void run();
+  }
 
   function resolveReadiness(destination: ReadinessDestination): void {
     setPendingReadinessDestination(destination);
@@ -1138,6 +1161,9 @@ function HomeContent() {
         onRejectMcp={runSession.rejectMcpCall}
         onContinue={() => void runSession.continueRun()}
         onRetry={() => void runSession.retry()}
+        {...(chatRequestEdited
+          ? { editedRequest: { disabled: Boolean(readiness?.blocked), onRun: runEditedRequest } }
+          : {})}
         onDiscardFailedRun={runSession.stop}
         onSaveTrace={() => void runSession.exportTrace()}
         onEditFromHere={editFromHere}
@@ -1244,8 +1270,6 @@ function HomeContent() {
       onDiscardPendingBranch={pendingBranch.clear}
     />
   );
-  const chatRetryableFailure =
-    runState?.status.kind === "paused" && runState.status.reason === "attempt_failed";
   // Chat's handle for Compose (D29-A). Chat's session, response, and inspector
   // are unchanged; only how the topbar and shortcut reach them is shared.
   const chatCompose: ComposeKindHandle = {
@@ -1253,18 +1277,20 @@ function HomeContent() {
     primary:
       isRequestActive || runState?.status.kind === "awaiting_tool_results"
         ? { kind: "stop", stop: runSession.stop }
-        : chatRetryableFailure
+        : chatRetryableFailure && !chatRequestEdited
           ? { kind: "none" }
           : {
               kind: "run",
               label: "Run current conversation",
               disabled: Boolean(readiness?.blocked),
               ...(readiness?.blocked ? { disabledReasonId: RUN_READINESS_SUMMARY_ID } : {}),
-              run: () => void run(),
+              run: chatRequestEdited ? runEditedRequest : () => void run(),
             },
     shortcut() {
       if (readiness?.blocked) return;
-      if (chatRetryableFailure) {
+      if (chatRequestEdited) {
+        runEditedRequest();
+      } else if (chatRetryableFailure) {
         void runSession.retry();
       } else if (runState?.status.kind !== "awaiting_tool_results") {
         void run();

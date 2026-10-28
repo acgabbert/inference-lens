@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  emptyFinalUserMessageId,
   runEmptyStatePresentation,
   runReadiness,
 } from "../app/run-readiness.client.ts";
@@ -421,4 +422,55 @@ test("a missing model outranks an unsupported protocol", () => {
     protocol: { id: "openai-responses", supported: false },
   });
   assert.match(readiness?.headline ?? "", /no model selected/);
+});
+
+test("an empty final user message blocks the run and points at that message", () => {
+  const readiness = runReadiness({
+    ...ready,
+    emptyUserMessageId: "message_last",
+  });
+  assert.equal(readiness?.blocked, true);
+  assert.equal(readiness?.headline, "The last user message is empty");
+  assert.deepEqual(readiness?.actions.map(({ destination }) => destination), [
+    { surface: "request", tab: "messages", control: "message", entityId: "message_last" },
+  ]);
+  assert.equal(
+    runEmptyStatePresentation(readiness).headline,
+    "Write the user message",
+  );
+});
+
+test("unresolved prompt variables outrank an empty user message", () => {
+  const readiness = runReadiness({
+    ...ready,
+    emptyUserMessageId: "message_last",
+    templateIssues: [{ templateUseId: "use_a", variableName: "topic" }],
+  });
+  assert.match(readiness?.headline ?? "", /prompt variable/);
+});
+
+test("only the last user message decides whether the prompt is empty", () => {
+  const text = (id: string, role: "system" | "user" | "assistant", value: string) => ({
+    id: id as never,
+    role,
+    content: [{ type: "text" as const, text: value }],
+  });
+  assert.equal(
+    emptyFinalUserMessageId([text("message_s", "system", "Be brief."), text("message_u", "user", "  \n")]),
+    "message_u",
+  );
+  assert.equal(
+    emptyFinalUserMessageId([text("message_u1", "user", ""), text("message_u2", "user", "Hi")]),
+    undefined,
+    "an earlier empty turn is the provider's call, not a blocker",
+  );
+  assert.equal(
+    emptyFinalUserMessageId([text("message_u", "user", ""), text("message_a", "assistant", "Prefill")]),
+    "message_u",
+    "a trailing assistant prefill does not make the user turn non-empty",
+  );
+  assert.equal(
+    emptyFinalUserMessageId([text("message_s", "system", "Only a system prompt.")]),
+    undefined,
+  );
 });
