@@ -196,7 +196,8 @@ body {
 .empty-glyph,
 .run-metric-value,
 .run-history-empty h3,
-.pane-empty-state h3 {
+.pane-empty-state h3,
+.run-link-recovery h2 {
   font-size: var(--type-section-heading);
 }
 
@@ -9873,18 +9874,18 @@ label.experiment-retry-field {
 }
 
 .run-link-recovery {
-  margin: 0.75rem 1rem;
-  padding: 1rem;
+  margin: var(--space-md) var(--space-xl);
+  padding: var(--space-xl);
   border: 1px solid var(--border-default);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-lg);
   background: var(--surface-panel);
   overflow-wrap: anywhere;
 }
-.run-link-recovery h2 { margin: 0 0 0.5rem; font-size: 1rem; }
-.run-link-recovery p { margin: 0.5rem 0; }
-.run-link-copy { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; padding: 0.5rem; }
+.run-link-recovery h2 { margin: 0 0 var(--space-sm); }
+.run-link-recovery p { margin: var(--space-sm) 0; }
+.run-link-copy { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-sm); padding: var(--space-sm); }
 .run-link-copy p { margin: 0; }
-.run-link-copy label { display: grid; gap: 0.25rem; flex: 1 1 20rem; }
+.run-link-copy label { display: grid; gap: var(--space-2xs); flex: 1 1 20rem; }
 .run-link-copy input { width: 100%; min-width: 0; }
 
 /* Saved evidence has a vertical scroll owner so opening diagnostics cannot
