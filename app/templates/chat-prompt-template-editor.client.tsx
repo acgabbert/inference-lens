@@ -589,6 +589,15 @@ export function ChatPromptTemplateEditor({
                     </button>}
                   </>
                 )}
+                {/* The header never scrolls, so focus mode's close stays reachable
+                    while the content and diff below it do. */}
+                {focusMode && <FocusModeToggle
+                  className="template-focus-toggle"
+                  open
+                  subject="prompt editor"
+                  toggleRef={focusToggleRef}
+                  onToggle={closeFocusMode}
+                />}
               </div>
             </header>
 
@@ -992,13 +1001,14 @@ function TemplateMessagesEditor({
             const textarea = document.activeElement instanceof HTMLTextAreaElement ? document.activeElement : textareas.current.get(0);
             if (textarea) onOpenN8nPaste(targetFor(textarea, [...textareas.current.entries()].find(([, value]) => value === textarea)?.[0] ?? 0, false));
           }}>Paste from n8n…</button>}
-          <FocusModeToggle
+          {/* In focus mode the close moves to the editor header. */}
+          {!focusMode && <FocusModeToggle
             className="template-focus-toggle"
-            open={focusMode}
+            open={false}
             subject="prompt editor"
             toggleRef={focusToggleRef}
-            onToggle={() => onFocusModeChange(!focusMode)}
-          />
+            onToggle={() => onFocusModeChange(true)}
+          />}
         </div>
       </div>
       {!expanded ? (

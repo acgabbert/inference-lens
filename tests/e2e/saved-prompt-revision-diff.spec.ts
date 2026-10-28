@@ -403,3 +403,19 @@ test("a saved revision can be renamed and cleared back to its position label", a
   await editor.getByRole("button", { name: "Save name" }).click();
   await expect(revision.locator("option:checked")).toContainText("Revision 2 (current)");
 });
+
+test("focus mode keeps its close button on screen while the diff is scrolled into view", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openLongPrompt(page, "focus-mode-close");
+  const editor = page.locator(".template-editor");
+  await editor.getByRole("button", { name: "Open prompt editor in focus mode" }).click();
+  const dialog = page.getByRole("dialog", { name: "Prompt editor focus mode" });
+  const diff = dialog.getByRole("region", { name: "Revision diff" });
+  await diff.getByRole("button", { name: /Revision diff/ }).click();
+  await diff.getByRole("button", { name: "Hide diff" }).last().scrollIntoViewIfNeeded();
+
+  const close = dialog.getByRole("button", { name: "Exit prompt editor focus mode" });
+  await expect(close).toBeInViewport();
+  await close.click();
+  await expect(dialog).toHaveCount(0);
+});
