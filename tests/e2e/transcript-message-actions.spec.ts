@@ -79,9 +79,13 @@ test("at 880px an action label stays on one line and the preview keeps its width
   await row.hover();
 
   const edit = system.getByRole("button", { name: "Edit from here" });
-  const lineHeight = await edit.evaluate((node) => parseFloat(getComputedStyle(node).lineHeight));
-  const box = await edit.boundingBox();
-  expect(box!.height).toBeLessThan(lineHeight * 2);
+  // Count rendered line boxes of the label itself; box height includes padding.
+  const lines = await edit.evaluate((node) => {
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    return new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size;
+  });
+  expect(lines).toBe(1);
 
   const preview = system.locator(".transcript-preview");
   const previewBox = await preview.boundingBox();
