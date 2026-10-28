@@ -8,6 +8,7 @@ import type {
   PromptTemplateRevisionId,
 } from "../../packages/core/src/run-kernel";
 import { discoverTemplateVariables } from "../../packages/core/src/template-engine";
+import { PromptMessagesPreview } from "./prompt-messages-preview.client";
 import { promptRevisionLabel } from "./prompt-revision-label";
 
 export function PromptInsertionDialog({
@@ -76,18 +77,20 @@ export function PromptInsertionDialog({
     setRevisionId(template.currentRevisionId);
   }
 
+  const variables = revision ? discoverTemplateVariables(revision.messages).variables : [];
+
   return (
     <div className="confirmation-backdrop" role="presentation">
       <section
         aria-labelledby="prompt-insertion-title"
         aria-modal="true"
-        className={`confirmation-dialog prompt-insertion-dialog${templates.length > 0 ? " has-templates" : ""}`}
+        className={`confirmation-dialog prompt-insertion-dialog${templates.length > 0 ? " wide-dialog" : ""}`}
         role="dialog"
       >
-        <span className="eyebrow">Current conversation</span>
-        <h2 id="prompt-insertion-title">Insert saved prompt</h2>
         {templates.length === 0 ? (
           <>
+            <span className="eyebrow">Current conversation</span>
+            <h2 id="prompt-insertion-title">Insert saved prompt</h2>
             <p>This project has no active saved prompts. Create or save one in Prompts first.</p>
             <div className="confirmation-actions">
               <button autoFocus className="button secondary" type="button" onClick={onCancel}>
@@ -100,20 +103,24 @@ export function PromptInsertionDialog({
           </>
         ) : (
           <>
-            <div className="prompt-insertion-body">
+            <header className="wide-dialog-header">
+              <span className="eyebrow">Current conversation</span>
+              <h2 id="prompt-insertion-title">Insert saved prompt</h2>
               <p>{replaceEmptyDraft
                 ? "The empty draft will be replaced."
                 : "Choose the exact immutable revision and where it belongs in this conversation."}</p>
-              <label className="prompt-insertion-search">
-                Search prompts
-                <input
-                  autoFocus
-                  type="search"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                />
-              </label>
-              <div className="prompt-insertion-workspace">
+            </header>
+            <div className="wide-dialog-columns">
+              <div className="wide-dialog-pane prompt-insertion-list">
+                <label className="prompt-insertion-search">
+                  Search prompts
+                  <input
+                    autoFocus
+                    type="search"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                  />
+                </label>
                 <fieldset className="saved-prompt-list">
                   <legend>Active saved prompts</legend>
                   {visibleTemplates.length === 0 ? (
@@ -136,55 +143,59 @@ export function PromptInsertionDialog({
                     </label>
                   ))}
                 </fieldset>
-                {visibleSelection && revision && (
-                  <section className="prompt-insertion-selection" aria-label="Prompt selection">
-                    <div className="prompt-insertion-controls">
-                      <label>
-                        Revision
-                        <select
-                          value={revision.id}
-                          onChange={(event) => setRevisionId(event.target.value as PromptTemplateRevisionId)}
-                        >
-                          {[...visibleSelection.revisions].reverse().map((candidate) => (
-                            <option key={candidate.id} value={candidate.id}>
-                              {promptRevisionLabel(visibleSelection, candidate.id)}
+              </div>
+              <section className="wide-dialog-pane" aria-label="Prompt preview">
+                {visibleSelection && revision && <>
+                  <div className="prompt-insertion-controls">
+                    <label>
+                      Revision
+                      <select
+                        value={revision.id}
+                        onChange={(event) => setRevisionId(event.target.value as PromptTemplateRevisionId)}
+                      >
+                        {[...visibleSelection.revisions].reverse().map((candidate) => (
+                          <option key={candidate.id} value={candidate.id}>
+                            {promptRevisionLabel(visibleSelection, candidate.id)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    {!replaceEmptyDraft && <label>
+                        Position
+                        <select value={Math.min(itemIndex, itemCount)} onChange={(event) => setItemIndex(Number(event.target.value))}>
+                          {Array.from({ length: itemCount + 1 }, (_, index) => (
+                            <option key={index} value={index}>
+                              {index === 0 ? "At start" : index === itemCount ? "At end" : `After item ${index}`}
                             </option>
                           ))}
                         </select>
-                      </label>
-                      {!replaceEmptyDraft && <label>
-                          Position
-                          <select value={Math.min(itemIndex, itemCount)} onChange={(event) => setItemIndex(Number(event.target.value))}>
-                            {Array.from({ length: itemCount + 1 }, (_, index) => (
-                              <option key={index} value={index}>
-                                {index === 0 ? "At start" : index === itemCount ? "At end" : `After item ${index}`}
-                              </option>
-                            ))}
-                          </select>
-                        </label>}
-                    </div>
-                    <div className="prompt-insertion-preview">
-                      <span className="eyebrow">Preview</span>
-                      {revision.messages.map((message, index) => (
-                        <article key={`${message.role}-${index}`}>
-                          <strong>{message.role}</strong>
-                          <pre>{message.content}</pre>
-                        </article>
-                      ))}
-                    </div>
-                    <p className="prompt-insertion-variable-summary">
-                      {(() => {
-                        const variables = discoverTemplateVariables(revision.messages).variables;
-                        return variables.length === 0
-                          ? "No values required."
-                          : `${variables.length} ${variables.length === 1 ? "value" : "values"} to review after insertion.`;
-                      })()}
-                    </p>
-                  </section>
-                )}
-              </div>
+                      </label>}
+                  </div>
+                  <PromptMessagesPreview messages={revision.messages} />
+                </>}
+              </section>
+              <section className="wide-dialog-pane" aria-label="Variables">
+                <span className="eyebrow">Variables</span>
+                {revision && <>
+                  <p className="prompt-insertion-variable-summary">
+                    {variables.length === 0
+                      ? "No values required."
+                      : `${variables.length} ${variables.length === 1 ? "value" : "values"} to review after insertion.`}
+                  </p>
+                  {variables.length > 0 && <ul className="prompt-variable-list">
+                    {variables.map(({ name }) => (
+                      <li key={name}>
+                        <code>{name}</code>
+                        <small>{Object.prototype.hasOwnProperty.call(revision.variableDefaults, name)
+                          ? `Default: ${revision.variableDefaults[name]}`
+                          : "No default"}</small>
+                      </li>
+                    ))}
+                  </ul>}
+                </>}
+              </section>
             </div>
-            <div className="confirmation-actions">
+            <div className="confirmation-actions wide-dialog-footer">
               <button className="button secondary" type="button" onClick={onCancel}>Cancel</button>
               <button
                 className="button primary"
