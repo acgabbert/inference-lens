@@ -4005,6 +4005,8 @@ textarea {
 }
 
 .transcript-edit { margin-left: auto; }
+.transcript-copy { margin-left: auto; }
+.transcript-copy + .transcript-edit { margin-left: 0; }
 .transcript-tool-call { overflow: auto; }
 .transcript-tool-result { color: var(--text-muted); }
 
@@ -4025,6 +4027,23 @@ textarea {
   margin: 0;
   white-space: pre-wrap;
   line-height: var(--leading-prose);
+}
+
+.copy-source {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+}
+
+.copy-source-status {
+  color: var(--text-faint);
+  line-height: var(--leading-tight);
+}
+
+.output-copy {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-sm);
 }
 
 .result-header-controls {

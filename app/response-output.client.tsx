@@ -8,6 +8,7 @@ import type {
   ToolCall,
   TranscriptEntry,
 } from "../packages/core/src/run-kernel";
+import { CopySourceButton } from "./copy-source-button.client";
 import { MarkdownView } from "./markdown-view.client";
 import { PaneTabs } from "./workbench-shell.client";
 import { ToolCallList, type ToolResultDraft } from "./tool-call-list.client";
@@ -22,6 +23,11 @@ function startsExpanded(role: ConversationMessage["role"]): boolean {
 
 function previewText(message: ConversationMessage): string {
   return message.content.map((part) => part.text).join(" ");
+}
+
+/** The message's text as the model produced it, one blank line between parts. */
+function sourceText(message: ConversationMessage): string {
+  return message.content.map((part) => part.text).join("\n\n");
 }
 
 export type TraceStorageStatus =
@@ -268,6 +274,9 @@ export function ResponseOutput({
                     {!isOpen && (
                       <span className="transcript-preview">{previewText(message)}</span>
                     )}
+                    {message.role === "assistant" && sourceText(message) && (
+                      <CopySourceButton className="transcript-copy" text={sourceText(message)} />
+                    )}
                     {!readOnly && (
                       <button
                         className="button secondary transcript-edit"
@@ -339,7 +348,7 @@ export function ResponseOutput({
             {runState?.status.kind === "failed" && <div className="waiting-for-answer run-failure-state" role="alert"><span className="failure-glyph" aria-hidden="true">!</span><div><h3>Request failed</h3><p>{runState.status.error.message}</p></div></div>}
           </div>
         ) : <div className="output">
-          {output ? (markdownPreview ? <MarkdownView text={output} /> : <p>{output}</p>)
+          {output ? <>{markdownPreview ? <MarkdownView text={output} /> : <p>{output}</p>}<div className="output-copy"><CopySourceButton text={output} /></div></>
             : reasoning ? <div className="waiting-for-answer" aria-live="polite"><span className="reasoning-dot" aria-hidden="true" /><div><h3>Thinking…</h3><p>Reasoning received. The final answer will appear here.</p></div></div>
             : isRequestActive ? <div className="waiting-for-answer" role="status"><span className="reasoning-dot" aria-hidden="true" /><div><h3>Waiting for response…</h3><p>Request sent. The response will appear here.</p></div></div>
             : awaitingResults ? <div className="waiting-for-answer"><span className="reasoning-dot complete" aria-hidden="true" /><div><h3>Tool result needed</h3><p>Review the call below, supply its result, then continue.</p></div></div>
