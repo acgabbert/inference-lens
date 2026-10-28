@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   analyzeN8nTemplatePaste,
   materializeN8nTemplatePaste,
+  n8nPastePreviewSegments,
   shouldSuggestN8nTemplatePaste,
 } from "../app/templates/n8n-template-paste.ts";
 
@@ -44,4 +45,26 @@ test("n8n paste removes only a leading whole-field marker and detects conservati
   }
   assert.equal(shouldSuggestN8nTemplatePaste('{{ person.name }}'), false);
   assert.equal(shouldSuggestN8nTemplatePaste('{{ $json.topic }}'), true);
+});
+
+test("n8n paste preview segments tag each converted placeholder and join to the inserted text", () => {
+  const analysis = analyzeN8nTemplatePaste("=Hi {{ $json.name }}, {{note}} {{ $json.name }}");
+  assert.ok(!("message" in analysis));
+  const mappings = analysis.mappings.map((mapping) => ({ ...mapping, variableName: "who" }));
+  const segments = n8nPastePreviewSegments(analysis, mappings);
+  assert.deepEqual(segments, [
+    { text: "Hi " },
+    { text: "{{who}}", mappingId: "mapping-1" },
+    { text: ", {{note}} " },
+    { text: "{{who}}", mappingId: "mapping-1" },
+  ]);
+  const materialized = materializeN8nTemplatePaste(analysis, mappings);
+  assert.ok(materialized.ok);
+  assert.equal(segments.map(({ text }) => text).join(""), materialized.content);
+});
+
+test("n8n paste preview segments keep a lone whole-field marker with no n8n expressions", () => {
+  const analysis = analyzeN8nTemplatePaste("=plain {{note}}");
+  assert.ok(!("message" in analysis));
+  assert.deepEqual(n8nPastePreviewSegments(analysis, analysis.mappings), [{ text: "=plain {{note}}" }]);
 });
