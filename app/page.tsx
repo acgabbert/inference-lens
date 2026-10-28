@@ -261,21 +261,26 @@ function HomeContent() {
         enabledToolIds,
       };
     },
-    onApplyDraft(draft, projectId) {
+    onApplyDraft(draft, projectId, adoption) {
       if (projectFile?.projectId !== projectId) clearRequestTools();
       replaceProjectDraft(draft);
-      projectTemplates.clearTransientOverrides();
-      // Declared after this hook because it reads the run session. Safe: a
-      // draft is applied only from project commands, never during render.
-      pendingBranch.clear();
       requestSettings.applyDraft(draft);
-      runSession.reset();
+      // A tab-role refresh changes persisted drafts, not the independent run
+      // session or the transient work the user is doing with its evidence.
+      if (adoption === "replace") {
+        projectTemplates.clearTransientOverrides();
+        pendingBranch.clear();
+        runSession.reset();
+      }
     },
     // The decision owner is declared below; like `pendingBranch` above, it is
     // reached only from project commands and saves, never during render.
     withDecisionDraft(document) { return decision.project.fold(document); },
     getUnsavedDraftReason() { return decision.project.saveBlockedReason; },
-    onApplyDecisionRequest(document) { promptNavigation.reset(); decision.project.adopt(document); },
+    onApplyDecisionRequest(document, adoption) {
+      if (adoption === "refresh") decision.project.refresh(document);
+      else { promptNavigation.reset(); decision.project.adopt(document); }
+    },
     onSaved({ name, destination }) {
       toasts.publish({
         key: "project-saved",

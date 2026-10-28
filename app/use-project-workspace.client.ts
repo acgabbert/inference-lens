@@ -161,6 +161,9 @@ interface QueuedProjectReplacement {
   fallbackError: string;
 }
 
+/** A same-project refresh replaces persisted drafts, but preserves run sessions. */
+export type ProjectDocumentAdoption = "replace" | "refresh";
+
 /**
  * Owns the lifecycle of a portable project and its local workspace handle.
  * The caller supplies the currently editable request draft and applies a
@@ -180,7 +183,7 @@ export function useProjectWorkspace(input: {
   createFreshProject(): ProjectFile;
   createProject(): ProjectFile;
   currentDraft(): UpdateProjectDraft;
-  onApplyDraft(draft: ProjectDraft, projectId: ProjectFile["projectId"]): void;
+  onApplyDraft(draft: ProjectDraft, projectId: ProjectFile["projectId"], adoption: ProjectDocumentAdoption): void;
   /**
    * Writes the decision editor's draft into a document being saved (D42). The
    * decision feature owns its draft, as the chat request owns `currentDraft`.
@@ -189,7 +192,7 @@ export function useProjectWorkspace(input: {
   /** Read from commands and saves, after the feature owners have rendered. */
   getUnsavedDraftReason(): string | undefined;
   /** Hands a newly applied document's active decision request to its owner. */
-  onApplyDecisionRequest(project: ProjectFile): void;
+  onApplyDecisionRequest(project: ProjectFile, adoption: ProjectDocumentAdoption): void;
   /**
    * A save the user asked for landed. Deliberately not called by the auto-save
    * loop below: auto-save is continuous and unremarkable, and confirming it
@@ -252,6 +255,10 @@ export function useProjectWorkspace(input: {
     useState<ProjectTabState["confirmTakeover"]>();
   const [tabSwitching, setTabSwitching] = useState(false);
   const tabCoordinatorRef = useRef<ProjectTabCoordinator | null>(null);
+  // A role loss or replacement invalidates every pending read from that hold.
+  const tabAcquisitionRef = useRef(0);
+  // Consent covers only the edits present when Edit here/Discard was clicked.
+  const requestedTakeoverVersionRef = useRef<number | undefined>(undefined);
   // A reload to become editor replaces the handle but keeps the coordinator.
   const workspaceCoordinatorsRef =
     useRef(new WeakMap<ProjectWorkspaceHandle, ProjectTabCoordinator>());
@@ -307,6 +314,8 @@ export function useProjectWorkspace(input: {
     workspace: ProjectWorkspaceHandle | null,
     projectId: ProjectFile["projectId"] | undefined,
   ): void {
+    tabAcquisitionRef.current += 1;
+    requestedTakeoverVersionRef.current = undefined;
     tabCoordinatorRef.current?.close();
     tabCoordinatorRef.current = null;
     peerSavedRef.current = false;
@@ -328,6 +337,9 @@ export function useProjectWorkspace(input: {
       },
       secondary: (cause) => {
         if (tabCoordinatorRef.current !== coordinator) return;
+        tabAcquisitionRef.current += 1;
+        requestedTakeoverVersionRef.current = undefined;
+        setTabSwitching(false);
         updateTabRole("secondary");
         // The lock this tab held after the editor closed has moved on.
         setConfirmTakeover((current) => current === "editor-closed" ? undefined : current);
@@ -348,7 +360,10 @@ export function useProjectWorkspace(input: {
     tabCoordinatorRef.current = coordinator;
   }
 
-  useEffect(() => () => tabCoordinatorRef.current?.close(), []);
+  useEffect(() => () => {
+    tabAcquisitionRef.current += 1;
+    tabCoordinatorRef.current?.close();
+  }, []);
 
   function setCurrentWorkspace(
     workspace: ProjectWorkspaceHandle | null,
@@ -411,36 +426,63 @@ export function useProjectWorkspace(input: {
   /**
    * Becoming editor never adopts this tab's in-memory document as the base for
    * writing: the editor saved continuously, so it reloads from disk through the
-   * ordinary adoption path.
+   * adoption path, preserving sessions and checking that the acquisition and
+   * consent still cover the document when the asynchronous read completes.
    */
-  async function adoptEditorRoleFromDisk(): Promise<void> {
+  async function adoptEditorRoleFromDisk(
+    acquisition: number,
+    version: number,
+    confirmation: NonNullable<ProjectTabState["confirmTakeover"]>,
+  ): Promise<void> {
     const workspace = projectWorkspaceRef.current;
+    const coordinator = tabCoordinatorRef.current;
     const projectId = projectFile?.projectId;
-    if (!workspace || !projectId) return;
+    if (!workspace || !projectId || !coordinator) return;
+    const isCurrent = () =>
+      tabAcquisitionRef.current === acquisition &&
+      tabCoordinatorRef.current === coordinator &&
+      projectWorkspaceRef.current === workspace;
     setConfirmTakeover(undefined);
     setTabSwitching(true);
     try {
       const opened = await reopenProjectWorkspace(workspace, projectId);
-      if (projectWorkspaceRef.current !== workspace) return;
+      if (!isCurrent()) return;
+      const holdsLock = await coordinator.holdsEditorLock();
+      if (!isCurrent() || !holdsLock) return;
+      if (projectChangeVersionRef.current !== version) {
+        setConfirmTakeover(confirmation);
+        return;
+      }
       applyProjectDocument(opened.project, opened.handle, undefined, { keepTabRole: true });
       updateTabRole("editor");
       peerSavedRef.current = false;
       setTabBehind(false);
       setTabLostEdits(false);
     } catch (error) {
-      projectFailure(error, "Could not reload the project to edit it in this tab.");
+      if (isCurrent()) projectFailure(error, "Could not reload the project to edit it in this tab.");
     } finally {
-      setTabSwitching(false);
+      // Adoption replaces the handle, so only the acquisition guards cleanup.
+      if (tabAcquisitionRef.current === acquisition) setTabSwitching(false);
     }
   }
 
   function onTabAcquired(cause: LockAcquisition): void {
+    const acquisition = ++tabAcquisitionRef.current;
+    const version = cause === "requested"
+      ? requestedTakeoverVersionRef.current
+      : projectChangeVersion;
+    requestedTakeoverVersionRef.current = undefined;
+    const confirmation = cause === "vacated" ? "editor-closed" : "requested";
     if (cause === "initial") {
       updateTabRole("editor");
-    } else if (cause === "vacated" && hasUnsavedChanges) {
-      setConfirmTakeover("editor-closed");
+    } else if (
+      (cause === "vacated" && hasUnsavedChanges) ||
+      version === undefined || version !== projectChangeVersionRef.current
+    ) {
+      setTabSwitching(false);
+      setConfirmTakeover(confirmation);
     } else {
-      void adoptEditorRoleFromDisk();
+      void adoptEditorRoleFromDisk(acquisition, version, confirmation);
     }
   }
 
@@ -490,6 +532,7 @@ export function useProjectWorkspace(input: {
   function confirmProjectEditorTakeover(): void {
     const coordinator = tabCoordinatorRef.current;
     if (!coordinator) return;
+    requestedTakeoverVersionRef.current = projectChangeVersionRef.current;
     setConfirmTakeover(undefined);
     setTabSwitching(true);
     // The role arrives as an `acquired` event, which reloads from disk.
@@ -675,8 +718,9 @@ export function useProjectWorkspace(input: {
     setProjectAdoption((current) => current + 1);
     setProjectFile(project);
     setCurrentWorkspace(workspace, project.projectId, options);
-    onApplyDraft(draft, project.projectId);
-    onApplyDecisionRequest(project);
+    const adoption = options?.keepTabRole ? "refresh" : "replace";
+    onApplyDraft(draft, project.projectId, adoption);
+    onApplyDecisionRequest(project, adoption);
     if (profileId && resolvedProfile) {
       rememberMappedProfile(project.projectId, baseRequirementId, resolvedProfile);
     }

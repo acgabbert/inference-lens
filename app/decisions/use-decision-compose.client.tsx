@@ -99,6 +99,8 @@ export interface DecisionComposeHandle {
   project: Pick<DecisionProjectHandle, "fold" | "saveBlockedReason"> & {
     /** A project was opened or replaced: load its request and clear the result. */
     adopt(project: ProjectFile): void;
+    /** The same project was reloaded: load its request without stopping or clearing a run. */
+    refresh(project: ProjectFile): void;
   };
 }
 
@@ -400,6 +402,7 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
         session.reset();
         decisionProject.adopt(project);
       },
+      refresh: decisionProject.adopt,
     },
   };
 }

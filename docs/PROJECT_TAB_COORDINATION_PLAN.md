@@ -84,9 +84,9 @@ owner, as described below.
 | Decision | Options and tradeoff | Recommendation |
 | --- | --- | --- |
 | What a second tab may do | Read-only (simplest, breaks parallel-prompt workflows); full editing with conflict prompts on every save (noisy and lossy); full editing with manifest writes restricted to one editor tab. | Every tab fully usable; only the editor tab writes `project.json`. |
-| Becoming editor | Carry the secondary tab's in-memory edits over the editor's saved changes; reload from disk; attempt a merge. | Reload from disk. The editor autosaves continuously, so a secondary tab's base is almost always stale, and carrying its edits forward would discard the editor's work. Merging per item is Level 2 territory. Offer it immediately when the secondary tab has no unsaved edits; otherwise confirm that its edits will be discarded, with Copy/Export available first. |
+| Becoming editor | Carry the secondary tab's in-memory edits over the editor's saved changes; reload from disk; attempt a merge. | Reload from disk. The editor autosaves continuously, so a secondary tab's base is almost always stale, and carrying its edits forward would discard the editor's work. Merging per item is Level 2 territory. Offer it immediately when the secondary tab has no unsaved edits; otherwise confirm that its edits will be discarded, with Copy/Export available first. Consent covers the current edit version only: edits during handover or reload require a fresh confirmation. |
 | Handing over | Web Locks `steal` alone; ask the editor to release first; ask, then steal on timeout. | Ask over `BroadcastChannel`. The editor flushes its pending autosave, releases its lock and becomes secondary. Steal only if no reply arrives within a short timeout, because a background tab can be frozen. |
-| When the editor tab closes | Secondary tabs stay secondary until asked; the next one silently becomes editor and reloads; it becomes editor without reloading. | Web Locks grant a queued request when the holder closes or crashes. An unedited secondary tab reloads and becomes editor. An edited one shows "the editing tab closed" and the same reload/discard choice. Never adopt a stale in-memory manifest as the base for writing. |
+| When the editor tab closes | Secondary tabs stay secondary until asked; the next one silently becomes editor and reloads; it becomes editor without reloading. | Web Locks grant a queued request when the holder closes or crashes. An unedited secondary tab refreshes the persisted document and becomes editor, preserving its independent run sessions and results. An edited one shows "the editing tab closed" and the same reload/discard choice. Never adopt a stale in-memory manifest as the base for writing. |
 | Lock key | Project ID; directory identity. | Project ID, like the existing workbench lock. Directory handles cannot become lock names. Two folder copies sharing an ID cannot both be edited on one origin at once; that over-blocks a rare case safely. |
 | Unsupported Web Locks | Refuse to open; behave as today. | Behave as today. Every Chromium build with folder access also has Web Locks, so this is a defensive fallback. |
 
@@ -162,6 +162,25 @@ Implementation added three things the plan did not spell out:
   Prompts surface, whose key was the project ID, so a discarded draft stayed on
   screen. `projectAdoption` advances on every adoption, and the surface keys on
   it.
+
+Review found that ordinary project replacement was too broad a contract for
+role promotion: it stopped a secondary tab's active run. A same-project
+`refresh` now replaces persisted drafts without resetting chat or decision
+sessions, results, pending branches or transient overrides. Actual project
+replacement retains its existing reset behavior.
+
+The workspace owner also records the edit version authorized by takeover and
+the current lock acquisition generation. It checks the edit version both on
+acquisition and after the folder read; newer edits retain their draft and ask
+again before discarding. Role loss, project replacement and unmount invalidate
+pending acquisitions. Before adoption, the owner checks the generation,
+workspace and live lock ownership; obsolete reads cannot restore a lost role
+or publish stale errors or switching state.
+
+Five browser regressions were run red before these fixes: active chat run
+cancellation, edits during handover, edits during requested and automatic
+reloads, and a third tab taking over during reload. They now pass, alongside
+additional coverage of an active decision run surviving promotion.
 
 Wording: a secondary tab's status reads "Not saved — another tab is editing this
 project", and its banner offers **Edit here**. With unsaved edits, Edit here
