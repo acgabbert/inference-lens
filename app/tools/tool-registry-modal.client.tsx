@@ -13,13 +13,18 @@ import type {
 import type { ConfirmationDialogRequest } from "../confirmation-dialog.client";
 import { ToolDefinitionEditor } from "../tool-definition-editor.client";
 import { randomUUID } from "../../packages/core/src/random-id";
+import type { ToolDefinition } from "../../packages/core/src/run-kernel";
+import type { ToolAttachmentDestination } from "../request/use-request-draft.client";
+import { AttachDestinationControl } from "./attach-destination-control.client";
 
 interface ToolRegistryModalProps {
   open: boolean;
   registry: ToolRegistryV1;
   onChange(registry: ToolRegistryV1): void;
-  onAttachToProject(tool: RegistryTool): string | undefined;
-  onAttachToRequest(tool: RegistryTool): string | undefined;
+  /** Chosen in the menu that opened the library; changeable here. */
+  destination: ToolAttachmentDestination;
+  onDestinationChange(destination: ToolAttachmentDestination): void;
+  onAttach(tool: RegistryTool, destination: ToolAttachmentDestination): ToolDefinition | string;
   requestConfirmation(request: ConfirmationDialogRequest): void;
   onClose(): void;
 }
@@ -28,8 +33,9 @@ export function ToolRegistryModal({
   open,
   registry,
   onChange,
-  onAttachToProject,
-  onAttachToRequest,
+  destination,
+  onDestinationChange,
+  onAttach,
   requestConfirmation,
   onClose,
 }: ToolRegistryModalProps) {
@@ -131,23 +137,20 @@ export function ToolRegistryModal({
     });
   }
 
-  function attach(kind: "project" | "request"): void {
+  function attach(): void {
     const saved = saveDraft();
     if (!saved) return;
-    const attachmentError =
-      kind === "project"
-        ? onAttachToProject(saved)
-        : onAttachToRequest(saved);
-    if (attachmentError) {
-      setError(attachmentError);
+    const attached = onAttach(saved, destination);
+    if (typeof attached === "string") {
+      setError(attached);
       setNotice(undefined);
       return;
     }
     setError(undefined);
     setNotice(
-      kind === "project"
-        ? "Snapshot attached to the current project draft."
-        : "Tool kept attached in this tab.",
+      destination === "project"
+        ? "Attached to the project. A copy is saved with the project."
+        : "Attached in this tab only.",
     );
   }
 
@@ -227,24 +230,17 @@ export function ToolRegistryModal({
                       Save
                     </button>
                     <button
-                      className="button secondary"
-                      disabled={!schemaValid}
-                      title="Copy a snapshot into the current project draft."
-                      type="button"
-                      onClick={() => attach("project")}
-                    >
-                      Copy to project
-                    </button>
-                    <button
                       className="button primary"
                       disabled={!schemaValid}
+                      title="Saves this definition, then attaches a copy of it."
                       type="button"
-                      onClick={() => attach("request")}
+                      onClick={attach}
                     >
-                      Keep attached
+                      Attach
                     </button>
                   </div>
                 </div>
+                <AttachDestinationControl value={destination} onChange={onDestinationChange} />
                 {error && <div className="registry-error">{error}</div>}
                 {notice && <div className="registry-notice">{notice}</div>}
                 <ToolDefinitionEditor

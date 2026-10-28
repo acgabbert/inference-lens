@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { seedProfile, waitForHydration } from "./support";
+import { seedProfile, waitForHydration, openMcpServers } from "./support";
 
 /**
  * The M3 live checks that need the official Python SDK rather than the Node
@@ -18,7 +18,7 @@ async function attachFromServer(page: Page, serverId: string, model: string): Pr
   await page.goto("/");
   await waitForHydration(page);
   await page.getByRole("tab", { name: "Tools" }).click();
-  const panel = page.getByRole("region", { name: "MCP servers" });
+  const panel = await openMcpServers(page);
   await panel.getByRole("combobox", { name: "Declared MCP server" }).selectOption(serverId);
   await panel.getByRole("button", { name: "Connect and browse tools" }).click();
   await expect(panel).toContainText("Connected to inference-lens-local-example");

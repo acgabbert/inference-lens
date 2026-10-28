@@ -79,8 +79,9 @@ async function withHarness(run) {
           calls.onChange += 1;
           setReg(next);
         },
-        onAttachToProject: () => undefined,
-        onAttachToRequest: () => undefined,
+        destination: "request",
+        onDestinationChange: () => {},
+        onAttach: () => "not attached in this test",
         requestConfirmation: (request) => {
           calls.confirmations.push(request);
           setConfirmation(request);

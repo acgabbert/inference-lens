@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { seedProfile, waitForHydration } from "./support";
+import { addProjectTool, openMcpServers, seedProfile, waitForHydration } from "./support";
 
 /**
  * A tool's description is the main lever on tool-selection quality and is
@@ -14,10 +14,7 @@ async function openToolEditor(page: import("@playwright/test").Page) {
   await page.goto("/");
   await waitForHydration(page);
   await page.getByRole("tab", { name: "Tools" }).click();
-  await page
-    .locator(".tools-tab-toolbar")
-    .getByRole("button", { name: "+ Add project tool" })
-    .click();
+  await addProjectTool(page);
 }
 
 test("a tool description keeps the newlines typed into it", async ({ page }) => {
@@ -95,7 +92,7 @@ for (const width of [1440, 1000]) {
 
     // The MCP panel follows the tool list, so it takes the same gutter.
     const toolLeft = (await page.locator(".tool-list > .tool-editor").first().boundingBox())!.x;
-    const mcpLeft = (await page.getByRole("region", { name: "MCP servers" }).boundingBox())!.x;
+    const mcpLeft = (await (await openMcpServers(page)).boundingBox())!.x;
     expect(mcpLeft).toBe(toolLeft);
   });
 }

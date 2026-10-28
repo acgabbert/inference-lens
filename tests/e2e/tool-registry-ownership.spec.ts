@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
 import type { ToolRegistryV1 } from "../../packages/core/src/tool-registry";
-import { seedProfile, waitForHydration } from "./support";
+import { seedProfile, waitForHydration, openToolLibrary } from "./support";
 
 const TOOL_REGISTRY_STORAGE_KEY = "inference-lens:tool-registry:v1";
 
@@ -31,8 +31,7 @@ function storedToolNames(page: Page) {
 
 async function openLibrary(page: Page) {
   await page.getByRole("tab", { name: "Tools" }).click();
-  await page.getByRole("button", { name: "Browse local library" }).click();
-  return page.getByRole("dialog", { name: "Local tool library" });
+  return openToolLibrary(page);
 }
 
 /**
