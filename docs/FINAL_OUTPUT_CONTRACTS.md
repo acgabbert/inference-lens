@@ -5,12 +5,11 @@ within its twelve approved policies. The evidence they cite is in the
 [capture findings](N8N_FINAL_OUTPUT_CAPTURE_FINDINGS.md). No runtime code
 implements them yet.
 
-**Status (2026-10-29):** Draft gate specification. The five gate open items
-are settled (see [Settled gate items](#settled-gate-items)). Three new
-decisions found during the audit are awaiting the user
-([Awaiting decision](#awaiting-decision)). One capture is open and blocks only
-the n8n parity claim ([Open capture](#open-capture)). PR 2 may start once the
-three decisions are made.
+**Status (2026-10-29):** Gate specification approved. The five gate open
+items are settled (see [Settled gate items](#settled-gate-items)), and the
+user accepted the three audit decisions the same day
+([Audit decisions](#audit-decisions)). One capture is open and blocks only the
+n8n parity claim ([Open capture](#open-capture)). PR 2 is next.
 
 Names are proposals until PR 2 lands them. A change to a discriminant, a
 serialized field or a diagnostic code after that is a format change.
@@ -27,10 +26,10 @@ Agreed with the user on 2026-10-29.
 | Acceptance comparison | n8n against Inference Lens compares normalized values structurally: deep equality, object key order ignored, array order kept. Formatter descriptor, instruction, raw arguments and provider-turn count are compared separately. Text-only differences such as key order are reported, not counted as mismatches. |
 | Generic `parse-final-text` | Validates the parsed value against the authored schema as-is. No unwrapping, stripping, coercion or defaults. Fences follow the existing [JSON input policy](DETERMINISTIC_CHECKS.md), defaulting to `strict`. |
 
-## Awaiting decision
+## Audit decisions
 
-Each is material under [AGENTS.md](../AGENTS.md) and is not settled by an
-approved policy. Each has a recommendation.
+Each is material under [AGENTS.md](../AGENTS.md) and was not settled by an
+approved policy. The options are kept to explain the tradeoffs.
 
 ### D1. Format version allocation
 
@@ -46,9 +45,13 @@ formats. This feature needs a Project, RunTrace and ExperimentPlan bump.
 | B. Reserve now: Project v17 and RunTrace v10 for final output; staged shared moves to v18. | Renumber today. | If final output lands before environments, v16 never ships and a v15 → v17 path must reconcile a skipped version; that is the cost option C was rejected for in the environments plan. |
 | C. Ship final output in the same active version as environments. | No extra numbers. | Couples two unrelated features' release schedules. |
 
-**Recommendation: A.** The reservation that matters is which artifacts bump,
-and that is fixed here. Whichever feature merges second rebases onto the
-other's version and adds its own fields in one more step.
+**Accepted 2026-10-29: B, with the lower numbers.** Final output claims
+active **Project v16, RunTrace v9 and ExperimentPlan v6**. The other plans are
+revised to match: [prompt environments](PROMPT_ENVIRONMENTS_PLAN.md#format-version)
+moves to Project v17, RunTrace v10 and ExperimentPlan v7, and the staged
+shared format stays v17 in code until environments land, then becomes v18.
+Taking v16 rather than v17 avoids B's skipped-version cost. If environments
+merge first after all, the two features swap numbers rather than skip one.
 
 ### D2. Where the adopted message's attribution lives
 
@@ -62,8 +65,8 @@ field today.
 | **A. Attribution in run evidence only.** The materialized message gets a derived ID (`message_<run>-t<n>-final-output`). Its `TranscriptEntry` carries `finalOutput: { turnId, attempt, source }`. The branch's existing `branchedFrom.messageId` points at it, and the composer's branch notice names it. The authored message stays plain assistant text. | Transcript and branch-notice changes only; no project-format field. | Once the branch is saved as a revision and edited, the project file alone does not say the text was generated; the child run's trace still does. |
 | B. A new optional `generatedFrom` field on authored assistant messages. | A project-format field, validation, an editor rule for what an edit does to it, and every message serializer. | Widens a provider-neutral type for one feature. An edited message keeps or drops a claim that no longer describes it. |
 
-**Recommendation: A.** Branch provenance already lives in the trace, and the
-edited-message question has no good answer under B.
+**Accepted 2026-10-29: A.** Branch provenance already lives in the trace, and
+the edited-message question has no good answer under B.
 
 ### D3. Schema surface for the generic profile
 
@@ -76,7 +79,7 @@ already validates a restricted draft-07 profile with calibrated limits.
 | **A. Generic accepts the existing preflight profile, with the root required to be `type: "object"`. n8n accepts only the narrow allowlist below.** | Reuses preflight and evaluator unchanged. | The two profiles reject different schemas; the editor must name the active profile in each diagnostic. |
 | B. Both profiles use the narrow allowlist. | One rule set. | Rejects schemas the existing evaluator already handles correctly, for no generic-mode reason. |
 
-**Recommendation: A.** Provider acceptance of a rich schema is a provider
+**Accepted 2026-10-29: A.** Provider acceptance of a rich schema is a provider
 question; preflight still rejects what the evaluator cannot run.
 
 ## Open capture
@@ -391,7 +394,8 @@ replaces that turn's assistant entry with:
 
 - an assistant message `message_<run>-t<n>-final-output` whose only content
   is the effective text, with no tool calls;
-- the attribution chosen in D2.
+- its attribution in run evidence (D2): the `TranscriptEntry` carries
+  `finalOutput: { turnId, attempt, source }`, and the branch notice names it.
 
 Branching from a message before the finalized turn is unchanged. No branch
 draft ever contains a formatter call without a result. A rejected
@@ -403,16 +407,16 @@ so it uses `effectiveAnswer` and needs no materialization.
 
 ## Artifact compatibility
 
-Version numbers depend on D1.
+Version numbers are from D1.
 
-- **Project.** `ProjectConversationRevision.finalOutput?` is added in a strict
-  new version. Older documents upgrade with no contract. A document from the
+- **Project v16.** `ProjectConversationRevision.finalOutput?` is added in a
+  strict new version. Older documents upgrade with no contract. A document from the
   new version is rejected by old readers with a version error.
-- **RunTrace.** `ResolvedRunInput.finalOutput?`, the two events, the
+- **RunTrace v9.** `ResolvedRunInput.finalOutput?`, the two events, the
   `final_output_error` code and replay validation are added. Older traces
   parse unchanged, get no inferred finalization, and keep `effectiveAnswer`
   equal to `finalAssistantOutput`.
-- **ExperimentPlan.** `commonInput` and evaluation case inputs embed
+- **ExperimentPlan v6.** `commonInput` and evaluation case inputs embed
   `ResolvedRunInput`, so they gain `finalOutput?` in a new plan version.
   Execution hashes include it.
 - **ExperimentResult.** No bump. Its shape does not change, and the only runs

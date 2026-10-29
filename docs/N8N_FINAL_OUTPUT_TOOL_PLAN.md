@@ -4,9 +4,8 @@
 started. The user approved all twelve contract recommendations on 2026-10-25,
 including normalization, mixed-call suppression, and effective-answer policy.
 On 2026-10-29 the five gate open items were settled and the gate
-specification was drafted in [final-output contracts](FINAL_OUTPUT_CONTRACTS.md).
-Three new decisions found by its audit (version allocation, adopted-message
-attribution, generic schema surface) await the user before PR 2.
+specification was written in [final-output contracts](FINAL_OUTPUT_CONTRACTS.md).
+The user approved its three audit decisions the same day. PR 2 is next.
 
 **Date:** 2026-10-25.
 
