@@ -3,8 +3,9 @@
 **Status:** Capture phase complete in `5645689`; runtime implementation has not
 started. The user approved all twelve contract recommendations on 2026-10-25,
 including normalization, mixed-call suppression, and effective-answer policy.
-Exact type/schema and migration details remain to be specified within those
-agreed policies before runtime implementation.
+On 2026-10-29 the five gate open items were settled and the gate
+specification was written in [final-output contracts](FINAL_OUTPUT_CONTRACTS.md).
+The user approved its three audit decisions the same day. PR 2 is next.
 
 **Date:** 2026-10-25.
 
@@ -371,7 +372,10 @@ runtime implementation, complete a documentation/type-design pass that:
   provider scope also covers streaming rejection and owned-field overrides);
   split them back into individual policies for this mapping.
 
-Open items the agreed policies do not yet settle; resolve them in this pass:
+**Settled 2026-10-29.** The items below are resolved in
+[final-output contracts](FINAL_OUTPUT_CONTRACTS.md#settled-gate-items). Root-level
+stripping stays open as a capture that blocks the n8n parity claim, not PR 2
+or PR 3. They are kept here as the record of what was open:
 
 - **Root-level stripping is an extension, not a measurement.** Every capture's
   authored root explicitly set `additionalProperties: false`; only a nested
