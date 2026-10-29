@@ -33,7 +33,7 @@
   place-items: center;
   background: var(--brand-mark-bg);
   color: var(--brand-mark-fg);
-  font-weight: 800;
+  font-weight: var(--weight-heavy);
   letter-spacing: -0.04em;
 }
 

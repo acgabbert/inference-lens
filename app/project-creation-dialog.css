@@ -5,7 +5,7 @@
 }
 
 .project-creation-name > span {
-  font-weight: 650;
+  font-weight: var(--weight-semibold);
 }
 
 .project-creation-name input {

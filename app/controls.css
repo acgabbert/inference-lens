@@ -17,7 +17,7 @@ label.file-button {
   padding: var(--space-sm) var(--space-md);
   background: var(--surface-panel);
   color: var(--text-primary);
-  font-weight: 650;
+  font-weight: var(--weight-semibold);
   cursor: pointer;
 }
 
@@ -69,7 +69,7 @@ label.file-button {
   align-items: center;
   justify-content: space-between;
   color: var(--text-primary);
-  font-weight: 750;
+  font-weight: var(--weight-bold);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -79,7 +79,7 @@ label:not(.file-button) {
   margin-bottom: var(--space-lg);
   display: block;
   color: var(--text-secondary);
-  font-weight: 700;
+  font-weight: var(--weight-bold);
   letter-spacing: 0.02em;
 }
 
@@ -113,7 +113,7 @@ select {
   appearance: none;
   color: var(--text-primary);
   cursor: pointer;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   letter-spacing: 0;
   text-overflow: ellipsis;
   background-image:
@@ -192,7 +192,7 @@ output {
   display: block;
   margin-bottom: var(--space-2xs);
   color: var(--accent);
-  font-weight: 800;
+  font-weight: var(--weight-heavy);
   text-transform: uppercase;
   letter-spacing: 0.1em;
 }
@@ -208,7 +208,7 @@ output {
   border: 0;
   background: transparent;
   color: var(--accent);
-  font-weight: 700;
+  font-weight: var(--weight-bold);
   cursor: pointer;
 }
 

@@ -134,7 +134,7 @@ label.experiment-retry-field {
 
 .evaluation-configuration-table thead th {
   color: var(--text-muted);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .evaluation-configuration-table tbody tr:last-child > * {

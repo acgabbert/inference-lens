@@ -18,7 +18,7 @@
 .decision-target legend,
 .decision-field-label {
   color: var(--text-muted);
-  font-weight: 700;
+  font-weight: var(--weight-bold);
 }
 
 .decision-target-empty,
@@ -76,7 +76,7 @@
 .decision-hint,
 .decision-example small {
   color: var(--text-secondary);
-  font-weight: 400;
+  font-weight: var(--weight-regular);
 }
 
 .decision-help {
@@ -98,7 +98,7 @@
 
 .decision-guide summary {
   cursor: pointer;
-  font-weight: 700;
+  font-weight: var(--weight-bold);
 }
 
 .decision-guide p {
@@ -114,7 +114,7 @@
 }
 
 .decision-guide dt {
-  font-weight: 700;
+  font-weight: var(--weight-bold);
 }
 
 .decision-guide dd {

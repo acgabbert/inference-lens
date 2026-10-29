@@ -329,3 +329,24 @@ test("the monospace stack is named once", () => {
   }
   assert.deepEqual(offenders, [], "use var(--font-stack-mono) rather than repeating the stack");
 });
+
+test("font weight comes from its scale", () => {
+  for (const [token, value] of Object.entries({
+    "--weight-regular": 400,
+    "--weight-medium": 500,
+    "--weight-semibold": 600,
+    "--weight-bold": 700,
+    "--weight-heavy": 800,
+  })) {
+    assert.match(css, new RegExp(`${token}: ${value};`), `expected ${token}`);
+  }
+
+  const offenders: string[] = [];
+  for (const { name, source } of allStylesheets()) {
+    for (const { value } of declarationsOutsideRoot(source, /^font-weight$/)) {
+      if (value.trim() === "inherit") continue;
+      if (!/^var\(--weight-[a-z]+\)$/.test(value.trim())) offenders.push(`${name}: font-weight: ${value}`);
+    }
+  }
+  assert.deepEqual(offenders, [], "font-weight literal(s) not on the scale");
+});

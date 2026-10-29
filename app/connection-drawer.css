@@ -94,7 +94,7 @@
 .protocol-capabilities legend {
   padding: 0;
   color: var(--text-secondary);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .protocol-capabilities > small {
@@ -123,7 +123,7 @@
   display: block;
   margin-top: var(--space-3xs);
   color: var(--text-muted);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   letter-spacing: 0;
   line-height: var(--leading-tight);
 }

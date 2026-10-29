@@ -70,7 +70,7 @@
   margin: 0;
   padding: var(--space-sm);
   color: var(--text-muted);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   line-height: var(--leading-normal);
 }
 
@@ -81,7 +81,7 @@
   padding: var(--space-xs) var(--space-sm) var(--space-xs);
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-muted);
-  font-weight: 700;
+  font-weight: var(--weight-bold);
   letter-spacing: 0.03em;
   text-transform: uppercase;
 }

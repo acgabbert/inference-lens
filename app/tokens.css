@@ -63,6 +63,14 @@
   --radius-xl: 14px;
   --radius-pill: 999px;
 
+  /* Font weight by emphasis. Five steps, so two labels meant to read alike
+     cannot sit a hair apart. */
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --weight-heavy: 800;
+
   /* Line height by the length of the run of text, not by its size. */
   --leading-tight: 1.35;
   --leading-normal: 1.45;

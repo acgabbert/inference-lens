@@ -167,7 +167,7 @@ main {
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  font-weight: 700;
+  font-weight: var(--weight-bold);
 }
 
 .pane-tabs button.active {

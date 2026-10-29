@@ -11,7 +11,7 @@
   border: 1px solid var(--border-default);
   border-radius: var(--radius-pill);
   color: var(--text-muted);
-  font-weight: 700;
+  font-weight: var(--weight-bold);
   text-transform: capitalize;
 }
 
@@ -76,7 +76,7 @@
   display: grid;
   place-items: center;
   color: var(--text-faint);
-  font-weight: 800;
+  font-weight: var(--weight-heavy);
 }
 
 .trace-storage-copy {
@@ -351,7 +351,7 @@
   place-items: center;
   background: var(--danger-surface);
   color: var(--danger);
-  font-weight: 800;
+  font-weight: var(--weight-heavy);
 }
 
 .failure-glyph.muted {
@@ -407,7 +407,7 @@
   color: var(--text-secondary);
   cursor: pointer;
   list-style: none;
-  font-weight: 700;
+  font-weight: var(--weight-bold);
 }
 
 .reasoning-stream summary::-webkit-details-marker {
@@ -417,7 +417,7 @@
 .reasoning-stream-hint {
   margin-left: auto;
   color: var(--text-muted);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 
 .reasoning-stream[open] .reasoning-stream-hint {
@@ -467,6 +467,6 @@
   color: var(--accent);
   box-shadow: var(--shadow-float);
   cursor: pointer;
-  font-weight: 750;
+  font-weight: var(--weight-bold);
 }
 

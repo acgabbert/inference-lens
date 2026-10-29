@@ -52,7 +52,7 @@
 .n8n-template-paste-mapping.active { border-color: var(--accent); }
 .n8n-template-paste-mapping code { overflow-wrap: anywhere; }
 .n8n-template-paste-mapping input { width: 100%; }
-.n8n-template-paste-review { font-weight: 650; }
+.n8n-template-paste-review { font-weight: var(--weight-semibold); }
 .n8n-template-paste-error { margin-top: 12px; color: var(--danger); }
 .n8n-template-paste-variables-heading {
   display: flex;

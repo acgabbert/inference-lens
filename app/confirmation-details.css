@@ -13,7 +13,7 @@
 
 .confirmation-details dt {
   color: var(--text-muted);
-  font-weight: 800;
+  font-weight: var(--weight-heavy);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }

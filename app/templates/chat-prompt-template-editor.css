@@ -58,7 +58,7 @@
   justify-content: space-between;
   gap: var(--space-sm);
   color: var(--text-secondary);
-  font-weight: 700;
+  font-weight: var(--weight-bold);
   letter-spacing: 0.02em;
 }
 
@@ -114,7 +114,7 @@ input.template-revision-rename {
 
 .template-revision-create-action .field-optional {
   color: var(--text-muted);
-  font-weight: 400;
+  font-weight: var(--weight-regular);
 }
 
 .template-draft-status {
@@ -337,7 +337,7 @@ input.template-revision-rename {
   margin-bottom: var(--space-sm);
   flex: 1;
   color: var(--text-secondary);
-  font-weight: 700;
+  font-weight: var(--weight-bold);
 }
 
 .template-insert-bar label {
@@ -456,7 +456,7 @@ input.template-revision-rename {
   border-radius: var(--radius-pill);
   background: var(--warning-surface);
   color: var(--warning-strong);
-  font-weight: 750;
+  font-weight: var(--weight-bold);
 }
 
 .template-use-actions {
@@ -486,7 +486,7 @@ input.template-revision-rename {
   align-items: center;
   gap: var(--space-sm);
   color: var(--text-secondary);
-  font-weight: 700;
+  font-weight: var(--weight-bold);
 }
 
 .template-preview-toggle {
@@ -580,7 +580,7 @@ input.template-revision-rename {
 
 .template-values-attention {
   color: var(--warning-strong);
-  font-weight: 700;
+  font-weight: var(--weight-bold);
 }
 
 .template-values-controls input[type="search"] {
@@ -596,7 +596,7 @@ input.template-revision-rename {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2xs);
-  font-weight: 400;
+  font-weight: var(--weight-regular);
   white-space: nowrap;
   cursor: pointer;
 }
@@ -652,7 +652,7 @@ input.template-revision-rename {
 
 .template-variable-source.attention {
   color: var(--warning-strong);
-  font-weight: 700;
+  font-weight: var(--weight-bold);
 }
 
 .template-use-variable-heading,

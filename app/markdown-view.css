@@ -21,7 +21,7 @@
 .markdown-body h5,
 .markdown-body h6 {
   margin: var(--space-xl) 0 var(--space-sm);
-  font-weight: 700;
+  font-weight: var(--weight-bold);
   line-height: var(--leading-tight);
   letter-spacing: -0.02em;
 }
@@ -183,6 +183,6 @@
 
 .markdown-body th {
   background: var(--surface-inset);
-  font-weight: 700;
+  font-weight: var(--weight-bold);
 }
 
