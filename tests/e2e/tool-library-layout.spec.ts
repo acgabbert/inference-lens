@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./support/test";
 import { openMode, openToolLibrary, seedProfile, waitForHydration } from "./support";
 import { expectDocumentFitsViewport } from "./support/layout";
 

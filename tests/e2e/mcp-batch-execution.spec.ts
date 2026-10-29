@@ -1,5 +1,5 @@
-import { expect, test } from "@playwright/test";
-import type { APIRequestContext, Page } from "@playwright/test";
+import { expect, test } from "./support/test";
+import type { APIRequestContext, Page } from "./support/test";
 
 import { createProjectFile, parseProjectFile, serializeProjectFile } from "../../packages/core/src/project";
 import type { ProjectFile } from "../../packages/core/src/project";

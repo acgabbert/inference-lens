@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "./support/test";
 import { appendDecisionPromptTemplateRevision, createDecisionPromptTemplate } from "../../packages/core/src/decision-template";
 import { createProjectFile, serializeProjectFile, setPromptTemplateRecommendedTarget } from "../../packages/core/src/project";
 import { BUFFERED_FIXTURE_ENDPOINT, SYSTEM_ONE_FIXTURE_ORIGIN, importProject, openMode, seedProfile, seedProfiles, stubProjectDirectory, waitForHydration } from "./support";

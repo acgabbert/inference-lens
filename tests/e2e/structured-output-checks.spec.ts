@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./support/test";
 import { createProjectFile } from "../../packages/core/src/project";
 import { addEvaluationCase, addEvaluationCheck, createEvaluationSuite } from "../../packages/core/src/evaluation-suite-authoring";
 import { expandedPreflight, importProject, openMode, seedProfile, waitForHydration } from "./support";

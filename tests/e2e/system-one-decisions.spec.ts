@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./support/test";
 
 import { DECISIONS_API_PATH, INFERENCE_API_PATH } from "../../packages/contracts/src";
 import {

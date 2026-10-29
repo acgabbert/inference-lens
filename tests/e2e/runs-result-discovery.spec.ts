@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./support/test";
 
 import type { DecisionInput } from "../../packages/core/src/decision";
 import type { DecisionRunTrace } from "../../packages/core/src/decision-trace";

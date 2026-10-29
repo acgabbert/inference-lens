@@ -7,7 +7,7 @@ import { DECISIONS_API_PATH, INFERENCE_API_PATH } from "../../packages/contracts
 import { PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY } from "./support";
 import { parseSavedRunTraceJson, serializeDecisionRunTrace } from "../../packages/core/src/run-trace";
 import { importProject, openMode } from "./support";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./support/test";
 import { createProjectFile, serializeProjectFile } from "../../packages/core/src/project";
 import { RunCoordinator, createRunTrace } from "../../packages/core/src/run-kernel";
 import { createResolvedRunInput } from "../../packages/core/src/run-kernel/run-execution";

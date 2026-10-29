@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./support/test";
 import { createDecisionPromptTemplate } from "../../packages/core/src/decision-template";
 import { updateDecisionRequestDraft } from "../../packages/core/src/decision-request";
 import { createProjectFile, serializeProjectFile, type ProjectFile } from "../../packages/core/src/project";
