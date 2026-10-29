@@ -1479,9 +1479,13 @@ function HomeContent() {
         onStopExperiment={evaluationExecution.isRunning ? evaluationExecution.cancel : repeatedExperiment.cancel}
         onStartEvaluation={evaluationWorkspace.start}
       />
-      <RunLinkControls links={runLinks} />
-
-      <AppBanner {...(appBanner ? { selection: appBanner } : {})} />
+      {/* The page's notices share one capped scroll area, as a pane's do:
+          capped one by one, they add up under the topbar and starve the
+          workbench on a short window. */}
+      <div className="page-notices">
+        <RunLinkControls links={runLinks} />
+        <AppBanner {...(appBanner ? { selection: appBanner } : {})} />
+      </div>
 
       <ConnectionDrawer
         open={connectionDrawerOpen}
