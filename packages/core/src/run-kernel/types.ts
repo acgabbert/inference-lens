@@ -28,6 +28,7 @@ export type EntityIdKind =
   | "template"
   | "template-revision"
   | "template-use"
+  | "environment"
   | "external-import"
   | "experiment"
   | "experiment-cell"
@@ -61,6 +62,7 @@ export type ToolExecutionId = EntityId<"tool-execution">;
 export type PromptTemplateId = EntityId<"template">;
 export type PromptTemplateRevisionId = EntityId<"template-revision">;
 export type PromptTemplateUseId = EntityId<"template-use">;
+export type EnvironmentId = EntityId<"environment">;
 export type ExternalImportId = EntityId<"external-import">;
 export type ExperimentId = EntityId<"experiment">;
 export type ExperimentCellId = EntityId<"experiment-cell">;

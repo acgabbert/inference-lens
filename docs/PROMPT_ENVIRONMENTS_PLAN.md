@@ -5,8 +5,8 @@ the staged shared format is renumbered to v17. Environments are implemented
 before final output, so they keep Project v16 and take RunTrace v9 and
 ExperimentPlan v6; [final output](FINAL_OUTPUT_CONTRACTS.md#d1-format-version-allocation)
 moves to Project v17, RunTrace v10 and ExperimentPlan v7 (see
-[Format version](#format-version)). Contract slice in progress; no runtime
-implementation yet.
+[Format version](#format-version)). Contract slice accepted 2026-10-29; core
+implementation in progress.
 **Date:** 2026-10-29. **Inspected baseline:** `main` at `406cb03`.
 
 ## Outcome
@@ -180,9 +180,9 @@ final output lands active v17.
 
 ### Contract slice proposal
 
-**Proposed 2026-10-29; pending approval.** Exact names and the provenance
-shape, written against `main` at `79a3b2a`. Questions 1–4 below need a
-decision; the rest follows from the accepted table or from existing code.
+**Accepted 2026-10-29, all four questions as recommended.** Exact names and
+the provenance shape, written against `main` at `79a3b2a`. The four questions
+are kept below as the record of what was decided.
 
 ```ts
 // project.ts: Project v16
@@ -247,7 +247,7 @@ Settled by the accepted decisions or by existing code:
 - **Variant `null`** follows the existing option overrides: `null` clears the
   suite's environment for that variant, and absence inherits it.
 
-Questions:
+Questions, each accepted as recommended:
 
 1. **Provenance shape.** A `valueSources` map parallel to `values`. *Or*
    replace `values` with per-variable `{ value, source }` records. The parallel
