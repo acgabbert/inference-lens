@@ -97,7 +97,7 @@ textarea {
 input:not([type="range"]) {
   margin-top: var(--space-xs);
   padding: var(--space-sm) var(--space-sm);
-  font-family: var(--font-geist-mono), monospace;
+  font-family: var(--font-stack-mono);
 }
 
 /* Selects were the only control with no rules of their own: they inherited
@@ -171,7 +171,7 @@ output {
   border-radius: var(--radius-sm);
   background: var(--surface-raised);
   text-align: center;
-  font-family: var(--font-geist-mono), monospace;
+  font-family: var(--font-stack-mono);
 }
 
 

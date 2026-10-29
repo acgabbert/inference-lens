@@ -10,7 +10,7 @@
   position: fixed;
   right: 24px;
   bottom: 24px;
-  z-index: 40;
+  z-index: var(--layer-toast);
   max-width: min(420px, calc(100vw - 32px));
   /* The container is always in the document so the live region inside it can
      announce additions. Nothing in it may swallow a click meant for the app

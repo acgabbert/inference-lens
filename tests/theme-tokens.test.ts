@@ -298,3 +298,34 @@ test("corner radius and line height come from their scales too", () => {
   }
   assert.deepEqual(leadingOffenders, [], "line-height literal(s) not on the scale");
 });
+
+test("stacking order comes from the layer scale, declared lowest first", () => {
+  const layers = [...rootBlock(css).matchAll(/^\s*(--layer-[a-z-]+):\s*(\d+);/gm)].map(
+    ([, name, value]) => ({ name, value: Number(value) }),
+  );
+  assert.ok(layers.length > 0, "expected --layer-* tokens in :root");
+  for (let i = 1; i < layers.length; i++) {
+    assert.ok(
+      layers[i].value > layers[i - 1].value,
+      `${layers[i].name} must stack above ${layers[i - 1].name}; :root lists layers in stacking order`,
+    );
+  }
+
+  const offenders: string[] = [];
+  for (const { name, source } of allStylesheets()) {
+    for (const { value } of declarationsOutsideRoot(source, /^z-index$/)) {
+      if (!/^var\(--layer-[a-z-]+\)$/.test(value.trim())) offenders.push(`${name}: z-index: ${value}`);
+    }
+  }
+  assert.deepEqual(offenders, [], "z-index literal(s) not on the layer scale");
+});
+
+test("the monospace stack is named once", () => {
+  const offenders: string[] = [];
+  for (const { name, source } of allStylesheets()) {
+    for (const { value } of declarationsOutsideRoot(source, /^font-family$/)) {
+      if (value.includes("--font-geist-mono")) offenders.push(`${name}: font-family: ${value}`);
+    }
+  }
+  assert.deepEqual(offenders, [], "use var(--font-stack-mono) rather than repeating the stack");
+});

@@ -283,7 +283,7 @@ input.template-revision-rename {
 }
 
 .template-variable-rail .template-empty code {
-  font-family: var(--font-geist-mono), monospace;
+  font-family: var(--font-stack-mono);
 }
 
 .template-use-values {
@@ -312,12 +312,12 @@ input.template-revision-rename {
 .template-variable-row code {
   display: block;
   color: var(--accent);
-  font-family: var(--font-geist-mono), monospace;
+  font-family: var(--font-stack-mono);
 }
 
 .template-use-variable code {
   color: var(--accent);
-  font-family: var(--font-geist-mono), monospace;
+  font-family: var(--font-stack-mono);
 }
 
 .template-insert-bar {
@@ -534,7 +534,7 @@ input.template-revision-rename {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: var(--text-secondary);
-  font-family: var(--font-geist-mono), monospace;
+  font-family: var(--font-stack-mono);
   line-height: var(--leading-normal);
 }
 
@@ -546,7 +546,7 @@ input.template-revision-rename {
   border-radius: var(--radius-xs);
   background: var(--accent-soft);
   color: var(--accent);
-  font-family: var(--font-geist-mono), monospace;
+  font-family: var(--font-stack-mono);
   white-space: pre-wrap;
 }
 
@@ -640,7 +640,7 @@ input.template-revision-rename {
   min-width: 0;
   overflow: hidden;
   color: var(--text-muted);
-  font-family: var(--font-geist-mono), monospace;
+  font-family: var(--font-stack-mono);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -685,7 +685,7 @@ input.template-revision-rename {
   background: var(--surface-inset);
   box-shadow: var(--shadow-field-inset);
   resize: vertical;
-  font-family: var(--font-geist-mono), monospace;
+  font-family: var(--font-stack-mono);
   line-height: var(--leading-normal);
   white-space: pre-wrap;
   transition:

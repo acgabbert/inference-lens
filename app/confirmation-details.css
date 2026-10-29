@@ -22,7 +22,7 @@
   margin: var(--space-2xs) 0 0;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
-  font-family: var(--font-geist-mono), monospace;
+  font-family: var(--font-stack-mono);
   line-height: var(--leading-normal);
 }
 

@@ -483,7 +483,7 @@
   position: absolute;
   top: 100%;
   left: 0;
-  z-index: 1;
+  z-index: var(--layer-raised);
   width: 280px;
   max-width: calc(100vw - 48px);
   margin: var(--space-xs) 0 0;

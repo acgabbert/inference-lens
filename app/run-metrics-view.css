@@ -43,7 +43,7 @@
 
 .run-metric-value {
   color: var(--text-primary);
-  font-family: var(--font-geist-mono), monospace;
+  font-family: var(--font-stack-mono);
   font-weight: 600;
 }
 
@@ -71,7 +71,7 @@
 .run-metrics-counts dd {
   margin: 0;
   color: var(--text-secondary);
-  font-family: var(--font-geist-mono), monospace;
+  font-family: var(--font-stack-mono);
   font-weight: 600;
 }
 
@@ -109,7 +109,7 @@
 
 .run-metrics-table tbody td {
   color: var(--text-primary);
-  font-family: var(--font-geist-mono), monospace;
+  font-family: var(--font-stack-mono);
 }
 
 .attempt-status {

@@ -93,7 +93,7 @@
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  z-index: 35;
+  z-index: var(--layer-menu);
   overflow: hidden;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
@@ -174,7 +174,7 @@
 .menu-option small {
   margin-top: var(--space-3xs);
   color: var(--text-muted);
-  font-family: var(--font-geist-mono), monospace;
+  font-family: var(--font-stack-mono);
 }
 
 .menu-action {

@@ -438,7 +438,7 @@
   padding: 0 var(--space-md) var(--space-md) var(--space-2xl);
   overflow: auto;
   color: var(--text-secondary);
-  font-family: var(--font-geist-mono), monospace;
+  font-family: var(--font-stack-mono);
   line-height: var(--leading-prose);
   white-space: pre-wrap;
 }
@@ -457,7 +457,7 @@
   position: sticky;
   right: 18px;
   bottom: 16px;
-  z-index: 4;
+  z-index: var(--layer-pane-float);
   align-self: flex-end;
   margin: 0 var(--space-lg) var(--space-lg) 0;
   padding: var(--space-xs) var(--space-sm);

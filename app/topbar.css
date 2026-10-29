@@ -14,7 +14,7 @@
   flex-wrap: nowrap;
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: var(--layer-topbar);
   backdrop-filter: blur(14px);
 }
 

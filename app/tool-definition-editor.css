@@ -182,7 +182,7 @@
   margin-top: var(--space-xs);
   min-height: 300px;
   padding: var(--space-md);
-  font-family: var(--font-geist-mono), monospace;
+  font-family: var(--font-stack-mono);
   line-height: var(--leading-normal);
 }
 
