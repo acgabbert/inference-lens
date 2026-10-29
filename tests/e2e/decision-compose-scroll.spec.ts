@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
-import { expect, test, type Locator, type Page } from "./support/test";
+import { expect, test } from "./support/test";
+import { expectLayoutFits } from "./support/layout";
 import { appendDecisionPromptTemplateRevision, createDecisionPromptTemplate } from "../../packages/core/src/decision-template";
 import { createProjectFile, serializeProjectFile, setPromptTemplateRecommendedTarget } from "../../packages/core/src/project";
 import { BUFFERED_FIXTURE_ENDPOINT, SYSTEM_ONE_FIXTURE_ORIGIN, importProject, openMode, seedProfile, seedProfiles, stubProjectDirectory, waitForHydration } from "./support";
@@ -30,29 +31,13 @@ test("a short window still scrolls a pinned decision request to its last questio
   const pane = page.getByRole("region", { name: "Decision request", exact: true });
   await expect(pane.getByRole("region", { name: "Saved decision prompt" })).toBeVisible();
 
-  const paneBox = (await pane.boundingBox())!;
-  const lastQuestion = pane.locator(".decision-question").last();
-  const variables = pane.getByRole("region", { name: "Variables", exact: true });
-  for (const target of [lastQuestion.getByLabel("Question id"), variables.getByLabel("{{ticket}}")]) {
-    await target.scrollIntoViewIfNeeded();
-    const box = (await target.boundingBox())!;
-    expect(box.y + box.height, `control bottom ${box.y + box.height} vs pane bottom ${paneBox.y + paneBox.height}`)
-      .toBeLessThanOrEqual(paneBox.y + paneBox.height);
-    expect(box.y).toBeGreaterThanOrEqual(paneBox.y);
-  }
+  await expectLayoutFits(page);
 });
 
 // A run switches the workbench to its response view, which only the narrow
 // layout acts on. On a wide window the request pane stays on screen and must
 // keep fitting under the request-kind bar, or its bottom edge — and the end of
 // its scrollbar — is clipped until something switches the view back.
-async function expectComposerFitsPane(page: Page, composer: Locator): Promise<void> {
-  const pane = (await page.locator(".request-pane").boundingBox())!;
-  const box = (await composer.boundingBox())!;
-  expect(Math.round(box.y + box.height), "composer bottom against request pane bottom")
-    .toBeLessThanOrEqual(Math.round(pane.y + pane.height));
-}
-
 test("after a decision run the wide request pane still fits its composer", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 800 });
   await seedProfiles(page, [
@@ -77,10 +62,10 @@ test("after a decision run the wide request pane still fits its composer", async
   const model = composer.getByRole("combobox", { name: "Model", exact: true });
   await model.fill("all-types");
   await model.press("Escape");
-  await expectComposerFitsPane(page, composer);
+  await expectLayoutFits(page);
   await page.getByRole("button", { name: /^Run decision/ }).click();
   await expect(page.getByRole("article", { name: "Answer intent" })).toContainText("Choice billing");
-  await expectComposerFitsPane(page, composer);
+  await expectLayoutFits(page);
 });
 
 test("after a chat run the wide request pane still fits its composer", async ({ page }) => {
@@ -88,11 +73,10 @@ test("after a chat run the wide request pane still fits its composer", async ({ 
   await seedProfile(page);
   await page.goto("/");
   await waitForHydration(page);
-  const composer = page.locator(".request-pane > .composer");
   await page.getByLabel("Message 1 content").fill("Hello");
-  await expectComposerFitsPane(page, composer);
+  await expectLayoutFits(page);
   await page.getByRole("button", { name: "Run current conversation ⌘↵" }).click();
   await expect(page.locator(".response-pane")).toContainText(/\S/);
   await expect(page.getByRole("button", { name: "Run current conversation ⌘↵" })).toBeEnabled();
-  await expectComposerFitsPane(page, composer);
+  await expectLayoutFits(page);
 });
