@@ -501,7 +501,9 @@ test("a UI-generated run copies a verified link and reopens the persisted output
   await page.reload();
   await expect(selected(page)).toContainText("Buffered fixture response: 2 + 2 = 4.");
   await expect(selected(page).locator(".result-header").getByRole("button", { name: "Copy link", exact: true })).toBeEnabled();
-  await expect(selected(page)).not.toContainText(generated.saved.trace.runId);
+  // The run ID is no longer shown as a header label; the open Run details may
+  // still carry it inside raw event JSON, which is not a label.
+  await expect(selected(page).getByText(generated.saved.trace.runId, { exact: true })).toHaveCount(0);
   await expect(selected(page)).not.toContainText("Run trace saved");
   await expect(selected(page).getByText("Buffered fixture response: 2 + 2 = 4.", { exact: true }).first()).toBeInViewport();
   await page.screenshot({ path: testInfo.outputPath("saved-run-link.png"), fullPage: true });
