@@ -5,8 +5,8 @@ the staged shared format is renumbered to v17. Environments are implemented
 before final output, so they keep Project v16 and take RunTrace v9 and
 ExperimentPlan v6; [final output](FINAL_OUTPUT_CONTRACTS.md#d1-format-version-allocation)
 moves to Project v17, RunTrace v10 and ExperimentPlan v7 (see
-[Format version](#format-version)). Contract slice accepted 2026-10-29; core
-implementation in progress.
+[Format version](#format-version)). Contract slice accepted and core
+implemented 2026-10-29; the app has no environment UI yet.
 **Date:** 2026-10-29. **Inspected baseline:** `main` at `406cb03`.
 
 ## Outcome
