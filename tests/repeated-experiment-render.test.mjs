@@ -62,6 +62,7 @@ function completedState(runId, text) {
       attempts: [{
         attempt: 1,
         exchangeId: "exchange_render",
+        input: { responseMode: "streaming" },
         status: "completed",
         text,
         reasoning: "",
@@ -109,6 +110,7 @@ function streamingState(runId) {
       attempts: [{
         attempt: 1,
         exchangeId: "exchange_render",
+        input: { responseMode: "streaming" },
         status: "streaming",
         text: "partial",
         reasoning: "",
@@ -872,7 +874,7 @@ test("a result that allowed retries counts the repetitions that needed them", as
   const frozenPlan = plan();
   const retried = completedState("run_render-1", "Hello");
   retried.turns[0].attempts.unshift({
-    attempt: 1, exchangeId: "exchange_render-refused", status: "failed", text: "", reasoning: "", toolCalls: [],
+    attempt: 1, exchangeId: "exchange_render-refused", input: { responseMode: "streaming" }, status: "failed", text: "", reasoning: "", toolCalls: [],
     error: { code: "provider_error", message: "Too many requests", retryable: true, providerStatus: 429 },
   });
   retried.turns[0].attempts[1].attempt = 2;
