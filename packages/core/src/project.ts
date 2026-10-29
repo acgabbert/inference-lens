@@ -32,8 +32,16 @@ import { stableJsonValue } from "./stable-json.ts";
 import { DECISION_WIRE_PROTOCOLS, isDecisionInput } from "./decision.ts";
 import type { DecisionInput } from "./decision.ts";
 import { discoverDecisionVariables } from "./decision-variables.ts";
-import { environmentIssues } from "./environment.ts";
-import type { ProjectEnvironment } from "./environment.ts";
+import {
+  blockingEnvironmentDiagnostics,
+  environmentIssues,
+  resolveEnvironment,
+} from "./environment.ts";
+import type {
+  EnvironmentDiagnostic,
+  ProjectEnvironment,
+  ResolvedEnvironment,
+} from "./environment.ts";
 import { toolNameSchema } from "./tool-name.ts";
 import {
   MAX_EXPERIMENT_TURN_CEILING,
@@ -76,6 +84,8 @@ import type {
   PromptTemplateRevisionId,
   PromptTemplateUseId,
   ResolvedTemplateUse,
+  RunEnvironmentSnapshot,
+  TemplateValueSource,
   ToolDefinition,
   ToolId,
   ToolMockId,
@@ -85,7 +95,6 @@ import { randomUUID } from "./random-id.ts";
 import {
   discoverTemplateVariables,
   renderTemplateMessages,
-  resolveTemplateValues,
 } from "./template-engine.ts";
 import type { TemplateDiagnostic } from "./template-engine.ts";
 import type {
@@ -2336,9 +2345,18 @@ export interface ProjectTemplateDiagnostic {
   diagnostic: TemplateDiagnostic;
 }
 
+export interface ProjectRevisionResolutionOptions {
+  /** Fills referenced variables by name, above template defaults. */
+  environment?: ResolvedEnvironment;
+  /** The layer `runOverrides` represents: composer run values, or evaluation case values. */
+  overrideSource?: Extract<TemplateValueSource, "run-override" | "case">;
+}
+
 export interface ResolvedProjectRevision {
   messages: ConversationMessage[];
   templateResolutions: ResolvedTemplateUse[];
+  /** Present exactly when an environment was supplied, even if nothing used it. */
+  environment?: RunEnvironmentSnapshot;
   /**
    * A revision that still has unresolved variables is a normal authoring
    * state, not a corrupt document: values may arrive from a later edit or from
@@ -2354,11 +2372,41 @@ export type PreparedProjectRevisionRun =
       ok: true;
       messages: ConversationMessage[];
       templateResolutions: ResolvedTemplateUse[];
+      environment?: RunEnvironmentSnapshot;
     }
   | {
       ok: false;
       diagnostics: ProjectTemplateDiagnostic[];
+      /** Diagnostics on entries the run consumes, and any limit diagnostic. */
+      environmentDiagnostics?: EnvironmentDiagnostic[];
     };
+
+export interface PrepareProjectRevisionRunOptions
+  extends Pick<ProjectRevisionResolutionOptions, "overrideSource"> {
+  /** Resolved once here, so the run snapshots it as it is now. */
+  environment?: ProjectEnvironment;
+}
+
+/**
+ * Template default < environment < use value < run override or case value.
+ * The environment contributes only names the template references, so a use's
+ * values never carry the whole environment.
+ */
+function layeredTemplateValues(
+  referenced: ReadonlySet<string>,
+  layers: ReadonlyArray<readonly [TemplateValueSource, Readonly<Record<string, string>> | undefined]>,
+): { values: Record<string, string>; valueSources: Record<string, TemplateValueSource> } {
+  const values: Record<string, string> = {};
+  const valueSources: Record<string, TemplateValueSource> = {};
+  for (const [source, layer] of layers) {
+    for (const [name, value] of Object.entries(layer ?? {})) {
+      if (source === "environment" && !referenced.has(name)) continue;
+      values[name] = value;
+      valueSources[name] = source;
+    }
+  }
+  return { values, valueSources };
+}
 
 /** Project-owned template data required to resolve one conversation revision. */
 export type ProjectTemplateResolutionSource = Pick<ProjectFile, "promptTemplates">;
@@ -2367,8 +2415,10 @@ export function resolveProjectRevision(
   project: ProjectTemplateResolutionSource,
   revision: ProjectConversationRevision,
   runOverrides: TemplateRunOverrides = {},
+  { environment, overrideSource = "run-override" }: ProjectRevisionResolutionOptions = {},
 ): ResolvedProjectRevision {
   validateTemplateRunOverrides(revision, runOverrides);
+  const consumed: Record<string, string> = {};
   const templates = new Map(
     project.promptTemplates.map((template) => [template.id, template]),
   );
@@ -2394,11 +2444,18 @@ export function resolveProjectRevision(
         },
       ]);
     }
-    const values = resolveTemplateValues(
-      templateRevision.variableDefaults,
-      item.use.values,
-      runOverrides[item.use.id],
+    const referenced = new Set(
+      discoverTemplateVariables(templateRevision.messages).variables.map(({ name }) => name),
     );
+    const { values, valueSources } = layeredTemplateValues(referenced, [
+      ["template-default", templateRevision.variableDefaults],
+      ["environment", environment?.values],
+      ["authored-use", item.use.values],
+      [overrideSource, runOverrides[item.use.id]],
+    ]);
+    for (const [name, source] of Object.entries(valueSources)) {
+      if (source === "environment") consumed[name] = values[name]!;
+    }
     const rendered = renderTemplateMessages(templateRevision.messages, values);
     diagnostics.push(
       ...rendered.diagnostics.map((diagnostic) => ({
@@ -2432,10 +2489,18 @@ export function resolveProjectRevision(
       messages: structuredClone(templateRevision.messages),
       variableDefaults: { ...templateRevision.variableDefaults },
       values,
+      valueSources,
       outputMessageIds: [...item.use.outputMessageIds],
     });
   });
-  return { messages, templateResolutions, diagnostics };
+  return {
+    messages,
+    templateResolutions,
+    diagnostics,
+    ...(environment
+      ? { environment: { environmentId: environment.environmentId, name: environment.name, consumed } }
+      : {}),
+  };
 }
 
 /**
@@ -2449,15 +2514,28 @@ export function prepareProjectRevisionRun(
   project: ProjectTemplateResolutionSource,
   revision: ProjectConversationRevision,
   runOverrides: TemplateRunOverrides = {},
+  { environment, overrideSource }: PrepareProjectRevisionRunOptions = {},
 ): PreparedProjectRevisionRun {
-  const resolved = resolveProjectRevision(project, revision, runOverrides);
-  if (resolved.diagnostics.length > 0) {
-    return { ok: false, diagnostics: resolved.diagnostics };
+  const resolvedEnvironment = environment ? resolveEnvironment(environment) : undefined;
+  const resolved = resolveProjectRevision(project, revision, runOverrides, {
+    environment: resolvedEnvironment,
+    overrideSource,
+  });
+  const environmentDiagnostics = environment && resolvedEnvironment && resolved.environment
+    ? blockingEnvironmentDiagnostics(environment, resolvedEnvironment, Object.keys(resolved.environment.consumed))
+    : [];
+  if (resolved.diagnostics.length > 0 || environmentDiagnostics.length > 0) {
+    return {
+      ok: false,
+      diagnostics: resolved.diagnostics,
+      ...(environmentDiagnostics.length > 0 ? { environmentDiagnostics } : {}),
+    };
   }
   return {
     ok: true,
     messages: resolved.messages,
     templateResolutions: resolved.templateResolutions,
+    ...(resolved.environment ? { environment: resolved.environment } : {}),
   };
 }
 
