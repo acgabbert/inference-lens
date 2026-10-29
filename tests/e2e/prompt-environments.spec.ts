@@ -1,6 +1,5 @@
-import type { Page } from "@playwright/test";
-
 import { expect, test } from "./support/test";
+import type { Page } from "./support/test";
 
 import {
   createProjectFile,
