@@ -1235,7 +1235,6 @@ test("only completed, cancelled and failed are terminal run statuses", () => {
   const kinds = [
     "not_started",
     "starting",
-    "streaming",
     "awaiting_tool_results",
     "paused",
     "running",
