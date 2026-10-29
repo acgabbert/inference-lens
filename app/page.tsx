@@ -1328,7 +1328,7 @@ function HomeContent() {
       activeProfile={requestSettings.profile}
       {...(pendingBranch.pending ? { pendingBranch: pendingBranch.pending } : {})}
       {...(requestPreview ? { requestPreview } : {})}
-      {...(projectFile
+      {...(projectEnvironments.environments.length > 0
         ? {
             environmentSelector: (
               <EnvironmentSelector
@@ -1507,6 +1507,7 @@ function HomeContent() {
         evaluationStartDisabledReasonId={EVALUATION_PREFLIGHT_SUMMARY_ID}
         onChooseProfile={chooseProfile}
         onOpenConnections={() => setConnectionDrawerOpen(true)}
+        onOpenEnvironments={() => setEnvironmentDrawer({})}
         onNewProject={() => setProjectCreationMode("new")}
         onOpenProject={() => { runLinks.cancel(); void project.openProjectWorkspace(); }}
         onSaveProject={saveOrChooseProjectLocation}

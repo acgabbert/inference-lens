@@ -191,7 +191,8 @@ changes: name the owner before materially expanding the route.
 | Pending branch and ad hoc conversation identity | `app/run/use-pending-branch.client.ts` |
 | Response presentation preferences, output following, and output derivation | `app/run/use-response-view.client.ts` |
 | Finished-batch announcement and the Runs indicator | `app/run/use-batch-completion.client.ts` |
-| Template-use state, immutable mutations, external-import application | `app/templates/use-project-templates.client.ts` |
+| Template-use state, immutable mutations, external-import application, and the one `TemplateResolutionContext` every workbench render uses | `app/templates/use-project-templates.client.ts` |
+| Project environments, editing commands, and the session's environment choice | `app/environments/use-project-environments.client.ts` |
 | Template request preview and template run-readiness facts | `app/templates/template-run-view.ts` |
 | Prompt library presentation and edit-source/return navigation | `PromptsMode` and `app/templates/use-prompt-navigation.client.ts` |
 | Evaluation layout, start readiness, and history adapter | `app/evaluations/use-evaluation-workspace.client.ts` |

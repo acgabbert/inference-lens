@@ -49,7 +49,7 @@ export function EnvironmentSelector({
       )}
       {isDefault && selectedId && <span className={styles.defaultNote}>Project default</span>}
       <button className="text-button" type="button" onClick={onManage}>
-        {environments.length === 0 ? "Create environment…" : "Edit environments…"}
+        Edit environments…
       </button>
     </div>
   );
