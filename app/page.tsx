@@ -1175,7 +1175,7 @@ function HomeContent() {
   const responseSurface = (
     <section aria-label="Response output" className="result">
       <ResponseOutput
-        leading={runState && <CopyRunLink runId={runState.runId} workspace={runSession.traceWorkspace} saved={traceStorage?.kind === "saved"} />}
+        headerLeading={runState && <CopyRunLink runId={runState.runId} workspace={runSession.traceWorkspace} saved={traceStorage?.kind === "saved"} />}
         output={responseView.output}
         reasoning={responseView.reasoning}
         status={responseView.status}
@@ -1752,7 +1752,7 @@ function HomeContent() {
                 detail: {
                   content: (
                     <RunEvidenceDetail
-                      leading={<CopyRunLink runId={batchMember.trace.runId} workspace={activeBatch?.workspace ?? null} saved={batchMember.storage.kind === "saved"} />}
+                      headerLeading={<CopyRunLink runId={batchMember.trace.runId} workspace={activeBatch?.workspace ?? null} saved={batchMember.storage.kind === "saved"} />}
                       key={batchMember.trace.runId}
                       trace={batchMember.trace}
                       eyebrow={activeBatch?.storage === "durable" ? "Saved batch run" : "Batch run · not saved"}

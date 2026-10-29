@@ -4,6 +4,7 @@ import type {
   RunEvent,
   RunId,
   RunState,
+  ResponseMode,
   RunTokenUsage,
   TurnId,
 } from "./run-kernel/types.ts";
@@ -48,7 +49,11 @@ export interface AttemptMetrics {
   ttfoMs?: number;
   durationMs?: number;
   usage?: RunTokenUsage;
-  /** Output throughput; excludes the wait before the first model output. */
+  /**
+   * Output throughput. A streamed attempt excludes the wait before the first
+   * model output; a buffered one cannot, because its output all arrives with
+   * the body, so it is measured over the whole request instead.
+   */
   outputTokensPerSecond?: number;
   status: AttemptMetricStatus;
 }
@@ -179,6 +184,22 @@ function delta(from?: number, to?: number): number | undefined {
 }
 
 /**
+ * The span an attempt's output rate is measured over. Streaming separates the
+ * wait from generation at the first output; a buffered response delivers every
+ * delta at once when the body is parsed, so the span from first output is
+ * near zero and the request duration is the only usable bound, even though it
+ * includes prefill and network time.
+ */
+function outputSpan(
+  timings: AttemptTimings,
+  responseMode: ResponseMode,
+): number | undefined {
+  return responseMode === "buffered"
+    ? delta(timings.requestedAtMs, timings.endedAtMs)
+    : delta(timings.firstOutputAtMs, timings.endedAtMs);
+}
+
+/**
  * Tokens per second over an output span. A zero-length span means the
  * evidence cannot support a rate, so none is reported: a fabricated rate would
  * be indistinguishable from a measured one.
@@ -235,8 +256,8 @@ function attemptMetrics(
   status: AttemptMetricStatus,
   usage: RunTokenUsage | undefined,
   timings: AttemptTimings,
+  outputSpanMs: number | undefined,
 ): AttemptMetrics {
-  const outputSpanMs = delta(timings.firstOutputAtMs, timings.endedAtMs);
 
   return {
     turnId,
@@ -281,6 +302,7 @@ export function runMetrics(state: RunState): RunMetrics {
   const terminalEnd = terminalAttemptEnd(state);
   const activeAttempt = state.turns.at(-1)?.attempts.at(-1);
   const attempts: AttemptMetrics[] = [];
+  const outputSpans: (number | undefined)[] = [];
 
   for (const [turnIndex, turn] of state.turns.entries()) {
     for (const attempt of turn.attempts) {
@@ -290,6 +312,11 @@ export function runMetrics(state: RunState): RunMetrics {
         attempt.status === "streaming" &&
         terminalEnd !== undefined &&
         attempt === activeAttempt;
+      const closedTimings = closesWithRun
+        ? { ...attemptTimings, endedAtMs: terminalEnd.atMs }
+        : attemptTimings;
+      const outputSpanMs = outputSpan(closedTimings, attempt.input.responseMode);
+      outputSpans.push(outputSpanMs);
       attempts.push(
         attemptMetrics(
           turn.turnId,
@@ -298,9 +325,8 @@ export function runMetrics(state: RunState): RunMetrics {
           attempt.exchangeId,
           closesWithRun ? terminalEnd.status : attempt.status,
           attempt.usage,
-          closesWithRun
-            ? { ...attemptTimings, endedAtMs: terminalEnd.atMs }
-            : attemptTimings,
+          closedTimings,
+          outputSpanMs,
         ),
       );
     }
@@ -314,8 +340,8 @@ export function runMetrics(state: RunState): RunMetrics {
   // on tool results between turns is not charged against the model's rate.
   let generatedTokens: number | undefined;
   let outputSpanMs: number | undefined;
-  for (const attempt of attempts) {
-    const span = delta(attempt.firstOutputAtMs, attempt.endedAtMs);
+  for (const [index, attempt] of attempts.entries()) {
+    const span = outputSpans[index];
     if (span === undefined || span <= 0) continue;
     const outputTokens = attempt.usage?.outputTokens;
     if (typeof outputTokens !== "number") continue;

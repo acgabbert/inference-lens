@@ -260,8 +260,7 @@ test("a saved decision run is listed beside chat runs and inspected without chan
 
   // Both kinds now open immutable evidence in Runs.
   await row.click();
-  await expect(page.getByRole("region", { name: "Selected run evidence" })).toContainText(decision.runId);
-  await expect(page.locator(".decision-response")).toContainText("Run trace saved");
+  await expect(page.locator(".decision-response .result-header").getByRole("button", { name: "Copy link", exact: true })).toBeEnabled();
   await expect(page.getByRole("article", { name: "Answer intent" })).toContainText("Choice billing");
   const evidence = page.getByRole("region", { name: "Decision evidence" });
   await expect(evidence.getByRole("article")).toHaveCount(2);

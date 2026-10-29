@@ -25,7 +25,7 @@ export function RunEvidenceDetail({
   readTrace,
   onPromoteTrace,
   diagnosticsOpen = false,
-  leading,
+  headerLeading,
 }: {
   diagnosticsOpen?: boolean;
   trace: RunTrace;
@@ -35,8 +35,8 @@ export function RunEvidenceDetail({
   /** Reads a sibling trace from the project folder, for the parent diff. */
   readTrace?(fileName: string): Promise<RunTrace>;
   onPromoteTrace?(trace: RunTrace): void;
-  /** Rows ahead of the run's own actions, inside the scroll area. */
-  leading?: ReactNode;
+  /** Run actions on the left of the response header row. */
+  headerLeading?: ReactNode;
 }) {
   const runState = useMemo(() => runStateFromTrace(trace), [trace]);
   const transcript = useMemo(() => transcriptFromRunState(runState), [runState]);
@@ -76,8 +76,8 @@ export function RunEvidenceDetail({
   return (
     <section className="result">
       <ResponseOutput
-        leading={<>
-          {leading}
+        headerLeading={headerLeading}
+        leading={
           <div className="run-evidence-actions">
             <div>
               <span className="eyebrow">{eyebrow}</span>
@@ -87,7 +87,7 @@ export function RunEvidenceDetail({
               Branch from this run
             </button>
           </div>
-        </>}
+        }
         output={attempts.map((attempt) => attempt.text).join("")}
         reasoning={attempts.map((attempt) => attempt.reasoning).join("")}
         status={runState.status.kind === "completed" ? "complete" : "failed"}

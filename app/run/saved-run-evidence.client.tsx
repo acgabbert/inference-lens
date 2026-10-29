@@ -1,15 +1,15 @@
 "use client";
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { decisionRunFromTrace } from "../../packages/core/src/decision-trace.ts";
 import type { DecisionRunTrace } from "../../packages/core/src/decision-trace.ts";
 import { DecisionResponse } from "../decisions/decision-response.client.tsx";
 import { DecisionInspect } from "../decisions/decision-inspect.client.tsx";
 
 /** The saved decision renderer has no adoption, retry, provider or mutation port. */
-export function SavedDecisionEvidence({ trace, fileName }: { trace: DecisionRunTrace; fileName: string }) {
+export function SavedDecisionEvidence({ trace, fileName, headerLeading }: { trace: DecisionRunTrace; fileName: string; headerLeading?: ReactNode }) {
   const run = useMemo(() => decisionRunFromTrace(trace), [trace]);
   return <>
-    <DecisionResponse run={run} executing={false} traceStorage={{ kind: "saved", location: fileName }} emptyDetail="This trace has no decision result." onRetry={() => {}} onDiscard={() => {}} onSaveTrace={() => {}} />
+    <DecisionResponse headerLeading={headerLeading} run={run} executing={false} traceStorage={{ kind: "saved", location: fileName }} emptyDetail="This trace has no decision result." onRetry={() => {}} onDiscard={() => {}} onSaveTrace={() => {}} />
     <DecisionInspect run={run} />
   </>;
 }
@@ -23,9 +23,9 @@ export function SavedRunEvidence({ saved, fileName, workspace, diagnosticsOpen, 
   saved: SavedRunTrace; fileName: string; workspace: ProjectWorkspaceHandle | null; diagnosticsOpen?: boolean;
   onBranch(trace: RunTrace): void; readTrace(fileName: string): Promise<RunTrace>; onPromoteTrace?(trace: RunTrace): void;
 }) {
+  const copyLink = <CopyRunLink workspace={workspace} runId={saved.trace.runId} saved />;
   return <div className="saved-run-evidence">
-    <div className="run-evidence-actions"><code>{saved.trace.runId}</code><CopyRunLink workspace={workspace} runId={saved.trace.runId} saved /></div>
-    {saved.kind === "decision" ? <SavedDecisionEvidence trace={saved.trace} fileName={fileName} /> :
-      <RunEvidenceDetail trace={saved.trace} eyebrow="Saved evidence" storage={{ kind: "saved", location: fileName }} onBranch={onBranch} readTrace={readTrace} diagnosticsOpen={diagnosticsOpen} onPromoteTrace={onPromoteTrace} />}
+    {saved.kind === "decision" ? <SavedDecisionEvidence trace={saved.trace} fileName={fileName} headerLeading={copyLink} /> :
+      <RunEvidenceDetail headerLeading={copyLink} trace={saved.trace} eyebrow="Saved evidence" storage={{ kind: "saved", location: fileName }} onBranch={onBranch} readTrace={readTrace} diagnosticsOpen={diagnosticsOpen} onPromoteTrace={onPromoteTrace} />}
   </div>;
 }
