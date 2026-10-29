@@ -7251,25 +7251,29 @@ main {
     height: 100%;
   }
 
-  .workbench-pane.mobile-pane-hidden {
+  /* One view at a time, chosen by the shell's `data-workbench-view`. */
+  .workspace:not([data-workbench-view="request"]) > .request-pane,
+  .workspace[data-workbench-view="request"] > .response-pane,
+  .workspace[data-workbench-view="inspect"] .response-view,
+  .workspace[data-workbench-view="response"] .inspect-view {
     display: none;
   }
 
+  /* Flex columns, as the pane is on the wide layout, so whatever a view holds
+     gets the same height chain down to its scroll area. */
   .response-view,
   .inspect-view {
     width: 100%;
-    height: 100%;
+    flex: 1 1 auto;
     min-height: 0;
-    display: block;
+    display: flex;
+    flex-direction: column;
   }
 
-  .response-view.mobile-view-hidden,
-  .inspect-view.mobile-view-hidden {
-    display: none;
-  }
-
-  .inspect-view .trace-panel.open {
-    height: 100%;
+  /* The inspect surface (chat trace, decision evidence) is the whole view
+     here rather than a split under the response. */
+  .workspace .inspect-view > * {
+    flex: 1 1 auto;
     max-height: none;
   }
 

@@ -114,6 +114,30 @@ test("runs the captured all-types decision and renders its exact values", async 
   await expectNoBrokenNumbers(page, ".decision-inspect");
 });
 
+test("on a phone, Inspect scrolls to the end of the decision evidence", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seedDecisionProfiles(page);
+  await page.goto("/");
+  await waitForHydration(page);
+  await page.getByRole("radio", { name: "Decision" }).click();
+  await chooseModel(page, "all-types");
+  await enterJson(page, ALL_TYPES);
+  await runDecision(page).click();
+  await expect(page.getByRole("article", { name: "Answer intent" })).toBeVisible();
+
+  await page.getByRole("navigation", { name: "Workbench view" }).getByRole("button", { name: "Inspect" }).click();
+  const attempt = page.getByRole("region", { name: "Decision evidence" }).getByRole("article", { name: "Attempt 1" });
+  // Taller than the phone's pane, so the claim is that wheeling over the
+  // evidence reaches its end, not that it fits.
+  await attempt.getByRole("heading", { name: /^Attempt 1/ }).hover();
+  await page.mouse.wheel(0, 5_000);
+  const pane = (await page.locator(".workbench-pane.response-pane").boundingBox())!;
+  await expect.poll(async () => {
+    const box = (await attempt.boundingBox())!;
+    return Math.round(box.y + box.height);
+  }, { message: `attempt bottom against pane bottom ${pane.y + pane.height}` }).toBeLessThanOrEqual(Math.round(pane.y + pane.height));
+});
+
 test("each kind keeps its draft across switches, and form ↔ JSON is lossless", async ({ page }) => {
   await seedDecisionProfiles(page);
   await page.goto("/");

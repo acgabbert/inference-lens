@@ -120,8 +120,12 @@ export function WorkbenchShell({
           </button>
         )}
       </nav>
+      {/* The active view is state, not presentation: only the narrow layout
+          hides panes for it, so no pane carries a "hidden" class while it is
+          on screen in a wide window. */}
       <section
         className="workspace"
+        data-workbench-view={visibleView}
         ref={shellRef}
         style={
           {
@@ -129,13 +133,7 @@ export function WorkbenchShell({
           } as CSSProperties
         }
       >
-        <div
-          className={
-            visibleView === "request"
-              ? "workbench-pane request-pane"
-              : "workbench-pane request-pane mobile-pane-hidden"
-          }
-        >
+        <div className="workbench-pane request-pane">
           {request}
         </div>
         <button
@@ -146,31 +144,9 @@ export function WorkbenchShell({
         >
           <span />
         </button>
-        <div
-          className={
-            view === "request"
-              ? "workbench-pane response-pane mobile-pane-hidden"
-              : "workbench-pane response-pane"
-          }
-        >
-          <div
-            className={
-              visibleView === "inspect"
-                ? "response-view mobile-view-hidden"
-                : "response-view"
-            }
-          >
-            {response}
-          </div>
-          <div
-            className={
-              visibleView === "response"
-                ? "inspect-view mobile-view-hidden"
-                : "inspect-view"
-            }
-          >
-            {inspect}
-          </div>
+        <div className="workbench-pane response-pane">
+          <div className="response-view">{response}</div>
+          <div className="inspect-view">{inspect}</div>
         </div>
       </section>
     </>
