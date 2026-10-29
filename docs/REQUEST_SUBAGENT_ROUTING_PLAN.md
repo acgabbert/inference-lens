@@ -55,8 +55,10 @@ approval UI or scheduler behavior; otherwise keep the MVP tool-free.
 
 Current formats: active Project v15, RunTrace v8, ExperimentPlan v5, and
 ExperimentResult v6. [`shared-project.ts`](../packages/core/src/shared-project.ts)
-also defines a **staged** v16 format that app/CLI do not yet use. Coordinate
-schema allocation with that migration and the
+also defines a **staged** shared format that app/CLI do not yet use, renumbered
+to v17 on 2026-10-29 when [prompt environments](PROMPT_ENVIRONMENTS_PLAN.md)
+took active v16 and RunTrace v9. Coordinate schema allocation with that
+migration, environments, and the
 [final-output tool plan](N8N_FINAL_OUTPUT_TOOL_PLAN.md); neither is a dependency
 that this feature should accidentally turn on.
 
@@ -207,8 +209,8 @@ Save/export the parent and embedded children as one artifact. Reopening needs
 neither source prompts nor local credentials, and never reruns children.
 Historical parent traces remain inspectable with zero children. Unsupported
 new formats must fail explicitly in old readers rather than run as ordinary
-unbound tools. Allocate actual format versions after reconciling the staged
-v16 work; update both the active path and staged compatibility tests as needed.
+unbound tools. Allocate actual format versions after environments and the
+staged v17 work; update both the active path and staged compatibility tests as needed.
 
 Show parent-only metrics and an explicitly labelled combined request/token
 summary. Do not add child tokens to parent provider usage events, double-count
@@ -296,7 +298,7 @@ Required coverage:
   served serially, parent final answer, child failure/retry, stop, source changes
   during a run, combined usage with missing values, export/import and history
   reopen after source removal. Reject corrupted links and over-limit artifacts.
-- Compatibility: old projects/traces retain behavior; staged v16 validation does
+- Compatibility: old projects/traces retain behavior; staged v17 validation does
   not discard new definitions; batch/CLI fail preflight before network activity
   until supported. After that slice, prove app/CLI evidence and check parity.
 

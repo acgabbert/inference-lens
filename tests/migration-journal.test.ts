@@ -145,7 +145,7 @@ for (const version of [10, 11, 12, 13, 14, 15] as const) {
     assert.equal((await inspectSharedProjectMigration({ manifest: bytes, files: prepared.files }, prepared.projectId, prepared.operationId)).kind, "ready");
     assert.equal(PROJECT_SCHEMA_VERSION, 15);
     assert.ok(parseProjectJson(new TextDecoder().decode(bytes)).promptTemplates[0].draft);
-    assert.throws(() => parseProjectJson(new TextDecoder().decode(prepared.files[2].bytes)), /schema v16 is not supported/);
+    assert.throws(() => parseProjectJson(new TextDecoder().decode(prepared.files[2].bytes)), /schema v17 is not supported/);
   });
 }
 test("compact migration identities use UTF-16 code units and remain stable for long or unusual IDs", async () => {

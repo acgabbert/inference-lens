@@ -1,7 +1,7 @@
 # Prompt environments
 
-**Status:** Decision table accepted 2026-10-29. Format version allocation is
-still open (see [Format version](#format-version)); no runtime implementation.
+**Status:** Decision table, limits and format versions accepted 2026-10-29;
+the staged shared format is renumbered to v17. No runtime implementation yet.
 **Date:** 2026-10-29. **Inspected baseline:** `main` at `406cb03`.
 
 ## Outcome
@@ -46,9 +46,8 @@ evaluation suites — and has no nesting of its own.
 
 ## Decisions
 
-Accepted as recommended on 2026-10-29. Per [AGENTS.md](../AGENTS.md), the
-remaining open contract item, [format version](#format-version), is resolved
-before types change.
+Accepted as recommended on 2026-10-29, together with the
+[format version](#format-version).
 
 | Decision | Options and tradeoff | Recommendation |
 | --- | --- | --- |
@@ -144,11 +143,15 @@ is unscheduled.
 | B. Environments join staged v16 and ship with the shared-assets migration. | No renumbering. | Environments wait on unrelated, unscheduled work: publication, recovery, and the workbench. |
 | C. Environments ship as active v17, skipping 16. | No renumbering. | Two "next" formats exist at once, and a v15 → v17 migration must later reconcile with a v16 that never shipped. |
 
-**Recommendation: A.** Environments are shared authored content, so they
-belong in the shared format either way. Option A puts them there without
-blocking on the migration. The renumber has no runtime effect because no app or
-CLI path reads the staged format. RunTrace has no collision: environments take
-v9.
+**Accepted 2026-10-29: A.** Environments are shared authored content, so they
+belong in the shared format either way, and A puts them there without blocking
+on the migration. The renumber is done: `SHARED_PROJECT_SCHEMA_VERSION` is 17,
+the example is `project-v17.proposed.json`, and the live shared-assets docs
+carry a renumbering note. Dated verification records and archived documents
+keep "v16" because that is what they recorded. The renumber had no runtime
+effect; no app or CLI path reads the staged format. When environments land,
+the staged v17 codec derives from active v16 instead of v15. RunTrace has no
+collision: environments take v9.
 
 ## Feature owners and user experience
 
@@ -175,9 +178,9 @@ fixed `{ "input": string }` schema without changing its other decisions.
 Rough, code-inspection estimates for one developer familiar with the repo;
 not measured by a spike.
 
-1. **Contracts (about half a day).** Decision table and limits are settled.
-   Version allocation is open; then fix exact field names and the provenance
-   shape.
+1. **Contracts (about half a day).** Decision table, limits and versions are
+   settled; the staged format is renumbered. Exact field names and the
+   provenance shape remain.
 2. **Core (1–2 days).** Environment module, resolution and cycle detection,
    precedence layer and provenance, snapshot in resolved input and plans,
    project and trace parsing/round trips, deletion rules.
