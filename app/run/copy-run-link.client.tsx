@@ -26,9 +26,12 @@ export function CopyRunLink({ workspace, runId, saved }: { workspace: ProjectWor
     } catch (error) { update({ message: error instanceof Error ? error.message : "Could not create a saved run link." }); }
   }
   if (workspace?.kind === "tauri-directory") return null;
+  // Sits in the pane header, so the ineligibility reason is the button's title
+  // rather than a line of its own.
   return <div className="run-link-copy">
-    <button className="button secondary" disabled={!eligible || visible?.busy} type="button" onClick={() => void copy()}>Copy link</button>
-    {!eligible && <small>Finish and save the run to a project folder before copying a link.</small>}
+    <button className="button secondary" disabled={!eligible || visible?.busy} type="button"
+      title={eligible ? undefined : "Finish and save the run to a project folder before copying a link."}
+      onClick={() => void copy()}>Copy link</button>
     {visible?.message && <p role="status">{visible.message}</p>}
     {visible?.fallback && <label>Saved run link<input readOnly value={visible.fallback} onFocus={event => event.currentTarget.select()} /></label>}
   </div>;

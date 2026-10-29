@@ -103,7 +103,6 @@
   color: var(--text-muted);
 }
 
-.trace-storage-saved .trace-storage-icon,
 .trace-storage-downloaded .trace-storage-icon,
 .trace-storage-loaded .trace-storage-icon {
   border-color: var(--accent-border);
@@ -321,6 +320,26 @@
   display: flex;
   align-items: center;
   gap: var(--space-md);
+}
+
+/* Run actions take the left of the header, rendering and status the right.
+   On a window too narrow for both, the controls wrap onto a second line. */
+.result-header {
+  flex-wrap: wrap;
+  gap: var(--space-sm) var(--space-md);
+}
+
+.result-header-leading {
+  min-width: 0;
+  margin-right: auto;
+}
+
+.result-header-leading .run-link-copy {
+  padding: 0;
+}
+
+.result-header .status {
+  white-space: nowrap;
 }
 
 

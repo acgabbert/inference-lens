@@ -21,8 +21,8 @@ export interface DecisionResponseProps {
   /** Why another foreground activity refuses Retry now (D24); stated beside the button. */
   retryBlockedReason?: string;
   traceStorage: TraceStorageStatus | null;
-  /** An action row that opens the scroll area, ahead of the storage notice. */
-  leading?: ReactNode;
+  /** Run actions on the left of the header row, opposite the status. */
+  headerLeading?: ReactNode;
   /** What to do first while nothing has run; the readiness summary when blocked. */
   emptyDetail: string;
   onRetry(): void;
@@ -110,7 +110,7 @@ export function DecisionResponse({
   retryAvailableAt,
   retryBlockedReason,
   traceStorage,
-  leading,
+  headerLeading,
   emptyDetail,
   onRetry,
   onDiscard,
@@ -126,15 +126,13 @@ export function DecisionResponse({
     <section aria-label="Decision response" className="result decision-response">
       <WorkbenchPanel
         headerClassName="result-header"
-        header={
+        header={<>
+          {headerLeading && <div className="result-header-leading">{headerLeading}</div>}
           <div className="result-header-controls">
             <span className={`status ${status}`}><span aria-hidden="true" />{status}</span>
           </div>
-        }
-        notices={<>
-          {leading}
-          {traceStorage && <TraceStorageNotice storage={traceStorage} onSaveTrace={onSaveTrace} />}
         </>}
+        notices={traceStorage && <TraceStorageNotice storage={traceStorage} onSaveTrace={onSaveTrace} />}
         scrollClassName="output-scroll"
       >
         <div className="output decision-output">
