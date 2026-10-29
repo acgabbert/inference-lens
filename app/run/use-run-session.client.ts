@@ -71,6 +71,7 @@ export interface RunSessionHandle {
   isRequestActive: boolean;
   toolResultDrafts: Record<string, ToolResultDraft>;
   traceStorage: TraceStorageStatus | null;
+  traceWorkspace: ProjectWorkspaceHandle | null;
   hasDiagnosticCapture: boolean;
   visibleBranchProvenance: RunTrace["branchedFrom"];
   parentTrace: ParentTraceState;
@@ -120,6 +121,7 @@ export function useRunSession(options: UseRunSessionOptions): RunSessionHandle {
   const abortRef = useRef<AbortController | null>(null);
   const runStateRef = useRef<RunState | null>(null);
   const requestGenerationRef = useRef(0);
+  const [traceWorkspace, setTraceWorkspace] = useState<ProjectWorkspaceHandle | null>(null);
   const workspaceRef = useRef<ProjectWorkspaceHandle | null>(null);
   const persistedRunIdsRef = useRef(new Set<string>());
   const diagnosticRef = useRef<DiagnosticCapture | null>(null);
@@ -188,7 +190,7 @@ export function useRunSession(options: UseRunSessionOptions): RunSessionHandle {
     const controller = new AbortController(); abortRef.current = controller;
     const coordinator = new RunCoordinator(input); coordinatorRef.current = coordinator;
     runToolsRef.current = input.tools;
-    workspaceRef.current = context.workspace;
+    workspaceRef.current = context.workspace; setTraceWorkspace(context.workspace);
     requestRef.current = context.request;
     parentGenerationRef.current += 1; setParentTrace({ status: "idle" });
     if (context.branchedFrom) provenanceRef.current.set(input.runId, context.branchedFrom);
@@ -369,7 +371,7 @@ export function useRunSession(options: UseRunSessionOptions): RunSessionHandle {
     if (trace.branchedFrom) provenanceRef.current.set(trace.runId, trace.branchedFrom);
     if (origin.workspace) persistedRunIdsRef.current.add(trace.runId);
     coordinatorRef.current = null;
-    workspaceRef.current = origin.workspace;
+    workspaceRef.current = origin.workspace; setTraceWorkspace(origin.workspace);
     diagnosticRef.current = null;
     setHasDiagnosticCapture(false);
     setToolResultDrafts({});
@@ -389,5 +391,5 @@ export function useRunSession(options: UseRunSessionOptions): RunSessionHandle {
   async function importTrace(file: File): Promise<void> { try { adoptTrace(parseRunTraceJson(await file.text()), { workspace: null, fileName: file.name }); } catch (error) { options.onError(error instanceof Error ? error.message : "Could not import the run trace."); } }
   async function loadParentTrace(): Promise<void> { const provenance = visibleBranchProvenance; const generation = ++parentGenerationRef.current; if (!provenance) return; if (!workspaceRef.current) { setParentTrace({ status: "error", error: "No project folder is open. Open the folder that contains parent run " + provenance.runId + "." }); return; } setParentTrace({ status: "loading" }); try { const trace = await options.readTrace(traceFileName(provenance.runId)); if (generation !== parentGenerationRef.current) return; if (trace.runId !== provenance.runId) throw new Error("The parent trace file contains a different run."); setParentTrace({ status: "ready", trace }); } catch (error) { if (generation !== parentGenerationRef.current) return; const message = error instanceof Error ? error.message : "The trace could not be read."; const missing = error instanceof DOMException && error.name === "NotFoundError"; const invalid = /not valid|different run|schema|trace/i.test(message); setParentTrace({ status: "error", error: invalid ? `The saved parent trace for ${provenance.runId} is invalid: ${message}` : missing ? `No saved trace exists for parent run ${provenance.runId} in this project folder. Save the parent run, then try again.` : `The parent trace for ${provenance.runId} could not be read: ${message}` }); } }
   const transcript = useMemo(() => runState ? transcriptFromRunState(runState) : [], [runState]);
-  return { runState, transcript, isRequestActive, toolResultDrafts, traceStorage, hasDiagnosticCapture, visibleBranchProvenance, parentTrace, start, retry, continueRun, stop, reset, updateToolResultDraft, approveMcpCall, rejectMcpCall, downloadDiagnostics, exportTrace, adoptTrace, importTrace, loadParentTrace, terminal: isTerminalRunState(runState) };
+  return { traceWorkspace, runState, transcript, isRequestActive, toolResultDrafts, traceStorage, hasDiagnosticCapture, visibleBranchProvenance, parentTrace, start, retry, continueRun, stop, reset, updateToolResultDraft, approveMcpCall, rejectMcpCall, downloadDiagnostics, exportTrace, adoptTrace, importTrace, loadParentTrace, terminal: isTerminalRunState(runState) };
 }

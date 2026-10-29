@@ -7,24 +7,30 @@ import {
 } from "./workspace-resume.client.ts";
 
 const DB_NAME = "inference-lens";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = "workspace-handles";
 const RECORD_KEY = "last-project";
 
-function openDatabase(): Promise<IDBDatabase | null> {
+export function openWorkspaceDatabase(): Promise<IDBDatabase | null> {
   if (typeof indexedDB === "undefined") return Promise.resolve(null);
   return new Promise((resolve) => {
     try {
+      let abandoned = false;
       const request = indexedDB.open(DB_NAME, DB_VERSION);
       request.onupgradeneeded = () => {
         const database = request.result;
         if (!database.objectStoreNames.contains(STORE_NAME)) {
           database.createObjectStore(STORE_NAME);
         }
+        if (!database.objectStoreNames.contains("project-locations")) database.createObjectStore("project-locations", { keyPath: "locationId" });
       };
-      request.onsuccess = () => resolve(request.result);
+      request.onsuccess = () => {
+        if (abandoned) { request.result.close(); return; }
+        request.result.onversionchange = () => request.result.close();
+        resolve(request.result);
+      };
       request.onerror = () => resolve(null);
-      request.onblocked = () => resolve(null);
+      request.onblocked = () => { abandoned = true; resolve(null); };
     } catch {
       resolve(null);
     }
@@ -47,7 +53,7 @@ function transactionFinished(transaction: IDBTransaction): Promise<void> {
 }
 
 export async function readStoredWorkspace(): Promise<StoredWorkspaceRecord | null> {
-  const database = await openDatabase();
+  const database = await openWorkspaceDatabase();
   if (!database) return null;
   try {
     const transaction = database.transaction(STORE_NAME, "readonly");
@@ -65,7 +71,7 @@ export async function readStoredWorkspace(): Promise<StoredWorkspaceRecord | nul
 export async function writeStoredWorkspace(
   record: StoredWorkspaceRecord,
 ): Promise<void> {
-  const database = await openDatabase();
+  const database = await openWorkspaceDatabase();
   if (!database) return;
   try {
     const transaction = database.transaction(STORE_NAME, "readwrite");
@@ -81,7 +87,7 @@ export async function writeStoredWorkspace(
 export async function clearStoredWorkspace(
   expectedRecordId: string,
 ): Promise<void> {
-  const database = await openDatabase();
+  const database = await openWorkspaceDatabase();
   if (!database) return;
   try {
     const transaction = database.transaction(STORE_NAME, "readwrite");

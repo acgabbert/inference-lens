@@ -24,6 +24,11 @@ import type {
 import { serializeRunTrace } from "../packages/core/src/run-trace.ts";
 import { OPENAI_COMPATIBLE_CAPABILITIES } from "../packages/core/src/types.ts";
 
+test("history preserves an unreadable artifact's actual error", () => {
+  const result = loadRunHistoryFiles([{ fileName: "locked.json", contents: "", readError: "Permission denied by fixture" }]);
+  assert.deepEqual(result.failures, [{ fileName: "locked.json", message: "Permission denied by fixture" }]);
+});
+
 type RunEventPayload = RunEvent extends infer Event
   ? Event extends RunEvent
     ? Omit<Event, keyof RunEventMetadata>

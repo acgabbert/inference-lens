@@ -51,6 +51,8 @@ interface EvaluationsModeProps {
   history?: EvaluationSuiteHistoryHandle;
   layout: EvaluationsLayoutHandle;
   modelFavorites?: ModelFavoritesHandle;
+  /** Uses the host's existing project save flow, preserving the current draft. */
+  projectPrerequisiteAction: { label: string; onClick(): void };
   /** Leaves this mode for the request composer's prompt library. */
   onOpenTemplates(): void;
   caseSource?: EvaluationCaseSource;
@@ -75,6 +77,7 @@ export function EvaluationsMode({
   history,
   layout,
   modelFavorites,
+  projectPrerequisiteAction,
   onOpenTemplates,
   caseSource,
   onOpenSourceTrace,
@@ -96,7 +99,8 @@ export function EvaluationsMode({
         <PaneEmptyState
           eyebrow="Evaluations"
           heading="Open or save a project first"
-          detail="Evaluation suites are portable project content, so they need a project document."
+          detail="Run one prompt against several inputs and check the answers. Evaluation suites belong to a project; save your current draft to get started."
+          action={projectPrerequisiteAction}
         />
       </div>
     );

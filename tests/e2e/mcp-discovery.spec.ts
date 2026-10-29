@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { createProjectFile } from "../../packages/core/src/project";
-import { seedProfile, waitForHydration, importProject } from "./support";
+import { seedProfile, waitForHydration, importProject, openMcpServers } from "./support";
 
 // This fixture has shared discovery counters and a mutable descriptor.
 test.describe.configure({ mode: "serial" });
@@ -16,7 +16,7 @@ test("a declared MCP server is connected deliberately and its tools attach as de
     if (new URL(outgoing.url()).pathname === "/api/mcp/execute") executionRequests.push(outgoing.url());
   });
 
-  const panel = page.getByRole("region", { name: "MCP servers" });
+  const panel = await openMcpServers(page);
   await expect(panel).toContainText("Synthetic MCP fixture");
   const before = await (await request.get("http://127.0.0.1:44018/status")).json() as { discoveryRequests: number; calls: number };
   const undeclared = await request.post("http://127.0.0.1:4300/api/mcp/discovery", {
@@ -42,14 +42,14 @@ test("a declared MCP server is connected deliberately and its tools attach as de
 
   const firstTool = panel.getByRole("article").filter({ hasText: "Look up a record" });
   await expect(firstTool).toContainText("Find a synthetic record.");
-  await panel.getByRole("combobox", { name: "Attachment", exact: true }).selectOption("project");
+  await panel.getByRole("radio", { name: "Project", exact: true }).check();
   await panel.getByRole("combobox", { name: "Execution mode", exact: true }).selectOption("manual");
   await firstTool.getByRole("checkbox").check();
   await panel.getByRole("button", { name: "Attach selected (1)" }).click();
   await expect(page.getByRole("region", { name: "Tools attached to this request" })).toContainText("lookup_record");
   const secondTool = panel.getByRole("article").filter({ hasText: "A tool on the second page." });
   await secondTool.getByRole("textbox", { name: "Model-visible name for second_tool" }).fill("second_alias");
-  await panel.getByRole("combobox", { name: "Attachment", exact: true }).selectOption("request");
+  await panel.getByRole("radio", { name: "This tab only", exact: true }).check();
   await secondTool.getByRole("checkbox").check();
   await panel.getByRole("button", { name: "Attach selected (1)" }).click();
   await expect(panel.getByRole("status")).toContainText("in this tab");
@@ -69,7 +69,7 @@ test("multi-selection attaches with explicit automatic execution and can save a 
   await waitForHydration(page);
   await page.getByRole("tab", { name: "Tools" }).click();
   await expect(page.getByText("No project tools yet", { exact: true })).toHaveCount(0);
-  const panel = page.getByRole("region", { name: "MCP servers" });
+  const panel = await openMcpServers(page);
   await panel.getByRole("button", { name: "Connect and browse tools" }).click();
   await panel.getByRole("combobox", { name: "Execution mode", exact: true }).selectOption("automatic");
   await panel.getByRole("checkbox", { name: "Select lookup_record", exact: true }).check();
@@ -95,7 +95,7 @@ test("a refused permission leaves a visible manual attachment and explains the f
   await page.goto("/");
   await waitForHydration(page);
   await page.getByRole("tab", { name: "Tools" }).click();
-  const panel = page.getByRole("region", { name: "MCP servers" });
+  const panel = await openMcpServers(page);
   await panel.getByRole("button", { name: "Connect and browse tools" }).click();
   await page.route("**/api/tool-bindings/check", async (route) => {
     const { bindings } = route.request().postDataJSON() as { bindings: Array<{ toolId: string }> };
@@ -120,7 +120,7 @@ test("kept tools survive same-project replacement and clear for a different proj
   const project = createProjectFile({ name: "Tool lifetime A", idSuffix: "tool-lifetime-a", request });
   await importProject(page, project, "Tool lifetime A");
   await page.getByRole("tab", { name: "Tools" }).click();
-  const panel = page.getByRole("region", { name: "MCP servers" });
+  const panel = await openMcpServers(page);
   await panel.getByRole("button", { name: "Connect and browse tools" }).click();
   await panel.getByRole("combobox", { name: "Execution mode", exact: true }).selectOption("manual");
   await panel.getByRole("checkbox", { name: "Select lookup_record", exact: true }).check();

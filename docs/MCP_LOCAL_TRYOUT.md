@@ -51,10 +51,10 @@ change that environment variable.
 1. Configure a connection with endpoint `http://127.0.0.1:4014/v1`, model
    `mcp-tool-model`, and no API key. Select buffered delivery if the UI offers
    a delivery choice. Enable tool capability for this connection if needed.
-2. In **Tools → MCP servers**, select **Local Python example** and click
-   **Connect and browse tools**. You should see `lookup_record` and its
-   `record_id` input schema.
-3. Select `lookup_record`. Leave **Keep attached in this tab** and
+2. In **Tools**, click **Attach tool → From MCP server…**, select **Local
+   Python example**, and click **Connect and browse tools**. You should see
+   `lookup_record` and its `record_id` input schema.
+3. Select `lookup_record`. Leave **Attach to: This tab only** and
    **Ask before running** selected, then click **Attach selected (1)**.
    The attachment creates permission for the discovered server.
 4. In **Messages**, enter `Look up sample-42.` and click **Run current

@@ -185,11 +185,19 @@ another model" append a content-identical revision and unpin every existing
 use. Changing a recommendation is metadata: `currentRevisionId` and every
 revision are left untouched.
 
-Because a recommendation is advisory, the app surfaces disagreement rather than
-resolving it. A recommendation differing from the run target is reported before
-the run, and so is a request whose templates recommend different targets —
-several templates may contribute to one request while that request can name
-only one model. Neither case blocks the run.
+The UI calls this a **Recommended model**, with its connection shown separately.
+The library and insertion picker show the recommendation before reuse. Each
+inserted prompt shows a model mismatch beside its content, with **Choose model**
+and **Dismiss** actions. Choosing opens the model field; insertion never changes
+the selected model automatically. Matching model IDs on different connections
+are not reported as model mismatches.
+
+Dismissals belong to the local feature session, per inserted use and its current
+comparison. They survive mode navigation and expire when the selected model or
+recommendation changes, the use is removed, or the app reloads. They are not
+serialized into the project or shared with collaborators. Chat run readiness
+retains an aggregate advisory when inserted prompts recommend different models;
+individual mismatch advice lives on the prompt cards. Neither blocks a run.
 
 External imports do not record a recommendation unless the caller opts in. The
 source model comes from the external execution's own provider while the

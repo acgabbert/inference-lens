@@ -17,6 +17,19 @@ import type { McpDiscoveredTool } from "../../packages/contracts/src/mcp-discove
 import { snapshotMcpTool } from "../tools/mcp-tool-snapshot.ts";
 import { chooseDefaultUserPrompt, createInitialMessages } from "./default-messages.ts";
 
+/**
+ * Where an attached tool lives. "request" is kept in this tab only and is
+ * cleared on reload; "project" is saved with the project and attached through
+ * its defaults, so every run in the project picks it up.
+ */
+export type ToolAttachmentDestination = "request" | "project";
+
+/** What is being attached. Every route into a request is one of these. */
+export type ToolAttachmentSource =
+  | { kind: "new" }
+  | { kind: "registry"; tool: RegistryTool }
+  | { kind: "mcp"; tool: McpDiscoveredTool; name: string };
+
 export interface RequestDraftSnapshot {
   messages: ConversationMessage[];
   tools: ToolDefinition[];
@@ -35,21 +48,36 @@ export interface RequestDraftHandle extends RequestDraftSnapshot {
     id: ConversationMessage["id"],
     patch: { content?: MessageContentPart[]; role?: ConversationMessage["role"] },
   ): void;
-  addTool(): ToolId;
+  /** Returns the attached snapshot, or why it could not be attached. */
+  attachTool(source: ToolAttachmentSource, destination: ToolAttachmentDestination): ToolDefinition | string;
   updateTool(id: ToolId, patch: Partial<ToolDefinition>): void;
   removeTool(id: ToolId): void;
   moveTool(id: ToolId, offset: number): void;
   setToolEnabled(id: ToolId, enabled: boolean): void;
   mockForTool(toolId: ToolId): ToolMock | undefined;
   updateToolMock(toolId: ToolId, text: string, enabled: boolean): void;
-  attachRegistryToolToProject(source: RegistryTool): string | undefined;
-  attachRegistryToolToRequest(source: RegistryTool): string | undefined;
-  attachMcpToolToProject(source: McpDiscoveredTool, name: string): ToolDefinition | string;
-  attachMcpToolToRequest(source: McpDiscoveredTool, name: string): ToolDefinition | string;
   saveRequestToolToProject(id: ToolId): void;
+  updateRequestTool(id: ToolId, patch: Partial<ToolDefinition>): void;
+  moveRequestTool(id: ToolId, offset: number): void;
   removeRequestTool(id: ToolId): void;
   clearRequestTools(): void;
   replaceProjectDraft(snapshot: RequestDraftSnapshot): void;
+}
+
+/** Editing a discovered descriptor makes its fingerprint stale. */
+function patchTool(
+  tools: ToolDefinition[],
+  id: ToolId,
+  patch: Partial<ToolDefinition>,
+): ToolDefinition[] {
+  return tools.map((tool) => {
+    if (tool.id !== id) return tool;
+    const editable = { ...tool };
+    const changes = { ...patch };
+    delete editable.source;
+    delete changes.source;
+    return { ...editable, ...changes };
+  });
 }
 
 /** Removes a message without leaving a tool-result/call link dangling. */
@@ -170,35 +198,26 @@ export function useRequestDraft(input: {
     onProjectDirty();
   }
 
-  function addTool(): ToolId {
-    const id = createEntityId("tool", randomUUID());
+  /** A blank definition whose name no project or tab tool already uses. */
+  function newToolDefinition(): ToolDefinition {
+    const taken = new Set([...tools, ...requestTools].map(({ name }) => name));
+    let index = 1;
+    while (taken.has(`tool_${index}`)) index += 1;
     const inputSchema: JsonObject = {
       type: "object",
       properties: {},
       additionalProperties: false,
     };
-    setTools((current) => [
-      ...current,
-      { id, name: `tool_${current.length + 1}`, description: "", inputSchema },
-    ]);
-    setEnabledToolIds((current) => [...current, id]);
-    onProjectDirty();
-    return id;
+    return { id: createEntityId("tool", randomUUID()), name: `tool_${index}`, description: "", inputSchema };
   }
 
   function updateTool(id: ToolId, patch: Partial<ToolDefinition>): void {
-    setTools((current) =>
-      current.map((tool) => {
-        if (tool.id !== id) return tool;
-        // Editing a discovered descriptor makes its fingerprint stale.
-        const editable = { ...tool };
-        const changes = { ...patch };
-        delete editable.source;
-        delete changes.source;
-        return { ...editable, ...changes };
-      }),
-    );
+    setTools((current) => patchTool(current, id, patch));
     onProjectDirty();
+  }
+
+  function updateRequestTool(id: ToolId, patch: Partial<ToolDefinition>): void {
+    setRequestTools((current) => patchTool(current, id, patch));
   }
 
   function removeTool(id: ToolId): void {
@@ -211,9 +230,26 @@ export function useRequestDraft(input: {
   /**
    * Selected project tools reach the provider in this array's order, so moving
    * a tool changes the `tools` list the model is given, not just the pane.
+   * A move steps over detached tools: they are not in the request, so trading
+   * places with one would change nothing the model sees.
    */
   function moveTool(id: ToolId, offset: number): void {
     setTools((current) => {
+      const attached = current.filter((tool) => tool.id === id || enabledToolIds.includes(tool.id));
+      const index = attached.findIndex((tool) => tool.id === id);
+      const neighbour = attached[index + offset];
+      if (index < 0 || !neighbour) return current;
+      const next = current.filter((tool) => tool.id !== id);
+      const at = next.findIndex((tool) => tool.id === neighbour.id);
+      next.splice(offset > 0 ? at + 1 : at, 0, current.find((tool) => tool.id === id)!);
+      return next;
+    });
+    onProjectDirty();
+  }
+
+  /** Tab tools follow every project tool, so they only reorder among themselves. */
+  function moveRequestTool(id: ToolId, offset: number): void {
+    setRequestTools((current) => {
       const index = current.findIndex((tool) => tool.id === id);
       const target = index + offset;
       if (index < 0 || target < 0 || target >= current.length) return current;
@@ -222,7 +258,6 @@ export function useRequestDraft(input: {
       next.splice(target, 0, moved);
       return next;
     });
-    onProjectDirty();
   }
 
   function setToolEnabled(id: ToolId, enabled: boolean): void {
@@ -232,63 +267,42 @@ export function useRequestDraft(input: {
     onProjectDirty();
   }
 
-  function toolSnapshot(source: RegistryTool): ToolDefinition {
-    return snapshotRegistryTool(source, createEntityId("tool", randomUUID()));
-  }
-
-  function attachRegistryToolToProject(source: RegistryTool): string | undefined {
-    if (tools.some(({ name }) => name === source.name)) {
-      const message = `A project tool named "${source.name}" already exists.`;
-      onProjectError(message, { clearKind: true });
-      return message;
-    }
-    const snapshot = toolSnapshot(source);
-    setTools((current) => [...current, snapshot]);
-    setEnabledToolIds((current) => [...current, snapshot.id]);
-    onProjectDirty();
-    onProjectError(undefined);
-    return undefined;
-  }
-
-  function attachRegistryToolToRequest(source: RegistryTool): string | undefined {
-    const exposedProjectNames = new Set(
-      tools.filter(({ id }) => enabledToolIds.includes(id)).map(({ name }) => name),
-    );
-    if (
-      exposedProjectNames.has(source.name) ||
-      requestTools.some(({ name }) => name === source.name)
-    ) {
-      const message = `A tool named "${source.name}" is already attached in this tab.`;
-      onProjectError(message, { clearKind: true });
-      return message;
-    }
-    setRequestTools((current) => [...current, toolSnapshot(source)]);
-    onProjectError(undefined);
-    return undefined;
-  }
-
-  function attachMcpToolToProject(source: McpDiscoveredTool, name: string): ToolDefinition | string {
-    if (tools.some((tool) => tool.name === name)) return `A project tool named "${name}" already exists.`;
-    if (requestTools.some((tool) => tool.name === name)) return `A tool named "${name}" is already attached in this tab.`;
+  /**
+   * One rule for every source. A project tool's name must be free across the
+   * project and this tab, because it can be attached later; a tab tool's name
+   * must be free among the tools the request already carries.
+   */
+  function attachTool(
+    source: ToolAttachmentSource,
+    destination: ToolAttachmentDestination,
+  ): ToolDefinition | string {
     let snapshot: ToolDefinition;
-    try { snapshot = snapshotMcpTool(source, name, createEntityId("tool", randomUUID())); }
-    catch (error) { return error instanceof Error ? error.message : "This tool cannot be attached."; }
-    setTools((current) => [...current, snapshot]);
-    setEnabledToolIds((current) => [...current, snapshot.id]);
-    onProjectDirty();
-    onProjectError(undefined);
-    return snapshot;
-  }
-
-  function attachMcpToolToRequest(source: McpDiscoveredTool, name: string): ToolDefinition | string {
-    const exposedProjectNames = new Set(tools.filter(({ id }) => enabledToolIds.includes(id)).map(({ name }) => name));
-    if (exposedProjectNames.has(name) || requestTools.some((tool) => tool.name === name)) {
-      return `A tool named "${name}" is already attached in this tab.`;
+    try {
+      snapshot = source.kind === "new"
+        ? newToolDefinition()
+        : source.kind === "registry"
+          ? snapshotRegistryTool(source.tool, createEntityId("tool", randomUUID()))
+          : snapshotMcpTool(source.tool, source.name, createEntityId("tool", randomUUID()));
+    } catch (error) {
+      return error instanceof Error ? error.message : "This tool cannot be attached.";
     }
-    let snapshot: ToolDefinition;
-    try { snapshot = snapshotMcpTool(source, name, createEntityId("tool", randomUUID())); }
-    catch (error) { return error instanceof Error ? error.message : "This tool cannot be attached."; }
-    setRequestTools((current) => [...current, snapshot]);
+    const { name } = snapshot;
+    const attachedProjectNames = tools
+      .filter(({ id }) => enabledToolIds.includes(id))
+      .map((tool) => tool.name);
+    if (destination === "project" && tools.some((tool) => tool.name === name)) {
+      return `A project tool named "${name}" already exists.`;
+    }
+    if ([...attachedProjectNames, ...requestTools.map((tool) => tool.name)].includes(name)) {
+      return `A tool named "${name}" is already attached.`;
+    }
+    if (destination === "project") {
+      setTools((current) => [...current, snapshot]);
+      setEnabledToolIds((current) => [...current, snapshot.id]);
+      onProjectDirty();
+    } else {
+      setRequestTools((current) => [...current, snapshot]);
+    }
     onProjectError(undefined);
     return snapshot;
   }
@@ -356,18 +370,16 @@ export function useRequestDraft(input: {
     addMessage,
     removeMessage,
     updateMessage,
-    addTool,
+    attachTool,
     updateTool,
     removeTool,
     moveTool,
     setToolEnabled,
     mockForTool,
     updateToolMock,
-    attachRegistryToolToProject,
-    attachRegistryToolToRequest,
-    attachMcpToolToProject,
-    attachMcpToolToRequest,
     saveRequestToolToProject,
+    updateRequestTool,
+    moveRequestTool,
     removeRequestTool,
     clearRequestTools,
     replaceProjectDraft,

@@ -13,6 +13,7 @@ import {
   stubProjectDirectory,
   waitForHydration,
 } from "./support";
+import { expectModalContract } from "./support/modal";
 
 function project(name: string, content: string) {
   return createPromptTemplate(
@@ -230,4 +231,29 @@ test("a failed save keeps the current project and replacement decision", async (
   await expect(decision).toContainText("The current project is still open.");
   await expect(page.locator(".brand")).toContainText("Failing folder");
   await expect(page.locator(".brand")).toContainText("Unsaved");
+});
+
+test("the replacement guard follows the modal contract", async ({ page }) => {
+  const original = project("Original project", "Original saved prompt");
+  const replacement = project("Folder replacement", "Folder saved prompt");
+
+  await seedProfile(page);
+  await stubProjectDirectory(page, {
+    name: "folder-replacement.inference-lens",
+    files: { "project.json": serializeProjectFile(replacement) },
+  });
+  await page.goto("/");
+  await waitForHydration(page);
+  await importProject(page, original, original.name);
+  await openMode(page, "Prompts");
+  await page.getByLabel("Prompt content", { exact: true }).fill("Unsaved open guard");
+
+  const menu = page.getByLabel("Project menu");
+  await menu.click();
+  await expectModalContract(page, {
+    open: page.getByRole("button", { name: "Open project folder…", exact: true }),
+    dialog: page.getByRole("dialog", { name: "Save changes before switching projects?" }),
+    restoreTo: menu,
+  });
+  await expect(page.locator(".brand")).toContainText("Original project");
 });

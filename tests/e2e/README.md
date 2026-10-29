@@ -48,12 +48,19 @@ Omit the spec path for the full suite plus these four captures. Each invocation
 creates fresh evidence; run this and the string-input lane sequentially because
 they share the app port. Empty-output awaits a real n8n reference capture.
 
+CI splits the ordinary suite across four isolated runners with
+`--shard=1/4` through `--shard=4/4`, keeping two workers on each runner. The safe
+regex browser probe and Python MCP lane run in a fifth job alongside the shards.
+The `End-to-end` check requires all five jobs to succeed; failure artifacts are
+named for the shard or `lanes`. Local `npm run test:e2e` still runs the whole
+suite in one invocation.
+
 ### Python MCP lane
 
 `tests/e2e/mcp-python.spec.ts` runs the host against the official Python MCP
 SDK: a run on the `2026-07-28` protocol, which the Node fixture's SDK cannot
 negotiate, and a server process killed with `SIGKILL` mid-call. CI runs it
-after the main suite. Locally:
+in its own job, alongside the main suite's shards. Locally:
 
 ```bash
 python3.12 -m venv .venv-mcp
@@ -85,6 +92,8 @@ re-deriving them:
 - `waitForHydration` — the app is interactive, not merely painted
 - `importProject` — load a project fixture
 - `stubProjectDirectory` — satisfy the directory picker without a real one
+- `stubSharedProjectDirectory` — one directory every tab of a context sees,
+  with a log of which page wrote each file, for specs about coordinating tabs
 
 Read [the provider fixture guide](../../docs/PROVIDER_FIXTURES.md) before
 writing against a provider. It lists the traps that produce a *passing* test

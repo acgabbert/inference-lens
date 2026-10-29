@@ -209,7 +209,11 @@ export interface PromptTemplateRecommendedTarget {
 interface PromptTemplateRevisionMetadata {
   id: PromptTemplateRevisionId;
   createdAt: string;
-  /** An optional author-supplied checkpoint label. */
+  /**
+   * An optional author-supplied checkpoint label. Unlike the content, it may
+   * change after the revision is created: labels are looked up by revision ID
+   * wherever they are shown, so a rename reads back everywhere at once.
+   */
   name?: string;
   variableDefaults: Record<string, string>;
 }
@@ -3499,6 +3503,54 @@ export function renamePromptTemplate(
     ...promptTemplates[templateIndex]!,
     name: trimmed,
   };
+  return parseProjectFile({ ...project, promptTemplates });
+}
+
+/**
+ * Relabels one revision without changing its identity, content, or pins. A
+ * blank name drops the label, so the revision falls back to its position.
+ */
+export function renamePromptTemplateRevision(
+  project: ProjectFile,
+  templateId: PromptTemplateId,
+  revisionId: PromptTemplateRevisionId,
+  name: string,
+): ProjectFile {
+  const templateIndex = project.promptTemplates.findIndex(
+    ({ id }) => id === templateId,
+  );
+  const template = project.promptTemplates[templateIndex];
+  if (!template) {
+    throw new ProjectValidationError([
+      {
+        code: "custom",
+        path: ["promptTemplates", templateId],
+        message: "Template does not exist.",
+      },
+    ]);
+  }
+  const revisionIndex = template.revisions.findIndex(({ id }) => id === revisionId);
+  const revision = template.revisions[revisionIndex];
+  if (!revision) {
+    throw new ProjectValidationError([
+      {
+        code: "custom",
+        path: ["promptTemplates", templateId, "revisions", revisionId],
+        message: "Template revision does not exist.",
+      },
+    ]);
+  }
+  const trimmed = name.trim();
+  if ((revision.name ?? "") === trimmed) return project;
+  // Clearing drops the key rather than storing undefined, so a cleared name
+  // serializes identically to one that was never set.
+  const next = { ...revision };
+  if (trimmed) next.name = trimmed;
+  else delete next.name;
+  const revisions = [...template.revisions];
+  revisions[revisionIndex] = next;
+  const promptTemplates = [...project.promptTemplates];
+  promptTemplates[templateIndex] = { ...template, revisions } as PromptTemplate;
   return parseProjectFile({ ...project, promptTemplates });
 }
 

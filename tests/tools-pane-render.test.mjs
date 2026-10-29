@@ -26,14 +26,19 @@ async function renderPane(props) {
       toolsEnabled: true,
       onOpenLibrary() {},
       onOpenConnectionSettings() {},
-      onAddTool() {},
+      onAttach() {
+        return "not attached in this render";
+      },
       onRemoveTool() {},
+      onMoveTool() {},
       onUpdateTool() {},
       onSetToolEnabled() {},
       mockForTool() {
         return undefined;
       },
       onUpdateToolMock() {},
+      onUpdateRequestTool() {},
+      onMoveRequestTool() {},
       onRemoveRequestTool() {},
       commandTools: {
         availability: { kind: "unconfigured", variable: "INFERENCE_LENS_COMMAND_TOOLS" },
@@ -64,7 +69,9 @@ test("a project with no tools yet shows an empty state with an add action", asyn
   assert.match(html, /Project tools/);
   assert.doesNotMatch(html, /No project tools yet/);
   assert.doesNotMatch(html, /pane-empty-state/);
-  assert.match(html, /\+ Add project tool/);
+  // Every route in starts from the attached list's one menu.
+  assert.match(html, />Attach tool</);
+  assert.doesNotMatch(html, /Add project tool/);
 });
 
 test("a project with tools does not show the empty state", async () => {

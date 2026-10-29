@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { isChatPromptTemplate, type PromptTemplate } from "../../packages/core/src/project";
 import type {
@@ -8,7 +8,9 @@ import type {
   PromptTemplateRevisionId,
 } from "../../packages/core/src/run-kernel";
 import { discoverTemplateVariables } from "../../packages/core/src/template-engine";
+import { PromptMessagesPreview } from "./prompt-messages-preview.client";
 import { promptRevisionLabel } from "./prompt-revision-label";
+import { ModalDialog } from "../modal-dialog.client";
 
 export function PromptInsertionDialog({
   templates: allTemplates,
@@ -56,54 +58,44 @@ export function PromptInsertionDialog({
   const revision = visibleSelection?.revisions.find(({ id }) => id === revisionId)
     ?? visibleSelection?.revisions.find(({ id }) => id === visibleSelection.currentRevisionId);
 
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.stopPropagation();
-      onCancel();
-    };
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", onKeyDown, true);
-    };
-  }, [onCancel]);
-
   function chooseTemplate(template: PromptTemplate): void {
     setSelectedId(template.id);
     setRevisionId(template.currentRevisionId);
   }
 
+  const variables = revision ? discoverTemplateVariables(revision.messages).variables : [];
+
   return (
-    <div className="confirmation-backdrop" role="presentation">
-      <section
-        aria-labelledby="prompt-insertion-title"
-        aria-modal="true"
-        className={`confirmation-dialog prompt-insertion-dialog${templates.length > 0 ? " has-templates" : ""}`}
-        role="dialog"
-      >
-        <span className="eyebrow">Current conversation</span>
-        <h2 id="prompt-insertion-title">Insert saved prompt</h2>
-        {templates.length === 0 ? (
-          <>
-            <p>This project has no active saved prompts. Create or save one in Prompts first.</p>
-            <div className="confirmation-actions">
-              <button autoFocus className="button secondary" type="button" onClick={onCancel}>
-                Cancel
-              </button>
-              <button className="button primary" type="button" onClick={onOpenPrompts}>
-                Open Prompts
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="prompt-insertion-body">
-              <p>{replaceEmptyDraft
-                ? "The empty draft will be replaced."
-                : "Choose the exact immutable revision and where it belongs in this conversation."}</p>
+    <ModalDialog
+      className={`confirmation-dialog prompt-insertion-dialog${templates.length > 0 ? " wide-dialog" : ""}`}
+      labelledBy="prompt-insertion-title"
+      onClose={onCancel}
+    >
+      {templates.length === 0 ? (
+        <>
+          <span className="eyebrow">Current conversation</span>
+          <h2 id="prompt-insertion-title">Insert saved prompt</h2>
+          <p>This project has no active saved prompts. Create or save one in Prompts first.</p>
+          <div className="confirmation-actions">
+            <button autoFocus className="button secondary" type="button" onClick={onCancel}>
+              Cancel
+            </button>
+            <button className="button primary" type="button" onClick={onOpenPrompts}>
+              Open Prompts
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <header className="wide-dialog-header">
+            <span className="eyebrow">Current conversation</span>
+            <h2 id="prompt-insertion-title">Insert saved prompt</h2>
+            <p>{replaceEmptyDraft
+              ? "The empty draft will be replaced."
+              : "Choose the exact immutable revision and where it belongs in this conversation."}</p>
+          </header>
+          <div className="wide-dialog-columns">
+            <div className="wide-dialog-pane prompt-insertion-list">
               <label className="prompt-insertion-search">
                 Search prompts
                 <input
@@ -113,96 +105,99 @@ export function PromptInsertionDialog({
                   onChange={(event) => setQuery(event.target.value)}
                 />
               </label>
-              <div className="prompt-insertion-workspace">
-                <fieldset className="saved-prompt-list">
-                  <legend>Active saved prompts</legend>
-                  {visibleTemplates.length === 0 ? (
-                    <p className="template-empty">No prompts match “{query.trim()}”.</p>
-                  ) : visibleTemplates.map((template) => (
-                    <label
-                      className={template.id === visibleSelection?.id
-                        ? "saved-prompt-option selected"
-                        : "saved-prompt-option"}
-                      key={template.id}
+              <fieldset className="saved-prompt-list">
+                <legend>Active saved prompts</legend>
+                {visibleTemplates.length === 0 ? (
+                  <p className="template-empty">No prompts match “{query.trim()}”.</p>
+                ) : visibleTemplates.map((template) => (
+                  <label
+                    className={template.id === visibleSelection?.id
+                      ? "saved-prompt-option selected"
+                      : "saved-prompt-option"}
+                    key={template.id}
+                  >
+                    <input
+                      checked={template.id === visibleSelection?.id}
+                      name="conversation-prompt"
+                      type="radio"
+                      value={template.id}
+                      onChange={() => chooseTemplate(template)}
+                    />
+                    <strong>{template.name}</strong>
+                  </label>
+                ))}
+              </fieldset>
+            </div>
+            <section className="wide-dialog-pane" aria-label="Prompt preview">
+              {visibleSelection && revision && <>
+                <div className="prompt-insertion-controls">
+                  <label>
+                    Revision
+                    <select
+                      value={revision.id}
+                      onChange={(event) => setRevisionId(event.target.value as PromptTemplateRevisionId)}
                     >
-                      <input
-                        checked={template.id === visibleSelection?.id}
-                        name="conversation-prompt"
-                        type="radio"
-                        value={template.id}
-                        onChange={() => chooseTemplate(template)}
-                      />
-                      <strong>{template.name}</strong>
-                    </label>
-                  ))}
-                </fieldset>
-                {visibleSelection && revision && (
-                  <section className="prompt-insertion-selection" aria-label="Prompt selection">
-                    <div className="prompt-insertion-controls">
-                      <label>
-                        Revision
-                        <select
-                          value={revision.id}
-                          onChange={(event) => setRevisionId(event.target.value as PromptTemplateRevisionId)}
-                        >
-                          {[...visibleSelection.revisions].reverse().map((candidate) => (
-                            <option key={candidate.id} value={candidate.id}>
-                              {promptRevisionLabel(visibleSelection, candidate.id)}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      {!replaceEmptyDraft && <label>
-                          Position
-                          <select value={Math.min(itemIndex, itemCount)} onChange={(event) => setItemIndex(Number(event.target.value))}>
-                            {Array.from({ length: itemCount + 1 }, (_, index) => (
-                              <option key={index} value={index}>
-                                {index === 0 ? "At start" : index === itemCount ? "At end" : `After item ${index}`}
-                              </option>
-                            ))}
-                          </select>
-                        </label>}
-                    </div>
-                    <div className="prompt-insertion-preview">
-                      <span className="eyebrow">Preview</span>
-                      {revision.messages.map((message, index) => (
-                        <article key={`${message.role}-${index}`}>
-                          <strong>{message.role}</strong>
-                          <pre>{message.content}</pre>
-                        </article>
+                      {[...visibleSelection.revisions].reverse().map((candidate) => (
+                        <option key={candidate.id} value={candidate.id}>
+                          {promptRevisionLabel(visibleSelection, candidate.id)}
+                        </option>
                       ))}
-                    </div>
-                    <p className="prompt-insertion-variable-summary">
-                      {(() => {
-                        const variables = discoverTemplateVariables(revision.messages).variables;
-                        return variables.length === 0
-                          ? "No values required."
-                          : `${variables.length} ${variables.length === 1 ? "value" : "values"} to review after insertion.`;
-                      })()}
-                    </p>
-                  </section>
-                )}
-              </div>
-            </div>
-            <div className="confirmation-actions">
-              <button className="button secondary" type="button" onClick={onCancel}>Cancel</button>
-              <button
-                className="button primary"
-                disabled={!visibleSelection || !revision}
-                type="button"
-                onClick={() => visibleSelection && revision && onInsert(
-                  visibleSelection.id,
-                  revision.id,
-                  replaceEmptyDraft ? 0 : Math.min(itemIndex, itemCount),
-                  replaceEmptyDraft,
-                )}
-              >
-                Insert prompt
-              </button>
-            </div>
-          </>
-        )}
-      </section>
-    </div>
+                    </select>
+                  </label>
+                  {!replaceEmptyDraft && <label>
+                      Position
+                      <select value={Math.min(itemIndex, itemCount)} onChange={(event) => setItemIndex(Number(event.target.value))}>
+                        {Array.from({ length: itemCount + 1 }, (_, index) => (
+                          <option key={index} value={index}>
+                            {index === 0 ? "At start" : index === itemCount ? "At end" : `After item ${index}`}
+                          </option>
+                        ))}
+                      </select>
+                    </label>}
+                </div>
+                {visibleSelection.recommendedTarget && <p className="prompt-model-summary">Recommended model: {visibleSelection.recommendedTarget.model}</p>}
+                <PromptMessagesPreview messages={revision.messages} />
+              </>}
+            </section>
+            <section className="wide-dialog-pane" aria-label="Variables">
+              <span className="eyebrow">Variables</span>
+              {revision && <>
+                <p className="prompt-insertion-variable-summary">
+                  {variables.length === 0
+                    ? "No values required."
+                    : `${variables.length} ${variables.length === 1 ? "value" : "values"} to review after insertion.`}
+                </p>
+                {variables.length > 0 && <ul className="prompt-variable-list">
+                  {variables.map(({ name }) => (
+                    <li key={name}>
+                      <code>{name}</code>
+                      <small>{Object.prototype.hasOwnProperty.call(revision.variableDefaults, name)
+                        ? `Default: ${revision.variableDefaults[name]}`
+                        : "No default"}</small>
+                    </li>
+                  ))}
+                </ul>}
+              </>}
+            </section>
+          </div>
+          <div className="confirmation-actions wide-dialog-footer">
+            <button className="button secondary" type="button" onClick={onCancel}>Cancel</button>
+            <button
+              className="button primary"
+              disabled={!visibleSelection || !revision}
+              type="button"
+              onClick={() => visibleSelection && revision && onInsert(
+                visibleSelection.id,
+                revision.id,
+                replaceEmptyDraft ? 0 : Math.min(itemIndex, itemCount),
+                replaceEmptyDraft,
+              )}
+            >
+              Insert prompt
+            </button>
+          </div>
+        </>
+      )}
+    </ModalDialog>
   );
 }

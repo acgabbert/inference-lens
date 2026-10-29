@@ -334,7 +334,7 @@ test("groups lifecycle and run-data actions by owner", async ({ page }) => {
   await openMode(page, "Compose");
   await page.getByRole("tab", { name: "Tools" }).click();
   await expect(
-    page.getByRole("button", { name: "Browse local library" }),
+    page.getByRole("button", { name: "Attach tool", exact: true }),
   ).toBeVisible();
 
   await page.getByLabel("Project menu").click();

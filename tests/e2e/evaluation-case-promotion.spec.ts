@@ -114,6 +114,39 @@ test("an ordinary source trace promotes exact values and remains openable from i
   await expect(page.getByRole("button", { name: "Promote to case…" })).toBeVisible();
 });
 
+test("Promote to case follows the modal contract: focus moves in, stays in, Escape closes it and focus returns", async ({ page }) => {
+  await seedProfile(page);
+  await stubProjectDirectory(page, { name: "promotion-browser.inference-lens", files: fixture() });
+  await page.goto("/");
+  await waitForHydration(page);
+  await page.getByLabel("Project menu").click();
+  await page.getByRole("button", { name: "Open project folder…" }).click();
+  await expect(page.locator(".brand")).toContainText("Promotion browser fixture");
+  await page.getByLabel("Run data menu").click();
+  await page.getByRole("button", { name: "Run history", exact: true }).click();
+  await page.locator(".runs-evidence-item").click();
+  const opener = page.getByRole("button", { name: "Promote to case…" });
+  await opener.focus();
+  await opener.press("Enter");
+  const dialog = page.getByRole("dialog", { name: "Promote to case" });
+  await expect(dialog).toBeVisible();
+
+  const focusInside = () => page.evaluate(() => Boolean(document.activeElement?.closest('[role="dialog"]')));
+  await expect.poll(focusInside, { message: "focus moves into the dialog when it opens" }).toBe(true);
+  expect(await page.evaluate(() => document.body.style.overflow), "page behind is scroll-locked").toBe("hidden");
+  for (let press = 0; press < 6; press += 1) {
+    await page.keyboard.press("Tab");
+    expect(await focusInside(), `Tab press ${press + 1} stays inside the dialog`).toBe(true);
+  }
+  await page.keyboard.press("Shift+Tab");
+  expect(await focusInside(), "Shift+Tab stays inside the dialog").toBe(true);
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(opener).toBeFocused();
+  expect(await page.evaluate(() => document.body.style.overflow), "scroll lock is released").not.toBe("hidden");
+});
+
 test("a source annotation saved earlier is validated against its trace and opens it", async ({ page }) => {
   await openFolder(page, fixtureWithSavedSource(ids.run));
   await openMode(page, "Evaluations");

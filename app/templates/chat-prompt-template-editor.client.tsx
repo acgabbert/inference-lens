@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type {
   ConnectionRequirement,
@@ -26,17 +26,23 @@ import { diffPromptTemplateRevisions } from "../../packages/core/src/prompt-temp
 import { ChatRevisionDiff } from "./chat-revision-diff.client";
 import { hasDuplicatePromptName } from "./prompt-library";
 import {
+  defaultComparedRevisionId,
   describeCompatibleSuiteRevision,
   promptRevisionLabel,
+  promptRevisionPositionLabel,
   summarizeRevisionDiff,
   summarizeRevisionVariableChanges,
 } from "./prompt-revision-label";
+import { RevisionField } from "./revision-rename.client";
 import { PinnedRevisionSelect, RevisionSwitchReview } from "./revision-switch-review.client";
 import { DisclosureChevron } from "../disclosure-chevron.client";
 import { FocusModeToggle, useFocusMode } from "../focus-mode.client";
 import { N8nTemplatePasteDialog } from "./n8n-template-paste-dialog.client";
+import { ModalDialog } from "../modal-dialog.client";
 import { shouldSuggestN8nTemplatePaste } from "./n8n-template-paste";
 import { n8nPasteSuggestionsEnabled, setN8nPasteSuggestionsEnabled } from "./n8n-template-paste-preference.client";
+
+import { RecommendedModelEditor, type PromptModelCatalog } from "./recommended-model-editor.client";
 
 type TemplateRole = "system" | "user" | "assistant";
 
@@ -51,10 +57,11 @@ export interface ChatPromptTemplateEditorProps {
   /** The whole library, for duplicate-name warnings. */
   templates: readonly PromptTemplate[];
   connectionRequirements: ConnectionRequirement[];
+  modelCatalog?: PromptModelCatalog;
   defaultConnectionRequirementId?: ConnectionRequirement["id"];
   sessionTemplateIds?: ReadonlySet<PromptTemplateId>;
   itemCount: number;
-  persistenceStatus?: "saving" | "saved" | "session" | "error";
+  persistenceStatus?: "saving" | "saved" | "session" | "error" | "secondary";
   onSave(
     templateId: PromptTemplateId,
     name: string,
@@ -84,6 +91,8 @@ export interface ChatPromptTemplateEditorProps {
     recommendedTarget?: PromptTemplateRecommendedTarget,
   ): void;
   onRename(templateId: PromptTemplateId, name: string): boolean;
+  /** Relabels a saved revision; a blank name clears the label. */
+  onRenameRevision?(templateId: PromptTemplateId, revisionId: PromptTemplateRevisionId, name: string): void;
   onArchive(templateId: PromptTemplateId, onArchived?: () => void): void;
   onRestore(templateId: PromptTemplateId): void;
   onInsert(
@@ -125,6 +134,7 @@ export function ChatPromptTemplateEditor({
   templates,
   connectionRequirements = [],
   defaultConnectionRequirementId,
+  modelCatalog,
   sessionTemplateIds = new Set(),
   itemCount,
   persistenceStatus = "saved",
@@ -133,6 +143,7 @@ export function ChatPromptTemplateEditor({
   onDraftChange,
   onRecommendedTargetChange,
   onRename,
+  onRenameRevision,
   onArchive,
   onRestore,
   onInsert,
@@ -163,9 +174,7 @@ export function ChatPromptTemplateEditor({
   const [comparedRevisionId, setComparedRevisionId] =
     useState<PromptTemplateRevisionId | undefined>(
       selected && initialViewedRevision
-        ? selected.revisions[
-            selected.revisions.indexOf(initialViewedRevision) - 1
-          ]?.id
+        ? defaultComparedRevisionId(selected, initialViewedRevision.id)
         : undefined,
     );
   const [name, setName] = useState(selected?.name ?? "");
@@ -365,9 +374,7 @@ export function ChatPromptTemplateEditor({
     if (!revision) return;
     setViewedRevisionId(revision.id);
     setCandidateSourceRevisionId(undefined);
-    setComparedRevisionId(
-      selected.revisions[selected.revisions.indexOf(revision) - 1]?.id,
-    );
+    setComparedRevisionId(defaultComparedRevisionId(selected, revision.id));
     setDiffOpen(revision.id !== selected.currentRevisionId);
     setMessages(structuredClone(revision.messages));
     setDefaults({ ...revision.variableDefaults });
@@ -451,9 +458,19 @@ export function ChatPromptTemplateEditor({
                   }}
                 />
               </label>
-              <label className="template-revision-field">
-                Revision
+              <RevisionField
+                {...(onRenameRevision && !sessionOwned && !archived && !candidateSourceRevisionId
+                  ? {
+                      rename: {
+                        name: viewedRevision.name ?? "",
+                        fallbackLabel: promptRevisionPositionLabel(selected, viewedRevision.id),
+                        onRename: (next: string) => onRenameRevision(selected.id, viewedRevision.id, next),
+                      },
+                    }
+                  : {})}
+              >
                 <select
+                  aria-label="Revision"
                   disabled={sessionOwned}
                   value={candidateSourceRevisionId ? "draft" : viewedRevision.id}
                   onChange={(event) => event.target.value === "draft"
@@ -473,7 +490,7 @@ export function ChatPromptTemplateEditor({
                     </option>
                   ))}
                 </select>
-              </label>
+              </RevisionField>
               <div className="template-editor-actions">
                 {archived ? (
                   <>
@@ -544,7 +561,9 @@ export function ChatPromptTemplateEditor({
                               ? "Draft save failed — your changes remain in this session."
                               : persistenceStatus === "session"
                                 ? "Draft kept in this session. Save the project to keep it after closing."
-                                : "Draft autosaved."}
+                                : persistenceStatus === "secondary"
+                                  ? "Draft kept in this tab only — another tab is editing this project."
+                                  : "Draft autosaved."}
                         </small>
                       </div>
                     )}
@@ -575,6 +594,15 @@ export function ChatPromptTemplateEditor({
                     </button>}
                   </>
                 )}
+                {/* The header never scrolls, so focus mode's close stays reachable
+                    while the content and diff below it do. */}
+                {focusMode && <FocusModeToggle
+                  className="template-focus-toggle"
+                  open
+                  subject="prompt editor"
+                  toggleRef={focusToggleRef}
+                  onToggle={closeFocusMode}
+                />}
               </div>
             </header>
 
@@ -604,6 +632,9 @@ export function ChatPromptTemplateEditor({
               </div>
             )}
 
+            {/* One scroll region for the editor and its diff, so an open diff
+                in focus mode scrolls with the content instead of squeezing it. */}
+            <div className="template-editor-scroll">
             <div className="template-editor-body">
               <TemplateMessagesEditor
                 messages={messages}
@@ -623,56 +654,24 @@ export function ChatPromptTemplateEditor({
               />
 
               <aside className="template-variable-rail">
-                <div className="template-rail-heading">
-                  <span className="eyebrow">Model</span>
-                  <h3>Recommended target</h3>
-                </div>
-                <p className="template-empty">
-                  Optional. It does not create a revision or change a run. Shown
-                  when it differs from the selected run target.
-                </p>
-                <label>
-                  Connection
-                  <select
-                    disabled={readOnly || connectionRequirements.length === 0}
-                    value={recommendedConnectionRequirementId ?? ""}
-                    onChange={(event) => {
-                      const next = event.target.value as ConnectionRequirement["id"];
-                      setRecommendedConnectionRequirementId(next);
-                      onRecommendedTargetChange(
-                        selected.id,
-                        recommendedModel.trim()
-                          ? { connectionRequirementId: next, model: recommendedModel.trim() }
-                          : undefined,
-                      );
-                    }}
-                  >
-                    {connectionRequirements.map((requirement) => (
-                      <option key={requirement.id} value={requirement.id}>
-                        {requirement.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Model ID
-                  <input
-                    aria-label="Recommended model ID"
-                    disabled={readOnly}
-                    placeholder="No recommendation"
-                    value={recommendedModel}
-                    onChange={(event) => {
-                      const next = event.target.value;
-                      setRecommendedModel(next);
-                      onRecommendedTargetChange(
-                        selected.id,
-                        next.trim() && recommendedConnectionRequirementId
-                          ? { connectionRequirementId: recommendedConnectionRequirementId, model: next.trim() }
-                          : undefined,
-                      );
-                    }}
-                  />
-                </label>
+                <RecommendedModelEditor
+                  kind="chat"
+                  connections={connectionRequirements}
+                  connectionId={recommendedConnectionRequirementId}
+                  model={recommendedModel}
+                  disabled={readOnly}
+                  catalog={modelCatalog}
+                  onConnectionChange={(next) => {
+                    setRecommendedConnectionRequirementId(next);
+                    onRecommendedTargetChange(selected.id, recommendedModel.trim()
+                      ? { connectionRequirementId: next, model: recommendedModel.trim() } : undefined);
+                  }}
+                  onModelChange={(next) => {
+                    setRecommendedModel(next);
+                    onRecommendedTargetChange(selected.id, next.trim() && recommendedConnectionRequirementId
+                      ? { connectionRequirementId: recommendedConnectionRequirementId, model: next.trim() } : undefined);
+                  }}
+                />
                 <div className="template-rail-heading">
                   <span className="eyebrow">Variables</span>
                   <h3>Revision defaults</h3>
@@ -739,6 +738,11 @@ export function ChatPromptTemplateEditor({
                       ? "Save another revision to compare"
                       : `vs ${promptRevisionLabel(selected, comparedRevision.id)}${revisionDiff ? ` — ${summarizeRevisionDiff(revisionDiff)}` : ""}`}
                   </span>
+                  {comparedRevision && (
+                    <span className="template-revision-diff-action">
+                      {diffOpen ? "Hide diff" : "Show diff"}
+                    </span>
+                  )}
                 </button>
               </div>
               {diffOpen && <>
@@ -763,10 +767,21 @@ export function ChatPromptTemplateEditor({
                 ) : revisionDiff.identical ? (
                   <p className="template-empty">These revisions have identical messages, defaults, and import provenance.</p>
                 ) : (
-                  <ChatRevisionDiff diff={revisionDiff} />
+                  <ChatRevisionDiff
+                    key={`${comparedRevision!.id}:${viewedRevision.id}`}
+                    diff={revisionDiff}
+                  />
                 )}
+                <button
+                  className="text-button template-revision-diff-hide"
+                  type="button"
+                  onClick={() => setDiffOpen(false)}
+                >
+                  Hide diff
+                </button>
               </>}
             </section>}
+            </div>
 
             {!archived && <footer className="template-insert-bar">
               <span className="template-insert-label">Pin into the conversation</span>
@@ -850,44 +865,42 @@ export function ChatPromptTemplateEditor({
         onInsert={insertAtN8nPasteTarget}
         onPasteUnchanged={() => insertAtN8nPasteTarget(n8nPasteTarget.pastedSource ?? n8nPasteTarget.source.slice(n8nPasteTarget.start, n8nPasteTarget.end))}
       />}
-      {evaluateRequest && <div className="confirmation-backdrop" role="presentation">
-        <section aria-label="Evaluate in a suite" aria-modal="true" className="confirmation-dialog" role="dialog">
-          <h2>Evaluate in a suite</h2>
-          <p><strong>{selected.name} · {promptRevisionLabel(selected, evaluateRequest.revisionId)}</strong></p>
-          <p>Choose a compatible suite to keep its cases, checks, and configurations, or start a new suite. Messages will not change. Nothing runs until you start the evaluation.</p>
-          {evaluateRevisionError && <div className="template-diagnostic" role="alert">{evaluateRevisionError}</div>}
-          {compatibleEvaluationSuiteEntries.length > 0 && <div className="confirmation-dialog-actions confirmation-dialog-suite-rows">
-            {compatibleEvaluationSuiteEntries.map(({ suite, pinnedRevisionId }) => {
-              const state = describeCompatibleSuiteRevision(selected, pinnedRevisionId, evaluateRequest.revisionId);
-              const description = state.kind === "current"
-                ? "already pinned to this revision"
-                : state.kind === "outdated"
-                  ? `currently ${state.pinnedLabel} → will pin ${state.targetLabel}`
-                  : "pinned revision unavailable";
-              return <div className="confirmation-dialog-suite-row" key={suite.id}>
-                <span><strong>{suite.name}</strong> — {description}</span>
-                <button
-                  className="button secondary"
-                  type="button"
-                  onClick={() => {
-                    if (state.kind === "current") {
-                      onOpenEvaluationSuite?.(suite.id);
-                      setEvaluateRequest(undefined);
-                      return;
-                    }
-                    if (onEvaluateRevision?.(evaluateRequest.templateId, evaluateRequest.revisionId, suite.id) ?? true) {
-                      setEvaluateRequest(undefined);
-                    }
-                  }}
-                >
-                  {state.kind === "current" ? "Open" : `Use ${suite.name}`}
-                </button>
-              </div>;
-            })}
-          </div>}
-          <div className="confirmation-dialog-actions"><button className="button primary" type="button" onClick={() => { if (onEvaluateRevision?.(evaluateRequest.templateId, evaluateRequest.revisionId) ?? true) setEvaluateRequest(undefined); }}>Create new suite</button><button className="button secondary" type="button" onClick={() => { onDismissEvaluateRevisionError?.(); setEvaluateRequest(undefined); }}>Cancel</button></div>
-        </section>
-      </div>}
+      {evaluateRequest && <ModalDialog className="confirmation-dialog" label="Evaluate in a suite" onClose={() => { onDismissEvaluateRevisionError?.(); setEvaluateRequest(undefined); }}>
+        <h2>Evaluate in a suite</h2>
+        <p><strong>{selected.name} · {promptRevisionLabel(selected, evaluateRequest.revisionId)}</strong></p>
+        <p>Choose a compatible suite to keep its cases, checks, and configurations, or start a new suite. Messages will not change. Nothing runs until you start the evaluation.</p>
+        {evaluateRevisionError && <div className="template-diagnostic" role="alert">{evaluateRevisionError}</div>}
+        {compatibleEvaluationSuiteEntries.length > 0 && <div className="confirmation-dialog-actions confirmation-dialog-suite-rows">
+          {compatibleEvaluationSuiteEntries.map(({ suite, pinnedRevisionId }) => {
+            const state = describeCompatibleSuiteRevision(selected, pinnedRevisionId, evaluateRequest.revisionId);
+            const description = state.kind === "current"
+              ? "already pinned to this revision"
+              : state.kind === "outdated"
+                ? `currently ${state.pinnedLabel} → will pin ${state.targetLabel}`
+                : "pinned revision unavailable";
+            return <div className="confirmation-dialog-suite-row" key={suite.id}>
+              <span><strong>{suite.name}</strong> — {description}</span>
+              <button
+                className="button secondary"
+                type="button"
+                onClick={() => {
+                  if (state.kind === "current") {
+                    onOpenEvaluationSuite?.(suite.id);
+                    setEvaluateRequest(undefined);
+                    return;
+                  }
+                  if (onEvaluateRevision?.(evaluateRequest.templateId, evaluateRequest.revisionId, suite.id) ?? true) {
+                    setEvaluateRequest(undefined);
+                  }
+                }}
+              >
+                {state.kind === "current" ? "Open" : `Use ${suite.name}`}
+              </button>
+            </div>;
+          })}
+        </div>}
+        <div className="confirmation-dialog-actions"><button className="button primary" type="button" onClick={() => { if (onEvaluateRevision?.(evaluateRequest.templateId, evaluateRequest.revisionId) ?? true) setEvaluateRequest(undefined); }}>Create new suite</button><button className="button secondary" type="button" onClick={() => { onDismissEvaluateRevisionError?.(); setEvaluateRequest(undefined); }}>Cancel</button></div>
+      </ModalDialog>}
     </div>
   );
 }
@@ -959,13 +972,14 @@ function TemplateMessagesEditor({
             const textarea = document.activeElement instanceof HTMLTextAreaElement ? document.activeElement : textareas.current.get(0);
             if (textarea) onOpenN8nPaste(targetFor(textarea, [...textareas.current.entries()].find(([, value]) => value === textarea)?.[0] ?? 0, false));
           }}>Paste from n8n…</button>}
-          <FocusModeToggle
+          {/* In focus mode the close moves to the editor header. */}
+          {!focusMode && <FocusModeToggle
             className="template-focus-toggle"
-            open={focusMode}
+            open={false}
             subject="prompt editor"
             toggleRef={focusToggleRef}
-            onToggle={() => onFocusModeChange(!focusMode)}
-          />
+            onToggle={() => onFocusModeChange(true)}
+          />}
         </div>
       </div>
       {!expanded ? (
@@ -1057,6 +1071,7 @@ function TemplateMessagesEditor({
 }
 
 interface TemplateUseCardProps {
+  modelRecommendation?: ReactNode;
   use: PromptTemplateUse;
   template: ChatPromptTemplate;
   diagnostics: ProjectTemplateDiagnostic[];
@@ -1160,6 +1175,7 @@ export function TemplateUseCard(props: TemplateUseCardProps) {
 }
 
 function TemplateUseCardRevision({
+  modelRecommendation,
   use,
   template,
   diagnostics,
@@ -1326,6 +1342,7 @@ function TemplateUseCardRevision({
         </div>
       </header>
 
+      {modelRecommendation}
       {switchTarget && (
         <RevisionSwitchReview
           title={`Switch "${template.name}"`}

@@ -340,3 +340,55 @@ test("historical decision use keeps the target and explains an unavailable Syste
   await expect(pin).toContainText("recommended-model");
   await expect(page.getByRole("button", { name: /^Run decision/ })).toBeDisabled();
 });
+
+test("a saved decision revision can be renamed", async ({ page }) => {
+  await seedProfile(page);
+  await page.goto("/");
+  await waitForHydration(page);
+  await importProject(page, fixture(), "Saved decisions");
+  await openMode(page, "Prompts");
+  await page.locator(".template-list").getByRole("button", { name: /Ticket decision/ }).click();
+  const revision = page.getByRole("combobox", { name: "Revision", exact: true });
+  await expect(revision.locator("option:checked")).toHaveText("Revision 1 (current)");
+  await page.getByRole("button", { name: "Rename revision" }).click();
+  await page.getByLabel("New revision name").fill("Launch");
+  await page.getByLabel("New revision name").press("Enter");
+  await expect(revision.locator("option:checked")).toHaveText("Launch (current)");
+});
+
+test("decision model recommendations support discovery and dismissible model advice", async ({ page }) => {
+  const endpoint = `${SYSTEM_ONE_FIXTURE_ORIGIN}/llamacpp/v1`;
+  await seedProfiles(page, [
+    { id: "buffered", instanceId: "buffered", name: "Buffered fixture", endpoint: BUFFERED_FIXTURE_ENDPOINT },
+    { id: "decisions", instanceId: "decisions", name: "Decision fixture", endpoint, systemOne: true },
+  ], "buffered");
+  let project = fixture();
+  const requirement = { ...project.connectionRequirements[0]!, id: "connection_decisions" as typeof project.connectionRequirements[number]["id"], name: "Decision connection", endpoint };
+  project.connectionRequirements.push(requirement);
+  project = setPromptTemplateRecommendedTarget(project, project.promptTemplates[1]!.id, { connectionRequirementId: requirement.id, model: "local-decision" });
+  await page.goto("/");
+  await waitForHydration(page);
+  await importProject(page, project, "Saved decisions");
+  await openMode(page, "Prompts");
+  await page.locator(".template-list").getByRole("button", { name: /Ticket decision/ }).click();
+  const recommended = page.getByRole("combobox", { name: "Recommended model", exact: true });
+  await recommended.click();
+  await page.getByRole("option", { name: "local-decision", exact: true }).click();
+  await page.getByRole("button", { name: "Use Revision 1 (current)", exact: true }).click();
+  const pane = page.getByRole("region", { name: "Decision request", exact: true });
+  const pin = pane.getByRole("region", { name: "Saved decision prompt" });
+  await expect(pin).toContainText("This prompt recommends local-decision. You’re using no model.");
+  await pin.getByRole("button", { name: "Dismiss", exact: true }).click();
+  await openMode(page, "Prompts");
+  await openMode(page, "Compose");
+  await expect(pin.getByRole("button", { name: "Dismiss", exact: true })).toHaveCount(0);
+  const selected = pane.getByRole("combobox", { name: "Model", exact: true });
+  await selected.fill("another-decision-model");
+  await selected.blur();
+  await expect(pin).toContainText("You’re using another-decision-model.");
+  await pin.getByRole("button", { name: "Choose model", exact: true }).click();
+  await expect(selected).toBeFocused();
+  await selected.fill("local-decision");
+  await selected.blur();
+  await expect(pin.getByRole("button", { name: "Dismiss", exact: true })).toHaveCount(0);
+});

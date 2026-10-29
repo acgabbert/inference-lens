@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import { expectTableContentHeight } from "./support/layout";
 
 import {
   createProjectFile,
@@ -349,6 +350,19 @@ test("a run in progress reports running state and ticks the elapsed clock", asyn
   await expect(results).toContainText("6 passed · 0 failed · 0 not evaluated");
   await expect(results).toContainText("66 tokens · 6/6 runs reported");
   await expect(results).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
+  for (const size of [
+    { width: 1440, height: 900 },
+    { width: 1280, height: 720 },
+    { width: 1280, height: 560 },
+    { width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize(size);
+    await expectTableContentHeight(summary);
+  }
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await results.getByRole("button", { name: "Open Response & Inspect", exact: true }).first().click();
+  await expect(results).toHaveClass(/experiment-context-pane/);
+  await expectTableContentHeight(summary);
 });
 
 /**

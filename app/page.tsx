@@ -6,6 +6,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import type { ReactNode } from "react";
 import type { ProviderCapabilities } from "../packages/core/src/types";
 import {
   createProjectFile,
@@ -42,6 +43,7 @@ import { serverProtocolsManagedBy } from "./server-connection-profiles";
 import { serverConnectionBanners } from "./server-connection-banners";
 import { toggleFavoriteModel } from "./profile-store.client";
 import { useRequestDraft } from "./request/use-request-draft.client";
+import type { ToolAttachmentDestination } from "./request/use-request-draft.client";
 import { chooseDefaultUserPrompt, createInitialMessages } from "./request/default-messages";
 import { useRequestSettings } from "./request/use-request-settings.client";
 import { useProjectWorkspace } from "./use-project-workspace.client";
@@ -67,7 +69,7 @@ import { useProjectRunHistory } from "./use-project-run-history.client";
 import {
   ConfirmationDialog,
 } from "./confirmation-dialog.client";
-import { runEmptyStatePresentation, runReadiness } from "./run-readiness.client";
+import { emptyFinalUserMessageId, runEmptyStatePresentation, runReadiness } from "./run-readiness.client";
 import type { ReadinessDestination } from "./run-readiness.client";
 import { RUN_READINESS_SUMMARY_ID } from "./run-readiness-notice.client";
 import type {
@@ -76,6 +78,7 @@ import type {
 import { prepareWorkbenchRun } from "./run/prepare-workbench-run.client";
 import type { PrepareWorkbenchRunResult } from "./run/prepare-workbench-run.client";
 import { useRunSession } from "./run/use-run-session.client";
+import { composerDiffersFromRun, composerTurnInput, isRetryableRunState, isTerminalRunState } from "./run/run-session-state.client";
 import { RunEvidenceDetail } from "./run/run-evidence-detail.client";
 import {
   batchMemberLabel,
@@ -85,6 +88,10 @@ import {
 import { useResponseView } from "./run/use-response-view.client";
 import { useBatchCompletion } from "./run/use-batch-completion.client";
 import { usePendingBranch } from "./run/use-pending-branch.client";
+import { useRunDeepLink } from "./run/use-run-deep-link.client";
+import { RunLinkControls } from "./run/run-link-recovery.client";
+import { SavedRunEvidence } from "./run/saved-run-evidence.client";
+import { CopyRunLink } from "./run/copy-run-link.client";
 import { useRunsNavigation } from "./run/use-runs-navigation.client";
 import { toolBindingFor } from "../packages/core/src/tool-binding-resolution";
 import { useCommandTools } from "./tools/use-command-tools.client";
@@ -113,6 +120,7 @@ import { templateReadinessInputs, templateRequestPreview } from "./templates/tem
 import { useToasts } from "./notifications/use-toasts.client";
 import { ToastRegion } from "./notifications/toast-region.client";
 import { AppBanner } from "./notifications/app-banner.client";
+import { projectTabBanner } from "./project-tab-banner";
 import { chooseAppBanner } from "./notifications/banner-priority.client";
 import type { AppBanner as AppBannerCandidate } from "./notifications/banner-priority.client";
 
@@ -173,7 +181,8 @@ function HomeContent() {
   // are, so every toast in the app has a reviewable path from cause to message.
   const toasts = useToasts();
   const toolRegistry = useToolRegistry();
-  const [toolRegistryOpen, setToolRegistryOpen] = useState(false);
+  // Open while set; the menu that opened the library chose where it attaches.
+  const [toolLibraryDestination, setToolLibraryDestination] = useState<ToolAttachmentDestination>();
   const [n8nImportOpen, setN8nImportOpen] = useState(false);
   const [confirmation, setConfirmation] =
     useState<ConfirmationDialogRequest>();
@@ -197,8 +206,8 @@ function HomeContent() {
   const [importedRevision, setImportedRevision] = useState(0);
   const [workbenchView, setWorkbenchView] =
     useState<WorkbenchView>("request");
-  // Navigation state, deliberately transient: a reload lands on Compose rather
-  // than reopening onto a project that may no longer hold what was selected.
+  // Ordinary no-link startup lands on Compose. Explicit saved-run links pass
+  // through their resolver before selecting evidence in Runs.
   // Each mode's sub-state lives in the feature hooks above this line, so
   // switching modes and back is lossless for as long as the app is open.
   const [mode, setMode] = useState<AppMode>("compose");
@@ -257,21 +266,26 @@ function HomeContent() {
         enabledToolIds,
       };
     },
-    onApplyDraft(draft, projectId) {
+    onApplyDraft(draft, projectId, adoption) {
       if (projectFile?.projectId !== projectId) clearRequestTools();
       replaceProjectDraft(draft);
-      projectTemplates.clearTransientOverrides();
-      // Declared after this hook because it reads the run session. Safe: a
-      // draft is applied only from project commands, never during render.
-      pendingBranch.clear();
       requestSettings.applyDraft(draft);
-      runSession.reset();
+      // A tab-role refresh changes persisted drafts, not the independent run
+      // session or the transient work the user is doing with its evidence.
+      if (adoption === "replace") {
+        projectTemplates.clearTransientOverrides();
+        pendingBranch.clear();
+        runSession.reset();
+      }
     },
     // The decision owner is declared below; like `pendingBranch` above, it is
     // reached only from project commands and saves, never during render.
     withDecisionDraft(document) { return decision.project.fold(document); },
     getUnsavedDraftReason() { return decision.project.saveBlockedReason; },
-    onApplyDecisionRequest(document) { promptNavigation.reset(); decision.project.adopt(document); },
+    onApplyDecisionRequest(document, adoption) {
+      if (adoption === "refresh") decision.project.refresh(document);
+      else { promptNavigation.reset(); decision.project.adopt(document); }
+    },
     onSaved({ name, destination }) {
       toasts.publish({
         key: "project-saved",
@@ -322,17 +336,15 @@ function HomeContent() {
     addMessage,
     removeMessage,
     updateMessage,
-    addTool,
+    attachTool,
     updateTool,
     removeTool,
     moveTool,
     setToolEnabled,
     mockForTool,
     updateToolMock,
-    attachRegistryToolToProject,
-    attachRegistryToolToRequest,
-    attachMcpToolToProject,
-    attachMcpToolToRequest,
+    updateRequestTool,
+    moveRequestTool,
     removeRequestTool,
     saveRequestToolToProject,
     clearRequestTools,
@@ -367,6 +379,7 @@ function HomeContent() {
     mcpApprovalModeFor: mcpConsents.approvalModeFor,
     readTrace: runHistory.readTrace,
     onShowResponse() {
+      runLinks.cancel();
       setWorkbenchView("response");
       // Declared after this hook because it reads `runState`. Safe: the run
       // session calls this only from its run, continue, and retry commands,
@@ -389,7 +402,8 @@ function HomeContent() {
   const responseView = useResponseView(runState);
   const runsNavigation = useRunsNavigation({
     ...(projectFile ? { projectId: projectFile.projectId } : {}),
-    readTrace: runHistory.readTrace,
+    workspace: projectWorkspace,
+    readSavedTrace: runHistory.readSavedTrace,
   });
   const repeatedExperiment = useRepeatedExperimentSession({
     transport: inferenceTransport,
@@ -461,7 +475,7 @@ function HomeContent() {
       : batchActive
         ? { otherActivity: "A batch is running. Wait for it or stop it before running a decision." }
         : {}),
-    onShowResponse() { setWorkbenchView("response"); },
+    onShowResponse() { runLinks.cancel(); setWorkbenchView("response"); },
     onTraceSaved() { setSavedRunVersion((current) => current + 1); },
     onError(message) { project.setError(message, { clearKind: true }); },
     onOpenConnections() { setConnectionDrawerOpen(true); },
@@ -490,6 +504,25 @@ function HomeContent() {
     },
   });
   const decisionExecuting = decision.compose.executing;
+
+  // Run links own ingress, discovery and pending intent. This adapter supplies
+  // only the cross-feature replacement blockers and Runs destination.
+  const runLinks = useRunDeepLink({
+    project,
+    ready: profilesLoaded,
+    blockedReason() {
+      if (runState && !isTerminalRunState(runState)) return "Finish or stop the current chat run before switching projects.";
+      if (decision.replacementBlockedReason) return decision.replacementBlockedReason;
+      if (repeatedExperiment.isRunning || evaluationExecution.isRunning) return "Wait for the batch to finish or stop it before switching projects.";
+      if (pendingBranch.pending) return "Finish or discard the pending branch before switching projects.";
+      return undefined;
+    },
+    showEvidence(evidence, reference, workspace) {
+      runsNavigation.selectResolved(reference.projectId, evidence.fileName, evidence.saved, workspace);
+      setMode("runs");
+    },
+    clearInspection: runsNavigation.clearSelection,
+  });
 
   const selectedProjectToolCount = tools.filter(({ id }) =>
     enabledToolIds.includes(id),
@@ -656,7 +689,9 @@ function HomeContent() {
     },
   });
   function editFromHere(messageId: MessageId): void {
-    if (pendingBranch.editFromHere(messageId)) setWorkbenchView("request");
+    if (!pendingBranch.editFromHere(messageId)) return;
+    setMode("compose");
+    setWorkbenchView("request");
   }
 
   function chooseProfile(profileId: string): void {
@@ -852,10 +887,12 @@ function HomeContent() {
 
   function branchFromHistoryTrace(trace: RunTrace): void {
     if (!pendingBranch.branchFromTrace(trace)) return;
+    runLinks.cancel();
     setMode("compose");
     setWorkbenchView("request");
   }
   async function openHistoryExperiment(item: ProjectExperimentHistoryItem): Promise<void> {
+    runLinks.cancel();
     const workspace = projectWorkspace;
     if (!workspace) throw new Error("The project folder is no longer open.");
     const opened = await runHistory.readExperiment(item);
@@ -937,13 +974,32 @@ function HomeContent() {
       ),
     },
     ...(projectTemplates.activeConnectionRequirement
-      ? {
-          requiredEndpoint: projectTemplates.activeConnectionRequirement.endpoint,
-          activeConnectionRequirementId: projectTemplates.activeConnectionRequirement.id,
-        }
+      ? { requiredEndpoint: projectTemplates.activeConnectionRequirement.endpoint }
       : {}),
     ...templateReadinessInputs(projectFile, projectTemplates.templateWorkbench),
+    emptyUserMessageId: emptyFinalUserMessageId(requestSettings.currentRequest().messages),
   });
+  // Retry re-sends the failed attempt's frozen input. Once the composer would
+  // send something else, the edited request is what a reflex should run.
+  const chatRetryableFailure = isRetryableRunState(runState);
+  const chatRequestEdited = Boolean(
+    chatRetryableFailure &&
+      runState?.input &&
+      composerDiffersFromRun(
+        runState.input,
+        composerTurnInput(
+          requestSettings.currentRequest(),
+          [...resolvedTools(), ...requestTools],
+          requestSettings.profile.id,
+        ),
+      ),
+  );
+
+  /** Settles the failed attempt as failed, so its trace is kept, then runs the composer. */
+  function runEditedRequest(): void {
+    runSession.stop();
+    void run();
+  }
 
   function resolveReadiness(destination: ReadinessDestination): void {
     setPendingReadinessDestination(destination);
@@ -966,6 +1022,7 @@ function HomeContent() {
     if (nextMode === "runs" && !runsNavigation.selection && runState && !activeBatch) {
       runsNavigation.selectCurrent(runState.runId);
     }
+    if (nextMode !== "runs") runLinks.cancel();
     setMode(nextMode);
   }
 
@@ -1070,6 +1127,12 @@ function HomeContent() {
 
   const appBanner = chooseAppBanner([
     projectErrorBanner(),
+    projectTabBanner(project.projectTab, {
+      becomeEditor: project.becomeProjectEditor,
+      confirmTakeover: project.confirmProjectEditorTakeover,
+      cancelTakeover: project.cancelProjectEditorTakeover,
+      exportCopy: project.exportProject,
+    }),
     insecureOriginBanner(),
     ...serverConnectionBanners(connectionProfiles, () => setConnectionDrawerOpen(true)),
   ]);
@@ -1113,7 +1176,8 @@ function HomeContent() {
   // response implementation; immutable evidence reads through the same
   // renderer via `RunEvidenceDetail`.
   const responseSurface = (
-    <section className="result">
+    <section aria-label="Response output" className="result">
+      {runState && <CopyRunLink runId={runState.runId} workspace={runSession.traceWorkspace} saved={traceStorage?.kind === "saved"} />}
       <ResponseOutput
         output={responseView.output}
         reasoning={responseView.reasoning}
@@ -1138,6 +1202,9 @@ function HomeContent() {
         onRejectMcp={runSession.rejectMcpCall}
         onContinue={() => void runSession.continueRun()}
         onRetry={() => void runSession.retry()}
+        {...(chatRequestEdited
+          ? { editedRequest: { disabled: Boolean(readiness?.blocked), onRun: runEditedRequest } }
+          : {})}
         onDiscardFailedRun={runSession.stop}
         onSaveTrace={() => void runSession.exportTrace()}
         onEditFromHere={editFromHere}
@@ -1167,12 +1234,13 @@ function HomeContent() {
     />
   );
   // Chat's request pane, unchanged; Compose selects it by kind.
-  const chatRequestPane = (
+  const chatRequestPane = (kindSwitch: ReactNode) => (
     <RequestComposer
+      kindSwitch={kindSwitch}
       requestDraft={{
-        messages, tools, requestTools, enabledToolIds, addTool, removeTool, moveTool, updateTool,
+        messages, tools, requestTools, enabledToolIds, attachTool, removeTool, moveTool, updateTool,
         setToolEnabled, mockForTool, updateToolMock, removeRequestTool, saveRequestToolToProject,
-        attachMcpToolToProject, attachMcpToolToRequest,
+        updateRequestTool, moveRequestTool,
       }}
       commandTools={commandTools}
       mcpConsents={mcpConsents}
@@ -1239,13 +1307,11 @@ function HomeContent() {
         setMode("prompts");
       }}
       onEditPromptSource={editPromptSource}
-      onOpenToolLibrary={() => setToolRegistryOpen(true)}
+      onOpenToolLibrary={setToolLibraryDestination}
       onSaveParentTrace={() => void runSession.exportTrace()}
       onDiscardPendingBranch={pendingBranch.clear}
     />
   );
-  const chatRetryableFailure =
-    runState?.status.kind === "paused" && runState.status.reason === "attempt_failed";
   // Chat's handle for Compose (D29-A). Chat's session, response, and inspector
   // are unchanged; only how the topbar and shortcut reach them is shared.
   const chatCompose: ComposeKindHandle = {
@@ -1253,18 +1319,20 @@ function HomeContent() {
     primary:
       isRequestActive || runState?.status.kind === "awaiting_tool_results"
         ? { kind: "stop", stop: runSession.stop }
-        : chatRetryableFailure
+        : chatRetryableFailure && !chatRequestEdited
           ? { kind: "none" }
           : {
               kind: "run",
               label: "Run current conversation",
               disabled: Boolean(readiness?.blocked),
               ...(readiness?.blocked ? { disabledReasonId: RUN_READINESS_SUMMARY_ID } : {}),
-              run: () => void run(),
+              run: chatRequestEdited ? runEditedRequest : () => void run(),
             },
     shortcut() {
       if (readiness?.blocked) return;
-      if (chatRetryableFailure) {
+      if (chatRequestEdited) {
+        runEditedRequest();
+      } else if (chatRetryableFailure) {
         void runSession.retry();
       } else if (runState?.status.kind !== "awaiting_tool_results") {
         void run();
@@ -1344,15 +1412,6 @@ function HomeContent() {
     }
   }
 
-  async function openHistoryDecision(fileName: string): Promise<void> {
-    const workspace = projectWorkspace;
-    if (!workspace) return;
-    try {
-      openSavedTrace(await runHistory.readSavedTrace(fileName), { workspace, fileName });
-    } catch (error) {
-      project.setError(error instanceof Error ? error.message : "Could not open the saved decision run.", { clearKind: true });
-    }
-  }
 
   const n8nImportDisabledReason = pendingBranch.pending
     ? "Finish or discard the pending branch before importing a prompt."
@@ -1400,9 +1459,9 @@ function HomeContent() {
         onChooseProfile={chooseProfile}
         onOpenConnections={() => setConnectionDrawerOpen(true)}
         onNewProject={() => setProjectCreationMode("new")}
-        onOpenProject={() => void project.openProjectWorkspace()}
+        onOpenProject={() => { runLinks.cancel(); void project.openProjectWorkspace(); }}
         onSaveProject={saveOrChooseProjectLocation}
-        onImportProject={(event) => void project.importProject(event)}
+        onImportProject={(event) => { runLinks.cancel(); void project.importProject(event); }}
         onExportProject={project.exportProject}
         {...(n8nImportDisabledReason ? { n8nImportDisabledReason } : {})}
         onOpenN8nImport={() => setN8nImportOpen(true)}
@@ -1416,9 +1475,11 @@ function HomeContent() {
           event.target.value = "";
         }}
         onOpenRunHistory={() => changeMode("runs")}
+        {...(!isDesktopRuntime ? { onOpenRunLink: runLinks.showPaste } : {})}
         onStopExperiment={evaluationExecution.isRunning ? evaluationExecution.cancel : repeatedExperiment.cancel}
         onStartEvaluation={evaluationWorkspace.start}
       />
+      <RunLinkControls links={runLinks} />
 
       <AppBanner {...(appBanner ? { selection: appBanner } : {})} />
 
@@ -1466,13 +1527,22 @@ function HomeContent() {
         onViewChange={setWorkbenchView}
         inspectAvailable={compose.inspectAvailable}
         {...(compose.responseStatus ? { responseStatus: compose.responseStatus } : {})}
-        toolbar={<ComposeKindSwitch kind={compose.kind} locked={compose.kindLocked} onChange={compose.setKind} />}
-        request={compose.panes.request}
+        request={compose.panes.request(
+          <ComposeKindSwitch kind={compose.kind} locked={compose.kindLocked} onChange={compose.setKind} />,
+        )}
         response={compose.panes.response}
         inspect={compose.panes.inspect}
       />
       ) : mode === "prompts" ? (
         <PromptsMode
+          modelCatalog={{
+            profiles,
+            mappedProfileIds,
+            transport: inferenceTransport,
+            prepareCredentialForProfile: credential.prepareForProfile,
+            updateProfile,
+          }}
+          key={project.projectAdoption}
           {...(projectFile ? { project: projectFile } : {})}
           templates={projectTemplates}
           decision={decision}
@@ -1480,6 +1550,7 @@ function HomeContent() {
           persistence={{
             autoSaveFailed: projectErrorKind === "auto-save",
             folderBacked: Boolean(projectWorkspace),
+            secondary: projectStorageState?.kind === "secondary",
             dirty: projectDirty,
           }}
           navigation={promptNavigation}
@@ -1503,6 +1574,10 @@ function HomeContent() {
       ) : mode === "evaluations" ? (
         <EvaluationsMode
           authoring={evaluationAuthoring}
+          projectPrerequisiteAction={{
+            label: folderAccessAvailable ? "Save project to folder…" : "Download project JSON…",
+            onClick: saveOrChooseProjectLocation,
+          }}
           execution={evaluationWorkspace.execution}
           {...(evaluationWorkspace.history ? { history: evaluationWorkspace.history } : {})}
           layout={evaluationWorkspace.layout}
@@ -1573,14 +1648,15 @@ function HomeContent() {
               : {}),
             ...(runsNavigation.selection?.kind === "current-run" && runState?.runId === runsNavigation.selection.runId
               ? { selectedEvidence: responseSurface }
-              : runsNavigation.inspection?.status === "ready" && runsNavigation.inspection.trace
+              : runsNavigation.inspection?.status === "ready" && runsNavigation.inspection.saved
                 ? {
                     selectedEvidence: (
-                      <RunEvidenceDetail
-                        key={runsNavigation.inspection.trace.runId}
-                        trace={runsNavigation.inspection.trace}
-                        eyebrow="Saved evidence"
-                        storage={{ kind: "saved", location: runsNavigation.inspection.selection.fileName }}
+                      <SavedRunEvidence
+                        key={`${project.projectAdoption}:${runsNavigation.inspection.saved.trace.runId}`}
+                        saved={runsNavigation.inspection.saved}
+                        fileName={runsNavigation.inspection.selection.fileName}
+                        workspace={projectWorkspace}
+                        diagnosticsOpen={runsNavigation.inspection.diagnosticsOpen}
                         onBranch={branchFromHistoryTrace}
                         readTrace={runHistory.readTrace}
                         {...(projectFile ? { onPromoteTrace: (trace: RunTrace) => evaluationCaseSource.requestPromotion(trace) } : {})}
@@ -1594,12 +1670,12 @@ function HomeContent() {
               : {}),
             onFilterChange: runsNavigation.setFilter,
             onScrollTopChange: runsNavigation.setScrollTop,
-            onSelectCurrent: runsNavigation.selectCurrent,
-            onSelectCurrentBatch: runsNavigation.selectCurrentBatch,
-            onSelectRun: (item) =>
-              item.summary.kind === "decision"
-                ? void openHistoryDecision(item.fileName)
-                : void runsNavigation.selectSavedRun(item),
+            onSelectCurrent: (runId) => { runLinks.cancel(); runsNavigation.selectCurrent(runId); },
+            onSelectCurrentBatch: () => { runLinks.cancel(); runsNavigation.selectCurrentBatch(); },
+            onSelectRun: (item) => {
+              if (projectFile) runLinks.selectSaved({ version: 1, projectId: projectFile.projectId, runId: item.summary.runId });
+              void runsNavigation.selectSavedRun(item);
+            },
             onSelectExperiment: (item) => {
               openHistoryExperiment(item).catch((error: unknown) => {
                 project.setError(error instanceof Error ? error.message : "Could not open the saved batch.", { clearKind: true });
@@ -1674,6 +1750,8 @@ function HomeContent() {
             ? {
                 detail: {
                   content: (
+                    <>
+                    <CopyRunLink runId={batchMember.trace.runId} workspace={activeBatch?.workspace ?? null} saved={batchMember.storage.kind === "saved"} />
                     <RunEvidenceDetail
                       key={batchMember.trace.runId}
                       trace={batchMember.trace}
@@ -1683,6 +1761,7 @@ function HomeContent() {
                       {...(projectWorkspace ? { readTrace: runHistory.readTrace } : {})}
                       {...(projectFile ? { onPromoteTrace: (trace: RunTrace) => evaluationCaseSource.requestPromotion(trace) } : {})}
                     />
+                    </>
                   ),
                   batchLabel: batchMember.batchLabel,
                   memberLabel: batchMember.memberLabel,
@@ -1692,15 +1771,16 @@ function HomeContent() {
           onStartSomething={() => setMode("evaluations")}
         />
       )}
-      {toolRegistryOpen && (
+      {toolLibraryDestination && (
         <ToolRegistryModal
           open
           registry={toolRegistry.registry}
           onChange={toolRegistry.setRegistry}
-          onAttachToProject={attachRegistryToolToProject}
-          onAttachToRequest={attachRegistryToolToRequest}
+          destination={toolLibraryDestination}
+          onDestinationChange={setToolLibraryDestination}
+          onAttach={(tool, destination) => attachTool({ kind: "registry", tool }, destination)}
           requestConfirmation={setConfirmation}
-          onClose={() => setToolRegistryOpen(false)}
+          onClose={() => setToolLibraryDestination(undefined)}
         />
       )}
       {n8nImportOpen && (

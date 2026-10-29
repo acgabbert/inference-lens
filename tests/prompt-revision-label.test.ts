@@ -7,6 +7,7 @@ import { diffPromptTemplateRevisions } from "../packages/core/src/prompt-templat
 import { diffDecisionPromptTemplateRevisions } from "../packages/core/src/decision-template-revision-diff.ts";
 import type { DecisionPromptTemplateRevision } from "../packages/core/src/project.ts";
 import {
+  defaultComparedRevisionId,
   describeCompatibleSuiteRevision,
   promptRevisionLabel,
   summarizeDecisionRevisionDiff,
@@ -61,6 +62,16 @@ test("promptRevisionLabel leads with an author-supplied revision name", () => {
   assert.equal(promptRevisionLabel(renamedOlder, named.revisions[2]!.id), "Brevity pass (current)");
   assert.equal(promptRevisionLabel(renamedOlder, named.revisions[0]!.id), "Baseline");
   assert.equal(promptRevisionLabel(renamedOlder, named.revisions[1]!.id), "Revision 2");
+});
+
+test("defaultComparedRevisionId prefers the previous revision, else the next", () => {
+  const { template } = projectWithTemplate();
+  const [first, second] = template.revisions;
+  assert.equal(defaultComparedRevisionId(template, second!.id), first!.id);
+  // The first revision has no predecessor; comparing with nothing hid a real diff.
+  assert.equal(defaultComparedRevisionId(template, first!.id), second!.id);
+  const single = { ...template, revisions: [first!], currentRevisionId: first!.id };
+  assert.equal(defaultComparedRevisionId(single, first!.id), undefined);
 });
 
 test("describeCompatibleSuiteRevision reports 'current' when the suite already pins the target revision", () => {

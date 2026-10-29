@@ -11,6 +11,7 @@ import {
   projectDraft,
   removePromptTemplateUse,
   renamePromptTemplate,
+  renamePromptTemplateRevision,
   restorePromptTemplate,
   setPromptTemplateRecommendedTarget,
   updateProjectDraft,
@@ -63,6 +64,7 @@ import {
   templateRunOverridesAfterSave,
   templateRunOverridesAfterUpdate,
 } from "./project-template-policy";
+import { usePromptModelWarnings, type PromptModelWarnings } from "./use-prompt-model-warnings.client";
 import { removeDraftMessage } from "../request/use-request-draft.client";
 
 /** What an external prompt import landed, reported once when it lands. */
@@ -106,6 +108,7 @@ export interface UseProjectTemplatesInput {
 }
 
 export interface ProjectTemplatesHandle {
+  modelWarnings: PromptModelWarnings;
   libraryTemplates: PromptTemplate[];
   decisionEditorMemory: DecisionTemplateEditorMemoryStore;
   createDecisionTemplate(name: string, decision: DecisionInput, defaults?: Record<string, string>): PromptTemplateId;
@@ -149,6 +152,8 @@ export interface ProjectTemplatesHandle {
   saveAndInsertProjectTemplate(templateId: PromptTemplateId, name: string, messages: PromptTemplateMessages, defaults: Record<string, string>, recommendedTarget: PromptTemplateRecommendedTarget | undefined, revisionName: string | undefined, itemIndex: number): PromptTemplateRevisionId | undefined;
   /** Commits only the label, without touching revision content. Returns false (and leaves the project untouched) for a blank name. */
   renameProjectTemplate(templateId: PromptTemplateId, name: string): boolean;
+  /** Relabels a saved revision without touching its content; a blank name clears the label. */
+  renameProjectTemplateRevision(templateId: PromptTemplateId, revisionId: PromptTemplateRevisionId, name: string): void;
   archiveProjectTemplate(templateId: PromptTemplateId, onArchived?: () => void): void;
   restoreProjectTemplate(templateId: PromptTemplateId): void;
   insertProjectTemplate(
@@ -192,6 +197,13 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     runOverrides: templateRunOverrides,
     branchParentRevisionId: input.branchParentRevisionId,
   });
+  const modelWarnings = usePromptModelWarnings(input.projectFile?.projectId ?? "session", templateWorkbench.composerItems.flatMap((item) =>
+    item.kind === "template-use" ? [{
+      id: item.use.id,
+      recommendation: input.projectFile?.promptTemplates.find(({ id }) => id === item.use.templateId)?.recommendedTarget,
+      selectedModel: input.model,
+    }] : [],
+  ));
   const activeConnectionRequirement = input.projectFile?.connectionRequirements.find(
     ({ id }) => id === input.projectFile!.defaults.target.connectionRequirementId,
   );
@@ -528,6 +540,17 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     adoptAuthoredProject(renamePromptTemplate(project, templateId, trimmed));
     return true;
   }
+  function renameProjectTemplateRevision(
+    templateId: PromptTemplateId,
+    revisionId: PromptTemplateRevisionId,
+    name: string,
+  ): void {
+    // Session prompts expose no saved revisions to relabel.
+    if (sessionTemplateIds.has(templateId)) return;
+    const project = input.ensureProjectDocument();
+    const next = renamePromptTemplateRevision(project, templateId, revisionId, name);
+    if (next !== project) adoptAuthoredProject(next);
+  }
   function archiveProjectTemplate(templateId: PromptTemplateId, onArchived?: () => void): void {
     const project = input.ensureProjectDocument();
     const template = project.promptTemplates.find(({ id }) => id === templateId);
@@ -659,6 +682,7 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     input.onImported({ name: candidate.invocation.name, variableCount: receipt?.projection.kind === "prompt-template" ? receipt.projection.variables.length : 0, template: mode === "reusable-template" });
   }
   return {
+    modelWarnings,
     decisionEditorMemory,
     captureDecisionTemplate: (name, decision, defaults) => createDecisionTemplate(name, decision, defaults, true),
     createDecisionTemplate,
@@ -678,6 +702,7 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     saveProjectTemplate,
     saveAndInsertProjectTemplate,
     renameProjectTemplate,
+    renameProjectTemplateRevision,
     archiveProjectTemplate,
     restoreProjectTemplate,
     insertProjectTemplate,

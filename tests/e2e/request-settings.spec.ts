@@ -53,15 +53,19 @@ test("a project can use the provider default despite a mapped profile override",
   await waitForHydration(page, "Provider-default fixture");
   await importProject(page, project, "Provider-default project");
 
-  // Collapsed, the panel reports every value it will send, delivery included:
-  // the controls are hidden but nothing about the next run is.
+  // Collapsed, the panel reports the protocol and what differs from the
+  // profile: the project cleared its 0.7 temperature. The model has its own
+  // field. The seeded session preference is buffered on a connection that can
+  // stream, which is a choice worth showing.
   await expect(page.locator(".inference-settings-fact")).toHaveText([
     "Chat Completions",
-    "provider-default-temperature-model",
     "Provider default temp",
     "Buffered",
     "1 override",
   ]);
+  await expect(
+    page.getByRole("region", { name: "Request composer" }).getByLabel("Model", { exact: true }),
+  ).toHaveValue("provider-default-temperature-model");
   // Collapsed means the delivery control is absent, not merely hidden.
   await expect(page.getByLabel("Stream response")).toHaveCount(0);
 

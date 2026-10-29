@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import type { SavedPromptCandidate } from "../../packages/core/src/evaluation-suite-authoring";
+import { PromptMessagesPreview } from "../templates/prompt-messages-preview.client";
 import { revisionTime } from "./revision-choice.client";
+import { ModalDialog } from "../modal-dialog.client";
 
 function roleSequence(roles: SavedPromptCandidate["roles"]): string {
   return roles.join(" → ");
@@ -34,7 +36,7 @@ function PromptDetails({ candidate }: { candidate: SavedPromptCandidate }) {
       </div>
       {candidate.recommendedTarget && (
         <div>
-          <dt>Recommended target</dt>
+          <dt>Recommended model</dt>
           <dd>
             {candidate.recommendedTarget.connectionName} · {candidate.recommendedTarget.model}{" "}
             <span className="saved-prompt-advisory">Advisory — the evaluation target is unchanged.</span>
@@ -62,119 +64,112 @@ export function SavedPromptDialog({
 }) {
   const [selectedId, setSelectedId] = useState(candidates[0]?.templateId);
 
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    // Capture phase, then stop propagation: this dialog can be layered over the
-    // evaluation editor's focus mode, which also closes on Escape.
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.stopPropagation();
-      onCancel();
-    };
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", onKeyDown, true);
-    };
-  }, [onCancel]);
-
   const selected = candidates.find(({ templateId }) => templateId === selectedId);
 
   return (
-    <div className="confirmation-backdrop" role="presentation">
-      <section
-        aria-labelledby="saved-prompt-title"
-        aria-modal="true"
-        className="confirmation-dialog saved-prompt-dialog"
-        role="dialog"
-      >
-        <span className="eyebrow">Evaluation input</span>
-        <h2 id="saved-prompt-title">Start from prompt</h2>
-        {candidates.length === 0 ? (
-          <>
-            <p>
-              This project has no active prompts. Create one in Compose → Prompts, then
-              start an evaluation from it.
-            </p>
-            <div className="confirmation-actions">
-              <button className="button secondary" type="button" onClick={onCancel}>
-                Cancel
+    <ModalDialog
+      className={`confirmation-dialog saved-prompt-dialog${candidates.length > 0 ? " wide-dialog" : ""}`}
+      labelledBy="saved-prompt-title"
+      onClose={onCancel}
+    >
+      {candidates.length === 0 ? (
+        <>
+          <span className="eyebrow">Evaluation input</span>
+          <h2 id="saved-prompt-title">Start from prompt</h2>
+          <p>
+            This project has no active prompts. Create one in Compose → Prompts, then
+            start an evaluation from it.
+          </p>
+          <div className="confirmation-actions">
+            <button className="button secondary" type="button" onClick={onCancel}>
+              Cancel
+            </button>
+            {onOpenTemplates && (
+              <button
+                className="button primary"
+                type="button"
+                onClick={() => {
+                  // The picker owner outlives this tab. Close its state before
+                  // navigating so returning to Evaluations does not reopen a
+                  // dialog the author already left.
+                  onCancel();
+                  onOpenTemplates();
+                }}
+              >
+                Open Prompts
               </button>
-              {onOpenTemplates && (
-                <button
-                  className="button primary"
-                  type="button"
-                  onClick={() => {
-                    // The picker owner outlives this tab. Close its state before
-                    // navigating so returning to Evaluations does not reopen a
-                    // dialog the author already left.
-                    onCancel();
-                    onOpenTemplates();
-                  }}
-                >
-                  Open Prompts
-                </button>
-              )}
-            </div>
-          </>
-        ) : (
-          <>
+            )}
+          </div>
+        </>
+      ) : (
+        <>
+          <header className="wide-dialog-header">
+            <span className="eyebrow">Evaluation input</span>
+            <h2 id="saved-prompt-title">Start from prompt</h2>
             <p>
               This evaluation will use the prompt’s current immutable revision as its input.
               Surrounding messages are not copied, and the Messages editor is not changed.
             </p>
-            <fieldset className="saved-prompt-list">
-              <legend>Active prompts</legend>
-              {candidates.map((candidate) => (
-                <label
-                  className={
-                    candidate.templateId === selectedId
-                      ? "saved-prompt-option selected"
-                      : "saved-prompt-option"
-                  }
-                  key={candidate.templateId}
-                >
-                  <input
-                    checked={candidate.templateId === selectedId}
-                    name="saved-prompt"
-                    onChange={() => setSelectedId(candidate.templateId)}
-                    type="radio"
-                    value={candidate.templateId}
-                  />
-                  <strong>{candidate.name}</strong>
-                </label>
-              ))}
-            </fieldset>
-            {selected && <PromptDetails candidate={selected} />}
-            {hasExistingBindings && (
-              <p className="evaluation-batch-warning" role="status">
-                <strong>This suite already has case inputs.</strong> The new template use gets a new
-                stable ID, so existing bindings may not match the new revision. They are not
-                rewritten — rebind them after creating it.
-              </p>
-            )}
-            {error && (
-              <p className="evaluation-field-error" role="alert">
-                {error}
-              </p>
-            )}
-            <div className="confirmation-actions">
-              <button className="button secondary" type="button" onClick={onCancel}>
-                Cancel
-              </button>
-              <button
-                className="button primary"
-                disabled={!selected}
-                type="button"
-                onClick={() => selected && onConfirm(selected.templateId)}
-              >
-                Start from prompt
-              </button>
+          </header>
+          <div className="wide-dialog-columns">
+            <div className="wide-dialog-pane">
+              <fieldset className="saved-prompt-list">
+                <legend>Active prompts</legend>
+                {candidates.map((candidate) => (
+                  <label
+                    className={
+                      candidate.templateId === selectedId
+                        ? "saved-prompt-option selected"
+                        : "saved-prompt-option"
+                    }
+                    key={candidate.templateId}
+                  >
+                    <input
+                      checked={candidate.templateId === selectedId}
+                      name="saved-prompt"
+                      onChange={() => setSelectedId(candidate.templateId)}
+                      type="radio"
+                      value={candidate.templateId}
+                    />
+                    <strong>{candidate.name}</strong>
+                  </label>
+                ))}
+              </fieldset>
             </div>
-          </>
-        )}
-      </section>
-    </div>
+            <section className="wide-dialog-pane" aria-label="Prompt preview">
+              {selected && <PromptMessagesPreview messages={selected.messages} />}
+            </section>
+            <section className="wide-dialog-pane" aria-label="Prompt details">
+              {selected && <PromptDetails candidate={selected} />}
+              {hasExistingBindings && (
+                <p className="evaluation-batch-warning" role="status">
+                  <strong>This suite already has case inputs.</strong> The new template use gets a new
+                  stable ID, so existing bindings may not match the new revision. They are not
+                  rewritten — rebind them after creating it.
+                </p>
+              )}
+              {error && (
+                <p className="evaluation-field-error" role="alert">
+                  {error}
+                </p>
+              )}
+            </section>
+          </div>
+          <div className="confirmation-actions wide-dialog-footer">
+            <button className="button secondary" type="button" onClick={onCancel}>
+              Cancel
+            </button>
+            <button
+              className="button primary"
+              disabled={!selected}
+              type="button"
+              onClick={() => selected && onConfirm(selected.templateId)}
+            >
+              Start from prompt
+            </button>
+          </div>
+        </>
+      )}
+    </ModalDialog>
   );
 }

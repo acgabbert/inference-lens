@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  emptyFinalUserMessageId,
   runEmptyStatePresentation,
   runReadiness,
 } from "../app/run-readiness.client.ts";
@@ -13,7 +14,6 @@ const ready = {
   activeProfileEndpoint: "http://127.0.0.1:8080/v1",
   activeProfileModel: "qwen3-8b",
   requiredEndpoint: "http://127.0.0.1:8080/v1",
-  activeConnectionRequirementId: "connection_local",
   selectedToolCount: 0,
   toolsEnabled: true,
   templateIssues: [],
@@ -248,7 +248,7 @@ test("attached tools block a profile that cannot serve them", () => {
   );
 });
 
-test("a differing template model is advisory and keeps the run target authoritative", () => {
+test("a single differing template model is owned by the inline prompt warning", () => {
   const readiness = runReadiness({
     ...ready,
     templateTargets: [
@@ -261,13 +261,7 @@ test("a differing template model is advisory and keeps the run target authoritat
     ],
   });
 
-  assert.equal(readiness?.blocked, false);
-  assert.match(readiness?.headline ?? "", /recommends another model/);
-  assert.match(readiness?.detail ?? "", /run will use qwen3-8b/i);
-  assert.deepEqual(
-    readiness?.actions.map(({ kind }) => kind),
-    ["open-connections", "edit-template"],
-  );
+  assert.equal(readiness, undefined);
 });
 
 test("conflicting template recommendations are visible without guessing a winner", () => {
@@ -290,7 +284,7 @@ test("conflicting template recommendations are visible without guessing a winner
   });
 
   assert.equal(readiness?.blocked, false);
-  assert.match(readiness?.headline ?? "", /different run targets/);
+  assert.match(readiness?.headline ?? "", /different models/);
   assert.deepEqual(
     readiness?.facts.map(({ value }) => value),
     ["Local · qwen3-14b", "Local · llama-4"],
@@ -421,4 +415,66 @@ test("a missing model outranks an unsupported protocol", () => {
     protocol: { id: "openai-responses", supported: false },
   });
   assert.match(readiness?.headline ?? "", /no model selected/);
+});
+
+test("an empty final user message blocks the run and points at that message", () => {
+  const readiness = runReadiness({
+    ...ready,
+    emptyUserMessageId: "message_last",
+  });
+  assert.equal(readiness?.blocked, true);
+  assert.equal(readiness?.headline, "The last user message is empty");
+  assert.deepEqual(readiness?.actions.map(({ destination }) => destination), [
+    { surface: "request", tab: "messages", control: "message", entityId: "message_last" },
+  ]);
+  assert.equal(
+    runEmptyStatePresentation(readiness).headline,
+    "Write the user message",
+  );
+});
+
+test("unresolved prompt variables outrank an empty user message", () => {
+  const readiness = runReadiness({
+    ...ready,
+    emptyUserMessageId: "message_last",
+    templateIssues: [{ templateUseId: "use_a", variableName: "topic" }],
+  });
+  assert.match(readiness?.headline ?? "", /prompt variable/);
+});
+
+test("only the last user message decides whether the prompt is empty", () => {
+  const text = (id: string, role: "system" | "user" | "assistant", value: string) => ({
+    id: id as never,
+    role,
+    content: [{ type: "text" as const, text: value }],
+  });
+  assert.equal(
+    emptyFinalUserMessageId([text("message_s", "system", "Be brief."), text("message_u", "user", "  \n")]),
+    "message_u",
+  );
+  assert.equal(
+    emptyFinalUserMessageId([text("message_u1", "user", ""), text("message_u2", "user", "Hi")]),
+    undefined,
+    "an earlier empty turn is the provider's call, not a blocker",
+  );
+  assert.equal(
+    emptyFinalUserMessageId([text("message_u", "user", ""), text("message_a", "assistant", "Prefill")]),
+    "message_u",
+    "a trailing assistant prefill does not make the user turn non-empty",
+  );
+  assert.equal(
+    emptyFinalUserMessageId([text("message_s", "system", "Only a system prompt.")]),
+    undefined,
+  );
+});
+
+test("the same recommended model on different connections is not a model conflict", () => {
+  const readiness = runReadiness({
+    ...ready,
+    templateTargets: [
+      { templateName: "Planner", connectionRequirementId: "connection_local", connectionRequirementName: "Local", model: "qwen3-14b" },
+      { templateName: "Writer", connectionRequirementId: "connection_other", connectionRequirementName: "Other", model: "qwen3-14b" },
+    ],
+  });
+  assert.equal(readiness, undefined);
 });

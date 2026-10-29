@@ -63,7 +63,7 @@ test("renders the project template library and revision defaults", async () => {
   assert.match(html, /Question/);
   assert.match(html, /2 uses/);
   assert.match(html, /Revision defaults/);
-  assert.match(html, /Recommended target/);
+  assert.match(html, /Recommended model/);
   assert.match(html, /fixture-model/);
   assert.match(html, /\{\{topic\}\}/);
   assert.match(html, /Add to conversation/);

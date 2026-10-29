@@ -1,8 +1,8 @@
 # UX simplification and discoverability plan
 
-**Status:** proposed; this document authorizes no product implementation.\
-**Baseline:** `main` at `309f180`, October 26, 2026.\
-**Scope:** composer efficiency, contextual actions, discoverability, and clearer persistence language.
+**Status:** partially implemented (slices A, H, I, J and #208; B in review as #245); remaining proposals require their recorded design gates.\
+**Baseline:** `main` at `309f180`, October 26, 2026; refreshed against `52e789e` (0.6.0), October 28, 2026.\
+**Scope:** composer efficiency, contextual actions, discoverability, clearer persistence language, and less day-to-day clutter.
 
 ## Direction and evidence
 
@@ -29,13 +29,62 @@ large collections, native Tauri, and assistive technologies were not visually
 verified. These recommendations are design hypotheses, not measured usability
 results. Recheck against the implementation baseline before each slice.
 
+### October 28 refresh
+
+Since the original baseline, these merged changes addressed parts of this plan
+or the [saved-prompt and experiment review](reviews/saved-prompts-experiments-2026-10-26.md):
+
+| PR | Effect on this plan |
+| --- | --- |
+| #224 | One **Attach tool** menu on the attached list replaced the duplicate add-tool controls, the library modal route, and the always-open MCP panel. Slice A's tool half and much of section 2 are delivered; see that section. |
+| #219 | Review finding 1: evaluating an edited Chat draft now requires a revision and names the pinned revision. |
+| #216, #212, #225 | Saved-prompt picker, Compose revision switching, and wide prompt dialogs. Section 3 builds on them. |
+| #226, #227, #230 | Retry runs the edited request; **Edit from here** opens Compose and works from the keyboard. |
+| #229 | **Copy Markdown** on live output and assistant messages. |
+| #220, #222, #231 | Live elapsed time, tool editor styling, and pane/table containment. |
+| #238 | Slice A: the Evaluations empty state offers the project prerequisite. |
+| #240 | Slice H: composer and response headings removed, kind switch on the tab row, empty tool line hidden. |
+| #239 | Slice J: the pending-branch notice names the parent run and message instead of raw IDs. |
+| #241 | Slice I: the transcript disclosure is a real button; message actions sit beside it. |
+| #242, #244 | #208: every modal dialog uses the shared `ModalDialog` owner (section 13). |
+| #243 | Outside this plan (saved-prompt review): readable revision diff and renamable revisions. |
+
+A browser tour of the 0.6.0 build (fixture provider, 1280×800 and 880×720,
+light theme, no project folder, no saved prompts or tools) added the
+observations behind sections 8–12. It used a throwaway Playwright script that
+was not committed, ran on fallback Chromium 1243, and covered no populated
+project, dark theme, zoom, or native Tauri.
+
+- About 385px of a 800px-tall window precede the first message editor: the
+  Request kind row, a **Request / Composer** heading, Messages/Tools tabs, the
+  run-settings summary, the tool status line, and the toolbar.
+- Every transcript message carries a bordered **Edit from here** button; at
+  880px it wraps to two or three lines and crowds the message preview.
+- The pending-branch notice names its parent run and message by raw IDs.
+- The **Run trace not saved** notice repeats on every unsaved run in both
+  Compose and Runs.
+- Without a project folder, Runs holds one ordinary run, labelled
+  “Not saved · replaced by the next run”.
+- **Import prompt from n8n…** appears in both the Project menu and the Prompts
+  sidebar, which stacks three full-width create/import buttons.
+- The Evaluations empty state still has no next-action button.
+
+Open issues touch the same surfaces: #208 (dialogs differ in Escape, focus
+and scroll lock; **Promote to case** cannot be dismissed with Escape; since
+delivered, see section 13) and #204 (Decision Inspect cannot scroll on the
+narrow layout).
+
 ## Design rules
 
 - Keep model identity, attachment counts, overrides, missing values, and run
   blockers readable while their editing controls are collapsed.
 - Give every feature a labeled, stable home. Search and keyboard shortcuts are
   additional routes; hover-only controls and unnamed overflow icons are not
-  sufficient discovery paths.
+  sufficient discovery paths. One accepted exception: collapsed transcript
+  rows (slice I) reveal their actions on hover or focus, because the same
+  labeled actions are always visible on the expanded message, stay in tab
+  order, and are always shown on screens without hover. Do not treat it as a
+  precedent for actions that have no other visible home.
 - Prefer contextual actions over duplicate global controls. Keep Stop visible
   whenever work is running, including after changing workspace modes.
 - Preserve actual scope and lifetime. Hiding a control must not change what is
@@ -51,7 +100,33 @@ recognize available actions without memorizing commands. See
 
 ## 1. Direct model selection with compact run settings
 
-**Recommendation:** keep the model combobox directly visible in the composer,
+**Status, October 28:** implemented for Chat, with these decisions recorded.
+
+- The closed summary always shows protocol, and shows temperature and response
+  mode only when they differ from the parent scope. With no parent (no open
+  project) an explicit temperature still appears; delivery has no baseline
+  there and appears only as an override. The model is not repeated in the
+  summary because its field is always on screen.
+- Decision Compose is unchanged. Its model combobox already sits directly in
+  the **Target** fieldset and it has no settings disclosure, so there is
+  nothing to collapse; `system-one-decisions.spec.ts` already changes its model
+  without one.
+- The model combobox shares one row with the **Settings** toggle (the label
+  sits beside the input to keep the row no taller than the toggle alone), so the
+  first message editor stays inside slice H's 100px budget. Both wrap onto two
+  rows below roughly 880px. `InferenceSettingsPanel` takes opt-in `modelAbove`
+  and `summaryMode="differences"`; evaluations and experiments keep the old
+  layout.
+- Readiness routing focuses the model field without opening Settings; protocol
+  still opens it first.
+- Open question: the **Project settings** / **Profile defaults** badge now stays
+  on the toggle header when open, because the model field is too short to
+  carry it. Delivery is only a session preference, so the badge can read as
+  covering it. Section 6's vocabulary pass should settle this.
+
+Covered by `request-model-picker.spec.ts`.
+
+**Original recommendation:** keep the model combobox directly visible in the composer,
 beside a labeled **Settings** control. Keep temperature, response mode, and
 protocol controls in the disclosure. Its closed summary retains meaningful
 configuration differences and problems without competing with the model name.
@@ -79,6 +154,13 @@ response-mode values. Long model IDs and blocker text remain usable in a
 constrained desktop window.
 
 ## 2. Attach tools through a searchable picker
+
+**Status, October 28:** #224 delivered one attachment home (the **Next
+request** list and its **Attach tool** menu), a single project/tab destination
+choice, and the duplicate-control consolidation. Still open: search and
+selected-first ordering for larger tool sets, and replacing the routine
+composer tool line (see section 8). Re-scope this slice against the menu before
+starting; a separate picker may no longer be warranted.
 
 **Recommendation:** show a compact **Tools · 3** entry point in the composer,
 with selected tools first in a searchable picker. Provide explicit **Create
@@ -168,6 +250,9 @@ an action inventory identifies every destination and disabled-state explanation.
 For Repeat, compare a visible secondary button with an adjacent labeled menu;
 confirm discoverability before removing its current entry point.
 
+The menu's **Run history** item opens the same destination as the Runs mode
+button, so it can go first, independently of the rest of the inventory.
+
 **Owner and contract:** Runs navigation owns selected evidence; trace/history
 owners handle import/export. Explicitly distinguish exporting selected history
 from exporting the current live run. Compose owns Repeat's target and readiness;
@@ -187,6 +272,21 @@ composer and Run data in the header. It is an explicit open design choice, not
 an assumption that those earlier decisions were implementation mistakes.
 
 ## 5. Actionable empty states and small introductions
+
+**Status, October 28:** slice A implemented. The Evaluations empty state now
+explains evaluations and offers **Save project to folder…**, or **Download
+project JSON…** when folder access is unavailable. Both reuse the Project
+menu's save routing and preserve the current draft. Success leaves the user
+in Evaluations with no suite created automatically. Cancellation or failure
+keeps the draft and empty state.
+
+`EvaluationsMode` owns the copy and action presentation; the route supplies the
+capability-specific label and existing save callback. The project owner keeps
+all persistence behavior. No replacement, serialization, or provider contract
+changes are needed. `evaluation-project-prerequisite.spec.ts` covers folder
+and JSON success, dialog/picker cancellation, write failure, preserved messages,
+no inference calls, and short desktop layouts in both themes. Its initial red
+run reported the actual missing action list (`[]`).
 
 **Recommendation:** pair a project-required empty state with the appropriate
 existing create/save action. After that prerequisite succeeds, return to the
@@ -266,46 +366,238 @@ other dialogs work. Results reflect current context after project/mode changes;
 disabled commands cannot execute through stale results. A no-results state
 points to relevant visible destinations.
 
+## 8. A shorter path to the first message
+
+**Recommendation:** remove chrome above the message list that repeats what the
+layout already says. Drop the **Request / Composer** and **Response / Live
+output** headings; the pane positions and tabs identify them. Put the Chat /
+Decision switch on the same row as the Messages / Tools tabs. Hide the routine
+“No tools attached to this request.” line when nothing is attached, because the
+Tools tab count already shows 0. Keep that line, and its blocked variant,
+whenever attached tools exist or cannot reach the model.
+
+**Options and decision gate:** removing headings alone is the smallest change
+and saves about one row. Merging the kind switch into the tab row saves another,
+but puts two segmented controls side by side; check that they still read as
+separate choices at 880px. Recommend both, with the tool line rule above. Agree
+whether Decision Compose drops the same headings before changing shared
+markup.
+
+**Owner and contract:** `RequestComposer` owns its header and tool line;
+`ComposeKindSwitch` keeps the kind choice and its existing mutation;
+`ResponseOutput` owns its header. The headings' accessible names move to the
+regions themselves (`aria-label` or visually hidden headings) so landmarks and
+specs that locate panes by name keep working. No state or data changes.
+
+**Acceptance:** at 1280×800 the first message editor starts at least 100px
+higher than the 0.6.0 baseline (about y=385). The blocked-tools warning remains
+visible while settings are collapsed. Pane names remain available to assistive
+technology. Check 880, 1280 and 1440px, both themes, and 200% zoom.
+
+## 9. Message actions that do not crowd the transcript
+
+**Status, October 28:** implemented in #241 as recommended. The disclosure is
+its own button with `aria-expanded`; **Edit from here** and **Copy Markdown**
+are sibling text buttons, overlaid on collapsed rows so the preview keeps its
+width. `ResponseOutput` owns the rule, so read-only history in Runs behaves the
+same way. The design rules record the hover exception.
+
+**Recommendation:** stop giving every transcript row a bordered **Edit from
+here** button. Show the transcript's per-message actions (**Edit from here**,
+**Copy Markdown**) as text buttons beside the role on the expanded or focused
+message, the way **Copy Markdown** already looks, and keep them reachable by
+keyboard on every row. Make expand/collapse its own button so the row is no
+longer a `role="button"` containing other buttons, the ARIA problem #230 left
+in place.
+
+**Options and decision gate:** a labeled **Message actions** menu per row is the
+most compact but adds a step to a frequent action. Text buttons shown on every
+row are simplest but keep the clutter at narrow widths. Recommend text buttons
+visible on the expanded message, plus on hover and focus for collapsed rows. The
+plan's design rules forbid hover-only discovery, so collapsed rows must still
+expose the actions in tab order. Decide before building whether read-only
+history views use the same rule.
+
+**Owner and contract:** `ResponseOutput`'s transcript owns presentation, focus
+and the disclosure button; the pending-branch owner (`usePendingBranch`) keeps
+the branch action and its navigation. Copying keeps `CopySourceButton`'s
+behavior. No trace or branch contract changes.
+
+**Acceptance:** at 880px no action label wraps and message previews keep
+their width. **Edit from here** works by mouse, Enter and Space from Compose
+and Runs (`pending-branch.spec.ts`); copying never toggles a row
+(`response-copy.spec.ts`). The row's disclosure is a real button with
+`aria-expanded`, and no interactive element nests inside another.
+
+## 10. Readable pending-branch notice
+
+**Recommendation:** name the branch point the way the transcript does: the
+parent run's title (its request excerpt, the last user message, as Runs lists it) and “Message 2 ·
+user”. Keep the raw run and message IDs in a details disclosure or `title` for
+debugging.
+
+**Owner and contract:** `usePendingBranch` reads the live run and transcript
+in `editFromHere`, and the saved trace in `branchFromTrace`. It captures the
+display label at branch time, so later runs cannot change it, and exposes it
+on `PendingBranch`. The composer only renders it. The persisted `branchFrom`
+lineage in traces is unchanged.
+
+**Acceptance:** the notice shows no raw IDs by default and stays within three
+lines at 880px. A branch from a historical trace and from the current run are
+both labelled. `pending-branch.spec.ts` asserts the label.
+
+## 11. Session run history and a quieter unsaved-trace notice
+
+**Recommendation:** keep a bounded, in-memory list of this session's recent
+ordinary runs and show them in Runs, instead of holding only the latest one.
+This matters most without a project folder, but also covers folder sessions
+where a trace write failed, runs started before a folder was opened, and
+comparing a few quick attempts before deciding what to keep. Once that history
+exists, shrink the **Run trace not saved** notice: show the full explanation on
+the first unsaved run of a session, then a compact status chip with the same
+**Save trace…** action.
+
+The user confirmed on October 28 that they usually work in a project folder and
+still want more runs kept in memory.
+
+**Options and decision gate:**
+
+- **Size:** a fixed count (recommend 20 ordinary runs) is easy to explain; a
+  byte budget protects against long streamed or tool-heavy traces. Recommend a
+  count with a byte ceiling, evicting the oldest unsaved run and saying so.
+- **Lifetime:** cleared on reload, matching today's in-memory current run.
+  Decide whether opening or replacing a project also clears it. Recommend
+  clearing, so one project's Runs never lists another's unsaved runs. The
+  replacement guard should mention unsaved session runs when there are any.
+- **Batches:** repeated experiments and evaluations stay as today (current
+  batch only) in the first slice.
+- **Overlap with folder history:** an entry written to the folder appears once,
+  as the saved entry, matched by run ID.
+
+**Owner and contract:** a session run history owner beside
+`useProjectRunHistory` holds completed run traces and their storage status. Runs
+navigation merges it with folder history for display. `RunCoordinator` still
+owns only the active run. The entries are `RunTrace` values already produced for
+saving, so no new trace format is needed. Entries are never written anywhere
+implicitly: saving stays an explicit action, and this list is not a persistence
+layer. Labels follow section 6's vocabulary (for example **This session · not
+saved**), and the existing `currentRunStorageLabel` copy changes to match.
+
+**Acceptance:** after three runs without a folder, Runs lists three entries,
+each opens read-only, **Edit from here** works from each, and each can be saved
+or exported. After a reload the list is empty and says so. With a folder, a
+successfully saved run appears once. Eviction past the cap is announced. No
+provider request occurs from browsing. Extend `runs-result-discovery.spec.ts`
+and `project-storage-clarity.spec.ts`.
+
+## 12. A quieter Prompts sidebar
+
+**Recommendation:** replace the stacked **New prompt**, **New decision prompt**
+and **Import prompt from n8n…** buttons with one **New prompt** control offering
+Chat, Decision and n8n import. Keep n8n import in the Project menu or the
+Prompts sidebar, not both; recommend the Prompts sidebar, where prompts live,
+since import produces a prompt rather than changing the project as a whole.
+
+**Owner and contract:** `ProjectTemplatesPane` owns the control; the existing
+create and n8n import flows are reused unchanged, including the n8n disabled
+reason.
+
+**Acceptance:** each former action remains reachable by keyboard with its
+disabled reason. `prompt-authoring-workspace.spec.ts`,
+`first-use-prompt-authoring.spec.ts` and `n8n-template-paste.spec.ts` reach
+creation and import through the single control.
+
+## 13. Related work tracked elsewhere
+
+- **Dialog consistency (#208).** Delivered with the shared owner in
+  `app/modal-dialog.client.tsx` (`ModalDialog`, or `useModalDialog` when the
+  dialog element is not a `<section>`), rather than native `<dialog>`. Every
+  modal dialog now gets capture-phase Escape for the topmost modal only, a Tab
+  trap, initial focus, focus restore and a shared scroll lock. Menus that open
+  a dialog return focus to their trigger first, so it becomes the opener.
+  New dialogs use the owner and add an `expectModalContract` test
+  (`tests/e2e/support/modal.ts`) in the spec that opens them.
+- **Decision Inspect scrolling on narrow layouts (#204).**
+- **Evaluation authoring** (review findings 2–5): explicit **Add prompt** /
+  **Change pinned revision** / **Replace evaluation input** actions, a
+  **Duplicate case** action followed by a paste-in case table, unscored batches,
+  and a guided **Compare another revision**. Duplicate case is small and
+  self-contained; the rest change the evaluation contract and need their own
+  design document.
+
 ## Delivery order and boundaries
 
 | Slice | Deliverable | Gate |
 | --- | --- | --- |
-| A | Consolidate duplicate tool creation; add project-prerequisite CTA. | Confirm labels and existing create/save routing; no new data model. |
-| B | Direct model picker and compact settings. | Agree summary content, shared-panel adaptation, and Chat/Decision scope. |
-| C | Tool attachment picker and explicit management routes. | Agree attachment/source identity, mutation timing, and Tools navigation. |
-| D | Quieter prompt-use cards and clearer conversion wording. | Coordinate insertion-popover work; agree action placement and focus contract. |
-| E | Scope/lifetime vocabulary pass. | Reconcile with the active shared-assets implementation; apply the vocabulary during B–D as well. |
+| A | Complete: tool creation consolidated in #224; project-prerequisite CTA added to Evaluations. | Existing folder/JSON save routing; no new data model. |
+| B | Complete for Chat: direct model picker beside a compact **Settings** toggle. Decision already had one. | Summary rule agreed (protocol always; temperature and response mode when overridden); badge placement left to slice E. |
+| C | Tool search and selected-first ordering in the **Attach tool** menu. | Re-scope against #224 first; it may be small or unnecessary. |
+| D | Quieter prompt-use cards and clearer conversion wording. | Agree action placement and focus contract. |
+| E | Scope/lifetime vocabulary pass. | Reconcile with the active shared-assets implementation; apply the vocabulary during the other slices as well. |
 | F | Runs/header action consolidation and Repeat placement. | Complete action inventory, selected-evidence contract, and discoverability review. |
 | G | Command search. | Stabilize visible action homes and agree descriptor/keyboard contracts. |
+| H | Complete: headings removed (Chat and Decision), panes kept as named regions, the kind switch moved onto the tab row through `panes.request(kindSwitch)`, and the empty tool line hidden. | Decision Compose adopts the same layout; region names `Request composer`, `Response output`, `Decision response`. |
+| I | Complete (#241): disclosure button, actions beside it, collapsed-row actions revealed on hover or focus and always in tab order. | Same rule in Compose and Runs history; see the hover exception in the design rules. |
+| J | Complete: pending-branch notice names the parent run by its request excerpt and the message by its position; a branched run reads “Branched from an earlier run.”, since traces record only the parent's IDs. IDs remain in a `title`. | `PendingBranch.label` is captured at branch time; no trace change. |
+| K | Session run history and compact unsaved notice (section 11). | Agree cap, eviction, and whether project replacement clears it. |
+| L | One **New prompt** control and a single n8n import home (section 12). | Agree where n8n import lives. |
 
-Each slice should be a separate reviewable change. B–D are the main composer
-improvements; F–G should not delay them. Before implementation, record the
-selected options with the user wherever they constrain ownership or behavior.
-This document proposes those decisions rather than silently settling them.
+Each slice should be a separate reviewable change. Before implementation,
+record the selected options with the user wherever they constrain ownership or
+behavior. This document proposes those decisions rather than silently settling
+them.
+
+### Recommended order
+
+Ranked by daily friction removed per unit of risk, as of October 28 (second
+refresh). A, H, I, J and #208 are complete; B is in review as #245.
+
+1. **Finish B.** Review of #245 found that the closed summary can never show a
+   buffered delivery preference, and that with an open project whose model
+   differs from the profile, the model's override line breaks slice H's
+   budget and truncates the protocol at 1280px. Fix both before merge.
+2. **Populated-project check.** Run the populated-project review described
+   under *Verification and review* now rather than after D: B is the first
+   slice whose layout depends on project state, and every slice so far has
+   listed a populated project as unchecked.
+3. **E, as a label inventory only.** B deferred its badge question here, and
+   K and L both add scope labels. Settle the vocabulary before K rather than
+   correcting three slices afterwards.
+4. **K.** Keeps recent attempts available for comparison.
+5. **F.** Remove the redundant **Run history** menu item first (no new
+   contract), then trace import/export, diagnostics, and Repeat.
+6. **D and L.** Quieter prompt cards and Prompts sidebar.
+7. **Duplicate case** (section 13), then a separate evaluation-authoring design.
+8. **C**: decide with a populated tool set whether to close it, since #224 may
+   have made it unnecessary. **G** last.
 
 ### Decisions needed
 
-Slice A needs no new contract and can ship ahead of the others.
+Decisions for A, H, I and J are settled and recorded in their table rows. The
+**Run history** removal in F needs no new contract and can ship ahead of the
+others.
 
 | Slice | Decision | Recommendation |
 | --- | --- | --- |
 | B | Which settings always appear in the closed summary versus only when overridden | Protocol and problems always; temperature and response mode when overridden |
 | B | Whether Decision Compose gets the same direct model picker | Confirm before extending the Chat layout |
-| C | Separate picker versus improving the existing Tools tab | Decide first; it sets the slice's size |
-| C | Whether the Tools tab stays or becomes a **Manage tools** route | Keep both paths until the replacement is agreed |
-| C | Immediate attachment versus attaching on confirmation | Immediate, with explicit reversible detach |
+| C | Whether search and selected-first ordering are still needed after #224 | Decide with a populated tool set |
 | D | Whether **Edit source** stays visible or moves into **Prompt actions** | Start in the menu; revisit with a populated project |
 | D | Whether Decision template uses are in scope | Confirm before implementation |
 | E | Shared scope and lifetime vocabulary | Reconcile with the shared-assets plans |
-| F | Whether to keep **Run data** or move its actions into Runs | Consolidate only after the action inventory |
+| F | Whether to keep **Run data** or move its actions into Runs | Remove **Run history** now; consolidate the rest after the action inventory |
 | F | Where **Repeat…** lives | Compare a visible secondary button with a labeled menu |
 | F | Where diagnostics lives | Define its home and capture identity first |
 | G | Shortcut, including the browser's Ctrl+K | Command/Ctrl+K if the override is acceptable |
 | G | Whether unavailable actions appear in results | Show them with their disabled reasons |
 | G | Ordering of results and recent actions | No persisted recent actions initially |
+| K | Cap and eviction | 20 ordinary runs with a byte ceiling; announce eviction |
+| K | Whether opening or replacing a project clears session runs | Clear, and mention unsaved runs in the replacement guard |
+| L | Where n8n import lives | Prompts sidebar only |
 
 No project, trace, experiment, or provider-wire format change is proposed.
-UI search/disclosure state should remain transient initially. If durable UI
+UI search/disclosure state and session run history (section 11) remain
+transient, in memory only. If durable UI
 preferences are later desired, define their device-local storage, reset, and
 compatibility separately. Keep provider-specific representations in their
 existing adapters; the new controls consume provider-neutral feature contracts
@@ -324,11 +616,15 @@ Existing specs to extend or run as relevant starting points:
 | Area | Committed specs |
 | --- | --- |
 | Model/settings | `request-settings.spec.ts`, `request-settings-ownership.spec.ts`, `inference-settings-panel.spec.ts`, `model-picker-empty-value.spec.ts` |
-| Tools | `tool-definition-authoring.spec.ts`, `tool-registry-ownership.spec.ts`, `mcp-discovery.spec.ts`, `tool-parameter-order.spec.ts` |
+| Tools | `tool-attachment.spec.ts`, `tool-definition-authoring.spec.ts`, `tool-registry-ownership.spec.ts`, `mcp-discovery.spec.ts`, `tool-parameter-order.spec.ts` |
 | Prompt cards | `prompt-insertion-handoff.spec.ts`, `template-revision-switch.spec.ts`, `template-detach-preflight.spec.ts`, `saved-prompt-revision-diff.spec.ts` |
 | Run navigation/actions | `runs-result-discovery.spec.ts`, `header-menu-interaction.spec.ts`, `mode-primary-action.spec.ts`, `batch-live-progress.spec.ts` |
-| Empty states/scope | `project-storage-clarity.spec.ts`, `project-replacement-guard.spec.ts`, `system-one-decision-guide.spec.ts` |
+| Empty states/scope | `evaluation-project-prerequisite.spec.ts`, `project-storage-clarity.spec.ts`, `project-replacement-guard.spec.ts`, `system-one-decision-guide.spec.ts` |
 | Search/keyboard | `modal-command-scope.spec.ts`, `mode-navigation.spec.ts`; add dedicated command-search coverage |
+| Composer header (H) | `workbench-composition.spec.ts`, `request-settings.spec.ts`; add a first-message position check using `support/layout.ts` |
+| Transcript and branch (I, J) | `pending-branch.spec.ts`, `response-copy.spec.ts`, `response-view.spec.ts` |
+| Session runs (K) | `runs-result-discovery.spec.ts`, `runs-indicator.spec.ts`, `project-storage-clarity.spec.ts`, `project-replacement-guard.spec.ts` |
+| Prompts sidebar (L) | `prompt-authoring-workspace.spec.ts`, `first-use-prompt-authoring.spec.ts`, `n8n-template-paste.spec.ts` |
 
 These are coverage candidates, not claims that the current specs cover the new
 acceptance criteria. For each product slice, iterate against affected specs
@@ -343,15 +639,22 @@ the older plan's deferred mobile redesign. Check affected responsive boundaries
 when moving controls. Use fixture assertions for exact transmitted values and
 focus assertions for routing; screenshots supplement those checks.
 
-After B–D, review a familiar populated project with the user: can they change
+Every slice so far was checked against an empty profile and listed a populated
+project as unchecked, and that is where the first B review found its layout
+problems. Slice H's first-message budget in `composer-header.spec.ts` is the
+plan's only layout guard and measures the emptiest composer; add a case with an
+open project whose settings override the profile, so later composer slices are
+held to the same budget.
+
+After B, review a familiar populated project with the user: can they change
 model, insert a prompt, resolve a missing variable, attach a tool, run, and
 inspect output without searching through management UI? Before F–G, ask them to
 find history, export the selected run, repeat a request, and locate diagnostics.
 Use observed hesitation to revise placement rather than assuming fewer visible
 buttons automatically means a better interface.
 
-**This planning PR:** documentation only. Review links, diff, and whitespace;
-no new tests or browser run are required. The earlier manual inspection is
+**Original planning review:** documentation only; it required link, diff, and
+whitespace checks rather than new tests or a browser run. The earlier manual inspection is
 limited evidence, not a committed Playwright verification pass. Product
 implementation must supply its own regression and full-suite results. Native
 pickers, screen readers, real provider behavior, and representative populated

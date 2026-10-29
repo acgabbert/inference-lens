@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import type { ReactNode } from "react";
+import type { ReactNode, RefObject } from "react";
 import type { DecisionQuestionType } from "../../packages/core/src/decision";
 import { BlockerChip } from "../blocker-chip.client";
 import { ModelCombobox } from "../model-combobox.client";
@@ -27,6 +27,9 @@ const TYPE_HINTS: Record<DecisionQuestionType, string> = {
 };
 
 export interface DecisionComposerProps {
+  modelInputRef?: RefObject<HTMLInputElement | null>;
+  /** Compose's Chat / Decision switch, placed at the start of the header. */
+  kindSwitch?: ReactNode;
   draft: DecisionDraftHandle;
   target: DecisionTargetHandle;
   /** Problems that block Run now, from the draft and the target together. */
@@ -398,16 +401,13 @@ export function DecisionInputEditor({
 
 export const DECISION_NEW_SUITE_REASON_ID = "decision-new-suite-reason";
 
-export function DecisionComposer({ draft: handle, target, blockers, locked, unsaved, onOpenConnections, newSuite, pinned, capture }: DecisionComposerProps) {
+export function DecisionComposer({ modelInputRef, kindSwitch, draft: handle, target, blockers, locked, unsaved, onOpenConnections, newSuite, pinned, capture }: DecisionComposerProps) {
   const { draft } = handle;
   const discovery = target.discovery;
   return (
     <section className="composer decision-composer" aria-label="Decision request">
       <div className="panel-header request-header">
-        <div>
-          <span className="eyebrow">Request</span>
-          <h2>Decision</h2>
-        </div>
+        {kindSwitch}
         <PaneTabs
           disabled={locked}
           label="Decision editor"
@@ -499,6 +499,7 @@ export function DecisionComposer({ draft: handle, target, blockers, locked, unsa
                 <ModelCombobox
                   discovery={discovery}
                   favoriteModels={target.profile?.favoriteModels ?? []}
+                  inputRef={modelInputRef}
                   idPrefix="decision-model"
                   readinessTarget={false}
                   value={target.model}

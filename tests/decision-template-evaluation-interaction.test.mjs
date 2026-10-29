@@ -44,34 +44,6 @@ test("evaluating a decision prompt creates a decision suite without replacing Co
   } finally { await act(async () => root.unmount()); container.remove(); }
 });
 
-test("the retarget dialog includes the revision diff disclosure in its keyboard focus cycle", async () => {
-  const [{ createElement, act }, { createRoot }, { DecisionPromptEvaluationDialog }] = await Promise.all([
-    import("react"), import("react-dom/client"), ssrLoadModule("/app/templates/decision-prompt-evaluation-dialog.client.tsx"),
-  ]);
-  const decision = { state: "Before", questions: { ok: { type: "noul", instructions: "OK?" } } };
-  const template = { id: "template_focus", name: "Focus", kind: "decision", currentRevisionId: "template-revision_two", revisions: [
-    { id: "template-revision_one", createdAt: "2026-10-25T12:00:00Z", decision, variableDefaults: {} },
-    { id: "template-revision_two", createdAt: "2026-10-25T13:00:00Z", decision: { ...decision, state: "After" }, variableDefaults: {} },
-  ] };
-  const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
-  const button = (text) => [...container.querySelectorAll("button")].find((node) => node.textContent === text);
-  try {
-    await act(async () => root.render(createElement(DecisionPromptEvaluationDialog, { template, revisionId: "template-revision_two", onClose() {},
-      evaluationSuites: [{ suite: { id: "evaluation-suite_focus", name: "Focus suite" }, pinnedRevisionId: "template-revision_one" }],
-      onPreviewEvaluation: () => ({ changes: [], diagnostics: [], existingDiagnostics: [] }),
-    })));
-    await act(async () => button("Review Focus suite…").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true })));
-    // JSDOM does not implement summary's native focusability. Observe the
-    // requested focus target here; the browser spec checks actual focus.
-    let disclosureFocused = false;
-    container.querySelector("summary").focus = () => { disclosureFocused = true; };
-    button("Retarget suite").focus();
-    assert.equal(document.activeElement?.textContent, "Retarget suite");
-    await act(async () => window.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true })));
-    assert.equal(disclosureFocused, true, "the first focusable control is Revision changes, before Cancel");
-  } finally { await act(async () => root.unmount()); container.remove(); }
-});
-
 test("multiple evaluations of the same prompt retain distinct request choices", async () => {
   const [{ createElement, act }, { createRoot }, { useDecisionSuiteSettings }, { DecisionSuiteSetup }, { decisionProject }, { createDecisionPromptTemplate }, { createDecisionTemplateEvaluation }] = await Promise.all([
     import("react"), import("react-dom/client"), ssrLoadModule("/app/evaluations/use-decision-suite-settings.client.ts"), ssrLoadModule("/app/evaluations/decision-suite-setup.client.tsx"),

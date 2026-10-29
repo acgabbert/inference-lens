@@ -62,12 +62,19 @@ interface TopbarProps {
   onDownloadRunTrace(): void;
   onImportRunTrace(event: ChangeEvent<HTMLInputElement>): void;
   onOpenRunHistory(): void;
+  onOpenRunLink?(): void;
   onStopExperiment(): void;
   onStartEvaluation(): void;
 }
 
+/**
+ * Closes the menu and returns focus to its summary, which then becomes the
+ * opener a dialog launched from the item hands focus back to.
+ */
 function closeContainingMenu(element: HTMLElement): void {
-  element.closest("details")?.removeAttribute("open");
+  const menu = element.closest("details");
+  menu?.removeAttribute("open");
+  menu?.querySelector("summary")?.focus();
 }
 
 /** Application menus and the current run controls. */
@@ -86,6 +93,7 @@ export function Topbar({
   onDownloadRunTrace,
   onImportRunTrace,
   onOpenRunHistory,
+  onOpenRunLink,
 }: TopbarProps) {
   const topbarRef = useRef<HTMLElement>(null);
   const targetProfile = decisionConnection ? decisionConnection.profile : activeProfile;
@@ -111,7 +119,9 @@ export function Topbar({
           ? "Unfinished edits have not been saved"
           : projectStorageState.kind === "error"
             ? "Save failed — retry from Project"
-            : `Saved to ${projectStorageState.displayPath}`;
+            : projectStorageState.kind === "secondary"
+              ? "Not saved — another tab is editing this project"
+              : `Saved to ${projectStorageState.displayPath}`;
 
   useEffect(() => {
     const topbar = topbarRef.current;
@@ -201,6 +211,7 @@ export function Topbar({
         </div></details>
         <details className="header-menu run-data-menu"><summary aria-label="Run data menu" className="button secondary"><span className="run-data-menu-label">Run data</span> <span className="menu-chevron">⌄</span></summary><div className="menu-popover project-popover run-data-popover">
           <div className="menu-group-heading">Run data</div>
+          {onOpenRunLink && <button type="button" onClick={(event) => { closeContainingMenu(event.currentTarget); onOpenRunLink(); }}>Open saved run link…</button>}
           <button type="button" onClick={(event) => { onOpenRunHistory(); closeContainingMenu(event.currentTarget); }}>Run history</button><label className="menu-file-button">Import run trace…<input type="file" accept="application/json,.json" onChange={onImportRunTrace} /></label><button disabled={!hasRunTrace} type="button" onClick={onDownloadRunTrace}>Export run trace…</button><span className="menu-separator" /><button disabled={!hasDiagnosticCapture} type="button" onClick={onDownloadDiagnostics}>Download diagnostics</button>
         </div></details>
         {/*

@@ -21,8 +21,11 @@ import { PaneTabs } from "../workbench-shell.client";
 import type { DecisionTemplateEditorMemoryStore } from "./decision-template-editor-memory.client";
 import { DecisionRevisionDiff } from "./decision-revision-diff.client";
 import { hasDuplicatePromptName } from "./prompt-library";
-import { promptRevisionLabel } from "./prompt-revision-label";
+import { defaultComparedRevisionId, promptRevisionLabel, promptRevisionPositionLabel } from "./prompt-revision-label";
+import { RevisionField } from "./revision-rename.client";
 import { DecisionPromptEvaluationDialog, type DecisionPromptEvaluationActions } from "./decision-prompt-evaluation-dialog.client";
+
+import { RecommendedModelEditor, type PromptModelCatalog } from "./recommended-model-editor.client";
 
 type SaveDecisionTemplate = (
   id: PromptTemplateId,
@@ -40,9 +43,12 @@ interface Props extends DecisionPromptEvaluationActions {
   initialRevisionId?: PromptTemplateRevisionId;
   sessionOwned: boolean;
   connectionRequirements: ConnectionRequirement[];
+  modelCatalog?: PromptModelCatalog;
   onRecommendedTargetChange(id: PromptTemplateId, target?: PromptTemplateRecommendedTarget): void;
-  persistenceStatus: "saving" | "saved" | "session" | "error";
+  persistenceStatus: "saving" | "saved" | "session" | "error" | "secondary";
   onRename(id: PromptTemplateId, name: string): boolean;
+  /** Relabels a saved revision; a blank name clears the label. */
+  onRenameRevision?(id: PromptTemplateId, revisionId: PromptTemplateRevisionId, name: string): void;
   onDraftChange?(
     id: PromptTemplateId,
     source: PromptTemplateRevisionId,
@@ -124,8 +130,17 @@ export function DecisionPromptTemplateEditor(props: Props) {
       }}
       onEditHistorical={editHistorical}
       controls={
-        <label className="template-revision-field">
-          Revision
+        <RevisionField
+          {...(props.onRenameRevision && !props.sessionOwned && !template.archivedAt && view !== "draft"
+            ? {
+                rename: {
+                  name: revision.name ?? "",
+                  fallbackLabel: promptRevisionPositionLabel(template, revision.id),
+                  onRename: (next: string) => props.onRenameRevision!(template.id, revision.id, next),
+                },
+              }
+            : {})}
+        >
           <select
             aria-label="Revision"
             disabled={props.sessionOwned}
@@ -143,7 +158,7 @@ export function DecisionPromptTemplateEditor(props: Props) {
               </option>
             ))}
           </select>
-        </label>
+        </RevisionField>
       }
     />
   );
@@ -163,6 +178,8 @@ function draftStatus(input: {
       return "Draft save failed — your changes remain in this session.";
     case "session":
       return "Draft kept in this session. Save the project to keep it after closing.";
+    case "secondary":
+      return "Draft kept in this tab only — another tab is editing this project.";
     case "saving":
       return "Saving valid draft…";
     case "saved":
@@ -265,10 +282,7 @@ function DecisionTemplateContent(
     else props.onUse?.(template.id, revision.id);
   }
 
-  const [compareId, setCompareId] = useState(
-    template.revisions[template.revisions.indexOf(revision) - 1]?.id ??
-      template.revisions.find(({ id }) => id !== revision.id)?.id,
-  );
+  const [compareId, setCompareId] = useState(() => defaultComparedRevisionId(template, revision.id));
   const compare = template.revisions.find(({ id }) => id === compareId);
 
   return (
@@ -406,48 +420,22 @@ function DecisionTemplateContent(
               )}
             </label>
           ))}
-          <h3>Recommended target</h3>
-          <p>Optional advice. Opening or using a prompt keeps your selected connection and model.</p>
-          <label>
-            Recommended connection
-            <select
-              aria-label="Recommended connection"
-              disabled={readOnly || props.connectionRequirements.length === 0}
-              value={recommendedConnectionId}
-              onChange={(event) => {
-                const requirement = event.target.value as ConnectionRequirement["id"];
-                setRecommendedConnectionId(requirement);
-                if (!template.recommendedTarget) return;
-                props.onRecommendedTargetChange(
-                  template.id,
-                  requirement ? { ...template.recommendedTarget, connectionRequirementId: requirement } : undefined,
-                );
-              }}
-            >
-              <option value="">No recommendation</option>
-              {props.connectionRequirements.map((entry) => (
-                <option key={entry.id} value={entry.id}>
-                  {entry.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Recommended model
-            <input
-              aria-label="Recommended model"
-              disabled={readOnly || !recommendedConnectionId}
-              value={template.recommendedTarget?.model ?? ""}
-              onChange={(event) => {
-                const model = event.target.value;
-                const connectionRequirementId = recommendedConnectionId as ConnectionRequirement["id"];
-                props.onRecommendedTargetChange(
-                  template.id,
-                  model.trim() && connectionRequirementId ? { model, connectionRequirementId } : undefined,
-                );
-              }}
-            />
-          </label>
+          <RecommendedModelEditor
+            kind="decision"
+            connections={props.connectionRequirements}
+            connectionId={recommendedConnectionId as ConnectionRequirement["id"]}
+            model={template.recommendedTarget?.model ?? ""}
+            disabled={readOnly}
+            catalog={props.modelCatalog}
+            onConnectionChange={(requirement) => {
+              setRecommendedConnectionId(requirement);
+              if (template.recommendedTarget) props.onRecommendedTargetChange(template.id, { ...template.recommendedTarget, connectionRequirementId: requirement });
+            }}
+            onModelChange={(model) => props.onRecommendedTargetChange(template.id,
+              model.trim() && recommendedConnectionId
+                ? { model: model.trim(), connectionRequirementId: recommendedConnectionId as ConnectionRequirement["id"] }
+                : undefined)}
+          />
         </aside>
       </div>
       {template.revisions.length > 1 && (

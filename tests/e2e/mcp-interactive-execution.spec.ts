@@ -6,7 +6,7 @@ import { snapshotMcpTool } from "../../app/tools/mcp-tool-snapshot";
 import type { McpDiscoveredTool } from "../../packages/contracts/src/mcp-discovery";
 import {
   BUFFERED_FIXTURE_ENDPOINT, PROJECT_PROFILE_MAP_STORAGE_KEY,
-  seedProfile, stubProjectDirectory, waitForHydration,
+  openMcpServers, seedProfile, stubProjectDirectory, waitForHydration,
 } from "./support";
 
 test.describe.configure({ mode: "serial" });
@@ -179,7 +179,7 @@ test("a kept MCP snapshot answers successive runs and clears on reload", async (
   await page.goto("/");
   await waitForHydration(page);
   await page.getByRole("tab", { name: "Tools" }).click();
-  const panel = page.getByRole("region", { name: "MCP servers" });
+  const panel = await openMcpServers(page);
   await panel.getByRole("combobox", { name: "Declared MCP server" }).selectOption("execution-fixture");
   await panel.getByRole("button", { name: "Connect and browse tools" }).click();
   await panel.getByRole("checkbox", { name: "Select lookup_record", exact: true }).check();
@@ -213,7 +213,7 @@ test("an attached MCP tool without permission explains the manual result prompt"
   await page.goto("/");
   await waitForHydration(page);
   await page.getByRole("tab", { name: "Tools" }).click();
-  const panel = page.getByRole("region", { name: "MCP servers" });
+  const panel = await openMcpServers(page);
   await panel.getByRole("combobox", { name: "Declared MCP server" }).selectOption("execution-fixture");
   await panel.getByRole("button", { name: "Connect and browse tools" }).click();
   await panel.getByRole("combobox", { name: "Execution mode", exact: true }).selectOption("manual");

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ModalDialog } from "./modal-dialog.client";
 
 import type {
   ExternalPromptCandidate,
@@ -267,8 +268,6 @@ export function N8nImportModal({
 
   useEffect(() => {
     if (!open) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
     const controller = new AbortController();
 
     void loadN8nImportStatus(controller.signal)
@@ -294,19 +293,13 @@ export function N8nImportModal({
         setWorkflowState("error");
       });
 
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !importingRef.current) onClose();
-    };
-    window.addEventListener("keydown", closeOnEscape);
     return () => {
       controller.abort();
       workflowAbortRef.current?.abort();
       executionAbortRef.current?.abort();
       detailAbortRef.current?.abort();
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", closeOnEscape);
     };
-  }, [onClose, open]);
+  }, [open]);
 
   if (!open) return null;
 
@@ -568,519 +561,519 @@ export function N8nImportModal({
   }
 
   return (
-    <div className="n8n-import-backdrop" role="presentation">
-      <section
-        aria-labelledby="n8n-import-title"
-        aria-modal="true"
-        className="n8n-import-modal"
-        role="dialog"
-      >
-        <header className="n8n-import-header">
-          <div>
-            <span className="eyebrow">External prompt</span>
-            <h2 id="n8n-import-title">Import from n8n</h2>
-            <p>
-              Select a saved execution, inspect its evidence, then import a
-              resolved snapshot or a reusable project prompt.
-            </p>
-          </div>
-          <button
-            className="button secondary"
-            disabled={importing}
-            type="button"
-            onClick={onClose}
-          >
-            Close
+    <ModalDialog
+      backdropClassName="n8n-import-backdrop"
+      className="n8n-import-modal"
+      labelledBy="n8n-import-title"
+      onClose={() => {
+        if (!importingRef.current) onClose();
+      }}
+    >
+      <header className="n8n-import-header">
+        <div>
+          <span className="eyebrow">External prompt</span>
+          <h2 id="n8n-import-title">Import from n8n</h2>
+          <p>
+            Select a saved execution, inspect its evidence, then import a
+            resolved snapshot or a reusable project prompt.
+          </p>
+        </div>
+        <button
+          className="button secondary"
+          disabled={importing}
+          type="button"
+          onClick={onClose}
+        >
+          Close
+        </button>
+      </header>
+
+      {error && (
+        <div className="n8n-import-error" role="alert">
+          <span>{error}</span>
+          <button className="text-button" type="button" onClick={retryCurrent}>
+            Retry
           </button>
-        </header>
+        </div>
+      )}
 
-        {error && (
-          <div className="n8n-import-error" role="alert">
-            <span>{error}</span>
-            <button className="text-button" type="button" onClick={retryCurrent}>
-              Retry
-            </button>
-          </div>
-        )}
+      {statusState === "loading" ? (
+        <div className="n8n-import-centered" role="status">
+          Checking n8n integration…
+        </div>
+      ) : configuration?.state === "unavailable" ? (
+        <div className="n8n-import-centered">
+          <h3>n8n is not configured</h3>
+          <p>
+            Set <code>INFERENCE_LENS_N8N_BASE_URL</code> and{" "}
+            <code>INFERENCE_LENS_N8N_API_KEY</code> on the Inference Lens
+            server, then restart it.
+          </p>
+        </div>
+      ) : configuration?.state === "misconfigured" ? (
+        <div className="n8n-import-centered">
+          <h3>n8n configuration needs attention</h3>
+          <p>{configuration.message}</p>
+        </div>
+      ) : configuration?.state === "configured" ? (
+        <>
+          <div className="n8n-import-workspace">
+            <aside className="n8n-import-selector">
+              <N8nExecutionLinkSelector
+                loading={linkState === "loading"}
+                value={executionLink}
+                onChange={setExecutionLink}
+                onSubmit={() => void loadLinkedExecution()}
+              />
 
-        {statusState === "loading" ? (
-          <div className="n8n-import-centered" role="status">
-            Checking n8n integration…
-          </div>
-        ) : configuration?.state === "unavailable" ? (
-          <div className="n8n-import-centered">
-            <h3>n8n is not configured</h3>
-            <p>
-              Set <code>INFERENCE_LENS_N8N_BASE_URL</code> and{" "}
-              <code>INFERENCE_LENS_N8N_API_KEY</code> on the Inference Lens
-              server, then restart it.
-            </p>
-          </div>
-        ) : configuration?.state === "misconfigured" ? (
-          <div className="n8n-import-centered">
-            <h3>n8n configuration needs attention</h3>
-            <p>{configuration.message}</p>
-          </div>
-        ) : configuration?.state === "configured" ? (
-          <>
-            <div className="n8n-import-workspace">
-              <aside className="n8n-import-selector">
-                <N8nExecutionLinkSelector
-                  loading={linkState === "loading"}
-                  value={executionLink}
-                  onChange={setExecutionLink}
-                  onSubmit={() => void loadLinkedExecution()}
+              <section>
+                <div className="n8n-selector-heading">
+                  <span className="n8n-step">1</span>
+                  <strong>Workflow</strong>
+                  <span className="n8n-loaded-count">
+                    {workflows.length} loaded
+                  </span>
+                </div>
+                <input
+                  aria-label="Filter loaded workflows"
+                  placeholder={`Filter ${workflows.length} loaded workflows`}
+                  value={workflowQuery}
+                  onChange={(event) => setWorkflowQuery(event.target.value)}
                 />
-
-                <section>
-                  <div className="n8n-selector-heading">
-                    <span className="n8n-step">1</span>
-                    <strong>Workflow</strong>
-                    <span className="n8n-loaded-count">
-                      {workflows.length} loaded
-                    </span>
+                <div className="n8n-selector-list-frame workflows">
+                  <div className="n8n-selector-list">
+                    {workflowState === "loading" && workflows.length === 0 ? (
+                      <p role="status">Loading workflows…</p>
+                    ) : filteredWorkflows.length === 0 ? (
+                      <p>No matching loaded workflows.</p>
+                    ) : (
+                      filteredWorkflows.map((workflow) => (
+                        <button
+                          aria-current={selectedWorkflow?.id === workflow.id}
+                          className={
+                            selectedWorkflow?.id === workflow.id
+                              ? "n8n-selector-item selected"
+                              : "n8n-selector-item"
+                          }
+                          key={workflow.id}
+                          type="button"
+                          onClick={() => void selectWorkflow(workflow)}
+                        >
+                          <strong>{workflow.name || "Untitled workflow"}</strong>
+                          <span>
+                            {workflow.active ? "Active" : "Inactive"} ·{" "}
+                            {workflow.id}
+                          </span>
+                        </button>
+                      ))
+                    )}
                   </div>
-                  <input
-                    aria-label="Filter loaded workflows"
-                    placeholder={`Filter ${workflows.length} loaded workflows`}
-                    value={workflowQuery}
-                    onChange={(event) => setWorkflowQuery(event.target.value)}
-                  />
-                  <div className="n8n-selector-list-frame workflows">
-                    <div className="n8n-selector-list">
-                      {workflowState === "loading" && workflows.length === 0 ? (
-                        <p role="status">Loading workflows…</p>
-                      ) : filteredWorkflows.length === 0 ? (
-                        <p>No matching loaded workflows.</p>
-                      ) : (
-                        filteredWorkflows.map((workflow) => (
-                          <button
-                            aria-current={selectedWorkflow?.id === workflow.id}
-                            className={
-                              selectedWorkflow?.id === workflow.id
-                                ? "n8n-selector-item selected"
-                                : "n8n-selector-item"
-                            }
-                            key={workflow.id}
-                            type="button"
-                            onClick={() => void selectWorkflow(workflow)}
-                          >
-                            <strong>{workflow.name || "Untitled workflow"}</strong>
-                            <span>
-                              {workflow.active ? "Active" : "Inactive"} ·{" "}
-                              {workflow.id}
-                            </span>
-                          </button>
-                        ))
-                      )}
+                  {workflowCursor && (
+                    <div className="n8n-list-pagination">
+                      <button
+                        className="text-button n8n-load-more"
+                        disabled={workflowState === "loading"}
+                        type="button"
+                        onClick={() => void loadMoreWorkflows()}
+                      >
+                        {workflowState === "loading"
+                          ? "Loading…"
+                          : "Load more workflows"}
+                      </button>
                     </div>
-                    {workflowCursor && (
+                  )}
+                </div>
+                <p className="n8n-selector-scope">
+                  {workflowQuery.trim()
+                    ? `${filteredWorkflows.length} matching · `
+                    : ""}
+                  Filter searches loaded workflows only.
+                </p>
+              </section>
+
+              <section>
+                <div className="n8n-selector-heading">
+                  <span className="n8n-step">2</span>
+                  <strong>Saved execution</strong>
+                  {selectedWorkflow && (
+                    <span className="n8n-loaded-count">
+                      {executions.length} loaded
+                    </span>
+                  )}
+                </div>
+                {!selectedWorkflow ? (
+                  <p>Choose a workflow first.</p>
+                ) : executionState === "loading" &&
+                  executions.length === 0 ? (
+                  <p role="status">Loading executions…</p>
+                ) : executions.length === 0 ? (
+                  <p>No saved executions were returned.</p>
+                ) : (
+                  <div className="n8n-selector-list-frame executions">
+                    <div className="n8n-selector-list">
+                      {executions.map((execution) => (
+                        <button
+                          aria-current={selectedExecution?.id === execution.id}
+                          className={
+                            selectedExecution?.id === execution.id
+                              ? "n8n-selector-item selected"
+                              : "n8n-selector-item"
+                          }
+                          key={execution.id}
+                          type="button"
+                          onClick={() => void selectExecution(execution)}
+                        >
+                          <strong>
+                            {execution.status ?? "Unknown status"}
+                          </strong>
+                          <span>
+                            {readableDate(execution.startedAt)} · {execution.id}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                    {executionCursor && (
                       <div className="n8n-list-pagination">
                         <button
                           className="text-button n8n-load-more"
-                          disabled={workflowState === "loading"}
+                          disabled={executionState === "loading"}
                           type="button"
-                          onClick={() => void loadMoreWorkflows()}
+                          onClick={() => void loadMoreExecutions()}
                         >
-                          {workflowState === "loading"
+                          {executionState === "loading"
                             ? "Loading…"
-                            : "Load more workflows"}
+                            : "Load more executions"}
                         </button>
                       </div>
                     )}
                   </div>
-                  <p className="n8n-selector-scope">
-                    {workflowQuery.trim()
-                      ? `${filteredWorkflows.length} matching · `
-                      : ""}
-                    Filter searches loaded workflows only.
-                  </p>
-                </section>
+                )}
+              </section>
 
-                <section>
-                  <div className="n8n-selector-heading">
-                    <span className="n8n-step">2</span>
-                    <strong>Saved execution</strong>
-                    {selectedWorkflow && (
-                      <span className="n8n-loaded-count">
-                        {executions.length} loaded
-                      </span>
-                    )}
+              <section>
+                <div className="n8n-selector-heading">
+                  <span className="n8n-step">3</span>
+                  <strong>AI invocation</strong>
+                </div>
+                {!selectedExecution ? (
+                  <p>Choose an execution first.</p>
+                ) : detailState === "loading" ? (
+                  <p role="status">Inspecting execution…</p>
+                ) : detail?.discovery.status !== "ready" ? (
+                  <p>{detail?.discovery.message ?? "No invocation selected."}</p>
+                ) : (
+                  <div className="n8n-selector-list-frame invocations">
+                    <div className="n8n-selector-list">
+                      {detail.extractions.map((extraction, index) => (
+                        <button
+                          aria-current={selectedExtractionIndex === index}
+                          className={
+                            selectedExtractionIndex === index
+                              ? "n8n-selector-item selected"
+                              : "n8n-selector-item"
+                          }
+                          key={`${invocationLabel(extraction)}-${index}`}
+                          type="button"
+                          onClick={() => {
+                            setSelectedExtractionIndex(index);
+                            setReviewTab(initialReviewTab(
+                              extraction.status === "candidate"
+                                ? extraction.candidate
+                                : undefined,
+                            ));
+                          }}
+                        >
+                          <strong>{invocationLabel(extraction)}</strong>
+                          <span>
+                            {extraction.status === "unsupported"
+                              ? "Unsupported"
+                              : expressionIssues(extraction.candidate).length > 0
+                                ? `Expression issue · ${extraction.candidate.fidelity.replaceAll("-", " ")}`
+                                : extraction.candidate.fidelity.replaceAll("-", " ")}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  {!selectedWorkflow ? (
-                    <p>Choose a workflow first.</p>
-                  ) : executionState === "loading" &&
-                    executions.length === 0 ? (
-                    <p role="status">Loading executions…</p>
-                  ) : executions.length === 0 ? (
-                    <p>No saved executions were returned.</p>
-                  ) : (
-                    <div className="n8n-selector-list-frame executions">
-                      <div className="n8n-selector-list">
-                        {executions.map((execution) => (
-                          <button
-                            aria-current={selectedExecution?.id === execution.id}
-                            className={
-                              selectedExecution?.id === execution.id
-                                ? "n8n-selector-item selected"
-                                : "n8n-selector-item"
-                            }
-                            key={execution.id}
-                            type="button"
-                            onClick={() => void selectExecution(execution)}
-                          >
-                            <strong>
-                              {execution.status ?? "Unknown status"}
-                            </strong>
-                            <span>
-                              {readableDate(execution.startedAt)} · {execution.id}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                      {executionCursor && (
-                        <div className="n8n-list-pagination">
-                          <button
-                            className="text-button n8n-load-more"
-                            disabled={executionState === "loading"}
-                            type="button"
-                            onClick={() => void loadMoreExecutions()}
-                          >
-                            {executionState === "loading"
-                              ? "Loading…"
-                              : "Load more executions"}
-                          </button>
-                        </div>
+                )}
+              </section>
+            </aside>
+
+            <div className="n8n-import-review">
+              {!selectedExecution ? (
+                <div className="n8n-import-centered">
+                  <h3>Select an execution to review</h3>
+                  <p>
+                    Detailed execution data is fetched only after you make a
+                    selection.
+                  </p>
+                </div>
+              ) : detailState === "loading" ? (
+                <div className="n8n-import-centered" role="status">
+                  Reconstructing prompt evidence…
+                </div>
+              ) : selectedExtraction?.status === "unsupported" ? (
+                <div className="n8n-import-centered">
+                  <span className="fidelity-pill blocked">Unsupported</span>
+                  <h3>{selectedExtraction.invocation.name}</h3>
+                  <p>{selectedExtraction.message}</p>
+                  <code>{selectedExtraction.code}</code>
+                </div>
+              ) : candidate ? (
+                <>
+                  <div className="n8n-review-summary">
+                    <div>
+                      <span className="eyebrow">Selected invocation</span>
+                      <h3>{candidate.invocation.name}</h3>
+                      <p>
+                        {candidate.source.resource.name ??
+                          candidate.source.resource.id}
+                        {" · "}
+                        execution {candidate.source.execution?.id ?? "unavailable"}
+                      </p>
+                    </div>
+                    <span
+                      className={
+                        candidate.fidelity === "authored-only"
+                          ? "fidelity-pill blocked"
+                          : "fidelity-pill"
+                      }
+                    >
+                      {candidate.fidelity.replaceAll("-", " ")}
+                    </span>
+                  </div>
+                  <p className="n8n-fidelity-copy">
+                    {fidelityCopy(candidate.fidelity)}
+                    {candidate.resolved?.model
+                      ? ` Source model: ${candidate.resolved.model}.`
+                      : ""}
+                    {" Your current connection and model will not change."}
+                  </p>
+                  {detailAvailabilityMessage && (
+                    <p className="n8n-fidelity-copy">
+                      {detailAvailabilityMessage}
+                    </p>
+                  )}
+                  {templateImportable && candidate.resolved?.model && (
+                    <div className="n8n-recommendation-option">
+                      <label>
+                        <input
+                          checked={recommendSourceModel}
+                          disabled={importing}
+                          type="checkbox"
+                          onChange={(event) =>
+                            setRecommendSourceModel(event.target.checked)
+                          }
+                        />
+                        <span>
+                          Record the source model as this prompt&rsquo;s
+                          recommended model
+                        </span>
+                      </label>
+                      {recommendSourceModel && (
+                        <p className="n8n-recommendation-detail">
+                          {recommendation?.connectionRequirementName
+                            ? `Saved as ${recommendation.connectionRequirementName} · ${candidate.resolved.model}.`
+                            : `Saved as ${candidate.resolved.model} for this project’s connection.`}
+                          {" This is a reminder, not a verified pairing: n8n supplies the model; this project supplies the connection."}
+                          {recommendation &&
+                          recommendation.projectModel !==
+                            candidate.resolved.model
+                            ? ` This project uses ${recommendation.projectModel}; runs will flag the difference.`
+                            : ""}
+                        </p>
                       )}
                     </div>
                   )}
-                </section>
-
-                <section>
-                  <div className="n8n-selector-heading">
-                    <span className="n8n-step">3</span>
-                    <strong>AI invocation</strong>
-                  </div>
-                  {!selectedExecution ? (
-                    <p>Choose an execution first.</p>
-                  ) : detailState === "loading" ? (
-                    <p role="status">Inspecting execution…</p>
-                  ) : detail?.discovery.status !== "ready" ? (
-                    <p>{detail?.discovery.message ?? "No invocation selected."}</p>
-                  ) : (
-                    <div className="n8n-selector-list-frame invocations">
-                      <div className="n8n-selector-list">
-                        {detail.extractions.map((extraction, index) => (
-                          <button
-                            aria-current={selectedExtractionIndex === index}
-                            className={
-                              selectedExtractionIndex === index
-                                ? "n8n-selector-item selected"
-                                : "n8n-selector-item"
-                            }
-                            key={`${invocationLabel(extraction)}-${index}`}
-                            type="button"
-                            onClick={() => {
-                              setSelectedExtractionIndex(index);
-                              setReviewTab(initialReviewTab(
-                                extraction.status === "candidate"
-                                  ? extraction.candidate
-                                  : undefined,
-                              ));
-                            }}
-                          >
-                            <strong>{invocationLabel(extraction)}</strong>
-                            <span>
-                              {extraction.status === "unsupported"
-                                ? "Unsupported"
-                                : expressionIssues(extraction.candidate).length > 0
-                                  ? `Expression issue · ${extraction.candidate.fidelity.replaceAll("-", " ")}`
-                                  : extraction.candidate.fidelity.replaceAll("-", " ")}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </section>
-              </aside>
-
-              <div className="n8n-import-review">
-                {!selectedExecution ? (
-                  <div className="n8n-import-centered">
-                    <h3>Select an execution to review</h3>
-                    <p>
-                      Detailed execution data is fetched only after you make a
-                      selection.
-                    </p>
-                  </div>
-                ) : detailState === "loading" ? (
-                  <div className="n8n-import-centered" role="status">
-                    Reconstructing prompt evidence…
-                  </div>
-                ) : selectedExtraction?.status === "unsupported" ? (
-                  <div className="n8n-import-centered">
-                    <span className="fidelity-pill blocked">Unsupported</span>
-                    <h3>{selectedExtraction.invocation.name}</h3>
-                    <p>{selectedExtraction.message}</p>
-                    <code>{selectedExtraction.code}</code>
-                  </div>
-                ) : candidate ? (
-                  <>
-                    <div className="n8n-review-summary">
-                      <div>
-                        <span className="eyebrow">Selected invocation</span>
-                        <h3>{candidate.invocation.name}</h3>
-                        <p>
-                          {candidate.source.resource.name ??
-                            candidate.source.resource.id}
-                          {" · "}
-                          execution {candidate.source.execution?.id ?? "unavailable"}
-                        </p>
-                      </div>
-                      <span
-                        className={
-                          candidate.fidelity === "authored-only"
-                            ? "fidelity-pill blocked"
-                            : "fidelity-pill"
-                        }
+                  <nav
+                    aria-label="Import evidence"
+                    className="n8n-review-tabs"
+                  >
+                    {(
+                      [
+                        ["resolved", "Resolved"],
+                        ["authored", "Authored"],
+                        ["bindings", "Bindings"],
+                        ["warnings", "Warnings"],
+                      ] as const
+                    ).map(([id, label]) => (
+                      <button
+                        aria-selected={reviewTab === id}
+                        className={reviewTab === id ? "active" : undefined}
+                        key={id}
+                        role="tab"
+                        type="button"
+                        onClick={() => setReviewTab(id)}
                       >
-                        {candidate.fidelity.replaceAll("-", " ")}
-                      </span>
-                    </div>
-                    <p className="n8n-fidelity-copy">
-                      {fidelityCopy(candidate.fidelity)}
-                      {candidate.resolved?.model
-                        ? ` Source model: ${candidate.resolved.model}.`
-                        : ""}
-                      {" Your current connection and model will not change."}
-                    </p>
-                    {detailAvailabilityMessage && (
-                      <p className="n8n-fidelity-copy">
-                        {detailAvailabilityMessage}
-                      </p>
-                    )}
-                    {templateImportable && candidate.resolved?.model && (
-                      <div className="n8n-recommendation-option">
-                        <label>
-                          <input
-                            checked={recommendSourceModel}
-                            disabled={importing}
-                            type="checkbox"
-                            onChange={(event) =>
-                              setRecommendSourceModel(event.target.checked)
-                            }
-                          />
-                          <span>
-                            Record the source model as this prompt&rsquo;s
-                            recommended target
-                          </span>
-                        </label>
-                        {recommendSourceModel && (
-                          <p className="n8n-recommendation-detail">
-                            {recommendation?.connectionRequirementName
-                              ? `Saved as ${recommendation.connectionRequirementName} · ${candidate.resolved.model}.`
-                              : `Saved as ${candidate.resolved.model} for this project’s connection.`}
-                            {" This is a reminder, not a verified pairing: n8n supplies the model; this project supplies the connection."}
-                            {recommendation &&
-                            recommendation.projectModel !==
-                              candidate.resolved.model
-                              ? ` This project uses ${recommendation.projectModel}; runs will flag the difference.`
-                              : ""}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                    <nav
-                      aria-label="Import evidence"
-                      className="n8n-review-tabs"
-                    >
-                      {(
-                        [
-                          ["resolved", "Resolved"],
-                          ["authored", "Authored"],
-                          ["bindings", "Bindings"],
-                          ["warnings", "Warnings"],
-                        ] as const
-                      ).map(([id, label]) => (
-                        <button
-                          aria-selected={reviewTab === id}
-                          className={reviewTab === id ? "active" : undefined}
-                          key={id}
-                          role="tab"
-                          type="button"
-                          onClick={() => setReviewTab(id)}
-                        >
-                          {label}
-                          {id === "warnings" && candidate.warnings.length > 0
-                            ? ` ${candidate.warnings.length}`
-                            : ""}
-                        </button>
-                      ))}
-                    </nav>
-                    <div className="n8n-review-content">
-                      {reviewTab === "resolved" ? (
-                        candidate.resolved ? (
-                          <div className="n8n-message-review">
-                            {candidate.resolved.messages.map((message, index) => (
-                              <article key={`${message.role}-${index}`}>
-                                <strong>{message.role}</strong>
-                                <pre>{message.content}</pre>
-                              </article>
-                            ))}
-                            {candidate.resolved.options && (
-                              <details>
-                                <summary>Source inference options</summary>
-                                <pre>
-                                  {JSON.stringify(
-                                    candidate.resolved.options,
-                                    null,
-                                    2,
-                                  )}
-                                </pre>
-                              </details>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="n8n-review-empty">
-                            No resolved messages were retained for this execution.
-                          </div>
-                        )
-                      ) : reviewTab === "authored" ? (
-                        <div className="n8n-field-review">
-                          {candidate.authored.map((field) => (
-                            <article key={field.path}>
-                              <header>
-                                <strong>{field.role ?? "prompt"}</strong>
-                                <code>{field.path}</code>
-                                <span>{field.syntax.replaceAll("-", " ")}</span>
-                              </header>
-                              <pre>{field.text}</pre>
+                        {label}
+                        {id === "warnings" && candidate.warnings.length > 0
+                          ? ` ${candidate.warnings.length}`
+                          : ""}
+                      </button>
+                    ))}
+                  </nav>
+                  <div className="n8n-review-content">
+                    {reviewTab === "resolved" ? (
+                      candidate.resolved ? (
+                        <div className="n8n-message-review">
+                          {candidate.resolved.messages.map((message, index) => (
+                            <article key={`${message.role}-${index}`}>
+                              <strong>{message.role}</strong>
+                              <pre>{message.content}</pre>
                             </article>
                           ))}
+                          {candidate.resolved.options && (
+                            <details>
+                              <summary>Source inference options</summary>
+                              <pre>
+                                {JSON.stringify(
+                                  candidate.resolved.options,
+                                  null,
+                                  2,
+                                )}
+                              </pre>
+                            </details>
+                          )}
                         </div>
-                      ) : reviewTab === "bindings" ? (
-                        candidate.bindings.length > 0 ? (
-                          <div className="n8n-field-review">
-                            {candidate.bindings.map((binding, index) => (
-                              <article key={`${binding.authoredPath}-${index}`}>
-                                <header>
-                                  <strong>{binding.status}</strong>
-                                  <code>{binding.authoredPath}</code>
-                                  <span>{binding.source.kind.replaceAll("-", " ")}</span>
-                                </header>
-                                <pre>{binding.expression}</pre>
-                                <div className="n8n-binding-value">
-                                  <span>Captured value</span>
-                                  <pre>
-                                    {binding.resolvedValue === undefined
-                                      ? "No captured value"
-                                      : JSON.stringify(
-                                          binding.resolvedValue,
-                                          null,
-                                          2,
-                                        )}
-                                  </pre>
-                                </div>
-                              </article>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="n8n-review-empty">
-                            This invocation has no expression bindings.
-                          </div>
-                        )
-                      ) : candidate.warnings.length > 0 ? (
-                        <div className="n8n-warning-list">
-                          {candidate.warnings.map((warning, index) => (
-                            <article
-                              className={`n8n-warning ${warning.severity}`}
-                              key={`${warning.code}-${index}`}
-                            >
+                      ) : (
+                        <div className="n8n-review-empty">
+                          No resolved messages were retained for this execution.
+                        </div>
+                      )
+                    ) : reviewTab === "authored" ? (
+                      <div className="n8n-field-review">
+                        {candidate.authored.map((field) => (
+                          <article key={field.path}>
+                            <header>
+                              <strong>{field.role ?? "prompt"}</strong>
+                              <code>{field.path}</code>
+                              <span>{field.syntax.replaceAll("-", " ")}</span>
+                            </header>
+                            <pre>{field.text}</pre>
+                          </article>
+                        ))}
+                      </div>
+                    ) : reviewTab === "bindings" ? (
+                      candidate.bindings.length > 0 ? (
+                        <div className="n8n-field-review">
+                          {candidate.bindings.map((binding, index) => (
+                            <article key={`${binding.authoredPath}-${index}`}>
                               <header>
-                                <strong>{warning.severity}</strong>
-                                <code>{warning.code}</code>
+                                <strong>{binding.status}</strong>
+                                <code>{binding.authoredPath}</code>
+                                <span>{binding.source.kind.replaceAll("-", " ")}</span>
                               </header>
-                              <p>{warning.message}</p>
+                              <pre>{binding.expression}</pre>
+                              <div className="n8n-binding-value">
+                                <span>Captured value</span>
+                                <pre>
+                                  {binding.resolvedValue === undefined
+                                    ? "No captured value"
+                                    : JSON.stringify(
+                                        binding.resolvedValue,
+                                        null,
+                                        2,
+                                      )}
+                                </pre>
+                              </div>
                             </article>
                           ))}
                         </div>
                       ) : (
                         <div className="n8n-review-empty">
-                          No warnings were produced for this invocation.
+                          This invocation has no expression bindings.
                         </div>
-                      )}
-                    </div>
-                  </>
-                ) : detail?.discovery.status !== "ready" ? (
-                  <div className="n8n-import-centered">
-                    <h3>Nothing importable was found</h3>
-                    <p>{detail?.discovery.message}</p>
-                    {detailAvailabilityMessage && (
-                      <p>{detailAvailabilityMessage}</p>
+                      )
+                    ) : candidate.warnings.length > 0 ? (
+                      <div className="n8n-warning-list">
+                        {candidate.warnings.map((warning, index) => (
+                          <article
+                            className={`n8n-warning ${warning.severity}`}
+                            key={`${warning.code}-${index}`}
+                          >
+                            <header>
+                              <strong>{warning.severity}</strong>
+                              <code>{warning.code}</code>
+                            </header>
+                            <p>{warning.message}</p>
+                          </article>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="n8n-review-empty">
+                        No warnings were produced for this invocation.
+                      </div>
                     )}
                   </div>
-                ) : (
-                  <div className="n8n-import-centered">
-                    Select an AI invocation to review.
-                  </div>
-                )}
-              </div>
-            </div>
-            <footer className="n8n-import-footer">
-              {candidateExpressionIssues.length > 0 ? (
-                <N8nImportIssueNotice issues={candidateExpressionIssues} />
+                </>
+              ) : detail?.discovery.status !== "ready" ? (
+                <div className="n8n-import-centered">
+                  <h3>Nothing importable was found</h3>
+                  <p>{detail?.discovery.message}</p>
+                  {detailAvailabilityMessage && (
+                    <p>{detailAvailabilityMessage}</p>
+                  )}
+                </div>
               ) : (
-                <p>
-                  {candidate
-                    ? templateImportable && resolvedImportable
-                      ? "Choose a reusable project prompt or the exact resolved execution snapshot."
-                      : templateImportable
-                        ? "Import creates a reusable project prompt; unresolved values must be filled before running."
-                        : resolvedImportable
-                          ? "Import creates a child revision from the resolved execution snapshot."
-                          : "This candidate has no safely importable prompt projection."
-                    : "Choose a supported execution-backed invocation to continue."}
-                </p>
+                <div className="n8n-import-centered">
+                  Select an AI invocation to review.
+                </div>
               )}
+            </div>
+          </div>
+          <footer className="n8n-import-footer">
+            {candidateExpressionIssues.length > 0 ? (
+              <N8nImportIssueNotice issues={candidateExpressionIssues} />
+            ) : (
+              <p>
+                {candidate
+                  ? templateImportable && resolvedImportable
+                    ? "Choose a reusable project prompt or the exact resolved execution snapshot."
+                    : templateImportable
+                      ? "Import creates a reusable project prompt; unresolved values must be filled before running."
+                      : resolvedImportable
+                        ? "Import creates a child revision from the resolved execution snapshot."
+                        : "This candidate has no safely importable prompt projection."
+                  : "Choose a supported execution-backed invocation to continue."}
+              </p>
+            )}
+            <button
+              className="button secondary"
+              disabled={importing}
+              type="button"
+              onClick={onClose}
+            >
+              Cancel
+            </button>
+            {templateImportable && (
               <button
-                className="button secondary"
+                className="button primary"
                 disabled={importing}
                 type="button"
-                onClick={onClose}
+                onClick={() => void importCandidate("reusable-template")}
               >
-                Cancel
+                {importing ? "Importing…" : "Import reusable prompt"}
               </button>
-              {templateImportable && (
-                <button
-                  className="button primary"
-                  disabled={importing}
-                  type="button"
-                  onClick={() => void importCandidate("reusable-template")}
-                >
-                  {importing ? "Importing…" : "Import reusable prompt"}
-                </button>
-              )}
-              {resolvedImportable && (
-                <button
-                  className={
-                    templateImportable ? "button secondary" : "button primary"
-                  }
-                  disabled={importing}
-                  type="button"
-                  onClick={() => void importCandidate("resolved-snapshot")}
-                >
-                  {importing ? "Importing…" : "Import resolved snapshot"}
-                </button>
-              )}
-            </footer>
-          </>
-        ) : (
-          <div className="n8n-import-centered">
-            The n8n integration status could not be loaded.
-          </div>
-        )}
-      </section>
-    </div>
+            )}
+            {resolvedImportable && (
+              <button
+                className={
+                  templateImportable ? "button secondary" : "button primary"
+                }
+                disabled={importing}
+                type="button"
+                onClick={() => void importCandidate("resolved-snapshot")}
+              >
+                {importing ? "Importing…" : "Import resolved snapshot"}
+              </button>
+            )}
+          </footer>
+        </>
+      ) : (
+        <div className="n8n-import-centered">
+          The n8n integration status could not be loaded.
+        </div>
+      )}
+    </ModalDialog>
   );
 }

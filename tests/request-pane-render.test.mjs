@@ -22,12 +22,15 @@ function toolsPane(overrides) {
     toolsEnabled: true,
     onOpenLibrary: () => {},
     onOpenConnectionSettings: () => {},
-    onAddTool: () => {},
+    onAttach: () => "not attached in this render",
     onRemoveTool: () => {},
+    onMoveTool: () => {},
     onUpdateTool: () => {},
     onSetToolEnabled: () => {},
     mockForTool: () => undefined,
     onUpdateToolMock: () => {},
+    onUpdateRequestTool: () => {},
+    onMoveRequestTool: () => {},
     onRemoveRequestTool: () => {},
     commandTools: {
       availability: { kind: "unconfigured", variable: "INFERENCE_LENS_COMMAND_TOOLS" },
@@ -147,17 +150,17 @@ test("the extracted composer renders request snapshots without a project", async
   assert.match(html, /Profile default/);
   assert.match(html, /Composer fixture message/);
   assert.match(html, /Open request composer in focus mode/);
-  // The settings panel starts collapsed: every value it will send is named,
-  // delivery included, and none of the controls are rendered.
+  // The model field is always rendered; the settings panel starts collapsed
+  // with the protocol and any departure from the baseline named, and none of
+  // its other controls rendered.
   assert.match(html, /fixture-model/);
   assert.match(html, /Temp 0\.7/);
-  assert.match(html, /Buffered/);
   assert.doesNotMatch(html, /Stream response/);
   assert.match(html, /class="request-settings-card"/);
   assert.doesNotMatch(html, /Override temperature/);
-  // The tool line stays outside the panel, so a blocked tool selection cannot
-  // be hidden by collapsing it.
-  assert.match(html, /No tools attached to this request/);
+  // With nothing attached there is no tool line; the Tools tab count says 0.
+  assert.doesNotMatch(html, /No tools attached to this request/);
+  assert.doesNotMatch(html, /request-tool-line/);
 });
 
 test("the topbar hides ordinary run actions outside the Compose mode", async () => {
@@ -226,13 +229,16 @@ test("the extracted composer keeps pending-branch and template-error text in the
         parentRunId: "run_parent",
         branchMessageId: "message_1",
         parentTraceNeedsSaving: true,
+        label: { runTitle: "Fixture question", messageOrdinal: 2, role: "user" },
       },
       requestPreview: { error: "The template variable topic is missing." },
     }),
   );
 
   assert.match(html, /Template needs a value/);
-  assert.match(html, /Branching from run/);
+  assert.match(html, /Branching from \u201cFixture question\u201d at Message 2 · user\./);
+  // The IDs are debugging detail, kept off the visible text.
+  assert.doesNotMatch(html.replace(/title="[^"]*"/g, ""), /run_parent|message_1/);
   assert.match(html, /Save trace/);
   assert.match(html, /The template variable topic is missing/);
 });
@@ -283,8 +289,11 @@ test("an unselected project tool is counted out of the manifest", async () => {
 
   assert.match(html, /No tools attached/);
   assert.doesNotMatch(html, /tool-origin project/);
-  // The definition itself is still editable below the manifest.
-  assert.match(html, /Attach to requests/);
+  // The definition itself is still editable below the manifest, and its
+  // card says it is not attached rather than offering a second control.
+  assert.match(html, /lookup_order · Edit definition/);
+  assert.match(html, /tool-attach-status">Not attached/);
+  assert.doesNotMatch(html, /Attach to requests/);
 });
 
 test("a profile that cannot call tools says so where the tools are listed", async () => {

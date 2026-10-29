@@ -235,6 +235,7 @@ export function ProjectTemplatesPane(props: ProjectTemplatesPaneProps) {
               <span>
                 {describeEntry(template)} · {props.usageCounts.get(template.id) ?? 0} uses
               </span>
+              {template.recommendedTarget && <span>Recommended model: {template.recommendedTarget.model}</span>}
             </button>
           ))}
         </div>
@@ -257,10 +258,12 @@ export function ProjectTemplatesPane(props: ProjectTemplatesPaneProps) {
           memory={memory}
           initialRevisionId={navigationTarget?.templateId === selected.id ? navigationTarget.revisionId : undefined}
           connectionRequirements={props.connectionRequirements}
+          modelCatalog={props.modelCatalog}
           onRecommendedTargetChange={props.onRecommendedTargetChange}
           sessionOwned={sessionTemplateIds.has(selected.id)}
           persistenceStatus={props.persistenceStatus ?? "saved"}
           onRename={props.onRename}
+          onRenameRevision={props.onRenameRevision}
           onDraftChange={props.onDecisionDraftChange}
           onSave={props.onSaveDecision}
           onSaveAndUse={props.onSaveAndUseDecision}

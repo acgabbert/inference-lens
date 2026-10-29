@@ -80,7 +80,7 @@ export function RequestSettings({
       <InferenceSettingsPanel
         idPrefix="request"
         label="Run settings"
-        heading="Run settings"
+        heading="Settings"
         scopeLabel={scopeLabel}
         {...(inherited ? { inherited } : {})}
         open={open}
@@ -106,6 +106,8 @@ export function RequestSettings({
           ),
         }}
         scopeOnModelField
+        modelAbove
+        summaryMode="differences"
         modelDiscovery={modelDiscovery}
         favoriteModels={favoriteModels}
         onLoadModels={onLoadModels}

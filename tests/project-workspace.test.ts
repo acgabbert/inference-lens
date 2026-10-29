@@ -13,6 +13,7 @@ import {
   readExperimentArtifactWorkspace,
   saveExperimentPlanWorkspace,
   saveProjectWorkspace,
+  savedRunReferenceForWorkspace,
 } from "../app/project-workspace.client.ts";
 import type {
   FileSystemDirectoryHandleLike,
@@ -26,6 +27,7 @@ import {
 import { createResolvedRunInput } from "../packages/core/src/run-kernel/run-execution.ts";
 import { WORKBENCH_GITIGNORE_CONTENTS } from "../packages/core/src/personal-workbench.ts";
 import { openWorkbenchStore } from "../packages/core/src/workbench-store.ts";
+import { coordinateProjectWrites } from "../app/workbench-directory.client.ts";
 import type { RepeatedExperimentPlanV3 } from "../packages/core/src/experiment.ts";
 
 class MemoryFile implements FileSystemFileHandleLike {
@@ -126,6 +128,30 @@ function project() {
     },
   });
 }
+
+test("Copy link waits for the manifest write scope before reading project.json", async () => {
+  const directory = new MemoryDirectory("copy-link", []);
+  const manifest = await directory.getFileHandle("project.json", { create: true });
+  manifest.contents = serializeProjectFile(project());
+  const opened = await withDirectoryPicker(directory, () => openProjectFolder());
+  assert.ok(opened);
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  let entered!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const write = coordinateProjectWrites(project().projectId, async () => { entered(); await gate; });
+  await started;
+  let reads = 0;
+  const original = manifest.getFile.bind(manifest);
+  manifest.getFile = async () => { reads++; return original(); };
+  // No trace is needed: the regression concerns when the manifest is read.
+  const copy = savedRunReferenceForWorkspace(opened.handle, "run_missing").catch(() => undefined);
+  try {
+    await new Promise(resolve => setTimeout(resolve, 30));
+    assert.equal(reads, 0, "manifest reads must wait while the write scope is held");
+  } finally { release(); await write; await copy; }
+  assert.equal(reads, 1);
+});
 
 function experimentPlan(): RepeatedExperimentPlanV3 {
   const input = createResolvedRunInput(

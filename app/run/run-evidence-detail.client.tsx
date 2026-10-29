@@ -24,7 +24,9 @@ export function RunEvidenceDetail({
   onBranch,
   readTrace,
   onPromoteTrace,
+  diagnosticsOpen = false,
 }: {
+  diagnosticsOpen?: boolean;
   trace: RunTrace;
   eyebrow: string;
   storage: TraceStorageStatus;
@@ -36,7 +38,7 @@ export function RunEvidenceDetail({
   const runState = useMemo(() => runStateFromTrace(trace), [trace]);
   const transcript = useMemo(() => transcriptFromRunState(runState), [runState]);
   const [markdownPreview, setMarkdownPreview] = useState(true);
-  const [traceOpen, setTraceOpen] = useState(false);
+  const [traceOpen, setTraceOpen] = useState(diagnosticsOpen);
   const [parent, setParent] = useState<{ runId: RunTrace["runId"]; state: ParentTraceState }>();
   const outputScrollRef = useRef<HTMLDivElement | null>(null);
   const attempts = runState.turns.flatMap((turn) => {

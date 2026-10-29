@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { createProjectFile, createPromptTemplate, appendPromptTemplateRevision, serializeProjectFile, parseProjectFile } from "../../packages/core/src/project";
-import { BUFFERED_FIXTURE_ENDPOINT, PROFILE_STORAGE_KEY, PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY, seedProfile, seedProfiles, waitForHydration, importProject, openMode, stubProjectDirectory } from "./support";
+import { BUFFERED_FIXTURE_ENDPOINT, PROFILE_STORAGE_KEY, PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY, seedProfile, seedProfiles, waitForHydration, importProject, openMode, stubProjectDirectory, openToolLibrary } from "./support";
 
 // One-off characterization for the review; assertions describe observed behavior,
 // not the desired regression contract. Removed after collecting review evidence.
@@ -46,17 +46,17 @@ test("audit: fresh setup keeps a prompt draft before inference is configured", a
   await capture(page, "01-fresh-prompt-error");
 });
 
-test("audit: copying a library tool to the project also attaches it", async ({page}) => {
+test("audit: attaching a library tool to the project attaches it", async ({page}) => {
   await openProject(page);
-  await page.getByRole("tab",{name:/Tools/}).click(); await page.getByRole("button",{name:"Browse local library"}).click();
-  const dialog = page.getByRole("dialog",{name:"Local tool library"});
+  await page.getByRole("tab",{name:/Tools/}).click();
+  const dialog = await openToolLibrary(page, "Project");
   await dialog.getByRole("button",{name:"+ New library tool"}).click();
   await dialog.getByLabel("Function name",{exact:true}).fill("lookup_account");
-  await dialog.getByRole("button",{name:"Copy to project",exact:true}).click();
-  await expect(dialog).toContainText("Snapshot attached to the current project draft.");
+  await dialog.getByRole("button",{name:"Attach",exact:true}).click();
+  await expect(dialog).toContainText("Attached to the project.");
   await capture(page,"13-library-copy");
   await dialog.getByRole("button",{name:"Close",exact:true}).click();
-  await expect(page.getByLabel("Attach to requests")).toBeChecked();
+  await expect(page.locator(".tool-list > .tool-editor").first()).toContainText("Attached");
   await expect(page.getByRole("button",{name:/^Run current conversation/})).toBeDisabled();
   await capture(page,"13-copy-attached-and-blocked");
 });
@@ -79,7 +79,7 @@ test("audit: review tool configuration and manual continuation with a mock", asy
   const project = parseProjectFile({...base, tools: [{id: "tool_weather", name: "get_weather", description: "Look up current weather", inputSchema: {type: "object", properties: {city: {type: "string"}}, required: ["city"]}}], toolMocks: [{id: "tool-mock_weather", toolId: "tool_weather", name: "Sunny mock", enabled: true, match: {kind: "always"}, result: {content: [{type: "text", text: "72 degrees and clear"}]}}], defaults: {...base.defaults, target: {...base.defaults.target, model: "tool-calling-model"}, enabledToolIds: ["tool_weather"]}});
   await openProject(page, project, true);
   await page.getByRole("tab", {name: /Tools/}).click(); await capture(page, "06-tool-configuration");
-  await page.getByRole("button", {name: "Browse local library"}).click(); await capture(page, "06-tool-library");
+  await openToolLibrary(page); await capture(page, "06-tool-library");
   await page.getByRole("dialog", {name: "Local tool library"}).getByRole("button", {name: "Close", exact: true}).click();
   await page.getByRole("button", {name: /^Run current conversation/}).click();
   await expect(page.locator(".tool-call-card textarea")).toHaveValue("72 degrees and clear");
@@ -93,16 +93,16 @@ test("audit: review tool configuration and manual continuation with a mock", asy
   await capture(page, "07-runs-after-completed-run");
 });
 
-test("audit: menus dismiss predictably while library modal focus remains characterized", async ({page}) => {
+test("audit: menus dismiss predictably and the library modal takes focus", async ({page}) => {
   await openProject(page);
   await page.getByLabel("Project menu").click(); await page.keyboard.press("Escape");
   await expect(page.locator("details.project-menu")).not.toHaveAttribute("open", "");
   await page.getByLabel("Run data menu").click();
   await page.getByLabel("Project menu").click();
   await expect(page.locator("details.run-data-menu")).not.toHaveAttribute("open", "");
-  await page.getByRole("tab", {name: /Tools/}).click(); await page.getByRole("button", {name: "Browse local library"}).click();
+  await page.getByRole("tab", {name: /Tools/}).click(); await openToolLibrary(page);
   const focus = await page.evaluate(() => ({tag:document.activeElement?.tagName, text:document.activeElement?.textContent, insideDialog: Boolean(document.activeElement?.closest('[role="dialog"]'))}));
-  expect(focus.insideDialog).toBe(false);
+  expect(focus.insideDialog).toBe(true);
   await writeFile(`${OUT}/08-modal-focus.json`, JSON.stringify(focus, null, 2));
 });
 
