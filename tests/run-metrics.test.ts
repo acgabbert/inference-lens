@@ -499,6 +499,48 @@ test("reports no rate when the output span has no measurable length", () => {
   assert.equal(metrics.attempts[0]?.durationMs, 400);
 });
 
+test("measures a buffered attempt's rate over the whole request", () => {
+  // A buffered response arrives as one body, so every delta lands at the end
+  // and the span from first output to completion is near zero. The rate falls
+  // back to the request duration, which includes prefill and network time.
+  const bufferedTurnInput: ProviderTurnInput = { ...turnInput, responseMode: "buffered" };
+  const next = eventStream(runId);
+  const state = reduceAll([
+    next(0, { type: "run.started", input: { ...resolvedInput, responseMode: "buffered" } }),
+    next(0, {
+      type: "turn.started",
+      turnId,
+      attempt: 1,
+      exchangeId,
+      input: bufferedTurnInput,
+    }),
+    next(100, { type: "exchange.requested", turnId, attempt: 1, exchangeId, request }),
+    next(1095, { type: "exchange.response_started", turnId, attempt: 1, exchangeId, response }),
+    next(1098, { type: "assistant.text_delta", turnId, attempt: 1, exchangeId, text: "Hello" }),
+    next(1100, {
+      type: "usage.reported",
+      turnId,
+      attempt: 1,
+      exchangeId,
+      usage: { outputTokens: 50, totalTokens: 60 },
+    }),
+    next(1100, {
+      type: "assistant.completed",
+      turnId,
+      attempt: 1,
+      exchangeId,
+      finishReason: { normalized: "stop", raw: "stop" },
+    }),
+    next(1100, { type: "run.completed" }),
+  ]);
+
+  const metrics = runMetrics(state);
+
+  // 50 tokens over the 1000 ms request, not over the 2 ms parse of the body.
+  assert.equal(metrics.attempts[0]?.outputTokensPerSecond, 50);
+  assert.equal(metrics.outputTokensPerSecond, 50);
+});
+
 test("produces identical metrics for a run and its imported trace", () => {
   const next = eventStream(runId);
   const state = reduceAll([
