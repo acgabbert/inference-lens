@@ -7,12 +7,14 @@ import {
   createProjectFile,
   createPromptTemplate,
   insertPromptTemplateUse,
+  parseProjectFile,
   prepareProjectRevisionRun,
   resolveProjectRevision,
   updatePromptTemplateUseValues,
 } from "../packages/core/src/project.ts";
 import type { ProjectFile } from "../packages/core/src/project.ts";
 import { resolveProviderCapabilities } from "../packages/core/src/types.ts";
+import { resolveProjectDefaultsRun } from "../packages/runner/src/repeated-start.ts";
 
 const environment: ProjectEnvironment = {
   id: "environment_staging",
@@ -179,4 +181,34 @@ test("the snapshot does not follow later edits to the environment", () => {
   assert.ok(prepared.ok);
   assert.equal(prepared.environment?.consumed.fromEnvironment, "env-1");
   assert.equal(prepared.templateResolutions[0]!.values.fromEnvironment, "env-1");
+});
+
+test("a run of the project's saved defaults renders against the default environment", () => {
+  const source = parseProjectFile({
+    ...project(),
+    environments: [environment],
+    defaults: { ...project().defaults, environmentId: environment.id },
+  });
+  const withRunValue = updatePromptTemplateUseValues(source, {
+    conversationRevisionId: source.defaults.conversationRevisionId,
+    templateUseId: "template-use_precedence",
+    values: { shadowedByUse: "use-3", shadowedByEmpty: "", shadowedByRun: "use-5" },
+  });
+
+  const resolved = resolveProjectDefaultsRun({
+    project: withRunValue,
+    connection: {
+      requirementId: withRunValue.defaults.target.connectionRequirementId,
+      requirementName: "Default connection",
+      endpoint: "https://api.example.com/v1",
+      capabilities: resolveProviderCapabilities("openai-compatible", {}),
+    },
+    responseMode: "buffered",
+    bindingForTool: () => undefined,
+  });
+
+  assert.ok(resolved.ok);
+  assert.equal(resolved.input.environment?.environmentId, "environment_staging");
+  const part = resolved.input.messages.at(-1)!.content[0]!;
+  assert.equal(part.type === "text" && part.text, "default-0|env-1|env-2|use-3||use-5|<env-1>");
 });

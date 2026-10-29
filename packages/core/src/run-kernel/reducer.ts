@@ -1,6 +1,7 @@
 import type {
   ExchangeTrace,
   ModelTurnAttemptState,
+  ResolvedRunInput,
   RunEvent,
   RunId,
   RunState,
@@ -836,6 +837,15 @@ export function reduceRunEvents(
   return state;
 }
 
+/**
+ * Version 9 records where every template value came from. An input whose
+ * template uses lack that record, because it was read from an older trace, is
+ * written as version 8 rather than given sources nobody observed.
+ */
+export function runTraceSchemaVersionFor(input: Pick<ResolvedRunInput, "templateResolutions">): 8 | 9 {
+  return input.templateResolutions.every(({ valueSources }) => valueSources !== undefined) ? 9 : 8;
+}
+
 export function createRunTrace(
   state: RunState,
   options: Pick<RunTrace, "branchedFrom"> = {},
@@ -847,7 +857,7 @@ export function createRunTrace(
     );
   }
   return {
-    schemaVersion: 8,
+    schemaVersion: runTraceSchemaVersionFor(state.input),
     runId: state.runId,
     input: state.input,
     status: state.status,

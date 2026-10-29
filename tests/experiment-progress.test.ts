@@ -14,7 +14,7 @@ const ENDPOINT = "https://provider.example.test/v1";
 
 function plan(count: number): RepeatedExperimentPlanV3 {
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     experimentId: "experiment_progress",
     kind: "repeated-request",
     createdAt: "2026-10-09T12:00:00.000Z",

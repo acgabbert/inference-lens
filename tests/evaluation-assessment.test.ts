@@ -119,7 +119,7 @@ function repeatedPlan(): RepeatedExperimentPlanV3 {
   const { runId: sourceRunId, ...commonInput } = input;
   assert.equal(sourceRunId, "run_source");
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     experimentId: "experiment_repeated",
     kind: "repeated-request",
     createdAt: "2026-08-07T12:00:01.000Z",

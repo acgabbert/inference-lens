@@ -18,7 +18,9 @@ import { WorkbenchPanel } from "../workbench-panel.client";
 
 const valueSourceLabels: Record<EvaluationValueSource, string> = {
   case: "Case value",
+  "run-override": "Run value",
   "authored-use": "Authored use value",
+  environment: "Environment value",
   "template-default": "Prompt default",
 };
 

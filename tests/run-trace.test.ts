@@ -85,7 +85,7 @@ test("serializes and parses a deterministic run trace", () => {
   assert.deepEqual(runStateFromTrace(trace).events, trace.events);
   assert.match(serialized, /"raw": "data: \{/);
   assert.match(serialized, /"body": "\{\\"model\\"/);
-  assert.match(serialized, /"schemaVersion": 8/);
+  assert.match(serialized, /"schemaVersion": 9/);
   assert.match(serialized, /"toolExecutions": \[\]/);
 });
 
@@ -116,7 +116,8 @@ test("migrates Version 1 evidence but rejects Version 1 branch provenance", () =
   assert.deepEqual(migrated.input.templateResolutions, []);
   assert.equal(migrated.input.responseMode, "streaming");
   assert.equal(migrated.turns[0]?.attempts[0]?.input.responseMode, "streaming");
-  assert.match(serializeRunTrace(v1), /"schemaVersion": 8/);
+  // Nothing in a Version 1 trace needs a value source, so it is written current.
+  assert.match(serializeRunTrace(v1), /"schemaVersion": 9/);
 
   assert.throws(
     () => parseRunTraceJson(JSON.stringify({
@@ -155,6 +156,7 @@ test("accepts self-contained template provenance and rejects mismatched evidence
     messages: [{ role: "user" as const, content: "{{greeting}}" }],
     variableDefaults: { greeting: "Hello" },
     values: { greeting: "Hello" },
+    valueSources: { greeting: "template-default" },
     outputMessageIds: ["message_trace-test-0" as const],
   };
   trace.input.templateResolutions = [resolution];
@@ -187,6 +189,8 @@ test("migrates Version 4 fragment provenance into one owned message", () => {
     values: {},
     outputMessageIds: ["message_trace-test-0"],
   };
+  // Legacy evidence has no value sources, so it is assembled as version 8.
+  trace.schemaVersion = 8;
   trace.input.templateResolutions = [resolution];
   const started = trace.events[0];
   assert.equal(started?.type, "run.started");
@@ -225,6 +229,7 @@ test("rejects template provenance for a run with an unresolved variable", () => 
     messages: [{ role: "user" as const, content: "{{greeting}}" }],
     variableDefaults: {},
     values: {},
+    valueSources: {},
     outputMessageIds: ["message_trace-test-0" as const],
   };
   trace.input.messages[0]!.content = [{ type: "text", text: "{{greeting}}" }];
@@ -251,6 +256,7 @@ test("rejects duplicate template-use and output-message provenance", () => {
     messages: [{ role: "user" as const, content: "Hello" }],
     variableDefaults: {},
     values: {},
+    valueSources: {},
     outputMessageIds: ["message_trace-test-0" as const],
   };
   trace.input.templateResolutions = [resolution, structuredClone(resolution)];
@@ -432,12 +438,12 @@ test("a version 6 trace still opens, but cannot carry a version 7 event", () => 
   assert.throws(() => parseRunTraceFile(smuggled), /schema version does not define/);
 });
 
-test("a chat trace is written as version 8 without a kind, and a kind other than decision is refused", () => {
+test("a chat trace is written as version 9 without a kind, and a kind other than decision is refused", () => {
   const trace = completedTrace();
   const serialized = JSON.parse(serializeRunTrace(trace)) as Record<string, unknown>;
-  assert.equal(serialized.schemaVersion, 8);
+  assert.equal(serialized.schemaVersion, 9);
   assert.equal(Object.hasOwn(serialized, "kind"), false);
-  assert.equal(parseRunTraceFile(serialized).schemaVersion, 8);
+  assert.equal(parseRunTraceFile(serialized).schemaVersion, 9);
   assert.throws(
     () => parseRunTraceFile({ ...serialized, kind: "chat" }),
     /kind/,

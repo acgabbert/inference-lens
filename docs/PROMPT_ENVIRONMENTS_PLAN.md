@@ -269,6 +269,28 @@ Questions, each accepted as recommended:
    a decision-trace version and a decision-suite field. **Recommend chat only**;
    decision inputs become a follow-up.
 
+### Evaluation plans and saved formats
+
+**Accepted 2026-10-29: one input per environment.** A variant can choose its
+own environment, so one case renders differently per variant. An ExperimentPlan
+v6 evaluation case holds `inputs`, one rendering per distinct environment its
+configurations use, and each configuration snapshot names its
+`environmentId`. Configurations that share an environment share one input.
+Inputs are keyed by environment identity, not by variable names. Two
+environments with the same entry names and different values therefore each
+get their own input, and the history says which environment produced a run.
+Preflight resolves every case once per environment the selected configurations
+use, and names the configuration when they use more than one.
+
+Two details follow from not inventing evidence:
+
+- A v9 trace requires `valueSources`. A trace read from an older file, whose
+  template uses have none, is written back as v8 rather than given sources
+  nobody observed.
+- A v6 plan's `valueSources` are optional per use, because a v5 plan opens as
+  v6 and its case shape changed, so it cannot be written back as v5. An input
+  that records an environment must carry them.
+
 ## Feature owners and user experience
 
 - `app/environments/` owns the environment list, entry table, resolved preview

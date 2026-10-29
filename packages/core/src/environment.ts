@@ -5,6 +5,7 @@ import type {
   EnvironmentId,
   EvaluationSuiteId,
   EvaluationVariantId,
+  ResolvedRunInput,
 } from "./run-kernel/types.ts";
 import {
   renderTemplateText,
@@ -374,4 +375,29 @@ export function removeProjectEnvironment(
       environments: project.environments.filter(({ id }) => id !== environmentId),
     }),
   };
+}
+
+/**
+ * Why recorded evidence is inconsistent, if it is: the environment snapshot
+ * must hold exactly the entries some template use took from it, with the
+ * values that use recorded. Traces and plans both enforce it.
+ */
+export function environmentProvenanceIssue(
+  input: Pick<ResolvedRunInput, "templateResolutions" | "environment">,
+): string | undefined {
+  const supplied = new Set<string>();
+  for (const resolution of input.templateResolutions) {
+    for (const [name, source] of Object.entries(resolution.valueSources ?? {})) {
+      if (source !== "environment") continue;
+      const consumed = input.environment?.consumed;
+      if (!consumed || !Object.hasOwn(consumed, name) || consumed[name] !== resolution.values[name]) {
+        return `Template provenance for "${resolution.templateUseId}" takes "${name}" from an environment the run did not record.`;
+      }
+      supplied.add(name);
+    }
+  }
+  const unused = Object.keys(input.environment?.consumed ?? {}).find((name) => !supplied.has(name));
+  return unused === undefined
+    ? undefined
+    : `The recorded environment holds "${unused}", which no template use took.`;
 }

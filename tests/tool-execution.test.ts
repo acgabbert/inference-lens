@@ -396,7 +396,7 @@ test("execution evidence survives a trace round trip and carries no binding conf
   coordinator.finishTurnStream();
 
   const trace = createRunTrace(coordinator.state);
-  assert.equal(trace.schemaVersion, 8);
+  assert.equal(trace.schemaVersion, 9);
   const serialized = serializeRunTrace(trace);
 
   // The golden property: what a binding *is* stays device-local; only what it

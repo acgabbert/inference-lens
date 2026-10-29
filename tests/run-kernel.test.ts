@@ -1225,7 +1225,7 @@ test("a turn's provider continuation rides the next turn's input and survives th
   assert.equal("providerContinuation" in transcript[1]!.message, false);
 
   const trace = createRunTrace(coordinator.state);
-  assert.equal(trace.schemaVersion, 8);
+  assert.equal(trace.schemaVersion, 9);
   assert.ok(trace.events.some(({ type }) => type === "assistant.continuation"));
   const imported = runStateFromTrace(parseRunTraceJson(serializeRunTrace(trace)));
   assert.deepEqual(transcriptFromRunState(imported), transcript);

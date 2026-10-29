@@ -87,8 +87,8 @@ export interface ProjectDefaultsRunInput {
 
 /**
  * Resolves the run the project's saved defaults describe — the active
- * conversation revision, its target, and its enabled tools — the way the
- * app's composer resolves a run of the same revision. It reads the project
+ * conversation revision, its target, its enabled tools and its environment —
+ * the way the app's composer resolves a run of the same revision. It reads the project
  * and never writes it.
  *
  * Like the composer, it carries the temperature and no other inference
@@ -103,16 +103,22 @@ export function resolveProjectDefaultsRun(
   if (!revision) {
     return { ok: false, blocker: { kind: "template_diagnostic", message: "The project's active conversation revision does not exist." } };
   }
-  const prepared = prepareProjectRevisionRun(project, revision);
+  const environment = defaults.environmentId
+    ? project.environments.find(({ id }) => id === defaults.environmentId)
+    : undefined;
+  const prepared = prepareProjectRevisionRun(project, revision, {}, { environment });
   if (!prepared.ok) {
     const [first] = prepared.diagnostics;
+    const [environmentFirst] = prepared.environmentDiagnostics ?? [];
     return {
       ok: false,
       blocker: {
         kind: "template_diagnostic",
         message: first
           ? `Cannot run template use "${first.templateUseId}": ${first.diagnostic.message}`
-          : "Resolve the template diagnostics before running.",
+          : environmentFirst && environment
+            ? `Cannot use environment "${environment.name}": ${environmentFirst.message}`
+            : "Resolve the template diagnostics before running.",
       },
     };
   }
@@ -152,6 +158,10 @@ export function resolveProjectDefaultsRun(
   );
   return {
     ok: true,
-    input: { ...resolved, target: { ...resolved.target, profileId: createEntityId("profile", connection.requirementId) } },
+    input: {
+      ...resolved,
+      ...(prepared.environment ? { environment: prepared.environment } : {}),
+      target: { ...resolved.target, profileId: createEntityId("profile", connection.requirementId) },
+    },
   };
 }

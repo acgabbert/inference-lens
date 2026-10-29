@@ -1,6 +1,8 @@
-import { isChatPromptTemplate } from "./project.ts";
+import { resolveEnvironment } from "./environment.ts";
+import type { EnvironmentDiagnostic, ProjectEnvironment } from "./environment.ts";
+import { isChatPromptTemplate, prepareProjectRevisionRun } from "./project.ts";
 import type { ChatEvaluationSuite, EvaluationCase } from "./evaluation-suites.ts";
-import { ProjectValidationError, resolveProjectRevision } from "./project.ts";
+import { ProjectValidationError } from "./project.ts";
 import type {
   ProjectConversationRevision,
   ProjectFile,
@@ -15,10 +17,12 @@ import type {
   PromptTemplateRevisionId,
   PromptTemplateUseId,
   ResolvedTemplateUse,
+  RunEnvironmentSnapshot,
+  TemplateValueSource,
 } from "./run-kernel/types.ts";
 
 /** Where a template variable's effective value came from. */
-export type EvaluationValueSource = "case" | "authored-use" | "template-default";
+export type EvaluationValueSource = TemplateValueSource;
 
 export interface EvaluationVariableResolution {
   templateUseId: PromptTemplateUseId;
@@ -56,10 +60,13 @@ export type EvaluationCaseResolution =
       ok: true;
       messages: ConversationMessage[];
       templateResolutions: ResolvedTemplateUse[];
+      environment?: RunEnvironmentSnapshot;
     })
   | (EvaluationCaseProvenance & {
       ok: false;
       diagnostics: ProjectTemplateDiagnostic[];
+      /** Diagnostics on environment entries this case consumes, and any limit. */
+      environmentDiagnostics?: EnvironmentDiagnostic[];
       /**
        * Set when the revision cannot be rendered at all — a pinned template
        * revision has gone missing — rather than merely leaving variables
@@ -85,10 +92,11 @@ function unresolvableReason(cause: unknown): string {
  *
  * Preflight, the focused-case preview, and plan creation all resolve through
  * here, so the preview cannot drift from the plan: precedence is applied once,
- * as template revision defaults < authored template-use values < the selected
- * case's values for bound variables.
+ * as template revision defaults < the environment < authored template-use
+ * values < the selected case's values for bound variables.
  *
- * The signature accepts no run overrides. Transient composer values therefore
+ * The signature accepts no run overrides, only the environment the case
+ * renders against. Transient composer values therefore
  * cannot enter an evaluation by mistake — their exclusion is structural rather
  * than a convention each caller has to remember.
  */
@@ -97,7 +105,9 @@ export function resolveEvaluationCase(
   revision: ProjectConversationRevision,
   suite: Pick<ChatEvaluationSuite, "inputBindings">,
   evaluationCase: Pick<EvaluationCase, "values">,
+  { environment }: { environment?: ProjectEnvironment } = {},
 ): EvaluationCaseResolution {
+  const environmentValues = environment ? resolveEnvironment(environment).values : {};
   const templatesById = new Map(project.promptTemplates.filter(isChatPromptTemplate).map((template) => [template.id, template]));
   const usesById = new Map(
     revision.items.flatMap((item) => (item.kind === "template-use" ? [[item.use.id, item.use] as const] : [])),
@@ -167,6 +177,9 @@ export function resolveEvaluationCase(
       if (has(use.values)) {
         return { ...identity, value: use.values[variableName]!, source: "authored-use" as const };
       }
+      if (has(environmentValues)) {
+        return { ...identity, value: environmentValues[variableName]!, source: "environment" as const };
+      }
       if (has(templateRevision.variableDefaults)) {
         return {
           ...identity,
@@ -184,9 +197,12 @@ export function resolveEvaluationCase(
   // has gone missing still reports every variable it can identify. Only the
   // rendering fails, and it fails as a described condition rather than as an
   // exception that would take the whole editor down with it.
-  let resolved: ReturnType<typeof resolveProjectRevision>;
+  let resolved: ReturnType<typeof prepareProjectRevisionRun>;
   try {
-    resolved = resolveProjectRevision(project, revision, overrides as TemplateRunOverrides);
+    resolved = prepareProjectRevisionRun(project, revision, overrides as TemplateRunOverrides, {
+      environment,
+      overrideSource: "case",
+    });
   } catch (cause) {
     return {
       ...provenance,
@@ -195,13 +211,19 @@ export function resolveEvaluationCase(
       unresolvable: unresolvableReason(cause),
     };
   }
-  if (resolved.diagnostics.length > 0) {
-    return { ...provenance, ok: false, diagnostics: resolved.diagnostics };
+  if (!resolved.ok) {
+    return {
+      ...provenance,
+      ok: false,
+      diagnostics: resolved.diagnostics,
+      ...(resolved.environmentDiagnostics ? { environmentDiagnostics: resolved.environmentDiagnostics } : {}),
+    };
   }
   return {
     ...provenance,
     ok: true,
     messages: resolved.messages,
     templateResolutions: resolved.templateResolutions,
+    ...(resolved.environment ? { environment: resolved.environment } : {}),
   };
 }
