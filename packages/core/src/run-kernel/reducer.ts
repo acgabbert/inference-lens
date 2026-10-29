@@ -5,7 +5,6 @@ import type {
   RunId,
   RunState,
   RunTrace,
-  TerminalRunStatus,
   TurnId,
   ToolArguments,
   ToolCall,
@@ -15,6 +14,7 @@ import type {
   ToolResult,
   ExchangeId,
 } from "./types.ts";
+import { isTerminalRunStatus } from "./types.ts";
 
 export class RunInvariantError extends Error {
   constructor(message: string) {
@@ -36,14 +36,6 @@ export function createRunState(runId: RunId): RunState {
   };
 }
 
-function isTerminal(status: RunState["status"]): status is TerminalRunStatus {
-  return (
-    status.kind === "completed" ||
-    status.kind === "cancelled" ||
-    status.kind === "failed"
-  );
-}
-
 function assertEventEnvelope(state: RunState, event: RunEvent): void {
   if (event.runId !== state.runId) {
     throw new RunInvariantError(
@@ -61,7 +53,7 @@ function assertEventEnvelope(state: RunState, event: RunEvent): void {
   if (event.elapsedMs < 0) {
     throw new RunInvariantError("Event elapsed time cannot be negative.");
   }
-  if (isTerminal(state.status)) {
+  if (isTerminalRunStatus(state.status)) {
     throw new RunInvariantError(
       `Cannot apply ${event.type} after run ${state.runId} is terminal.`,
     );
@@ -849,7 +841,7 @@ export function createRunTrace(
   options: Pick<RunTrace, "branchedFrom"> = {},
 ): RunTrace {
   assertStarted(state);
-  if (!isTerminal(state.status) || !state.endedAt) {
+  if (!isTerminalRunStatus(state.status) || !state.endedAt) {
     throw new RunInvariantError(
       `Run ${state.runId} must be terminal before creating a trace.`,
     );

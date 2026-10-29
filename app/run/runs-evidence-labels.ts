@@ -6,6 +6,7 @@ import type {
   RunId,
   RunState,
 } from "../../packages/core/src/run-kernel/types.ts";
+import { isTerminalRunStatusKind } from "../../packages/core/src/run-kernel/types.ts";
 import type { TraceStorageStatus } from "../response-output.client";
 
 /** The protocol a run was sent over, as a row names it. */
@@ -25,7 +26,7 @@ export function currentRunStorageLabel(
   status: RunState["status"]["kind"],
   storage: TraceStorageStatus | null,
 ): string {
-  if (!["completed", "cancelled", "failed"].includes(status)) {
+  if (!isTerminalRunStatusKind(status)) {
     return "Current session";
   }
   switch (storage?.kind) {

@@ -13,6 +13,7 @@ import {
 } from "../../packages/core/src/decision-run";
 import { decisionRunFromTrace, decisionRunTrace } from "../../packages/core/src/decision-trace";
 import type { DecisionRunTrace } from "../../packages/core/src/decision-trace";
+import { isTerminalRunStatus } from "../../packages/core/src/run-kernel";
 import { exportRunTraceFile, runTraceWorkspaceLocation, runTraceWorkspacePath, saveRunTraceWorkspace } from "../project-workspace.client";
 import type { ProjectWorkspaceHandle } from "../project-workspace.client";
 import type { TraceStorageStatus } from "../response-output.client";
@@ -68,7 +69,7 @@ export interface DecisionSessionHandle {
 }
 
 function isFinished(run: DecisionRun | null): run is DecisionRun {
-  return Boolean(run && ["completed", "cancelled", "failed"].includes(run.status.kind));
+  return Boolean(run && isTerminalRunStatus(run.status));
 }
 
 function traceFor(run: DecisionRun | null): DecisionRunTrace | undefined {

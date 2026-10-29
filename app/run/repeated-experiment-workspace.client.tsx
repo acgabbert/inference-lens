@@ -6,7 +6,7 @@ import {
   finalAssistantOutput,
   repeatedExperimentAggregate,
 } from "../../packages/core/src/experiment.ts";
-import type { RunId, RunState } from "../../packages/core/src/run-kernel/index.ts";
+import { isTerminalRunStatus, type RunId, type RunState } from "../../packages/core/src/run-kernel/index.ts";
 import { runMetrics } from "../../packages/core/src/run-metrics.ts";
 import { InferenceSettingsPanel } from "../inference-settings-panel.client.tsx";
 import { formatDuration, formatRate, formatTokens } from "../run-metrics-format.client.ts";
@@ -65,7 +65,7 @@ function pendingLabel(
 }
 
 function rowMetrics(state: RunState | undefined): string | undefined {
-  if (!state || !["completed", "failed", "cancelled"].includes(state.status.kind)) return undefined;
+  if (!state || !isTerminalRunStatus(state.status)) return undefined;
   const metrics = runMetrics(state);
   const values = [
     metrics.totalDurationMs === undefined ? undefined : formatDuration(metrics.totalDurationMs),
