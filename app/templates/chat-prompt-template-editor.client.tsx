@@ -17,6 +17,7 @@ import { isSensitiveTemplateVariableName } from "../../packages/core/src/project
 import type {
   PromptTemplateId,
   PromptTemplateRevisionId,
+  ResolvedTemplateUse,
 } from "../../packages/core/src/run-kernel";
 import {
   discoverTemplateVariables,
@@ -1076,6 +1077,13 @@ interface TemplateUseCardProps {
   template: ChatPromptTemplate;
   diagnostics: ProjectTemplateDiagnostic[];
   runOverrides: Readonly<Record<string, string>>;
+  /**
+   * The use as the workbench resolved it: the values a run would send and
+   * which layer supplied each. Absent while the conversation cannot resolve.
+   */
+  resolved?: Pick<ResolvedTemplateUse, "values" | "valueSources">;
+  /** The selected environment, to name it and to say when a value shadows it. */
+  environment?: { name: string; entryNames: ReadonlySet<string> };
   importedFrom?: ExternalImportReceipt;
   onSaveValues(values: Record<string, string>): void;
   onSaveRunValue(
@@ -1180,6 +1188,8 @@ function TemplateUseCardRevision({
   template,
   diagnostics,
   runOverrides,
+  resolved,
+  environment,
   importedFrom,
   onSaveValues,
   onSaveRunValue,
@@ -1197,7 +1207,7 @@ function TemplateUseCardRevision({
   const [attentionOnly, setAttentionOnly] = useState(false);
   const revision = template.revisions.find(({ id }) => id === use.templateRevisionId)!;
   const discovery = discoverTemplateVariables(revision.messages);
-  const effectiveValues = resolveTemplateValues(
+  const effectiveValues = resolved?.values ?? resolveTemplateValues(
     revision.variableDefaults,
     use.values,
     runOverrides,
@@ -1224,7 +1234,18 @@ function TemplateUseCardRevision({
     const saved = Object.hasOwn(use.values, variable.name);
     const overridden = Object.hasOwn(runOverrides, variable.name);
     const defaulted = Object.hasOwn(revision.variableDefaults, variable.name);
-    const needsValue = !saved && !overridden && !defaulted;
+    const fromEnvironment = resolved?.valueSources?.[variable.name] === "environment";
+    const shadowsEnvironment = Boolean(environment?.entryNames.has(variable.name)) && (saved || overridden);
+    const needsValue = !saved && !overridden && !defaulted && !fromEnvironment;
+    const layer = overridden
+      ? "Session override"
+      : saved
+        ? "Saved in project"
+        : fromEnvironment
+          ? `From environment “${environment?.name ?? ""}”`
+          : defaulted
+            ? "Prompt default"
+            : "Needs a value";
     return {
       variable,
       sensitive,
@@ -1232,14 +1253,9 @@ function TemplateUseCardRevision({
       overridden,
       defaulted,
       needsValue,
-      effective: effectiveValues[variable.name],
-      valueSource: overridden
-        ? "Session override"
-        : saved
-          ? "Saved in project"
-          : defaulted
-            ? "Prompt default"
-            : "Needs a value",
+      shadowsEnvironment,
+      effective: Object.hasOwn(effectiveValues, variable.name) ? effectiveValues[variable.name] : undefined,
+      valueSource: shadowsEnvironment ? `${layer} · overrides “${environment?.name ?? ""}”` : layer,
       // A row that blocks the run is never collapsed by default and never
       // hidden by a filter: run readiness deep-links to exactly these fields,
       // so they have to stay reachable whatever the card is filtered to.
@@ -1468,6 +1484,7 @@ function TemplateUseCardRevision({
           sensitive,
           saved,
           overridden,
+          shadowsEnvironment,
           effective,
           valueSource,
           blocking,
@@ -1582,7 +1599,7 @@ function TemplateUseCardRevision({
                             )
                           }
                         >
-                          Use default
+                          {shadowsEnvironment ? "Use environment" : "Use default"}
                         </button>
                       )}
                     </div>

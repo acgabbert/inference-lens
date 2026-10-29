@@ -118,6 +118,9 @@ import { PromptsMode } from "./modes/prompts-mode.client";
 import { usePromptNavigation } from "./templates/use-prompt-navigation.client";
 import { templateReadinessInputs, templateRequestPreview } from "./templates/template-run-view";
 import { useProjectEnvironments } from "./environments/use-project-environments.client";
+import { EnvironmentSelector } from "./environments/environment-selector.client";
+import { EnvironmentDrawer } from "./environments/environment-drawer.client";
+import type { EnvironmentDrawerFocus } from "./environments/environment-drawer.client";
 import { useToasts } from "./notifications/use-toasts.client";
 import { ToastRegion } from "./notifications/toast-region.client";
 import { AppBanner } from "./notifications/app-banner.client";
@@ -190,6 +193,8 @@ function HomeContent() {
   const [projectCreationMode, setProjectCreationMode] =
     useState<ProjectCreationMode>();
   const [connectionDrawerOpen, setConnectionDrawerOpen] = useState(false);
+  const [environmentDrawer, setEnvironmentDrawer] =
+    useState<{ focus?: EnvironmentDrawerFocus }>();
   const [sessionPromptProjectNotice, setSessionPromptProjectNotice] =
     useState<string>();
   const [pendingReadinessDestination, setPendingReadinessDestination] =
@@ -1011,10 +1016,22 @@ function HomeContent() {
     void run();
   }
 
+  function clearEnvironmentDrawerFocus(): void {
+    setEnvironmentDrawer((current) => (current?.focus ? {} : current));
+  }
+
   function resolveReadiness(destination: ReadinessDestination): void {
     setPendingReadinessDestination(destination);
     if (destination.surface === "connections") {
       setConnectionDrawerOpen(true);
+    } else if (destination.surface === "environments") {
+      setPendingReadinessDestination(undefined);
+      setEnvironmentDrawer({
+        focus: {
+          environmentId: destination.environmentId,
+          ...(destination.entryName ? { entryName: destination.entryName } : {}),
+        },
+      });
     } else if (destination.surface === "prompts") {
       setMode("prompts");
     } else {
@@ -1311,6 +1328,28 @@ function HomeContent() {
       activeProfile={requestSettings.profile}
       {...(pendingBranch.pending ? { pendingBranch: pendingBranch.pending } : {})}
       {...(requestPreview ? { requestPreview } : {})}
+      {...(projectFile
+        ? {
+            environmentSelector: (
+              <EnvironmentSelector
+                environments={projectEnvironments.environments}
+                {...(projectEnvironments.selectedId ? { selectedId: projectEnvironments.selectedId } : {})}
+                {...(projectEnvironments.defaultId ? { defaultId: projectEnvironments.defaultId } : {})}
+                onSelect={projectEnvironments.select}
+                onSetDefault={projectEnvironments.setDefault}
+                onManage={() => setEnvironmentDrawer({})}
+              />
+            ),
+          }
+        : {})}
+      {...(projectEnvironments.selected
+        ? {
+            environment: {
+              name: projectEnvironments.selected.name,
+              entryNames: new Set(projectEnvironments.selected.entries.map(({ name }) => name)),
+            },
+          }
+        : {})}
       onOpenConnectionSettings={() => setConnectionDrawerOpen(true)}
       onOpenPrompts={() => {
         promptNavigation.clearReturn();
@@ -1496,6 +1535,19 @@ function HomeContent() {
         <RunLinkControls links={runLinks} />
         <AppBanner {...(appBanner ? { selection: appBanner } : {})} />
       </div>
+
+      <EnvironmentDrawer
+        open={Boolean(environmentDrawer)}
+        onClose={() => setEnvironmentDrawer(undefined)}
+        environments={projectEnvironments.environments}
+        {...(projectEnvironments.selectedId ? { selectedId: projectEnvironments.selectedId } : {})}
+        {...(projectEnvironments.defaultId ? { defaultId: projectEnvironments.defaultId } : {})}
+        {...(environmentDrawer?.focus ? { focus: environmentDrawer.focus } : {})}
+        onFocusHandled={clearEnvironmentDrawerFocus}
+        onSave={projectEnvironments.save}
+        onRemove={projectEnvironments.remove}
+        onSelect={projectEnvironments.select}
+      />
 
       <ConnectionDrawer
         open={connectionDrawerOpen}

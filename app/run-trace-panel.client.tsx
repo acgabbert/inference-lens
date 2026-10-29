@@ -8,6 +8,7 @@ import {
 } from "../packages/core/src/run-kernel";
 import type {
   ResolvedTemplateUse,
+  RunEnvironmentSnapshot,
   RunEvent,
   RunId,
   RunState,
@@ -265,11 +266,24 @@ export function RunInspectionSummary({
 
 export function TemplateProvenance({
   resolutions,
+  environment,
 }: {
   resolutions: ResolvedTemplateUse[];
+  /** The environment snapshot the run recorded, if it used one. */
+  environment?: RunEnvironmentSnapshot;
 }) {
   return (
     <>
+      {environment && (
+        <details open>
+          <summary>
+            <span className="event-dot run.completed" />
+            <span>Environment “{environment.name}”</span>
+            <span>{environment.environmentId}</span>
+          </summary>
+          <pre>{JSON.stringify({ consumed: environment.consumed }, null, 2)}</pre>
+        </details>
+      )}
       {resolutions.map((resolution) => (
         <details key={resolution.templateUseId}>
           <summary>
@@ -284,6 +298,7 @@ export function TemplateProvenance({
                 templateId: resolution.templateId,
                 templateRevisionId: resolution.templateRevisionId,
                 values: resolution.values,
+                ...(resolution.valueSources ? { valueSources: resolution.valueSources } : {}),
                 variableDefaults: resolution.variableDefaults,
                 outputMessageIds: resolution.outputMessageIds,
                 messages: resolution.messages,
@@ -479,7 +494,10 @@ export function RunTracePanel({
           id="run-details-resolution-panel"
           role="tabpanel"
         >
-          <TemplateProvenance resolutions={templateResolutions} />
+          <TemplateProvenance
+            resolutions={templateResolutions}
+            {...(runState?.input?.environment ? { environment: runState.input.environment } : {})}
+          />
         </div>
       ) : (
         <div

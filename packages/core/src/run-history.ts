@@ -32,6 +32,8 @@ export interface RunHistorySummary {
   attemptCount: number;
   retryCount: number;
   messageCount: number;
+  /** The environment the run rendered against, when it used one. */
+  environmentName?: string;
 }
 
 /** A decision run's row: what was asked of which model, and how it ended. */
@@ -116,6 +118,7 @@ function summarizeReducedRunTrace(
     messageCount: trace.input.messages.length,
     protocol: trace.input.target.protocol,
     ...excerptField(trace.input.messages),
+    ...(trace.input.environment ? { environmentName: trace.input.environment.name } : {}),
   };
 }
 
