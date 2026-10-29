@@ -2,6 +2,8 @@
 
 **Status:** Proposal for review; no runtime implementation or contract approval.
 **Date:** 2026-10-27. **Inspected baseline:** `main` at `406cb03`.
+**Sequencing (2026-10-29):** [prompt environments](PROMPT_ENVIRONMENTS_PLAN.md)
+land first and supply the child input layer; see the revised Input row below.
 
 ## Outcome and effort
 
@@ -69,8 +71,8 @@ not require selecting them now.
 | --- | --- | --- |
 | Routing | Manual dispatch is smaller but cannot emulate autonomous selection; model tool calls reproduce the parent/child loop; parsing routing instructions from text introduces another protocol. | Ordinary tool calls, with explicit local permission to run automatically. Retain manual result replacement. |
 | Child source | A saved prompt is convenient but has no complete execution contract; a saved conversation revision preserves messages and pinned prompt uses; a new general-purpose agent entity is broader. | A project-owned request-tool definition pins a conversation revision and supplies target/options. Offer creation from a saved chat prompt by materializing a pinned template-use conversation. |
-| Input | One text argument is easy to author and inspect; arbitrary JSON-path/variable mapping adds validation and UI. | Fixed `{ "input": string }` schema with no extra properties; append one user message after the pinned child content. Resolve all existing template variables before the parent starts. |
-| Context | Inheriting the parent transcript is convenient but creates hidden context and size growth. | Fresh child context on every invocation; only pinned child content and explicit `input` cross the boundary. |
+| Input | One text argument is easy to author and inspect but cannot drive what the child's prompt says; arbitrary JSON-path mapping adds validation and UI. | **Revised 2026-10-29; depends on [prompt environments](PROMPT_ENVIRONMENTS_PLAN.md).** Child template variables render against the parent's environment snapshot by name. Tool arguments are a further layer, each bound explicitly to a named child variable; the input schema is derived from those bindings (string properties, no extra properties). An optional free-text `input` may still be appended as a user message. Bound values are inserted literally and never re-templated. |
+| Context | Inheriting the parent transcript is convenient but creates hidden context and size growth. | Fresh child context on every invocation; only pinned child content, the snapshotted environment, and bound arguments cross the boundary. |
 | Targets | Inheriting the parent model is simpler but prevents specialist comparisons; explicit child targets require mapping each connection. | Explicit child `ExecutionTarget` and inference options, initially copied from the current selection for convenience; freeze them at parent start. |
 | Result | Final text is directly usable; JSON extraction, transcript forwarding and structured decisions require additional semantics. | Return the completed child's final assistant text exactly. Exclude reasoning, intermediate messages and raw transport material. |
 | Scope | One-level chat requests are bounded; decision requests and recursive routing need new contracts. | Chat parent and child only; serial child invocations; no child tools, recursion, shared memory, or cross-project sources in MVP. |
