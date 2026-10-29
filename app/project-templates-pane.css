@@ -67,7 +67,7 @@
   color: var(--text-muted);
   cursor: pointer;
   font-family: inherit;
-  font-weight: 700;
+  font-weight: var(--weight-bold);
 }
 
 .template-library-tab.selected {
@@ -85,7 +85,7 @@
   color: var(--text-faint);
   cursor: pointer;
   font-family: inherit;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .template-library-archive-link.selected {
@@ -149,7 +149,7 @@
   border-color: var(--border-strong);
   background: var(--surface-panel);
   color: var(--text-primary);
-  font-weight: 700;
+  font-weight: var(--weight-bold);
 }
 
 

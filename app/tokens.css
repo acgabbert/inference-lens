@@ -63,6 +63,14 @@
   --radius-xl: 14px;
   --radius-pill: 999px;
 
+  /* Font weight by emphasis. Five steps, so two labels meant to read alike
+     cannot sit a hair apart. */
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --weight-heavy: 800;
+
   /* Line height by the length of the run of text, not by its size. */
   --leading-tight: 1.35;
   --leading-normal: 1.45;
@@ -98,6 +106,22 @@
   --focus-ring: 0 0 0 3px light-dark(rgba(23, 107, 77, 0.09), rgba(79, 185, 138, 0.25));
   --overlay-scrim: light-dark(rgba(16, 28, 21, 0.44), rgba(0, 0, 0, 0.66));
 
+  /* Stacking order, lowest first. The first four only compete inside a pane;
+     the rest compete across the whole app. A surface that opens over another
+     takes the next layer up rather than a number of its own. */
+  --layer-raised: 1;        /* lifted over in-flow neighbours */
+  --layer-sticky: 2;        /* sticky toolbars inside a scroller */
+  --layer-divider: 3;       /* the workbench pane divider */
+  --layer-pane-float: 4;    /* dropdowns, popovers and handles over a pane */
+  --layer-topbar: 10;
+  --layer-menu: 35;         /* topbar menus */
+  --layer-toast: 40;
+  --layer-drawer: 45;
+  --layer-modal: 50;        /* focus mode, the tool registry */
+  --layer-import-modal: 55; /* n8n import */
+  --layer-confirmation: 60;
+  --layer-paste-modal: 65;  /* n8n template paste */
+
   /* Run timeline phases — hues chosen to stay distinct as thin bars, and to
      keep generation on the brand green so it reads as the productive phase */
   --timeline-wait: light-dark(#b3bdb7, #46564e);
@@ -117,6 +141,12 @@
   /* Brand mark: fixed dark chip with bright text, does not invert */
   --brand-mark-bg: light-dark(#17211c, #1f2b25);
   --brand-mark-fg: #9ee7c5;
+}
+
+/* Declared on body, where next/font sets --font-geist-mono: a custom property
+   resolves the var() it references on the element that declares it. */
+body {
+  --font-stack-mono: var(--font-geist-mono), monospace;
 }
 
 @theme inline {

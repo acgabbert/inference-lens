@@ -4,7 +4,7 @@
   justify-content: space-between;
   border-bottom: 1px solid var(--border-default);
   color: var(--text-muted);
-  font-weight: 750;
+  font-weight: var(--weight-bold);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -18,7 +18,7 @@
   margin: 0;
   padding: var(--space-2xl) var(--space-xl);
   color: var(--text-faint);
-  font-family: var(--font-geist-mono), monospace;
+  font-family: var(--font-stack-mono);
 }
 
 
@@ -102,8 +102,8 @@
 .run-inspection-summary dd {
   margin: 0;
   color: var(--text-primary);
-  font-family: var(--font-geist-mono), monospace;
-  font-weight: 700;
+  font-family: var(--font-stack-mono);
+  font-weight: var(--weight-bold);
 }
 
 .run-inspection-status {
@@ -160,7 +160,7 @@
   top: -5px;
   left: 0;
   right: 0;
-  z-index: 4;
+  z-index: var(--layer-pane-float);
   height: 10px;
   padding: 0;
   border: 0;

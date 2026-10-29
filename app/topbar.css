@@ -14,7 +14,7 @@
   flex-wrap: nowrap;
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: var(--layer-topbar);
   backdrop-filter: blur(14px);
 }
 
@@ -40,7 +40,7 @@
   place-items: center;
   background: var(--brand-mark-bg);
   color: var(--brand-mark-fg);
-  font-weight: 800;
+  font-weight: var(--weight-heavy);
   letter-spacing: -0.04em;
 }
 

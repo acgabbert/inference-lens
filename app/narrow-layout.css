@@ -167,7 +167,7 @@
     background: transparent;
     color: var(--text-muted);
     cursor: pointer;
-    font-weight: 750;
+    font-weight: var(--weight-bold);
   }
 
   .mobile-workbench-tabs button.active {

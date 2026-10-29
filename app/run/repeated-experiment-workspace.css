@@ -94,7 +94,7 @@
   align-items: center;
   background: var(--surface-inset);
   color: var(--text-secondary);
-  font-weight: 750;
+  font-weight: var(--weight-bold);
   font-variant-numeric: tabular-nums;
 }
 
@@ -171,7 +171,7 @@
 .repeated-experiment-more-metrics summary {
   padding: var(--space-md);
   cursor: pointer;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .repeated-experiment-more-metrics[open] summary {
@@ -246,7 +246,7 @@
 .repeated-experiment-output-preview > span {
   margin-right: var(--space-sm);
   color: var(--text-muted);
-  font-weight: 750;
+  font-weight: var(--weight-bold);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }

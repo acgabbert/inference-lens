@@ -79,7 +79,7 @@
 
 .target-caption {
   color: var(--text-faint);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -93,7 +93,7 @@
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  z-index: 35;
+  z-index: var(--layer-menu);
   overflow: hidden;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
@@ -112,12 +112,12 @@
   justify-content: space-between;
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-primary);
-  font-weight: 750;
+  font-weight: var(--weight-bold);
 }
 
 .menu-heading small {
   color: var(--text-muted);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -174,7 +174,7 @@
 .menu-option small {
   margin-top: var(--space-3xs);
   color: var(--text-muted);
-  font-family: var(--font-geist-mono), monospace;
+  font-family: var(--font-stack-mono);
 }
 
 .menu-action {
@@ -188,7 +188,7 @@
   background: var(--surface-subtle);
   color: var(--accent);
   cursor: pointer;
-  font-weight: 750;
+  font-weight: var(--weight-bold);
 }
 
 .project-popover {
@@ -199,7 +199,7 @@
 .menu-group-heading {
   padding: var(--space-xs) var(--space-sm) var(--space-2xs);
   color: var(--text-muted);
-  font-weight: 750;
+  font-weight: var(--weight-bold);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }

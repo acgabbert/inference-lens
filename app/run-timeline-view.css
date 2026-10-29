@@ -22,7 +22,7 @@
 .run-timeline-title {
   margin: 0;
   color: var(--text-muted);
-  font-weight: 750;
+  font-weight: var(--weight-bold);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -88,7 +88,7 @@
 
 .run-timeline-label {
   color: var(--text-secondary);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -96,7 +96,7 @@
 
 .run-timeline-row.gap .run-timeline-label {
   color: var(--text-faint);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 
 .run-timeline-track {
@@ -170,7 +170,7 @@
 
 .run-timeline-duration {
   color: var(--text-primary);
-  font-family: var(--font-geist-mono), monospace;
+  font-family: var(--font-stack-mono);
   text-align: right;
 }
 
@@ -188,6 +188,6 @@
   display: flex;
   justify-content: space-between;
   color: var(--text-faint);
-  font-family: var(--font-geist-mono), monospace;
+  font-family: var(--font-stack-mono);
 }
 

@@ -156,12 +156,12 @@
 
 .breadcrumb [aria-current="page"] {
   color: var(--text-primary);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .mode :global(.runs-evidence-storage.unsaved) {
   color: var(--warning-strong);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 @media (max-width: 1100px) {

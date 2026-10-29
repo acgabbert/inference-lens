@@ -39,7 +39,7 @@
   min-height: 34px;
   margin-bottom: var(--space-sm);
   color: var(--text-muted);
-  font-weight: 700;
+  font-weight: var(--weight-bold);
 }
 
 .run-history-filter {
@@ -60,7 +60,7 @@
   background: none;
   color: var(--text-muted);
   cursor: pointer;
-  font-weight: 700;
+  font-weight: var(--weight-bold);
 }
 
 .run-history-filter button:hover {
@@ -82,7 +82,7 @@
   border-radius: var(--radius-pill);
   background: var(--surface-inset);
   color: var(--text-muted);
-  font-weight: 800;
+  font-weight: var(--weight-heavy);
   white-space: nowrap;
 }
 
@@ -159,7 +159,7 @@
   border-radius: var(--radius-pill);
   background: var(--surface-inset);
   color: var(--text-muted);
-  font-weight: 800;
+  font-weight: var(--weight-heavy);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -263,7 +263,7 @@
 
 .run-history-failures summary {
   cursor: pointer;
-  font-weight: 700;
+  font-weight: var(--weight-bold);
 }
 
 .run-history-failures p {

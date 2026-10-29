@@ -13,7 +13,7 @@
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  font-weight: 750;
+  font-weight: var(--weight-bold);
 }
 
 .schema-tabs button + button {
@@ -66,7 +66,7 @@
   min-height: 34px;
   justify-content: space-between;
   color: var(--text-secondary);
-  font-weight: 800;
+  font-weight: var(--weight-heavy);
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
@@ -182,7 +182,7 @@
   margin-top: var(--space-xs);
   min-height: 300px;
   padding: var(--space-md);
-  font-family: var(--font-geist-mono), monospace;
+  font-family: var(--font-stack-mono);
   line-height: var(--leading-normal);
 }
 

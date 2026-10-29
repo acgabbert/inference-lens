@@ -21,7 +21,7 @@
 .markdown-body h5,
 .markdown-body h6 {
   margin: var(--space-xl) 0 var(--space-sm);
-  font-weight: 700;
+  font-weight: var(--weight-bold);
   line-height: var(--leading-tight);
   letter-spacing: -0.02em;
 }
@@ -94,7 +94,7 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xs);
   background: var(--surface-inset);
-  font-family: var(--font-geist-mono), monospace;
+  font-family: var(--font-stack-mono);
 }
 
 .markdown-body pre.markdown-code {
@@ -118,7 +118,7 @@
   border: 1px dotted var(--border-subtle);
   border-radius: var(--radius-xs);
   background: var(--surface-inset);
-  font-family: var(--font-geist-mono), monospace;
+  font-family: var(--font-stack-mono);
 }
 
 .markdown-body .markdown-math {
@@ -144,7 +144,7 @@
 .markdown-math-delimiter {
   flex: none;
   color: var(--text-muted);
-  font-family: var(--font-geist-mono), monospace;
+  font-family: var(--font-stack-mono);
   user-select: none;
 }
 
@@ -183,6 +183,6 @@
 
 .markdown-body th {
   background: var(--surface-inset);
-  font-weight: 700;
+  font-weight: var(--weight-bold);
 }
 

@@ -18,7 +18,7 @@
   flex-direction: column;
   gap: var(--space-2xs);
   color: var(--text-muted);
-  font-weight: 750;
+  font-weight: var(--weight-bold);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -185,7 +185,7 @@
   color: var(--text-secondary);
   cursor: pointer;
   list-style: none;
-  font-family: var(--font-geist-mono), monospace;
+  font-family: var(--font-stack-mono);
 }
 
 .trace summary::-webkit-details-marker {
@@ -218,7 +218,7 @@ pre {
   overflow: auto;
   background: var(--surface-inset);
   color: var(--text-secondary);
-  font-family: var(--font-geist-mono), monospace;
+  font-family: var(--font-stack-mono);
   line-height: var(--leading-prose);
   white-space: pre-wrap;
 }
