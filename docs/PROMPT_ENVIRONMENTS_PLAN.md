@@ -1,6 +1,7 @@
 # Prompt environments
 
-**Status:** Proposal for review; no runtime implementation or contract approval.
+**Status:** Decision table accepted 2026-10-29. Format version allocation is
+still open (see [Format version](#format-version)); no runtime implementation.
 **Date:** 2026-10-29. **Inspected baseline:** `main` at `406cb03`.
 
 ## Outcome
@@ -43,9 +44,11 @@ evaluation suites — and has no nesting of its own.
 | [`run-kernel/types.ts`](../packages/core/src/run-kernel/types.ts) `ResolvedTemplateUse` | Stores `variableDefaults` and the effective `values` per use, so a trace already reproduces rendered content. | Cannot say which environment, or which layer, supplied a value. |
 | [`evaluation-suites.ts`](../packages/core/src/evaluation-suites.ts) | Case values bind to one template use's variable; variants are sparse execution overrides. | No way to vary shared context across a suite or a variant. |
 
-## Decisions to review
+## Decisions
 
-Per [AGENTS.md](../AGENTS.md), these are resolved before types change.
+Accepted as recommended on 2026-10-29. Per [AGENTS.md](../AGENTS.md), the
+remaining open contract item, [format version](#format-version), is resolved
+before types change.
 
 | Decision | Options and tradeoff | Recommendation |
 | --- | --- | --- |
@@ -60,7 +63,8 @@ Per [AGENTS.md](../AGENTS.md), these are resolved before types change.
 
 ## Proposed contracts
 
-These shapes are illustrative until the decisions above are accepted.
+Shapes are fixed in the contract slice; field names here may still be refined
+without changing the accepted decisions.
 
 ```ts
 interface ProjectEnvironment {
@@ -96,12 +100,55 @@ type TemplateValueSource =
   gains a per-variable source map. Nothing looks up the environment again after
   the run starts, so editing it never retargets an in-flight run. Experiment
   plans snapshot it the same way.
-- **Format.** New Project and RunTrace versions. The Project version must be
-  allocated alongside the staged v16 shared-project format in
-  [`shared-project.ts`](../packages/core/src/shared-project.ts): either the
-  environment collection joins that format, or the active format gains it under
-  a version that does not collide. Old readers reject the new formats
-  explicitly; old projects open with no environments and render as before.
+- **Selection ownership.** `defaults.environmentId` is the project's authored
+  launch default. The composer's current choice is session state, like the
+  composer's model, and is not written back into the project on every switch.
+
+### Limits
+
+Limits are counted in UTF-16 code units, like the
+[schema check limits](../packages/core/src/json-schema/limits.ts). They start
+conservative because raising a limit later is compatible and lowering one is
+not.
+
+| Limit | Value | When exceeded |
+| --- | --- | --- |
+| Environments per project | 50 | Project rejected on parse |
+| Entries per environment | 200 | Project rejected on parse |
+| Authored entry value | 65,536 | Project rejected on parse |
+| Resolved entry value | 150,000 | Resolution error; the run is refused in preflight |
+| Resolved environment, all entries | 1,000,000 | Resolution error; the run is refused in preflight |
+
+The two resolved limits exist because derived entries can grow exponentially:
+`a = "{{b}}{{b}}"`, `b = "{{c}}{{c}}"`, and so on. Resolution stops as soon as a
+limit is crossed instead of building the value first. Results are never
+truncated. Reference depth needs no separate limit: references are acyclic and
+there are at most 200 entries.
+
+### Format version
+
+Environments are a new top-level collection, so the project format needs a new
+version. The active project parser is strict, so an old build rejects an
+unknown field rather than dropping it. That stops data loss, but the old build
+reports a malformed file instead of a newer version. A version bump gives the
+explicit "newer version" refusal.
+
+The collision: [`shared-project.ts`](../packages/core/src/shared-project.ts)
+already claims 16 for the staged shared-assets format, which removes template
+drafts. The app and CLI do not use it yet, and its remaining integration work
+is unscheduled.
+
+| Option | Cost | Risk |
+| --- | --- | --- |
+| **A. Environments ship as active v16; the staged shared format becomes v17 and carries environments.** | Renumber the staged constant, its type, two tests, one example file, and the version references in the shared-assets design docs. Mechanical. | The shared-assets docs were reviewed against "v16"; the renumber must be one reviewed change. |
+| B. Environments join staged v16 and ship with the shared-assets migration. | No renumbering. | Environments wait on unrelated, unscheduled work: publication, recovery, and the workbench. |
+| C. Environments ship as active v17, skipping 16. | No renumbering. | Two "next" formats exist at once, and a v15 → v17 migration must later reconcile with a v16 that never shipped. |
+
+**Recommendation: A.** Environments are shared authored content, so they
+belong in the shared format either way. Option A puts them there without
+blocking on the migration. The renumber has no runtime effect because no app or
+CLI path reads the staged format. RunTrace has no collision: environments take
+v9.
 
 ## Feature owners and user experience
 
@@ -128,8 +175,9 @@ fixed `{ "input": string }` schema without changing its other decisions.
 Rough, code-inspection estimates for one developer familiar with the repo;
 not measured by a spike.
 
-1. **Contracts (about half a day).** Settle the decision table, numeric limits,
-   and version allocation against staged v16.
+1. **Contracts (about half a day).** Decision table and limits are settled.
+   Version allocation is open; then fix exact field names and the provenance
+   shape.
 2. **Core (1–2 days).** Environment module, resolution and cycle detection,
    precedence layer and provenance, snapshot in resolved input and plans,
    project and trace parsing/round trips, deletion rules.
@@ -147,7 +195,8 @@ actual wrong value.
 
 - **Core:** precedence across all five layers; unset versus explicit empty use
   values; derived entries in dependency order; cycle rejection; missing
-  references rendering visibly; resolved values not re-scanned; secret-like
+  references rendering visibly; resolved values not re-scanned; resolved-size
+  limits stopping exponential expansion without truncating; secret-like
   names rejected; snapshot independence from later edits; old project and
   trace compatibility; refused deletion.
 - **Browser:** a committed `tests/e2e/prompt-environments.spec.ts` whose
