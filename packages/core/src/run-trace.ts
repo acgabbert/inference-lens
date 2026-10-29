@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ownKeyRecord } from "./own-key-record.ts";
 
 import {
   DECISION_TRACE_ORDER_SENSITIVE_KEYS,
@@ -127,11 +128,11 @@ const resolvedTemplateUseBaseSchema = z.object({
   templateId: z.string().regex(/^template_.+/),
   templateRevisionId: z.string().regex(/^template-revision_.+/),
   templateName: z.string(),
-  variableDefaults: z.record(
+  variableDefaults: ownKeyRecord(
     z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/),
     z.string(),
   ),
-  values: z.record(
+  values: ownKeyRecord(
     z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/),
     z.string(),
   ),
@@ -185,7 +186,7 @@ const templateVariableNameSchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/);
 const sourcedResolvedTemplateUseSchema = resolvedTemplateUseBaseSchema
   .extend({
     messages: resolvedTemplateMessagesSchema,
-    valueSources: z.record(
+    valueSources: ownKeyRecord(
       templateVariableNameSchema,
       z.enum(["template-default", "environment", "authored-use", "run-override", "case"]),
     ),
@@ -208,7 +209,7 @@ const runEnvironmentSnapshotSchema = z
   .object({
     environmentId: z.string().regex(/^environment_.+/),
     name: z.string(),
-    consumed: z.record(templateVariableNameSchema, z.string()),
+    consumed: ownKeyRecord(templateVariableNameSchema, z.string()),
   })
   .strict()
   .superRefine((environment, context) => {

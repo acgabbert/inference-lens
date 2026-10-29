@@ -202,7 +202,8 @@ export function environmentIssues(
 export function resolveEnvironment(environment: ProjectEnvironment): ResolvedEnvironment {
   const entries = new Map(environment.entries.map((entry) => [entry.name, entry]));
   const graph = referenceGraph(environment);
-  const values: Record<string, string> = {};
+  // Every valid variable name, including __proto__, must be an own entry.
+  const values: Record<string, string> = Object.create(null);
   const diagnostics: EnvironmentDiagnostic[] = [];
   const visiting = new Set<string>();
   let total = 0;
@@ -274,10 +275,11 @@ export function resolveEnvironment(environment: ProjectEnvironment): ResolvedEnv
     if (stopped) break;
   }
   // Authored order reads better than resolution order in a preview.
-  const ordered: Record<string, string> = {};
-  for (const { name } of environment.entries) {
-    if (Object.hasOwn(values, name)) ordered[name] = values[name]!;
-  }
+  const ordered = Object.fromEntries(
+    environment.entries
+      .filter(({ name }) => Object.hasOwn(values, name))
+      .map(({ name }) => [name, values[name]!]),
+  );
   return { environmentId: environment.id, name: environment.name, values: ordered, diagnostics };
 }
 

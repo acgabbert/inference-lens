@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ownKeyRecord } from "./own-key-record.ts";
 import type { CheckDefinition } from "./checks.ts";
 import {
   authoredCheckDefinitionSchema,
@@ -672,7 +673,7 @@ const promptTemplateRevisionSchema = z
           .strict(),
       )
       .min(1) as unknown as z.ZodType<PromptTemplateMessages>,
-    variableDefaults: z.record(
+    variableDefaults: ownKeyRecord(
       z.string().regex(variableName, "Invalid template variable name."),
       z.string(),
     ),
@@ -694,7 +695,7 @@ const promptTemplateDraftSchema = z
           .strict(),
       )
       .min(1) as unknown as z.ZodType<PromptTemplateMessages>,
-    variableDefaults: z.record(
+    variableDefaults: ownKeyRecord(
       z.string().regex(variableName, "Invalid template variable name."),
       z.string(),
     ),
@@ -730,7 +731,7 @@ const promptTemplateUseSchema: z.ZodType<PromptTemplateUse> = z
     id: entityId("template-use"),
     templateId: entityId("template"),
     templateRevisionId: entityId("template-revision"),
-    values: z.record(
+    values: ownKeyRecord(
       z.string().regex(variableName, "Invalid template variable name."),
       z.string(),
     ),
@@ -2396,8 +2397,8 @@ function layeredTemplateValues(
   referenced: ReadonlySet<string>,
   layers: ReadonlyArray<readonly [TemplateValueSource, Readonly<Record<string, string>> | undefined]>,
 ): { values: Record<string, string>; valueSources: Record<string, TemplateValueSource> } {
-  const values: Record<string, string> = {};
-  const valueSources: Record<string, TemplateValueSource> = {};
+  const values: Record<string, string> = Object.create(null);
+  const valueSources: Record<string, TemplateValueSource> = Object.create(null);
   for (const [source, layer] of layers) {
     for (const [name, value] of Object.entries(layer ?? {})) {
       if (source === "environment" && !referenced.has(name)) continue;
@@ -2405,7 +2406,7 @@ function layeredTemplateValues(
       valueSources[name] = source;
     }
   }
-  return { values, valueSources };
+  return { values: { ...values }, valueSources: { ...valueSources } };
 }
 
 /** Project-owned template data required to resolve one conversation revision. */
@@ -2418,7 +2419,7 @@ export function resolveProjectRevision(
   { environment, overrideSource = "run-override" }: ProjectRevisionResolutionOptions = {},
 ): ResolvedProjectRevision {
   validateTemplateRunOverrides(revision, runOverrides);
-  const consumed: Record<string, string> = {};
+  const consumed: Record<string, string> = Object.create(null);
   const templates = new Map(
     project.promptTemplates.map((template) => [template.id, template]),
   );
@@ -2498,7 +2499,7 @@ export function resolveProjectRevision(
     templateResolutions,
     diagnostics,
     ...(environment
-      ? { environment: { environmentId: environment.environmentId, name: environment.name, consumed } }
+      ? { environment: { environmentId: environment.environmentId, name: environment.name, consumed: { ...consumed } } }
       : {}),
   };
 }

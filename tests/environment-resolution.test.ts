@@ -212,3 +212,26 @@ test("a run of the project's saved defaults renders against the default environm
   const part = resolved.input.messages.at(-1)!.content[0]!;
   assert.equal(part.type === "text" && part.text, "default-0|env-1|env-2|use-3||use-5|<env-1>");
 });
+
+test("prototype-like variables survive environment rendering and provenance", () => {
+  let source = createProjectFile({
+    name: "Prototype names",
+    request: { provider: "openai-compatible", endpoint: "https://api.example.com/v1", model: "model", messages: [] },
+  });
+  source = createPromptTemplate(source, {
+    name: "Customer", messages: [{ role: "user", content: "{{__proto__}}" }],
+    idSuffix: "prototype", revisionIdSuffix: "prototype",
+  });
+  source = insertPromptTemplateUse(source, {
+    conversationRevisionId: source.defaults.conversationRevisionId,
+    templateId: "template_prototype", idSuffix: "prototype", outputMessageIdSuffixes: ["prototype"],
+  });
+  const prepared = prepareProjectRevisionRun(source, revision(source), {}, {
+    environment: { id: "environment_prototype", name: "Prototype", entries: [{ name: "__proto__", value: "Acme" }] },
+  });
+  assert.ok(prepared.ok, JSON.stringify(prepared));
+  assert.deepEqual(prepared.messages[0]!.content, [{ type: "text", text: "Acme" }]);
+  assert.deepEqual(prepared.templateResolutions[0]!.values, { ["__proto__"]: "Acme" });
+  assert.deepEqual(prepared.templateResolutions[0]!.valueSources, { ["__proto__"]: "environment" });
+  assert.deepEqual(prepared.environment!.consumed, { ["__proto__"]: "Acme" });
+});

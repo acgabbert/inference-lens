@@ -150,3 +150,34 @@ test("a version 8 trace cannot carry an environment", () => {
 
   assert.throws(() => parseRunTraceFile({ ...value, schemaVersion: 8 }), /schema version does not define/);
 });
+
+test("prototype-like environment values survive trace and plan serialization", async () => {
+  const { createRepeatedExperimentPlan } = await import("../packages/runner/src/repeated-start.ts");
+  const { parseExperimentPlanJson, serializeExperimentPlan } = await import("../packages/core/src/experiment.ts");
+  const use: ResolvedTemplateUse = {
+    ...resolution,
+    messages: [{ role: "user", content: "{{greeting}}, {{__proto__}}" }],
+    values: { greeting: "Hello", ["__proto__"]: "Acme" },
+    valueSources: { greeting: "template-default", ["__proto__"]: "environment" },
+  };
+  const snapshot = { ...environment, consumed: { ["__proto__"]: "Acme" } };
+  const original = trace([use], snapshot);
+  const reopened = parseRunTraceJson(serializeRunTrace(original));
+  assert.deepEqual(reopened.input.environment, snapshot);
+  assert.deepEqual(reopened.input.templateResolutions, [use]);
+  const plan = createRepeatedExperimentPlan(original.input, 1, 1);
+  const reopenedPlan = parseExperimentPlanJson(serializeExperimentPlan(plan));
+  assert.equal(reopenedPlan.kind, "repeated-request");
+  if (reopenedPlan.kind !== "repeated-request") return;
+  assert.deepEqual(reopenedPlan.commonInput.environment, snapshot);
+  assert.deepEqual(reopenedPlan.commonInput.templateResolutions, [use]);
+});
+
+
+test("prototype-like environment values still require strings at the artifact boundary", () => {
+  const value = withInput(trace([resolution], environment), (input) => {
+    const snapshot = input.environment as { consumed: Record<string, unknown> };
+    Object.defineProperty(snapshot.consumed, "__proto__", { value: 42, enumerable: true });
+  });
+  assert.throws(() => parseRunTraceFile(value), /__proto__/);
+});

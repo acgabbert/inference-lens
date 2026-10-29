@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ownKeyRecord } from "./own-key-record.ts";
 
 import {
   CHECK_SCHEMA_VERSION,
@@ -635,8 +636,8 @@ const resolvedTemplateUseBaseSchema = z.object({
     templateId: entityId("template"),
     templateRevisionId: entityId("template-revision"),
     templateName: z.string(),
-    variableDefaults: z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), z.string()),
-    values: z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), z.string()),
+    variableDefaults: ownKeyRecord(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), z.string()),
+    values: ownKeyRecord(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), z.string()),
     outputMessageIds: z.array(entityId("message")).min(1),
   });
 
@@ -666,7 +667,7 @@ const sourcedResolvedTemplateUseSchema: z.ZodType<ResolvedTemplateUse> =
   resolvedTemplateUseBaseSchema
     .extend({
       messages: templateMessagesSchema,
-      valueSources: z.record(
+      valueSources: ownKeyRecord(
         templateVariableNameSchema,
         z.enum(["template-default", "environment", "authored-use", "run-override", "case"]),
       ).optional(),
@@ -688,7 +689,7 @@ const runEnvironmentSnapshotSchema = z
   .object({
     environmentId: entityId("environment"),
     name: z.string(),
-    consumed: z.record(templateVariableNameSchema, z.string()),
+    consumed: ownKeyRecord(templateVariableNameSchema, z.string()),
   })
   .strict();
 
@@ -1257,8 +1258,7 @@ function assertPlanReferences(plan: ExperimentPlan): void {
 function environmentInputIssue(
   input: Pick<ResolvedRunInput, "templateResolutions" | "environment">,
 ): string | undefined {
-  if (!input.environment) return undefined;
-  if (input.templateResolutions.some(({ valueSources }) => !valueSources)) {
+  if (input.environment && input.templateResolutions.some(({ valueSources }) => !valueSources)) {
     return "An input that records an environment must record valueSources for every template use.";
   }
   return environmentProvenanceIssue(input);

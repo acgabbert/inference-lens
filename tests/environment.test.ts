@@ -209,3 +209,18 @@ test("a limit diagnostic blocks every run", () => {
     ["environment-limit-exceeded"],
   );
 });
+
+test("prototype-like entry names resolve as ordinary own properties", () => {
+  const source = environment([
+    ["customer", "{{__proto__}} / {{constructor}} / {{toString}}"],
+    ["__proto__", "Acme"],
+    ["constructor", "Builder"],
+    ["toString", "Text"],
+  ]);
+  assert.deepEqual(environmentIssues([source]), []);
+  const resolved = resolveEnvironment(source);
+  assert.equal(resolved.values.customer, "Acme / Builder / Text");
+  assert.equal(Object.hasOwn(resolved.values, "__proto__"), true);
+  assert.equal(resolved.values.__proto__, "Acme");
+  assert.deepEqual(resolved.diagnostics, []);
+});

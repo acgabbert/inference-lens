@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { createRepeatedExperimentPlan } from "../packages/runner/src/repeated-start.ts";
 import type { ProjectEnvironment } from "../packages/core/src/environment.ts";
 import { createEvaluationExperimentPlan, EvaluationSetupError } from "../packages/core/src/evaluation-execution.ts";
 import { evaluationSuitePreflight } from "../packages/core/src/evaluation-suites.ts";
@@ -254,4 +255,23 @@ test("a version 6 plan gives every variant exactly one input and leaves none unu
   const duplicate = structuredClone(value);
   duplicate.suite.cases[0].inputs.push(structuredClone(duplicate.suite.cases[0].inputs[0]));
   assert.throws(() => parseExperimentPlanFile(duplicate), /more than one input/);
+});
+
+test("repeated plans reject environment-sourced values whose snapshot is missing", () => {
+  const evaluation = plan(project([variants[0]!], staging.id));
+  const input = materializeExperimentCellInput(evaluation, evaluation.cells[0]!.cellId);
+  // Evaluation materialization also carries configuration display metadata.
+  Reflect.deleteProperty(input, "variantId");
+  Reflect.deleteProperty(input, "name");
+  const repeated = createRepeatedExperimentPlan(input, 1, 1);
+  assert.doesNotThrow(() => parseExperimentPlanFile(repeated));
+  delete repeated.commonInput.environment;
+  assert.throws(() => parseExperimentPlanFile(repeated), /takes "region" from an environment the run did not record/);
+});
+
+test("evaluation plans reject environment sources without their snapshot", () => {
+  const evaluation = plan(project([variants[0]!], staging.id));
+  delete evaluation.suite.variants[0]!.environmentId;
+  delete evaluation.suite.cases[0]!.inputs[0]!.environment;
+  assert.throws(() => parseExperimentPlanFile(evaluation), /takes "region" from an environment the run did not record/);
 });
