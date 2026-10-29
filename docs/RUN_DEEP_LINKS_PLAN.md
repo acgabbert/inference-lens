@@ -314,7 +314,8 @@ The [personal-workbench plan](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md),
 [migration-completion proposal](SHARED_ASSETS_MIGRATION_COMPLETION_DESIGN.md)
 were reviewed on October 28 for effects on this plan.
 
-- **The reference survives v15 to v16.** Level 2 keeps traces outside both
+- **The reference survives the Level 2 migration** (staged v17, renumbered
+  from v16 on October 29). Level 2 keeps traces outside both
   `project.json` and `.workbench/`, and links identify only project ID and run
   ID. Never add a revision, draft, selection or workbench record ID to
   `RunReferenceV1`. Those become personal or change location under Level 2.
