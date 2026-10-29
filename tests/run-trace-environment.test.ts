@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { parseExperimentPlanJson, serializeExperimentPlan } from "../packages/core/src/experiment.ts";
 import { RunCoordinator } from "../packages/core/src/run-kernel/coordinator.ts";
 import { createRunTrace } from "../packages/core/src/run-kernel/reducer.ts";
 import { createResolvedRunInput } from "../packages/core/src/run-kernel/run-execution.ts";
@@ -16,6 +17,7 @@ import {
   RUN_TRACE_SCHEMA_VERSION,
   serializeRunTrace,
 } from "../packages/core/src/run-trace.ts";
+import { createRepeatedExperimentPlan } from "../packages/runner/src/repeated-start.ts";
 
 const resolution: ResolvedTemplateUse = {
   templateUseId: "template-use_greeting",
@@ -151,9 +153,7 @@ test("a version 8 trace cannot carry an environment", () => {
   assert.throws(() => parseRunTraceFile({ ...value, schemaVersion: 8 }), /schema version does not define/);
 });
 
-test("prototype-like environment values survive trace and plan serialization", async () => {
-  const { createRepeatedExperimentPlan } = await import("../packages/runner/src/repeated-start.ts");
-  const { parseExperimentPlanJson, serializeExperimentPlan } = await import("../packages/core/src/experiment.ts");
+test("prototype-like environment values survive trace and plan serialization", () => {
   const use: ResolvedTemplateUse = {
     ...resolution,
     messages: [{ role: "user", content: "{{greeting}}, {{__proto__}}" }],
@@ -172,7 +172,6 @@ test("prototype-like environment values survive trace and plan serialization", a
   assert.deepEqual(reopenedPlan.commonInput.environment, snapshot);
   assert.deepEqual(reopenedPlan.commonInput.templateResolutions, [use]);
 });
-
 
 test("prototype-like environment values still require strings at the artifact boundary", () => {
   const value = withInput(trace([resolution], environment), (input) => {
