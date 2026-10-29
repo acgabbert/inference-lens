@@ -1,4 +1,5 @@
 import type { RunState } from "./run-kernel/types.ts";
+import { isTerminalRunStatus } from "./run-kernel/types.ts";
 import { runMetrics } from "./run-metrics.ts";
 
 export type RunInspectionPhase = "active" | "terminal";
@@ -68,10 +69,7 @@ export function runInspectionSummary(
   if (!state || state.status.kind === "not_started") return null;
 
   const metrics = runMetrics(state);
-  const terminal =
-    state.status.kind === "completed" ||
-    state.status.kind === "cancelled" ||
-    state.status.kind === "failed";
+  const terminal = isTerminalRunStatus(state.status);
 
   const inFlight =
     state.status.kind === "starting" || state.status.kind === "running";

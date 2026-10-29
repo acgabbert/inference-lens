@@ -15,6 +15,7 @@ import type {
   RunId,
   TerminalRunStatus,
 } from "./run-kernel/types.ts";
+import { isTerminalRunStatus } from "./run-kernel/types.ts";
 import { stableJsonValue } from "./stable-json.ts";
 
 /**
@@ -333,7 +334,7 @@ export function parseDecisionRunTrace(value: unknown): DecisionRunTrace {
 export function decisionRunTrace(run: DecisionRun): DecisionRunTrace {
   const { status, startedAt, endedAt } = run;
   if (
-    (status.kind !== "completed" && status.kind !== "failed" && status.kind !== "cancelled") ||
+    !isTerminalRunStatus(status) ||
     startedAt === undefined ||
     endedAt === undefined
   ) {

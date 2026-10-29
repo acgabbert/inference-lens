@@ -936,10 +936,7 @@ function HomeContent() {
       onConfirm: clear,
     });
   }
-  const runReachedTerminalStatus = Boolean(
-    runState &&
-      ["completed", "cancelled", "failed"].includes(runState.status.kind),
-  );
+  const runReachedTerminalStatus = isTerminalRunState(runState);
   // Opening a saved batch replaces the session's batch, which would strand one
   // that is still running. Ordinary evidence stays browsable throughout.
   const batchRunning = repeatedExperiment.isRunning || evaluationExecution.isRunning;

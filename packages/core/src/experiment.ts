@@ -49,7 +49,7 @@ import type {
   ToolDefinition,
   PromptTemplateUseId,
 } from "./run-kernel/types.ts";
-import { PROVIDER_WIRE_PROTOCOLS } from "./run-kernel/types.ts";
+import { isTerminalRunStatus, PROVIDER_WIRE_PROTOCOLS } from "./run-kernel/types.ts";
 
 /**
  * Plans moved to Version 5 to add decision evaluations (D47). A Version 4 plan
@@ -1603,9 +1603,7 @@ export interface RepetitionEvidence {
 }
 
 function terminalKind(status: RunState["status"] | DecisionRun["status"]): RepetitionEvidence["status"] {
-  return status.kind === "completed" || status.kind === "failed" || status.kind === "cancelled"
-    ? status.kind
-    : "pending";
+  return isTerminalRunStatus(status) ? status.kind : "pending";
 }
 
 export function repetitionEvidence(run: RunState | DecisionRun): RepetitionEvidence {

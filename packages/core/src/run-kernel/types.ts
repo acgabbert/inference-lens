@@ -643,6 +643,18 @@ export type TerminalRunStatus =
   | { kind: "cancelled"; cancelledAt: string; reason?: string }
   | { kind: "failed"; failedAt: string; error: RunError };
 
+/** The one list of terminal statuses; lint rejects copies of it elsewhere. */
+export function isTerminalRunStatusKind(kind: string): kind is TerminalRunStatus["kind"] {
+  return kind === "completed" || kind === "cancelled" || kind === "failed";
+}
+
+/** Narrows a chat or decision run status to its terminal members. */
+export function isTerminalRunStatus<Status extends { kind: string }>(
+  status: Status,
+): status is Extract<Status, { kind: TerminalRunStatus["kind"] }> {
+  return isTerminalRunStatusKind(status.kind);
+}
+
 export type RunStatus =
   | { kind: "not_started" }
   | { kind: "starting" }

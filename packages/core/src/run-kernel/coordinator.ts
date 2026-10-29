@@ -18,19 +18,11 @@ import type {
   ToolExecutorIdentity,
   ToolResult,
 } from "./types.ts";
-import { createEntityId } from "./types.ts";
+import { createEntityId, isTerminalRunStatus } from "./types.ts";
 
 export interface TurnCommand {
   events: RunEvent[];
   execution: ProviderExecution;
-}
-
-function terminal(state: RunState): boolean {
-  return (
-    state.status.kind === "completed" ||
-    state.status.kind === "cancelled" ||
-    state.status.kind === "failed"
-  );
 }
 
 function textContent(text: string) {
@@ -225,7 +217,7 @@ export class RunCoordinator {
 
   finishTurnStream(): RunEvent[] {
     this.activeExecution = undefined;
-    if (terminal(this.stateValue)) return [];
+    if (isTerminalRunStatus(this.stateValue.status)) return [];
     if (
       this.stateValue.status.kind === "paused" &&
       this.stateValue.status.reason === "attempt_failed"
@@ -353,7 +345,7 @@ export class RunCoordinator {
   }
 
   fail(error: RunError): RunEvent {
-    if (terminal(this.stateValue)) {
+    if (isTerminalRunStatus(this.stateValue.status)) {
       throw new Error("This run is already terminal.");
     }
     this.activeExecution = undefined;
@@ -363,7 +355,7 @@ export class RunCoordinator {
   }
 
   cancel(reason?: string): RunEvent {
-    if (terminal(this.stateValue)) {
+    if (isTerminalRunStatus(this.stateValue.status)) {
       throw new Error("This run is already terminal.");
     }
     this.activeExecution = undefined;

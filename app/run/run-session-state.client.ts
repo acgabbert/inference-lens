@@ -5,6 +5,7 @@ import { stableJsonValue } from "../../packages/core/src/stable-json.ts";
 import {
   createEntityId,
   createSingleTurnRunExecution,
+  isTerminalRunStatus,
 } from "../../packages/core/src/run-kernel/index.ts";
 import type {
   ProviderTurnInput,
@@ -46,9 +47,7 @@ export type ToolResultDraft = {
 };
 
 export function isTerminalRunState(state: RunState | DecisionRun | null): boolean {
-  return Boolean(
-    state && ["completed", "cancelled", "failed"].includes(state.status.kind),
-  );
+  return Boolean(state && isTerminalRunStatus(state.status));
 }
 
 export function isRetryableRunState(state: RunState | null): boolean {

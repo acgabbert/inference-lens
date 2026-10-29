@@ -8,6 +8,7 @@ import type {
   ToolCall,
   TranscriptEntry,
 } from "../packages/core/src/run-kernel";
+import { isTerminalRunStatus } from "../packages/core/src/run-kernel";
 import { CopySourceButton } from "./copy-source-button.client";
 import { MarkdownView } from "./markdown-view.client";
 import { PaneTabs } from "./workbench-shell.client";
@@ -237,9 +238,7 @@ export function ResponseOutput({
     runState.status.reason === "attempt_failed"
       ? runState.status
       : undefined;
-  const terminal = Boolean(
-    runState && ["completed", "cancelled", "failed"].includes(runState.status.kind),
-  );
+  const terminal = Boolean(runState && isTerminalRunStatus(runState.status));
   return (
     <>
       <WorkbenchPanel

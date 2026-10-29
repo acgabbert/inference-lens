@@ -294,7 +294,7 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
       values: Object.fromEntries(Object.entries(draft.values).filter(([key]) => discovery.variables.includes(key))),
     };
   }
-  const finished = Boolean(run && ["completed", "cancelled", "failed"].includes(run.status.kind));
+  const finished = isTerminalRunState(run);
   const compose: ComposeKindHandle = {
     executing: session.executing,
     primary: session.executing
