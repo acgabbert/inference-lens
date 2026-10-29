@@ -58,7 +58,7 @@ function messageSetInput(): ResolvedRunInput {
     requestTools: [],
     capabilities: OPENAI_COMPATIBLE_CAPABILITIES,
     profileName: "Example profile",
-    templateRunOverrides: {},
+    resolutionContext: {},
   });
   if (!prepared.ok) throw new Error(prepared.message);
   return prepared.input;

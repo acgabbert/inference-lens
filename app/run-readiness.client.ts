@@ -7,6 +7,7 @@ import { sameChatCompletionsTarget } from "../packages/core/src/openai-compatibl
 import { protocolLabel } from "../packages/core/src/provider-protocols.ts";
 import type {
   ConversationMessage,
+  EnvironmentId,
   ProviderWireProtocol,
 } from "../packages/core/src/run-kernel/types.ts";
 
@@ -18,7 +19,8 @@ export type RunReadinessActionKind =
   | "edit-template"
   | "edit-message"
   | "review-templates"
-  | "review-tools";
+  | "review-tools"
+  | "edit-environment";
 
 /** A serializable UI command; policy names a target but never drives the DOM. */
 export type ReadinessDestination =
@@ -50,6 +52,12 @@ export type ReadinessDestination =
   | {
       surface: "prompts";
       control: "prompt-library";
+    }
+  | {
+      surface: "environments";
+      environmentId: EnvironmentId;
+      /** The entry to focus; absent for a limit on the environment as a whole. */
+      entryName?: string;
     };
 
 export interface RunReadinessAction {
@@ -116,6 +124,8 @@ export function runEmptyStatePresentation(
         : action?.destination.surface === "request" &&
             action.destination.control === "model"
           ? "Choose a model"
+          : action?.destination.surface === "environments"
+            ? "Finish the environment entries"
           : action?.destination.surface === "request" &&
               (action.destination.control === "template-use" ||
                 action.destination.control === "template-variable")
@@ -169,6 +179,16 @@ export interface RunReadinessInput {
   templateTargets?: RunReadinessTemplateTarget[];
   /** The last user message, when it carries no text; see `emptyFinalUserMessageId`. */
   emptyUserMessageId?: string;
+  /** The first environment diagnostic that would refuse this run, and how many there are. */
+  environmentIssue?: RunReadinessEnvironmentIssue;
+}
+
+export interface RunReadinessEnvironmentIssue {
+  environmentId: EnvironmentId;
+  environmentName: string;
+  entryName?: string;
+  message: string;
+  count: number;
 }
 
 /**
@@ -237,6 +257,7 @@ export function runReadiness(
     templateIssues,
     templateTargets = [],
     emptyUserMessageId,
+    environmentIssue,
   } = input;
   const profile = profileLabel(activeProfileName);
 
@@ -380,6 +401,33 @@ export function runReadiness(
             surface: "request",
             tab: "messages",
             control: "template-use",
+          },
+          primary: true,
+        },
+      ],
+    };
+  }
+
+  if (environmentIssue) {
+    const one = environmentIssue.count === 1;
+    return {
+      blocked: true,
+      headline: `Environment “${environmentIssue.environmentName}” has ${
+        one ? "an unfinished entry" : `${environmentIssue.count} unfinished entries`
+      } this run uses`,
+      detail: environmentIssue.message,
+      explanation:
+        "An entry the prompts take, or one it is built from, would otherwise reach the model with its unresolved reference in it. Entries no prompt uses do not block a run.",
+      summary: `Finish environment “${environmentIssue.environmentName}” before running.`,
+      facts: [],
+      actions: [
+        {
+          kind: "edit-environment",
+          label: "Edit the environment",
+          destination: {
+            surface: "environments",
+            environmentId: environmentIssue.environmentId,
+            ...(environmentIssue.entryName ? { entryName: environmentIssue.entryName } : {}),
           },
           primary: true,
         },

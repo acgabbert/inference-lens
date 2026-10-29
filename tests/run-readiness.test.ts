@@ -478,3 +478,38 @@ test("the same recommended model on different connections is not a model conflic
   });
   assert.equal(readiness, undefined);
 });
+
+test("an unfinished environment entry a prompt uses refuses the run and opens it", () => {
+  const readiness = runReadiness({
+    ...ready,
+    environmentIssue: {
+      environmentId: "environment_staging",
+      environmentName: "Staging",
+      entryName: "greeting",
+      message: 'Entry "greeting" references "customer", which this environment does not define.',
+      count: 2,
+    },
+  });
+  assert.equal(readiness?.blocked, true);
+  assert.equal(readiness?.headline, "Environment “Staging” has 2 unfinished entries this run uses");
+  assert.deepEqual(readiness?.actions[0]?.destination, {
+    surface: "environments",
+    environmentId: "environment_staging",
+    entryName: "greeting",
+  });
+  assert.equal(runEmptyStatePresentation(readiness).headline, "Finish the environment entries");
+});
+
+test("an environment issue waits behind a missing connection mapping", () => {
+  const readiness = runReadiness({
+    ...ready,
+    connectionMapped: false,
+    environmentIssue: {
+      environmentId: "environment_staging",
+      environmentName: "Staging",
+      message: "Too large.",
+      count: 1,
+    },
+  });
+  assert.match(readiness?.headline ?? "", /not connected/);
+});

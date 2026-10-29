@@ -987,7 +987,7 @@ test("resolves pinned single and multi-message prompts with stable output IDs", 
   const validated = parseProjectFile(project);
   assert.deepEqual(
     projectDraft(validated, {
-      "template-use_prompt": { audience: "" },
+      runOverrides: { "template-use_prompt": { audience: "" } },
     }).messages,
     [
       {
@@ -1500,7 +1500,7 @@ test("resolves an unfilled variable into a diagnostic instead of a failure", () 
 
   // A run override supplies the value without changing the saved document.
   assert.deepEqual(
-    projectDraft(validated, { "template-use_open": { topic: "migrations" } })
+    projectDraft(validated, { runOverrides: { "template-use_open": { topic: "migrations" } } })
       .messages[0]?.content,
     [{ type: "text", text: "Explain migrations." }],
   );
@@ -2148,7 +2148,7 @@ test("branches a template-backed conversation whose messages came off run state"
 test("branches with the run overrides the branched messages were produced with", () => {
   const validated = templateBranchProject();
   const runOverrides = { "template-use_pair": { topic: "overridden" } };
-  const overridden = projectDraft(validated, runOverrides).messages;
+  const overridden = projectDraft(validated, { runOverrides }).messages;
   assert.equal(
     overridden[0]?.content[0]?.type === "text" &&
       overridden[0].content[0].text,
@@ -2171,7 +2171,7 @@ test("branches with the run overrides the branched messages were produced with",
     conversationId: validated.conversations[0]!.id,
     parentRevisionId: validated.conversationRevisions[0]!.id,
     messages: overridden,
-    runOverrides,
+    resolutionContext: { runOverrides },
     idSuffix: "child",
     createdAt: "2026-07-26T12:01:00.000Z",
   });

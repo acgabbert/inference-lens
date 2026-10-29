@@ -7,8 +7,9 @@ import {
 import type {
   ProjectFile,
   ProjectTemplateDiagnostic,
-  TemplateRunOverrides,
+  TemplateResolutionContext,
 } from "../../packages/core/src/project.ts";
+import type { EnvironmentDiagnostic } from "../../packages/core/src/environment.ts";
 import { createEntityId, createResolvedRunInput } from "../../packages/core/src/run-kernel/index.ts";
 import type {
   ConversationId,
@@ -37,7 +38,8 @@ export interface PrepareWorkbenchRunInput {
   capabilities: ProviderCapabilities;
   profileName: string;
   branchContext?: WorkbenchBranchContext;
-  templateRunOverrides: TemplateRunOverrides;
+  /** What the composer rendered `request.messages` with. */
+  resolutionContext: TemplateResolutionContext;
   adHocConversationId?: ConversationId;
 }
 
@@ -65,6 +67,17 @@ function templateRunErrorMessage(
   if (!first) return "Resolve the template diagnostics before running.";
   const remaining = diagnostics.length - 1;
   return `Cannot run template use "${first.templateUseId}": ${first.diagnostic.message}${
+    remaining > 0 ? ` (${remaining} more ${remaining === 1 ? "issue" : "issues"})` : ""
+  }`;
+}
+
+function environmentRunErrorMessage(
+  environmentName: string,
+  diagnostics: EnvironmentDiagnostic[],
+): string {
+  const [first] = diagnostics;
+  const remaining = diagnostics.length - 1;
+  return `Cannot use environment "${environmentName}": ${first?.message ?? "resolve its entries first."}${
     remaining > 0 ? ` (${remaining} more ${remaining === 1 ? "issue" : "issues"})` : ""
   }`;
 }
@@ -141,7 +154,7 @@ export function prepareWorkbenchRun(
           conversationId: parent.conversationId,
           parentRevisionId: parent.id,
           messages: snapshots.request.messages,
-          runOverrides: snapshots.templateRunOverrides,
+          resolutionContext: snapshots.resolutionContext,
         });
       } catch (error) {
         return {
@@ -184,6 +197,7 @@ export function prepareWorkbenchRun(
 
   let request = snapshots.request;
   let templateResolutions: ResolvedRunInput["templateResolutions"] = [];
+  let environment: ResolvedRunInput["environment"];
   if (
     projectForRun &&
     identity.conversationRevisionId === projectForRun.defaults.conversationRevisionId
@@ -199,7 +213,8 @@ export function prepareWorkbenchRun(
       prepared = prepareProjectRevisionRun(
         projectForRun,
         revision,
-        snapshots.templateRunOverrides,
+        snapshots.resolutionContext.runOverrides,
+        { environment: snapshots.resolutionContext.environment },
       );
     } catch (error) {
       return {
@@ -208,7 +223,15 @@ export function prepareWorkbenchRun(
       };
     }
     if (!prepared.ok) {
-      return { ok: false, message: templateRunErrorMessage(prepared.diagnostics) };
+      return {
+        ok: false,
+        message: prepared.diagnostics.length === 0 && prepared.environmentDiagnostics
+          ? environmentRunErrorMessage(
+              snapshots.resolutionContext.environment?.name ?? "",
+              prepared.environmentDiagnostics,
+            )
+          : templateRunErrorMessage(prepared.diagnostics),
+      };
     }
     const hasTemplateUses = revision.items.some((item) => item.kind === "template-use");
     if (hasTemplateUses && !sameConversationMessages(request.messages, prepared.messages)) {
@@ -219,11 +242,15 @@ export function prepareWorkbenchRun(
     }
     if (hasTemplateUses) request = { ...request, messages: prepared.messages };
     templateResolutions = prepared.templateResolutions;
+    environment = prepared.environment;
   }
 
   return {
     ok: true,
-    input: createResolvedRunInput(request, identity, selectedTools, templateResolutions),
+    input: {
+      ...createResolvedRunInput(request, identity, selectedTools, templateResolutions),
+      ...(environment ? { environment } : {}),
+    },
     ...(projectMutation ? { projectMutation } : {}),
     ...(branchedFrom ? { branchedFrom } : {}),
     ...(projectForRun ? { executedRevisionId: identity.conversationRevisionId } : {}),

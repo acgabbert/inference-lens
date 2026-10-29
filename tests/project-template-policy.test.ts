@@ -30,7 +30,7 @@ test("branches on the first template edit after an executed revision", () => {
   const result = projectForTemplateMutation({
     project: source,
     executedRevisionIds: new Set([sourceRevision]),
-    runOverrides: {},
+    resolutionContext: {},
   });
 
   assert.notEqual(result.revisionId, sourceRevision);
@@ -49,7 +49,7 @@ test("updates the current authored revision before it has executed", () => {
   const result = projectForTemplateMutation({
     project: source,
     executedRevisionIds: new Set(),
-    runOverrides: {},
+    resolutionContext: {},
   });
 
   assert.equal(result.project, source);

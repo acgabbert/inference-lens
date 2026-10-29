@@ -11,6 +11,7 @@ import {
 import type {
   ProjectDraft,
   ProjectFile,
+  TemplateResolutionContext,
   UpdateProjectDraft,
 } from "../packages/core/src/project.ts";
 import {
@@ -213,6 +214,11 @@ export function useProjectWorkspace(input: {
   createProject(): ProjectFile;
   currentDraft(): UpdateProjectDraft;
   onApplyDraft(draft: ProjectDraft, projectId: ProjectFile["projectId"], adoption: ProjectDocumentAdoption): void;
+  /**
+   * What an arriving document's draft renders with. The environment owner
+   * settles its selection for the document here, before the draft exists.
+   */
+  resolutionContextForAdoption(project: ProjectFile, adoption: ProjectDocumentAdoption): TemplateResolutionContext;
   /**
    * Writes the decision editor's draft into a document being saved (D42). The
    * decision feature owns its draft, as the chat request owns `currentDraft`.
@@ -734,7 +740,8 @@ export function useProjectWorkspace(input: {
     profileId?: string,
     options?: { keepTabRole: true },
   ): void {
-    const draft = projectDraft(project);
+    const adoption = options?.keepTabRole ? "refresh" : "replace";
+    const draft = projectDraft(project, input.resolutionContextForAdoption(project, adoption));
     const baseRequirementId = project.defaults.target.connectionRequirementId;
     const resolvedMappings = profileId
       ? { ...storedMappedProfiles(project), [baseRequirementId]: profileId }
@@ -752,7 +759,6 @@ export function useProjectWorkspace(input: {
     setProjectAdoption((current) => current + 1);
     setProjectFile(project);
     setCurrentWorkspace(workspace, project.projectId, options);
-    const adoption = options?.keepTabRole ? "refresh" : "replace";
     onApplyDraft(draft, project.projectId, adoption);
     onApplyDecisionRequest(project, adoption);
     if (profileId && resolvedProfile) {

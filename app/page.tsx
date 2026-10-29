@@ -117,6 +117,7 @@ import { RunsMode } from "./modes/runs-mode.client";
 import { PromptsMode } from "./modes/prompts-mode.client";
 import { usePromptNavigation } from "./templates/use-prompt-navigation.client";
 import { templateReadinessInputs, templateRequestPreview } from "./templates/template-run-view";
+import { useProjectEnvironments } from "./environments/use-project-environments.client";
 import { useToasts } from "./notifications/use-toasts.client";
 import { ToastRegion } from "./notifications/toast-region.client";
 import { AppBanner } from "./notifications/app-banner.client";
@@ -280,6 +281,11 @@ function HomeContent() {
     },
     // The decision owner is declared below; like `pendingBranch` above, it is
     // reached only from project commands and saves, never during render.
+    resolutionContextForAdoption(document, adoption) {
+      const environmentId = projectEnvironments.adopt(document, adoption);
+      const environment = document.environments.find(({ id }) => id === environmentId);
+      return environment ? { environment } : {};
+    },
     withDecisionDraft(document) { return decision.project.fold(document); },
     getUnsavedDraftReason() { return decision.project.saveBlockedReason; },
     onApplyDecisionRequest(document, adoption) {
@@ -545,6 +551,12 @@ function HomeContent() {
       : project.materializeProject();
   }
 
+  const projectEnvironments = useProjectEnvironments({
+    projectFile,
+    ensureProjectDocument,
+    applyEnvironment: (environmentId, document) =>
+      projectTemplates.applyEnvironment(environmentId, document),
+  });
   const projectTemplates = useProjectTemplates({
     projectFile,
     projectDirty,
@@ -555,6 +567,7 @@ function HomeContent() {
     toolMocks,
     enabledToolIds,
     branchParentRevisionId: pendingBranch.pending?.parentConversationRevisionId,
+    ...(projectEnvironments.selectedId ? { environmentId: projectEnvironments.selectedId } : {}),
     ensureProjectDocument,
     adoptProjectMutation: project.adoptProjectMutation,
     replaceProjectDraft,
@@ -793,7 +806,7 @@ function HomeContent() {
       requestTools,
       capabilities: requestSettings.capabilities,
       profileName: requestSettings.profile.name,
-      templateRunOverrides: projectTemplates.templateRunOverrides,
+      resolutionContext: projectTemplates.resolutionContext,
       ...pendingBranch.preparationInputs(),
     });
     if (!prepared.ok) {
@@ -973,7 +986,7 @@ function HomeContent() {
     ...(projectTemplates.activeConnectionRequirement
       ? { requiredEndpoint: projectTemplates.activeConnectionRequirement.endpoint }
       : {}),
-    ...templateReadinessInputs(projectFile, projectTemplates.templateWorkbench),
+    ...templateReadinessInputs(projectFile, projectTemplates.templateWorkbench, projectEnvironments.selected),
     emptyUserMessageId: emptyFinalUserMessageId(requestSettings.currentRequest().messages),
   });
   // Retry re-sends the failed attempt's frozen input. Once the composer would

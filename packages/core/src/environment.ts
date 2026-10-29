@@ -360,6 +360,17 @@ export function setProjectEnvironment(
   return parseProjectFile({ ...project, environments });
 }
 
+/** Sets or clears the authored launch environment. */
+export function setProjectDefaultEnvironment(
+  project: ProjectFile,
+  environmentId: EnvironmentId | undefined,
+): ProjectFile {
+  const defaults = { ...project.defaults };
+  if (environmentId) defaults.environmentId = environmentId;
+  else delete defaults.environmentId;
+  return parseProjectFile({ ...project, defaults });
+}
+
 /**
  * Refuses while anything still selects the environment. Clearing a selection
  * silently would change what those runs render, unlike withdrawing a tool.

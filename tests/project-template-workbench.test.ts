@@ -51,7 +51,7 @@ test("derives a pending branch composer and preview from the same authored items
   const project = templateProject();
   const parent = project.conversationRevisions[0]!;
   const resolved = projectDraft(project, {
-    "template-use_prompt": { topic: "override" },
+    runOverrides: { "template-use_prompt": { topic: "override" } },
   }).messages;
   const assistant = {
     id: "message_assistant" as const,
@@ -62,8 +62,8 @@ test("derives a pending branch composer and preview from the same authored items
   const view = projectTemplateWorkbenchView({
     project,
     messages: [...resolved, assistant],
-    runOverrides: {
-      "template-use_prompt": { topic: "override" },
+    resolutionContext: {
+      runOverrides: { "template-use_prompt": { topic: "override" } },
     },
     branchParentRevisionId: parent.id,
   });
@@ -82,7 +82,7 @@ test("adds a message to a pending branch without dropping its assistant response
   const overrides = {
     "template-use_prompt": { topic: "override" },
   };
-  const resolved = projectDraft(project, overrides).messages;
+  const resolved = projectDraft(project, { runOverrides: overrides }).messages;
   const assistant = {
     id: "message_assistant" as const,
     role: "assistant" as const,
@@ -97,7 +97,7 @@ test("adds a message to a pending branch without dropping its assistant response
   const messages = pendingBranchMessagesAfterItemUpdate({
     project,
     messages: [...resolved, assistant],
-    runOverrides: overrides,
+    resolutionContext: { runOverrides: overrides },
     parentRevisionId: parent.id,
     update: (items) => [
       ...items,
@@ -107,7 +107,7 @@ test("adds a message to a pending branch without dropping its assistant response
 
   assert.deepEqual(messages, [...resolved, assistant, followUp]);
   assert.equal(project.conversationRevisions.length, 1);
-  assert.deepEqual(projectDraft(project, overrides).messages, resolved);
+  assert.deepEqual(projectDraft(project, { runOverrides: overrides }).messages, resolved);
 });
 
 test("contains project resolution failures instead of throwing during render", () => {
@@ -116,8 +116,8 @@ test("contains project resolution failures instead of throwing during render", (
   const view = projectTemplateWorkbenchView({
     project,
     messages: projectDraft(project).messages,
-    runOverrides: {
-      "template-use_missing": { topic: "override" },
+    resolutionContext: {
+      runOverrides: { "template-use_missing": { topic: "override" } },
     },
   });
 

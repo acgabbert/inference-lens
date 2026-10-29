@@ -34,7 +34,7 @@ function prepare(overrides: Partial<Parameters<typeof prepareWorkbenchRun>[0]> =
     requestTools: [],
     capabilities: OPENAI_COMPATIBLE_CAPABILITIES,
     profileName: "Example profile",
-    templateRunOverrides: {},
+    resolutionContext: {},
     ...overrides,
   });
 }
@@ -114,7 +114,7 @@ test("keeps every supplied snapshot unchanged on failed branch and template prep
   const snapshots = {
     project,
     request: { ...request, messages: projectDraft(project).messages },
-    templateRunOverrides: {},
+    resolutionContext: {},
   };
   const before = structuredClone(snapshots);
   const missingParent = prepare({
@@ -133,11 +133,11 @@ test("keeps every supplied snapshot unchanged on failed branch and template prep
 
 test("resolves template-backed default revisions and reports invalid template values", () => {
   const project = templateProject();
-  const resolved = projectDraft(project, { "template-use_topic": { topic: "override" } }).messages;
+  const resolved = projectDraft(project, { runOverrides: { "template-use_topic": { topic: "override" } } }).messages;
   const success = prepare({
     project,
     request: { ...request, messages: resolved },
-    templateRunOverrides: { "template-use_topic": { topic: "override" } },
+    resolutionContext: { runOverrides: { "template-use_topic": { topic: "override" } } },
   });
   assert.equal(success.ok, true);
   if (!success.ok) return;
@@ -146,7 +146,7 @@ test("resolves template-backed default revisions and reports invalid template va
   const failure = prepare({
     project,
     request: { ...request, messages: resolved },
-    templateRunOverrides: { "template-use_missing": { topic: "missing" } },
+    resolutionContext: { runOverrides: { "template-use_missing": { topic: "missing" } } },
   });
   assert.equal(failure.ok, false);
 });

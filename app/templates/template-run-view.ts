@@ -5,6 +5,7 @@
  */
 
 import { providerProtocolAdapter } from "../../packages/core/src/provider-adapters.ts";
+import type { ProjectEnvironment } from "../../packages/core/src/environment.ts";
 import type { ProjectFile } from "../../packages/core/src/project.ts";
 import { createSingleTurnRunExecution } from "../../packages/core/src/run-kernel/index.ts";
 import type {
@@ -66,13 +67,30 @@ export function templateRequestPreview(input: {
   }
 }
 
-/** The template facts run readiness reports: resolution, missing values, targets. */
+/**
+ * The template facts run readiness reports: resolution, missing values,
+ * targets, and the environment diagnostics that would refuse the run.
+ */
 export function templateReadinessInputs(
   project: ProjectFile | null,
   view: ProjectTemplateWorkbenchView,
-): Pick<RunReadinessInput, "templateResolutionError" | "templateIssues" | "templateTargets"> {
+  environment?: ProjectEnvironment,
+): Pick<RunReadinessInput, "templateResolutionError" | "templateIssues" | "templateTargets" | "environmentIssue"> {
+  const environmentDiagnostics = view.resolution?.environmentDiagnostics ?? [];
+  const [firstEnvironmentDiagnostic] = environmentDiagnostics;
   return {
     ...(view.resolutionError ? { templateResolutionError: view.resolutionError } : {}),
+    ...(environment && firstEnvironmentDiagnostic
+      ? {
+          environmentIssue: {
+            environmentId: environment.id,
+            environmentName: environment.name,
+            ...(firstEnvironmentDiagnostic.entryName ? { entryName: firstEnvironmentDiagnostic.entryName } : {}),
+            message: firstEnvironmentDiagnostic.message,
+            count: environmentDiagnostics.length,
+          },
+        }
+      : {}),
     templateIssues:
       view.resolution?.diagnostics.map(({ templateUseId, diagnostic }) => ({
         templateUseId,

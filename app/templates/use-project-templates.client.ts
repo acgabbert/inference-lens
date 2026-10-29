@@ -26,6 +26,7 @@ import type {
   PromptTemplate,
   PromptTemplateMessages,
   PromptTemplateRecommendedTarget,
+  TemplateResolutionContext,
   TemplateRunOverrides,
   ToolMock,
 } from "../../packages/core/src/project";
@@ -38,6 +39,7 @@ import { createEntityId } from "../../packages/core/src/run-kernel";
 import type {
   ConversationMessage,
   ConversationRevisionId,
+  EnvironmentId,
   MessageId,
   PromptTemplateId,
   PromptTemplateRevisionId,
@@ -85,6 +87,8 @@ export interface UseProjectTemplatesInput {
   toolMocks: ToolMock[];
   enabledToolIds: ToolId[];
   branchParentRevisionId?: ConversationRevisionId;
+  /** The session's environment choice; looked up in whichever project is rendered. */
+  environmentId?: EnvironmentId;
   ensureProjectDocument(): ProjectFile;
   adoptProjectMutation(project: ProjectFile): void;
   replaceProjectDraft(draft: ReturnType<typeof projectDraft>): void;
@@ -145,6 +149,14 @@ export interface ProjectTemplatesHandle {
   activeConnectionRequirement?: ProjectFile["connectionRequirements"][number];
   templateUsageCounts: Map<PromptTemplateId, number>;
   templateRunOverrides: TemplateRunOverrides;
+  /** What the composer's messages are rendered with; a run must prepare with it. */
+  resolutionContext: TemplateResolutionContext;
+  /**
+   * Re-renders the composer for a new environment selection, or for new
+   * content of the selected one, adopting `project` when it is given. The
+   * caller changes the selection in the same event.
+   */
+  applyEnvironment(environmentId: EnvironmentId | undefined, project?: ProjectFile): void;
   createProjectTemplate(name: string, messages: PromptTemplateMessages): PromptTemplateId;
   updateProjectTemplateDraft(templateId: PromptTemplateId, sourceRevisionId: PromptTemplateRevisionId, messages: PromptTemplateMessages, defaults: Record<string, string>, revisionName?: string): void;
   updateProjectTemplateRecommendedTarget(templateId: PromptTemplateId, recommendedTarget?: PromptTemplateRecommendedTarget): void;
@@ -191,10 +203,21 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
   const activeProjectRevision = input.projectFile?.conversationRevisions.find(
     ({ id }) => id === input.projectFile!.defaults.conversationRevisionId,
   );
+  function contextFor(
+    project: ProjectFile | null,
+    runOverrides: TemplateRunOverrides = templateRunOverrides,
+    environmentId: EnvironmentId | undefined = input.environmentId,
+  ): TemplateResolutionContext {
+    const environment = environmentId
+      ? project?.environments.find(({ id }) => id === environmentId)
+      : undefined;
+    return { runOverrides, ...(environment ? { environment } : {}) };
+  }
+  const resolutionContext = contextFor(input.projectFile);
   const templateWorkbench = projectTemplateWorkbenchView({
     project: input.projectFile,
     messages: input.messages,
-    runOverrides: templateRunOverrides,
+    resolutionContext,
     branchParentRevisionId: input.branchParentRevisionId,
   });
   const modelWarnings = usePromptModelWarnings(input.projectFile?.projectId ?? "session", templateWorkbench.composerItems.flatMap((item) =>
@@ -221,14 +244,43 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
 
   function adoptAuthoredProject(project: ProjectFile, overrides = templateRunOverrides): void {
     input.adoptProjectMutation(project);
-    input.replaceProjectDraft(projectDraft(project, overrides));
+    input.replaceProjectDraft(projectDraft(project, contextFor(project, overrides)));
+  }
+
+  function applyEnvironment(environmentId: EnvironmentId | undefined, project?: ProjectFile): void {
+    const current = input.projectFile;
+    const next = project ?? current;
+    if (!next) return;
+    if (input.branchParentRevisionId && current) {
+      // A pending branch is not in the document, so its messages are re-read
+      // as authored items under the old context and rendered under the new.
+      try {
+        const messages = pendingBranchMessagesAfterItemUpdate({
+          project: current,
+          messages: input.messages,
+          resolutionContext,
+          parentRevisionId: input.branchParentRevisionId,
+          update: (items) => items,
+          nextResolutionContext: contextFor(next, templateRunOverrides, environmentId),
+        });
+        if (project) input.adoptProjectMutation(project);
+        input.resetMessages(messages);
+        input.markProjectError(undefined);
+      } catch (error) {
+        input.markProjectError(error instanceof Error ? error.message : "Could not render the pending branch with this environment.");
+      }
+      return;
+    }
+    if (project) input.adoptProjectMutation(project);
+    input.replaceProjectDraft(projectDraft(next, contextFor(next, templateRunOverrides, environmentId)));
   }
 
   function projectForUseMutation(): { project: ProjectFile; revisionId: ConversationRevisionId } {
+    const project = input.ensureProjectDocument();
     return projectForTemplateMutation({
-      project: input.ensureProjectDocument(),
+      project,
       executedRevisionIds: executedRevisionIdsRef.current,
-      runOverrides: templateRunOverrides,
+      resolutionContext: contextFor(project),
     });
   }
 
@@ -595,7 +647,7 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
   function updateTemplateUseOverride(templateUseId: PromptTemplateUseId, values: Record<string, string>): void {
     const overrides = templateRunOverridesAfterUpdate(templateRunOverrides, templateUseId, values);
     setTemplateRunOverrides(overrides);
-    if (input.projectFile) input.replaceProjectDraft(projectDraft(input.projectFile, overrides));
+    if (input.projectFile) input.replaceProjectDraft(projectDraft(input.projectFile, contextFor(input.projectFile, overrides)));
   }
   function saveTemplateUseRunValue(templateUseId: PromptTemplateUseId, values: Record<string, string>, useOverrides: Record<string, string>): void {
     const { project, revisionId } = projectForUseMutation();
@@ -607,7 +659,7 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
   function mutateAuthoredItems(update: (items: ProjectConversationItem[]) => ProjectConversationItem[]): void {
     if (input.branchParentRevisionId) {
       if (!input.projectFile) return;
-      try { input.resetMessages(pendingBranchMessagesAfterItemUpdate({ project: input.projectFile, messages: input.messages, runOverrides: templateRunOverrides, parentRevisionId: input.branchParentRevisionId, update })); input.markProjectError(undefined); }
+      try { input.resetMessages(pendingBranchMessagesAfterItemUpdate({ project: input.projectFile, messages: input.messages, resolutionContext, parentRevisionId: input.branchParentRevisionId, update })); input.markProjectError(undefined); }
       catch (error) { input.markProjectError(error instanceof Error ? error.message : "Could not update the pending branch."); }
       return;
     }
@@ -658,7 +710,7 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
           const next = detachPromptTemplateUse(project, {
             conversationRevisionId: revisionId,
             templateUseId,
-            runOverrides: templateRunOverrides,
+            resolutionContext: contextFor(project),
           });
           const overrides = { ...templateRunOverrides };
           delete overrides[templateUseId];
@@ -677,7 +729,7 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
   function removeTemplateUse(templateUseId: PromptTemplateUseId): void { input.requestConfirmation({ title: "Remove this template use?", description: "The pinned use and all messages it generates will be removed from this conversation revision.", confirmLabel: "Remove use", destructive: true, onConfirm() { const { project, revisionId } = projectForUseMutation(); const next = removePromptTemplateUse(project, revisionId, templateUseId); const overrides = { ...templateRunOverrides }; delete overrides[templateUseId]; setTemplateRunOverrides(overrides); adoptAuthoredProject(next, overrides); } }); }
   async function importN8nPrompt(candidate: ExternalPromptCandidate, mode: "resolved-snapshot" | "reusable-template", { recommendModel }: { recommendModel: boolean }): Promise<void> {
     const imported = mode === "reusable-template" ? await importExternalPromptTemplateCandidate(input.ensureProjectDocument(), candidate, { recommendModel }) : await importExternalPromptCandidate(input.ensureProjectDocument(), candidate);
-    input.adoptProjectMutation(imported.project); input.replaceProjectDraft(projectDraft(imported.project)); setTemplateRunOverrides({}); input.clearPendingBranch(); input.onImportApplied();
+    input.adoptProjectMutation(imported.project); input.replaceProjectDraft(projectDraft(imported.project, contextFor(imported.project, {}))); setTemplateRunOverrides({}); input.clearPendingBranch(); input.onImportApplied();
     const receipt = imported.project.externalImports.find(({ id }) => id === imported.externalImportId);
     input.onImported({ name: candidate.invocation.name, variableCount: receipt?.projection.kind === "prompt-template" ? receipt.projection.variables.length : 0, template: mode === "reusable-template" });
   }
@@ -696,6 +748,8 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     activeConnectionRequirement,
     templateUsageCounts,
     templateRunOverrides,
+    resolutionContext,
+    applyEnvironment,
     createProjectTemplate,
     updateProjectTemplateDraft,
     updateProjectTemplateRecommendedTarget,
