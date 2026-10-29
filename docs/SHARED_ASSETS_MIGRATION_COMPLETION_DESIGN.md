@@ -9,7 +9,7 @@ Revised October 27 (browser save coordination, completion capability ownership,
 under "Required implementation evidence": core, browser adapter, then native. No
 application caller is approved; App/CLI remain on v15.
 
-**Approval condition.** Pending drafts may coexist with a v16 manifest only while
+**Approval condition.** Pending drafts may coexist with a v17 manifest only while
 completion has no application caller. Add a test or guard asserting that no
 app/CLI code path imports or calls the completion capability, and require
 reconciliation to ship before the integration slice enables it.
