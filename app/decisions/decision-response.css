@@ -1,0 +1,149 @@
+/* Decision result (U5). */
+.decision-output {
+  display: grid;
+  gap: var(--space-lg);
+}
+
+.decision-run-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs) var(--space-lg);
+  margin: 0;
+}
+
+.decision-run-facts div {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.decision-run-facts dt {
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.decision-run-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.decision-answers {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.decision-answer {
+  display: grid;
+  gap: var(--space-xs);
+  padding: var(--space-md);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+}
+
+.decision-answer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.decision-answer-type {
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.decision-answer-instructions,
+.decision-answer-headline,
+.decision-answer-missing {
+  margin: 0;
+}
+
+.decision-answer-instructions,
+.decision-confidence {
+  color: var(--text-secondary);
+}
+
+.decision-bars {
+  display: grid;
+  gap: var(--space-2xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.decision-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(60px, 2fr) 4.5em;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.decision-bar-label {
+  overflow-wrap: anywhere;
+}
+
+.decision-bar.selected .decision-bar-label {
+  font-weight: 700;
+}
+
+.decision-bar-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--surface-inset);
+}
+
+.decision-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--text-faint);
+}
+
+.decision-bar.selected .decision-bar-fill {
+  background: var(--accent-solid);
+}
+
+.decision-bar-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.decision-scale {
+  position: relative;
+  height: 28px;
+  margin: 0 var(--space-sm);
+}
+
+.decision-scale-line {
+  position: absolute;
+  top: 8px;
+  right: 0;
+  left: 0;
+  height: 2px;
+  background: var(--border-strong);
+}
+
+.decision-scale-tick {
+  position: absolute;
+  top: 12px;
+  transform: translateX(-50%);
+  color: var(--text-muted);
+}
+
+.decision-scale-marker {
+  position: absolute;
+  top: 3px;
+  width: 12px;
+  height: 12px;
+  transform: translateX(-50%);
+  border: 2px solid var(--surface-panel);
+  border-radius: 50%;
+  background: var(--accent-solid);
+}
+
+.decision-retry-wait,
+.decision-retry-blocked {
+  color: var(--warning-strong);
+}
+

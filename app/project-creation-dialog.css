@@ -1,0 +1,44 @@
+.project-creation-name {
+  display: grid;
+  gap: var(--space-sm);
+  margin-top: var(--space-xl);
+}
+
+.project-creation-name > span {
+  font-weight: 650;
+}
+
+.project-creation-name input {
+  width: 100%;
+}
+
+.project-creation-name small,
+.project-creation-protection small {
+  color: var(--text-muted);
+}
+
+.project-creation-git-policy {
+  border: 0;
+  margin: var(--space-lg) 0 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.project-creation-protection {
+  align-items: flex-start;
+  display: flex;
+  gap: var(--space-md);
+  margin-top: var(--space-md);
+}
+
+.project-creation-protection input {
+  flex: 0 0 auto;
+  margin-top: var(--space-2xs);
+  width: auto;
+}
+
+.project-creation-protection > span {
+  display: grid;
+  gap: var(--space-2xs);
+}
+

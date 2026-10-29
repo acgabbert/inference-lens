@@ -1,0 +1,195 @@
+.trace-header {
+  height: 45px;
+  padding: 0 var(--space-xl);
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-default);
+  color: var(--text-muted);
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.trace {
+  max-height: 390px;
+  overflow: auto;
+}
+
+.trace-empty {
+  margin: 0;
+  padding: var(--space-2xl) var(--space-xl);
+  color: var(--text-faint);
+  font-family: var(--font-geist-mono), monospace;
+}
+
+
+/* The trace header is uppercase; the tab switcher should still read the same
+   here as it does above the response pane. */
+.trace-header .pane-tabs button {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+
+.trace-panel {
+  --trace-panel-height: 265px;
+  position: relative;
+  flex: 0 0 46px;
+  min-height: 46px;
+  border-top: 1px solid var(--border-default);
+  background: var(--surface-subtle);
+}
+
+.trace-panel.has-summary:not(.open) {
+  flex-basis: 82px;
+}
+
+/* It gives up height with the output above it rather than starving it, down
+   to a floor that still leaves its content a readable scroll area. */
+.trace-panel.open {
+  flex-basis: var(--trace-panel-height);
+  flex-shrink: 1;
+  min-height: 200px;
+  max-height: min(520px, 70%);
+  display: flex;
+  flex-direction: column;
+}
+
+.trace-panel .trace-header {
+  height: 45px;
+  flex: 0 0 45px;
+  border-bottom: 0;
+}
+
+.trace-panel.open .trace-header {
+  border-bottom: 1px solid var(--border-default);
+}
+
+.trace-summary-row {
+  min-height: 36px;
+  padding: 0 var(--space-xl);
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  background: var(--surface-panel);
+}
+
+.trace-panel.open .trace-summary-row {
+  flex: 0 0 36px;
+}
+
+.run-inspection-summary {
+  min-width: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  color: var(--text-muted);
+  font-size: var(--type-metadata);
+}
+
+.run-inspection-summary > div {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2xs);
+  white-space: nowrap;
+}
+
+.run-inspection-summary dt {
+  color: var(--text-muted);
+}
+
+.run-inspection-summary dd {
+  margin: 0;
+  color: var(--text-primary);
+  font-family: var(--font-geist-mono), monospace;
+  font-weight: 700;
+}
+
+.run-inspection-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  color: var(--text-primary);
+  font-family: var(--font-geist-sans), sans-serif;
+}
+
+.run-inspection-status::before {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-solid);
+  content: "";
+}
+
+.run-inspection-status.waiting_for_tools::before,
+.run-inspection-status.ready_to_continue::before,
+.run-inspection-status.retry_available::before {
+  background: var(--warning);
+}
+
+.run-inspection-status.failed::before,
+.run-inspection-status.cancelled::before {
+  background: var(--danger);
+}
+
+.trace-toggle {
+  padding: var(--space-2xs) 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+}
+
+.trace-toggle:disabled {
+  cursor: default;
+}
+
+.trace-chevron {
+  width: 15px;
+  display: inline-block;
+  color: var(--accent);
+}
+
+.trace-resize-handle {
+  position: absolute;
+  top: -5px;
+  left: 0;
+  right: 0;
+  z-index: 4;
+  height: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: row-resize;
+}
+
+.trace-resize-handle span {
+  width: 36px;
+  height: 3px;
+  margin: var(--space-3xs) auto 0;
+  border-radius: var(--radius-pill);
+  display: block;
+  background: var(--border-strong);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.trace-resize-handle:hover span,
+.trace-resize-handle:focus-visible span {
+  opacity: 1;
+}
+
+.trace {
+  max-height: none;
+  overflow: visible;
+}
+
+.mobile-workbench-tabs {
+  display: none;
+}
+

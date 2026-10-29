@@ -1,0 +1,104 @@
+@media (max-width: 700px) {
+  .diff-controls {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+@media (max-width: 1050px) {
+  /* Seven items: reorder, Name, Type, Required, then Description on a line of
+     its own and Default beside Remove, all under the fields above. */
+  .schema-property-row {
+    grid-template-columns: 22px minmax(100px, 1fr) 90px 64px;
+  }
+
+  .schema-property-row label:nth-of-type(4) {
+    grid-column: 2 / -1;
+  }
+
+  .schema-property-row label:nth-of-type(5) {
+    grid-column: 2 / 4;
+  }
+}
+
+
+@media (max-width: 720px) {
+  .topbar {
+    height: auto;
+    padding: var(--space-md) var(--space-lg);
+    align-items: flex-start;
+  }
+
+  .header-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .configuration {
+    border-right: 0;
+    border-bottom: 1px solid var(--border-default);
+  }
+
+  .shortcut {
+    display: none;
+  }
+
+  .registry-backdrop {
+    padding: var(--space-sm);
+  }
+
+  .confirmation-backdrop {
+    padding: var(--space-sm);
+  }
+
+  .confirmation-dialog {
+    max-height: calc(100vh - 16px);
+  }
+
+  .registry-modal {
+    height: calc(100vh - 16px);
+  }
+
+  .registry-header {
+    min-height: 72px;
+  }
+
+  .registry-workspace {
+    grid-template-columns: 150px minmax(0, 1fr);
+  }
+
+  .registry-editor-toolbar {
+    align-items: flex-start;
+    gap: var(--space-sm);
+  }
+
+  .registry-editor-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .tool-identity-fields,
+  .schema-node-controls,
+  .schema-property-row {
+    grid-template-columns: 1fr;
+  }
+
+  .schema-property-row label:nth-of-type(4),
+  .schema-property-row label:nth-of-type(5) {
+    grid-column: auto;
+  }
+
+  .schema-property-reorder,
+  .schema-property-remove {
+    justify-self: start;
+  }
+
+  .schema-property-reorder {
+    flex-direction: row;
+  }
+
+  .schema-required {
+    justify-items: start;
+  }
+}
+

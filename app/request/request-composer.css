@@ -1,0 +1,156 @@
+.request-preview {
+  margin: 0 var(--space-xl) var(--space-xl);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--surface-sunken);
+}
+
+.request-preview summary {
+  padding: var(--space-md) var(--space-md);
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-weight: 750;
+}
+
+.request-preview h3 {
+  margin: var(--space-md) var(--space-md) var(--space-xs);
+}
+
+.request-preview-tabs {
+  margin: var(--space-md) var(--space-md) 0;
+}
+
+.request-preview-tabs .pane-tabs {
+  width: max-content;
+  justify-self: start;
+}
+
+.request-preview pre {
+  max-height: 260px;
+  margin: 0 var(--space-md) var(--space-md);
+  padding: var(--space-md);
+  overflow: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-panel);
+  color: var(--text-secondary);
+  font-family: var(--font-geist-mono), monospace;
+  line-height: var(--leading-normal);
+}
+
+.request-preview-messages {
+  display: grid;
+  gap: var(--space-sm);
+  margin: 0 var(--space-md) var(--space-md);
+}
+
+.request-preview-message {
+  padding: var(--space-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-panel);
+}
+
+.request-preview-message .eyebrow {
+  display: block;
+  margin-bottom: var(--space-2xs);
+}
+
+.request-preview-message pre {
+  max-height: 260px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.request-preview-raw {
+  margin: 0 var(--space-md) var(--space-md);
+}
+
+.request-preview-raw pre {
+  margin: 0;
+}
+
+
+.message-card {
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-card);
+}
+
+.message-toolbar {
+  padding: var(--space-sm) var(--space-sm);
+  border-bottom: 1px solid var(--border-subtle);
+  justify-content: space-between;
+  background: var(--surface-subtle);
+}
+
+.message-toolbar select {
+  width: auto;
+  height: 24px;
+  margin-top: 0;
+  padding: 0 var(--space-xl) 0 var(--space-xs);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background-color: transparent;
+  background-position: calc(100% - 11px) center, calc(100% - 7px) center;
+  color: var(--text-primary);
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.message-toolbar select:hover:not(:disabled) {
+  background-color: var(--surface-hover);
+}
+
+.message-import-provenance {
+  min-width: 0;
+  margin-right: auto;
+  padding: var(--space-3xs) var(--space-xs);
+  overflow: hidden;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remove-button {
+  color: var(--text-faint);
+}
+
+.remove-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* Shape only. A textarea keeps the border the shared control rule gives every
+   input and select: stripping it here left every textarea in the app invisible
+   against a panel until focus, and each new one had to re-declare the border
+   its neighbours already had. */
+textarea {
+  min-height: 92px;
+  padding: var(--space-md);
+  resize: vertical;
+  font-family: var(--font-geist-mono), monospace;
+  line-height: var(--leading-prose);
+}
+
+/* The composer's message body is the exception: it fills its card edge to edge,
+   so the card's own border is the field's border and a second one would double
+   up. Focus is drawn inset for the same reason. */
+.message-card textarea {
+  border: 0;
+  border-radius: 0;
+}
+
+.message-card textarea:focus {
+  box-shadow: inset 0 0 0 1px var(--accent-focus);
+}
+

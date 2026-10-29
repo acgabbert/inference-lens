@@ -1,0 +1,39 @@
+.app-error {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--space-2xl);
+}
+
+.app-error-card {
+  width: min(100%, 440px);
+  padding: var(--space-3xl);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-panel);
+}
+
+.app-error-card h1 {
+  margin: var(--space-md) 0 var(--space-sm);
+  letter-spacing: -0.03em;
+}
+
+.app-error-card p:not(.eyebrow) {
+  margin: 0 0 var(--space-xl);
+  color: var(--text-muted);
+  line-height: var(--leading-normal);
+}
+
+.app-error-mark {
+  width: 37px;
+  height: 37px;
+  border-radius: var(--radius-lg);
+  display: grid;
+  place-items: center;
+  background: var(--brand-mark-bg);
+  color: var(--brand-mark-fg);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+

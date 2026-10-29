@@ -52,7 +52,7 @@ Stop every fixture and dev server when the pass is finished.
 
 The plan names 320, 390, 760, 880, and a representative desktop width.
 
-`app/globals.css` currently has media queries at **480, 600, 700, 720, 760,
+The global partials currently have media queries at **480, 600, 700, 720, 760,
 880, 1050, and 1080px**. The plan's list covers the workbench breakpoint (760)
 and one layout breakpoint (880) but skips 480, 600, 700/720, and 1050/1080.
 Treat the plan's five as the required minimum and add a 1080 and a 600 pass

@@ -1,0 +1,251 @@
+/* Workbench shell */
+
+main {
+  height: 100dvh;
+  min-height: 520px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.topbar,
+.mobile-workbench-tabs {
+  flex: 0 0 auto;
+}
+
+.workspace {
+  --request-pane-width: 48%;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns:
+    minmax(0, var(--request-pane-width))
+    7px
+    minmax(0, calc(100% - var(--request-pane-width) - 7px));
+}
+
+.workbench-pane {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workbench-divider {
+  position: relative;
+  z-index: 3;
+  width: 7px;
+  padding: 0;
+  border: 0;
+  border-right: 1px solid var(--border-default);
+  border-left: 1px solid var(--border-default);
+  background: var(--surface-sunken);
+  cursor: col-resize;
+}
+
+.workbench-divider span {
+  position: absolute;
+  top: 50%;
+  left: 1px;
+  width: 3px;
+  height: 30px;
+  border-radius: var(--radius-pill);
+  background: var(--border-strong);
+  transform: translateY(-50%);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.workbench-divider:hover span,
+.workbench-divider:focus-visible span {
+  opacity: 1;
+}
+
+.composer,
+.result {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 0;
+}
+
+/* Every focus-mode editor lifts the same panel out of the layout; only the
+   inner reflow is specific to what each one wraps. This has to stay below the
+   `.composer, .result` reset above — both selectors are one class, so source
+   order decides the border and height. */
+.focus-mode-surface {
+  position: fixed;
+  inset: 16px;
+  z-index: 50;
+  min-width: 0;
+  height: auto;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xl);
+  background: var(--surface-panel);
+  box-shadow: 0 0 0 100vmax var(--overlay-scrim), var(--shadow-modal);
+}
+
+/* `.pane-scroll` already owns the scroll viewport here, so focus mode only has
+   to spend the extra height on the message bodies — the `rows` hint that suits
+   the docked pane leaves them stranded at the top of a fullscreen panel. */
+.composer-focus-mode .message-card textarea {
+  min-height: 220px;
+}
+
+.request-pane {
+  background: var(--surface-panel);
+}
+
+.response-pane {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-subtle);
+}
+
+.response-view,
+.inspect-view {
+  display: contents;
+}
+
+.pane-scroll,
+.output-scroll {
+  /* Keep absolutely positioned accessibility text inside its scroll owner. */
+  position: relative;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.request-content {
+  background: var(--surface-panel);
+}
+
+.panel-header {
+  flex: 0 0 auto;
+}
+
+/* The pane's name is its region label, so the header holds only its tabs. */
+.request-header,
+.result-header:not(:has(h2)) {
+  min-height: 56px;
+  padding-block: var(--space-md);
+}
+
+.request-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-sm) var(--space-xl);
+}
+
+.request-header-actions {
+  margin-left: auto;
+}
+
+.result-header:not(:has(h2)) {
+  justify-content: flex-end;
+}
+
+.pane-tabs {
+  min-width: 0;
+  padding: var(--space-3xs);
+  display: flex;
+  align-items: center;
+  justify-self: center;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-inset);
+}
+
+.pane-tabs button {
+  padding: var(--space-xs) var(--space-sm);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.pane-tabs button.active {
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-control);
+}
+
+.tab-count {
+  min-width: 17px;
+  margin-left: var(--space-xs);
+  padding: 1px var(--space-2xs);
+  border-radius: var(--radius-pill);
+  display: inline-block;
+  background: var(--surface-strong);
+  color: var(--text-muted);
+}
+
+.pane-tabs button.active .tab-count {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.request-header-actions {
+  display: flex;
+  align-items: center;
+  justify-self: end;
+  gap: var(--space-sm);
+}
+
+.request-focus-toggle {
+  flex: 0 0 auto;
+}
+
+.request-composer-toolbar {
+  margin: var(--space-md) var(--space-xl) 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-sm) var(--space-lg);
+}
+
+.request-composer-edit-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.request-composer-run-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.request-composer-toolbar + .message-list {
+  padding-top: var(--space-md);
+}
+
+/* The composer's mount of the shared settings panel; the other surfaces place
+   the same panel with their own surrounding spacing. */
+.run-settings {
+  margin: var(--space-md) var(--space-xl) 0;
+}
+
+/* One hide-able panel for the inference option set, mounted by the composer, an
+   evaluation suite, and the repeated-experiment dialog. The disclosure is
+   inline: two of those sit inside `overflow: auto` panes and the third inside a
+   modal, where an anchored popover is either clipped or above a dialog. */
+.request-settings-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+}
+
+.request-settings-card > .inference-settings {
+  border: 0;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+

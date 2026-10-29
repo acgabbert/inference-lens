@@ -89,7 +89,7 @@ test("keeps the specific expression issue in the persistent import footer", asyn
   assert.match(html, /missing its closing \}\} delimiter/);
 
   const stylesheet = await readFile(
-    new URL("../app/globals.css", import.meta.url),
+    new URL("../app/n8n-import-modal.css", import.meta.url),
     "utf8",
   );
   assert.match(
@@ -100,7 +100,7 @@ test("keeps the specific expression issue in the persistent import footer", asyn
 
 test("keeps the model recommendation checkbox from consuming the label width", async () => {
   const stylesheet = await readFile(
-    new URL("../app/globals.css", import.meta.url),
+    new URL("../app/n8n-import-modal.css", import.meta.url),
     "utf8",
   );
   assert.match(

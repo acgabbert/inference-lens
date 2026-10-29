@@ -1,0 +1,288 @@
+.saved-prompt-dialog {
+  width: min(680px, 100%);
+  max-height: min(86vh, 760px);
+  overflow-y: auto;
+}
+
+.prompt-insertion-dialog {
+  width: min(780px, 100%);
+  max-height: min(88vh, 820px);
+}
+
+.prompt-insertion-dialog.wide-dialog,
+.saved-prompt-dialog.wide-dialog {
+  --wide-dialog-columns: minmax(200px, 280px) minmax(0, 1fr) minmax(200px, 300px);
+}
+
+.prompt-insertion-search {
+  display: grid;
+  gap: var(--space-2xs);
+  margin-bottom: 0;
+}
+
+.prompt-insertion-list .saved-prompt-list {
+  align-content: start;
+}
+
+.prompt-insertion-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(128px, 0.55fr);
+  gap: var(--space-sm);
+}
+
+.prompt-insertion-controls label {
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.prompt-insertion-controls select {
+  width: 100%;
+}
+
+.prompt-messages-preview {
+  display: grid;
+  align-content: start;
+  gap: var(--space-xs);
+  padding: var(--space-md);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+.prompt-messages-preview article {
+  min-width: 0;
+}
+
+.prompt-messages-preview article + article {
+  padding-top: var(--space-xs);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.prompt-messages-preview strong {
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.prompt-messages-preview pre {
+  margin: var(--space-3xs) 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The column already scrolls, so a message shows in full rather than in a
+   box of its own. */
+.wide-dialog .prompt-messages-preview pre {
+  max-height: none;
+  overflow: visible;
+}
+
+.prompt-insertion-variable-summary {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.prompt-variable-list {
+  display: grid;
+  gap: var(--space-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.prompt-variable-list li {
+  display: grid;
+  gap: var(--space-3xs);
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+
+.prompt-variable-list code {
+  overflow-wrap: anywhere;
+}
+
+.prompt-variable-list small {
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* A dialog for content that runs long. It grows with the window, keeps its
+   heading and actions in place, and lets each column scroll on its own; in a
+   narrow window the columns stack and scroll together. Columns default to a
+   wide main pane and a side pane; a dialog may set --wide-dialog-columns. */
+.wide-dialog {
+  width: min(1400px, 100%);
+  height: min(920px, calc(100vh - 48px));
+  max-height: none;
+  padding: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+}
+
+.wide-dialog .wide-dialog-header {
+  padding: var(--space-xl) var(--space-xl) var(--space-md);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.wide-dialog .wide-dialog-header > p {
+  margin: var(--space-xs) 0 0;
+  color: var(--text-muted);
+  line-height: var(--leading-normal);
+}
+
+.wide-dialog .wide-dialog-columns {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: var(--wide-dialog-columns, minmax(0, 1fr) minmax(280px, 380px));
+}
+
+.wide-dialog .wide-dialog-pane {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-lg) var(--space-xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.wide-dialog .wide-dialog-pane > * {
+  margin-top: 0;
+  flex: 0 0 auto;
+}
+
+.wide-dialog .wide-dialog-pane + .wide-dialog-pane {
+  border-left: 1px solid var(--border-default);
+}
+
+.wide-dialog .wide-dialog-pane > .wide-dialog-fill {
+  flex: 1 0 auto;
+}
+
+.wide-dialog .wide-dialog-footer {
+  margin: 0;
+  padding: var(--space-md) var(--space-xl);
+  border-top: 1px solid var(--border-default);
+}
+
+
+@media (max-width: 999px) {
+  .wide-dialog .wide-dialog-columns {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+  }
+
+  .wide-dialog .wide-dialog-pane {
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .wide-dialog .wide-dialog-pane + .wide-dialog-pane {
+    border-left: 0;
+    border-top: 1px solid var(--border-default);
+  }
+}
+
+
+@media (max-width: 999px) {
+  .wide-dialog .saved-prompt-list {
+    max-height: 180px;
+    overflow-y: auto;
+  }
+}
+
+
+@media (max-width: 640px) {
+  .prompt-insertion-controls {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+.saved-prompt-list {
+  display: grid;
+  gap: var(--space-xs);
+  margin: 0;
+  padding: var(--space-md);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+
+.saved-prompt-list legend {
+  padding: 0 var(--space-xs);
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.saved-prompt-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+  margin-bottom: 0;
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.saved-prompt-option:hover {
+  background: var(--surface-sunken);
+}
+
+.saved-prompt-option.selected {
+  border-color: var(--border-strong);
+  background: var(--surface-sunken);
+}
+
+.saved-prompt-option input[type="radio"] {
+  width: auto;
+  margin: 0;
+}
+
+.saved-prompt-option strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.saved-prompt-details {
+  display: grid;
+  gap: var(--space-sm);
+  margin: 0;
+  padding: var(--space-md);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+.saved-prompt-details > div {
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr);
+  gap: var(--space-sm);
+}
+
+.saved-prompt-details dt {
+  color: var(--text-muted);
+}
+
+.saved-prompt-details dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.saved-prompt-details code {
+  overflow-wrap: anywhere;
+  color: var(--text-muted);
+}
+
+.saved-prompt-advisory {
+  display: block;
+  margin-top: var(--space-3xs);
+  color: var(--text-muted);
+}
+

@@ -1,0 +1,425 @@
+.tools-header {
+  border-top: 1px solid var(--border-default);
+}
+
+.tool-list {
+  padding: var(--space-xl);
+  display: grid;
+  gap: var(--space-md);
+}
+
+.tool-empty {
+  margin: 0;
+  padding: var(--space-lg);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-lg);
+  color: var(--text-muted);
+  line-height: var(--leading-normal);
+}
+
+.tool-editor {
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--surface-panel);
+}
+
+.tool-editor-toolbar,
+.tool-call-heading {
+  padding: var(--space-sm) var(--space-md);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-subtle);
+}
+
+/* Lives on the attached list, not the project cards: the order these buttons
+   change is the order the attached tools reach the provider in. */
+.tool-reorder {
+  flex: 0 0 auto;
+  display: flex;
+  gap: var(--space-2xs);
+}
+
+.tool-reorder button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.tool-mock-toggle {
+  display: flex !important;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-bottom: 0 !important;
+  font-weight: 700;
+}
+
+.tool-mock-toggle input {
+  width: auto;
+  margin: 0;
+}
+
+.tool-definition-disclosure > summary {
+  padding: var(--space-sm) var(--space-md);
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  color: var(--text-secondary);
+  cursor: pointer;
+  list-style: none;
+  font-weight: 700;
+}
+
+.tool-definition-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.tool-definition-disclosure > summary::before {
+  content: "▸";
+  color: var(--text-muted);
+}
+
+.tool-definition-disclosure[open] > summary {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.tool-definition-disclosure[open] > summary::before {
+  content: "▾";
+}
+
+/* Typed values, not labels: the label they sit in is bold, and form controls
+   inherit its weight. The message editor's body is regular, and so are these. */
+.definition-editor input:not([type="checkbox"]),
+.definition-editor textarea,
+.tool-mock-result textarea {
+  font-weight: 400;
+}
+
+.tool-fields {
+  padding: var(--space-md);
+  display: grid;
+  gap: var(--space-md);
+}
+
+.tool-fields label,
+.tool-call-card label {
+  gap: var(--space-xs);
+}
+
+/* A sibling of the tool list rather than an item in it, so it takes the list's
+   gutter itself instead of running edge to edge beneath the cards above. */
+.mcp-discovery-panel {
+  margin: 0 var(--space-xl) var(--space-xl);
+}
+
+.mcp-discovery-body {
+  padding: var(--space-md);
+  display: grid;
+  gap: var(--space-md);
+}
+
+.mcp-discovery-body > p,
+.mcp-discovery-body .tool-list > .tool-editor > p,
+.mcp-discovery-body .tool-list > .tool-editor > h4 {
+  margin: 0;
+}
+
+.mcp-discovery-body > .tool-fields,
+.mcp-discovery-body > .tool-list {
+  padding: 0;
+}
+
+.mcp-discovery-body > .tool-fields > button {
+  justify-self: start;
+}
+
+.mcp-discovery-body > label,
+.mcp-discovery-body .tool-list > .tool-editor > label {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.mcp-discovery-body .tool-list > .tool-editor {
+  padding: var(--space-md);
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.mcp-discovery-body .tool-header-actions {
+  flex-wrap: wrap;
+}
+
+.tool-schema {
+  min-height: 150px;
+}
+
+.tool-header-actions,
+.registry-editor-actions,
+.schema-tabs,
+.schema-subheading,
+.schema-enum-row {
+  display: flex;
+  align-items: center;
+}
+
+.tool-header-actions {
+  gap: var(--space-sm);
+}
+
+/* One manifest of what goes on the wire. Project selections and one-shot
+   library snapshots reach a request by different routes but answer the same
+   question, so they share a list instead of a card each. */
+.tool-manifest {
+  margin: var(--space-lg) var(--space-xl) 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--surface-subtle);
+}
+
+.tool-manifest.ready {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+.tool-manifest.blocked {
+  border-color: var(--danger-border);
+  background: var(--danger-surface);
+}
+
+.tool-manifest > header {
+  padding: var(--space-md) var(--space-md);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.tool-manifest > header > div {
+  min-width: 0;
+}
+
+.tool-manifest > header strong {
+  display: block;
+}
+
+.tool-manifest > header p {
+  margin: var(--space-3xs) 0 0;
+  color: var(--text-muted);
+  line-height: var(--leading-normal);
+}
+
+.tool-manifest.blocked > header p {
+  color: var(--danger-strong);
+}
+
+.tool-manifest-actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.tool-manifest > header .allow-tool-calling {
+  border-color: var(--danger-border);
+  color: var(--danger-strong);
+}
+
+/* Every route into the request starts here, and each asks the same
+   destination question first. */
+.attach-tool-menu {
+  margin: 0 var(--space-md) var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.attach-tool-menu p[role="alert"] {
+  margin: 0;
+  color: var(--danger-strong);
+}
+
+.attach-tool-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+.attach-tool-detached ul {
+  margin: var(--space-2xs) 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-3xs);
+}
+
+.attach-tool-detached li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.attach-tool-detached code {
+  font-family: var(--font-geist-mono), monospace;
+}
+
+.attach-destination {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2xs) var(--space-md);
+}
+
+.attach-destination legend {
+  float: left;
+  margin-right: var(--space-xs);
+  padding: 0;
+  font-weight: 700;
+}
+
+.attach-destination label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  margin: 0;
+}
+
+.attach-destination input {
+  width: auto;
+  margin: 0;
+}
+
+.attach-destination small {
+  flex-basis: 100%;
+  color: var(--text-muted);
+}
+
+.registry-editor > .attach-destination {
+  padding: var(--space-xs) var(--space-md);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* A tab tool has no project card, so its definition opens inside its row. */
+.tool-manifest-editor {
+  flex-basis: 100%;
+}
+
+.tool-attach-status {
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.tool-attach-status.attached {
+  color: var(--accent);
+}
+
+.tool-manifest-list {
+  margin: 0;
+  padding: 0 var(--space-md) var(--space-md);
+  list-style: none;
+  display: grid;
+  gap: var(--space-2xs);
+}
+
+.tool-manifest-list li {
+  flex-wrap: wrap;
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.tool-manifest-name {
+  min-width: 0;
+  flex: 1;
+}
+
+.tool-manifest-name code {
+  display: block;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-family: var(--font-geist-mono), monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-manifest-name small {
+  display: block;
+  margin-top: var(--space-3xs);
+  overflow: hidden;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-origin {
+  flex: 0 0 auto;
+  padding: var(--space-3xs) var(--space-xs);
+  border-radius: var(--radius-pill);
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.tool-origin.project {
+  background: var(--surface-strong);
+  color: var(--text-muted);
+}
+
+.tool-origin.once {
+  background: var(--warning-surface);
+  color: var(--warning-strong);
+  cursor: help;
+}
+
+.tool-manifest-list .text-button {
+  flex: 0 0 auto;
+}
+
+.definition-editor {
+  min-width: 0;
+}
+
+.tool-identity-fields {
+  grid-template-columns: minmax(160px, 0.7fr) minmax(220px, 1.3fr);
+  align-items: start;
+}
+
+.tool-description {
+  min-height: 84px;
+  resize: vertical;
+  line-height: var(--leading-normal);
+}
+
+.tool-name-warning {
+  color: var(--danger);
+}
+
+
+.tools-tab-toolbar {
+  padding: var(--space-lg) var(--space-xl) var(--space-md);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.tools-tab-toolbar strong {
+  display: block;
+}
+
+.tools-tab-toolbar p {
+  margin: var(--space-3xs) 0 0;
+  color: var(--text-muted);
+}
+

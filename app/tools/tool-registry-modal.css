@@ -1,0 +1,213 @@
+.registry-notice {
+  padding: var(--space-sm) var(--space-lg);
+  border-bottom: 1px solid var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.tool-mock-fields {
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface-subtle);
+}
+
+.tool-mock-result textarea {
+  min-height: 112px;
+  padding: var(--space-sm) var(--space-md);
+  font-family: var(--font-geist-mono), monospace;
+  line-height: var(--leading-normal);
+}
+
+.tool-command-fields {
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface-subtle);
+  gap: var(--space-sm);
+}
+
+.tool-command-fields p {
+  margin: 0;
+  display: grid;
+  gap: var(--space-xs);
+  color: var(--text-muted);
+}
+
+.tool-command-fields code {
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+  color: var(--text-primary);
+  font-family: var(--font-geist-mono), monospace;
+  overflow-wrap: anywhere;
+}
+
+/* A grant is a permission, so the two states that mean "this is not what you
+   think it is" are marked rather than left to blend into ordinary help text. */
+.tool-command-missing,
+.tool-mock-superseded {
+  color: var(--warning);
+}
+
+.tool-command-fields button {
+  justify-self: start;
+}
+
+.tool-mock-superseded {
+  margin: 0;
+}
+
+.registry-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  padding: var(--space-2xl);
+  display: grid;
+  place-items: center;
+  background: var(--overlay-scrim);
+  backdrop-filter: blur(4px);
+}
+
+
+.registry-modal {
+  width: min(1180px, 100%);
+  height: min(820px, calc(100vh - 48px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xl);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-modal);
+}
+
+.registry-header {
+  flex: 0 0 auto;
+  min-height: 82px;
+  padding: var(--space-lg) var(--space-xl);
+  border-bottom: 1px solid var(--border-default);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.registry-header h2 {
+  margin: 0;
+}
+
+.registry-header p {
+  margin: var(--space-2xs) 0 0;
+  color: var(--text-muted);
+}
+
+.registry-workspace {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+}
+
+.registry-sidebar {
+  padding: var(--space-md);
+  overflow-y: auto;
+  border-right: 1px solid var(--border-default);
+  background: var(--surface-sunken);
+}
+
+.registry-sidebar > .button {
+  width: 100%;
+}
+
+.registry-list {
+  margin-top: var(--space-md);
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.registry-list-item {
+  width: 100%;
+  padding: var(--space-sm);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.registry-list-item:hover,
+.registry-list-item.selected {
+  border-color: var(--accent-border);
+  background: var(--surface-raised);
+}
+
+.registry-list-item.selected {
+  box-shadow: inset 3px 0 var(--accent);
+}
+
+.registry-list-item strong,
+.registry-list-item span {
+  display: block;
+}
+
+.registry-list-item strong {
+  overflow: hidden;
+  font-family: var(--font-geist-mono), monospace;
+  text-overflow: ellipsis;
+}
+
+.registry-list-item span {
+  margin-top: var(--space-2xs);
+  overflow: hidden;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.registry-editor {
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.registry-editor-toolbar {
+  min-height: 70px;
+  padding: var(--space-md) var(--space-lg);
+  border-bottom: 1px solid var(--border-default);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface-translucent);
+  backdrop-filter: blur(10px);
+}
+
+.registry-editor-toolbar strong {
+  font-family: var(--font-geist-mono), monospace;
+}
+
+.registry-editor-actions {
+  gap: var(--space-xs);
+}
+
+.registry-error {
+  padding: var(--space-sm) var(--space-lg);
+  border-bottom: 1px solid var(--danger-border);
+  background: var(--danger-surface);
+}
+
+.registry-empty {
+  max-width: 320px;
+  margin: 150px auto 0;
+  text-align: center;
+}
+
+.registry-empty h3 {
+  margin: 0 0 var(--space-xs);
+}
+
+.registry-empty p {
+  margin: 0;
+  color: var(--text-muted);
+}
+

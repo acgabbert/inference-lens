@@ -1,0 +1,90 @@
+/* Attempt comparison */
+
+.template-revision-diff {
+  margin: 0 var(--space-xl) var(--space-xl);
+  padding: var(--space-md);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+}
+
+.template-revision-diff-heading .evaluation-section-toggle {
+  width: 100%;
+}
+
+.template-revision-diff-action {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.template-revision-diff-hide {
+  display: block;
+  margin-top: var(--space-md);
+}
+
+.template-revision-diff-body h4 {
+  margin: var(--space-3xs) 0 0;
+}
+
+.template-revision-diff-compare {
+  display: grid;
+  gap: var(--space-2xs);
+  margin-top: var(--space-md);
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.template-revision-diff-compare select {
+  min-width: 180px;
+}
+
+.template-revision-diff-body {
+  display: grid;
+  gap: var(--space-md);
+  margin-top: var(--space-md);
+}
+
+.template-diff-message {
+  margin-top: var(--space-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.template-diff-message summary {
+  padding: var(--space-sm) var(--space-sm);
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+.template-diff-message .diff-code {
+  margin: 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.template-diff-defaults {
+  display: grid;
+  gap: var(--space-2xs);
+  margin: var(--space-sm) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.template-diff-defaults li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  color: var(--text-secondary);
+}
+
+.template-diff-defaults li span {
+  color: var(--text-muted);
+  font-family: var(--font-geist-mono), monospace;
+}
+
+.template-diff-provenance {
+  margin: 0;
+  color: var(--text-muted);
+}
+

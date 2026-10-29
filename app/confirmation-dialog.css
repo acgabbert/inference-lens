@@ -1,0 +1,50 @@
+.confirmation-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  padding: var(--space-2xl);
+  display: grid;
+  place-items: center;
+  background: var(--overlay-scrim);
+  backdrop-filter: blur(4px);
+}
+
+
+.confirmation-dialog {
+  width: min(560px, 100%);
+  max-height: calc(100vh - 48px);
+  padding: var(--space-xl);
+  overflow-y: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xl);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-modal);
+}
+
+.confirmation-dialog h2 {
+  margin: var(--space-2xs) 0 0;
+}
+
+.confirmation-dialog > p {
+  margin: var(--space-sm) 0 0;
+  color: var(--text-muted);
+  line-height: var(--leading-normal);
+}
+
+.confirmation-dialog > .project-replacement-error {
+  color: var(--danger);
+}
+
+.confirmation-dialog-suite-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.confirmation-dialog-suite-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+

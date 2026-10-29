@@ -1,0 +1,27 @@
+/* Saved evidence has a vertical scroll owner so opening diagnostics cannot
+   shrink the answer to zero height. Compose retains its resizable split. */
+.saved-run-evidence {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  background: var(--surface-panel);
+}
+.saved-run-evidence > .result {
+  height: auto;
+  flex: 0 0 auto;
+}
+.saved-run-evidence .output-scroll {
+  flex: 0 0 auto;
+  min-height: 180px;
+  max-height: 50vh;
+}
+.saved-run-evidence .trace-panel.open {
+  height: var(--trace-panel-height);
+  max-height: 520px;
+  flex: 0 0 auto;
+}
+.saved-run-evidence .decision-inspect { height: auto; }
+.saved-run-evidence > .run-evidence-actions { flex-wrap: wrap; }
+.saved-run-evidence > .run-evidence-actions code { overflow-wrap: anywhere; min-width: 0; }
+.page-notices { flex: 0 0 auto; max-height: 40vh; overflow: auto; overscroll-behavior: contain; }
+

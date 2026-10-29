@@ -1,0 +1,181 @@
+.templates-workspace {
+  min-height: 100%;
+  display: grid;
+  grid-template-columns: 158px minmax(0, 1fr);
+}
+
+.prompt-mode-workspace {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--surface-panel);
+}
+
+.prompt-mode-workspace .templates-workspace {
+  height: 100%;
+  min-height: 0;
+  grid-template-columns: minmax(210px, 18vw) minmax(0, 1fr);
+}
+
+.prompt-mode-workspace .template-sidebar,
+.prompt-mode-workspace .template-editor {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.template-return-action {
+  margin-bottom: var(--space-sm);
+}
+
+.template-sidebar {
+  padding: var(--space-md);
+  border-right: 1px solid var(--border-default);
+  background: var(--surface-sunken);
+}
+
+.template-create-actions {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+/* The prompt library sidebar is intentionally narrow; this preserves a
+   one-line n8n import label without making the control visually distinct. */
+.template-import-action {
+  padding-inline: var(--space-sm);
+}
+
+/* Active and Archived are deliberately not equal peers here: Active reads as
+   the working tab (a filled segment), Archived reads as a quiet, secondary
+   link so landing on it never feels like the primary destination. See
+   .template-library-archive-link below. */
+.template-library-filter {
+  margin-top: var(--space-md);
+  padding: var(--space-3xs) var(--space-3xs);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-xs);
+}
+
+.template-library-tab {
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 700;
+}
+
+.template-library-tab.selected {
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-field-inset);
+}
+
+.template-library-archive-link {
+  padding: var(--space-2xs) var(--space-xs);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 600;
+}
+
+.template-library-archive-link.selected {
+  color: var(--text-muted);
+  text-decoration: underline;
+}
+
+.template-library-filter span {
+  color: var(--text-muted);
+}
+
+.template-list {
+  margin-top: var(--space-md);
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.template-list-item {
+  padding: var(--space-sm);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.template-list-item:hover,
+.template-list-item.selected {
+  border-color: var(--accent-border);
+  background: var(--surface-panel);
+}
+
+.template-list-item.selected {
+  box-shadow: inset 3px 0 var(--accent);
+}
+
+.template-list-item strong,
+.template-list-item span {
+  display: block;
+}
+
+.template-list-item span,
+.template-empty {
+  margin: var(--space-2xs) 0 0;
+  color: var(--text-muted);
+  line-height: var(--leading-normal);
+}
+
+
+.template-kind-filter-button {
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.template-kind-filter-button.selected {
+  border-color: var(--border-strong);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+
+@media (max-width: 640px) {
+  .prompt-mode-workspace .templates-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .prompt-mode-workspace .template-sidebar {
+    max-height: 32dvh;
+    border-right: 0;
+    border-bottom: 1px solid var(--border-default);
+  }
+
+  .prompt-mode-workspace .template-create-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .prompt-mode-workspace .template-import-action {
+    grid-column: 1 / -1;
+  }
+
+  .prompt-mode-workspace .template-editor-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+

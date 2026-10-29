@@ -1,0 +1,188 @@
+.markdown-body {
+  line-height: var(--leading-prose);
+}
+
+.markdown-body > :first-child {
+  margin-top: 0;
+}
+
+.markdown-body > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body p {
+  margin: 0 0 var(--space-md);
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  margin: var(--space-xl) 0 var(--space-sm);
+  font-weight: 700;
+  line-height: var(--leading-tight);
+  letter-spacing: -0.02em;
+}
+
+.markdown-body h1 {
+}
+
+.markdown-body h2 {
+}
+
+.markdown-body h3 {
+}
+
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+}
+
+/* Tailwind's preflight sets `list-style: none` on every list, which left
+   markdown lists indented but unmarked. Restored here, not by weakening
+   preflight, because only these lists are prose. */
+.markdown-body ul,
+.markdown-body ol {
+  margin: 0 0 var(--space-md);
+  padding-left: var(--space-xl);
+}
+
+.markdown-body ul {
+  list-style: disc outside;
+}
+
+.markdown-body ol {
+  list-style: decimal outside;
+}
+
+.markdown-body li > ul {
+  list-style: circle outside;
+}
+
+.markdown-body li {
+  margin-bottom: var(--space-2xs);
+}
+
+.markdown-body li > ul,
+.markdown-body li > ol {
+  margin: var(--space-2xs) 0 0;
+}
+
+.markdown-body blockquote {
+  margin: 0 0 var(--space-md);
+  padding: var(--space-3xs) 0 var(--space-3xs) var(--space-md);
+  border-left: 3px solid var(--border-default);
+  color: var(--text-muted);
+}
+
+.markdown-body hr {
+  margin: var(--space-lg) 0;
+  border: 0;
+  border-top: 1px solid var(--border-default);
+}
+
+.markdown-body a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.markdown-inline-code {
+  padding: 1px var(--space-2xs);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  background: var(--surface-inset);
+  font-family: var(--font-geist-mono), monospace;
+}
+
+.markdown-body pre.markdown-code {
+  max-height: none;
+  margin: 0 0 var(--space-md);
+  padding: var(--space-md) var(--space-md);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  line-height: var(--leading-prose);
+}
+
+/* An unterminated fence is still streaming; hint that more is coming. */
+.markdown-body pre.markdown-code.streaming {
+  border-style: dashed;
+}
+
+/* Math is shown as source, never laid out. The delimiters stay visible so the
+   reader can tell this is unrendered notation rather than a failed formula. */
+.markdown-inline-math {
+  padding: 1px var(--space-2xs);
+  border: 1px dotted var(--border-subtle);
+  border-radius: var(--radius-xs);
+  background: var(--surface-inset);
+  font-family: var(--font-geist-mono), monospace;
+}
+
+.markdown-body .markdown-math {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  margin: 0 0 var(--space-md);
+  padding: var(--space-md) var(--space-md);
+  overflow-x: auto;
+  border: 1px dotted var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-inset);
+}
+
+.markdown-body .markdown-math pre {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  line-height: var(--leading-prose);
+}
+
+.markdown-math-delimiter {
+  flex: none;
+  color: var(--text-muted);
+  font-family: var(--font-geist-mono), monospace;
+  user-select: none;
+}
+
+.markdown-body .markdown-math.streaming {
+  border-style: dashed;
+}
+
+.markdown-table-scroll {
+  margin: 0 0 var(--space-md);
+}
+
+/* Horizontal table viewports keep their content height when an outer grid or
+   flex pane scrolls vertically. Their automatic minimum would otherwise be 0. */
+.markdown-table-scroll,
+.run-metrics-table-scroll,
+.evaluation-value-scroll,
+.evaluation-configuration-table-scroll {
+  position: relative;
+  min-width: 0;
+  min-height: min-content;
+  flex-shrink: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.markdown-body table {
+  border-collapse: collapse;
+}
+
+.markdown-body th,
+.markdown-body td {
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--border-subtle);
+  text-align: left;
+}
+
+.markdown-body th {
+  background: var(--surface-inset);
+  font-weight: 700;
+}
+

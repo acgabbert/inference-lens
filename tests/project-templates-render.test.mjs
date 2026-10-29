@@ -201,7 +201,7 @@ test("summarizes unresolved template values without repeating diagnostic rows", 
 
 test("keeps run-value textareas distinct from the composer surface", async () => {
   const stylesheet = await readFile(
-    new URL("../app/globals.css", import.meta.url),
+    new URL("../app/templates/chat-prompt-template-editor.css", import.meta.url),
     "utf8",
   );
   assert.match(

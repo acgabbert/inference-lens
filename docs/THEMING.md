@@ -1,6 +1,6 @@
 # Theming
 
-All color lives in `app/globals.css` as CSS custom properties declared once
+All color lives in `app/tokens.css` as CSS custom properties declared once
 in `:root`, each holding both a light and a dark value via `light-dark()`:
 
 ```css
@@ -26,6 +26,28 @@ used — `inline` is required because plain `@theme` resolves `var()` once at
 `:root` and would snapshot the color instead of tracking it live. In
 practice the codebase doesn't use Tailwind color utilities; this is just kept
 correct for whenever it does.
+
+## Where styles live
+
+`app/globals.css` holds no rules: it imports the global partials, and its
+import order is the cascade order. Most partials sit next to the component
+that renders what they style, such as `app/topbar.css` beside
+`topbar.client.tsx`. A few are not tied to one component: `tokens.css`,
+`base.css` (the reset and the semantic type roles), `controls.css`, and three
+viewport files (`narrow-dialogs.css`, `narrow-layout.css`, `phone-layout.css`)
+for media-query blocks that override many components at once.
+
+The partials were cut from one file without changing which rule wins. Every
+rule kept its original relative order, except where a move was checked not to
+reorder two rules of equal specificity that can match the same element. So a
+partial can still hold a few rules for a neighbouring component, where moving
+them would have changed the result. Before moving a rule to another partial,
+or reordering the imports, check the same thing: which rules of the same
+specificity it overrides, or is overridden by, for the same element.
+
+New surfaces still use CSS Modules. `tests/theme-tokens.test.ts` treats the
+partials together as the global stylesheet, and fails if `globals.css` gains a
+rule or a partial is left unimported.
 
 ## The toggle is not free — read this before adding one
 

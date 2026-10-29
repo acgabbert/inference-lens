@@ -1,0 +1,154 @@
+.provider-pill {
+  padding: var(--space-2xs) var(--space-xs);
+  border-radius: var(--radius-xs);
+  background: var(--accent-soft);
+  color: var(--accent);
+  letter-spacing: 0.02em;
+}
+
+.profile-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: end;
+  gap: var(--space-sm);
+}
+
+.profile-row .text-button {
+  margin: 0 0 var(--space-lg);
+  white-space: nowrap;
+}
+
+.connection-mapping {
+  margin: calc(-1 * var(--space-xs)) 0 var(--space-lg);
+  padding: var(--space-sm);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-sm);
+  background: var(--warning-surface);
+  color: var(--warning-strong);
+  line-height: var(--leading-normal);
+}
+
+.connection-mapping.mapped {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.connection-mapping strong,
+.connection-mapping span {
+  display: block;
+}
+
+.connection-mapping strong {
+  margin-bottom: var(--space-3xs);
+  color: var(--text-primary);
+}
+
+.connection-mapping .text-button {
+  margin-top: var(--space-2xs);
+  padding: 0;
+}
+
+.project-connection-mappings {
+  display: grid;
+  gap: var(--space-sm);
+  margin: calc(-1 * var(--space-xs)) 0 var(--space-lg);
+}
+
+.project-connection-mappings > small {
+  color: var(--text-muted);
+  line-height: var(--leading-normal);
+}
+
+.project-connection-mappings .connection-mapping {
+  margin: 0;
+}
+
+.project-connection-mappings label,
+.project-connection-mappings select {
+  width: 100%;
+}
+
+
+.credential-status {
+  display: block;
+  margin-top: var(--space-xs);
+  color: var(--accent);
+  line-height: var(--leading-tight);
+}
+
+.credential-status-error {
+  color: var(--danger);
+}
+
+
+.protocol-capabilities {
+  display: grid;
+  gap: var(--space-xs);
+  margin: 0 0 var(--space-sm);
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.protocol-capabilities legend {
+  padding: 0;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.protocol-capabilities > small {
+  color: var(--text-muted);
+}
+
+.capability-toggle {
+  display: flex !important;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  cursor: pointer;
+}
+
+.capability-toggle input[type="checkbox"] {
+  width: auto;
+  margin: 1px 0 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
+.capability-toggle span {
+  color: var(--text-secondary);
+}
+
+.capability-toggle small {
+  display: block;
+  margin-top: var(--space-3xs);
+  color: var(--text-muted);
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: var(--leading-tight);
+}
+
+.capability-toggle code {
+  font-family: var(--font-geist-mono), monospace;
+}
+
+
+.privacy-note {
+  margin-top: var(--space-2xl);
+  padding: var(--space-md);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  color: var(--text-muted);
+  line-height: var(--leading-normal);
+}
+
+.privacy-note span {
+  margin-right: var(--space-2xs);
+  color: var(--accent-solid);
+}
+
+.privacy-note strong {
+  color: var(--warning);
+}
+

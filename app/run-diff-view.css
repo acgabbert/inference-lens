@@ -1,0 +1,225 @@
+.run-diff {
+  padding: var(--space-lg) var(--space-xl) var(--space-xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.diff-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(130px, 1fr)) auto;
+  align-items: end;
+  gap: var(--space-sm);
+}
+
+.diff-picker {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+  color: var(--text-muted);
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.diff-picker select {
+  width: 100%;
+  min-width: 0;
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.diff-load-parent {
+  min-height: 31px;
+  white-space: nowrap;
+}
+
+.diff-parent-error,
+.diff-note,
+.diff-prompt,
+.diff-warning,
+.diff-absent {
+  margin: 0;
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+  color: var(--text-muted);
+  line-height: var(--leading-normal);
+}
+
+.diff-parent-error {
+  border-color: var(--danger-border);
+  background: var(--danger-surface);
+  color: var(--danger);
+}
+
+.diff-warning {
+  border-color: var(--warning-border);
+  background: var(--warning-surface);
+  color: var(--warning-strong);
+}
+
+.diff-scalars tr[data-changed="true"] {
+  background: var(--diff-changed-surface);
+}
+
+.diff-scalars th,
+.diff-scalars td {
+  padding-left: var(--space-sm);
+}
+
+.diff-sections {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.trace .diff-section:last-child {
+  border-bottom: 0;
+}
+
+.trace .diff-section summary {
+  padding: var(--space-sm) var(--space-md);
+}
+
+.diff-status {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+.diff-status.changed,
+.diff-status.left-only {
+  background: var(--danger);
+}
+
+.diff-status.right-only {
+  background: var(--accent-solid);
+}
+
+.diff-status.identical {
+  background: var(--accent);
+}
+
+.diff-normalized {
+  margin-left: var(--space-2xs);
+  color: var(--text-faint);
+  font-family: var(--font-geist-sans), sans-serif;
+}
+
+.diff-section-meta {
+  color: var(--text-faint);
+}
+
+.diff-code {
+  padding: var(--space-sm) 0 var(--space-md);
+  white-space: pre;
+}
+
+.diff-line {
+  min-height: 1.6em;
+  padding: 0 var(--space-md);
+  display: block;
+}
+
+.diff-line.added {
+  background: var(--diff-added-surface);
+  color: var(--diff-added-text);
+}
+
+.diff-line.removed {
+  background: var(--diff-removed-surface);
+  color: var(--diff-removed-text);
+}
+
+.diff-gutter {
+  width: 18px;
+  display: inline-block;
+  user-select: none;
+}
+
+/* Stands in for a run of unchanged lines; reads as part of the code block. */
+.diff-fold {
+  width: 100%;
+  min-height: 1.6em;
+  padding: 0 var(--space-md) 0 calc(var(--space-md) + 18px);
+  display: block;
+  border: 0;
+  border-block: 1px dashed var(--border-subtle);
+  background: var(--surface-subtle);
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.diff-fold:hover,
+.diff-fold:focus-visible {
+  color: var(--accent);
+}
+
+.diff-absent,
+.diff-warning {
+  margin: var(--space-sm) var(--space-md);
+}
+
+.trace details {
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-panel);
+}
+
+.trace summary {
+  padding: var(--space-md) var(--space-xl);
+  display: grid;
+  grid-template-columns: 9px 1fr auto;
+  align-items: center;
+  gap: var(--space-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  list-style: none;
+  font-family: var(--font-geist-mono), monospace;
+}
+
+.trace summary::-webkit-details-marker {
+  display: none;
+}
+
+.event-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+.event-dot.assistant\.text_delta,
+.event-dot.assistant\.completed,
+.event-dot.run\.completed,
+.event-dot.usage\.reported {
+  background: var(--accent-solid);
+}
+
+.event-dot.run\.failed,
+.event-dot.run\.cancelled {
+  background: var(--danger);
+}
+
+pre {
+  max-height: 240px;
+  margin: 0;
+  padding: var(--space-md) var(--space-xl) var(--space-lg) 37px;
+  overflow: auto;
+  background: var(--surface-inset);
+  color: var(--text-secondary);
+  font-family: var(--font-geist-mono), monospace;
+  line-height: var(--leading-prose);
+  white-space: pre-wrap;
+}
+
