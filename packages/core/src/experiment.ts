@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ownKeyRecord } from "./own-key-record.ts";
 
 import {
   CHECK_SCHEMA_VERSION,
@@ -13,6 +14,7 @@ import {
 import type { CheckDefinition, CheckResult, CheckSchemaVersion, CheckSubject } from "./checks.ts";
 import { DECISION_WIRE_PROTOCOLS, isDecisionInput } from "./decision.ts";
 import type { DecisionInput, DecisionRun, ResolvedDecisionTarget, ResolvedDecisionRunInput } from "./decision.ts";
+import { environmentProvenanceIssue } from "./environment.ts";
 import { isSensitiveTemplateVariableName } from "./project.ts";
 import { runMetrics } from "./run-metrics.ts";
 import { finalAssistantOutput, outputCharacterCount } from "./run-output.ts";
@@ -31,6 +33,7 @@ import type {
   DecisionRequestRevisionId,
   EntityId,
   EntityIdKind,
+  EnvironmentId,
   EvaluationAssessmentId,
   EvaluationCaseId,
   EvaluationInputBindingId,
@@ -54,8 +57,12 @@ import { isTerminalRunStatus, PROVIDER_WIRE_PROTOCOLS } from "./run-kernel/types
 /**
  * Plans moved to Version 5 to add decision evaluations (D47). A Version 4 plan
  * is a Version 5 plan that cannot be a decision evaluation, so it opens as one.
+ * Version 6 adds prompt environments: inputs record value sources and the
+ * environment they consumed, and an evaluation case holds one input per
+ * environment its configurations use. Older plans open as Version 6 with one
+ * input, no environment, and no value sources.
  */
-export const EXPERIMENT_SCHEMA_VERSION = 5;
+export const EXPERIMENT_SCHEMA_VERSION = 6;
 /**
  * Results moved to Version 5 alone, to record a batch that stopped itself, and
  * to Version 6 to record the concurrency and retry policy they ran under and
@@ -148,12 +155,30 @@ export interface EvaluationCaseSnapshotV4 {
   >;
 }
 
+/** One rendering of a case: against one environment, or against none. */
+export type EvaluationCaseInputSnapshot = Pick<ResolvedRunInput,
+  "conversationId" | "conversationRevisionId" | "messages" | "templateResolutions" | "resolvedAt" | "environment"
+>;
+
+export interface EvaluationCaseSnapshotV6 extends Omit<EvaluationCaseSnapshotV4, "input"> {
+  /**
+   * One input per environment the plan's configurations use, at most one with
+   * no environment. Configurations that share an environment share an input.
+   */
+  inputs: [EvaluationCaseInputSnapshot, ...EvaluationCaseInputSnapshot[]];
+}
+
 export interface EvaluationVariantSnapshotV4 {
   variantId: EvaluationVariantId;
   name: string;
   target: ResolvedRunInput["target"];
   responseMode: ResolvedRunInput["responseMode"];
   options: InferenceOptions;
+}
+
+export interface EvaluationVariantSnapshotV6 extends EvaluationVariantSnapshotV4 {
+  /** Selects the case input this configuration sends; absent means none. */
+  environmentId?: EnvironmentId;
 }
 
 export interface EvaluationExperimentCellV4 extends ExperimentCellBase {
@@ -180,8 +205,8 @@ export interface EvaluationExperimentPlan {
     conversationRevisionId: ConversationRevisionId;
     inputBindings: EvaluationInputBindingSnapshot[];
     tools: ToolDefinition[];
-    cases: EvaluationCaseSnapshotV4[];
-    variants: EvaluationVariantSnapshotV4[];
+    cases: EvaluationCaseSnapshotV6[];
+    variants: EvaluationVariantSnapshotV6[];
   };
   cells: EvaluationExperimentCellV4[];
 }
@@ -258,7 +283,7 @@ export type ExperimentResultV3 = ExperimentResultV4;
 export type ExperimentResult = ExperimentResultV6;
 /** A result as it may arrive from storage or a caller: any readable version. */
 export type ExperimentResultInput = ExperimentResultV4 | ExperimentResultV5 | ExperimentResultV6;
-export type EvaluationCaseSnapshot = EvaluationCaseSnapshotV4;
+export type EvaluationCaseSnapshot = EvaluationCaseSnapshotV6;
 
 export interface ExperimentTerminalCellResult {
   cellId: ExperimentCellId;
@@ -427,7 +452,7 @@ export interface EvaluationCaseCounts {
 }
 
 /** A configuration snapshot of either evaluation kind. */
-export type EvaluationVariantSnapshot = EvaluationVariantSnapshotV4 | DecisionEvaluationVariantSnapshot;
+export type EvaluationVariantSnapshot = EvaluationVariantSnapshotV6 | DecisionEvaluationVariantSnapshot;
 
 /**
  * One configuration's independently-scored view of an evaluation bakeoff.
@@ -611,8 +636,8 @@ const resolvedTemplateUseBaseSchema = z.object({
     templateId: entityId("template"),
     templateRevisionId: entityId("template-revision"),
     templateName: z.string(),
-    variableDefaults: z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), z.string()),
-    values: z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), z.string()),
+    variableDefaults: ownKeyRecord(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), z.string()),
+    values: ownKeyRecord(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), z.string()),
     outputMessageIds: z.array(entityId("message")).min(1),
   });
 
@@ -631,6 +656,42 @@ const resolvedTemplateUseSchema: z.ZodType<ResolvedTemplateUse> =
   resolvedTemplateUseBaseSchema
     .extend({ messages: templateMessagesSchema })
     .strict();
+
+const templateVariableNameSchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/);
+
+/**
+ * Version 6. Sources are optional because a Version 5 plan opens as Version 6
+ * without them; an input that records an environment must carry them.
+ */
+const sourcedResolvedTemplateUseSchema: z.ZodType<ResolvedTemplateUse> =
+  resolvedTemplateUseBaseSchema
+    .extend({
+      messages: templateMessagesSchema,
+      valueSources: ownKeyRecord(
+        templateVariableNameSchema,
+        z.enum(["template-default", "environment", "authored-use", "run-override", "case"]),
+      ).optional(),
+    })
+    .strict()
+    .superRefine((resolution, context) => {
+      if (!resolution.valueSources) return;
+      const sourceNames = Object.keys(resolution.valueSources).sort();
+      if (JSON.stringify(Object.keys(resolution.values).sort()) !== JSON.stringify(sourceNames)) {
+        context.addIssue({
+          code: "custom",
+          path: ["valueSources"],
+          message: "Template provenance must name a source for every value, and only for values.",
+        });
+      }
+    });
+
+const runEnvironmentSnapshotSchema = z
+  .object({
+    environmentId: entityId("environment"),
+    name: z.string(),
+    consumed: ownKeyRecord(templateVariableNameSchema, z.string()),
+  })
+  .strict();
 
 const capabilitiesSchema = z
   .object({
@@ -688,6 +749,13 @@ const commonInputSchema = commonInputBaseSchema
   .extend({ templateResolutions: z.array(resolvedTemplateUseSchema) })
   .strict();
 
+const commonInputV6Schema = commonInputBaseSchema
+  .extend({
+    templateResolutions: z.array(sourcedResolvedTemplateUseSchema),
+    environment: runEnvironmentSnapshotSchema.optional(),
+  })
+  .strict();
+
 const experimentCellBaseSchema = z.object({
   cellId: entityId("experiment-cell"),
   ordinal: z.number().int().positive(),
@@ -705,8 +773,8 @@ const planBaseSchema = z.object({
   createdAt: z.string().datetime(),
 });
 
-/** Chat plans written as Version 4 open as Version 5; `parseExperimentPlanFile` relabels them. */
-const chatPlanVersionSchema = z.union([z.literal(4), z.literal(EXPERIMENT_SCHEMA_VERSION)]);
+/** Chat plans written as Version 4 or 5 open as Version 6; `parseExperimentPlanFile` upgrades them. */
+const chatPlanVersionSchema = z.union([z.literal(4), z.literal(5)]);
 
 const repeatedPlanSchema = planBaseSchema.extend({
     schemaVersion: chatPlanVersionSchema,
@@ -716,6 +784,11 @@ const repeatedPlanSchema = planBaseSchema.extend({
     cells: z.array(experimentCellBaseSchema.strict()).min(2),
   })
   .strict();
+
+const repeatedPlanV6Schema = repeatedPlanSchema.extend({
+  schemaVersion: z.literal(EXPERIMENT_SCHEMA_VERSION),
+  commonInput: commonInputV6Schema,
+}).strict();
 
 const evaluationInputBindingSchema = z.object({
   id: entityId("evaluation-input"),
@@ -750,6 +823,21 @@ const evaluationVariantSnapshotSchema = z.object({
   options: inferenceOptionsSchema,
 }).strict();
 
+const evaluationCaseSnapshotV6Schema = evaluationCaseSnapshotSchema.omit({ input: true }).extend({
+  inputs: z.array(commonInputV6Schema.pick({
+    conversationId: true,
+    conversationRevisionId: true,
+    messages: true,
+    templateResolutions: true,
+    resolvedAt: true,
+    environment: true,
+  })).min(1),
+}).strict();
+
+const evaluationVariantSnapshotV6Schema = evaluationVariantSnapshotSchema.extend({
+  environmentId: entityId("environment").optional(),
+}).strict();
+
 const evaluationCellSchema = experimentCellBaseSchema.extend({
   caseId: entityId("evaluation-case"),
   variantId: entityId("evaluation-variant"),
@@ -775,6 +863,14 @@ const evaluationPlanSchema = planBaseSchema.extend({
   cells: z.array(evaluationCellSchema).min(1),
 }).strict();
 
+const evaluationPlanV6Schema = evaluationPlanSchema.extend({
+  schemaVersion: z.literal(EXPERIMENT_SCHEMA_VERSION),
+  suite: evaluationPlanSchema.shape.suite.extend({
+    cases: z.array(evaluationCaseSnapshotV6Schema).min(1),
+    variants: z.array(evaluationVariantSnapshotV6Schema).min(1),
+  }).strict(),
+}).strict();
+
 const decisionTargetSchema = z.object({
   profileId: entityId("profile"),
   protocol: z.enum(DECISION_WIRE_PROTOCOLS),
@@ -790,8 +886,9 @@ const decisionInputSchema = z.custom<DecisionInput>(
   "Expected a decision request with a state and at least one question.",
 );
 
+// A decision plan's shape did not change in Version 6; a Version 5 one is relabelled.
 const decisionPlanSchema = planBaseSchema.extend({
-  schemaVersion: z.literal(EXPERIMENT_SCHEMA_VERSION),
+  schemaVersion: z.union([z.literal(5), z.literal(EXPERIMENT_SCHEMA_VERSION)]),
   kind: z.literal("decision-evaluation"),
   checkSchemaVersion: z.literal(CHECK_SCHEMA_VERSION),
   scoringPolicy: z.literal("strict"),
@@ -831,10 +928,38 @@ const decisionPlanSchema = planBaseSchema.extend({
 }).strict();
 
 const planSchema = z.discriminatedUnion("kind", [
+  repeatedPlanV6Schema,
+  evaluationPlanV6Schema,
+  decisionPlanSchema,
+]) as unknown as z.ZodType<ExperimentPlan>;
+
+/** Version 4 and 5 chat plans, upgraded to Version 6 after parsing. */
+const legacyPlanSchema = z.discriminatedUnion("kind", [
   repeatedPlanSchema,
   evaluationPlanSchema,
   decisionPlanSchema,
-]) as unknown as z.ZodType<ExperimentPlan | (ChatExperimentPlan & { schemaVersion: 4 })>;
+]) as unknown as z.ZodType<
+  | Exclude<ExperimentPlan, EvaluationExperimentPlan>
+  | (Omit<EvaluationExperimentPlan, "suite"> & {
+      suite: Omit<EvaluationExperimentPlan["suite"], "cases" | "variants"> & {
+        cases: EvaluationCaseSnapshotV4[];
+        variants: EvaluationVariantSnapshotV4[];
+      };
+    })
+>;
+
+/** Nothing a Version 4 or 5 plan recorded changes meaning; one input per case, no environment. */
+function upgradeLegacyPlan(plan: z.infer<typeof legacyPlanSchema>): ExperimentPlan {
+  if (plan.kind !== "evaluation") return { ...plan, schemaVersion: EXPERIMENT_SCHEMA_VERSION } as ExperimentPlan;
+  return {
+    ...plan,
+    schemaVersion: EXPERIMENT_SCHEMA_VERSION,
+    suite: {
+      ...plan.suite,
+      cases: plan.suite.cases.map(({ input, ...evaluationCase }) => ({ ...evaluationCase, inputs: [input] })),
+    },
+  };
+}
 
 // Kept only as schemas for clear rejection diagnostics when stale artifacts
 // are encountered. PR10 intentionally does not migrate pre-v3 artifacts.
@@ -1079,7 +1204,12 @@ function assertPlanReferences(plan: ExperimentPlan): void {
     runIds.add(cell.runId);
   });
 
-  if (plan.kind === "repeated-request") return;
+  if (plan.kind === "repeated-request") {
+    const issue = environmentInputIssue(plan.commonInput);
+    if (issue) throw new ExperimentValidationError(issue);
+    return;
+  }
+  if (plan.kind === "evaluation") assertEvaluationInputs(plan);
   const bindingIds = new Set(plan.suite.inputBindings.map(({ id }) => id));
   if (bindingIds.size !== plan.suite.inputBindings.length) {
     throw new ExperimentValidationError("Evaluation input binding identities must be unique.");
@@ -1094,8 +1224,8 @@ function assertPlanReferences(plan: ExperimentPlan): void {
       throw new ExperimentValidationError(`Evaluation case ${evaluationCase.caseId} must snapshot exactly one value for every input binding.`);
     }
     if (plan.kind === "evaluation"
-      ? (evaluationCase.input as EvaluationCaseSnapshotV4["input"]).conversationRevisionId !== plan.suite.conversationRevisionId
-      : (evaluationCase.input as DecisionEvaluationCaseSnapshot["input"]).decisionRequestRevisionId !== plan.suite.decisionRequestRevisionId) {
+      ? (evaluationCase as EvaluationCaseSnapshotV6).inputs.some(({ conversationRevisionId }) => conversationRevisionId !== plan.suite.conversationRevisionId)
+      : (evaluationCase as DecisionEvaluationCaseSnapshot).input.decisionRequestRevisionId !== plan.suite.decisionRequestRevisionId) {
       throw new ExperimentValidationError(
         `Evaluation case ${evaluationCase.caseId} resolves a different ${plan.kind === "evaluation" ? "conversation" : "decision request"} revision.`,
       );
@@ -1122,6 +1252,46 @@ function assertPlanReferences(plan: ExperimentPlan): void {
       }
     });
   });
+}
+
+/** An input that records an environment says where every value came from, and agrees with it. */
+function environmentInputIssue(
+  input: Pick<ResolvedRunInput, "templateResolutions" | "environment">,
+): string | undefined {
+  if (input.environment && input.templateResolutions.some(({ valueSources }) => !valueSources)) {
+    return "An input that records an environment must record valueSources for every template use.";
+  }
+  return environmentProvenanceIssue(input);
+}
+
+/**
+ * Every configuration finds exactly one input in every case, by environment,
+ * and every input is sent by some configuration.
+ */
+function assertEvaluationInputs(plan: EvaluationExperimentPlan): void {
+  const used = new Set(plan.suite.variants.map(({ environmentId }) => environmentId ?? ""));
+  for (const evaluationCase of plan.suite.cases) {
+    const keys = new Set<string>();
+    for (const input of evaluationCase.inputs) {
+      const key = input.environment?.environmentId ?? "";
+      if (keys.has(key)) {
+        throw new ExperimentValidationError(`Evaluation case ${evaluationCase.caseId} has more than one input for one environment.`);
+      }
+      keys.add(key);
+      if (!used.has(key)) {
+        throw new ExperimentValidationError(`Evaluation case ${evaluationCase.caseId} has an input no configuration uses.`);
+      }
+      const issue = environmentInputIssue(input);
+      if (issue) throw new ExperimentValidationError(`Evaluation case ${evaluationCase.caseId}: ${issue}`);
+    }
+    for (const variant of plan.suite.variants) {
+      if (!keys.has(variant.environmentId ?? "")) {
+        throw new ExperimentValidationError(
+          `Evaluation case ${evaluationCase.caseId} has no input for configuration ${variant.variantId}.`,
+        );
+      }
+    }
+  }
 }
 
 function assertResultReferences(
@@ -1347,16 +1517,14 @@ function assertPlanVocabulary(plan: ExperimentPlan): void {
 
 export function parseExperimentPlanFile(value: unknown): ExperimentPlan {
   const version = unsupportedPlanVersionSchema.safeParse(value);
-  if (version.success && version.data.schemaVersion !== 4 && version.data.schemaVersion !== EXPERIMENT_SCHEMA_VERSION) {
+  if (version.success && ![4, 5, EXPERIMENT_SCHEMA_VERSION].includes(version.data.schemaVersion)) {
     throw new ExperimentValidationError(
-      `Experiment plan schema Version ${version.data.schemaVersion} is unsupported; expected Version 4 or ${EXPERIMENT_SCHEMA_VERSION}.`,
+      `Experiment plan schema Version ${version.data.schemaVersion} is unsupported; expected Version 4, 5, or ${EXPERIMENT_SCHEMA_VERSION}.`,
     );
   }
-  const parsed = parseWith(planSchema, value, "experiment plan");
-  // A Version 4 plan is already its Version 5 equivalent; only the label moves.
-  const plan: ExperimentPlan = parsed.schemaVersion === EXPERIMENT_SCHEMA_VERSION
-    ? parsed as ExperimentPlan
-    : { ...parsed, schemaVersion: EXPERIMENT_SCHEMA_VERSION } as ExperimentPlan;
+  const plan: ExperimentPlan = version.success && version.data.schemaVersion === EXPERIMENT_SCHEMA_VERSION
+    ? parseWith(planSchema, value, "experiment plan")
+    : upgradeLegacyPlan(parseWith(legacyPlanSchema, value, "experiment plan"));
   assertPlanVocabulary(plan);
   assertPlanReferences(plan);
   assertNoSensitiveProviderOptions(plan);
@@ -1502,7 +1670,10 @@ export function materializeParsedExperimentCellInput(
   if (!evaluationCase) throw new ExperimentValidationError(`Unknown evaluation case ${evaluationCell.caseId}.`);
   const variant = plan.suite.variants.find(({ variantId }) => variantId === evaluationCell.variantId);
   if (!variant) throw new ExperimentValidationError(`Unknown evaluation configuration ${evaluationCell.variantId}.`);
-  return { ...evaluationCase.input, ...variant, tools: plan.suite.tools, runId: plannedCell.runId };
+  const { environmentId, ...configuration } = variant;
+  const input = evaluationCase.inputs.find(({ environment }) => environment?.environmentId === environmentId);
+  if (!input) throw new ExperimentValidationError(`Evaluation case ${evaluationCase.caseId} has no input for configuration ${variant.variantId}.`);
+  return { ...input, ...configuration, tools: plan.suite.tools, runId: plannedCell.runId };
 }
 
 /**

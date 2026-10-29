@@ -4,6 +4,7 @@ import type {
   ConnectionRequirementId,
   ConversationRevisionId,
   DecisionRequestRevisionId,
+  EnvironmentId,
   EvaluationCaseId,
   EvaluationInputBindingId,
   EvaluationSuiteId,
@@ -17,6 +18,7 @@ import { isDecisionCheckKind } from "./checks.ts";
 import type { DecisionInput, DecisionQuestion } from "./decision.ts";
 import { renderDecisionInput } from "./decision-variables.ts";
 import { resolveProjectDecisionRequestRevision } from "./decision-request.ts";
+import type { ProjectEnvironment } from "./environment.ts";
 import { resolveEvaluationCase } from "./evaluation-case-resolution.ts";
 import { SCHEMA_CHECK_LIMITS } from "./json-schema/limits.ts";
 import { preflightJsonSchema } from "./json-schema/preflight.ts";
@@ -70,10 +72,12 @@ export interface EvaluationVariant {
       stop?: string[] | null;
       providerOptions?: InferenceOptions["providerOptions"] | null;
     };
+    /** `null` runs this variant with no environment; absence inherits the suite's. */
+    environmentId?: EnvironmentId | null;
   };
 }
 
-export type ResolvedEvaluationVariantExecution = Pick<ChatEvaluationSuite["execution"], "target" | "responseMode" | "options">;
+export type ResolvedEvaluationVariantExecution = Pick<ChatEvaluationSuite["execution"], "target" | "responseMode" | "options" | "environmentId">;
 
 /**
  * Resolves the one-level sparse override contract. Option fields inherit
@@ -84,6 +88,9 @@ export function resolveEvaluationVariant(
   variant: EvaluationVariant,
 ): ResolvedEvaluationVariantExecution {
   const optionOverrides = variant.overrides.options ?? {};
+  const environmentId = variant.overrides.environmentId === null
+    ? undefined
+    : variant.overrides.environmentId ?? suite.execution.environmentId;
   const resolveOption = <Key extends keyof InferenceOptions>(key: Key) => {
     const value = optionOverrides[key];
     return value === null ? undefined : value ?? suite.execution.options[key];
@@ -95,6 +102,7 @@ export function resolveEvaluationVariant(
       protocol: variant.overrides.target?.protocol ?? suite.execution.target.protocol,
     },
     responseMode: variant.overrides.responseMode ?? suite.execution.responseMode,
+    ...(environmentId ? { environmentId } : {}),
     options: {
       ...(resolveOption("temperature") === undefined ? {} : { temperature: resolveOption("temperature") }),
       ...(resolveOption("maxOutputTokens") === undefined ? {} : { maxOutputTokens: resolveOption("maxOutputTokens") }),
@@ -103,6 +111,40 @@ export function resolveEvaluationVariant(
       ...(resolveOption("providerOptions") === undefined ? {} : { providerOptions: structuredClone(resolveOption("providerOptions")) }),
     },
   };
+}
+
+/** One environment a chat suite renders against, and the variants that use it. */
+export interface EvaluationEnvironmentGroup {
+  /** Absent for variants that run with no environment. */
+  environment?: ProjectEnvironment;
+  variants: EvaluationVariant[];
+}
+
+/**
+ * Groups variants by the environment they render against, in first-use
+ * order. A case is rendered once per group, since every variant in a group
+ * sends identical content. The project schema guarantees each ID exists.
+ */
+export function evaluationEnvironmentGroups(
+  project: Pick<ProjectFile, "environments">,
+  suite: Pick<ChatEvaluationSuite, "execution">,
+  variants: readonly EvaluationVariant[],
+): EvaluationEnvironmentGroup[] {
+  const groups = new Map<string, EvaluationEnvironmentGroup>();
+  for (const variant of variants) {
+    const environmentId = resolveEvaluationVariant(suite, variant).environmentId;
+    const key = environmentId ?? "";
+    const group = groups.get(key);
+    if (group) {
+      group.variants.push(variant);
+      continue;
+    }
+    const environment = environmentId
+      ? project.environments.find(({ id }) => id === environmentId)
+      : undefined;
+    groups.set(key, { ...(environment ? { environment } : {}), variants: [variant] });
+  }
+  return [...groups.values()];
 }
 
 /**
@@ -197,6 +239,8 @@ export interface ChatEvaluationSuite {
      * suite owns everything its result depends on.
      */
     turnCeiling?: number;
+    /** The environment every case renders against; absent means none. */
+    environmentId?: EnvironmentId;
   };
   /** At least one named configuration; the base execution remains the editing anchor. */
   variants: EvaluationVariant[];
@@ -206,6 +250,7 @@ export interface ChatEvaluationSuite {
 
 export type EvaluationSuitePreflightDiagnostic =
   | { code: "empty-suite"; message: string }
+  | { code: "environment-diagnostic"; caseId: EvaluationCaseId; message: string }
   | { code: "no-cases-selected"; message: string }
   | {
       code: "missing-template-use";
@@ -304,10 +349,12 @@ function unfinishedCheckText(check: CheckDefinition): boolean {
  * applies to chat suites only.
  */
 export function evaluationSuitePreflight(
-  project: Pick<ProjectFile, "evaluationSuites" | "conversationRevisions" | "promptTemplates" | "decisionRequestRevisions">,
+  project: Pick<ProjectFile, "evaluationSuites" | "conversationRevisions" | "promptTemplates" | "decisionRequestRevisions" | "environments">,
   evaluationSuiteId: EvaluationSuiteId,
   conversationRevisionId: ConversationRevisionId,
   selectedCaseIds?: readonly EvaluationCaseId[],
+  /** Only these configurations' environments are resolved; absent means all. */
+  selectedVariantIds?: readonly EvaluationVariantId[],
 ): EvaluationSuitePreflightDiagnostic[] {
   const found = project.evaluationSuites.find(({ id }) => id === evaluationSuiteId);
   if (found && isDecisionEvaluationSuite(found)) return decisionSuitePreflight(project, found, selectedCaseIds);
@@ -326,6 +373,11 @@ export function evaluationSuitePreflight(
     ? suite.cases.filter(({ id }) => selectedCaseIds.includes(id))
     : suite.cases;
   const uses = templateUseVariableIndex([revision], project.promptTemplates);
+  const environmentGroups = evaluationEnvironmentGroups(
+    project,
+    suite,
+    selectedVariantIds ? suite.variants.filter(({ id }) => selectedVariantIds.includes(id)) : suite.variants,
+  );
   const bindingsMatchRevision = suite.inputBindings.every((binding) => {
     const occurrence = uses.get(binding.target.templateUseId)?.[0];
     return occurrence?.variables.has(binding.target.variableName) ?? false;
@@ -377,18 +429,32 @@ export function evaluationSuitePreflight(
     // fact the author needs behind a row for every case.
     if (!bindingsMatchRevision) return;
 
-    const resolution = resolveEvaluationCase(project, revision, suite, evaluationCase);
-    if (resolution.ok) return;
-    resolution.diagnostics.forEach(({ templateUseId, diagnostic }) => {
-      if (diagnostic.code !== "missing-template-variable") return;
-      diagnostics.push({
-        code: "unresolved-template-variable",
-        caseId: evaluationCase.id,
-        templateUseId,
-        variableName: diagnostic.name,
-        message: `Case "${evaluationCase.name}" cannot resolve template variable "${diagnostic.name}": ${diagnostic.message}`,
+    // Resolved once per environment the variants use. When they all share
+    // one, messages read as they did before environments existed.
+    for (const group of environmentGroups) {
+      const resolution = resolveEvaluationCase(project, revision, suite, evaluationCase, { environment: group.environment });
+      if (resolution.ok) continue;
+      const where = environmentGroups.length > 1
+        ? ` in configuration${group.variants.length > 1 ? "s" : ""} ${group.variants.map(({ name }) => `"${name}"`).join(", ")}`
+        : "";
+      resolution.diagnostics.forEach(({ templateUseId, diagnostic }) => {
+        if (diagnostic.code !== "missing-template-variable") return;
+        diagnostics.push({
+          code: "unresolved-template-variable",
+          caseId: evaluationCase.id,
+          templateUseId,
+          variableName: diagnostic.name,
+          message: `Case "${evaluationCase.name}" cannot resolve template variable "${diagnostic.name}"${where}: ${diagnostic.message}`,
+        });
       });
-    });
+      (resolution.environmentDiagnostics ?? []).forEach((diagnostic) => {
+        diagnostics.push({
+          code: "environment-diagnostic",
+          caseId: evaluationCase.id,
+          message: `Case "${evaluationCase.name}" cannot use environment "${group.environment?.name ?? ""}": ${diagnostic.message}`,
+        });
+      });
+    }
   });
 
   suite.inputBindings.forEach((binding) => {

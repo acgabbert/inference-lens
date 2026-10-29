@@ -130,7 +130,7 @@ function projectWithEvaluationSuite() {
   });
 }
 
-test("creates a strict, portable Project v15 document", () => {
+test("creates a strict, portable Project v16 document", () => {
   const project = createProjectFile({
     name: "Example",
     request,
@@ -157,8 +157,8 @@ test("creates a strict, portable Project v15 document", () => {
   assert.equal(projectDirectoryName("   "), "Untitled.inference-lens");
   assert.equal(projectExportFileName("Prompt Lab"), "Prompt Lab.project.json");
   assert.equal(projectExportFileName("CON"), "CON-project.project.json");
-  assert.equal(PROJECT_SCHEMA_VERSION, 15);
-  assert.equal(project.schemaVersion, 15);
+  assert.equal(PROJECT_SCHEMA_VERSION, 16);
+  assert.equal(project.schemaVersion, 16);
   assert.equal(project.projectId, "project_example");
   const draft = projectDraft(project);
   assert.deepEqual(projectDraft(project), {
@@ -182,7 +182,7 @@ test("creates a strict, portable Project v15 document", () => {
   });
   assert.deepEqual(project.externalImports, []);
   assert.deepEqual(project.evaluationSuites, []);
-  assert.equal(JSON.parse(serializeProjectFile(project)).schemaVersion, 15);
+  assert.equal(JSON.parse(serializeProjectFile(project)).schemaVersion, 16);
 });
 
 test("resolves native formatting-whitespace tokens without rewriting authored project JSON", () => {
@@ -329,7 +329,7 @@ test("rejects pre-v10 project artifacts with an actionable version error", () =>
       (error: unknown) => {
         const message = (error as Error).message;
         assert.match(message, new RegExp(`schema v${schemaVersion} is not supported`));
-        assert.match(message, /opens schema v10, v11, v12, v13, v14, and v15/);
+        assert.match(message, /opens schema v10, v11, v12, v13, v14, v15, and v16/);
         assert.match(message, /earlier Inference Lens release/);
         assert.doesNotMatch(message, /v10-compatible/);
         return true;
@@ -340,16 +340,16 @@ test("rejects pre-v10 project artifacts with an actionable version error", () =>
 
 test("a project from a newer schema asks for an updated build, not an older release", () => {
   const current = createProjectFile({
-    name: "Version 15",
+    name: "Version 16",
     request,
-    idSuffix: "version-15",
+    idSuffix: "version-16",
     createdAt: "2026-08-01T12:00:00.000Z",
   });
   assert.throws(
-    () => parseProjectFile({ ...current, schemaVersion: 16 }),
+    () => parseProjectFile({ ...current, schemaVersion: 17 }),
     (error: unknown) => {
       const message = (error as Error).message;
-      assert.match(message, /schema v16 is not supported/);
+      assert.match(message, /schema v17 is not supported/);
       assert.match(message, /newer Inference Lens/);
       assert.doesNotMatch(message, /earlier Inference Lens release/);
       return true;
@@ -384,7 +384,7 @@ test("a v10 project moves its connection's protocol onto every execution target"
     })),
   };
   const opened = parseProjectFile(v10);
-  assert.equal(opened.schemaVersion, 15);
+  assert.equal(opened.schemaVersion, 16);
   assert.deepEqual(opened, current);
   assert.equal(opened.defaults.target.protocol, "openai-compatible-chat-completions");
   assert.equal(

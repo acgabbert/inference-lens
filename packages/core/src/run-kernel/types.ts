@@ -28,6 +28,7 @@ export type EntityIdKind =
   | "template"
   | "template-revision"
   | "template-use"
+  | "environment"
   | "external-import"
   | "experiment"
   | "experiment-cell"
@@ -61,6 +62,7 @@ export type ToolExecutionId = EntityId<"tool-execution">;
 export type PromptTemplateId = EntityId<"template">;
 export type PromptTemplateRevisionId = EntityId<"template-revision">;
 export type PromptTemplateUseId = EntityId<"template-use">;
+export type EnvironmentId = EntityId<"environment">;
 export type ExternalImportId = EntityId<"external-import">;
 export type ExperimentId = EntityId<"experiment">;
 export type ExperimentCellId = EntityId<"experiment-cell">;
@@ -364,6 +366,14 @@ export interface ResolvedTemplateMessage {
 }
 
 /** Self-contained, secret-free provenance for one pinned authored template use. */
+/** The layer that supplied a template variable's effective value, lowest first. */
+export type TemplateValueSource =
+  | "template-default"
+  | "environment"
+  | "authored-use"
+  | "run-override"
+  | "case";
+
 export interface ResolvedTemplateUse {
   templateUseId: PromptTemplateUseId;
   templateId: PromptTemplateId;
@@ -372,7 +382,21 @@ export interface ResolvedTemplateUse {
   messages: [ResolvedTemplateMessage, ...ResolvedTemplateMessage[]];
   variableDefaults: Record<string, string>;
   values: Record<string, string>;
+  /**
+   * The layer behind each entry of `values`, keyed alike. Required from trace
+   * v9; absent on an older trace, which says nothing about where values came
+   * from.
+   */
+  valueSources?: Record<string, TemplateValueSource>;
   outputMessageIds: MessageId[];
+}
+
+/** The environment a run rendered against, as it was when the run was prepared. */
+export interface RunEnvironmentSnapshot {
+  environmentId: EnvironmentId;
+  name: string;
+  /** Resolved, literal values of the entries some template use took. */
+  consumed: Record<string, string>;
 }
 
 /**
@@ -386,6 +410,8 @@ export interface ResolvedRunInput {
   target: ResolvedProviderTarget;
   messages: ConversationMessage[];
   templateResolutions: ResolvedTemplateUse[];
+  /** Absent when the run used no environment. */
+  environment?: RunEnvironmentSnapshot;
   responseMode: ResponseMode;
   options: InferenceOptions;
   tools: ToolDefinition[];
@@ -695,7 +721,7 @@ export interface RunState {
 }
 
 export interface RunTrace {
-  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
   runId: RunId;
   input: ResolvedRunInput;
   status: TerminalRunStatus;

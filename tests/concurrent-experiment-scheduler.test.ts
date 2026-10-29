@@ -19,7 +19,7 @@ import type { ExperimentProgress } from "../packages/runner/src/experiment-contr
 
 function plan(count: number): RepeatedExperimentPlanV3 {
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     experimentId: "experiment_concurrent",
     kind: "repeated-request",
     createdAt: "2026-10-09T12:00:00.000Z",

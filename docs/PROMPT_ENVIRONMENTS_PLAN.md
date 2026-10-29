@@ -1,11 +1,12 @@
 # Prompt environments
 
 **Status:** Decision table, limits and format versions accepted 2026-10-29;
-the staged shared format is renumbered to v17. Format numbers revised the same
-day: [final output](FINAL_OUTPUT_CONTRACTS.md#d1-format-version-allocation)
-took Project v16 and RunTrace v9, so environments take Project v17, RunTrace
-v10 and ExperimentPlan v7 (see [Format version](#format-version)). No runtime
-implementation yet.
+the staged shared format is renumbered to v17. Environments are implemented
+before final output, so they keep Project v16 and take RunTrace v9 and
+ExperimentPlan v6; [final output](FINAL_OUTPUT_CONTRACTS.md#d1-format-version-allocation)
+moves to Project v17, RunTrace v10 and ExperimentPlan v7 (see
+[Format version](#format-version)). Contract slice accepted and core
+implemented 2026-10-29; the app has no environment UI yet.
 **Date:** 2026-10-29. **Inspected baseline:** `main` at `406cb03`.
 
 ## Outcome
@@ -167,6 +168,128 @@ in code until environments land. That change renumbers it to v18, derived from
 active v17, the same mechanical renumber as before. Nothing reads the staged
 format today, so the two v17s never meet in a reader. If environments land
 before final output, the two features swap numbers rather than skip one.
+
+**Revised again 2026-10-29: numbers swapped back.** Environments are
+implemented first, so they take active **Project v16, RunTrace v9 and
+ExperimentPlan v6**, and
+[final output](FINAL_OUTPUT_CONTRACTS.md#d1-format-version-allocation) takes
+Project v17, RunTrace v10 and ExperimentPlan v7. This restores option A as
+first accepted: the staged shared format stays v17, carries environments, and
+derives from active v16 when environments land. It renumbers to v18 only when
+final output lands active v17.
+
+### Contract slice proposal
+
+**Accepted 2026-10-29, all four questions as recommended.** Exact names and
+the provenance shape, written against `main` at `79a3b2a`. The four questions
+are kept below as the record of what was decided.
+
+```ts
+// project.ts: Project v16
+type EnvironmentId = `environment_${string}`;
+interface ProjectEnvironmentEntry { name: string; value: string }
+interface ProjectEnvironment {
+  id: EnvironmentId;
+  name: string;                       // unique ignoring case, trimmed, non-empty
+  entries: ProjectEnvironmentEntry[]; // ordered; names unique
+}
+// ProjectFileV16 = ProjectFileV15 + { schemaVersion: 16; environments: ProjectEnvironment[] }
+// ProjectDefaults gains environmentId?: EnvironmentId
+
+// evaluation-suites.ts: chat suites only
+// ChatEvaluationSuite.execution.environmentId?: EnvironmentId
+// EvaluationVariant.overrides.environmentId?: EnvironmentId | null   // null: no environment
+
+// environment.ts
+interface ResolvedEnvironment {
+  environmentId: EnvironmentId;
+  name: string;
+  values: Record<string, string>;        // every entry, fully resolved, literal
+  diagnostics: EnvironmentDiagnostic[];
+}
+type EnvironmentDiagnostic =
+  | { code: "missing-environment-reference"; entryName: string; reference: string; message: string }
+  | { code: "invalid-environment-token"; entryName: string; token: string; message: string }
+  | { code: "environment-limit-exceeded"; entryName?: string; limit: number; message: string };
+
+// run-kernel/types.ts: RunTrace v9, ExperimentPlan v6
+type TemplateValueSource =
+  | "template-default" | "environment" | "authored-use" | "run-override" | "case";
+// ResolvedTemplateUse gains valueSources: Record<string, TemplateValueSource>
+// ResolvedRunInput gains environment?: RunEnvironmentSnapshot
+interface RunEnvironmentSnapshot {
+  environmentId: EnvironmentId;
+  name: string;
+  consumed: Record<string, string>; // resolved entries some template use took
+}
+```
+
+Settled by the accepted decisions or by existing code:
+
+- **Source names** reuse `EvaluationValueSource` in
+  [`evaluation-case-resolution.ts`](../packages/core/src/evaluation-case-resolution.ts)
+  (`"case"`, `"authored-use"`, `"template-default"`) and add `"environment"`
+  and `"run-override"`. That type becomes an alias of `TemplateValueSource`.
+- **Only referenced names enter a use.** An environment entry fills a use only
+  for a variable that the pinned template revision references. `values` does
+  not gain the whole environment for every use.
+- **Case values are labelled.** Evaluation cases reach `resolveProjectRevision`
+  through the same override parameter as composer run values. The resolver
+  therefore takes the override layer's source (`"run-override"` or `"case"`) so
+  that the trace says which one supplied a value.
+- **Cycles and duplicate names** are rejected when the project is parsed, with
+  a path to the entry. They never become resolution diagnostics.
+- **Old artifacts.** A v15 project upgrades with `environments: []` and no
+  default. A v8 trace has no `valueSources` or `environment`, and the reader
+  infers nothing. In v9, `valueSources` is required on every template use, so
+  "no provenance" and "predates provenance" stay distinct, as with
+  `toolExecutions` in v6.
+- **Variant `null`** follows the existing option overrides: `null` clears the
+  suite's environment for that variant, and absence inherits it.
+
+Questions, each accepted as recommended:
+
+1. **Provenance shape.** A `valueSources` map parallel to `values`. *Or*
+   replace `values` with per-variable `{ value, source }` records. The parallel
+   map keeps replay, parsing and every reader of `values` unchanged.
+   **Recommend the parallel map.**
+2. **What the trace snapshots.** Only the consumed entries. *Or* the whole
+   resolved environment. The whole environment lets history compare two runs
+   by every entry, not only by the entries the prompts used. The cost is up to
+   1,000,000 code units in every trace and every plan input. **Recommend
+   consumed entries**, as the accepted table says.
+3. **Which diagnostics block a run.** A run is refused when a consumed entry,
+   or an entry it derives from, has a diagnostic. A limit error always refuses
+   the run. *Or* any environment diagnostic refuses it. With the narrower rule,
+   an unfinished entry that no prompt uses does not block unrelated runs.
+   **Recommend the narrower rule.**
+4. **Decision requests.** System One decision inputs have their own
+   `{{variable}}` values (D40) and their own trace format. Keep environments
+   to chat template uses for now. *Or* also fill decision inputs, which needs
+   a decision-trace version and a decision-suite field. **Recommend chat only**;
+   decision inputs become a follow-up.
+
+### Evaluation plans and saved formats
+
+**Accepted 2026-10-29: one input per environment.** A variant can choose its
+own environment, so one case renders differently per variant. An ExperimentPlan
+v6 evaluation case holds `inputs`, one rendering per distinct environment its
+configurations use, and each configuration snapshot names its
+`environmentId`. Configurations that share an environment share one input.
+Inputs are keyed by environment identity, not by variable names. Two
+environments with the same entry names and different values therefore each
+get their own input, and the history says which environment produced a run.
+Preflight resolves every case once per environment the selected configurations
+use, and names the configuration when they use more than one.
+
+Two details follow from not inventing evidence:
+
+- A v9 trace requires `valueSources`. A trace read from an older file, whose
+  template uses have none, is written back as v8 rather than given sources
+  nobody observed.
+- A v6 plan's `valueSources` are optional per use, because a v5 plan opens as
+  v6 and its case shape changed, so it cannot be written back as v5. An input
+  that records an environment must carry them.
 
 ## Feature owners and user experience
 

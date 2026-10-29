@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ownKeyRecord } from "./own-key-record.ts";
 import type { CheckDefinition } from "./checks.ts";
 import {
   authoredCheckDefinitionSchema,
@@ -32,6 +33,16 @@ import { stableJsonValue } from "./stable-json.ts";
 import { DECISION_WIRE_PROTOCOLS, isDecisionInput } from "./decision.ts";
 import type { DecisionInput } from "./decision.ts";
 import { discoverDecisionVariables } from "./decision-variables.ts";
+import {
+  blockingEnvironmentDiagnostics,
+  environmentIssues,
+  resolveEnvironment,
+} from "./environment.ts";
+import type {
+  EnvironmentDiagnostic,
+  ProjectEnvironment,
+  ResolvedEnvironment,
+} from "./environment.ts";
 import { toolNameSchema } from "./tool-name.ts";
 import {
   MAX_EXPERIMENT_TURN_CEILING,
@@ -61,6 +72,7 @@ import type {
   ConversationRevisionId,
   DecisionRequestId,
   DecisionRequestRevisionId,
+  EnvironmentId,
   ExternalImportId,
   InferenceOptions,
   JsonObject,
@@ -73,6 +85,8 @@ import type {
   PromptTemplateRevisionId,
   PromptTemplateUseId,
   ResolvedTemplateUse,
+  RunEnvironmentSnapshot,
+  TemplateValueSource,
   ToolDefinition,
   ToolId,
   ToolMockId,
@@ -82,7 +96,6 @@ import { randomUUID } from "./random-id.ts";
 import {
   discoverTemplateVariables,
   renderTemplateMessages,
-  resolveTemplateValues,
 } from "./template-engine.ts";
 import type { TemplateDiagnostic } from "./template-engine.ts";
 import type {
@@ -111,9 +124,9 @@ export function projectGitignoreContents(policy: ProjectGitPolicy): string | nul
   }
 }
 
-export const PROJECT_SCHEMA_VERSION = 15;
+export const PROJECT_SCHEMA_VERSION = 16;
 /** Older versions this build opens through the explicit one-version migration chain. */
-const OPENABLE_PROJECT_SCHEMA_VERSIONS: readonly number[] = [10, 11, 12, 13, 14];
+const OPENABLE_PROJECT_SCHEMA_VERSIONS: readonly number[] = [10, 11, 12, 13, 14, 15];
 
 /**
  * Turns the portable project display name into one safe, visible directory
@@ -319,6 +332,8 @@ export interface ProjectDefaults {
   enabledToolIds: ToolId[];
   /** The decision request Decision Compose opens (D39); absent until there is one. */
   decisionRequestRevisionId?: DecisionRequestRevisionId;
+  /** The authored launch environment; absent means no environment. */
+  environmentId?: EnvironmentId;
 }
 
 /** A project-owned System One request (D31, D38). Its content is in revisions. */
@@ -419,7 +434,13 @@ export interface ProjectFileV15 {
   defaults: ProjectDefaults;
 }
 
-export type ProjectFile = ProjectFileV15;
+/** v16 adds prompt environments (docs/PROMPT_ENVIRONMENTS_PLAN.md). */
+export interface ProjectFileV16 extends Omit<ProjectFileV15, "schemaVersion"> {
+  schemaVersion: 16;
+  environments: ProjectEnvironment[];
+}
+
+export type ProjectFile = ProjectFileV16;
 
 const entityId = <Kind extends Parameters<typeof createEntityId>[0]>(
   kind: Kind,
@@ -652,7 +673,7 @@ const promptTemplateRevisionSchema = z
           .strict(),
       )
       .min(1) as unknown as z.ZodType<PromptTemplateMessages>,
-    variableDefaults: z.record(
+    variableDefaults: ownKeyRecord(
       z.string().regex(variableName, "Invalid template variable name."),
       z.string(),
     ),
@@ -674,7 +695,7 @@ const promptTemplateDraftSchema = z
           .strict(),
       )
       .min(1) as unknown as z.ZodType<PromptTemplateMessages>,
-    variableDefaults: z.record(
+    variableDefaults: ownKeyRecord(
       z.string().regex(variableName, "Invalid template variable name."),
       z.string(),
     ),
@@ -710,7 +731,7 @@ const promptTemplateUseSchema: z.ZodType<PromptTemplateUse> = z
     id: entityId("template-use"),
     templateId: entityId("template"),
     templateRevisionId: entityId("template-revision"),
-    values: z.record(
+    values: ownKeyRecord(
       z.string().regex(variableName, "Invalid template variable name."),
       z.string(),
     ),
@@ -838,6 +859,16 @@ const projectDefaultsSchema = z
     options: inferenceOptionsSchema,
     enabledToolIds: z.array(entityId("tool")),
     decisionRequestRevisionId: entityId("decision-revision").optional(),
+    environmentId: entityId("environment").optional(),
+  })
+  .strict();
+
+/** Shape only; names, limits and cycles are project rules in environment.ts. */
+const projectEnvironmentSchema = z
+  .object({
+    id: entityId("environment"),
+    name: z.string(),
+    entries: z.array(z.object({ name: z.string(), value: z.string() }).strict()),
   })
   .strict();
 
@@ -914,6 +945,7 @@ const evaluationVariantSchema: z.ZodType<EvaluationVariant> = z.object({
     }).strict().optional(),
     responseMode: z.enum(["streaming", "buffered"]).optional(),
     options: evaluationVariantOptionsSchema.optional(),
+    environmentId: entityId("environment").nullable().optional(),
   }).strict(),
 }).strict();
 
@@ -937,6 +969,7 @@ const chatEvaluationSuiteSchema: z.ZodType<ChatEvaluationSuite> = z
         .min(MIN_EXPERIMENT_TURN_CEILING)
         .max(MAX_EXPERIMENT_TURN_CEILING)
         .optional(),
+      environmentId: entityId("environment").optional(),
     }).strict(),
     variants: z.array(evaluationVariantSchema).min(1),
     inputBindings: z.array(evaluationInputBindingSchema),
@@ -1009,7 +1042,7 @@ const evaluationSuiteSchema = z.unknown().transform((value, context): Evaluation
   return z.NEVER;
 });
 
-const projectFileV15Schema: z.ZodType<ProjectFileV15> = z
+const projectFileV16Schema: z.ZodType<ProjectFileV16> = z
   .object({
     schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
     projectId: entityId("project"),
@@ -1024,10 +1057,43 @@ const projectFileV15Schema: z.ZodType<ProjectFileV15> = z
     evaluationSuites: z.array(evaluationSuiteSchema),
     decisionRequests: z.array(decisionRequestSchema),
     decisionRequestRevisions: z.array(decisionRequestRevisionSchema),
+    environments: z.array(projectEnvironmentSchema),
     defaults: projectDefaultsSchema,
   })
   .strict()
-  .superRefine(validateProjectReferences);
+  .superRefine((project, context) => {
+    validateProjectReferences(project, context);
+    validateEnvironments(project, context);
+  });
+
+/**
+ * Environment content rules, then every selection of one. A suite or variant
+ * that names a missing environment would silently render without it.
+ */
+function validateEnvironments(project: ProjectFileV16, context: z.RefinementCtx): void {
+  for (const { path, message } of environmentIssues(project.environments)) {
+    context.addIssue({ code: "custom", path: ["environments", ...path], message });
+  }
+  addDuplicateIssues(project.environments.map(({ id }) => id), ["environments"], context);
+  const environmentIds = new Set(project.environments.map(({ id }) => id));
+  const requireEnvironment = (id: EnvironmentId | null | undefined, path: Array<string | number>) =>
+    requireReference(
+      id === undefined || id === null || environmentIds.has(id),
+      path,
+      "References an unknown environment.",
+      context,
+    );
+  requireEnvironment(project.defaults.environmentId, ["defaults", "environmentId"]);
+  project.evaluationSuites.forEach((suite, suiteIndex) => {
+    if (!isChatEvaluationSuite(suite)) return;
+    requireEnvironment(suite.execution.environmentId, ["evaluationSuites", suiteIndex, "execution", "environmentId"]);
+    suite.variants.forEach((variant, variantIndex) =>
+      requireEnvironment(variant.overrides.environmentId, [
+        "evaluationSuites", suiteIndex, "variants", variantIndex, "overrides", "environmentId",
+      ]),
+    );
+  });
+}
 
 function addDuplicateIssues(
   values: string[],
@@ -1272,7 +1338,7 @@ function validateSharedProjectReferences(
 }
 
 function validateProjectReferences(
-  project: ProjectFileV15,
+  project: ProjectFileV16,
   context: z.RefinementCtx,
 ): void {
   validateSharedProjectReferences(
@@ -1550,7 +1616,7 @@ function validateProjectReferences(
  * one, because values are portable project data (D40).
  */
 function validateDecisionRequests(
-  project: ProjectFileV15,
+  project: ProjectFileV16,
   context: z.RefinementCtx,
 ): void {
   addDuplicateIssues(project.decisionRequests.map(({ id }) => id), ["decisionRequests"], context);
@@ -1628,7 +1694,7 @@ function checkSuiteKindIssue(
 }
 
 function validateEvaluationSuites(
-  project: ProjectFileV15,
+  project: ProjectFileV16,
   templates: ReadonlyMap<PromptTemplateId, PromptTemplate>,
   context: z.RefinementCtx,
 ): void {
@@ -1995,6 +2061,37 @@ function migrateV14Project(value: object): unknown {
     decisionRequestRevisions: migrateEntries("decisionRequestRevisions", "inline") };
 }
 
+/**
+ * v16 adds prompt environments. A v15 project has none, so it gains an empty
+ * list. One that already holds or selects an environment was not written by a
+ * v15 build, and is rejected rather than reinterpreted.
+ */
+function migrateV15Project(value: Record<string, unknown>): unknown {
+  const declared = (path: Array<string | number>) => new ProjectValidationError([{
+    code: "custom",
+    path,
+    message: "Environments require project schema v16; this document declares v15.",
+  }]);
+  if ("environments" in value && !(Array.isArray(value.environments) && value.environments.length === 0)) {
+    throw declared(["environments"]);
+  }
+  if (isRecord(value.defaults) && "environmentId" in value.defaults) throw declared(["defaults", "environmentId"]);
+  const suites = Array.isArray(value.evaluationSuites) ? (value.evaluationSuites as unknown[]) : [];
+  suites.forEach((suite, suiteIndex) => {
+    if (!isRecord(suite)) return;
+    if (isRecord(suite.execution) && "environmentId" in suite.execution) {
+      throw declared(["evaluationSuites", suiteIndex, "execution", "environmentId"]);
+    }
+    const variants = Array.isArray(suite.variants) ? (suite.variants as unknown[]) : [];
+    variants.forEach((variant, variantIndex) => {
+      if (isRecord(variant) && isRecord(variant.overrides) && "environmentId" in variant.overrides) {
+        throw declared(["evaluationSuites", suiteIndex, "variants", variantIndex, "overrides", "environmentId"]);
+      }
+    });
+  });
+  return { ...value, schemaVersion: 16, environments: [] };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -2014,7 +2111,8 @@ export function parseProjectFile(value: unknown): ProjectFile {
     if ((value as { schemaVersion: unknown }).schemaVersion === 13) value = migrateV13Project(value as object);
   }
   if (isRecord(value) && value.schemaVersion === 14) value = migrateV14Project(value);
-  const parsed = projectFileV15Schema.safeParse(value);
+  if (isRecord(value) && value.schemaVersion === 15) value = migrateV15Project(value);
+  const parsed = projectFileV16Schema.safeParse(value);
   if (!parsed.success) throw new ProjectValidationError(parsed.error.issues);
   return parsed.data;
 }
@@ -2034,6 +2132,7 @@ const preferredFieldOrder = new Map(
     "evaluationSuites",
     "decisionRequests",
     "decisionRequestRevisions",
+    "environments",
     "defaults",
     "id",
     "provider",
@@ -2103,6 +2202,7 @@ const preferredFieldOrder = new Map(
     "options",
     "enabledToolIds",
     "decisionRequestRevisionId",
+    "environmentId",
   ].map((field, index) => [field, index]),
 );
 
@@ -2246,9 +2346,18 @@ export interface ProjectTemplateDiagnostic {
   diagnostic: TemplateDiagnostic;
 }
 
+export interface ProjectRevisionResolutionOptions {
+  /** Fills referenced variables by name, above template defaults. */
+  environment?: ResolvedEnvironment;
+  /** The layer `runOverrides` represents: composer run values, or evaluation case values. */
+  overrideSource?: Extract<TemplateValueSource, "run-override" | "case">;
+}
+
 export interface ResolvedProjectRevision {
   messages: ConversationMessage[];
   templateResolutions: ResolvedTemplateUse[];
+  /** Present exactly when an environment was supplied, even if nothing used it. */
+  environment?: RunEnvironmentSnapshot;
   /**
    * A revision that still has unresolved variables is a normal authoring
    * state, not a corrupt document: values may arrive from a later edit or from
@@ -2264,11 +2373,41 @@ export type PreparedProjectRevisionRun =
       ok: true;
       messages: ConversationMessage[];
       templateResolutions: ResolvedTemplateUse[];
+      environment?: RunEnvironmentSnapshot;
     }
   | {
       ok: false;
       diagnostics: ProjectTemplateDiagnostic[];
+      /** Diagnostics on entries the run consumes, and any limit diagnostic. */
+      environmentDiagnostics?: EnvironmentDiagnostic[];
     };
+
+export interface PrepareProjectRevisionRunOptions
+  extends Pick<ProjectRevisionResolutionOptions, "overrideSource"> {
+  /** Resolved once here, so the run snapshots it as it is now. */
+  environment?: ProjectEnvironment;
+}
+
+/**
+ * Template default < environment < use value < run override or case value.
+ * The environment contributes only names the template references, so a use's
+ * values never carry the whole environment.
+ */
+function layeredTemplateValues(
+  referenced: ReadonlySet<string>,
+  layers: ReadonlyArray<readonly [TemplateValueSource, Readonly<Record<string, string>> | undefined]>,
+): { values: Record<string, string>; valueSources: Record<string, TemplateValueSource> } {
+  const values: Record<string, string> = Object.create(null);
+  const valueSources: Record<string, TemplateValueSource> = Object.create(null);
+  for (const [source, layer] of layers) {
+    for (const [name, value] of Object.entries(layer ?? {})) {
+      if (source === "environment" && !referenced.has(name)) continue;
+      values[name] = value;
+      valueSources[name] = source;
+    }
+  }
+  return { values: { ...values }, valueSources: { ...valueSources } };
+}
 
 /** Project-owned template data required to resolve one conversation revision. */
 export type ProjectTemplateResolutionSource = Pick<ProjectFile, "promptTemplates">;
@@ -2277,8 +2416,10 @@ export function resolveProjectRevision(
   project: ProjectTemplateResolutionSource,
   revision: ProjectConversationRevision,
   runOverrides: TemplateRunOverrides = {},
+  { environment, overrideSource = "run-override" }: ProjectRevisionResolutionOptions = {},
 ): ResolvedProjectRevision {
   validateTemplateRunOverrides(revision, runOverrides);
+  const consumed: Record<string, string> = Object.create(null);
   const templates = new Map(
     project.promptTemplates.map((template) => [template.id, template]),
   );
@@ -2304,11 +2445,18 @@ export function resolveProjectRevision(
         },
       ]);
     }
-    const values = resolveTemplateValues(
-      templateRevision.variableDefaults,
-      item.use.values,
-      runOverrides[item.use.id],
+    const referenced = new Set(
+      discoverTemplateVariables(templateRevision.messages).variables.map(({ name }) => name),
     );
+    const { values, valueSources } = layeredTemplateValues(referenced, [
+      ["template-default", templateRevision.variableDefaults],
+      ["environment", environment?.values],
+      ["authored-use", item.use.values],
+      [overrideSource, runOverrides[item.use.id]],
+    ]);
+    for (const [name, source] of Object.entries(valueSources)) {
+      if (source === "environment") consumed[name] = values[name]!;
+    }
     const rendered = renderTemplateMessages(templateRevision.messages, values);
     diagnostics.push(
       ...rendered.diagnostics.map((diagnostic) => ({
@@ -2342,10 +2490,18 @@ export function resolveProjectRevision(
       messages: structuredClone(templateRevision.messages),
       variableDefaults: { ...templateRevision.variableDefaults },
       values,
+      valueSources,
       outputMessageIds: [...item.use.outputMessageIds],
     });
   });
-  return { messages, templateResolutions, diagnostics };
+  return {
+    messages,
+    templateResolutions,
+    diagnostics,
+    ...(environment
+      ? { environment: { environmentId: environment.environmentId, name: environment.name, consumed: { ...consumed } } }
+      : {}),
+  };
 }
 
 /**
@@ -2359,15 +2515,28 @@ export function prepareProjectRevisionRun(
   project: ProjectTemplateResolutionSource,
   revision: ProjectConversationRevision,
   runOverrides: TemplateRunOverrides = {},
+  { environment, overrideSource }: PrepareProjectRevisionRunOptions = {},
 ): PreparedProjectRevisionRun {
-  const resolved = resolveProjectRevision(project, revision, runOverrides);
-  if (resolved.diagnostics.length > 0) {
-    return { ok: false, diagnostics: resolved.diagnostics };
+  const resolvedEnvironment = environment ? resolveEnvironment(environment) : undefined;
+  const resolved = resolveProjectRevision(project, revision, runOverrides, {
+    environment: resolvedEnvironment,
+    overrideSource,
+  });
+  const environmentDiagnostics = environment && resolvedEnvironment && resolved.environment
+    ? blockingEnvironmentDiagnostics(environment, resolvedEnvironment, Object.keys(resolved.environment.consumed))
+    : [];
+  if (resolved.diagnostics.length > 0 || environmentDiagnostics.length > 0) {
+    return {
+      ok: false,
+      diagnostics: resolved.diagnostics,
+      ...(environmentDiagnostics.length > 0 ? { environmentDiagnostics } : {}),
+    };
   }
   return {
     ok: true,
     messages: resolved.messages,
     templateResolutions: resolved.templateResolutions,
+    ...(resolved.environment ? { environment: resolved.environment } : {}),
   };
 }
 
@@ -3760,6 +3929,7 @@ export function createProjectFile({
     evaluationSuites: [],
     decisionRequests: [],
     decisionRequestRevisions: [],
+    environments: [],
     defaults: {
       conversationRevisionId: revisionId,
       target: {

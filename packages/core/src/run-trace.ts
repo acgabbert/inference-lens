@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ownKeyRecord } from "./own-key-record.ts";
 
 import {
   DECISION_TRACE_ORDER_SENSITIVE_KEYS,
@@ -9,13 +10,20 @@ import type { RunId, RunState, RunTrace } from "./run-kernel/types.ts";
 import {
   createRunTrace,
   reduceRunEvents,
+  runTraceSchemaVersionFor,
 } from "./run-kernel/reducer.ts";
+import { environmentProvenanceIssue } from "./environment.ts";
 import { isSensitiveTemplateVariableName } from "./project.ts";
 import { RunTraceValidationError } from "./run-trace-error.ts";
 import { ORDER_SENSITIVE_KEYS, stableJsonValue } from "./stable-json.ts";
 import { renderTemplateMessages } from "./template-engine.ts";
 
-export const RUN_TRACE_SCHEMA_VERSION = 8;
+export const RUN_TRACE_SCHEMA_VERSION = 9;
+/**
+ * Older traces upgrade on read to this version, the last one without value
+ * sources: version 9's provenance cannot be inferred from what they recorded.
+ */
+const LAST_VERSION_WITHOUT_VALUE_SOURCES = 8;
 export const RUN_TRACE_FILE_SUFFIX = ".json";
 /** The project-folder directory that holds saved run traces. */
 export const TRACES_DIRECTORY_NAME = "traces";
@@ -120,11 +128,11 @@ const resolvedTemplateUseBaseSchema = z.object({
   templateId: z.string().regex(/^template_.+/),
   templateRevisionId: z.string().regex(/^template-revision_.+/),
   templateName: z.string(),
-  variableDefaults: z.record(
+  variableDefaults: ownKeyRecord(
     z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/),
     z.string(),
   ),
-  values: z.record(
+  values: ownKeyRecord(
     z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/),
     z.string(),
   ),
@@ -156,21 +164,65 @@ const legacyResolvedTemplateUseSchema = resolvedTemplateUseBaseSchema
   .strict()
   .superRefine(rejectSensitiveTemplateProvenance);
 
+const resolvedTemplateMessagesSchema = z
+  .array(
+    z
+      .object({
+        role: templateMessageRoleSchema,
+        content: z.string(),
+      })
+      .strict(),
+  )
+  .min(1);
+
 const resolvedTemplateUseSchema = resolvedTemplateUseBaseSchema
-  .extend({
-    messages: z
-      .array(
-        z
-          .object({
-            role: templateMessageRoleSchema,
-            content: z.string(),
-          })
-          .strict(),
-      )
-      .min(1),
-  })
+  .extend({ messages: resolvedTemplateMessagesSchema })
   .strict()
   .superRefine(rejectSensitiveTemplateProvenance);
+
+const templateVariableNameSchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/);
+
+/** Version 9: every recorded value names the layer that supplied it. */
+const sourcedResolvedTemplateUseSchema = resolvedTemplateUseBaseSchema
+  .extend({
+    messages: resolvedTemplateMessagesSchema,
+    valueSources: ownKeyRecord(
+      templateVariableNameSchema,
+      z.enum(["template-default", "environment", "authored-use", "run-override", "case"]),
+    ),
+  })
+  .strict()
+  .superRefine((resolution, context) => {
+    rejectSensitiveTemplateProvenance(resolution, context);
+    const valueNames = Object.keys(resolution.values).sort();
+    const sourceNames = Object.keys(resolution.valueSources).sort();
+    if (JSON.stringify(valueNames) !== JSON.stringify(sourceNames)) {
+      context.addIssue({
+        code: "custom",
+        path: ["valueSources"],
+        message: "Template provenance must name a source for every value, and only for values.",
+      });
+    }
+  });
+
+const runEnvironmentSnapshotSchema = z
+  .object({
+    environmentId: z.string().regex(/^environment_.+/),
+    name: z.string(),
+    consumed: ownKeyRecord(templateVariableNameSchema, z.string()),
+  })
+  .strict()
+  .superRefine((environment, context) => {
+    Object.keys(environment.consumed).forEach((name) => {
+      if (isSensitiveTemplateVariableName(name)) {
+        context.addIssue({
+          code: "custom",
+          path: ["consumed", name],
+          message: "Environment provenance cannot contain secret-like entries.",
+        });
+      }
+    });
+  });
 
 const traceV1EnvelopeSchema = traceEnvelopeBaseSchema
   .extend({ schemaVersion: z.literal(1) })
@@ -261,6 +313,22 @@ const traceV8EnvelopeSchema = traceV6EnvelopeSchema.extend({
   schemaVersion: z.literal(8),
 });
 
+/**
+ * Version 9 adds prompt environments: each template use names the source of
+ * every value, and the input records the environment entries it consumed.
+ */
+const traceV9EnvelopeSchema = traceV6EnvelopeSchema.extend({
+  schemaVersion: z.literal(9),
+  input: z
+    .object({
+      runId: z.string().regex(/^run_.+/),
+      templateResolutions: z.array(sourcedResolvedTemplateUseSchema),
+      responseMode: z.enum(["streaming", "buffered"]),
+      environment: runEnvironmentSnapshotSchema.optional(),
+    })
+    .passthrough(),
+});
+
 // Discriminated on the version so a rejection reports the offending field in
 // the matching envelope, rather than collapsing every branch's complaint into
 // one union error.
@@ -273,6 +341,7 @@ const traceEnvelopeSchema = z.discriminatedUnion("schemaVersion", [
   traceV6EnvelopeSchema,
   traceV7EnvelopeSchema,
   traceV8EnvelopeSchema,
+  traceV9EnvelopeSchema,
 ]);
 
 export function traceFileName(runId: RunId): string {
@@ -309,7 +378,7 @@ export function assertTraceEntryName(fileName: string): string {
 
 export function serializeRunTrace(trace: RunTrace): string {
   const parsed = parseRunTraceFile(trace);
-  const current: RunTrace = { ...parsed, schemaVersion: RUN_TRACE_SCHEMA_VERSION };
+  const current: RunTrace = { ...parsed, schemaVersion: runTraceSchemaVersionFor(parsed.input) };
   return `${JSON.stringify(stableJsonValue(current), null, 2)}\n`;
 }
 
@@ -407,7 +476,7 @@ export function parseRunTraceFile(value: unknown): RunTrace {
   if (trace.schemaVersion < 3) {
     trace = {
       ...trace,
-      schemaVersion: RUN_TRACE_SCHEMA_VERSION,
+      schemaVersion: LAST_VERSION_WITHOUT_VALUE_SOURCES,
       input: {
         ...trace.input,
         templateResolutions: [],
@@ -428,7 +497,7 @@ export function parseRunTraceFile(value: unknown): RunTrace {
   if (envelope.schemaVersion < 4) {
     trace = {
       ...trace,
-      schemaVersion: RUN_TRACE_SCHEMA_VERSION,
+      schemaVersion: LAST_VERSION_WITHOUT_VALUE_SOURCES,
       input: { ...trace.input, responseMode: "streaming" },
       events: trace.events.map((event) => {
         if (event.type === "run.started") {
@@ -457,7 +526,7 @@ export function parseRunTraceFile(value: unknown): RunTrace {
   if (envelope.schemaVersion < 5) {
     trace = {
       ...trace,
-      schemaVersion: RUN_TRACE_SCHEMA_VERSION,
+      schemaVersion: LAST_VERSION_WITHOUT_VALUE_SOURCES,
       input: migrateTemplateResolutionShape(trace.input),
       events: trace.events.map((event) =>
         event.type === "run.started"
@@ -469,7 +538,7 @@ export function parseRunTraceFile(value: unknown): RunTrace {
   if (envelope.schemaVersion < 6) {
     trace = {
       ...trace,
-      schemaVersion: RUN_TRACE_SCHEMA_VERSION,
+      schemaVersion: LAST_VERSION_WITHOUT_VALUE_SOURCES,
       toolExecutions: [],
     };
   }
@@ -481,6 +550,13 @@ export function parseRunTraceFile(value: unknown): RunTrace {
       "Run trace contains an event its schema version does not define.",
     );
   }
+  if (envelope.schemaVersion < 9 && Object.hasOwn(trace.input, "environment")) {
+    throw new RunTraceValidationError(
+      "Run trace input contains a field its schema version does not define.",
+    );
+  }
+  const environmentIssue = envelope.schemaVersion >= 9 ? environmentProvenanceIssue(trace.input) : undefined;
+  if (environmentIssue) throw new RunTraceValidationError(environmentIssue);
   if (trace.runId !== trace.input.runId) {
     throw new RunTraceValidationError("Run trace input has a different run ID.");
   }

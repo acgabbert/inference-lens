@@ -46,7 +46,7 @@ function plan(): RepeatedExperimentPlanV3 {
   const { runId: sourceRunId, ...commonInput } = input;
   assert.equal(sourceRunId, "run_source");
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     experimentId: "experiment_example",
     kind: "repeated-request",
     createdAt: "2026-07-30T12:00:01.000Z",
@@ -134,13 +134,15 @@ test("rejects pre-v4 experiment artifacts instead of migrating them", () => {
   );
 });
 
-test("a Version 4 plan opens as its Version 5 equivalent", () => {
+test("Version 4 and 5 plans open as their Version 6 equivalent", () => {
   const current = plan();
-  const legacy = { ...JSON.parse(serializeExperimentPlan(current)), schemaVersion: 4 };
-  const opened = parseExperimentPlanJson(JSON.stringify(legacy));
-  assert.equal(opened.schemaVersion, 5);
-  assert.deepEqual(opened, parseExperimentPlanJson(serializeExperimentPlan(current)));
-  assert.equal(serializeExperimentPlan(opened), serializeExperimentPlan(current));
+  for (const schemaVersion of [4, 5]) {
+    const legacy = { ...JSON.parse(serializeExperimentPlan(current)), schemaVersion };
+    const opened = parseExperimentPlanJson(JSON.stringify(legacy));
+    assert.equal(opened.schemaVersion, 6);
+    assert.deepEqual(opened, parseExperimentPlanJson(serializeExperimentPlan(current)));
+    assert.equal(serializeExperimentPlan(opened), serializeExperimentPlan(current));
+  }
 });
 
 test("rejects legacy fragment provenance inside a Version 4 plan", () => {

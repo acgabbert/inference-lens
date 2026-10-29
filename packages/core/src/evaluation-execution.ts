@@ -2,9 +2,15 @@ import { CHECK_SCHEMA_VERSION } from "./checks.ts";
 import type { ResolvedDecisionTarget } from "./decision.ts";
 import { prepareDecisionRequestRun, resolveProjectDecisionRequestRevision } from "./decision-request.ts";
 import { EXPERIMENT_SCHEMA_VERSION, parseExperimentPlanFile } from "./experiment.ts";
-import type { DecisionEvaluationExperimentPlan, EvaluationExperimentPlan } from "./experiment.ts";
+import type {
+  DecisionEvaluationExperimentPlan,
+  EvaluationCaseInputSnapshot,
+  EvaluationCaseSnapshot,
+  EvaluationExperimentPlan,
+} from "./experiment.ts";
 import { resolveEvaluationCase } from "./evaluation-case-resolution.ts";
 import {
+  evaluationEnvironmentGroups,
   evaluationSuitePreflight,
   isChatEvaluationSuite,
   isDecisionEvaluationSuite,
@@ -77,6 +83,7 @@ export function createEvaluationExperimentPlan(
     suiteId,
     conversationRevisionId,
     selectedCaseIds,
+    options.selectedVariantIds,
   );
   if (diagnostics.length > 0) throw new EvaluationSetupError(diagnostics);
   if (!Number.isInteger(suite.execution.repetitions) || suite.execution.repetitions < 1) {
@@ -127,16 +134,35 @@ export function createEvaluationExperimentPlan(
   const exposedTools = project.tools
     .filter(({ id }) => suite.execution.toolIds.includes(id))
     .map((tool) => structuredClone(tool));
-  const cases = selectedCases.map((evaluationCase) => {
-    // The same projection the focused-case preview renders, so what an author
-    // approved and what the plan freezes cannot disagree.
-    const resolved = resolveEvaluationCase(project, revision, suite, evaluationCase);
-    if (!resolved.ok) {
-      throw new EvaluationSetupError(resolved.diagnostics.map(({ diagnostic }) => ({
-        code: diagnostic.code,
-        message: diagnostic.message,
-      })));
-    }
+  // A case renders once per environment its configurations use; those that
+  // share an environment send the same input.
+  const environmentGroups = evaluationEnvironmentGroups(project, suite, variants);
+  const cases = selectedCases.map((evaluationCase): EvaluationCaseSnapshot => {
+    const inputs = environmentGroups.map(({ environment }): EvaluationCaseInputSnapshot => {
+      // The same projection the focused-case preview renders, so what an
+      // author approved and what the plan freezes cannot disagree.
+      const resolved = resolveEvaluationCase(project, revision, suite, evaluationCase, { environment });
+      if (!resolved.ok) {
+        throw new EvaluationSetupError([
+          ...resolved.diagnostics.map(({ diagnostic }) => ({
+            code: diagnostic.code,
+            message: diagnostic.message,
+          })),
+          ...(resolved.environmentDiagnostics ?? []).map((diagnostic) => ({
+            code: diagnostic.code,
+            message: diagnostic.message,
+          })),
+        ]);
+      }
+      return {
+        conversationId: revision.conversationId,
+        conversationRevisionId: revision.id,
+        messages: resolved.messages,
+        templateResolutions: resolved.templateResolutions,
+        ...(resolved.environment ? { environment: resolved.environment } : {}),
+        resolvedAt: now,
+      };
+    });
     return {
       caseId: evaluationCase.id,
       name: evaluationCase.name,
@@ -145,13 +171,7 @@ export function createEvaluationExperimentPlan(
       ...(evaluationCase.referenceAnswer === undefined
         ? {}
         : { referenceAnswer: evaluationCase.referenceAnswer }),
-      input: {
-        conversationId: revision.conversationId,
-        conversationRevisionId: revision.id,
-        messages: resolved.messages,
-        templateResolutions: resolved.templateResolutions,
-        resolvedAt: now,
-      },
+      inputs: inputs as EvaluationCaseSnapshot["inputs"],
     };
   });
   const variantSnapshots = variants.map((variant) => {
@@ -169,6 +189,7 @@ export function createEvaluationExperimentPlan(
       target: { ...structuredClone(runtimeTarget), model: effective.target.model },
       responseMode: effective.responseMode,
       options: structuredClone(effective.options),
+      ...(effective.environmentId ? { environmentId: effective.environmentId } : {}),
     };
   });
 

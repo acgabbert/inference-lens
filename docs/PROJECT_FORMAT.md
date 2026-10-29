@@ -2,8 +2,8 @@
 
 Inference Lens projects use a visible `<name>.inference-lens/` directory bundle
 containing one canonical, portable JSON document named `project.json`. New
-saves use schema version 15. The parser also opens versions 10, 11, 12, 13, and 14
-and upgrades them on load. From v10, the protocol it kept on each connection
+saves use schema version 16. The parser also opens versions 10, 11, 12, 13, 14,
+and 15 and upgrades them on load. From v10, the protocol it kept on each connection
 requirement (always chat completions) moves onto every execution target that
 names that requirement — the project default and each suite's
 `execution.target` — and the requirement loses the field. See
@@ -18,7 +18,9 @@ checks); a v13 document was written with chat suites and vocabulary 4, so one
 holding either is rejected rather than upgraded. v15 adds typed chat/decision
 templates and inline/template-use decision request revisions. Legacy templates
 gain `kind: "chat"`; legacy decision revisions gain `kind: "inline"`, with
-IDs, drafts, defaults, provenance and suite pins preserved. Earlier project
+IDs, drafts, defaults, provenance and suite pins preserved. v16 adds
+[prompt environments](#prompt-environments); a v15 document opens with none, and
+one that already holds or selects any is rejected. Earlier project
 formats, including v5–v9, and the proof-of-concept request export are rejected
 with a version error rather than upgraded on load.
 Every schema is strict, so a reader rejects a document it does not understand
@@ -257,6 +259,44 @@ until it is run or saved. Template definition revisions do not branch the
 conversation because existing uses remain pinned; explicitly updating a use to
 the new revision does.
 
+## Prompt environments
+
+From v16, `environments` holds named sets of values that fill native template
+variables by name, so switching the environment changes what every template
+use renders. The design is in the
+[prompt environments plan](PROMPT_ENVIRONMENTS_PLAN.md).
+
+```json
+{
+  "id": "environment_staging",
+  "name": "Staging",
+  "entries": [
+    { "name": "customer", "value": "Acme" },
+    { "name": "greeting", "value": "Hello {{customer}}" }
+  ]
+}
+```
+
+- Names are unique within the project ignoring case and surrounding
+  whitespace. Entry names follow the native variable grammar, are unique within
+  the environment, and cannot be secret-like. Values can't be checked for
+  secrets; environments travel with the project.
+- An entry may reference other entries of the same environment with ordinary
+  `{{name}}` tokens. References are resolved once, in dependency order, and the
+  result is literal. A cycle makes the project invalid. A missing reference
+  renders as its token with a diagnostic.
+- Limits, in UTF-16 code units: 50 environments per project, 200 entries per
+  environment and 65,536 per authored value. Resolution also stops when one
+  entry would exceed 150,000 or the whole environment 1,000,000.
+- `defaults.environmentId` is the project's launch default, and a chat suite's
+  `execution.environmentId` the one its cases render against. Each must name an
+  existing environment. An environment that anything selects cannot be
+  deleted; the refusal lists what uses it.
+
+Precedence, lowest first: template default, environment, use value, run
+override, evaluation case value. An environment fills only the variables a
+pinned template revision references.
+
 ## Validation and serialization
 
 `packages/core/src/project.ts` owns the provider-neutral project types, strict
@@ -358,6 +398,8 @@ suite ignoring case and surrounding whitespace. A variant is stored as sparse
 (`temperature`, `maxOutputTokens`, `seed`, `stop`, `providerOptions`). An absent
 field inherits from the base, and `null` in `options` clears the value to the
 provider default. A variant's connection requirement must exist in the project.
+A variant may also set `environmentId`: absent inherits the suite's
+`execution.environmentId`, and `null` runs the variant with no environment.
 Repetitions, `toolIds`, and `turnCeiling` are shared by every variant. See
 [the evaluation suite authoring guide](EVALUATION_SUITE_AUTHORING.md) for how
 configurations are authored and compared.

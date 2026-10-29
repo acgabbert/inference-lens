@@ -18,7 +18,7 @@ const candidates = z.discriminatedUnion("kind", [
 const journalSchema = z.object({
   schemaVersion: z.literal(1), kind: z.literal("shared-project-migration"),
   operationId: operationIdSchema, projectId: projectContentSchemas.entityId("project"),
-  sourceVersion: z.union([z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15)]),
+  sourceVersion: z.union([z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16)]),
   targetVersion: z.literal(16),
   source: z.object({ ...descriptor, path: z.literal("source.project.json") }).strict(),
   shared: z.object({ ...descriptor, path: z.literal("shared.project.json") }).strict(),

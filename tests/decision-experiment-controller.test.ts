@@ -259,7 +259,7 @@ test("each plan kind needs its own transport", async () => {
     /A decision evaluation runs through a decision transport/,
   );
   const chatPlan: ExperimentPlan = {
-    schemaVersion: 5,
+    schemaVersion: 6,
     experimentId: "experiment_chat",
     kind: "repeated-request",
     createdAt: "2026-10-24T12:00:00.000Z",

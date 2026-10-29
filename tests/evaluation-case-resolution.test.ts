@@ -297,7 +297,7 @@ test("the focused-case preview and the frozen plan resolve identically", () => {
     createSuffix: () => "plan",
   });
 
-  const planned = plan.suite.cases[0]!.input;
+  const [planned] = plan.suite.cases[0]!.inputs;
   assert.deepEqual(planned.messages, preview.messages);
   assert.deepEqual(planned.templateResolutions, preview.templateResolutions);
 });

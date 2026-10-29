@@ -127,11 +127,12 @@ function legacyProject() {
   project = createPromptTemplate(project, { name: "Prompt", idSuffix: "legacy", revisionIdSuffix: "legacy", messages: [{ role: "user", content: "{{topic}}" }] });
   return updatePromptTemplateDraft(project, { templateId: "template_legacy", sourceRevisionId: "template-revision_legacy", messages: [{ role: "user", content: "Explain {{topic}}" }], variableDefaults: { topic: "" } });
 }
-for (const version of [10, 11, 12, 13, 14, 15] as const) {
+for (const version of [10, 11, 12, 13, 14, 15, 16] as const) {
   test(`preparation and verified restart preserve legacy v${version}`, async () => {
     const current = legacyProject();
     const legacy: Record<string, unknown> = { ...(version < 15 ? legacyContent(current) : current), schemaVersion: version };
     if (version < 13) { delete legacy.decisionRequests; delete legacy.decisionRequestRevisions; }
+    if (version < 16) delete legacy.environments;
     if (version === 10) {
       const target: Record<string, unknown> = { ...current.defaults.target };
       delete target.protocol;
@@ -143,7 +144,7 @@ for (const version of [10, 11, 12, 13, 14, 15] as const) {
     assert.deepEqual(prepared.files[0].bytes, bytes);
     assert.equal(JSON.parse(new TextDecoder().decode(prepared.files[1].bytes)).sourceVersion, version);
     assert.equal((await inspectSharedProjectMigration({ manifest: bytes, files: prepared.files }, prepared.projectId, prepared.operationId)).kind, "ready");
-    assert.equal(PROJECT_SCHEMA_VERSION, 15);
+    assert.equal(PROJECT_SCHEMA_VERSION, 16);
     assert.ok(parseProjectJson(new TextDecoder().decode(bytes)).promptTemplates[0].draft);
     assert.throws(() => parseProjectJson(new TextDecoder().decode(prepared.files[2].bytes)), /schema v17 is not supported/);
   });

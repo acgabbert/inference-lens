@@ -33,8 +33,8 @@ test("migration extracts both prompt kinds with edited values and exact base sna
   assert.deepEqual(plan.selections, expected["selections.json"]);
 });
 
-test("the active application codec stays v15 and preserves legacy drafts", () => {
-  assert.equal(PROJECT_SCHEMA_VERSION, 15);
+test("the active application codec stays v16 and preserves legacy drafts", () => {
+  assert.equal(PROJECT_SCHEMA_VERSION, 16);
   const legacy = parseProjectJson(example("project-v15.json").toString());
   assert.equal(legacy.promptTemplates.filter(template => template.draft).length, 2);
   assert.throws(() => parseProjectJson(example("project-v17.proposed.json").toString()), /schema v17 is not supported/);
@@ -257,7 +257,7 @@ test("migration does not drop invalid legacy drafts or accept future/unsupported
   const value = JSON.parse(example("project-v15.json").toString());
   value.promptTemplates[0].draft.sourceRevisionId = "template-revision_missing";
   assert.throws(() => planSharedProjectMigration(Buffer.from(JSON.stringify(value))), /source revision/);
-  for (const schemaVersion of [9, 16, 17]) {
+  for (const schemaVersion of [9, 17, 18]) {
     value.schemaVersion = schemaVersion;
     assert.throws(() => planSharedProjectMigration(Buffer.from(JSON.stringify(value))), /not supported/);
   }
@@ -293,7 +293,7 @@ test("migration without explicit drafts retains every saved revision and produce
   const single = JSON.parse(example("project-v15.json").toString());
   single.promptTemplates.slice(1).forEach((template: { draft?: unknown }) => delete template.draft);
   assert.equal(planSharedProjectMigration(Buffer.from(JSON.stringify(single))).preview.messages[0], "Move 1 prompt draft into this folder's personal workbench.");
-  assert.deepEqual(plan.shared, { ...source, schemaVersion: 17 });
+  assert.deepEqual(plan.shared, { ...source, schemaVersion: 17, environments: [] });
 });
 
 test("shared and personal codecs preserve authored decision/question/choice and tool-schema ordering", () => {

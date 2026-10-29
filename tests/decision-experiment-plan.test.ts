@@ -26,9 +26,11 @@ const project = decisionProject;
 const runtimeTarget = decisionRuntimeTarget;
 const plan = decisionPlan;
 
-test("plan schema is Version 5", () => {
-  assert.equal(EXPERIMENT_SCHEMA_VERSION, 5);
-  assert.equal(plan().schemaVersion, 5);
+test("plan schema is Version 6, and a Version 5 decision plan opens unchanged", () => {
+  assert.equal(EXPERIMENT_SCHEMA_VERSION, 6);
+  const built = plan();
+  assert.equal(built.schemaVersion, 6);
+  assert.deepEqual(parseExperimentPlanFile({ ...built, schemaVersion: 5 }), built);
 });
 
 test("a decision plan freezes each case's resolved request, with case values over the revision's", () => {
@@ -150,7 +152,7 @@ test("a decision plan refuses chat checks, a chat target, another revision, and 
   );
   assert.throws(() => parseExperimentPlanFile({ ...built, checkSchemaVersion: 4 }), /Invalid experiment plan/);
   assert.throws(() => parseExperimentPlanFile({ ...built, schemaVersion: 4 }), /Invalid experiment plan/);
-  assert.throws(() => parseExperimentPlanFile({ ...built, schemaVersion: 6 }), /Version 6 is unsupported/);
+  assert.throws(() => parseExperimentPlanFile({ ...built, schemaVersion: 7 }), /Version 7 is unsupported/);
 });
 
 test("building a decision plan needs a resolved local connection for every configuration", () => {

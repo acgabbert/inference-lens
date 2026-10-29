@@ -74,7 +74,19 @@ never ran. A repetition with no openable trace is presented as `Waiting`,
 `Not run`, `Trace missing`, or `Trace could not be read` — never as one
 undifferentiated blank.
 
-Plans use `schemaVersion: 5`. Results use `schemaVersion: 6`.
+Plans use `schemaVersion: 6`. Results use `schemaVersion: 6`.
+
+- Plan Version 6 adds [prompt environments](PROMPT_ENVIRONMENTS_PLAN.md).
+  Template resolutions may carry `valueSources`, and an input may carry the
+  `environment` snapshot that a [run trace](RUN_TRACE_FORMAT.md) records. An
+  input that records an environment must carry `valueSources` on every
+  resolution. An evaluation case holds `inputs`: one rendering per environment
+  its configurations use, and at most one with no environment. Each
+  configuration names its `environmentId`, or none. Every configuration must
+  find exactly one input in every case, and every input must be used by some
+  configuration. Configurations that share an environment share an input.
+  Version 4 and 5 plans open as Version 6, each evaluation case with one
+  input, no environment and no value sources.
 
 - Plan Version 5 added the `decision-evaluation` kind. A Version 4 plan is a
   Version 5 plan that cannot be a decision evaluation, so it opens as its

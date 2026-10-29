@@ -187,14 +187,14 @@ test("snapshots authored values, case overrides, and confirmation-time execution
   assert.equal(parsed.suite.variants[0]?.target.model, "confirmed-model");
   assert.equal(parsed.suite.variants[0]?.responseMode, "buffered");
   assert.deepEqual(parsed.suite.variants[0]?.options, { seed: 7, temperature: 0.2 });
-  assert.equal(parsed.suite.cases[0]?.input.templateResolutions[0]?.values.style, "authored");
-  assert.equal(parsed.suite.cases[0]?.input.templateResolutions[0]?.values.topic, "database migrations");
-  assert.equal(parsed.suite.cases[0]?.input.messages.at(-1)?.content[0]?.text, "Explain database migrations in a authored style.");
+  assert.equal(parsed.suite.cases[0]?.inputs[0].templateResolutions[0]?.values.style, "authored");
+  assert.equal(parsed.suite.cases[0]?.inputs[0].templateResolutions[0]?.values.topic, "database migrations");
+  assert.equal(parsed.suite.cases[0]?.inputs[0].messages.at(-1)?.content[0]?.text, "Explain database migrations in a authored style.");
   const first = materializeExperimentCellInput(parsed, parsed.cells[0]!.cellId);
   assert.equal(first.runId, parsed.cells[0]?.runId);
   assert.deepEqual(
     { ...first, runId: undefined },
-    { ...parsed.suite.cases[0]!.input, ...parsed.suite.variants[0]!, tools: parsed.suite.tools, runId: undefined },
+    { ...parsed.suite.cases[0]!.inputs[0], ...parsed.suite.variants[0]!, tools: parsed.suite.tools, runId: undefined },
   );
 });
 
