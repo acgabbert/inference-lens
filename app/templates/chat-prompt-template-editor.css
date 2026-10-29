@@ -1,0 +1,728 @@
+/* The editor is inside a user-resizable pane, so its own width — not the
+   viewport's — decides whether the variable rail fits beside the content. */
+.template-editor {
+  min-width: 0;
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+}
+
+.template-empty-state {
+  margin: 90px auto 0;
+  max-width: 300px;
+  text-align: center;
+}
+
+.template-empty-state h3,
+.template-rail-heading h3,
+.template-content-heading h3 {
+  margin: 0;
+}
+
+.template-empty-state p {
+  color: var(--text-muted);
+}
+
+.template-editor-header {
+  padding: var(--space-md) var(--space-lg);
+  border-bottom: 1px solid var(--border-default);
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto;
+  gap: var(--space-sm);
+  align-items: end;
+  background: var(--surface-panel);
+}
+
+.template-editor-header label,
+.template-insert-bar label,
+.template-variable-row label,
+.template-use-variable label,
+.template-kind-field {
+  margin-bottom: 0;
+}
+
+.template-editor-header .provider-pill {
+  margin-bottom: var(--space-sm);
+}
+
+/* Reads as the header's other labels, with the rename action on the same line
+   so the select below keeps its full width. */
+.template-revision-field {
+  min-width: 0;
+}
+
+.template-revision-field-heading {
+  min-height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  color: var(--text-secondary);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.template-revision-field-heading .text-button {
+  padding-block: 0;
+}
+
+.template-revision-rename-actions {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+/* Matches the select it replaces, so the header does not shift. */
+input.template-revision-rename {
+  height: 32px;
+}
+
+.template-editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.template-editor-actions .provider-pill {
+  margin-bottom: 0;
+}
+
+.template-editor-actions .button {
+  padding: var(--space-xs) var(--space-sm);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.template-revision-edit-action {
+  display: grid;
+  justify-items: end;
+  gap: var(--space-2xs);
+}
+
+.template-revision-create-action {
+  display: grid;
+  grid-template-columns: minmax(170px, 230px) auto;
+  align-items: end;
+  gap: var(--space-2xs) var(--space-sm);
+}
+
+.template-revision-create-action label {
+  display: grid;
+  gap: var(--space-2xs);
+}
+
+.template-revision-create-action .field-optional {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.template-draft-status {
+  grid-column: 1 / -1;
+  color: var(--text-muted);
+  line-height: var(--leading-tight);
+  text-align: right;
+}
+
+.template-draft-status.error {
+  color: var(--danger);
+}
+
+.template-revision-edit-action small {
+  max-width: 230px;
+  color: var(--text-muted);
+  line-height: var(--leading-tight);
+  text-align: right;
+}
+
+.template-notices {
+  padding: 0 var(--space-lg);
+}
+
+.template-notices > :first-child {
+  margin-top: var(--space-md);
+}
+
+.template-editor-body {
+  flex: 1;
+  padding: var(--space-lg) var(--space-lg);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 196px;
+  gap: var(--space-lg);
+  align-items: start;
+}
+
+.template-content-editor {
+  min-width: 0;
+}
+
+.template-content-heading {
+  margin-bottom: var(--space-sm);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.template-content-actions {
+  display: flex;
+  align-items: end;
+  gap: var(--space-sm);
+}
+
+.template-content-actions .template-kind-field {
+  display: flex !important;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: 0;
+}
+
+.template-kind-field select {
+  width: auto;
+  min-width: 118px;
+  margin-top: 0;
+}
+
+.template-focus-toggle {
+  height: 32px;
+  min-height: 32px;
+  padding-block: 0;
+}
+
+/* The editor body and revision diff share one scroll region. In focus mode it
+   is the viewport, so an open diff extends the scroll instead of taking the
+   body's height. */
+.template-editor-scroll {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.template-editor-focus-mode .template-editor-scroll {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.template-editor-focus-mode .template-editor-body {
+  flex: 1 0 auto;
+  align-items: stretch;
+}
+
+.template-editor-focus-mode .template-content-editor {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.template-editor-focus-mode .template-fragment-field {
+  min-height: 380px;
+  flex: 1;
+  display: flex;
+}
+
+.template-editor-focus-mode .template-fragment-field textarea {
+  min-height: 100%;
+  resize: none;
+}
+
+.template-fragment-field textarea {
+  margin-top: 0;
+  border-radius: var(--radius-md);
+}
+
+.template-fragment-field,
+.template-simple-actions,
+.template-expanded-actions,
+.template-message-actions {
+  display: flex;
+}
+
+.template-fragment-field {
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.template-simple-actions,
+.template-expanded-actions {
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.template-message-actions {
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.template-message-set {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.template-message-editor textarea {
+  margin: 0;
+}
+
+.template-variable-rail {
+  min-width: 0;
+  padding: var(--space-md);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--surface-subtle);
+  display: grid;
+  gap: var(--space-md);
+  align-content: start;
+}
+
+.template-rail-heading .eyebrow {
+  margin-bottom: var(--space-3xs);
+}
+
+.template-variable-rail .template-empty {
+  margin: 0;
+}
+
+.template-variable-rail .template-empty code {
+  font-family: var(--font-geist-mono), monospace;
+}
+
+.template-use-values {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.template-variable-row {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-2xs);
+}
+
+.template-variable-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  color: var(--text-muted);
+}
+
+.template-variable-meta .text-button {
+  padding: 0;
+}
+
+.template-variable-row code {
+  display: block;
+  color: var(--accent);
+  font-family: var(--font-geist-mono), monospace;
+}
+
+.template-use-variable code {
+  color: var(--accent);
+  font-family: var(--font-geist-mono), monospace;
+}
+
+.template-insert-bar {
+  padding: var(--space-md) var(--space-lg);
+  border-top: 1px solid var(--border-default);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-sm);
+  position: sticky;
+  bottom: 0;
+  background: var(--surface-translucent);
+  backdrop-filter: blur(10px);
+}
+
+.template-insert-label {
+  margin-bottom: var(--space-sm);
+  flex: 1;
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+.template-insert-bar label {
+  width: auto;
+}
+
+.template-insert-bar select {
+  width: auto;
+  min-width: 122px;
+}
+
+.template-insert-bar .button {
+  margin-bottom: 1px;
+}
+
+
+/* The action labels have substantial intrinsic width. Move them below the
+   metadata before their auto-sized grid column can collapse the name and
+   revision controls inside the resizable composer pane. */
+@container (max-width: 1120px) {
+  .template-editor-header {
+    grid-template-columns: minmax(160px, 1.4fr) minmax(160px, 1fr);
+  }
+
+  .template-editor-actions {
+    grid-column: 1 / -1;
+  }
+}
+
+
+@container (max-width: 545px) {
+  .template-editor-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* In focus mode the scroll region is the viewport. Give the stacked content
+     row an explicit floor so the variable rail flows below it instead of the
+     grid shrinking the editor underneath its overflowing textarea. */
+  .template-editor-focus-mode .template-content-editor {
+    min-height: 430px;
+  }
+
+  /* Once the variable rail stacks below the editor, a sticky insert bar can
+     cover its controls. Keep the footer in normal flow at this width. */
+  .template-insert-bar {
+    position: static;
+  }
+}
+
+
+@container (max-width: 430px) {
+  .template-editor-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .template-insert-label {
+    flex: 1 0 100%;
+    margin-bottom: 0;
+  }
+}
+
+
+@media (max-width: 760px) {
+  .template-content-heading {
+    align-items: flex-start;
+  }
+
+  .template-content-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+}
+
+
+.template-use-card {
+  overflow: hidden;
+  padding: var(--space-md);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-card);
+}
+
+.template-use-card.unresolved {
+  border-color: var(--warning-border);
+}
+
+.template-use-card > header {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-md);
+  align-items: flex-start;
+}
+
+.template-use-card h3 {
+  margin: 0 0 var(--space-3xs);
+}
+
+.template-use-card small {
+  color: var(--text-muted);
+}
+
+.template-use-kicker {
+  margin-bottom: var(--space-2xs);
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.template-use-kicker .eyebrow {
+  margin-bottom: 0;
+}
+
+.template-issue-count {
+  padding: var(--space-3xs) var(--space-xs);
+  border-radius: var(--radius-pill);
+  background: var(--warning-surface);
+  color: var(--warning-strong);
+  font-weight: 750;
+}
+
+.template-use-actions {
+  display: flex;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.template-use-values {
+  margin-top: var(--space-md);
+}
+
+.template-use-preview {
+  margin-top: var(--space-md);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+}
+
+.template-preview-heading {
+  min-height: 38px;
+  padding: var(--space-sm) var(--space-sm) var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-sm);
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+.template-preview-toggle {
+  display: inline-flex;
+  padding: var(--space-3xs);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+}
+
+.template-preview-toggle button {
+  border: 0;
+  border-radius: var(--radius-xs);
+  padding: var(--space-2xs) var(--space-xs);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.template-preview-toggle button.active {
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-card);
+}
+
+.template-content-preview {
+  display: grid;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+}
+
+/* An imported prompt can be thousands of words. Collapsed is the default so
+   the card stays navigable; the full text is one click and a scroll away. */
+.template-preview-body.clamped {
+  max-height: 15rem;
+  overflow-y: auto;
+}
+
+.template-preview-message {
+  display: grid;
+  gap: var(--space-2xs);
+}
+
+.template-preview-content {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+  font-family: var(--font-geist-mono), monospace;
+  line-height: var(--leading-normal);
+}
+
+.template-variable-chip {
+  display: inline;
+  margin: 0 1px;
+  padding: 1px var(--space-2xs);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-xs);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--font-geist-mono), monospace;
+  white-space: pre-wrap;
+}
+
+.template-variable-chip.missing {
+  border-color: var(--warning-border);
+  background: var(--warning-surface);
+  color: var(--warning-strong);
+}
+
+.template-values-heading {
+  padding-bottom: var(--space-sm);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.template-values-summary,
+.template-values-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2xs) var(--space-sm);
+  color: var(--text-muted);
+}
+
+.template-values-summary strong {
+  color: var(--text-secondary);
+}
+
+.template-values-attention {
+  color: var(--warning-strong);
+  font-weight: 700;
+}
+
+.template-values-controls input[type="search"] {
+  width: 11rem;
+  padding: var(--space-2xs) var(--space-sm);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+}
+
+.template-values-controls label.template-values-attention-toggle {
+  margin-bottom: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  font-weight: 400;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.template-values-hidden {
+  margin: var(--space-sm) 0 0;
+  color: var(--text-muted);
+}
+
+.template-use-variable {
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--accent-border);
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.template-use-variable > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.template-use-variable > summary::-webkit-details-marker {
+  display: none;
+}
+
+.template-use-variable > summary::before {
+  content: "▸";
+  color: var(--text-muted);
+}
+
+.template-use-variable[open] > summary::before {
+  content: "▾";
+}
+
+.template-use-variable > summary code {
+  flex: none;
+}
+
+.template-variable-glance {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-family: var(--font-geist-mono), monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.template-variable-source {
+  flex: none;
+  color: var(--text-muted);
+}
+
+.template-variable-source.attention {
+  color: var(--warning-strong);
+  font-weight: 700;
+}
+
+.template-use-variable-heading,
+.template-run-value-footer,
+.template-run-value-actions {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+}
+
+.template-use-variable-heading,
+.template-run-value-footer {
+  justify-content: space-between;
+}
+
+.template-run-value-editor {
+  min-width: 0;
+}
+
+.template-run-value-editor label {
+  display: block;
+}
+
+.template-run-value-editor textarea {
+  min-height: 92px;
+  margin-top: var(--space-xs);
+  padding: var(--space-sm) var(--space-sm);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-inset);
+  box-shadow: var(--shadow-field-inset);
+  resize: vertical;
+  font-family: var(--font-geist-mono), monospace;
+  line-height: var(--leading-normal);
+  white-space: pre-wrap;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.template-run-value-editor textarea:hover {
+  border-color: var(--accent-border);
+  background: var(--surface-subtle);
+}
+
+.template-run-value-editor textarea:focus {
+  border-color: var(--accent-focus);
+  background: var(--surface-panel);
+  box-shadow: var(--focus-ring), var(--shadow-field-inset);
+}
+
+.run-override-input {
+  border-color: var(--warning-border) !important;
+}
+
+.template-warning,
+.template-diagnostic {
+  margin-top: var(--space-sm);
+  padding: var(--space-sm) var(--space-sm);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-sm);
+  background: var(--warning-surface);
+  color: var(--warning-strong);
+  line-height: var(--leading-normal);
+}
+
+.template-diagnostic {
+  border-color: var(--danger-border);
+  background: var(--danger-surface);
+  color: var(--danger);
+}
+

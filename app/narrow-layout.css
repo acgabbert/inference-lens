@@ -1,0 +1,363 @@
+@media (max-width: 1080px) {
+  .brand p {
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .request-header {
+    gap: var(--space-md);
+  }
+
+  .pane-tabs button {
+    padding-inline: var(--space-xs);
+  }
+
+  /* At this viewport the request pane is roughly half the screen, so the
+     desktop minimums would otherwise force it to scroll sideways. */
+  .inference-settings-grid > * {
+    flex-basis: calc(50% - 8px);
+  }
+}
+
+
+@media (max-width: 880px) {
+  /* Brand, mode strip, and run controls stop fitting on one line here. The
+     strip takes the second row rather than being truncated: it is the app's
+     navigation, and a mode you cannot see is a mode you cannot leave. */
+  .topbar {
+    padding-inline: var(--space-lg);
+    padding-block: var(--space-sm);
+    row-gap: var(--space-sm);
+    flex-wrap: wrap;
+  }
+
+  .brand p {
+    display: none;
+  }
+
+  .brand {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .target-control {
+    width: 180px;
+    min-width: 150px;
+  }
+
+  .shortcut {
+    display: none;
+  }
+
+
+  .inference-settings-grid > * {
+    flex-basis: 100%;
+  }
+
+  /* Linux scrollbars leave this nested panel slightly narrower than macOS at
+     the same viewport. Give the identity and the value summaries separate
+     rows so neither has to force the other past the disclosure's edge. */
+  .inference-settings-toggle {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr);
+  }
+
+  .inference-settings-identity {
+    flex-wrap: wrap;
+  }
+
+  .inference-settings-facts {
+    grid-column: 1 / -1;
+  }
+
+  .inference-settings-hint {
+    display: none;
+  }
+}
+
+
+@media (max-width: 760px) {
+  main {
+    min-height: 0;
+  }
+
+  .focus-mode-surface {
+    inset: 0;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .composer-focus-mode .message-card textarea {
+    min-height: 160px;
+  }
+
+  .topbar {
+    min-height: 64px;
+    padding-inline: var(--space-md);
+    align-items: center;
+  }
+
+  .brand {
+    gap: var(--space-sm);
+  }
+
+  .brand-mark {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-md);
+  }
+
+  .brand h1 {
+  }
+
+  .header-actions {
+    gap: var(--space-xs);
+  }
+
+  .target-control {
+    width: 155px;
+    min-width: 130px;
+  }
+
+  .project-menu > summary,
+  .run-data-menu > summary {
+    width: 38px;
+    padding-inline: var(--space-sm);
+  }
+
+  .project-menu-label,
+  .run-data-menu-label {
+    position: absolute;
+    visibility: hidden;
+  }
+
+  .project-menu > summary::before,
+  .run-data-menu > summary::before {
+    content: "•••";
+    visibility: visible;
+    color: var(--text-primary);
+    letter-spacing: 0.08em;
+  }
+
+  .project-menu > summary .menu-chevron,
+  .run-data-menu > summary .menu-chevron {
+    display: none;
+  }
+
+  .button.primary,
+  .button.stop {
+    padding-inline: var(--space-md);
+  }
+
+  .mobile-workbench-tabs {
+    height: 43px;
+    padding: var(--space-2xs) var(--space-sm);
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-2xs);
+    border-bottom: 1px solid var(--border-default);
+    background: var(--surface-inset);
+  }
+
+  .mobile-workbench-tabs button {
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-weight: 750;
+  }
+
+  .mobile-workbench-tabs button.active {
+    background: var(--surface-panel);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-control);
+  }
+
+  .mobile-status-dot {
+    width: 6px;
+    height: 6px;
+    margin-left: var(--space-xs);
+    border-radius: 50%;
+    display: inline-block;
+    background: var(--text-faint);
+  }
+
+  .mobile-status-dot.running,
+  .mobile-status-dot.complete {
+    background: var(--accent-solid);
+  }
+
+  .mobile-status-dot.waiting {
+    background: var(--warning);
+  }
+
+.mobile-status-dot.failed {
+    background: var(--danger);
+  }
+
+  .workspace {
+    min-height: 0;
+    display: block;
+  }
+
+  .repeated-experiment-workspace {
+    padding: var(--space-lg);
+  }
+
+  .repeated-experiment-header {
+    flex-direction: column;
+  }
+
+  .repeated-experiment-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .repeated-experiment-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .repeated-experiment-more-metrics dl {
+    grid-template-columns: 1fr;
+  }
+
+  .repeated-experiment-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .repeated-experiment-row-metrics {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .workbench-divider {
+    display: none;
+  }
+
+  .workbench-pane {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* One view at a time, chosen by the shell's `data-workbench-view`. */
+  .workspace:not([data-workbench-view="request"]) > .request-pane,
+  .workspace[data-workbench-view="request"] > .response-pane,
+  .workspace[data-workbench-view="inspect"] .response-view,
+  .workspace[data-workbench-view="response"] .inspect-view {
+    display: none;
+  }
+
+  /* Flex columns, as the pane is on the wide layout, so whatever a view holds
+     gets the same height chain down to its scroll area. */
+  .response-view,
+  .inspect-view {
+    width: 100%;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* The inspect surface (chat trace, decision evidence) is the whole view
+     here rather than a split under the response. */
+  .workspace .inspect-view > * {
+    flex: 1 1 auto;
+    max-height: none;
+  }
+
+  .inspect-view .trace-resize-handle {
+    display: none;
+  }
+
+  .request-header {
+    min-height: 56px;
+    padding-inline: var(--space-lg);
+  }
+
+  .panel-header {
+    padding-inline: var(--space-lg);
+  }
+
+  .run-settings {
+    margin-inline: var(--space-md);
+  }
+
+  .message-list,
+  .tool-list {
+    padding: var(--space-md);
+  }
+
+  .mcp-discovery-panel {
+    margin: 0 var(--space-md) var(--space-md);
+  }
+
+  .templates-workspace {
+    grid-template-columns: 140px minmax(0, 1fr);
+  }
+
+  .template-use-variable {
+    grid-template-columns: 1fr;
+  }
+
+  .side-drawer {
+    width: 100%;
+  }
+
+  .n8n-import-backdrop {
+    padding: 0;
+  }
+
+  .n8n-import-modal {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .n8n-import-workspace {
+    overflow-y: auto;
+    display: block;
+  }
+
+  .n8n-import-selector {
+    max-height: 48%;
+    overflow-y: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--border-default);
+  }
+
+  .n8n-import-review {
+    min-height: 420px;
+    overflow: visible;
+  }
+
+  .n8n-import-footer {
+    flex-wrap: wrap;
+  }
+
+  .n8n-import-footer p {
+    flex: 1 0 100%;
+  }
+
+  .n8n-import-issue-notice {
+    flex: 1 0 100%;
+  }
+
+  .target-popover {
+    position: fixed;
+    top: 58px;
+    right: 10px;
+    width: min(310px, calc(100vw - 20px));
+  }
+
+  .project-popover,
+  .run-data-popover {
+    position: fixed;
+    top: 58px;
+    right: 10px;
+  }
+}
+

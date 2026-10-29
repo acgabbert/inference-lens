@@ -1,0 +1,402 @@
+.inference-settings {
+  min-width: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+}
+
+.inference-settings.open {
+  background: var(--surface-sunken);
+}
+
+.inference-settings-header {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  border-radius: var(--radius-md);
+}
+
+.inference-settings-header:hover {
+  background: var(--surface-inset);
+}
+
+.inference-settings-toggle {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-md);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.inference-settings-toggle:hover {
+  background: transparent;
+}
+
+.inference-settings-identity {
+  min-width: 0;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+}
+
+.inference-settings-identity strong {
+  color: var(--text-secondary);
+}
+
+.inference-settings-scope {
+  padding: var(--space-3xs) var(--space-xs);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--surface-inset);
+  color: var(--text-secondary);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.inference-settings-facts {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+  overflow: hidden;
+}
+
+/* Short facts keep their words; the first one — the model id, or the
+   connection a suite targets — gives way for them. Sharing the shortfall
+   evenly turns "Temp 0.3" and "Buffered" into ellipses too, which costs the
+   row every value it exists to report, and an id is the one fact here still
+   recognisable from its head. */
+.inference-settings-fact {
+  min-width: 0;
+  flex: 0 0 auto;
+  padding: 0;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inference-settings-fact:first-child {
+  flex: 0 1 auto;
+}
+
+.inference-settings-fact + .inference-settings-fact::before {
+  content: "·";
+  margin: 0 var(--space-xs);
+  color: var(--border-strong);
+}
+
+.inference-settings-chevron {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  line-height: 0;
+  transform: rotate(180deg);
+  transition: transform 120ms ease;
+}
+
+.inference-settings-chevron svg {
+  display: block;
+}
+
+.inference-settings-toggle[aria-expanded="false"] .inference-settings-chevron {
+  transform: rotate(0deg);
+}
+
+.inference-settings-hint {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--text-muted);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.inference-settings-body {
+  padding: var(--space-md);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.inference-settings label {
+  margin: 0;
+}
+
+/* A flex row rather than fixed columns: the control count varies with the
+   surface's declared slots. */
+.inference-settings-grid {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: var(--space-lg);
+}
+
+.inference-settings-grid > * {
+  min-width: 0;
+  flex: 1 1 240px;
+}
+
+.inference-settings-field {
+  display: grid;
+  align-content: end;
+  gap: var(--space-2xs);
+}
+
+.inference-settings-override {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.inference-settings-override .text-button {
+  padding: 0;
+}
+
+/* The model field states the panel's persisted scope while the disclosure is
+   open, because the composer's panel mixes scopes: model and temperature are
+   saved where the badge says, delivery is only a session preference. It is
+   lifted onto the field's own label line rather than given a row, so naming
+   the scope costs the open panel no height. */
+.inference-settings-field-scoped {
+  position: relative;
+}
+
+.inference-settings-field-scope {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+/* The composer lifts the model field above the disclosure toggle so changing
+   it needs no expansion; the toggle row below it keeps its own padding. */
+.inference-settings-model-row {
+  flex: 1 1 230px;
+  min-width: 0;
+  padding: var(--space-3xs) 0 var(--space-3xs) var(--space-md);
+}
+
+/* Model field and toggle share one row so the field costs the first message no
+   height; either wraps under the other when the pane is narrow. */
+.inference-settings.model-above {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.inference-settings.model-above > .inference-settings-header {
+  flex: 3 1 340px;
+  align-self: stretch;
+}
+
+/* The chevron and the "Settings" heading already say what the toggle does;
+   the extra words would push the protocol out of a one-row header. */
+.inference-settings.model-above .inference-settings-hint {
+  display: none;
+}
+
+.inference-settings.model-above .inference-settings-toggle {
+  padding-block: var(--space-2xs);
+}
+
+/* The word "Model" sits beside its input rather than above it, which is what
+   keeps the shared row no taller than the toggle alone. */
+.inference-settings-model-row .model-combobox {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.inference-settings-model-row .model-combobox-label {
+  flex: 0 0 auto;
+}
+
+.inference-settings-model-row .inference-settings-field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.inference-settings-model-row .model-combobox {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.inference-settings-override-compact {
+  flex: 0 0 auto;
+  padding: 0 var(--space-2xs);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* With the model id above, the first fact is the protocol, which has to stay
+   identifiable; the tail of the row gives way instead. */
+.inference-settings.model-above .inference-settings-fact:first-child {
+  flex: 0 0 auto;
+}
+
+.inference-settings-model-row .combobox-control {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.inference-settings.model-above > .inference-settings-body {
+  flex: 1 0 100%;
+}
+
+.inference-settings-record {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: var(--space-sm) var(--space-lg);
+}
+
+.inference-settings-record dt {
+  color: var(--text-secondary);
+}
+
+.inference-settings-record dd {
+  margin-top: var(--space-3xs);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* The Tools tab owns the manifest; this is only a pointer to it. */
+.request-tool-line {
+  margin: var(--space-sm) var(--space-xs) 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  color: var(--text-muted);
+}
+
+.request-tool-line > span {
+  min-width: 0;
+}
+
+.request-tool-line.blocked {
+  color: var(--danger-strong);
+  font-weight: 650;
+}
+
+.request-tool-line .text-button {
+  flex: 0 0 auto;
+}
+
+/* The blocker chip that replaced the standing readiness notice is scoped by
+   `blocker-chip.module.css`; only its placement in the request pane is global. */
+.run-readiness-slot {
+  margin: var(--space-md) var(--space-xl) 0;
+  container-type: inline-size;
+}
+
+/* The lowercase i's dot makes its optical center sit slightly below its box. */
+.info-mark-glyph {
+  display: block;
+  line-height: 1;
+  transform: translateY(-0.5px);
+}
+
+.temperature-control .range-row {
+  min-height: 36px;
+}
+
+/* These controls are mounted inside three different pages, so they carry their
+   own panel scope rather than relying on source order. `label:not(.file-button)`
+   and the host page's own `label`/`input`/`output` rules — `.evaluation-setup`
+   stacks labels and stretches inputs — match the bare class at equal specificity
+   and win from further down the file, which stacked each checkbox above its text
+   and flattened the temperature readout in the evaluation suite's mount. */
+.inference-settings label.temperature-toggle {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-xs);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+/* width: auto against the global input width: 100%, which otherwise stretches
+   the checkbox's box across the row and strands the glyph far from its text. */
+.inference-settings .temperature-toggle input {
+  margin: 0;
+  width: auto;
+}
+
+/* The base `output` look is restated rather than inherited: a host page that
+   flattens its own outputs — `.evaluation-preflight` does, for its run count —
+   would otherwise take the field out from under the readout. */
+.inference-settings .temperature-control output {
+  min-width: 3rem;
+  padding: var(--space-2xs);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  text-align: right;
+}
+
+.inference-settings .temperature-default {
+  display: block;
+  margin-top: var(--space-3xs);
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.inference-settings .temperature-control output.experimental,
+.inference-settings .temperature-warning {
+  color: var(--warning-strong);
+}
+
+.inference-settings .temperature-warning {
+  display: block;
+  margin-top: var(--space-3xs);
+  text-align: right;
+}
+
+.inference-settings label.streaming-control {
+  min-height: 36px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.inference-settings .streaming-control input {
+  margin: 0;
+  width: auto;
+}
+
+.inference-settings .streaming-control span,
+.inference-settings .streaming-control small {
+  display: block;
+}
+
+.inference-settings .streaming-control small {
+  margin-top: var(--space-3xs);
+  color: var(--text-muted);
+  line-height: var(--leading-tight);
+}
+
+.inference-settings .streaming-control.disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+

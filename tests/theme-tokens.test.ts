@@ -3,29 +3,61 @@ import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-const cssPath = fileURLToPath(new URL("../app/globals.css", import.meta.url));
-const css = readFileSync(cssPath, "utf8");
+const appDir = fileURLToPath(new URL("../app", import.meta.url));
+const globalsSource = readFileSync(`${appDir}/globals.css`, "utf8");
 
-/** globals.css plus every CSS Module — the scales are one system, not two. */
-function allStylesheets(): { name: string; source: string }[] {
-  const appDir = fileURLToPath(new URL("../app", import.meta.url));
-  const sheets = [{ name: "app/globals.css", source: css }];
+/** The partials globals.css imports, in cascade order. */
+const partialNames = [...globalsSource.matchAll(/^@import "\.\/([^"]+)";$/gm)].map(
+  (match) => `app/${match[1]}`,
+);
+const partials = partialNames.map((name) => ({
+  name,
+  source: readFileSync(fileURLToPath(new URL(`../${name}`, import.meta.url)), "utf8"),
+}));
+
+/** The global stylesheet as the browser receives it: every partial, in order. */
+const css = partials.map(({ source }) => source).join("\n");
+
+function stylesheetsUnderApp(): string[] {
+  const found: string[] = [];
   const walk = (dir: string, prefix: string) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const path = `${dir}/${entry.name}`;
       if (entry.isDirectory()) {
-        walk(path, `${prefix}${entry.name}/`);
-      } else if (entry.name.endsWith(".module.css")) {
-        sheets.push({
-          name: `app/${prefix}${entry.name}`,
-          source: readFileSync(path, "utf8"),
-        });
+        walk(`${dir}/${entry.name}`, `${prefix}${entry.name}/`);
+      } else if (entry.name.endsWith(".css")) {
+        found.push(`app/${prefix}${entry.name}`);
       }
     }
   };
   walk(appDir, "");
-  return sheets;
+  return found;
 }
+
+/** Every global partial plus every CSS Module — the scales are one system, not two. */
+function allStylesheets(): { name: string; source: string }[] {
+  const modules = stylesheetsUnderApp()
+    .filter((name) => name.endsWith(".module.css"))
+    .map((name) => ({
+      name,
+      source: readFileSync(fileURLToPath(new URL(`../${name}`, import.meta.url)), "utf8"),
+    }));
+  return [...partials, ...modules];
+}
+
+test("globals.css only imports partials, and every partial is imported", () => {
+  const otherLines = globalsSource
+    .split("\n")
+    .filter((line) => line.trim() && !/^@import "[^"]+";$/.test(line));
+  assert.deepEqual(otherLines, [], "rules belong in a partial, not in globals.css");
+
+  const unimported = stylesheetsUnderApp().filter(
+    (name) =>
+      !name.endsWith(".module.css") &&
+      name !== "app/globals.css" &&
+      !partialNames.includes(name),
+  );
+  assert.deepEqual(unimported, [], "partial(s) not imported by globals.css");
+});
 
 /** Declarations of `prop: value;`, excluding the :root token block. */
 function declarationsOutsideRoot(
@@ -50,7 +82,7 @@ function declarationsOutsideRoot(
 function rootBlock(source: string): string {
   const start = source.indexOf(":root {");
   const end = source.indexOf("\n}\n", start);
-  assert.ok(start !== -1 && end !== -1, "expected a :root block in globals.css");
+  assert.ok(start !== -1 && end !== -1, "expected a :root block in app/tokens.css");
   return source.slice(start, end);
 }
 
@@ -72,7 +104,7 @@ test("every var() reference resolves to a declared custom property", () => {
   const declared = new Set(
     [...css.matchAll(/^\s*(--[a-z0-9-]+):/gm)].map((m) => m[1]),
   );
-  // Provided by next/font or set inline by workbench-shell.client.tsx, not declared in globals.css.
+  // Provided by next/font or set inline by workbench-shell.client.tsx, not declared in a partial.
   const externallyProvided = new Set([
     "--font-geist-sans",
     "--font-geist-mono",

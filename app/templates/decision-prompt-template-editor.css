@@ -1,0 +1,25 @@
+/* The shared library places either content owner in the same grid cell. */
+.template-chat-editor {
+  display: contents;
+}
+
+.decision-template-editor .decision-content,
+.decision-input-editor {
+  min-width: 0;
+}
+
+.decision-template-use {
+  margin: var(--space-md) var(--space-lg);
+  padding: var(--space-md);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+}
+
+.decision-template-use-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+

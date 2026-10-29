@@ -1,0 +1,79 @@
+/* Three regions since the mode shell landed: brand, mode strip, run controls.
+   The strip styles itself (app/modes/mode-strip.module.css); what belongs here
+   is only the room the topbar makes for it, including the wrap to a second row
+   once the three cannot share one. */
+.topbar {
+  min-height: 72px;
+  padding: 0 var(--space-2xl);
+  border-bottom: 1px solid var(--border-default);
+  background: var(--surface-translucent);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  flex-wrap: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  backdrop-filter: blur(14px);
+}
+
+.brand,
+.header-actions,
+.range-row,
+.panel-header,
+.message-toolbar,
+.trace-header {
+  display: flex;
+  align-items: center;
+}
+
+.brand {
+  gap: var(--space-md);
+}
+
+.brand-mark {
+  width: 37px;
+  height: 37px;
+  border-radius: var(--radius-lg);
+  display: grid;
+  place-items: center;
+  background: var(--brand-mark-bg);
+  color: var(--brand-mark-fg);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.brand h1 {
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+.brand p {
+  margin: var(--space-3xs) 0 0;
+  color: var(--text-muted);
+}
+
+.header-actions {
+  gap: var(--space-sm);
+}
+
+
+@media (max-width: 1320px) {
+  /* Four peer destinations plus the project/run controls no longer fit on one
+     line at the standard 1280px desktop viewport. Keep each control's hit
+     target intact and give navigation a dedicated row before flex items can
+     overlap and intercept one another. */
+  .topbar {
+    padding-inline: var(--space-lg);
+    padding-block: var(--space-sm);
+    row-gap: var(--space-sm);
+    flex-wrap: wrap;
+  }
+
+  .brand {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+}
+

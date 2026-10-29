@@ -1,0 +1,44 @@
+/* The outbound request, lifted out of the event JSON so it can be read and
+   copied for comparison against another client's payload. */
+.request-evidence {
+  margin: 0 0 var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+}
+
+.request-evidence-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  font-family: var(--font-geist-mono), monospace;
+  word-break: break-all;
+}
+
+.request-evidence-actions {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+}
+
+.request-evidence-status,
+.request-evidence-note {
+  color: var(--text-faint);
+  font-family: var(--font-geist-sans), sans-serif;
+  line-height: var(--leading-tight);
+}
+
+.request-evidence-note {
+  margin: var(--space-xs) 0 0;
+  word-break: break-word;
+}
+
+.request-evidence-body {
+  max-height: 340px;
+  margin: var(--space-sm) 0 0;
+  overflow: auto;
+}
+

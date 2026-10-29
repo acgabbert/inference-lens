@@ -1,0 +1,372 @@
+.evaluation-start-dialog {
+  width: min(720px, 100%);
+}
+
+
+.evaluation-start-details code {
+  display: block;
+  margin-top: var(--space-3xs);
+  overflow-wrap: anywhere;
+  color: var(--text-muted);
+}
+
+.evaluation-start-concurrency dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm) var(--space-md);
+  white-space: normal;
+  font-family: inherit;
+}
+
+.evaluation-start-concurrency label {
+  display: grid;
+  gap: var(--space-3xs);
+  min-width: 0;
+}
+
+.evaluation-start-concurrency input {
+  width: 6rem;
+}
+
+/* The start dialogs' rate-limit retry opt-in: a checkbox with its consequence
+   beneath, laid out like the streaming control it sits near. */
+label.experiment-retry-field {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  color: var(--text-primary);
+  font-family: inherit;
+  white-space: normal;
+  cursor: pointer;
+}
+
+.experiment-retry-field input {
+  margin: var(--space-3xs) 0 0;
+  width: auto;
+}
+
+.experiment-retry-field span,
+.experiment-retry-field small {
+  display: block;
+}
+
+.experiment-retry-field small {
+  margin-top: var(--space-3xs);
+  color: var(--text-muted);
+  line-height: var(--leading-tight);
+}
+
+.evaluation-results-header,
+.evaluation-case-result > summary,
+.evaluation-repetition-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-lg);
+}
+
+.evaluation-results-header {
+  padding-bottom: var(--space-lg);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.evaluation-results-header h2 {
+  margin: var(--space-2xs) 0 0;
+}
+
+.evaluation-results-header p {
+  margin: var(--space-xs) 0 0;
+  color: var(--text-muted);
+}
+
+.evaluation-results-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.evaluation-results-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-md);
+}
+
+.evaluation-results-summary > div {
+  min-width: 0;
+  padding: var(--space-md);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-translucent);
+}
+
+.evaluation-results-summary span,
+.evaluation-results-summary strong {
+  display: block;
+}
+
+.evaluation-results-summary span {
+  margin-bottom: var(--space-2xs);
+  color: var(--text-muted);
+}
+
+.evaluation-configuration-table-scroll {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--surface-translucent);
+}
+
+.evaluation-configuration-table {
+  width: 100%;
+  min-width: 920px;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.evaluation-configuration-table th,
+.evaluation-configuration-table td {
+  padding: var(--space-md) var(--space-md);
+  border-bottom: 1px solid var(--border-default);
+  vertical-align: middle;
+}
+
+.evaluation-configuration-table thead th {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.evaluation-configuration-table tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
+.evaluation-configuration-table tbody tr.selected {
+  background: var(--accent-soft);
+}
+
+.evaluation-configuration-table tbody th button {
+  display: grid;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.evaluation-configuration-table small,
+.evaluation-configuration-table td > strong {
+  display: block;
+}
+
+.evaluation-configuration-table small {
+  margin-top: var(--space-3xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.evaluation-case-results,
+.evaluation-repetition-results {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.evaluation-case-result {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--surface-translucent);
+}
+
+.evaluation-case-result > summary {
+  align-items: center;
+  padding: var(--space-md);
+  cursor: pointer;
+}
+
+.evaluation-case-result > summary > span:first-child,
+.evaluation-case-result > summary small {
+  display: block;
+}
+
+.evaluation-case-result > summary small {
+  margin-top: var(--space-2xs);
+  color: var(--text-muted);
+}
+
+.evaluation-repetition-results {
+  padding: 0 var(--space-md) var(--space-md);
+  border-top: 1px solid var(--border-default);
+}
+
+.evaluation-repetition-result {
+  display: grid;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+}
+
+.evaluation-repetition-result:first-child {
+  margin-top: var(--space-md);
+}
+
+.evaluation-repetition-result.running {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+.evaluation-repetition-result.queued {
+  border-style: dashed;
+  background: var(--surface-translucent);
+}
+
+.evaluation-evidence-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--border-default);
+}
+
+.evaluation-evidence-row > span,
+.evaluation-evidence-row small {
+  display: block;
+}
+
+.evaluation-evidence-row small {
+  margin-top: var(--space-3xs);
+  color: var(--text-muted);
+}
+
+.evaluation-evidence-row.unreadable,
+.evaluation-evidence-row.absent,
+.evaluation-evidence-row.not-created {
+  color: var(--text-secondary);
+}
+
+.evaluation-compare-output {
+  justify-self: start;
+}
+
+.evaluation-output-comparison-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-md);
+}
+
+.evaluation-output-comparison-card {
+  min-width: 0;
+  padding: var(--space-md);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-translucent);
+}
+
+.evaluation-output-comparison-card h3 {
+  margin: var(--space-2xs) 0 var(--space-md);
+}
+
+.evaluation-output-comparison-card dl,
+.evaluation-output-comparison-card dl > div {
+  display: grid;
+  gap: var(--space-2xs);
+}
+
+.evaluation-output-comparison-card dl {
+  margin: 0;
+  gap: var(--space-sm);
+}
+
+.evaluation-output-comparison-card dl > div {
+  grid-template-columns: minmax(70px, 0.35fr) minmax(0, 1fr);
+}
+
+.evaluation-output-comparison-card dt {
+  color: var(--text-muted);
+}
+
+.evaluation-output-comparison-card dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+
+/* Baseline comparison ---------------------------------------------------- */
+
+.evaluation-comparison-workspace {
+  display: grid;
+  gap: var(--space-lg);
+  align-content: start;
+  padding: var(--space-xl);
+}
+
+.evaluation-comparison-drift {
+  display: grid;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-translucent);
+}
+
+.evaluation-comparison-drift p {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.evaluation-comparison-table th,
+.evaluation-comparison-table td {
+  white-space: normal;
+  vertical-align: top;
+  text-align: left;
+}
+
+.evaluation-comparison-table tbody th {
+  display: table-cell;
+}
+
+.evaluation-comparison-table small {
+  display: block;
+  margin-top: var(--space-3xs);
+  color: var(--text-muted);
+}
+
+.evaluation-comparison-absent {
+  margin: 0;
+  color: var(--text-faint);
+}
+
+.evaluation-comparison-reasons {
+  color: var(--text-faint);
+}
+
+.evaluation-comparison-detail > td {
+  padding-bottom: var(--space-md);
+}
+
+.evaluation-comparison-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  margin-bottom: var(--space-sm);
+}
+
+.evaluation-comparison-checks {
+  display: grid;
+  gap: var(--space-2xs);
+  margin: var(--space-sm) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.evaluation-comparison-checks span {
+  display: block;
+  color: var(--text-muted);
+}
+

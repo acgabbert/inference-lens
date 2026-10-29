@@ -1,0 +1,35 @@
+.confirmation-details {
+  margin: var(--space-lg) 0 0;
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.confirmation-details > div {
+  padding: var(--space-sm) var(--space-sm);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+.confirmation-details dt {
+  color: var(--text-muted);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.confirmation-details dd {
+  margin: var(--space-2xs) 0 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font-family: var(--font-geist-mono), monospace;
+  line-height: var(--leading-normal);
+}
+
+.confirmation-actions {
+  margin-top: var(--space-lg);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+}
+

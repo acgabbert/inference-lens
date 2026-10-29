@@ -1,0 +1,139 @@
+/* Run metrics */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.run-metrics {
+  padding: var(--space-lg) var(--space-xl) var(--space-xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.run-metrics-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+  gap: var(--space-sm);
+}
+
+.run-metric-tile {
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3xs);
+  background: var(--surface-panel);
+}
+
+.run-metric-label {
+  color: var(--text-muted);
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.run-metric-value {
+  color: var(--text-primary);
+  font-family: var(--font-geist-mono), monospace;
+  font-weight: 600;
+}
+
+.run-metric-hint {
+  color: var(--text-faint);
+}
+
+.run-metrics-counts {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs) var(--space-xl);
+}
+
+.run-metrics-counts > div {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+}
+
+.run-metrics-counts dt {
+  color: var(--text-muted);
+}
+
+.run-metrics-counts dd {
+  margin: 0;
+  color: var(--text-secondary);
+  font-family: var(--font-geist-mono), monospace;
+  font-weight: 600;
+}
+
+
+.run-metrics-table {
+  width: 100%;
+  border-collapse: collapse;
+  white-space: nowrap;
+}
+
+.run-metrics-table th,
+.run-metrics-table td {
+  padding: var(--space-xs) var(--space-sm) var(--space-xs) 0;
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: right;
+}
+
+.run-metrics-table thead th {
+  color: var(--text-muted);
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.run-metrics-table tbody th {
+  color: var(--text-secondary);
+  font-weight: 600;
+  text-align: left;
+}
+
+.run-metrics-table thead th:first-child,
+.run-metrics-table tbody td:first-of-type {
+  text-align: left;
+}
+
+.run-metrics-table tbody td {
+  color: var(--text-primary);
+  font-family: var(--font-geist-mono), monospace;
+}
+
+.attempt-status {
+  padding: var(--space-3xs) var(--space-xs);
+  border-radius: var(--radius-pill);
+  display: inline-block;
+  background: var(--surface-strong);
+  color: var(--text-muted);
+  font-family: var(--font-geist-sans), sans-serif;
+  font-weight: 700;
+}
+
+.attempt-status.completed {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.attempt-status.failed {
+  background: var(--danger-surface);
+  color: var(--danger);
+}
+
+.attempt-status.cancelled {
+  background: var(--warning-surface);
+  color: var(--warning);
+}
+

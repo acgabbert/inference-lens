@@ -1,0 +1,65 @@
+.tool-call-list {
+  padding: var(--space-lg) var(--space-xl);
+  display: grid;
+  gap: var(--space-md);
+  border-bottom: 1px solid var(--border-default);
+  background: var(--surface-subtle);
+}
+
+.tool-call-card {
+  overflow: hidden;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-panel);
+}
+
+.tool-call-heading h3 {
+  margin: 0;
+}
+
+.tool-call-card > label {
+  padding: var(--space-md);
+}
+
+.tool-call-card pre {
+  max-height: 180px;
+  margin-top: var(--space-xs);
+  padding: var(--space-md);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.tool-call-card textarea {
+  margin-top: var(--space-xs);
+}
+
+/* Provenance sits under the result, not beside the name: what produced a value
+   is read after the value, and it must stay legible when the card is narrow. */
+.tool-call-provenance,
+.tool-call-projection,
+.tool-call-pending-executor {
+  margin: 0;
+  padding: 0 var(--space-md) var(--space-md);
+  color: var(--text-muted);
+}
+
+.tool-call-projection {
+  padding-top: 0;
+  color: var(--warning);
+}
+
+/* Continue moved out of the topbar to the pause it acts on, so it has to stay
+   reachable once the call list is longer than the pane. Sticky rather than
+   fixed: it belongs to the scroller, and it releases with it. */
+.continue-tool-run {
+  position: sticky;
+  bottom: 0;
+  justify-self: end;
+  z-index: 1;
+}
+
+
+.tool-call-list {
+  border-top: 1px solid var(--border-default);
+}
+

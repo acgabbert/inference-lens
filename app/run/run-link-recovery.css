@@ -1,0 +1,15 @@
+.run-link-recovery {
+  margin: var(--space-md) var(--space-xl);
+  padding: var(--space-xl);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--surface-panel);
+  overflow-wrap: anywhere;
+}
+.run-link-recovery h2 { margin: 0 0 var(--space-sm); }
+.run-link-recovery p { margin: var(--space-sm) 0; }
+.run-link-copy { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-sm); padding: var(--space-sm); }
+.run-link-copy p { margin: 0; }
+.run-link-copy label { display: grid; gap: var(--space-2xs); flex: 1 1 20rem; }
+.run-link-copy input { width: 100%; min-width: 0; }
+

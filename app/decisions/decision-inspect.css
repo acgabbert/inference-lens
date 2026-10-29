@@ -1,0 +1,50 @@
+/* Decision inspection (D19): the attempts' exchange evidence. */
+.decision-inspect {
+  flex: 0 1 45%;
+  /* Like the open trace panel: shrinks with the answer, never to a sliver. */
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border-default);
+  background: var(--surface-subtle);
+}
+
+.decision-inspect-empty {
+  padding: var(--space-md) var(--space-xl);
+}
+
+.decision-inspect-body {
+  display: grid;
+  align-content: start;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-xl);
+}
+
+.decision-attempt {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.decision-attempt h3,
+.decision-attempt h4 {
+  margin: 0;
+}
+
+.decision-attempt-error {
+  margin: 0;
+  color: var(--danger);
+}
+
+.decision-response-evidence p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.decision-raw-body {
+  max-height: 340px;
+  margin: var(--space-xs) 0 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+

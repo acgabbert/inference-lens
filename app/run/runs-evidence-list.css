@@ -1,0 +1,278 @@
+/* Project run history */
+
+.run-evidence-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-lg);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-raised);
+}
+
+.run-evidence-actions > div {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-3xs);
+}
+
+.run-evidence-actions strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-history {
+  min-height: 100%;
+  padding: var(--space-lg);
+}
+
+.run-history-toolbar,
+.run-history-item-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.run-history-toolbar {
+  min-height: 34px;
+  margin-bottom: var(--space-sm);
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.run-history-filter {
+  display: flex;
+  gap: var(--space-2xs);
+  margin-bottom: var(--space-sm);
+  padding: var(--space-3xs);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-inset);
+}
+
+.run-history-filter button {
+  flex: 1 1 0;
+  padding: var(--space-2xs) var(--space-sm);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.run-history-filter button:hover {
+  color: var(--text-primary);
+}
+
+.run-history-filter button.selected {
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-control);
+}
+
+/* The strict pass rate of a saved evaluation. `partial` is deliberately not
+   `passed`: under strict scoring a suite with any failing case has not passed,
+   and colouring it like a success would contradict the results workspace. */
+.evaluation-pass {
+  flex: 0 0 auto;
+  padding: var(--space-3xs) var(--space-xs);
+  border-radius: var(--radius-pill);
+  background: var(--surface-inset);
+  color: var(--text-muted);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.evaluation-pass.passed {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.evaluation-pass.failed,
+.evaluation-pass.partial {
+  background: var(--danger-surface);
+  color: var(--danger);
+}
+
+/* `pending` and `unscored` keep the neutral pill the base rule sets. They are
+   named here so the omission reads as a decision rather than a missing case. */
+.evaluation-pass.pending,
+.evaluation-pass.unscored {
+  background: var(--surface-inset);
+  color: var(--text-muted);
+}
+
+.run-history-list {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.run-history-item {
+  width: 100%;
+  padding: var(--space-md) var(--space-md);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: var(--space-2xs);
+  background: var(--surface-panel);
+  color: var(--text-muted);
+  cursor: pointer;
+  text-align: left;
+  box-shadow: var(--shadow-control);
+}
+
+.run-history-item:hover {
+  border-color: var(--border-strong);
+}
+
+.run-history-item.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.run-history-item-heading strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-history-item time,
+.run-history-item > span,
+.run-history-item code {
+}
+
+.run-history-item code {
+  overflow: hidden;
+  color: var(--text-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-history-status {
+  flex: 0 0 auto;
+  padding: var(--space-3xs) var(--space-xs);
+  border-radius: var(--radius-pill);
+  background: var(--surface-inset);
+  color: var(--text-muted);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.run-history-status.completed {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.run-history-status.failed {
+  background: var(--danger-surface);
+  color: var(--danger);
+}
+
+.run-history-status.check-failed,
+.run-history-status.run-failed,
+.run-history-status.missing-trace {
+  background: var(--danger-surface);
+  color: var(--danger);
+}
+
+.run-history-status.passed {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.run-history-status.not-evaluated,
+.run-history-status.not-run {
+  background: var(--surface-inset);
+  color: var(--text-muted);
+}
+
+/* A rate-limited run is missing evidence, not a model failure: the provider
+   refused it before the model answered. */
+.run-history-status.rate-limited {
+  background: var(--warning-surface);
+  color: var(--warning-strong);
+}
+
+/* A cancelled run is neither a success nor a fault, so it keeps the neutral
+   pill the base rule sets. It is named here so the omission reads as a
+   decision rather than as a missing case. */
+.run-history-status.cancelled {
+  background: var(--surface-inset);
+  color: var(--text-muted);
+}
+
+.run-history-item[aria-busy="true"] {
+  cursor: progress;
+}
+
+.run-history-item:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.run-history-empty {
+  padding: 54px var(--space-xl);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.run-history-empty > span {
+  color: var(--text-faint);
+}
+
+.run-history-empty h3 {
+  margin: var(--space-sm) 0 var(--space-2xs);
+  color: var(--text-primary);
+}
+
+.run-history-empty p {
+  margin: 0 auto;
+  max-width: 250px;
+  line-height: var(--leading-normal);
+}
+
+.run-history-notice,
+.run-history-failures {
+  margin-bottom: var(--space-sm);
+  padding: var(--space-md) var(--space-md);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+}
+
+.run-history-notice {
+  display: grid;
+  gap: var(--space-3xs);
+}
+
+.run-history-notice.error {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.run-history-failures {
+  margin-top: var(--space-md);
+  color: var(--text-muted);
+}
+
+.run-history-failures summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.run-history-failures p {
+  display: grid;
+  gap: var(--space-3xs);
+  margin: var(--space-sm) 0 0;
+}
+
+.run-history-failures code {
+  color: var(--text-primary);
+}
+

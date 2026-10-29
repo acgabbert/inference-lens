@@ -1,0 +1,147 @@
+:root {
+  color-scheme: light dark;
+
+  /* Surfaces */
+  --surface-base: light-dark(#fbfcfa, #101613);
+  --surface-panel: light-dark(#ffffff, #171f1a);
+  --surface-raised: light-dark(#ffffff, #1e2823);
+  --surface-subtle: light-dark(#fafbf9, #1c2621);
+  --surface-sunken: light-dark(#f6f8f5, #131b17);
+  --surface-inset: light-dark(#f5f7f4, #1a231e);
+  --surface-hover: light-dark(#f1f5f2, #232e28);
+  --surface-strong: light-dark(#e8ece9, #26312b);
+  --surface-translucent: light-dark(rgba(255, 255, 255, 0.95), rgba(19, 26, 22, 0.88));
+
+  /* Borders */
+  --border-default: light-dark(#dce2dd, #2b3830);
+  --border-subtle: light-dark(#e9edea, #222d27);
+  --border-strong: light-dark(#c6cec8, #3a4a41);
+
+  /* Text */
+  --text-primary: light-dark(#17211c, #e4ece7);
+  --text-secondary: light-dark(#445049, #b6c2bb);
+  --text-muted: light-dark(#667069, #93a099);
+  --text-faint: light-dark(#919a94, #6e7c75);
+  --text-on-accent: light-dark(#ffffff, #06150e);
+  /* Type roles: choose these by the meaning of text, never by local density. */
+  --type-body: 14px;
+  --type-compact: 13px;
+  --type-control: 12px;
+  --type-metadata: 11px;
+  --type-section-heading: 16px;
+  --type-page-heading: 18px;
+
+  /* Spacing rhythm: pick by the relationship between the two things being
+     separated, never by how much room a particular rule happens to need. The
+     UI nests (workspace → band → card → row), so every step chosen one size
+     too generous is paid four times over.
+
+       3xs/2xs  glyph and chip padding, icon-to-label gaps
+       xs/sm    control padding, gaps inside a row
+       md       card padding, gaps between rows
+       lg/xl    band and panel padding
+       2xl/3xl  page and workspace padding
+
+     Sub-2px nudges that align against a 1px border stay literal, as do the
+     handful of one-off empty-state offsets that are layout, not rhythm. */
+  --space-3xs: 2px;
+  --space-2xs: 4px;
+  --space-xs: 6px;
+  --space-sm: 8px;
+  --space-md: 10px;
+  --space-lg: 14px;
+  --space-xl: 16px;
+  --space-2xl: 20px;
+  --space-3xl: 26px;
+
+  /* Corner radius by the kind of box, so nested boxes stay concentric rather
+     than each picking a radius within 1px of its parent's. */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-pill: 999px;
+
+  /* Line height by the length of the run of text, not by its size. */
+  --leading-tight: 1.35;
+  --leading-normal: 1.45;
+  --leading-prose: 1.55;
+
+  /* Accent (brand green) */
+  --accent: light-dark(#176b4d, #4fb98a);
+  --accent-solid: light-dark(#35a36f, #3fbe84);
+  --accent-soft: light-dark(#e8f5ee, #163227);
+  --accent-border: light-dark(#cfe3d7, #2f6a51);
+  --accent-text: light-dark(#476052, #8fd4b0);
+  --accent-focus: light-dark(#74a98f, #4fb98a);
+
+  /* Danger / warning */
+  --danger: light-dark(#a73d35, #f2837a);
+  --danger-strong: light-dark(#8b332d, #ff9a90);
+  --danger-surface: light-dark(#fff2f0, #2a1614);
+  --danger-border: light-dark(#e7c0bb, #5c2a25);
+  --warning: light-dark(#ba6b16, #e0a44e);
+  --warning-strong: light-dark(#76522c, #e8bd7a);
+  --warning-surface: light-dark(#fff8ef, #2a2015);
+  --warning-border: light-dark(#efd4b6, #5c452a);
+
+  /* Elevation & overlay — geometry is theme-invariant, only opacity/hue flips */
+  --shadow-card: 0 3px 12px light-dark(rgba(24, 46, 34, 0.025), rgba(0, 0, 0, 0.4));
+  --shadow-control: 0 1px 4px light-dark(rgba(24, 46, 34, 0.1), rgba(0, 0, 0, 0.55));
+  --shadow-float: 0 5px 18px light-dark(rgba(24, 46, 34, 0.14), rgba(0, 0, 0, 0.5));
+  --shadow-popover: 0 12px 32px light-dark(rgba(24, 46, 34, 0.15), rgba(0, 0, 0, 0.6));
+  --shadow-panel: 0 18px 45px light-dark(rgba(24, 46, 34, 0.1), rgba(0, 0, 0, 0.55));
+  --shadow-modal: 0 28px 80px light-dark(rgba(12, 27, 18, 0.26), rgba(0, 0, 0, 0.72));
+  --shadow-drawer: -18px 0 55px light-dark(rgba(15, 35, 22, 0.18), rgba(0, 0, 0, 0.6));
+  --shadow-field-inset: inset 0 1px 2px light-dark(rgba(24, 46, 34, 0.06), rgba(0, 0, 0, 0.45));
+  --focus-ring: 0 0 0 3px light-dark(rgba(23, 107, 77, 0.09), rgba(79, 185, 138, 0.25));
+  --overlay-scrim: light-dark(rgba(16, 28, 21, 0.44), rgba(0, 0, 0, 0.66));
+
+  /* Run timeline phases — hues chosen to stay distinct as thin bars, and to
+     keep generation on the brand green so it reads as the productive phase */
+  --timeline-wait: light-dark(#b3bdb7, #46564e);
+  --timeline-prelude: light-dark(#8ab3c4, #47707f);
+  --timeline-reasoning: var(--warning);
+  --timeline-tooling: light-dark(#8d78b8, #9b87c7);
+  --timeline-generation: var(--accent-solid);
+  --timeline-gap: light-dark(#c4ccc6, #3b463e);
+
+  /* Unified diffs */
+  --diff-added-surface: var(--accent-soft);
+  --diff-added-text: var(--accent);
+  --diff-removed-surface: var(--danger-surface);
+  --diff-removed-text: var(--danger);
+  --diff-changed-surface: var(--warning-surface);
+
+  /* Brand mark: fixed dark chip with bright text, does not invert */
+  --brand-mark-bg: light-dark(#17211c, #1f2b25);
+  --brand-mark-fg: #9ee7c5;
+}
+
+@theme inline {
+  --color-surface-base: var(--surface-base);
+  --color-surface-panel: var(--surface-panel);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-subtle: var(--surface-subtle);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-surface-inset: var(--surface-inset);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-strong: var(--surface-strong);
+  --color-border-default: var(--border-default);
+  --color-border-subtle: var(--border-subtle);
+  --color-border-strong: var(--border-strong);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-text-faint: var(--text-faint);
+  --color-accent: var(--accent);
+  --color-accent-solid: var(--accent-solid);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-border: var(--accent-border);
+  --color-danger: var(--danger);
+  --color-danger-strong: var(--danger-strong);
+  --color-warning: var(--warning);
+  --color-warning-strong: var(--warning-strong);
+}
+

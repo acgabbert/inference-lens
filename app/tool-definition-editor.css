@@ -1,0 +1,193 @@
+.schema-tabs {
+  gap: var(--space-2xs);
+  padding: 0 var(--space-md);
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-subtle);
+}
+
+.schema-tabs button {
+  padding: var(--space-sm) var(--space-3xs) var(--space-xs);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-weight: 750;
+}
+
+.schema-tabs button + button {
+  margin-left: var(--space-md);
+}
+
+.schema-tabs button.active {
+  border-bottom-color: var(--accent);
+  color: var(--accent);
+}
+
+.schema-editor-body {
+  padding: var(--space-md);
+}
+
+.schema-node {
+  min-width: 0;
+}
+
+.schema-node .schema-node {
+  margin: 0 var(--space-sm) var(--space-sm);
+  padding: var(--space-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+}
+
+.schema-node-controls {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.45fr) minmax(160px, 1fr) minmax(120px, 0.7fr);
+  gap: var(--space-sm);
+}
+
+.schema-node-controls label,
+.schema-property-row label,
+.advanced-schema {
+  margin-bottom: 0 !important;
+}
+
+.schema-node-controls input,
+.schema-node-controls select,
+.schema-property-row input,
+.schema-property-row select,
+.schema-enum-row input {
+  margin-top: var(--space-2xs);
+  padding: var(--space-xs) var(--space-sm);
+}
+
+.schema-subheading {
+  min-height: 34px;
+  justify-content: space-between;
+  color: var(--text-secondary);
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.schema-empty {
+  margin: 0;
+  padding: var(--space-md);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+}
+
+.schema-unsupported {
+  margin: var(--space-sm) 0;
+  padding: var(--space-md);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-sm);
+  background: var(--warning-surface);
+  color: var(--warning-strong);
+  line-height: var(--leading-normal);
+}
+
+.schema-property {
+  margin-bottom: var(--space-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.schema-property-row.schema-property-unsupported {
+  grid-template-columns: 22px minmax(120px, 0.8fr) minmax(220px, 1.6fr) 70px auto;
+}
+
+.schema-property-unsupported p {
+  margin: 0 0 var(--space-xs);
+  color: var(--warning-strong);
+  line-height: var(--leading-tight);
+}
+
+.schema-property-row {
+  padding: var(--space-sm);
+  display: grid;
+  grid-template-columns:
+    22px
+    minmax(90px, 0.8fr)
+    minmax(78px, 0.55fr)
+    64px
+    minmax(130px, 1.2fr)
+    minmax(90px, 0.7fr)
+    auto;
+  align-items: end;
+  gap: var(--space-xs);
+}
+
+/* Parameter order is sent to the provider verbatim, so these sit with the
+   parameter they move rather than in a separate ordering mode. */
+.schema-property-reorder {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-bottom: var(--space-2xs);
+}
+
+.schema-property-reorder button {
+  padding: 0;
+  line-height: 1.1;
+}
+
+.schema-property-reorder button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* The checkbox sits in a box the height of the inputs beside it, so its label
+   lines up with theirs in a row aligned to the controls' bottom edge. */
+.schema-required {
+  display: grid !important;
+  grid-template-rows: auto 32px;
+  row-gap: var(--space-2xs);
+  justify-items: center;
+  align-items: center;
+}
+
+.schema-required input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
+.schema-property-remove {
+  margin-bottom: var(--space-xs);
+}
+
+.schema-enum-editor {
+  padding: 0 var(--space-sm) var(--space-sm);
+}
+
+.schema-enum-row {
+  gap: var(--space-sm);
+  margin-bottom: var(--space-xs);
+}
+
+.schema-enum-row input {
+  margin-top: 0;
+}
+
+.advanced-schema {
+  display: block;
+}
+
+.advanced-schema .tool-schema {
+  margin-top: var(--space-xs);
+  min-height: 300px;
+  padding: var(--space-md);
+  font-family: var(--font-geist-mono), monospace;
+  line-height: var(--leading-normal);
+}
+
+.schema-error,
+.registry-error {
+  color: var(--danger);
+}
+
