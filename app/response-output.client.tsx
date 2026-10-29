@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type RefObject } from "react";
+import { useState, type ReactNode, type RefObject } from "react";
 import type {
   ConversationMessage,
   RunState,
@@ -11,6 +11,7 @@ import type {
 import { CopySourceButton } from "./copy-source-button.client";
 import { MarkdownView } from "./markdown-view.client";
 import { PaneTabs } from "./workbench-shell.client";
+import { WorkbenchPanel } from "./workbench-panel.client";
 import { ToolCallList, type ToolResultDraft } from "./tool-call-list.client";
 import { describeSuppliedToolResult, latestToolExecution } from "./tool-execution-format.client";
 import type { RunEmptyStatePresentation } from "./run-readiness.client";
@@ -50,6 +51,8 @@ type ResponseOutputProps = {
   completedToolCalls: ToolCall[];
   toolResultDrafts: Record<string, ToolResultDraft>;
   traceStorage: TraceStorageStatus | null;
+  /** An action row that opens the scroll area, ahead of the storage notice. */
+  leading?: ReactNode;
   transcript: TranscriptEntry[];
   nonBranchableMessageIds: ReadonlySet<ConversationMessage["id"]>;
   branchedFrom?: RunTrace["branchedFrom"];
@@ -219,7 +222,7 @@ function RunFailureCard({
 export function ResponseOutput({
   output, reasoning, status, runState, isRequestActive, markdownPreview,
   outputFollowing, outputScrollRef, completedToolCalls, toolResultDrafts,
-  traceStorage,
+  traceStorage, leading,
   transcript, nonBranchableMessageIds, branchedFrom,
   readOnly = false,
   emptyState,
@@ -239,27 +242,35 @@ export function ResponseOutput({
   );
   return (
     <>
-      <div className="panel-header result-header">
-        <div className="result-header-controls">
-          <PaneTabs label="Output rendering" value={markdownPreview ? "markdown" : "raw"}
-            onChange={(value) => onMarkdownPreviewChange(value === "markdown")}
-            tabs={[{ id: "markdown", label: "Markdown" }, { id: "raw", label: "Raw" }]} />
-          <span className={`status ${status}`}><span aria-hidden="true" />{status}</span>
-        </div>
-      </div>
-      {traceStorage && (
-        <TraceStorageNotice
-          storage={traceStorage}
-          {...(readOnly ? {} : { onSaveTrace })}
-        />
-      )}
-      {terminal && branchedFrom && (
-        <p className="branch-provenance" role="status">
-          {/* The trace records only the parent's IDs; they stay debugging detail. */}
-          <span title={branchedFrom.runId}>Branched from an earlier run.</span>
-        </p>
-      )}
-      <div className="output-scroll" ref={outputScrollRef} onScroll={onOutputScroll}>
+      <WorkbenchPanel
+        headerClassName="result-header"
+        header={
+          <div className="result-header-controls">
+            <PaneTabs label="Output rendering" value={markdownPreview ? "markdown" : "raw"}
+              onChange={(value) => onMarkdownPreviewChange(value === "markdown")}
+              tabs={[{ id: "markdown", label: "Markdown" }, { id: "raw", label: "Raw" }]} />
+            <span className={`status ${status}`}><span aria-hidden="true" />{status}</span>
+          </div>
+        }
+        notices={<>
+          {leading}
+          {traceStorage && (
+            <TraceStorageNotice
+              storage={traceStorage}
+              {...(readOnly ? {} : { onSaveTrace })}
+            />
+          )}
+          {terminal && branchedFrom && (
+            <p className="branch-provenance" role="status">
+              {/* The trace records only the parent's IDs; they stay debugging detail. */}
+              <span title={branchedFrom.runId}>Branched from an earlier run.</span>
+            </p>
+          )}
+        </>}
+        scrollClassName="output-scroll"
+        scrollRef={outputScrollRef}
+        onScroll={onOutputScroll}
+      >
         {terminal ? (
           <div className="transcript-list" aria-label="Run transcript">
             {transcript.map(({ message, reasoning: turnReasoning }, index) => {
@@ -388,7 +399,7 @@ export function ResponseOutput({
           suppliedResults={runState?.toolResults ?? []} toolExecutions={runState?.toolExecutions ?? []} awaitingResults={awaitingResults}
           onDraftChange={onToolResultDraftChange} onContinue={onContinue} onApproveMcp={onApproveMcp} onRejectMcp={onRejectMcp} />}
         {!outputFollowing && (output || reasoning) && <button className="jump-to-latest" type="button" onClick={onJumpToLatest}>Jump to latest ↓</button>}
-      </div>
+      </WorkbenchPanel>
     </>
   );
 }

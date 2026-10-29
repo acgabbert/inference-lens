@@ -1177,8 +1177,8 @@ function HomeContent() {
   // renderer via `RunEvidenceDetail`.
   const responseSurface = (
     <section aria-label="Response output" className="result">
-      {runState && <CopyRunLink runId={runState.runId} workspace={runSession.traceWorkspace} saved={traceStorage?.kind === "saved"} />}
       <ResponseOutput
+        leading={runState && <CopyRunLink runId={runState.runId} workspace={runSession.traceWorkspace} saved={traceStorage?.kind === "saved"} />}
         output={responseView.output}
         reasoning={responseView.reasoning}
         status={responseView.status}
@@ -1750,9 +1750,8 @@ function HomeContent() {
             ? {
                 detail: {
                   content: (
-                    <>
-                    <CopyRunLink runId={batchMember.trace.runId} workspace={activeBatch?.workspace ?? null} saved={batchMember.storage.kind === "saved"} />
                     <RunEvidenceDetail
+                      leading={<CopyRunLink runId={batchMember.trace.runId} workspace={activeBatch?.workspace ?? null} saved={batchMember.storage.kind === "saved"} />}
                       key={batchMember.trace.runId}
                       trace={batchMember.trace}
                       eyebrow={activeBatch?.storage === "durable" ? "Saved batch run" : "Batch run · not saved"}
@@ -1761,7 +1760,6 @@ function HomeContent() {
                       {...(projectWorkspace ? { readTrace: runHistory.readTrace } : {})}
                       {...(projectFile ? { onPromoteTrace: (trace: RunTrace) => evaluationCaseSource.requestPromotion(trace) } : {})}
                     />
-                    </>
                   ),
                   batchLabel: batchMember.batchLabel,
                   memberLabel: batchMember.memberLabel,

@@ -3416,28 +3416,19 @@ input.template-revision-rename {
   background: var(--surface-translucent);
 }
 
-.repeated-experiment-workspace {
+/* Scrolls as a `.pane-scroll`; in the request pane it fills the pane. */
+.repeated-experiment-workspace,
+.evaluation-results-workspace {
   display: grid;
   gap: var(--space-lg);
-  min-height: 100%;
+  align-content: start;
   padding: var(--space-xl);
 }
 
-.repeated-experiment-workspace:not(.experiment-context-pane) {
-  min-height: 0;
-  flex: 1 1 auto;
-  overflow: auto;
-  align-content: start;
-  overscroll-behavior: contain;
-}
-
-.repeated-experiment-workspace.experiment-context-pane {
+.repeated-experiment-workspace.experiment-context-pane,
+.evaluation-results-workspace.experiment-context-pane {
   height: 100%;
-  min-height: 0;
-  overflow: auto;
-  align-content: start;
   background: var(--surface-panel);
-  overscroll-behavior: contain;
 }
 
 .repeated-experiment-header {
@@ -6206,11 +6197,19 @@ main {
   /* The response owner controls following; browser anchoring must not undo it. */
   overflow-anchor: none;
   position: relative;
+  /* A column, so the output fills whatever the notices above it leave. */
+  display: flex;
+  flex-direction: column;
   background: var(--surface-panel);
 }
 
+.output-scroll > * {
+  flex-shrink: 0;
+}
+
 .output {
-  min-height: 100%;
+  flex-grow: 1;
+  min-height: 0;
   border-bottom: 0;
 }
 
@@ -6223,7 +6222,7 @@ main {
   right: 18px;
   bottom: 16px;
   z-index: 4;
-  float: right;
+  align-self: flex-end;
   margin: 0 var(--space-lg) var(--space-lg) 0;
   padding: var(--space-xs) var(--space-sm);
   border: 1px solid var(--accent-border);
@@ -6248,9 +6247,12 @@ main {
   flex-basis: 82px;
 }
 
+/* It gives up height with the output above it rather than starving it, down
+   to a floor that still leaves its content a readable scroll area. */
 .trace-panel.open {
   flex-basis: var(--trace-panel-height);
-  min-height: 140px;
+  flex-shrink: 1;
+  min-height: 200px;
   max-height: min(520px, 70%);
   display: flex;
   flex-direction: column;
@@ -6384,12 +6386,6 @@ main {
 .trace-resize-handle:hover span,
 .trace-resize-handle:focus-visible span {
   opacity: 1;
-}
-
-.trace-panel-content {
-  min-height: 0;
-  flex: 1 1 auto;
-  overflow: auto;
 }
 
 .trace {
@@ -7208,12 +7204,7 @@ main {
   }
 
   .repeated-experiment-workspace {
-    height: 100%;
-    min-height: 0;
     padding: var(--space-lg);
-    overflow: auto;
-    align-content: start;
-    overscroll-behavior: contain;
   }
 
   .repeated-experiment-header {
@@ -7611,11 +7602,7 @@ main {
   display: grid;
   align-content: start;
   gap: var(--space-md);
-  min-height: 0;
-  flex: 1 1 auto;
   padding: var(--space-md);
-  overflow-y: auto;
-  overscroll-behavior: contain;
   background: var(--surface-panel);
 }
 
@@ -8221,29 +8208,6 @@ label.experiment-retry-field {
   line-height: var(--leading-tight);
 }
 
-.evaluation-results-workspace {
-  display: grid;
-  gap: var(--space-lg);
-  min-height: 100%;
-  padding: var(--space-xl);
-}
-
-.evaluation-results-workspace:not(.experiment-context-pane) {
-  min-height: 0;
-  flex: 1 1 auto;
-  overflow: auto;
-  align-content: start;
-  overscroll-behavior: contain;
-}
-
-.evaluation-results-workspace.experiment-context-pane {
-  height: 100%;
-  min-height: 0;
-  overflow: auto;
-  align-content: start;
-  background: var(--surface-panel);
-}
-
 .evaluation-results-header,
 .evaluation-case-result > summary,
 .evaluation-repetition-heading {
@@ -8740,14 +8704,10 @@ label.experiment-retry-field {
 /* Baseline comparison ---------------------------------------------------- */
 
 .evaluation-comparison-workspace {
-  min-height: 0;
-  flex: 1 1 auto;
   display: grid;
   gap: var(--space-lg);
   align-content: start;
   padding: var(--space-xl);
-  overflow: auto;
-  overscroll-behavior: contain;
 }
 
 .evaluation-comparison-drift {
@@ -9691,7 +9651,8 @@ label.experiment-retry-field {
 /* Decision inspection (D19): the attempts' exchange evidence. */
 .decision-inspect {
   flex: 0 1 45%;
-  min-height: 0;
+  /* Like the open trace panel: shrinks with the answer, never to a sliver. */
+  min-height: 200px;
   display: flex;
   flex-direction: column;
   border-top: 1px solid var(--border-default);

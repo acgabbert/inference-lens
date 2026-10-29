@@ -389,7 +389,9 @@ export function ResizableTracePanel({
       {summary && (
         <div className="trace-summary-row">{summary}</div>
       )}
-      {open && <div className="trace-panel-content">{children}</div>}
+      {/* A `.pane-scroll`, so the summary's visually-hidden labels position
+          against this scroller rather than leaking out of the panel. */}
+      {open && <div className="pane-scroll trace-panel-content">{children}</div>}
     </section>
   );
 }

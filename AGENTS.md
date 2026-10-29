@@ -27,6 +27,21 @@ route. Before materially expanding a route component, name the intended owner
 and its contract. Ownership and contracts matter more than arbitrary file-size
 limits.
 
+## One scroll viewport per pane
+
+A workbench pane has exactly one scroll area, and only its panel header sits
+outside it. Readiness notices, pins, storage notices and action rows go inside,
+at the top, and scroll away with the content. A fixed sibling of a flex
+scroller shrinks the scroller, not itself, so a stack of them on a short window
+leaves the content below the fold out of reach. `WorkbenchPanel`
+(`app/workbench-panel.client.tsx`) renders that shape; build panes on it rather
+than wiring a header and scroller by hand, and give any other scroll area the
+`pane-scroll` class instead of re-declaring its mechanics.
+
+Every e2e test checks this after it passes, at its own viewport and in a short
+and a phone-sized window (`tests/e2e/support/test.ts`). When it fails, fix the
+layout; exempt an element only when its clipping is deliberate.
+
 ## Verify against a running app, not only against tests
 
 A green suite proves a derivation is correct. It does not prove the result

@@ -365,9 +365,8 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
         />
       ),
       response: (
-        <>
-        {run && <CopyRunLink workspace={session.traceWorkspace} runId={run.runId} saved={session.traceStorage?.kind === "saved"} />}
         <DecisionResponse
+          leading={run && <CopyRunLink workspace={session.traceWorkspace} runId={run.runId} saved={session.traceStorage?.kind === "saved"} />}
           emptyDetail={blockers[0] ? `${blockers[0].location}: ${blockers[0].message}` : "Run the decision to see each answer."}
           executing={session.executing}
           run={run}
@@ -378,7 +377,6 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
           onRetry={retry}
           onSaveTrace={() => void session.exportTrace()}
         />
-        </>
       ),
       inspect: <DecisionInspect run={run} />,
     },
