@@ -1,10 +1,11 @@
 import {
   createBranchRevision,
-  resolveProjectRevision,
+  resolveProjectRevisionMessages,
 } from "../../packages/core/src/project.ts";
 import type {
   ProjectFile,
   PromptTemplateMessages,
+  TemplateResolutionContext,
   TemplateRunOverrides,
 } from "../../packages/core/src/project.ts";
 import type {
@@ -22,7 +23,7 @@ import { discoverTemplateVariables } from "../../packages/core/src/template-engi
 export function projectForTemplateMutation(input: {
   project: ProjectFile;
   executedRevisionIds: ReadonlySet<ConversationRevisionId>;
-  runOverrides: TemplateRunOverrides;
+  resolutionContext: TemplateResolutionContext;
 }): { project: ProjectFile; revisionId: ConversationRevisionId } {
   let project = input.project;
   let revision = project.conversationRevisions.find(
@@ -32,11 +33,11 @@ export function projectForTemplateMutation(input: {
     project = createBranchRevision(project, {
       conversationId: revision.conversationId,
       parentRevisionId: revision.id,
-      messages: resolveProjectRevision(
+      messages: resolveProjectRevisionMessages(
         project,
         revision,
-        input.runOverrides,
-      ).messages,
+        input.resolutionContext,
+      ),
       items: structuredClone(revision.items),
     });
     revision = project.conversationRevisions.find(

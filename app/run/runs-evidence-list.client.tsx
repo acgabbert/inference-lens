@@ -84,6 +84,7 @@ function formatDate(value: string): string {
 
 function runMeta(summary: RunHistorySummary): string {
   return [
+    ...(summary.environmentName ? [`Environment “${summary.environmentName}”`] : []),
     formatDuration(summary.durationMs),
     `${formatTokens(summary.usage.totalTokens)} tokens`,
     `${summary.turnCount} ${summary.turnCount === 1 ? "turn" : "turns"}`,

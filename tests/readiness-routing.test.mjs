@@ -236,7 +236,7 @@ test("the request owner focuses the named unresolved template variable", async (
       kind: "template-use",
       use: { id: "template-use_1", templateId: "template_1", templateRevisionId: "template-revision_1", values: {} },
     }],
-    resolution: { diagnostics: [{
+    resolution: { messages: [], templateResolutions: [], environmentDiagnostics: [], diagnostics: [{
       templateUseId: "template-use_1",
       diagnostic: { code: "missing-template-variable", name: "topic", message: "topic needs a value" },
     }] },

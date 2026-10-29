@@ -1,12 +1,13 @@
 import {
   authoredItemsForMessages,
-  resolveProjectRevision,
+  resolveProjectRevisionInContext,
+  resolveProjectRevisionMessages,
 } from "../../packages/core/src/project.ts";
 import type {
   ProjectConversationItem,
   ProjectFile,
-  ResolvedProjectRevision,
-  TemplateRunOverrides,
+  ResolvedProjectRevisionInContext,
+  TemplateResolutionContext,
 } from "../../packages/core/src/project.ts";
 import type {
   ConversationMessage,
@@ -15,7 +16,7 @@ import type {
 
 export interface ProjectTemplateWorkbenchView {
   composerItems: ProjectConversationItem[];
-  resolution?: ResolvedProjectRevision;
+  resolution?: ResolvedProjectRevisionInContext;
   resolutionError?: string;
 }
 
@@ -27,9 +28,11 @@ export interface ProjectTemplateWorkbenchView {
 export function pendingBranchMessagesAfterItemUpdate(input: {
   project: ProjectFile;
   messages: ConversationMessage[];
-  runOverrides: TemplateRunOverrides;
+  resolutionContext: TemplateResolutionContext;
   parentRevisionId: ConversationRevisionId;
   update(items: ProjectConversationItem[]): ProjectConversationItem[];
+  /** What the result renders with, when the edit is a change of context. */
+  nextResolutionContext?: TemplateResolutionContext;
 }): ConversationMessage[] {
   const parent = input.project.conversationRevisions.find(
     ({ id }) => id === input.parentRevisionId,
@@ -41,14 +44,14 @@ export function pendingBranchMessagesAfterItemUpdate(input: {
     input.project,
     parent,
     input.messages,
-    input.runOverrides,
+    input.resolutionContext,
   );
   const items = input.update(structuredClone(currentItems));
-  return resolveProjectRevision(
+  return resolveProjectRevisionMessages(
     input.project,
     { ...parent, items },
-    input.runOverrides,
-  ).messages;
+    input.nextResolutionContext ?? input.resolutionContext,
+  );
 }
 
 /**
@@ -61,7 +64,7 @@ export function pendingBranchMessagesAfterItemUpdate(input: {
 export function projectTemplateWorkbenchView(input: {
   project: ProjectFile | null;
   messages: ConversationMessage[];
-  runOverrides: TemplateRunOverrides;
+  resolutionContext: TemplateResolutionContext;
   branchParentRevisionId?: ConversationRevisionId;
 }): ProjectTemplateWorkbenchView {
   const literalItems = input.messages.map(
@@ -94,24 +97,24 @@ export function projectTemplateWorkbenchView(input: {
         input.project,
         parent,
         input.messages,
-        input.runOverrides,
+        input.resolutionContext,
       );
       return {
         composerItems,
-        resolution: resolveProjectRevision(
+        resolution: resolveProjectRevisionInContext(
           input.project,
           { ...parent, items: composerItems },
-          input.runOverrides,
+          input.resolutionContext,
         ),
       };
     }
 
     return {
       composerItems: activeRevision.items,
-      resolution: resolveProjectRevision(
+      resolution: resolveProjectRevisionInContext(
         input.project,
         activeRevision,
-        input.runOverrides,
+        input.resolutionContext,
       ),
     };
   } catch (error) {

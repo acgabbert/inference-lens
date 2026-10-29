@@ -52,6 +52,7 @@ function traceFixture(spec: {
   model?: string;
   startedAt?: string;
   userMessages?: number;
+  environment?: ResolvedRunInput["environment"];
 }) {
   const runId = createEntityId("run", spec.suffix);
   const startedAt = spec.startedAt ?? "2026-07-25T12:00:00.000Z";
@@ -83,6 +84,7 @@ function traceFixture(spec: {
     conversationRevisionId: createEntityId("revision", spec.suffix),
     ...turnInput,
     templateResolutions: [],
+    ...(spec.environment ? { environment: spec.environment } : {}),
     resolvedAt: startedAt,
   };
 
@@ -124,6 +126,7 @@ function completedTrace(spec: {
   suffix: string;
   model?: string;
   startedAt?: string;
+  environment?: ResolvedRunInput["environment"];
 }): RunTrace {
   const fixture = traceFixture(spec);
   const turnId = fixture.turn("only");
@@ -194,6 +197,15 @@ test("derives a compact history summary from canonical trace evidence", () => {
     protocol: "openai-compatible-chat-completions",
     requestExcerpt: "Hello 0",
   });
+});
+
+test("names the environment a run rendered against", () => {
+  const trace = completedTrace({
+    suffix: "history-environment",
+    environment: { environmentId: "environment_staging", name: "Staging", consumed: {} },
+  });
+  assert.equal(summarizeRunTrace(trace).environmentName, "Staging");
+  assert.equal("environmentName" in summarizeRunTrace(completedTrace({ suffix: "bare" })), false);
 });
 
 test("excerpts the last user message so a row is recognisable without opening it", () => {

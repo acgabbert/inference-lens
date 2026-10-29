@@ -2283,6 +2283,56 @@ export type TemplateRunOverrides = Readonly<
   Partial<Record<PromptTemplateUseId, Readonly<Record<string, string>>>>
 >;
 
+/**
+ * Everything beyond the project that decides what a workbench revision
+ * renders. Helpers that match edited messages against a revision take it
+ * whole, so none can render with the overrides but without the environment:
+ * the two renderings would disagree and every run would be refused.
+ */
+export interface TemplateResolutionContext {
+  runOverrides?: TemplateRunOverrides;
+  environment?: ProjectEnvironment;
+}
+
+// Resolution is pure and project content is never mutated in place, so a
+// render that resolves the same environment several times resolves it once.
+const resolvedEnvironments = new WeakMap<ProjectEnvironment, ResolvedEnvironment>();
+
+function resolvedEnvironmentFor(environment: ProjectEnvironment): ResolvedEnvironment {
+  let resolved = resolvedEnvironments.get(environment);
+  if (!resolved) {
+    resolved = resolveEnvironment(environment);
+    resolvedEnvironments.set(environment, resolved);
+  }
+  return resolved;
+}
+
+export interface ResolvedProjectRevisionInContext extends ResolvedProjectRevision {
+  /**
+   * The environment diagnostics that would refuse a run of this rendering:
+   * the same rule `prepareProjectRevisionRun` applies.
+   */
+  environmentDiagnostics: EnvironmentDiagnostic[];
+}
+
+/** Resolves a revision the way the workbench renders it under `context`. */
+export function resolveProjectRevisionInContext(
+  project: ProjectTemplateResolutionSource,
+  revision: ProjectConversationRevision,
+  { runOverrides = {}, environment }: TemplateResolutionContext = {},
+): ResolvedProjectRevisionInContext {
+  const resolvedEnvironment = environment ? resolvedEnvironmentFor(environment) : undefined;
+  const resolved = resolveProjectRevision(project, revision, runOverrides, {
+    ...(resolvedEnvironment ? { environment: resolvedEnvironment } : {}),
+  });
+  return {
+    ...resolved,
+    environmentDiagnostics: environment && resolvedEnvironment && resolved.environment
+      ? blockingEnvironmentDiagnostics(environment, resolvedEnvironment, Object.keys(resolved.environment.consumed))
+      : [],
+  };
+}
+
 function validateTemplateRunOverrides(
   revision: ProjectConversationRevision,
   runOverrides: TemplateRunOverrides,
@@ -2543,14 +2593,14 @@ export function prepareProjectRevisionRun(
 export function resolveProjectRevisionMessages(
   project: ProjectTemplateResolutionSource,
   revision: ProjectConversationRevision,
-  runOverrides: TemplateRunOverrides = {},
+  context: TemplateResolutionContext = {},
 ): ConversationMessage[] {
-  return resolveProjectRevision(project, revision, runOverrides).messages;
+  return resolveProjectRevisionInContext(project, revision, context).messages;
 }
 
 export function projectDraft(
   project: ProjectFile,
-  runOverrides: TemplateRunOverrides = {},
+  context: TemplateResolutionContext = {},
 ): ProjectDraft {
   const revision = project.conversationRevisions.find(
     ({ id }) => id === project.defaults.conversationRevisionId,
@@ -2567,7 +2617,7 @@ export function projectDraft(
       },
     ]);
   }
-  const resolved = resolveProjectRevision(project, revision, runOverrides);
+  const resolved = resolveProjectRevisionInContext(project, revision, context);
   return {
     connectionRequirement,
     items: revision.items,
@@ -2748,12 +2798,12 @@ export interface CreateBranchRevisionOptions {
   messages: ConversationMessage[];
   items?: ProjectConversationItem[];
   /**
-   * The overrides the branched messages were produced with. Matching a
-   * transcript against the parent requires resolving the parent the same way
-   * the run did; without them an overridden variable reads as edited template
-   * output and the branch is refused.
+   * What the branched messages were rendered with. Matching a transcript
+   * against the parent requires resolving the parent the same way the run
+   * did; otherwise an overridden or environment-filled variable reads as
+   * edited template output and the branch is refused.
    */
-  runOverrides?: TemplateRunOverrides;
+  resolutionContext?: TemplateResolutionContext;
   idSuffix?: string;
   createdAt?: string;
 }
@@ -2769,7 +2819,7 @@ export function createBranchRevision(
     parentRevisionId,
     messages,
     items,
-    runOverrides = {},
+    resolutionContext = {},
     idSuffix = randomUUID(),
     createdAt = new Date().toISOString(),
   }: CreateBranchRevisionOptions,
@@ -2790,7 +2840,7 @@ export function createBranchRevision(
     id: createEntityId("revision", idSuffix),
     conversationId,
     parentRevisionId,
-    items: items ?? authoredBranchItems(project, parent, messages, runOverrides),
+    items: items ?? authoredBranchItems(project, parent, messages, resolutionContext),
     createdAt,
   };
   return parseProjectFile({
@@ -2807,9 +2857,9 @@ function authoredBranchItems(
   project: ProjectFile,
   parent: ProjectConversationRevision,
   messages: ConversationMessage[],
-  runOverrides: TemplateRunOverrides = {},
+  context: TemplateResolutionContext = {},
 ): ProjectConversationItem[] {
-  const resolved = resolveProjectRevision(project, parent, runOverrides);
+  const resolved = resolveProjectRevisionInContext(project, parent, context);
   const resolvedById = new Map(
     resolved.messages.map((message) => [message.id, message]),
   );
@@ -2883,9 +2933,9 @@ export function authoredItemsForMessages(
   project: ProjectFile,
   revision: ProjectConversationRevision,
   messages: ConversationMessage[],
-  runOverrides: TemplateRunOverrides = {},
+  context: TemplateResolutionContext = {},
 ): ProjectConversationItem[] {
-  return authoredBranchItems(project, revision, messages, runOverrides);
+  return authoredBranchItems(project, revision, messages, context);
 }
 
 export interface ConversationPromptTemplateUsage {
@@ -3340,7 +3390,8 @@ export function updatePromptTemplateUseRevision(
 export interface DetachPromptTemplateUseOptions {
   conversationRevisionId: ConversationRevisionId;
   templateUseId: PromptTemplateUseId;
-  runOverrides?: TemplateRunOverrides;
+  /** What the use currently renders with; its text is baked in as rendered. */
+  resolutionContext?: TemplateResolutionContext;
 }
 
 export function detachPromptTemplateUse(
@@ -3348,7 +3399,7 @@ export function detachPromptTemplateUse(
   {
     conversationRevisionId,
     templateUseId,
-    runOverrides = {},
+    resolutionContext = {},
   }: DetachPromptTemplateUseOptions,
 ): ProjectFile {
   const revision = project.conversationRevisions.find(
@@ -3364,7 +3415,7 @@ export function detachPromptTemplateUse(
     ]);
   }
   const { itemIndex, item } = findTemplateUseItem(revision, templateUseId);
-  const resolved = resolveProjectRevision(project, revision, runOverrides);
+  const resolved = resolveProjectRevisionInContext(project, revision, resolutionContext);
   const useDiagnostics = resolved.diagnostics.filter(
     ({ templateUseId: diagnosticUseId }) =>
       diagnosticUseId === templateUseId,

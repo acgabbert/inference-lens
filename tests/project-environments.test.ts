@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   environmentReferences,
   removeProjectEnvironment,
+  setProjectDefaultEnvironment,
   setProjectEnvironment,
 } from "../packages/core/src/environment.ts";
 import type { ProjectEnvironment } from "../packages/core/src/environment.ts";
@@ -229,4 +230,14 @@ test("deleting a referenced environment is refused and names what uses it", () =
   const unreferenced = removeProjectEnvironment(base, staging.id);
   assert.equal(unreferenced.ok, true);
   assert.deepEqual(unreferenced.ok && unreferenced.project.environments, []);
+});
+
+test("the project default environment is set, cleared, and must exist", () => {
+  const project = setProjectEnvironment(baseProject(), staging);
+  const withDefault = setProjectDefaultEnvironment(project, "environment_staging");
+  assert.equal(withDefault.defaults.environmentId, "environment_staging");
+  assert.equal("environmentId" in setProjectDefaultEnvironment(withDefault, undefined).defaults, false);
+  assert.deepEqual(rejection(() => setProjectDefaultEnvironment(project, "environment_missing")), [
+    { path: "defaults.environmentId", message: "References an unknown environment." },
+  ]);
 });

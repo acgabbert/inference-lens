@@ -6,7 +6,8 @@ before final output, so they keep Project v16 and take RunTrace v9 and
 ExperimentPlan v6; [final output](FINAL_OUTPUT_CONTRACTS.md#d1-format-version-allocation)
 moves to Project v17, RunTrace v10 and ExperimentPlan v7 (see
 [Format version](#format-version)). Contract slice accepted and core
-implemented 2026-10-29; the app has no environment UI yet.
+implemented 2026-10-29. The app slice (selector, editor drawer, provenance
+labels) is implemented; evaluation authoring and run comparison remain.
 **Date:** 2026-10-29. **Inspected baseline:** `main` at `406cb03`.
 
 ## Outcome
@@ -302,6 +303,33 @@ Two details follow from not inventing evidence:
   each variant, inheriting like other variant overrides.
 - Run history and run inspection name the environment; comparing two runs
   shows an environment difference before a content difference.
+
+### App slice decisions
+
+**Accepted 2026-10-29, all as recommended.** Written against `main` at
+`69b31c3`.
+
+- **One resolution context.** The core helpers that render a conversation
+  revision for the workbench (`projectDraft`, `authoredItemsForMessages`,
+  `createBranchRevision`, `projectForTemplateMutation` and the pending-branch
+  helpers) take a `TemplateResolutionContext { runOverrides, environment? }`
+  in place of a bare `runOverrides`. The template hook owns one value and
+  passes it everywhere, so no call site can render with the overrides but
+  without the environment; a mismatch would refuse every run as "differs from
+  its generated messages".
+- **Editor home.** A drawer opened from the composer's environment selector,
+  like the connection drawer, so the request preview stays visible while
+  entries are edited.
+- **Editing commits explicitly.** Each environment is edited as a local draft
+  with its issues inline. Save writes it to the project and is disabled while
+  the draft has a cycle, a duplicate or an invalid name; Discard drops it.
+- **Scope of the first app PR.** The selector (session choice, initialized
+  from `defaults.environmentId`, with a "use as project default" action), the
+  threading, readiness for blocking environment diagnostics, the editor, value
+  sources in template-use cards and the request preview, the environment name
+  in run history and inspection, and `tests/e2e/prompt-environments.spec.ts`.
+  Run comparison ordering and the evaluation suite and variant fields follow
+  in the next PR.
 
 ## Interaction with sub-agent routing
 

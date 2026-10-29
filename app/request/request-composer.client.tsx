@@ -96,6 +96,10 @@ export interface RequestComposerProps {
     label: BranchPointLabel;
   };
   requestPreview?: RequestPreview;
+  /** Composed by the route from the environment owner; absent without a project. */
+  environmentSelector?: ReactNode;
+  /** The selected environment, so each template use can say what it supplies. */
+  environment?: { name: string; entryNames: ReadonlySet<string> };
   onOpenConnectionSettings(): void;
   onOpenPrompts(): void;
   onEditPromptSource(
@@ -125,6 +129,8 @@ export function RequestComposer({
   activeProfile,
   pendingBranch,
   requestPreview,
+  environmentSelector,
+  environment,
   onOpenConnectionSettings,
   onOpenPrompts,
   onEditPromptSource,
@@ -344,6 +350,7 @@ export function RequestComposer({
                 onOpenChange={setSettingsOpen}
                 scopeLabel={project ? "Project settings" : "Profile defaults"}
               />
+              {environmentSelector}
               {/* Outside the panel deliberately: how many tools accompany the
                   request is not one of the inference options, and its blocked
                   variant must stay readable while the panel is collapsed.
@@ -413,6 +420,8 @@ export function RequestComposer({
                     />}
                     diagnostics={templates.templateWorkbench.resolution?.diagnostics.filter(({ templateUseId }) => templateUseId === item.use.id) ?? []}
                     runOverrides={templates.templateRunOverrides[item.use.id] ?? {}}
+                    resolved={templates.templateWorkbench.resolution?.templateResolutions.find(({ templateUseId }) => templateUseId === item.use.id)}
+                    {...(environment ? { environment } : {})}
                     importedFrom={project?.externalImports.find((receipt) => receipt.projection.kind === "prompt-template" && receipt.projection.templateRevisionId === item.use.templateRevisionId)}
                     onSaveValues={(values) => templates.updateTemplateUseValues(item.use.id, values)}
                     onSaveRunValue={(values, runOverrides) => templates.saveTemplateUseRunValue(item.use.id, values, runOverrides)}

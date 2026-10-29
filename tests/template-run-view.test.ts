@@ -60,7 +60,7 @@ function projectWithUses(
 }
 
 function viewOf(project: ProjectFile | null) {
-  return projectTemplateWorkbenchView({ project, messages: [], runOverrides: {} });
+  return projectTemplateWorkbenchView({ project, messages: [], resolutionContext: {} });
 }
 
 function activeRevision(project: ProjectFile) {
@@ -180,4 +180,28 @@ test("the request preview is the body of the run's own protocol", () => {
   const body = preview.body as { input?: { content: string }[]; messages?: unknown };
   assert.equal(body.messages, undefined);
   assert.equal(body.input?.at(-1)?.content, "Triage the rollback.");
+});
+
+test("readiness inputs carry the first environment diagnostic a run would hit", () => {
+  const environment = {
+    id: "environment_staging" as const,
+    name: "Staging",
+    entries: [
+      { name: "greeting", value: "Hello {{customer}}" },
+      { name: "unused", value: "{{nobody}}" },
+    ],
+  };
+  const project = {
+    ...projectWithUses([{ suffix: "greet", content: "{{greeting}}", values: {} }]),
+    environments: [environment],
+  };
+  const view = projectTemplateWorkbenchView({ project, messages: [], resolutionContext: { environment } });
+  assert.deepEqual(templateReadinessInputs(project, view, environment).environmentIssue, {
+    environmentId: "environment_staging",
+    environmentName: "Staging",
+    entryName: "greeting",
+    message: view.resolution?.environmentDiagnostics[0]?.message,
+    count: 1,
+  });
+  assert.equal(templateReadinessInputs(project, viewOf(project)).environmentIssue, undefined);
 });

@@ -117,6 +117,10 @@ import { RunsMode } from "./modes/runs-mode.client";
 import { PromptsMode } from "./modes/prompts-mode.client";
 import { usePromptNavigation } from "./templates/use-prompt-navigation.client";
 import { templateReadinessInputs, templateRequestPreview } from "./templates/template-run-view";
+import { useProjectEnvironments } from "./environments/use-project-environments.client";
+import { EnvironmentSelector } from "./environments/environment-selector.client";
+import { EnvironmentDrawer } from "./environments/environment-drawer.client";
+import type { EnvironmentDrawerFocus } from "./environments/environment-drawer.client";
 import { useToasts } from "./notifications/use-toasts.client";
 import { ToastRegion } from "./notifications/toast-region.client";
 import { AppBanner } from "./notifications/app-banner.client";
@@ -189,6 +193,8 @@ function HomeContent() {
   const [projectCreationMode, setProjectCreationMode] =
     useState<ProjectCreationMode>();
   const [connectionDrawerOpen, setConnectionDrawerOpen] = useState(false);
+  const [environmentDrawer, setEnvironmentDrawer] =
+    useState<{ focus?: EnvironmentDrawerFocus }>();
   const [sessionPromptProjectNotice, setSessionPromptProjectNotice] =
     useState<string>();
   const [pendingReadinessDestination, setPendingReadinessDestination] =
@@ -280,6 +286,11 @@ function HomeContent() {
     },
     // The decision owner is declared below; like `pendingBranch` above, it is
     // reached only from project commands and saves, never during render.
+    resolutionContextForAdoption(document, adoption) {
+      const environmentId = projectEnvironments.adopt(document, adoption);
+      const environment = document.environments.find(({ id }) => id === environmentId);
+      return environment ? { environment } : {};
+    },
     withDecisionDraft(document) { return decision.project.fold(document); },
     getUnsavedDraftReason() { return decision.project.saveBlockedReason; },
     onApplyDecisionRequest(document, adoption) {
@@ -545,6 +556,12 @@ function HomeContent() {
       : project.materializeProject();
   }
 
+  const projectEnvironments = useProjectEnvironments({
+    projectFile,
+    ensureProjectDocument,
+    applyEnvironment: (environmentId, document) =>
+      projectTemplates.applyEnvironment(environmentId, document),
+  });
   const projectTemplates = useProjectTemplates({
     projectFile,
     projectDirty,
@@ -555,6 +572,7 @@ function HomeContent() {
     toolMocks,
     enabledToolIds,
     branchParentRevisionId: pendingBranch.pending?.parentConversationRevisionId,
+    ...(projectEnvironments.selectedId ? { environmentId: projectEnvironments.selectedId } : {}),
     ensureProjectDocument,
     adoptProjectMutation: project.adoptProjectMutation,
     replaceProjectDraft,
@@ -793,7 +811,7 @@ function HomeContent() {
       requestTools,
       capabilities: requestSettings.capabilities,
       profileName: requestSettings.profile.name,
-      templateRunOverrides: projectTemplates.templateRunOverrides,
+      resolutionContext: projectTemplates.resolutionContext,
       ...pendingBranch.preparationInputs(),
     });
     if (!prepared.ok) {
@@ -973,7 +991,7 @@ function HomeContent() {
     ...(projectTemplates.activeConnectionRequirement
       ? { requiredEndpoint: projectTemplates.activeConnectionRequirement.endpoint }
       : {}),
-    ...templateReadinessInputs(projectFile, projectTemplates.templateWorkbench),
+    ...templateReadinessInputs(projectFile, projectTemplates.templateWorkbench, projectEnvironments.selected),
     emptyUserMessageId: emptyFinalUserMessageId(requestSettings.currentRequest().messages),
   });
   // Retry re-sends the failed attempt's frozen input. Once the composer would
@@ -998,10 +1016,22 @@ function HomeContent() {
     void run();
   }
 
+  function clearEnvironmentDrawerFocus(): void {
+    setEnvironmentDrawer((current) => (current?.focus ? {} : current));
+  }
+
   function resolveReadiness(destination: ReadinessDestination): void {
     setPendingReadinessDestination(destination);
     if (destination.surface === "connections") {
       setConnectionDrawerOpen(true);
+    } else if (destination.surface === "environments") {
+      setPendingReadinessDestination(undefined);
+      setEnvironmentDrawer({
+        focus: {
+          environmentId: destination.environmentId,
+          ...(destination.entryName ? { entryName: destination.entryName } : {}),
+        },
+      });
     } else if (destination.surface === "prompts") {
       setMode("prompts");
     } else {
@@ -1298,6 +1328,28 @@ function HomeContent() {
       activeProfile={requestSettings.profile}
       {...(pendingBranch.pending ? { pendingBranch: pendingBranch.pending } : {})}
       {...(requestPreview ? { requestPreview } : {})}
+      {...(projectEnvironments.environments.length > 0
+        ? {
+            environmentSelector: (
+              <EnvironmentSelector
+                environments={projectEnvironments.environments}
+                {...(projectEnvironments.selectedId ? { selectedId: projectEnvironments.selectedId } : {})}
+                {...(projectEnvironments.defaultId ? { defaultId: projectEnvironments.defaultId } : {})}
+                onSelect={projectEnvironments.select}
+                onSetDefault={projectEnvironments.setDefault}
+                onManage={() => setEnvironmentDrawer({})}
+              />
+            ),
+          }
+        : {})}
+      {...(projectEnvironments.selected
+        ? {
+            environment: {
+              name: projectEnvironments.selected.name,
+              entryNames: new Set(projectEnvironments.selected.entries.map(({ name }) => name)),
+            },
+          }
+        : {})}
       onOpenConnectionSettings={() => setConnectionDrawerOpen(true)}
       onOpenPrompts={() => {
         promptNavigation.clearReturn();
@@ -1455,6 +1507,7 @@ function HomeContent() {
         evaluationStartDisabledReasonId={EVALUATION_PREFLIGHT_SUMMARY_ID}
         onChooseProfile={chooseProfile}
         onOpenConnections={() => setConnectionDrawerOpen(true)}
+        onOpenEnvironments={() => setEnvironmentDrawer({})}
         onNewProject={() => setProjectCreationMode("new")}
         onOpenProject={() => { runLinks.cancel(); void project.openProjectWorkspace(); }}
         onSaveProject={saveOrChooseProjectLocation}
@@ -1483,6 +1536,19 @@ function HomeContent() {
         <RunLinkControls links={runLinks} />
         <AppBanner {...(appBanner ? { selection: appBanner } : {})} />
       </div>
+
+      <EnvironmentDrawer
+        open={Boolean(environmentDrawer)}
+        onClose={() => setEnvironmentDrawer(undefined)}
+        environments={projectEnvironments.environments}
+        {...(projectEnvironments.selectedId ? { selectedId: projectEnvironments.selectedId } : {})}
+        {...(projectEnvironments.defaultId ? { defaultId: projectEnvironments.defaultId } : {})}
+        {...(environmentDrawer?.focus ? { focus: environmentDrawer.focus } : {})}
+        onFocusHandled={clearEnvironmentDrawerFocus}
+        onSave={projectEnvironments.save}
+        onRemove={projectEnvironments.remove}
+        onSelect={projectEnvironments.select}
+      />
 
       <ConnectionDrawer
         open={connectionDrawerOpen}
