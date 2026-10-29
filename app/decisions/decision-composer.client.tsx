@@ -6,6 +6,7 @@ import type { DecisionQuestionType } from "../../packages/core/src/decision";
 import { BlockerChip } from "../blocker-chip.client";
 import { ModelCombobox } from "../model-combobox.client";
 import { PaneTabs } from "../workbench-shell.client";
+import { WorkbenchPanel } from "../workbench-panel.client";
 import type { DecisionDraftProblem, DecisionQuestionRow, DraftValue } from "./decision-draft";
 import type { DecisionDraftHandle } from "./use-decision-draft.client";
 import type { DecisionTargetHandle } from "./use-decision-target.client";
@@ -406,20 +407,20 @@ export function DecisionComposer({ modelInputRef, kindSwitch, draft: handle, tar
   const discovery = target.discovery;
   return (
     <section className="composer decision-composer" aria-label="Decision request">
-      <div className="panel-header request-header">
-        {kindSwitch}
-        <PaneTabs
-          disabled={locked}
-          label="Decision editor"
-          value={draft.view}
-          onChange={(value) => (value === "json" ? handle.showJson() : handle.showForm())}
-          tabs={[{ id: "form", label: "Form" }, { id: "json", label: "JSON" }]}
-        />
-      </div>
-      {/* Everything under the header scrolls as one: the notices, the pin and
-          its actions stack tall enough to starve a nested scroller on a short
-          window, leaving the questions below the fold out of reach. */}
-      <div className="pane-scroll decision-scroll">
+      <WorkbenchPanel
+        headerClassName="request-header"
+        header={<>
+          {kindSwitch}
+          <PaneTabs
+            disabled={locked}
+            label="Decision editor"
+            value={draft.view}
+            onChange={(value) => (value === "json" ? handle.showJson() : handle.showForm())}
+            tabs={[{ id: "form", label: "Form" }, { id: "json", label: "JSON" }]}
+          />
+        </>}
+        scrollClassName="decision-scroll"
+      >
         {blockers.length > 0 && (
           <div className="run-readiness-slot">
             <BlockerChip
@@ -518,7 +519,7 @@ export function DecisionComposer({ modelInputRef, kindSwitch, draft: handle, tar
           <DecisionInputEditor handle={handle} disabled={locked || Boolean(pinned)} />
           <DecisionVariables disabled={locked} handle={handle} />
         </div>
-      </div>
+      </WorkbenchPanel>
     </section>
   );
 }

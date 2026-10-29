@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./support/test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { createProjectFile, createPromptTemplate, appendPromptTemplateRevision, serializeProjectFile, parseProjectFile } from "../../packages/core/src/project";
 import { BUFFERED_FIXTURE_ENDPOINT, PROFILE_STORAGE_KEY, PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY, seedProfile, seedProfiles, waitForHydration, importProject, openMode, stubProjectDirectory, openToolLibrary } from "./support";

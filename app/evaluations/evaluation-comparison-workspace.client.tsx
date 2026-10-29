@@ -404,7 +404,7 @@ export function EvaluationComparisonWorkspace({
 }) {
   const { comparison } = loaded;
   return (
-    <section aria-label="Evaluation comparison" className="evaluation-comparison-workspace">
+    <section aria-label="Evaluation comparison" className="pane-scroll evaluation-comparison-workspace">
       <header className="evaluation-results-header">
         <div>
           <span className="eyebrow">Baseline comparison</span>

@@ -265,7 +265,7 @@ export function EvaluationResultsWorkspace({
   }, [liveActive, liveStartedAtMs]);
 
   return (
-    <section aria-busy={live || derivation.pending ? "true" : undefined} aria-label="Evaluation results" className={`evaluation-results-workspace ${placement === "request" ? "experiment-context-pane" : ""}`.trim()}>
+    <section aria-busy={live || derivation.pending ? "true" : undefined} aria-label="Evaluation results" className={`pane-scroll evaluation-results-workspace ${placement === "request" ? "experiment-context-pane" : ""}`.trim()}>
       <header className="evaluation-results-header">
         <div>
           <span className="eyebrow">{execution.storage === "durable" ? "Saved project evaluation" : "Unsaved session evaluation"}</span>

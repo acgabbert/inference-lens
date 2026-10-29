@@ -1,10 +1,18 @@
 # Shared assets: migration completion review
 
-**Status:** Proposed after the approved [migration-staging foundation](archive/SHARED_ASSETS_MIGRATION_JOURNAL_DESIGN.md),
-October 26, 2026; revised October 27 after review (browser save coordination,
-completion capability ownership, `stale-plan` result, corrupt selections and the
-two partial-recovery/stale-handle decisions). No completion API, manifest writer or candidate activation is
-implemented or approved by this document. App/CLI remain on v15.
+**Status:** Approved October 28, 2026 after review of the three open decisions:
+the candidate-disposition table (exact bytes establish `present`; existing
+selections win; nothing is merged or overwritten), pending drafts not blocking the
+shared write, and ordinary-save-handle invalidation on any manifest-write attempt.
+Revised October 27 (browser save coordination, completion capability ownership,
+`stale-plan` result, corrupt selections). Implementation proceeds in the order
+under "Required implementation evidence": core, browser adapter, then native. No
+application caller is approved; App/CLI remain on v15.
+
+**Approval condition.** Pending drafts may coexist with a v16 manifest only while
+completion has no application caller. Add a test or guard asserting that no
+app/CLI code path imports or calls the completion capability, and require
+reconciliation to ship before the integration slice enables it.
 
 **Renumbered 2026-10-29:** the staged shared format is now **v17**; v16 went
 to the active format for [prompt environments](PROMPT_ENVIRONMENTS_PLAN.md),
@@ -159,6 +167,11 @@ Otherwise the result has two independent dimensions:
   and an optional stopped path/reason. `complete` requires confirmed shared
   bytes, every eligible activation verified and no unresolved draft candidate.
   Existing valid selections count as satisfied without overwriting them.
+  Dispositions come from reinspecting persisted bytes after execution. If that
+  reinspection is itself blocked, every candidate is reported `unavailable` with
+  the blocking reason, never the pre-write disposition. A host that reports
+  activations after a failed shared write has broken the write order; core
+  reports the batch as `stopped` at the first such path.
 
 | Restart observation | Next explicit completion call |
 | --- | --- |
@@ -226,14 +239,22 @@ There is no changed UI/provider behavior in this opt-in foundation, so it needs
 no Playwright journey. Application integration later requires affected committed
 browser specs and the full suite under [AGENTS.md](../AGENTS.md).
 
-## Review preparation
+## Implementation progress
 
-This is documentation only. Checked 51 relative link targets, trailing whitespace,
-final newlines and balanced code fences across the five shared-assets design
-documents; all passed. `git diff --check` passed for tracked edits. Reviewed the
-proposal against current core preparation/inspection, workbench mutation,
-browser manifest expectations and native workspace locking/save contracts.
-No unit, browser or Rust tests were run because runtime behavior is unchanged.
-These checks do not establish runtime safety; implementation must supply the
-evidence above. Review should settle the decision table, partial-recovery
-behavior and stale-handle invalidation before code changes begin.
+**Core (implemented).** [`migration-completion.ts`](../packages/core/src/migration-completion.ts)
+provides inspection, the checked plan and the completion coordinator;
+[`migration-completion.test.ts`](../tests/migration-completion.test.ts) covers the
+disposition table (including filename-identity checks shared with the workbench
+store), restart rows, stale plans, manifest and activation failures, blocked
+reinspection, host write-order violations, plan independence from storage
+buffers, and the approval-condition guard that no app/CLI path references the
+capability. Core tests, typecheck and lint pass. Not yet covered at this layer:
+completion of a draft-free source and of the other legacy source versions.
+Preparation of those inputs is covered by `shared-project-migration.test.ts`
+(legacy versions, no drafts) and draft-free staging by `migration-journal.test.ts`.
+
+**Remaining, in order.** The browser adapter (moving workspace `save` onto the
+per-project coordination scope and the shared-handle validity flag), then the
+native Rust command (workspace mutex, safe path bindings, symlink refusal,
+registration-state invalidation), then the real-Git staging check. Each needs the
+evidence listed above before it lands. No application caller is approved.

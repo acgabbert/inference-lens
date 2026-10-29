@@ -11,6 +11,7 @@ import { PaneTabs } from "../workbench-shell.client";
 import { TemplateUseCard } from "../project-templates-pane.client";
 import { ToolsPane } from "../tools-pane.client";
 import { RunReadinessNotice } from "../run-readiness-notice.client";
+import { WorkbenchPanel } from "../workbench-panel.client";
 import { FocusModeToggle, useFocusMode } from "../focus-mode.client";
 import type {
   ReadinessDestination,
@@ -281,54 +282,58 @@ export function RequestComposer({
       ref={composerRef}
       role={requestFocusMode ? "dialog" : undefined}
     >
-      <div className="panel-header request-header">
-        {/* Not inside focus mode: switching kind would unmount the dialog. */}
-        {!requestFocusMode && kindSwitch}
-        <PaneTabs
-          label="Request editor"
-          value={activeTab}
-          onChange={(value) => setTab(value as RequestTab)}
-          tabs={[
-            { id: "messages", label: "Messages", count: requestDraft.messages.length },
-            { id: "tools", label: "Tools", count: selectedToolCount },
-          ]}
-        />
-        {activeTab !== "messages" ? <div className="request-header-actions">
-          {/* On every tab, not only Messages: a repeat sends whatever the
-              composer currently holds, and which tab is open does not change
-              that. */}
-          <button
-            className="button secondary"
-            disabled={repeat.disabled}
-            title={repeat.disabled ? repeat.disabledReason : undefined}
-            type="button"
-            onClick={repeat.onRepeat}
-          >
-            Repeat…
-          </button>
-        </div> : null}
-      </div>
-      <RunReadinessNotice {...(readiness ? { readiness } : {})} onAction={routeReadinessAction} />
-      {pendingBranch && (
-        <StatusChip
-          tone="advisory"
-          label="Pending branch"
-          detail={<span title={`${pendingBranch.parentRunId} · ${pendingBranch.branchMessageId}`}>
-            Branching from {pendingBranch.label.runTitle
-              ? `\u201c${pendingBranch.label.runTitle}\u201d`
-              : "the previous run"} at Message {pendingBranch.label.messageOrdinal} · {pendingBranch.label.role}.
-            {" "}The original trace is unchanged.
-          </span>}
-          actions={[
-            ...(pendingBranch.parentTraceNeedsSaving
-              ? [{ key: "save-trace", label: "Save trace…", onSelect: onSaveParentTrace }]
-              : []),
-            { key: "discard", label: "Discard branch", onSelect: onDiscardPendingBranch },
-          ]}
-        />
-      )}
-
-      <div className="pane-scroll request-content">
+      <WorkbenchPanel
+        headerClassName="request-header"
+        header={<>
+          {/* Not inside focus mode: switching kind would unmount the dialog. */}
+          {!requestFocusMode && kindSwitch}
+          <PaneTabs
+            label="Request editor"
+            value={activeTab}
+            onChange={(value) => setTab(value as RequestTab)}
+            tabs={[
+              { id: "messages", label: "Messages", count: requestDraft.messages.length },
+              { id: "tools", label: "Tools", count: selectedToolCount },
+            ]}
+          />
+          {activeTab !== "messages" ? <div className="request-header-actions">
+            {/* On every tab, not only Messages: a repeat sends whatever the
+                composer currently holds, and which tab is open does not change
+                that. */}
+            <button
+              className="button secondary"
+              disabled={repeat.disabled}
+              title={repeat.disabled ? repeat.disabledReason : undefined}
+              type="button"
+              onClick={repeat.onRepeat}
+            >
+              Repeat…
+            </button>
+          </div> : null}
+        </>}
+        notices={<>
+          <RunReadinessNotice {...(readiness ? { readiness } : {})} onAction={routeReadinessAction} />
+          {pendingBranch && (
+            <StatusChip
+              tone="advisory"
+              label="Pending branch"
+              detail={<span title={`${pendingBranch.parentRunId} · ${pendingBranch.branchMessageId}`}>
+                Branching from {pendingBranch.label.runTitle
+                  ? `\u201c${pendingBranch.label.runTitle}\u201d`
+                  : "the previous run"} at Message {pendingBranch.label.messageOrdinal} · {pendingBranch.label.role}.
+                {" "}The original trace is unchanged.
+              </span>}
+              actions={[
+                ...(pendingBranch.parentTraceNeedsSaving
+                  ? [{ key: "save-trace", label: "Save trace…", onSelect: onSaveParentTrace }]
+                  : []),
+                { key: "discard", label: "Discard branch", onSelect: onDiscardPendingBranch },
+              ]}
+            />
+          )}
+        </>}
+        scrollClassName="request-content"
+      >
         {activeTab === "messages" ? (
           <>
             <div className="run-settings">
@@ -446,7 +451,7 @@ export function RequestComposer({
         ) : (
           <ToolsPane tools={requestDraft.tools} requestTools={requestDraft.requestTools} enabledToolIds={requestDraft.enabledToolIds} activeProfileName={activeProfile.name} toolsEnabled={settings.toolsEnabled} onOpenLibrary={onOpenToolLibrary} onOpenConnectionSettings={onOpenConnectionSettings} onAttach={requestDraft.attachTool} onRemoveTool={requestDraft.removeTool} onMoveTool={requestDraft.moveTool} onUpdateTool={requestDraft.updateTool} onSetToolEnabled={requestDraft.setToolEnabled} mockForTool={requestDraft.mockForTool} onUpdateToolMock={requestDraft.updateToolMock} onRemoveRequestTool={requestDraft.removeRequestTool} onUpdateRequestTool={requestDraft.updateRequestTool} onMoveRequestTool={requestDraft.moveRequestTool} onSaveRequestToolToProject={requestDraft.saveRequestToolToProject} commandTools={commandTools} mcpConsents={mcpConsents} />
         )}
-      </div>
+      </WorkbenchPanel>
       {promptInsertion && (
         <PromptInsertionDialog
           templates={insertableTemplates}

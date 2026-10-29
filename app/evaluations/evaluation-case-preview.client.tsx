@@ -14,6 +14,7 @@ import { revisionChoice, revisionTime } from "./revision-choice.client";
 import type { EvaluationSuiteExecutionActions } from "./evaluation-suite-editor.client";
 import type { EvaluationSuiteAuthoringHandle } from "./use-evaluation-suite-authoring.client";
 import { isChatEvaluationSuite } from "../../packages/core/src/evaluation-suites";
+import { WorkbenchPanel } from "../workbench-panel.client";
 
 const valueSourceLabels: Record<EvaluationValueSource, string> = {
   case: "Case value",
@@ -291,9 +292,11 @@ export function EvaluationPreviewWorkspace({ authoring, execution }: {
   const focusedCase = suite?.cases.find(({ id }) => id === authoring.focusedCaseId);
   return (
     <>
-      <div className="panel-header result-header">
-        <div><span className="eyebrow">Evaluation</span><h2>Provider input</h2></div>
-        {focusedCase && (
+      <WorkbenchPanel
+        eyebrow="Evaluation"
+        title="Provider input"
+        headerClassName="result-header"
+        header={focusedCase && (
           <div className="result-header-controls">
             <span className="evaluation-preview-case">{focusedCase.name}</span>
             {execution?.preview?.targets[0] && (
@@ -303,8 +306,8 @@ export function EvaluationPreviewWorkspace({ authoring, execution }: {
             )}
           </div>
         )}
-      </div>
-      <div className="evaluation-preview-scroll">
+        scrollClassName="evaluation-preview-scroll"
+      >
         {!project ? (
           <PaneEmptyState
             heading="Open or save a project first"
@@ -327,7 +330,7 @@ export function EvaluationPreviewWorkspace({ authoring, execution }: {
             {...(execution ? { execution } : {})}
           />
         )}
-      </div>
+      </WorkbenchPanel>
     </>
   );
 }

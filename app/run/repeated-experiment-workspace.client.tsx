@@ -173,7 +173,7 @@ export function RepeatedExperimentWorkspace({
     <section
       aria-busy={isRunning ? "true" : undefined}
       aria-label="Repeated experiment results"
-      className={`repeated-experiment-workspace ${placement === "request" ? "experiment-context-pane" : ""}`.trim()}
+      className={`pane-scroll repeated-experiment-workspace ${placement === "request" ? "experiment-context-pane" : ""}`.trim()}
     >
       <header className="repeated-experiment-header">
         <div>

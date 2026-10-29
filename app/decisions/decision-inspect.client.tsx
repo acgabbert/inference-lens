@@ -2,6 +2,7 @@
 
 import type { DecisionRun } from "../../packages/core/src/decision";
 import { RequestEvidence } from "../evidence/exchange-evidence.client";
+import { WorkbenchPanel } from "../workbench-panel.client";
 import { formatDuration, formatUsage } from "./decision-result-view";
 
 /**
@@ -13,8 +14,9 @@ export function DecisionInspect({ run }: { run: DecisionRun | null }) {
   if (!run) {
     return (
       <section className="decision-inspect" aria-label="Decision evidence">
-        <div className="panel-header"><div><span className="eyebrow">Inspect</span><h2>Decision evidence</h2></div></div>
-        <p className="decision-inspect-empty">Run a decision to see its request and response.</p>
+        <WorkbenchPanel eyebrow="Inspect" title="Decision evidence">
+          <p className="decision-inspect-empty">Run a decision to see its request and response.</p>
+        </WorkbenchPanel>
       </section>
     );
   }
@@ -22,10 +24,7 @@ export function DecisionInspect({ run }: { run: DecisionRun | null }) {
   const usage = run.attempts.find(({ result }) => result)?.result?.usage;
   return (
     <section className="decision-inspect" aria-label="Decision evidence">
-      <div className="panel-header">
-        <div><span className="eyebrow">Inspect</span><h2>Decision evidence</h2></div>
-      </div>
-      <div className="pane-scroll decision-inspect-body">
+      <WorkbenchPanel eyebrow="Inspect" title="Decision evidence" scrollClassName="decision-inspect-body">
         <dl className="decision-run-facts">
           <div><dt>Run</dt><dd><code>{run.runId}</code></dd></div>
           <div><dt>Status</dt><dd>{run.status.kind}</dd></div>
@@ -64,7 +63,7 @@ export function DecisionInspect({ run }: { run: DecisionRun | null }) {
             </article>
           );
         })}
-      </div>
+      </WorkbenchPanel>
     </section>
   );
 }

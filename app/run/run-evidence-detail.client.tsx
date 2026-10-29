@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 
 import {
   transcriptFromRunState,
@@ -25,6 +25,7 @@ export function RunEvidenceDetail({
   readTrace,
   onPromoteTrace,
   diagnosticsOpen = false,
+  leading,
 }: {
   diagnosticsOpen?: boolean;
   trace: RunTrace;
@@ -34,6 +35,8 @@ export function RunEvidenceDetail({
   /** Reads a sibling trace from the project folder, for the parent diff. */
   readTrace?(fileName: string): Promise<RunTrace>;
   onPromoteTrace?(trace: RunTrace): void;
+  /** Rows ahead of the run's own actions, inside the scroll area. */
+  leading?: ReactNode;
 }) {
   const runState = useMemo(() => runStateFromTrace(trace), [trace]);
   const transcript = useMemo(() => transcriptFromRunState(runState), [runState]);
@@ -72,16 +75,19 @@ export function RunEvidenceDetail({
 
   return (
     <section className="result">
-      <div className="run-evidence-actions">
-        <div>
-          <span className="eyebrow">{eyebrow}</span>
-          <strong>{trace.input.target.model}</strong>
-        </div>
-        <button className="button primary" type="button" onClick={() => onBranch(trace)}>
-          Branch from this run
-        </button>
-      </div>
       <ResponseOutput
+        leading={<>
+          {leading}
+          <div className="run-evidence-actions">
+            <div>
+              <span className="eyebrow">{eyebrow}</span>
+              <strong>{trace.input.target.model}</strong>
+            </div>
+            <button className="button primary" type="button" onClick={() => onBranch(trace)}>
+              Branch from this run
+            </button>
+          </div>
+        </>}
         output={attempts.map((attempt) => attempt.text).join("")}
         reasoning={attempts.map((attempt) => attempt.reasoning).join("")}
         status={runState.status.kind === "completed" ? "complete" : "failed"}
