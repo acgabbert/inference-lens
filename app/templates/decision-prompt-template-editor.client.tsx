@@ -309,6 +309,20 @@ function DecisionTemplateContent(
           />
         </label>
         {props.controls}
+        {!template.archivedAt && !readOnly && (
+          <label className="template-revision-name-field">
+            Revision name <span className="field-optional">Optional</span>
+            <input
+              aria-label="Revision name"
+              value={revisionName}
+              onChange={(event) => {
+                const next = event.target.value;
+                setRevisionName(next);
+                record({ draft: draft.draft, values: draft.values, touched: true }, next);
+              }}
+            />
+          </label>
+        )}
         <div className="template-editor-actions">
           {template.archivedAt ? (
             <>
@@ -322,23 +336,9 @@ function DecisionTemplateContent(
               Edit as new revision
             </button>
           ) : (
-            <>
-              <label>
-                Revision name <span className="field-optional">Optional</span>
-                <input
-                  aria-label="Revision name"
-                  value={revisionName}
-                  onChange={(event) => {
-                    const next = event.target.value;
-                    setRevisionName(next);
-                    record({ draft: draft.draft, values: draft.values, touched: true }, next);
-                  }}
-                />
-              </label>
-              <button className="button primary" type="button" disabled={!canSave} onClick={() => commit(props.onSave)}>
-                {props.sessionOwned ? "Save to project" : "Create revision"}
-              </button>
-            </>
+            <button className="button primary" type="button" disabled={!canSave} onClick={() => commit(props.onSave)}>
+              {props.sessionOwned ? "Save to project" : "Create revision"}
+            </button>
           )}
           {!template.archivedAt && !props.sessionOwned && (
             <button className="button secondary" type="button" onClick={() => props.onArchive(template.id)}>
@@ -346,15 +346,17 @@ function DecisionTemplateContent(
             </button>
           )}
         </div>
+        <p className="template-editor-note">
+          <small className="template-draft-status" role="status">
+            {draftStatus({
+              invalid,
+              readOnly,
+              sessionOwned: props.sessionOwned,
+              persistenceStatus: props.persistenceStatus,
+            })}
+          </small>
+        </p>
       </header>
-      <p className="template-draft-status" role="status">
-        {draftStatus({
-          invalid,
-          readOnly,
-          sessionOwned: props.sessionOwned,
-          persistenceStatus: props.persistenceStatus,
-        })}
-      </p>
       {duplicateName && (
         <div className="template-warning" role="status">
           Another prompt has this name. IDs keep the two definitions distinct.

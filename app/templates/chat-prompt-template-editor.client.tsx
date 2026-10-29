@@ -227,6 +227,7 @@ export function ChatPromptTemplateEditor({
   );
   const workspaceRef = useRef<HTMLDivElement>(null);
   const evaluateHintId = useId();
+  const editHintId = useId();
 
   useEffect(() => {
     if (!focusRequested) return;
@@ -492,6 +493,21 @@ export function ChatPromptTemplateEditor({
                   ))}
                 </select>
               </RevisionField>
+              {!archived && !readOnly && (
+                <label className="template-revision-name-field">
+                  Revision name <span className="field-optional">Optional</span>
+                  <input
+                    aria-label="Revision name"
+                    placeholder="What changed?"
+                    value={revisionName}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      setRevisionName(next);
+                      persistDraft(messages, defaults, next);
+                    }}
+                  />
+                </label>
+              )}
               <div className="template-editor-actions">
                 {archived ? (
                   <>
@@ -509,81 +525,42 @@ export function ChatPromptTemplateEditor({
                 ) : (
                   <>
                     {readOnly ? (
-                      <>
-                        <span className="provider-pill">Read-only revision</span>
-                        <div className="template-revision-edit-action">
-                          <button
-                            className="button secondary"
-                            type="button"
-                            onClick={() => {
-                              setCandidateSourceRevisionId(viewedRevision.id);
-                              setDiffOpen(false);
-                              setMessages(structuredClone(viewedRevision.messages));
-                              setDefaults({ ...viewedRevision.variableDefaults });
-                            }}
-                          >
-                            Edit as new revision
-                          </button>
-                          <small>
-                            Copies this revision into an editable draft. Nothing
-                            changes until you save.
-                          </small>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="template-revision-create-action">
-                        <label>
-                          Revision name <span className="field-optional">Optional</span>
-                          <input
-                            aria-label="Revision name"
-                            placeholder="What changed?"
-                            value={revisionName}
-                            onChange={(event) => {
-                              const next = event.target.value;
-                              setRevisionName(next);
-                              persistDraft(messages, defaults, next);
-                            }}
-                          />
-                        </label>
-                        <button
-                          className="button primary"
-                          disabled={!canCreateRevision}
-                          type="button"
-                          onClick={createRevision}
-                        >
-                          {sessionOwned ? "Save to project" : "Create revision"}
-                        </button>
-                        <small aria-live="polite" className={`template-draft-status ${persistenceStatus}`}>
-                          {sessionOwned
-                            ? "Session draft — not saved after closing."
-                            : persistenceStatus === "saving"
-                            ? "Saving draft…"
-                            : persistenceStatus === "error"
-                              ? "Draft save failed — your changes remain in this session."
-                              : persistenceStatus === "session"
-                                ? "Draft kept in this session. Save the project to keep it after closing."
-                                : persistenceStatus === "secondary"
-                                  ? "Draft kept in this tab only — another tab is editing this project."
-                                  : "Draft autosaved."}
-                        </small>
-                      </div>
-                    )}
-                    {!sessionOwned && !archived && viewedRevision && onEvaluateRevision && <div className="template-revision-edit-action">
-                      {/* Evaluation pins a saved revision, so unsaved edits would silently go untested. */}
                       <button
+                        aria-describedby={editHintId}
                         className="button secondary"
                         type="button"
-                        disabled={draftChanged}
-                        aria-describedby={draftChanged ? evaluateHintId : undefined}
                         onClick={() => {
-                          onDismissEvaluateRevisionError?.();
-                          setEvaluateRequest({ templateId: selected.id, revisionId: viewedRevision.id });
+                          setCandidateSourceRevisionId(viewedRevision.id);
+                          setDiffOpen(false);
+                          setMessages(structuredClone(viewedRevision.messages));
+                          setDefaults({ ...viewedRevision.variableDefaults });
                         }}
                       >
-                        Evaluate in a suite…
+                        Edit as new revision
                       </button>
-                      {draftChanged && <small id={evaluateHintId}>Create a revision to evaluate these edits.</small>}
-                    </div>}
+                    ) : (
+                      <button
+                        className="button primary"
+                        disabled={!canCreateRevision}
+                        type="button"
+                        onClick={createRevision}
+                      >
+                        {sessionOwned ? "Save to project" : "Create revision"}
+                      </button>
+                    )}
+                    {/* Evaluation pins a saved revision, so unsaved edits would silently go untested. */}
+                    {!sessionOwned && viewedRevision && onEvaluateRevision && <button
+                      className="button secondary"
+                      type="button"
+                      disabled={draftChanged}
+                      aria-describedby={draftChanged ? evaluateHintId : undefined}
+                      onClick={() => {
+                        onDismissEvaluateRevisionError?.();
+                        setEvaluateRequest({ templateId: selected.id, revisionId: viewedRevision.id });
+                      }}
+                    >
+                      Evaluate in a suite…
+                    </button>}
                     {!sessionOwned && <button
                       className="button secondary"
                       type="button"
@@ -605,6 +582,36 @@ export function ChatPromptTemplateEditor({
                   onToggle={closeFocusMode}
                 />}
               </div>
+              {/* Everything the actions need explained shares one line under
+                  them, so a hint never adds a row of its own. */}
+              {!archived && <p className="template-editor-note">
+                {readOnly ? (
+                  <>
+                    <span className="provider-pill">Read-only revision</span>
+                    <small id={editHintId}>
+                      Copies this revision into an editable draft. Nothing
+                      changes until you save.
+                    </small>
+                  </>
+                ) : (
+                  <small aria-live="polite" className={`template-draft-status ${persistenceStatus}`}>
+                    {sessionOwned
+                      ? "Session draft — not saved after closing."
+                      : persistenceStatus === "saving"
+                      ? "Saving draft…"
+                      : persistenceStatus === "error"
+                        ? "Draft save failed — your changes remain in this session."
+                        : persistenceStatus === "session"
+                          ? "Draft kept in this session. Save the project to keep it after closing."
+                          : persistenceStatus === "secondary"
+                            ? "Draft kept in this tab only — another tab is editing this project."
+                            : "Draft autosaved."}
+                  </small>
+                )}
+                {!sessionOwned && onEvaluateRevision && draftChanged && (
+                  <small id={evaluateHintId}>Create a revision to evaluate these edits.</small>
+                )}
+              </p>}
             </header>
 
             {(duplicateName ||

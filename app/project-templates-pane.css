@@ -176,6 +176,7 @@
 
   .prompt-mode-workspace .template-editor-header {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "name" "revision" "revision-name" "actions" "note";
   }
 }
 
