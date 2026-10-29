@@ -54,6 +54,8 @@ type ResponseOutputProps = {
   traceStorage: TraceStorageStatus | null;
   /** An action row that opens the scroll area, ahead of the storage notice. */
   leading?: ReactNode;
+  /** Run actions on the left of the header row, opposite rendering and status. */
+  headerLeading?: ReactNode;
   transcript: TranscriptEntry[];
   nonBranchableMessageIds: ReadonlySet<ConversationMessage["id"]>;
   branchedFrom?: RunTrace["branchedFrom"];
@@ -86,8 +88,10 @@ type ResponseOutputProps = {
 };
 
 /**
- * Where the run's trace was saved, or why it was not, with the save action
- * when one applies. Shared by every run kind's response pane.
+ * Why the run's trace was not saved, with the save action when one applies,
+ * or where an imported or downloaded trace came from. Shared by every run
+ * kind's response pane. A routine save says nothing: it would cost a row on
+ * every run, and the header's enabled Copy link already says the run is saved.
  */
 export function TraceStorageNotice({
   storage,
@@ -96,14 +100,14 @@ export function TraceStorageNotice({
   storage: TraceStorageStatus;
   onSaveTrace?: () => void;
 }) {
+  if (storage.kind === "saving" || storage.kind === "saved") return null;
   return (
     <div
       className={`trace-storage trace-storage-${storage.kind}`}
       role={storage.kind === "error" ? "alert" : "status"}
     >
       <span className="trace-storage-icon" aria-hidden="true">
-        {storage.kind === "saved" ||
-        storage.kind === "downloaded" ||
+        {storage.kind === "downloaded" ||
         storage.kind === "loaded"
           ? "✓"
           : storage.kind === "error"
@@ -111,17 +115,7 @@ export function TraceStorageNotice({
             : "·"}
       </span>
       <span className="trace-storage-copy">
-        {storage.kind === "saving" ? (
-          <>
-            <strong>Saving run trace…</strong>
-            {storage.location && <code>{storage.location}</code>}
-          </>
-        ) : storage.kind === "saved" ? (
-          <>
-            <strong>Run trace saved</strong>
-            <code>{storage.location}</code>
-          </>
-        ) : storage.kind === "downloaded" ? (
+        {storage.kind === "downloaded" ? (
           <>
             <strong>Run trace download requested</strong>
             <span>
@@ -223,7 +217,7 @@ function RunFailureCard({
 export function ResponseOutput({
   output, reasoning, status, runState, isRequestActive, markdownPreview,
   outputFollowing, outputScrollRef, completedToolCalls, toolResultDrafts,
-  traceStorage, leading,
+  traceStorage, leading, headerLeading,
   transcript, nonBranchableMessageIds, branchedFrom,
   readOnly = false,
   emptyState,
@@ -243,14 +237,15 @@ export function ResponseOutput({
     <>
       <WorkbenchPanel
         headerClassName="result-header"
-        header={
+        header={<>
+          {headerLeading && <div className="result-header-leading">{headerLeading}</div>}
           <div className="result-header-controls">
             <PaneTabs label="Output rendering" value={markdownPreview ? "markdown" : "raw"}
               onChange={(value) => onMarkdownPreviewChange(value === "markdown")}
               tabs={[{ id: "markdown", label: "Markdown" }, { id: "raw", label: "Raw" }]} />
             <span className={`status ${status}`}><span aria-hidden="true" />{status}</span>
           </div>
-        }
+        </>}
         notices={<>
           {leading}
           {traceStorage && (

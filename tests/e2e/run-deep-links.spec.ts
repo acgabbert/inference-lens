@@ -53,7 +53,7 @@ test("cold entry resolves the requested saved evidence instead of the last proje
   // Body assertion intentionally exposes the actual wrong/missing evidence on red.
   await expect(page.locator("body")).toContainText("Evidence for wanted");
   await expect(page.locator(".brand")).toContainText(wanted.project.name);
-  await expect(page.getByRole("region", { name: "Selected run evidence" })).toContainText(wanted.trace.runId);
+  await expect(page.getByRole("region", { name: "Selected run evidence" })).toContainText("Evidence for wanted");
   const manifest = await page.evaluate(async name => {
     const folder = await (await navigator.storage.getDirectory()).getDirectoryHandle(name);
     return (await (await folder.getFileHandle("project.json")).getFile()).text();
@@ -136,7 +136,7 @@ test("saved decision inspection preserves Compose without adopting the trace", a
   await expect(page.getByRole("radio", { name: "Chat", exact: true })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByLabel("Message 1 content")).toHaveValue("Question decision-home");
   await openMode(page, "Runs");
-  await expect(page.getByRole("region", { name: "Selected run evidence" })).toContainText(decision.runId);
+  await expect(page.getByRole("region", { name: "Selected run evidence" }).locator(".decision-response .result-header").getByRole("button", { name: "Copy link", exact: true })).toBeEnabled();
   expect(executionRequests).toEqual([]);
 });
 
@@ -477,7 +477,13 @@ test("a UI-generated run copies a verified link and reopens the persisted output
   await connectedStart(page, [fixture]); await openFolder(page, fixture.project.name);
   await page.getByRole("button", { name: /run current conversation/i }).click();
   await expect(page.locator(".response-pane")).toContainText("Buffered fixture response: 2 + 2 = 4.");
-  await expect(page.locator(".response-pane")).toContainText("Run trace saved");
+  // One header row: the link on the left, rendering and status on the right.
+  // The storage success notice and the raw run ID no longer take rows of their own.
+  const header = page.locator(".response-pane .result-header");
+  await expect(header.getByRole("button", { name: "Copy link", exact: true })).toBeEnabled();
+  await expect(header).toContainText("Markdown");
+  await expect(header).toContainText("complete");
+  await expect(page.locator(".response-pane")).not.toContainText("Run trace saved");
   const files = await page.evaluate(async name => {
     const root = await navigator.storage.getDirectory(); const folder = await root.getDirectoryHandle(name);
     const traces = await folder.getDirectoryHandle("traces"); const contents: string[] = [];
@@ -494,7 +500,9 @@ test("a UI-generated run copies a verified link and reopens the persisted output
   await page.goto(copied!);
   await page.reload();
   await expect(selected(page)).toContainText("Buffered fixture response: 2 + 2 = 4.");
-  await expect(selected(page)).toContainText(generated.saved.trace.runId);
+  await expect(selected(page).locator(".result-header").getByRole("button", { name: "Copy link", exact: true })).toBeEnabled();
+  await expect(selected(page)).not.toContainText(generated.saved.trace.runId);
+  await expect(selected(page)).not.toContainText("Run trace saved");
   await expect(selected(page).getByText("Buffered fixture response: 2 + 2 = 4.", { exact: true }).first()).toBeInViewport();
   await page.screenshot({ path: testInfo.outputPath("saved-run-link.png"), fullPage: true });
 });
@@ -613,6 +621,5 @@ test("a saved experiment member copies a standalone link without requiring its p
   expect(parseSavedRunTraceJson(contents).trace.runId).toBe(runId);
   expect(contents).toContain("Buffered fixture response: 2 + 2 = 4.");
   await page.goto(copied!); await page.reload();
-  await expect(selected(page)).toContainText(runId);
   await expect(selected(page)).toContainText("Buffered fixture response: 2 + 2 = 4.");
 });
