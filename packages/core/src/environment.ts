@@ -1,5 +1,11 @@
-import { isSensitiveTemplateVariableName } from "./project.ts";
-import type { EnvironmentId } from "./run-kernel/types.ts";
+import { isChatEvaluationSuite } from "./evaluation-suites.ts";
+import { isSensitiveTemplateVariableName, parseProjectFile } from "./project.ts";
+import type { ProjectFile } from "./project.ts";
+import type {
+  EnvironmentId,
+  EvaluationSuiteId,
+  EvaluationVariantId,
+} from "./run-kernel/types.ts";
 import {
   renderTemplateText,
   TEMPLATE_VARIABLE_NAME_PATTERN,
@@ -297,4 +303,75 @@ export function blockingEnvironmentDiagnostics(
     (diagnostic) =>
       diagnostic.code === "environment-limit-exceeded" || reached.has(diagnostic.entryName),
   );
+}
+
+/** Something that names an environment and would change if it disappeared. */
+export type EnvironmentReference =
+  | { kind: "project-default" }
+  | { kind: "evaluation-suite"; suiteId: EvaluationSuiteId; suiteName: string }
+  | {
+      kind: "evaluation-variant";
+      suiteId: EvaluationSuiteId;
+      suiteName: string;
+      variantId: EvaluationVariantId;
+      variantName: string;
+    };
+
+export function environmentReferences(
+  project: Pick<ProjectFile, "defaults" | "evaluationSuites">,
+  environmentId: EnvironmentId,
+): EnvironmentReference[] {
+  const references: EnvironmentReference[] = [];
+  if (project.defaults.environmentId === environmentId) references.push({ kind: "project-default" });
+  for (const suite of project.evaluationSuites) {
+    if (!isChatEvaluationSuite(suite)) continue;
+    if (suite.execution.environmentId === environmentId) {
+      references.push({ kind: "evaluation-suite", suiteId: suite.id, suiteName: suite.name });
+    }
+    for (const variant of suite.variants) {
+      if (variant.overrides.environmentId === environmentId) {
+        references.push({
+          kind: "evaluation-variant",
+          suiteId: suite.id,
+          suiteName: suite.name,
+          variantId: variant.id,
+          variantName: variant.name,
+        });
+      }
+    }
+  }
+  return references;
+}
+
+/** Inserts the environment, or replaces the one with its ID in place. */
+export function setProjectEnvironment(
+  project: ProjectFile,
+  environment: ProjectEnvironment,
+): ProjectFile {
+  const index = project.environments.findIndex(({ id }) => id === environment.id);
+  const environments = index < 0
+    ? [...project.environments, structuredClone(environment)]
+    : project.environments.map((existing, existingIndex) =>
+        existingIndex === index ? structuredClone(environment) : existing,
+      );
+  return parseProjectFile({ ...project, environments });
+}
+
+/**
+ * Refuses while anything still selects the environment. Clearing a selection
+ * silently would change what those runs render, unlike withdrawing a tool.
+ */
+export function removeProjectEnvironment(
+  project: ProjectFile,
+  environmentId: EnvironmentId,
+): { ok: true; project: ProjectFile } | { ok: false; references: EnvironmentReference[] } {
+  const references = environmentReferences(project, environmentId);
+  if (references.length > 0) return { ok: false, references };
+  return {
+    ok: true,
+    project: parseProjectFile({
+      ...project,
+      environments: project.environments.filter(({ id }) => id !== environmentId),
+    }),
+  };
 }

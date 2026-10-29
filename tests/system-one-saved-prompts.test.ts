@@ -29,9 +29,9 @@ function document() {
   };
 }
 
-test("v15 parses and round-trips decision template pins with ordered authored content", () => {
+test("a v15 document opens as v16 and round-trips decision template pins with ordered authored content", () => {
   const opened = parseProjectFile(document());
-  assert.equal(opened.schemaVersion, 15);
+  assert.equal(opened.schemaVersion, 16);
   assert.deepEqual(parseProjectJson(serializeProjectFile(opened)), opened);
   const resolved = resolveProjectDecisionRequestRevision(opened, "decision-revision_use")!;
   assert.deepEqual(resolved.decision, decision);
@@ -53,10 +53,10 @@ test("v14 migration adds chat and inline discriminators without changing content
     decisionRequestRevisions: [{ id: "decision-revision_inline", decisionRequestId: "decision-request_inline", createdAt, decision, values: { ticket: "" } }],
   };
   const opened = parseProjectFile(legacy);
-  assert.equal(opened.schemaVersion, 15);
+  assert.equal(opened.schemaVersion, 16);
   assert.deepEqual(opened.promptTemplates[0], { ...legacy.promptTemplates[0], kind: "chat" });
   assert.deepEqual(opened.decisionRequestRevisions[0], { ...legacy.decisionRequestRevisions[0], kind: "inline" });
-  assert.equal(PROJECT_SCHEMA_VERSION, 15);
+  assert.equal(PROJECT_SCHEMA_VERSION, 16);
 });
 
 test("decision request pins and transitive suites are reported as library usages", async () => {

@@ -4,6 +4,7 @@ import type {
   ConnectionRequirementId,
   ConversationRevisionId,
   DecisionRequestRevisionId,
+  EnvironmentId,
   EvaluationCaseId,
   EvaluationInputBindingId,
   EvaluationSuiteId,
@@ -70,10 +71,12 @@ export interface EvaluationVariant {
       stop?: string[] | null;
       providerOptions?: InferenceOptions["providerOptions"] | null;
     };
+    /** `null` runs this variant with no environment; absence inherits the suite's. */
+    environmentId?: EnvironmentId | null;
   };
 }
 
-export type ResolvedEvaluationVariantExecution = Pick<ChatEvaluationSuite["execution"], "target" | "responseMode" | "options">;
+export type ResolvedEvaluationVariantExecution = Pick<ChatEvaluationSuite["execution"], "target" | "responseMode" | "options" | "environmentId">;
 
 /**
  * Resolves the one-level sparse override contract. Option fields inherit
@@ -84,6 +87,9 @@ export function resolveEvaluationVariant(
   variant: EvaluationVariant,
 ): ResolvedEvaluationVariantExecution {
   const optionOverrides = variant.overrides.options ?? {};
+  const environmentId = variant.overrides.environmentId === null
+    ? undefined
+    : variant.overrides.environmentId ?? suite.execution.environmentId;
   const resolveOption = <Key extends keyof InferenceOptions>(key: Key) => {
     const value = optionOverrides[key];
     return value === null ? undefined : value ?? suite.execution.options[key];
@@ -95,6 +101,7 @@ export function resolveEvaluationVariant(
       protocol: variant.overrides.target?.protocol ?? suite.execution.target.protocol,
     },
     responseMode: variant.overrides.responseMode ?? suite.execution.responseMode,
+    ...(environmentId ? { environmentId } : {}),
     options: {
       ...(resolveOption("temperature") === undefined ? {} : { temperature: resolveOption("temperature") }),
       ...(resolveOption("maxOutputTokens") === undefined ? {} : { maxOutputTokens: resolveOption("maxOutputTokens") }),
@@ -197,6 +204,8 @@ export interface ChatEvaluationSuite {
      * suite owns everything its result depends on.
      */
     turnCeiling?: number;
+    /** The environment every case renders against; absent means none. */
+    environmentId?: EnvironmentId;
   };
   /** At least one named configuration; the base execution remains the editing anchor. */
   variants: EvaluationVariant[];
