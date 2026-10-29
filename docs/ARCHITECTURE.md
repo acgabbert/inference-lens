@@ -96,6 +96,13 @@ stays opaque on both hosts.
 Workspace handles expose a human-readable display location for status text,
 but native filesystem commands continue to accept only the opaque workspace ID.
 
+The project-workspace invariants (handle identity, locked manifest reads,
+conflict-checked writes, the last-project record, editor-tab writes, and run
+links outranking restore) are written as W1–W4 at the top of
+`app/project-workspace.client.ts` and U1–U4 on `useProjectWorkspace`. Read them
+before changing either module; `tests/project-workspace-invariants.test.ts`
+and lint enforce the mechanical ones.
+
 Every condition that refuses a run is derived once, by
 `app/run-readiness.client.ts`, from the open project, its declared endpoint,
 and its template resolution. Both the disabled Run button's tooltip and the
