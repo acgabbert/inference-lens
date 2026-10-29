@@ -11,15 +11,19 @@ import type {
   ProjectFileV15,
 } from "./project.ts";
 
-/** Staged format: the application and CLI still use ProjectFileV15. */
-export const SHARED_PROJECT_SCHEMA_VERSION = 16;
+/**
+ * Staged format: the application and CLI still use ProjectFileV15. Version 16
+ * is reserved for the active format that adds prompt environments
+ * (docs/PROMPT_ENVIRONMENTS_PLAN.md); this format carries them once it lands.
+ */
+export const SHARED_PROJECT_SCHEMA_VERSION = 17;
 
 export type SharedPromptTemplate =
   | Omit<ChatPromptTemplate, "draft">
   | Omit<DecisionPromptTemplate, "draft">;
 
-export interface SharedProjectFileV16 extends Omit<ProjectFileV15, "schemaVersion" | "promptTemplates"> {
-  schemaVersion: 16;
+export interface SharedProjectFileV17 extends Omit<ProjectFileV15, "schemaVersion" | "promptTemplates"> {
+  schemaVersion: 17;
   promptTemplates: SharedPromptTemplate[];
 }
 
@@ -29,11 +33,11 @@ const record = (value: unknown): Record<string, unknown> | undefined =>
   typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 
 /**
- * Strict v16 only. Reuse v15's unchanged saved-content and reference validation
- * after fencing out drafts. This is not a public v16-to-v15 export operation.
+ * Strict v17 only. Reuse v15's unchanged saved-content and reference validation
+ * after fencing out drafts. This is not a public v17-to-v15 export operation.
  * Legacy input must go through the migration planner so drafts cannot be lost.
  */
-export function parseSharedProjectFile(value: unknown): SharedProjectFileV16 {
+export function parseSharedProjectFile(value: unknown): SharedProjectFileV17 {
   const gated = versionGate.safeParse(value);
   if (!gated.success) throw new ProjectValidationError(gated.error.issues);
   const issues: z.core.$ZodIssue[] = [];
@@ -43,12 +47,12 @@ export function parseSharedProjectFile(value: unknown): SharedProjectFileV16 {
       if (record(template) && "draft" in record(template)!) {
         issues.push({
           code: "custom", path: ["promptTemplates", index, "draft"],
-          message: "Personal prompt drafts are not shared Project v16 fields.",
+          message: "Personal prompt drafts are not shared Project v17 fields.",
         });
       }
     });
   }
-  // v15 checks these provider options but stops at arrays; v16 does not.
+  // v15 checks these provider options but stops at arrays; v17 does not.
   const providerOptions: Array<[unknown, Array<string | number>]> = [
     [record(record(record(gated.data.defaults)?.options))?.providerOptions, ["defaults", "options", "providerOptions"]],
   ];
@@ -65,7 +69,7 @@ export function parseSharedProjectFile(value: unknown): SharedProjectFileV16 {
   return structuredClone({ ...parsed, schemaVersion: SHARED_PROJECT_SCHEMA_VERSION });
 }
 
-export function parseSharedProjectJson(text: string): SharedProjectFileV16 {
+export function parseSharedProjectJson(text: string): SharedProjectFileV17 {
   let value: unknown;
   try {
     value = JSON.parse(text);
@@ -75,7 +79,7 @@ export function parseSharedProjectJson(text: string): SharedProjectFileV16 {
   return parseSharedProjectFile(value);
 }
 
-export function serializeSharedProjectFile(project: SharedProjectFileV16): string {
+export function serializeSharedProjectFile(project: SharedProjectFileV17): string {
   const validated = parseSharedProjectFile(project);
   // Preserve the existing deterministic field order and authored subtrees.
   const ordered = JSON.parse(serializeProjectFile({ ...validated, schemaVersion: 15 }));

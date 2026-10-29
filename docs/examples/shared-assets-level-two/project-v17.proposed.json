@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 16,
+  "schemaVersion": 17,
   "projectId": "project_shared-assets-example",
   "name": "Shared assets migration example",
   "connectionRequirements": [

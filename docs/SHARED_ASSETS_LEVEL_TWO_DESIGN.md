@@ -10,6 +10,11 @@ That [bounded slice](#first-core-slice-october-26-2026) is implemented. A subseq
 approved [recovery-store foundation](archive/SHARED_ASSETS_RECOVERY_STORE_SLICE.md)
 adds opt-in browser/native filesystem adapters for those existing records.
 Other recommendations below remain proposals; application recovery is not enabled.
+
+**Renumbered 2026-10-29:** the staged shared format is now **v17**; v16 went
+to the active format for [prompt environments](PROMPT_ENVIRONMENTS_PLAN.md),
+which v17 will carry. Dated verification records and archived documents keep
+the number that was current when they were written.
 The subsequent approved [migration-journal foundation](archive/SHARED_ASSETS_MIGRATION_JOURNAL_DESIGN.md)
 adds protected staging and read-only restart classification; it does not replace
 the manifest or activate personal candidates.
@@ -17,14 +22,14 @@ The next [migration-completion proposal](SHARED_ASSETS_MIGRATION_COMPLETION_DESI
 defines opt-in manifest replacement and active-candidate recovery for review.
 It does not approve application integration or the other proposals below.
 Revised the same day after review: write safety, publication intent, launch
-defaults, the v16 rationale and delivery order. The remaining integration
+defaults, the v17 rationale and delivery order. The remaining integration
 contracts still need review before application migration/publication starts.
 
 ## Review recommendations
 
 | Decision | Recommendation | Alternative and tradeoff |
 | --- | --- | --- |
-| Shared format | Propose v16: remove both template kinds' `draft`; retain the other v15 fields and treat `defaults` as authored launch defaults. The bump exists to fence out old writers (see [why v16](#why-a-version-bump)). | Keep v15 and stop writing drafts: no migration journal, but old builds keep folding drafts and last-used selections back into the shared file. Rename/restructure defaults now: clearer naming, but more churn without changing ownership. |
+| Shared format | Propose v17: remove both template kinds' `draft`; retain the other v15 fields and treat `defaults` as authored launch defaults. The bump exists to fence out old writers (see [why v17](#why-a-version-bump)). | Keep v15 and stop writing drafts: no migration journal, but old builds keep folding drafts and last-used selections back into the shared file. Rename/restructure defaults now: clearer naming, but more churn without changing ownership. |
 | Legacy defaults | Copy existing selections/settings into personal state; retain all legacy defaults in shared definitions. Migration preview does **not** offer demotion in this slice. | Offer selective demotion: needs optional-default semantics and a policy for a clone with no launch request/target. Design separately. |
 | Changing launch defaults | Only an explicit "Use as project launch default" action writes `defaults`, with a preview; branching, selecting and running never do. See [launch defaults](#changing-authored-launch-defaults). | No writer: defaults freeze at migration. Implicit writer: reintroduces the churn Level 2 removes. |
 | Local data | Typed asset drafts, scratch requests, selections and execution overrides; never a second complete project. Propose workbench schema v1. | A whole-project shadow is simpler initially but creates competing definitions and ambiguous publication. |
@@ -36,7 +41,7 @@ contracts still need review before application migration/publication starts.
 | Conflict recovery | Retain both sides, stop automatic writes to the affected record, and require explicit reconciliation; keep source snapshots for comparisons. | Automatic merge/rebase introduces new semantics, especially for ordered decision input. |
 | Personal backup | Later slice: separate versioned backup of personal records and required local dependencies; preview restore, never overwrite automatically. Evidence remains a separate export. | Full-folder archive carries evidence too, but obscures what is portable and greatly increases scope. |
 
-The first core-slice approval accepts v16 and v1 for the bounded contracts
+The first core-slice approval accepts v17 and v1 for the bounded contracts
 described below. The later recovery-store approval accepts the existing-record
 layout, protection, identity blocking and write outcomes documented in its
 [slice contract](archive/SHARED_ASSETS_RECOVERY_STORE_SLICE.md). The other recommendations
@@ -66,7 +71,7 @@ that reserialization preserves whitespace. The untouched source preserves bytes.
 
 | v15 path | Migration | Future writer/meaning |
 | --- | --- | --- |
-| `schemaVersion` | 15 → proposed 16 | Core versioned codec; old v15 writer rejects v16. |
+| `schemaVersion` | 15 → proposed 17 | Core versioned codec; old v15 writer rejects v17. |
 | `projectId`, `name` | Keep | Explicit project metadata edit; identity validates local association. |
 | `connectionRequirements[].id`, `.name`, `.provider`, `.endpoint` | Keep | Explicit portable declaration edits; no local profile IDs or credentials. |
 | `connectionRequirements[].capabilityOverrides` | Keep all keys | `chatCompletions`, `responsesApi`, `anthropicMessages`, `streaming`, `modelDiscovery`, `tools`, `parallelToolCalls`, `structuredOutput`, `vision`, `embeddings`. Actual capabilities/resolution remain device concerns. |
@@ -85,7 +90,7 @@ Migration has no serialized legacy decision-target selection to recover.
 
 Today `defaults` follows the operator: branching, choosing a request and editing
 request settings rewrite it (for example `updateProjectDraft` copies the
-composer's model, protocol, temperature and enabled tools into `defaults`). After v16 those
+composer's model, protocol, temperature and enabled tools into `defaults`). After v17 those
 actions change personal selections only, so `defaults` needs a deliberate
 writer or it freezes at its migrated value.
 
@@ -204,7 +209,7 @@ the current local editor detached or removed a use.
 | Chat variant `.overrides.responseMode`, `.options` | Keep | Preserve absent/inherited versus `null`/removed option; `providerOptions` replaces the base object as today. |
 | `inputBindings[].id`, `.name`, `.target.kind`, `.variableName`, chat `.templateUseId` | Keep | Case inputs target exact use/variable or decision variable. |
 | `cases[].id`, `.name`, `.values`, `.referenceAnswer` | Keep | Reusable case inputs and authored reference text, including copied evidence. |
-| `cases[].checks[]` | Keep all fields | Check vocabulary remains 5; no new check schema implied by Project v16. |
+| `cases[].checks[]` | Keep all fields | Check vocabulary remains 5; no new check schema implied by Project v17. |
 
 Check inventory: common `checkId`, optional `label`, and `kind`; text checks
 `value`, `negate`, `caseSensitive`, `trimWhitespace`; regex `syntax`, `pattern`,
@@ -242,7 +247,7 @@ kinds, chat and decision branches, both suite kinds, a saved mock, import
 provenance, saved empty values and absent assignments:
 
 - [Before: valid Project v15](examples/shared-assets-level-two/project-v15.json)
-- [After: proposed shared Project v16](examples/shared-assets-level-two/project-v16.proposed.json)
+- [After: proposed shared Project v17](examples/shared-assets-level-two/project-v17.proposed.json)
 - [After: proposed local records](examples/shared-assets-level-two/workbench-records.proposed.json)
 
 The local example is a **review bundle of records**, not a proposed single-file
@@ -275,7 +280,7 @@ without those files still opens both suites.
 
 ### Types and execution boundary
 
-Core should own `SharedProjectFileV16` and discriminated recovery DTOs in a
+Core should own `SharedProjectFileV17` and discriminated recovery DTOs in a
 separate module, rather than putting mutable workbench fields back on
 `ProjectFile`. Every record carries a top-level `kind` discriminator
 (`"draft"` or `"selections"` in v1; scratch records add their own arm). The
@@ -425,7 +430,7 @@ Migration must preserve the original **raw bytes**, before the existing v10→v1
 parse chain normalizes them. Proposed sequence:
 
 1. Read and validate supported source; compute the v15-normalized inventory and
-   proposed v16/local outputs in memory. Show preview; opening alone does not
+   proposed v17/local outputs in memory. Show preview; opening alone does not
    approve an on-disk migration. Keep no-folder inputs session-only.
 2. Confirm `.workbench/.gitignore`, then write/read back the untouched source and
    migration intent. Do not put legacy backups beside `project.json`.
@@ -433,9 +438,9 @@ parse chain normalizes them. Proposed sequence:
    already exists, retain it and stage migration candidates for reconciliation;
    do not overwrite it or seed over existing personal selections.
 4. Recheck the original manifest and confirm all local outputs before writing
-   v16. A failure through this step leaves the original or its verified untouched
+   v17. A failure through this step leaves the original or its verified untouched
    backup plus verified recovery candidates. Never remove the only draft copy.
-5. Confirm v16, mark completion, and keep the source backup. Interrupted runs
+5. Confirm v17, mark completion, and keep the source backup. Interrupted runs
    compare source/output digests and record identities; they neither duplicate
    drafts nor overwrite an independently edited manifest. Truncated/unrecognized
    outputs require explicit recovery from preserved candidates.
@@ -451,7 +456,7 @@ the staging foundation.
 
 ### Why a version bump
 
-The shared change is small: v16 differs from v15 only by losing the two optional
+The shared change is small: v17 differs from v15 only by losing the two optional
 template `draft` fields. A v15 document without drafts is already valid v15, so
 the bump is not needed to describe the new shape. It is needed to keep old
 builds from writing the old meaning back:
@@ -473,22 +478,22 @@ mixed-build teams are not a concern, accepting the drift above.
 ### JSON, CLI and backup compatibility
 
 Recommend separate APIs for legacy decoding/migration planning and for strict
-v16 shared decoding. Returning only v16 from today's `parseProjectJson` would
+v17 shared decoding. Returning only v17 from today's `parseProjectJson` would
 silently lose extracted drafts for callers that know nothing about recovery.
 A migration result must carry source version, preserved source bytes, shared
 candidate, extracted personal records and preview diagnostics.
 
 Existing v10–v15 JSON remains importable through the strict one-version chain;
 older unsupported formats stay unsupported. JSON imports have session-only
-recovery until a folder is chosen. Default export is v16 shared definitions;
+recovery until a folder is chosen. Default export is v17 shared definitions;
 personal backup is explicitly selected. Do not silently down-export v15 by
-reintroducing personal drafts. An old build must reject v16, not open it as an
+reintroducing personal drafts. An old build must reject v17, not open it as an
 editable empty project. No-folder export wording must state that unsaved drafts
 are excluded, and offer personal backup before replacement/closing once
 slice 2e delivers it.
 
 The CLI may read legacy definitions in memory without writing a migration or
-using explicit template drafts. v16 execution uses only saved request/suite pins
+using explicit template drafts. v17 execution uses only saved request/suite pins
 and authored launch defaults. Audit commands using `project.defaults` and retain
 documented shared-default behavior or require explicit input; never consult the
 operator's selections. App/CLI immutable evidence coexistence remains unchanged.
@@ -510,7 +515,7 @@ Slice 2b covers exactly that; later Level 2 slices add the rest of the arms.
 
 | Slice | Delivers | Record arms |
 | --- | --- | --- |
-| 2b | v16 codec and migration; personal selections and execution overrides; "Use as project launch default"; chat and decision template drafts; scratch requests and drafts of saved requests (both kinds), so running and branching stop writing shared definitions; publication intent | chat prompt, decision prompt, chat request, inline decision request, template-use decision request, selections |
+| 2b | v17 codec and migration; personal selections and execution overrides; "Use as project launch default"; chat and decision template drafts; scratch requests and drafts of saved requests (both kinds), so running and branching stop writing shared definitions; publication intent | chat prompt, decision prompt, chat request, inline decision request, template-use decision request, selections |
 | 2c | Suite drafts and explicit suite save; tool and mock drafts, local mock activation; import staging | suite, tool, mock, import staging |
 | 2d | Typed editor buffers for invalid or incomplete input (decision JSON, checks, tool schemas) | buffer arms per editor |
 | 2e | Personal backup v1 and restore preview | backup envelope |
@@ -546,7 +551,7 @@ full suite as required by [AGENTS.md](../AGENTS.md).
 The original slice 2a changed documentation/examples only. Its verification parsed the
 v15 example with the current codec, checked exact migration preservation and local
 draft extraction, validated links/JSON, and ran `git diff --check`. At that point
-v16 and recovery examples had no production codec; those checks did not prove
+v17 and recovery examples had no production codec; those checks did not prove
 parser or filesystem recovery behavior. Core implementation evidence follows.
 
 ### Checks performed October 26, 2026
@@ -572,20 +577,20 @@ parser or filesystem recovery behavior. Core implementation evidence follows.
 ## First core slice, October 26, 2026
 
 **Approved scope:** isolated core codecs and an in-memory migration planner.
-Project v16 excludes both prompt kinds' explicit drafts. Workbench v1 receives
+Project v17 excludes both prompt kinds' explicit drafts. Workbench v1 receives
 those drafts and copied selections; all other saved content and launch defaults
 stay shared. The app stays on v15 until recovery storage is ready. This is the
-first part of 2b, not completion of Level 2 or authorization to start writing v16
+first part of 2b, not completion of Level 2 or authorization to start writing v17
 from existing save paths.
 
 ### Implemented contracts
 
 - [shared-project.ts](../packages/core/src/shared-project.ts) owns
-  `SharedProjectFileV16`, its draft-free `SharedPromptTemplate` union, and
+  `SharedProjectFileV17`, its draft-free `SharedPromptTemplate` union, and
   `parseSharedProjectFile`, `parseSharedProjectJson`, `serializeSharedProjectFile`.
-  These APIs accept only v16. They reuse the existing saved-content/reference
-  validators behind an explicit v16 gate and reject any prompt `draft` field.
-  v16 also rejects known secret field names anywhere in default and tool
+  These APIs accept only v17. They reuse the existing saved-content/reference
+  validators behind an explicit v17 gate and reject any prompt `draft` field.
+  v17 also rejects known secret field names anywhere in default and tool
   provider options, including inside arrays, which the v15 check skips. The
   v15 parser keeps its existing behavior so current folders still open.
   They do not silently extract personal data during parsing. Serialization keeps
@@ -627,19 +632,19 @@ from existing save paths.
   record identities, not a finalized filename or migration-journal contract.
 - `PROJECT_SCHEMA_VERSION`, `ProjectFile`, the current parser/serializer, app
   folder adapters, JSON import/export, and CLI paths remain v15. Existing callers
-  still retain embedded drafts and reject v16. The new codecs have no runtime
+  still retain embedded drafts and reject v17. The new codecs have no runtime
   caller in those flows; switching the version constant alone is not supported.
 
 The planner rejects invalid legacy documents before extraction, including missing
 draft sources; it does not rescue an invalid manifest heuristically. Unsupported
-v9 and earlier inputs and v16+ inputs are not migration sources. Invalid UTF-8
+v9 and earlier inputs and v17+ inputs are not migration sources. Invalid UTF-8
 is rejected without lossy decoding. A legacy provider-options payload accepted
 by the older validator but containing known secret keys inside arrays is rejected
-by the v16 shared codec, so planning fails with a `ProjectValidationError` naming
+by the v17 shared codec, so planning fails with a `ProjectValidationError` naming
 the source field (for example `defaults.options.providerOptions.extra.0.api_key`)
 rather than a workbench record. Nothing is silently copied or sanitized; the user
 removes the secret from the project before migrating. Suite and variant provider
-options are unchecked in v15 and remain so in v16; that is a separate decision.
+options are unchecked in v15 and remain so in v17; that is a separate decision.
 
 ### Remaining integration work
 

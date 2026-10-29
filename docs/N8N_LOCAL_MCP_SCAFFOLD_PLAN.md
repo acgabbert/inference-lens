@@ -630,7 +630,7 @@ Relevant changes and how this plan absorbs them:
 | [Final-output tool plan](N8N_FINAL_OUTPUT_TOOL_PLAN.md) accepted; `f0-*` captures. | Shared parent-agent resolution; synthetic formatter tool excluded and disclosed (§4, §6, S1). Its object-stripping policy applies only to output parsers, not to workflow tool schemas, which captures always close. |
 | Server connection catalog (`INFERENCE_LENS_CONNECTIONS`). | Guidance names the MCP catalog explicitly (§2, §4). |
 | CI runs the Python MCP lane as `e2e-lanes` beside four shards. | Integration spec targets that config (§11). |
-| Project format at v15 with v16 staged by the shared-assets work. | No change: this feature still adds no project state, so it stays outside that migration. |
+| Project format at v15 with v17 staged by the shared-assets work (renumbered from v16 on October 29). | No change: this feature still adds no project state, so it stays outside that migration. |
 | `rejected-arguments-tool-workflow` capture (present at the original baseline, previously uncited). | Settles argument rejection as an `isError` result (§7, §9). |
 
 Related documents: [MCP local tryout](MCP_LOCAL_TRYOUT.md),
