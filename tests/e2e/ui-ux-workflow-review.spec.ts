@@ -1,5 +1,5 @@
 import { chatTemplate } from "../project-kind-helpers";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./support/test";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createProjectFile, createPromptTemplate, parseProjectJson, serializeProjectFile } from "../../packages/core/src/project";
 import { BUFFERED_FIXTURE_ENDPOINT, PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY, closeProjectMenu, importProject, openMode, seedProfile, stubProjectDirectory, waitForHydration } from "./support";

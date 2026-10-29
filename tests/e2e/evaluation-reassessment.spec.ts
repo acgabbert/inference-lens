@@ -1,6 +1,6 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./support/test";
 import type { ChatEvaluationSuite } from "../../packages/core/src/evaluation-suites.ts";
-import type { Page } from "@playwright/test";
+import type { Page } from "./support/test";
 import { expectTableContentHeight } from "./support/layout";
 
 import {

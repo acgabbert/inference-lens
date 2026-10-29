@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./support/test";
 
 import { INFERENCE_API_PATH } from "../../packages/contracts/src/inference";
 import { parseProjectJson, projectDraft } from "../../packages/core/src/project";

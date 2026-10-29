@@ -1,10 +1,10 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./support/test";
 
 import { createProjectFile } from "../../packages/core/src/project";
 import { createEvaluationSuite } from "../../packages/core/src/evaluation-suite-authoring";
 import type { ProjectFile } from "../../packages/core/src/project";
 import { createEntityId } from "../../packages/core/src/run-kernel";
-import type { Page } from "@playwright/test";
+import type { Page } from "./support/test";
 
 import {
   ANTHROPIC_FIXTURE_ENDPOINT,

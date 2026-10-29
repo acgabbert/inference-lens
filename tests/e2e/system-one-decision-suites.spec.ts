@@ -2,7 +2,7 @@ import type { DecisionInput } from "../../packages/core/src/decision";
 import { inlineRevision } from "../project-kind-helpers";
 import { readFileSync } from "node:fs";
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./support/test";
 
 import { updateDecisionRequestDraft } from "../../packages/core/src/decision-request";
 import { decisionRunTrace } from "../../packages/core/src/decision-trace";

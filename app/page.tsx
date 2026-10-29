@@ -1177,8 +1177,8 @@ function HomeContent() {
   // renderer via `RunEvidenceDetail`.
   const responseSurface = (
     <section aria-label="Response output" className="result">
-      {runState && <CopyRunLink runId={runState.runId} workspace={runSession.traceWorkspace} saved={traceStorage?.kind === "saved"} />}
       <ResponseOutput
+        leading={runState && <CopyRunLink runId={runState.runId} workspace={runSession.traceWorkspace} saved={traceStorage?.kind === "saved"} />}
         output={responseView.output}
         reasoning={responseView.reasoning}
         status={responseView.status}
@@ -1479,9 +1479,13 @@ function HomeContent() {
         onStopExperiment={evaluationExecution.isRunning ? evaluationExecution.cancel : repeatedExperiment.cancel}
         onStartEvaluation={evaluationWorkspace.start}
       />
-      <RunLinkControls links={runLinks} />
-
-      <AppBanner {...(appBanner ? { selection: appBanner } : {})} />
+      {/* The page's notices share one capped scroll area, as a pane's do:
+          capped one by one, they add up under the topbar and starve the
+          workbench on a short window. */}
+      <div className="page-notices">
+        <RunLinkControls links={runLinks} />
+        <AppBanner {...(appBanner ? { selection: appBanner } : {})} />
+      </div>
 
       <ConnectionDrawer
         open={connectionDrawerOpen}
@@ -1750,9 +1754,8 @@ function HomeContent() {
             ? {
                 detail: {
                   content: (
-                    <>
-                    <CopyRunLink runId={batchMember.trace.runId} workspace={activeBatch?.workspace ?? null} saved={batchMember.storage.kind === "saved"} />
                     <RunEvidenceDetail
+                      leading={<CopyRunLink runId={batchMember.trace.runId} workspace={activeBatch?.workspace ?? null} saved={batchMember.storage.kind === "saved"} />}
                       key={batchMember.trace.runId}
                       trace={batchMember.trace}
                       eyebrow={activeBatch?.storage === "durable" ? "Saved batch run" : "Batch run · not saved"}
@@ -1761,7 +1764,6 @@ function HomeContent() {
                       {...(projectWorkspace ? { readTrace: runHistory.readTrace } : {})}
                       {...(projectFile ? { onPromoteTrace: (trace: RunTrace) => evaluationCaseSource.requestPromotion(trace) } : {})}
                     />
-                    </>
                   ),
                   batchLabel: batchMember.batchLabel,
                   memberLabel: batchMember.memberLabel,

@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { DecisionRun } from "../../packages/core/src/decision";
 import { TraceStorageNotice } from "../response-output.client";
 import type { TraceStorageStatus } from "../response-output.client";
+import { WorkbenchPanel } from "../workbench-panel.client";
 import {
   decisionAnswerViews,
   decisionDisplayStatus,
@@ -20,6 +21,8 @@ export interface DecisionResponseProps {
   /** Why another foreground activity refuses Retry now (D24); stated beside the button. */
   retryBlockedReason?: string;
   traceStorage: TraceStorageStatus | null;
+  /** An action row that opens the scroll area, ahead of the storage notice. */
+  leading?: ReactNode;
   /** What to do first while nothing has run; the readiness summary when blocked. */
   emptyDetail: string;
   onRetry(): void;
@@ -107,6 +110,7 @@ export function DecisionResponse({
   retryAvailableAt,
   retryBlockedReason,
   traceStorage,
+  leading,
   emptyDetail,
   onRetry,
   onDiscard,
@@ -120,13 +124,19 @@ export function DecisionResponse({
   const waiting = secondsLeft !== undefined && secondsLeft > 0;
   return (
     <section aria-label="Decision response" className="result decision-response">
-      <div className="panel-header result-header">
-        <div className="result-header-controls">
-          <span className={`status ${status}`}><span aria-hidden="true" />{status}</span>
-        </div>
-      </div>
-      {traceStorage && <TraceStorageNotice storage={traceStorage} onSaveTrace={onSaveTrace} />}
-      <div className="output-scroll">
+      <WorkbenchPanel
+        headerClassName="result-header"
+        header={
+          <div className="result-header-controls">
+            <span className={`status ${status}`}><span aria-hidden="true" />{status}</span>
+          </div>
+        }
+        notices={<>
+          {leading}
+          {traceStorage && <TraceStorageNotice storage={traceStorage} onSaveTrace={onSaveTrace} />}
+        </>}
+        scrollClassName="output-scroll"
+      >
         <div className="output decision-output">
           {executing ? (
             <div className="waiting-for-answer" role="status"><span className="reasoning-dot" aria-hidden="true" /><div><h3>Waiting for decision…</h3><p>Request sent. The answers will appear here.</p></div></div>
@@ -180,7 +190,7 @@ export function DecisionResponse({
             <div className="empty-state"><span className="empty-glyph" aria-hidden="true">↗</span><h3>No decision yet</h3><p>{emptyDetail}</p></div>
           )}
         </div>
-      </div>
+      </WorkbenchPanel>
     </section>
   );
 }

@@ -1,7 +1,7 @@
 import { inlineRevision } from "../project-kind-helpers";
 import { readFileSync } from "node:fs";
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./support/test";
 
 import { PROJECT_SCHEMA_VERSION, createProjectFile, serializeProjectFile } from "../../packages/core/src/project";
 import type { ProjectFile } from "../../packages/core/src/project";

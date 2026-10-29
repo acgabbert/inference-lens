@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 
-import { expect, test } from "@playwright/test";
-import type { BrowserContext, Page } from "@playwright/test";
+import { expect, test } from "./support/test";
+import type { BrowserContext, Page } from "./support/test";
 import type { FileSystemDirectoryHandleLike } from "../../app/project-directory.client";
 import { DECISIONS_API_PATH, INFERENCE_API_PATH } from "../../packages/contracts/src";
 import { updateDecisionRequestDraft } from "../../packages/core/src/decision-request";

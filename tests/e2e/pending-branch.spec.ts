@@ -1,5 +1,5 @@
-import { expect, test } from "@playwright/test";
-import type { Locator, Page } from "@playwright/test";
+import { expect, test } from "./support/test";
+import type { Locator, Page } from "./support/test";
 
 import { createProjectFile } from "../../packages/core/src/project";
 import {

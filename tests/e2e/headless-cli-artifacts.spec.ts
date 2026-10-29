@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./support/test";
 
 import { startHeadlessEvaluation } from "../../packages/cli/src/evaluation-run";
 import { startHeadlessRepeat } from "../../packages/cli/src/repeated-run";

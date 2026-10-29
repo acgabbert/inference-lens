@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./support/test";
 import { createProjectFile } from "../../packages/core/src/project";
 import scenarios from "../fixtures/mcp-servers/n1-matrix.json" with { type: "json" };
 import { importProject, seedProfile, waitForHydration, PROJECT_PROFILE_MAP_STORAGE_KEY, openMcpServers } from "./support";

@@ -1,6 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./support/test";
 import { createProjectFile } from "../../packages/core/src/project";
 import { wireDifferences } from "../../scripts/n1-wire-diff.mjs";
 import { importProject, seedProfile, waitForHydration, PROJECT_PROFILE_MAP_STORAGE_KEY, openMcpServers } from "./support";
