@@ -1,9 +1,11 @@
 # Guided local MCP mocks from n8n workflow tools
 
 **Status:** proposed design for review; documentation only. The user requested
-this plan, not implementation. Recommendations below are not yet approved.
+this plan, not implementation. Two decisions are approved (§9: schema profile
+and argument-rejection shape); the remaining recommendations are not.
 **Baseline:** `main` at `5235047`, inspected October 13, 2026; revised after
-review on October 14, 2026.
+review on October 14, 2026. Re-baselined against `main` at `e255548` on
+October 29, 2026 (see §14).
 **Working feature name:** Create local MCP mock.
 
 ## 1. Outcome and product boundary
@@ -42,16 +44,26 @@ MCP execution remain deferred.
 | `services/api/src/n8n-prompt-extractors.ts` and `app/n8n-import*` | Existing prompt-import conventions. A tool mock is a different artifact and should have its own extraction and UI owners. |
 | `scripts/local-mcp-server.py`, `scripts/requirements-mcp.txt` | Working Python SDK example; current repository pins are `mcp==2.1.1`, `pydantic==2.13.5`. Reverify pins and APIs during implementation. |
 | `scripts/n1-string-input-mcp.py`, `scripts/n1-matrix-mcp.py` | Real SDK execution and explicit text-response examples; they do not establish general n8n parity. |
-| `app/tools/mcp-discovery-panel.client.tsx` | Existing discovery, snapshot attachment, and permission workflow. Reuse rather than duplicate it. |
+| `app/tools/mcp-discovery-panel.client.tsx` | Existing discovery, snapshot attachment, and permission workflow, opened from the Tools pane's **Attach tool → From MCP server…** and sharing its **Attach to** destination control. Reuse rather than duplicate it. |
+| `app/tools-pane.client.tsx` | Owns the single **Attach tool** menu that every attach route starts from (#224). The new entry point joins this menu. |
+| `app/modal-dialog.client.tsx` | Shared `ModalDialog` owner: topmost-modal Escape, Tab trap, initial focus, focus restore, scroll lock (#208). The wizard uses it rather than hand-rolling overlay behavior. |
+| `packages/core/src/json-schema/preflight.ts` | `preflightJsonSchema` accepts a restricted draft-07 profile and returns stable, located diagnostics ([preflight guide](JSON_SCHEMA_PREFLIGHT.md)). The approved support boundary for reviewed input schemas; see §5. |
 | `services/api/src/mcp-server-catalog.ts` | Operator-owned catalog. The browser cannot register arbitrary executable endpoints. |
 | `services/api/src/mcp-execution.ts` | Existing result projection and invocation path. No new executor kind is needed. |
 | `tests/fixtures/n8n/` and N1 comparisons | Versioned source evidence and known schema/result differences. Use for bounded extraction support and end-to-end assertions. |
+| [Final-output tool plan](N8N_FINAL_OUTPUT_TOOL_PLAN.md) | Accepted policies; its PR 4 extends n8n import to detect the parent agent's `ai_outputParser` connection and node versions. Shares parent-agent resolution with this feature (§6). Its `f0-*` captures include a workflow tool beside the synthetic `format_final_json_response` tool. |
 
 The currently supported execution target is unauthenticated Streamable HTTP at
 a literal loopback address. The service-hosted web app supports this path;
 Tauri MCP execution remains outside it. Catalog contents are read on API
 requests, but changing the environment variable that names the catalog requires
 restarting the app process.
+
+The service now also reads a separate *server connection* catalog
+(`INFERENCE_LENS_CONNECTIONS`, see [Docker](DOCKER.md)) for model providers.
+That catalog is unrelated to MCP servers; generated guidance must name the MCP
+catalog (`INFERENCE_LENS_MCP_SERVERS`) explicitly so users do not add the mock
+to the wrong file.
 
 The [N1 string-input comparison](N1_STRING_INPUT_COMPARISON.md) found that
 Python function-derived schemas changed titles and omitted
@@ -100,15 +112,28 @@ tool with a separately operated, editable local mock.
 
 ### Entry and import
 
-Add **Create local MCP mock…** beside the existing MCP setup/discovery entry in
-Tools. It opens a dedicated flow owned under `app/tools/`; it does not become
-another top-level mode or live under prompt authoring.
+Add **Create local MCP mock…** as an item in the Tools pane's **Attach tool**
+menu, after **From MCP server…**. Follow that menu's existing close-then-open
+focus handling. It opens a dedicated `ModalDialog`-based flow owned under
+`app/tools/`; it does not become another top-level mode or live under prompt
+authoring. Placement must be rechecked against slice 2 of the
+[UX discoverability plan](UX_DISCOVERABILITY_PLAN.md) (searchable tool picker
+with explicit create/library/MCP routes) if that slice is authorized first;
+the feature owner's contract does not depend on which menu hosts the entry.
 
 Accept one parent workflow JSON first. List recognized workflow-tool nodes by
 name, description, node version, referenced child, and extraction status. A
 workflow ID reference does not fetch anything. If child metadata is necessary,
 ask for its export and let the user confirm the relationship when IDs are
 absent from an export. Never silently select the first child or tool.
+
+Only Call n8n Workflow Tool nodes are candidates. The synthetic
+`format_final_json_response` tool that n8n adds for a connected output parser
+(see the `f0-agent-3-1-*` captures) is never listed as mockable. When the
+selected agent has an output parser, say so in review and in the exported
+README: the mock replaces the workflow tool only, and reproducing the
+final-output contract belongs to the [final-output tool
+plan](N8N_FINAL_OUTPUT_TOOL_PLAN.md).
 
 A child-only import should explain why the parent tool node is needed for
 automatic extraction. Offer a deliberate **Define interface manually** path
@@ -174,8 +199,10 @@ dependency-installation, startup, and shutdown instructions. No administrator
 access is required by the generated instructions. Python availability and
 package access on work machines are reported prerequisites, not assumed.
 
-After startup, guide the user through declaring the catalog and opening
-existing MCP discovery. Generating a catalog file does not install it. Preserve
+After startup, guide the user through declaring the server in the MCP catalog
+named by `INFERENCE_LENS_MCP_SERVERS` (not the server connection catalog) and
+opening **Attach tool → From MCP server…**. Generating a catalog file does not
+install it. Preserve
 existing catalog entries through a copyable entry and merge instructions;
 never instruct the user to overwrite their catalog wholesale.
 
@@ -230,8 +257,30 @@ Retain schema constraints and metadata as data, including required fields,
 additional-properties rules, enums, nested structure, and defaults where
 supported. An unsupported validation keyword must be an explicit blocker or
 reviewed removal, never an ignored constraint. External schema references are
-not fetched. Define the supported dialect and local-reference behavior during
-the schema spike before accepting these forms.
+not fetched.
+
+**Approved: the supported dialect is the existing core preflight profile.**
+Every reviewed input schema, extracted or manual, must pass
+`preflightJsonSchema` (`packages/core/src/json-schema/preflight.ts`) before a
+`ReviewedScaffold` can be produced. Its diagnostics, with authored-schema
+paths, are shown as review blockers. This gives the app and the generated
+runtime one written boundary instead of a new dialect decision, and it already
+behaves as this plan requires: draft-07 only, local references only, unknown
+keywords rejected, annotations retained, defaults never applied. Consequences:
+
+- `pattern` and `patternProperties` are rejected by the profile, so a manual
+  schema using them is blocked. That is acceptable for the first release; the
+  review message says so rather than offering to drop the keyword silently.
+- Every captured n8n shape in the allowlist (including the untyped `json`
+  property and the synthesized optional `input`) is within the profile. S1
+  asserts this for each capture.
+- Use the profile's resource limits only as the acceptance gate. Its schema
+  size limit (65,536 UTF-16 code units of compact JSON) is close to, but not
+  the same unit as, discovery's 64 KiB `SCHEMA_MAX_BYTES`; the reviewed schema
+  must satisfy both, measured on the bytes the generated server will send.
+- Reusing the profile does not make it a scaffold compatibility contract: the
+  generated runtime must enforce the same keywords (S0), and a later
+  check-vocabulary change to preflight requires re-evaluating this feature.
 
 Source provenance is distinct from confidence: mark individual fields as
 extracted or user-authored, record relevant node versions, and retain a list of
@@ -244,12 +293,13 @@ Proposed modules, subject to review:
 
 | Owner | Responsibility and public contract |
 | --- | --- |
-| `packages/n8n/src/workflow-tool-extraction.ts` | Pure n8n parser: unknown JSON to candidate(s), source paths, unresolved issues, and supported-version evidence. No browser, network, Python, or MCP SDK dependencies. |
+| `packages/n8n/src/workflow-tool-extraction.ts` | Pure n8n parser: unknown JSON to candidate(s), source paths, unresolved issues, and supported-version evidence. No browser, network, Python, or MCP SDK dependencies. Resolving the parent agent, its node version, and its `ai_tool`/`ai_outputParser` connections is a shared helper in `packages/n8n`, also used by the final-output plan's PR 4 importer; whichever lands first creates it, and the second reuses it rather than writing a parallel connection walker. |
 | `packages/mcp-scaffold/src/definition.ts` | Provider-neutral validated scaffold manifest and review result. Reuse existing JSON/tool definition primitives where compatible. |
 | `packages/mcp-scaffold/src/generate.ts` | Validated manifest plus deployment choices to deterministic named files. No file writes or process execution. |
 | Versioned Python template beside the generator | Runtime reads the manifest and response; speaks MCP using pinned dependencies. Does not know n8n export structure. |
 | `app/tools/use-local-mcp-scaffold.client.ts` | Owns source selection, review edits, validation, download lifecycle, and setup progress. |
-| `app/tools/local-mcp-scaffold-dialog.client.tsx` | Renders stages, unresolved fields, response preview, and setup guidance. Uses existing overlay conventions. |
+| `app/tools/local-mcp-scaffold-dialog.client.tsx` | Renders stages, unresolved fields, response preview, and setup guidance inside `ModalDialog`; busy/discard guards stay in its `onClose`. |
+| `app/tools-pane.client.tsx` | Gains one **Attach tool** menu item that opens the dialog. No wizard state. |
 | Existing MCP panel and host services | Catalog selection, protocol discovery, attachment, grants, calls, and trace evidence. |
 
 The route composes the feature owner with a narrow open/close entry point and
@@ -348,12 +398,20 @@ Runtime rules:
   JSON text, trim whitespace, or append a newline.
 - Missing/corrupt configuration or response files fail startup clearly; they
   never return a placeholder success. Do not manufacture business results for
-  an unknown tool or invalid arguments. If the mock validates arguments itself
-  rather than relying on the SDK, it also chooses how a rejection reaches the
-  model: a protocol error fails the call in `mcp-execution.ts`, while an
-  `isError: true` result is projected to the model as tool output. S0 decides
-  which, records the reason, and tests it; this is not left to whatever the
-  chosen validator happens to do.
+  an unknown tool or invalid arguments.
+- **Approved: rejected arguments return an `isError: true` tool result, not a
+  protocol error.** The committed `rejected-arguments-tool-workflow` capture
+  shows n8n 2.39.10 sending a schema mismatch back to the model as an ordinary
+  tool result (`[{"error":"Received tool input did not match expected
+  schema…"}]`), letting the model see the failure and retry. `mcp-execution.ts`
+  projects an `isError` result to the model as completed tool output, whereas a
+  protocol error fails the call and the run. The mock therefore validates
+  arguments itself and returns exactly one text block with `isError: true`
+  naming the failing location, never the configured response. It does not copy
+  n8n's message wording or item-array wrapper, which are not a fidelity claim;
+  README states the difference. An unknown tool name remains a protocol error,
+  since no reviewed descriptor exists for it. S0 proves the chosen SDK API lets
+  the server return this result before its own validation could intervene.
 - Load files at startup. Editing requires restart in v1, stated in the README.
   This makes concurrent calls deterministic and avoids partial-file reloads.
 - Log readiness, tool name, and success/failure without logging argument or
@@ -403,9 +461,11 @@ is down when the result only establishes a timeout.
 | Setup authority | App installs/registers/starts server versus guided user-run bundle. Automatic setup expands host privileges and lifecycle scope. | Download and guide; existing operator catalog and grants. |
 | Platform gate | Delay for every Docker/Tauri topology versus a clearly bounded first release. | Host-native service first; only tested Docker recipes advertised. |
 | Draft persistence | Add project-owned scaffold state versus transient wizard plus independent bundle. | Transient first; no project migration. |
+| Schema support boundary | Choose a new dialect/subset in the spike versus reuse the core preflight profile. A new subset duplicates a written, tested boundary and can drift from it. | **Approved October 29, 2026:** reuse `preflightJsonSchema`; see §5. |
+| Argument rejection | Protocol error (call fails, run stops) versus `isError: true` result (model sees the failure). | **Approved October 29, 2026:** `isError: true` text result, matching the observable n8n behavior in `rejected-arguments-tool-workflow`; see §7. |
 
-These are material contract choices under `AGENTS.md`. Approve or revise them
-before feature implementation. Exact file names, wording, and layout spacing
+The first eight rows are material contract choices under `AGENTS.md`. Approve or
+revise them before feature implementation. Exact file names, wording, and layout spacing
 are reversible details that can be resolved during implementation.
 
 ## 10. Delivery sequence and gates
@@ -417,9 +477,13 @@ low-level `Server`, that advertises an explicit descriptor with required fields,
 `additionalProperties: false`, the draft-07 `$schema` marker, and an untyped
 `json` property, then validates valid/invalid calls and returns exact text. Use
 supported public APIs; record actual discovered schema, response, package
-versions, and limits. Choose the validator dialect/subset, the response-file
-limit, and whether a rejected call is a protocol error or an `isError` result.
-Stop for design review if fidelity cannot hold. This spike is not a shipping UI.
+versions, and limits. Choose a Python validator that enforces every keyword the
+core preflight profile accepts, run the preflight guide's accepted shapes
+against it, and record any keyword it cannot enforce identically (that sends
+the design back for review). Show that an invalid call returns a single
+`isError: true` text block rather than an SDK-level protocol error. Choose the
+response-file limit. Stop for design review if fidelity cannot hold. This spike
+is not a shipping UI.
 
 ### S1 — Extract and review n8n tool contracts
 
@@ -427,7 +491,9 @@ Implement the pure parser with supported-version fixtures, unresolved diagnostic
 and manual resolution types. Cover the whole starting allowlist in §5 from the
 committed 2.39.10 captures: each test asserts the extracted schema equals the
 `tools/0/function/parameters` the capture's initial provider request actually
-sent, including the fixed-only and `json` cases. Build deterministic tests
+sent, including the fixed-only and `json` cases, and that the schema passes
+`preflightJsonSchema`. Assert that the `f0-agent-3-1-after-tool` workflow
+yields its workflow tool and never `format_final_json_response`. Build deterministic tests
 before parser behavior, including unsupported expressions, the uncaptured
 default argument, and ambiguous source relationships.
 Deliverable: a validated descriptor and provenance, with no runtime generation.
@@ -481,15 +547,17 @@ of an existing bug.
 | --- | --- |
 | Extraction | Exact name/description/schema; fixed inputs excluded; AI aliases preserved; missing child and unsupported version surfaced; no expression execution; no unrelated workflow/credential data exported. |
 | Manifest/generator | Strict version validation; unresolved draft cannot generate; deterministic file contents; literal malicious-looking strings remain data; fixed safe paths; Unicode, empty text, and newline bytes retained. |
-| Real Python runtime | Actual `tools/list` matches reviewed descriptor; valid/invalid/extra arguments behave as declared; exact single text response; invalid configuration fails; port conflict explained; clean shutdown. |
+| Real Python runtime | Actual `tools/list` matches reviewed descriptor; valid arguments get the exact single text response; invalid and extra arguments get one `isError: true` text block and never the configured response; invalid configuration fails; port conflict explained; clean shutdown. |
 | Browser wizard | Import, select, edit, back/forward, unresolved blockers, explicit empty response, download, keyboard focus, discard behavior, setup states, and descriptor mismatch. |
 | Full integration | Browser-generated ZIP → extracted Python process → real MCP discovery → normal attachment/grant → provider tool call → exact model continuation → saved trace. Do not substitute the handwritten Node MCP fixture for this lane. |
 | Compatibility | Compare supported n8n captures with extraction and generated discovery at specific paths; report remaining request-level differences. Missing captures remain coverage gaps. |
-| Failure paths | Undeclared server, stopped server, missing tool, invalid arguments, altered schema after download, invalid response file, permission absent. No silent fallback success. |
+| Failure paths | Undeclared server, stopped server, missing tool, invalid arguments (provider continuation carries the `isError` text and the run continues), altered schema after download, invalid response file, permission absent. No silent fallback success. |
 | Deployment | Native host plus each advertised Docker platform; verify actual mount paths, loopback reachability, user ownership, and commands with spaces in paths. |
 
 Suggested new specs: `tests/e2e/local-mcp-scaffold.spec.ts` for the guided flow
-and a generated-Python integration spec in the existing Python MCP lane. The
+and a generated-Python integration spec in the existing Python MCP lane
+(`playwright.python-mcp.config.ts`, run by CI's `e2e-lanes` job beside the
+four ordinary shards). The
 integration harness may prepare a temporary operator catalog and launch child
 processes; these are test responsibilities, not product capabilities. The
 generated server's port must not collide with the fixture catalog's
@@ -539,8 +607,31 @@ or browser run was performed for this planning task. The review revision read
 the committed 2.39.10 provider requests for the schema, argument, and result
 observations in §4 and §5, and the discovery and execution modules for the
 size and error-path statements in §7; it ran nothing. The SDK registration API,
-schema validator choice, expanded n8n support matrix, and Docker Desktop recipe
+Python validator choice, expanded n8n support matrix, and Docker Desktop recipe
 remain explicit implementation gates, not verified capabilities.
+
+The October 29 re-baseline read source and committed captures only; it ran no
+tests, SDK code, or browser. That the captured schemas pass the preflight
+profile is an inference from the documented profile, not a run result; S1
+asserts it.
+
+## 14. Re-baseline against `main` (October 29, 2026)
+
+The branch merged `main` at `e255548`. Unchanged since the original baseline:
+the MCP discovery, execution and catalog services, the Python scripts and their
+pins, the fixture catalog and its `44014`–`44030` ports, and `packages/n8n`.
+Relevant changes and how this plan absorbs them:
+
+| Change on `main` | Effect on this plan |
+| --- | --- |
+| One **Attach tool** menu replaced the always-open MCP panel (#224); discovery opens from **From MCP server…** with a shared **Attach to** control. | Entry point moves into that menu (§4, §6). |
+| Shared `ModalDialog` owner (#208). | Wizard dialog uses it (§6). |
+| Core JSON Schema preflight (restricted draft-07) from the structured-output checks work. | Approved as this feature's schema boundary (§5, §9). |
+| [Final-output tool plan](N8N_FINAL_OUTPUT_TOOL_PLAN.md) accepted; `f0-*` captures. | Shared parent-agent resolution; synthetic formatter tool excluded and disclosed (§4, §6, S1). Its object-stripping policy applies only to output parsers, not to workflow tool schemas, which captures always close. |
+| Server connection catalog (`INFERENCE_LENS_CONNECTIONS`). | Guidance names the MCP catalog explicitly (§2, §4). |
+| CI runs the Python MCP lane as `e2e-lanes` beside four shards. | Integration spec targets that config (§11). |
+| Project format at v15 with v16 staged by the shared-assets work. | No change: this feature still adds no project state, so it stays outside that migration. |
+| `rejected-arguments-tool-workflow` capture (present at the original baseline, previously uncited). | Settles argument rejection as an `isError` result (§7, §9). |
 
 Related documents: [MCP local tryout](MCP_LOCAL_TRYOUT.md),
 [MCP discovery](MCP_DISCOVERY.md),
